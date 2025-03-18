@@ -1,0 +1,95 @@
+// Single-line comment
+
+/*
+	Multi-line comment
+	This is the draft of Rux programming language
+	Licensed under the MIT license
+*/
+
+// Primitive data types
+int8
+int16
+int32
+int64
+int128
+int 		// platform-dependent
+
+uint8
+uint16
+uint32
+uint64
+uint128
+uint 		// platform-dependent
+
+float32
+float64
+float80
+float128
+float 		// platform-dependent
+
+bool8
+bool16
+bool32
+bool64
+bool128
+bool		// platform-dependent
+
+char8
+char16
+char32
+char64
+char128
+char 		// platfrom-dependent
+
+
+// Function declaration
+func Add(x, y: float32)
+{
+	return x + y;
+}
+
+// Variables
+var i = 10;
+var i: int = 10;
+var val = 3.14 as float64;
+var val = float32(3.1415);
+var a = 0x11011011 as uint8;
+
+for (var i = 1; i < 10; i++)
+{
+
+}
+
+// Pointers
+var ptr: *char;
+var ptr: *const char
+const ptr: *char;
+const ptr: *const char;
+var data: **byte;
+
+// Mutability
+var value: int = 1;
+let value: int = 1;
+const value: int = 1;
+
+
+// Module system / namespaces
+module Math
+{
+	public func Sin(x: float): float;
+	public func Max(x, y: float): float;
+}
+
+// Import from modules
+use Math::Sin;
+use Math:*;
+use Math:Sin as Sinf;
+use Math; // should always specify full path Math::Sin(value)
+
+// Using Assembler
+asm func Sys()
+{
+	xor eax, eax
+	ret eax
+}
+
