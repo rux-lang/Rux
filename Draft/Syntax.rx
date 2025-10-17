@@ -2,45 +2,82 @@
 
 /*
 	Multi-line comment
-	This is the draft of Rux programming language
+	This is the draft of Rux programming language syntax
 	Licensed under the MIT license
 */
 
-// Primitive data types
+// Primitive signed integer data types
+int			// platform-dependent
 int8
 int16
 int32
 int64
 int128
-int 		// platform-dependent
+int256
+int512
 
+// Primitive unsigned integer data types
+uint		// platform-dependent
 uint8
 uint16
 uint32
 uint64
 uint128
-uint 		// platform-dependent
+uint256
+uint512
 
+// Primitive floating data types
+float		// platform-dependent
+float8
+float16
 float32
 float64
 float80
 float128
-float 		// platform-dependent
+float256
+float512
 
+// Primitive boolean data types
+bool		// platform-dependent
 bool8
 bool16
 bool32
 bool64
 bool128
-bool		// platform-dependent
+bool256
+bool512
 
+// Primitive character data types
+char 		// platfrom-dependent
 char8
 char16
 char32
 char64
 char128
-char 		// platfrom-dependent
+char256
+char512
 
+// Literals
+1000			// Decimal value
+0b11101100		// Binary value
+0o123			// Octal value
+0x59FF00AB		// Hexadecimal value
+3.1415			// Floating point value
+1.56e-5			// Floating point value (exponential format)
+true			// Boolean constant
+false			// Boolean constant
+
+// Enum declaration
+enum DayOfWeek
+{
+	Monday,
+	Tuesday,
+	Wednesday,
+	Thursday,
+	Friday,
+	Saturday,
+	Sunday
+}
 
 // Function declaration
 func Add(x, y: float32)
@@ -57,7 +94,8 @@ var a = 0x11011011 as uint8;
 
 for (var i = 1; i < 10; i++)
 {
-
+	if( i == 5)
+		break;
 }
 
 // Pointers
