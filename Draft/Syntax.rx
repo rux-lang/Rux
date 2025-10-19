@@ -106,7 +106,7 @@ func Sin(x: float): float
 	return 0.0;
 }
 
-func Print(message: *const Char, color: uint32 = 0x0000FF00)
+func Print(message: *const char, color: uint32 = 0x0000FF00)
 {
 	// Function body
 }
@@ -139,7 +139,7 @@ func Add(x, y: float32)
 var i = 10;
 var i: int = 10;
 var val = 3.1415 as float64;
-var val = 3.1415float64;
+var val = 3.1415float64; // ??
 var val = float32(3.1415);
 var a = 0x11011011 as uint8;
 
@@ -169,10 +169,10 @@ module Math
 }
 
 // Import from modules
-use Math::Sin;
-use Math:*;
-use Math:Sin as Sinf;
 use Math; // should always specify full path Math::Sin(value)
+use Math:*;
+use Math::Sin;
+use Math:Sin as Sinf;
 
 // Using Assembler
 asm func Sys()
