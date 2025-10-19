@@ -66,6 +66,8 @@ char512
 1.56e-5			// Floating point value (exponential format)
 true			// Boolean constant
 false			// Boolean constant
+"Hello World"	// String literal
+'n'				// Character literal
 
 // Enum declaration
 enum DayOfWeek
@@ -79,6 +81,54 @@ enum DayOfWeek
 	Sunday
 }
 
+// Struct declaration
+struct Point
+{
+	x: float64,
+	y: float64
+}
+
+struct Triangle
+{
+	p0, p1, p2: Point
+}
+
+func Close()
+{
+	// Function body
+	let a = 10;
+	let b = 20;
+	let c = a || b;
+}
+
+func Sin(x: float): float
+{
+	return 0.0;
+}
+
+func Print(message: *const Char, color: uint32 = 0x0000FF00)
+{
+	// Function body
+}
+
+func Max(x, y: int): int
+{
+	if (x > y)
+	{
+		return x;
+	}
+	else
+	{
+		return y;
+	}
+}
+
+// Generic function
+func Min<T>(x, y: T): T
+{
+	return x < y ? x : y;
+}
+
 // Function declaration
 func Add(x, y: float32)
 {
@@ -88,7 +138,8 @@ func Add(x, y: float32)
 // Variables
 var i = 10;
 var i: int = 10;
-var val = 3.14 as float64;
+var val = 3.1415 as float64;
+var val = 3.1415float64;
 var val = float32(3.1415);
 var a = 0x11011011 as uint8;
 
@@ -99,17 +150,16 @@ for (var i = 1; i < 10; i++)
 }
 
 // Pointers
-var ptr: *char;
+var ptr: **char;
 var ptr: *const char
 const ptr: *char;
 const ptr: *const char;
-var data: **byte;
+var data: *int64;
 
 // Mutability
 var value: int = 1;
 let value: int = 1;
 const value: int = 1;
-
 
 // Module system / namespaces
 module Math
@@ -130,4 +180,3 @@ asm func Sys()
 	xor eax, eax
 	ret eax
 }
-
