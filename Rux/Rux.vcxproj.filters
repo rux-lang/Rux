@@ -19,6 +19,7 @@
     </ClInclude>
     <ClInclude Include="Diagnostic.h" />
     <ClInclude Include="Source.h" />
+    <ClInclude Include="Rux.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Toml">

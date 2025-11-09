@@ -94,11 +94,15 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <LanguageStandard_C>stdclatest</LanguageStandard_C>
+      <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PreBuildEvent>
+      <Command>powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -File "$(ProjectDir)Build\PreBuild.ps1"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -111,11 +115,15 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <LanguageStandard_C>stdclatest</LanguageStandard_C>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PreBuildEvent>
+      <Command>powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -File "$(ProjectDir)Build\PreBuild.ps1"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -125,11 +133,15 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <LanguageStandard_C>stdclatest</LanguageStandard_C>
+      <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PreBuildEvent>
+      <Command>powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -File "$(ProjectDir)Build\PreBuild.ps1"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -142,23 +154,41 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <LanguageStandard_C>stdclatest</LanguageStandard_C>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PreBuildEvent>
+      <Command>powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -File "$(ProjectDir)Build\PreBuild.ps1"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Diagnostic.cpp" />
+    <ClCompile Include="Cli\Parser.cpp" />
+    <ClCompile Include="Cli\Printer.cpp" />
+    <ClCompile Include="Compiler\Lexer.cpp" />
+    <ClCompile Include="Compiler\Parser.cpp" />
     <ClCompile Include="Toml\Lexer.cpp" />
     <ClCompile Include="Toml\Parser.cpp" />
     <ClCompile Include="Rux.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Build\Info.h" />
+    <ClInclude Include="Build\Platform.h" />
     <ClInclude Include="Diagnostic.h" />
+    <ClInclude Include="Cli\Parser.h" />
+    <ClInclude Include="Cli\Printer.h" />
+    <ClInclude Include="Compiler\Lexer.h" />
+    <ClInclude Include="Compiler\Parser.h" />
+    <ClInclude Include="Rux.h" />
     <ClInclude Include="Source.h" />
     <ClInclude Include="Toml\Lexer.h" />
     <ClInclude Include="Toml\Parser.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Build\PreBuild.ps1" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
