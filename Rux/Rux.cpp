@@ -4,18 +4,11 @@
 
 using std::cout;
 
-
 int main(int argc, const char* argv[])
 {
 	Rux::Cli::Parser parser(argc, argv);
 	Rux::Cli::Printer printer;
-
-	if (true)
-	{
-		printer.PrintVersionDetailed();
-	}
-
-	/*if (argc == 1)
-		ShowHelp();*/
+	if (argc == 1)
+		printer.PrintHelp();
 	return 0;
 }
