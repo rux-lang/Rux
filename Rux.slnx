@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="Rux/Rux.vcxproj" Id="723901df-76ce-47e9-b7c5-df6c31531d22" />
+  <Project Path="Rux/Rux.vcxproj" Id="db672eff-de86-4183-bd9b-532bac9522c4" />
 </Solution>
