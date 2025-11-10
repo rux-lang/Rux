@@ -9,6 +9,6 @@ int main(int argc, const char* argv[])
 	Rux::Cli::Parser parser(argc, argv);
 	Rux::Cli::Printer printer;
 	if (argc == 1)
-		printer.PrintHelp();
+		printer.ShowHelp();
 	return 0;
 }

@@ -7,9 +7,9 @@ namespace Rux::Cli
 	public:
 		Printer();
 
-		void PrintHelp();
-		void PrintVersion();
-		void PrintVersionDetailed();
+		void ShowHelp();
+		void ShowVersion();
+		void ShowVersionDetailed();
 
 	private:
 		// Foreground colors

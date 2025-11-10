@@ -9,6 +9,18 @@
       <Filter>Toml</Filter>
     </ClCompile>
     <ClCompile Include="Diagnostic.cpp" />
+    <ClCompile Include="Compiler\Lexer.cpp">
+      <Filter>Compiler</Filter>
+    </ClCompile>
+    <ClCompile Include="Cli\Parser.cpp">
+      <Filter>Cli</Filter>
+    </ClCompile>
+    <ClCompile Include="Compiler\Parser.cpp">
+      <Filter>Compiler</Filter>
+    </ClCompile>
+    <ClCompile Include="Cli\Printer.cpp">
+      <Filter>Cli</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Toml\Lexer.h">
@@ -20,10 +32,42 @@
     <ClInclude Include="Diagnostic.h" />
     <ClInclude Include="Source.h" />
     <ClInclude Include="Rux.h" />
+    <ClInclude Include="Compiler\Lexer.h">
+      <Filter>Compiler</Filter>
+    </ClInclude>
+    <ClInclude Include="Cli\Parser.h">
+      <Filter>Cli</Filter>
+    </ClInclude>
+    <ClInclude Include="Compiler\Parser.h">
+      <Filter>Compiler</Filter>
+    </ClInclude>
+    <ClInclude Include="Build\Info.h">
+      <Filter>Build</Filter>
+    </ClInclude>
+    <ClInclude Include="Cli\Printer.h">
+      <Filter>Cli</Filter>
+    </ClInclude>
+    <ClInclude Include="Build\Platform.h">
+      <Filter>Build</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Toml">
       <UniqueIdentifier>{afe42862-993f-4aa9-8578-edaea91e998d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Cli">
+      <UniqueIdentifier>{20c4164b-10ce-4f37-b65a-3efc6218d872}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Compiler">
+      <UniqueIdentifier>{09616f97-fcc9-45af-9dab-31993a7d7f77}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Build">
+      <UniqueIdentifier>{062d6d5b-c8c1-421c-9c62-b88d4bcc44d1}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Build\PreBuild.ps1">
+      <Filter>Build</Filter>
+    </None>
   </ItemGroup>
 </Project>

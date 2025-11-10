@@ -19,33 +19,37 @@ namespace Rux::Cli
 	{
 	}
 
-	void Printer::PrintHelp()
+	void Printer::ShowHelp()
 	{
 		// TODO: Add --color off option to disable colors
 		using std::cout;
-		cout << Green << "Usage: " << Magenta << "rux " << Cyan << "[options] [command] [args]" << Reset << "\n";
-		cout << Green << "Options:" << Reset << "\n";
-		cout << Magenta << "   -h         " << Reset << "Print help and exit\n";
-		cout << Magenta << "   -v         " << Reset << "Print version info and exit\n";
-		cout << Magenta << "   --help     " << Reset << "Print help and exit\n";
-		cout << Magenta << "   --version  " << Reset << "Print version info and exit\n";
+		cout << Green << "Usage: " << Reset << "rux <command> [options] [args]\n";
 		cout << Green << "Commands:" << Reset << "\n";
 		cout << Magenta << "    build     " << Reset << "Compile the current package\n";
 		cout << Magenta << "    clean     " << Reset << "Remove the target directory\n";
-		cout << Magenta << "    help      " << Reset << "Print help\n";
+		cout << Magenta << "    help      " << Reset << "Show help information\n";
 		cout << Magenta << "    init      " << Reset << "Create a new package in the current directory\n";
 		cout << Magenta << "    new       " << Reset << "Create a new package\n";
 		cout << Magenta << "    run       " << Reset << "Run a binary\n";
-		cout << Magenta << "    version   " << Reset << "Print detailed version info" << std::endl;
+		cout << Magenta << "    version   " << Reset << "Show detailed version info\n";
+		cout << Magenta << "    -h        " << Reset << "Show help information\n";
+		cout << Magenta << "    -v        " << Reset << "Show brief version information\n";
+		cout << Magenta << "    --help    " << Reset << "Show help information\n";
+		cout << Magenta << "    --version " << Reset << "Show brief version information\n";
+		cout << Green << "Options:" << Reset << "\n";
+		cout << Magenta << "   --option   " << Reset << "Each command has specific options\n";
+		cout << Green << "Arguments:" << Reset << "\n";
+		cout << Magenta << "   arg1 arg2  " << Reset << "Some commands can take additional args\n";
+		cout << "For more information, visit: " << Blue << "https://rux-lang.dev/cli" << Reset << std::endl;
 	}
 
-	void Printer::PrintVersion()
+	void Printer::ShowVersion()
 	{
 		using std::cout;
 		cout << "Rux " << BUILD_VERSION << std::endl;
 	}
 
-	void Printer::PrintVersionDetailed()
+	void Printer::ShowVersionDetailed()
 	{
 		using std::cout;
 		cout << "Name:     " << "Rux\n";
