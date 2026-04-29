@@ -1,0 +1,11 @@
+/*
+    Rux Compiler
+    Copyright © 2026 Ivan Muzyka
+    Licensed under the MIT License
+*/
+
+#pragma once
+
+#define RUX_VERSION "@PROJECT_VERSION@"
+#define RUX_BUILD_DATE "@RUX_BUILD_DATE@"
+#define RUX_BUILD_TIME "@RUX_BUILD_TIME@"
