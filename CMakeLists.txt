@@ -13,7 +13,7 @@ configure_file(
         @ONLY
 )
 
-add_executable(Rux
+add_executable(rux
         Source/Main.cpp
         Source/Cli.cpp
         Source/Manifest.cpp
@@ -45,11 +45,11 @@ add_executable(Rux
         Include/Rux/Linker.h
 )
 
-target_include_directories(Rux PRIVATE
+target_include_directories(rux PRIVATE
         Include
         ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
-set_property(TARGET Rux
+set_property(TARGET rux
         PROPERTY MSVC_RUNTIME_LIBRARY "$<IF:$<CONFIG:Release>,MultiThreaded,MultiThreadedDebugDLL>"
 )

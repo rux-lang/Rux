@@ -12,13 +12,12 @@
 #include <print>
 
 namespace Rux {
-
     // =========================================================================
     // ParseResult
     // =========================================================================
 
     bool ParseResult::HasErrors() const noexcept {
-        for (const auto &d : diagnostics)
+        for (const auto &d: diagnostics)
             if (d.severity == ParserDiagnostic::Severity::Error)
                 return true;
         return false;
@@ -30,11 +29,11 @@ namespace Rux {
 
     Parser::Parser(std::vector<Token> tokens, std::string sourceName)
         : tokens(std::move(tokens))
-        , sourceName(std::move(sourceName)) {
+          , sourceName(std::move(sourceName)) {
     }
 
     std::optional<ParseResult> Parser::FromLexResult(const LexerResult &lex,
-                                                      const std::string &sourceName) {
+                                                     const std::string &sourceName) {
         if (lex.HasErrors()) return std::nullopt;
         Parser p(lex.tokens, sourceName);
         return p.Parse();
@@ -79,7 +78,7 @@ namespace Rux {
     }
 
     bool Parser::CheckAny(std::initializer_list<TokenKind> kinds) const noexcept {
-        for (auto k : kinds)
+        for (auto k: kinds)
             if (Check(k)) return true;
         return false;
     }
@@ -142,24 +141,24 @@ namespace Rux {
             if (k == TokenKind::RightBrace)
                 return;
 
-            if (k == TokenKind::FuncKeyword   ||
-                k == TokenKind::StructKeyword  ||
-                k == TokenKind::EnumKeyword    ||
-                k == TokenKind::UnionKeyword   ||
+            if (k == TokenKind::FuncKeyword ||
+                k == TokenKind::StructKeyword ||
+                k == TokenKind::EnumKeyword ||
+                k == TokenKind::UnionKeyword ||
                 k == TokenKind::InterfaceKeyword ||
-                k == TokenKind::ImplKeyword    ||
-                k == TokenKind::ModKeyword     ||
-                k == TokenKind::UseKeyword     ||
-                k == TokenKind::ConstKeyword   ||
-                k == TokenKind::TypeKeyword    ||
-                k == TokenKind::ExternKeyword  ||
-                k == TokenKind::PubKeyword     ||
-                k == TokenKind::LetKeyword     ||
-                k == TokenKind::VarKeyword     ||
-                k == TokenKind::IfKeyword      ||
-                k == TokenKind::WhileKeyword   ||
-                k == TokenKind::ForKeyword     ||
-                k == TokenKind::ReturnKeyword  ||
+                k == TokenKind::ImplKeyword ||
+                k == TokenKind::ModKeyword ||
+                k == TokenKind::UseKeyword ||
+                k == TokenKind::ConstKeyword ||
+                k == TokenKind::TypeKeyword ||
+                k == TokenKind::ExternKeyword ||
+                k == TokenKind::PubKeyword ||
+                k == TokenKind::LetKeyword ||
+                k == TokenKind::VarKeyword ||
+                k == TokenKind::IfKeyword ||
+                k == TokenKind::WhileKeyword ||
+                k == TokenKind::ForKeyword ||
+                k == TokenKind::ReturnKeyword ||
                 k == TokenKind::MatchKeyword)
                 return;
 
@@ -209,7 +208,7 @@ namespace Rux {
             return ParseExternDecl(isPublic);
 
         EmitError(loc,
-            std::format("unexpected token '{}', expected a declaration", Peek().text));
+                  std::format("unexpected token '{}', expected a declaration", Peek().text));
         return nullptr;
     }
 
@@ -266,11 +265,11 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::FuncKeyword, "expected 'func'");
 
-        auto decl      = std::make_unique<FuncDecl>();
+        auto decl = std::make_unique<FuncDecl>();
         decl->location = loc;
         decl->isPublic = isPublic;
-        decl->isAsm    = isAsm;
-        decl->name     = Expect(TokenKind::Ident, "expected function name").text;
+        decl->isAsm = isAsm;
+        decl->name = Expect(TokenKind::Ident, "expected function name").text;
 
         if (Check(TokenKind::Less))
             decl->typeParams = ParseTypeParams();
@@ -298,10 +297,10 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::StructKeyword, "expected 'struct'");
 
-        auto decl      = std::make_unique<StructDecl>();
+        auto decl = std::make_unique<StructDecl>();
         decl->location = loc;
         decl->isPublic = isPublic;
-        decl->name     = Expect(TokenKind::Ident, "expected struct name").text;
+        decl->name = Expect(TokenKind::Ident, "expected struct name").text;
 
         Expect(TokenKind::LeftBrace, "expected '{'");
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
@@ -329,16 +328,16 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::EnumKeyword, "expected 'enum'");
 
-        auto decl      = std::make_unique<EnumDecl>();
+        auto decl = std::make_unique<EnumDecl>();
         decl->location = loc;
         decl->isPublic = isPublic;
-        decl->name     = Expect(TokenKind::Ident, "expected enum name").text;
+        decl->name = Expect(TokenKind::Ident, "expected enum name").text;
 
         Expect(TokenKind::LeftBrace, "expected '{'");
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             EnumDecl::Variant variant;
             variant.location = CurrentLocation();
-            variant.name     = Expect(TokenKind::Ident, "expected variant name").text;
+            variant.name = Expect(TokenKind::Ident, "expected variant name").text;
 
             if (Match(TokenKind::LeftParen)) {
                 while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
@@ -364,18 +363,18 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::UnionKeyword, "expected 'union'");
 
-        auto decl      = std::make_unique<UnionDecl>();
+        auto decl = std::make_unique<UnionDecl>();
         decl->location = loc;
         decl->isPublic = isPublic;
-        decl->name     = Expect(TokenKind::Ident, "expected union name").text;
+        decl->name = Expect(TokenKind::Ident, "expected union name").text;
 
         Expect(TokenKind::LeftBrace, "expected '{'");
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             UnionDecl::Field field;
             field.location = CurrentLocation();
-            field.name     = Expect(TokenKind::Ident, "expected field name").text;
+            field.name = Expect(TokenKind::Ident, "expected field name").text;
             Expect(TokenKind::Colon, "expected ':'");
-            field.type     = ParseType();
+            field.type = ParseType();
             decl->fields.push_back(std::move(field));
             if (!Match(TokenKind::Comma)) break;
         }
@@ -391,10 +390,10 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::InterfaceKeyword, "expected 'interface'");
 
-        auto decl      = std::make_unique<InterfaceDecl>();
+        auto decl = std::make_unique<InterfaceDecl>();
         decl->location = loc;
         decl->isPublic = isPublic;
-        decl->name     = Expect(TokenKind::Ident, "expected interface name").text;
+        decl->name = Expect(TokenKind::Ident, "expected interface name").text;
 
         Expect(TokenKind::LeftBrace, "expected '{'");
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
@@ -418,7 +417,7 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::ImplKeyword, "expected 'impl'");
 
-        auto decl      = std::make_unique<ImplDecl>();
+        auto decl = std::make_unique<ImplDecl>();
         decl->location = loc;
 
         // impl TypeName  or  impl InterfaceName for TypeName
@@ -453,10 +452,10 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::ModKeyword, "expected 'mod'");
 
-        auto decl      = std::make_unique<ModuleDecl>();
+        auto decl = std::make_unique<ModuleDecl>();
         decl->location = loc;
         decl->isPublic = isPublic;
-        decl->name     = Expect(TokenKind::Ident, "expected module name").text;
+        decl->name = Expect(TokenKind::Ident, "expected module name").text;
 
         Expect(TokenKind::LeftBrace, "expected '{'");
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
@@ -478,7 +477,7 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::UseKeyword, "expected 'use'");
 
-        auto decl      = std::make_unique<UseDecl>();
+        auto decl = std::make_unique<UseDecl>();
         decl->location = loc;
 
         // Parse path segments separated by '.' or '::'
@@ -528,10 +527,10 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::ConstKeyword, "expected 'const'");
 
-        auto decl      = std::make_unique<ConstDecl>();
+        auto decl = std::make_unique<ConstDecl>();
         decl->location = loc;
         decl->isPublic = isPublic;
-        decl->name     = Expect(TokenKind::Ident, "expected constant name").text;
+        decl->name = Expect(TokenKind::Ident, "expected constant name").text;
 
         Expect(TokenKind::Colon, "expected ':'");
         decl->type = ParseType();
@@ -551,10 +550,10 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::TypeKeyword, "expected 'type'");
 
-        auto decl      = std::make_unique<TypeAliasDecl>();
+        auto decl = std::make_unique<TypeAliasDecl>();
         decl->location = loc;
         decl->isPublic = isPublic;
-        decl->name     = Expect(TokenKind::Ident, "expected type alias name").text;
+        decl->name = Expect(TokenKind::Ident, "expected type alias name").text;
 
         Expect(TokenKind::Assign, "expected '='");
         decl->type = ParseType();
@@ -575,10 +574,10 @@ namespace Rux {
             // extern func Name(params) -> Type;
             Advance(); // consume 'func'
 
-            auto decl      = std::make_unique<ExternFuncDecl>();
+            auto decl = std::make_unique<ExternFuncDecl>();
             decl->location = loc;
             decl->isPublic = isPublic;
-            decl->name     = Expect(TokenKind::Ident, "expected function name").text;
+            decl->name = Expect(TokenKind::Ident, "expected function name").text;
 
             Expect(TokenKind::LeftParen, "expected '('");
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
@@ -600,10 +599,10 @@ namespace Rux {
         }
 
         // extern Name: Type;
-        auto decl      = std::make_unique<ExternVarDecl>();
+        auto decl = std::make_unique<ExternVarDecl>();
         decl->location = loc;
         decl->isPublic = isPublic;
-        decl->name     = Expect(TokenKind::Ident, "expected variable name").text;
+        decl->name = Expect(TokenKind::Ident, "expected variable name").text;
 
         Expect(TokenKind::Colon, "expected ':'");
         decl->type = ParseType();
@@ -621,16 +620,16 @@ namespace Rux {
 
         // Pointer: *T
         if (Match(TokenKind::Star)) {
-            auto p      = std::make_unique<PointerTypeExpr>();
+            auto p = std::make_unique<PointerTypeExpr>();
             p->location = loc;
-            p->pointee  = ParseType();
+            p->pointee = ParseType();
             return p;
         }
 
         // Tuple: (T, U, ...)
         if (Check(TokenKind::LeftParen)) {
             Advance();
-            auto t      = std::make_unique<TupleTypeExpr>();
+            auto t = std::make_unique<TupleTypeExpr>();
             t->location = loc;
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                 t->elements.push_back(ParseType());
@@ -646,9 +645,9 @@ namespace Rux {
         // Postfix array suffix: T[]  or  T[N]
         while (Check(TokenKind::LeftBracket)) {
             Advance();
-            auto a      = std::make_unique<ArrayTypeExpr>();
+            auto a = std::make_unique<ArrayTypeExpr>();
             a->location = loc;
-            a->element  = std::move(base);
+            a->element = std::move(base);
             if (!Check(TokenKind::RightBracket))
                 a->size = ParseExpr();
             Expect(TokenKind::RightBracket, "expected ']'");
@@ -662,7 +661,7 @@ namespace Rux {
         const auto loc = CurrentLocation();
 
         if (Match(TokenKind::SelfKeyword)) {
-            auto t      = std::make_unique<SelfTypeExpr>();
+            auto t = std::make_unique<SelfTypeExpr>();
             t->location = loc;
             return t;
         }
@@ -672,7 +671,7 @@ namespace Rux {
 
             // Check for path type: A::B::C
             if (Check(TokenKind::ColonColon)) {
-                auto p      = std::make_unique<PathTypeExpr>();
+                auto p = std::make_unique<PathTypeExpr>();
                 p->location = loc;
                 p->segments.push_back(first);
                 while (Match(TokenKind::ColonColon)) {
@@ -682,9 +681,9 @@ namespace Rux {
                 return p;
             }
 
-            auto n      = std::make_unique<NamedTypeExpr>();
+            auto n = std::make_unique<NamedTypeExpr>();
             n->location = loc;
-            n->name     = first;
+            n->name = first;
             return n;
         }
 
@@ -700,7 +699,7 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::LeftBrace, "expected '{'");
 
-        auto block      = std::make_unique<Block>();
+        auto block = std::make_unique<Block>();
         block->location = loc;
 
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
@@ -734,7 +733,7 @@ namespace Rux {
         if (Check(TokenKind::BreakKeyword)) {
             Advance();
             Expect(TokenKind::Semicolon, "expected ';'");
-            auto s      = std::make_unique<BreakStmt>();
+            auto s = std::make_unique<BreakStmt>();
             s->location = loc;
             return s;
         }
@@ -742,27 +741,29 @@ namespace Rux {
         if (Check(TokenKind::ContinueKeyword)) {
             Advance();
             Expect(TokenKind::Semicolon, "expected ';'");
-            auto s      = std::make_unique<ContinueStmt>();
+            auto s = std::make_unique<ContinueStmt>();
             s->location = loc;
             return s;
         }
 
         // Allow nested declarations inside blocks
-        if (CheckAny({TokenKind::PubKeyword,
-                      TokenKind::FuncKeyword,
-                      TokenKind::StructKeyword,
-                      TokenKind::EnumKeyword,
-                      TokenKind::UnionKeyword,
-                      TokenKind::InterfaceKeyword,
-                      TokenKind::ImplKeyword,
-                      TokenKind::ModKeyword,
-                      TokenKind::UseKeyword,
-                      TokenKind::ConstKeyword,
-                      TokenKind::TypeKeyword,
-                      TokenKind::ExternKeyword})) {
-            auto ds     = std::make_unique<DeclStmt>();
+        if (CheckAny({
+            TokenKind::PubKeyword,
+            TokenKind::FuncKeyword,
+            TokenKind::StructKeyword,
+            TokenKind::EnumKeyword,
+            TokenKind::UnionKeyword,
+            TokenKind::InterfaceKeyword,
+            TokenKind::ImplKeyword,
+            TokenKind::ModKeyword,
+            TokenKind::UseKeyword,
+            TokenKind::ConstKeyword,
+            TokenKind::TypeKeyword,
+            TokenKind::ExternKeyword
+        })) {
+            auto ds = std::make_unique<DeclStmt>();
             ds->location = loc;
-            ds->decl    = ParseDecl();
+            ds->decl = ParseDecl();
             return ds;
         }
 
@@ -770,16 +771,16 @@ namespace Rux {
         auto expr = ParseExpr();
         if (!expr) return nullptr;
         Expect(TokenKind::Semicolon, "expected ';'");
-        auto s      = std::make_unique<ExprStmt>();
+        auto s = std::make_unique<ExprStmt>();
         s->location = loc;
-        s->expr     = std::move(expr);
+        s->expr = std::move(expr);
         return s;
     }
 
     std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
         const auto loc = CurrentLocation();
 
-        auto s      = std::make_unique<LetStmt>();
+        auto s = std::make_unique<LetStmt>();
         s->location = loc;
 
         if (Match(TokenKind::VarKeyword)) {
@@ -788,7 +789,7 @@ namespace Rux {
             Expect(TokenKind::LetKeyword, "expected 'let' or 'var'");
             s->isMut = Match(TokenKind::MutKeyword);
         }
-        s->name     = Expect(TokenKind::Ident, "expected variable name").text;
+        s->name = Expect(TokenKind::Ident, "expected variable name").text;
 
         if (Match(TokenKind::Colon))
             s->type = ParseType();
@@ -803,12 +804,12 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::IfKeyword, "expected 'if'");
 
-        auto s         = std::make_unique<IfStmt>();
-        s->location    = loc;
+        auto s = std::make_unique<IfStmt>();
+        s->location = loc;
         structInitAllowed = false;
-        s->condition   = ParseExpr();
+        s->condition = ParseExpr();
         structInitAllowed = true;
-        s->thenBlock   = ParseBlock();
+        s->thenBlock = ParseBlock();
 
         while (Check(TokenKind::ElseKeyword) && Peek(1).Is(TokenKind::IfKeyword)) {
             IfStmt::ElseIf elif;
@@ -818,7 +819,7 @@ namespace Rux {
             structInitAllowed = false;
             elif.condition = ParseExpr();
             structInitAllowed = true;
-            elif.block     = ParseBlock();
+            elif.block = ParseBlock();
             s->elseIfs.push_back(std::move(elif));
         }
 
@@ -832,12 +833,12 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::WhileKeyword, "expected 'while'");
 
-        auto s      = std::make_unique<WhileStmt>();
+        auto s = std::make_unique<WhileStmt>();
         s->location = loc;
         structInitAllowed = false;
         s->condition = ParseExpr();
         structInitAllowed = true;
-        s->body      = ParseBlock();
+        s->body = ParseBlock();
         return s;
     }
 
@@ -845,14 +846,14 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::ForKeyword, "expected 'for'");
 
-        auto s      = std::make_unique<ForStmt>();
+        auto s = std::make_unique<ForStmt>();
         s->location = loc;
         s->variable = Expect(TokenKind::Ident, "expected loop variable").text;
         Expect(TokenKind::InKeyword, "expected 'in'");
         structInitAllowed = false;
         s->iterable = ParseExpr();
         structInitAllowed = true;
-        s->body     = ParseBlock();
+        s->body = ParseBlock();
         return s;
     }
 
@@ -860,25 +861,25 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::MatchKeyword, "expected 'match'");
 
-        auto s      = std::make_unique<MatchStmt>();
+        auto s = std::make_unique<MatchStmt>();
         s->location = loc;
         structInitAllowed = false;
-        s->subject  = ParseExpr();
+        s->subject = ParseExpr();
         structInitAllowed = true;
 
         Expect(TokenKind::LeftBrace, "expected '{'");
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             MatchStmt::Arm arm;
             arm.location = CurrentLocation();
-            arm.pattern  = ParsePattern();
+            arm.pattern = ParsePattern();
             Expect(TokenKind::FatArrow, "expected '=>'");
 
             if (Check(TokenKind::LeftBrace)) {
                 // Block body
-                auto bexpr    = std::make_unique<BlockExpr>();
+                auto bexpr = std::make_unique<BlockExpr>();
                 bexpr->location = CurrentLocation();
-                bexpr->block  = ParseBlock();
-                arm.body      = std::move(bexpr);
+                bexpr->block = ParseBlock();
+                arm.body = std::move(bexpr);
             } else {
                 arm.body = ParseExpr();
             }
@@ -894,7 +895,7 @@ namespace Rux {
         const auto loc = CurrentLocation();
         Expect(TokenKind::ReturnKeyword, "expected 'return'");
 
-        auto s      = std::make_unique<ReturnStmt>();
+        auto s = std::make_unique<ReturnStmt>();
         s->location = loc;
 
         if (!Check(TokenKind::Semicolon))
@@ -919,24 +920,24 @@ namespace Rux {
 
         static constexpr TokenKind kAssignOps[] = {
             TokenKind::Assign,
-            TokenKind::PlusAssign,  TokenKind::MinusAssign,
-            TokenKind::StarAssign,  TokenKind::SlashAssign,
+            TokenKind::PlusAssign, TokenKind::MinusAssign,
+            TokenKind::StarAssign, TokenKind::SlashAssign,
             TokenKind::PercentAssign,
-            TokenKind::AmpAssign,   TokenKind::PipeAssign,
+            TokenKind::AmpAssign, TokenKind::PipeAssign,
             TokenKind::CaretAssign, TokenKind::LessLessAssign,
             TokenKind::GreaterGreaterAssign,
         };
 
-        for (auto op : kAssignOps) {
+        for (auto op: kAssignOps) {
             if (Check(op)) {
                 const auto loc = CurrentLocation();
                 Advance();
                 auto right = ParseAssign(); // right-associative
-                auto e         = std::make_unique<AssignExpr>();
-                e->location    = loc;
-                e->op          = op;
-                e->target      = std::move(left);
-                e->value       = std::move(right);
+                auto e = std::make_unique<AssignExpr>();
+                e->location = loc;
+                e->op = op;
+                e->target = std::move(left);
+                e->value = std::move(right);
                 return e;
             }
         }
@@ -949,14 +950,14 @@ namespace Rux {
 
         if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot)) {
             const bool incl = Peek().kind == TokenKind::DotDotDot;
-            const auto loc  = CurrentLocation();
+            const auto loc = CurrentLocation();
             Advance();
             auto right = ParseTernary();
-            auto e        = std::make_unique<RangeExpr>();
-            e->location   = loc;
-            e->inclusive  = incl;
-            e->lo         = std::move(left);
-            e->hi         = std::move(right);
+            auto e = std::make_unique<RangeExpr>();
+            e->location = loc;
+            e->inclusive = incl;
+            e->lo = std::move(left);
+            e->hi = std::move(right);
             return e;
         }
         return left;
@@ -968,14 +969,14 @@ namespace Rux {
 
         if (Match(TokenKind::Question)) {
             const auto loc = Previous().location;
-            auto thenExpr  = ParseOr();
+            auto thenExpr = ParseOr();
             Expect(TokenKind::Colon, "expected ':' in ternary");
-            auto elseExpr  = ParseTernary(); // right-associative
-            auto e         = std::make_unique<TernaryExpr>();
-            e->location    = loc;
-            e->condition   = std::move(cond);
-            e->thenExpr    = std::move(thenExpr);
-            e->elseExpr    = std::move(elseExpr);
+            auto elseExpr = ParseTernary(); // right-associative
+            auto e = std::make_unique<TernaryExpr>();
+            e->location = loc;
+            e->condition = std::move(cond);
+            e->thenExpr = std::move(thenExpr);
+            e->elseExpr = std::move(elseExpr);
             return e;
         }
         return cond;
@@ -985,14 +986,14 @@ namespace Rux {
         auto left = ParseAnd();
         while (Check(TokenKind::PipePipe)) {
             const auto loc = CurrentLocation();
-            const auto op  = Advance().kind;
+            const auto op = Advance().kind;
             auto right = ParseAnd();
-            auto e        = std::make_unique<BinaryExpr>();
-            e->location   = loc;
-            e->op         = op;
-            e->left       = std::move(left);
-            e->right      = std::move(right);
-            left          = std::move(e);
+            auto e = std::make_unique<BinaryExpr>();
+            e->location = loc;
+            e->op = op;
+            e->left = std::move(left);
+            e->right = std::move(right);
+            left = std::move(e);
         }
         return left;
     }
@@ -1001,14 +1002,14 @@ namespace Rux {
         auto left = ParseBitOr();
         while (Check(TokenKind::AmpAmp)) {
             const auto loc = CurrentLocation();
-            const auto op  = Advance().kind;
+            const auto op = Advance().kind;
             auto right = ParseBitOr();
-            auto e        = std::make_unique<BinaryExpr>();
-            e->location   = loc;
-            e->op         = op;
-            e->left       = std::move(left);
-            e->right      = std::move(right);
-            left          = std::move(e);
+            auto e = std::make_unique<BinaryExpr>();
+            e->location = loc;
+            e->op = op;
+            e->left = std::move(left);
+            e->right = std::move(right);
+            left = std::move(e);
         }
         return left;
     }
@@ -1017,14 +1018,14 @@ namespace Rux {
         auto left = ParseBitXor();
         while (Check(TokenKind::Pipe)) {
             const auto loc = CurrentLocation();
-            const auto op  = Advance().kind;
+            const auto op = Advance().kind;
             auto right = ParseBitXor();
-            auto e        = std::make_unique<BinaryExpr>();
-            e->location   = loc;
-            e->op         = op;
-            e->left       = std::move(left);
-            e->right      = std::move(right);
-            left          = std::move(e);
+            auto e = std::make_unique<BinaryExpr>();
+            e->location = loc;
+            e->op = op;
+            e->left = std::move(left);
+            e->right = std::move(right);
+            left = std::move(e);
         }
         return left;
     }
@@ -1033,14 +1034,14 @@ namespace Rux {
         auto left = ParseBitAnd();
         while (Check(TokenKind::Caret)) {
             const auto loc = CurrentLocation();
-            const auto op  = Advance().kind;
+            const auto op = Advance().kind;
             auto right = ParseBitAnd();
-            auto e        = std::make_unique<BinaryExpr>();
-            e->location   = loc;
-            e->op         = op;
-            e->left       = std::move(left);
-            e->right      = std::move(right);
-            left          = std::move(e);
+            auto e = std::make_unique<BinaryExpr>();
+            e->location = loc;
+            e->op = op;
+            e->left = std::move(left);
+            e->right = std::move(right);
+            left = std::move(e);
         }
         return left;
     }
@@ -1049,14 +1050,14 @@ namespace Rux {
         auto left = ParseEquality();
         while (Check(TokenKind::Amp)) {
             const auto loc = CurrentLocation();
-            const auto op  = Advance().kind;
+            const auto op = Advance().kind;
             auto right = ParseEquality();
-            auto e        = std::make_unique<BinaryExpr>();
-            e->location   = loc;
-            e->op         = op;
-            e->left       = std::move(left);
-            e->right      = std::move(right);
-            left          = std::move(e);
+            auto e = std::make_unique<BinaryExpr>();
+            e->location = loc;
+            e->op = op;
+            e->left = std::move(left);
+            e->right = std::move(right);
+            left = std::move(e);
         }
         return left;
     }
@@ -1065,31 +1066,33 @@ namespace Rux {
         auto left = ParseComparison();
         while (CheckAny({TokenKind::Equal, TokenKind::BangEqual})) {
             const auto loc = CurrentLocation();
-            const auto op  = Advance().kind;
+            const auto op = Advance().kind;
             auto right = ParseComparison();
-            auto e        = std::make_unique<BinaryExpr>();
-            e->location   = loc;
-            e->op         = op;
-            e->left       = std::move(left);
-            e->right      = std::move(right);
-            left          = std::move(e);
+            auto e = std::make_unique<BinaryExpr>();
+            e->location = loc;
+            e->op = op;
+            e->left = std::move(left);
+            e->right = std::move(right);
+            left = std::move(e);
         }
         return left;
     }
 
     ExprPtr Parser::ParseComparison() {
         auto left = ParseShift();
-        while (CheckAny({TokenKind::Less, TokenKind::LessEqual,
-                         TokenKind::Greater, TokenKind::GreaterEqual})) {
+        while (CheckAny({
+            TokenKind::Less, TokenKind::LessEqual,
+            TokenKind::Greater, TokenKind::GreaterEqual
+        })) {
             const auto loc = CurrentLocation();
-            const auto op  = Advance().kind;
+            const auto op = Advance().kind;
             auto right = ParseShift();
-            auto e        = std::make_unique<BinaryExpr>();
-            e->location   = loc;
-            e->op         = op;
-            e->left       = std::move(left);
-            e->right      = std::move(right);
-            left          = std::move(e);
+            auto e = std::make_unique<BinaryExpr>();
+            e->location = loc;
+            e->op = op;
+            e->left = std::move(left);
+            e->right = std::move(right);
+            left = std::move(e);
         }
         return left;
     }
@@ -1098,14 +1101,14 @@ namespace Rux {
         auto left = ParseAdd();
         while (CheckAny({TokenKind::LessLess, TokenKind::GreaterGreater})) {
             const auto loc = CurrentLocation();
-            const auto op  = Advance().kind;
+            const auto op = Advance().kind;
             auto right = ParseAdd();
-            auto e        = std::make_unique<BinaryExpr>();
-            e->location   = loc;
-            e->op         = op;
-            e->left       = std::move(left);
-            e->right      = std::move(right);
-            left          = std::move(e);
+            auto e = std::make_unique<BinaryExpr>();
+            e->location = loc;
+            e->op = op;
+            e->left = std::move(left);
+            e->right = std::move(right);
+            left = std::move(e);
         }
         return left;
     }
@@ -1114,14 +1117,14 @@ namespace Rux {
         auto left = ParseMul();
         while (CheckAny({TokenKind::Plus, TokenKind::Minus})) {
             const auto loc = CurrentLocation();
-            const auto op  = Advance().kind;
+            const auto op = Advance().kind;
             auto right = ParseMul();
-            auto e        = std::make_unique<BinaryExpr>();
-            e->location   = loc;
-            e->op         = op;
-            e->left       = std::move(left);
-            e->right      = std::move(right);
-            left          = std::move(e);
+            auto e = std::make_unique<BinaryExpr>();
+            e->location = loc;
+            e->op = op;
+            e->left = std::move(left);
+            e->right = std::move(right);
+            left = std::move(e);
         }
         return left;
     }
@@ -1130,14 +1133,14 @@ namespace Rux {
         auto left = ParseExp();
         while (CheckAny({TokenKind::Star, TokenKind::Slash, TokenKind::Percent})) {
             const auto loc = CurrentLocation();
-            const auto op  = Advance().kind;
+            const auto op = Advance().kind;
             auto right = ParseExp();
-            auto e        = std::make_unique<BinaryExpr>();
-            e->location   = loc;
-            e->op         = op;
-            e->left       = std::move(left);
-            e->right      = std::move(right);
-            left          = std::move(e);
+            auto e = std::make_unique<BinaryExpr>();
+            e->location = loc;
+            e->op = op;
+            e->left = std::move(left);
+            e->right = std::move(right);
+            left = std::move(e);
         }
         return left;
     }
@@ -1149,26 +1152,28 @@ namespace Rux {
             const auto loc = CurrentLocation();
             Advance();
             auto right = ParseExp(); // right-associative
-            auto e        = std::make_unique<BinaryExpr>();
-            e->location   = loc;
-            e->op         = TokenKind::StarStar;
-            e->left       = std::move(left);
-            e->right      = std::move(right);
+            auto e = std::make_unique<BinaryExpr>();
+            e->location = loc;
+            e->op = TokenKind::StarStar;
+            e->left = std::move(left);
+            e->right = std::move(right);
             return e;
         }
         return left;
     }
 
     ExprPtr Parser::ParseUnary() {
-        if (CheckAny({TokenKind::Bang, TokenKind::Minus,
-                      TokenKind::Tilde, TokenKind::Star, TokenKind::Amp})) {
+        if (CheckAny({
+            TokenKind::Bang, TokenKind::Minus,
+            TokenKind::Tilde, TokenKind::Star, TokenKind::Amp
+        })) {
             const auto loc = CurrentLocation();
-            const auto op  = Advance().kind;
-            auto operand   = ParseUnary();
-            auto e         = std::make_unique<UnaryExpr>();
-            e->location    = loc;
-            e->op          = op;
-            e->operand     = std::move(operand);
+            const auto op = Advance().kind;
+            auto operand = ParseUnary();
+            auto e = std::make_unique<UnaryExpr>();
+            e->location = loc;
+            e->op = op;
+            e->operand = std::move(operand);
             return e;
         }
         return ParsePostfix();
@@ -1188,21 +1193,21 @@ namespace Rux {
                     // Method call: expr.method(args)
                     auto args = ParseArgList();
                     // Desugar to CallExpr with FieldExpr callee
-                    auto field     = std::make_unique<FieldExpr>();
+                    auto field = std::make_unique<FieldExpr>();
                     field->location = loc;
-                    field->object  = std::move(left);
-                    field->field   = name;
-                    auto call      = std::make_unique<CallExpr>();
+                    field->object = std::move(left);
+                    field->field = name;
+                    auto call = std::make_unique<CallExpr>();
                     call->location = loc;
-                    call->callee   = std::move(field);
-                    call->args     = std::move(args);
-                    left           = std::move(call);
+                    call->callee = std::move(field);
+                    call->args = std::move(args);
+                    left = std::move(call);
                 } else {
-                    auto e     = std::make_unique<FieldExpr>();
+                    auto e = std::make_unique<FieldExpr>();
                     e->location = loc;
-                    e->object  = std::move(left);
-                    e->field   = name;
-                    left       = std::move(e);
+                    e->object = std::move(left);
+                    e->field = name;
+                    left = std::move(e);
                 }
                 continue;
             }
@@ -1216,7 +1221,7 @@ namespace Rux {
                 } else {
                     // Wrap existing expression in a path — treat the left side as a segment
                     // This handles IDENT::IDENT::... chains
-                    auto p      = std::make_unique<PathExpr>();
+                    auto p = std::make_unique<PathExpr>();
                     p->location = loc;
                     if (auto *ident = dynamic_cast<IdentExpr *>(left.get()))
                         p->segments.push_back(ident->name);
@@ -1228,46 +1233,46 @@ namespace Rux {
 
             // Function/direct call: expr(args)
             if (Check(TokenKind::LeftParen)) {
-                auto args      = ParseArgList();
-                auto e         = std::make_unique<CallExpr>();
-                e->location    = loc;
-                e->callee      = std::move(left);
-                e->args        = std::move(args);
-                left           = std::move(e);
+                auto args = ParseArgList();
+                auto e = std::make_unique<CallExpr>();
+                e->location = loc;
+                e->callee = std::move(left);
+                e->args = std::move(args);
+                left = std::move(e);
                 continue;
             }
 
             // Index: expr[idx]
             if (Match(TokenKind::LeftBracket)) {
-                auto idx   = ParseExpr();
+                auto idx = ParseExpr();
                 Expect(TokenKind::RightBracket, "expected ']'");
-                auto e     = std::make_unique<IndexExpr>();
+                auto e = std::make_unique<IndexExpr>();
                 e->location = loc;
-                e->object  = std::move(left);
-                e->index   = std::move(idx);
-                left       = std::move(e);
+                e->object = std::move(left);
+                e->index = std::move(idx);
+                left = std::move(e);
                 continue;
             }
 
             // as cast
             if (Match(TokenKind::AsKeyword)) {
-                auto type  = ParseType();
-                auto e     = std::make_unique<CastExpr>();
+                auto type = ParseType();
+                auto e = std::make_unique<CastExpr>();
                 e->location = loc;
                 e->operand = std::move(left);
-                e->type    = std::move(type);
-                left       = std::move(e);
+                e->type = std::move(type);
+                left = std::move(e);
                 continue;
             }
 
             // is type check
             if (Match(TokenKind::IsKeyword)) {
-                auto type  = ParseType();
-                auto e     = std::make_unique<IsExpr>();
+                auto type = ParseType();
+                auto e = std::make_unique<IsExpr>();
                 e->location = loc;
                 e->operand = std::move(left);
-                e->type    = std::move(type);
-                left       = std::move(e);
+                e->type = std::move(type);
+                left = std::move(e);
                 continue;
             }
 
@@ -1280,35 +1285,35 @@ namespace Rux {
         const auto loc = CurrentLocation();
 
         // Literals
-        if (Check(TokenKind::IntLiteral)   ||
+        if (Check(TokenKind::IntLiteral) ||
             Check(TokenKind::FloatLiteral) ||
-            Check(TokenKind::StringLiteral)||
-            Check(TokenKind::CharLiteral)  ||
+            Check(TokenKind::StringLiteral) ||
+            Check(TokenKind::CharLiteral) ||
             Check(TokenKind::BoolLiteral)) {
-            auto e     = std::make_unique<LiteralExpr>();
+            auto e = std::make_unique<LiteralExpr>();
             e->location = loc;
-            e->token   = Advance();
+            e->token = Advance();
             return e;
         }
 
         // null literal
         if (Match(TokenKind::NullKeyword)) {
-            auto e     = std::make_unique<LiteralExpr>();
+            auto e = std::make_unique<LiteralExpr>();
             e->location = loc;
-            e->token   = Previous();
+            e->token = Previous();
             return e;
         }
 
         // self
         if (Match(TokenKind::SelfKeyword)) {
-            auto e     = std::make_unique<SelfExpr>();
+            auto e = std::make_unique<SelfExpr>();
             e->location = loc;
             return e;
         }
 
         // Array literal: [a, b, c]
         if (Match(TokenKind::LeftBracket)) {
-            auto e     = std::make_unique<ArrayExpr>();
+            auto e = std::make_unique<ArrayExpr>();
             e->location = loc;
             while (!Check(TokenKind::RightBracket) && !IsAtEnd()) {
                 e->elements.push_back(ParseExpr());
@@ -1332,16 +1337,16 @@ namespace Rux {
             // Struct initialization: Name { field: value, ... }
             // Disabled in control-flow condition contexts to avoid ambiguity.
             if (structInitAllowed && Check(TokenKind::LeftBrace)) {
-                auto e     = std::make_unique<StructInitExpr>();
+                auto e = std::make_unique<StructInitExpr>();
                 e->location = loc;
                 e->typeName = name;
                 Advance(); // consume '{'
                 while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                     StructInitExpr::Field field;
                     field.location = CurrentLocation();
-                    field.name     = Expect(TokenKind::Ident, "expected field name").text;
+                    field.name = Expect(TokenKind::Ident, "expected field name").text;
                     Expect(TokenKind::Colon, "expected ':'");
-                    field.value    = ParseExpr();
+                    field.value = ParseExpr();
                     e->fields.push_back(std::move(field));
                     if (!Match(TokenKind::Comma)) break;
                 }
@@ -1349,9 +1354,9 @@ namespace Rux {
                 return e;
             }
 
-            auto e     = std::make_unique<IdentExpr>();
+            auto e = std::make_unique<IdentExpr>();
             e->location = loc;
-            e->name    = name;
+            e->name = name;
             return e;
         }
 
@@ -1381,25 +1386,25 @@ namespace Rux {
         // Guard: pattern if condition
         if (Match(TokenKind::IfKeyword)) {
             const auto loc = Previous().location;
-            auto guard     = ParseExpr();
-            auto p         = std::make_unique<GuardedPattern>();
-            p->location    = loc;
-            p->inner       = std::move(inner);
-            p->guard       = std::move(guard);
+            auto guard = ParseExpr();
+            auto p = std::make_unique<GuardedPattern>();
+            p->location = loc;
+            p->inner = std::move(inner);
+            p->guard = std::move(guard);
             return p;
         }
 
         // Range pattern: lo..hi or lo...hi
         if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot)) {
             const bool incl = Peek().kind == TokenKind::DotDotDot;
-            const auto loc  = CurrentLocation();
+            const auto loc = CurrentLocation();
             Advance();
-            auto hi         = ParsePrimaryPattern();
-            auto p          = std::make_unique<RangePattern>();
-            p->location     = loc;
-            p->inclusive    = incl;
-            p->lo           = std::move(inner);
-            p->hi           = std::move(hi);
+            auto hi = ParsePrimaryPattern();
+            auto p = std::make_unique<RangePattern>();
+            p->location = loc;
+            p->inclusive = incl;
+            p->lo = std::move(inner);
+            p->hi = std::move(hi);
             return p;
         }
 
@@ -1412,30 +1417,30 @@ namespace Rux {
         // Wildcard: _
         if (Check(TokenKind::Ident) && Peek().text == "_") {
             Advance();
-            auto p     = std::make_unique<WildcardPattern>();
+            auto p = std::make_unique<WildcardPattern>();
             p->location = loc;
             return p;
         }
 
         // Literals
-        if (Check(TokenKind::IntLiteral)    ||
-            Check(TokenKind::FloatLiteral)  ||
+        if (Check(TokenKind::IntLiteral) ||
+            Check(TokenKind::FloatLiteral) ||
             Check(TokenKind::StringLiteral) ||
-            Check(TokenKind::CharLiteral)   ||
-            Check(TokenKind::BoolLiteral)   ||
+            Check(TokenKind::CharLiteral) ||
+            Check(TokenKind::BoolLiteral) ||
             Check(TokenKind::NullKeyword)) {
-            auto p     = std::make_unique<LiteralPattern>();
+            auto p = std::make_unique<LiteralPattern>();
             p->location = loc;
-            p->value   = Advance();
+            p->value = Advance();
             return p;
         }
 
         // Negative literal: -42
         if (Check(TokenKind::Minus) && Peek(1).Is(TokenKind::IntLiteral)) {
             Advance(); // consume '-'
-            auto p     = std::make_unique<LiteralPattern>();
+            auto p = std::make_unique<LiteralPattern>();
             p->location = loc;
-            p->value   = Advance();
+            p->value = Advance();
             // The negative sign is implicit; store it in text for diagnostics.
             p->value.text = "-" + p->value.text;
             return p;
@@ -1443,7 +1448,7 @@ namespace Rux {
 
         // Tuple pattern: (a, b, ...)
         if (Match(TokenKind::LeftParen)) {
-            auto p     = std::make_unique<TuplePattern>();
+            auto p = std::make_unique<TuplePattern>();
             p->location = loc;
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                 p->elements.push_back(ParsePattern());
@@ -1463,9 +1468,9 @@ namespace Rux {
                 while (Match(TokenKind::Dot)) {
                     path.push_back(Expect(TokenKind::Ident, "expected variant name").text);
                 }
-                auto p     = std::make_unique<EnumPattern>();
+                auto p = std::make_unique<EnumPattern>();
                 p->location = loc;
-                p->path    = std::move(path);
+                p->path = std::move(path);
                 if (Match(TokenKind::LeftParen)) {
                     while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                         p->args.push_back(ParsePattern());
@@ -1479,15 +1484,15 @@ namespace Rux {
             // Struct pattern: TypeName { field: pat, ... }
             if (Check(TokenKind::LeftBrace)) {
                 Advance(); // consume '{'
-                auto p     = std::make_unique<StructPattern>();
+                auto p = std::make_unique<StructPattern>();
                 p->location = loc;
                 p->typeName = name;
                 while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                     StructPattern::Field f;
                     f.location = CurrentLocation();
-                    f.name     = Expect(TokenKind::Ident, "expected field name").text;
+                    f.name = Expect(TokenKind::Ident, "expected field name").text;
                     Expect(TokenKind::Colon, "expected ':'");
-                    f.pattern  = ParsePattern();
+                    f.pattern = ParsePattern();
                     p->fields.push_back(std::move(f));
                     if (!Match(TokenKind::Comma)) break;
                 }
@@ -1496,9 +1501,9 @@ namespace Rux {
             }
 
             // Simple identifier binding
-            auto p     = std::make_unique<IdentPattern>();
+            auto p = std::make_unique<IdentPattern>();
             p->location = loc;
-            p->name    = name;
+            p->name = name;
             return p;
         }
 
@@ -1511,15 +1516,15 @@ namespace Rux {
     // =========================================================================
 
     namespace {
-
         class AstPrinter {
         public:
-            explicit AstPrinter(std::ostream &out) : out(out) {}
+            explicit AstPrinter(std::ostream &out) : out(out) {
+            }
 
             void Print(const Module &mod) {
                 out << "Module \"" << mod.name << "\"\n";
                 ++indent;
-                for (const auto &item : mod.items)
+                for (const auto &item: mod.items)
                     if (item) PrintDecl(*item);
                 --indent;
             }
@@ -1567,39 +1572,39 @@ namespace Rux {
 
             static std::string_view OpStr(const TokenKind op) noexcept {
                 switch (op) {
-                    case TokenKind::Plus:                   return "+";
-                    case TokenKind::Minus:                  return "-";
-                    case TokenKind::Star:                   return "*";
-                    case TokenKind::Slash:                  return "/";
-                    case TokenKind::Percent:                return "%";
-                    case TokenKind::StarStar:               return "**";
-                    case TokenKind::Amp:                    return "&";
-                    case TokenKind::Pipe:                   return "|";
-                    case TokenKind::Caret:                  return "^";
-                    case TokenKind::Tilde:                  return "~";
-                    case TokenKind::LessLess:               return "<<";
-                    case TokenKind::GreaterGreater:         return ">>";
-                    case TokenKind::AmpAmp:                 return "&&";
-                    case TokenKind::PipePipe:               return "||";
-                    case TokenKind::Bang:                   return "!";
-                    case TokenKind::Equal:                  return "==";
-                    case TokenKind::BangEqual:              return "!=";
-                    case TokenKind::Less:                   return "<";
-                    case TokenKind::LessEqual:              return "<=";
-                    case TokenKind::Greater:                return ">";
-                    case TokenKind::GreaterEqual:           return ">=";
-                    case TokenKind::Assign:                 return "=";
-                    case TokenKind::PlusAssign:             return "+=";
-                    case TokenKind::MinusAssign:            return "-=";
-                    case TokenKind::StarAssign:             return "*=";
-                    case TokenKind::SlashAssign:            return "/=";
-                    case TokenKind::PercentAssign:          return "%=";
-                    case TokenKind::AmpAssign:              return "&=";
-                    case TokenKind::PipeAssign:             return "|=";
-                    case TokenKind::CaretAssign:            return "^=";
-                    case TokenKind::LessLessAssign:         return "<<=";
-                    case TokenKind::GreaterGreaterAssign:   return ">>=";
-                    default:                                return "?";
+                    case TokenKind::Plus: return "+";
+                    case TokenKind::Minus: return "-";
+                    case TokenKind::Star: return "*";
+                    case TokenKind::Slash: return "/";
+                    case TokenKind::Percent: return "%";
+                    case TokenKind::StarStar: return "**";
+                    case TokenKind::Amp: return "&";
+                    case TokenKind::Pipe: return "|";
+                    case TokenKind::Caret: return "^";
+                    case TokenKind::Tilde: return "~";
+                    case TokenKind::LessLess: return "<<";
+                    case TokenKind::GreaterGreater: return ">>";
+                    case TokenKind::AmpAmp: return "&&";
+                    case TokenKind::PipePipe: return "||";
+                    case TokenKind::Bang: return "!";
+                    case TokenKind::Equal: return "==";
+                    case TokenKind::BangEqual: return "!=";
+                    case TokenKind::Less: return "<";
+                    case TokenKind::LessEqual: return "<=";
+                    case TokenKind::Greater: return ">";
+                    case TokenKind::GreaterEqual: return ">=";
+                    case TokenKind::Assign: return "=";
+                    case TokenKind::PlusAssign: return "+=";
+                    case TokenKind::MinusAssign: return "-=";
+                    case TokenKind::StarAssign: return "*=";
+                    case TokenKind::SlashAssign: return "/=";
+                    case TokenKind::PercentAssign: return "%=";
+                    case TokenKind::AmpAssign: return "&=";
+                    case TokenKind::PipeAssign: return "|=";
+                    case TokenKind::CaretAssign: return "^=";
+                    case TokenKind::LessLessAssign: return "<<=";
+                    case TokenKind::GreaterGreaterAssign: return ">>=";
+                    default: return "?";
                 }
             }
 
@@ -1635,7 +1640,7 @@ namespace Rux {
             void PrintFuncDecl(const FuncDecl &f) {
                 Pad();
                 if (f.isPublic) out << "pub ";
-                if (f.isAsm)    out << "asm ";
+                if (f.isAsm) out << "asm ";
                 out << "FuncDecl '" << f.name << "'";
 
                 // Generic params
@@ -1653,7 +1658,10 @@ namespace Rux {
                 for (std::size_t i = 0; i < f.params.size(); ++i) {
                     if (i) out << ", ";
                     const auto &p = f.params[i];
-                    if (p.isVariadic) { out << "..."; continue; }
+                    if (p.isVariadic) {
+                        out << "...";
+                        continue;
+                    }
                     out << p.name << ": " << TypeStr(p.type.get());
                 }
                 out << ')';
@@ -1676,7 +1684,7 @@ namespace Rux {
                 if (s.isPublic) out << "pub ";
                 out << "StructDecl '" << s.name << "'\n";
                 ++indent;
-                for (const auto &f : s.fields) {
+                for (const auto &f: s.fields) {
                     Pad();
                     if (f.isPublic) out << "pub ";
                     out << "Field '" << f.name << "' : " << TypeStr(f.type.get()) << '\n';
@@ -1689,7 +1697,7 @@ namespace Rux {
                 if (e.isPublic) out << "pub ";
                 out << "EnumDecl '" << e.name << "'\n";
                 ++indent;
-                for (const auto &v : e.variants) {
+                for (const auto &v: e.variants) {
                     Pad();
                     out << "Variant '" << v.name << "'";
                     if (!v.fields.empty()) {
@@ -1710,7 +1718,7 @@ namespace Rux {
                 if (u.isPublic) out << "pub ";
                 out << "UnionDecl '" << u.name << "'\n";
                 ++indent;
-                for (const auto &f : u.fields) {
+                for (const auto &f: u.fields) {
                     Pad();
                     out << "Field '" << f.name << "' : " << TypeStr(f.type.get()) << '\n';
                 }
@@ -1722,7 +1730,7 @@ namespace Rux {
                 if (iface.isPublic) out << "pub ";
                 out << "InterfaceDecl '" << iface.name << "'\n";
                 ++indent;
-                for (const auto &m : iface.methods)
+                for (const auto &m: iface.methods)
                     if (m) PrintFuncDecl(*m);
                 --indent;
             }
@@ -1734,7 +1742,7 @@ namespace Rux {
                     out << *impl.interfaceName << " for ";
                 out << impl.typeName << '\n';
                 ++indent;
-                for (const auto &m : impl.methods)
+                for (const auto &m: impl.methods)
                     if (m) PrintFuncDecl(*m);
                 --indent;
             }
@@ -1744,7 +1752,7 @@ namespace Rux {
                 if (mod.isPublic) out << "pub ";
                 out << "ModuleDecl '" << mod.name << "'\n";
                 ++indent;
-                for (const auto &item : mod.items)
+                for (const auto &item: mod.items)
                     if (item) PrintDecl(*item);
                 --indent;
             }
@@ -1787,7 +1795,7 @@ namespace Rux {
                 Pad();
                 if (t.isPublic) out << "pub ";
                 out << "TypeAliasDecl '" << t.name << "' = "
-                    << TypeStr(t.type.get()) << '\n';
+                        << TypeStr(t.type.get()) << '\n';
             }
 
             void PrintExternFuncDecl(const ExternFuncDecl &f) {
@@ -1808,7 +1816,7 @@ namespace Rux {
                 Pad();
                 if (v.isPublic) out << "pub ";
                 out << "ExternVarDecl '" << v.name << "' : "
-                    << TypeStr(v.type.get()) << '\n';
+                        << TypeStr(v.type.get()) << '\n';
             }
 
             // ── Block ─────────────────────────────────────────────────────────
@@ -1816,9 +1824,9 @@ namespace Rux {
             void PrintBlock(const Block &block) {
                 Pad();
                 out << "Block [" << block.stmts.size() << " stmt"
-                    << (block.stmts.size() == 1 ? "" : "s") << "]\n";
+                        << (block.stmts.size() == 1 ? "" : "s") << "]\n";
                 ++indent;
-                for (const auto &stmt : block.stmts)
+                for (const auto &stmt: block.stmts)
                     if (stmt) PrintStmt(*stmt);
                 --indent;
             }
@@ -1839,18 +1847,20 @@ namespace Rux {
                 else if (const auto *p = dynamic_cast<const ReturnStmt *>(&stmt))
                     PrintReturnStmt(*p);
                 else if (const auto *p = dynamic_cast<const BreakStmt *>(&stmt)) {
-                    (void)p; Pad(); out << "BreakStmt\n";
-                }
-                else if (const auto *p = dynamic_cast<const ContinueStmt *>(&stmt)) {
-                    (void)p; Pad(); out << "ContinueStmt\n";
-                }
-                else if (const auto *p = dynamic_cast<const ExprStmt *>(&stmt)) {
-                    Pad(); out << "ExprStmt\n";
+                    (void) p;
+                    Pad();
+                    out << "BreakStmt\n";
+                } else if (const auto *p = dynamic_cast<const ContinueStmt *>(&stmt)) {
+                    (void) p;
+                    Pad();
+                    out << "ContinueStmt\n";
+                } else if (const auto *p = dynamic_cast<const ExprStmt *>(&stmt)) {
+                    Pad();
+                    out << "ExprStmt\n";
                     ++indent;
                     if (p->expr) PrintExpr(*p->expr);
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const DeclStmt *>(&stmt)) {
+                } else if (const auto *p = dynamic_cast<const DeclStmt *>(&stmt)) {
                     if (p->decl) PrintDecl(*p->decl);
                 }
             }
@@ -1858,7 +1868,7 @@ namespace Rux {
             void PrintLetStmt(const LetStmt &s) {
                 Pad();
                 out << "LetStmt '" << s.name << "' ("
-                    << (s.isMut ? "mut" : "immut") << ")";
+                        << (s.isMut ? "mut" : "immut") << ")";
                 if (s.type) out << " : " << TypeStr(s.type->get());
                 out << '\n';
                 ++indent;
@@ -1867,23 +1877,28 @@ namespace Rux {
             }
 
             void PrintIfStmt(const IfStmt &s) {
-                Pad(); out << "IfStmt\n";
+                Pad();
+                out << "IfStmt\n";
                 ++indent;
 
-                Pad(); out << "Condition\n";
+                Pad();
+                out << "Condition\n";
                 ++indent;
                 if (s.condition) PrintExpr(*s.condition);
                 --indent;
 
-                Pad(); out << "Then\n";
+                Pad();
+                out << "Then\n";
                 ++indent;
                 if (s.thenBlock) PrintBlock(*s.thenBlock);
                 --indent;
 
-                for (const auto &elif : s.elseIfs) {
-                    Pad(); out << "ElseIf\n";
+                for (const auto &elif: s.elseIfs) {
+                    Pad();
+                    out << "ElseIf\n";
                     ++indent;
-                    Pad(); out << "Condition\n";
+                    Pad();
+                    out << "Condition\n";
                     ++indent;
                     if (elif.condition) PrintExpr(*elif.condition);
                     --indent;
@@ -1892,7 +1907,8 @@ namespace Rux {
                 }
 
                 if (s.elseBlock) {
-                    Pad(); out << "Else\n";
+                    Pad();
+                    out << "Else\n";
                     ++indent;
                     PrintBlock(*s.elseBlock);
                     --indent;
@@ -1901,9 +1917,11 @@ namespace Rux {
             }
 
             void PrintWhileStmt(const WhileStmt &s) {
-                Pad(); out << "WhileStmt\n";
+                Pad();
+                out << "WhileStmt\n";
                 ++indent;
-                Pad(); out << "Condition\n";
+                Pad();
+                out << "Condition\n";
                 ++indent;
                 if (s.condition) PrintExpr(*s.condition);
                 --indent;
@@ -1912,7 +1930,8 @@ namespace Rux {
             }
 
             void PrintForStmt(const ForStmt &s) {
-                Pad(); out << "ForStmt '" << s.variable << "' in\n";
+                Pad();
+                out << "ForStmt '" << s.variable << "' in\n";
                 ++indent;
                 if (s.iterable) PrintExpr(*s.iterable);
                 if (s.body) PrintBlock(*s.body);
@@ -1920,24 +1939,28 @@ namespace Rux {
             }
 
             void PrintMatchStmt(const MatchStmt &s) {
-                Pad(); out << "MatchStmt\n";
+                Pad();
+                out << "MatchStmt\n";
                 ++indent;
-                Pad(); out << "Subject\n";
+                Pad();
+                out << "Subject\n";
                 ++indent;
                 if (s.subject) PrintExpr(*s.subject);
                 --indent;
-                for (const auto &arm : s.arms) {
-                    Pad(); out << "Arm\n";
+                for (const auto &arm: s.arms) {
+                    Pad();
+                    out << "Arm\n";
                     ++indent;
                     if (arm.pattern) PrintPattern(*arm.pattern);
-                    if (arm.body)    PrintExpr(*arm.body);
+                    if (arm.body) PrintExpr(*arm.body);
                     --indent;
                 }
                 --indent;
             }
 
             void PrintReturnStmt(const ReturnStmt &s) {
-                Pad(); out << "ReturnStmt\n";
+                Pad();
+                out << "ReturnStmt\n";
                 if (s.value) {
                     ++indent;
                     PrintExpr(**s.value);
@@ -1951,137 +1974,152 @@ namespace Rux {
                 if (const auto *p = dynamic_cast<const LiteralExpr *>(&expr))
                     PrintLiteralExpr(*p);
                 else if (const auto *p = dynamic_cast<const IdentExpr *>(&expr)) {
-                    Pad(); out << "IdentExpr '" << p->name << "'\n";
-                }
-                else if (const auto *p = dynamic_cast<const SelfExpr *>(&expr)) {
-                    (void)p; Pad(); out << "SelfExpr\n";
-                }
-                else if (const auto *p = dynamic_cast<const PathExpr *>(&expr)) {
-                    Pad(); out << "PathExpr '";
+                    Pad();
+                    out << "IdentExpr '" << p->name << "'\n";
+                } else if (const auto *p = dynamic_cast<const SelfExpr *>(&expr)) {
+                    (void) p;
+                    Pad();
+                    out << "SelfExpr\n";
+                } else if (const auto *p = dynamic_cast<const PathExpr *>(&expr)) {
+                    Pad();
+                    out << "PathExpr '";
                     for (std::size_t i = 0; i < p->segments.size(); ++i) {
                         if (i) out << "::";
                         out << p->segments[i];
                     }
                     out << "'\n";
-                }
-                else if (const auto *p = dynamic_cast<const UnaryExpr *>(&expr)) {
-                    Pad(); out << "UnaryExpr " << OpStr(p->op) << '\n';
+                } else if (const auto *p = dynamic_cast<const UnaryExpr *>(&expr)) {
+                    Pad();
+                    out << "UnaryExpr " << OpStr(p->op) << '\n';
                     ++indent;
                     if (p->operand) PrintExpr(*p->operand);
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const BinaryExpr *>(&expr)) {
-                    Pad(); out << "BinaryExpr " << OpStr(p->op) << '\n';
+                } else if (const auto *p = dynamic_cast<const BinaryExpr *>(&expr)) {
+                    Pad();
+                    out << "BinaryExpr " << OpStr(p->op) << '\n';
                     ++indent;
-                    if (p->left)  PrintExpr(*p->left);
+                    if (p->left) PrintExpr(*p->left);
                     if (p->right) PrintExpr(*p->right);
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const AssignExpr *>(&expr)) {
-                    Pad(); out << "AssignExpr " << OpStr(p->op) << '\n';
+                } else if (const auto *p = dynamic_cast<const AssignExpr *>(&expr)) {
+                    Pad();
+                    out << "AssignExpr " << OpStr(p->op) << '\n';
                     ++indent;
                     if (p->target) PrintExpr(*p->target);
-                    if (p->value)  PrintExpr(*p->value);
+                    if (p->value) PrintExpr(*p->value);
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const TernaryExpr *>(&expr)) {
-                    Pad(); out << "TernaryExpr\n";
+                } else if (const auto *p = dynamic_cast<const TernaryExpr *>(&expr)) {
+                    Pad();
+                    out << "TernaryExpr\n";
                     ++indent;
-                    Pad(); out << "Condition\n";
+                    Pad();
+                    out << "Condition\n";
                     ++indent;
                     if (p->condition) PrintExpr(*p->condition);
                     --indent;
-                    Pad(); out << "Then\n";
+                    Pad();
+                    out << "Then\n";
                     ++indent;
                     if (p->thenExpr) PrintExpr(*p->thenExpr);
                     --indent;
-                    Pad(); out << "Else\n";
+                    Pad();
+                    out << "Else\n";
                     ++indent;
                     if (p->elseExpr) PrintExpr(*p->elseExpr);
                     --indent;
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const RangeExpr *>(&expr)) {
-                    Pad(); out << "RangeExpr " << (p->inclusive ? "..." : "..") << '\n';
+                } else if (const auto *p = dynamic_cast<const RangeExpr *>(&expr)) {
+                    Pad();
+                    out << "RangeExpr " << (p->inclusive ? "..." : "..") << '\n';
                     ++indent;
                     if (p->lo) PrintExpr(*p->lo);
                     if (p->hi) PrintExpr(*p->hi);
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const CallExpr *>(&expr)) {
-                    Pad(); out << "CallExpr\n";
+                } else if (const auto *p = dynamic_cast<const CallExpr *>(&expr)) {
+                    Pad();
+                    out << "CallExpr\n";
                     ++indent;
-                    Pad(); out << "Callee\n";
+                    Pad();
+                    out << "Callee\n";
                     ++indent;
                     if (p->callee) PrintExpr(*p->callee);
                     --indent;
                     if (!p->args.empty()) {
-                        Pad(); out << "Args [" << p->args.size() << "]\n";
+                        Pad();
+                        out << "Args [" << p->args.size() << "]\n";
                         ++indent;
-                        for (const auto &a : p->args)
+                        for (const auto &a: p->args)
                             if (a) PrintExpr(*a);
                         --indent;
                     }
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const IndexExpr *>(&expr)) {
-                    Pad(); out << "IndexExpr\n";
+                } else if (const auto *p = dynamic_cast<const IndexExpr *>(&expr)) {
+                    Pad();
+                    out << "IndexExpr\n";
                     ++indent;
                     if (p->object) PrintExpr(*p->object);
-                    if (p->index)  PrintExpr(*p->index);
+                    if (p->index) PrintExpr(*p->index);
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const FieldExpr *>(&expr)) {
-                    Pad(); out << "FieldExpr '." << p->field << "'\n";
+                } else if (const auto *p = dynamic_cast<const FieldExpr *>(&expr)) {
+                    Pad();
+                    out << "FieldExpr '." << p->field << "'\n";
                     ++indent;
                     if (p->object) PrintExpr(*p->object);
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const StructInitExpr *>(&expr)) {
-                    Pad(); out << "StructInitExpr '" << p->typeName << "'\n";
+                } else if (const auto *p = dynamic_cast<const StructInitExpr *>(&expr)) {
+                    Pad();
+                    out << "StructInitExpr '" << p->typeName << "'\n";
                     ++indent;
-                    for (const auto &f : p->fields) {
-                        Pad(); out << "." << f.name << " =\n";
+                    for (const auto &f: p->fields) {
+                        Pad();
+                        out << "." << f.name << " =\n";
                         ++indent;
                         if (f.value) PrintExpr(*f.value);
                         --indent;
                     }
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const ArrayExpr *>(&expr)) {
-                    Pad(); out << "ArrayExpr [" << p->elements.size() << "]\n";
+                } else if (const auto *p = dynamic_cast<const ArrayExpr *>(&expr)) {
+                    Pad();
+                    out << "ArrayExpr [" << p->elements.size() << "]\n";
                     ++indent;
-                    for (const auto &e : p->elements)
+                    for (const auto &e: p->elements)
                         if (e) PrintExpr(*e);
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const CastExpr *>(&expr)) {
-                    Pad(); out << "CastExpr as " << TypeStr(p->type.get()) << '\n';
+                } else if (const auto *p = dynamic_cast<const CastExpr *>(&expr)) {
+                    Pad();
+                    out << "CastExpr as " << TypeStr(p->type.get()) << '\n';
                     ++indent;
                     if (p->operand) PrintExpr(*p->operand);
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const IsExpr *>(&expr)) {
-                    Pad(); out << "IsExpr is " << TypeStr(p->type.get()) << '\n';
+                } else if (const auto *p = dynamic_cast<const IsExpr *>(&expr)) {
+                    Pad();
+                    out << "IsExpr is " << TypeStr(p->type.get()) << '\n';
                     ++indent;
                     if (p->operand) PrintExpr(*p->operand);
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const BlockExpr *>(&expr)) {
+                } else if (const auto *p = dynamic_cast<const BlockExpr *>(&expr)) {
                     if (p->block) PrintBlock(*p->block);
                 }
             }
 
             void PrintLiteralExpr(const LiteralExpr &e) {
-                Pad(); out << "LiteralExpr (";
+                Pad();
+                out << "LiteralExpr (";
                 switch (e.token.kind) {
-                    case TokenKind::IntLiteral:    out << "int";    break;
-                    case TokenKind::FloatLiteral:  out << "float";  break;
-                    case TokenKind::StringLiteral: out << "string"; break;
-                    case TokenKind::CharLiteral:   out << "char";   break;
-                    case TokenKind::BoolLiteral:   out << "bool";   break;
-                    case TokenKind::NullKeyword:   out << "null";   break;
-                    default:                       out << "?";      break;
+                    case TokenKind::IntLiteral: out << "int";
+                        break;
+                    case TokenKind::FloatLiteral: out << "float";
+                        break;
+                    case TokenKind::StringLiteral: out << "string";
+                        break;
+                    case TokenKind::CharLiteral: out << "char";
+                        break;
+                    case TokenKind::BoolLiteral: out << "bool";
+                        break;
+                    case TokenKind::NullKeyword: out << "null";
+                        break;
+                    default: out << "?";
+                        break;
                 }
                 out << ") '" << e.token.text << "'\n";
             }
@@ -2090,23 +2128,24 @@ namespace Rux {
 
             void PrintPattern(const Pattern &pat) {
                 if (dynamic_cast<const WildcardPattern *>(&pat)) {
-                    Pad(); out << "WildcardPattern\n";
-                }
-                else if (const auto *p = dynamic_cast<const LiteralPattern *>(&pat)) {
-                    Pad(); out << "LiteralPattern '" << p->value.text << "'\n";
-                }
-                else if (const auto *p = dynamic_cast<const IdentPattern *>(&pat)) {
-                    Pad(); out << "IdentPattern '" << p->name << "'\n";
-                }
-                else if (const auto *p = dynamic_cast<const RangePattern *>(&pat)) {
-                    Pad(); out << "RangePattern " << (p->inclusive ? "..." : "..") << '\n';
+                    Pad();
+                    out << "WildcardPattern\n";
+                } else if (const auto *p = dynamic_cast<const LiteralPattern *>(&pat)) {
+                    Pad();
+                    out << "LiteralPattern '" << p->value.text << "'\n";
+                } else if (const auto *p = dynamic_cast<const IdentPattern *>(&pat)) {
+                    Pad();
+                    out << "IdentPattern '" << p->name << "'\n";
+                } else if (const auto *p = dynamic_cast<const RangePattern *>(&pat)) {
+                    Pad();
+                    out << "RangePattern " << (p->inclusive ? "..." : "..") << '\n';
                     ++indent;
                     if (p->lo) PrintPattern(*p->lo);
                     if (p->hi) PrintPattern(*p->hi);
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const EnumPattern *>(&pat)) {
-                    Pad(); out << "EnumPattern '";
+                } else if (const auto *p = dynamic_cast<const EnumPattern *>(&pat)) {
+                    Pad();
+                    out << "EnumPattern '";
                     for (std::size_t i = 0; i < p->path.size(); ++i) {
                         if (i) out << '.';
                         out << p->path[i];
@@ -2116,34 +2155,36 @@ namespace Rux {
                     out << '\n';
                     if (!p->args.empty()) {
                         ++indent;
-                        for (const auto &a : p->args)
+                        for (const auto &a: p->args)
                             if (a) PrintPattern(*a);
                         --indent;
                     }
-                }
-                else if (const auto *p = dynamic_cast<const StructPattern *>(&pat)) {
-                    Pad(); out << "StructPattern '" << p->typeName << "'\n";
+                } else if (const auto *p = dynamic_cast<const StructPattern *>(&pat)) {
+                    Pad();
+                    out << "StructPattern '" << p->typeName << "'\n";
                     ++indent;
-                    for (const auto &f : p->fields) {
-                        Pad(); out << "." << f.name << ":\n";
+                    for (const auto &f: p->fields) {
+                        Pad();
+                        out << "." << f.name << ":\n";
                         ++indent;
                         if (f.pattern) PrintPattern(*f.pattern);
                         --indent;
                     }
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const TuplePattern *>(&pat)) {
-                    Pad(); out << "TuplePattern [" << p->elements.size() << "]\n";
+                } else if (const auto *p = dynamic_cast<const TuplePattern *>(&pat)) {
+                    Pad();
+                    out << "TuplePattern [" << p->elements.size() << "]\n";
                     ++indent;
-                    for (const auto &e : p->elements)
+                    for (const auto &e: p->elements)
                         if (e) PrintPattern(*e);
                     --indent;
-                }
-                else if (const auto *p = dynamic_cast<const GuardedPattern *>(&pat)) {
-                    Pad(); out << "GuardedPattern\n";
+                } else if (const auto *p = dynamic_cast<const GuardedPattern *>(&pat)) {
+                    Pad();
+                    out << "GuardedPattern\n";
                     ++indent;
                     if (p->inner) PrintPattern(*p->inner);
-                    Pad(); out << "Guard\n";
+                    Pad();
+                    out << "Guard\n";
                     ++indent;
                     if (p->guard) PrintExpr(*p->guard);
                     --indent;
@@ -2151,7 +2192,6 @@ namespace Rux {
                 }
             }
         };
-
     } // anonymous namespace
 
     // =========================================================================
@@ -2167,7 +2207,7 @@ namespace Rux {
 
         if (!result.diagnostics.empty()) {
             f << "\n--- diagnostics ---\n";
-            for (const auto &d : result.diagnostics) {
+            for (const auto &d: result.diagnostics) {
                 f << std::format("{:>4}:{:<4}  {}  {}\n",
                                  d.location.line,
                                  d.location.column,
@@ -2180,5 +2220,4 @@ namespace Rux {
 
         return f.good();
     }
-
 } // namespace Rux

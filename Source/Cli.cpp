@@ -23,6 +23,13 @@
 #include <vector>
 #include <filesystem>
 
+#ifdef _WIN32
+#  include <windows.h>
+#else
+#  include <sys/wait.h>
+#  include <unistd.h>
+#endif
+
 #include "Rux/SourceLoader.h"
 
 namespace Rux {
@@ -215,33 +222,69 @@ namespace Rux {
         const auto t0 = std::chrono::steady_clock::now();
 
         bool isRelease = false;
-        bool isDebug   = false;
+        bool isDebug = false;
         std::string_view profile;
         std::string_view target;
         bool dumpTokens = false;
-        bool dumpAst    = false;
-        bool dumpSema   = false;
-        bool dumpHir    = false;
-        bool dumpLir    = false;
-        bool dumpAsm    = false;
-        bool dumpRcu    = false;
+        bool dumpAst = false;
+        bool dumpSema = false;
+        bool dumpHir = false;
+        bool dumpLir = false;
+        bool dumpAsm = false;
+        bool dumpRcu = false;
 
         for (std::size_t i = 0; i < args.size(); ++i) {
             std::string_view arg = args[i];
-            if (arg == "--release")      { isRelease  = true; continue; }
-            if (arg == "--debug")        { isDebug    = true; continue; }
-            if (arg == "-q" || arg == "--quiet")   continue;
-            if (arg == "-v" || arg == "--verbose")  continue;
-            if (arg == "--dump-tokens")  { dumpTokens = true; continue; }
-            if (arg == "--dump-ast")     { dumpAst    = true; continue; }
-            if (arg == "--dump-sema")    { dumpSema   = true; continue; }
-            if (arg == "--dump-hir")     { dumpHir    = true; continue; }
-            if (arg == "--dump-lir")     { dumpLir    = true; continue; }
-            if (arg == "--dump-asm")     { dumpAsm    = true; continue; }
-            if (arg == "--dump-rcu")     { dumpRcu    = true; continue; }
-            if (arg == "--profile" && i + 1 < args.size()) { profile = args[++i]; continue; }
-            if (arg == "--target"  && i + 1 < args.size()) { target  = args[++i]; continue; }
-            if (arg == "-h" || arg == "--help") { PrintHelpBuild(); return 0; }
+            if (arg == "--release") {
+                isRelease = true;
+                continue;
+            }
+            if (arg == "--debug") {
+                isDebug = true;
+                continue;
+            }
+            if (arg == "-q" || arg == "--quiet") continue;
+            if (arg == "-v" || arg == "--verbose") continue;
+            if (arg == "--dump-tokens") {
+                dumpTokens = true;
+                continue;
+            }
+            if (arg == "--dump-ast") {
+                dumpAst = true;
+                continue;
+            }
+            if (arg == "--dump-sema") {
+                dumpSema = true;
+                continue;
+            }
+            if (arg == "--dump-hir") {
+                dumpHir = true;
+                continue;
+            }
+            if (arg == "--dump-lir") {
+                dumpLir = true;
+                continue;
+            }
+            if (arg == "--dump-asm") {
+                dumpAsm = true;
+                continue;
+            }
+            if (arg == "--dump-rcu") {
+                dumpRcu = true;
+                continue;
+            }
+            if (arg == "--profile" && i + 1 < args.size()) {
+                profile = args[++i];
+                continue;
+            }
+            if (arg == "--target" && i + 1 < args.size()) {
+                target = args[++i];
+                continue;
+            }
+            if (arg == "-h" || arg == "--help") {
+                PrintHelpBuild();
+                return 0;
+            }
             PrintUnknownOption(arg, "build");
             return 1;
         }
@@ -319,7 +362,10 @@ namespace Rux {
                 std::print(stderr, "{}:{}:{}: {}: {}\n",
                            file.path.string(), loc.line, loc.column, sev, diag.message);
             }
-            if (parseResult.HasErrors()) { parseErrors = true; continue; }
+            if (parseResult.HasErrors()) {
+                parseErrors = true;
+                continue;
+            }
 
             if (dumpAst) {
                 auto tempDir = manifestPath->parent_path() / "Temp" / "Ast";
@@ -337,7 +383,7 @@ namespace Rux {
         if (opts.verbose)
             std::print("  Analyzing {}\n", manifest->package.name);
 
-        std::vector<const Module*> modules;
+        std::vector<const Module *> modules;
         modules.reserve(parseResults.size());
         for (const auto &pr: parseResults)
             modules.push_back(&pr.module);
@@ -363,7 +409,7 @@ namespace Rux {
         if (opts.verbose)
             std::print("  Lowering {}\n", manifest->package.name);
 
-        std::vector<const Module*> hirModules;
+        std::vector<const Module *> hirModules;
         hirModules.reserve(parseResults.size());
         for (const auto &pr: parseResults)
             hirModules.push_back(&pr.module);
@@ -410,16 +456,16 @@ namespace Rux {
         auto rcuFiles = rcu.Generate();
 
         if (dumpRcu) {
-            auto objDir  = manifestPath->parent_path() / "Temp" / "Obj";
+            auto objDir = manifestPath->parent_path() / "Temp" / "Obj";
             auto dumpDir = manifestPath->parent_path() / "Temp" / "Rcu";
             std::filesystem::create_directories(objDir);
             std::filesystem::create_directories(dumpDir);
 
             for (const auto &rcuFile: rcuFiles) {
                 std::filesystem::path stem = rcuFile.sourcePath.empty()
-                    ? std::filesystem::path("out")
-                    : std::filesystem::path(rcuFile.sourcePath).stem();
-                Rcu::Emit(rcuFile, objDir  / (stem.string() + ".rcu"));
+                                                 ? std::filesystem::path("out")
+                                                 : std::filesystem::path(rcuFile.sourcePath).stem();
+                Rcu::Emit(rcuFile, objDir / (stem.string() + ".rcu"));
                 Rcu::Dump(rcuFile, dumpDir / (stem.string() + ".rcu.txt"));
             }
         }
@@ -429,7 +475,7 @@ namespace Rux {
         if (opts.verbose)
             std::print("   Linking {}\n", manifest->package.name);
 
-        const auto root   = manifestPath->parent_path();
+        const auto root = manifestPath->parent_path();
         const auto binDir = root / "Bin" / profileName;
         const auto exePath = binDir / (manifest->package.name + ".exe");
 
@@ -869,12 +915,71 @@ namespace Rux {
 #endif
         auto exePath = binDir / exeName;
 
+        if (!std::filesystem::exists(exePath)) {
+            std::print(stderr, "error: executable not found: '{}'\n", exePath.string());
+            return 1;
+        }
+
         if (!opts.quiet)
             std::print("     Running `{}`\n", exePath.string());
 
-        // TODO: exec binary, forwarding runArgs
+#ifdef _WIN32
+        std::string cmdLine = "\"" + exePath.string() + "\"";
+        for (const auto &a: runArgs) {
+            cmdLine += " \"";
+            cmdLine += std::string(a);
+            cmdLine += '"';
+        }
 
-        return 0;
+        STARTUPINFOA si{};
+        PROCESS_INFORMATION pi{};
+        si.cb = sizeof(si);
+        si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+        si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+        si.dwFlags = STARTF_USESTDHANDLES;
+
+        if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr,
+                            TRUE, 0, nullptr, nullptr, &si, &pi)) {
+            std::print(stderr, "error: failed to launch '{}' (code {})\n",
+                       exePath.string(), GetLastError());
+            return 1;
+        }
+
+        WaitForSingleObject(pi.hProcess, INFINITE);
+
+        DWORD exitCode = 0;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+
+        return static_cast<int>(exitCode);
+#else
+        std::vector<std::string> argStrings;
+        argStrings.push_back(exePath.string());
+        for (const auto &a: runArgs)
+            argStrings.emplace_back(a);
+
+        std::vector<char *> argv;
+        for (auto &s: argStrings)
+            argv.push_back(s.data());
+        argv.push_back(nullptr);
+
+        pid_t pid = fork();
+        if (pid < 0) {
+            std::print(stderr, "error: fork failed\n");
+            return 1;
+        }
+        if (pid == 0) {
+            execv(exePath.c_str(), argv.data());
+            std::print(stderr, "error: failed to launch '{}'\n", exePath.string());
+            _exit(127);
+        }
+
+        int status = 0;
+        waitpid(pid, &status, 0);
+        return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+#endif
     }
 
     int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &opts) {
