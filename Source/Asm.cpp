@@ -22,16 +22,20 @@ namespace Rux {
     namespace {
         int SizeOf(const TypeRef &t) {
             switch (t.kind) {
-                case TypeRef::Kind::Bool:
+                case TypeRef::Kind::Bool8: // Bool == Bool8
+                case TypeRef::Kind::Char8:
                 case TypeRef::Kind::Int8:
                 case TypeRef::Kind::UInt8: return 1;
+                case TypeRef::Kind::Bool16:
+                case TypeRef::Kind::Char16:
                 case TypeRef::Kind::Int16:
                 case TypeRef::Kind::UInt16: return 2;
-                case TypeRef::Kind::Char:
+                case TypeRef::Kind::Bool32:
+                case TypeRef::Kind::Char32: // Char == Char32
                 case TypeRef::Kind::Int32:
                 case TypeRef::Kind::UInt32:
                 case TypeRef::Kind::Float32: return 4;
-                case TypeRef::Kind::Void: return 0;
+                case TypeRef::Kind::Opaque: return 0;
                 default: return 8; // int64, uint64, float64, pointer, str, named, …
             }
         }
@@ -943,7 +947,7 @@ namespace Rux {
                 // Stack is already 16-byte aligned: prologue sub rsp,frameSize ensures
                 // rsp ≡ 8 (mod 16) which the ABI requires before a call instruction.
                 TI(std::format("{:<8}{}", "call", callee));
-                if (dst != LirNoReg && !retType.IsVoid())
+                if (dst != LirNoReg && !retType.IsOpaque())
                     StoreA(dst, retType);
             }
 
@@ -955,7 +959,7 @@ namespace Rux {
                 TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap_.at(callee)));
                 EmitCallArgs(args);
                 TI("call    r10");
-                if (dst != LirNoReg && !retType.IsVoid())
+                if (dst != LirNoReg && !retType.IsOpaque())
                     StoreA(dst, retType);
             }
 

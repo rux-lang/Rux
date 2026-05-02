@@ -112,6 +112,7 @@ namespace Rux {
         std::unordered_map<std::string, LirReg> locals_; // name → alloca register
         std::uint32_t breakTarget_ = 0;
         std::uint32_t continueTarget_ = 0;
+        std::unordered_map<std::string, CallingConvention> funcConvs_; // name → calling convention
 
         // ── Block / register allocation ───────────────────────────────────────────
 
@@ -260,6 +261,15 @@ namespace Rux {
         // ── Module lowering ───────────────────────────────────────────────────────
 
         LirModule LowerModule(const HirModule &mod) {
+            // Build calling-convention map before lowering functions
+            funcConvs_.clear();
+            for (const auto &ef: mod.externFuncs)
+                if (ef.callConv != CallingConvention::Default)
+                    funcConvs_[ef.name] = ef.callConv;
+            for (const auto &f: mod.funcs)
+                if (f.callConv != CallingConvention::Default)
+                    funcConvs_[f.name] = f.callConv;
+
             LirModule lm;
             lm.name = mod.name;
 
@@ -308,8 +318,10 @@ namespace Rux {
             for (const auto &ef: mod.externFuncs) {
                 LirFunc lf;
                 lf.name = ef.name;
+                lf.dll = ef.dll;
                 lf.isPublic = ef.isPublic;
                 lf.isExtern = true;
+                lf.callConv = ef.callConv;
                 lf.returnType = ef.returnType;
                 LirReg pr = 0;
                 for (const auto &p: ef.params)
@@ -351,6 +363,7 @@ namespace Rux {
             lf.name = nameOverride.empty() ? hf.name : std::string(nameOverride);
             lf.isPublic = hf.isPublic;
             lf.isExtern = false;
+            lf.callConv = hf.callConv;
             lf.returnType = hf.returnType;
             fn_ = &lf;
 
@@ -367,7 +380,7 @@ namespace Rux {
             if (hf.body) {
                 LowerBlock(*hf.body);
                 if (!IsTerminated())
-                    Return(std::nullopt, TypeRef::MakeVoid());
+                    Return(std::nullopt, TypeRef::MakeOpaque());
             }
 
             return lf;
@@ -403,7 +416,7 @@ namespace Rux {
                     LirReg val = LowerExpr(**s->value);
                     Return({val}, (*s->value)->type);
                 } else {
-                    Return(std::nullopt, TypeRef::MakeVoid());
+                    Return(std::nullopt, TypeRef::MakeOpaque());
                 }
                 return;
             }
@@ -911,7 +924,7 @@ namespace Rux {
             for (const auto &arg: e.args)
                 argRegs.push_back(LowerExpr(*arg));
 
-            LirReg dst = e.type.IsVoid() ? LirNoReg : NewReg();
+            LirReg dst = e.type.IsOpaque() ? LirNoReg : NewReg();
             LirInstr ci;
             ci.dst = dst;
             ci.type = e.type;
@@ -920,12 +933,16 @@ namespace Rux {
             if (auto *v = dynamic_cast<const HirVarExpr *>(e.callee.get())) {
                 ci.op = LirOpcode::Call;
                 ci.strArg = v->name;
+                auto it = funcConvs_.find(v->name);
+                if (it != funcConvs_.end()) ci.callConv = it->second;
             } else if (auto *p = dynamic_cast<const HirPathExpr *>(e.callee.get())) {
                 ci.op = LirOpcode::Call;
                 for (std::size_t i = 0; i < p->segments.size(); ++i) {
                     if (i) ci.strArg += "::";
                     ci.strArg += p->segments[i];
                 }
+                auto it = funcConvs_.find(ci.strArg);
+                if (it != funcConvs_.end()) ci.callConv = it->second;
             } else {
                 // Function pointer / indirect call: evaluate callee first.
                 ci.op = LirOpcode::CallIndirect;
@@ -1161,7 +1178,7 @@ namespace Rux {
             if (i) params += ", ";
             params += std::format("{}: {}", RegStr(fn.params[i].reg), fn.params[i].type.ToString());
         }
-        std::string ret = fn.returnType.IsVoid() ? "" : " -> " + fn.returnType.ToString();
+        std::string ret = fn.returnType.IsOpaque() ? "" : " -> " + fn.returnType.ToString();
         out << std::format("\n{}{}func {}({}){}\n", pub, ext, fn.name, params, ret);
 
         for (const auto &block: fn.blocks) {

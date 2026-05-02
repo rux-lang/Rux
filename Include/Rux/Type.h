@@ -15,9 +15,9 @@ namespace Rux {
 struct TypeRef {
     enum class Kind {
         Unknown,   // unresolved / error recovery
-        Void,
-        Bool,
-        Char,
+        Opaque,
+        Bool8, Bool16, Bool32,
+        Char8, Char16, Char32,
         Int8, Int16, Int32, Int64,
         UInt8, UInt16, UInt32, UInt64,
         Float32, Float64,
@@ -28,6 +28,9 @@ struct TypeRef {
         Named,     // user-defined struct/enum/union — name = type name
         TypeParam, // generic parameter T — name = param name
         Func,      // func(...) -> T — inner[0..n-2] = params, inner[n-1] = return
+        // Aliases — must come after all concrete values so they don't shift the counter
+        Bool = Bool8,   // bool is an alias for bool8
+        Char = Char32,  // char is an alias for char32
     };
 
     Kind kind = Kind::Unknown;
@@ -37,9 +40,15 @@ struct TypeRef {
     // ── Factories ─────────────────────────────────────────────────────────────
 
     static TypeRef MakeUnknown()  { return {}; }
-    static TypeRef MakeVoid()     { TypeRef t; t.kind = Kind::Void;    return t; }
-    static TypeRef MakeBool()     { TypeRef t; t.kind = Kind::Bool;    return t; }
-    static TypeRef MakeChar()     { TypeRef t; t.kind = Kind::Char;    return t; }
+    static TypeRef MakeOpaque()     { TypeRef t; t.kind = Kind::Opaque;    return t; }
+    static TypeRef MakeBool8()    { TypeRef t; t.kind = Kind::Bool8;   return t; }
+    static TypeRef MakeBool16()   { TypeRef t; t.kind = Kind::Bool16;  return t; }
+    static TypeRef MakeBool32()   { TypeRef t; t.kind = Kind::Bool32;  return t; }
+    static TypeRef MakeBool()     { TypeRef t; t.kind = Kind::Bool8;   return t; }
+    static TypeRef MakeChar8()    { TypeRef t; t.kind = Kind::Char8;   return t; }
+    static TypeRef MakeChar16()   { TypeRef t; t.kind = Kind::Char16;  return t; }
+    static TypeRef MakeChar32()   { TypeRef t; t.kind = Kind::Char32;  return t; }
+    static TypeRef MakeChar()     { TypeRef t; t.kind = Kind::Char32;  return t; }
     static TypeRef MakeStr()      { TypeRef t; t.kind = Kind::Str;     return t; }
     static TypeRef MakeInt8()     { TypeRef t; t.kind = Kind::Int8;    return t; }
     static TypeRef MakeInt16()    { TypeRef t; t.kind = Kind::Int16;   return t; }
@@ -83,8 +92,8 @@ struct TypeRef {
     // ── Predicates ────────────────────────────────────────────────────────────
 
     [[nodiscard]] bool IsUnknown()  const noexcept { return kind == Kind::Unknown; }
-    [[nodiscard]] bool IsVoid()     const noexcept { return kind == Kind::Void; }
-    [[nodiscard]] bool IsBool()     const noexcept { return kind == Kind::Bool; }
+    [[nodiscard]] bool IsOpaque()     const noexcept { return kind == Kind::Opaque; }
+    [[nodiscard]] bool IsBool()     const noexcept { return kind == Kind::Bool8 || kind == Kind::Bool16 || kind == Kind::Bool32; }
     [[nodiscard]] bool IsNumeric()  const noexcept;
     [[nodiscard]] bool IsInteger()  const noexcept;
     [[nodiscard]] bool IsFloat()    const noexcept;

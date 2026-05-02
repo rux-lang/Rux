@@ -86,7 +86,8 @@ namespace Rux {
 
         // ── Declarations ──────────────────────────────────────────────────────
 
-        std::unique_ptr<FuncDecl> ParseFuncDecl(bool isPublic, bool isAsm);
+        std::unique_ptr<FuncDecl> ParseFuncDecl(bool isPublic, bool isAsm,
+                                                CallingConvention callConv = CallingConvention::Default);
 
         std::unique_ptr<StructDecl> ParseStructDecl(bool isPublic);
 
@@ -106,7 +107,17 @@ namespace Rux {
 
         std::unique_ptr<TypeAliasDecl> ParseTypeAliasDecl(bool isPublic);
 
-        DeclPtr ParseExternDecl(bool isPublic);
+        // ── Attribute parsing ─────────────────────────────────────────────────
+
+        struct ParsedAttrs {
+            std::string importLib;
+            CallingConvention callConv = CallingConvention::Default;
+        };
+
+        // Parses zero or more @[AttrName(...)] attributes before a declaration.
+        ParsedAttrs ParseAttrs();
+
+        DeclPtr ParseExternDecl(bool isPublic, ParsedAttrs attrs);
 
         // ── Shared declaration helpers ────────────────────────────────────────
 

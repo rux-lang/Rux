@@ -96,6 +96,19 @@ namespace Rux {
         std::unordered_map<std::string, std::string> importDll;
         importDll["ExitProcess"] = "KERNEL32.DLL";
 
+        // First pass: collect explicit DLL assignments from symbol declarations.
+        // This handles the case where a call site and its declaration are in
+        // different translation units — the declaration carries the DLL name.
+        for (const auto &obj: objects_) {
+            for (const auto &sym: obj.symbols) {
+                if (sym.kind == RcuSymKind::ExternFunc && !sym.typeName.empty())
+                    importDll[sym.name] = sym.typeName;
+            }
+        }
+
+        // Second pass: collect imports from relocations. For compiler-generated
+        // extern symbols (e.g. runtime helpers) that carry no explicit DLL, fall
+        // back to KERNEL32.DLL so existing behaviour is preserved.
         for (const auto &obj: objects_) {
             for (const auto &sec: obj.sections) {
                 for (const auto &reloc: sec.relocs) {

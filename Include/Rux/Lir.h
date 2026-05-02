@@ -59,6 +59,7 @@ struct LirInstr {
     std::vector<LirReg> srcs; // source registers
     std::string strArg;       // literal (Const), name (Load/Call), field (FieldPtr), from-type (Cast)
     std::vector<std::pair<LirReg, std::uint32_t>> phiPreds; // Phi: (reg, block_index)
+    CallingConvention callConv = CallingConvention::Default; // for Call instructions
 };
 
 // ── Terminators ───────────────────────────────────────────────────────────────
@@ -99,8 +100,10 @@ struct LirParam {
 
 struct LirFunc {
     std::string           name;
+    std::string           dll;     // non-empty for extern declarations
     bool                  isPublic = false;
     bool                  isExtern = false;
+    CallingConvention     callConv = CallingConvention::Default;
     std::vector<LirParam> params;
     TypeRef               returnType;
     std::vector<LirBlock> blocks; // empty for extern declarations

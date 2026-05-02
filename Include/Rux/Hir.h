@@ -293,6 +293,7 @@ struct HirFunc {
     std::string name;
     bool isPublic = false;
     bool isAsm = false;
+    CallingConvention callConv = CallingConvention::Default;
     std::vector<std::string> typeParams;
     std::vector<HirParam> params;
     TypeRef returnType;
@@ -372,10 +373,12 @@ struct HirConst {
     SourceLocation location;
 };
 
-// extern func Name(params) -> Type;
+// extern func Name(params) -> Type from "DLL";
 struct HirExternFunc {
     std::string name;
+    std::string dll;
     bool isPublic = false;
+    CallingConvention callConv = CallingConvention::Default;
     std::vector<HirParam> params;
     bool isVariadic = false;
     TypeRef returnType;

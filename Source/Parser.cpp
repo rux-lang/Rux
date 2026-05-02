@@ -167,13 +167,69 @@ namespace Rux {
     }
 
     // =========================================================================
+    // Attribute parsing
+    // =========================================================================
+
+    // Parses zero or more @[AttrName(...)] attributes that precede a declaration.
+    // Returns the lib value from the first @[Import(lib: "...")] found.
+    // Unknown attributes are parsed and silently ignored for forward compatibility.
+    Parser::ParsedAttrs Parser::ParseAttrs() {
+        ParsedAttrs attrs;
+        while (Check(TokenKind::At)) {
+            Advance(); // consume '@'
+            Expect(TokenKind::LeftBracket, "expected '[' after '@'");
+
+            std::string attrName;
+            if (Check(TokenKind::Ident))
+                attrName = Advance().text;
+
+            if (Check(TokenKind::LeftParen)) {
+                Advance(); // consume '('
+
+                if (attrName == "Call" && Check(TokenKind::Dot)) {
+                    // @[Call(.Win64)] — positional enum variant
+                    Advance(); // consume '.'
+                    std::string variant;
+                    if (Check(TokenKind::Ident))
+                        variant = Advance().text;
+                    if (variant == "Win64")
+                        attrs.callConv = CallingConvention::Win64;
+                    else
+                        EmitWarning(CurrentLocation(),
+                            std::format("unknown calling convention '.{}'", variant));
+                } else {
+                    // Parse key: value pairs until ')'
+                    while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                        if (!Check(TokenKind::Ident)) { Advance(); continue; }
+                        std::string key = Advance().text;
+                        if (!Match(TokenKind::Colon)) continue;
+                        if (attrName == "Import" && key == "lib" &&
+                            Check(TokenKind::StringLiteral))
+                            attrs.importLib = Advance().text;
+                        else
+                            Advance(); // skip unknown value
+                        if (!Match(TokenKind::Comma)) break;
+                    }
+                }
+
+                Expect(TokenKind::RightParen, "expected ')' to close attribute");
+            }
+
+            Expect(TokenKind::RightBracket, "expected ']' to close attribute");
+        }
+        return attrs;
+    }
+
+    // =========================================================================
     // Top-level declarations
     // =========================================================================
 
     DeclPtr Parser::ParseDecl() {
         const auto loc = CurrentLocation();
-        bool isPublic = false;
 
+        ParsedAttrs attrs = ParseAttrs();
+
+        bool isPublic = false;
         if (Match(TokenKind::PubKeyword))
             isPublic = true;
 
@@ -181,11 +237,11 @@ namespace Rux {
         if (Check(TokenKind::Ident) && Peek().text == "asm" &&
             Peek(1).Is(TokenKind::FuncKeyword)) {
             Advance(); // consume 'asm'
-            return ParseFuncDecl(isPublic, true);
+            return ParseFuncDecl(isPublic, true, attrs.callConv);
         }
 
         if (Check(TokenKind::FuncKeyword))
-            return ParseFuncDecl(isPublic, false);
+            return ParseFuncDecl(isPublic, false, attrs.callConv);
         if (Check(TokenKind::StructKeyword))
             return ParseStructDecl(isPublic);
         if (Check(TokenKind::EnumKeyword))
@@ -205,7 +261,7 @@ namespace Rux {
         if (Check(TokenKind::TypeKeyword))
             return ParseTypeAliasDecl(isPublic);
         if (Check(TokenKind::ExternKeyword))
-            return ParseExternDecl(isPublic);
+            return ParseExternDecl(isPublic, std::move(attrs));
 
         EmitError(loc,
                   std::format("unexpected token '{}', expected a declaration", Peek().text));
@@ -261,7 +317,8 @@ namespace Rux {
     // func
     // =========================================================================
 
-    std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(bool isPublic, bool isAsm) {
+    std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(bool isPublic, bool isAsm,
+                                                     CallingConvention callConv) {
         const auto loc = CurrentLocation();
         Expect(TokenKind::FuncKeyword, "expected 'func'");
 
@@ -269,6 +326,7 @@ namespace Rux {
         decl->location = loc;
         decl->isPublic = isPublic;
         decl->isAsm = isAsm;
+        decl->callConv = callConv;
         decl->name = Expect(TokenKind::Ident, "expected function name").text;
 
         if (Check(TokenKind::Less))
@@ -566,17 +624,75 @@ namespace Rux {
     // extern
     // =========================================================================
 
-    DeclPtr Parser::ParseExternDecl(bool isPublic) {
+    DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs attrs) {
         const auto loc = CurrentLocation();
         Expect(TokenKind::ExternKeyword, "expected 'extern'");
 
+        if (Check(TokenKind::LeftBrace)) {
+            // @[...] extern { func ...; ... }
+            Advance(); // consume '{'
+            auto block = std::make_unique<ExternBlockDecl>();
+            block->location = loc;
+            block->dll = attrs.importLib;
+            block->callConv = attrs.callConv;
+            while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+                if (Check(TokenKind::ExternKeyword)) {
+                    EmitError(CurrentLocation(), "'extern' is not allowed inside an extern block");
+                    while (!IsAtEnd() && !Check(TokenKind::Semicolon) && !Check(TokenKind::RightBrace))
+                        Advance();
+                    Match(TokenKind::Semicolon);
+                    continue;
+                }
+                if (Check(TokenKind::FuncKeyword)) {
+                    Advance(); // consume 'func'
+                    auto fd = std::make_unique<ExternFuncDecl>();
+                    fd->location = CurrentLocation();
+                    fd->isPublic = isPublic;
+                    fd->dll = attrs.importLib;
+                    fd->callConv = attrs.callConv;
+                    fd->name = Expect(TokenKind::Ident, "expected function name").text;
+                    Expect(TokenKind::LeftParen, "expected '('");
+                    while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                        if (Check(TokenKind::DotDotDot)) {
+                            Advance();
+                            fd->isVariadic = true;
+                            break;
+                        }
+                        fd->params.push_back(ParseParam(true));
+                        if (!Match(TokenKind::Comma)) break;
+                    }
+                    Expect(TokenKind::RightParen, "expected ')'");
+                    if (Match(TokenKind::Arrow))
+                        fd->returnType = ParseType();
+                    Expect(TokenKind::Semicolon, "expected ';'");
+                    block->items.push_back(std::move(fd));
+                } else if (Check(TokenKind::Ident)) {
+                    auto vd = std::make_unique<ExternVarDecl>();
+                    vd->location = CurrentLocation();
+                    vd->isPublic = isPublic;
+                    vd->name = Advance().text;
+                    Expect(TokenKind::Colon, "expected ':'");
+                    vd->type = ParseType();
+                    Expect(TokenKind::Semicolon, "expected ';'");
+                    block->items.push_back(std::move(vd));
+                } else {
+                    EmitError(CurrentLocation(), "expected 'func' or variable declaration in extern block");
+                    Synchronize();
+                }
+            }
+            Expect(TokenKind::RightBrace, "expected '}'");
+            return block;
+        }
+
         if (Check(TokenKind::FuncKeyword)) {
-            // extern func Name(params) -> Type;
+            // @[Import(lib: "...")] extern func Name(params) -> Type;
             Advance(); // consume 'func'
 
             auto decl = std::make_unique<ExternFuncDecl>();
             decl->location = loc;
             decl->isPublic = isPublic;
+            decl->dll = std::move(attrs.importLib);
+            decl->callConv = attrs.callConv;
             decl->name = Expect(TokenKind::Ident, "expected function name").text;
 
             Expect(TokenKind::LeftParen, "expected '('");
@@ -618,8 +734,9 @@ namespace Rux {
     TypeExprPtr Parser::ParseType() {
         const auto loc = CurrentLocation();
 
-        // Pointer: *T
+        // Pointer: *T  or  *const T
         if (Match(TokenKind::Star)) {
+            Match(TokenKind::ConstKeyword); // consume optional 'const' qualifier
             auto p = std::make_unique<PointerTypeExpr>();
             p->location = loc;
             p->pointee = ParseType();
@@ -1799,6 +1916,8 @@ namespace Rux {
             }
 
             void PrintExternFuncDecl(const ExternFuncDecl &f) {
+                if (!f.dll.empty()) { Pad(); out << "@[Import(lib: \"" << f.dll << "\")]\n"; }
+                if (f.callConv == CallingConvention::Win64) { Pad(); out << "@[Call(.Win64)]\n"; }
                 Pad();
                 if (f.isPublic) out << "pub ";
                 out << "ExternFuncDecl '" << f.name << "' (";
@@ -2112,9 +2231,9 @@ namespace Rux {
                         break;
                     case TokenKind::StringLiteral: out << "string";
                         break;
-                    case TokenKind::CharLiteral: out << "char";
+                    case TokenKind::CharLiteral: out << "char32";
                         break;
-                    case TokenKind::BoolLiteral: out << "bool";
+                    case TokenKind::BoolLiteral: out << "bool8";
                         break;
                     case TokenKind::NullKeyword: out << "null";
                         break;

@@ -113,7 +113,7 @@ namespace Rux {
         std::vector<std::unique_ptr<HirScope> > ownedScopes_;
 
         std::string currentFile_;
-        TypeRef currentReturnType_ = TypeRef::MakeVoid();
+        TypeRef currentReturnType_ = TypeRef::MakeOpaque();
         bool inImpl_ = false;
         std::vector<std::string> currentTypeParams_;
 
@@ -143,8 +143,14 @@ namespace Rux {
                 sym.type = std::move(t);
                 globalScope_.Define(std::move(sym));
             };
-            add("void", TypeRef::MakeVoid());
+            add("opaque", TypeRef::MakeOpaque());
+            add("bool8", TypeRef::MakeBool8());
+            add("bool16", TypeRef::MakeBool16());
+            add("bool32", TypeRef::MakeBool32());
             add("bool", TypeRef::MakeBool());
+            add("char8", TypeRef::MakeChar8());
+            add("char16", TypeRef::MakeChar16());
+            add("char32", TypeRef::MakeChar32());
             add("char", TypeRef::MakeChar());
             add("String", TypeRef::MakeStr());
             add("int8", TypeRef::MakeInt8());
@@ -198,6 +204,9 @@ namespace Rux {
                 sym.name = d->name;
                 sym.isMut = true;
                 globalScope_.Define(std::move(sym));
+            } else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+                for (auto &item: d->items)
+                    CollectDecl(*item);
             } else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
                 for (auto &item: d->items)
                     CollectDecl(*item);
@@ -233,6 +242,29 @@ namespace Rux {
             if (dynamic_cast<const SelfTypeExpr *>(&expr))
                 return TypeRef::MakeNamed("self");
             return TypeRef::MakeUnknown();
+        }
+
+        static std::string DecodeCharLiteral(const std::string &text) {
+            // text is raw source like 'A' or '\n' — strip quotes and decode
+            uint32_t cp = 0;
+            if (text.size() >= 2) {
+                std::size_t i = 1; // skip opening '
+                if (text[i] == '\\' && i + 1 < text.size()) {
+                    switch (text[i + 1]) {
+                        case 'n':  cp = '\n'; break;
+                        case 't':  cp = '\t'; break;
+                        case 'r':  cp = '\r'; break;
+                        case '0':  cp = 0;    break;
+                        case '\\': cp = '\\'; break;
+                        case '\'': cp = '\''; break;
+                        case '"':  cp = '"';  break;
+                        default:   cp = static_cast<unsigned char>(text[i + 1]); break;
+                    }
+                } else if (text[i] != '\'') {
+                    cp = static_cast<unsigned char>(text[i]);
+                }
+            }
+            return std::to_string(cp);
         }
 
         static TypeRef LiteralType(const Token &tok) {
@@ -289,7 +321,10 @@ namespace Rux {
                 hmod.externFuncs.push_back(LowerExternFunc(*d));
             else if (auto *d = dynamic_cast<const ExternVarDecl *>(&decl))
                 hmod.externVars.push_back(LowerExternVar(*d));
-            else if (auto *d = dynamic_cast<const TypeAliasDecl *>(&decl))
+            else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+                for (auto &item: d->items)
+                    LowerTopLevelDecl(*item, hmod);
+            } else if (auto *d = dynamic_cast<const TypeAliasDecl *>(&decl))
                 hmod.typeAliases.push_back(LowerTypeAlias(*d));
             else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
                 for (auto &item: d->items)
@@ -306,7 +341,7 @@ namespace Rux {
 
             TypeRef retType = d.returnType
                                   ? ResolveType(*d.returnType->get())
-                                  : TypeRef::MakeVoid();
+                                  : TypeRef::MakeOpaque();
 
             auto savedRet = currentReturnType_;
             currentReturnType_ = retType;
@@ -351,6 +386,7 @@ namespace Rux {
             hf.name = d.name;
             hf.isPublic = d.isPublic;
             hf.isAsm = d.isAsm;
+            hf.callConv = d.callConv;
             hf.typeParams = d.typeParams;
             hf.params = LowerParams(d.params);
             hf.returnType = retType;
@@ -414,7 +450,7 @@ namespace Rux {
                 hm.location = m->location;
                 hm.returnType = m->returnType
                                     ? ResolveType(*m->returnType->get())
-                                    : TypeRef::MakeVoid();
+                                    : TypeRef::MakeOpaque();
                 hm.params = LowerParams(m->params);
                 hi.methods.push_back(std::move(hm));
             }
@@ -449,11 +485,13 @@ namespace Rux {
         HirExternFunc LowerExternFunc(const ExternFuncDecl &d) {
             HirExternFunc hef;
             hef.name = d.name;
+            hef.dll = d.dll;
             hef.isPublic = d.isPublic;
+            hef.callConv = d.callConv;
             hef.isVariadic = d.isVariadic;
             hef.returnType = d.returnType
                                  ? ResolveType(*d.returnType->get())
-                                 : TypeRef::MakeVoid();
+                                 : TypeRef::MakeOpaque();
             hef.params = LowerParams(d.params);
             hef.location = d.location;
             return hef;
@@ -625,7 +663,9 @@ namespace Rux {
                 auto he = std::make_unique<HirLiteralExpr>();
                 he->location = e->location;
                 he->type = LiteralType(e->token);
-                he->value = e->token.text;
+                he->value = e->token.kind == TokenKind::CharLiteral
+                    ? DecodeCharLiteral(e->token.text)
+                    : e->token.text;
                 return he;
             }
 
@@ -680,7 +720,7 @@ namespace Rux {
                 he->op = e->op;
                 he->target = LowerExpr(*e->target);
                 he->value = LowerExpr(*e->value);
-                he->type = TypeRef::MakeVoid();
+                he->type = TypeRef::MakeOpaque();
                 return he;
             }
 
@@ -1174,7 +1214,7 @@ namespace Rux {
             else
                 params += f.params[i].name + ": " + f.params[i].type.ToString();
         }
-        std::string ret = f.returnType.IsVoid()
+        std::string ret = f.returnType.IsOpaque()
                               ? ""
                               : " -> " + f.returnType.ToString();
         out << std::format("{}{}{}func {}{}{}{}\n",
@@ -1220,11 +1260,16 @@ namespace Rux {
                     else params += ef.params[i].name + ": " + ef.params[i].type.ToString();
                 }
                 if (ef.isVariadic && !ef.params.empty()) params += ", ...";
-                std::string ret = ef.returnType.IsVoid()
+                std::string ret = ef.returnType.IsOpaque()
                                       ? ""
                                       : " -> " + ef.returnType.ToString();
-                out << std::format("\nextern {}func {}({}){}\n",
-                                   pub, ef.name, params, ret);
+                std::string attr;
+                if (!ef.dll.empty())
+                    attr += std::format("@[Import(lib: \"{}\")]\n", ef.dll);
+                if (ef.callConv == CallingConvention::Win64)
+                    attr += "@[Call(.Win64)]\n";
+                out << std::format("\n{}extern {}func {}({}){}\n",
+                                   attr, pub, ef.name, params, ret);
             }
 
             for (const auto &s: mod.structs) {
@@ -1270,7 +1315,7 @@ namespace Rux {
                         if (m.params[i].isVariadic) params += "...";
                         else params += m.params[i].name + ": " + m.params[i].type.ToString();
                     }
-                    std::string ret = m.returnType.IsVoid()
+                    std::string ret = m.returnType.IsOpaque()
                                           ? ""
                                           : " -> " + m.returnType.ToString();
                     out << std::format("  func {}({}){}\n", m.name, params, ret);

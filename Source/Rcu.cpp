@@ -23,16 +23,20 @@ namespace Rux {
 
         static int SizeOf(const TypeRef &t) {
             switch (t.kind) {
-                case TypeRef::Kind::Bool:
+                case TypeRef::Kind::Bool8: // Bool == Bool8
+                case TypeRef::Kind::Char8: // Char8
                 case TypeRef::Kind::Int8:
                 case TypeRef::Kind::UInt8: return 1;
+                case TypeRef::Kind::Bool16:
+                case TypeRef::Kind::Char16:
                 case TypeRef::Kind::Int16:
                 case TypeRef::Kind::UInt16: return 2;
-                case TypeRef::Kind::Char:
+                case TypeRef::Kind::Bool32:
+                case TypeRef::Kind::Char32: // Char == Char32
                 case TypeRef::Kind::Int32:
                 case TypeRef::Kind::UInt32:
                 case TypeRef::Kind::Float32: return 4;
-                case TypeRef::Kind::Void: return 0;
+                case TypeRef::Kind::Opaque: return 0;
                 default: return 8;
             }
         }
@@ -312,6 +316,25 @@ namespace Rux {
                 Byte(modrm[idx]);
                 Dword(u(d));
             }
+
+            // ── Win64 ABI arg regs ↔ [RBP + disp32] ─────────────────────────────────
+            // argIdx: 0=RCX,1=RDX,2=R8,3=R9
+            void MovArgLoadWin64(int idx, int32_t d) {
+                static const uint8_t rex[]   = {0x48, 0x48, 0x4C, 0x4C};
+                static const uint8_t modrm[] = {0x8D, 0x95, 0x85, 0x8D};
+                if (idx >= 4) return;
+                Byte(rex[idx]); Byte(0x8B); Byte(modrm[idx]); Dword(u(d));
+            }
+
+            void MovArgStoreWin64(int idx, int32_t d) {
+                static const uint8_t rex[]   = {0x48, 0x48, 0x4C, 0x4C};
+                static const uint8_t modrm[] = {0x8D, 0x95, 0x85, 0x8D};
+                if (idx >= 4) return;
+                Byte(rex[idx]); Byte(0x89); Byte(modrm[idx]); Dword(u(d));
+            }
+
+            void SubRspShadow() { Byte(0x48); Byte(0x83); Byte(0xEC); Byte(0x20); }
+            void AddRspShadow() { Byte(0x48); Byte(0x83); Byte(0xC4); Byte(0x20); }
 
             // ── XMM arg regs ↔ [RBP + disp32] (N = 0..7) ────────────────────────────
             // MOVSS xmmN, [rbp + d]
@@ -866,6 +889,12 @@ namespace Rux {
             static uint32_t u(int32_t v) { return static_cast<uint32_t>(v); }
         };
 
+        // This compiler targets Windows x64 (PE32+) exclusively.
+        // CallingConvention::Default therefore resolves to Win64.
+        static CallingConvention EffectiveConv(CallingConvention c) {
+            return c == CallingConvention::Default ? CallingConvention::Win64 : c;
+        }
+
         // ─────────────────────────────────────────────────────────────────────────────
         // RCU Code Generator: LirModule → RcuFile
         // ─────────────────────────────────────────────────────────────────────────────
@@ -947,11 +976,13 @@ namespace Rux {
                 return idx;
             }
 
-            uint32_t GetOrAddExtern(const std::string &name, uint8_t kind) {
+            uint32_t GetOrAddExtern(const std::string &name, uint8_t kind,
+                                    const std::string &dll = {}) {
                 auto it = externSyms_.find(name);
                 if (it != externSyms_.end()) return it->second;
                 RcuSymbol s;
                 s.name = name;
+                s.typeName = dll;
                 s.kind = kind;
                 s.visibility = RcuSymVis::Global;
                 s.sectionIdx = RCU_SEC_EXTERNAL;
@@ -1257,22 +1288,41 @@ namespace Rux {
 
             // ── Call argument setup ───────────────────────────────────────────────────
 
-            void EmitCallArgs(const std::vector<LirReg> &args) {
-                int intIdx = 0, fltIdx = 0;
-                for (LirReg arg: args) {
-                    TypeRef at = regTypes_.count(arg) ? regTypes_.at(arg) : TypeRef::MakeInt64();
-                    int32_t d = Disp(arg);
-                    if (IsFloat(at)) {
-                        if (fltIdx < 8) {
+            void EmitCallArgs(const std::vector<LirReg> &args,
+                              CallingConvention conv = CallingConvention::Default) {
+                if (EffectiveConv(conv) == CallingConvention::Win64) {
+                    // Unified index: rcx/xmm0=0, rdx/xmm1=1, r8/xmm2=2, r9/xmm3=3
+                    int idx = 0;
+                    for (LirReg arg : args) {
+                        if (idx >= 4) break;
+                        TypeRef at = regTypes_.count(arg) ? regTypes_.at(arg) : TypeRef::MakeInt64();
+                        int32_t d = Disp(arg);
+                        if (IsFloat(at)) {
                             int sz = SizeOf(at);
-                            if (sz == 4) enc_.MovssXmmNLoad(fltIdx, d);
-                            else enc_.MovsdXmmNLoad(fltIdx, d);
-                            ++fltIdx;
+                            if (sz == 4) enc_.MovssXmmNLoad(idx, d);
+                            else enc_.MovsdXmmNLoad(idx, d);
+                        } else {
+                            enc_.MovArgLoadWin64(idx, d);
                         }
-                    } else {
-                        if (intIdx < 6) {
-                            enc_.MovArgLoad(intIdx, d);
-                            ++intIdx;
+                        ++idx;
+                    }
+                } else {
+                    int intIdx = 0, fltIdx = 0;
+                    for (LirReg arg: args) {
+                        TypeRef at = regTypes_.count(arg) ? regTypes_.at(arg) : TypeRef::MakeInt64();
+                        int32_t d = Disp(arg);
+                        if (IsFloat(at)) {
+                            if (fltIdx < 8) {
+                                int sz = SizeOf(at);
+                                if (sz == 4) enc_.MovssXmmNLoad(fltIdx, d);
+                                else enc_.MovsdXmmNLoad(fltIdx, d);
+                                ++fltIdx;
+                            }
+                        } else {
+                            if (intIdx < 6) {
+                                enc_.MovArgLoad(intIdx, d);
+                                ++intIdx;
+                            }
                         }
                     }
                 }
@@ -1304,9 +1354,9 @@ namespace Rux {
                             enc_.MovsdXmm0Rip(relocOff);
                             AddTextReloc(relocOff, symIdx);
                             enc_.MovsdXmm0Store(Disp(instr.dst));
-                        } else if (t.kind == TypeRef::Kind::Bool) {
+                        } else if (t.IsBool()) {
                             enc_.MovEaxImm32(instr.strArg == "true" ? 1 : 0);
-                            StoreA(instr.dst, TypeRef::MakeInt64());
+                            StoreA(instr.dst, t);
                         } else {
                             const std::string &sv = instr.strArg.empty() ? "0" : instr.strArg;
                             int64_t v = 0;
@@ -1381,29 +1431,19 @@ namespace Rux {
                                 }
                             } else {
                                 if (sz == 4) {
-                                    enc_.Byte(0x45);
+                                    enc_.Byte(0x41);
                                     enc_.Byte(0x8B);
-                                    enc_.Byte(0x02); // mov r8d,[r10] → rax by copy
-                                    enc_.Byte(0x4D);
-                                    enc_.Byte(0x8B);
-                                    enc_.Byte(0xC0); // mov r8,r8 nop
-                                    // Actually: just use 44 8B 02 (mov r8d,[r10]) then mov eax, r8d
-                                    // Simpler: re-do with known-good sequence
-                                    // Let's undo the above and emit clean version
-                                    // Pop the 6 bytes we just pushed — we can't easily undo. Use a different approach.
-                                    // Keep it simple: treat sz==4 unsigned as sz==8 for pointers (store 0-extended)
-                                }
-                                // For simplicity emit movzx variants
-                                if (sz == 2) {
+                                    enc_.Byte(0x02); // mov eax, [r10]  (zero-extends to rax)
+                                } else if (sz == 2) {
                                     enc_.Byte(0x49);
                                     enc_.Byte(0x0F);
                                     enc_.Byte(0xB7);
-                                    enc_.Byte(0x02);
+                                    enc_.Byte(0x02); // movzx rax, word [r10]
                                 } else {
                                     enc_.Byte(0x49);
                                     enc_.Byte(0x0F);
                                     enc_.Byte(0xB6);
-                                    enc_.Byte(0x02);
+                                    enc_.Byte(0x02); // movzx rax, byte [r10]
                                 }
                             }
                         }
@@ -1685,7 +1725,9 @@ namespace Rux {
                     }
 
                     case LirOpcode::Call: {
-                        EmitCallArgs(instr.srcs);
+                        bool win64Call = EffectiveConv(instr.callConv) == CallingConvention::Win64;
+                        if (win64Call) enc_.SubRspShadow();
+                        EmitCallArgs(instr.srcs, instr.callConv);
                         uint32_t symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternFunc);
                         // If we already have a defined symbol for this name, use it
                         for (uint32_t i = 0; i < symbols_.size(); ++i) {
@@ -1697,7 +1739,8 @@ namespace Rux {
                         uint32_t ro;
                         enc_.Call(ro);
                         AddTextReloc(ro, symIdx);
-                        if (instr.dst != LirNoReg && !instr.type.IsVoid())
+                        if (win64Call) enc_.AddRspShadow();
+                        if (instr.dst != LirNoReg && !instr.type.IsOpaque())
                             StoreA(instr.dst, instr.type);
                         break;
                     }
@@ -1707,9 +1750,9 @@ namespace Rux {
                         LirReg callee = instr.srcs[0];
                         std::vector<LirReg> args(instr.srcs.begin() + 1, instr.srcs.end());
                         enc_.MovR10Load(Disp(callee));
-                        EmitCallArgs(args);
+                        EmitCallArgs(args, instr.callConv);
                         enc_.CallR10();
-                        if (instr.dst != LirNoReg && !instr.type.IsVoid())
+                        if (instr.dst != LirNoReg && !instr.type.IsOpaque())
                             StoreA(instr.dst, instr.type);
                         break;
                     }
@@ -1821,7 +1864,7 @@ namespace Rux {
 
             void GenFunc(const LirFunc &func) {
                 if (func.isExtern) {
-                    GetOrAddExtern(func.name, RcuSymKind::ExternFunc);
+                    GetOrAddExtern(func.name, RcuSymKind::ExternFunc, func.dll);
                     return;
                 }
 
@@ -1846,34 +1889,41 @@ namespace Rux {
                 enc_.SubRspImm32(frameSize_);
 
                 // Spill ABI param registers to stack slots
-                int intIdx = 0, fltIdx = 0;
+                bool win64Func = EffectiveConv(func.callConv) == CallingConvention::Win64;
+                int intIdx = 0, fltIdx = 0, win64Idx = 0;
                 for (const auto &p: func.params) {
                     int sz = SizeOf(p.type);
-                    if (IsFloat(p.type)) {
-                        if (fltIdx < 8) {
-                            int32_t d = Disp(p.reg);
-                            if (sz == 4) enc_.MovssXmm0Store(d); // store from xmmN; use xmm0 for arg 0
-                            else enc_.MovsdXmm0Store(d);
-                            // For arg index > 0 we need xmmN; simplify by loading arg index directly
-                            if (fltIdx == 0) {
-                                if (sz == 4) enc_.MovssXmm0Store(d);
-                                else enc_.MovsdXmm0Store(d);
-                            } else {
-                                // Store from xmmN to stack
-                                if (sz == 4) enc_.MovssXmmNLoad(fltIdx, d); // wrong direction, fix:
-                                // MOVSS [rbp+d], xmmN
-                                enc_.Byte(0xF3);
+                    int32_t d = Disp(p.reg);
+                    if (win64Func) {
+                        // Win64: unified index, max 4 register args
+                        if (win64Idx >= 4) break;
+                        if (IsFloat(p.type)) {
+                            // MOVSS/MOVSD [rbp+d], xmmN
+                            enc_.Byte(sz == 4 ? 0xF3 : 0xF2);
+                            enc_.Byte(0x0F);
+                            enc_.Byte(0x11);
+                            enc_.Byte(static_cast<uint8_t>(0x80 | (win64Idx << 3) | 5));
+                            enc_.Dword(static_cast<uint32_t>(d));
+                        } else {
+                            enc_.MovArgStoreWin64(win64Idx, d);
+                        }
+                        ++win64Idx;
+                    } else {
+                        if (IsFloat(p.type)) {
+                            if (fltIdx < 8) {
+                                // MOVSS/MOVSD [rbp+d], xmmN
+                                enc_.Byte(sz == 4 ? 0xF3 : 0xF2);
                                 enc_.Byte(0x0F);
                                 enc_.Byte(0x11);
                                 enc_.Byte(static_cast<uint8_t>(0x80 | (fltIdx << 3) | 5));
                                 enc_.Dword(static_cast<uint32_t>(d));
+                                ++fltIdx;
                             }
-                            ++fltIdx;
-                        }
-                    } else {
-                        if (intIdx < 6) {
-                            enc_.MovArgStore(intIdx, Disp(p.reg));
-                            ++intIdx;
+                        } else {
+                            if (intIdx < 6) {
+                                enc_.MovArgStore(intIdx, d);
+                                ++intIdx;
+                            }
                         }
                     }
                 }

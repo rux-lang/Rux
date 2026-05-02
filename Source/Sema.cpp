@@ -70,15 +70,24 @@ namespace Rux {
         if (*this == other) return true;
         // Numeric types are mutually assignable (widening/narrowing checked later)
         if (IsNumeric() && other.IsNumeric()) return true;
+        // Bool types are mutually assignable across widths
+        if (IsBool() && other.IsBool()) return true;
+        // Any pointer is implicitly assignable to *opaque (like void* in C)
+        if (kind == Kind::Pointer && other.kind == Kind::Pointer &&
+            !other.inner.empty() && other.inner[0].IsOpaque()) return true;
         return false;
     }
 
     std::string TypeRef::ToString() const {
         switch (kind) {
             case Kind::Unknown: return "?";
-            case Kind::Void: return "void";
-            case Kind::Bool: return "bool";
-            case Kind::Char: return "char";
+            case Kind::Opaque: return "opaque";
+            case Kind::Bool8:  return "bool8";
+            case Kind::Bool16: return "bool16";
+            case Kind::Bool32: return "bool32";
+            case Kind::Char8:  return "char8";
+            case Kind::Char16: return "char16";
+            case Kind::Char32: return "char32";
             case Kind::Str: return "String";
             case Kind::Int8: return "int8";
             case Kind::Int16: return "int16";
@@ -109,7 +118,7 @@ namespace Rux {
                     s += inner[i].ToString();
                 }
                 s += ") -> ";
-                s += inner.empty() ? "void" : inner.back().ToString();
+                s += inner.empty() ? "opaque" : inner.back().ToString();
                 return s;
             }
         }
@@ -206,7 +215,7 @@ namespace Rux {
         std::vector<std::unique_ptr<Scope> > ownedScopes_;
 
         std::string currentFile_;
-        TypeRef currentReturnType_ = TypeRef::MakeVoid();
+        TypeRef currentReturnType_ = TypeRef::MakeOpaque();
         int loopDepth_ = 0;
         bool inImpl_ = false;
         std::vector<std::string> currentTypeParams_;
@@ -247,8 +256,14 @@ namespace Rux {
                 sym.type = std::move(t);
                 globalScope_.Define(sym, diags_, "<builtin>");
             };
-            add("void", TypeRef::MakeVoid());
+            add("opaque", TypeRef::MakeOpaque());
+            add("bool8", TypeRef::MakeBool8());
+            add("bool16", TypeRef::MakeBool16());
+            add("bool32", TypeRef::MakeBool32());
             add("bool", TypeRef::MakeBool());
+            add("char8", TypeRef::MakeChar8());
+            add("char16", TypeRef::MakeChar16());
+            add("char32", TypeRef::MakeChar32());
             add("char", TypeRef::MakeChar());
             add("String", TypeRef::MakeStr());
             add("int8", TypeRef::MakeInt8());
@@ -329,6 +344,9 @@ namespace Rux {
                         SemaSymbol::Kind::Var, d->name,
                         currentFile_, d->location, "extern", true
                     });
+            } else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+                for (auto &item: d->items)
+                    CollectDecl(*item, scope);
             } else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
                 simple(Symbol::Kind::Module, d->name, SemaSymbol::Kind::Module);
                 for (auto &item: d->items)
@@ -400,11 +418,18 @@ namespace Rux {
             else if (auto *d = dynamic_cast<const TypeAliasDecl *>(&decl))
                 ResolveType(*d->type); // triggers unknown-type errors
             else if (auto *d = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+                if (d->dll.empty())
+                    EmitError(d->location,
+                              std::format("extern function '{}' must specify a source DLL via @[Import(lib: \"dll.dll\")]",
+                                          d->name));
                 if (d->returnType) ResolveType(*d->returnType->get());
                 for (auto &p: d->params)
                     if (!p.isVariadic) ResolveType(*p.type);
             } else if (auto *d = dynamic_cast<const ExternVarDecl *>(&decl))
                 ResolveType(*d->type);
+            else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl))
+                for (auto &item: d->items)
+                    CheckDecl(*item);
             // UseDecl: import resolution deferred
         }
 
@@ -414,7 +439,7 @@ namespace Rux {
 
             TypeRef retType = d.returnType
                                   ? ResolveType(*d.returnType->get())
-                                  : TypeRef::MakeVoid();
+                                  : TypeRef::MakeOpaque();
 
             auto savedRet = currentReturnType_;
             currentReturnType_ = retType;
@@ -449,7 +474,10 @@ namespace Rux {
                 Define(sym);
             }
 
-            if (d.body)
+            if (!d.body)
+                EmitError(d.location,
+                          std::format("function '{}' has no body", d.name));
+            else
                 CheckBlock(*d.body);
 
             PopScope();
@@ -619,12 +647,12 @@ namespace Rux {
                 if (s->value) {
                     TypeRef valType = CheckExpr(**s->value);
                     if (!valType.IsUnknown() && !currentReturnType_.IsUnknown() &&
-                        !currentReturnType_.IsVoid() &&
+                        !currentReturnType_.IsOpaque() &&
                         !valType.IsAssignableTo(currentReturnType_))
                         EmitError(s->location,
                                   std::format("return type mismatch: expected '{}', found '{}'",
                                               currentReturnType_.ToString(), valType.ToString()));
-                } else if (!currentReturnType_.IsVoid() && !currentReturnType_.IsUnknown()) {
+                } else if (!currentReturnType_.IsOpaque() && !currentReturnType_.IsUnknown()) {
                     EmitError(s->location,
                               std::format("missing return value; expected '{}'",
                                           currentReturnType_.ToString()));
@@ -720,7 +748,7 @@ namespace Rux {
                     EmitError(e->location,
                               std::format("cannot assign '{}' to '{}'",
                                           val.ToString(), tgt.ToString()));
-                return TypeRef::MakeVoid();
+                return TypeRef::MakeOpaque();
             }
 
             if (auto *e = dynamic_cast<const TernaryExpr *>(&expr)) {

@@ -15,6 +15,13 @@
 
 namespace Rux {
 
+    // ── Calling convention ────────────────────────────────────────────────────
+
+    enum class CallingConvention {
+        Default, // platform default (System V AMD64 ABI)
+        Win64,   // Microsoft x64 calling convention
+    };
+
     // ── Forward declarations ──────────────────────────────────────────────────
 
     struct TypeExpr;
@@ -330,6 +337,7 @@ namespace Rux {
     // body is null for interface method signatures
     struct FuncDecl : Decl {
         bool isAsm = false;
+        CallingConvention callConv = CallingConvention::Default;
         std::string name;
         std::vector<std::string> typeParams;
         std::vector<Param> params;
@@ -410,9 +418,11 @@ namespace Rux {
         TypeExprPtr type;
     };
 
-    // extern func Name(params) -> Type;
+    // extern func Name(params) -> Type from "DLL";
     struct ExternFuncDecl : Decl {
         std::string name;
+        std::string dll;
+        CallingConvention callConv = CallingConvention::Default;
         std::vector<Param> params;
         bool isVariadic = false;
         std::optional<TypeExprPtr> returnType;
@@ -422,6 +432,13 @@ namespace Rux {
     struct ExternVarDecl : Decl {
         std::string name;
         TypeExprPtr type;
+    };
+
+    // @[Import(lib: "...")] extern { func ...; ... }
+    struct ExternBlockDecl : Decl {
+        std::string dll;
+        CallingConvention callConv = CallingConvention::Default;
+        std::vector<DeclPtr> items; // ExternFuncDecl or ExternVarDecl
     };
 
     // ── Module (AST root) ─────────────────────────────────────────────────────
