@@ -267,6 +267,33 @@ namespace Rux {
             return std::to_string(cp);
         }
 
+        static std::string DecodeStringLiteral(const std::string &text) {
+            // text is raw source like "hello\n" — strip quotes and decode escapes
+            std::string out;
+            if (text.size() < 2) return out;
+
+            for (std::size_t i = 1; i + 1 < text.size(); ++i) {
+                if (text[i] != '\\') {
+                    out += text[i];
+                    continue;
+                }
+
+                if (++i + 1 > text.size()) break;
+                switch (text[i]) {
+                    case 'n': out += '\n'; break;
+                    case 't': out += '\t'; break;
+                    case 'r': out += '\r'; break;
+                    case '0': out += '\0'; break;
+                    case '\\': out += '\\'; break;
+                    case '\'': out += '\''; break;
+                    case '"': out += '"'; break;
+                    default: break;
+                }
+            }
+
+            return out;
+        }
+
         static TypeRef LiteralType(const Token &tok) {
             switch (tok.kind) {
                 case TokenKind::IntLiteral: return TypeRef::MakeInt32();
@@ -663,9 +690,12 @@ namespace Rux {
                 auto he = std::make_unique<HirLiteralExpr>();
                 he->location = e->location;
                 he->type = LiteralType(e->token);
-                he->value = e->token.kind == TokenKind::CharLiteral
-                    ? DecodeCharLiteral(e->token.text)
-                    : e->token.text;
+                if (e->token.kind == TokenKind::CharLiteral)
+                    he->value = DecodeCharLiteral(e->token.text);
+                else if (e->token.kind == TokenKind::StringLiteral)
+                    he->value = DecodeStringLiteral(e->token.text);
+                else
+                    he->value = e->token.text;
                 return he;
             }
 
