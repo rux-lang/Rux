@@ -127,6 +127,8 @@ namespace Rux {
 
         std::vector<std::string> ParseTypeParams(); // <T, U, ...>
 
+        std::vector<TypeExprPtr> ParseTypeArgs(); // <int32, T[], ...>
+
         // ── Type expressions ──────────────────────────────────────────────────
 
         TypeExprPtr ParseType();

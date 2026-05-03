@@ -132,6 +132,16 @@ namespace Rux {
         const SourceLocation start = CurrentLocation();
         const char c = Peek();
 
+        // ── Prefixed string literals ──────────────────────────────────────────
+        if (c == 'c') {
+            if (Peek(1) == '8' && Peek(2) == '"')
+                return ScanString(start, 2);
+            if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '"')
+                return ScanString(start, 3);
+            if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '"')
+                return ScanString(start, 3);
+        }
+
         // ── Identifiers / keywords ────────────────────────────────────────────
         if (std::isalpha(static_cast<unsigned char>(c)) || c == '_')
             return ScanIdent(start);
@@ -363,8 +373,10 @@ namespace Rux {
     // ScanString
     // =========================================================================
 
-    Token Lexer::ScanString(SourceLocation start) {
+    Token Lexer::ScanString(SourceLocation start, std::size_t prefixLen) {
         const std::size_t tokenStart = pos;
+        for (std::size_t i = 0; i < prefixLen; ++i)
+            Advance();
         Advance(); // consume opening  "
 
         std::string value;

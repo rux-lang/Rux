@@ -91,7 +91,7 @@ namespace Rux {
         Token ScanIdent(SourceLocation start);
 
         Token ScanNumber(SourceLocation start); // int and float
-        Token ScanString(SourceLocation start); // "…"
+        Token ScanString(SourceLocation start, std::size_t prefixLen = 0); // "…" / c8"…" / c16"…" / c32"…"
         Token ScanChar(SourceLocation start); // '…'
         Token ScanSymbol(SourceLocation start); // operators & punctuation
         Token ScanUnknown(SourceLocation start); // fallback for bad chars

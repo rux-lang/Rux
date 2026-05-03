@@ -944,8 +944,19 @@ namespace Rux {
             std::unordered_map<std::string, uint32_t> externSyms_;
 
             // Struct field layouts
-            using LayoutMap = std::unordered_map<std::string,
-                std::vector<std::pair<std::string, int> > >;
+            struct FieldLayout {
+                std::string name;
+                int offset = 0;
+                int size = 0;
+            };
+
+            struct StructLayout {
+                std::vector<FieldLayout> fields;
+                int totalSize = 0;
+                int alignment = 1;
+            };
+
+            using LayoutMap = std::unordered_map<std::string, StructLayout>;
             LayoutMap layouts_;
 
             // ── Per-function state ────────────────────────────────────────────────────
@@ -969,6 +980,21 @@ namespace Rux {
             // ── Helpers ───────────────────────────────────────────────────────────────
 
             int32_t Disp(LirReg r) { return -(int32_t) slotMap_.at(r); }
+
+            static std::string BaseTypeName(const std::string &name) {
+                const std::size_t pos = name.find('<');
+                return pos == std::string::npos ? name : name.substr(0, pos);
+            }
+
+            int SizeOfRuntime(const TypeRef &t) const {
+                if (t.kind == TypeRef::Kind::Named) {
+                    const std::string base = BaseTypeName(t.name);
+                    if (base == "Slice") return 16;
+                    auto it = layouts_.find(base);
+                    if (it != layouts_.end()) return it->second.totalSize;
+                }
+                return SizeOf(t);
+            }
 
             uint32_t AddSymbol(RcuSymbol s) {
                 uint32_t idx = static_cast<uint32_t>(symbols_.size());
@@ -1178,10 +1204,16 @@ namespace Rux {
                 if (pt.kind != TypeRef::Kind::Pointer || pt.inner.empty()) return 0;
                 const TypeRef &inner = pt.inner[0];
                 if (inner.kind != TypeRef::Kind::Named) return 0;
-                auto layIt = layouts_.find(inner.name);
+                const std::string baseName = BaseTypeName(inner.name);
+                if (baseName == "Slice") {
+                    if (fieldName == "data") return 0;
+                    if (fieldName == "len") return 8;
+                    return 0;
+                }
+                auto layIt = layouts_.find(baseName);
                 if (layIt == layouts_.end()) return 0;
-                for (const auto &[n, off]: layIt->second)
-                    if (n == fieldName) return off;
+                for (const auto &field: layIt->second.fields)
+                    if (field.name == fieldName) return field.offset;
                 return 0;
             }
 
@@ -1225,11 +1257,24 @@ namespace Rux {
                         if (instr.dst == LirNoReg) continue;
                         if (instr.op == LirOpcode::Alloca) {
                             AllocSlot(instr.dst, 8);
-                            int dsz = SizeOf(instr.type);
+                            int dsz;
+                            if (!instr.strArg.empty()) {
+                                int count = 0;
+                                try {
+                                    count = std::stoi(instr.strArg);
+                                } catch (...) {
+                                }
+                                const TypeRef &elemType =
+                                        instr.type.inner.empty() ? instr.type : instr.type.inner[0];
+                                int elemSize = SizeOfRuntime(elemType);
+                                dsz = count * (elemSize > 0 ? elemSize : 8);
+                            } else {
+                                dsz = SizeOfRuntime(instr.type);
+                            }
                             allocaData_[instr.dst] = AllocRegion(dsz > 0 ? dsz : 8);
                             regTypes_[instr.dst] = TypeRef::MakePointer(instr.type);
                         } else {
-                            int sz = SizeOf(instr.type);
+                            int sz = SizeOfRuntime(instr.type);
                             AllocSlot(instr.dst, sz > 0 ? sz : 8);
                             regTypes_[instr.dst] = instr.type;
                         }
@@ -1244,25 +1289,26 @@ namespace Rux {
 
             void BuildLayouts() {
                 for (const auto &s: mod_.structs) {
-                    std::vector<std::pair<std::string, int> > fields;
+                    StructLayout layout;
                     int offset = 0, maxAlign = 1;
                     for (const auto &f: s.fields) {
-                        int sz = SizeOf(f.type);
+                        int sz = SizeOfRuntime(f.type);
                         int al = sz > 0 ? std::min(sz, 8) : 1;
                         if (f.type.kind == TypeRef::Kind::Named) {
-                            auto it = layouts_.find(f.type.name);
+                            auto it = layouts_.find(BaseTypeName(f.type.name));
                             if (it != layouts_.end()) {
-                                int ts = 0;
-                                for (const auto &[fn, fo]: it->second) ts = fo;
-                                sz = AlignUp(ts, al);
+                                sz = it->second.totalSize;
+                                al = it->second.alignment;
                             }
                         }
                         if (al > 1) offset = AlignUp(offset, al);
-                        fields.emplace_back(f.name, offset);
+                        layout.fields.push_back({f.name, offset, sz});
                         offset += (sz > 0 ? sz : 8);
                         maxAlign = std::max(maxAlign, al);
                     }
-                    layouts_[s.name] = std::move(fields);
+                    layout.totalSize = AlignUp(offset, maxAlign);
+                    layout.alignment = maxAlign;
+                    layouts_[s.name] = std::move(layout);
                 }
             }
 
@@ -1770,11 +1816,11 @@ namespace Rux {
                         LirReg base = instr.srcs[0];
                         LirReg idx = instr.srcs[1];
                         int elemSz = (instr.type.kind == TypeRef::Kind::Pointer && !instr.type.inner.empty())
-                                         ? SizeOf(instr.type.inner[0])
+                                         ? SizeOfRuntime(instr.type.inner[0])
                                          : 8;
                         if (elemSz < 1) elemSz = 1;
                         enc_.MovRaxLoad(Disp(base));
-                        enc_.MovR10Load(Disp(idx));
+                        LoadB(idx, regTypes_.at(idx));
                         enc_.ImulR11R10Imm32(elemSz);
                         enc_.AddRaxR11();
                         enc_.MovRaxStore(Disp(instr.dst));

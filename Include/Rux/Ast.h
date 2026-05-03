@@ -47,6 +47,7 @@ namespace Rux {
     // int32, String, MyStruct
     struct NamedTypeExpr : TypeExpr {
         std::string name;
+        std::vector<TypeExprPtr> typeArgs;
     };
 
     // Std::Io::Reader
@@ -55,9 +56,9 @@ namespace Rux {
     };
 
     // T[], uint8[4]
-    struct ArrayTypeExpr : TypeExpr {
+    struct SliceTypeExpr : TypeExpr {
         TypeExprPtr element;
-        std::optional<ExprPtr> size; // present for fixed-size arrays
+        ExprPtr size; // null for unsized slices (T[]), non-null for fixed-size arrays (T[N])
     };
 
     // *uint8
@@ -215,6 +216,7 @@ namespace Rux {
     // Point { x: 1.0, y: 2.0 }
     struct StructInitExpr : Expr {
         std::string typeName;
+        std::vector<TypeExprPtr> typeArgs;
         struct Field {
             SourceLocation location;
             std::string name;
@@ -224,7 +226,7 @@ namespace Rux {
     };
 
     // [a, b, c]
-    struct ArrayExpr : Expr {
+    struct SliceExpr : Expr {
         std::vector<ExprPtr> elements;
     };
 
@@ -348,6 +350,7 @@ namespace Rux {
     // struct Name { field: Type; ... }
     struct StructDecl : Decl {
         std::string name;
+        std::vector<std::string> typeParams;
         struct Field {
             SourceLocation location;
             bool isPublic = false;

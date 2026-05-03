@@ -23,7 +23,7 @@ struct TypeRef {
         Float32, Float64,
         Str,       // String
         Pointer,   // *T  — inner[0] = pointee
-        Array,     // T[] / T[N]  — inner[0] = element
+        Slice,     // T[] / T[N]  — inner[0] = element
         Tuple,     // (T, U, ...) — inner = elements
         Named,     // user-defined struct/enum/union — name = type name
         TypeParam, // generic parameter T — name = param name
@@ -72,8 +72,8 @@ struct TypeRef {
         t.inner.push_back(std::move(pointee));
         return t;
     }
-    static TypeRef MakeArray(TypeRef elem) {
-        TypeRef t; t.kind = Kind::Array;
+    static TypeRef MakeSlice(TypeRef elem) {
+        TypeRef t; t.kind = Kind::Slice;
         t.inner.push_back(std::move(elem));
         return t;
     }

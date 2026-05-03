@@ -258,6 +258,26 @@ namespace Rux {
             return ptr;
         }
 
+        static bool IsSliceType(const TypeRef &type) {
+            return type.kind == TypeRef::Kind::Slice ||
+                   (type.kind == TypeRef::Kind::Named && type.name.starts_with("Slice<"));
+        }
+
+        static bool IsStringSliceLiteral(const HirLiteralExpr &e) {
+            return e.type.kind == TypeRef::Kind::Named &&
+                   (e.type.name == "Slice<char8>" ||
+                    e.type.name == "Slice<char16>" ||
+                    e.type.name == "Slice<char32>");
+        }
+
+        static TypeRef StringSliceElementType(const HirLiteralExpr &e) {
+            if (e.type.kind == TypeRef::Kind::Named) {
+                if (e.type.name == "Slice<char16>") return TypeRef::MakeChar16();
+                if (e.type.name == "Slice<char32>") return TypeRef::MakeChar32();
+            }
+            return TypeRef::MakeChar8();
+        }
+
         // ── Module lowering ───────────────────────────────────────────────────────
 
         LirModule LowerModule(const HirModule &mod) {
@@ -277,6 +297,7 @@ namespace Rux {
                 LirStructDecl sd;
                 sd.name = s.name;
                 sd.isPublic = s.isPublic;
+                sd.typeParams = s.typeParams;
                 for (const auto &f: s.fields)
                     sd.fields.push_back({f.name, f.type});
                 lm.structs.push_back(std::move(sd));
@@ -400,8 +421,17 @@ namespace Rux {
                 LirReg slot = EmitAlloca(s->type);
                 locals_[s->name] = slot;
                 if (s->init) {
-                    LirReg val = LowerExpr(*s->init);
-                    EmitStore(val, slot, s->type);
+                    if (auto *init = dynamic_cast<const HirStructInitExpr *>(s->init.get())) {
+                        StoreStructInit(*init, slot);
+                    } else if (auto *init = dynamic_cast<const HirSliceExpr *>(s->init.get())) {
+                        StoreSliceInit(*init, slot);
+                    } else if (auto *init = dynamic_cast<const HirLiteralExpr *>(s->init.get());
+                               init && IsStringSliceLiteral(*init)) {
+                        StoreStringLiteralSlice(*init, slot);
+                    } else {
+                        LirReg val = LowerExpr(*s->init);
+                        EmitStore(val, slot, s->type);
+                    }
                 }
                 return;
             }
@@ -704,8 +734,11 @@ namespace Rux {
         // For void expressions the return value is LirNoReg.
 
         LirReg LowerExpr(const HirExpr &expr) {
-            if (auto *e = dynamic_cast<const HirLiteralExpr *>(&expr))
+            if (auto *e = dynamic_cast<const HirLiteralExpr *>(&expr)) {
+                if (IsStringSliceLiteral(*e))
+                    return LowerStringLiteralSlice(*e);
                 return EmitConst(e->value, e->type);
+            }
 
             if (auto *e = dynamic_cast<const HirVarExpr *>(&expr)) {
                 auto it = locals_.find(e->name);
@@ -746,14 +779,14 @@ namespace Rux {
                 return LowerCall(*e);
 
             if (auto *e = dynamic_cast<const HirIndexExpr *>(&expr)) {
-                LirReg base = LowerExpr(*e->object);
                 LirReg idx = LowerExpr(*e->index);
-                LirReg ptr = EmitIndexPtr(base, idx, e->type);
+                LirReg sliceBase = LowerSliceDataPtr(*e->object, e->type);
+                LirReg ptr = EmitIndexPtr(sliceBase, idx, e->type);
                 return EmitLoad(ptr, e->type);
             }
 
             if (auto *e = dynamic_cast<const HirFieldExpr *>(&expr)) {
-                LirReg base = LowerExpr(*e->object);
+                LirReg base = LowerLValue(*e->object);
                 LirReg ptr = EmitFieldPtr(base, e->field, e->type);
                 return EmitLoad(ptr, e->type);
             }
@@ -761,8 +794,8 @@ namespace Rux {
             if (auto *e = dynamic_cast<const HirStructInitExpr *>(&expr))
                 return LowerStructInit(*e);
 
-            if (auto *e = dynamic_cast<const HirArrayExpr *>(&expr))
-                return LowerArray(*e);
+            if (auto *e = dynamic_cast<const HirSliceExpr *>(&expr))
+                return LowerSlice(*e);
 
             if (auto *e = dynamic_cast<const HirCastExpr *>(&expr)) {
                 LirReg src = LowerExpr(*e->operand);
@@ -956,27 +989,79 @@ namespace Rux {
 
         LirReg LowerStructInit(const HirStructInitExpr &e) {
             LirReg slot = EmitAlloca(e.type);
+            StoreStructInit(e, slot);
+            return EmitLoad(slot, e.type);
+        }
+
+        void StoreStructInit(const HirStructInitExpr &e, LirReg slot) {
             for (const auto &f: e.fields) {
                 LirReg val = LowerExpr(*f.value);
                 LirReg ptr = EmitFieldPtr(slot, f.name, f.value->type);
                 EmitStore(val, ptr, f.value->type);
             }
-            return EmitLoad(slot, e.type);
         }
 
-        LirReg LowerArray(const HirArrayExpr &e) {
-            TypeRef elemType =
-                    e.type.kind == TypeRef::Kind::Array && !e.type.inner.empty()
-                        ? e.type.inner[0]
-                        : TypeRef::MakeUnknown();
+        LirReg LowerSlice(const HirSliceExpr &e) {
             LirReg slot = EmitAlloca(e.type);
+            StoreSliceInit(e, slot);
+            return slot;
+        }
+
+        LirReg LowerStringLiteralSlice(const HirLiteralExpr &e) {
+            LirReg slot = EmitAlloca(e.type);
+            StoreStringLiteralSlice(e, slot);
+            return slot;
+        }
+
+        void StoreStringLiteralSlice(const HirLiteralExpr &e, LirReg slot) {
+            TypeRef elemType = StringSliceElementType(e);
+            LirReg data = EmitAlloca(elemType);
+            fn_->blocks[cur_].instrs.back().strArg = std::to_string(e.value.size());
+
+            for (std::size_t i = 0; i < e.value.size(); ++i) {
+                unsigned char ch = static_cast<unsigned char>(e.value[i]);
+                LirReg val = EmitConst(std::to_string(ch), elemType);
+                LirReg idx = EmitConst(std::to_string(i), TypeRef::MakeUInt64());
+                LirReg ptr = EmitIndexPtr(data, idx, elemType);
+                EmitStore(val, ptr, elemType);
+            }
+
+            LirReg dataField = EmitFieldPtr(slot, "data", TypeRef::MakePointer(elemType));
+            EmitStore(data, dataField, TypeRef::MakePointer(elemType));
+            LirReg len = EmitConst(std::to_string(e.value.size()), TypeRef::MakeUInt64());
+            LirReg lenField = EmitFieldPtr(slot, "len", TypeRef::MakeUInt64());
+            EmitStore(len, lenField, TypeRef::MakeUInt64());
+        }
+
+        void StoreSliceInit(const HirSliceExpr &e, LirReg slot) {
+            TypeRef elemType = e.elementType;
+            if (elemType.IsUnknown() && !e.elements.empty())
+                elemType = e.elements.front()->type;
+
+            LirReg data = EmitAlloca(elemType);
+            fn_->blocks[cur_].instrs.back().strArg = std::to_string(e.elements.size());
+
             for (std::size_t i = 0; i < e.elements.size(); ++i) {
                 LirReg val = LowerExpr(*e.elements[i]);
                 LirReg idx = EmitConst(std::to_string(i), TypeRef::MakeUInt64());
-                LirReg ptr = EmitIndexPtr(slot, idx, elemType);
+                LirReg ptr = EmitIndexPtr(data, idx, elemType);
                 EmitStore(val, ptr, elemType);
             }
-            return EmitLoad(slot, e.type);
+
+            LirReg dataField = EmitFieldPtr(slot, "data", TypeRef::MakePointer(elemType));
+            EmitStore(data, dataField, TypeRef::MakePointer(elemType));
+            LirReg len = EmitConst(std::to_string(e.elements.size()), TypeRef::MakeUInt64());
+            LirReg lenField = EmitFieldPtr(slot, "len", TypeRef::MakeUInt64());
+            EmitStore(len, lenField, TypeRef::MakeUInt64());
+        }
+
+        LirReg LowerSliceDataPtr(const HirExpr &object, const TypeRef &elemType) {
+            if (!IsSliceType(object.type))
+                return LowerExpr(object);
+
+            LirReg slicePtr = LowerLValue(object);
+            LirReg dataField = EmitFieldPtr(slicePtr, "data", TypeRef::MakePointer(elemType));
+            return EmitLoad(dataField, TypeRef::MakePointer(elemType));
         }
 
         // Returns the pointer register for an lvalue expression.
@@ -995,15 +1080,21 @@ namespace Rux {
                 return ptr;
             }
 
+            if (auto *e = dynamic_cast<const HirSliceExpr *>(&expr)) {
+                LirReg slot = EmitAlloca(e->type);
+                StoreSliceInit(*e, slot);
+                return slot;
+            }
+
             if (auto *e = dynamic_cast<const HirFieldExpr *>(&expr)) {
-                LirReg base = LowerExpr(*e->object);
+                LirReg base = LowerLValue(*e->object);
                 return EmitFieldPtr(base, e->field, e->type);
             }
 
             if (auto *e = dynamic_cast<const HirIndexExpr *>(&expr)) {
-                LirReg base = LowerExpr(*e->object);
                 LirReg idx = LowerExpr(*e->index);
-                return EmitIndexPtr(base, idx, e->type);
+                LirReg sliceBase = LowerSliceDataPtr(*e->object, e->type);
+                return EmitIndexPtr(sliceBase, idx, e->type);
             }
 
             if (auto *e = dynamic_cast<const HirUnaryExpr *>(&expr)) {
@@ -1208,7 +1299,16 @@ namespace Rux {
 
             for (const auto &s: mod.structs) {
                 std::string pub = s.isPublic ? "pub " : "";
-                out << std::format("\n{}struct {}\n", pub, s.name);
+                std::string typeParams;
+                if (!s.typeParams.empty()) {
+                    typeParams = "<";
+                    for (std::size_t i = 0; i < s.typeParams.size(); ++i) {
+                        if (i) typeParams += ", ";
+                        typeParams += s.typeParams[i];
+                    }
+                    typeParams += ">";
+                }
+                out << std::format("\n{}struct {}{}\n", pub, s.name, typeParams);
                 for (const auto &f: s.fields)
                     out << std::format("  {}: {}\n", f.name, f.type.ToString());
             }

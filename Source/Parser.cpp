@@ -285,6 +285,18 @@ namespace Rux {
         return params;
     }
 
+    std::vector<TypeExprPtr> Parser::ParseTypeArgs() {
+        // <int32, T[], ...>
+        std::vector<TypeExprPtr> args;
+        Expect(TokenKind::Less, "expected '<'");
+        while (!Check(TokenKind::Greater) && !IsAtEnd()) {
+            args.push_back(ParseType());
+            if (!Match(TokenKind::Comma)) break;
+        }
+        Expect(TokenKind::Greater, "expected '>'");
+        return args;
+    }
+
     Param Parser::ParseParam(bool allowVariadic) {
         Param p;
         p.location = CurrentLocation();
@@ -359,6 +371,9 @@ namespace Rux {
         decl->location = loc;
         decl->isPublic = isPublic;
         decl->name = Expect(TokenKind::Ident, "expected struct name").text;
+
+        if (Check(TokenKind::Less))
+            decl->typeParams = ParseTypeParams();
 
         Expect(TokenKind::LeftBrace, "expected '{'");
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
@@ -759,10 +774,10 @@ namespace Rux {
         TypeExprPtr base = ParseBaseType();
         if (!base) return nullptr;
 
-        // Postfix array suffix: T[]  or  T[N]
+        // Postfix slice suffix: T[]  or  T[N]
         while (Check(TokenKind::LeftBracket)) {
             Advance();
-            auto a = std::make_unique<ArrayTypeExpr>();
+            auto a = std::make_unique<SliceTypeExpr>();
             a->location = loc;
             a->element = std::move(base);
             if (!Check(TokenKind::RightBracket))
@@ -801,6 +816,8 @@ namespace Rux {
             auto n = std::make_unique<NamedTypeExpr>();
             n->location = loc;
             n->name = first;
+            if (Check(TokenKind::Less))
+                n->typeArgs = ParseTypeArgs();
             return n;
         }
 
@@ -1428,9 +1445,9 @@ namespace Rux {
             return e;
         }
 
-        // Array literal: [a, b, c]
+        // Slice literal: [a, b, c]
         if (Match(TokenKind::LeftBracket)) {
-            auto e = std::make_unique<ArrayExpr>();
+            auto e = std::make_unique<SliceExpr>();
             e->location = loc;
             while (!Check(TokenKind::RightBracket) && !IsAtEnd()) {
                 e->elements.push_back(ParseExpr());
@@ -1450,6 +1467,18 @@ namespace Rux {
         // Identifier, possible struct init, or path expression
         if (Check(TokenKind::Ident)) {
             const std::string name = Advance().text;
+            std::vector<TypeExprPtr> typeArgs;
+
+            if (Check(TokenKind::Less)) {
+                const std::size_t savedPos = pos;
+                const std::size_t savedDiagCount = diagnostics.size();
+                typeArgs = ParseTypeArgs();
+                if (!Check(TokenKind::LeftBrace)) {
+                    pos = savedPos;
+                    diagnostics.resize(savedDiagCount);
+                    typeArgs.clear();
+                }
+            }
 
             // Struct initialization: Name { field: value, ... }
             // Disabled in control-flow condition contexts to avoid ambiguity.
@@ -1457,6 +1486,7 @@ namespace Rux {
                 auto e = std::make_unique<StructInitExpr>();
                 e->location = loc;
                 e->typeName = name;
+                e->typeArgs = std::move(typeArgs);
                 Advance(); // consume '{'
                 while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                     StructInitExpr::Field field;
@@ -1658,8 +1688,18 @@ namespace Rux {
 
             std::string TypeStr(const TypeExpr *t) const {
                 if (!t) return "<null>";
-                if (const auto *n = dynamic_cast<const NamedTypeExpr *>(t))
-                    return n->name;
+                if (const auto *n = dynamic_cast<const NamedTypeExpr *>(t)) {
+                    std::string s = n->name;
+                    if (!n->typeArgs.empty()) {
+                        s += "<";
+                        for (std::size_t i = 0; i < n->typeArgs.size(); ++i) {
+                            if (i) s += ", ";
+                            s += TypeStr(n->typeArgs[i].get());
+                        }
+                        s += ">";
+                    }
+                    return s;
+                }
                 if (const auto *p = dynamic_cast<const PathTypeExpr *>(t)) {
                     std::string s;
                     for (std::size_t i = 0; i < p->segments.size(); ++i) {
@@ -1668,7 +1708,7 @@ namespace Rux {
                     }
                     return s;
                 }
-                if (const auto *a = dynamic_cast<const ArrayTypeExpr *>(t)) {
+                if (const auto *a = dynamic_cast<const SliceTypeExpr *>(t)) {
                     std::string s = TypeStr(a->element.get()) + "[";
                     if (a->size) s += "N"; // size is an Expr, not easily stringified
                     return s + "]";
@@ -1799,7 +1839,16 @@ namespace Rux {
             void PrintStructDecl(const StructDecl &s) {
                 Pad();
                 if (s.isPublic) out << "pub ";
-                out << "StructDecl '" << s.name << "'\n";
+                out << "StructDecl '" << s.name << "'";
+                if (!s.typeParams.empty()) {
+                    out << '<';
+                    for (std::size_t i = 0; i < s.typeParams.size(); ++i) {
+                        if (i) out << ", ";
+                        out << s.typeParams[i];
+                    }
+                    out << '>';
+                }
+                out << '\n';
                 ++indent;
                 for (const auto &f: s.fields) {
                     Pad();
@@ -2187,7 +2236,16 @@ namespace Rux {
                     --indent;
                 } else if (const auto *p = dynamic_cast<const StructInitExpr *>(&expr)) {
                     Pad();
-                    out << "StructInitExpr '" << p->typeName << "'\n";
+                    out << "StructInitExpr '" << p->typeName;
+                    if (!p->typeArgs.empty()) {
+                        out << "<";
+                        for (std::size_t i = 0; i < p->typeArgs.size(); ++i) {
+                            if (i) out << ", ";
+                            out << TypeStr(p->typeArgs[i].get());
+                        }
+                        out << ">";
+                    }
+                    out << "'\n";
                     ++indent;
                     for (const auto &f: p->fields) {
                         Pad();
@@ -2197,9 +2255,9 @@ namespace Rux {
                         --indent;
                     }
                     --indent;
-                } else if (const auto *p = dynamic_cast<const ArrayExpr *>(&expr)) {
+                } else if (const auto *p = dynamic_cast<const SliceExpr *>(&expr)) {
                     Pad();
-                    out << "ArrayExpr [" << p->elements.size() << "]\n";
+                    out << "SliceExpr [" << p->elements.size() << "]\n";
                     ++indent;
                     for (const auto &e: p->elements)
                         if (e) PrintExpr(*e);

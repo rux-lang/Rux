@@ -12,6 +12,7 @@
 #include <format>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -102,7 +103,7 @@ namespace Rux {
             case Kind::Named: return name;
             case Kind::TypeParam: return name;
             case Kind::Pointer: return "*" + (inner.empty() ? "?" : inner[0].ToString());
-            case Kind::Array: return (inner.empty() ? "?" : inner[0].ToString()) + "[]";
+            case Kind::Slice: return (inner.empty() ? "?" : inner[0].ToString()) + "[]";
             case Kind::Tuple: {
                 std::string s = "(";
                 for (std::size_t i = 0; i < inner.size(); ++i) {
@@ -274,6 +275,7 @@ namespace Rux {
             add("uint16", TypeRef::MakeUInt16());
             add("uint32", TypeRef::MakeUInt32());
             add("uint64", TypeRef::MakeUInt64());
+            add("uint", TypeRef::MakeUInt64());
             add("float32", TypeRef::MakeFloat32());
             add("float64", TypeRef::MakeFloat64());
         }
@@ -357,16 +359,91 @@ namespace Rux {
 
         // ── Type resolution ───────────────────────────────────────────────────────
 
+        std::string GenericTypeName(const NamedTypeExpr &type) {
+            std::string name = type.name;
+            if (!type.typeArgs.empty()) {
+                name += "<";
+                for (std::size_t i = 0; i < type.typeArgs.size(); ++i) {
+                    if (i) name += ", ";
+                    name += ResolveType(*type.typeArgs[i]).ToString();
+                }
+                name += ">";
+            }
+            return name;
+        }
+
+        std::string GenericStructInitName(const StructInitExpr &expr) {
+            std::string name = expr.typeName;
+            if (!expr.typeArgs.empty()) {
+                name += "<";
+                for (std::size_t i = 0; i < expr.typeArgs.size(); ++i) {
+                    if (i) name += ", ";
+                    name += ResolveType(*expr.typeArgs[i]).ToString();
+                }
+                name += ">";
+            }
+            return name;
+        }
+
+        static std::string SliceTypeName(const TypeRef &elemType) {
+            return "Slice<" + elemType.ToString() + ">";
+        }
+
+        static TypeRef StringLiteralElementType(const Token &tok) {
+            if (tok.text.starts_with("c16\"")) return TypeRef::MakeChar16();
+            if (tok.text.starts_with("c32\"")) return TypeRef::MakeChar32();
+            return TypeRef::MakeChar8();
+        }
+
+        static TypeRef StringLiteralType(const Token &tok) {
+            return TypeRef::MakeNamed(SliceTypeName(StringLiteralElementType(tok)));
+        }
+
+        static std::optional<TypeRef> BuiltinTypeFromName(const std::string &name) {
+            if (name == "opaque") return TypeRef::MakeOpaque();
+            if (name == "bool" || name == "bool8") return TypeRef::MakeBool8();
+            if (name == "bool16") return TypeRef::MakeBool16();
+            if (name == "bool32") return TypeRef::MakeBool32();
+            if (name == "char" || name == "char32") return TypeRef::MakeChar32();
+            if (name == "char8") return TypeRef::MakeChar8();
+            if (name == "char16") return TypeRef::MakeChar16();
+            if (name == "String") return TypeRef::MakeStr();
+            if (name == "int8") return TypeRef::MakeInt8();
+            if (name == "int16") return TypeRef::MakeInt16();
+            if (name == "int32") return TypeRef::MakeInt32();
+            if (name == "int64") return TypeRef::MakeInt64();
+            if (name == "uint8") return TypeRef::MakeUInt8();
+            if (name == "uint16") return TypeRef::MakeUInt16();
+            if (name == "uint32") return TypeRef::MakeUInt32();
+            if (name == "uint" || name == "uint64") return TypeRef::MakeUInt64();
+            if (name == "float32") return TypeRef::MakeFloat32();
+            if (name == "float64") return TypeRef::MakeFloat64();
+            return std::nullopt;
+        }
+
+        static std::optional<TypeRef> SliceElementType(const TypeRef &type) {
+            if (type.kind == TypeRef::Kind::Slice && !type.inner.empty())
+                return type.inner[0];
+            if (type.kind != TypeRef::Kind::Named) return std::nullopt;
+            constexpr std::string_view prefix = "Slice<";
+            if (!type.name.starts_with(prefix) || type.name.back() != '>') return std::nullopt;
+            std::string elemName = type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
+            if (auto builtin = BuiltinTypeFromName(elemName)) return *builtin;
+            return TypeRef::MakeNamed(elemName);
+        }
+
         TypeRef ResolveType(const TypeExpr &expr) {
             if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
-                for (const auto &tp: currentTypeParams_)
-                    if (tp == t->name) return TypeRef::MakeTypeParam(t->name);
+                if (t->typeArgs.empty()) {
+                    for (const auto &tp: currentTypeParams_)
+                        if (tp == t->name) return TypeRef::MakeTypeParam(t->name);
+                }
 
                 Symbol *sym = currentScope_->Lookup(t->name);
                 if (sym && (sym->kind == Symbol::Kind::Type ||
                             sym->kind == Symbol::Kind::Interface)) {
-                    if (!sym->type.IsUnknown()) return sym->type; // builtin
-                    return TypeRef::MakeNamed(t->name); // user-defined
+                    if (t->typeArgs.empty() && !sym->type.IsUnknown()) return sym->type; // builtin
+                    return TypeRef::MakeNamed(GenericTypeName(*t)); // user-defined
                 }
                 EmitError(expr.location, std::format("unknown type '{}'", t->name));
                 return TypeRef::MakeUnknown();
@@ -377,8 +454,8 @@ namespace Rux {
             }
             if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr))
                 return TypeRef::MakePointer(ResolveType(*t->pointee));
-            if (auto *t = dynamic_cast<const ArrayTypeExpr *>(&expr))
-                return TypeRef::MakeArray(ResolveType(*t->element));
+            if (auto *t = dynamic_cast<const SliceTypeExpr *>(&expr))
+                return TypeRef::MakeNamed(SliceTypeName(ResolveType(*t->element)));
             if (auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
                 std::vector<TypeRef> elems;
                 for (auto &e: t->elements)
@@ -486,6 +563,18 @@ namespace Rux {
         }
 
         void CheckStructDecl(const StructDecl &d) {
+            auto savedTypeParams = currentTypeParams_;
+            currentTypeParams_ = d.typeParams;
+
+            PushScope();
+            for (const auto &tp: d.typeParams) {
+                Symbol sym;
+                sym.kind = Symbol::Kind::Type;
+                sym.name = tp;
+                sym.type = TypeRef::MakeTypeParam(tp);
+                Define(sym);
+            }
+
             std::unordered_set<std::string> seen;
             for (const auto &field: d.fields) {
                 if (!seen.insert(field.name).second)
@@ -493,6 +582,9 @@ namespace Rux {
                               std::format("duplicate field '{}' in struct '{}'", field.name, d.name));
                 ResolveType(*field.type);
             }
+
+            PopScope();
+            currentTypeParams_ = savedTypeParams;
         }
 
         void CheckEnumDecl(const EnumDecl &d) {
@@ -777,13 +869,17 @@ namespace Rux {
             if (auto *e = dynamic_cast<const IndexExpr *>(&expr)) {
                 TypeRef obj = CheckExpr(*e->object);
                 CheckExpr(*e->index);
-                if (obj.kind == TypeRef::Kind::Array && !obj.inner.empty())
-                    return obj.inner[0];
+                if (auto elemType = SliceElementType(obj))
+                    return *elemType;
                 return TypeRef::MakeUnknown();
             }
 
             if (auto *e = dynamic_cast<const FieldExpr *>(&expr)) {
-                CheckExpr(*e->object);
+                TypeRef obj = CheckExpr(*e->object);
+                if (auto elemType = SliceElementType(obj)) {
+                    if (e->field == "data") return TypeRef::MakePointer(*elemType);
+                    if (e->field == "len") return TypeRef::MakeUInt64();
+                }
                 return TypeRef::MakeUnknown(); // field type lookup needs full type info
             }
 
@@ -792,16 +888,16 @@ namespace Rux {
                     EmitError(e->location,
                               std::format("unknown type '{}' in struct initializer", e->typeName));
                 for (const auto &f: e->fields) CheckExpr(*f.value);
-                return TypeRef::MakeNamed(e->typeName);
+                return TypeRef::MakeNamed(GenericStructInitName(*e));
             }
 
-            if (auto *e = dynamic_cast<const ArrayExpr *>(&expr)) {
+            if (auto *e = dynamic_cast<const SliceExpr *>(&expr)) {
                 TypeRef elemType = TypeRef::MakeUnknown();
                 for (const auto &el: e->elements) {
                     TypeRef t = CheckExpr(*el);
                     if (elemType.IsUnknown()) elemType = t;
                 }
-                return TypeRef::MakeArray(elemType);
+                return TypeRef::MakeNamed(SliceTypeName(elemType));
             }
 
             if (auto *e = dynamic_cast<const CastExpr *>(&expr)) {
@@ -827,7 +923,7 @@ namespace Rux {
             switch (tok.kind) {
                 case TokenKind::IntLiteral: return TypeRef::MakeInt32();
                 case TokenKind::FloatLiteral: return TypeRef::MakeFloat64();
-                case TokenKind::StringLiteral: return TypeRef::MakeStr();
+                case TokenKind::StringLiteral: return StringLiteralType(tok);
                 case TokenKind::CharLiteral: return TypeRef::MakeChar();
                 case TokenKind::BoolLiteral: return TypeRef::MakeBool();
                 default: return TypeRef::MakeUnknown();

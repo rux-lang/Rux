@@ -184,7 +184,8 @@ struct HirStructInitExpr : HirExpr {
 };
 
 // [a, b, c]
-struct HirArrayExpr : HirExpr {
+struct HirSliceExpr : HirExpr {
+    TypeRef elementType;
     std::vector<HirExprPtr> elements;
 };
 
@@ -311,6 +312,7 @@ struct HirStructField {
 struct HirStruct {
     std::string name;
     bool isPublic = false;
+    std::vector<std::string> typeParams;
     std::vector<HirStructField> fields;
     SourceLocation location;
 };

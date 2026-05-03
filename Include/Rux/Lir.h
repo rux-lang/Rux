@@ -115,6 +115,7 @@ struct LirStructField { std::string name; TypeRef type; };
 struct LirStructDecl  {
     std::string name;
     bool isPublic = false;
+    std::vector<std::string> typeParams;
     std::vector<LirStructField> fields;
 };
 

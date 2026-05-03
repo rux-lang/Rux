@@ -108,6 +108,11 @@ namespace Rux {
 
         using LayoutMap = std::unordered_map<std::string, StructLayout>;
 
+        std::string BaseTypeName(const std::string &name) {
+            const std::size_t pos = name.find('<');
+            return pos == std::string::npos ? name : name.substr(0, pos);
+        }
+
         StructLayout ComputeLayout(const LirStructDecl &s, const LayoutMap &known) {
             StructLayout result;
             int offset = 0;
@@ -118,7 +123,7 @@ namespace Rux {
                 int al = sz > 0 ? std::min(sz, 8) : 1;
 
                 if (f.type.kind == TypeRef::Kind::Named) {
-                    if (auto it = known.find(f.type.name); it != known.end()) {
+                    if (auto it = known.find(BaseTypeName(f.type.name)); it != known.end()) {
                         sz = it->second.totalSize;
                         al = it->second.alignment;
                     }
@@ -229,6 +234,21 @@ namespace Rux {
             void NeedExtern(const std::string &name) {
                 if (declaredExterns_.insert(name).second)
                     externs_ << "extern " << name << "\n";
+            }
+
+            static std::string BaseTypeName(const std::string &name) {
+                const std::size_t pos = name.find('<');
+                return pos == std::string::npos ? name : name.substr(0, pos);
+            }
+
+            int SizeOfRuntime(const TypeRef &t) const {
+                if (t.kind == TypeRef::Kind::Named) {
+                    const std::string base = BaseTypeName(t.name);
+                    if (base == "Slice") return 16;
+                    auto it = layouts_.find(base);
+                    if (it != layouts_.end()) return it->second.totalSize;
+                }
+                return SizeOf(t);
             }
 
             // ── Stack slot allocation ─────────────────────────────────────────────────
@@ -358,11 +378,19 @@ namespace Rux {
 
                         if (instr.op == LirOpcode::Alloca) {
                             AllocSlot(instr.dst, 8); // pointer slot
-                            int dataSz = SizeOf(instr.type);
+                            int dataSz;
+                            if (!instr.strArg.empty()) {
+                                int count = std::stoi(instr.strArg);
+                                const TypeRef &et = instr.type.inner.empty() ? instr.type : instr.type.inner[0];
+                                int elemSz = SizeOfRuntime(et);
+                                dataSz = count * (elemSz > 0 ? elemSz : 8);
+                            } else {
+                                dataSz = SizeOfRuntime(instr.type);
+                            }
                             allocaData_[instr.dst] = AllocRegion(dataSz > 0 ? dataSz : 8);
                             regTypes_[instr.dst] = TypeRef::MakePointer(instr.type);
                         } else {
-                            int sz = SizeOf(instr.type);
+                            int sz = SizeOfRuntime(instr.type);
                             AllocSlot(instr.dst, sz > 0 ? sz : 8);
                             regTypes_[instr.dst] = instr.type;
                         }
@@ -880,12 +908,12 @@ namespace Rux {
                         LirReg base = instr.srcs[0];
                         LirReg idx = instr.srcs[1];
                         int elemSz = (instr.type.kind == TypeRef::Kind::Pointer && !instr.type.inner.empty())
-                                         ? SizeOf(instr.type.inner[0])
+                                         ? SizeOfRuntime(instr.type.inner[0])
                                          : 8;
                         if (elemSz < 1) elemSz = 1;
 
                         TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap_.at(base)));
-                        TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap_.at(idx)));
+                        LoadB(idx, regTypes_.at(idx));
                         TI(std::format("{:<8}r11, r10, {}", "imul", elemSz));
                         TI("add     rax, r11");
                         TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap_.at(instr.dst)));
@@ -912,7 +940,13 @@ namespace Rux {
                 if (ptrType.kind != TypeRef::Kind::Pointer || ptrType.inner.empty()) return 0;
                 const TypeRef &inner = ptrType.inner[0];
                 if (inner.kind != TypeRef::Kind::Named) return 0;
-                auto layIt = layouts_.find(inner.name);
+                const std::string baseName = BaseTypeName(inner.name);
+                if (baseName == "Slice") {
+                    if (fieldName == "data") return 0;
+                    if (fieldName == "len") return 8;
+                    return 0;
+                }
+                auto layIt = layouts_.find(baseName);
                 if (layIt == layouts_.end()) return 0;
                 for (const auto &f: layIt->second.fields)
                     if (f.name == fieldName) return f.offset;
