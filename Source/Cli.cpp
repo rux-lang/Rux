@@ -189,6 +189,17 @@ namespace Rux {
         return m;
     }
 
+    static std::filesystem::path ResolveBuildOutputDir(const std::filesystem::path &root,
+                                                       const Manifest &manifest,
+                                                       std::string_view profileName) {
+        std::filesystem::path output = manifest.build.output.empty()
+                                           ? std::filesystem::path("Bin")
+                                           : std::filesystem::path(manifest.build.output);
+        if (output.is_relative())
+            output = root / output;
+        return output / std::string(profileName);
+    }
+
     // =========================================================================
     // Commands
     // =========================================================================
@@ -476,10 +487,10 @@ namespace Rux {
             std::print("   Linking {}\n", manifest->package.name);
 
         const auto root = manifestPath->parent_path();
-        const auto binDir = root / "Bin" / profileName;
+        const auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
         const auto exePath = binDir / (manifest->package.name + ".exe");
 
-        Linker linker(std::move(rcuFiles), std::string(manifest->package.name));
+        Linker linker(std::move(rcuFiles), std::string(manifest->package.name), {root});
         if (!linker.Link(exePath)) {
             for (const auto &err: linker.Errors())
                 std::print(stderr, "error: {}\n", err.message);
@@ -520,7 +531,15 @@ namespace Rux {
         const auto manifestPath = RequireManifest();
         if (!manifestPath) return 1;
 
+        auto manifest = LoadManifest(*manifestPath);
+        if (!manifest) return 1;
+
         const auto root = manifestPath->parent_path();
+        const auto outputDir = manifest->build.output.empty()
+                                   ? root / "Bin"
+                                   : (std::filesystem::path(manifest->build.output).is_relative()
+                                          ? root / manifest->build.output
+                                          : std::filesystem::path(manifest->build.output));
 
         auto removeDir = [&](const std::filesystem::path &dir) -> bool {
             std::error_code ec;
@@ -539,7 +558,7 @@ namespace Rux {
 
         bool ok = true;
         if (!tempOnly)
-            ok &= removeDir(root / "Bin");
+            ok &= removeDir(outputDir);
         ok &= removeDir(root / "Temp");
 
         return ok ? 0 : 1;
@@ -907,7 +926,7 @@ namespace Rux {
 
         std::string_view profileName = isRelease ? "Release" : "Debug";
         auto root = manifestPath->parent_path();
-        auto binDir = root / "Bin" / profileName;
+        auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
 
         std::string exeName = manifest->package.name;
 #ifdef _WIN32
@@ -1178,7 +1197,7 @@ namespace Rux {
             "  --dump-sema          Write semantic analysis results to Temp/Sema/sema.txt\n"
             "  --dump-tokens        Write the token stream to Temp/Tokens/<file>.tokens\n"
             "\n"
-            "Artifacts are stored in Bin/Debug/ or Bin/Release/.\n"
+            "Artifacts are stored under [Build].Output, defaulting to Bin/Debug/ or Bin/Release/.\n"
             "\n"
             "Examples:\n"
             "  rux build\n"
@@ -1199,7 +1218,7 @@ namespace Rux {
             "\n"
             "Usage: rux clean [options]\n"
             "\n"
-            "Removes Bin/ and Temp/ folders.\n"
+            "Removes the configured build output directory and Temp/ folder.\n"
             "\n"
             "Options:\n"
             "  --temp    Removes only Temp/ directory\n"

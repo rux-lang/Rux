@@ -78,6 +78,8 @@ namespace Rux {
                 if (key == "Name") m.package.name = value;
                 if (key == "Version") m.package.version = value;
                 if (key == "Type") m.package.type = value;
+            } else if (section == "Build") {
+                if (key == "Output") m.build.output = value;
             } else if (section == "Dependencies") {
                 // Each line: Name = "version"  OR  Name = "*"
                 m.dependencies.push_back({key, value == "*" ? "" : value});
@@ -100,6 +102,9 @@ namespace Rux {
         file << "Name    = \"" << package.name << "\"\n";
         file << "Version = \"" << package.version << "\"\n";
         file << "Type    = \"" << package.type << "\"\n";
+
+        file << "\n[Build]\n";
+        file << "Output = \"" << build.output << "\"\n";
 
         if (!dependencies.empty()) {
             file << "\n[Dependencies]\n";

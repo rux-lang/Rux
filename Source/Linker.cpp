@@ -7,10 +7,16 @@
 #include "Rux/Linker.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <map>
+#include <memory>
+#include <optional>
+#include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace Rux {
     // ── PE32+ layout constants ────────────────────────────────────────────────────
@@ -81,10 +87,183 @@ namespace Rux {
         for (int i = 0; i < 8; ++i) b[off + i] = static_cast<uint8_t>(v >> (i * 8));
     }
 
+    static bool FileExists(const std::filesystem::path &path) {
+        std::error_code ec;
+        return std::filesystem::is_regular_file(path, ec);
+    }
+
+    static std::optional<Buf> ReadFileBytes(const std::filesystem::path &path) {
+        std::ifstream in(path, std::ios::binary | std::ios::ate);
+        if (!in) return std::nullopt;
+        const auto size = in.tellg();
+        if (size < 0) return std::nullopt;
+        Buf data(static_cast<size_t>(size));
+        in.seekg(0);
+        if (!data.empty())
+            in.read(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(data.size()));
+        if (!in && !in.eof()) return std::nullopt;
+        return data;
+    }
+
+    static bool ReadU16At(const Buf &b, size_t off, uint16_t &out) {
+        if (off + 2 > b.size()) return false;
+        out = static_cast<uint16_t>(b[off] | (b[off + 1] << 8));
+        return true;
+    }
+
+    static bool ReadU32At(const Buf &b, size_t off, uint32_t &out) {
+        if (off + 4 > b.size()) return false;
+        out = static_cast<uint32_t>(b[off]) |
+              (static_cast<uint32_t>(b[off + 1]) << 8) |
+              (static_cast<uint32_t>(b[off + 2]) << 16) |
+              (static_cast<uint32_t>(b[off + 3]) << 24);
+        return true;
+    }
+
+    static std::optional<size_t> PeRvaToOffset(const Buf &pe,
+                                               uint32_t rva,
+                                               size_t sectionTable,
+                                               uint16_t sectionCount) {
+        for (uint16_t i = 0; i < sectionCount; ++i) {
+            const size_t sec = sectionTable + static_cast<size_t>(i) * 40;
+            uint32_t virtualSize = 0, virtualAddress = 0, rawSize = 0, rawPtr = 0;
+            if (!ReadU32At(pe, sec + 8, virtualSize) ||
+                !ReadU32At(pe, sec + 12, virtualAddress) ||
+                !ReadU32At(pe, sec + 16, rawSize) ||
+                !ReadU32At(pe, sec + 20, rawPtr))
+                return std::nullopt;
+
+            const uint32_t span = std::max(virtualSize, rawSize);
+            if (rva >= virtualAddress && rva < virtualAddress + span) {
+                const size_t off = static_cast<size_t>(rawPtr) + (rva - virtualAddress);
+                if (off < pe.size()) return off;
+                return std::nullopt;
+            }
+        }
+        return std::nullopt;
+    }
+
+    static bool ReadPeCString(const Buf &pe, size_t off, std::string &out) {
+        if (off >= pe.size()) return false;
+        out.clear();
+        while (off < pe.size() && pe[off] != 0)
+            out.push_back(static_cast<char>(pe[off++]));
+        return off < pe.size();
+    }
+
+    static std::optional<std::unordered_set<std::string>> ReadDllExports(const std::filesystem::path &path) {
+        auto peData = ReadFileBytes(path);
+        if (!peData) return std::nullopt;
+        const Buf &pe = *peData;
+
+        uint32_t peOff32 = 0;
+        if (pe.size() < 0x40 || !ReadU32At(pe, 0x3C, peOff32)) return std::nullopt;
+        const size_t peOff = peOff32;
+        if (peOff + 24 > pe.size() ||
+            pe[peOff] != 'P' || pe[peOff + 1] != 'E' || pe[peOff + 2] != 0 || pe[peOff + 3] != 0)
+            return std::nullopt;
+
+        uint16_t sectionCount = 0, optionalSize = 0, magic = 0;
+        if (!ReadU16At(pe, peOff + 6, sectionCount) ||
+            !ReadU16At(pe, peOff + 20, optionalSize) ||
+            !ReadU16At(pe, peOff + 24, magic))
+            return std::nullopt;
+
+        const size_t optionalOff = peOff + 24;
+        const size_t dataDirOff = magic == 0x020B ? optionalOff + 112 : optionalOff + 96;
+        uint32_t exportRva = 0, exportSize = 0;
+        if (dataDirOff + 8 > optionalOff + optionalSize ||
+            !ReadU32At(pe, dataDirOff, exportRva) ||
+            !ReadU32At(pe, dataDirOff + 4, exportSize))
+            return std::nullopt;
+
+        std::unordered_set<std::string> exports;
+        if (exportRva == 0 || exportSize == 0)
+            return exports;
+
+        const size_t sectionTable = optionalOff + optionalSize;
+        auto exportOff = PeRvaToOffset(pe, exportRva, sectionTable, sectionCount);
+        if (!exportOff || *exportOff + 40 > pe.size()) return std::nullopt;
+
+        uint32_t nameCount = 0, namesRva = 0;
+        if (!ReadU32At(pe, *exportOff + 24, nameCount) ||
+            !ReadU32At(pe, *exportOff + 32, namesRva))
+            return std::nullopt;
+
+        auto namesOff = PeRvaToOffset(pe, namesRva, sectionTable, sectionCount);
+        if (!namesOff) return std::nullopt;
+
+        for (uint32_t i = 0; i < nameCount; ++i) {
+            uint32_t nameRva = 0;
+            if (!ReadU32At(pe, *namesOff + static_cast<size_t>(i) * 4, nameRva))
+                return std::nullopt;
+
+            auto nameOff = PeRvaToOffset(pe, nameRva, sectionTable, sectionCount);
+            if (!nameOff) return std::nullopt;
+
+            std::string name;
+            if (!ReadPeCString(pe, *nameOff, name))
+                return std::nullopt;
+            exports.insert(std::move(name));
+        }
+
+        return exports;
+    }
+
+    static std::string GetPathEnv() {
+#if defined(_MSC_VER)
+        char *value = nullptr;
+        size_t size = 0;
+        if (_dupenv_s(&value, &size, "PATH") != 0 || value == nullptr)
+            return {};
+        std::unique_ptr<char, decltype(&std::free)> owned(value, &std::free);
+        return std::string(value, size > 0 ? size - 1 : 0);
+#else
+        const char *value = std::getenv("PATH");
+        return value ? std::string(value) : std::string();
+#endif
+    }
+
+    static std::optional<std::filesystem::path> FindDllFile(
+                            const std::string &dll,
+                            const std::vector<std::filesystem::path> &searchDirs,
+                            const std::filesystem::path &outputDir) {
+        const std::filesystem::path dllPath(dll);
+        if (dllPath.is_absolute())
+            return FileExists(dllPath) ? std::optional<std::filesystem::path>(dllPath) : std::nullopt;
+
+        if (!outputDir.empty() && FileExists(outputDir / dllPath))
+            return outputDir / dllPath;
+
+        for (const auto &dir: searchDirs) {
+            if (!dir.empty() && FileExists(dir / dllPath))
+                return dir / dllPath;
+        }
+
+        if (FileExists(std::filesystem::current_path() / dllPath))
+            return std::filesystem::current_path() / dllPath;
+
+        const std::string pathEnv = GetPathEnv();
+        if (pathEnv.empty()) return std::nullopt;
+
+        std::stringstream ss(pathEnv);
+        std::string dir;
+        while (std::getline(ss, dir, ';')) {
+            if (!dir.empty() && FileExists(std::filesystem::path(dir) / dllPath))
+                return std::filesystem::path(dir) / dllPath;
+        }
+
+        return std::nullopt;
+    }
+
     // ── Linker ────────────────────────────────────────────────────────────────────
 
-    Linker::Linker(std::vector<RcuFile> objects, std::string packageName)
-        : objects_(std::move(objects)), packageName_(std::move(packageName)) {
+    Linker::Linker(std::vector<RcuFile> objects,
+                   std::string packageName,
+                   std::vector<std::filesystem::path> importSearchDirs)
+        : objects_(std::move(objects)),
+          packageName_(std::move(packageName)),
+          importSearchDirs_(std::move(importSearchDirs)) {
     }
 
     void Linker::Error(std::string msg) { errors_.push_back({std::move(msg)}); }
@@ -94,6 +273,8 @@ namespace Rux {
 
         // Always need ExitProcess for the entry thunk
         std::unordered_map<std::string, std::string> importDll;
+        std::unordered_set<std::string> explicitImportDlls;
+        std::unordered_map<std::string, std::vector<std::string>> explicitImportFuncsByDll;
         importDll["ExitProcess"] = "KERNEL32.DLL";
 
         // First pass: collect explicit DLL assignments from symbol declarations.
@@ -101,8 +282,11 @@ namespace Rux {
         // different translation units — the declaration carries the DLL name.
         for (const auto &obj: objects_) {
             for (const auto &sym: obj.symbols) {
-                if (sym.kind == RcuSymKind::ExternFunc && !sym.typeName.empty())
+                if (sym.kind == RcuSymKind::ExternFunc && !sym.typeName.empty()) {
                     importDll[sym.name] = sym.typeName;
+                    explicitImportDlls.insert(sym.typeName);
+                    explicitImportFuncsByDll[sym.typeName].push_back(sym.name);
+                }
             }
         }
 
@@ -129,6 +313,27 @@ namespace Rux {
         std::unordered_map<std::string, size_t> importIdx;
         for (size_t i = 0; i < importNames.size(); ++i) importIdx[importNames[i]] = i;
         const size_t numImports = importNames.size();
+
+        const auto outputDir = outputPath.parent_path();
+        for (const auto &dll: explicitImportDlls) {
+            auto dllPath = FindDllFile(dll, importSearchDirs_, outputDir);
+            if (!dllPath) {
+                Error("import DLL '" + dll + "' was not found");
+                continue;
+            }
+
+            auto exports = ReadDllExports(*dllPath);
+            if (!exports) {
+                Error("could not read export table from import DLL '" + dll + "'");
+                continue;
+            }
+
+            for (const auto &func: explicitImportFuncsByDll[dll]) {
+                if (!exports->contains(func))
+                    Error("import function '" + func + "' was not found in DLL '" + dll + "'");
+            }
+        }
+        if (!errors_.empty()) return false;
 
         // ── 2. Build .text preamble (entry thunk + import thunks) ────────────────
 
@@ -185,31 +390,60 @@ namespace Rux {
         // ── 4. Build import table appended to .rdata ──────────────────────────────
         // Layout within .rdata (after user rodata):
         //   [aligned pad]
-        //   [Import Directory Table: 1 descriptor + 1 null = 40 bytes]
-        //   [INT: (numImports+1) × 8 bytes]
-        //   [IAT: (numImports+1) × 8 bytes]
-        //   [DLL name string]
+        //   [Import Directory Table: one descriptor per DLL + one null]
+        //   [INT arrays: one null-terminated array per DLL]
+        //   [IAT arrays: one null-terminated array per DLL]
+        //   [DLL name strings]
         //   [IMAGE_IMPORT_BY_NAME entries per function]
 
         Buf rdataBuf;
         rdataBuf.insert(rdataBuf.end(), mergedRodata.begin(), mergedRodata.end());
         PadTo(rdataBuf, 8);
 
+        std::map<std::string, std::vector<size_t>> importsByDll;
+        for (size_t i = 0; i < numImports; ++i)
+            importsByDll[importDll[importNames[i]]].push_back(i);
+
         const uint32_t importDirOff = static_cast<uint32_t>(rdataBuf.size());
         const size_t importDirPos = rdataBuf.size();
-        WriteZeros(rdataBuf, 40); // 1 descriptor + null terminator
+        WriteZeros(rdataBuf, (importsByDll.size() + 1) * 20);
 
-        const uint32_t intOff = static_cast<uint32_t>(rdataBuf.size());
-        const size_t intPos = rdataBuf.size();
-        WriteZeros(rdataBuf, (numImports + 1) * 8);
+        std::vector<std::string> importDllNames;
+        std::vector<std::vector<size_t>> importDllMembers;
+        importDllNames.reserve(importsByDll.size());
+        importDllMembers.reserve(importsByDll.size());
+        for (auto &[dll, members]: importsByDll) {
+            importDllNames.push_back(dll);
+            importDllMembers.push_back(std::move(members));
+        }
+
+        std::vector<uint32_t> intOff(importDllNames.size());
+        std::vector<size_t> intPos(importDllNames.size());
+        for (size_t g = 0; g < importDllNames.size(); ++g) {
+            intOff[g] = static_cast<uint32_t>(rdataBuf.size());
+            intPos[g] = rdataBuf.size();
+            WriteZeros(rdataBuf, (importDllMembers[g].size() + 1) * 8);
+        }
 
         const uint32_t iatOff = static_cast<uint32_t>(rdataBuf.size());
-        const size_t iatPos = rdataBuf.size();
-        WriteZeros(rdataBuf, (numImports + 1) * 8);
+        std::vector<uint32_t> iatGroupOff(importDllNames.size());
+        std::vector<size_t> iatPos(importDllNames.size());
+        std::vector<uint32_t> iatEntryOff(numImports);
+        for (size_t g = 0; g < importDllNames.size(); ++g) {
+            iatGroupOff[g] = static_cast<uint32_t>(rdataBuf.size());
+            iatPos[g] = rdataBuf.size();
+            for (size_t j = 0; j < importDllMembers[g].size(); ++j)
+                iatEntryOff[importDllMembers[g][j]] = iatGroupOff[g] + static_cast<uint32_t>(j * 8);
+            WriteZeros(rdataBuf, (importDllMembers[g].size() + 1) * 8);
+        }
+        const uint32_t iatSize = static_cast<uint32_t>(rdataBuf.size()) - iatOff;
 
-        const uint32_t dllNameOff = static_cast<uint32_t>(rdataBuf.size());
-        WriteCStr(rdataBuf, "KERNEL32.DLL");
-        PadTo(rdataBuf, 2);
+        std::vector<uint32_t> dllNameOff(importDllNames.size());
+        for (size_t g = 0; g < importDllNames.size(); ++g) {
+            dllNameOff[g] = static_cast<uint32_t>(rdataBuf.size());
+            WriteCStr(rdataBuf, importDllNames[g].c_str());
+            PadTo(rdataBuf, 2);
+        }
 
         std::vector<uint32_t> hintNameOff(numImports);
         for (size_t i = 0; i < numImports; ++i) {
@@ -250,18 +484,23 @@ namespace Rux {
 
         // ── 6. Patch .rdata import table with real RVAs ───────────────────────────
 
-        for (size_t i = 0; i < numImports; ++i) {
-            uint64_t hnRva = rdataRva + hintNameOff[i];
-            Patch64(rdataBuf, intPos + i * 8, hnRva); // INT entry
-            Patch64(rdataBuf, iatPos + i * 8, hnRva); // IAT entry (pre-bind)
+        for (size_t g = 0; g < importDllNames.size(); ++g) {
+            for (size_t j = 0; j < importDllMembers[g].size(); ++j) {
+                const size_t importIndex = importDllMembers[g][j];
+                const uint64_t hnRva = rdataRva + hintNameOff[importIndex];
+                Patch64(rdataBuf, intPos[g] + j * 8, hnRva); // INT entry
+                Patch64(rdataBuf, iatPos[g] + j * 8, hnRva); // IAT entry (pre-bind)
+            }
+
+            // Patch IMAGE_IMPORT_DESCRIPTOR
+            const size_t descPos = importDirPos + g * 20;
+            Patch32(rdataBuf, descPos + 0, rdataRva + intOff[g]); // OriginalFirstThunk
+            Patch32(rdataBuf, descPos + 4, 0); // TimeDateStamp
+            Patch32(rdataBuf, descPos + 8, 0xFFFFFFFFu); // ForwarderChain
+            Patch32(rdataBuf, descPos + 12, rdataRva + dllNameOff[g]); // Name
+            Patch32(rdataBuf, descPos + 16, rdataRva + iatGroupOff[g]); // FirstThunk (IAT)
         }
-        // Patch IMAGE_IMPORT_DESCRIPTOR
-        Patch32(rdataBuf, importDirPos + 0, rdataRva + intOff); // OriginalFirstThunk
-        Patch32(rdataBuf, importDirPos + 4, 0); // TimeDateStamp
-        Patch32(rdataBuf, importDirPos + 8, 0xFFFFFFFFu); // ForwarderChain
-        Patch32(rdataBuf, importDirPos + 12, rdataRva + dllNameOff); // Name
-        Patch32(rdataBuf, importDirPos + 16, rdataRva + iatOff); // FirstThunk (IAT)
-        // null terminator already zeroed
+        // null descriptor and null thunk terminators already zeroed
 
         // ── 7. Build global symbol map (name → VA) ────────────────────────────────
 
@@ -301,7 +540,7 @@ namespace Rux {
         // Patch import thunks: jmp [rip + disp32] → IAT entry
         for (size_t i = 0; i < numImports; ++i) {
             uint64_t thunkVA = kImageBase + textRva + thunkOff[i];
-            uint64_t iatEntryVA = kImageBase + rdataRva + iatOff + i * 8;
+            uint64_t iatEntryVA = kImageBase + rdataRva + iatEntryOff[i];
             int32_t disp = static_cast<int32_t>(iatEntryVA - (thunkVA + 6));
             Patch32(textBuf, thunkOff[i] + 2, static_cast<uint32_t>(disp));
         }
@@ -486,7 +725,7 @@ namespace Rux {
 
         // DataDirectory[16]
         wDir(0, 0); // [0]  Export
-        wDir(rdataRva + importDirOff, 40); // [1]  Import
+        wDir(rdataRva + importDirOff, static_cast<uint32_t>((importDllNames.size() + 1) * 20)); // [1]  Import
         wDir(0, 0);
         wDir(0, 0);
         wDir(0, 0);
@@ -497,7 +736,7 @@ namespace Rux {
         wDir(0, 0);
         wDir(0, 0);
         wDir(0, 0); // [8..11]
-        wDir(rdataRva + iatOff, static_cast<uint32_t>((numImports + 1) * 8)); // [12] IAT
+        wDir(rdataRva + iatOff, iatSize); // [12] IAT
         wDir(0, 0);
         wDir(0, 0);
         wDir(0, 0); // [13..15]

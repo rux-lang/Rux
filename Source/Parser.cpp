@@ -170,6 +170,33 @@ namespace Rux {
     // Attribute parsing
     // =========================================================================
 
+    static std::string DecodeStringLiteralText(const std::string &text) {
+        std::string out;
+        const std::size_t quote = text.find('"');
+        if (quote == std::string::npos) return out;
+
+        for (std::size_t i = quote + 1; i + 1 < text.size(); ++i) {
+            if (text[i] != '\\') {
+                out += text[i];
+                continue;
+            }
+
+            if (++i + 1 > text.size()) break;
+            switch (text[i]) {
+                case 'n': out += '\n'; break;
+                case 't': out += '\t'; break;
+                case 'r': out += '\r'; break;
+                case '0': out += '\0'; break;
+                case '\\': out += '\\'; break;
+                case '\'': out += '\''; break;
+                case '"': out += '"'; break;
+                default: out += text[i]; break;
+            }
+        }
+
+        return out;
+    }
+
     // Parses zero or more @[AttrName(...)] attributes that precede a declaration.
     // Returns the lib value from the first @[Import(lib: "...")] found.
     // Unknown attributes are parsed and silently ignored for forward compatibility.
@@ -205,7 +232,7 @@ namespace Rux {
                         if (!Match(TokenKind::Colon)) continue;
                         if (attrName == "Import" && key == "lib" &&
                             Check(TokenKind::StringLiteral))
-                            attrs.importLib = Advance().text;
+                            attrs.importLib = DecodeStringLiteralText(Advance().text);
                         else
                             Advance(); // skip unknown value
                         if (!Match(TokenKind::Comma)) break;

@@ -69,8 +69,8 @@ namespace Rux {
     bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
         if (IsUnknown() || other.IsUnknown()) return true;
         if (*this == other) return true;
-        // Numeric types are mutually assignable (widening/narrowing checked later)
-        if (IsNumeric() && other.IsNumeric()) return true;
+        // Numeric types must match exactly unless an explicit cast is used.
+        if (IsNumeric() && other.IsNumeric()) return false;
         // Bool types are mutually assignable across widths
         if (IsBool() && other.IsBool()) return true;
         // Any pointer is implicitly assignable to *opaque (like void* in C)
@@ -204,6 +204,7 @@ namespace Rux {
         void Run() {
             RegisterBuiltins();
             for (auto *mod: modules_) CollectModule(*mod);
+            for (auto *mod: modules_) ResolveModuleSignatures(*mod);
             for (auto *mod: modules_) CheckModule(*mod);
         }
 
@@ -247,6 +248,23 @@ namespace Rux {
             return currentScope_->Define(std::move(sym), diags_, currentFile_);
         }
 
+        TypeRef MakeFuncType(const std::vector<Param> &params,
+                             const std::optional<TypeExprPtr> &returnType,
+                             const std::vector<std::string> &typeParams = {}) {
+            auto savedTypeParams = currentTypeParams_;
+            currentTypeParams_ = typeParams;
+
+            std::vector<TypeRef> paramTypes;
+            for (const auto &param: params) {
+                if (!param.isVariadic)
+                    paramTypes.push_back(ResolveType(*param.type));
+            }
+            TypeRef ret = returnType ? ResolveType(*returnType->get()) : TypeRef::MakeOpaque();
+
+            currentTypeParams_ = savedTypeParams;
+            return TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
+        }
+
         // ── Builtins ──────────────────────────────────────────────────────────────
 
         void RegisterBuiltins() {
@@ -286,6 +304,28 @@ namespace Rux {
             currentFile_ = mod.name;
             for (const auto &decl: mod.items)
                 CollectDecl(*decl, globalScope_);
+        }
+
+        void ResolveModuleSignatures(const Module &mod) {
+            currentFile_ = mod.name;
+            for (const auto &decl: mod.items)
+                ResolveDeclSignature(*decl);
+        }
+
+        void ResolveDeclSignature(const Decl &decl) {
+            if (auto *d = dynamic_cast<const FuncDecl *>(&decl)) {
+                if (Symbol *sym = globalScope_.Lookup(d->name))
+                    sym->type = MakeFuncType(d->params, d->returnType, d->typeParams);
+            } else if (auto *d = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+                if (Symbol *sym = globalScope_.Lookup(d->name))
+                    sym->type = MakeFuncType(d->params, d->returnType);
+            } else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+                for (const auto &item: d->items)
+                    ResolveDeclSignature(*item);
+            } else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
+                for (const auto &item: d->items)
+                    ResolveDeclSignature(*item);
+            }
         }
 
         void CollectDecl(const Decl &decl, Scope &scope) {
@@ -397,6 +437,42 @@ namespace Rux {
 
         static TypeRef StringLiteralType(const Token &tok) {
             return TypeRef::MakeNamed(SliceTypeName(StringLiteralElementType(tok)));
+        }
+
+        static TypeRef CharLiteralType(const Token &tok) {
+            if (tok.text.starts_with("c8'")) return TypeRef::MakeChar8();
+            if (tok.text.starts_with("c16'")) return TypeRef::MakeChar16();
+            if (tok.text.starts_with("c32'")) return TypeRef::MakeChar32();
+            return TypeRef::MakeChar();
+        }
+
+        static std::string NumericLiteralSuffix(std::string_view text) {
+            static constexpr std::string_view suffixes[] = {
+                "i8", "i16", "i32", "i64",
+                "u8", "u16", "u32", "u64",
+                "f32", "f64"
+            };
+            for (auto suffix: suffixes) {
+                if (text.size() > suffix.size() &&
+                    text.substr(text.size() - suffix.size()) == suffix)
+                    return std::string(suffix);
+            }
+            return {};
+        }
+
+        static TypeRef SuffixedLiteralType(const Token &tok) {
+            const std::string suffix = NumericLiteralSuffix(tok.text);
+            if (suffix == "i8") return TypeRef::MakeInt8();
+            if (suffix == "i16") return TypeRef::MakeInt16();
+            if (suffix == "i32") return TypeRef::MakeInt32();
+            if (suffix == "i64") return TypeRef::MakeInt64();
+            if (suffix == "u8") return TypeRef::MakeUInt8();
+            if (suffix == "u16") return TypeRef::MakeUInt16();
+            if (suffix == "u32") return TypeRef::MakeUInt32();
+            if (suffix == "u64") return TypeRef::MakeUInt64();
+            if (suffix == "f32") return TypeRef::MakeFloat32();
+            if (suffix == "f64") return TypeRef::MakeFloat64();
+            return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt64();
         }
 
         static std::optional<TypeRef> BuiltinTypeFromName(const std::string &name) {
@@ -860,9 +936,30 @@ namespace Rux {
 
             if (auto *e = dynamic_cast<const CallExpr *>(&expr)) {
                 TypeRef calleeType = CheckExpr(*e->callee);
-                for (const auto &arg: e->args) CheckExpr(*arg);
-                if (calleeType.kind == TypeRef::Kind::Func && !calleeType.inner.empty())
+                std::vector<TypeRef> argTypes;
+                argTypes.reserve(e->args.size());
+                for (const auto &arg: e->args)
+                    argTypes.push_back(CheckExpr(*arg));
+
+                if (calleeType.kind == TypeRef::Kind::Func && !calleeType.inner.empty()) {
+                    const std::size_t paramCount = calleeType.inner.size() - 1;
+                    if (argTypes.size() != paramCount) {
+                        EmitError(e->location,
+                                  std::format("function expects {} argument(s), got {}",
+                                              paramCount, argTypes.size()));
+                    } else {
+                        for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                            const TypeRef &argType = argTypes[i];
+                            const TypeRef &paramType = calleeType.inner[i];
+                            if (!argType.IsUnknown() && !paramType.IsUnknown() &&
+                                !argType.IsAssignableTo(paramType))
+                                EmitError(e->args[i]->location,
+                                          std::format("cannot pass '{}' to parameter of type '{}'",
+                                                      argType.ToString(), paramType.ToString()));
+                        }
+                    }
                     return calleeType.inner.back();
+                }
                 return TypeRef::MakeUnknown();
             }
 
@@ -878,7 +975,11 @@ namespace Rux {
                 TypeRef obj = CheckExpr(*e->object);
                 if (auto elemType = SliceElementType(obj)) {
                     if (e->field == "data") return TypeRef::MakePointer(*elemType);
-                    if (e->field == "len") return TypeRef::MakeUInt64();
+                    if (e->field == "length") return TypeRef::MakeUInt64();
+                    EmitError(e->location,
+                              std::format("unknown field '{}' on type '{}'",
+                                          e->field, obj.ToString()));
+                    return TypeRef::MakeUnknown();
                 }
                 return TypeRef::MakeUnknown(); // field type lookup needs full type info
             }
@@ -921,10 +1022,10 @@ namespace Rux {
 
         static TypeRef LiteralType(const Token &tok) {
             switch (tok.kind) {
-                case TokenKind::IntLiteral: return TypeRef::MakeInt32();
-                case TokenKind::FloatLiteral: return TypeRef::MakeFloat64();
+                case TokenKind::IntLiteral:
+                case TokenKind::FloatLiteral: return SuffixedLiteralType(tok);
                 case TokenKind::StringLiteral: return StringLiteralType(tok);
-                case TokenKind::CharLiteral: return TypeRef::MakeChar();
+                case TokenKind::CharLiteral: return CharLiteralType(tok);
                 case TokenKind::BoolLiteral: return TypeRef::MakeBool();
                 default: return TypeRef::MakeUnknown();
             }
@@ -962,7 +1063,21 @@ namespace Rux {
             using TK = TokenKind;
             switch (op) {
                 case TK::Plus:
+                    if (l.kind == TypeRef::Kind::Pointer && r.IsInteger())
+                        return l;
+                    if (l.IsInteger() && r.kind == TypeRef::Kind::Pointer)
+                        return r;
+                    if (!l.IsNumeric())
+                        EmitError(loc, std::format("'+' applied to non-numeric type '{}'", l.ToString()));
+                    return l;
+
                 case TK::Minus:
+                    if (l.kind == TypeRef::Kind::Pointer && r.IsInteger())
+                        return l;
+                    if (!l.IsNumeric())
+                        EmitError(loc, std::format("'-' applied to non-numeric type '{}'", l.ToString()));
+                    return l;
+
                 case TK::Star:
                 case TK::Slash:
                 case TK::Percent:

@@ -136,10 +136,16 @@ namespace Rux {
         if (c == 'c') {
             if (Peek(1) == '8' && Peek(2) == '"')
                 return ScanString(start, 2);
+            if (Peek(1) == '8' && Peek(2) == '\'')
+                return ScanChar(start, 2);
             if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '"')
                 return ScanString(start, 3);
+            if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '\'')
+                return ScanChar(start, 3);
             if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '"')
                 return ScanString(start, 3);
+            if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '\'')
+                return ScanChar(start, 3);
         }
 
         // ── Identifiers / keywords ────────────────────────────────────────────
@@ -329,6 +335,7 @@ namespace Rux {
         if (hasDot || hasExp)
             return ScanFloatSuffix(start, tokenStart);
 
+        ConsumeNumberSuffix();
         return MakeToken(TokenKind::IntLiteral, start, tokenStart);
     }
 
@@ -365,8 +372,20 @@ namespace Rux {
             }
         }
 
-        // TODO: optional type suffix  f32  f64
+        ConsumeNumberSuffix();
         return MakeToken(TokenKind::FloatLiteral, start, tokenStart);
+    }
+
+    void Lexer::ConsumeNumberSuffix() {
+        if (!std::isalpha(static_cast<unsigned char>(Peek())))
+            return;
+
+        while (!IsAtEnd()) {
+            const char c = Peek();
+            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_')
+                break;
+            Advance();
+        }
     }
 
     // =========================================================================
@@ -409,8 +428,10 @@ namespace Rux {
     // ScanChar
     // =========================================================================
 
-    Token Lexer::ScanChar(SourceLocation start) {
+    Token Lexer::ScanChar(SourceLocation start, std::size_t prefixLen) {
         const std::size_t tokenStart = pos;
+        for (std::size_t i = 0; i < prefixLen; ++i)
+            Advance();
         Advance(); // consume opening  '
 
         if (IsAtEnd() || Peek() == '\'') {

@@ -1029,7 +1029,7 @@ namespace Rux {
             LirReg dataField = EmitFieldPtr(slot, "data", TypeRef::MakePointer(elemType));
             EmitStore(data, dataField, TypeRef::MakePointer(elemType));
             LirReg len = EmitConst(std::to_string(e.value.size()), TypeRef::MakeUInt64());
-            LirReg lenField = EmitFieldPtr(slot, "len", TypeRef::MakeUInt64());
+            LirReg lenField = EmitFieldPtr(slot, "length", TypeRef::MakeUInt64());
             EmitStore(len, lenField, TypeRef::MakeUInt64());
         }
 
@@ -1051,7 +1051,7 @@ namespace Rux {
             LirReg dataField = EmitFieldPtr(slot, "data", TypeRef::MakePointer(elemType));
             EmitStore(data, dataField, TypeRef::MakePointer(elemType));
             LirReg len = EmitConst(std::to_string(e.elements.size()), TypeRef::MakeUInt64());
-            LirReg lenField = EmitFieldPtr(slot, "len", TypeRef::MakeUInt64());
+            LirReg lenField = EmitFieldPtr(slot, "length", TypeRef::MakeUInt64());
             EmitStore(len, lenField, TypeRef::MakeUInt64());
         }
 

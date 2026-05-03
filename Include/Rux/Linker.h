@@ -22,7 +22,9 @@ struct LinkerError {
 // Target: Windows x86-64 (AMD64), console subsystem.
 class Linker {
 public:
-    explicit Linker(std::vector<RcuFile> objects, std::string packageName);
+    explicit Linker(std::vector<RcuFile> objects,
+                    std::string packageName,
+                    std::vector<std::filesystem::path> importSearchDirs = {});
 
     // Produce the EXE at outputPath. Creates parent directories as needed.
     // Returns false if any errors occurred; call Errors() for details.
@@ -33,6 +35,7 @@ public:
 private:
     std::vector<RcuFile> objects_;
     std::string          packageName_;
+    std::vector<std::filesystem::path> importSearchDirs_;
     std::vector<LinkerError> errors_;
 
     void Error(std::string msg);

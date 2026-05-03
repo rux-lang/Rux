@@ -257,6 +257,48 @@ namespace Rux {
             return TypeRef::MakeNamed(SliceTypeName(StringLiteralElementType(tok)));
         }
 
+        static TypeRef CharLiteralType(const Token &tok) {
+            if (tok.text.starts_with("c8'")) return TypeRef::MakeChar8();
+            if (tok.text.starts_with("c16'")) return TypeRef::MakeChar16();
+            if (tok.text.starts_with("c32'")) return TypeRef::MakeChar32();
+            return TypeRef::MakeChar();
+        }
+
+        static std::string NumericLiteralSuffix(std::string_view text) {
+            static constexpr std::string_view suffixes[] = {
+                "i8", "i16", "i32", "i64",
+                "u8", "u16", "u32", "u64",
+                "f32", "f64"
+            };
+            for (auto suffix: suffixes) {
+                if (text.size() > suffix.size() &&
+                    text.substr(text.size() - suffix.size()) == suffix)
+                    return std::string(suffix);
+            }
+            return {};
+        }
+
+        static std::string StripNumericLiteralSuffix(const std::string &text) {
+            const std::string suffix = NumericLiteralSuffix(text);
+            if (suffix.empty()) return text;
+            return text.substr(0, text.size() - suffix.size());
+        }
+
+        static TypeRef SuffixedLiteralType(const Token &tok) {
+            const std::string suffix = NumericLiteralSuffix(tok.text);
+            if (suffix == "i8") return TypeRef::MakeInt8();
+            if (suffix == "i16") return TypeRef::MakeInt16();
+            if (suffix == "i32") return TypeRef::MakeInt32();
+            if (suffix == "i64") return TypeRef::MakeInt64();
+            if (suffix == "u8") return TypeRef::MakeUInt8();
+            if (suffix == "u16") return TypeRef::MakeUInt16();
+            if (suffix == "u32") return TypeRef::MakeUInt32();
+            if (suffix == "u64") return TypeRef::MakeUInt64();
+            if (suffix == "f32") return TypeRef::MakeFloat32();
+            if (suffix == "f64") return TypeRef::MakeFloat64();
+            return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt64();
+        }
+
         static std::optional<TypeRef> BuiltinTypeFromName(const std::string &name) {
             if (name == "opaque") return TypeRef::MakeOpaque();
             if (name == "bool" || name == "bool8") return TypeRef::MakeBool8();
@@ -324,8 +366,9 @@ namespace Rux {
         static std::string DecodeCharLiteral(const std::string &text) {
             // text is raw source like 'A' or '\n' — strip quotes and decode
             uint32_t cp = 0;
-            if (text.size() >= 2) {
-                std::size_t i = 1; // skip opening '
+            const std::size_t quote = text.find('\'');
+            if (quote != std::string::npos && quote + 1 < text.size()) {
+                std::size_t i = quote + 1; // skip opening '
                 if (text[i] == '\\' && i + 1 < text.size()) {
                     switch (text[i + 1]) {
                         case 'n':  cp = '\n'; break;
@@ -375,10 +418,10 @@ namespace Rux {
 
         static TypeRef LiteralType(const Token &tok) {
             switch (tok.kind) {
-                case TokenKind::IntLiteral: return TypeRef::MakeInt32();
-                case TokenKind::FloatLiteral: return TypeRef::MakeFloat64();
+                case TokenKind::IntLiteral:
+                case TokenKind::FloatLiteral: return SuffixedLiteralType(tok);
                 case TokenKind::StringLiteral: return StringLiteralType(tok);
-                case TokenKind::CharLiteral: return TypeRef::MakeChar();
+                case TokenKind::CharLiteral: return CharLiteralType(tok);
                 case TokenKind::BoolLiteral: return TypeRef::MakeBool();
                 default: return TypeRef::MakeUnknown();
             }
@@ -789,6 +832,9 @@ namespace Rux {
                     he->value = DecodeCharLiteral(e->token.text);
                 else if (e->token.kind == TokenKind::StringLiteral)
                     he->value = DecodeStringLiteral(e->token.text);
+                else if (e->token.kind == TokenKind::IntLiteral ||
+                         e->token.kind == TokenKind::FloatLiteral)
+                    he->value = StripNumericLiteralSuffix(e->token.text);
                 else
                     he->value = e->token.text;
                 return he;
@@ -901,7 +947,7 @@ namespace Rux {
                 he->field = e->field;
                 if (auto elemType = SliceElementType(he->object->type)) {
                     if (e->field == "data") he->type = TypeRef::MakePointer(*elemType);
-                    else if (e->field == "len") he->type = TypeRef::MakeUInt64();
+                    else if (e->field == "length") he->type = TypeRef::MakeUInt64();
                 }
                 return he;
             }
@@ -977,6 +1023,13 @@ namespace Rux {
         TypeRef InferBinaryType(TokenKind op, const TypeRef &l, const TypeRef &r) {
             using TK = TokenKind;
             switch (op) {
+                case TK::Plus:
+                    if (l.kind == TypeRef::Kind::Pointer && r.IsInteger()) return l;
+                    if (l.IsInteger() && r.kind == TypeRef::Kind::Pointer) return r;
+                    return l.IsUnknown() ? r : l;
+                case TK::Minus:
+                    if (l.kind == TypeRef::Kind::Pointer && r.IsInteger()) return l;
+                    return l.IsUnknown() ? r : l;
                 case TK::AmpAmp:
                 case TK::PipePipe:
                 case TK::Equal:
@@ -1003,8 +1056,12 @@ namespace Rux {
             if (auto *p = dynamic_cast<const LiteralPattern *>(&pat)) {
                 auto hp = std::make_unique<HirLiteralPattern>();
                 hp->location = p->location;
-                hp->value = p->value.text;
                 hp->type = LiteralType(p->value);
+                if (p->value.kind == TokenKind::IntLiteral ||
+                    p->value.kind == TokenKind::FloatLiteral)
+                    hp->value = StripNumericLiteralSuffix(p->value.text);
+                else
+                    hp->value = p->value.text;
                 return hp;
             }
 

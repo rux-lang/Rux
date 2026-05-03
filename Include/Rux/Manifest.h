@@ -24,8 +24,13 @@ namespace Rux {
         std::string type    = "bin"; // "bin" | "lib"
     };
 
+    struct Build {
+        std::string output = "Bin";
+    };
+
     struct Manifest {
         Package                  package;
+        Build                    build;
         std::vector<Dependency>  dependencies;
 
         // Load from Rux.toml. Returns null on parse error.
