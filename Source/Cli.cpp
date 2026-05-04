@@ -33,17 +33,9 @@
 #include "Rux/SourceLoader.h"
 
 namespace Rux {
-    // =========================================================================
-    // Constructor
-    // =========================================================================
-
     Cli::Cli(const int argc, char *argv[])
         : args(argv, argc) {
     }
-
-    // =========================================================================
-    // Run
-    // =========================================================================
 
     int Cli::Run() const {
         // Collect all arguments as string_views (skip argv[0])
@@ -129,10 +121,6 @@ namespace Rux {
         return 1;
     }
 
-    // =========================================================================
-    // Global option parsing
-    // =========================================================================
-
     GlobalOptions Cli::ParseGlobalOptions(std::span<const std::string_view> args) {
         GlobalOptions opts;
         for (std::size_t i = 0; i < args.size(); ++i) {
@@ -168,10 +156,6 @@ namespace Rux {
         return opts;
     }
 
-    // =========================================================================
-    // Shared helpers
-    // =========================================================================
-
     static std::optional<std::filesystem::path> RequireManifest() {
         auto path = Manifest::Find();
         if (!path) {
@@ -200,13 +184,7 @@ namespace Rux {
         return output / std::string(profileName);
     }
 
-    // =========================================================================
     // Commands
-    // =========================================================================
-
-    // -------------------------------------------------------------------------
-    // help
-    // -------------------------------------------------------------------------
 
     int Cli::RunHelp(std::span<const std::string_view> args, const GlobalOptions &) {
         if (!args.empty())
@@ -216,22 +194,13 @@ namespace Rux {
         return 0;
     }
 
-    // -------------------------------------------------------------------------
-    // version
-    // -------------------------------------------------------------------------
-
     int Cli::RunVersion(const GlobalOptions &) {
         PrintVersion();
         return 0;
     }
 
-    // -------------------------------------------------------------------------
-    // build
-    // -------------------------------------------------------------------------
-
     int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &opts) {
         const auto t0 = std::chrono::steady_clock::now();
-
         bool isRelease = false;
         bool isDebug = false;
         std::string_view profile;
@@ -243,7 +212,6 @@ namespace Rux {
         bool dumpLir = false;
         bool dumpAsm = false;
         bool dumpRcu = false;
-
         for (std::size_t i = 0; i < args.size(); ++i) {
             std::string_view arg = args[i];
             if (arg == "--release") {
@@ -350,7 +318,7 @@ namespace Rux {
         }
         if (lexErrors) return 1;
 
-        // ── Parse ─────────────────────────────────────────────────────────────
+        // Parse
 
         bool parseErrors = false;
         std::vector<ParseResult> parseResults;
@@ -389,7 +357,7 @@ namespace Rux {
         }
         if (parseErrors) return 1;
 
-        // ── Semantic analysis ─────────────────────────────────────────────────
+        // Semantic analysis
 
         if (opts.verbose)
             std::print("  Analyzing {}\n", manifest->package.name);
@@ -415,7 +383,7 @@ namespace Rux {
         }
         if (semaResult.HasErrors()) return 1;
 
-        // ── HIR ───────────────────────────────────────────────────────────────
+        // HIR
 
         if (opts.verbose)
             std::print("  Lowering {}\n", manifest->package.name);
@@ -434,7 +402,7 @@ namespace Rux {
             Hir::Dump(hirPackage, hirDir / "hir.txt");
         }
 
-        // ── LIR ───────────────────────────────────────────────────────────────
+        // LIR
 
         if (opts.verbose)
             std::print("  Emitting LIR for {}\n", manifest->package.name);
@@ -448,7 +416,7 @@ namespace Rux {
             Lir::Dump(lirPackage, lirDir / "lir.txt");
         }
 
-        // ── Assembly dump (optional) ──────────────────────────────────────────
+        // Assembly dump (optional)
 
         if (dumpAsm) {
             if (opts.verbose)
@@ -458,7 +426,7 @@ namespace Rux {
             Asm::Emit(lirPackage, asmDir / "out.asm");
         }
 
-        // ── RCU object generation ─────────────────────────────────────────────
+        // RCU object generation
 
         if (opts.verbose)
             std::print("  Emitting RCU objects for {}\n", manifest->package.name);
@@ -481,7 +449,7 @@ namespace Rux {
             }
         }
 
-        // ── Link ──────────────────────────────────────────────────────────────
+        // Link
 
         if (opts.verbose)
             std::print("   Linking {}\n", manifest->package.name);
@@ -497,7 +465,7 @@ namespace Rux {
             return 1;
         }
 
-        // ── Done ──────────────────────────────────────────────────────────────
+        // Done
 
         if (!opts.quiet) {
             const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -508,13 +476,11 @@ namespace Rux {
                        elapsed / 1000,
                        (elapsed % 1000) / 10);
         }
-
         return 0;
     }
 
     int Cli::RunClean(std::span<const std::string_view> args, const GlobalOptions &opts) {
         bool tempOnly = false;
-
         for (auto &arg: args) {
             if (arg == "--temp") {
                 tempOnly = true;
@@ -527,20 +493,16 @@ namespace Rux {
             PrintUnknownOption(arg, "clean");
             return 1;
         }
-
         const auto manifestPath = RequireManifest();
         if (!manifestPath) return 1;
-
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
-
         const auto root = manifestPath->parent_path();
         const auto outputDir = manifest->build.output.empty()
                                    ? root / "Bin"
                                    : (std::filesystem::path(manifest->build.output).is_relative()
                                           ? root / manifest->build.output
                                           : std::filesystem::path(manifest->build.output));
-
         auto removeDir = [&](const std::filesystem::path &dir) -> bool {
             std::error_code ec;
             if (!std::filesystem::exists(dir)) return true;
@@ -555,18 +517,15 @@ namespace Rux {
                 std::print("     Removed {}\n", dir.string());
             return true;
         };
-
         bool ok = true;
         if (!tempOnly)
             ok &= removeDir(outputDir);
         ok &= removeDir(root / "Temp");
-
         return ok ? 0 : 1;
     }
 
     int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opts) {
         bool openAfter = false;
-
         for (auto &arg: args) {
             if (arg == "--open") {
                 openAfter = true;
@@ -579,13 +538,10 @@ namespace Rux {
             PrintUnknownOption(arg, "doc");
             return 1;
         }
-
         const auto manifestPath = RequireManifest();
         if (!manifestPath) return 1;
-
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
-
         if (!opts.quiet)
             std::print("  Generating documentation for {} v{}\n",
                        manifest->package.name, manifest->package.version);
@@ -601,7 +557,6 @@ namespace Rux {
     int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions &opts) {
         bool check = false;
         bool manifestOnly = false;
-
         for (auto &arg: args) {
             if (arg == "--check") {
                 check = true;
@@ -618,25 +573,20 @@ namespace Rux {
             PrintUnknownOption(arg, "fmt");
             return 1;
         }
-
         auto manifestPath = RequireManifest();
         if (!manifestPath) return 1;
-
         auto root = manifestPath->parent_path();
-
         if (manifestOnly) {
             if (!opts.quiet)
                 std::print("  Formatting {}\n", manifestPath->string());
             // TODO: TOML formatter
             return 0;
         }
-
         auto sourceDir = root / "Source";
         if (!std::filesystem::exists(sourceDir)) {
             if (!opts.quiet) std::print("  No source directory found.\n");
             return 0;
         }
-
         int fileCount = 0;
         for (const auto &entry:
              std::filesystem::recursive_directory_iterator(sourceDir)) {
@@ -651,17 +601,14 @@ namespace Rux {
             }
             // TODO: source formatter
         }
-
         if (fileCount == 0 && !opts.quiet)
             std::print("  No .rux files found.\n");
-
         return 0;
     }
 
     int Cli::RunInit(std::span<const std::string_view> args, const GlobalOptions &opts) {
         bool bin = false;
         bool lib = false;
-
         for (auto &arg: args) {
             if (arg == "--bin") {
                 bin = true;
@@ -678,51 +625,41 @@ namespace Rux {
             PrintUnknownOption(arg, "init");
             return 1;
         }
-
-        const auto type = (lib && !bin) ? PackageType::Lib : PackageType::Bin;
+        const auto type = (lib && !bin) ? PackageType::SharedLibrary : PackageType::Executable;
         const auto root = std::filesystem::current_path();
         auto name = root.filename().string();
-
         if (!opts.quiet)
             std::print("  Initializing {} package '{}'\n",
-                       type == PackageType::Bin ? "binary" : "library", name);
-
+                       type == PackageType::Executable ? "binary" : "library", name);
         if (!ScaffoldPackage(root, name, type, /*initMode=*/true))
             return 1;
-
         if (!opts.quiet)
             std::print("   Initialized package '{}'\n", name);
-
         return 0;
     }
 
     int Cli::RunInstall(const GlobalOptions &opts) {
         const auto manifestPath = RequireManifest();
         if (!manifestPath) return 1;
-
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
-
         if (manifest->dependencies.empty()) {
             if (!opts.quiet)
                 std::print("  No dependencies to install.\n");
             return 0;
         }
-
         if (!opts.quiet) {
             std::print("  Installing {} dependencies for {} v{}\n",
                        manifest->dependencies.size(),
                        manifest->package.name,
                        manifest->package.version);
         }
-
         for (const auto &dep: manifest->dependencies) {
             std::string ver = dep.version.empty() ? "latest" : dep.version;
             if (!opts.quiet)
                 std::print("   Resolving {} @ {}\n", dep.name, ver);
             // TODO: fetch and build dependency
         }
-
         return 0;
     }
 
@@ -731,7 +668,6 @@ namespace Rux {
         bool bin = false;
         bool lib = false;
         std::string_view customPath;
-
         for (std::size_t i = 0; i < args.size(); ++i) {
             std::string_view arg = args[i];
             if (arg == "--bin") {
@@ -757,39 +693,31 @@ namespace Rux {
             PrintUnknownOption(arg, "new");
             return 1;
         }
-
         if (name.empty()) {
             std::print(stderr, "error: missing package name\n\n");
             PrintHelpNew();
             return 1;
         }
-
-        const auto type = (lib && !bin) ? PackageType::Lib : PackageType::Bin;
-
+        const auto type = (lib && !bin) ? PackageType::SharedLibrary : PackageType::Executable;
         std::filesystem::path root;
         if (!customPath.empty())
             root = std::filesystem::path(customPath) / name;
         else
             root = std::filesystem::current_path() / name;
-
         if (!opts.quiet)
             std::print("    Creating {} package '{}'\n",
-                       type == PackageType::Bin ? "binary" : "library",
+                       type == PackageType::Executable ? "binary" : "library",
                        std::string(name));
-
         if (!ScaffoldPackage(root, std::string(name), type, /*initMode=*/false))
             return 1;
-
         if (!opts.quiet)
             std::print("    Created package '{}' at {}\n",
                        std::string(name), root.string());
-
         return 0;
     }
 
     int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opts) {
         std::string_view spec;
-
         for (auto arg: args) {
             if (arg == "-h" || arg == "--help") {
                 PrintHelpAdd();
@@ -802,29 +730,22 @@ namespace Rux {
             PrintUnknownOption(arg, "add");
             return 1;
         }
-
         if (spec.empty()) {
             std::print(stderr, "error: missing package name\n\n");
             PrintHelpAdd();
             return 1;
         }
-
         auto manifestPath = RequireManifest();
         if (!manifestPath) return 1;
-
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
-
         auto [pkgName, pkgVersion] = ParsePackageSpec(spec);
-
         bool changed = manifest->AddDependency(pkgName, pkgVersion);
-
         if (!manifest->Save(*manifestPath)) {
             std::print(stderr,
                        "error: failed to write '{}'\n", manifestPath->string());
             return 1;
         }
-
         if (!opts.quiet) {
             std::string ver = pkgVersion.empty() ? "latest" : pkgVersion;
             if (changed)
@@ -832,13 +753,11 @@ namespace Rux {
             else
                 std::print("   Up-to-date {} @ {}\n", pkgName, ver);
         }
-
         return 0;
     }
 
     int Cli::RunRemove(std::span<const std::string_view> args, const GlobalOptions &opts) {
         std::string_view name;
-
         for (auto arg: args) {
             if (arg == "-h" || arg == "--help") {
                 PrintHelpRemove();
@@ -851,35 +770,28 @@ namespace Rux {
             PrintUnknownOption(arg, "remove");
             return 1;
         }
-
         if (name.empty()) {
             std::print(stderr, "error: missing package name\n\n");
             PrintHelpRemove();
             return 1;
         }
-
         auto manifestPath = RequireManifest();
         if (!manifestPath) return 1;
-
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
-
         std::string pkgName(name);
         if (!manifest->RemoveDependency(pkgName)) {
             std::print(stderr,
                        "error: package '{}' is not a dependency\n", pkgName);
             return 1;
         }
-
         if (!manifest->Save(*manifestPath)) {
             std::print(stderr,
                        "error: failed to write '{}'\n", manifestPath->string());
             return 1;
         }
-
         if (!opts.quiet)
             std::print("     Removed {}\n", pkgName);
-
         return 0;
     }
 
@@ -887,7 +799,6 @@ namespace Rux {
         bool isRelease = false;
         std::vector<std::string_view> runArgs;
         bool passThroughMode = false;
-
         for (auto arg: args) {
             if (passThroughMode) {
                 runArgs.push_back(arg);
@@ -908,40 +819,31 @@ namespace Rux {
             PrintUnknownOption(arg, "run");
             return 1;
         }
-
         auto manifestPath = RequireManifest();
         if (!manifestPath) return 1;
-
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
-
         // Build first
         std::vector<std::string_view> buildArgs;
         if (isRelease) buildArgs.emplace_back("--release");
         if (opts.quiet) buildArgs.emplace_back("--quiet");
         if (opts.verbose) buildArgs.emplace_back("--verbose");
-
         int rc = RunBuild(buildArgs, opts);
         if (rc != 0) return rc;
-
         std::string_view profileName = isRelease ? "Release" : "Debug";
         auto root = manifestPath->parent_path();
         auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
-
         std::string exeName = manifest->package.name;
 #ifdef _WIN32
         exeName += ".exe";
 #endif
         auto exePath = binDir / exeName;
-
         if (!std::filesystem::exists(exePath)) {
             std::print(stderr, "error: executable not found: '{}'\n", exePath.string());
             return 1;
         }
-
         if (!opts.quiet)
             std::print("     Running `{}`\n", exePath.string());
-
 #ifdef _WIN32
         std::string cmdLine = "\"" + exePath.string() + "\"";
         for (const auto &a: runArgs) {
@@ -949,7 +851,6 @@ namespace Rux {
             cmdLine += std::string(a);
             cmdLine += '"';
         }
-
         STARTUPINFOA si{};
         PROCESS_INFORMATION pi{};
         si.cb = sizeof(si);
@@ -957,21 +858,17 @@ namespace Rux {
         si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
         si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
         si.dwFlags = STARTF_USESTDHANDLES;
-
         if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr,
                             TRUE, 0, nullptr, nullptr, &si, &pi)) {
             std::print(stderr, "error: failed to launch '{}' (code {})\n",
                        exePath.string(), GetLastError());
             return 1;
         }
-
         WaitForSingleObject(pi.hProcess, INFINITE);
-
         DWORD exitCode = 0;
         GetExitCodeProcess(pi.hProcess, &exitCode);
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
-
         return static_cast<int>(exitCode);
 #else
         std::vector<std::string> argStrings;
@@ -1003,7 +900,6 @@ namespace Rux {
 
     int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &opts) {
         bool isRelease = false;
-
         for (auto &arg: args) {
             if (arg == "--release") {
                 isRelease = true;
@@ -1016,30 +912,23 @@ namespace Rux {
             PrintUnknownOption(arg, "test");
             return 1;
         }
-
         auto manifestPath = RequireManifest();
         if (!manifestPath) return 1;
-
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
-
         if (!opts.quiet)
             std::print("     Testing {} v{}\n",
                        manifest->package.name, manifest->package.version);
-
         // TODO: build and run test targets
         std::println("Running executable...");
         std::println("Release: {}", isRelease);
-
         if (!opts.quiet)
             std::print("    Finished running tests\n");
-
         return 0;
     }
 
     int Cli::RunUp(std::span<const std::string_view> args, const GlobalOptions &opts) {
         bool selfOnly = false;
-
         for (auto &arg: args) {
             if (arg == "--self") {
                 selfOnly = true;
@@ -1052,19 +941,15 @@ namespace Rux {
             PrintUnknownOption(arg, "up");
             return 1;
         }
-
         if (!opts.quiet)
             std::print("  Checking for updates...\n");
-
         // TODO: query release feed
-
         if (!opts.quiet) {
             if (selfOnly)
                 std::print("  Rux {} is the latest compiler version.\n", RUX_VERSION);
             else
                 std::print("  Rux {} is up to date.\n", RUX_VERSION);
         }
-
         return 0;
     }
 

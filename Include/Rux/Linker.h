@@ -12,33 +12,33 @@
 #include <string>
 #include <vector>
 
-namespace Rux {
+namespace Rux
+{
+    struct LinkerError
+    {
+        std::string message;
+    };
 
-struct LinkerError {
-    std::string message;
-};
+    // Links one or more RcuFile objects into a Windows PE32+ executable (.exe).
+    // Target: Windows x86-64 (AMD64), console subsystem.
+    class Linker
+    {
+    public:
+        explicit Linker(std::vector<RcuFile> objects,
+                        std::string packageName,
+                        std::vector<std::filesystem::path> importSearchDirs = {});
 
-// Links one or more RcuFile objects into a Windows PE32+ executable (.exe).
-// Target: Windows x86-64 (AMD64), console subsystem.
-class Linker {
-public:
-    explicit Linker(std::vector<RcuFile> objects,
-                    std::string packageName,
-                    std::vector<std::filesystem::path> importSearchDirs = {});
+        // Produce the EXE at outputPath. Creates parent directories as needed.
+        // Returns false if any errors occurred; call Errors() for details.
+        [[nodiscard]] bool Link(const std::filesystem::path& outputPath);
+        [[nodiscard]] const std::vector<LinkerError>& Errors() const { return errors; }
 
-    // Produce the EXE at outputPath. Creates parent directories as needed.
-    // Returns false if any errors occurred; call Errors() for details.
-    [[nodiscard]] bool Link(const std::filesystem::path& outputPath);
+    private:
+        std::vector<RcuFile> objects;
+        std::string packageName;
+        std::vector<std::filesystem::path> importSearchDirs;
+        std::vector<LinkerError> errors;
 
-    [[nodiscard]] const std::vector<LinkerError>& Errors() const { return errors_; }
-
-private:
-    std::vector<RcuFile> objects_;
-    std::string          packageName_;
-    std::vector<std::filesystem::path> importSearchDirs_;
-    std::vector<LinkerError> errors_;
-
-    void Error(std::string msg);
-};
-
-} // namespace Rux
+        void Error(std::string msg);
+    };
+}

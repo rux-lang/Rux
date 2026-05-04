@@ -11,27 +11,31 @@
 #include <filesystem>
 #include <optional>
 
-namespace Rux {
-
-    struct Dependency {
+namespace Rux
+{
+    struct Dependency
+    {
         std::string name;
         std::string version; // empty = "latest"
     };
 
-    struct Package {
+    struct Package
+    {
         std::string name;
         std::string version = "0.1.0";
-        std::string type    = "bin"; // "bin" | "lib"
+        std::string type = "bin"; // "bin" | "lib"
     };
 
-    struct Build {
+    struct Build
+    {
         std::string output = "Bin";
     };
 
-    struct Manifest {
-        Package                  package;
-        Build                    build;
-        std::vector<Dependency>  dependencies;
+    struct Manifest
+    {
+        Package package;
+        Build build;
+        std::vector<Dependency> dependencies;
 
         // Load from Rux.toml. Returns null on parse error.
         static std::optional<Manifest> Load(const std::filesystem::path& path);
