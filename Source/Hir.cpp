@@ -554,7 +554,7 @@ namespace Rux
             auto savedTypeParams = currentTypeParams;
             currentTypeParams = d.typeParams;
             TypeRef retType = d.returnType
-                                  ? ResolveType(*d.returnType->get())
+                                  ? ResolveType(**d.returnType)
                                   : TypeRef::MakeOpaque();
             auto savedRet = currentReturnType;
             currentReturnType = retType;
@@ -680,7 +680,7 @@ namespace Rux
                 hm.name = m->name;
                 hm.location = m->location;
                 hm.returnType = m->returnType
-                                    ? ResolveType(*m->returnType->get())
+                                    ? ResolveType(**m->returnType)
                                     : TypeRef::MakeOpaque();
                 hm.params = LowerParams(m->params);
                 hi.methods.push_back(std::move(hm));
@@ -724,7 +724,7 @@ namespace Rux
             hef.callConv = d.callConv;
             hef.isVariadic = d.isVariadic;
             hef.returnType = d.returnType
-                                 ? ResolveType(*d.returnType->get())
+                                 ? ResolveType(**d.returnType)
                                  : TypeRef::MakeOpaque();
             hef.params = LowerParams(d.params);
             hef.location = d.location;
@@ -782,7 +782,7 @@ namespace Rux
                 hs->name = s->name;
                 hs->init = LowerExpr(*s->init);
                 hs->type = s->type
-                               ? ResolveType(*s->type->get())
+                               ? ResolveType(**s->type)
                                : hs->init->type;
 
                 HirSymbol sym;

@@ -5,7 +5,6 @@
 */
 
 #include "Rux/Token.h"
-
 #include <unordered_map>
 
 namespace Rux
@@ -47,7 +46,6 @@ namespace Rux
             {"true", TokenKind::BoolLiteral},
             {"false", TokenKind::BoolLiteral},
         };
-
         if (const auto it = kTable.find(text); it != kTable.end())
             return it->second;
         return TokenKind::Ident;

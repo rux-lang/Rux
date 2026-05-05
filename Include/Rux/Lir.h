@@ -208,7 +208,7 @@ namespace Rux
     {
     public:
         explicit Lir(HirPackage package);
-        [[nodiscard]] LirPackage Generate();
+        [[nodiscard]] LirPackage Generate() const;
 
         // Write a human-readable dump of the LIR package to `path`.
         static bool Dump(const LirPackage& package, const std::filesystem::path& path);

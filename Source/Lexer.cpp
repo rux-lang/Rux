@@ -368,8 +368,7 @@ namespace Rux
             return;
         while (!IsAtEnd())
         {
-            const char c = Peek();
-            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_')
+            if (const char c = Peek(); !std::isalnum(static_cast<unsigned char>(c)) && c != '_')
                 break;
             Advance();
         }
@@ -477,7 +476,7 @@ namespace Rux
     Token Lexer::ScanSymbol(const SourceLocation start)
     {
         const std::size_t tokenStart = pos;
-        switch (const char c = Advance())
+        switch (Advance())
         {
         // Single-character unambiguous tokens
         case '(': return MakeToken(TokenKind::LeftParen, start, tokenStart);

@@ -5,15 +5,13 @@
 */
 
 #include "Rux/SourceLoader.h"
-
 #include <fstream>
 #include <print>
 #include <sstream>
 
 namespace Rux
 {
-    std::optional<SourceLoadResult>
-    SourceLoader::Load(const std::filesystem::path& manifestDir)
+    std::optional<SourceLoadResult> SourceLoader::Load(const std::filesystem::path& manifestDir)
     {
         const auto srcDir = manifestDir / "Src";
         if (!std::filesystem::exists(srcDir))
@@ -52,9 +50,7 @@ namespace Rux
         return result;
     }
 
-
-    std::optional<SourceFile>
-    SourceLoader::LoadFile(const std::filesystem::path& path)
+    std::optional<SourceFile> SourceLoader::LoadFile(const std::filesystem::path& path)
     {
         std::ifstream stream(path);
         if (!stream) return std::nullopt;
@@ -69,9 +65,7 @@ namespace Rux
         };
     }
 
-
-    std::vector<std::filesystem::path>
-    SourceLoader::CollectSourcePaths(const std::filesystem::path& srcDir)
+    std::vector<std::filesystem::path> SourceLoader::CollectSourcePaths(const std::filesystem::path& srcDir)
     {
         std::vector<std::filesystem::path> paths;
         for (const auto& entry :

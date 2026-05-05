@@ -127,7 +127,7 @@ namespace Rux
         explicit Rcu(LirPackage package, std::string packageName = {});
 
         // Generate one RcuFile per module in the package.
-        [[nodiscard]] std::vector<RcuFile> Generate();
+        [[nodiscard]] std::vector<RcuFile> Generate() const;
 
         // Write a binary RCU file. Returns false on I/O error.
         static bool Emit(const RcuFile& file, const std::filesystem::path& path);

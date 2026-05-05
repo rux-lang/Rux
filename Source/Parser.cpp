@@ -54,8 +54,7 @@ namespace Rux
 
         while (!IsAtEnd())
         {
-            auto decl = ParseDecl();
-            if (decl)
+            if (auto decl = ParseDecl())
                 mod.items.push_back(std::move(decl));
             else
                 Synchronize();
@@ -68,7 +67,7 @@ namespace Rux
     // Token helpers
     // =========================================================================
 
-    const Token& Parser::Peek(std::size_t ahead) const noexcept
+    const Token& Parser::Peek(const std::size_t ahead) const noexcept
     {
         const std::size_t idx = pos + ahead;
         if (idx < tokens.size()) return tokens[idx];
@@ -86,9 +85,9 @@ namespace Rux
         return Peek().kind == kind;
     }
 
-    bool Parser::CheckAny(std::initializer_list<TokenKind> kinds) const noexcept
+    bool Parser::CheckAny(const std::initializer_list<TokenKind> kinds) const noexcept
     {
-        for (auto k : kinds)
+        for (const auto k : kinds)
             if (Check(k)) return true;
         return false;
     }
@@ -384,7 +383,7 @@ namespace Rux
             p.isVariadic = true;
             p.name = "...";
             p.type = std::make_unique<NamedTypeExpr>();
-            static_cast<NamedTypeExpr*>(p.type.get())->name = "...";
+            dynamic_cast<NamedTypeExpr*>(p.type.get())->name = "...";
             return p;
         }
 
@@ -480,7 +479,7 @@ namespace Rux
     // enum
     // =========================================================================
 
-    std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(bool isPublic)
+    std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic)
     {
         const auto loc = CurrentLocation();
         Expect(TokenKind::EnumKeyword, "expected 'enum'");
@@ -567,8 +566,8 @@ namespace Rux
                 Synchronize();
                 continue;
             }
-            auto method = ParseFuncDecl(false, false);
-            if (method) decl->methods.push_back(std::move(method));
+            if (auto method = ParseFuncDecl(false, false))
+                decl->methods.push_back(std::move(method));
         }
         Expect(TokenKind::RightBrace, "expected '}'");
         return decl;
@@ -608,8 +607,8 @@ namespace Rux
                 Synchronize();
                 continue;
             }
-            auto method = ParseFuncDecl(pub, false);
-            if (method) decl->methods.push_back(std::move(method));
+            if (auto method = ParseFuncDecl(pub, false))
+                decl->methods.push_back(std::move(method));
         }
         Expect(TokenKind::RightBrace, "expected '}'");
         return decl;
@@ -632,8 +631,7 @@ namespace Rux
         Expect(TokenKind::LeftBrace, "expected '{'");
         while (!Check(TokenKind::RightBrace) && !IsAtEnd())
         {
-            auto item = ParseDecl();
-            if (item)
+            if (auto item = ParseDecl())
                 decl->items.push_back(std::move(item));
             else
                 Synchronize();
@@ -976,8 +974,7 @@ namespace Rux
 
         while (!Check(TokenKind::RightBrace) && !IsAtEnd())
         {
-            auto stmt = ParseStmt();
-            if (stmt)
+            if (auto stmt = ParseStmt())
                 block->stmts.push_back(std::move(stmt));
             else
                 Synchronize();
@@ -1900,7 +1897,7 @@ namespace Rux
                 for (int i = 0; i < indent; ++i) out << "  ";
             }
 
-            std::string TypeStr(const TypeExpr* t) const
+            static std::string TypeStr(const TypeExpr* t)
             {
                 if (!t) return "<null>";
                 if (const auto* n = dynamic_cast<const NamedTypeExpr*>(t))
@@ -2023,10 +2020,11 @@ namespace Rux
             void PrintFuncDecl(const FuncDecl& f)
             {
                 Pad();
-                if (f.isPublic) out << "pub ";
-                if (f.isAsm) out << "asm ";
+                if (f.isPublic)
+                    out << "pub ";
+                if (f.isAsm)
+                    out << "asm ";
                 out << "FuncDecl '" << f.name << "'";
-
                 // Generic params
                 if (!f.typeParams.empty())
                 {
@@ -2038,7 +2036,6 @@ namespace Rux
                     }
                     out << '>';
                 }
-
                 // Params
                 out << " (";
                 for (std::size_t i = 0; i < f.params.size(); ++i)
@@ -2053,13 +2050,10 @@ namespace Rux
                     out << p.name << ": " << TypeStr(p.type.get());
                 }
                 out << ')';
-
                 // Return type
                 if (f.returnType)
                     out << " -> " << TypeStr(f.returnType->get());
-
                 out << (f.body ? "" : " [signature]") << '\n';
-
                 if (f.body)
                 {
                     ++indent;
@@ -2168,7 +2162,7 @@ namespace Rux
                 --indent;
             }
 
-            void PrintUseDecl(const UseDecl& u)
+            void PrintUseDecl(const UseDecl& u) const
             {
                 Pad();
                 out << "UseDecl '";
@@ -2208,7 +2202,7 @@ namespace Rux
                 --indent;
             }
 
-            void PrintTypeAliasDecl(const TypeAliasDecl& t)
+            void PrintTypeAliasDecl(const TypeAliasDecl& t) const
             {
                 Pad();
                 if (t.isPublic) out << "pub ";
@@ -2216,7 +2210,7 @@ namespace Rux
                     << TypeStr(t.type.get()) << '\n';
             }
 
-            void PrintExternFuncDecl(const ExternFuncDecl& f)
+            void PrintExternFuncDecl(const ExternFuncDecl& f) const
             {
                 if (!f.dll.empty())
                 {
@@ -2242,7 +2236,7 @@ namespace Rux
                 out << '\n';
             }
 
-            void PrintExternVarDecl(const ExternVarDecl& v)
+            void PrintExternVarDecl(const ExternVarDecl& v) const
             {
                 Pad();
                 if (v.isPublic) out << "pub ";
@@ -2419,54 +2413,54 @@ namespace Rux
             // Expressions
             void PrintExpr(const Expr& expr)
             {
-                if (const auto* p = dynamic_cast<const LiteralExpr*>(&expr))
-                    PrintLiteralExpr(*p);
-                else if (const auto* p = dynamic_cast<const IdentExpr*>(&expr))
+                if (const auto* litExpr = dynamic_cast<const LiteralExpr*>(&expr))
+                    PrintLiteralExpr(*litExpr);
+                else if (const auto* identExpr = dynamic_cast<const IdentExpr*>(&expr))
                 {
                     Pad();
-                    out << "IdentExpr '" << p->name << "'\n";
+                    out << "IdentExpr '" << identExpr->name << "'\n";
                 }
-                else if (const auto* p = dynamic_cast<const SelfExpr*>(&expr))
+                else if (const auto* selExpr = dynamic_cast<const SelfExpr*>(&expr))
                 {
-                    (void)p;
+                    (void)selExpr;
                     Pad();
                     out << "SelfExpr\n";
                 }
-                else if (const auto* p = dynamic_cast<const PathExpr*>(&expr))
+                else if (const auto* pathExpr = dynamic_cast<const PathExpr*>(&expr))
                 {
                     Pad();
                     out << "PathExpr '";
-                    for (std::size_t i = 0; i < p->segments.size(); ++i)
+                    for (std::size_t i = 0; i < pathExpr->segments.size(); ++i)
                     {
                         if (i) out << "::";
-                        out << p->segments[i];
+                        out << pathExpr->segments[i];
                     }
                     out << "'\n";
                 }
-                else if (const auto* p = dynamic_cast<const UnaryExpr*>(&expr))
+                else if (const auto* unaryExpr = dynamic_cast<const UnaryExpr*>(&expr))
                 {
                     Pad();
-                    out << "UnaryExpr " << OpStr(p->op) << '\n';
+                    out << "UnaryExpr " << OpStr(unaryExpr->op) << '\n';
                     ++indent;
-                    if (p->operand) PrintExpr(*p->operand);
+                    if (unaryExpr->operand) PrintExpr(*unaryExpr->operand);
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const BinaryExpr*>(&expr))
+                else if (const auto* binaryExpr = dynamic_cast<const BinaryExpr*>(&expr))
                 {
                     Pad();
-                    out << "BinaryExpr " << OpStr(p->op) << '\n';
+                    out << "BinaryExpr " << OpStr(binaryExpr->op) << '\n';
                     ++indent;
-                    if (p->left) PrintExpr(*p->left);
-                    if (p->right) PrintExpr(*p->right);
+                    if (binaryExpr->left) PrintExpr(*binaryExpr->left);
+                    if (binaryExpr->right) PrintExpr(*binaryExpr->right);
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const AssignExpr*>(&expr))
+                else if (const auto* assignExpr = dynamic_cast<const AssignExpr*>(&expr))
                 {
                     Pad();
-                    out << "AssignExpr " << OpStr(p->op) << '\n';
+                    out << "AssignExpr " << OpStr(assignExpr->op) << '\n';
                     ++indent;
-                    if (p->target) PrintExpr(*p->target);
-                    if (p->value) PrintExpr(*p->value);
+                    if (assignExpr->target) PrintExpr(*assignExpr->target);
+                    if (assignExpr->value) PrintExpr(*assignExpr->value);
                     --indent;
                 }
                 else if (const auto* p = dynamic_cast<const TernaryExpr*>(&expr))
@@ -2530,31 +2524,32 @@ namespace Rux
                     if (p->index) PrintExpr(*p->index);
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const FieldExpr*>(&expr))
+                else if (const auto* fieldExpr = dynamic_cast<const FieldExpr*>(&expr))
                 {
                     Pad();
-                    out << "FieldExpr '." << p->field << "'\n";
+                    out << "FieldExpr '." << fieldExpr->field << "'\n";
                     ++indent;
-                    if (p->object) PrintExpr(*p->object);
+                    if (fieldExpr->object)
+                        PrintExpr(*fieldExpr->object);
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const StructInitExpr*>(&expr))
+                else if (const auto* structInitExpr = dynamic_cast<const StructInitExpr*>(&expr))
                 {
                     Pad();
-                    out << "StructInitExpr '" << p->typeName;
-                    if (!p->typeArgs.empty())
+                    out << "StructInitExpr '" << structInitExpr->typeName;
+                    if (!structInitExpr->typeArgs.empty())
                     {
                         out << "<";
-                        for (std::size_t i = 0; i < p->typeArgs.size(); ++i)
+                        for (std::size_t i = 0; i < structInitExpr->typeArgs.size(); ++i)
                         {
                             if (i) out << ", ";
-                            out << TypeStr(p->typeArgs[i].get());
+                            out << TypeStr(structInitExpr->typeArgs[i].get());
                         }
                         out << ">";
                     }
                     out << "'\n";
                     ++indent;
-                    for (const auto& f : p->fields)
+                    for (const auto& f : structInitExpr->fields)
                     {
                         Pad();
                         out << "." << f.name << " =\n";
@@ -2564,38 +2559,40 @@ namespace Rux
                     }
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const SliceExpr*>(&expr))
+                else if (const auto* sliceExpr = dynamic_cast<const SliceExpr*>(&expr))
                 {
                     Pad();
-                    out << "SliceExpr [" << p->elements.size() << "]\n";
+                    out << "SliceExpr [" << sliceExpr->elements.size() << "]\n";
                     ++indent;
-                    for (const auto& e : p->elements)
+                    for (const auto& e : sliceExpr->elements)
                         if (e) PrintExpr(*e);
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const CastExpr*>(&expr))
+                else if (const auto* castExpr = dynamic_cast<const CastExpr*>(&expr))
                 {
                     Pad();
-                    out << "CastExpr as " << TypeStr(p->type.get()) << '\n';
+                    out << "CastExpr as " << TypeStr(castExpr->type.get()) << '\n';
                     ++indent;
-                    if (p->operand) PrintExpr(*p->operand);
+                    if (castExpr->operand)
+                        PrintExpr(*castExpr->operand);
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const IsExpr*>(&expr))
+                else if (const auto* isExpr = dynamic_cast<const IsExpr*>(&expr))
                 {
                     Pad();
-                    out << "IsExpr is " << TypeStr(p->type.get()) << '\n';
+                    out << "IsExpr is " << TypeStr(isExpr->type.get()) << '\n';
                     ++indent;
-                    if (p->operand) PrintExpr(*p->operand);
+                    if (isExpr->operand)
+                        PrintExpr(*isExpr->operand);
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const BlockExpr*>(&expr))
+                else if (const auto* blockExpr = dynamic_cast<const BlockExpr*>(&expr))
                 {
-                    if (p->block) PrintBlock(*p->block);
+                    if (blockExpr->block) PrintBlock(*blockExpr->block);
                 }
             }
 
-            void PrintLiteralExpr(const LiteralExpr& e)
+            void PrintLiteralExpr(const LiteralExpr& e) const
             {
                 Pad();
                 out << "LiteralExpr (";

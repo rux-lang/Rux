@@ -6,7 +6,6 @@
 
 #include "Rux/Asm.h"
 
-#include <cassert>
 #include <format>
 #include <fstream>
 #include <sstream>
@@ -61,7 +60,7 @@ namespace Rux
         }
 
         // r10 family (caller-saved scratch — primary operand)
-        std::string_view GprB(int bytes)
+        std::string_view GprB(const int bytes)
         {
             switch (bytes)
             {
@@ -73,7 +72,7 @@ namespace Rux
         }
 
         // r11 family (caller-saved scratch — secondary operand)
-        std::string_view GprC(int bytes)
+        std::string_view GprC(const int bytes)
         {
             switch (bytes)
             {
@@ -84,7 +83,7 @@ namespace Rux
             }
         }
 
-        std::string_view PtrSize(int bytes)
+        std::string_view PtrSize(const int bytes)
         {
             switch (bytes)
             {
@@ -204,11 +203,30 @@ namespace Rux
             std::unordered_set<std::string> declaredExterns;
 
             // Low-level emit helpers
-            void T(std::string_view s) { text << s << '\n'; }
-            void TI(std::string_view s) { text << "    " << s << '\n'; }
-            void TL(std::string_view label) { text << label << ":\n"; }
-            void TC(std::string_view comment) { text << "    ; " << comment << '\n'; }
-            void TB() { text << '\n'; }
+            void T(const std::string_view s)
+            {
+                text << s << '\n';
+            }
+
+            void TI(const std::string_view s)
+            {
+                text << "    " << s << '\n';
+            }
+
+            void TL(const std::string_view label)
+            {
+                text << label << ":\n";
+            }
+
+            void TC(const std::string_view comment)
+            {
+                text << "    ; " << comment << '\n';
+            }
+
+            void TB()
+            {
+                text << '\n';
+            }
 
             // Constant interning
 
@@ -257,7 +275,7 @@ namespace Rux
                 return pos == std::string::npos ? name : name.substr(0, pos);
             }
 
-            int SizeOfRuntime(const TypeRef& t) const
+            [[nodiscard]] int SizeOfRuntime(const TypeRef& t) const
             {
                 if (t.kind == TypeRef::Kind::Named)
                 {
@@ -383,7 +401,7 @@ namespace Rux
                 if (it2 == it1->second.end()) return;
                 for (const auto& m : it2->second)
                 {
-                    if (!slotMap.count(m.src)) continue;
+                    if (!slotMap.contains(m.src)) continue;
                     LoadA(m.src, m.type);
                     StoreA(m.dst, m.type);
                 }
@@ -824,8 +842,7 @@ namespace Rux
                         // Shift count must be in cl
                         TI(std::format("{:<8}r11, qword [rbp - {}]", "mov", slotMap.at(instr.srcs[1])));
                         TI("mov     rcx, r11");
-                        bool isShr = (instr.op == LirOpcode::Shr);
-                        if (isShr && t.IsSigned())
+                        if (bool isShr = (instr.op == LirOpcode::Shr); isShr && t.IsSigned())
                             TI("sar     rax, cl");
                         else if (isShr)
                             TI("shr     rax, cl");
@@ -893,7 +910,7 @@ namespace Rux
                 case LirOpcode::CmpGt:
                 case LirOpcode::CmpGe:
                     {
-                        const TypeRef& lhsT = regTypes.count(instr.srcs[0])
+                        const TypeRef& lhsT = regTypes.contains(instr.srcs[0])
                                                   ? regTypes.at(instr.srcs[0])
                                                   : instr.type;
                         LoadA(instr.srcs[0], lhsT);
@@ -954,7 +971,7 @@ namespace Rux
                         TypeRef src_t;
                         // strArg holds the source type string; try to reconstruct enough info
                         // by looking up the register type
-                        if (regTypes.count(instr.srcs[0]))
+                        if (regTypes.contains(instr.srcs[0]))
                             src_t = regTypes.at(instr.srcs[0]);
                         else
                             src_t = dst_t;
@@ -974,8 +991,7 @@ namespace Rux
                         {
                             // float → int
                             bool f32src = (src_t.kind == TypeRef::Kind::Float32);
-                            bool signed_ = dst_t.IsSigned();
-                            if (signed_)
+                            if (bool signed_ = dst_t.IsSigned())
                                 TI(f32src ? "cvttss2si rax, xmm0" : "cvttsd2si rax, xmm0");
                             else
                             {
@@ -1091,7 +1107,7 @@ namespace Rux
                 int intIdx = 0, fltIdx = 0;
                 for (LirReg arg : args)
                 {
-                    TypeRef at = regTypes.count(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+                    TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
                     if (IsFloat(at))
                     {
                         if (fltIdx < 8)
@@ -1139,7 +1155,7 @@ namespace Rux
                 int intIdx = 0, fltIdx = 0;
                 for (LirReg arg : args)
                 {
-                    TypeRef at = regTypes.count(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+                    TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
                     if (IsFloat(at))
                     {
                         if (fltIdx < 8)
@@ -1180,7 +1196,7 @@ namespace Rux
                 case LirTermKind::Branch:
                     {
                         // Load condition
-                        TypeRef condT = regTypes.count(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeBool();
+                        TypeRef condT = regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeBool();
                         TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(term.cond)));
                         TI("test    rax, rax");
 
@@ -1225,7 +1241,7 @@ namespace Rux
 
                 case LirTermKind::Switch:
                     {
-                        TypeRef condT = regTypes.count(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeInt64();
+                        TypeRef condT = regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeInt64();
                         TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(term.cond)));
                         for (const auto& c : term.cases)
                         {
@@ -1245,7 +1261,7 @@ namespace Rux
             {
                 auto it = phiMoves.find(from);
                 if (it == phiMoves.end()) return false;
-                return it->second.count(to) != 0;
+                return it->second.contains(to);
             }
 
             void EmitEpilogue()

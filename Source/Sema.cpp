@@ -208,7 +208,7 @@ namespace Rux
             return nullptr;
         }
 
-        Scope* Parent() const { return parent; }
+        [[nodiscard]] Scope* Parent() const { return parent; }
 
     private:
         Scope* parent;
@@ -246,7 +246,7 @@ namespace Rux
         bool inImpl = false;
         std::vector<std::string> currentTypeParams;
 
-        // ── Diagnostics ───────────────────────────────────────────────────────────
+        // Diagnostics
 
         void EmitError(SourceLocation loc, std::string msg)
         {
@@ -258,8 +258,7 @@ namespace Rux
             diags.push_back({SemaDiagnostic::Severity::Warning, currentFile, loc, std::move(msg)});
         }
 
-        // ── Scope management ──────────────────────────────────────────────────────
-
+        // Scope management
         void PushScope()
         {
             ownedScopes.push_back(std::make_unique<Scope>(currentScope));
@@ -272,7 +271,7 @@ namespace Rux
             currentScope = currentScope->Parent();
         }
 
-        bool Define(Symbol sym)
+        bool Define(Symbol sym) const
         {
             return currentScope->Define(std::move(sym), diags, currentFile);
         }
@@ -931,8 +930,8 @@ namespace Rux
             {
                 if (s->value)
                 {
-                    TypeRef valType = CheckExpr(**s->value);
-                    if (!valType.IsUnknown() && !currentReturnType.IsUnknown() &&
+                    if (TypeRef valType = CheckExpr(**s->value);
+                        !valType.IsUnknown() && !currentReturnType.IsUnknown() &&
                         !currentReturnType.IsOpaque() &&
                         !valType.IsAssignableTo(currentReturnType))
                         EmitError(s->location,

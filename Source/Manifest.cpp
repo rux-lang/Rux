@@ -5,9 +5,7 @@
 */
 
 #include "Rux/Manifest.h"
-
 #include <fstream>
-#include <sstream>
 #include <print>
 #include <algorithm>
 
@@ -15,10 +13,10 @@ namespace Rux
 {
     static std::string Trim(std::string_view s)
     {
-        const char* ws = " \t\r\n";
-        auto start = s.find_first_not_of(ws);
+        const auto ws = " \t\r\n";
+        const auto start = s.find_first_not_of(ws);
         if (start == std::string_view::npos) return {};
-        auto end = s.find_last_not_of(ws);
+        const auto end = s.find_last_not_of(ws);
         return std::string(s.substr(start, end - start + 1));
     }
 
@@ -31,7 +29,7 @@ namespace Rux
 
     std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec)
     {
-        auto at = spec.find('@');
+        const auto at = spec.find('@');
         if (at == std::string_view::npos)
             return {std::string(spec), {}};
         return {std::string(spec.substr(0, at)), std::string(spec.substr(at + 1))};
@@ -95,10 +93,10 @@ namespace Rux
         if (!dependencies.empty())
         {
             file << "\n[Dependencies]\n";
-            for (const auto& dep : dependencies)
+            for (const auto& [name, version] : dependencies)
             {
-                std::string ver = dep.version.empty() ? "*" : dep.version;
-                file << dep.name << " = \"" << ver << "\"\n";
+                std::string ver = version.empty() ? "*" : version;
+                file << name << " = \"" << ver << "\"\n";
             }
         }
         return file.good();
