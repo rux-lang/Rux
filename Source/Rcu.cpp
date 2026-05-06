@@ -38,7 +38,7 @@ namespace Rux
             case TypeRef::Kind::UInt32:
             case TypeRef::Kind::Float32: return 4;
             case TypeRef::Kind::Opaque: return 0;
-            default: return 8;
+            default: return 8; // int, uint, int64, uint64, float64, pointer, str, named, …
             }
         }
 
@@ -2250,7 +2250,17 @@ namespace Rux
                     }
                 case LirTermKind::Branch:
                     {
-                        enc.MovRaxLoad(Disp(term.cond));
+                        // Load condition with correct width to avoid reading stack garbage
+                        {
+                            const TypeRef condT = regTypes.contains(term.cond)
+                                                      ? regTypes.at(term.cond)
+                                                      : TypeRef::MakeBool();
+                            const int condSz = SizeOf(condT);
+                            if (condSz <= 1) enc.MovzxRaxByte(Disp(term.cond));
+                            else if (condSz == 2) enc.MovzxRaxWord(Disp(term.cond));
+                            else if (condSz == 4) enc.MovEaxLoad(Disp(term.cond));
+                            else enc.MovRaxLoad(Disp(term.cond));
+                        }
                         enc.TestRaxRax();
                         const bool truePhi = HasPhiMoves(blockIdx, term.trueTarget);
                         if (const bool falsePhi = HasPhiMoves(blockIdx, term.falseTarget); !truePhi && !falsePhi)

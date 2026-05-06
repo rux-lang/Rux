@@ -206,7 +206,7 @@ namespace Rux
                                            : std::filesystem::path(manifest.build.output);
         if (output.is_relative())
             output = root / output;
-        return output / std::string(profileName);
+        return (output / std::string(profileName)).lexically_normal();
     }
 
     // Commands

@@ -22,6 +22,7 @@ namespace Rux
             Char8, Char16, Char32,
             Int8, Int16, Int32, Int64,
             UInt8, UInt16, UInt32, UInt64,
+            Int, UInt, // platform-dependent: 64-bit on x64, 32-bit on x86
             Float32, Float64,
             Str, // String
             Pointer, // *T  — inner[0] = pointee
@@ -31,8 +32,9 @@ namespace Rux
             TypeParam, // generic parameter T — name = param name
             Func, // func(...) -> T — inner[0..n-2] = params, inner[n-1] = return
             // Aliases — must come after all concrete values so they don't shift the counter
-            Bool = Bool8, // bool is an alias for bool8
-            Char = Char32, // char is an alias for char32
+            Bool = Bool8,     // bool is an alias for bool8
+            Char = Char32,    // char is an alias for char32
+            Float = Float64,  // float is an alias for float64
         };
 
         Kind kind = Kind::Unknown;
@@ -169,6 +171,20 @@ namespace Rux
             return t;
         }
 
+        static TypeRef MakeInt()
+        {
+            TypeRef t;
+            t.kind = Kind::Int;
+            return t;
+        }
+
+        static TypeRef MakeUInt()
+        {
+            TypeRef t;
+            t.kind = Kind::UInt;
+            return t;
+        }
+
         static TypeRef MakeFloat32()
         {
             TypeRef t;
@@ -177,6 +193,13 @@ namespace Rux
         }
 
         static TypeRef MakeFloat64()
+        {
+            TypeRef t;
+            t.kind = Kind::Float64;
+            return t;
+        }
+
+        static TypeRef MakeFloat()
         {
             TypeRef t;
             t.kind = Kind::Float64;

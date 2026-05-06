@@ -27,10 +27,12 @@ namespace Rux
         case Kind::Int16:
         case Kind::Int32:
         case Kind::Int64:
+        case Kind::Int:
         case Kind::UInt8:
         case Kind::UInt16:
         case Kind::UInt32:
         case Kind::UInt64:
+        case Kind::UInt:
         case Kind::Float32:
         case Kind::Float64:
             return true;
@@ -46,10 +48,12 @@ namespace Rux
         case Kind::Int16:
         case Kind::Int32:
         case Kind::Int64:
+        case Kind::Int:
         case Kind::UInt8:
         case Kind::UInt16:
         case Kind::UInt32:
         case Kind::UInt64:
+        case Kind::UInt:
             return true;
         default: return false;
         }
@@ -68,6 +72,7 @@ namespace Rux
         case Kind::Int16:
         case Kind::Int32:
         case Kind::Int64:
+        case Kind::Int:
             return true;
         default: return false;
         }
@@ -77,6 +82,20 @@ namespace Rux
     {
         if (IsUnknown() || other.IsUnknown()) return true;
         if (*this == other) return true;
+        // float32 widens implicitly to float64 / float (safe, no precision loss in range)
+        if (kind == Kind::Float32 && other.kind == Kind::Float64) return true;
+        // int/uint interoperate with their fixed-width platform equivalents (x64: 64-bit)
+        if (kind == Kind::Int64 && other.kind == Kind::Int) return true;
+        if (kind == Kind::Int && other.kind == Kind::Int64) return true;
+        if (kind == Kind::UInt64 && other.kind == Kind::UInt) return true;
+        if (kind == Kind::UInt && other.kind == Kind::UInt64) return true;
+        // smaller fixed-width integers widen implicitly to int/uint
+        if (other.kind == Kind::Int &&
+            (kind == Kind::Int8 || kind == Kind::Int16 || kind == Kind::Int32))
+            return true;
+        if (other.kind == Kind::UInt &&
+            (kind == Kind::UInt8 || kind == Kind::UInt16 || kind == Kind::UInt32))
+            return true;
         // Numeric types must match exactly unless an explicit cast is used.
         if (IsNumeric() && other.IsNumeric()) return false;
         // Bool types are mutually assignable across widths
@@ -105,10 +124,12 @@ namespace Rux
         case Kind::Int16: return "int16";
         case Kind::Int32: return "int32";
         case Kind::Int64: return "int64";
+        case Kind::Int: return "int";
         case Kind::UInt8: return "uint8";
         case Kind::UInt16: return "uint16";
         case Kind::UInt32: return "uint32";
         case Kind::UInt64: return "uint64";
+        case Kind::UInt: return "uint";
         case Kind::Float32: return "float32";
         case Kind::Float64: return "float64";
         case Kind::Named: return name;
@@ -321,13 +342,15 @@ namespace Rux
             add("int16", TypeRef::MakeInt16());
             add("int32", TypeRef::MakeInt32());
             add("int64", TypeRef::MakeInt64());
+            add("int", TypeRef::MakeInt());
             add("uint8", TypeRef::MakeUInt8());
             add("uint16", TypeRef::MakeUInt16());
             add("uint32", TypeRef::MakeUInt32());
             add("uint64", TypeRef::MakeUInt64());
-            add("uint", TypeRef::MakeUInt64());
+            add("uint", TypeRef::MakeUInt());
             add("float32", TypeRef::MakeFloat32());
             add("float64", TypeRef::MakeFloat64());
+            add("float", TypeRef::MakeFloat());
         }
 
         // ── First pass: collect global declaration names ───────────────────────────
@@ -537,7 +560,7 @@ namespace Rux
             if (suffix == "u64") return TypeRef::MakeUInt64();
             if (suffix == "f32") return TypeRef::MakeFloat32();
             if (suffix == "f64") return TypeRef::MakeFloat64();
-            return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt64();
+            return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
         }
 
         static std::optional<TypeRef> BuiltinTypeFromName(const std::string& name)
@@ -554,12 +577,15 @@ namespace Rux
             if (name == "int16") return TypeRef::MakeInt16();
             if (name == "int32") return TypeRef::MakeInt32();
             if (name == "int64") return TypeRef::MakeInt64();
+            if (name == "int") return TypeRef::MakeInt();
             if (name == "uint8") return TypeRef::MakeUInt8();
             if (name == "uint16") return TypeRef::MakeUInt16();
             if (name == "uint32") return TypeRef::MakeUInt32();
-            if (name == "uint" || name == "uint64") return TypeRef::MakeUInt64();
+            if (name == "uint64") return TypeRef::MakeUInt64();
+            if (name == "uint") return TypeRef::MakeUInt();
             if (name == "float32") return TypeRef::MakeFloat32();
             if (name == "float64") return TypeRef::MakeFloat64();
+            if (name == "float") return TypeRef::MakeFloat();
             return std::nullopt;
         }
 

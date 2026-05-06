@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 4.2)
-project(Rux VERSION 0.1.1)
+project(Rux VERSION 0.1.2)
 
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

@@ -167,13 +167,15 @@ namespace Rux
             add("int16", TypeRef::MakeInt16());
             add("int32", TypeRef::MakeInt32());
             add("int64", TypeRef::MakeInt64());
+            add("int", TypeRef::MakeInt());
             add("uint8", TypeRef::MakeUInt8());
             add("uint16", TypeRef::MakeUInt16());
             add("uint32", TypeRef::MakeUInt32());
             add("uint64", TypeRef::MakeUInt64());
-            add("uint", TypeRef::MakeUInt64());
+            add("uint", TypeRef::MakeUInt());
             add("float32", TypeRef::MakeFloat32());
             add("float64", TypeRef::MakeFloat64());
+            add("float", TypeRef::MakeFloat());
         }
 
         // First pass: collect global names
@@ -324,7 +326,7 @@ namespace Rux
             if (suffix == "u64") return TypeRef::MakeUInt64();
             if (suffix == "f32") return TypeRef::MakeFloat32();
             if (suffix == "f64") return TypeRef::MakeFloat64();
-            return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt64();
+            return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
         }
 
         static std::optional<TypeRef> BuiltinTypeFromName(const std::string& name)
@@ -341,12 +343,15 @@ namespace Rux
             if (name == "int16") return TypeRef::MakeInt16();
             if (name == "int32") return TypeRef::MakeInt32();
             if (name == "int64") return TypeRef::MakeInt64();
+            if (name == "int") return TypeRef::MakeInt();
             if (name == "uint8") return TypeRef::MakeUInt8();
             if (name == "uint16") return TypeRef::MakeUInt16();
             if (name == "uint32") return TypeRef::MakeUInt32();
-            if (name == "uint" || name == "uint64") return TypeRef::MakeUInt64();
+            if (name == "uint64") return TypeRef::MakeUInt64();
+            if (name == "uint") return TypeRef::MakeUInt();
             if (name == "float32") return TypeRef::MakeFloat32();
             if (name == "float64") return TypeRef::MakeFloat64();
+            if (name == "float") return TypeRef::MakeFloat();
             return std::nullopt;
         }
 

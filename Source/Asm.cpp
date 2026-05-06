@@ -36,7 +36,7 @@ namespace Rux
             case TypeRef::Kind::UInt32:
             case TypeRef::Kind::Float32: return 4;
             case TypeRef::Kind::Opaque: return 0;
-            default: return 8; // int64, uint64, float64, pointer, str, named, …
+            default: return 8; // int, uint, int64, uint64, float64, pointer, str, named, …
             }
         }
 
@@ -1195,9 +1195,17 @@ namespace Rux
 
                 case LirTermKind::Branch:
                     {
-                        // Load condition
+                        // Load condition — use the actual size to avoid reading stack garbage
                         TypeRef condT = regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeBool();
-                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(term.cond)));
+                        int condSz = SizeOf(condT);
+                        if (condSz <= 1)
+                            TI(std::format("{:<8}rax, byte [rbp - {}]", "movzx", slotMap.at(term.cond)));
+                        else if (condSz == 2)
+                            TI(std::format("{:<8}rax, word [rbp - {}]", "movzx", slotMap.at(term.cond)));
+                        else if (condSz == 4)
+                            TI(std::format("{:<8}eax, dword [rbp - {}]", "mov", slotMap.at(term.cond)));
+                        else
+                            TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(term.cond)));
                         TI("test    rax, rax");
 
                         std::string trueLabel = BlockLabel(term.trueTarget, func.blocks[term.trueTarget].label);
