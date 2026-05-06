@@ -444,7 +444,7 @@ namespace Rux
     {
         assert(Peek() == '\\');
         const SourceLocation loc = CurrentLocation();
-        Advance(); // consume  \
+        Advance(); // consume backslash
         if (IsAtEnd())
         {
             EmitError(loc, "unexpected end of file in escape sequence");
@@ -497,26 +497,26 @@ namespace Rux
                                  ? TokenKind::ColonColon
                                  : TokenKind::Colon,
                              start, tokenStart);
-        // .  or  ..  or  ...
+        // .  or  ..  or  ...  or  ..=
         case '.':
             if (Match('.'))
             {
-                return MakeToken(Match('.')
-                                     ? TokenKind::DotDotDot
-                                     : TokenKind::DotDot,
-                                 start, tokenStart);
+                if (Match('.'))
+                    return MakeToken(TokenKind::DotDotDot, start, tokenStart);
+                if (Match('='))
+                    return MakeToken(TokenKind::DotDotEqual, start, tokenStart);
+                return MakeToken(TokenKind::DotDot, start, tokenStart);
             }
             return MakeToken(TokenKind::Dot, start, tokenStart);
 
-        // +  or  +=
+        // +  or  ++  or  +=
         case '+':
-            return MakeToken(Match('=')
-                                 ? TokenKind::PlusAssign
-                                 : TokenKind::Plus,
-                             start, tokenStart);
+            if (Match('+')) return MakeToken(TokenKind::PlusPlus, start, tokenStart);
+            return MakeToken(Match('=') ? TokenKind::PlusAssign : TokenKind::Plus, start, tokenStart);
 
-        // -  or  -=  or  ->
+        // -  or  --  or  -=  or  ->
         case '-':
+            if (Match('-')) return MakeToken(TokenKind::MinusMinus, start, tokenStart);
             if (Match('>')) return MakeToken(TokenKind::Arrow, start, tokenStart);
             if (Match('=')) return MakeToken(TokenKind::MinusAssign, start, tokenStart);
             return MakeToken(TokenKind::Minus, start, tokenStart);

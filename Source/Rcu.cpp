@@ -1189,6 +1189,12 @@ namespace Rux
 
             [[nodiscard]] int SizeOfRuntime(const TypeRef& t) const
             {
+                if (t.kind == TypeRef::Kind::Range)
+                {
+                    const TypeRef& elemType = t.inner.empty() ? TypeRef::MakeInt64() : t.inner[0];
+                    int elemSize = SizeOf(elemType);
+                    return AlignUp(2 * elemSize + 1, elemSize > 0 ? elemSize : 1);
+                }
                 if (t.kind == TypeRef::Kind::Named)
                 {
                     const std::string base = BaseTypeName(t.name);
@@ -1450,6 +1456,15 @@ namespace Rux
                 const TypeRef& pt = typeIt->second;
                 if (pt.kind != TypeRef::Kind::Pointer || pt.inner.empty()) return 0;
                 const TypeRef& inner = pt.inner[0];
+                if (inner.kind == TypeRef::Kind::Range)
+                {
+                    const TypeRef& elemType = inner.inner.empty() ? TypeRef::MakeInt64() : inner.inner[0];
+                    int elemSize = SizeOf(elemType);
+                    if (fieldName == "lo") return 0;
+                    if (fieldName == "hi") return elemSize;
+                    if (fieldName == "inclusive") return 2 * elemSize;
+                    return 0;
+                }
                 if (inner.kind != TypeRef::Kind::Named) return 0;
                 const std::string baseName = BaseTypeName(inner.name);
                 if (baseName == "Slice")

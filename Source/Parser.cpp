@@ -176,6 +176,8 @@ namespace Rux
                 k == TokenKind::VarKeyword ||
                 k == TokenKind::IfKeyword ||
                 k == TokenKind::WhileKeyword ||
+                k == TokenKind::DoKeyword ||
+                k == TokenKind::LoopKeyword ||
                 k == TokenKind::ForKeyword ||
                 k == TokenKind::ReturnKeyword ||
                 k == TokenKind::MatchKeyword)
@@ -715,8 +717,8 @@ namespace Rux
         decl->isPublic = isPublic;
         decl->name = Expect(TokenKind::Ident, "expected constant name").text;
 
-        Expect(TokenKind::Colon, "expected ':'");
-        decl->type = ParseType();
+        if (Match(TokenKind::Colon))
+            decl->type = ParseType();
 
         Expect(TokenKind::Assign, "expected '='");
         decl->value = ParseExpr();
@@ -992,10 +994,42 @@ namespace Rux
             return ParseLetStmt();
         if (Check(TokenKind::IfKeyword))
             return ParseIfStmt();
+        // Optional loop label: `ident ':' loop-keyword`
+        std::string loopLabel;
+        if (Check(TokenKind::Ident) && Peek(1).kind == TokenKind::Colon)
+        {
+            const TokenKind ahead = Peek(2).kind;
+            if (ahead == TokenKind::WhileKeyword || ahead == TokenKind::DoKeyword ||
+                ahead == TokenKind::LoopKeyword  || ahead == TokenKind::ForKeyword)
+            {
+                loopLabel = Advance().text; // consume label name
+                Advance();                  // consume ':'
+            }
+        }
         if (Check(TokenKind::WhileKeyword))
-            return ParseWhileStmt();
+        {
+            auto s = ParseWhileStmt();
+            s->label = loopLabel;
+            return s;
+        }
+        if (Check(TokenKind::DoKeyword))
+        {
+            auto s = ParseDoWhileStmt();
+            s->label = loopLabel;
+            return s;
+        }
+        if (Check(TokenKind::LoopKeyword))
+        {
+            auto s = ParseLoopStmt();
+            s->label = loopLabel;
+            return s;
+        }
         if (Check(TokenKind::ForKeyword))
-            return ParseForStmt();
+        {
+            auto s = ParseForStmt();
+            s->label = loopLabel;
+            return s;
+        }
         if (Check(TokenKind::MatchKeyword))
             return ParseMatchStmt();
         if (Check(TokenKind::ReturnKeyword))
@@ -1004,18 +1038,26 @@ namespace Rux
         if (Check(TokenKind::BreakKeyword))
         {
             Advance();
+            std::string label;
+            if (Check(TokenKind::Ident))
+                label = Advance().text;
             Expect(TokenKind::Semicolon, "expected ';'");
             auto s = std::make_unique<BreakStmt>();
             s->location = loc;
+            s->label = label;
             return s;
         }
 
         if (Check(TokenKind::ContinueKeyword))
         {
             Advance();
+            std::string label;
+            if (Check(TokenKind::Ident))
+                label = Advance().text;
             Expect(TokenKind::Semicolon, "expected ';'");
             auto s = std::make_unique<ContinueStmt>();
             s->location = loc;
+            s->label = label;
             return s;
         }
 
@@ -1119,6 +1161,33 @@ namespace Rux
         structInitAllowed = false;
         s->condition = ParseExpr();
         structInitAllowed = true;
+        s->body = ParseBlock();
+        return s;
+    }
+
+    std::unique_ptr<DoWhileStmt> Parser::ParseDoWhileStmt()
+    {
+        const auto loc = CurrentLocation();
+        Expect(TokenKind::DoKeyword, "expected 'do'");
+
+        auto s = std::make_unique<DoWhileStmt>();
+        s->location = loc;
+        s->body = ParseBlock();
+        Expect(TokenKind::WhileKeyword, "expected 'while' after do body");
+        structInitAllowed = false;
+        s->condition = ParseExpr();
+        structInitAllowed = true;
+        Expect(TokenKind::Semicolon, "expected ';' after do-while condition");
+        return s;
+    }
+
+    std::unique_ptr<LoopStmt> Parser::ParseLoopStmt()
+    {
+        const auto loc = CurrentLocation();
+        Expect(TokenKind::LoopKeyword, "expected 'loop'");
+
+        auto s = std::make_unique<LoopStmt>();
+        s->location = loc;
         s->body = ParseBlock();
         return s;
     }
@@ -1241,9 +1310,9 @@ namespace Rux
         auto left = ParseTernary();
         if (!left) return nullptr;
 
-        if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot))
+        if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual))
         {
-            const bool incl = Peek().kind == TokenKind::DotDotDot;
+            const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
             const auto loc = CurrentLocation();
             Advance();
             auto right = ParseTernary();
@@ -1484,7 +1553,8 @@ namespace Rux
     {
         if (CheckAny({
             TokenKind::Bang, TokenKind::Minus,
-            TokenKind::Tilde, TokenKind::Star, TokenKind::Amp
+            TokenKind::Tilde, TokenKind::Star, TokenKind::Amp,
+            TokenKind::PlusPlus, TokenKind::MinusMinus
         }))
         {
             const auto loc = CurrentLocation();
@@ -1602,6 +1672,17 @@ namespace Rux
                 left = std::move(e);
                 continue;
             }
+            // Post-increment / post-decrement: expr++ or expr--
+            if (Check(TokenKind::PlusPlus) || Check(TokenKind::MinusMinus))
+            {
+                const TokenKind op = Advance().kind;
+                auto e = std::make_unique<PostfixExpr>();
+                e->location = loc;
+                e->op = op;
+                e->operand = std::move(left);
+                left = std::move(e);
+                continue;
+            }
 
             break;
         }
@@ -1636,6 +1717,17 @@ namespace Rux
         {
             auto e = std::make_unique<SelfExpr>();
             e->location = loc;
+            return e;
+        }
+        // Compile-time size query: sizeof(T)
+        if (Check(TokenKind::Ident) && Peek().text == "sizeof")
+        {
+            Advance();
+            auto e = std::make_unique<SizeOfExpr>();
+            e->location = loc;
+            Expect(TokenKind::LeftParen, "expected '(' after 'sizeof'");
+            e->type = ParseType();
+            Expect(TokenKind::RightParen, "expected ')' after sizeof type");
             return e;
         }
         // Slice literal: [a, b, c]
@@ -1737,10 +1829,10 @@ namespace Rux
             return p;
         }
 
-        // Range pattern: lo..hi or lo...hi
-        if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot))
+        // Range pattern: lo..hi or lo...hi or lo..=hi
+        if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual))
         {
-            const bool incl = Peek().kind == TokenKind::DotDotDot;
+            const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
             const auto loc = CurrentLocation();
             Advance();
             auto hi = ParsePrimaryPattern();
@@ -2196,7 +2288,10 @@ namespace Rux
             {
                 Pad();
                 if (c.isPublic) out << "pub ";
-                out << "ConstDecl '" << c.name << "' : " << TypeStr(c.type.get()) << '\n';
+                out << "ConstDecl '" << c.name << "'";
+                if (c.type)
+                    out << " : " << TypeStr(c.type->get());
+                out << '\n';
                 ++indent;
                 if (c.value) PrintExpr(*c.value);
                 --indent;
@@ -2436,6 +2531,11 @@ namespace Rux
                         out << pathExpr->segments[i];
                     }
                     out << "'\n";
+                }
+                else if (const auto* sizeOfExpr = dynamic_cast<const SizeOfExpr*>(&expr))
+                {
+                    Pad();
+                    out << "SizeOfExpr " << TypeStr(sizeOfExpr->type.get()) << '\n';
                 }
                 else if (const auto* unaryExpr = dynamic_cast<const UnaryExpr*>(&expr))
                 {

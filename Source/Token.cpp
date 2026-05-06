@@ -17,6 +17,8 @@ namespace Rux
             {"if", TokenKind::IfKeyword},
             {"else", TokenKind::ElseKeyword},
             {"while", TokenKind::WhileKeyword},
+            {"do", TokenKind::DoKeyword},
+            {"loop", TokenKind::LoopKeyword},
             {"for", TokenKind::ForKeyword},
             {"in", TokenKind::InKeyword},
             {"break", TokenKind::BreakKeyword},
@@ -64,6 +66,8 @@ namespace Rux
         case TokenKind::IfKeyword: return "IfKeyword";
         case TokenKind::ElseKeyword: return "ElseKeyword";
         case TokenKind::WhileKeyword: return "WhileKeyword";
+        case TokenKind::DoKeyword: return "DoKeyword";
+        case TokenKind::LoopKeyword: return "LoopKeyword";
         case TokenKind::ForKeyword: return "ForKeyword";
         case TokenKind::InKeyword: return "InKeyword";
         case TokenKind::BreakKeyword: return "BreakKeyword";
@@ -103,6 +107,7 @@ namespace Rux
         case TokenKind::Dot: return "Dot";
         case TokenKind::DotDot: return "DotDot";
         case TokenKind::DotDotDot: return "DotDotDot";
+        case TokenKind::DotDotEqual: return "DotDotEqual";
         case TokenKind::Arrow: return "Arrow";
         case TokenKind::FatArrow: return "FatArrow";
         case TokenKind::At: return "At";
@@ -114,6 +119,8 @@ namespace Rux
         case TokenKind::Slash: return "Slash";
         case TokenKind::Percent: return "Percent";
         case TokenKind::StarStar: return "StarStar";
+        case TokenKind::PlusPlus: return "PlusPlus";
+        case TokenKind::MinusMinus: return "MinusMinus";
         case TokenKind::Amp: return "Amp";
         case TokenKind::Pipe: return "Pipe";
         case TokenKind::Caret: return "Caret";

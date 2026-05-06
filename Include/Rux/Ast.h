@@ -190,10 +190,23 @@ namespace Rux
         std::vector<std::string> segments;
     };
 
+    // sizeof(T)
+    struct SizeOfExpr : Expr
+    {
+        TypeExprPtr type;
+    };
+
     // !x, -x, ~x, *x, &x
     struct UnaryExpr : Expr
     {
         TokenKind op;
+        ExprPtr operand;
+    };
+
+    // i++, i--
+    struct PostfixExpr : Expr
+    {
+        TokenKind op; // PlusPlus or MinusMinus
         ExprPtr operand;
     };
 
@@ -335,13 +348,30 @@ namespace Rux
     // while cond { }
     struct WhileStmt : Stmt
     {
+        std::string label; // empty = no label
         ExprPtr condition;
+        std::unique_ptr<Block> body;
+    };
+
+    // do { } while cond;
+    struct DoWhileStmt : Stmt
+    {
+        std::string label;
+        std::unique_ptr<Block> body;
+        ExprPtr condition;
+    };
+
+    // loop { }
+    struct LoopStmt : Stmt
+    {
+        std::string label;
         std::unique_ptr<Block> body;
     };
 
     // for var in iterable { }
     struct ForStmt : Stmt
     {
+        std::string label;
         std::string variable;
         ExprPtr iterable;
         std::unique_ptr<Block> body;
@@ -367,14 +397,16 @@ namespace Rux
         std::optional<ExprPtr> value;
     };
 
-    // break;
+    // break [label];
     struct BreakStmt : Stmt
     {
+        std::string label; // empty = break innermost loop
     };
 
-    // continue;
+    // continue [label];
     struct ContinueStmt : Stmt
     {
+        std::string label; // empty = continue innermost loop
     };
 
     // declaration inside a block
@@ -492,11 +524,11 @@ namespace Rux
         std::vector<std::string> names; // for Multi
     };
 
-    // const Name: Type = expr;
+    // const Name[: Type] = expr;
     struct ConstDecl : Decl
     {
         std::string name;
-        TypeExprPtr type;
+        std::optional<TypeExprPtr> type;
         ExprPtr value;
     };
 

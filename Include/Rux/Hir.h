@@ -145,6 +145,13 @@ namespace Rux
         HirExprPtr operand;
     };
 
+    // i++, i--
+    struct HirPostfixExpr : HirExpr
+    {
+        TokenKind op; // PlusPlus or MinusMinus
+        HirExprPtr operand;
+    };
+
     // a + b, a && b, a == b, etc.
     struct HirBinaryExpr : HirExpr
     {
@@ -280,13 +287,30 @@ namespace Rux
     // while cond { }
     struct HirWhileStmt : HirStmt
     {
+        std::string label;
         HirExprPtr condition;
+        HirBlock body;
+    };
+
+    // do { } while cond;
+    struct HirDoWhileStmt : HirStmt
+    {
+        std::string label;
+        HirBlock body;
+        HirExprPtr condition;
+    };
+
+    // loop { }
+    struct HirLoopStmt : HirStmt
+    {
+        std::string label;
         HirBlock body;
     };
 
     // for var in iterable { }
     struct HirForStmt : HirStmt
     {
+        std::string label;
         std::string variable;
         TypeRef varType;
         HirExprPtr iterable;
@@ -313,14 +337,16 @@ namespace Rux
         std::optional<HirExprPtr> value;
     };
 
-    // break;
+    // break [label];
     struct HirBreakStmt : HirStmt
     {
+        std::string label;
     };
 
-    // continue;
+    // continue [label];
     struct HirContinueStmt : HirStmt
     {
+        std::string label;
     };
 
     // local declaration inside a block (func, const, type alias declared locally)

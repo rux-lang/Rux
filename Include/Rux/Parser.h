@@ -114,6 +114,8 @@ namespace Rux
         std::unique_ptr<LetStmt> ParseLetStmt();
         std::unique_ptr<IfStmt> ParseIfStmt();
         std::unique_ptr<WhileStmt> ParseWhileStmt();
+        std::unique_ptr<DoWhileStmt> ParseDoWhileStmt();
+        std::unique_ptr<LoopStmt> ParseLoopStmt();
         std::unique_ptr<ForStmt> ParseForStmt();
         std::unique_ptr<MatchStmt> ParseMatchStmt();
         std::unique_ptr<ReturnStmt> ParseReturnStmt();

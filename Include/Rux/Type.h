@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,6 +29,7 @@ namespace Rux
             Str, // String
             Pointer, // *T  — inner[0] = pointee
             Slice, // T[] / T[N]  — inner[0] = element
+            Range, // lo..hi / lo...hi — inner[0] = element
             Tuple, // (T, U, ...) — inner = elements
             Named, // user-defined struct/enum/union — name = type name
             TypeParam, // generic parameter T — name = param name
@@ -238,6 +241,14 @@ namespace Rux
             return t;
         }
 
+        static TypeRef MakeRange(TypeRef elem)
+        {
+            TypeRef t;
+            t.kind = Kind::Range;
+            t.inner.push_back(std::move(elem));
+            return t;
+        }
+
         static TypeRef MakeTuple(std::vector<TypeRef> elems)
         {
             TypeRef t;
@@ -267,11 +278,13 @@ namespace Rux
 
         [[nodiscard]] bool IsNumeric() const noexcept;
         [[nodiscard]] bool IsInteger() const noexcept;
+        [[nodiscard]] bool IsRange() const noexcept { return kind == Kind::Range; }
         [[nodiscard]] bool IsFloat() const noexcept;
         [[nodiscard]] bool IsSigned() const noexcept;
 
         // True when this type can be assigned to `other` (lenient: Unknown is compatible with anything).
         [[nodiscard]] bool IsAssignableTo(const TypeRef& other) const noexcept;
+        [[nodiscard]] std::optional<std::uint64_t> SizeInBytes() const noexcept;
         [[nodiscard]] std::string ToString() const;
 
         bool operator==(const TypeRef& other) const noexcept;

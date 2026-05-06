@@ -28,6 +28,8 @@ namespace Rux
         IfKeyword, // if
         ElseKeyword, // else
         WhileKeyword, // while
+        DoKeyword, // do
+        LoopKeyword, // loop
         ForKeyword, // for
         InKeyword, // in
         BreakKeyword, // break
@@ -73,6 +75,7 @@ namespace Rux
         Dot, // .
         DotDot, // ..
         DotDotDot, // ...
+        DotDotEqual, // ..=
         Arrow, // ->
         FatArrow, // =>
         At, // @
@@ -86,6 +89,8 @@ namespace Rux
         Slash, // /
         Percent, // %
         StarStar, // **
+        PlusPlus, // ++
+        MinusMinus, // --
 
         // Bitwise operators
         Amp, // &

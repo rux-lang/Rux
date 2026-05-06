@@ -107,6 +107,72 @@ namespace Rux
         return false;
     }
 
+    std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept
+    {
+        auto alignUp = [](const std::uint64_t value, const std::uint64_t align)
+        {
+            return (value + align - 1) & ~(align - 1);
+        };
+
+        switch (kind)
+        {
+        case Kind::Unknown:
+        case Kind::TypeParam:
+            return std::nullopt;
+        case Kind::Opaque:
+            return 0;
+        case Kind::Bool8:
+        case Kind::Char8:
+        case Kind::Int8:
+        case Kind::UInt8:
+            return 1;
+        case Kind::Bool16:
+        case Kind::Char16:
+        case Kind::Int16:
+        case Kind::UInt16:
+            return 2;
+        case Kind::Bool32:
+        case Kind::Char32:
+        case Kind::Int32:
+        case Kind::UInt32:
+        case Kind::Float32:
+            return 4;
+        case Kind::Int64:
+        case Kind::UInt64:
+        case Kind::Int:
+        case Kind::UInt:
+        case Kind::Float64:
+        case Kind::Pointer:
+        case Kind::Str:
+        case Kind::Func:
+            return 8;
+        case Kind::Slice:
+            return 16;
+        case Kind::Range:
+            {
+                if (inner.empty()) return std::nullopt;
+                const auto elemSize = inner[0].SizeInBytes();
+                if (!elemSize || *elemSize == 0) return std::nullopt;
+                return alignUp(2 * *elemSize + 1, *elemSize);
+            }
+        case Kind::Tuple:
+            {
+                std::uint64_t total = 0;
+                for (const auto& elem : inner)
+                {
+                    const auto elemSize = elem.SizeInBytes();
+                    if (!elemSize) return std::nullopt;
+                    total += *elemSize;
+                }
+                return total;
+            }
+        case Kind::Named:
+            if (name.starts_with("Slice<")) return 16;
+            return std::nullopt;
+        }
+        return std::nullopt;
+    }
+
     std::string TypeRef::ToString() const
     {
         switch (kind)
@@ -136,6 +202,7 @@ namespace Rux
         case Kind::TypeParam: return name;
         case Kind::Pointer: return "*" + (inner.empty() ? "?" : inner[0].ToString());
         case Kind::Slice: return (inner.empty() ? "?" : inner[0].ToString()) + "[]";
+        case Kind::Range: return "Range<" + (inner.empty() ? "?" : inner[0].ToString()) + ">";
         case Kind::Tuple:
             {
                 std::string s = "(";
@@ -264,8 +331,10 @@ namespace Rux
         std::string currentFile;
         TypeRef currentReturnType = TypeRef::MakeOpaque();
         int loopDepth = 0;
+        std::unordered_set<std::string> activeLabels;
         bool inImpl = false;
         std::vector<std::string> currentTypeParams;
+        std::unordered_map<std::string, const StructDecl*> structDecls;
 
         // Diagnostics
 
@@ -420,7 +489,10 @@ namespace Rux
             if (auto* d = dynamic_cast<const FuncDecl*>(&decl))
                 simple(Symbol::Kind::Func, d->name, SemaSymbol::Kind::Func);
             else if (auto* d = dynamic_cast<const StructDecl*>(&decl))
+            {
+                structDecls[d->name] = d;
                 simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "struct");
+            }
             else if (auto* d = dynamic_cast<const EnumDecl*>(&decl))
                 simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "enum");
             else if (auto* d = dynamic_cast<const UnionDecl*>(&decl))
@@ -440,7 +512,21 @@ namespace Rux
                     });
             }
             else if (auto* d = dynamic_cast<const ConstDecl*>(&decl))
-                simple(Symbol::Kind::Const, d->name, SemaSymbol::Kind::Const);
+            {
+                Symbol sym;
+                sym.kind = Symbol::Kind::Const;
+                sym.name = d->name;
+                sym.location = d->location;
+                if (d->type)
+                    sym.type = ResolveType(*d->type->get());
+                if (scope.Define(sym, diags, currentFile) && isGlobal)
+                {
+                    symbols.push_back({
+                        SemaSymbol::Kind::Const, d->name, currentFile,
+                        d->location, sym.type.IsUnknown() ? "" : sym.type.ToString(), false
+                    });
+                }
+            }
             else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl))
                 simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "type alias");
             else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl))
@@ -509,6 +595,17 @@ namespace Rux
         static std::string SliceTypeName(const TypeRef& elemType)
         {
             return "Slice<" + elemType.ToString() + ">";
+        }
+
+        static std::string BaseTypeName(const std::string& name)
+        {
+            const std::size_t pos = name.find('<');
+            return pos == std::string::npos ? name : name.substr(0, pos);
+        }
+
+        static std::uint64_t AlignUp(const std::uint64_t value, const std::uint64_t align)
+        {
+            return (value + align - 1) & ~(align - 1);
         }
 
         static TypeRef StringLiteralElementType(const Token& tok)
@@ -640,6 +737,125 @@ namespace Rux
             if (dynamic_cast<const SelfTypeExpr*>(&expr))
                 return TypeRef::MakeNamed("self");
             return TypeRef::MakeUnknown();
+        }
+
+        TypeRef ResolveTypeWithSubstitution(
+            const TypeExpr& expr,
+            const std::unordered_map<std::string, TypeRef>& substitutions)
+        {
+            if (auto* t = dynamic_cast<const NamedTypeExpr*>(&expr))
+            {
+                if (t->typeArgs.empty())
+                {
+                    if (auto it = substitutions.find(t->name); it != substitutions.end())
+                        return it->second;
+                    return ResolveType(expr);
+                }
+
+                TypeRef named = TypeRef::MakeNamed(t->name);
+                named.name += "<";
+                for (std::size_t i = 0; i < t->typeArgs.size(); ++i)
+                {
+                    if (i) named.name += ", ";
+                    named.name += ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions).ToString();
+                }
+                named.name += ">";
+                return named;
+            }
+            if (auto* t = dynamic_cast<const PointerTypeExpr*>(&expr))
+                return TypeRef::MakePointer(ResolveTypeWithSubstitution(*t->pointee, substitutions));
+            if (auto* t = dynamic_cast<const SliceTypeExpr*>(&expr))
+                return TypeRef::MakeNamed(SliceTypeName(ResolveTypeWithSubstitution(*t->element, substitutions)));
+            if (auto* t = dynamic_cast<const TupleTypeExpr*>(&expr))
+            {
+                std::vector<TypeRef> elems;
+                for (auto& elem : t->elements)
+                    elems.push_back(ResolveTypeWithSubstitution(*elem, substitutions));
+                return TypeRef::MakeTuple(std::move(elems));
+            }
+            return ResolveType(expr);
+        }
+
+        std::optional<std::uint64_t> SizeOfTypeRef(
+            const TypeRef& type,
+            const std::unordered_map<std::string, TypeRef>& substitutions = {})
+        {
+            if (type.kind == TypeRef::Kind::Named)
+            {
+                if (type.name.starts_with("Slice<")) return 16;
+                if (auto it = substitutions.find(type.name); it != substitutions.end())
+                    return SizeOfTypeRef(it->second, substitutions);
+                return SizeOfStruct(BaseTypeName(type.name), substitutions);
+            }
+
+            if (type.kind == TypeRef::Kind::Range)
+            {
+                if (type.inner.empty()) return std::nullopt;
+                const auto elemSize = SizeOfTypeRef(type.inner[0], substitutions);
+                if (!elemSize || *elemSize == 0) return std::nullopt;
+                return AlignUp(2 * *elemSize + 1, *elemSize);
+            }
+
+            if (type.kind == TypeRef::Kind::Tuple)
+            {
+                std::uint64_t total = 0;
+                for (const auto& elem : type.inner)
+                {
+                    const auto elemSize = SizeOfTypeRef(elem, substitutions);
+                    if (!elemSize) return std::nullopt;
+                    total += *elemSize;
+                }
+                return total;
+            }
+
+            return type.SizeInBytes();
+        }
+
+        std::optional<std::uint64_t> SizeOfStruct(
+            const std::string& name,
+            const std::unordered_map<std::string, TypeRef>& substitutions = {})
+        {
+            const auto structIt = structDecls.find(name);
+            if (structIt == structDecls.end()) return std::nullopt;
+
+            std::uint64_t offset = 0;
+            std::uint64_t maxAlign = 1;
+            for (const auto& field : structIt->second->fields)
+            {
+                const auto fieldSize = SizeOfTypeExprWithSubstitution(*field.type, substitutions);
+                if (!fieldSize) return std::nullopt;
+                const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
+                if (align > 1) offset = AlignUp(offset, align);
+                offset += *fieldSize > 0 ? *fieldSize : 8;
+                maxAlign = std::max(maxAlign, align);
+            }
+            return AlignUp(offset, maxAlign);
+        }
+
+        std::optional<std::uint64_t> SizeOfTypeExprWithSubstitution(
+            const TypeExpr& expr,
+            const std::unordered_map<std::string, TypeRef>& substitutions = {})
+        {
+            if (auto* t = dynamic_cast<const NamedTypeExpr*>(&expr))
+            {
+                const auto structIt = structDecls.find(t->name);
+                if (structIt != structDecls.end())
+                {
+                    std::unordered_map<std::string, TypeRef> fieldSubstitutions = substitutions;
+                    const auto& params = structIt->second->typeParams;
+                    for (std::size_t i = 0; i < params.size() && i < t->typeArgs.size(); ++i)
+                        fieldSubstitutions[params[i]] =
+                            ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions);
+                    return SizeOfStruct(t->name, fieldSubstitutions);
+                }
+            }
+
+            return SizeOfTypeRef(ResolveTypeWithSubstitution(expr, substitutions), substitutions);
+        }
+
+        std::optional<std::uint64_t> SizeOfTypeExpr(const TypeExpr& expr)
+        {
+            return SizeOfTypeExprWithSubstitution(expr);
         }
 
         // ── Second pass: check declarations ───────────────────────────────────────
@@ -861,8 +1077,15 @@ namespace Rux
 
         void CheckConstDecl(const ConstDecl& d)
         {
-            ResolveType(*d.type);
-            CheckExpr(*d.value);
+            TypeRef valueType = CheckExpr(*d.value);
+            TypeRef constType = d.type ? ResolveType(*d.type->get()) : valueType;
+            if (d.type && !valueType.IsUnknown() && !constType.IsUnknown() &&
+                !valueType.IsAssignableTo(constType))
+                EmitError(d.value->location,
+                          std::format("cannot assign '{}' to constant of type '{}'",
+                                      valueType.ToString(), constType.ToString()));
+            if (Symbol* sym = currentScope->Lookup(d.name))
+                sym->type = constType;
         }
 
         // ── Block & statements ────────────────────────────────────────────────────
@@ -920,25 +1143,49 @@ namespace Rux
             }
             else if (auto* s = dynamic_cast<const WhileStmt*>(&stmt))
             {
+                if (!s->label.empty()) activeLabels.insert(s->label);
                 CheckExpr(*s->condition);
                 ++loopDepth;
                 CheckBlock(*s->body);
                 --loopDepth;
+                if (!s->label.empty()) activeLabels.erase(s->label);
+            }
+            else if (auto* s = dynamic_cast<const DoWhileStmt*>(&stmt))
+            {
+                if (!s->label.empty()) activeLabels.insert(s->label);
+                ++loopDepth;
+                CheckBlock(*s->body);
+                --loopDepth;
+                CheckExpr(*s->condition);
+                if (!s->label.empty()) activeLabels.erase(s->label);
+            }
+            else if (auto* s = dynamic_cast<const LoopStmt*>(&stmt))
+            {
+                if (!s->label.empty()) activeLabels.insert(s->label);
+                ++loopDepth;
+                CheckBlock(*s->body);
+                --loopDepth;
+                if (!s->label.empty()) activeLabels.erase(s->label);
             }
             else if (auto* s = dynamic_cast<const ForStmt*>(&stmt))
             {
-                CheckExpr(*s->iterable);
+                TypeRef iterType = CheckExpr(*s->iterable);
                 PushScope(); // scope for the loop variable
                 Symbol var;
                 var.kind = Symbol::Kind::Var;
                 var.name = s->variable;
                 var.location = s->location;
-                var.type = TypeRef::MakeUnknown(); // element type needs full type inference
+                if (iterType.IsRange() && !iterType.inner.empty())
+                    var.type = iterType.inner[0];
+                else
+                    var.type = TypeRef::MakeUnknown();
                 var.isMut = false;
                 Define(var);
+                if (!s->label.empty()) activeLabels.insert(s->label);
                 ++loopDepth;
                 CheckBlock(*s->body); // CheckBlock pushes its own nested scope
                 --loopDepth;
+                if (!s->label.empty()) activeLabels.erase(s->label);
                 PopScope();
             }
             else if (auto* s = dynamic_cast<const MatchStmt*>(&stmt))
@@ -971,15 +1218,19 @@ namespace Rux
                                           currentReturnType.ToString()));
                 }
             }
-            else if (dynamic_cast<const BreakStmt*>(&stmt))
+            else if (auto* s = dynamic_cast<const BreakStmt*>(&stmt))
             {
                 if (loopDepth == 0)
                     EmitError(stmt.location, "'break' outside of a loop");
+                else if (!s->label.empty() && !activeLabels.count(s->label))
+                    EmitError(stmt.location, std::format("unknown loop label '{}'", s->label));
             }
-            else if (dynamic_cast<const ContinueStmt*>(&stmt))
+            else if (auto* s = dynamic_cast<const ContinueStmt*>(&stmt))
             {
                 if (loopDepth == 0)
                     EmitError(stmt.location, "'continue' outside of a loop");
+                else if (!s->label.empty() && !activeLabels.count(s->label))
+                    EmitError(stmt.location, std::format("unknown loop label '{}'", s->label));
             }
             else if (auto* s = dynamic_cast<const DeclStmt*>(&stmt))
             {
@@ -1064,10 +1315,33 @@ namespace Rux
                 return TypeRef::MakeUnknown();
             }
 
+            if (auto* e = dynamic_cast<const SizeOfExpr*>(&expr))
+            {
+                TypeRef t = ResolveType(*e->type);
+                if (!t.IsUnknown() && !SizeOfTypeExpr(*e->type))
+                    EmitError(e->location,
+                              std::format("cannot determine size of type '{}'", t.ToString()));
+                return TypeRef::MakeUInt64();
+            }
+
             if (auto* e = dynamic_cast<const UnaryExpr*>(&expr))
             {
+                if (e->op == TokenKind::PlusPlus || e->op == TokenKind::MinusMinus)
+                    CheckMutability(*e->operand);
                 TypeRef t = CheckExpr(*e->operand);
                 return CheckUnary(e->op, t, e->location);
+            }
+
+            if (auto* e = dynamic_cast<const PostfixExpr*>(&expr))
+            {
+                CheckMutability(*e->operand);
+                TypeRef t = CheckExpr(*e->operand);
+                if (!t.IsUnknown() && !t.IsNumeric())
+                    EmitError(e->location,
+                              std::format("'{}' applied to non-numeric type '{}'",
+                                          e->op == TokenKind::PlusPlus ? "++" : "--",
+                                          t.ToString()));
+                return t;
             }
 
             if (auto* e = dynamic_cast<const BinaryExpr*>(&expr))
@@ -1101,9 +1375,14 @@ namespace Rux
 
             if (auto* e = dynamic_cast<const RangeExpr*>(&expr))
             {
-                if (e->lo) CheckExpr(*e->lo);
-                if (e->hi) CheckExpr(*e->hi);
-                return TypeRef::MakeNamed("Range");
+                TypeRef loType = e->lo ? CheckExpr(*e->lo) : TypeRef::MakeUnknown();
+                TypeRef hiType = e->hi ? CheckExpr(*e->hi) : TypeRef::MakeUnknown();
+                if (!loType.IsUnknown() && !hiType.IsUnknown() &&
+                    !loType.IsNumeric() && !hiType.IsNumeric())
+                    EmitError(e->location, "range operands must be numeric");
+                TypeRef elemType = loType.IsUnknown() ? hiType : loType;
+                if (elemType.IsUnknown()) elemType = TypeRef::MakeInt64();
+                return TypeRef::MakeRange(elemType);
             }
 
             if (auto* e = dynamic_cast<const CallExpr*>(&expr))
@@ -1157,6 +1436,16 @@ namespace Rux
                 {
                     if (e->field == "data") return TypeRef::MakePointer(*elemType);
                     if (e->field == "length") return TypeRef::MakeUInt64();
+                    EmitError(e->location,
+                              std::format("unknown field '{}' on type '{}'",
+                                          e->field, obj.ToString()));
+                    return TypeRef::MakeUnknown();
+                }
+                if (obj.IsRange())
+                {
+                    TypeRef elemType = obj.inner.empty() ? TypeRef::MakeInt64() : obj.inner[0];
+                    if (e->field == "lo" || e->field == "hi") return elemType;
+                    if (e->field == "inclusive") return TypeRef::MakeBool();
                     EmitError(e->location,
                               std::format("unknown field '{}' on type '{}'",
                                           e->field, obj.ToString()));
@@ -1243,6 +1532,12 @@ namespace Rux
                 return t.inner.empty() ? TypeRef::MakeUnknown() : t.inner[0];
             case TokenKind::Amp:
                 return TypeRef::MakePointer(t);
+            case TokenKind::PlusPlus:
+            case TokenKind::MinusMinus:
+                if (!t.IsNumeric())
+                    EmitError(loc, std::format("'{}' applied to non-numeric type '{}'",
+                                               op == TokenKind::PlusPlus ? "++" : "--", t.ToString()));
+                return t;
             default:
                 return TypeRef::MakeUnknown();
             }
@@ -1329,9 +1624,18 @@ namespace Rux
             if (auto* e = dynamic_cast<const IdentExpr*>(&target))
             {
                 Symbol* sym = currentScope->Lookup(e->name);
-                if (sym && sym->kind == Symbol::Kind::Var && !sym->isMut)
+                if (!sym) return;
+                if (sym->kind == Symbol::Kind::Const)
+                {
+                    EmitError(target.location,
+                              std::format("cannot assign to constant '{}'", e->name));
+                    return;
+                }
+                if (sym->kind == Symbol::Kind::Var && !sym->isMut)
+                {
                     EmitError(target.location,
                               std::format("cannot assign to immutable variable '{}'", e->name));
+                }
             }
             // Field and index targets: would need full type info to check properly
         }

@@ -8,6 +8,7 @@
 
 #include <format>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -119,6 +120,8 @@ namespace Rux
         std::unordered_map<std::string, LirReg> locals; // name → alloca register
         std::uint32_t breakTarget = 0;
         std::uint32_t continueTarget = 0;
+        struct LabelTargets { std::uint32_t breakTarget, continueTarget; };
+        std::unordered_map<std::string, LabelTargets> labelTargets;
         std::unordered_map<std::string, CallingConvention> funcConvs; // name → calling convention
 
         // Block / register allocation
@@ -463,6 +466,10 @@ namespace Rux
                     {
                         StoreSliceInit(*initSliceExpr, slot);
                     }
+                    else if (auto* initRangeExpr = dynamic_cast<const HirRangeExpr*>(s->init.get()))
+                    {
+                        StoreRangeInit(*initRangeExpr, slot);
+                    }
                     else if (auto* initLitExpr = dynamic_cast<const HirLiteralExpr*>(s->init.get());
                         initLitExpr && IsStringSliceLiteral(*initLitExpr))
                     {
@@ -497,15 +504,21 @@ namespace Rux
                 return;
             }
 
-            if (dynamic_cast<const HirBreakStmt*>(&stmt))
+            if (auto* s = dynamic_cast<const HirBreakStmt*>(&stmt))
             {
-                Jump(breakTarget);
+                if (!s->label.empty())
+                    Jump(labelTargets.at(s->label).breakTarget);
+                else
+                    Jump(breakTarget);
                 return;
             }
 
-            if (dynamic_cast<const HirContinueStmt*>(&stmt))
+            if (auto* s = dynamic_cast<const HirContinueStmt*>(&stmt))
             {
-                Jump(continueTarget);
+                if (!s->label.empty())
+                    Jump(labelTargets.at(s->label).continueTarget);
+                else
+                    Jump(continueTarget);
                 return;
             }
 
@@ -518,6 +531,18 @@ namespace Rux
             if (auto* s = dynamic_cast<const HirWhileStmt*>(&stmt))
             {
                 LowerWhile(*s);
+                return;
+            }
+
+            if (auto* s = dynamic_cast<const HirDoWhileStmt*>(&stmt))
+            {
+                LowerDoWhile(*s);
+                return;
+            }
+
+            if (auto* s = dynamic_cast<const HirLoopStmt*>(&stmt))
+            {
+                LowerLoop(*s);
                 return;
             }
 
@@ -594,28 +619,149 @@ namespace Rux
             const std::uint32_t savedContinue = continueTarget;
             breakTarget = afterBlock;
             continueTarget = condBlock;
+            if (!s.label.empty()) labelTargets[s.label] = {afterBlock, condBlock};
             SetBlock(bodyBlock);
             LowerBlock(s.body);
+            if (!s.label.empty()) labelTargets.erase(s.label);
             if (!IsTerminated()) Jump(condBlock);
             breakTarget = savedBreak;
             continueTarget = savedContinue;
             SetBlock(afterBlock);
         }
 
+        void LowerDoWhile(const HirDoWhileStmt& s)
+        {
+            std::uint32_t bodyBlock = NewBlock("do.body");
+            std::uint32_t condBlock = NewBlock("do.cond");
+            std::uint32_t afterBlock = NewBlock("do.after");
+            if (!IsTerminated()) Jump(bodyBlock);
+            SetBlock(bodyBlock);
+            const std::uint32_t savedBreak = breakTarget;
+            const std::uint32_t savedContinue = continueTarget;
+            breakTarget = afterBlock;
+            continueTarget = condBlock;
+            if (!s.label.empty()) labelTargets[s.label] = {afterBlock, condBlock};
+            LowerBlock(s.body);
+            if (!s.label.empty()) labelTargets.erase(s.label);
+            breakTarget = savedBreak;
+            continueTarget = savedContinue;
+            if (!IsTerminated()) Jump(condBlock);
+            SetBlock(condBlock);
+            const LirReg cond = LowerExpr(*s.condition);
+            Branch(cond, bodyBlock, afterBlock);
+            SetBlock(afterBlock);
+        }
+
+        void LowerLoop(const HirLoopStmt& s)
+        {
+            std::uint32_t bodyBlock = NewBlock("loop.body");
+            std::uint32_t afterBlock = NewBlock("loop.after");
+            if (!IsTerminated()) Jump(bodyBlock);
+            SetBlock(bodyBlock);
+            const std::uint32_t savedBreak = breakTarget;
+            const std::uint32_t savedContinue = continueTarget;
+            breakTarget = afterBlock;
+            continueTarget = bodyBlock;
+            if (!s.label.empty()) labelTargets[s.label] = {afterBlock, bodyBlock};
+            LowerBlock(s.body);
+            if (!s.label.empty()) labelTargets.erase(s.label);
+            breakTarget = savedBreak;
+            continueTarget = savedContinue;
+            if (!IsTerminated()) Jump(bodyBlock);
+            SetBlock(afterBlock);
+        }
+
         void LowerFor(const HirForStmt& s)
         {
+            const bool isRange = s.iterable->type.IsRange();
+            const TypeRef elemType = (isRange && !s.iterable->type.inner.empty())
+                                     ? s.iterable->type.inner[0] : s.varType;
+
+            LirReg slot = EmitAlloca(s.varType);
+            locals[s.variable] = slot;
+
+            if (isRange)
+            {
+                // Get a slot holding the range struct
+                LirReg iterSlot;
+                std::optional<bool> literalInclusive;
+                if (auto* re = dynamic_cast<const HirRangeExpr*>(s.iterable.get()))
+                {
+                    iterSlot = LowerRange(*re);
+                    literalInclusive = re->inclusive;
+                }
+                else
+                {
+                    iterSlot = LowerLValue(*s.iterable);
+                }
+
+                // i = range.lo
+                LirReg loPtr = EmitFieldPtr(iterSlot, "lo", elemType);
+                LirReg loVal = EmitLoad(loPtr, elemType);
+                EmitStore(loVal, slot, elemType);
+
+                LirReg hiPtr = EmitFieldPtr(iterSlot, "hi", elemType);
+                LirReg inclPtr = EmitFieldPtr(iterSlot, "inclusive", TypeRef::MakeBool());
+
+                std::uint32_t condBlock = NewBlock("for.cond");
+                std::uint32_t bodyBlock = NewBlock("for.body");
+                std::uint32_t stepBlock = NewBlock("for.step");
+                std::uint32_t afterBlock = NewBlock("for.after");
+
+                if (!IsTerminated()) Jump(condBlock);
+                SetBlock(condBlock);
+                LirReg iVal = EmitLoad(slot, elemType);
+                LirReg hiCondVal = EmitLoad(hiPtr, elemType);
+                LirReg cond;
+                if (literalInclusive.has_value())
+                {
+                    cond = EmitBinary(*literalInclusive ? LirOpcode::CmpLe : LirOpcode::CmpLt,
+                                      iVal, hiCondVal, TypeRef::MakeBool());
+                }
+                else
+                {
+                    // Keep the Range<T> contract explicit: continue while
+                    // i < hi, or while inclusive is true and i == hi.
+                    LirReg beforeHi = EmitBinary(LirOpcode::CmpLt, iVal, hiCondVal, TypeRef::MakeBool());
+                    LirReg atHi = EmitBinary(LirOpcode::CmpEq, iVal, hiCondVal, TypeRef::MakeBool());
+                    LirReg inclBool = EmitLoad(inclPtr, TypeRef::MakeBool());
+                    LirReg inclusiveAtHi = EmitBinary(LirOpcode::And, inclBool, atHi, TypeRef::MakeBool());
+                    cond = EmitBinary(LirOpcode::Or, beforeHi, inclusiveAtHi, TypeRef::MakeBool());
+                }
+                Branch(cond, bodyBlock, afterBlock);
+
+                std::uint32_t savedBreak = breakTarget;
+                std::uint32_t savedContinue = continueTarget;
+                breakTarget = afterBlock;
+                continueTarget = stepBlock;
+                if (!s.label.empty()) labelTargets[s.label] = {afterBlock, stepBlock};
+
+                SetBlock(bodyBlock);
+                LowerBlock(s.body);
+
+                if (!IsTerminated()) Jump(stepBlock);
+                SetBlock(stepBlock);
+                LirReg iCur = EmitLoad(slot, elemType);
+                LirReg one = EmitConst("1", elemType);
+                LirReg iNext = EmitBinary(LirOpcode::Add, iCur, one, elemType);
+                EmitStore(iNext, slot, elemType);
+                if (!IsTerminated()) Jump(condBlock);
+
+                if (!s.label.empty()) labelTargets.erase(s.label);
+                breakTarget = savedBreak;
+                continueTarget = savedContinue;
+                SetBlock(afterBlock);
+                return;
+            }
+
+            // Generic iterator fallback (non-range iterables)
             std::uint32_t condBlock = NewBlock("for.cond");
             std::uint32_t bodyBlock = NewBlock("for.body");
             std::uint32_t afterBlock = NewBlock("for.after");
-            // Allocate loop variable slot
-            LirReg slot = EmitAlloca(s.varType);
-            locals[s.variable] = slot;
-            // Evaluate and store iterable
             LirReg iterVal = LowerExpr(*s.iterable);
             LirReg iterSlot = EmitAlloca(s.iterable->type);
             EmitStore(iterVal, iterSlot, s.iterable->type);
             if (!IsTerminated()) Jump(condBlock);
-            // Condition: check iterator has remaining elements
             SetBlock(condBlock);
             LirReg hasNext = NewReg();
             {
@@ -632,8 +778,7 @@ namespace Rux
             std::uint32_t savedContinue = continueTarget;
             breakTarget = afterBlock;
             continueTarget = condBlock;
-
-            // Body: advance iterator, bind loop variable, then lower body
+            if (!s.label.empty()) labelTargets[s.label] = {afterBlock, condBlock};
             SetBlock(bodyBlock);
             LirReg nextVal = NewReg();
             {
@@ -647,6 +792,7 @@ namespace Rux
             }
             EmitStore(nextVal, slot, s.varType);
             LowerBlock(s.body);
+            if (!s.label.empty()) labelTargets.erase(s.label);
             if (!IsTerminated()) Jump(condBlock);
             breakTarget = savedBreak;
             continueTarget = savedContinue;
@@ -807,6 +953,8 @@ namespace Rux
             }
             if (auto* e = dynamic_cast<const HirUnaryExpr*>(&expr))
                 return LowerUnary(*e);
+            if (auto* e = dynamic_cast<const HirPostfixExpr*>(&expr))
+                return LowerPostfix(*e);
             if (auto* e = dynamic_cast<const HirBinaryExpr*>(&expr))
                 return LowerBinary(*e);
             if (auto* e = dynamic_cast<const HirAssignExpr*>(&expr))
@@ -863,8 +1011,20 @@ namespace Rux
                 LowerBlock(e->block);
                 return EmitConst("0", e->type);
             }
-            // HirRangeExpr: ranges require runtime support; emit a placeholder.
+            if (auto* e = dynamic_cast<const HirRangeExpr*>(&expr))
+                return LowerRange(*e);
             return EmitConst("0", expr.type);
+        }
+
+        LirReg LowerPostfix(const HirPostfixExpr& e)
+        {
+            const LirReg ptr = LowerLValue(*e.operand);
+            const LirReg old_val = EmitLoad(ptr, e.type);
+            const LirReg one = EmitConst("1", e.type);
+            const LirOpcode op = (e.op == TokenKind::PlusPlus) ? LirOpcode::Add : LirOpcode::Sub;
+            const LirReg new_val = EmitBinary(op, old_val, one, e.type);
+            EmitStore(new_val, ptr, e.type);
+            return old_val;
         }
 
         LirReg LowerUnary(const HirUnaryExpr& e)
@@ -895,6 +1055,17 @@ namespace Rux
                     const LirReg slot = EmitAlloca(e.operand->type);
                     EmitStore(val, slot, e.operand->type);
                     return slot;
+                }
+            case TK::PlusPlus:
+            case TK::MinusMinus:
+                {
+                    const LirReg ptr = LowerLValue(*e.operand);
+                    const LirReg old_val = EmitLoad(ptr, e.type);
+                    const LirReg one = EmitConst("1", e.type);
+                    const LirOpcode aop = (e.op == TK::PlusPlus) ? LirOpcode::Add : LirOpcode::Sub;
+                    const LirReg new_val = EmitBinary(aop, old_val, one, e.type);
+                    EmitStore(new_val, ptr, e.type);
+                    return new_val; // prefix: return new value
                 }
             default:
                 return EmitUnary(LirOpcode::Not, LowerExpr(*e.operand), e.type);
@@ -1021,6 +1192,33 @@ namespace Rux
             return dst;
         }
 
+        void StoreRangeInit(const HirRangeExpr& e, LirReg slot)
+        {
+            const TypeRef elemType = e.type.inner.empty() ? TypeRef::MakeInt64() : e.type.inner[0];
+            if (e.lo)
+            {
+                const LirReg loVal = LowerExpr(*e.lo);
+                const LirReg loPtr = EmitFieldPtr(slot, "lo", elemType);
+                EmitStore(loVal, loPtr, elemType);
+            }
+            if (e.hi)
+            {
+                const LirReg hiVal = LowerExpr(*e.hi);
+                const LirReg hiPtr = EmitFieldPtr(slot, "hi", elemType);
+                EmitStore(hiVal, hiPtr, elemType);
+            }
+            const LirReg inclVal = EmitConst(e.inclusive ? "1" : "0", TypeRef::MakeBool());
+            const LirReg inclPtr = EmitFieldPtr(slot, "inclusive", TypeRef::MakeBool());
+            EmitStore(inclVal, inclPtr, TypeRef::MakeBool());
+        }
+
+        LirReg LowerRange(const HirRangeExpr& e)
+        {
+            const LirReg slot = EmitAlloca(e.type);
+            StoreRangeInit(e, slot);
+            return slot;
+        }
+
         LirReg LowerStructInit(const HirStructInitExpr& e)
         {
             const LirReg slot = EmitAlloca(e.type);
@@ -1124,6 +1322,10 @@ namespace Rux
                 LirReg slot = EmitAlloca(e->type);
                 StoreSliceInit(*e, slot);
                 return slot;
+            }
+            if (auto* e = dynamic_cast<const HirRangeExpr*>(&expr))
+            {
+                return LowerRange(*e);
             }
             if (auto* e = dynamic_cast<const HirFieldExpr*>(&expr))
             {
