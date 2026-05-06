@@ -17,6 +17,7 @@ namespace Rux
     {
         std::string name;
         std::string version; // empty = "latest"
+        std::string path; // for path-based deps: { Path = "..." }, empty if version-based
     };
 
     struct Package

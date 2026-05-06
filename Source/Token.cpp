@@ -27,7 +27,6 @@ namespace Rux
             {"match", TokenKind::MatchKeyword},
             {"func", TokenKind::FuncKeyword},
             {"let", TokenKind::LetKeyword},
-            {"mut", TokenKind::MutKeyword},
             {"var", TokenKind::VarKeyword},
             {"const", TokenKind::ConstKeyword},
             {"type", TokenKind::TypeKeyword},
@@ -38,6 +37,7 @@ namespace Rux
             {"impl", TokenKind::ImplKeyword},
             {"mod", TokenKind::ModKeyword},
             {"use", TokenKind::UseKeyword},
+            {"import", TokenKind::ImportKeyword},
             {"pub", TokenKind::PubKeyword},
             {"extern", TokenKind::ExternKeyword},
             {"as", TokenKind::AsKeyword},
@@ -76,7 +76,6 @@ namespace Rux
         case TokenKind::MatchKeyword: return "MatchKeyword";
         case TokenKind::FuncKeyword: return "FuncKeyword";
         case TokenKind::LetKeyword: return "LetKeyword";
-        case TokenKind::MutKeyword: return "MutKeyword";
         case TokenKind::VarKeyword: return "VarKeyword";
         case TokenKind::ConstKeyword: return "ConstKeyword";
         case TokenKind::TypeKeyword: return "TypeKeyword";
@@ -87,6 +86,7 @@ namespace Rux
         case TokenKind::ImplKeyword: return "ImplKeyword";
         case TokenKind::ModKeyword: return "ModKeyword";
         case TokenKind::UseKeyword: return "UseKeyword";
+        case TokenKind::ImportKeyword: return "ImportKeyword";
         case TokenKind::PubKeyword: return "PubKeyword";
         case TokenKind::ExternKeyword: return "ExternKeyword";
         case TokenKind::AsKeyword: return "AsKeyword";

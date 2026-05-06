@@ -16,7 +16,6 @@
 namespace Rux
 {
     // Calling convention
-
     enum class CallingConvention
     {
         Default, // platform default (System V AMD64 ABI)
@@ -24,7 +23,6 @@ namespace Rux
     };
 
     // Forward declarations
-
     struct TypeExpr;
     struct Pattern;
     struct Expr;
@@ -285,6 +283,12 @@ namespace Rux
         std::vector<ExprPtr> elements;
     };
 
+    // (a, b, c)
+    struct TupleExpr : Expr
+    {
+        std::vector<ExprPtr> elements;
+    };
+
     // expr as Type
     struct CastExpr : Expr
     {
@@ -319,11 +323,12 @@ namespace Rux
         ExprPtr expr;
     };
 
-    // let [mut] name [: Type] = expr;
+    // let name [: Type] = expr; or var name [: Type] = expr;
     struct LetStmt : Stmt
     {
         bool isMut = false;
         std::string name;
+        PatternPtr pattern;
         std::optional<TypeExprPtr> type;
         ExprPtr init;
     };
@@ -416,7 +421,6 @@ namespace Rux
     };
 
     // Declarations
-
     struct Decl
     {
         SourceLocation location;
@@ -566,7 +570,6 @@ namespace Rux
     };
 
     // Module (AST root)
-
     struct Module
     {
         std::string name; // source file name

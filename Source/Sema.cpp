@@ -249,6 +249,8 @@ namespace Rux
     }
 
     // Internal: Symbol & Scope
+    class Scope; // forward declaration — Scope is defined below
+
     struct Symbol
     {
         enum class Kind { Var, Func, Type, Const, Module, Interface };
@@ -259,6 +261,7 @@ namespace Rux
         TypeRef type;
         bool isMut = false;
         std::vector<std::string> interfaceMethods; // for Interface kind
+        Scope* moduleScope = nullptr; // for Module kind: the imported module's scope
     };
 
     class Scope
@@ -297,6 +300,7 @@ namespace Rux
         }
 
         [[nodiscard]] Scope* Parent() const { return parent; }
+        [[nodiscard]] const std::unordered_map<std::string, Symbol>& Table() const { return table; }
 
     private:
         Scope* parent;
@@ -307,15 +311,36 @@ namespace Rux
     class Analyzer
     {
     public:
-        Analyzer(std::vector<const Module*>& modules, std::vector<SemaDiagnostic>& diags,
-                 std::vector<SemaSymbol>& symbols)
-            : modules(modules), diags(diags), symbols(symbols), currentScope(&globalScope)
+        Analyzer(std::vector<const Module*>& modules, std::vector<DepPackage>& deps,
+                 std::vector<SemaDiagnostic>& diags, std::vector<SemaSymbol>& symbols)
+            : modules(modules), deps(deps), diags(diags), symbols(symbols),
+              currentScope(&globalScope)
         {
         }
 
         void Run()
         {
             RegisterBuiltins();
+            // Collect dep module symbols into isolated per-module-file scopes.
+            // import Pkg::Item searches only the entry-file scope;
+            // import Pkg::Mod::Item searches only Mod's scope.
+            for (auto& pkg : deps)
+            {
+                for (auto& entry : pkg.modules)
+                {
+                    auto scope = std::make_unique<Scope>(&globalScope);
+                    currentFile = entry.module->name;
+                    for (const auto& decl : entry.module->items)
+                        CollectDecl(*decl, *scope);
+                    packageModuleScopes[pkg.name][entry.moduleName] = std::move(scope);
+                }
+            }
+            // Resolve dep function signatures in their per-module scopes.
+            for (auto& pkg : deps)
+                for (auto& entry : pkg.modules)
+                    ResolveModuleSignaturesInScope(*entry.module,
+                                                   *packageModuleScopes[pkg.name][entry.moduleName]);
+            // User modules go into globalScope as before.
             for (auto* mod : modules) CollectModule(*mod);
             for (auto* mod : modules) ResolveModuleSignatures(*mod);
             for (auto* mod : modules) CheckModule(*mod);
@@ -323,10 +348,14 @@ namespace Rux
 
     private:
         std::vector<const Module*>& modules;
+        std::vector<DepPackage>& deps;
         std::vector<SemaDiagnostic>& diags;
         std::vector<SemaSymbol>& symbols;
         Scope globalScope{nullptr};
         Scope* currentScope;
+        // packageModuleScopes[pkgName][moduleName] = isolated scope for that module file
+        std::unordered_map<std::string,
+                           std::unordered_map<std::string, std::unique_ptr<Scope>>> packageModuleScopes;
         std::vector<std::unique_ptr<Scope>> ownedScopes;
         std::string currentFile;
         TypeRef currentReturnType = TypeRef::MakeOpaque();
@@ -459,6 +488,37 @@ namespace Rux
             {
                 for (const auto& item : d->items)
                     ResolveDeclSignature(*item);
+            }
+        }
+
+        void ResolveModuleSignaturesInScope(const Module& mod, Scope& scope)
+        {
+            currentFile = mod.name;
+            for (const auto& decl : mod.items)
+                ResolveDeclSignatureInScope(*decl, scope);
+        }
+
+        void ResolveDeclSignatureInScope(const Decl& decl, Scope& scope)
+        {
+            if (auto* d = dynamic_cast<const FuncDecl*>(&decl))
+            {
+                if (Symbol* sym = scope.Lookup(d->name))
+                    sym->type = MakeFuncType(d->params, d->returnType, d->typeParams);
+            }
+            else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl))
+            {
+                if (Symbol* sym = scope.Lookup(d->name))
+                    sym->type = MakeFuncType(d->params, d->returnType);
+            }
+            else if (auto* d = dynamic_cast<const ExternBlockDecl*>(&decl))
+            {
+                for (const auto& item : d->items)
+                    ResolveDeclSignatureInScope(*item, scope);
+            }
+            else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl))
+            {
+                for (const auto& item : d->items)
+                    ResolveDeclSignatureInScope(*item, scope);
             }
         }
 
@@ -903,7 +963,8 @@ namespace Rux
             else if (auto* d = dynamic_cast<const ExternBlockDecl*>(&decl))
                 for (auto& item : d->items)
                     CheckDecl(*item);
-            // UseDecl: import resolution deferred
+            else if (auto* d = dynamic_cast<const UseDecl*>(&decl))
+                CheckUseDecl(*d);
         }
 
         void CheckFuncDecl(const FuncDecl& d, bool isMethod = false)
@@ -1088,6 +1149,137 @@ namespace Rux
                 sym->type = constType;
         }
 
+        // Returns the module-file name to search for a given UseDecl:
+        //   import Pkg::Item          → "Pkg"   (entry file)
+        //   import Pkg::Mod::Item     → "Mod"   (sub-module file)
+        //   import Pkg::*             → "Pkg"   (entry file, Glob)
+        //   import Pkg::Mod::*        → "Mod"   (sub-module file, Glob)
+        std::string ModuleNameForUse(const UseDecl& d, const std::string& pkgName) const
+        {
+            if (d.kind == UseDecl::Kind::Single && d.path.size() >= 3)
+                return d.path[1];
+            if (d.kind != UseDecl::Kind::Single && d.path.size() >= 2)
+                return d.path[1];
+            return pkgName;
+        }
+
+        // Resolves the module scope for pkgName/moduleName, or emits an error.
+        const std::unordered_map<std::string, Symbol>*
+        ResolveModuleScope(const UseDecl& d, const std::string& pkgName,
+                           const std::string& moduleName)
+        {
+            auto pkgIt = packageModuleScopes.find(pkgName);
+            if (pkgIt == packageModuleScopes.end())
+            {
+                EmitError(d.location, std::format("unknown package '{}'", pkgName));
+                return nullptr;
+            }
+            auto modIt = pkgIt->second.find(moduleName);
+            if (modIt == pkgIt->second.end())
+            {
+                if (moduleName == pkgName)
+                    EmitError(d.location,
+                              std::format("package '{}' has no entry module", pkgName));
+                else
+                    EmitError(d.location,
+                              std::format("module '{}' not found in package '{}'",
+                                          moduleName, pkgName));
+                return nullptr;
+            }
+            return &modIt->second->Table();
+        }
+
+        void PromoteFromPackage(const UseDecl& d, const std::string& pkgName,
+                                const std::string& name)
+        {
+            const std::string moduleName = ModuleNameForUse(d, pkgName);
+            const auto* tbl = ResolveModuleScope(d, pkgName, moduleName);
+            if (!tbl) return;
+            auto sym_it = tbl->find(name);
+            if (sym_it == tbl->end())
+            {
+                EmitError(d.location,
+                          std::format("'{}' not found in '{}'", name,
+                                      moduleName == pkgName
+                                          ? pkgName
+                                          : pkgName + "::" + moduleName));
+                return;
+            }
+            globalScope.Define(sym_it->second, diags, currentFile);
+        }
+
+        void CheckUseDecl(const UseDecl& d)
+        {
+            if (d.path.empty())
+            {
+                EmitError(d.location, "empty use path");
+                return;
+            }
+            const std::string& pkgName = d.path[0];
+
+            if (d.kind == UseDecl::Kind::Single)
+            {
+                if (d.path.size() < 2)
+                {
+                    EmitError(d.location,
+                              std::format("use '{}' must name at least one item (e.g. use {}::Name)",
+                                          pkgName, pkgName));
+                    return;
+                }
+                const std::string& name = d.path.back();
+                // If path.size()==2 and name matches a loaded module file, create a module alias.
+                if (d.path.size() == 2)
+                {
+                    auto pkgIt = packageModuleScopes.find(pkgName);
+                    if (pkgIt != packageModuleScopes.end())
+                    {
+                        auto modIt = pkgIt->second.find(name);
+                        if (modIt != pkgIt->second.end())
+                        {
+                            Symbol sym;
+                            sym.kind = Symbol::Kind::Module;
+                            sym.name = name;
+                            sym.location = d.location;
+                            sym.moduleScope = modIt->second.get();
+                            globalScope.Define(sym, diags, currentFile);
+                            return;
+                        }
+                    }
+                }
+                PromoteFromPackage(d, pkgName, name);
+            }
+            else if (d.kind == UseDecl::Kind::Multi)
+            {
+                for (const auto& name : d.names)
+                    PromoteFromPackage(d, pkgName, name);
+            }
+            else // Glob: promote all from the specific module (or all modules if Pkg::*)
+            {
+                auto pkgIt = packageModuleScopes.find(pkgName);
+                if (pkgIt == packageModuleScopes.end())
+                {
+                    EmitError(d.location, std::format("unknown package '{}'", pkgName));
+                    return;
+                }
+                if (d.path.size() == 1)
+                {
+                    // import Pkg::* — promote from all modules in the package
+                    for (auto& [modName, scope] : pkgIt->second)
+                        for (const auto& [name, sym] : scope->Table())
+                            globalScope.Define(sym, diags, currentFile);
+                }
+                else
+                {
+                    // import Pkg::Mod::* — promote from the specific module only
+                    const std::string moduleName = ModuleNameForUse(d, pkgName);
+                    const auto* tbl = ResolveModuleScope(d, pkgName, moduleName);
+                    if (!tbl) return;
+                    for (const auto& [name, sym] : *tbl)
+                        globalScope.Define(sym, diags, currentFile);
+                }
+            }
+        }
+
         // ── Block & statements ────────────────────────────────────────────────────
 
         void CheckBlock(const Block& block)
@@ -1111,7 +1303,7 @@ namespace Rux
                                        ? ResolveType(*s->type->get())
                                        : initType;
 
-                if (!s->type && declType.IsUnknown())
+                if (!s->type && declType.IsUnknown() && !s->pattern)
                     EmitWarning(s->location,
                                 std::format("cannot infer type of '{}'", s->name));
 
@@ -1120,6 +1312,12 @@ namespace Rux
                     EmitError(s->location,
                               std::format("cannot assign '{}' to '{}'",
                                           initType.ToString(), declType.ToString()));
+
+                if (s->pattern)
+                {
+                    CheckLetPattern(*s->pattern, declType, s->isMut);
+                    return;
+                }
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Var;
@@ -1239,6 +1437,56 @@ namespace Rux
             }
         }
 
+        void CheckLetPattern(const Pattern& pat, const TypeRef& type, bool isMut)
+        {
+            if (auto* p = dynamic_cast<const IdentPattern*>(&pat))
+            {
+                Symbol sym;
+                sym.kind = Symbol::Kind::Var;
+                sym.name = p->name;
+                sym.location = p->location;
+                sym.type = type;
+                sym.isMut = isMut;
+                Define(sym);
+            }
+            else if (dynamic_cast<const WildcardPattern*>(&pat))
+            {
+            }
+            else if (auto* p = dynamic_cast<const TuplePattern*>(&pat))
+            {
+                if (type.kind != TypeRef::Kind::Tuple)
+                {
+                    if (!type.IsUnknown())
+                        EmitError(p->location,
+                                  std::format("cannot destructure non-tuple type '{}'",
+                                              type.ToString()));
+                    for (const auto& elem : p->elements)
+                        CheckLetPattern(*elem, TypeRef::MakeUnknown(), isMut);
+                    return;
+                }
+
+                if (p->elements.size() != type.inner.size())
+                {
+                    EmitError(p->location,
+                              std::format("tuple pattern has {} elements but type '{}' has {}",
+                                          p->elements.size(),
+                                          type.ToString(),
+                                          type.inner.size()));
+                }
+
+                const std::size_t n = std::min(p->elements.size(), type.inner.size());
+                for (std::size_t i = 0; i < n; ++i)
+                    CheckLetPattern(*p->elements[i], type.inner[i], isMut);
+                for (std::size_t i = n; i < p->elements.size(); ++i)
+                    CheckLetPattern(*p->elements[i], TypeRef::MakeUnknown(), isMut);
+            }
+            else
+            {
+                EmitError(pat.location, "unsupported pattern in let binding");
+                CheckPattern(pat);
+            }
+        }
+
         void CheckPattern(const Pattern& pat)
         {
             if (auto* p = dynamic_cast<const IdentPattern*>(&pat))
@@ -1309,10 +1557,28 @@ namespace Rux
 
             if (auto* e = dynamic_cast<const PathExpr*>(&expr))
             {
-                if (!e->segments.empty() && !currentScope->Lookup(e->segments[0]))
+                if (e->segments.empty()) return TypeRef::MakeUnknown();
+                Symbol* first = currentScope->Lookup(e->segments[0]);
+                if (!first)
+                {
                     EmitError(e->location,
                               std::format("undefined name '{}'", e->segments[0]));
-                return TypeRef::MakeUnknown();
+                    return TypeRef::MakeUnknown();
+                }
+                if (e->segments.size() >= 2 &&
+                    first->kind == Symbol::Kind::Module && first->moduleScope)
+                {
+                    Symbol* item = first->moduleScope->Lookup(e->segments[1]);
+                    if (!item)
+                    {
+                        EmitError(e->location,
+                                  std::format("'{}' not found in module '{}'",
+                                              e->segments[1], e->segments[0]));
+                        return TypeRef::MakeUnknown();
+                    }
+                    return item->type;
+                }
+                return first->type;
             }
 
             if (auto* e = dynamic_cast<const SizeOfExpr*>(&expr))
@@ -1451,6 +1717,21 @@ namespace Rux
                                           e->field, obj.ToString()));
                     return TypeRef::MakeUnknown();
                 }
+                if (obj.kind == TypeRef::Kind::Tuple)
+                {
+                    try
+                    {
+                        const std::size_t idx = std::stoul(e->field);
+                        if (idx < obj.inner.size()) return obj.inner[idx];
+                    }
+                    catch (...)
+                    {
+                    }
+                    EmitError(e->location,
+                              std::format("tuple index '{}' out of range for type '{}'",
+                                          e->field, obj.ToString()));
+                    return TypeRef::MakeUnknown();
+                }
                 return TypeRef::MakeUnknown(); // field type lookup needs full type info
             }
 
@@ -1472,6 +1753,14 @@ namespace Rux
                     if (elemType.IsUnknown()) elemType = t;
                 }
                 return TypeRef::MakeNamed(SliceTypeName(elemType));
+            }
+
+            if (auto* e = dynamic_cast<const TupleExpr*>(&expr))
+            {
+                std::vector<TypeRef> elemTypes;
+                for (const auto& el : e->elements)
+                    elemTypes.push_back(CheckExpr(*el));
+                return TypeRef::MakeTuple(std::move(elemTypes));
             }
 
             if (auto* e = dynamic_cast<const CastExpr*>(&expr))
@@ -1643,14 +1932,14 @@ namespace Rux
 
     // ── Sema public API ───────────────────────────────────────────────────────────
 
-    Sema::Sema(std::vector<const Module*> modules)
-        : modules(std::move(modules))
+    Sema::Sema(std::vector<const Module*> userModules, std::vector<DepPackage> deps)
+        : modules(std::move(userModules)), deps(std::move(deps))
     {
     }
 
     SemaResult Sema::Analyze()
     {
-        Analyzer analyzer(modules, diags, symbols);
+        Analyzer analyzer(modules, deps, diags, symbols);
         analyzer.Run();
         return SemaResult{std::move(diags), std::move(symbols)};
     }
@@ -1690,7 +1979,7 @@ namespace Rux
             {
                 std::string tag = std::format("{:<10}", kindName(sym.kind));
                 std::string qname = sym.name;
-                if (sym.isMut) qname += " (mut)";
+                if (sym.isMut) qname += " (var)";
                 std::string typeStr = sym.resolvedType.empty() ? "" : "  " + sym.resolvedType;
                 out << std::format("{}  {:<28}{}  [{}:{}:{}]\n",
                                    tag, qname, typeStr,

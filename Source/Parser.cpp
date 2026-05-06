@@ -168,6 +168,7 @@ namespace Rux
                 k == TokenKind::ImplKeyword ||
                 k == TokenKind::ModKeyword ||
                 k == TokenKind::UseKeyword ||
+                k == TokenKind::ImportKeyword ||
                 k == TokenKind::ConstKeyword ||
                 k == TokenKind::TypeKeyword ||
                 k == TokenKind::ExternKeyword ||
@@ -327,7 +328,7 @@ namespace Rux
             return ParseImplDecl();
         if (Check(TokenKind::ModKeyword))
             return ParseModuleDecl(isPublic);
-        if (Check(TokenKind::UseKeyword))
+        if (Check(TokenKind::UseKeyword) || Check(TokenKind::ImportKeyword))
             return ParseUseDecl();
         if (Check(TokenKind::ConstKeyword))
             return ParseConstDecl(isPublic);
@@ -649,7 +650,8 @@ namespace Rux
     std::unique_ptr<UseDecl> Parser::ParseUseDecl()
     {
         const auto loc = CurrentLocation();
-        Expect(TokenKind::UseKeyword, "expected 'use'");
+        if (!Match(TokenKind::UseKeyword))
+            Expect(TokenKind::ImportKeyword, "expected 'use' or 'import'");
 
         auto decl = std::make_unique<UseDecl>();
         decl->location = loc;
@@ -1000,10 +1002,10 @@ namespace Rux
         {
             const TokenKind ahead = Peek(2).kind;
             if (ahead == TokenKind::WhileKeyword || ahead == TokenKind::DoKeyword ||
-                ahead == TokenKind::LoopKeyword  || ahead == TokenKind::ForKeyword)
+                ahead == TokenKind::LoopKeyword || ahead == TokenKind::ForKeyword)
             {
                 loopLabel = Advance().text; // consume label name
-                Advance();                  // consume ':'
+                Advance(); // consume ':'
             }
         }
         if (Check(TokenKind::WhileKeyword))
@@ -1107,9 +1109,18 @@ namespace Rux
         else
         {
             Expect(TokenKind::LetKeyword, "expected 'let' or 'var'");
-            s->isMut = Match(TokenKind::MutKeyword);
+            s->isMut = false;
         }
-        s->name = Expect(TokenKind::Ident, "expected variable name").text;
+        if (Check(TokenKind::Ident))
+        {
+            s->name = Advance().text;
+        }
+        else
+        {
+            s->pattern = ParsePattern();
+            if (!s->pattern)
+                EmitError(CurrentLocation(), "expected variable name or destructuring pattern");
+        }
 
         if (Match(TokenKind::Colon))
             s->type = ParseType();
@@ -1576,11 +1587,16 @@ namespace Rux
         while (true)
         {
             const auto loc = CurrentLocation();
-            // Method/field call: expr.field or expr.method(args)
+            // Method/field/tuple-index: expr.field  expr.method(args)  expr.0
             if (Match(TokenKind::Dot))
             {
-                const std::string name = Expect(TokenKind::Ident, "expected field name").text;
-                if (Check(TokenKind::LeftParen))
+                std::string name;
+                if (Check(TokenKind::IntLiteral))
+                    name = Advance().text;
+                else
+                    name = Expect(TokenKind::Ident, "expected field name or tuple index").text;
+
+                if (Check(TokenKind::LeftParen) && !name.empty() && !std::isdigit(name[0]))
                 {
                     // Method call: expr.method(args)
                     auto args = ParseArgList();
@@ -1743,12 +1759,25 @@ namespace Rux
             Expect(TokenKind::RightBracket, "expected ']'");
             return e;
         }
-        // Grouped expression: (expr)
+        // Grouped expression or tuple: (expr)  or  (expr, expr, ...)
         if (Match(TokenKind::LeftParen))
         {
-            auto inner = ParseExpr();
+            auto first = ParseExpr();
+            if (Match(TokenKind::Comma))
+            {
+                auto t = std::make_unique<TupleExpr>();
+                t->location = loc;
+                t->elements.push_back(std::move(first));
+                while (!Check(TokenKind::RightParen) && !IsAtEnd())
+                {
+                    t->elements.push_back(ParseExpr());
+                    if (!Match(TokenKind::Comma)) break;
+                }
+                Expect(TokenKind::RightParen, "expected ')'");
+                return t;
+            }
             Expect(TokenKind::RightParen, "expected ')'");
-            return inner;
+            return first;
         }
         // Identifier, possible struct init, or path expression
         if (Check(TokenKind::Ident))
@@ -2395,11 +2424,15 @@ namespace Rux
             void PrintLetStmt(const LetStmt& s)
             {
                 Pad();
-                out << "LetStmt '" << s.name << "' ("
-                    << (s.isMut ? "mut" : "immut") << ")";
+                out << "LetStmt '";
+                if (s.pattern) out << "<pattern>";
+                else out << s.name;
+                out << "' ("
+                    << (s.isMut ? "var" : "let") << ")";
                 if (s.type) out << " : " << TypeStr(s.type->get());
                 out << '\n';
                 ++indent;
+                if (s.pattern) PrintPattern(*s.pattern);
                 if (s.init) PrintExpr(*s.init);
                 --indent;
             }

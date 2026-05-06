@@ -36,6 +36,13 @@ namespace Rux
             case TypeRef::Kind::UInt32:
             case TypeRef::Kind::Float32: return 4;
             case TypeRef::Kind::Opaque: return 0;
+            case TypeRef::Kind::Tuple:
+                {
+                    int total = 0;
+                    for (const auto& elem : t.inner)
+                        total += SizeOf(elem);
+                    return total;
+                }
             default: return 8; // int, uint, int64, uint64, float64, pointer, str, named, …
             }
         }
@@ -1083,6 +1090,16 @@ namespace Rux
                 const TypeRef& ptrType = typeIt->second;
                 if (ptrType.kind != TypeRef::Kind::Pointer || ptrType.inner.empty()) return 0;
                 const TypeRef& inner = ptrType.inner[0];
+                if (inner.kind == TypeRef::Kind::Tuple)
+                {
+                    std::size_t idx = 0;
+                    try { idx = std::stoul(fieldName); }
+                    catch (...) { return 0; }
+                    int offset = 0;
+                    for (std::size_t i = 0; i < idx && i < inner.inner.size(); ++i)
+                        offset += SizeOf(inner.inner[i]);
+                    return offset;
+                }
                 if (inner.kind != TypeRef::Kind::Named) return 0;
                 const std::string baseName = BaseTypeName(inner.name);
                 if (baseName == "Slice")

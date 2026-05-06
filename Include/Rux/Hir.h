@@ -225,6 +225,12 @@ namespace Rux
         std::vector<HirExprPtr> elements;
     };
 
+    // (a, b, c)
+    struct HirTupleExpr : HirExpr
+    {
+        std::vector<HirExprPtr> elements;
+    };
+
     // expr as Type
     struct HirCastExpr : HirExpr
     {
@@ -259,11 +265,12 @@ namespace Rux
         HirExprPtr expr;
     };
 
-    // let [mut] name: Type = expr;
+    // let name: Type = expr; or var name: Type = expr;
     struct HirLetStmt : HirStmt
     {
         bool isMut = false;
         std::string name;
+        HirPatternPtr pattern;
         TypeRef type;
         HirExprPtr init;
     };

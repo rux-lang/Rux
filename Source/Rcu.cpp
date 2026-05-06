@@ -38,6 +38,21 @@ namespace Rux
             case TypeRef::Kind::UInt32:
             case TypeRef::Kind::Float32: return 4;
             case TypeRef::Kind::Opaque: return 0;
+            case TypeRef::Kind::Tuple:
+                {
+                    const auto alignUp = [](int v, int a) { return (v + a - 1) & ~(a - 1); };
+                    int offset = 0;
+                    int maxAlign = 1;
+                    for (const auto& elem : t.inner)
+                    {
+                        const int sz = SizeOf(elem);
+                        const int al = sz > 0 ? std::min(sz, 8) : 1;
+                        if (al > 1) offset = alignUp(offset, al);
+                        offset += sz > 0 ? sz : 8;
+                        maxAlign = std::max(maxAlign, al);
+                    }
+                    return alignUp(offset, maxAlign);
+                }
             default: return 8; // int, uint, int64, uint64, float64, pointer, str, named, …
             }
         }
@@ -1464,6 +1479,25 @@ namespace Rux
                     if (fieldName == "hi") return elemSize;
                     if (fieldName == "inclusive") return 2 * elemSize;
                     return 0;
+                }
+                if (inner.kind == TypeRef::Kind::Tuple)
+                {
+                    std::size_t idx = 0;
+                    try { idx = std::stoul(fieldName); }
+                    catch (...) { return 0; }
+                    int offset = 0;
+                    if (idx >= inner.inner.size()) return 0;
+                    for (std::size_t i = 0; i < idx && i < inner.inner.size(); ++i)
+                    {
+                        const int sz = SizeOf(inner.inner[i]);
+                        const int al = sz > 0 ? std::min(sz, 8) : 1;
+                        if (al > 1) offset = AlignUp(offset, al);
+                        offset += sz > 0 ? sz : 8;
+                    }
+                    const int fieldSize = SizeOf(inner.inner[idx]);
+                    const int fieldAlign = fieldSize > 0 ? std::min(fieldSize, 8) : 1;
+                    if (fieldAlign > 1) offset = AlignUp(offset, fieldAlign);
+                    return offset;
                 }
                 if (inner.kind != TypeRef::Kind::Named) return 0;
                 const std::string baseName = BaseTypeName(inner.name);

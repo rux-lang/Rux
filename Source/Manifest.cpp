@@ -20,6 +20,24 @@ namespace Rux
         return std::string(s.substr(start, end - start + 1));
     }
 
+    // Parse the Path value out of an inline table like { Path = "../../Packages/Std" }
+    static std::string ParseInlineTablePath(std::string_view val)
+    {
+        const auto open = val.find('{');
+        const auto close = val.rfind('}');
+        if (open == std::string_view::npos || close == std::string_view::npos || close <= open)
+            return {};
+        std::string_view inner = val.substr(open + 1, close - open - 1);
+        const auto keyPos = inner.find("Path");
+        if (keyPos == std::string_view::npos) return {};
+        const auto eqPos = inner.find('=', keyPos + 4);
+        if (eqPos == std::string_view::npos) return {};
+        const auto rawVal = Trim(inner.substr(eqPos + 1));
+        if (rawVal.size() >= 2 && rawVal.front() == '"' && rawVal.back() == '"')
+            return std::string(rawVal.substr(1, rawVal.size() - 2));
+        return std::string(rawVal);
+    }
+
     static std::string Unquote(std::string_view s)
     {
         if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
@@ -72,8 +90,14 @@ namespace Rux
             }
             else if (section == "Dependencies")
             {
-                // Each line: Name = "version"  OR  Name = "*"
-                m.dependencies.push_back({key, value == "*" ? "" : value});
+                // Name = "version"  OR  Name = "*"  OR  Name = { Path = "..." }
+                Dependency dep;
+                dep.name = key;
+                if (!value.empty() && value.front() == '{')
+                    dep.path = ParseInlineTablePath(value);
+                else
+                    dep.version = value == "*" ? "" : value;
+                m.dependencies.push_back(std::move(dep));
             }
         }
         if (m.package.name.empty()) return std::nullopt;
@@ -93,10 +117,15 @@ namespace Rux
         if (!dependencies.empty())
         {
             file << "\n[Dependencies]\n";
-            for (const auto& [name, version] : dependencies)
+            for (const auto& dep : dependencies)
             {
-                std::string ver = version.empty() ? "*" : version;
-                file << name << " = \"" << ver << "\"\n";
+                if (!dep.path.empty())
+                    file << dep.name << " = { Path = \"" << dep.path << "\" }\n";
+                else
+                {
+                    std::string ver = dep.version.empty() ? "*" : dep.version;
+                    file << dep.name << " = \"" << ver << "\"\n";
+                }
             }
         }
         return file.good();

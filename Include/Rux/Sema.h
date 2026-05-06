@@ -44,13 +44,29 @@ namespace Rux
         [[nodiscard]] bool HasErrors() const noexcept;
     };
 
+    // A dependency package: its name and parsed source modules.
+    // Symbols from dep packages are isolated until explicitly imported via use/import.
+    struct DepPackage
+    {
+        std::string name;
+
+        struct ModuleEntry
+        {
+            std::string moduleName; // file stem: "Std" for entry, "Math" for sub-module
+            const Module* module;
+        };
+
+        std::vector<ModuleEntry> modules;
+    };
+
     // Runs semantic analysis over a set of parsed modules.
     // Modules should be passed in dependency order when possible, but the analyzer
     // performs a global first pass so forward references within a package work.
     class Sema
     {
     public:
-        explicit Sema(std::vector<const Module*> modules);
+        explicit Sema(std::vector<const Module*> userModules,
+                      std::vector<DepPackage> deps = {});
         [[nodiscard]] SemaResult Analyze();
 
         // Write a human-readable dump of the sema result to `path`.
@@ -58,6 +74,7 @@ namespace Rux
 
     private:
         std::vector<const Module*> modules;
+        std::vector<DepPackage> deps;
         std::vector<SemaDiagnostic> diags;
         std::vector<SemaSymbol> symbols;
     };

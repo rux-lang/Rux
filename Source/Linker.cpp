@@ -313,9 +313,20 @@ namespace Rux
             }
         }
 
+        // Collect all symbol names that are defined (non-extern) across all objects.
+        // Cross-module calls produce ExternFunc relocations but the callee is defined
+        // in another RcuFile — those must NOT be treated as OS DLL imports.
+        std::unordered_set<std::string> definedSymbols;
+        for (const auto& obj : objects)
+            for (const auto& sym : obj.symbols)
+                if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData
+                    && !sym.name.empty())
+                    definedSymbols.insert(sym.name);
+
         // Second pass: collect imports from relocations. For compiler-generated
         // extern symbols (e.g. runtime helpers) that carry no explicit DLL, fall
         // back to KERNEL32.DLL so existing behaviour is preserved.
+        // Skip symbols that are defined locally (cross-module references, not DLL imports).
         for (const auto& obj : objects)
         {
             for (const auto& sec : obj.sections)
@@ -324,7 +335,8 @@ namespace Rux
                 {
                     if (reloc.symbolIndex >= obj.symbols.size()) continue;
                     const auto& sym = obj.symbols[reloc.symbolIndex];
-                    if (sym.kind == RcuSymKind::ExternFunc)
+                    if (sym.kind == RcuSymKind::ExternFunc
+                        && !definedSymbols.count(sym.name))
                         importDll.try_emplace(sym.name, "KERNEL32.DLL");
                 }
             }

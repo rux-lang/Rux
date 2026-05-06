@@ -120,7 +120,12 @@ namespace Rux
         std::unordered_map<std::string, LirReg> locals; // name → alloca register
         std::uint32_t breakTarget = 0;
         std::uint32_t continueTarget = 0;
-        struct LabelTargets { std::uint32_t breakTarget, continueTarget; };
+
+        struct LabelTargets
+        {
+            std::uint32_t breakTarget, continueTarget;
+        };
+
         std::unordered_map<std::string, LabelTargets> labelTargets;
         std::unordered_map<std::string, CallingConvention> funcConvs; // name → calling convention
 
@@ -455,7 +460,8 @@ namespace Rux
             if (auto* s = dynamic_cast<const HirLetStmt*>(&stmt))
             {
                 LirReg slot = EmitAlloca(s->type);
-                locals[s->name] = slot;
+                if (!s->pattern)
+                    locals[s->name] = slot;
                 if (s->init)
                 {
                     if (auto* init = dynamic_cast<const HirStructInitExpr*>(s->init.get()))
@@ -465,6 +471,10 @@ namespace Rux
                     else if (auto* initSliceExpr = dynamic_cast<const HirSliceExpr*>(s->init.get()))
                     {
                         StoreSliceInit(*initSliceExpr, slot);
+                    }
+                    else if (auto* initTupleExpr = dynamic_cast<const HirTupleExpr*>(s->init.get()))
+                    {
+                        StoreTupleInit(*initTupleExpr, slot);
                     }
                     else if (auto* initRangeExpr = dynamic_cast<const HirRangeExpr*>(s->init.get()))
                     {
@@ -481,6 +491,8 @@ namespace Rux
                         EmitStore(val, slot, s->type);
                     }
                 }
+                if (s->pattern)
+                    BindLetPattern(*s->pattern, slot, s->type);
                 return;
             }
 
@@ -675,7 +687,8 @@ namespace Rux
         {
             const bool isRange = s.iterable->type.IsRange();
             const TypeRef elemType = (isRange && !s.iterable->type.inner.empty())
-                                     ? s.iterable->type.inner[0] : s.varType;
+                                         ? s.iterable->type.inner[0]
+                                         : s.varType;
 
             LirReg slot = EmitAlloca(s.varType);
             locals[s.variable] = slot;
@@ -829,6 +842,35 @@ namespace Rux
         // Pattern lowering
         // Returns a bool register: 1 if the pattern matches `subjectVal`.
         // Side-effects: binds pattern variables into locals
+        void BindLetPattern(const HirPattern& pat, LirReg subjectPtr,
+                            const TypeRef& subjectType)
+        {
+            if (dynamic_cast<const HirWildcardPattern*>(&pat))
+                return;
+
+            if (auto* p = dynamic_cast<const HirBindingPattern*>(&pat))
+            {
+                const TypeRef bindType = p->type.IsUnknown() ? subjectType : p->type;
+                LirReg bindSlot = EmitAlloca(bindType);
+                locals[p->name] = bindSlot;
+                LirReg val = EmitLoad(subjectPtr, bindType);
+                EmitStore(val, bindSlot, bindType);
+                return;
+            }
+
+            if (auto* p = dynamic_cast<const HirTuplePattern*>(&pat))
+            {
+                for (std::size_t i = 0; i < p->elements.size(); ++i)
+                {
+                    TypeRef elemType = TypeRef::MakeUnknown();
+                    if (subjectType.kind == TypeRef::Kind::Tuple && i < subjectType.inner.size())
+                        elemType = subjectType.inner[i];
+                    LirReg elemPtr = EmitFieldPtr(subjectPtr, std::to_string(i), elemType);
+                    BindLetPattern(*p->elements[i], elemPtr, elemType);
+                }
+            }
+        }
+
         LirReg LowerPattern(const HirPattern& pat, LirReg subjectVal,
                             const TypeRef& subjectType)
         {
@@ -980,6 +1022,8 @@ namespace Rux
                 return LowerStructInit(*e);
             if (auto* e = dynamic_cast<const HirSliceExpr*>(&expr))
                 return LowerSlice(*e);
+            if (auto* e = dynamic_cast<const HirTupleExpr*>(&expr))
+                return LowerTuple(*e);
             if (auto* e = dynamic_cast<const HirCastExpr*>(&expr))
             {
                 LirReg src = LowerExpr(*e->operand);
@@ -1173,11 +1217,9 @@ namespace Rux
             else if (auto* p = dynamic_cast<const HirPathExpr*>(e.callee.get()))
             {
                 ci.op = LirOpcode::Call;
-                for (std::size_t i = 0; i < p->segments.size(); ++i)
-                {
-                    if (i) ci.strArg += "::";
-                    ci.strArg += p->segments[i];
-                }
+                // Module qualifiers are compile-time only; the binary symbol is just
+                // the final segment (e.g. Math::Add → "Add").
+                ci.strArg = p->segments.back();
                 auto it = funcConvs.find(ci.strArg);
                 if (it != funcConvs.end()) ci.callConv = it->second;
             }
@@ -1241,6 +1283,23 @@ namespace Rux
             const LirReg slot = EmitAlloca(e.type);
             StoreSliceInit(e, slot);
             return slot;
+        }
+
+        LirReg LowerTuple(const HirTupleExpr& e)
+        {
+            const LirReg slot = EmitAlloca(e.type);
+            StoreTupleInit(e, slot);
+            return slot;
+        }
+
+        void StoreTupleInit(const HirTupleExpr& e, LirReg slot)
+        {
+            for (std::size_t i = 0; i < e.elements.size(); ++i)
+            {
+                const LirReg val = LowerExpr(*e.elements[i]);
+                const LirReg ptr = EmitFieldPtr(slot, std::to_string(i), e.elements[i]->type);
+                EmitStore(val, ptr, e.elements[i]->type);
+            }
         }
 
         LirReg LowerStringLiteralSlice(const HirLiteralExpr& e)
@@ -1321,6 +1380,12 @@ namespace Rux
             {
                 LirReg slot = EmitAlloca(e->type);
                 StoreSliceInit(*e, slot);
+                return slot;
+            }
+            if (auto* e = dynamic_cast<const HirTupleExpr*>(&expr))
+            {
+                LirReg slot = EmitAlloca(e->type);
+                StoreTupleInit(*e, slot);
                 return slot;
             }
             if (auto* e = dynamic_cast<const HirRangeExpr*>(&expr))

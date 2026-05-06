@@ -935,6 +935,12 @@ namespace Rux
                                ? ResolveType(**s->type)
                                : hs->init->type;
 
+                if (s->pattern)
+                {
+                    hs->pattern = LowerLetPattern(*s->pattern, hs->type, s->isMut);
+                    return hs;
+                }
+
                 HirSymbol sym;
                 sym.kind = HirSymbol::Kind::Var;
                 sym.name = s->name;
@@ -1119,8 +1125,10 @@ namespace Rux
                 auto he = std::make_unique<HirPathExpr>();
                 he->location = e->location;
                 he->segments = e->segments;
+                // Resolve type through the final segment so module-qualified paths
+                // (e.g. Math::Add) carry the correct function type.
                 if (!e->segments.empty())
-                    if (HirSymbol* sym = currentScope->Lookup(e->segments[0]))
+                    if (HirSymbol* sym = currentScope->Lookup(e->segments.back()))
                         he->type = sym->type;
                 return he;
             }
@@ -1189,9 +1197,11 @@ namespace Rux
                 he->inclusive = e->inclusive;
                 if (e->lo) he->lo = LowerExpr(*e->lo);
                 if (e->hi) he->hi = LowerExpr(*e->hi);
-                TypeRef elemType = he->lo ? he->lo->type
-                                 : he->hi ? he->hi->type
-                                 : TypeRef::MakeInt64();
+                TypeRef elemType = he->lo
+                                       ? he->lo->type
+                                       : he->hi
+                                       ? he->hi->type
+                                       : TypeRef::MakeInt64();
                 if (elemType.IsUnknown()) elemType = TypeRef::MakeInt64();
                 he->type = TypeRef::MakeRange(elemType);
                 return he;
@@ -1240,6 +1250,18 @@ namespace Rux
                     else if (e->field == "inclusive")
                         he->type = TypeRef::MakeBool();
                 }
+                else if (he->object->type.kind == TypeRef::Kind::Tuple)
+                {
+                    try
+                    {
+                        const std::size_t idx = std::stoul(e->field);
+                        if (idx < he->object->type.inner.size())
+                            he->type = he->object->type.inner[idx];
+                    }
+                    catch (...)
+                    {
+                    }
+                }
                 return he;
             }
             if (auto* e = dynamic_cast<const StructInitExpr*>(&expr))
@@ -1269,6 +1291,19 @@ namespace Rux
                 }
                 he->elementType = elemType;
                 he->type = TypeRef::MakeNamed(SliceTypeName(elemType));
+                return he;
+            }
+            if (auto* e = dynamic_cast<const TupleExpr*>(&expr))
+            {
+                auto he = std::make_unique<HirTupleExpr>();
+                he->location = e->location;
+                std::vector<TypeRef> elemTypes;
+                for (const auto& el : e->elements)
+                {
+                    he->elements.push_back(LowerExpr(*el));
+                    elemTypes.push_back(he->elements.back()->type);
+                }
+                he->type = TypeRef::MakeTuple(std::move(elemTypes));
                 return he;
             }
             if (auto* e = dynamic_cast<const CastExpr*>(&expr))
@@ -1338,6 +1373,45 @@ namespace Rux
             default:
                 return l.IsUnknown() ? r : l;
             }
+        }
+
+        HirPatternPtr LowerLetPattern(const Pattern& pat, const TypeRef& type, bool isMut)
+        {
+            if (dynamic_cast<const WildcardPattern*>(&pat))
+            {
+                auto hp = std::make_unique<HirWildcardPattern>();
+                hp->location = pat.location;
+                return hp;
+            }
+            if (auto* p = dynamic_cast<const IdentPattern*>(&pat))
+            {
+                auto hp = std::make_unique<HirBindingPattern>();
+                hp->location = p->location;
+                hp->name = p->name;
+                hp->type = type;
+
+                HirSymbol sym;
+                sym.kind = HirSymbol::Kind::Var;
+                sym.name = p->name;
+                sym.type = type;
+                sym.isMut = isMut;
+                Define(sym);
+                return hp;
+            }
+            if (auto* p = dynamic_cast<const TuplePattern*>(&pat))
+            {
+                auto hp = std::make_unique<HirTuplePattern>();
+                hp->location = p->location;
+                for (std::size_t i = 0; i < p->elements.size(); ++i)
+                {
+                    TypeRef elemType = TypeRef::MakeUnknown();
+                    if (type.kind == TypeRef::Kind::Tuple && i < type.inner.size())
+                        elemType = type.inner[i];
+                    hp->elements.push_back(LowerLetPattern(*p->elements[i], elemType, isMut));
+                }
+                return hp;
+            }
+            return LowerPattern(pat);
         }
 
         // Pattern lowering
@@ -1522,6 +1596,16 @@ namespace Rux
             }
             return s + "]";
         }
+        if (auto* e = dynamic_cast<const HirTupleExpr*>(&expr))
+        {
+            std::string s = "(";
+            for (std::size_t i = 0; i < e->elements.size(); ++i)
+            {
+                if (i) s += ", ";
+                s += PrintExpr(*e->elements[i]);
+            }
+            return s + ")";
+        }
         if (auto* e = dynamic_cast<const HirCastExpr*>(&expr))
             return std::format("{} as {}", PrintExpr(*e->operand), e->targetType.ToString());
         if (auto* e = dynamic_cast<const HirIsExpr*>(&expr))
@@ -1610,9 +1694,10 @@ namespace Rux
         }
         if (auto* s = dynamic_cast<const HirLetStmt*>(&stmt))
         {
-            std::string mut = s->isMut ? "mut " : "";
-            out << std::format("{}let {}{}: {} = {}\n",
-                               indent, mut, s->name, s->type.ToString(), PrintExpr(*s->init));
+            out << std::format("{}{} {}: {} = {}\n",
+                               indent, s->isMut ? "var" : "let",
+                               s->pattern ? PrintPattern(*s->pattern) : s->name,
+                               s->type.ToString(), PrintExpr(*s->init));
             return;
         }
         if (auto* s = dynamic_cast<const HirIfStmt*>(&stmt))

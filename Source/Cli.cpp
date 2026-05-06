@@ -20,6 +20,8 @@
 #include <chrono>
 #include <print>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <filesystem>
 
@@ -405,17 +407,147 @@ namespace Rux
         }
         if (parseErrors) return 1;
 
+        // Load dependency packages referenced by use declarations
+
+        std::vector<ParseResult> depParseResults;
+        std::vector<std::string> loadedPackages; // parallel: package name per entry
+        std::vector<std::string> loadedModuleNames; // parallel: module file stem per entry
+        {
+            std::unordered_set<std::string> loadedDepFiles; // canonical file paths already loaded
+
+            for (const auto& pr : parseResults)
+            {
+                for (const auto& decl : pr.module.items)
+                {
+                    const auto* ud = dynamic_cast<const UseDecl*>(decl.get());
+                    if (!ud || ud->path.empty()) continue;
+
+                    const std::string& pkgName = ud->path[0];
+
+                    const Dependency* dep = nullptr;
+                    for (const auto& d : manifest->dependencies)
+                        if (d.name == pkgName)
+                        {
+                            dep = &d;
+                            break;
+                        }
+
+                    if (!dep)
+                    {
+                        std::print(stderr,
+                                   "error: package '{}' is not listed in [Dependencies]\n",
+                                   pkgName);
+                        return 1;
+                    }
+                    if (dep->path.empty())
+                    {
+                        std::print(stderr,
+                                   "error: registry dependencies not yet supported (package '{}')\n",
+                                   pkgName);
+                        return 1;
+                    }
+
+                    auto depRoot = (manifestPath->parent_path() / dep->path).lexically_normal();
+
+                    // Determine which source file to load based on the import path:
+                    //   import Pkg::Item          → Pkg/Src/Pkg.rux      (entry)
+                    //   import Pkg::Mod::Item      → Pkg/Src/Mod.rux      (sub-module)
+                    //   import Pkg::Mod::*         → Pkg/Src/Mod.rux
+                    //   import Pkg::*              → Pkg/Src/Pkg.rux
+                    std::string moduleFile;
+                    if (ud->kind == UseDecl::Kind::Single && ud->path.size() >= 3)
+                        moduleFile = ud->path[1]; // Pkg::Mod::Item → Mod.rux
+                    else if (ud->kind != UseDecl::Kind::Single && ud->path.size() >= 2)
+                        moduleFile = ud->path[1]; // Pkg::Mod::* → Mod.rux
+                    else if (ud->kind == UseDecl::Kind::Single && ud->path.size() == 2)
+                    {
+                        // import Pkg::Name — could be a module file or a symbol in the entry.
+                        // Probe the filesystem: if Pkg/Src/Name.rux exists it is a module import.
+                        std::error_code ec;
+                        auto candidate = depRoot / "Src" / (ud->path[1] + ".rux");
+                        moduleFile = std::filesystem::is_regular_file(candidate, ec)
+                                         ? ud->path[1]
+                                         : pkgName;
+                    }
+                    else
+                        moduleFile = pkgName; // entry file
+
+                    auto entryPath = depRoot / "Src" / (moduleFile + ".rux");
+                    auto entryKey = entryPath.string();
+                    if (loadedDepFiles.count(entryKey)) continue;
+                    loadedDepFiles.insert(entryKey);
+
+                    if (opts.verbose)
+                        std::print("  Loading {}/{} from {}\n", pkgName, moduleFile, entryPath.string());
+
+                    auto depFile = SourceLoader::LoadFile(entryPath);
+                    if (!depFile)
+                    {
+                        std::print(stderr,
+                                   "error: cannot open package entry '{}'\n",
+                                   entryPath.string());
+                        return 1;
+                    }
+
+                    Lexer depLexer(depFile->source, entryPath.string());
+                    auto depLex = depLexer.Tokenize();
+                    for (const auto& diag : depLex.diagnostics)
+                    {
+                        const char* sev = diag.severity == LexerDiagnostic::Severity::Error
+                                              ? "error"
+                                              : "warning";
+                        std::print(stderr, "{}:{}:{}: {}: {}\n",
+                                   entryPath.string(), diag.location.line,
+                                   diag.location.column, sev, diag.message);
+                    }
+                    if (depLex.HasErrors()) return 1;
+
+                    Parser depParser(depLex.tokens, entryPath.string());
+                    auto depParse = depParser.Parse();
+                    for (const auto& diag : depParse.diagnostics)
+                    {
+                        const char* sev = diag.severity == ParserDiagnostic::Severity::Error
+                                              ? "error"
+                                              : "warning";
+                        std::print(stderr, "{}:{}:{}: {}: {}\n",
+                                   entryPath.string(), diag.location.line,
+                                   diag.location.column, sev, diag.message);
+                    }
+                    if (depParse.HasErrors()) return 1;
+
+                    depParseResults.push_back(std::move(depParse));
+                    loadedPackages.push_back(pkgName);
+                    loadedModuleNames.push_back(moduleFile);
+                }
+            }
+        }
+
         // Semantic analysis
 
         if (opts.verbose)
             std::print("  Analyzing {}\n", manifest->package.name);
 
-        std::vector<const Module*> modules;
-        modules.reserve(parseResults.size());
+        std::vector<const Module*> userModules;
+        userModules.reserve(parseResults.size());
         for (const auto& pr : parseResults)
-            modules.push_back(&pr.module);
+            userModules.push_back(&pr.module);
 
-        Sema sema(std::move(modules));
+        // Build per-package dep info so Sema isolates dep symbols per module file.
+        std::vector<DepPackage> depPackages;
+        {
+            std::unordered_map<std::string, std::size_t> pkgIdx;
+            for (std::size_t i = 0; i < depParseResults.size(); ++i)
+            {
+                const std::string& pkgName = loadedPackages[i];
+                auto [it, inserted] = pkgIdx.emplace(pkgName, depPackages.size());
+                if (inserted)
+                    depPackages.push_back({pkgName, {}});
+                depPackages[it->second].modules.push_back(
+                    {loadedModuleNames[i], &depParseResults[i].module});
+            }
+        }
+
+        Sema sema(std::move(userModules), std::move(depPackages));
         auto semaResult = sema.Analyze();
 
         for (const auto& diag : semaResult.diagnostics)
@@ -439,7 +571,9 @@ namespace Rux
             std::print("  Lowering {}\n", manifest->package.name);
 
         std::vector<const Module*> hirModules;
-        hirModules.reserve(parseResults.size());
+        hirModules.reserve(depParseResults.size() + parseResults.size());
+        for (const auto& pr : depParseResults)
+            hirModules.push_back(&pr.module);
         for (const auto& pr : parseResults)
             hirModules.push_back(&pr.module);
 

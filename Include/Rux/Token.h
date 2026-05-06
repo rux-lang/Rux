@@ -40,7 +40,6 @@ namespace Rux
         // Declarations
         FuncKeyword, // func
         LetKeyword, // let
-        MutKeyword, // mut
         VarKeyword, // var
         ConstKeyword, // const
         TypeKeyword, // type
@@ -51,6 +50,7 @@ namespace Rux
         ImplKeyword, // impl
         ModKeyword, // mod
         UseKeyword, // use
+        ImportKeyword, // import
         PubKeyword, // pub
         ExternKeyword, // extern
 
