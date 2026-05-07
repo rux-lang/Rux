@@ -9,8 +9,10 @@
 
 #include <algorithm>
 #include <cassert>
+#include <charconv>
 #include <format>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -362,6 +364,7 @@ namespace Rux
         int loopDepth = 0;
         std::unordered_set<std::string> activeLabels;
         bool inImpl = false;
+        TypeRef currentSelfType = TypeRef::MakeUnknown();
         std::vector<std::string> currentTypeParams;
         std::unordered_map<std::string, const StructDecl*> structDecls;
 
@@ -435,7 +438,6 @@ namespace Rux
             add("char16", TypeRef::MakeChar16());
             add("char32", TypeRef::MakeChar32());
             add("char", TypeRef::MakeChar());
-            add("String", TypeRef::MakeStr());
             add("int8", TypeRef::MakeInt8());
             add("int16", TypeRef::MakeInt16());
             add("int32", TypeRef::MakeInt32());
@@ -720,6 +722,110 @@ namespace Rux
             return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
         }
 
+        static std::optional<std::uint64_t> ParseUnsuffixedIntegerLiteral(const Token& tok)
+        {
+            if (tok.kind != TokenKind::IntLiteral || !NumericLiteralSuffix(tok.text).empty())
+                return std::nullopt;
+
+            std::string text;
+            text.reserve(tok.text.size());
+            for (const char c : tok.text)
+            {
+                if (c != '_') text.push_back(c);
+            }
+
+            int base = 10;
+            std::string_view digits(text);
+            if (digits.size() > 2 && digits[0] == '0')
+            {
+                switch (digits[1])
+                {
+                case 'x':
+                case 'X':
+                    base = 16;
+                    digits.remove_prefix(2);
+                    break;
+                case 'b':
+                case 'B':
+                    base = 2;
+                    digits.remove_prefix(2);
+                    break;
+                case 'o':
+                case 'O':
+                    base = 8;
+                    digits.remove_prefix(2);
+                    break;
+                default:
+                    break;
+                }
+            }
+            if (digits.empty()) return std::nullopt;
+
+            std::uint64_t value = 0;
+            const auto* first = digits.data();
+            const auto* last = first + digits.size();
+            const auto [ptr, ec] = std::from_chars(first, last, value, base);
+            if (ec != std::errc{} || ptr != last) return std::nullopt;
+            return value;
+        }
+
+        static std::optional<std::uint64_t> UnsignedIntegerMax(const TypeRef& type)
+        {
+            switch (type.kind)
+            {
+            case TypeRef::Kind::UInt8: return std::numeric_limits<std::uint8_t>::max();
+            case TypeRef::Kind::UInt16: return std::numeric_limits<std::uint16_t>::max();
+            case TypeRef::Kind::UInt32: return std::numeric_limits<std::uint32_t>::max();
+            case TypeRef::Kind::UInt64:
+            case TypeRef::Kind::UInt:
+                return std::numeric_limits<std::uint64_t>::max();
+            default:
+                return std::nullopt;
+            }
+        }
+
+        static bool UnsuffixedIntegerLiteralFits(const Expr& expr, const TypeRef& target)
+        {
+            const auto* literal = dynamic_cast<const LiteralExpr*>(&expr);
+            if (!literal) return false;
+            const auto value = ParseUnsuffixedIntegerLiteral(literal->token);
+            const auto max = UnsignedIntegerMax(target);
+            return value && max && *value <= *max;
+        }
+
+        static bool IsNullLiteral(const Expr& expr)
+        {
+            const auto* literal = dynamic_cast<const LiteralExpr*>(&expr);
+            return literal && literal->token.kind == TokenKind::NullKeyword;
+        }
+
+        static bool CanAssignExprTo(const Expr& expr, const TypeRef& exprType, const TypeRef& targetType)
+        {
+            return exprType.IsAssignableTo(targetType) ||
+                (IsNullLiteral(expr) && targetType.kind == TypeRef::Kind::Pointer) ||
+                UnsuffixedIntegerLiteralFits(expr, targetType);
+        }
+
+        static std::string NamedBaseTypeName(const TypeRef& type)
+        {
+            const TypeRef* named = &type;
+            if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty())
+                named = &type.inner[0];
+            if (named->kind != TypeRef::Kind::Named) return {};
+            return BaseTypeName(named->name);
+        }
+
+        std::unordered_map<std::string, TypeRef> StructTypeSubstitutions(
+            const StructDecl& decl,
+            const std::vector<TypeExprPtr>& typeArgs)
+        {
+            std::unordered_map<std::string, TypeRef> substitutions;
+            const std::size_t count = std::min(decl.typeParams.size(), typeArgs.size());
+            for (std::size_t i = 0; i < count; ++i)
+                substitutions.emplace(decl.typeParams[i], ResolveType(*typeArgs[i]));
+            return substitutions;
+        }
+
         static std::optional<TypeRef> BuiltinTypeFromName(const std::string& name)
         {
             if (name == "opaque") return TypeRef::MakeOpaque();
@@ -729,7 +835,6 @@ namespace Rux
             if (name == "char" || name == "char32") return TypeRef::MakeChar32();
             if (name == "char8") return TypeRef::MakeChar8();
             if (name == "char16") return TypeRef::MakeChar16();
-            if (name == "String") return TypeRef::MakeStr();
             if (name == "int8") return TypeRef::MakeInt8();
             if (name == "int16") return TypeRef::MakeInt16();
             if (name == "int32") return TypeRef::MakeInt32();
@@ -795,7 +900,7 @@ namespace Rux
                 return TypeRef::MakeTuple(std::move(elems));
             }
             if (dynamic_cast<const SelfTypeExpr*>(&expr))
-                return TypeRef::MakeNamed("self");
+                return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
             return TypeRef::MakeUnknown();
         }
 
@@ -834,6 +939,21 @@ namespace Rux
                 return TypeRef::MakeTuple(std::move(elems));
             }
             return ResolveType(expr);
+        }
+
+        TypeRef StructFieldType(const TypeRef& objectType, const std::string& fieldName)
+        {
+            const std::string typeName = NamedBaseTypeName(objectType);
+            if (typeName.empty()) return TypeRef::MakeUnknown();
+            const auto structIt = structDecls.find(typeName);
+            if (structIt == structDecls.end()) return TypeRef::MakeUnknown();
+
+            for (const auto& field : structIt->second->fields)
+            {
+                if (field.name == fieldName)
+                    return ResolveType(*field.type);
+            }
+            return TypeRef::MakeUnknown();
         }
 
         std::optional<std::uint64_t> SizeOfTypeRef(
@@ -995,14 +1115,14 @@ namespace Rux
                 Symbol self;
                 self.kind = Symbol::Kind::Var;
                 self.name = "self";
-                self.type = TypeRef::MakeNamed("self");
+                self.type = currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
                 self.isMut = true;
                 Define(self);
             }
 
             for (const auto& param : d.params)
             {
-                if (param.isVariadic) continue;
+                if (param.isVariadic || param.name == "self") continue;
                 Symbol sym;
                 sym.kind = Symbol::Kind::Var;
                 sym.name = param.name;
@@ -1049,6 +1169,69 @@ namespace Rux
 
             PopScope();
             currentTypeParams = savedTypeParams;
+        }
+
+        void CheckStructInitExpr(const StructInitExpr& e)
+        {
+            auto structIt = structDecls.find(e.typeName);
+            if (structIt == structDecls.end())
+            {
+                EmitError(e.location,
+                          std::format("unknown type '{}' in struct initializer", e.typeName));
+                for (const auto& f : e.fields) CheckExpr(*f.value);
+                return;
+            }
+
+            const StructDecl& decl = *structIt->second;
+            if (e.typeArgs.size() != decl.typeParams.size())
+            {
+                EmitError(e.location,
+                          std::format("struct '{}' expects {} type argument(s), got {}",
+                                      e.typeName, decl.typeParams.size(), e.typeArgs.size()));
+            }
+
+            const auto substitutions = StructTypeSubstitutions(decl, e.typeArgs);
+            std::unordered_map<std::string, const StructDecl::Field*> fieldMap;
+            for (const auto& field : decl.fields)
+                fieldMap.emplace(field.name, &field);
+
+            std::unordered_set<std::string> initialized;
+            for (const auto& f : e.fields)
+            {
+                TypeRef valueType = CheckExpr(*f.value);
+                if (!initialized.insert(f.name).second)
+                {
+                    EmitError(f.location,
+                              std::format("duplicate field '{}' in initializer for '{}'",
+                                          f.name, e.typeName));
+                    continue;
+                }
+
+                auto fieldIt = fieldMap.find(f.name);
+                if (fieldIt == fieldMap.end())
+                {
+                    EmitError(f.location,
+                              std::format("unknown field '{}' in initializer for '{}'",
+                                          f.name, e.typeName));
+                    continue;
+                }
+
+                TypeRef fieldType =
+                    ResolveTypeWithSubstitution(*fieldIt->second->type, substitutions);
+                if (!valueType.IsUnknown() && !fieldType.IsUnknown() &&
+                    !CanAssignExprTo(*f.value, valueType, fieldType))
+                    EmitError(f.location,
+                              std::format("cannot assign '{}' to field '{}' of type '{}'",
+                                          valueType.ToString(), f.name, fieldType.ToString()));
+            }
+
+            for (const auto& field : decl.fields)
+            {
+                if (!initialized.contains(field.name))
+                    EmitError(e.location,
+                              std::format("missing field '{}' in initializer for '{}'",
+                                          field.name, e.typeName));
+            }
         }
 
         void CheckEnumDecl(const EnumDecl& d)
@@ -1122,9 +1305,12 @@ namespace Rux
             }
 
             bool savedInImpl = inImpl;
+            TypeRef savedSelfType = currentSelfType;
             inImpl = true;
+            currentSelfType = TypeRef::MakePointer(TypeRef::MakeNamed(d.typeName));
             for (const auto& m : d.methods)
                 CheckFuncDecl(*m, /*isMethod=*/true);
+            currentSelfType = savedSelfType;
             inImpl = savedInImpl;
         }
 
@@ -1141,7 +1327,7 @@ namespace Rux
             TypeRef valueType = CheckExpr(*d.value);
             TypeRef constType = d.type ? ResolveType(*d.type->get()) : valueType;
             if (d.type && !valueType.IsUnknown() && !constType.IsUnknown() &&
-                !valueType.IsAssignableTo(constType))
+                !CanAssignExprTo(*d.value, valueType, constType))
                 EmitError(d.value->location,
                           std::format("cannot assign '{}' to constant of type '{}'",
                                       valueType.ToString(), constType.ToString()));
@@ -1308,7 +1494,7 @@ namespace Rux
                                 std::format("cannot infer type of '{}'", s->name));
 
                 if (s->type && !initType.IsUnknown() && !declType.IsUnknown() &&
-                    !initType.IsAssignableTo(declType))
+                    !CanAssignExprTo(*s->init, initType, declType))
                     EmitError(s->location,
                               std::format("cannot assign '{}' to '{}'",
                                           initType.ToString(), declType.ToString()));
@@ -1404,7 +1590,7 @@ namespace Rux
                     if (TypeRef valType = CheckExpr(**s->value);
                         !valType.IsUnknown() && !currentReturnType.IsUnknown() &&
                         !currentReturnType.IsOpaque() &&
-                        !valType.IsAssignableTo(currentReturnType))
+                        !CanAssignExprTo(**s->value, valType, currentReturnType))
                         EmitError(s->location,
                                   std::format("return type mismatch: expected '{}', found '{}'",
                                               currentReturnType.ToString(), valType.ToString()));
@@ -1552,7 +1738,7 @@ namespace Rux
             {
                 if (!inImpl)
                     EmitError(expr.location, "'self' used outside of an impl block");
-                return TypeRef::MakeNamed("self");
+                return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
             }
 
             if (auto* e = dynamic_cast<const PathExpr*>(&expr))
@@ -1622,7 +1808,8 @@ namespace Rux
                 CheckMutability(*e->target);
                 TypeRef tgt = CheckExpr(*e->target);
                 TypeRef val = CheckExpr(*e->value);
-                if (!tgt.IsUnknown() && !val.IsUnknown() && !val.IsAssignableTo(tgt))
+                if (!tgt.IsUnknown() && !val.IsUnknown() &&
+                    !CanAssignExprTo(*e->value, val, tgt))
                     EmitError(e->location,
                               std::format("cannot assign '{}' to '{}'",
                                           val.ToString(), tgt.ToString()));
@@ -1675,7 +1862,7 @@ namespace Rux
                             const TypeRef& argType = argTypes[i];
                             const TypeRef& paramType = calleeType.inner[i];
                             if (!argType.IsUnknown() && !paramType.IsUnknown() &&
-                                !argType.IsAssignableTo(paramType))
+                                !CanAssignExprTo(*e->args[i], argType, paramType))
                                 EmitError(e->args[i]->location,
                                           std::format("cannot pass '{}' to parameter of type '{}'",
                                                       argType.ToString(), paramType.ToString()));
@@ -1732,15 +1919,14 @@ namespace Rux
                                           e->field, obj.ToString()));
                     return TypeRef::MakeUnknown();
                 }
+                if (TypeRef fieldType = StructFieldType(obj, e->field); !fieldType.IsUnknown())
+                    return fieldType;
                 return TypeRef::MakeUnknown(); // field type lookup needs full type info
             }
 
             if (auto* e = dynamic_cast<const StructInitExpr*>(&expr))
             {
-                if (!currentScope->Lookup(e->typeName))
-                    EmitError(e->location,
-                              std::format("unknown type '{}' in struct initializer", e->typeName));
-                for (const auto& f : e->fields) CheckExpr(*f.value);
+                CheckStructInitExpr(*e);
                 return TypeRef::MakeNamed(GenericStructInitName(*e));
             }
 

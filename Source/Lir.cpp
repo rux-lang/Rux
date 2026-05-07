@@ -507,7 +507,21 @@ namespace Rux
                 if (s->value)
                 {
                     LirReg val = LowerExpr(**s->value);
-                    Return({val}, (*s->value)->type);
+                    TypeRef retType = fn ? fn->returnType : (*s->value)->type;
+                    if (val != LirNoReg && !retType.IsUnknown() &&
+                        (*s->value)->type != retType)
+                    {
+                        LirReg casted = NewReg();
+                        LirInstr cast;
+                        cast.dst = casted;
+                        cast.op = LirOpcode::Cast;
+                        cast.type = retType;
+                        cast.srcs = {val};
+                        cast.strArg = (*s->value)->type.ToString();
+                        Emit(std::move(cast));
+                        val = casted;
+                    }
+                    Return({val}, retType);
                 }
                 else
                 {
@@ -1014,7 +1028,9 @@ namespace Rux
             }
             if (auto* e = dynamic_cast<const HirFieldExpr*>(&expr))
             {
-                LirReg base = LowerLValue(*e->object);
+                LirReg base = e->object->type.kind == TypeRef::Kind::Pointer
+                                  ? LowerExpr(*e->object)
+                                  : LowerLValue(*e->object);
                 LirReg ptr = EmitFieldPtr(base, e->field, e->type);
                 return EmitLoad(ptr, e->type);
             }
@@ -1394,7 +1410,9 @@ namespace Rux
             }
             if (auto* e = dynamic_cast<const HirFieldExpr*>(&expr))
             {
-                LirReg base = LowerLValue(*e->object);
+                LirReg base = e->object->type.kind == TypeRef::Kind::Pointer
+                                  ? LowerExpr(*e->object)
+                                  : LowerLValue(*e->object);
                 return EmitFieldPtr(base, e->field, e->type);
             }
 

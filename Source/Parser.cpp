@@ -390,6 +390,13 @@ namespace Rux
             return p;
         }
 
+        if (Match(TokenKind::SelfKeyword))
+        {
+            p.name = "self";
+            p.type = std::make_unique<SelfTypeExpr>();
+            return p;
+        }
+
         p.name = Expect(TokenKind::Ident, "expected parameter name").text;
         Expect(TokenKind::Colon, "expected ':'");
         p.type = ParseType();

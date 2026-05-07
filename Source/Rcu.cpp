@@ -1152,6 +1152,7 @@ namespace Rux
 
             // Declared extern symbols (by name → symbol index)
             std::unordered_map<std::string, uint32_t> externSyms;
+            std::unordered_map<std::string, uint32_t> funcSyms;
 
             // Struct field layouts
             struct FieldLayout
@@ -1253,6 +1254,22 @@ namespace Rux
                 uint32_t idx = AddSymbol(s);
                 externSyms[name] = idx;
                 return idx;
+            }
+
+            void PredeclareFunctions()
+            {
+                for (const auto& func : mod.funcs)
+                {
+                    if (func.isExtern || funcSyms.contains(func.name)) continue;
+                    RcuSymbol sym;
+                    sym.name = func.name;
+                    sym.sectionIdx = RCU_TEXT_IDX;
+                    sym.value = 0;
+                    sym.kind = RcuSymKind::Func;
+                    sym.visibility = func.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
+                    sym.typeName = func.returnType.ToString();
+                    funcSyms[func.name] = AddSymbol(sym);
+                }
             }
 
             // Align rodataData_ to `align` bytes (zero-fill), return current offset.
@@ -2223,16 +2240,11 @@ namespace Rux
                         bool win64Call = EffectiveConv(instr.callConv) == CallingConvention::Win64;
                         if (win64Call) enc.SubRspShadow();
                         EmitCallArgs(instr.srcs, instr.callConv);
-                        uint32_t symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternFunc);
-                        // If we already have a defined symbol for this name, use it
-                        for (uint32_t i = 0; i < symbols.size(); ++i)
-                        {
-                            if (symbols[i].name == instr.strArg && symbols[i].kind == RcuSymKind::Func)
-                            {
-                                symIdx = i;
-                                break;
-                            }
-                        }
+                        uint32_t symIdx;
+                        if (const auto it = funcSyms.find(instr.strArg); it != funcSyms.end())
+                            symIdx = it->second;
+                        else
+                            symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternFunc);
                         uint32_t ro;
                         enc.Call(ro);
                         AddTextReloc(ro, symIdx);
@@ -2391,7 +2403,10 @@ namespace Rux
                 sym.kind = RcuSymKind::Func;
                 sym.visibility = func.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
                 sym.typeName = func.returnType.ToString();
-                AddSymbol(sym);
+                if (const auto it = funcSyms.find(func.name); it != funcSyms.end())
+                    symbols[it->second] = std::move(sym);
+                else
+                    funcSyms[func.name] = AddSymbol(std::move(sym));
                 // Prologue
                 enc.PushRbp();
                 enc.MovRbpRsp();
@@ -2487,6 +2502,7 @@ namespace Rux
             void GenModule()
             {
                 BuildLayouts();
+                PredeclareFunctions();
                 // Extern vars
                 for (const auto& ev : mod.externVars)
                     GetOrAddExtern(ev.name, RcuSymKind::ExternData);

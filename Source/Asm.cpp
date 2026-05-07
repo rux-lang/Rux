@@ -1105,7 +1105,7 @@ namespace Rux
                 if (baseName == "Slice")
                 {
                     if (fieldName == "data") return 0;
-                    if (fieldName == "len") return 8;
+                    if (fieldName == "length") return 8;
                     return 0;
                 }
                 auto layIt = layouts.find(baseName);
