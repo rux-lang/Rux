@@ -14,11 +14,9 @@
 #include <string>
 #include <vector>
 
-namespace Rux
-{
+namespace Rux {
     // Format constants
-    namespace RcuSecType
-    {
+    namespace RcuSecType {
         constexpr uint32_t Null = 0;
         constexpr uint32_t Text = 1;
         constexpr uint32_t Data = 2;
@@ -27,8 +25,7 @@ namespace Rux
         constexpr uint32_t Meta = 5;
     }
 
-    namespace RcuSecFlag
-    {
+    namespace RcuSecFlag {
         constexpr uint32_t Alloc = 0x01;
         constexpr uint32_t Exec = 0x02;
         constexpr uint32_t Read = 0x04;
@@ -37,8 +34,7 @@ namespace Rux
         constexpr uint32_t Strings = 0x20;
     }
 
-    namespace RcuSymKind
-    {
+    namespace RcuSymKind {
         constexpr uint8_t Unknown = 0;
         constexpr uint8_t Func = 1;
         constexpr uint8_t Data = 2;
@@ -49,15 +45,13 @@ namespace Rux
         constexpr uint8_t ExternData = 7;
     }
 
-    namespace RcuSymVis
-    {
+    namespace RcuSymVis {
         constexpr uint8_t Local = 0;
         constexpr uint8_t Global = 1;
         constexpr uint8_t Weak = 2;
     }
 
-    namespace RcuRelType
-    {
+    namespace RcuRelType {
         constexpr uint16_t None = 0;
         constexpr uint16_t Abs64 = 1;
         constexpr uint16_t Abs32 = 2;
@@ -74,16 +68,14 @@ namespace Rux
 
     // In-memory structures
 
-    struct RcuReloc
-    {
+    struct RcuReloc {
         uint32_t sectionOffset = 0;
         uint32_t symbolIndex = 0;
         uint16_t type = RcuRelType::None;
         int32_t addend = 0;
     };
 
-    struct RcuSection
-    {
+    struct RcuSection {
         std::string name;
         uint32_t type = RcuSecType::Null;
         uint32_t flags = 0;
@@ -92,8 +84,7 @@ namespace Rux
         std::vector<RcuReloc> relocs;
     };
 
-    struct RcuSymbol
-    {
+    struct RcuSymbol {
         std::string name;
         std::string typeName;
         uint32_t value = 0;
@@ -103,8 +94,7 @@ namespace Rux
         uint8_t visibility = RcuSymVis::Local;
     };
 
-    struct RcuFile
-    {
+    struct RcuFile {
         uint8_t arch = 0x01; // x86-64
         uint8_t flags = 0x00;
         bool hasMetadata = false;
@@ -121,8 +111,7 @@ namespace Rux
     // Public API
     // Generates RCU binary object files from a LIR package.
     // One RcuFile is produced per LirModule (one per source file).
-    class Rcu
-    {
+    class Rcu {
     public:
         explicit Rcu(LirPackage package, std::string packageName = {});
 

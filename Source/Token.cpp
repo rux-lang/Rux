@@ -7,10 +7,8 @@
 #include "Rux/Token.h"
 #include <unordered_map>
 
-namespace Rux
-{
-    TokenKind KeywordKind(const std::string_view text) noexcept
-    {
+namespace Rux {
+    TokenKind KeywordKind(const std::string_view text) noexcept {
         // Static table built once; string_view keys are fine because the
         // string literals they point to have static storage duration.
         static const std::unordered_map<std::string_view, TokenKind> kTable = {
@@ -35,8 +33,7 @@ namespace Rux
             {"union", TokenKind::UnionKeyword},
             {"interface", TokenKind::InterfaceKeyword},
             {"impl", TokenKind::ImplKeyword},
-            {"mod", TokenKind::ModKeyword},
-            {"use", TokenKind::UseKeyword},
+            {"module", TokenKind::ModuleKeyword},
             {"import", TokenKind::ImportKeyword},
             {"pub", TokenKind::PubKeyword},
             {"extern", TokenKind::ExternKeyword},
@@ -53,10 +50,8 @@ namespace Rux
         return TokenKind::Ident;
     }
 
-    std::string_view TokenKindName(const TokenKind kind) noexcept
-    {
-        switch (kind)
-        {
+    std::string_view TokenKindName(const TokenKind kind) noexcept {
+        switch (kind) {
         case TokenKind::IntLiteral: return "IntLiteral";
         case TokenKind::FloatLiteral: return "FloatLiteral";
         case TokenKind::StringLiteral: return "StringLiteral";
@@ -84,8 +79,7 @@ namespace Rux
         case TokenKind::UnionKeyword: return "UnionKeyword";
         case TokenKind::InterfaceKeyword: return "InterfaceKeyword";
         case TokenKind::ImplKeyword: return "ImplKeyword";
-        case TokenKind::ModKeyword: return "ModKeyword";
-        case TokenKind::UseKeyword: return "UseKeyword";
+        case TokenKind::ModuleKeyword: return "ModuleKeyword";
         case TokenKind::ImportKeyword: return "ImportKeyword";
         case TokenKind::PubKeyword: return "PubKeyword";
         case TokenKind::ExternKeyword: return "ExternKeyword";
@@ -154,23 +148,19 @@ namespace Rux
         return "<unknown>";
     }
 
-    bool Token::IsKeyword() const noexcept
-    {
+    bool Token::IsKeyword() const noexcept {
         return kind >= TokenKind::IfKeyword && kind <= TokenKind::SuperKeyword;
     }
 
-    bool Token::IsLiteral() const noexcept
-    {
+    bool Token::IsLiteral() const noexcept {
         return kind >= TokenKind::IntLiteral && kind <= TokenKind::BoolLiteral;
     }
 
-    bool Token::IsOperator() const noexcept
-    {
+    bool Token::IsOperator() const noexcept {
         return kind >= TokenKind::Plus && kind <= TokenKind::GreaterGreaterAssign;
     }
 
-    std::string Token::Describe() const
-    {
+    std::string Token::Describe() const {
         std::string d(TokenKindName(kind));
         if (kind == TokenKind::Ident || IsLiteral())
             d += " `" + text + "`";

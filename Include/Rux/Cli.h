@@ -9,19 +9,16 @@
 #include <span>
 #include <string_view>
 
-namespace Rux
-{
+namespace Rux {
     enum class ColorMode { Auto, On, Off };
 
-    struct GlobalOptions
-    {
+    struct GlobalOptions {
         ColorMode color = ColorMode::Auto;
         bool quiet = false;
         bool verbose = false;
     };
 
-    class Cli
-    {
+    class Cli {
     public:
         Cli(int argc, char* argv[]);
         [[nodiscard]] int Run() const;

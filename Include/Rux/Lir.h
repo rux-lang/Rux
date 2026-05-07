@@ -15,17 +15,13 @@
 #include <string>
 #include <vector>
 
-namespace Rux
-{
+namespace Rux {
     // Virtual register
-
     using LirReg = std::uint32_t;
     constexpr LirReg LirNoReg = ~LirReg{};
 
     // Opcodes
-
-    enum class LirOpcode
-    {
+    enum class LirOpcode {
         // Literals / memory
         Const, // %dst = const <type> <value>
         Alloca, // %dst = alloca <type>
@@ -52,9 +48,7 @@ namespace Rux
     };
 
     // LIR Instruction
-
-    struct LirInstr
-    {
+    struct LirInstr {
         LirReg dst = LirNoReg; // result register (LirNoReg for Store)
         TypeRef type; // result type (or value type for Store)
         LirOpcode op = LirOpcode::Const;
@@ -65,17 +59,14 @@ namespace Rux
     };
 
     // Terminators
-
     enum class LirTermKind { Jump, Branch, Return, Switch };
 
-    struct LirSwitchCase
-    {
+    struct LirSwitchCase {
         std::string value;
         std::uint32_t target = 0;
     };
 
-    struct LirTerminator
-    {
+    struct LirTerminator {
         LirTermKind kind = LirTermKind::Jump;
         LirReg cond = LirNoReg;
         std::uint32_t trueTarget = 0; // Jump / Branch true target
@@ -87,25 +78,20 @@ namespace Rux
     };
 
     // Basic block
-
-    struct LirBlock
-    {
+    struct LirBlock {
         std::string label;
         std::vector<LirInstr> instrs;
         std::optional<LirTerminator> term;
     };
 
     // Function
-
-    struct LirParam
-    {
+    struct LirParam {
         LirReg reg;
         TypeRef type;
         std::string name;
     };
 
-    struct LirFunc
-    {
+    struct LirFunc {
         std::string name;
         std::string dll; // non-empty for extern declarations
         bool isPublic = false;
@@ -117,64 +103,54 @@ namespace Rux
     };
 
     // Type declarations (passed through from HIR)
-
-    struct LirStructField
-    {
+    struct LirStructField {
         std::string name;
         TypeRef type;
     };
 
-    struct LirStructDecl
-    {
+    struct LirStructDecl {
         std::string name;
         bool isPublic = false;
         std::vector<std::string> typeParams;
         std::vector<LirStructField> fields;
     };
 
-    struct LirEnumVariant
-    {
+    struct LirEnumVariant {
         std::string name;
         std::vector<TypeRef> fields;
     };
 
-    struct LirEnumDecl
-    {
+    struct LirEnumDecl {
         std::string name;
         bool isPublic = false;
         std::vector<LirEnumVariant> variants;
     };
 
-    struct LirUnionField
-    {
+    struct LirUnionField {
         std::string name;
         TypeRef type;
     };
 
-    struct LirUnionDecl
-    {
+    struct LirUnionDecl {
         std::string name;
         bool isPublic = false;
         std::vector<LirUnionField> fields;
     };
 
-    struct LirConstDecl
-    {
+    struct LirConstDecl {
         std::string name;
         bool isPublic = false;
         TypeRef type;
         std::string value; // printed literal of the constant expression
     };
 
-    struct LirTypeAlias
-    {
+    struct LirTypeAlias {
         std::string name;
         bool isPublic = false;
         TypeRef type;
     };
 
-    struct LirExternVar
-    {
+    struct LirExternVar {
         std::string name;
         bool isPublic = false;
         TypeRef type;
@@ -182,8 +158,7 @@ namespace Rux
 
     // Module / Package
 
-    struct LirModule
-    {
+    struct LirModule {
         std::string name;
         std::vector<LirStructDecl> structs;
         std::vector<LirEnumDecl> enums;
@@ -194,8 +169,7 @@ namespace Rux
         std::vector<LirFunc> funcs;
     };
 
-    struct LirPackage
-    {
+    struct LirPackage {
         std::vector<LirModule> modules;
     };
 
@@ -204,8 +178,7 @@ namespace Rux
     // Each function body is decomposed into basic blocks of three-address
     // instructions. Control flow (if/while/for/match) becomes explicit jumps
     // and branches; local variables are represented as alloca/load/store triples.
-    class Lir
-    {
+    class Lir {
     public:
         explicit Lir(HirPackage package);
         [[nodiscard]] LirPackage Generate() const;

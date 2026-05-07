@@ -10,10 +10,8 @@
 #include <string>
 #include <string_view>
 
-namespace Rux
-{
-    enum class TokenKind : std::uint8_t
-    {
+namespace Rux {
+    enum class TokenKind : std::uint8_t {
         // Literals
         IntLiteral, // 42  0xFF  0b1010  0o77
         FloatLiteral, // 3.14  1.0e-9
@@ -48,8 +46,7 @@ namespace Rux
         UnionKeyword, // union
         InterfaceKeyword, // interface
         ImplKeyword, // impl
-        ModKeyword, // mod
-        UseKeyword, // use
+        ModuleKeyword, // module
         ImportKeyword, // import
         PubKeyword, // pub
         ExternKeyword, // extern
@@ -132,25 +129,29 @@ namespace Rux
         Unknown, // unrecognized character — carry it for better errors
     };
 
-    struct SourceLocation
-    {
+    struct SourceLocation {
         std::uint32_t line = 1; // 1-based
         std::uint32_t column = 1; // 1-based (UTF-8 byte offset in line)
         std::uint32_t offset = 0; // byte offset from start of file
     };
 
-    struct Token
-    {
+    struct Token {
         TokenKind kind = TokenKind::Unknown;
         std::string text; // original source spelling
         SourceLocation location;
 
         // Convenience predicates
-        [[nodiscard]] bool Is(const TokenKind k) const noexcept { return kind == k; }
+        [[nodiscard]] bool Is(const TokenKind k) const noexcept {
+            return kind == k;
+        }
+
         [[nodiscard]] bool IsKeyword() const noexcept;
         [[nodiscard]] bool IsLiteral() const noexcept;
         [[nodiscard]] bool IsOperator() const noexcept;
-        [[nodiscard]] bool IsEof() const noexcept { return kind == TokenKind::EndOfFile; }
+
+        [[nodiscard]] bool IsEof() const noexcept {
+            return kind == TokenKind::EndOfFile;
+        }
 
         // Human-readable description for diagnostics
         [[nodiscard]] std::string Describe() const;

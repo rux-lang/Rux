@@ -11,13 +11,11 @@
 #include <print>
 #include <system_error>
 
-namespace Rux
-{
+namespace Rux {
     // Write a file only if it does not already exist (init mode) or always (new mode).
     static bool WriteFile(const std::filesystem::path& path,
                           const std::string_view content,
-                          const bool skipIfExists)
-    {
+                          const bool skipIfExists) {
         if (skipIfExists && std::filesystem::exists(path)) return true;
         std::ofstream f(path);
         if (!f) return false;
@@ -25,8 +23,7 @@ namespace Rux
         return f.good();
     }
 
-    static bool MakeDir(const std::filesystem::path& path)
-    {
+    static bool MakeDir(const std::filesystem::path& path) {
         std::error_code ec;
         std::filesystem::create_directories(path, ec);
         return !ec;
@@ -35,18 +32,14 @@ namespace Rux
     bool ScaffoldPackage(const std::filesystem::path& root,
                          const std::string& name,
                          const PackageType type,
-                         const bool initMode)
-    {
+                         const bool initMode) {
         // In new mode create the root directory; in init mode it already exists.
-        if (!initMode)
-        {
-            if (std::filesystem::exists(root))
-            {
+        if (!initMode) {
+            if (std::filesystem::exists(root)) {
                 std::print(stderr, "error: directory '{}' already exists\n", root.string());
                 return false;
             }
-            if (!MakeDir(root))
-            {
+            if (!MakeDir(root)) {
                 std::print(stderr, "error: cannot create directory '{}'\n", root.string());
                 return false;
             }
@@ -57,10 +50,8 @@ namespace Rux
                  root / "Bin" / "Release",
                  root / "Src",
                  root / "Temp"
-             })
-        {
-            if (!MakeDir(subdir))
-            {
+             }) {
+            if (!MakeDir(subdir)) {
                 std::print(stderr, "error: cannot create directory '{}'\n", subdir.string());
                 return false;
             }
@@ -68,14 +59,12 @@ namespace Rux
         // Rux.toml
         {
             auto tomlPath = root / "Rux.toml";
-            if (!initMode || !std::filesystem::exists(tomlPath))
-            {
+            if (!initMode || !std::filesystem::exists(tomlPath)) {
                 Manifest m;
                 m.package.name = name;
                 m.package.version = "0.1.0";
                 m.package.type = (type == PackageType::Executable) ? "bin" : "lib";
-                if (!m.Save(tomlPath))
-                {
+                if (!m.Save(tomlPath)) {
                     std::print(stderr, "error: cannot write Rux.toml\n");
                     return false;
                 }
@@ -89,8 +78,7 @@ namespace Rux
                                                ? "func Main() -> int32 {\n    return 0;\n}\n"
                                                : "// " + name + " library\n";
 
-            if (!WriteFile(root / "Src" / srcName, srcContent, initMode))
-            {
+            if (!WriteFile(root / "Src" / srcName, srcContent, initMode)) {
                 std::print(stderr,
                            "error: cannot write Src/{}\n", srcName);
                 return false;
@@ -102,8 +90,7 @@ namespace Rux
                 "# Rux build outputs\n"
                 "Bin/\n"
                 "Temp/\n";
-            if (!WriteFile(root / ".gitignore", gitignore, initMode))
-            {
+            if (!WriteFile(root / ".gitignore", gitignore, initMode)) {
                 std::print(stderr, "error: cannot write .gitignore\n");
                 return false;
             }

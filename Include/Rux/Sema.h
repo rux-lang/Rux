@@ -12,10 +12,8 @@
 #include <string>
 #include <vector>
 
-namespace Rux
-{
-    struct SemaDiagnostic
-    {
+namespace Rux {
+    struct SemaDiagnostic {
         enum class Severity { Warning, Error };
 
         Severity severity = Severity::Error;
@@ -25,8 +23,7 @@ namespace Rux
     };
 
     // A globally-scoped symbol collected during the first analysis pass.
-    struct SemaSymbol
-    {
+    struct SemaSymbol {
         enum class Kind { Var, Func, Type, Const, Module, Interface };
 
         Kind kind = Kind::Var;
@@ -37,22 +34,19 @@ namespace Rux
         bool isMut = false; // meaningful for Var
     };
 
-    struct SemaResult
-    {
+    struct SemaResult {
         std::vector<SemaDiagnostic> diagnostics;
         std::vector<SemaSymbol> symbols; // global symbols collected in the first pass
         [[nodiscard]] bool HasErrors() const noexcept;
     };
 
     // A dependency package: its name and parsed source modules.
-    // Symbols from dep packages are isolated until explicitly imported via use/import.
-    struct DepPackage
-    {
+    // Symbols from dep packages are isolated until explicitly imported.
+    struct DepPackage {
         std::string name;
 
-        struct ModuleEntry
-        {
-            std::string moduleName; // file stem: "Std" for entry, "Math" for sub-module
+        struct ModuleEntry {
+            std::string moduleName; // source identifier for diagnostics/bookkeeping
             const Module* module;
         };
 
@@ -62,8 +56,7 @@ namespace Rux
     // Runs semantic analysis over a set of parsed modules.
     // Modules should be passed in dependency order when possible, but the analyzer
     // performs a global first pass so forward references within a package work.
-    class Sema
-    {
+    class Sema {
     public:
         explicit Sema(std::vector<const Module*> userModules,
                       std::vector<DepPackage> deps = {});

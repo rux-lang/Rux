@@ -13,10 +13,8 @@
 #include <string>
 #include <vector>
 
-namespace Rux
-{
-    struct ParserDiagnostic
-    {
+namespace Rux {
+    struct ParserDiagnostic {
         enum class Severity { Warning, Error };
 
         Severity severity = Severity::Error;
@@ -24,15 +22,13 @@ namespace Rux
         std::string message;
     };
 
-    struct ParseResult
-    {
+    struct ParseResult {
         Module module;
         std::vector<ParserDiagnostic> diagnostics;
         [[nodiscard]] bool HasErrors() const noexcept;
     };
 
-    class Parser
-    {
+    class Parser {
     public:
         explicit Parser(std::vector<Token> tokens, std::string sourceName = "<input>");
 
@@ -88,8 +84,7 @@ namespace Rux
         std::unique_ptr<TypeAliasDecl> ParseTypeAliasDecl(bool isPublic);
 
         // Attribute parsing
-        struct ParsedAttrs
-        {
+        struct ParsedAttrs {
             std::string importLib;
             CallingConvention callConv = CallingConvention::Default;
         };

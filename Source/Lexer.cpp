@@ -13,12 +13,9 @@
 #include <sstream>
 #include <ostream>
 
-namespace Rux
-{
-    bool LexerResult::HasErrors() const noexcept
-    {
-        for (const auto& d : diagnostics)
-        {
+namespace Rux {
+    bool LexerResult::HasErrors() const noexcept {
+        for (const auto& d : diagnostics) {
             if (d.severity == LexerDiagnostic::Severity::Error)
                 return true;
         }
@@ -28,22 +25,17 @@ namespace Rux
 
     Lexer::Lexer(std::string source, std::string sourceName)
         : source(std::move(source))
-          , sourceName(std::move(sourceName))
-    {
-    }
+          , sourceName(std::move(sourceName)) {}
 
-    std::optional<LexerResult> Lexer::FromFile(const std::filesystem::path& path)
-    {
+    std::optional<LexerResult> Lexer::FromFile(const std::filesystem::path& path) {
         std::ifstream f(path, std::ios::binary);
-        if (!f)
-        {
+        if (!f) {
             std::print(stderr, "error: cannot open '{}'\n", path.string());
             return std::nullopt;
         }
         std::ostringstream ss;
         ss << f.rdbuf();
-        if (!f && !f.eof())
-        {
+        if (!f && !f.eof()) {
             std::print(stderr, "error: failed to read '{}'\n", path.string());
             return std::nullopt;
         }
@@ -51,8 +43,7 @@ namespace Rux
         return lex.Tokenize();
     }
 
-    LexerResult Lexer::Tokenize()
-    {
+    LexerResult Lexer::Tokenize() {
         tokens.clear();
         diagnostics.clear();
         pos = 0;
@@ -69,23 +60,19 @@ namespace Rux
     }
 
     bool Lexer::DumpTokens(const LexerResult& result,
-                           const std::filesystem::path& path)
-    {
+                           const std::filesystem::path& path) {
         std::ofstream f(path);
         if (!f) return false;
-        for (const auto& tok : result.tokens)
-        {
+        for (const auto& tok : result.tokens) {
             std::print(f, "{:>4}:{:<4}  {:<16}  {}\n",
                        tok.location.line,
                        tok.location.column,
                        std::string(TokenKindName(tok.kind)),
                        tok.text);
         }
-        if (!result.diagnostics.empty())
-        {
+        if (!result.diagnostics.empty()) {
             std::print(f, "\n--- diagnostics ---\n");
-            for (const auto& d : result.diagnostics)
-            {
+            for (const auto& d : result.diagnostics) {
                 std::print(f, "{:>4}:{:<4}  {}  {}\n",
                            d.location.line,
                            d.location.column,
@@ -98,10 +85,8 @@ namespace Rux
         return f.good();
     }
 
-    void Lexer::ScanAll()
-    {
-        while (!IsAtEnd())
-        {
+    void Lexer::ScanAll() {
+        while (!IsAtEnd()) {
             SkipWhitespace();
             if (IsAtEnd()) break;
 
@@ -111,13 +96,11 @@ namespace Rux
     }
 
     // NextToken – dispatch on the current character
-    Token Lexer::NextToken()
-    {
+    Token Lexer::NextToken() {
         const SourceLocation start = CurrentLocation();
         const char c = Peek();
         // Prefixed string literals
-        if (c == 'c')
-        {
+        if (c == 'c') {
             if (Peek(1) == '8' && Peek(2) == '"')
                 return ScanString(start, 2);
             if (Peek(1) == '8' && Peek(2) == '\'')
@@ -148,42 +131,35 @@ namespace Rux
     }
 
     // Character helpers
-    bool Lexer::IsAtEnd() const noexcept
-    {
+    bool Lexer::IsAtEnd() const noexcept {
         return pos >= source.size();
     }
 
-    char Lexer::Peek(std::size_t ahead) const noexcept
-    {
+    char Lexer::Peek(std::size_t ahead) const noexcept {
         const std::size_t idx = pos + ahead;
         return (idx < source.size()) ? source[idx] : '\0';
     }
 
-    char Lexer::Advance() noexcept
-    {
+    char Lexer::Advance() noexcept {
         const char c = source[pos++];
-        if (c == '\n')
-        {
+        if (c == '\n') {
             ++line;
             col = 1;
         }
-        else
-        {
+        else {
             ++col;
         }
         return c;
     }
 
-    bool Lexer::Match(char expected) noexcept
-    {
+    bool Lexer::Match(char expected) noexcept {
         if (IsAtEnd() || source[pos] != expected)
             return false;
         Advance();
         return true;
     }
 
-    bool Lexer::MatchStr(std::string_view s) noexcept
-    {
+    bool Lexer::MatchStr(std::string_view s) noexcept {
         if (pos + s.size() > source.size()) return false;
         for (std::size_t i = 0; i < s.size(); ++i)
             if (source[pos + i] != s[i]) return false;
@@ -191,38 +167,31 @@ namespace Rux
         return true;
     }
 
-    SourceLocation Lexer::CurrentLocation() const noexcept
-    {
+    SourceLocation Lexer::CurrentLocation() const noexcept {
         return {line, col, static_cast<std::uint32_t>(pos)};
     }
 
     // Whitespace / comments
-    void Lexer::SkipWhitespace()
-    {
-        while (!IsAtEnd())
-        {
+    void Lexer::SkipWhitespace() {
+        while (!IsAtEnd()) {
             const char c = Peek();
             // Inline whitespace
-            if (c == ' ' || c == '\t' || c == '\r')
-            {
+            if (c == ' ' || c == '\t' || c == '\r') {
                 Advance();
                 continue;
             }
             // Newlines – skip (emit Newline token here if your grammar needs them)
-            if (c == '\n')
-            {
+            if (c == '\n') {
                 Advance();
                 continue;
             }
             // Line comment
-            if (c == '/' && Peek(1) == '/')
-            {
+            if (c == '/' && Peek(1) == '/') {
                 SkipLineComment();
                 continue;
             }
             // Block comment
-            if (c == '/' && Peek(1) == '*')
-            {
+            if (c == '/' && Peek(1) == '*') {
                 SkipBlockComment();
                 continue;
             }
@@ -230,35 +199,29 @@ namespace Rux
         }
     }
 
-    void Lexer::SkipLineComment()
-    {
+    void Lexer::SkipLineComment() {
         // Consume everything up to (but not including) the newline
         while (!IsAtEnd() && Peek() != '\n')
             Advance();
     }
 
-    void Lexer::SkipBlockComment()
-    {
+    void Lexer::SkipBlockComment() {
         // Consume opening  /*
         Advance();
         Advance();
         int depth = 1; // supports nested  /* /* */ */
-        while (!IsAtEnd() && depth > 0)
-        {
-            if (Peek() == '/' && Peek(1) == '*')
-            {
+        while (!IsAtEnd() && depth > 0) {
+            if (Peek() == '/' && Peek(1) == '*') {
                 Advance();
                 Advance();
                 ++depth;
             }
-            else if (Peek() == '*' && Peek(1) == '/')
-            {
+            else if (Peek() == '*' && Peek(1) == '/') {
                 Advance();
                 Advance();
                 --depth;
             }
-            else
-            {
+            else {
                 Advance();
             }
         }
@@ -266,11 +229,9 @@ namespace Rux
             EmitError(CurrentLocation(), "unterminated block comment");
     }
 
-    Token Lexer::ScanIdent(SourceLocation start)
-    {
+    Token Lexer::ScanIdent(SourceLocation start) {
         const std::size_t tokenStart = pos;
-        while (!IsAtEnd())
-        {
+        while (!IsAtEnd()) {
             const char c = Peek();
             if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_')
                 break;
@@ -281,27 +242,22 @@ namespace Rux
         return Token{kind, std::move(text), start};
     }
 
-    Token Lexer::ScanNumber(SourceLocation start)
-    {
+    Token Lexer::ScanNumber(SourceLocation start) {
         const std::size_t tokenStart = pos;
         // Detect base prefix: 0x  0b  0o
-        if (Peek() == '0')
-        {
+        if (Peek() == '0') {
             const char next = Peek(1);
-            if (next == 'x' || next == 'X')
-            {
+            if (next == 'x' || next == 'X') {
                 Advance();
                 Advance(); // consume  0x
                 return ScanIntLiteral(start, tokenStart);
             }
-            if (next == 'b' || next == 'B')
-            {
+            if (next == 'b' || next == 'B') {
                 Advance();
                 Advance(); // consume  0b
                 return ScanIntLiteral(start, tokenStart);
             }
-            if (next == 'o' || next == 'O')
-            {
+            if (next == 'o' || next == 'O') {
                 Advance();
                 Advance(); // consume  0o
                 return ScanIntLiteral(start, tokenStart);
@@ -319,11 +275,9 @@ namespace Rux
         return MakeToken(TokenKind::IntLiteral, start, tokenStart);
     }
 
-    Token Lexer::ScanIntLiteral(SourceLocation start, std::size_t tokenStart)
-    {
+    Token Lexer::ScanIntLiteral(SourceLocation start, std::size_t tokenStart) {
         // Consume hex / binary / octal digits (and underscores as separators)
-        while (!IsAtEnd())
-        {
+        while (!IsAtEnd()) {
             const char c = Peek();
             if (std::isalnum(static_cast<unsigned char>(c)) || c == '_')
                 Advance();
@@ -334,26 +288,21 @@ namespace Rux
         return MakeToken(TokenKind::IntLiteral, start, tokenStart);
     }
 
-    Token Lexer::ScanFloatSuffix(SourceLocation start, std::size_t tokenStart)
-    {
+    Token Lexer::ScanFloatSuffix(SourceLocation start, std::size_t tokenStart) {
         // Fractional part
-        if (Peek() == '.')
-        {
+        if (Peek() == '.') {
             Advance(); // consume  .
             while (!IsAtEnd() && std::isdigit(static_cast<unsigned char>(Peek())))
                 Advance();
         }
         // Exponent part  e[+-]digits
-        if (Peek() == 'e' || Peek() == 'E')
-        {
+        if (Peek() == 'e' || Peek() == 'E') {
             Advance();
             if (Peek() == '+' || Peek() == '-') Advance();
-            if (!std::isdigit(static_cast<unsigned char>(Peek())))
-            {
+            if (!std::isdigit(static_cast<unsigned char>(Peek()))) {
                 EmitError(start, "expected digits after exponent");
             }
-            else
-            {
+            else {
                 while (!IsAtEnd() && std::isdigit(static_cast<unsigned char>(Peek())))
                     Advance();
             }
@@ -362,38 +311,31 @@ namespace Rux
         return MakeToken(TokenKind::FloatLiteral, start, tokenStart);
     }
 
-    void Lexer::ConsumeNumberSuffix()
-    {
+    void Lexer::ConsumeNumberSuffix() {
         if (!std::isalpha(static_cast<unsigned char>(Peek())))
             return;
-        while (!IsAtEnd())
-        {
+        while (!IsAtEnd()) {
             if (const char c = Peek(); !std::isalnum(static_cast<unsigned char>(c)) && c != '_')
                 break;
             Advance();
         }
     }
 
-    Token Lexer::ScanString(SourceLocation start, std::size_t prefixLen)
-    {
+    Token Lexer::ScanString(SourceLocation start, std::size_t prefixLen) {
         const std::size_t tokenStart = pos;
         for (std::size_t i = 0; i < prefixLen; ++i)
             Advance();
         Advance(); // consume opening  "
         std::string value;
-        while (!IsAtEnd() && Peek() != '"')
-        {
-            if (Peek() == '\n')
-            {
+        while (!IsAtEnd() && Peek() != '"') {
+            if (Peek() == '\n') {
                 EmitError(start, "unterminated string literal");
                 break;
             }
-            if (Peek() == '\\')
-            {
+            if (Peek() == '\\') {
                 value += ScanEscapeSequence();
             }
-            else
-            {
+            else {
                 value += Advance();
             }
         }
@@ -412,22 +354,18 @@ namespace Rux
     }
 
     // ScanChar
-    Token Lexer::ScanChar(SourceLocation start, std::size_t prefixLen)
-    {
+    Token Lexer::ScanChar(SourceLocation start, std::size_t prefixLen) {
         const std::size_t tokenStart = pos;
         for (std::size_t i = 0; i < prefixLen; ++i)
             Advance();
         Advance(); // consume opening  '
-        if (IsAtEnd() || Peek() == '\'')
-        {
+        if (IsAtEnd() || Peek() == '\'') {
             EmitError(start, "empty character literal");
         }
-        else if (Peek() == '\\')
-        {
+        else if (Peek() == '\\') {
             ScanEscapeSequence();
         }
-        else
-        {
+        else {
             Advance();
         }
         if (!Match('\''))
@@ -439,20 +377,17 @@ namespace Rux
         };
     }
 
-    // ScanEscapeSequence  (shared by string and char scanners)
-    std::string Lexer::ScanEscapeSequence()
-    {
+    // ScanEscapeSequence (shared by string and char scanners)
+    std::string Lexer::ScanEscapeSequence() {
         assert(Peek() == '\\');
         const SourceLocation loc = CurrentLocation();
         Advance(); // consume backslash
-        if (IsAtEnd())
-        {
+        if (IsAtEnd()) {
             EmitError(loc, "unexpected end of file in escape sequence");
             return {};
         }
         const char c = Advance();
-        switch (c)
-        {
+        switch (c) {
         case 'n': return "\n";
         case 't': return "\t";
         case 'r': return "\r";
@@ -460,12 +395,11 @@ namespace Rux
         case '\\': return "\\";
         case '\'': return "'";
         case '"': return "\"";
-        case 'u':
-            {
-                // TODO: Unicode escape  \u{XXXX}
-                EmitWarning(loc, "Unicode escape sequences are not yet implemented");
-                return {};
-            }
+        case 'u': {
+            // TODO: Unicode escape  \u{XXXX}
+            EmitWarning(loc, "Unicode escape sequences are not yet implemented");
+            return {};
+        }
         default:
             EmitError(loc, std::string("unknown escape sequence '\\") + c + "'");
             return {};
@@ -473,11 +407,9 @@ namespace Rux
     }
 
     // ScanSymbol  –  operators and punctuation
-    Token Lexer::ScanSymbol(const SourceLocation start)
-    {
+    Token Lexer::ScanSymbol(const SourceLocation start) {
         const std::size_t tokenStart = pos;
-        switch (Advance())
-        {
+        switch (Advance()) {
         // Single-character unambiguous tokens
         case '(': return MakeToken(TokenKind::LeftParen, start, tokenStart);
         case ')': return MakeToken(TokenKind::RightParen, start, tokenStart);
@@ -499,8 +431,7 @@ namespace Rux
                              start, tokenStart);
         // .  or  ..  or  ...  or  ..=
         case '.':
-            if (Match('.'))
-            {
+            if (Match('.')) {
                 if (Match('.'))
                     return MakeToken(TokenKind::DotDotDot, start, tokenStart);
                 if (Match('='))
@@ -575,8 +506,7 @@ namespace Rux
 
         // <  or  <=  or  <<=  or  <<
         case '<':
-            if (Match('<'))
-            {
+            if (Match('<')) {
                 return MakeToken(Match('=')
                                      ? TokenKind::LessLessAssign
                                      : TokenKind::LessLess,
@@ -589,8 +519,7 @@ namespace Rux
 
         // >  or  >=  or  >>=  or  >>
         case '>':
-            if (Match('>'))
-            {
+            if (Match('>')) {
                 return MakeToken(Match('=')
                                      ? TokenKind::GreaterGreaterAssign
                                      : TokenKind::GreaterGreater,
@@ -606,8 +535,7 @@ namespace Rux
         }
     }
 
-    Token Lexer::ScanUnknown(const SourceLocation start)
-    {
+    Token Lexer::ScanUnknown(const SourceLocation start) {
         const std::size_t tokenStart = pos - 1; // already advanced past the char
         EmitError(start,
                   std::string("unexpected character '") + source[tokenStart] + "'");
@@ -620,8 +548,7 @@ namespace Rux
 
     Token Lexer::MakeToken(const TokenKind kind,
                            const SourceLocation start,
-                           const std::size_t tokenStart) const
-    {
+                           const std::size_t tokenStart) const {
         return Token{
             kind,
             source.substr(tokenStart, pos - tokenStart),
@@ -629,8 +556,7 @@ namespace Rux
         };
     }
 
-    void Lexer::EmitError(const SourceLocation loc, std::string message)
-    {
+    void Lexer::EmitError(const SourceLocation loc, std::string message) {
         diagnostics.push_back(LexerDiagnostic{
             LexerDiagnostic::Severity::Error,
             loc,
@@ -638,8 +564,7 @@ namespace Rux
         });
     }
 
-    void Lexer::EmitWarning(const SourceLocation loc, std::string message)
-    {
+    void Lexer::EmitWarning(const SourceLocation loc, std::string message) {
         diagnostics.push_back(LexerDiagnostic{
             LexerDiagnostic::Severity::Warning,
             loc,

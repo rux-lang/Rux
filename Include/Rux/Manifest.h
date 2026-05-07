@@ -11,29 +11,24 @@
 #include <filesystem>
 #include <optional>
 
-namespace Rux
-{
-    struct Dependency
-    {
+namespace Rux {
+    struct Dependency {
         std::string name;
         std::string version; // empty = "latest"
         std::string path; // for path-based deps: { Path = "..." }, empty if version-based
     };
 
-    struct Package
-    {
+    struct Package {
         std::string name;
         std::string version = "0.1.0";
         std::string type = "bin"; // "bin" | "lib"
     };
 
-    struct Build
-    {
+    struct Build {
         std::string output = "Bin";
     };
 
-    struct Manifest
-    {
+    struct Manifest {
         Package package;
         Build build;
         std::vector<Dependency> dependencies;

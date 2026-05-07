@@ -9,10 +9,8 @@
 #include <print>
 #include <algorithm>
 
-namespace Rux
-{
-    static std::string Trim(std::string_view s)
-    {
+namespace Rux {
+    static std::string Trim(std::string_view s) {
         const auto ws = " \t\r\n";
         const auto start = s.find_first_not_of(ws);
         if (start == std::string_view::npos) return {};
@@ -21,8 +19,7 @@ namespace Rux
     }
 
     // Parse the Path value out of an inline table like { Path = "../../Packages/Std" }
-    static std::string ParseInlineTablePath(std::string_view val)
-    {
+    static std::string ParseInlineTablePath(std::string_view val) {
         const auto open = val.find('{');
         const auto close = val.rfind('}');
         if (open == std::string_view::npos || close == std::string_view::npos || close <= open)
@@ -38,36 +35,31 @@ namespace Rux
         return std::string(rawVal);
     }
 
-    static std::string Unquote(std::string_view s)
-    {
+    static std::string Unquote(std::string_view s) {
         if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
             return std::string(s.substr(1, s.size() - 2));
         return std::string(s);
     }
 
-    std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec)
-    {
+    std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec) {
         const auto at = spec.find('@');
         if (at == std::string_view::npos)
             return {std::string(spec), {}};
         return {std::string(spec.substr(0, at)), std::string(spec.substr(at + 1))};
     }
 
-    std::optional<Manifest> Manifest::Load(const std::filesystem::path& path)
-    {
+    std::optional<Manifest> Manifest::Load(const std::filesystem::path& path) {
         std::ifstream file(path);
         if (!file) return std::nullopt;
         Manifest m;
         std::string line;
         std::string section;
-        while (std::getline(file, line))
-        {
+        while (std::getline(file, line)) {
             std::string trimmed = Trim(line);
             // Skip comments and blank lines
             if (trimmed.empty() || trimmed[0] == '#') continue;
             // Section header
-            if (trimmed[0] == '[')
-            {
+            if (trimmed[0] == '[') {
                 auto close = trimmed.find(']');
                 if (close != std::string::npos)
                     section = Trim(trimmed.substr(1, close - 1));
@@ -78,18 +70,15 @@ namespace Rux
             if (eq == std::string::npos) continue;
             std::string key = Trim(trimmed.substr(0, eq));
             std::string value = Unquote(Trim(trimmed.substr(eq + 1)));
-            if (section == "Package")
-            {
+            if (section == "Package") {
                 if (key == "Name") m.package.name = value;
                 if (key == "Version") m.package.version = value;
                 if (key == "Type") m.package.type = value;
             }
-            else if (section == "Build")
-            {
+            else if (section == "Build") {
                 if (key == "Output") m.build.output = value;
             }
-            else if (section == "Dependencies")
-            {
+            else if (section == "Dependencies") {
                 // Name = "version"  OR  Name = "*"  OR  Name = { Path = "..." }
                 Dependency dep;
                 dep.name = key;
@@ -104,8 +93,7 @@ namespace Rux
         return m;
     }
 
-    bool Manifest::Save(const std::filesystem::path& path) const
-    {
+    bool Manifest::Save(const std::filesystem::path& path) const {
         std::ofstream file(path);
         if (!file) return false;
         file << "[Package]\n";
@@ -114,15 +102,12 @@ namespace Rux
         file << "Type    = \"" << package.type << "\"\n";
         file << "\n[Build]\n";
         file << "Output = \"" << build.output << "\"\n";
-        if (!dependencies.empty())
-        {
+        if (!dependencies.empty()) {
             file << "\n[Dependencies]\n";
-            for (const auto& dep : dependencies)
-            {
+            for (const auto& dep : dependencies) {
                 if (!dep.path.empty())
                     file << dep.name << " = { Path = \"" << dep.path << "\" }\n";
-                else
-                {
+                else {
                     std::string ver = dep.version.empty() ? "*" : dep.version;
                     file << dep.name << " = \"" << ver << "\"\n";
                 }
@@ -131,12 +116,9 @@ namespace Rux
         return file.good();
     }
 
-    bool Manifest::AddDependency(const std::string& name, const std::string& version)
-    {
-        for (auto& dep : dependencies)
-        {
-            if (dep.name == name)
-            {
+    bool Manifest::AddDependency(const std::string& name, const std::string& version) {
+        for (auto& dep : dependencies) {
+            if (dep.name == name) {
                 if (dep.version == version) return false; // already identical
                 dep.version = version;
                 return true;
@@ -146,20 +128,19 @@ namespace Rux
         return true;
     }
 
-    bool Manifest::RemoveDependency(const std::string& name)
-    {
+    bool Manifest::RemoveDependency(const std::string& name) {
         auto it = std::ranges::find_if(dependencies,
-                                       [&](const Dependency& d) { return d.name == name; });
+                                       [&](const Dependency& d) {
+                                           return d.name == name;
+                                       });
         if (it == dependencies.end()) return false;
         dependencies.erase(it);
         return true;
     }
 
-    std::optional<std::filesystem::path> Manifest::Find(const std::filesystem::path& start)
-    {
+    std::optional<std::filesystem::path> Manifest::Find(const std::filesystem::path& start) {
         auto dir = std::filesystem::absolute(start);
-        while (true)
-        {
+        while (true) {
             auto candidate = dir / "Rux.toml";
             if (std::filesystem::exists(candidate))
                 return candidate;

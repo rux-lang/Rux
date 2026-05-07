@@ -11,13 +11,10 @@
 #include <string>
 #include <vector>
 
-namespace Rux
-{
+namespace Rux {
     // Resolved type representation used by the semantic analyzer.
-    struct TypeRef
-    {
-        enum class Kind
-        {
+    struct TypeRef {
+        enum class Kind {
             Unknown, // unresolved / error recovery
             Opaque,
             Bool8, Bool16, Bool32,
@@ -35,9 +32,9 @@ namespace Rux
             TypeParam, // generic parameter T — name = param name
             Func, // func(...) -> T — inner[0..n-2] = params, inner[n-1] = return
             // Aliases — must come after all concrete values so they don't shift the counter
-            Bool = Bool8,     // bool is an alias for bool8
-            Char = Char32,    // char is an alias for char32
-            Float = Float64,  // float is an alias for float64
+            Bool = Bool8, // bool is an alias for bool8
+            Char = Char32, // char is an alias for char32
+            Float = Float64, // float is an alias for float64
         };
 
         Kind kind = Kind::Unknown;
@@ -45,220 +42,191 @@ namespace Rux
         std::vector<TypeRef> inner; // C++17: vector<incomplete T> is valid
 
         // Factories
+        static TypeRef MakeUnknown() {
+            return {};
+        }
 
-        static TypeRef MakeUnknown() { return {}; }
-
-        static TypeRef MakeOpaque()
-        {
+        static TypeRef MakeOpaque() {
             TypeRef t;
             t.kind = Kind::Opaque;
             return t;
         }
 
-        static TypeRef MakeBool8()
-        {
+        static TypeRef MakeBool8() {
             TypeRef t;
             t.kind = Kind::Bool8;
             return t;
         }
 
-        static TypeRef MakeBool16()
-        {
+        static TypeRef MakeBool16() {
             TypeRef t;
             t.kind = Kind::Bool16;
             return t;
         }
 
-        static TypeRef MakeBool32()
-        {
+        static TypeRef MakeBool32() {
             TypeRef t;
             t.kind = Kind::Bool32;
             return t;
         }
 
-        static TypeRef MakeBool()
-        {
+        static TypeRef MakeBool() {
             TypeRef t;
             t.kind = Kind::Bool8;
             return t;
         }
 
-        static TypeRef MakeChar8()
-        {
+        static TypeRef MakeChar8() {
             TypeRef t;
             t.kind = Kind::Char8;
             return t;
         }
 
-        static TypeRef MakeChar16()
-        {
+        static TypeRef MakeChar16() {
             TypeRef t;
             t.kind = Kind::Char16;
             return t;
         }
 
-        static TypeRef MakeChar32()
-        {
+        static TypeRef MakeChar32() {
             TypeRef t;
             t.kind = Kind::Char32;
             return t;
         }
 
-        static TypeRef MakeChar()
-        {
+        static TypeRef MakeChar() {
             TypeRef t;
             t.kind = Kind::Char32;
             return t;
         }
 
-        static TypeRef MakeStr()
-        {
+        static TypeRef MakeStr() {
             TypeRef t;
             t.kind = Kind::Str;
             return t;
         }
 
-        static TypeRef MakeInt8()
-        {
+        static TypeRef MakeInt8() {
             TypeRef t;
             t.kind = Kind::Int8;
             return t;
         }
 
-        static TypeRef MakeInt16()
-        {
+        static TypeRef MakeInt16() {
             TypeRef t;
             t.kind = Kind::Int16;
             return t;
         }
 
-        static TypeRef MakeInt32()
-        {
+        static TypeRef MakeInt32() {
             TypeRef t;
             t.kind = Kind::Int32;
             return t;
         }
 
-        static TypeRef MakeInt64()
-        {
+        static TypeRef MakeInt64() {
             TypeRef t;
             t.kind = Kind::Int64;
             return t;
         }
 
-        static TypeRef MakeUInt8()
-        {
+        static TypeRef MakeUInt8() {
             TypeRef t;
             t.kind = Kind::UInt8;
             return t;
         }
 
-        static TypeRef MakeUInt16()
-        {
+        static TypeRef MakeUInt16() {
             TypeRef t;
             t.kind = Kind::UInt16;
             return t;
         }
 
-        static TypeRef MakeUInt32()
-        {
+        static TypeRef MakeUInt32() {
             TypeRef t;
             t.kind = Kind::UInt32;
             return t;
         }
 
-        static TypeRef MakeUInt64()
-        {
+        static TypeRef MakeUInt64() {
             TypeRef t;
             t.kind = Kind::UInt64;
             return t;
         }
 
-        static TypeRef MakeInt()
-        {
+        static TypeRef MakeInt() {
             TypeRef t;
             t.kind = Kind::Int;
             return t;
         }
 
-        static TypeRef MakeUInt()
-        {
+        static TypeRef MakeUInt() {
             TypeRef t;
             t.kind = Kind::UInt;
             return t;
         }
 
-        static TypeRef MakeFloat32()
-        {
+        static TypeRef MakeFloat32() {
             TypeRef t;
             t.kind = Kind::Float32;
             return t;
         }
 
-        static TypeRef MakeFloat64()
-        {
+        static TypeRef MakeFloat64() {
             TypeRef t;
             t.kind = Kind::Float64;
             return t;
         }
 
-        static TypeRef MakeFloat()
-        {
+        static TypeRef MakeFloat() {
             TypeRef t;
             t.kind = Kind::Float64;
             return t;
         }
 
-        static TypeRef MakeNamed(std::string n)
-        {
+        static TypeRef MakeNamed(std::string n) {
             TypeRef t;
             t.kind = Kind::Named;
             t.name = std::move(n);
             return t;
         }
 
-        static TypeRef MakeTypeParam(std::string n)
-        {
+        static TypeRef MakeTypeParam(std::string n) {
             TypeRef t;
             t.kind = Kind::TypeParam;
             t.name = std::move(n);
             return t;
         }
 
-        static TypeRef MakePointer(TypeRef pointee)
-        {
+        static TypeRef MakePointer(TypeRef pointee) {
             TypeRef t;
             t.kind = Kind::Pointer;
             t.inner.push_back(std::move(pointee));
             return t;
         }
 
-        static TypeRef MakeSlice(TypeRef elem)
-        {
+        static TypeRef MakeSlice(TypeRef elem) {
             TypeRef t;
             t.kind = Kind::Slice;
             t.inner.push_back(std::move(elem));
             return t;
         }
 
-        static TypeRef MakeRange(TypeRef elem)
-        {
+        static TypeRef MakeRange(TypeRef elem) {
             TypeRef t;
             t.kind = Kind::Range;
             t.inner.push_back(std::move(elem));
             return t;
         }
 
-        static TypeRef MakeTuple(std::vector<TypeRef> elems)
-        {
+        static TypeRef MakeTuple(std::vector<TypeRef> elems) {
             TypeRef t;
             t.kind = Kind::Tuple;
             t.inner = std::move(elems);
             return t;
         }
 
-        static TypeRef MakeFunc(std::vector<TypeRef> params, TypeRef ret)
-        {
+        static TypeRef MakeFunc(std::vector<TypeRef> params, TypeRef ret) {
             TypeRef t;
             t.kind = Kind::Func;
             t.inner = std::move(params);
@@ -267,18 +235,25 @@ namespace Rux
         }
 
         // Predicates
+        [[nodiscard]] bool IsUnknown() const noexcept {
+            return kind == Kind::Unknown;
+        }
 
-        [[nodiscard]] bool IsUnknown() const noexcept { return kind == Kind::Unknown; }
-        [[nodiscard]] bool IsOpaque() const noexcept { return kind == Kind::Opaque; }
+        [[nodiscard]] bool IsOpaque() const noexcept {
+            return kind == Kind::Opaque;
+        }
 
-        [[nodiscard]] bool IsBool() const noexcept
-        {
+        [[nodiscard]] bool IsBool() const noexcept {
             return kind == Kind::Bool8 || kind == Kind::Bool16 || kind == Kind::Bool32;
         }
 
         [[nodiscard]] bool IsNumeric() const noexcept;
         [[nodiscard]] bool IsInteger() const noexcept;
-        [[nodiscard]] bool IsRange() const noexcept { return kind == Kind::Range; }
+
+        [[nodiscard]] bool IsRange() const noexcept {
+            return kind == Kind::Range;
+        }
+
         [[nodiscard]] bool IsFloat() const noexcept;
         [[nodiscard]] bool IsSigned() const noexcept;
 
@@ -288,6 +263,9 @@ namespace Rux
         [[nodiscard]] std::string ToString() const;
 
         bool operator==(const TypeRef& other) const noexcept;
-        bool operator!=(const TypeRef& other) const noexcept { return !(*this == other); }
+
+        bool operator!=(const TypeRef& other) const noexcept {
+            return !(*this == other);
+        }
     };
 }

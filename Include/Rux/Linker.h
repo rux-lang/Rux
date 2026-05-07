@@ -12,17 +12,14 @@
 #include <string>
 #include <vector>
 
-namespace Rux
-{
-    struct LinkerError
-    {
+namespace Rux {
+    struct LinkerError {
         std::string message;
     };
 
     // Links one or more RcuFile objects into a Windows PE32+ executable (.exe).
     // Target: Windows x86-64 (AMD64), console subsystem.
-    class Linker
-    {
+    class Linker {
     public:
         explicit Linker(std::vector<RcuFile> objects,
                         std::string packageName,
@@ -31,7 +28,10 @@ namespace Rux
         // Produce the EXE at outputPath. Creates parent directories as needed.
         // Returns false if any errors occurred; call Errors() for details.
         [[nodiscard]] bool Link(const std::filesystem::path& outputPath);
-        [[nodiscard]] const std::vector<LinkerError>& Errors() const { return errors; }
+
+        [[nodiscard]] const std::vector<LinkerError>& Errors() const {
+            return errors;
+        }
 
     private:
         std::vector<RcuFile> objects;

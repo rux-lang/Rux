@@ -13,10 +13,8 @@
 #include <vector>
 #include <optional>
 
-namespace Rux
-{
-    struct LexerDiagnostic
-    {
+namespace Rux {
+    struct LexerDiagnostic {
         enum class Severity { Warning, Error };
 
         Severity severity = Severity::Error;
@@ -24,15 +22,13 @@ namespace Rux
         std::string message;
     };
 
-    struct LexerResult
-    {
+    struct LexerResult {
         std::vector<Token> tokens;
         std::vector<LexerDiagnostic> diagnostics;
         [[nodiscard]] bool HasErrors() const noexcept;
     };
 
-    class Lexer
-    {
+    class Lexer {
     public:
         // Construct from in-memory source text.
         // `sourceName` is used only for diagnostic messages (e.g. file path).

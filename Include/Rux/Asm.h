@@ -11,8 +11,7 @@
 #include <filesystem>
 #include <string>
 
-namespace Rux
-{
+namespace Rux {
     // Generates x86-64 assembly text from a LIR package.
     // Syntax is NASM-compatible with minor Rux-specific conventions:
     //   - Sections use NASM keywords (.text / .data / .rodata)
@@ -20,8 +19,7 @@ namespace Rux
     //   - All virtual registers are spilled to the stack (naive allocation)
     //   - Parameters arrive in rdi/rsi/rdx/rcx/r8/r9 (integer) or xmm0-7 (float)
     //   - r10/r11 are used as caller-saved scratch registers
-    class Asm
-    {
+    class Asm {
     public:
         explicit Asm(LirPackage package);
 

@@ -18,8 +18,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace Rux
-{
+namespace Rux {
     // PE32+ layout constants
     static constexpr uint64_t kImageBase = 0x140000000ULL;
     static constexpr uint32_t kSecAlign = 0x1000; // 4 KB section alignment
@@ -38,69 +37,66 @@ namespace Rux
 
     // Buffer helpers
     using Buf = std::vector<uint8_t>;
-    static void WriteU8(Buf& b, uint8_t v) { b.push_back(v); }
 
-    static void WriteU16(Buf& b, uint16_t v)
-    {
+    static void WriteU8(Buf& b, uint8_t v) {
+        b.push_back(v);
+    }
+
+    static void WriteU16(Buf& b, uint16_t v) {
         b.push_back(v & 0xFF);
         b.push_back(v >> 8);
     }
 
-    static void WriteU32(Buf& b, uint32_t v)
-    {
+    static void WriteU32(Buf& b, uint32_t v) {
         b.push_back(v & 0xFF);
         b.push_back((v >> 8) & 0xFF);
         b.push_back((v >> 16) & 0xFF);
         b.push_back((v >> 24) & 0xFF);
     }
 
-    static void WriteU64(Buf& b, uint64_t v)
-    {
+    static void WriteU64(Buf& b, uint64_t v) {
         for (int i = 0; i < 8; ++i) b.push_back(static_cast<uint8_t>(v >> (i * 8)));
     }
 
-    static void WriteZeros(Buf& b, size_t n) { b.insert(b.end(), n, 0); }
+    static void WriteZeros(Buf& b, size_t n) {
+        b.insert(b.end(), n, 0);
+    }
 
-    static void WriteCStr(Buf& b, const char* s)
-    {
+    static void WriteCStr(Buf& b, const char* s) {
         while (*s) b.push_back(*s++);
         b.push_back(0);
     }
 
-    static void WriteName8(Buf& b, const char* s)
-    {
+    static void WriteName8(Buf& b, const char* s) {
         size_t len = std::strlen(s);
         for (size_t i = 0; i < 8; ++i) b.push_back(i < len ? static_cast<uint8_t>(s[i]) : 0);
     }
 
-    static void PadTo(Buf& b, size_t align, uint8_t fill = 0)
-    {
+    static void PadTo(Buf& b, size_t align, uint8_t fill = 0) {
         while (b.size() % align) b.push_back(fill);
     }
 
-    static uint32_t AlignUp(uint32_t v, uint32_t a) { return (v + a - 1) & ~(a - 1); }
+    static uint32_t AlignUp(uint32_t v, uint32_t a) {
+        return (v + a - 1) & ~(a - 1);
+    }
 
-    static void Patch32(Buf& b, size_t off, uint32_t v)
-    {
+    static void Patch32(Buf& b, size_t off, uint32_t v) {
         b[off] = v & 0xFF;
         b[off + 1] = (v >> 8) & 0xFF;
         b[off + 2] = (v >> 16) & 0xFF;
         b[off + 3] = (v >> 24) & 0xFF;
     }
 
-    static void Patch64(Buf& b, size_t off, uint64_t v)
-    {
+    static void Patch64(Buf& b, size_t off, uint64_t v) {
         for (int i = 0; i < 8; ++i) b[off + i] = static_cast<uint8_t>(v >> (i * 8));
     }
 
-    static bool FileExists(const std::filesystem::path& path)
-    {
+    static bool FileExists(const std::filesystem::path& path) {
         std::error_code ec;
         return std::filesystem::is_regular_file(path, ec);
     }
 
-    static std::optional<Buf> ReadFileBytes(const std::filesystem::path& path)
-    {
+    static std::optional<Buf> ReadFileBytes(const std::filesystem::path& path) {
         std::ifstream in(path, std::ios::binary | std::ios::ate);
         if (!in) return std::nullopt;
         const auto size = in.tellg();
@@ -113,15 +109,13 @@ namespace Rux
         return data;
     }
 
-    static bool ReadU16At(const Buf& b, size_t off, uint16_t& out)
-    {
+    static bool ReadU16At(const Buf& b, size_t off, uint16_t& out) {
         if (off + 2 > b.size()) return false;
         out = static_cast<uint16_t>(b[off] | (b[off + 1] << 8));
         return true;
     }
 
-    static bool ReadU32At(const Buf& b, size_t off, uint32_t& out)
-    {
+    static bool ReadU32At(const Buf& b, size_t off, uint32_t& out) {
         if (off + 4 > b.size()) return false;
         out = static_cast<uint32_t>(b[off]) |
             (static_cast<uint32_t>(b[off + 1]) << 8) |
@@ -133,10 +127,8 @@ namespace Rux
     static std::optional<size_t> PeRvaToOffset(const Buf& pe,
                                                uint32_t rva,
                                                size_t sectionTable,
-                                               uint16_t sectionCount)
-    {
-        for (uint16_t i = 0; i < sectionCount; ++i)
-        {
+                                               uint16_t sectionCount) {
+        for (uint16_t i = 0; i < sectionCount; ++i) {
             const size_t sec = sectionTable + static_cast<size_t>(i) * 40;
             uint32_t virtualSize = 0, virtualAddress = 0, rawSize = 0, rawPtr = 0;
             if (!ReadU32At(pe, sec + 8, virtualSize) ||
@@ -146,8 +138,7 @@ namespace Rux
                 return std::nullopt;
 
             const uint32_t span = std::max(virtualSize, rawSize);
-            if (rva >= virtualAddress && rva < virtualAddress + span)
-            {
+            if (rva >= virtualAddress && rva < virtualAddress + span) {
                 const size_t off = static_cast<size_t>(rawPtr) + (rva - virtualAddress);
                 if (off < pe.size()) return off;
                 return std::nullopt;
@@ -156,8 +147,7 @@ namespace Rux
         return std::nullopt;
     }
 
-    static bool ReadPeCString(const Buf& pe, size_t off, std::string& out)
-    {
+    static bool ReadPeCString(const Buf& pe, size_t off, std::string& out) {
         if (off >= pe.size()) return false;
         out.clear();
         while (off < pe.size() && pe[off] != 0)
@@ -165,8 +155,7 @@ namespace Rux
         return off < pe.size();
     }
 
-    static std::optional<std::unordered_set<std::string>> ReadDllExports(const std::filesystem::path& path)
-    {
+    static std::optional<std::unordered_set<std::string>> ReadDllExports(const std::filesystem::path& path) {
         auto peData = ReadFileBytes(path);
         if (!peData) return std::nullopt;
         const Buf& pe = *peData;
@@ -208,8 +197,7 @@ namespace Rux
         auto namesOff = PeRvaToOffset(pe, namesRva, sectionTable, sectionCount);
         if (!namesOff) return std::nullopt;
 
-        for (uint32_t i = 0; i < nameCount; ++i)
-        {
+        for (uint32_t i = 0; i < nameCount; ++i) {
             uint32_t nameRva = 0;
             if (!ReadU32At(pe, *namesOff + static_cast<size_t>(i) * 4, nameRva))
                 return std::nullopt;
@@ -226,8 +214,7 @@ namespace Rux
         return exports;
     }
 
-    static std::string GetPathEnv()
-    {
+    static std::string GetPathEnv() {
 #if defined(_MSC_VER)
         char* value = nullptr;
         size_t size = 0;
@@ -244,8 +231,7 @@ namespace Rux
     static std::optional<std::filesystem::path> FindDllFile(
         const std::string& dll,
         const std::vector<std::filesystem::path>& searchDirs,
-        const std::filesystem::path& outputDir)
-    {
+        const std::filesystem::path& outputDir) {
         const std::filesystem::path dllPath(dll);
         if (dllPath.is_absolute())
             return FileExists(dllPath) ? std::optional<std::filesystem::path>(dllPath) : std::nullopt;
@@ -253,8 +239,7 @@ namespace Rux
         if (!outputDir.empty() && FileExists(outputDir / dllPath))
             return outputDir / dllPath;
 
-        for (const auto& dir : searchDirs)
-        {
+        for (const auto& dir : searchDirs) {
             if (!dir.empty() && FileExists(dir / dllPath))
                 return dir / dllPath;
         }
@@ -267,8 +252,7 @@ namespace Rux
 
         std::stringstream ss(pathEnv);
         std::string dir;
-        while (std::getline(ss, dir, ';'))
-        {
+        while (std::getline(ss, dir, ';')) {
             if (!dir.empty() && FileExists(std::filesystem::path(dir) / dllPath))
                 return std::filesystem::path(dir) / dllPath;
         }
@@ -281,14 +265,13 @@ namespace Rux
                    std::vector<std::filesystem::path> importSearchDirs)
         : objects(std::move(objects)),
           packageName(std::move(packageName)),
-          importSearchDirs(std::move(importSearchDirs))
-    {
+          importSearchDirs(std::move(importSearchDirs)) {}
+
+    void Linker::Error(std::string msg) {
+        errors.push_back({std::move(msg)});
     }
 
-    void Linker::Error(std::string msg) { errors.push_back({std::move(msg)}); }
-
-    bool Linker::Link(const std::filesystem::path& outputPath)
-    {
+    bool Linker::Link(const std::filesystem::path& outputPath) {
         // 1. Collect imported external function names
 
         // Always need ExitProcess for the entry thunk
@@ -300,12 +283,9 @@ namespace Rux
         // First pass: collect explicit DLL assignments from symbol declarations.
         // This handles the case where a call site and its declaration are in
         // different translation units — the declaration carries the DLL name.
-        for (const auto& obj : objects)
-        {
-            for (const auto& sym : obj.symbols)
-            {
-                if (sym.kind == RcuSymKind::ExternFunc && !sym.typeName.empty())
-                {
+        for (const auto& obj : objects) {
+            for (const auto& sym : obj.symbols) {
+                if (sym.kind == RcuSymKind::ExternFunc && !sym.typeName.empty()) {
                     importDll[sym.name] = sym.typeName;
                     explicitImportDlls.insert(sym.typeName);
                     explicitImportFuncsByDll[sym.typeName].push_back(sym.name);
@@ -327,12 +307,9 @@ namespace Rux
         // extern symbols (e.g. runtime helpers) that carry no explicit DLL, fall
         // back to KERNEL32.DLL so existing behaviour is preserved.
         // Skip symbols that are defined locally (cross-module references, not DLL imports).
-        for (const auto& obj : objects)
-        {
-            for (const auto& sec : obj.sections)
-            {
-                for (const auto& reloc : sec.relocs)
-                {
+        for (const auto& obj : objects) {
+            for (const auto& sec : obj.sections) {
+                for (const auto& reloc : sec.relocs) {
                     if (reloc.symbolIndex >= obj.symbols.size()) continue;
                     const auto& sym = obj.symbols[reloc.symbolIndex];
                     if (sym.kind == RcuSymKind::ExternFunc
@@ -353,24 +330,20 @@ namespace Rux
         const size_t numImports = importNames.size();
 
         const auto outputDir = outputPath.parent_path();
-        for (const auto& dll : explicitImportDlls)
-        {
+        for (const auto& dll : explicitImportDlls) {
             auto dllPath = FindDllFile(dll, importSearchDirs, outputDir);
-            if (!dllPath)
-            {
+            if (!dllPath) {
                 Error("import DLL '" + dll + "' was not found");
                 continue;
             }
 
             auto exports = ReadDllExports(*dllPath);
-            if (!exports)
-            {
+            if (!exports) {
                 Error("could not read export table from import DLL '" + dll + "'");
                 continue;
             }
 
-            for (const auto& func : explicitImportFuncsByDll[dll])
-            {
+            for (const auto& func : explicitImportFuncsByDll[dll]) {
                 if (!exports->contains(func))
                     Error("import function '" + func + "' was not found in DLL '" + dll + "'");
             }
@@ -397,8 +370,7 @@ namespace Rux
 
         // Import thunks: jmp qword ptr [rip+disp32] = FF 25 xx xx xx xx
         std::vector<size_t> thunkOff(numImports);
-        for (size_t i = 0; i < numImports; ++i)
-        {
+        for (size_t i = 0; i < numImports; ++i) {
             thunkOff[i] = textPre.size();
             textPre.insert(textPre.end(), {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00});
         }
@@ -407,23 +379,20 @@ namespace Rux
 
         // 3. Merge RCU sections
 
-        struct ObjLayout
-        {
+        struct ObjLayout {
             uint32_t textOff, rodataOff, dataOff;
         };
         std::vector<ObjLayout> layouts(objects.size());
         Buf mergedText, mergedRodata, mergedData;
 
-        for (size_t i = 0; i < objects.size(); ++i)
-        {
+        for (size_t i = 0; i < objects.size(); ++i) {
             const auto& obj = objects[i];
             layouts[i] = {
                 static_cast<uint32_t>(mergedText.size()),
                 static_cast<uint32_t>(mergedRodata.size()),
                 static_cast<uint32_t>(mergedData.size())
             };
-            for (const auto& sec : obj.sections)
-            {
+            for (const auto& sec : obj.sections) {
                 if (sec.type == RcuSecType::Text)
                     mergedText.insert(mergedText.end(), sec.data.begin(), sec.data.end());
                 else if (sec.type == RcuSecType::RoData)
@@ -455,15 +424,13 @@ namespace Rux
         std::vector<std::vector<size_t>> importDllMembers;
         importDllNames.reserve(importsByDll.size());
         importDllMembers.reserve(importsByDll.size());
-        for (auto& [dll, members] : importsByDll)
-        {
+        for (auto& [dll, members] : importsByDll) {
             importDllNames.push_back(dll);
             importDllMembers.push_back(std::move(members));
         }
         std::vector<uint32_t> intOff(importDllNames.size());
         std::vector<size_t> intPos(importDllNames.size());
-        for (size_t g = 0; g < importDllNames.size(); ++g)
-        {
+        for (size_t g = 0; g < importDllNames.size(); ++g) {
             intOff[g] = static_cast<uint32_t>(rdataBuf.size());
             intPos[g] = rdataBuf.size();
             WriteZeros(rdataBuf, (importDllMembers[g].size() + 1) * 8);
@@ -472,8 +439,7 @@ namespace Rux
         std::vector<uint32_t> iatGroupOff(importDllNames.size());
         std::vector<size_t> iatPos(importDllNames.size());
         std::vector<uint32_t> iatEntryOff(numImports);
-        for (size_t g = 0; g < importDllNames.size(); ++g)
-        {
+        for (size_t g = 0; g < importDllNames.size(); ++g) {
             iatGroupOff[g] = static_cast<uint32_t>(rdataBuf.size());
             iatPos[g] = rdataBuf.size();
             for (size_t j = 0; j < importDllMembers[g].size(); ++j)
@@ -482,15 +448,13 @@ namespace Rux
         }
         const uint32_t iatSize = static_cast<uint32_t>(rdataBuf.size()) - iatOff;
         std::vector<uint32_t> dllNameOff(importDllNames.size());
-        for (size_t g = 0; g < importDllNames.size(); ++g)
-        {
+        for (size_t g = 0; g < importDllNames.size(); ++g) {
             dllNameOff[g] = static_cast<uint32_t>(rdataBuf.size());
             WriteCStr(rdataBuf, importDllNames[g].c_str());
             PadTo(rdataBuf, 2);
         }
         std::vector<uint32_t> hintNameOff(numImports);
-        for (size_t i = 0; i < numImports; ++i)
-        {
+        for (size_t i = 0; i < numImports; ++i) {
             hintNameOff[i] = static_cast<uint32_t>(rdataBuf.size());
             WriteU16(rdataBuf, 0); // hint
             for (char c : importNames[i]) rdataBuf.push_back(static_cast<uint8_t>(c));
@@ -511,8 +475,7 @@ namespace Rux
         const uint32_t rdataFileSize = AlignUp(rdataVirtSize, kFileAlign);
         const uint32_t rdataFileOff = textFileOff + textFileSize;
         uint32_t dataRva = 0, dataVirtSize = 0, dataFileSize = 0, dataFileOff = 0;
-        if (!mergedData.empty())
-        {
+        if (!mergedData.empty()) {
             dataRva = rdataRva + AlignUp(rdataVirtSize, kSecAlign);
             dataVirtSize = static_cast<uint32_t>(mergedData.size());
             dataFileSize = AlignUp(dataVirtSize, kFileAlign);
@@ -523,10 +486,8 @@ namespace Rux
                                          : rdataRva + AlignUp(rdataVirtSize, kSecAlign);
 
         // 6. Patch .rdata import table with real RVAs
-        for (size_t g = 0; g < importDllNames.size(); ++g)
-        {
-            for (size_t j = 0; j < importDllMembers[g].size(); ++j)
-            {
+        for (size_t g = 0; g < importDllNames.size(); ++g) {
+            for (size_t j = 0; j < importDllMembers[g].size(); ++j) {
                 const size_t importIndex = importDllMembers[g][j];
                 const uint64_t hnRva = rdataRva + hintNameOff[importIndex];
                 Patch64(rdataBuf, intPos[g] + j * 8, hnRva); // INT entry
@@ -551,12 +512,10 @@ namespace Rux
             symMap[importNames[i]] = kImageBase + textRva + thunkOff[i];
 
         // Add symbols defined in each RCU file
-        for (size_t i = 0; i < objects.size(); ++i)
-        {
+        for (size_t i = 0; i < objects.size(); ++i) {
             const auto& obj = objects[i];
             const auto& lay = layouts[i];
-            for (const auto& sym : obj.symbols)
-            {
+            for (const auto& sym : obj.symbols) {
                 if (sym.name.empty()) continue;
                 if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData)
                     continue; // already handled via thunks
@@ -579,8 +538,7 @@ namespace Rux
         textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
 
         // Patch import thunks: jmp [rip + disp32] → IAT entry
-        for (size_t i = 0; i < numImports; ++i)
-        {
+        for (size_t i = 0; i < numImports; ++i) {
             uint64_t thunkVA = kImageBase + textRva + thunkOff[i];
             uint64_t iatEntryVA = kImageBase + rdataRva + iatEntryOff[i];
             int32_t disp = static_cast<int32_t>(iatEntryVA - (thunkVA + 6));
@@ -590,8 +548,7 @@ namespace Rux
         // Patch entry thunk: call Main
         {
             auto it = symMap.find("Main");
-            if (it == symMap.end())
-            {
+            if (it == symMap.end()) {
                 Error("undefined symbol 'Main' — no entry point found");
                 return false;
             }
@@ -609,63 +566,52 @@ namespace Rux
 
         // 9. Patch user code relocations
 
-        for (size_t i = 0; i < objects.size(); ++i)
-        {
+        for (size_t i = 0; i < objects.size(); ++i) {
             const auto& obj = objects[i];
             const auto& lay = layouts[i];
-            for (const auto& sec : obj.sections)
-            {
+            for (const auto& sec : obj.sections) {
                 Buf* buf = nullptr;
                 uint32_t baseInBuf = 0;
                 uint64_t secBaseVA = 0;
-                if (sec.type == RcuSecType::Text)
-                {
+                if (sec.type == RcuSecType::Text) {
                     buf = &textBuf;
                     baseInBuf = preambleSize + lay.textOff;
                     secBaseVA = kImageBase + textRva + preambleSize + lay.textOff;
                 }
-                else if (sec.type == RcuSecType::RoData)
-                {
+                else if (sec.type == RcuSecType::RoData) {
                     buf = &rdataBuf;
                     baseInBuf = lay.rodataOff;
                     secBaseVA = kImageBase + rdataRva + lay.rodataOff;
                 }
-                else if (sec.type == RcuSecType::Data)
-                {
+                else if (sec.type == RcuSecType::Data) {
                     buf = &mergedData;
                     baseInBuf = lay.dataOff;
                     secBaseVA = kImageBase + dataRva + lay.dataOff;
                 }
-                else
-                {
+                else {
                     continue;
                 }
 
-                for (const auto& reloc : sec.relocs)
-                {
+                for (const auto& reloc : sec.relocs) {
                     if (reloc.symbolIndex >= obj.symbols.size()) continue;
                     const auto& sym = obj.symbols[reloc.symbolIndex];
 
                     // Resolve target VA
                     uint64_t targetVA = 0;
-                    if (sym.kind == RcuSymKind::ExternFunc)
-                    {
+                    if (sym.kind == RcuSymKind::ExternFunc) {
                         // OS import: resolved via thunk
                         auto it = symMap.find(sym.name);
-                        if (it == symMap.end())
-                        {
+                        if (it == symMap.end()) {
                             Error("undefined external symbol '" + sym.name + "'");
                             continue;
                         }
                         targetVA = it->second;
                     }
-                    else if (!sym.name.empty() && symMap.count(sym.name))
-                    {
+                    else if (!sym.name.empty() && symMap.count(sym.name)) {
                         // Named symbol (cross-module or local with entry in symMap)
                         targetVA = symMap[sym.name];
                     }
-                    else
-                    {
+                    else {
                         // Unnamed or purely local — compute from section index
                         if (sym.sectionIdx == RCU_TEXT_IDX)
                             targetVA = kImageBase + textRva + preambleSize + lay.textOff + sym.value;
@@ -678,19 +624,16 @@ namespace Rux
                     }
                     const size_t patchAt = baseInBuf + reloc.sectionOffset;
                     const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
-                    if (reloc.type == RcuRelType::Rel32)
-                    {
+                    if (reloc.type == RcuRelType::Rel32) {
                         if (patchAt + 4 > buf->size()) continue;
                         int32_t disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
                         Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
                     }
-                    else if (reloc.type == RcuRelType::Abs64)
-                    {
+                    else if (reloc.type == RcuRelType::Abs64) {
                         if (patchAt + 8 > buf->size()) continue;
                         Patch64(*buf, patchAt, targetVA + static_cast<uint64_t>(reloc.addend));
                     }
-                    else if (reloc.type == RcuRelType::Abs32)
-                    {
+                    else if (reloc.type == RcuRelType::Abs32) {
                         if (patchAt + 4 > buf->size()) continue;
                         Patch32(*buf, patchAt, static_cast<uint32_t>(targetVA + reloc.addend));
                     }
@@ -703,31 +646,39 @@ namespace Rux
         // 10. Emit PE32+ file
         std::filesystem::create_directories(outputPath.parent_path());
         std::ofstream out(outputPath, std::ios::binary | std::ios::trunc);
-        if (!out)
-        {
+        if (!out) {
             Error("cannot open output file: " + outputPath.string());
             return false;
         }
-        const auto writeRaw = [&](const void* d, size_t n) { out.write(static_cast<const char*>(d), n); };
-        const auto wU16 = [&](uint16_t v) { writeRaw(&v, 2); };
-        const auto wU32 = [&](uint32_t v) { writeRaw(&v, 4); };
-        const auto wU64 = [&](uint64_t v) { writeRaw(&v, 8); };
-        const auto wU8 = [&](uint8_t v) { writeRaw(&v, 1); };
-        const auto wBuf = [&](const Buf& b) { writeRaw(b.data(), b.size()); };
-        const auto padTo = [&](uint32_t align)
-        {
+        const auto writeRaw = [&](const void* d, size_t n) {
+            out.write(static_cast<const char*>(d), n);
+        };
+        const auto wU16 = [&](uint16_t v) {
+            writeRaw(&v, 2);
+        };
+        const auto wU32 = [&](uint32_t v) {
+            writeRaw(&v, 4);
+        };
+        const auto wU64 = [&](uint64_t v) {
+            writeRaw(&v, 8);
+        };
+        const auto wU8 = [&](uint8_t v) {
+            writeRaw(&v, 1);
+        };
+        const auto wBuf = [&](const Buf& b) {
+            writeRaw(b.data(), b.size());
+        };
+        const auto padTo = [&](uint32_t align) {
             auto pos = static_cast<uint32_t>(out.tellp());
             uint32_t pad = AlignUp(pos, align) - pos;
             static constexpr uint8_t Z[kFileAlign] = {};
             writeRaw(Z, pad);
         };
-        const auto wDir = [&](uint32_t rva, uint32_t sz)
-        {
+        const auto wDir = [&](uint32_t rva, uint32_t sz) {
             wU32(rva);
             wU32(sz);
         };
-        const auto wSec8 = [&](const char* s)
-        {
+        const auto wSec8 = [&](const char* s) {
             char buf8[8] = {};
             size_t len = std::strlen(s);
             for (size_t k = 0; k < 8 && k < len; ++k) buf8[k] = s[k];
@@ -822,8 +773,7 @@ namespace Rux
         wU16(0);
         wU16(0);
         wU32(kScnRData);
-        if (!mergedData.empty())
-        {
+        if (!mergedData.empty()) {
             wSec8(".data");
             wU32(dataVirtSize);
             wU32(dataRva);
@@ -841,8 +791,7 @@ namespace Rux
         padTo(kFileAlign);
         wBuf(rdataBuf);
         padTo(kFileAlign);
-        if (!mergedData.empty())
-        {
+        if (!mergedData.empty()) {
             wBuf(mergedData);
             padTo(kFileAlign);
         }

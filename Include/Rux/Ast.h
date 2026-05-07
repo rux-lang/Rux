@@ -13,11 +13,9 @@
 #include <string>
 #include <vector>
 
-namespace Rux
-{
+namespace Rux {
     // Calling convention
-    enum class CallingConvention
-    {
+    enum class CallingConvention {
         Default, // platform default (System V AMD64 ABI)
         Win64, // Microsoft x64 calling convention
     };
@@ -38,104 +36,86 @@ namespace Rux
 
     // Type Expressions
 
-    struct TypeExpr
-    {
+    struct TypeExpr {
         SourceLocation location;
         virtual ~TypeExpr() = default;
     };
 
     // int32, String, MyStruct
-    struct NamedTypeExpr : TypeExpr
-    {
+    struct NamedTypeExpr : TypeExpr {
         std::string name;
         std::vector<TypeExprPtr> typeArgs;
     };
 
     // Std::Io::Reader
-    struct PathTypeExpr : TypeExpr
-    {
+    struct PathTypeExpr : TypeExpr {
         std::vector<std::string> segments;
     };
 
     // T[], uint8[4]
-    struct SliceTypeExpr : TypeExpr
-    {
+    struct SliceTypeExpr : TypeExpr {
         TypeExprPtr element;
         ExprPtr size; // null for unsized slices (T[]), non-null for fixed-size arrays (T[N])
     };
 
     // *uint8
-    struct PointerTypeExpr : TypeExpr
-    {
+    struct PointerTypeExpr : TypeExpr {
         TypeExprPtr pointee;
     };
 
     // (int32, float64)
-    struct TupleTypeExpr : TypeExpr
-    {
+    struct TupleTypeExpr : TypeExpr {
         std::vector<TypeExprPtr> elements;
     };
 
     // self used as a type (interface method params)
-    struct SelfTypeExpr : TypeExpr
-    {
-    };
+    struct SelfTypeExpr : TypeExpr {};
 
     // Block
 
-    struct Block
-    {
+    struct Block {
         SourceLocation location;
         std::vector<StmtPtr> stmts;
     };
 
     // Patterns
 
-    struct Pattern
-    {
+    struct Pattern {
         SourceLocation location;
         virtual ~Pattern() = default;
     };
 
     // _
-    struct WildcardPattern : Pattern
-    {
-    };
+    struct WildcardPattern : Pattern {};
 
     // 42, "str", true
-    struct LiteralPattern : Pattern
-    {
+    struct LiteralPattern : Pattern {
         Token value;
     };
 
     // x  (binds the matched value to x)
-    struct IdentPattern : Pattern
-    {
+    struct IdentPattern : Pattern {
         std::string name;
     };
 
     // lo..hi  or  lo...hi
-    struct RangePattern : Pattern
-    {
+    struct RangePattern : Pattern {
         PatternPtr lo;
         PatternPtr hi;
         bool inclusive; // false = ..  true = ...
     };
 
     // Event.Click(x, y)
-    struct EnumPattern : Pattern
-    {
+    struct EnumPattern : Pattern {
         std::vector<std::string> path; // ["Event", "Click"]
         std::vector<PatternPtr> args; // bound positions
     };
 
     // Point { x: 0, y: 0 }
-    struct StructPattern : Pattern
-    {
+    struct StructPattern : Pattern {
         std::string typeName;
 
-        struct Field
-        {
+        struct Field {
             SourceLocation location;
             std::string name;
             PatternPtr pattern;
@@ -145,130 +125,109 @@ namespace Rux
     };
 
     // (a, b)
-    struct TuplePattern : Pattern
-    {
+    struct TuplePattern : Pattern {
         std::vector<PatternPtr> elements;
     };
 
     // pattern if guard
-    struct GuardedPattern : Pattern
-    {
+    struct GuardedPattern : Pattern {
         PatternPtr inner;
         ExprPtr guard;
     };
 
     // Expressions
-
-    struct Expr
-    {
+    struct Expr {
         SourceLocation location;
         virtual ~Expr() = default;
     };
 
     // 42, 3.14, "hello", 'A', true, null
-    struct LiteralExpr : Expr
-    {
+    struct LiteralExpr : Expr {
         Token token;
     };
 
     // foo, Bar
-    struct IdentExpr : Expr
-    {
+    struct IdentExpr : Expr {
         std::string name;
     };
 
     // self
-    struct SelfExpr : Expr
-    {
-    };
+    struct SelfExpr : Expr {};
 
     // a::b::c
-    struct PathExpr : Expr
-    {
+    struct PathExpr : Expr {
         std::vector<std::string> segments;
     };
 
     // sizeof(T)
-    struct SizeOfExpr : Expr
-    {
+    struct SizeOfExpr : Expr {
         TypeExprPtr type;
     };
 
     // !x, -x, ~x, *x, &x
-    struct UnaryExpr : Expr
-    {
+    struct UnaryExpr : Expr {
         TokenKind op;
         ExprPtr operand;
     };
 
     // i++, i--
-    struct PostfixExpr : Expr
-    {
+    struct PostfixExpr : Expr {
         TokenKind op; // PlusPlus or MinusMinus
         ExprPtr operand;
     };
 
     // a + b, a && b, a == b, etc.
-    struct BinaryExpr : Expr
-    {
+    struct BinaryExpr : Expr {
         TokenKind op;
         ExprPtr left;
         ExprPtr right;
     };
 
     // a = b, a += b, etc.
-    struct AssignExpr : Expr
-    {
+    struct AssignExpr : Expr {
         TokenKind op;
         ExprPtr target;
         ExprPtr value;
     };
 
     // cond ? thenExpr : elseExpr
-    struct TernaryExpr : Expr
-    {
+    struct TernaryExpr : Expr {
         ExprPtr condition;
         ExprPtr thenExpr;
         ExprPtr elseExpr;
     };
 
     // lo..hi  or  lo...hi
-    struct RangeExpr : Expr
-    {
+    struct RangeExpr : Expr {
         ExprPtr lo; // may be null for prefix ranges
         ExprPtr hi; // may be null for suffix ranges
         bool inclusive;
     };
 
     // f(a, b, c)
-    struct CallExpr : Expr
-    {
+    struct CallExpr : Expr {
         ExprPtr callee;
         std::vector<ExprPtr> args;
     };
 
     // a[i]
-    struct IndexExpr : Expr
-    {
+    struct IndexExpr : Expr {
         ExprPtr object;
         ExprPtr index;
     };
 
     // a.field
-    struct FieldExpr : Expr
-    {
+    struct FieldExpr : Expr {
         ExprPtr object;
         std::string field;
     };
 
     // Point { x: 1.0, y: 2.0 }
-    struct StructInitExpr : Expr
-    {
+    struct StructInitExpr : Expr {
         std::string typeName;
         std::vector<TypeExprPtr> typeArgs;
 
-        struct Field
-        {
+        struct Field {
             SourceLocation location;
             std::string name;
             ExprPtr value;
@@ -278,54 +237,46 @@ namespace Rux
     };
 
     // [a, b, c]
-    struct SliceExpr : Expr
-    {
+    struct SliceExpr : Expr {
         std::vector<ExprPtr> elements;
     };
 
     // (a, b, c)
-    struct TupleExpr : Expr
-    {
+    struct TupleExpr : Expr {
         std::vector<ExprPtr> elements;
     };
 
     // expr as Type
-    struct CastExpr : Expr
-    {
+    struct CastExpr : Expr {
         ExprPtr operand;
         TypeExprPtr type;
     };
 
     // expr is Type
-    struct IsExpr : Expr
-    {
+    struct IsExpr : Expr {
         ExprPtr operand;
         TypeExprPtr type;
     };
 
     // { stmts; value }  — block used as expression (match arm body)
-    struct BlockExpr : Expr
-    {
+    struct BlockExpr : Expr {
         std::unique_ptr<Block> block;
     };
 
     // Statements
 
-    struct Stmt
-    {
+    struct Stmt {
         SourceLocation location;
         virtual ~Stmt() = default;
     };
 
     // expr;
-    struct ExprStmt : Stmt
-    {
+    struct ExprStmt : Stmt {
         ExprPtr expr;
     };
 
     // let name [: Type] = expr; or var name [: Type] = expr;
-    struct LetStmt : Stmt
-    {
+    struct LetStmt : Stmt {
         bool isMut = false;
         std::string name;
         PatternPtr pattern;
@@ -334,13 +285,11 @@ namespace Rux
     };
 
     // if cond { } else if cond { } else { }
-    struct IfStmt : Stmt
-    {
+    struct IfStmt : Stmt {
         ExprPtr condition;
         std::unique_ptr<Block> thenBlock;
 
-        struct ElseIf
-        {
+        struct ElseIf {
             SourceLocation location;
             ExprPtr condition;
             std::unique_ptr<Block> block;
@@ -351,31 +300,27 @@ namespace Rux
     };
 
     // while cond { }
-    struct WhileStmt : Stmt
-    {
+    struct WhileStmt : Stmt {
         std::string label; // empty = no label
         ExprPtr condition;
         std::unique_ptr<Block> body;
     };
 
     // do { } while cond;
-    struct DoWhileStmt : Stmt
-    {
+    struct DoWhileStmt : Stmt {
         std::string label;
         std::unique_ptr<Block> body;
         ExprPtr condition;
     };
 
     // loop { }
-    struct LoopStmt : Stmt
-    {
+    struct LoopStmt : Stmt {
         std::string label;
         std::unique_ptr<Block> body;
     };
 
     // for var in iterable { }
-    struct ForStmt : Stmt
-    {
+    struct ForStmt : Stmt {
         std::string label;
         std::string variable;
         ExprPtr iterable;
@@ -383,10 +328,8 @@ namespace Rux
     };
 
     // match expr { arm, arm, ... }
-    struct MatchStmt : Stmt
-    {
-        struct Arm
-        {
+    struct MatchStmt : Stmt {
+        struct Arm {
             SourceLocation location;
             PatternPtr pattern;
             ExprPtr body;
@@ -397,39 +340,33 @@ namespace Rux
     };
 
     // return [expr];
-    struct ReturnStmt : Stmt
-    {
+    struct ReturnStmt : Stmt {
         std::optional<ExprPtr> value;
     };
 
     // break [label];
-    struct BreakStmt : Stmt
-    {
+    struct BreakStmt : Stmt {
         std::string label; // empty = break innermost loop
     };
 
     // continue [label];
-    struct ContinueStmt : Stmt
-    {
+    struct ContinueStmt : Stmt {
         std::string label; // empty = continue innermost loop
     };
 
     // declaration inside a block
-    struct DeclStmt : Stmt
-    {
+    struct DeclStmt : Stmt {
         DeclPtr decl;
     };
 
     // Declarations
-    struct Decl
-    {
+    struct Decl {
         SourceLocation location;
         bool isPublic = false;
         virtual ~Decl() = default;
     };
 
-    struct Param
-    {
+    struct Param {
         SourceLocation location;
         std::string name;
         TypeExprPtr type;
@@ -438,8 +375,7 @@ namespace Rux
 
     // func [asm] Name<T>(params) -> Type { body }
     // body is null for interface method signatures
-    struct FuncDecl : Decl
-    {
+    struct FuncDecl : Decl {
         bool isAsm = false;
         CallingConvention callConv = CallingConvention::Default;
         std::string name;
@@ -450,13 +386,11 @@ namespace Rux
     };
 
     // struct Name { field: Type; ... }
-    struct StructDecl : Decl
-    {
+    struct StructDecl : Decl {
         std::string name;
         std::vector<std::string> typeParams;
 
-        struct Field
-        {
+        struct Field {
             SourceLocation location;
             bool isPublic = false;
             std::string name;
@@ -467,12 +401,10 @@ namespace Rux
     };
 
     // enum Name { Variant, Variant(Type, ...), ... }
-    struct EnumDecl : Decl
-    {
+    struct EnumDecl : Decl {
         std::string name;
 
-        struct Variant
-        {
+        struct Variant {
             SourceLocation location;
             std::string name;
             std::vector<TypeExprPtr> fields; // empty = unit variant
@@ -482,12 +414,10 @@ namespace Rux
     };
 
     // union Name { field: Type, ... }
-    struct UnionDecl : Decl
-    {
+    struct UnionDecl : Decl {
         std::string name;
 
-        struct Field
-        {
+        struct Field {
             SourceLocation location;
             std::string name;
             TypeExprPtr type;
@@ -497,30 +427,26 @@ namespace Rux
     };
 
     // interface Name { func Sig(); ... }
-    struct InterfaceDecl : Decl
-    {
+    struct InterfaceDecl : Decl {
         std::string name;
         std::vector<std::unique_ptr<FuncDecl>> methods;
     };
 
     // impl TypeName [for InterfaceName] { func ... }
-    struct ImplDecl : Decl
-    {
+    struct ImplDecl : Decl {
         std::string typeName;
         std::optional<std::string> interfaceName;
         std::vector<std::unique_ptr<FuncDecl>> methods;
     };
 
-    // mod Name { decls... }
-    struct ModuleDecl : Decl
-    {
+    // module Name { decls... }
+    struct ModuleDecl : Decl {
         std::string name;
         std::vector<DeclPtr> items;
     };
 
-    // use path[.* | ::{a,b}];
-    struct UseDecl : Decl
-    {
+    // import path[.* | ::{a,b}];
+    struct UseDecl : Decl {
         std::vector<std::string> path;
 
         enum class Kind { Single, Glob, Multi } kind = Kind::Single;
@@ -529,23 +455,20 @@ namespace Rux
     };
 
     // const Name[: Type] = expr;
-    struct ConstDecl : Decl
-    {
+    struct ConstDecl : Decl {
         std::string name;
         std::optional<TypeExprPtr> type;
         ExprPtr value;
     };
 
     // type Name = Type;
-    struct TypeAliasDecl : Decl
-    {
+    struct TypeAliasDecl : Decl {
         std::string name;
         TypeExprPtr type;
     };
 
     // extern func Name(params) -> Type from "DLL";
-    struct ExternFuncDecl : Decl
-    {
+    struct ExternFuncDecl : Decl {
         std::string name;
         std::string dll;
         CallingConvention callConv = CallingConvention::Default;
@@ -555,23 +478,20 @@ namespace Rux
     };
 
     // extern Name: Type;
-    struct ExternVarDecl : Decl
-    {
+    struct ExternVarDecl : Decl {
         std::string name;
         TypeExprPtr type;
     };
 
     // @[Import(lib: "...")] extern { func ...; ... }
-    struct ExternBlockDecl : Decl
-    {
+    struct ExternBlockDecl : Decl {
         std::string dll;
         CallingConvention callConv = CallingConvention::Default;
         std::vector<DeclPtr> items; // ExternFuncDecl or ExternVarDecl
     };
 
     // Module (AST root)
-    struct Module
-    {
+    struct Module {
         std::string name; // source file name
         std::vector<DeclPtr> items;
     };

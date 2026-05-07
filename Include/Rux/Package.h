@@ -9,10 +9,8 @@
 #include <filesystem>
 #include <string>
 
-namespace Rux
-{
-    enum class PackageType
-    {
+namespace Rux {
+    enum class PackageType {
         Executable,
         SharedLibrary,
         StaticLibrary,
