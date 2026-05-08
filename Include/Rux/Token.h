@@ -45,7 +45,7 @@ namespace Rux {
         EnumKeyword, // enum
         UnionKeyword, // union
         InterfaceKeyword, // interface
-        ImplKeyword, // impl
+        ExtendKeyword, // extend
         ModuleKeyword, // module
         ImportKeyword, // import
         PubKeyword, // pub

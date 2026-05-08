@@ -237,6 +237,7 @@ namespace Rux {
         SourceLocation location;
         TypeRef type;
         bool isMut = false;
+        std::vector<const FuncDecl*> funcOverloads;
         std::vector<std::string> interfaceMethods; // for Interface kind
         Scope* moduleScope = nullptr; // for Module kind: the imported module's scope
     };
@@ -249,6 +250,14 @@ namespace Rux {
         bool Define(Symbol sym, std::vector<SemaDiagnostic>& diags,
                     const std::string& sourceName) {
             if (auto it = table.find(sym.name); it != table.end()) {
+                if (it->second.kind == Symbol::Kind::Func && sym.kind == Symbol::Kind::Func) {
+                    it->second.funcOverloads.insert(it->second.funcOverloads.end(),
+                                                    sym.funcOverloads.begin(),
+                                                    sym.funcOverloads.end());
+                    if (it->second.type.IsUnknown() && !sym.type.IsUnknown())
+                        it->second.type = std::move(sym.type);
+                    return true;
+                }
                 diags.push_back({
                     SemaDiagnostic::Severity::Error,
                     sourceName,
@@ -351,7 +360,7 @@ namespace Rux {
         TypeRef currentSelfType = TypeRef::MakeUnknown();
         std::vector<std::string> currentTypeParams;
         std::unordered_map<std::string, const StructDecl*> structDecls;
-        std::unordered_map<std::string, std::unordered_map<std::string, const FuncDecl*>> methodsByType;
+        std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl*>>> methodsByType;
 
         // Diagnostics
 
@@ -552,8 +561,19 @@ namespace Rux {
                 }
             };
 
-            if (auto* d = dynamic_cast<const FuncDecl*>(&decl))
-                simple(Symbol::Kind::Func, d->name, SemaSymbol::Kind::Func);
+            if (auto* d = dynamic_cast<const FuncDecl*>(&decl)) {
+                Symbol sym;
+                sym.kind = Symbol::Kind::Func;
+                sym.name = d->name;
+                sym.location = d->location;
+                sym.funcOverloads.push_back(d);
+                if (scope.Define(sym, diags, currentFile) && isGlobal) {
+                    symbols.push_back({
+                        SemaSymbol::Kind::Func, d->name, currentFile,
+                        d->location, {}, false
+                    });
+                }
+            }
             else if (auto* d = dynamic_cast<const StructDecl*>(&decl)) {
                 structDecls[d->name] = d;
                 simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "struct");
@@ -641,7 +661,7 @@ namespace Rux {
             }
             else if (auto* d = dynamic_cast<const ImplDecl*>(&decl)) {
                 for (const auto& method : d->methods)
-                    methodsByType[d->typeName][method->name] = method.get();
+                    methodsByType[d->typeName][method->name].push_back(method.get());
             }
             // Import declarations don't add names in the first pass.
         }
@@ -873,6 +893,8 @@ namespace Rux {
                     if (t->typeArgs.empty() && !sym->type.IsUnknown()) return sym->type; // builtin
                     return TypeRef::MakeNamed(GenericTypeName(*t)); // user-defined
                 }
+                if (structDecls.contains(t->name))
+                    return TypeRef::MakeNamed(GenericTypeName(*t));
                 EmitError(expr.location, std::format("unknown type '{}'", t->name));
                 return TypeRef::MakeUnknown();
             }
@@ -940,13 +962,32 @@ namespace Rux {
             return TypeRef::MakeUnknown();
         }
 
-        [[nodiscard]] const FuncDecl* LookupMethod(const TypeRef& receiverType, const std::string& methodName) const {
+        [[nodiscard]] const FuncDecl* LookupMethod(const TypeRef& receiverType,
+                                                    const std::string& methodName,
+                                                    const std::vector<TypeRef>& argTypes = {}) {
             const std::string typeName = NamedBaseTypeName(receiverType);
             if (typeName.empty()) return nullptr;
             const auto typeIt = methodsByType.find(typeName);
             if (typeIt == methodsByType.end()) return nullptr;
             const auto methodIt = typeIt->second.find(methodName);
-            return methodIt == typeIt->second.end() ? nullptr : methodIt->second;
+            if (methodIt == typeIt->second.end()) return nullptr;
+            const auto& overloads = methodIt->second;
+            if (overloads.empty()) return nullptr;
+            if (overloads.size() == 1 || argTypes.empty()) return overloads[0];
+            for (const auto* decl : overloads) {
+                std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *decl);
+                if (paramTypes.size() != argTypes.size()) continue;
+                bool match = true;
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    if (!argTypes[i].IsUnknown() && !paramTypes[i].IsUnknown() &&
+                        !argTypes[i].IsAssignableTo(paramTypes[i])) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) return decl;
+            }
+            return overloads[0];
         }
 
         TypeRef ResolveMethodReturnType(const TypeRef& receiverType, const FuncDecl& method) {
@@ -984,6 +1025,33 @@ namespace Rux {
             TypeRef type = MakeFuncType(method.params, method.returnType, method.typeParams);
             currentSelfType = savedSelfType;
             return type;
+        }
+
+        const FuncDecl* LookupFunctionOverload(const Symbol& sym,
+                                               const std::vector<TypeRef>& argTypes) {
+            if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) return nullptr;
+            if (sym.funcOverloads.size() == 1) return sym.funcOverloads[0];
+            for (const auto* decl : sym.funcOverloads) {
+                TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+                if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) continue;
+                const std::size_t paramCount = funcType.inner.size() - 1;
+                if (paramCount != argTypes.size()) continue;
+                bool match = true;
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    const TypeRef& paramType = funcType.inner[i];
+                    if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
+                        !argTypes[i].IsAssignableTo(paramType)) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) return decl;
+            }
+            return sym.funcOverloads[0];
+        }
+
+        TypeRef FunctionType(const FuncDecl& decl) {
+            return MakeFuncType(decl.params, decl.returnType, decl.typeParams);
         }
 
         std::optional<std::uint64_t> SizeOfTypeRef(
@@ -1280,7 +1348,7 @@ namespace Rux {
         void CheckImplDecl(const ImplDecl& d) {
             if (!currentScope->Lookup(d.typeName))
                 EmitError(d.location,
-                          std::format("impl for unknown type '{}'", d.typeName));
+                          std::format("extend for unknown type '{}'", d.typeName));
 
             if (d.interfaceName) {
                 Symbol* ifaceSym = currentScope->Lookup(*d.interfaceName);
@@ -1295,7 +1363,7 @@ namespace Rux {
                     for (const auto& required : ifaceSym->interfaceMethods) {
                         if (!implNames.count(required))
                             EmitError(d.location,
-                                      std::format("impl of '{}' for '{}' is missing method '{}'",
+                                      std::format("extend of '{}' for '{}' is missing method '{}'",
                                                   *d.interfaceName, d.typeName, required));
                     }
                 }
@@ -1722,7 +1790,7 @@ namespace Rux {
 
             if (dynamic_cast<const SelfExpr*>(&expr)) {
                 if (!inImpl)
-                    EmitError(expr.location, "'self' used outside of an impl block");
+                    EmitError(expr.location, "'self' used outside of an extend block");
                 return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
             }
 
@@ -1744,7 +1812,7 @@ namespace Rux {
                     const FuncDecl* method = LookupMethod(receiverType, methodName);
                     if (!method) {
                         EmitError(e->location,
-                                  std::format("'{}' not found in impl for type '{}'",
+                                  std::format("'{}' not found in extend for type '{}'",
                                               methodName, first->name));
                         return TypeRef::MakeUnknown();
                     }
@@ -1803,7 +1871,7 @@ namespace Rux {
             if (auto* e = dynamic_cast<const BinaryExpr*>(&expr)) {
                 TypeRef l = CheckExpr(*e->left);
                 TypeRef r = CheckExpr(*e->right);
-                return CheckBinary(e->op, l, r, e->location);
+                return CheckBinary(e->op, l, r, *e->right, e->location);
             }
 
             if (auto* e = dynamic_cast<const AssignExpr*>(&expr)) {
@@ -1839,15 +1907,49 @@ namespace Rux {
             }
 
             if (auto* e = dynamic_cast<const CallExpr*>(&expr)) {
+                if (auto* ident = dynamic_cast<const IdentExpr*>(e->callee.get())) {
+                    std::vector<TypeRef> argTypes;
+                    argTypes.reserve(e->args.size());
+                    for (const auto& arg : e->args)
+                        argTypes.push_back(CheckExpr(*arg));
+
+                    if (Symbol* sym = currentScope->Lookup(ident->name);
+                        sym && sym->kind == Symbol::Kind::Func && !sym->funcOverloads.empty()) {
+                        const FuncDecl* decl = LookupFunctionOverload(*sym, argTypes);
+                        if (!decl) return TypeRef::MakeUnknown();
+                        TypeRef funcType = FunctionType(*decl);
+                        const std::size_t paramCount =
+                            funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()
+                                ? funcType.inner.size() - 1
+                                : 0;
+                        if (argTypes.size() != paramCount) {
+                            EmitError(e->location,
+                                      std::format("function expects {} argument(s), got {}",
+                                                  paramCount, argTypes.size()));
+                        }
+                        else {
+                            for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                                const TypeRef& paramType = funcType.inner[i];
+                                if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
+                                    !CanAssignExprTo(*e->args[i], argTypes[i], paramType))
+                                    EmitError(e->args[i]->location,
+                                              std::format("cannot pass '{}' to parameter of type '{}'",
+                                                          argTypes[i].ToString(), paramType.ToString()));
+                            }
+                        }
+                        return funcType.inner.empty() ? TypeRef::MakeUnknown() : funcType.inner.back();
+                    }
+                }
+
                 if (auto* field = dynamic_cast<const FieldExpr*>(e->callee.get())) {
                     TypeRef receiverType = CheckExpr(*field->object);
-                    if (const FuncDecl* method = LookupMethod(receiverType, field->field)) {
+                    std::vector<TypeRef> argTypes;
+                    argTypes.reserve(e->args.size());
+                    for (const auto& arg : e->args)
+                        argTypes.push_back(CheckExpr(*arg));
+                    if (const FuncDecl* method = LookupMethod(receiverType, field->field, argTypes)) {
                         std::vector<TypeRef> paramTypes =
                             ResolveMethodParamTypes(receiverType, *method);
-                        std::vector<TypeRef> argTypes;
-                        argTypes.reserve(e->args.size());
-                        for (const auto& arg : e->args)
-                            argTypes.push_back(CheckExpr(*arg));
 
                         if (argTypes.size() != paramTypes.size()) {
                             EmitError(e->location,
@@ -2036,8 +2138,55 @@ namespace Rux {
             }
         }
 
-        TypeRef CheckBinary(TokenKind op, const TypeRef& l, const TypeRef& r, SourceLocation loc) {
+        static std::string_view BinaryOperatorName(TokenKind op) noexcept {
+            using TK = TokenKind;
+            switch (op) {
+            case TK::Plus: return "+";
+            case TK::Minus: return "-";
+            case TK::Star: return "*";
+            case TK::Slash: return "/";
+            case TK::Percent: return "%";
+            case TK::StarStar: return "**";
+            case TK::Amp: return "&";
+            case TK::Pipe: return "|";
+            case TK::Caret: return "^";
+            case TK::LessLess: return "<<";
+            case TK::GreaterGreater: return ">>";
+            case TK::AmpAmp: return "&&";
+            case TK::PipePipe: return "||";
+            case TK::Equal: return "==";
+            case TK::BangEqual: return "!=";
+            case TK::Less: return "<";
+            case TK::LessEqual: return "<=";
+            case TK::Greater: return ">";
+            case TK::GreaterEqual: return ">=";
+            default: return {};
+            }
+        }
+
+        TypeRef CheckBinary(TokenKind op, const TypeRef& l, const TypeRef& r,
+                            const Expr& rightExpr, SourceLocation loc) {
             if (l.IsUnknown() || r.IsUnknown()) return TypeRef::MakeUnknown();
+
+            const std::string_view opName = BinaryOperatorName(op);
+            if (!opName.empty()) {
+                if (const FuncDecl* method = LookupMethod(l, std::string(opName), {r})) {
+                    std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(l, *method);
+                    TypeRef ret = ResolveMethodReturnType(l, *method);
+                    if (paramTypes.size() != 1) {
+                        EmitError(loc,
+                                  std::format("operator '{}' expects 1 argument, got {}",
+                                              opName, paramTypes.size()));
+                    }
+                    else if (!paramTypes[0].IsUnknown() &&
+                             !CanAssignExprTo(rightExpr, r, paramTypes[0])) {
+                        EmitError(rightExpr.location,
+                                  std::format("cannot pass '{}' to parameter of type '{}'",
+                                              r.ToString(), paramTypes[0].ToString()));
+                    }
+                    return ret;
+                }
+            }
 
             using TK = TokenKind;
             switch (op) {

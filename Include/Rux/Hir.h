@@ -384,7 +384,7 @@ namespace Rux {
         SourceLocation location;
     };
 
-    // impl TypeName [for InterfaceName] { func ... }
+    // extend TypeName [for InterfaceName] { func ... }
     struct HirImplBlock {
         std::string typeName;
         std::optional<std::string> interfaceName;
