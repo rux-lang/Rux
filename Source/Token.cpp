@@ -32,7 +32,7 @@ namespace Rux {
             {"enum", TokenKind::EnumKeyword},
             {"union", TokenKind::UnionKeyword},
             {"interface", TokenKind::InterfaceKeyword},
-            {"impl", TokenKind::ImplKeyword},
+            {"extend", TokenKind::ExtendKeyword},
             {"module", TokenKind::ModuleKeyword},
             {"import", TokenKind::ImportKeyword},
             {"pub", TokenKind::PubKeyword},
@@ -78,7 +78,7 @@ namespace Rux {
         case TokenKind::EnumKeyword: return "EnumKeyword";
         case TokenKind::UnionKeyword: return "UnionKeyword";
         case TokenKind::InterfaceKeyword: return "InterfaceKeyword";
-        case TokenKind::ImplKeyword: return "ImplKeyword";
+        case TokenKind::ExtendKeyword: return "ExtendKeyword";
         case TokenKind::ModuleKeyword: return "ModuleKeyword";
         case TokenKind::ImportKeyword: return "ImportKeyword";
         case TokenKind::PubKeyword: return "PubKeyword";

@@ -66,6 +66,7 @@ namespace Rux {
 
         // Skip tokens until a safe recovery point (statement/declaration boundary).
         void Synchronize();
+        void Recover();
 
         // Top-level
         DeclPtr ParseDecl();

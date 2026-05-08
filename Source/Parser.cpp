@@ -41,7 +41,7 @@ namespace Rux {
             if (auto decl = ParseDecl())
                 mod.items.push_back(std::move(decl));
             else
-                Synchronize();
+                Recover();
         }
 
         return ParseResult{std::move(mod), std::move(diagnostics)};
@@ -129,7 +129,7 @@ namespace Rux {
                 k == TokenKind::EnumKeyword ||
                 k == TokenKind::UnionKeyword ||
                 k == TokenKind::InterfaceKeyword ||
-                k == TokenKind::ImplKeyword ||
+                k == TokenKind::ExtendKeyword ||
                 k == TokenKind::ModuleKeyword ||
                 k == TokenKind::ImportKeyword ||
                 k == TokenKind::ConstKeyword ||
@@ -149,6 +149,13 @@ namespace Rux {
 
             Advance();
         }
+    }
+
+    void Parser::Recover() {
+        const std::size_t before = pos;
+        Synchronize();
+        if (pos == before && !IsAtEnd())
+            Advance();
     }
 
     // Attribute parsing
@@ -268,7 +275,7 @@ namespace Rux {
             return ParseUnionDecl(isPublic);
         if (Check(TokenKind::InterfaceKeyword))
             return ParseInterfaceDecl(isPublic);
-        if (Check(TokenKind::ImplKeyword))
+        if (Check(TokenKind::ExtendKeyword))
             return ParseImplDecl();
         if (Check(TokenKind::ModuleKeyword))
             return ParseModuleDecl(isPublic);
@@ -357,7 +364,10 @@ namespace Rux {
         decl->isPublic = isPublic;
         decl->isAsm = isAsm;
         decl->callConv = callConv;
-        decl->name = Expect(TokenKind::Ident, "expected function name").text;
+        if (Peek().IsOperator())
+            decl->name = Advance().text;
+        else
+            decl->name = Expect(TokenKind::Ident, "expected function name").text;
 
         if (Check(TokenKind::Less))
             decl->typeParams = ParseTypeParams();
@@ -478,7 +488,7 @@ namespace Rux {
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             if (!Check(TokenKind::FuncKeyword)) {
                 EmitError(CurrentLocation(), "expected 'func' in interface body");
-                Synchronize();
+                Recover();
                 continue;
             }
             if (auto method = ParseFuncDecl(false, false))
@@ -488,15 +498,15 @@ namespace Rux {
         return decl;
     }
 
-    // impl
+    // extend
     std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
         const auto loc = CurrentLocation();
-        Expect(TokenKind::ImplKeyword, "expected 'impl'");
+        Expect(TokenKind::ExtendKeyword, "expected 'extend'");
 
         auto decl = std::make_unique<ImplDecl>();
         decl->location = loc;
 
-        // impl TypeName  or  impl InterfaceName for TypeName
+        // extend TypeName  or  extend InterfaceName for TypeName
         const std::string firstName = Expect(TokenKind::Ident, "expected type name").text;
         if (Match(TokenKind::ForKeyword)) {
             decl->interfaceName = firstName;
@@ -510,8 +520,8 @@ namespace Rux {
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             bool pub = Match(TokenKind::PubKeyword);
             if (!Check(TokenKind::FuncKeyword)) {
-                EmitError(CurrentLocation(), "expected 'func' in impl body");
-                Synchronize();
+                EmitError(CurrentLocation(), "expected 'func' in extend body");
+                Recover();
                 continue;
             }
             if (auto method = ParseFuncDecl(pub, false))
@@ -537,7 +547,7 @@ namespace Rux {
             if (auto item = ParseDecl())
                 items.push_back(std::move(item));
             else
-                Synchronize();
+                Recover();
         }
         Expect(TokenKind::RightBrace, "expected '}'");
 
@@ -698,7 +708,7 @@ namespace Rux {
                 }
                 else {
                     EmitError(CurrentLocation(), "expected 'func' or variable declaration in extern block");
-                    Synchronize();
+                    Recover();
                 }
             }
             Expect(TokenKind::RightBrace, "expected '}'");
@@ -840,7 +850,7 @@ namespace Rux {
             if (auto stmt = ParseStmt())
                 block->stmts.push_back(std::move(stmt));
             else
-                Synchronize();
+                Recover();
         }
 
         Expect(TokenKind::RightBrace, "expected '}'");
@@ -921,7 +931,7 @@ namespace Rux {
             TokenKind::EnumKeyword,
             TokenKind::UnionKeyword,
             TokenKind::InterfaceKeyword,
-            TokenKind::ImplKeyword,
+            TokenKind::ExtendKeyword,
             TokenKind::ModuleKeyword,
             TokenKind::ConstKeyword,
             TokenKind::TypeKeyword,

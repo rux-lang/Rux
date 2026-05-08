@@ -415,26 +415,7 @@ namespace Rux {
                 if (!s->pattern)
                     locals[s->name] = slot;
                 if (s->init) {
-                    if (auto* init = dynamic_cast<const HirStructInitExpr*>(s->init.get())) {
-                        StoreStructInit(*init, slot);
-                    }
-                    else if (auto* initSliceExpr = dynamic_cast<const HirSliceExpr*>(s->init.get())) {
-                        StoreSliceInit(*initSliceExpr, slot);
-                    }
-                    else if (auto* initTupleExpr = dynamic_cast<const HirTupleExpr*>(s->init.get())) {
-                        StoreTupleInit(*initTupleExpr, slot);
-                    }
-                    else if (auto* initRangeExpr = dynamic_cast<const HirRangeExpr*>(s->init.get())) {
-                        StoreRangeInit(*initRangeExpr, slot);
-                    }
-                    else if (auto* initLitExpr = dynamic_cast<const HirLiteralExpr*>(s->init.get());
-                        initLitExpr && IsStringSliceLiteral(*initLitExpr)) {
-                        StoreStringLiteralSlice(*initLitExpr, slot);
-                    }
-                    else {
-                        const LirReg val = LowerExpr(*s->init);
-                        EmitStore(val, slot, s->type);
-                    }
+                    StoreExprIntoSlot(*s->init, slot, s->type);
                 }
                 if (s->pattern)
                     BindLetPattern(*s->pattern, slot, s->type);
@@ -1064,6 +1045,85 @@ namespace Rux {
             return val;
         }
 
+        static TypeRef SliceElementTypeFromType(const TypeRef& type) {
+            if (type.kind == TypeRef::Kind::Slice && !type.inner.empty())
+                return type.inner[0];
+            if (type.kind == TypeRef::Kind::Named) {
+                if (type.name == "Slice<char16>") return TypeRef::MakeChar16();
+                if (type.name == "Slice<char32>") return TypeRef::MakeChar32();
+            }
+            return TypeRef::MakeChar8();
+        }
+
+        void CopySliceValue(LirReg srcSlot, LirReg dstSlot, const TypeRef& sliceType) {
+            const TypeRef elemType = SliceElementTypeFromType(sliceType);
+            const TypeRef dataType = TypeRef::MakePointer(elemType);
+
+            const LirReg srcDataPtr = EmitFieldPtr(srcSlot, "data", dataType);
+            const LirReg data = EmitLoad(srcDataPtr, dataType);
+            const LirReg dstDataPtr = EmitFieldPtr(dstSlot, "data", dataType);
+            EmitStore(data, dstDataPtr, dataType);
+
+            const LirReg srcLenPtr = EmitFieldPtr(srcSlot, "length", TypeRef::MakeUInt64());
+            const LirReg len = EmitLoad(srcLenPtr, TypeRef::MakeUInt64());
+            const LirReg dstLenPtr = EmitFieldPtr(dstSlot, "length", TypeRef::MakeUInt64());
+            EmitStore(len, dstLenPtr, TypeRef::MakeUInt64());
+        }
+
+        void StoreTernaryInit(const HirTernaryExpr& e, LirReg slot, const TypeRef& type) {
+            LirReg cond = LowerExpr(*e.condition);
+            const std::uint32_t thenBlock = NewBlock("ternary.store.then");
+            const std::uint32_t elseBlock = NewBlock("ternary.store.else");
+            const std::uint32_t mergeBlock = NewBlock("ternary.store.merge");
+            Branch(cond, thenBlock, elseBlock);
+
+            SetBlock(thenBlock);
+            StoreExprIntoSlot(*e.thenExpr, slot, type);
+            Jump(mergeBlock);
+
+            SetBlock(elseBlock);
+            StoreExprIntoSlot(*e.elseExpr, slot, type);
+            Jump(mergeBlock);
+
+            SetBlock(mergeBlock);
+        }
+
+        void StoreExprIntoSlot(const HirExpr& expr, LirReg slot, const TypeRef& type) {
+            if (auto* init = dynamic_cast<const HirStructInitExpr*>(&expr)) {
+                StoreStructInit(*init, slot);
+                return;
+            }
+            if (auto* initSliceExpr = dynamic_cast<const HirSliceExpr*>(&expr)) {
+                StoreSliceInit(*initSliceExpr, slot);
+                return;
+            }
+            if (auto* initTupleExpr = dynamic_cast<const HirTupleExpr*>(&expr)) {
+                StoreTupleInit(*initTupleExpr, slot);
+                return;
+            }
+            if (auto* initRangeExpr = dynamic_cast<const HirRangeExpr*>(&expr)) {
+                StoreRangeInit(*initRangeExpr, slot);
+                return;
+            }
+            if (auto* initTernaryExpr = dynamic_cast<const HirTernaryExpr*>(&expr)) {
+                StoreTernaryInit(*initTernaryExpr, slot, type);
+                return;
+            }
+            if (auto* initLitExpr = dynamic_cast<const HirLiteralExpr*>(&expr);
+                initLitExpr && IsStringSliceLiteral(*initLitExpr)) {
+                StoreStringLiteralSlice(*initLitExpr, slot);
+                return;
+            }
+            if (IsSliceType(type)) {
+                const LirReg src = LowerLValue(expr);
+                CopySliceValue(src, slot, type);
+                return;
+            }
+
+            const LirReg val = LowerExpr(expr);
+            EmitStore(val, slot, type);
+        }
+
         LirReg LowerTernary(const HirTernaryExpr& e) {
             LirReg cond = LowerExpr(*e.condition);
             const std::uint32_t thenBlock = NewBlock("ternary.then");
@@ -1258,6 +1318,11 @@ namespace Rux {
             }
             if (auto* e = dynamic_cast<const HirRangeExpr*>(&expr)) {
                 return LowerRange(*e);
+            }
+            if (auto* e = dynamic_cast<const HirTernaryExpr*>(&expr)) {
+                LirReg slot = EmitAlloca(e->type);
+                StoreTernaryInit(*e, slot, e->type);
+                return slot;
             }
             if (auto* e = dynamic_cast<const HirFieldExpr*>(&expr)) {
                 LirReg base = e->object->type.kind == TypeRef::Kind::Pointer

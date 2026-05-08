@@ -6,6 +6,7 @@
 
 #include "Rux/Asm.h"
 
+#include <cstring>
 #include <format>
 #include <fstream>
 #include <sstream>
@@ -222,7 +223,15 @@ namespace Rux {
                 if (it != f32Labels.end()) return it->second;
                 std::string lbl = std::format("__f32_{}", constIdx++);
                 f32Labels[val] = lbl;
-                rodata << lbl << ":\n    dd    " << val << "\n";
+                std::uint32_t bits;
+                if (val.starts_with("0x")) {
+                    bits = static_cast<std::uint32_t>(std::stoull(val, nullptr, 16));
+                }
+                else {
+                    float fv = std::stof(val);
+                    std::memcpy(&bits, &fv, sizeof(bits));
+                }
+                rodata << lbl << ":\n    dd    0x" << std::hex << bits << std::dec << "\n";
                 return lbl;
             }
 
@@ -231,7 +240,15 @@ namespace Rux {
                 if (it != f64Labels.end()) return it->second;
                 std::string lbl = std::format("__f64_{}", constIdx++);
                 f64Labels[val] = lbl;
-                rodata << lbl << ":\n    dq    " << val << "\n";
+                std::uint64_t bits;
+                if (val.starts_with("0x")) {
+                    bits = std::stoull(val, nullptr, 16);
+                }
+                else {
+                    double dv = std::stod(val);
+                    std::memcpy(&bits, &dv, sizeof(bits));
+                }
+                rodata << lbl << ":\n    dq    0x" << std::hex << bits << std::dec << "\n";
                 return lbl;
             }
 
