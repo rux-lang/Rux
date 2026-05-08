@@ -49,6 +49,9 @@ namespace Rux {
                 }
                 return alignUp(offset, maxAlign);
             }
+            case TypeRef::Kind::Named:
+                if (!t.inner.empty()) return SizeOf(t.inner[0]);
+                return 8;
             default: return 8; // int, uint, int64, uint64, float64, pointer, str, named, …
             }
         }
@@ -2714,12 +2717,10 @@ namespace Rux {
     std::vector<RcuFile> Rcu::Generate() const {
         std::vector<RcuFile> result;
         result.reserve(lir.modules.size());
-
         std::vector<LirStructDecl> structDecls;
         for (const auto& mod : lir.modules)
             for (const auto& s : mod.structs)
                 structDecls.push_back(s);
-
         for (const auto& mod : lir.modules) {
             RcuCodeGen gen(mod, structDecls, packageName);
             result.push_back(gen.Generate());
@@ -2737,7 +2738,7 @@ namespace Rux {
     }
 
     bool Rcu::Dump(const RcuFile& file, const std::filesystem::path& path) {
-        std::string text = RcuDumper::Dump(file);
+        const std::string text = RcuDumper::Dump(file);
         std::ofstream f(path, std::ios::out | std::ios::trunc);
         if (!f) return false;
         f << text;

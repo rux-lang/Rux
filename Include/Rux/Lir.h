@@ -118,11 +118,13 @@ namespace Rux {
     struct LirEnumVariant {
         std::string name;
         std::vector<TypeRef> fields;
+        std::optional<std::string> discriminant;
     };
 
     struct LirEnumDecl {
         std::string name;
         bool isPublic = false;
+        TypeRef baseType;
         std::vector<LirEnumVariant> variants;
     };
 

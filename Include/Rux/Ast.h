@@ -107,8 +107,15 @@ namespace Rux {
 
     // Event.Click(x, y)
     struct EnumPattern : Pattern {
+        struct NamedArg {
+            SourceLocation location;
+            std::string name;
+            PatternPtr pattern;
+        };
+
         std::vector<std::string> path; // ["Event", "Click"]
         std::vector<PatternPtr> args; // bound positions
+        std::vector<NamedArg> namedArgs;
     };
 
     // Point { x: 0, y: 0 }
@@ -263,6 +270,18 @@ namespace Rux {
         std::unique_ptr<Block> block;
     };
 
+    // match expr { pat => expr, ... }
+    struct MatchExpr : Expr {
+        struct Arm {
+            SourceLocation location;
+            PatternPtr pattern;
+            ExprPtr body;
+        };
+
+        ExprPtr subject;
+        std::vector<Arm> arms;
+    };
+
     // Statements
 
     struct Stmt {
@@ -403,11 +422,21 @@ namespace Rux {
     // enum Name { Variant, Variant(Type, ...), ... }
     struct EnumDecl : Decl {
         std::string name;
+        TypeExprPtr baseType;
 
         struct Variant {
             SourceLocation location;
             std::string name;
             std::vector<TypeExprPtr> fields; // empty = unit variant
+
+            struct NamedField {
+                SourceLocation location;
+                std::string name;
+                TypeExprPtr type;
+            };
+
+            std::vector<NamedField> namedFields;
+            std::optional<std::string> discriminant;
         };
 
         std::vector<Variant> variants;

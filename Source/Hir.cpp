@@ -55,7 +55,7 @@ namespace Rux {
             return nullptr;
         }
 
-        HirScope* Parent() const {
+        [[nodiscard]] HirScope* Parent() const {
             return parent;
         }
 
@@ -132,6 +132,7 @@ namespace Rux {
         TypeRef currentSelfType = TypeRef::MakeUnknown();
         std::vector<std::string> currentTypeParams;
         std::unordered_map<std::string, const StructDecl*> structDecls;
+        std::unordered_map<std::string, const EnumDecl*> enumDecls;
         std::unordered_map<std::string, std::vector<const FuncDecl*>> functionsByName;
         std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl*>>> methodsByType;
 
@@ -228,8 +229,10 @@ namespace Rux {
                 structDecls[d->name] = d;
                 simple(HirSymbol::Kind::Type, d->name, TypeRef::MakeNamed(d->name));
             }
-            else if (auto* d = dynamic_cast<const EnumDecl*>(&decl))
-                simple(HirSymbol::Kind::Type, d->name, TypeRef::MakeNamed(d->name));
+            else if (auto* d = dynamic_cast<const EnumDecl*>(&decl)) {
+                enumDecls[d->name] = d;
+                simple(HirSymbol::Kind::Type, d->name, EnumType(*d));
+            }
             else if (auto* d = dynamic_cast<const UnionDecl*>(&decl))
                 simple(HirSymbol::Kind::Type, d->name, TypeRef::MakeNamed(d->name));
             else if (auto* d = dynamic_cast<const InterfaceDecl*>(&decl))
@@ -291,6 +294,23 @@ namespace Rux {
                 name += ">";
             }
             return name;
+        }
+
+        std::pair<const EnumDecl*, const EnumDecl::Variant*> LookupEnumVariantInitializer(
+            const std::string& typeName) const {
+            const std::size_t sep = typeName.find("::");
+            if (sep == std::string::npos || typeName.find("::", sep + 2) != std::string::npos)
+                return {nullptr, nullptr};
+
+            const std::string enumName = typeName.substr(0, sep);
+            const std::string variantName = typeName.substr(sep + 2);
+            const auto enumIt = enumDecls.find(enumName);
+            if (enumIt == enumDecls.end()) return {nullptr, nullptr};
+            for (const auto& variant : enumIt->second->variants) {
+                if (variant.name == variantName)
+                    return {enumIt->second, &variant};
+            }
+            return {enumIt->second, nullptr};
         }
 
         static std::string SliceTypeName(const TypeRef& elemType) {
@@ -386,6 +406,60 @@ namespace Rux {
             return value;
         }
 
+        static std::optional<std::int64_t> ParseEnumDiscriminant(const std::string& text) {
+            std::string cleaned = StripNumericLiteralSuffix(text);
+            const bool negative = !cleaned.empty() && cleaned[0] == '-';
+            if (negative)
+                cleaned.erase(cleaned.begin());
+
+            std::string digitsText;
+            digitsText.reserve(cleaned.size());
+            for (const char c : cleaned) {
+                if (c != '_') digitsText.push_back(c);
+            }
+
+            int base = 10;
+            std::string_view digits(digitsText);
+            if (digits.size() > 2 && digits[0] == '0') {
+                switch (digits[1]) {
+                case 'x':
+                case 'X':
+                    base = 16;
+                    digits.remove_prefix(2);
+                    break;
+                case 'b':
+                case 'B':
+                    base = 2;
+                    digits.remove_prefix(2);
+                    break;
+                case 'o':
+                case 'O':
+                    base = 8;
+                    digits.remove_prefix(2);
+                    break;
+                default:
+                    break;
+                }
+            }
+            if (digits.empty()) return std::nullopt;
+
+            std::uint64_t parsed = 0;
+            const auto* first = digits.data();
+            const auto* last = first + digits.size();
+            const auto [ptr, ec] = std::from_chars(first, last, parsed, base);
+            if (ec != std::errc{} || ptr != last) return std::nullopt;
+            if (negative) {
+                constexpr auto maxMagnitude =
+                    static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) + 1;
+                if (parsed > maxMagnitude) return std::nullopt;
+                if (parsed == maxMagnitude) return std::numeric_limits<std::int64_t>::min();
+                return -static_cast<std::int64_t>(parsed);
+            }
+            if (parsed > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+                return std::nullopt;
+            return static_cast<std::int64_t>(parsed);
+        }
+
         static std::optional<std::uint64_t> UnsignedIntegerMax(const TypeRef& type) {
             switch (type.kind) {
             case TypeRef::Kind::UInt8: return std::numeric_limits<std::uint8_t>::max();
@@ -399,12 +473,61 @@ namespace Rux {
             }
         }
 
+        static std::optional<std::pair<std::int64_t, std::int64_t>> SignedIntegerRange(const TypeRef& type) {
+            switch (type.kind) {
+            case TypeRef::Kind::Int8:
+                return std::pair{
+                    static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::min()),
+                    static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::max())
+                };
+            case TypeRef::Kind::Int16:
+                return std::pair{
+                    static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::min()),
+                    static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::max())
+                };
+            case TypeRef::Kind::Int32:
+                return std::pair{
+                    static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
+                    static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())
+                };
+            case TypeRef::Kind::Int64:
+            case TypeRef::Kind::Int:
+                return std::pair{
+                    std::numeric_limits<std::int64_t>::min(),
+                    std::numeric_limits<std::int64_t>::max()
+                };
+            default:
+                return std::nullopt;
+            }
+        }
+
         static bool UnsuffixedIntegerLiteralFits(const Expr& expr, const TypeRef& target) {
-            const auto* literal = dynamic_cast<const LiteralExpr*>(&expr);
-            if (!literal) return false;
+            bool negative = false;
+            const LiteralExpr* literal = dynamic_cast<const LiteralExpr*>(&expr);
+            if (!literal) {
+                if (const auto* unary = dynamic_cast<const UnaryExpr*>(&expr);
+                    unary && unary->op == TokenKind::Minus)
+                    literal = dynamic_cast<const LiteralExpr*>(unary->operand.get());
+                if (!literal) return false;
+                negative = true;
+            }
+
             const auto value = ParseUnsuffixedIntegerLiteral(literal->token);
-            const auto max = UnsignedIntegerMax(target);
-            return value && max && *value <= *max;
+            if (!value) return false;
+
+            if (negative) {
+                const auto range = SignedIntegerRange(target);
+                if (!range) return false;
+                const auto minMagnitude =
+                    static_cast<std::uint64_t>(-(range->first + 1)) + 1;
+                return *value <= minMagnitude;
+            }
+
+            if (const auto max = UnsignedIntegerMax(target))
+                return *value <= *max;
+            if (const auto range = SignedIntegerRange(target))
+                return *value <= static_cast<std::uint64_t>(range->second);
+            return false;
         }
 
         static bool IsNullLiteral(const Expr& expr) {
@@ -490,6 +613,10 @@ namespace Rux {
                 if (sym && (sym->kind == HirSymbol::Kind::Type ||
                     sym->kind == HirSymbol::Kind::Interface)) {
                     if (t->typeArgs.empty() && !sym->type.IsUnknown()) return sym->type;
+                    if (t->typeArgs.empty()) {
+                        if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end())
+                            return EnumType(*enumIt->second);
+                    }
                     return TypeRef::MakeNamed(GenericTypeName(*t));
                 }
                 return TypeRef::MakeNamed(GenericTypeName(*t)); // best-effort for unresolved names
@@ -647,6 +774,47 @@ namespace Rux {
             return it->second[0];
         }
 
+        const EnumDecl::Variant* LookupEnumVariant(const std::string& enumName,
+                                                   const std::string& variantName) const {
+            const auto enumIt = enumDecls.find(enumName);
+            if (enumIt == enumDecls.end()) return nullptr;
+            for (const auto& variant : enumIt->second->variants) {
+                if (variant.name == variantName)
+                    return &variant;
+            }
+            return nullptr;
+        }
+
+        std::optional<std::string> LookupEnumVariantDiscriminant(const std::string& enumName,
+                                                                 const std::string& variantName) const {
+            const auto enumIt = enumDecls.find(enumName);
+            if (enumIt == enumDecls.end()) return std::nullopt;
+            const auto& variants = enumIt->second->variants;
+            std::int64_t next = 0;
+            for (std::size_t i = 0; i < variants.size(); ++i) {
+                std::int64_t value = next;
+                if (variants[i].discriminant) {
+                    if (const auto parsed = ParseEnumDiscriminant(*variants[i].discriminant))
+                        value = *parsed;
+                }
+                if (variants[i].name == variantName)
+                    return std::to_string(value);
+                next = value + 1;
+            }
+            return std::nullopt;
+        }
+
+        TypeRef EnumVariantConstructorType(const EnumDecl& decl,
+                                           const EnumDecl::Variant& variant) {
+            std::vector<TypeRef> params;
+            params.reserve(variant.fields.size() + variant.namedFields.size());
+            for (const auto& field : variant.fields)
+                params.push_back(ResolveType(*field));
+            for (const auto& field : variant.namedFields)
+                params.push_back(ResolveType(*field.type));
+            return TypeRef::MakeFunc(std::move(params), EnumType(decl));
+        }
+
         // Returns the mangled callee name: "Type::method__p1_p2" for overloads,
         // "Type::method" for single-dispatch methods.
         std::string CalleeName(const std::string& typeName, const std::string& methodName,
@@ -664,7 +832,7 @@ namespace Rux {
         }
 
         const FuncDecl* LookupMethod(const TypeRef& receiverType, const std::string& methodName,
-                                      const std::vector<TypeRef>& argTypes = {}) {
+                                     const std::vector<TypeRef>& argTypes = {}) {
             const std::string typeName = NamedBaseTypeName(receiverType);
             if (typeName.empty()) return nullptr;
             const auto typeIt = methodsByType.find(typeName);
@@ -700,7 +868,10 @@ namespace Rux {
                 if (type.name.starts_with("Slice<")) return 16;
                 if (auto it = substitutions.find(type.name); it != substitutions.end())
                     return SizeOfTypeRef(it->second, substitutions);
-                return SizeOfStruct(BaseTypeName(type.name), substitutions);
+                const std::string baseName = BaseTypeName(type.name);
+                if (const auto enumIt = enumDecls.find(baseName); enumIt != enumDecls.end())
+                    return SizeOfTypeRef(EnumBaseType(*enumIt->second), substitutions);
+                return SizeOfStruct(baseName, substitutions);
             }
 
             if (type.kind == TypeRef::Kind::Range) {
@@ -721,6 +892,16 @@ namespace Rux {
             }
 
             return type.SizeInBytes();
+        }
+
+        TypeRef EnumBaseType(const EnumDecl& decl) {
+            return decl.baseType ? ResolveType(*decl.baseType) : TypeRef::MakeInt();
+        }
+
+        TypeRef EnumType(const EnumDecl& decl) {
+            TypeRef type = TypeRef::MakeNamed(decl.name);
+            type.inner.push_back(EnumBaseType(decl));
+            return type;
         }
 
         std::optional<std::uint64_t> SizeOfStruct(
@@ -984,12 +1165,23 @@ namespace Rux {
             HirEnum he;
             he.name = d.name;
             he.isPublic = d.isPublic;
+            he.baseType = EnumBaseType(d);
             he.location = d.location;
+            std::int64_t next = 0;
             for (const auto& v : d.variants) {
                 HirEnumVariant hv;
                 hv.name = v.name;
+                std::int64_t value = next;
+                if (v.discriminant) {
+                    if (const auto parsed = ParseEnumDiscriminant(*v.discriminant))
+                        value = *parsed;
+                }
+                hv.discriminant = std::to_string(value);
+                next = value + 1;
                 for (const auto& f : v.fields)
                     hv.fields.push_back(ResolveType(*f));
+                for (const auto& f : v.namedFields)
+                    hv.fields.push_back(ResolveType(*f.type));
                 he.variants.push_back(std::move(hv));
             }
             return he;
@@ -1280,7 +1472,16 @@ namespace Rux {
 
         TypeRef StructInitFieldType(const StructInitExpr& expr, const std::string& fieldName) {
             const auto structIt = structDecls.find(expr.typeName);
-            if (structIt == structDecls.end()) return TypeRef::MakeUnknown();
+            if (structIt == structDecls.end()) {
+                if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(expr.typeName);
+                    enumDecl && variant) {
+                    for (const auto& field : variant->namedFields) {
+                        if (field.name == fieldName)
+                            return ResolveType(*field.type);
+                    }
+                }
+                return TypeRef::MakeUnknown();
+            }
 
             const auto substitutions = StructTypeSubstitutions(*structIt->second, expr.typeArgs);
             for (const auto& field : structIt->second->fields) {
@@ -1325,6 +1526,26 @@ namespace Rux {
                     if (HirSymbol* first = currentScope->Lookup(e->segments[0]);
                         first && (first->kind == HirSymbol::Kind::Type ||
                             first->kind == HirSymbol::Kind::Interface)) {
+                        if (first->kind == HirSymbol::Kind::Type) {
+                            if (const auto discriminant =
+                                LookupEnumVariantDiscriminant(e->segments[0], e->segments[1])) {
+                                const auto* variant = LookupEnumVariant(e->segments[0], e->segments[1]);
+                                if (variant && (!variant->fields.empty() || !variant->namedFields.empty())) {
+                                    auto he = std::make_unique<HirPathExpr>();
+                                    he->location = e->location;
+                                    he->segments = e->segments;
+                                    he->type = EnumVariantConstructorType(*enumDecls.at(e->segments[0]), *variant);
+                                    return he;
+                                }
+                                else {
+                                    auto he = std::make_unique<HirLiteralExpr>();
+                                    he->location = e->location;
+                                    he->type = EnumType(*enumDecls.at(e->segments[0]));
+                                    he->value = *discriminant;
+                                    return he;
+                                }
+                            }
+                        }
                         TypeRef receiverType = first->type.IsUnknown()
                                                    ? TypeRef::MakeNamed(first->name)
                                                    : first->type;
@@ -1460,6 +1681,36 @@ namespace Rux {
                 return he;
             }
             if (auto* e = dynamic_cast<const CallExpr*>(&expr)) {
+                if (auto* path = dynamic_cast<const PathExpr*>(e->callee.get());
+                    path && path->segments.size() == 2) {
+                    const auto* variant = LookupEnumVariant(path->segments[0], path->segments[1]);
+                    if (variant && (!variant->fields.empty() || !variant->namedFields.empty())) {
+                        const TypeExpr* singlePayloadType = nullptr;
+                        if (variant->fields.size() == 1 && variant->namedFields.empty())
+                            singlePayloadType = variant->fields[0].get();
+                        else if (variant->fields.empty() && variant->namedFields.size() == 1)
+                            singlePayloadType = variant->namedFields[0].type.get();
+
+                        if (singlePayloadType && e->args.size() == 1) {
+                            auto he = std::make_unique<HirEnumConstructExpr>();
+                            he->location = e->location;
+                            he->type = EnumType(*enumDecls.at(path->segments[0]));
+                            he->payloads.push_back(LowerExprAs(*e->args[0], ResolveType(*singlePayloadType)));
+                            he->discriminant =
+                                LookupEnumVariantDiscriminant(path->segments[0], path->segments[1])
+                                .value_or("0");
+                            return he;
+                        }
+
+                        auto he = std::make_unique<HirLiteralExpr>();
+                        he->location = e->location;
+                        he->type = EnumType(*enumDecls.at(path->segments[0]));
+                        he->value = LookupEnumVariantDiscriminant(path->segments[0], path->segments[1])
+                            .value_or("0");
+                        return he;
+                    }
+                }
+
                 if (auto* ident = dynamic_cast<const IdentExpr*>(e->callee.get())) {
                     std::vector<HirExprPtr> args;
                     std::vector<TypeRef> argTypes;
@@ -1536,7 +1787,7 @@ namespace Rux {
                                     if (UnsuffixedIntegerLiteralFits(*e->args[i], expectedType))
                                         preArgs[i]->type = expectedType;
                                     else if (IsNullLiteral(*e->args[i]) &&
-                                             expectedType.kind == TypeRef::Kind::Pointer) {
+                                        expectedType.kind == TypeRef::Kind::Pointer) {
                                         preArgs[i]->type = expectedType;
                                         if (auto* lit = dynamic_cast<HirLiteralExpr*>(preArgs[i].get()))
                                             lit->value = "0";
@@ -1611,6 +1862,43 @@ namespace Rux {
                 return he;
             }
             if (auto* e = dynamic_cast<const StructInitExpr*>(&expr)) {
+                if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(e->typeName);
+                    enumDecl && variant) {
+                    if (!variant->namedFields.empty()) {
+                        auto he = std::make_unique<HirEnumConstructExpr>();
+                        he->location = e->location;
+                        he->type = EnumType(*enumDecl);
+                        const std::size_t sep = e->typeName.find("::");
+                        he->discriminant =
+                            LookupEnumVariantDiscriminant(e->typeName.substr(0, sep),
+                                                          e->typeName.substr(sep + 2))
+                            .value_or("0");
+                        for (const auto& field : variant->namedFields) {
+                            const StructInitExpr::Field* initField = nullptr;
+                            for (const auto& f : e->fields) {
+                                if (f.name == field.name) {
+                                    initField = &f;
+                                    break;
+                                }
+                            }
+                            if (initField)
+                                he->payloads.push_back(
+                                    LowerExprAs(*initField->value, ResolveType(*field.type)));
+                        }
+                        return he;
+                    }
+
+                    auto he = std::make_unique<HirLiteralExpr>();
+                    he->location = e->location;
+                    he->type = EnumType(*enumDecl);
+                    const std::size_t sep = e->typeName.find("::");
+                    he->value =
+                        LookupEnumVariantDiscriminant(e->typeName.substr(0, sep),
+                                                      e->typeName.substr(sep + 2))
+                        .value_or("0");
+                    return he;
+                }
+
                 auto he = std::make_unique<HirStructInitExpr>();
                 he->location = e->location;
                 he->typeName = GenericStructInitName(*e);
@@ -1660,6 +1948,23 @@ namespace Rux {
                 he->operand = LowerExpr(*e->operand);
                 he->checkType = ResolveType(*e->type);
                 he->type = TypeRef::MakeBool();
+                return he;
+            }
+            if (auto* e = dynamic_cast<const MatchExpr*>(&expr)) {
+                auto he = std::make_unique<HirMatchExpr>();
+                he->location = e->location;
+                he->subject = LowerExpr(*e->subject);
+                for (const auto& arm : e->arms) {
+                    HirMatchArm ha;
+                    ha.location = arm.location;
+                    PushScope();
+                    ha.pattern = LowerPattern(*arm.pattern);
+                    ha.body = LowerExpr(*arm.body);
+                    PopScope();
+                    if (he->type.IsUnknown())
+                        he->type = ha.body->type;
+                    he->arms.push_back(std::move(ha));
+                }
                 return he;
             }
             if (auto* e = dynamic_cast<const BlockExpr*>(&expr)) {
@@ -1783,11 +2088,56 @@ namespace Rux {
                 auto hp = std::make_unique<HirEnumPattern>();
                 hp->location = p->location;
                 hp->path = p->path;
-                if (!p->path.empty())
+                const EnumDecl::Variant* variant = nullptr;
+                if (!p->path.empty()) {
                     if (HirSymbol* sym = currentScope->Lookup(p->path[0]))
                         hp->resolvedType = sym->type;
-                for (const auto& a : p->args)
-                    hp->args.push_back(LowerPattern(*a));
+                    if (p->path.size() >= 2) {
+                        hp->discriminant = LookupEnumVariantDiscriminant(p->path[0], p->path[1]);
+                        variant = LookupEnumVariant(p->path[0], p->path[1]);
+                        if (variant)
+                            hp->hasPayload = !variant->fields.empty() || !variant->namedFields.empty();
+                        if (const auto enumIt = enumDecls.find(p->path[0]); enumIt != enumDecls.end()) {
+                            for (const auto& variant : enumIt->second->variants) {
+                                if (variant.fields.empty() && variant.namedFields.empty()) {
+                                    if (auto disc = LookupEnumVariantDiscriminant(p->path[0], variant.name))
+                                        hp->unitDiscriminants.push_back(*disc);
+                                }
+                            }
+                        }
+                    }
+                }
+                std::unordered_map<std::string, const Pattern*> namedArgs;
+                for (const auto& arg : p->namedArgs)
+                    namedArgs.emplace(arg.name, arg.pattern.get());
+                if (variant) {
+                    for (const auto& field : variant->namedFields) {
+                        if (const auto it = namedArgs.find(field.name); it != namedArgs.end()) {
+                            hp->argIndices.push_back(&field - variant->namedFields.data());
+                            hp->args.push_back(
+                                LowerLetPattern(*it->second, ResolveType(*field.type), false));
+                        }
+                    }
+                }
+                else {
+                    for (const auto& arg : p->namedArgs)
+                        hp->args.push_back(LowerPattern(*arg.pattern));
+                }
+                for (std::size_t i = 0; i < p->args.size(); ++i) {
+                    if (variant && i < variant->fields.size()) {
+                        hp->argIndices.push_back(i);
+                        hp->args.push_back(LowerLetPattern(*p->args[i], ResolveType(*variant->fields[i]), false));
+                    }
+                    else if (variant && i - variant->fields.size() < variant->namedFields.size()) {
+                        hp->argIndices.push_back(i);
+                        hp->args.push_back(
+                            LowerLetPattern(*p->args[i],
+                                            ResolveType(*variant->namedFields[i - variant->fields.size()].type),
+                                            false));
+                    }
+                    else
+                        hp->args.push_back(LowerPattern(*p->args[i]));
+                }
                 return hp;
             }
             if (auto* p = dynamic_cast<const StructPattern*>(&pat)) {
@@ -1912,6 +2262,22 @@ namespace Rux {
             return std::format("{} as {}", PrintExpr(*e->operand), e->targetType.ToString());
         if (auto* e = dynamic_cast<const HirIsExpr*>(&expr))
             return std::format("{} is {}", PrintExpr(*e->operand), e->checkType.ToString());
+        if (auto* e = dynamic_cast<const HirMatchExpr*>(&expr)) {
+            std::string s = "match " + PrintExpr(*e->subject) + " { ";
+            for (std::size_t i = 0; i < e->arms.size(); ++i) {
+                if (i) s += ", ";
+                s += PrintPattern(*e->arms[i].pattern) + " => " + PrintExpr(*e->arms[i].body);
+            }
+            return s + " }";
+        }
+        if (auto* e = dynamic_cast<const HirEnumConstructExpr*>(&expr)) {
+            std::string s = "#(";
+            for (std::size_t i = 0; i < e->payloads.size(); ++i) {
+                if (i) s += ", ";
+                s += PrintExpr(*e->payloads[i]);
+            }
+            return s + ")#" + e->discriminant;
+        }
         if (dynamic_cast<const HirBlockExpr*>(&expr))
             return "{ ... }";
         return "<expr>";
@@ -1932,7 +2298,7 @@ namespace Rux {
         if (auto* p = dynamic_cast<const HirEnumPattern*>(&pat)) {
             std::string s;
             for (std::size_t i = 0; i < p->path.size(); ++i) {
-                if (i) s += ".";
+                if (i) s += "::";
                 s += p->path[i];
             }
             if (!p->args.empty()) {
@@ -2143,10 +2509,10 @@ namespace Rux {
             }
             for (const auto& e : mod.enums) {
                 std::string pub = e.isPublic ? "pub " : "";
-                out << std::format("\n{}enum {}\n", pub, e.name);
+                out << std::format("\n{}enum {}: {}\n", pub, e.name, e.baseType.ToString());
                 for (const auto& v : e.variants) {
                     if (v.fields.empty()) {
-                        out << std::format("  {}\n", v.name);
+                        out << std::format("  {} = {}\n", v.name, v.discriminant.value_or("0"));
                     }
                     else {
                         std::string fields;
@@ -2154,7 +2520,10 @@ namespace Rux {
                             if (i) fields += ", ";
                             fields += v.fields[i].ToString();
                         }
-                        out << std::format("  {}({})\n", v.name, fields);
+                        if (v.discriminant)
+                            out << std::format("  {}({}) = {}\n", v.name, fields, *v.discriminant);
+                        else
+                            out << std::format("  {}({})\n", v.name, fields);
                     }
                 }
             }

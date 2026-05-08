@@ -154,6 +154,7 @@ namespace Rux {
             return total;
         }
         case Kind::Named:
+            if (!inner.empty()) return inner[0].SizeInBytes();
             if (name.starts_with("Slice<")) return 16;
             return std::nullopt;
         }
@@ -360,6 +361,7 @@ namespace Rux {
         TypeRef currentSelfType = TypeRef::MakeUnknown();
         std::vector<std::string> currentTypeParams;
         std::unordered_map<std::string, const StructDecl*> structDecls;
+        std::unordered_map<std::string, const EnumDecl*> enumDecls;
         std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl*>>> methodsByType;
 
         // Diagnostics
@@ -578,8 +580,10 @@ namespace Rux {
                 structDecls[d->name] = d;
                 simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "struct");
             }
-            else if (auto* d = dynamic_cast<const EnumDecl*>(&decl))
+            else if (auto* d = dynamic_cast<const EnumDecl*>(&decl)) {
+                enumDecls[d->name] = d;
                 simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "enum");
+            }
             else if (auto* d = dynamic_cast<const UnionDecl*>(&decl))
                 simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "union");
             else if (auto* d = dynamic_cast<const InterfaceDecl*>(&decl)) {
@@ -691,6 +695,23 @@ namespace Rux {
                 name += ">";
             }
             return name;
+        }
+
+        std::pair<const EnumDecl*, const EnumDecl::Variant*> LookupEnumVariantInitializer(
+            const std::string& typeName) const {
+            const std::size_t sep = typeName.find("::");
+            if (sep == std::string::npos || typeName.find("::", sep + 2) != std::string::npos)
+                return {nullptr, nullptr};
+
+            const std::string enumName = typeName.substr(0, sep);
+            const std::string variantName = typeName.substr(sep + 2);
+            const auto enumIt = enumDecls.find(enumName);
+            if (enumIt == enumDecls.end()) return {nullptr, nullptr};
+            for (const auto& variant : enumIt->second->variants) {
+                if (variant.name == variantName)
+                    return {enumIt->second, &variant};
+            }
+            return {enumIt->second, nullptr};
         }
 
         static std::string SliceTypeName(const TypeRef& elemType) {
@@ -808,12 +829,61 @@ namespace Rux {
             }
         }
 
+        static std::optional<std::pair<std::int64_t, std::int64_t>> SignedIntegerRange(const TypeRef& type) {
+            switch (type.kind) {
+            case TypeRef::Kind::Int8:
+                return std::pair{
+                    static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::min()),
+                    static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::max())
+                };
+            case TypeRef::Kind::Int16:
+                return std::pair{
+                    static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::min()),
+                    static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::max())
+                };
+            case TypeRef::Kind::Int32:
+                return std::pair{
+                    static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
+                    static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())
+                };
+            case TypeRef::Kind::Int64:
+            case TypeRef::Kind::Int:
+                return std::pair{
+                    std::numeric_limits<std::int64_t>::min(),
+                    std::numeric_limits<std::int64_t>::max()
+                };
+            default:
+                return std::nullopt;
+            }
+        }
+
         static bool UnsuffixedIntegerLiteralFits(const Expr& expr, const TypeRef& target) {
-            const auto* literal = dynamic_cast<const LiteralExpr*>(&expr);
-            if (!literal) return false;
+            bool negative = false;
+            const LiteralExpr* literal = dynamic_cast<const LiteralExpr*>(&expr);
+            if (!literal) {
+                if (const auto* unary = dynamic_cast<const UnaryExpr*>(&expr);
+                    unary && unary->op == TokenKind::Minus)
+                    literal = dynamic_cast<const LiteralExpr*>(unary->operand.get());
+                if (!literal) return false;
+                negative = true;
+            }
+
             const auto value = ParseUnsuffixedIntegerLiteral(literal->token);
-            const auto max = UnsignedIntegerMax(target);
-            return value && max && *value <= *max;
+            if (!value) return false;
+
+            if (negative) {
+                const auto range = SignedIntegerRange(target);
+                if (!range) return false;
+                const auto minMagnitude =
+                    static_cast<std::uint64_t>(-(range->first + 1)) + 1;
+                return *value <= minMagnitude;
+            }
+
+            if (const auto max = UnsignedIntegerMax(target))
+                return *value <= *max;
+            if (const auto range = SignedIntegerRange(target))
+                return *value <= static_cast<std::uint64_t>(range->second);
+            return false;
         }
 
         static bool IsNullLiteral(const Expr& expr) {
@@ -891,6 +961,10 @@ namespace Rux {
                 if (sym && (sym->kind == Symbol::Kind::Type ||
                     sym->kind == Symbol::Kind::Interface)) {
                     if (t->typeArgs.empty() && !sym->type.IsUnknown()) return sym->type; // builtin
+                    if (t->typeArgs.empty()) {
+                        if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end())
+                            return EnumType(*enumIt->second);
+                    }
                     return TypeRef::MakeNamed(GenericTypeName(*t)); // user-defined
                 }
                 if (structDecls.contains(t->name))
@@ -963,8 +1037,8 @@ namespace Rux {
         }
 
         [[nodiscard]] const FuncDecl* LookupMethod(const TypeRef& receiverType,
-                                                    const std::string& methodName,
-                                                    const std::vector<TypeRef>& argTypes = {}) {
+                                                   const std::string& methodName,
+                                                   const std::vector<TypeRef>& argTypes = {}) {
             const std::string typeName = NamedBaseTypeName(receiverType);
             if (typeName.empty()) return nullptr;
             const auto typeIt = methodsByType.find(typeName);
@@ -1061,7 +1135,10 @@ namespace Rux {
                 if (type.name.starts_with("Slice<")) return 16;
                 if (auto it = substitutions.find(type.name); it != substitutions.end())
                     return SizeOfTypeRef(it->second, substitutions);
-                return SizeOfStruct(BaseTypeName(type.name), substitutions);
+                const std::string baseName = BaseTypeName(type.name);
+                if (const auto enumIt = enumDecls.find(baseName); enumIt != enumDecls.end())
+                    return SizeOfTypeRef(EnumBaseType(*enumIt->second), substitutions);
+                return SizeOfStruct(baseName, substitutions);
             }
 
             if (type.kind == TypeRef::Kind::Range) {
@@ -1082,6 +1159,16 @@ namespace Rux {
             }
 
             return type.SizeInBytes();
+        }
+
+        TypeRef EnumBaseType(const EnumDecl& decl) {
+            return decl.baseType ? ResolveType(*decl.baseType) : TypeRef::MakeInt();
+        }
+
+        TypeRef EnumType(const EnumDecl& decl) {
+            TypeRef type = TypeRef::MakeNamed(decl.name);
+            type.inner.push_back(EnumBaseType(decl));
+            return type;
         }
 
         std::optional<std::uint64_t> SizeOfStruct(
@@ -1257,6 +1344,59 @@ namespace Rux {
         void CheckStructInitExpr(const StructInitExpr& e) {
             auto structIt = structDecls.find(e.typeName);
             if (structIt == structDecls.end()) {
+                if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(e.typeName); enumDecl) {
+                    if (!variant) {
+                        EmitError(e.location,
+                                  std::format("unknown enum variant '{}' in initializer", e.typeName));
+                        for (const auto& f : e.fields) CheckExpr(*f.value);
+                        return;
+                    }
+                    if (variant->namedFields.empty()) {
+                        EmitError(e.location,
+                                  std::format("enum variant '{}' has no named fields", e.typeName));
+                        for (const auto& f : e.fields) CheckExpr(*f.value);
+                        return;
+                    }
+
+                    std::unordered_map<std::string, const EnumDecl::Variant::NamedField*> fieldMap;
+                    for (const auto& field : variant->namedFields)
+                        fieldMap.emplace(field.name, &field);
+
+                    std::unordered_set<std::string> initialized;
+                    for (const auto& f : e.fields) {
+                        TypeRef valueType = CheckExpr(*f.value);
+                        if (!initialized.insert(f.name).second) {
+                            EmitError(f.location,
+                                      std::format("duplicate field '{}' in initializer for '{}'",
+                                                  f.name, e.typeName));
+                            continue;
+                        }
+
+                        auto fieldIt = fieldMap.find(f.name);
+                        if (fieldIt == fieldMap.end()) {
+                            EmitError(f.location,
+                                      std::format("unknown field '{}' in initializer for '{}'",
+                                                  f.name, e.typeName));
+                            continue;
+                        }
+
+                        TypeRef fieldType = ResolveType(*fieldIt->second->type);
+                        if (!valueType.IsUnknown() && !fieldType.IsUnknown() &&
+                            !CanAssignExprTo(*f.value, valueType, fieldType))
+                            EmitError(f.location,
+                                      std::format("cannot assign '{}' to field '{}' of type '{}'",
+                                                  valueType.ToString(), f.name, fieldType.ToString()));
+                    }
+
+                    for (const auto& field : variant->namedFields) {
+                        if (!initialized.contains(field.name))
+                            EmitError(e.location,
+                                      std::format("missing field '{}' in initializer for '{}'",
+                                                  field.name, e.typeName));
+                    }
+                    return;
+                }
+
                 EmitError(e.location,
                           std::format("unknown type '{}' in struct initializer", e.typeName));
                 for (const auto& f : e.fields) CheckExpr(*f.value);
@@ -1311,14 +1451,52 @@ namespace Rux {
         }
 
         void CheckEnumDecl(const EnumDecl& d) {
+            const TypeRef baseType = EnumBaseType(d);
+            if (!baseType.IsUnknown() && !baseType.IsInteger())
+                EmitError(d.location,
+                          std::format("enum '{}' base type must be an integer type", d.name));
             std::unordered_set<std::string> seen;
             for (const auto& variant : d.variants) {
                 if (!seen.insert(variant.name).second)
                     EmitError(variant.location,
                               std::format("duplicate variant '{}' in enum '{}'", variant.name, d.name));
+                if (variant.discriminant && (!variant.fields.empty() || !variant.namedFields.empty()))
+                    EmitError(variant.location,
+                              std::format("enum variant '{}::{}' cannot have both fields and a discriminant",
+                                          d.name, variant.name));
                 for (const auto& f : variant.fields)
                     ResolveType(*f);
+                std::unordered_set<std::string> namedFields;
+                for (const auto& f : variant.namedFields) {
+                    if (!namedFields.insert(f.name).second)
+                        EmitError(f.location,
+                                  std::format("duplicate field '{}' in enum variant '{}::{}'",
+                                              f.name, d.name, variant.name));
+                    ResolveType(*f.type);
+                }
             }
+        }
+
+        const EnumDecl::Variant* LookupEnumVariant(const std::string& enumName,
+                                                   const std::string& variantName) const {
+            const auto enumIt = enumDecls.find(enumName);
+            if (enumIt == enumDecls.end()) return nullptr;
+            for (const auto& variant : enumIt->second->variants) {
+                if (variant.name == variantName)
+                    return &variant;
+            }
+            return nullptr;
+        }
+
+        TypeRef EnumVariantConstructorType(const EnumDecl& decl,
+                                           const EnumDecl::Variant& variant) {
+            std::vector<TypeRef> params;
+            params.reserve(variant.fields.size() + variant.namedFields.size());
+            for (const auto& field : variant.fields)
+                params.push_back(ResolveType(*field));
+            for (const auto& field : variant.namedFields)
+                params.push_back(ResolveType(*field.type));
+            return TypeRef::MakeFunc(std::move(params), EnumType(decl));
         }
 
         void CheckUnionDecl(const UnionDecl& d) {
@@ -1770,8 +1948,45 @@ namespace Rux {
                 if (!p->path.empty() && !currentScope->Lookup(p->path[0]))
                     EmitError(p->location,
                               std::format("unknown name '{}' in enum pattern", p->path[0]));
-                for (const auto& a : p->args)
-                    CheckPattern(*a);
+                const EnumDecl::Variant* variant =
+                    p->path.size() >= 2 ? LookupEnumVariant(p->path[0], p->path[1]) : nullptr;
+                std::unordered_set<std::string> named;
+                for (const auto& arg : p->namedArgs) {
+                    if (!named.insert(arg.name).second) {
+                        EmitError(arg.location,
+                                  std::format("duplicate field '{}' in enum pattern", arg.name));
+                        continue;
+                    }
+
+                    const EnumDecl::Variant::NamedField* field = nullptr;
+                    if (variant) {
+                        for (const auto& candidate : variant->namedFields) {
+                            if (candidate.name == arg.name) {
+                                field = &candidate;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (field)
+                        CheckLetPattern(*arg.pattern, ResolveType(*field->type), false);
+                    else {
+                        if (variant)
+                            EmitError(arg.location,
+                                      std::format("unknown field '{}' in enum pattern", arg.name));
+                        CheckPattern(*arg.pattern);
+                    }
+                }
+                for (std::size_t i = 0; i < p->args.size(); ++i) {
+                    if (variant && i < variant->fields.size())
+                        CheckLetPattern(*p->args[i], ResolveType(*variant->fields[i]), false);
+                    else if (variant && i - variant->fields.size() < variant->namedFields.size())
+                        CheckLetPattern(*p->args[i],
+                                        ResolveType(*variant->namedFields[i - variant->fields.size()].type),
+                                        false);
+                    else
+                        CheckPattern(*p->args[i]);
+                }
             }
             // WildcardPattern, LiteralPattern: nothing to resolve
         }
@@ -1805,6 +2020,21 @@ namespace Rux {
                 if (e->segments.size() >= 2 &&
                     (first->kind == Symbol::Kind::Type ||
                         first->kind == Symbol::Kind::Interface)) {
+                    if (first->kind == Symbol::Kind::Type) {
+                        const std::string& variantName = e->segments[1];
+                        if (const EnumDecl::Variant* variant =
+                            LookupEnumVariant(first->name, variantName)) {
+                            if (e->segments.size() > 2) {
+                                EmitError(e->location,
+                                          std::format("'{}' is an enum variant, not a module",
+                                                      variantName));
+                                return TypeRef::MakeUnknown();
+                            }
+                            if (!variant->fields.empty() || !variant->namedFields.empty())
+                                return EnumVariantConstructorType(*enumDecls.at(first->name), *variant);
+                            return EnumType(*enumDecls.at(first->name));
+                        }
+                    }
                     TypeRef receiverType = first->type.IsUnknown()
                                                ? TypeRef::MakeNamed(first->name)
                                                : first->type;
@@ -2057,6 +2287,9 @@ namespace Rux {
 
             if (auto* e = dynamic_cast<const StructInitExpr*>(&expr)) {
                 CheckStructInitExpr(*e);
+                if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(e->typeName);
+                    enumDecl && variant)
+                    return EnumType(*enumDecl);
                 return TypeRef::MakeNamed(GenericStructInitName(*e));
             }
 
@@ -2085,6 +2318,27 @@ namespace Rux {
                 CheckExpr(*e->operand);
                 ResolveType(*e->type);
                 return TypeRef::MakeBool();
+            }
+
+            if (auto* e = dynamic_cast<const MatchExpr*>(&expr)) {
+                CheckExpr(*e->subject);
+                TypeRef resultType = TypeRef::MakeUnknown();
+                for (const auto& arm : e->arms) {
+                    PushScope();
+                    CheckPattern(*arm.pattern);
+                    TypeRef armType = CheckExpr(*arm.body);
+                    PopScope();
+
+                    if (resultType.IsUnknown()) {
+                        resultType = armType;
+                    }
+                    else if (!armType.IsUnknown() && !CanAssignExprTo(*arm.body, armType, resultType)) {
+                        EmitError(arm.location,
+                                  std::format("match arm type mismatch: expected '{}', found '{}'",
+                                              resultType.ToString(), armType.ToString()));
+                    }
+                }
+                return resultType;
             }
 
             if (auto* e = dynamic_cast<const BlockExpr*>(&expr)) {
@@ -2179,7 +2433,7 @@ namespace Rux {
                                               opName, paramTypes.size()));
                     }
                     else if (!paramTypes[0].IsUnknown() &&
-                             !CanAssignExprTo(rightExpr, r, paramTypes[0])) {
+                        !CanAssignExprTo(rightExpr, r, paramTypes[0])) {
                         EmitError(rightExpr.location,
                                   std::format("cannot pass '{}' to parameter of type '{}'",
                                               r.ToString(), paramTypes[0].ToString()));

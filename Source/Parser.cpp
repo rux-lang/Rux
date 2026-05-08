@@ -427,6 +427,8 @@ namespace Rux {
         decl->location = loc;
         decl->isPublic = isPublic;
         decl->name = Expect(TokenKind::Ident, "expected enum name").text;
+        if (Match(TokenKind::Colon))
+            decl->baseType = ParseType();
 
         Expect(TokenKind::LeftBrace, "expected '{'");
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
@@ -441,11 +443,36 @@ namespace Rux {
                 }
                 Expect(TokenKind::RightParen, "expected ')'");
             }
+            else if (Match(TokenKind::LeftBrace)) {
+                while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+                    EnumDecl::Variant::NamedField field;
+                    field.location = CurrentLocation();
+                    field.name = Expect(TokenKind::Ident, "expected variant field name").text;
+                    Expect(TokenKind::Colon, "expected ':'");
+                    field.type = ParseType();
+                    Expect(TokenKind::Semicolon, "expected ';' after variant field");
+                    variant.namedFields.push_back(std::move(field));
+                }
+                Expect(TokenKind::RightBrace, "expected '}'");
+            }
+
+            if (Match(TokenKind::Assign)) {
+                std::string value;
+                if (Match(TokenKind::Minus))
+                    value = "-";
+                value += Expect(TokenKind::IntLiteral, "expected integer enum discriminant").text;
+                variant.discriminant = std::move(value);
+            }
 
             decl->variants.push_back(std::move(variant));
-            if (!Match(TokenKind::Comma)) break;
+            if (Match(TokenKind::Comma)) {
+                if (Check(TokenKind::RightBrace))
+                    EmitError(Previous().location, "trailing comma is not allowed in enum declarations");
+            }
+            else {
+                break;
+            }
         }
-        // Allow trailing comma
         Expect(TokenKind::RightBrace, "expected '}'");
         return decl;
     }
@@ -1095,7 +1122,13 @@ namespace Rux {
             }
 
             s->arms.push_back(std::move(arm));
-            if (!Match(TokenKind::Comma)) break;
+            if (Match(TokenKind::Comma)) {
+                if (Check(TokenKind::RightBrace))
+                    EmitError(Previous().location, "trailing comma is not allowed in match blocks");
+            }
+            else {
+                break;
+            }
         }
         Expect(TokenKind::RightBrace, "expected '}'");
         return s;
@@ -1442,6 +1475,30 @@ namespace Rux {
                 }
                 continue;
             }
+            // Qualified initializer: Enum::Variant { field: value, ... }
+            if (structInitAllowed && Check(TokenKind::LeftBrace)) {
+                if (const auto* path = dynamic_cast<const PathExpr*>(left.get())) {
+                    auto e = std::make_unique<StructInitExpr>();
+                    e->location = loc;
+                    for (std::size_t i = 0; i < path->segments.size(); ++i) {
+                        if (i) e->typeName += "::";
+                        e->typeName += path->segments[i];
+                    }
+                    Advance(); // consume '{'
+                    while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+                        StructInitExpr::Field field;
+                        field.location = CurrentLocation();
+                        field.name = Expect(TokenKind::Ident, "expected field name").text;
+                        Expect(TokenKind::Colon, "expected ':'");
+                        field.value = ParseExpr();
+                        e->fields.push_back(std::move(field));
+                        if (!Match(TokenKind::Comma)) break;
+                    }
+                    Expect(TokenKind::RightBrace, "expected '}'");
+                    left = std::move(e);
+                    continue;
+                }
+            }
             // Function/direct call: expr(args)
             if (Check(TokenKind::LeftParen)) {
                 auto args = ParseArgList();
@@ -1501,6 +1558,43 @@ namespace Rux {
 
     ExprPtr Parser::ParsePrimary() {
         const auto loc = CurrentLocation();
+        if (Match(TokenKind::MatchKeyword)) {
+            auto e = std::make_unique<MatchExpr>();
+            e->location = loc;
+            structInitAllowed = false;
+            e->subject = ParseExpr();
+            structInitAllowed = true;
+
+            Expect(TokenKind::LeftBrace, "expected '{'");
+            while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+                MatchExpr::Arm arm;
+                arm.location = CurrentLocation();
+                arm.pattern = ParsePattern();
+                Expect(TokenKind::FatArrow, "expected '=>'");
+
+                if (Check(TokenKind::LeftBrace)) {
+                    auto bexpr = std::make_unique<BlockExpr>();
+                    bexpr->location = CurrentLocation();
+                    bexpr->block = ParseBlock();
+                    arm.body = std::move(bexpr);
+                }
+                else {
+                    arm.body = ParseExpr();
+                }
+
+                e->arms.push_back(std::move(arm));
+                if (Match(TokenKind::Comma)) {
+                    if (Check(TokenKind::RightBrace))
+                        EmitError(Previous().location, "trailing comma is not allowed in match blocks");
+                }
+                else {
+                    break;
+                }
+            }
+            Expect(TokenKind::RightBrace, "expected '}'");
+            return e;
+        }
+
         // Literals
         if (Check(TokenKind::IntLiteral) ||
             Check(TokenKind::FloatLiteral) ||
@@ -1697,14 +1791,14 @@ namespace Rux {
             return p;
         }
 
-        // Identifier-started patterns: ident, EnumName.Variant(args), TypeName { fields }
+        // Identifier-started patterns: ident, EnumName::Variant(args), TypeName { fields }
         if (Check(TokenKind::Ident)) {
             const std::string name = Advance().text;
 
-            // Enum pattern: Event.Click(x, y)
-            if (Check(TokenKind::Dot) && Peek(1).Is(TokenKind::Ident)) {
+            // Enum pattern: Event::Click(x, y)
+            if (Check(TokenKind::ColonColon) && Peek(1).Is(TokenKind::Ident)) {
                 std::vector<std::string> path = {name};
-                while (Match(TokenKind::Dot)) {
+                while (Match(TokenKind::ColonColon)) {
                     path.push_back(Expect(TokenKind::Ident, "expected variant name").text);
                 }
                 auto p = std::make_unique<EnumPattern>();
@@ -1716,6 +1810,25 @@ namespace Rux {
                         if (!Match(TokenKind::Comma)) break;
                     }
                     Expect(TokenKind::RightParen, "expected ')'");
+                }
+                else if (Match(TokenKind::LeftBrace)) {
+                    while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+                        EnumPattern::NamedArg arg;
+                        arg.location = CurrentLocation();
+                        arg.name = Expect(TokenKind::Ident, "expected variant field name").text;
+                        if (Match(TokenKind::Colon)) {
+                            arg.pattern = ParsePattern();
+                        }
+                        else {
+                            auto binding = std::make_unique<IdentPattern>();
+                            binding->location = arg.location;
+                            binding->name = arg.name;
+                            arg.pattern = std::move(binding);
+                        }
+                        p->namedArgs.push_back(std::move(arg));
+                        if (!Match(TokenKind::Comma)) break;
+                    }
+                    Expect(TokenKind::RightBrace, "expected '}'");
                 }
                 return p;
             }
@@ -1945,7 +2058,10 @@ namespace Rux {
             void PrintEnumDecl(const EnumDecl& e) {
                 Pad();
                 if (e.isPublic) out << "pub ";
-                out << "EnumDecl '" << e.name << "'\n";
+                out << "EnumDecl '" << e.name << "'";
+                if (e.baseType)
+                    out << " : " << TypeStr(e.baseType.get());
+                out << '\n';
                 ++indent;
                 for (const auto& v : e.variants) {
                     Pad();
@@ -1958,6 +2074,17 @@ namespace Rux {
                         }
                         out << ')';
                     }
+                    if (!v.namedFields.empty()) {
+                        out << " { ";
+                        for (std::size_t i = 0; i < v.namedFields.size(); ++i) {
+                            if (i) out << " ";
+                            out << v.namedFields[i].name << ": "
+                                << TypeStr(v.namedFields[i].type.get()) << ";";
+                        }
+                        out << " }";
+                    }
+                    if (v.discriminant)
+                        out << " = " << *v.discriminant;
                     out << '\n';
                 }
                 --indent;
@@ -2396,6 +2523,21 @@ namespace Rux {
                 else if (const auto* blockExpr = dynamic_cast<const BlockExpr*>(&expr)) {
                     if (blockExpr->block) PrintBlock(*blockExpr->block);
                 }
+                else if (const auto* matchExpr = dynamic_cast<const MatchExpr*>(&expr)) {
+                    Pad();
+                    out << "MatchExpr\n";
+                    ++indent;
+                    if (matchExpr->subject) PrintExpr(*matchExpr->subject);
+                    for (const auto& arm : matchExpr->arms) {
+                        Pad();
+                        out << "Arm\n";
+                        ++indent;
+                        PrintPattern(*arm.pattern);
+                        if (arm.body) PrintExpr(*arm.body);
+                        --indent;
+                    }
+                    --indent;
+                }
             }
 
             void PrintLiteralExpr(const LiteralExpr& e) const {
@@ -2451,11 +2593,19 @@ namespace Rux {
                     }
                     out << "'";
                     if (!p->args.empty()) out << " [" << p->args.size() << " bindings]";
+                    if (!p->namedArgs.empty()) out << " [" << p->namedArgs.size() << " fields]";
                     out << '\n';
-                    if (!p->args.empty()) {
+                    if (!p->args.empty() || !p->namedArgs.empty()) {
                         ++indent;
                         for (const auto& a : p->args)
                             if (a) PrintPattern(*a);
+                        for (const auto& a : p->namedArgs) {
+                            Pad();
+                            out << "." << a.name << ":\n";
+                            ++indent;
+                            if (a.pattern) PrintPattern(*a.pattern);
+                            --indent;
+                        }
                         --indent;
                     }
                 }

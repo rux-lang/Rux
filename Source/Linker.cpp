@@ -511,7 +511,9 @@ namespace Rux {
         for (size_t i = 0; i < numImports; ++i)
             symMap[importNames[i]] = kImageBase + textRva + thunkOff[i];
 
-        // Add symbols defined in each RCU file
+        // Add symbols defined in each RCU file. Local data/constant symbols are
+        // intentionally not added here: generated labels such as __f64_0 are
+        // reused per object and must resolve relative to their owning object.
         for (size_t i = 0; i < objects.size(); ++i) {
             const auto& obj = objects[i];
             const auto& lay = layouts[i];
@@ -519,6 +521,10 @@ namespace Rux {
                 if (sym.name.empty()) continue;
                 if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData)
                     continue; // already handled via thunks
+                if (sym.visibility == RcuSymVis::Local &&
+                    sym.kind != RcuSymKind::Func &&
+                    sym.name != "Main")
+                    continue;
                 uint64_t va = 0;
                 if (sym.sectionIdx == RCU_TEXT_IDX)
                     va = kImageBase + textRva + preambleSize + lay.textOff + sym.value;
@@ -607,8 +613,10 @@ namespace Rux {
                         }
                         targetVA = it->second;
                     }
-                    else if (!sym.name.empty() && symMap.count(sym.name)) {
-                        // Named symbol (cross-module or local with entry in symMap)
+                    else if (sym.visibility != RcuSymVis::Local &&
+                        !sym.name.empty() &&
+                        symMap.count(sym.name)) {
+                        // Named exported symbol, including cross-module references.
                         targetVA = symMap[sym.name];
                     }
                     else {
