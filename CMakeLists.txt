@@ -50,6 +50,10 @@ target_include_directories(rux PRIVATE
         ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
+if (WIN32)
+    target_link_libraries(rux PRIVATE Psapi)
+endif ()
+
 set_property(TARGET rux
         PROPERTY MSVC_RUNTIME_LIBRARY "$<IF:$<CONFIG:Release>,MultiThreaded,MultiThreadedDebugDLL>"
 )

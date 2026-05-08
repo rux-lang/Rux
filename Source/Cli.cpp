@@ -18,7 +18,12 @@
 #include "Rux/Version.h"
 
 #include <chrono>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <format>
 #include <print>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -27,7 +32,9 @@
 
 #ifdef _WIN32
 #  include <windows.h>
+#  include <psapi.h>
 #else
+#  include <sys/resource.h>
 #  include <sys/wait.h>
 #  include <unistd.h>
 #endif
@@ -35,6 +42,252 @@
 #include "Rux/SourceLoader.h"
 
 namespace Rux {
+    namespace {
+        struct BuildStats {
+            std::chrono::milliseconds lexing{0};
+            std::chrono::milliseconds parsing{0};
+            std::chrono::milliseconds semantic{0};
+            std::chrono::milliseconds hir{0};
+            std::chrono::milliseconds lir{0};
+            std::chrono::milliseconds codegen{0};
+            std::chrono::milliseconds linking{0};
+            std::chrono::milliseconds total{0};
+            double totalSeconds = 0.0;
+            std::size_t localFiles = 0;
+            std::size_t dependencyFiles = 0;
+            std::size_t localLines = 0;
+            std::size_t dependencyLines = 0;
+            std::size_t localTokens = 0;
+            std::size_t dependencyTokens = 0;
+            std::uintmax_t localSourceSize = 0;
+            std::uintmax_t dependencySourceSize = 0;
+            std::uintmax_t executableSize = 0;
+            std::uintmax_t peakMemoryBytes = 0;
+        };
+
+        [[nodiscard]] std::chrono::milliseconds ElapsedMs(
+            const std::chrono::steady_clock::time_point start,
+            const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now()) {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        }
+
+        [[nodiscard]] double ElapsedSeconds(
+            const std::chrono::steady_clock::time_point start,
+            const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now()) {
+            return std::chrono::duration<double>(end - start).count();
+        }
+
+        [[nodiscard]] std::size_t CountLines(std::string_view source) {
+            if (source.empty()) return 0;
+
+            std::size_t lines = 0;
+            for (const char ch : source)
+                if (ch == '\n') ++lines;
+            if (source.back() != '\n') ++lines;
+            return lines;
+        }
+
+        [[nodiscard]] std::size_t CountTokens(const LexerResult& result) {
+            if (result.tokens.empty()) return 0;
+            return result.tokens.back().IsEof() ? result.tokens.size() - 1 : result.tokens.size();
+        }
+
+        [[nodiscard]] std::string FormatNumber(std::uintmax_t value) {
+            std::string digits = std::to_string(value);
+            for (std::ptrdiff_t i = static_cast<std::ptrdiff_t>(digits.size()) - 3; i > 0; i -= 3)
+                digits.insert(static_cast<std::size_t>(i), 1, ',');
+            return digits;
+        }
+
+        [[nodiscard]] std::string FormatDecimal(double value, int decimals) {
+            std::string text = std::format("{:.{}f}", value, decimals);
+            auto dot = text.find('.');
+            if (dot == std::string::npos) return text;
+
+            while (!text.empty() && text.back() == '0')
+                text.pop_back();
+            if (!text.empty() && text.back() == '.')
+                text.pop_back();
+            return text;
+        }
+
+        [[nodiscard]] std::string FormatCompactNumber(double value) {
+            const double absValue = std::fabs(value);
+            if (absValue >= 1'000'000.0)
+                return FormatDecimal(value / 1'000'000.0, 1) + "M";
+            if (absValue >= 1'000.0)
+                return FormatDecimal(value / 1'000.0, 1) + "K";
+            return FormatNumber(static_cast<std::uintmax_t>(std::llround(value)));
+        }
+
+        [[nodiscard]] std::string FormatTokenThroughput(double tokensPerSecond) {
+            const double absValue = std::fabs(tokensPerSecond);
+            if (absValue >= 1'000'000.0)
+                return FormatDecimal(tokensPerSecond / 1'000'000.0, 1) + " M tok/s";
+            if (absValue >= 1'000.0)
+                return FormatDecimal(tokensPerSecond / 1'000.0, 1) + " K tok/s";
+            return FormatNumber(static_cast<std::uintmax_t>(std::llround(tokensPerSecond))) + " tok/s";
+        }
+
+        [[nodiscard]] std::string FormatSize(std::uintmax_t bytes) {
+            const double kb = static_cast<double>(bytes) / 1024.0;
+            if (kb < 1024.0)
+                return FormatNumber(static_cast<std::uintmax_t>(std::llround(kb))) + " KB";
+
+            const double mb = kb / 1024.0;
+            return FormatDecimal(mb, 2) + " MB";
+        }
+
+        [[nodiscard]] std::string TargetName() {
+#if defined(_WIN32)
+            std::string os = "Windows";
+#elif defined(__APPLE__)
+            std::string os = "macOS";
+#elif defined(__linux__)
+            std::string os = "Linux";
+#else
+            std::string os = "Unknown";
+#endif
+
+#if defined(_M_X64) || defined(__x86_64__) || defined(__amd64__)
+            return os + " x64";
+#elif defined(_M_IX86) || defined(__i386__)
+            return os + " x86";
+#elif defined(_M_ARM64) || defined(__aarch64__)
+            return os + " arm64";
+#elif defined(_M_ARM) || defined(__arm__)
+            return os + " arm";
+#else
+            return os;
+#endif
+        }
+
+        [[nodiscard]] std::uintmax_t PeakMemoryBytes() {
+#ifdef _WIN32
+            PROCESS_MEMORY_COUNTERS counters{};
+            if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters)))
+                return counters.PeakWorkingSetSize;
+            return 0;
+#else
+            rusage usage{};
+            if (getrusage(RUSAGE_SELF, &usage) == 0)
+#  if defined(__APPLE__)
+                return static_cast<std::uintmax_t>(usage.ru_maxrss);
+#  else
+                return static_cast<std::uintmax_t>(usage.ru_maxrss) * 1024;
+#  endif
+            return 0;
+#endif
+        }
+
+        void PrintBuildStats(const std::filesystem::path& exePath,
+                             std::string_view profileName,
+                             const BuildStats& stats) {
+            const auto totalMs = stats.total.count();
+            const double seconds = stats.totalSeconds;
+            const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
+            const std::size_t totalLines = stats.localLines + stats.dependencyLines;
+            const std::size_t totalTokens = stats.localTokens + stats.dependencyTokens;
+            const std::uintmax_t totalSourceSize = stats.localSourceSize + stats.dependencySourceSize;
+            const double tokenThroughput = seconds > 0.0
+                                               ? static_cast<double>(totalTokens) / seconds
+                                               : 0.0;
+            const double compileSpeed = seconds > 0.0
+                                            ? static_cast<double>(totalLines) / seconds
+                                            : 0.0;
+            const double throughput = seconds > 0.0
+                                          ? static_cast<double>(totalSourceSize) / 1024.0 / 1024.0 / seconds
+                                          : 0.0;
+
+            std::print(
+                "Rux Compiler {}\n"
+                "Target: {}\n"
+                "Mode: {}\n\n"
+                "Build finished successfully.\n\n"
+                "Total build time:            {} ms\n"
+                "  Lexing:                    {} ms\n"
+                "  Parsing:                   {} ms\n"
+                "  Semantic:                  {} ms\n"
+                "  HIR:                       {} ms\n"
+                "  LIR:                       {} ms\n"
+                "  Codegen:                   {} ms\n"
+                "  Linking:                   {} ms\n\n"
+                "Total files:                 {}\n"
+                "  Local files:               {}\n"
+                "  Dependency files:          {}\n\n"
+                "Total lines:                 {}\n"
+                "  Local lines:               {}\n"
+                "  Dependency lines:          {}\n\n"
+                "Total tokens:                {}\n"
+                "  Local tokens:              {}\n"
+                "  Dependency tokens:         {}\n\n"
+                "Total source size:           {}\n"
+                "  Local source size:         {}\n"
+                "  Dependency source size:    {}\n\n"
+                "Output:\n"
+                "  Executable:                {}\n"
+                "  Executable size:           {}\n"
+                "  Peak memory:               {}\n\n"
+                "Performance:\n"
+                "  Compile speed:             {} LOC/s\n"
+                "  Token throughput:          {}\n"
+                "  Total throughput:          {} MB/s\n",
+                RUX_VERSION,
+                TargetName(),
+                profileName,
+                totalMs,
+                stats.lexing.count(),
+                stats.parsing.count(),
+                stats.semantic.count(),
+                stats.hir.count(),
+                stats.lir.count(),
+                stats.codegen.count(),
+                stats.linking.count(),
+                FormatNumber(totalFiles),
+                FormatNumber(stats.localFiles),
+                FormatNumber(stats.dependencyFiles),
+                FormatNumber(totalLines),
+                FormatNumber(stats.localLines),
+                FormatNumber(stats.dependencyLines),
+                FormatNumber(totalTokens),
+                FormatNumber(stats.localTokens),
+                FormatNumber(stats.dependencyTokens),
+                FormatSize(totalSourceSize),
+                FormatSize(stats.localSourceSize),
+                FormatSize(stats.dependencySourceSize),
+                exePath.filename().string(),
+                FormatSize(stats.executableSize),
+                FormatSize(stats.peakMemoryBytes),
+                FormatNumber(static_cast<std::uintmax_t>(std::llround(compileSpeed))),
+                FormatTokenThroughput(tokenThroughput),
+                FormatDecimal(throughput, 2));
+        }
+
+        void PrintBuildSummary(const std::filesystem::path& exePath,
+                               std::string_view profileName,
+                               const BuildStats& stats) {
+            const auto totalMs = stats.total.count();
+            const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
+            const std::size_t totalLines = stats.localLines + stats.dependencyLines;
+            const std::size_t totalTokens = stats.localTokens + stats.dependencyTokens;
+            const double compileSpeed = stats.totalSeconds > 0.0
+                                            ? static_cast<double>(totalLines) / stats.totalSeconds
+                                            : 0.0;
+
+            std::print("Built `{}` [{}] in {} ms\n",
+                       profileName,
+                       exePath.string(),
+                       totalMs);
+            std::print("{} files | {} LOC | {} tokens | {} LOC/s | {} {}\n",
+                       FormatNumber(totalFiles),
+                       FormatNumber(totalLines),
+                       FormatCompactNumber(static_cast<double>(totalTokens)),
+                       FormatCompactNumber(compileSpeed),
+                       exePath.filename().string(),
+                       FormatSize(stats.executableSize));
+        }
+    }
+
     Cli::Cli(const int argc, char* argv[])
         : args(argv, argc) {}
 
@@ -214,6 +467,7 @@ namespace Rux {
         bool dumpLir = false;
         bool dumpAsm = false;
         bool dumpRcu = false;
+        bool showStats = false;
         for (std::size_t i = 0; i < args.size(); ++i) {
             std::string_view arg = args[i];
             if (arg == "--release") {
@@ -226,6 +480,10 @@ namespace Rux {
             }
             if (arg == "-q" || arg == "--quiet") continue;
             if (arg == "-v" || arg == "--verbose") continue;
+            if (arg == "--stats") {
+                showStats = true;
+                continue;
+            }
             if (arg == "--dump-tokens") {
                 dumpTokens = true;
                 continue;
@@ -279,27 +537,38 @@ namespace Rux {
         std::string_view profileName = isRelease ? "Release" : "Debug";
         if (!profile.empty()) profileName = profile;
 
-        if (!opts.quiet)
-            std::print("   Compiling {} v{} ({})\n",
+        if (!opts.quiet && !showStats)
+            std::print("Compiling {} v{} [{}]\n",
                        manifest->package.name,
                        manifest->package.version,
                        manifestPath->parent_path().string());
 
         // ── Lex ───────────────────────────────────────────────────────────────
 
+        BuildStats stats;
         auto loadResult = SourceLoader::Load(manifestPath->parent_path());
         if (!loadResult) return 1;
+
+        stats.localFiles = loadResult->files.size();
+        for (const auto& file : loadResult->files) {
+            stats.localLines += CountLines(file.source);
+            stats.localSourceSize += file.source.size();
+        }
 
         for (const auto& err : loadResult->errors)
             std::print(stderr, "{}", err);
 
         bool lexErrors = false;
+        std::vector<LexerResult> lexResults;
+        lexResults.reserve(loadResult->files.size());
+        const auto localLexingStart = std::chrono::steady_clock::now();
         for (const auto& file : loadResult->files) {
             if (opts.verbose)
                 std::print("     Lexing {}\n", file.path.string());
 
             Lexer lexer(file.source, file.path.string());
             auto lexResult = lexer.Tokenize();
+            stats.localTokens += CountTokens(lexResult);
 
             for (const auto& diag : lexResult.diagnostics) {
                 const auto& loc = diag.location;
@@ -317,7 +586,10 @@ namespace Rux {
                 tokPath.replace_extension(".tokens");
                 Lexer::DumpTokens(lexResult, tokPath);
             }
+            lexResults.push_back(std::move(lexResult));
         }
+        const auto localLexingEnd = std::chrono::steady_clock::now();
+        stats.lexing += ElapsedMs(localLexingStart, localLexingEnd);
         if (lexErrors) return 1;
 
         // Parse
@@ -326,15 +598,16 @@ namespace Rux {
         std::vector<ParseResult> parseResults;
         parseResults.reserve(loadResult->files.size());
 
-        for (const auto& file : loadResult->files) {
+        const auto localParsingStart = std::chrono::steady_clock::now();
+        for (std::size_t fileIndex = 0; fileIndex < loadResult->files.size(); ++fileIndex) {
+            const auto& file = loadResult->files[fileIndex];
             if (opts.verbose)
                 std::print("    Parsing {}\n", file.path.string());
 
-            Lexer lexer(file.source, file.path.string());
-            auto lexResult = lexer.Tokenize();
+            auto& lexResult = lexResults[fileIndex];
             if (lexResult.HasErrors()) continue;
 
-            Parser parser(lexResult.tokens, file.path.string());
+            Parser parser(std::move(lexResult.tokens), file.path.string());
             auto parseResult = parser.Parse();
 
             for (const auto& diag : parseResult.diagnostics) {
@@ -357,6 +630,7 @@ namespace Rux {
             }
             parseResults.push_back(std::move(parseResult));
         }
+        stats.parsing += ElapsedMs(localParsingStart);
         if (parseErrors) return 1;
 
         // Load dependency packages referenced by import declarations
@@ -444,6 +718,11 @@ namespace Rux {
                 if (!depLoadResult) {
                     return 1;
                 }
+                stats.dependencyFiles += depLoadResult->files.size();
+                for (const auto& depFile : depLoadResult->files) {
+                    stats.dependencyLines += CountLines(depFile.source);
+                    stats.dependencySourceSize += depFile.source.size();
+                }
 
                 for (const auto& error : depLoadResult->errors)
                     std::print(stderr, "{}", error);
@@ -453,8 +732,12 @@ namespace Rux {
                 packageParseResults.reserve(depLoadResult->files.size());
 
                 for (const auto& depFile : depLoadResult->files) {
+                    const auto depLexingStart = std::chrono::steady_clock::now();
                     Lexer depLexer(depFile.source, depFile.path.string());
                     auto depLex = depLexer.Tokenize();
+                    const auto depLexingEnd = std::chrono::steady_clock::now();
+                    stats.lexing += ElapsedMs(depLexingStart, depLexingEnd);
+                    stats.dependencyTokens += CountTokens(depLex);
                     for (const auto& diag : depLex.diagnostics) {
                         const char* sev = diag.severity == LexerDiagnostic::Severity::Error
                                               ? "error"
@@ -465,8 +748,10 @@ namespace Rux {
                     }
                     if (depLex.HasErrors()) return 1;
 
-                    Parser depParser(depLex.tokens, depFile.path.string());
+                    const auto depParsingStart = std::chrono::steady_clock::now();
+                    Parser depParser(std::move(depLex.tokens), depFile.path.string());
                     auto depParse = depParser.Parse();
+                    stats.parsing += ElapsedMs(depParsingStart);
                     for (const auto& diag : depParse.diagnostics) {
                         const char* sev = diag.severity == ParserDiagnostic::Severity::Error
                                               ? "error"
@@ -497,9 +782,9 @@ namespace Rux {
                 }
             }
         }
-
         // Semantic analysis
 
+        const auto semanticStart = std::chrono::steady_clock::now();
         if (opts.verbose)
             std::print("  Analyzing {}\n", manifest->package.name);
 
@@ -537,9 +822,11 @@ namespace Rux {
             Sema::DumpResult(semaResult, semaDir / "sema.txt");
         }
         if (semaResult.HasErrors()) return 1;
+        stats.semantic = ElapsedMs(semanticStart);
 
         // HIR
 
+        const auto hirStart = std::chrono::steady_clock::now();
         if (opts.verbose)
             std::print("  Lowering {}\n", manifest->package.name);
 
@@ -558,9 +845,11 @@ namespace Rux {
             std::filesystem::create_directories(hirDir);
             Hir::Dump(hirPackage, hirDir / "hir.txt");
         }
+        stats.hir = ElapsedMs(hirStart);
 
         // LIR
 
+        const auto lirStart = std::chrono::steady_clock::now();
         if (opts.verbose)
             std::print("  Emitting LIR for {}\n", manifest->package.name);
 
@@ -572,9 +861,11 @@ namespace Rux {
             std::filesystem::create_directories(lirDir);
             Lir::Dump(lirPackage, lirDir / "lir.txt");
         }
+        stats.lir = ElapsedMs(lirStart);
 
         // Assembly dump (optional)
 
+        const auto codegenStart = std::chrono::steady_clock::now();
         if (dumpAsm) {
             if (opts.verbose)
                 std::print("  Emitting assembly for {}\n", manifest->package.name);
@@ -605,9 +896,11 @@ namespace Rux {
                 Rcu::Dump(rcuFile, dumpDir / (stem.string() + ".rcu.txt"));
             }
         }
+        stats.codegen = ElapsedMs(codegenStart);
 
         // Link
 
+        const auto linkingStart = std::chrono::steady_clock::now();
         if (opts.verbose)
             std::print("   Linking {}\n", manifest->package.name);
 
@@ -621,17 +914,25 @@ namespace Rux {
                 std::print(stderr, "error: {}\n", err.message);
             return 1;
         }
+        stats.linking = ElapsedMs(linkingStart);
 
         // Done
 
+        const auto buildEnd = std::chrono::steady_clock::now();
+        stats.total = ElapsedMs(t0, buildEnd);
+        stats.totalSeconds = ElapsedSeconds(t0, buildEnd);
+        std::error_code sizeError;
+        stats.executableSize = std::filesystem::file_size(exePath, sizeError);
+        if (sizeError) stats.executableSize = 0;
+        stats.peakMemoryBytes = PeakMemoryBytes();
+
+        if (!opts.quiet && showStats) {
+            PrintBuildStats(exePath, profileName, stats);
+            return 0;
+        }
+
         if (!opts.quiet) {
-            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - t0).count();
-            std::print("    Finished `{}` profile [{}] in {}.{:02}s\n",
-                       profileName,
-                       exePath.string(),
-                       elapsed / 1000,
-                       (elapsed % 1000) / 10);
+            PrintBuildSummary(exePath, profileName, stats);
         }
         return 0;
     }
@@ -981,11 +1282,15 @@ namespace Rux {
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
         // Build first
+        GlobalOptions buildOpts = opts;
+        if (!opts.verbose)
+            buildOpts.quiet = true;
+
         std::vector<std::string_view> buildArgs;
         if (isRelease) buildArgs.emplace_back("--release");
-        if (opts.quiet) buildArgs.emplace_back("--quiet");
-        if (opts.verbose) buildArgs.emplace_back("--verbose");
-        int rc = RunBuild(buildArgs, opts);
+        if (buildOpts.quiet) buildArgs.emplace_back("--quiet");
+        if (buildOpts.verbose) buildArgs.emplace_back("--verbose");
+        int rc = RunBuild(buildArgs, buildOpts);
         if (rc != 0) return rc;
         std::string_view profileName = isRelease ? "Release" : "Debug";
         auto root = manifestPath->parent_path();
@@ -999,7 +1304,7 @@ namespace Rux {
             std::print(stderr, "error: executable not found: '{}'\n", exePath.string());
             return 1;
         }
-        if (!opts.quiet)
+        if (opts.verbose && !opts.quiet)
             std::print("     Running `{}`\n", exePath.string());
 #ifdef _WIN32
         std::string cmdLine = "\"" + exePath.string() + "\"";
@@ -1228,6 +1533,7 @@ namespace Rux {
             "  --debug              Build with debug symbols (unoptimized output)\n"
             "  --profile <n>        Build using a custom profile defined in Rux.toml\n"
             "  --release            Build with release profile (optimized, no debug info)\n"
+            "  --stats              Print build timing, source, performance, and output statistics\n"
             "  --target <triple>    Build for the specified target platform (e.g. x86, x64)\n"
             "  -q, --quiet          Suppress non-essential output (only errors are shown)\n"
             "  -v, --verbose        Enable verbose output for detailed build information\n"
@@ -1245,6 +1551,7 @@ namespace Rux {
             "  rux build\n"
             "  rux build --debug\n"
             "  rux build --release\n"
+            "  rux build --stats\n"
             "  rux build --verbose --release\n"
             "  rux build --dump-ast\n"
             "  rux build --dump-hir\n"
