@@ -165,6 +165,19 @@ namespace Rux {
         std::vector<HirExprPtr> args;
     };
 
+    // Wrap a concrete value into an interface fat pointer {data_ptr, vtable_ptr}
+    struct HirCoerceToInterfaceExpr : HirExpr {
+        HirExprPtr value;
+        std::string vtableLabel;
+    };
+
+    // Call a method through an interface fat pointer (dynamic dispatch via vtable)
+    struct HirInterfaceCallExpr : HirExpr {
+        HirExprPtr fatPtrExpr; // expression that yields the fat-pointer address (8 bytes)
+        int methodIdx = 0;     // index of the method in the vtable
+        std::vector<HirExprPtr> args;
+    };
+
     // a[i]
     struct HirIndexExpr : HirExpr {
         HirExprPtr object;
@@ -251,6 +264,8 @@ namespace Rux {
         std::string name;
         HirPatternPtr pattern;
         TypeRef type;
+        TypeRef stackBufferElementType;
+        std::uint64_t stackBufferLength = 0;
         HirExprPtr init;
     };
 

@@ -166,6 +166,7 @@ namespace Rux {
 
             // Struct field layouts (built once)
             LayoutMap layouts;
+            std::unordered_set<std::string> interfaceNames;
 
             // Per-function state
             struct PhiMove {
@@ -268,6 +269,7 @@ namespace Rux {
             [[nodiscard]] int SizeOfRuntime(const TypeRef& t) const {
                 if (t.kind == TypeRef::Kind::Named) {
                     const std::string base = BaseTypeName(t.name);
+                    if (interfaceNames.count(base)) return 16; // {data: *opaque, vtable: *opaque}
                     if (base == "Slice") return 16;
                     auto it = layouts.find(base);
                     if (it != layouts.end()) return it->second.totalSize;
@@ -429,9 +431,12 @@ namespace Rux {
 
             // Module / function generation
             void BuildLayouts() {
-                for (const auto& mod : pkg.modules)
+                for (const auto& mod : pkg.modules) {
+                    for (const auto& name : mod.interfaceNames)
+                        interfaceNames.insert(name);
                     for (const auto& s : mod.structs)
                         layouts[s.name] = ComputeLayout(s, layouts);
+                }
             }
 
             void GenModule(const LirModule& mod) {
@@ -448,6 +453,13 @@ namespace Rux {
                     data << vis;
                     data << c.name << ":  ; " << c.type.ToString() << " = " << c.value << "\n";
                     data << "    ; (constant — initialized at link time)\n";
+                }
+
+                // Vtables
+                for (const auto& vt : mod.vtables) {
+                    rodata << vt.label << ":\n";
+                    for (const auto& m : vt.methods)
+                        rodata << "    dq " << m << "\n";
                 }
 
                 // Functions
@@ -956,6 +968,11 @@ namespace Rux {
                     // The phi dst slot is already allocated; nothing to emit here.
                     break;
 
+                case LirOpcode::GlobalAddr:
+                    TI(std::format("{:<8}rax, [rel {}]", "lea", instr.strArg));
+                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+                    break;
+
                 default:
                     TC(std::format("TODO: opcode {}", static_cast<int>(instr.op)));
                     break;
@@ -984,6 +1001,11 @@ namespace Rux {
                 }
                 if (inner.kind != TypeRef::Kind::Named) return 0;
                 const std::string baseName = BaseTypeName(inner.name);
+                if (interfaceNames.count(baseName)) {
+                    if (fieldName == "data") return 0;
+                    if (fieldName == "vtable") return 8;
+                    return 0;
+                }
                 if (baseName == "Slice") {
                     if (fieldName == "data") return 0;
                     if (fieldName == "length") return 8;
@@ -1032,9 +1054,9 @@ namespace Rux {
                 if (srcs.empty()) return;
                 LirReg callee = srcs[0];
                 std::vector<LirReg> args(srcs.begin() + 1, srcs.end());
-                // Load callee pointer into r10 before setting up args
-                TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(callee)));
                 EmitCallArgs(args);
+                // Load the callee after preparing args because arg setup uses r10.
+                TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(callee)));
                 TI("call    r10");
                 if (dst != LirNoReg && !retType.IsOpaque())
                     StoreA(dst, retType);

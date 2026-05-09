@@ -341,6 +341,8 @@ namespace Rux {
         p.name = Expect(TokenKind::Ident, "expected parameter name").text;
         Expect(TokenKind::Colon, "expected ':'");
         p.type = ParseType();
+        if (allowVariadic && Match(TokenKind::DotDotDot))
+            p.isVariadic = true;
         return p;
     }
 
@@ -373,7 +375,7 @@ namespace Rux {
             decl->typeParams = ParseTypeParams();
 
         Expect(TokenKind::LeftParen, "expected '('");
-        decl->params = ParseParamList(false);
+        decl->params = ParseParamList(true);
         Expect(TokenKind::RightParen, "expected ')'");
 
         if (Match(TokenKind::Arrow))
@@ -533,9 +535,13 @@ namespace Rux {
         auto decl = std::make_unique<ImplDecl>();
         decl->location = loc;
 
-        // extend TypeName  or  extend InterfaceName for TypeName
+        // extend TypeName  or  extend TypeName : InterfaceName  or  extend InterfaceName for TypeName
         const std::string firstName = Expect(TokenKind::Ident, "expected type name").text;
-        if (Match(TokenKind::ForKeyword)) {
+        if (Match(TokenKind::Colon)) {
+            decl->typeName = firstName;
+            decl->interfaceName = Expect(TokenKind::Ident, "expected interface name after ':'").text;
+        }
+        else if (Match(TokenKind::ForKeyword)) {
             decl->interfaceName = firstName;
             decl->typeName = Expect(TokenKind::Ident, "expected type name after 'for'").text;
         }
@@ -1005,8 +1011,12 @@ namespace Rux {
         if (Match(TokenKind::Colon))
             s->type = ParseType();
 
-        Expect(TokenKind::Assign, "expected '='");
-        s->init = ParseExpr();
+        if (Match(TokenKind::Assign)) {
+            s->init = ParseExpr();
+        }
+        else if (!s->type) {
+            EmitError(CurrentLocation(), "expected '='");
+        }
         Expect(TokenKind::Semicolon, "expected ';'");
         return s;
     }

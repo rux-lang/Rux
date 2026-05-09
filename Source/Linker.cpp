@@ -32,8 +32,11 @@ namespace Rux {
     static constexpr uint32_t kScnRData = 0x40000040u; // CNT_INITIALIZED_DATA | MEM_READ
     static constexpr uint32_t kScnData = 0xC0000040u; // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
 
-    // DllCharacteristics: HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT | TERMINAL_SERVER_AWARE
-    static constexpr uint16_t kDllChars = 0x8160u;
+    // DllCharacteristics: NX_COMPAT | TERMINAL_SERVER_AWARE.
+    // The linker currently does not emit a .reloc table, so do not opt into
+    // ASLR. Absolute relocations such as vtable function pointers must remain
+    // valid at the preferred image base.
+    static constexpr uint16_t kDllChars = 0x8100u;
 
     // Buffer helpers
     using Buf = std::vector<uint8_t>;

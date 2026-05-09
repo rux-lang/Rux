@@ -362,7 +362,9 @@ namespace Rux {
         std::vector<std::string> currentTypeParams;
         std::unordered_map<std::string, const StructDecl*> structDecls;
         std::unordered_map<std::string, const EnumDecl*> enumDecls;
+        std::unordered_map<std::string, const InterfaceDecl*> interfaceDecls;
         std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl*>>> methodsByType;
+        std::unordered_map<std::string, std::unordered_set<std::string>> typeImplementsInterfaces;
 
         // Diagnostics
 
@@ -587,6 +589,7 @@ namespace Rux {
             else if (auto* d = dynamic_cast<const UnionDecl*>(&decl))
                 simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "union");
             else if (auto* d = dynamic_cast<const InterfaceDecl*>(&decl)) {
+                interfaceDecls[d->name] = d;
                 Symbol sym;
                 sym.kind = Symbol::Kind::Interface;
                 sym.name = d->name;
@@ -666,6 +669,8 @@ namespace Rux {
             else if (auto* d = dynamic_cast<const ImplDecl*>(&decl)) {
                 for (const auto& method : d->methods)
                     methodsByType[d->typeName][method->name].push_back(method.get());
+                if (d->interfaceName)
+                    typeImplementsInterfaces[d->typeName].insert(*d->interfaceName);
             }
             // Import declarations don't add names in the first pass.
         }
@@ -891,18 +896,75 @@ namespace Rux {
             return literal && literal->token.kind == TokenKind::NullKeyword;
         }
 
-        static bool CanAssignExprTo(const Expr& expr, const TypeRef& exprType, const TypeRef& targetType) {
+        static bool IsUnsuffixedIntegerLiteral(const Expr& expr) {
+            const LiteralExpr* literal = dynamic_cast<const LiteralExpr*>(&expr);
+            if (!literal) {
+                const auto* unary = dynamic_cast<const UnaryExpr*>(&expr);
+                if (!unary || unary->op != TokenKind::Minus) return false;
+                literal = dynamic_cast<const LiteralExpr*>(unary->operand.get());
+            }
+            return literal &&
+                literal->token.kind == TokenKind::IntLiteral &&
+                NumericLiteralSuffix(literal->token.text).empty();
+        }
+
+        static bool IsIntegerLiteralOutOfRangeFor(const Expr& expr, const TypeRef& targetType) {
+            return targetType.IsInteger() &&
+                IsUnsuffixedIntegerLiteral(expr) &&
+                !UnsuffixedIntegerLiteralFits(expr, targetType);
+        }
+
+        bool TypeImplementsInterface(const TypeRef& exprType, const TypeRef& targetType) const {
+            if (targetType.kind != TypeRef::Kind::Named) return false;
+            Symbol* sym = currentScope->Lookup(targetType.name);
+            if (!sym || sym->kind != Symbol::Kind::Interface) return false;
+            // An empty interface is trivially satisfied by every type.
+            if (sym->interfaceMethods.empty()) return true;
+            const std::string typeName = exprType.ToString();
+            auto it = typeImplementsInterfaces.find(typeName);
+            return it != typeImplementsInterfaces.end() && it->second.count(targetType.name);
+        }
+
+        bool CanAssignExprTo(const Expr& expr, const TypeRef& exprType, const TypeRef& targetType) const {
+            if (targetType.IsInteger() && IsUnsuffixedIntegerLiteral(expr))
+                return UnsuffixedIntegerLiteralFits(expr, targetType);
+
             return exprType.IsAssignableTo(targetType) ||
                 (IsNullLiteral(expr) && targetType.kind == TypeRef::Kind::Pointer) ||
-                UnsuffixedIntegerLiteralFits(expr, targetType);
+                UnsuffixedIntegerLiteralFits(expr, targetType) ||
+                TypeImplementsInterface(exprType, targetType);
         }
 
         static std::string NamedBaseTypeName(const TypeRef& type) {
             const TypeRef* named = &type;
             if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty())
                 named = &type.inner[0];
-            if (named->kind != TypeRef::Kind::Named) return {};
-            return BaseTypeName(named->name);
+            if (named->kind == TypeRef::Kind::Named)
+                return BaseTypeName(named->name);
+            switch (named->kind) {
+            case TypeRef::Kind::Bool8:
+            case TypeRef::Kind::Bool16:
+            case TypeRef::Kind::Bool32:
+            case TypeRef::Kind::Char8:
+            case TypeRef::Kind::Char16:
+            case TypeRef::Kind::Char32:
+            case TypeRef::Kind::Int8:
+            case TypeRef::Kind::Int16:
+            case TypeRef::Kind::Int32:
+            case TypeRef::Kind::Int64:
+            case TypeRef::Kind::UInt8:
+            case TypeRef::Kind::UInt16:
+            case TypeRef::Kind::UInt32:
+            case TypeRef::Kind::UInt64:
+            case TypeRef::Kind::Int:
+            case TypeRef::Kind::UInt:
+            case TypeRef::Kind::Float32:
+            case TypeRef::Kind::Float64:
+            case TypeRef::Kind::Str:
+                return named->ToString();
+            default:
+                return {};
+            }
         }
 
         std::unordered_map<std::string, TypeRef> StructTypeSubstitutions(
@@ -1101,6 +1163,32 @@ namespace Rux {
             return type;
         }
 
+        [[nodiscard]] const FuncDecl* LookupInterfaceMethod(const TypeRef& receiverType,
+                                                            const std::string& methodName) const {
+            const std::string ifaceName = NamedBaseTypeName(receiverType);
+            if (ifaceName.empty()) return nullptr;
+            const auto ifaceIt = interfaceDecls.find(ifaceName);
+            if (ifaceIt == interfaceDecls.end()) return nullptr;
+            for (const auto& method : ifaceIt->second->methods)
+                if (method->name == methodName) return method.get();
+            return nullptr;
+        }
+
+        TypeRef ResolveInterfaceMethodReturnType(const FuncDecl& method) {
+            return method.returnType
+                       ? ResolveType(*method.returnType->get())
+                       : TypeRef::MakeOpaque();
+        }
+
+        std::vector<TypeRef> ResolveInterfaceMethodParamTypes(const FuncDecl& method) {
+            std::vector<TypeRef> params;
+            for (const auto& param : method.params) {
+                if (param.isVariadic) continue;
+                params.push_back(ResolveType(*param.type));
+            }
+            return params;
+        }
+
         const FuncDecl* LookupFunctionOverload(const Symbol& sym,
                                                const std::vector<TypeRef>& argTypes) {
             if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) return nullptr;
@@ -1109,9 +1197,10 @@ namespace Rux {
                 TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
                 if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) continue;
                 const std::size_t paramCount = funcType.inner.size() - 1;
-                if (paramCount != argTypes.size()) continue;
+                const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
+                if (isVariadic ? argTypes.size() < paramCount : paramCount != argTypes.size()) continue;
                 bool match = true;
-                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                for (std::size_t i = 0; i < paramCount; ++i) {
                     const TypeRef& paramType = funcType.inner[i];
                     if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
                         !argTypes[i].IsAssignableTo(paramType)) {
@@ -1138,6 +1227,10 @@ namespace Rux {
                 const std::string baseName = BaseTypeName(type.name);
                 if (const auto enumIt = enumDecls.find(baseName); enumIt != enumDecls.end())
                     return SizeOfTypeRef(EnumBaseType(*enumIt->second), substitutions);
+                // Interface fat pointers are {data: *opaque, vtable: *opaque} = 16 bytes
+                if (Symbol* sym = currentScope->Lookup(baseName);
+                    sym && sym->kind == Symbol::Kind::Interface)
+                    return 16;
                 return SizeOfStruct(baseName, substitutions);
             }
 
@@ -1295,12 +1388,14 @@ namespace Rux {
             }
 
             for (const auto& param : d.params) {
-                if (param.isVariadic || param.name == "self") continue;
+                if (param.name == "self") continue;
                 Symbol sym;
                 sym.kind = Symbol::Kind::Var;
                 sym.name = param.name;
                 sym.location = param.location;
-                sym.type = ResolveType(*param.type);
+                sym.type = param.isVariadic
+                    ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
+                    : ResolveType(*param.type);
                 sym.isMut = false;
                 Define(sym);
             }
@@ -1550,7 +1645,12 @@ namespace Rux {
             bool savedInImpl = inImpl;
             TypeRef savedSelfType = currentSelfType;
             inImpl = true;
-            currentSelfType = TypeRef::MakePointer(TypeRef::MakeNamed(d.typeName));
+            TypeRef selfBase;
+            if (Symbol* sym = currentScope->Lookup(d.typeName); sym && !sym->type.IsUnknown())
+                selfBase = sym->type;
+            else
+                selfBase = TypeRef::MakeNamed(d.typeName);
+            currentSelfType = TypeRef::MakePointer(selfBase);
             for (const auto& m : d.methods)
                 CheckFuncDecl(*m, /*isMethod=*/true);
             currentSelfType = savedSelfType;
@@ -1749,20 +1849,32 @@ namespace Rux {
                 CheckExpr(*s->expr);
             }
             else if (auto* s = dynamic_cast<const LetStmt*>(&stmt)) {
-                TypeRef initType = CheckExpr(*s->init);
+                TypeRef initType = s->init ? CheckExpr(*s->init) : TypeRef::MakeUnknown();
                 TypeRef declType = s->type
                                        ? ResolveType(*s->type->get())
                                        : initType;
+
+                if (!s->init && !s->type)
+                    EmitError(s->location, "uninitialized variable requires an explicit type");
+
+                if (!s->init && !s->isMut)
+                    EmitError(s->location, "immutable variable requires an initializer");
+
+                if (!s->init && s->pattern)
+                    EmitError(s->location, "destructuring declaration requires an initializer");
 
                 if (!s->type && declType.IsUnknown() && !s->pattern)
                     EmitWarning(s->location,
                                 std::format("cannot infer type of '{}'", s->name));
 
-                if (s->type && !initType.IsUnknown() && !declType.IsUnknown() &&
+                if (s->init && s->type && !initType.IsUnknown() && !declType.IsUnknown() &&
                     !CanAssignExprTo(*s->init, initType, declType))
                     EmitError(s->location,
-                              std::format("cannot assign '{}' to '{}'",
-                                          initType.ToString(), declType.ToString()));
+                              IsIntegerLiteralOutOfRangeFor(*s->init, declType)
+                                  ? std::format("integer literal is out of range for type '{}'",
+                                                declType.ToString())
+                                  : std::format("cannot assign '{}' to '{}'",
+                                                initType.ToString(), declType.ToString()));
 
                 if (s->pattern) {
                     CheckLetPattern(*s->pattern, declType, s->isMut);
@@ -1819,6 +1931,8 @@ namespace Rux {
                 var.location = s->location;
                 if (iterType.IsRange() && !iterType.inner.empty())
                     var.type = iterType.inner[0];
+                else if (auto elemType = SliceElementType(iterType))
+                    var.type = *elemType;
                 else
                     var.type = TypeRef::MakeUnknown();
                 var.isMut = false;
@@ -2152,19 +2266,33 @@ namespace Rux {
                             funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()
                                 ? funcType.inner.size() - 1
                                 : 0;
-                        if (argTypes.size() != paramCount) {
+                        const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
+                        const bool arityOk = isVariadic ? argTypes.size() >= paramCount
+                                                        : argTypes.size() == paramCount;
+                        if (!arityOk) {
                             EmitError(e->location,
                                       std::format("function expects {} argument(s), got {}",
                                                   paramCount, argTypes.size()));
                         }
                         else {
-                            for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                            for (std::size_t i = 0; i < paramCount; ++i) {
                                 const TypeRef& paramType = funcType.inner[i];
                                 if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
                                     !CanAssignExprTo(*e->args[i], argTypes[i], paramType))
                                     EmitError(e->args[i]->location,
                                               std::format("cannot pass '{}' to parameter of type '{}'",
                                                           argTypes[i].ToString(), paramType.ToString()));
+                            }
+                            if (isVariadic) {
+                                const TypeRef varElemType =
+                                    ResolveType(*decl->params.back().type);
+                                for (std::size_t i = paramCount; i < argTypes.size(); ++i) {
+                                    if (!argTypes[i].IsUnknown() && !varElemType.IsUnknown() &&
+                                        !CanAssignExprTo(*e->args[i], argTypes[i], varElemType))
+                                        EmitError(e->args[i]->location,
+                                                  std::format("cannot pass '{}' to variadic parameter of type '{}'",
+                                                              argTypes[i].ToString(), varElemType.ToString()));
+                                }
                             }
                         }
                         return funcType.inner.empty() ? TypeRef::MakeUnknown() : funcType.inner.back();
@@ -2199,6 +2327,46 @@ namespace Rux {
                         }
 
                         return ResolveMethodReturnType(receiverType, *method);
+                    }
+
+                    if (const FuncDecl* method = LookupInterfaceMethod(receiverType, field->field)) {
+                        std::vector<TypeRef> paramTypes =
+                            ResolveInterfaceMethodParamTypes(*method);
+                        const bool isVariadic = !method->params.empty() &&
+                            method->params.back().isVariadic;
+                        const bool arityOk = isVariadic ? argTypes.size() >= paramTypes.size()
+                                                        : argTypes.size() == paramTypes.size();
+
+                        if (!arityOk) {
+                            EmitError(e->location,
+                                      std::format("function expects {} argument(s), got {}",
+                                                  paramTypes.size(), argTypes.size()));
+                        }
+                        else {
+                            for (std::size_t i = 0; i < paramTypes.size(); ++i) {
+                                const TypeRef& argType = argTypes[i];
+                                const TypeRef& paramType = paramTypes[i];
+                                if (!argType.IsUnknown() && !paramType.IsUnknown() &&
+                                    !CanAssignExprTo(*e->args[i], argType, paramType))
+                                    EmitError(e->args[i]->location,
+                                              std::format("cannot pass '{}' to parameter of type '{}'",
+                                                          argType.ToString(), paramType.ToString()));
+                            }
+
+                            if (isVariadic) {
+                                const TypeRef varElemType =
+                                    ResolveType(*method->params.back().type);
+                                for (std::size_t i = paramTypes.size(); i < argTypes.size(); ++i) {
+                                    if (!argTypes[i].IsUnknown() && !varElemType.IsUnknown() &&
+                                        !CanAssignExprTo(*e->args[i], argTypes[i], varElemType))
+                                        EmitError(e->args[i]->location,
+                                                  std::format("cannot pass '{}' to variadic parameter of type '{}'",
+                                                              argTypes[i].ToString(), varElemType.ToString()));
+                                }
+                            }
+                        }
+
+                        return ResolveInterfaceMethodReturnType(*method);
                     }
                 }
 
@@ -2266,6 +2434,18 @@ namespace Rux {
                     catch (...) {}
                     EmitError(e->location,
                               std::format("tuple index '{}' out of range for type '{}'",
+                                          e->field, obj.ToString()));
+                    return TypeRef::MakeUnknown();
+                }
+
+                // Interface fat-pointer fields: data → *opaque, vtable → *opaque
+                if (const std::string ifaceName = NamedBaseTypeName(obj);
+                    !ifaceName.empty() && currentScope->Lookup(ifaceName) &&
+                    currentScope->Lookup(ifaceName)->kind == Symbol::Kind::Interface) {
+                    const TypeRef ptrOpaque = TypeRef::MakePointer(TypeRef::MakeOpaque());
+                    if (e->field == "data" || e->field == "vtable") return ptrOpaque;
+                    EmitError(e->location,
+                              std::format("unknown field '{}' on interface type '{}'",
                                           e->field, obj.ToString()));
                     return TypeRef::MakeUnknown();
                 }

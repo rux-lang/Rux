@@ -7,12 +7,17 @@
 #include "Rux/Rcu.h"
 #include "Rux/Version.h"
 
+#include <charconv>
 #include <chrono>
 #include <cstring>
 #include <format>
 #include <fstream>
+#include <limits>
+#include <optional>
 #include <sstream>
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace Rux {
@@ -58,6 +63,75 @@ namespace Rux {
 
         bool IsFloat(const TypeRef& t) {
             return t.kind == TypeRef::Kind::Float32 || t.kind == TypeRef::Kind::Float64;
+        }
+
+        std::string_view NumericLiteralSuffix(std::string_view text) {
+            static constexpr std::string_view suffixes[] = {
+                "i8", "i16", "i32", "i64",
+                "u8", "u16", "u32", "u64",
+                "f32", "f64",
+            };
+            for (const auto suffix : suffixes) {
+                if (text.size() > suffix.size() &&
+                    text.substr(text.size() - suffix.size()) == suffix)
+                    return suffix;
+            }
+            return {};
+        }
+
+        std::optional<std::uint64_t> ParseIntegerLiteralBits(std::string_view text) {
+            const std::string_view suffix = NumericLiteralSuffix(text);
+            if (!suffix.empty())
+                text.remove_suffix(suffix.size());
+
+            bool negative = false;
+            if (!text.empty() && (text.front() == '-' || text.front() == '+')) {
+                negative = text.front() == '-';
+                text.remove_prefix(1);
+            }
+
+            std::string cleaned;
+            cleaned.reserve(text.size());
+            for (const char c : text) {
+                if (c != '_') cleaned.push_back(c);
+            }
+
+            int base = 10;
+            std::string_view digits(cleaned);
+            if (digits.size() > 2 && digits[0] == '0') {
+                switch (digits[1]) {
+                case 'x':
+                case 'X':
+                    base = 16;
+                    digits.remove_prefix(2);
+                    break;
+                case 'b':
+                case 'B':
+                    base = 2;
+                    digits.remove_prefix(2);
+                    break;
+                case 'o':
+                case 'O':
+                    base = 8;
+                    digits.remove_prefix(2);
+                    break;
+                default:
+                    break;
+                }
+            }
+            if (digits.empty()) return std::nullopt;
+
+            std::uint64_t value = 0;
+            const auto* first = digits.data();
+            const auto* last = first + digits.size();
+            const auto [ptr, ec] = std::from_chars(first, last, value, base);
+            if (ec != std::errc{} || ptr != last) return std::nullopt;
+            if (!negative) return value;
+
+            constexpr std::uint64_t maxNegativeMagnitude =
+                static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) + 1;
+            if (value > maxNegativeMagnitude) return std::nullopt;
+            return std::uint64_t{0} - value;
         }
 
         int AlignUp(int v, int a) {
@@ -1024,6 +1098,7 @@ namespace Rux {
             // Declared extern symbols (by name → symbol index)
             std::unordered_map<std::string, uint32_t> externSyms;
             std::unordered_map<std::string, uint32_t> funcSyms;
+            std::unordered_map<std::string, uint32_t> dataSyms;
 
             // Struct field layouts
             struct FieldLayout {
@@ -1040,6 +1115,7 @@ namespace Rux {
 
             using LayoutMap = std::unordered_map<std::string, StructLayout>;
             LayoutMap layouts;
+            std::unordered_set<std::string> interfaceNames;
 
             // Per-function state
             struct PhiMove {
@@ -1078,6 +1154,7 @@ namespace Rux {
                 }
                 if (t.kind == TypeRef::Kind::Named) {
                     const std::string base = BaseTypeName(t.name);
+                    if (interfaceNames.count(base)) return 16;
                     if (base == "Slice") return 16;
                     auto it = layouts.find(base);
                     if (it != layouts.end()) return it->second.totalSize;
@@ -1244,6 +1321,11 @@ namespace Rux {
                 textRelocs.push_back({sectionOff, symIdx, RcuRelType::Rel32, addend});
             }
 
+            void AddRodataReloc(uint32_t sectionOff, uint32_t symIdx, uint16_t type,
+                                int32_t addend = 0) {
+                rodataRelocs.push_back({sectionOff, symIdx, type, addend});
+            }
+
             void PatchJumps() {
                 for (const auto& p : jumpPatches) {
                     auto target = static_cast<int32_t>(blockOffsets[p.targetBlock]);
@@ -1396,6 +1478,11 @@ namespace Rux {
                 }
                 if (inner.kind != TypeRef::Kind::Named) return 0;
                 const std::string baseName = BaseTypeName(inner.name);
+                if (interfaceNames.count(baseName)) {
+                    if (fieldName == "data") return 0;
+                    if (fieldName == "vtable") return 8;
+                    return 0;
+                }
                 if (baseName == "Slice") {
                     if (fieldName == "data") return 0;
                     if (fieldName == "length") return 8;
@@ -1483,6 +1570,8 @@ namespace Rux {
 
             // Build struct layouts
             void BuildLayouts() {
+                for (const auto& name : mod.interfaceNames)
+                    interfaceNames.insert(name);
                 for (const auto& s : structDecls) {
                     StructLayout layout;
                     int offset = 0, maxAlign = 1;
@@ -1611,15 +1700,11 @@ namespace Rux {
                     }
                     else {
                         const std::string& sv = instr.strArg.empty() ? "0" : instr.strArg;
-                        int64_t v = 0;
-                        try {
-                            v = std::stoll(sv);
-                        }
-                        catch (...) {}
-                        if (v >= 0 && v <= 0x7FFFFFFF)
-                            enc.MovEaxImm32(static_cast<int32_t>(v));
+                        const std::uint64_t bits = ParseIntegerLiteralBits(sv).value_or(0);
+                        if (bits <= 0x7FFFFFFF)
+                            enc.MovEaxImm32(static_cast<int32_t>(bits));
                         else
-                            enc.MovRaxImm64(v);
+                            enc.MovRaxImm64(static_cast<std::int64_t>(bits));
                         StoreA(instr.dst, sz > 0 ? t : TypeRef::MakeInt64());
                     }
                     break;
@@ -2050,7 +2135,7 @@ namespace Rux {
                     const bool hiddenReturn = win64Call &&
                         instr.dst != LirNoReg &&
                         IsWin64ByRefAggregate(instr.type);
-                    enc.MovR10Load(Disp(callee));
+                    if (win64Call) enc.SubRspShadow();
                     if (hiddenReturn) {
                         enc.LeaArgStackWin64(0, Disp(instr.dst));
                         EmitCallArgs(args, instr.callConv, 1);
@@ -2058,9 +2143,25 @@ namespace Rux {
                     else {
                         EmitCallArgs(args, instr.callConv);
                     }
+                    enc.MovR10Load(Disp(callee));
                     enc.CallR10();
+                    if (win64Call) enc.AddRspShadow();
                     if (instr.dst != LirNoReg && !instr.type.IsOpaque() && !hiddenReturn)
                         StoreReturnValue(instr.dst, instr.type);
+                    break;
+                }
+                case LirOpcode::GlobalAddr: {
+                    uint32_t symIdx;
+                    if (const auto it = dataSyms.find(instr.strArg); it != dataSyms.end())
+                        symIdx = it->second;
+                    else if (const auto it = funcSyms.find(instr.strArg); it != funcSyms.end())
+                        symIdx = it->second;
+                    else
+                        symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternData);
+                    uint32_t relocOff;
+                    enc.LeaRaxRip(relocOff);
+                    AddTextReloc(relocOff, symIdx);
+                    enc.MovRaxStore(Disp(instr.dst));
                     break;
                 }
                 case LirOpcode::FieldPtr: {
@@ -2156,12 +2257,8 @@ namespace Rux {
                 case LirTermKind::Switch: {
                     enc.MovRaxLoad(Disp(term.cond));
                     for (const auto& c : term.cases) {
-                        int64_t v = 0;
-                        try {
-                            v = std::stoll(c.value);
-                        }
-                        catch (...) {}
-                        enc.CmpRaxImm32(static_cast<int32_t>(v));
+                        const std::uint64_t bits = ParseIntegerLiteralBits(c.value).value_or(0);
+                        enc.CmpRaxImm32(static_cast<int32_t>(bits));
                         uint32_t po;
                         enc.Je(po);
                         jumpPatches.push_back({po, c.target});
@@ -2279,6 +2376,35 @@ namespace Rux {
             }
 
             // Module generation
+            void EmitVtables() {
+                for (const auto& vt : mod.vtables) {
+                    AlignRodata(8);
+
+                    RcuSymbol sym;
+                    sym.name = vt.label;
+                    sym.sectionIdx = RCU_RODATA_IDX;
+                    sym.value = static_cast<uint32_t>(rodataData.size());
+                    sym.size = static_cast<uint32_t>(vt.methods.size() * 8);
+                    sym.kind = RcuSymKind::Const;
+                    sym.visibility = RcuSymVis::Global;
+                    const uint32_t vtSym = AddSymbol(std::move(sym));
+                    dataSyms[vt.label] = vtSym;
+
+                    for (const auto& method : vt.methods) {
+                        const uint32_t slotOff = static_cast<uint32_t>(rodataData.size());
+                        for (int i = 0; i < 8; ++i)
+                            rodataData.push_back(0);
+
+                        uint32_t methodSym;
+                        if (const auto it = funcSyms.find(method); it != funcSyms.end())
+                            methodSym = it->second;
+                        else
+                            methodSym = GetOrAddExtern(method, RcuSymKind::ExternFunc);
+                        AddRodataReloc(slotOff, methodSym, RcuRelType::Abs64);
+                    }
+                }
+            }
+
             void GenModule() {
                 BuildLayouts();
                 PredeclareFunctions();
@@ -2299,6 +2425,7 @@ namespace Rux {
                     s.size = 8;
                     AddSymbol(s);
                 }
+                EmitVtables();
                 // Functions
                 for (const auto& func : mod.funcs)
                     GenFunc(func);

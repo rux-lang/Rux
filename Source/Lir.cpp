@@ -47,6 +47,7 @@ namespace Rux {
         case LirOpcode::FieldPtr: return "fieldptr";
         case LirOpcode::IndexPtr: return "indexptr";
         case LirOpcode::Phi: return "phi";
+        case LirOpcode::GlobalAddr: return "globaladdr";
         default: return "?";
         }
     }
@@ -98,6 +99,9 @@ namespace Rux {
     class LirLowering {
     public:
         LirPackage Run(const HirPackage& hir) {
+            for (const auto& mod : hir.modules)
+                for (const auto& iface : mod.interfaces)
+                    interfacesByName[iface.name] = &iface;
             LirPackage pkg;
             for (const auto& mod : hir.modules)
                 pkg.modules.push_back(LowerModule(mod));
@@ -105,6 +109,7 @@ namespace Rux {
         }
 
     private:
+        std::unordered_map<std::string, const HirInterface*> interfacesByName;
         LirReg nextReg = 0;
         LirFunc* fn = nullptr; // function being built (valid only inside LowerFunc)
         std::uint32_t cur = 0; // current basic-block index into fn_->blocks
@@ -191,6 +196,12 @@ namespace Rux {
             i.op = LirOpcode::Alloca;
             i.type = std::move(type);
             Emit(std::move(i));
+            return r;
+        }
+
+        LirReg EmitAlloca(TypeRef type, std::uint64_t count) {
+            LirReg r = EmitAlloca(std::move(type));
+            fn->blocks[cur].instrs.back().strArg = std::to_string(count);
             return r;
         }
 
@@ -282,6 +293,21 @@ namespace Rux {
             return ptr;
         }
 
+        LirReg EmitGlobalAddr(std::string label) {
+            LirReg r = NewReg();
+            LirInstr i;
+            i.dst = r;
+            i.op = LirOpcode::GlobalAddr;
+            i.type = TypeRef::MakePointer(TypeRef::MakeOpaque());
+            i.strArg = std::move(label);
+            Emit(std::move(i));
+            return r;
+        }
+
+        bool IsInterfaceType(const TypeRef& t) const {
+            return t.kind == TypeRef::Kind::Named && interfacesByName.count(t.name) > 0;
+        }
+
         static bool IsSliceType(const TypeRef& type) {
             return type.kind == TypeRef::Kind::Slice ||
                 (type.kind == TypeRef::Kind::Named && type.name.starts_with("Slice<"));
@@ -315,6 +341,8 @@ namespace Rux {
 
             LirModule lm;
             lm.name = mod.name;
+            for (const auto& iface : mod.interfaces)
+                lm.interfaceNames.push_back(iface.name);
             for (const auto& s : mod.structs) {
                 LirStructDecl sd;
                 sd.name = s.name;
@@ -373,6 +401,16 @@ namespace Rux {
                     std::string mangledName = impl.typeName + "::" + m.name;
                     lm.funcs.push_back(LowerFunc(m, mangledName));
                 }
+                if (impl.interfaceName) {
+                    auto ifaceIt = interfacesByName.find(*impl.interfaceName);
+                    if (ifaceIt != interfacesByName.end()) {
+                        LirVtable vt;
+                        vt.label = "__vtable__" + impl.typeName + "__" + *impl.interfaceName;
+                        for (const auto& m : ifaceIt->second->methods)
+                            vt.methods.push_back(impl.typeName + "::" + m.name);
+                        lm.vtables.push_back(std::move(vt));
+                    }
+                }
             }
             return lm;
         }
@@ -403,10 +441,22 @@ namespace Rux {
             cur = NewBlock("entry");
             for (const auto& p : hf.params) {
                 const LirReg pr = NewReg();
-                const LirReg slot = EmitAlloca(p.type);
-                EmitStore(pr, slot, p.type);
-                locals[p.name] = slot;
-                lf.params.push_back({pr, p.type, p.name});
+                if (p.isVariadic) {
+                    locals[p.name] = pr;
+                    lf.params.push_back({pr, TypeRef::MakePointer(p.type), p.name});
+                }
+                else if (IsInterfaceType(p.type)) {
+                    // Interface values are 16-byte fat ptrs; callers pass their address.
+                    // pr holds that address directly — no extra alloca.
+                    locals[p.name] = pr;
+                    lf.params.push_back({pr, p.type, p.name});
+                }
+                else {
+                    const LirReg slot = EmitAlloca(p.type);
+                    EmitStore(pr, slot, p.type);
+                    locals[p.name] = slot;
+                    lf.params.push_back({pr, p.type, p.name});
+                }
             }
             if (hf.body) {
                 LowerBlock(*hf.body);
@@ -444,6 +494,15 @@ namespace Rux {
                 LirReg slot = EmitAlloca(s->type);
                 if (!s->pattern)
                     locals[s->name] = slot;
+                if (!s->init && s->stackBufferLength != 0) {
+                    LirReg data = EmitAlloca(s->stackBufferElementType, s->stackBufferLength);
+                    LirReg dataField = EmitFieldPtr(slot, "data",
+                                                    TypeRef::MakePointer(s->stackBufferElementType));
+                    EmitStore(data, dataField, TypeRef::MakePointer(s->stackBufferElementType));
+                    LirReg len = EmitConst(std::to_string(s->stackBufferLength), TypeRef::MakeUInt64());
+                    LirReg lenField = EmitFieldPtr(slot, "length", TypeRef::MakeUInt64());
+                    EmitStore(len, lenField, TypeRef::MakeUInt64());
+                }
                 if (s->init) {
                     StoreExprIntoSlot(*s->init, slot, s->type);
                 }
@@ -712,49 +771,56 @@ namespace Rux {
                 return;
             }
 
-            // Generic iterator fallback (non-range iterables)
-            std::uint32_t condBlock = NewBlock("for.cond");
-            std::uint32_t bodyBlock = NewBlock("for.body");
-            std::uint32_t afterBlock = NewBlock("for.after");
-            LirReg iterVal = LowerExpr(*s.iterable);
-            LirReg iterSlot = EmitAlloca(s.iterable->type);
-            EmitStore(iterVal, iterSlot, s.iterable->type);
-            if (!IsTerminated()) Jump(condBlock);
-            SetBlock(condBlock);
-            LirReg hasNext = NewReg();
-            {
-                LirInstr ci;
-                ci.dst = hasNext;
-                ci.op = LirOpcode::Call;
-                ci.type = TypeRef::MakeBool();
-                ci.strArg = "@iter.has_next";
-                ci.srcs = {iterSlot};
-                Emit(std::move(ci));
+            if (IsSliceType(s.iterable->type)) {
+                const TypeRef dataType = TypeRef::MakePointer(elemType);
+                LirReg iterSlot = LowerLValue(*s.iterable);
+
+                LirReg dataFieldPtr = EmitFieldPtr(iterSlot, "data", dataType);
+                LirReg dataPtr = EmitLoad(dataFieldPtr, dataType);
+                LirReg lenFieldPtr = EmitFieldPtr(iterSlot, "length", TypeRef::MakeUInt64());
+                LirReg length = EmitLoad(lenFieldPtr, TypeRef::MakeUInt64());
+
+                LirReg idxSlot = EmitAlloca(TypeRef::MakeUInt64());
+                LirReg zero = EmitConst("0", TypeRef::MakeUInt64());
+                EmitStore(zero, idxSlot, TypeRef::MakeUInt64());
+
+                std::uint32_t condBlock = NewBlock("for.cond");
+                std::uint32_t bodyBlock = NewBlock("for.body");
+                std::uint32_t stepBlock = NewBlock("for.step");
+                std::uint32_t afterBlock = NewBlock("for.after");
+
+                if (!IsTerminated()) Jump(condBlock);
+                SetBlock(condBlock);
+                LirReg idx = EmitLoad(idxSlot, TypeRef::MakeUInt64());
+                LirReg cond = EmitBinary(LirOpcode::CmpLt, idx, length, TypeRef::MakeBool());
+                Branch(cond, bodyBlock, afterBlock);
+
+                std::uint32_t savedBreak = breakTarget;
+                std::uint32_t savedContinue = continueTarget;
+                breakTarget = afterBlock;
+                continueTarget = stepBlock;
+                if (!s.label.empty()) labelTargets[s.label] = {afterBlock, stepBlock};
+
+                SetBlock(bodyBlock);
+                LirReg elemPtr = EmitIndexPtr(dataPtr, idx, elemType);
+                LirReg elemVal = EmitLoad(elemPtr, elemType);
+                EmitStore(elemVal, slot, elemType);
+                LowerBlock(s.body);
+
+                if (!IsTerminated()) Jump(stepBlock);
+                SetBlock(stepBlock);
+                LirReg idxCur = EmitLoad(idxSlot, TypeRef::MakeUInt64());
+                LirReg one = EmitConst("1", TypeRef::MakeUInt64());
+                LirReg idxNext = EmitBinary(LirOpcode::Add, idxCur, one, TypeRef::MakeUInt64());
+                EmitStore(idxNext, idxSlot, TypeRef::MakeUInt64());
+                if (!IsTerminated()) Jump(condBlock);
+
+                if (!s.label.empty()) labelTargets.erase(s.label);
+                breakTarget = savedBreak;
+                continueTarget = savedContinue;
+                SetBlock(afterBlock);
+                return;
             }
-            Branch(hasNext, bodyBlock, afterBlock);
-            std::uint32_t savedBreak = breakTarget;
-            std::uint32_t savedContinue = continueTarget;
-            breakTarget = afterBlock;
-            continueTarget = condBlock;
-            if (!s.label.empty()) labelTargets[s.label] = {afterBlock, condBlock};
-            SetBlock(bodyBlock);
-            LirReg nextVal = NewReg();
-            {
-                LirInstr ni;
-                ni.dst = nextVal;
-                ni.op = LirOpcode::Call;
-                ni.type = s.varType;
-                ni.strArg = "@iter.next";
-                ni.srcs = {iterSlot};
-                Emit(std::move(ni));
-            }
-            EmitStore(nextVal, slot, s.varType);
-            LowerBlock(s.body);
-            if (!s.label.empty()) labelTargets.erase(s.label);
-            if (!IsTerminated()) Jump(condBlock);
-            breakTarget = savedBreak;
-            continueTarget = savedContinue;
-            SetBlock(afterBlock);
         }
 
         void LowerMatch(const HirMatchStmt& s) {
@@ -930,14 +996,20 @@ namespace Rux {
             }
             if (auto* e = dynamic_cast<const HirVarExpr*>(&expr)) {
                 auto it = locals.find(e->name);
-                if (it != locals.end())
+                if (it != locals.end()) {
+                    if (IsInterfaceType(e->type))
+                        return it->second; // fat-ptr address lives in the slot
                     return EmitLoad(it->second, e->type);
+                }
                 return EmitNamedLoad(e->name, e->type);
             }
             if (dynamic_cast<const HirSelfExpr*>(&expr)) {
                 auto it = locals.find("self");
-                if (it != locals.end())
+                if (it != locals.end()) {
+                    if (IsInterfaceType(expr.type))
+                        return it->second;
                     return EmitLoad(it->second, expr.type);
+                }
                 return EmitNamedLoad("self", expr.type);
             }
             if (auto* e = dynamic_cast<const HirPathExpr*>(&expr)) {
@@ -964,6 +1036,10 @@ namespace Rux {
                 return LowerEnumConstruct(*e);
             if (auto* e = dynamic_cast<const HirCallExpr*>(&expr))
                 return LowerCall(*e);
+            if (auto* e = dynamic_cast<const HirCoerceToInterfaceExpr*>(&expr))
+                return LowerCoerceToInterface(*e);
+            if (auto* e = dynamic_cast<const HirInterfaceCallExpr*>(&expr))
+                return LowerInterfaceCall(*e);
             if (auto* e = dynamic_cast<const HirIndexExpr*>(&expr)) {
                 LirReg idx = LowerExpr(*e->index);
                 LirReg sliceBase = LowerSliceDataPtr(*e->object, e->type);
@@ -1189,6 +1265,28 @@ namespace Rux {
                 return;
             }
 
+            if (auto* coerce = dynamic_cast<const HirCoerceToInterfaceExpr*>(&expr)) {
+                StoreCoerceToInterface(*coerce, slot);
+                return;
+            }
+
+            if (IsInterfaceType(type)) {
+                // Copy the 16-byte fat pointer {data, vtable} field by field.
+                const LirReg srcBase = LowerExpr(expr); // returns fat-ptr address
+                const TypeRef ptrType = TypeRef::MakePointer(TypeRef::MakeOpaque());
+                LirReg i0 = EmitConst("0", TypeRef::MakeUInt64());
+                LirReg srcData = EmitIndexPtr(srcBase, i0, TypeRef::MakeUInt64());
+                LirReg dataVal = EmitLoad(srcData, ptrType);
+                LirReg dstData = EmitIndexPtr(slot, i0, TypeRef::MakeUInt64());
+                EmitStore(dataVal, dstData, ptrType);
+                LirReg i1 = EmitConst("1", TypeRef::MakeUInt64());
+                LirReg srcVtbl = EmitIndexPtr(srcBase, i1, TypeRef::MakeUInt64());
+                LirReg vtblVal = EmitLoad(srcVtbl, ptrType);
+                LirReg dstVtbl = EmitIndexPtr(slot, i1, TypeRef::MakeUInt64());
+                EmitStore(vtblVal, dstVtbl, ptrType);
+                return;
+            }
+
             const LirReg val = LowerExpr(expr);
             EmitStore(val, slot, type);
         }
@@ -1256,6 +1354,72 @@ namespace Rux {
             const LirReg slot = EmitAlloca(e.type);
             StoreMatchInit(e, slot, e.type);
             return EmitLoad(slot, e.type);
+        }
+
+        // Fill an existing 16-byte fat-pointer slot with {&concrete, &vtable}.
+        void StoreCoerceToInterface(const HirCoerceToInterfaceExpr& e, LirReg slot) {
+            LirReg val = LowerExpr(*e.value);
+            LirReg concreteSlot = EmitAlloca(e.value->type);
+            EmitStore(val, concreteSlot, e.value->type);
+
+            const TypeRef ptrType = TypeRef::MakePointer(TypeRef::MakeOpaque());
+            LirReg i0 = EmitConst("0", TypeRef::MakeUInt64());
+            LirReg dataField = EmitIndexPtr(slot, i0, TypeRef::MakeUInt64());
+            EmitStore(concreteSlot, dataField, ptrType);
+
+            LirReg i1 = EmitConst("1", TypeRef::MakeUInt64());
+            LirReg vtblField = EmitIndexPtr(slot, i1, TypeRef::MakeUInt64());
+            if (!e.vtableLabel.empty()) {
+                LirReg vtblAddr = EmitGlobalAddr(e.vtableLabel);
+                EmitStore(vtblAddr, vtblField, ptrType);
+            } else {
+                LirReg zero = EmitConst("0", TypeRef::MakeUInt64());
+                EmitStore(zero, vtblField, ptrType);
+            }
+        }
+
+        // Wrap a concrete value into a {data_ptr, vtable_ptr} fat pointer.
+        // Returns the alloca slot whose data region IS the 16-byte fat pointer.
+        LirReg LowerCoerceToInterface(const HirCoerceToInterfaceExpr& e) {
+            LirReg slot = EmitAlloca(e.type); // Named("X") → 16-byte data region
+            StoreCoerceToInterface(e, slot);
+            return slot;
+        }
+
+        // Call a method through an interface fat pointer via vtable dispatch.
+        LirReg LowerInterfaceCall(const HirInterfaceCallExpr& e) {
+            const TypeRef ptrType = TypeRef::MakePointer(TypeRef::MakeOpaque());
+
+            // fat_ptr_addr = the 8-byte value that IS the fat ptr address
+            LirReg fatPtrAddr = LowerExpr(*e.fatPtrExpr);
+
+            // Load data_ptr = fat_ptr[0]
+            LirReg i0 = EmitConst("0", TypeRef::MakeUInt64());
+            LirReg dataField = EmitIndexPtr(fatPtrAddr, i0, TypeRef::MakeUInt64());
+            LirReg dataPtr = EmitLoad(dataField, ptrType);
+
+            // Load vtbl_ptr = fat_ptr[1]
+            LirReg i1 = EmitConst("1", TypeRef::MakeUInt64());
+            LirReg vtblField = EmitIndexPtr(fatPtrAddr, i1, TypeRef::MakeUInt64());
+            LirReg vtblPtr = EmitLoad(vtblField, ptrType);
+
+            // Load fn_ptr = vtbl_ptr[methodIdx]
+            LirReg midx = EmitConst(std::to_string(e.methodIdx), TypeRef::MakeUInt64());
+            LirReg fnSlot = EmitIndexPtr(vtblPtr, midx, TypeRef::MakeUInt64());
+            LirReg fnPtr = EmitLoad(fnSlot, ptrType);
+
+            // CallIndirect(fn_ptr, data_ptr, args...)
+            const LirReg dst = e.type.IsOpaque() ? LirNoReg : NewReg();
+            LirInstr ci;
+            ci.dst = dst;
+            ci.type = e.type;
+            ci.op = LirOpcode::CallIndirect;
+            ci.callConv = CallingConvention::Win64;
+            ci.srcs = {fnPtr, dataPtr};
+            for (const auto& arg : e.args)
+                ci.srcs.push_back(LowerExpr(*arg));
+            Emit(std::move(ci));
+            return dst;
         }
 
         LirReg LowerEnumConstruct(const HirEnumConstructExpr& e) {
