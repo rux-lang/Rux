@@ -675,7 +675,12 @@ namespace Rux {
 
                 auto depRoot = (ownerRoot / dep->path).lexically_normal();
                 auto depManifest = Manifest::Load(depRoot / "Rux.toml");
-                if (!depManifest) return false;
+                if (!depManifest) {
+                    std::print(stderr,
+                               "error: dependency package '{}' was not found at '{}'\n",
+                               pkgName, depRoot.string());
+                    return false;
+                }
 
                 queuedPackageNames.insert(pkgName);
                 pendingPackages.push_back({pkgName, depRoot, std::move(*depManifest)});
@@ -700,9 +705,11 @@ namespace Rux {
                 for (const auto& decl : pr.module.items) {
                     if (decl) collectImports(*decl);
                 }
-                for (const auto& pkgName : imports)
+                for (const auto& pkgName : imports) {
+                    if (pkgName == manifest->package.name) continue;
                     if (!enqueueDependency(pkgName, *manifest, manifestPath->parent_path()))
                         return 1;
+                }
             }
 
             for (std::size_t pendingIndex = 0; pendingIndex < pendingPackages.size(); ++pendingIndex) {
@@ -771,9 +778,11 @@ namespace Rux {
                         if (decl) collectImports(*decl);
                     }
                 }
-                for (const auto& pkgName : imports)
+                for (const auto& pkgName : imports) {
+                    if (pkgName == pendingManifest.package.name) continue;
                     if (!enqueueDependency(pkgName, pendingManifest, pendingRoot))
                         return 1;
+                }
 
                 for (auto& depParse : packageParseResults) {
                     loadedModuleNames.push_back(depParse.module.name);
@@ -807,7 +816,7 @@ namespace Rux {
             }
         }
 
-        Sema sema(std::move(userModules), std::move(depPackages));
+        Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name);
         auto semaResult = sema.Analyze();
 
         for (const auto& diag : semaResult.diagnostics) {

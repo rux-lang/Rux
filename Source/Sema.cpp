@@ -301,8 +301,9 @@ namespace Rux {
     class Analyzer {
     public:
         Analyzer(std::vector<const Module*>& modules, std::vector<DepPackage>& deps,
+                 const std::string& packageName,
                  std::vector<SemaDiagnostic>& diags, std::vector<SemaSymbol>& symbols)
-            : modules(modules), deps(deps), diags(diags), symbols(symbols),
+            : modules(modules), deps(deps), packageName(packageName), diags(diags), symbols(symbols),
               currentScope(&globalScope) {}
 
         void Run() {
@@ -333,7 +334,11 @@ namespace Rux {
                 for (auto& entry : pkg.modules)
                     CheckModuleInScope(*entry.module,
                                        *packageModuleScopes[pkg.name][""]);
-            // User modules go into globalScope as before.
+            // User modules go into globalScope as before. When a package imports
+            // itself by name, expose the global/module scopes through the same
+            // package import table used for dependencies.
+            if (!packageName.empty())
+                packageModuleScopes[packageName][""] = &globalScope;
             for (auto* mod : modules) CollectModule(*mod);
             for (auto* mod : modules) ApplyModuleImports(*mod);
             for (auto* mod : modules) ResolveModuleSignatures(*mod);
@@ -343,6 +348,7 @@ namespace Rux {
     private:
         std::vector<const Module*>& modules;
         std::vector<DepPackage>& deps;
+        const std::string& packageName;
         std::vector<SemaDiagnostic>& diags;
         std::vector<SemaSymbol>& symbols;
         Scope globalScope{nullptr};
@@ -444,8 +450,9 @@ namespace Rux {
         // First pass: collect global declaration names
         void CollectModule(const Module& mod) {
             currentFile = mod.name;
+            const std::string* selfPackageName = packageName.empty() ? nullptr : &packageName;
             for (const auto& decl : mod.items)
-                CollectDecl(*decl, globalScope);
+                CollectDecl(*decl, globalScope, selfPackageName, "");
         }
 
         void ResolveModuleSignatures(const Module& mod) {
@@ -2802,11 +2809,13 @@ namespace Rux {
     };
 
     // Sema public API
-    Sema::Sema(std::vector<const Module*> userModules, std::vector<DepPackage> deps)
-        : modules(std::move(userModules)), deps(std::move(deps)) {}
+    Sema::Sema(std::vector<const Module*> userModules, std::vector<DepPackage> deps,
+               std::string packageName)
+        : modules(std::move(userModules)), deps(std::move(deps)),
+          packageName(std::move(packageName)) {}
 
     SemaResult Sema::Analyze() {
-        Analyzer analyzer(modules, deps, diags, symbols);
+        Analyzer analyzer(modules, deps, packageName, diags, symbols);
         analyzer.Run();
         return SemaResult{std::move(diags), std::move(symbols)};
     }
