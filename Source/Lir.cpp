@@ -1044,6 +1044,8 @@ namespace Rux {
                 LirReg idx = LowerExpr(*e->index);
                 LirReg sliceBase = LowerSliceDataPtr(*e->object, e->type);
                 LirReg ptr = EmitIndexPtr(sliceBase, idx, e->type);
+                if (IsInterfaceType(e->type))
+                    return ptr;
                 return EmitLoad(ptr, e->type);
             }
             if (auto* e = dynamic_cast<const HirFieldExpr*>(&expr)) {
@@ -1171,6 +1173,12 @@ namespace Rux {
         }
 
         LirReg LowerAssign(const HirAssignExpr& e) {
+            if (e.op == TokenKind::Assign && IsInterfaceType(e.type)) {
+                const LirReg ptr = LowerLValue(*e.target);
+                StoreExprIntoSlot(*e.value, ptr, e.type);
+                return ptr;
+            }
+
             LirReg val = LowerExpr(*e.value);
             if (e.op != TokenKind::Assign) {
                 // Compound assignment: load current value, compute, then store.
@@ -1188,6 +1196,28 @@ namespace Rux {
             if (type.kind == TypeRef::Kind::Named) {
                 if (type.name == "Slice<char16>") return TypeRef::MakeChar16();
                 if (type.name == "Slice<char32>") return TypeRef::MakeChar32();
+                constexpr std::string_view prefix = "Slice<";
+                if (type.name.starts_with(prefix) && type.name.ends_with(">")) {
+                    const std::string elemName =
+                        type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
+                    if (elemName == "bool" || elemName == "bool8") return TypeRef::MakeBool();
+                    if (elemName == "char8") return TypeRef::MakeChar8();
+                    if (elemName == "char16") return TypeRef::MakeChar16();
+                    if (elemName == "char32" || elemName == "char") return TypeRef::MakeChar();
+                    if (elemName == "int8") return TypeRef::MakeInt8();
+                    if (elemName == "int16") return TypeRef::MakeInt16();
+                    if (elemName == "int32") return TypeRef::MakeInt32();
+                    if (elemName == "int64") return TypeRef::MakeInt64();
+                    if (elemName == "int") return TypeRef::MakeInt();
+                    if (elemName == "uint8") return TypeRef::MakeUInt8();
+                    if (elemName == "uint16") return TypeRef::MakeUInt16();
+                    if (elemName == "uint32") return TypeRef::MakeUInt32();
+                    if (elemName == "uint64") return TypeRef::MakeUInt64();
+                    if (elemName == "uint") return TypeRef::MakeUInt();
+                    if (elemName == "float32") return TypeRef::MakeFloat32();
+                    if (elemName == "float64") return TypeRef::MakeFloat64();
+                    return TypeRef::MakeNamed(elemName);
+                }
             }
             return TypeRef::MakeChar8();
         }
@@ -1500,9 +1530,8 @@ namespace Rux {
 
         void StoreStructInit(const HirStructInitExpr& e, LirReg slot) {
             for (const auto& f : e.fields) {
-                const LirReg val = LowerExpr(*f.value);
                 const LirReg ptr = EmitFieldPtr(slot, f.name, f.value->type);
-                EmitStore(val, ptr, f.value->type);
+                StoreExprIntoSlot(*f.value, ptr, f.value->type);
             }
         }
 
@@ -1520,9 +1549,8 @@ namespace Rux {
 
         void StoreTupleInit(const HirTupleExpr& e, LirReg slot) {
             for (std::size_t i = 0; i < e.elements.size(); ++i) {
-                const LirReg val = LowerExpr(*e.elements[i]);
                 const LirReg ptr = EmitFieldPtr(slot, std::to_string(i), e.elements[i]->type);
-                EmitStore(val, ptr, e.elements[i]->type);
+                StoreExprIntoSlot(*e.elements[i], ptr, e.elements[i]->type);
             }
         }
 
@@ -1557,10 +1585,9 @@ namespace Rux {
             LirReg data = EmitAlloca(elemType);
             fn->blocks[cur].instrs.back().strArg = std::to_string(e.elements.size());
             for (std::size_t i = 0; i < e.elements.size(); ++i) {
-                LirReg val = LowerExpr(*e.elements[i]);
                 LirReg idx = EmitConst(std::to_string(i), TypeRef::MakeUInt64());
                 LirReg ptr = EmitIndexPtr(data, idx, elemType);
-                EmitStore(val, ptr, elemType);
+                StoreExprIntoSlot(*e.elements[i], ptr, elemType);
             }
             LirReg dataField = EmitFieldPtr(slot, "data", TypeRef::MakePointer(elemType));
             EmitStore(data, dataField, TypeRef::MakePointer(elemType));

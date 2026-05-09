@@ -941,6 +941,26 @@ namespace Rux {
             return params;
         }
 
+        std::optional<TypeRef> InterfaceImplementationType(const TypeRef& exprType,
+                                                           const TypeRef& targetType) const {
+            if (targetType.kind != TypeRef::Kind::Named) return std::nullopt;
+            auto hasVtable = [&](const TypeRef& type) {
+                auto typeIt = typeInterfaceVtables.find(type.ToString());
+                return typeIt != typeInterfaceVtables.end() &&
+                    typeIt->second.contains(targetType.name);
+            };
+            if (hasVtable(exprType)) return exprType;
+            if (exprType.kind == TypeRef::Kind::Int && hasVtable(TypeRef::MakeInt64()))
+                return TypeRef::MakeInt64();
+            if (exprType.kind == TypeRef::Kind::Int64 && hasVtable(TypeRef::MakeInt()))
+                return TypeRef::MakeInt();
+            if (exprType.kind == TypeRef::Kind::UInt && hasVtable(TypeRef::MakeUInt64()))
+                return TypeRef::MakeUInt64();
+            if (exprType.kind == TypeRef::Kind::UInt64 && hasVtable(TypeRef::MakeUInt()))
+                return TypeRef::MakeUInt();
+            return std::nullopt;
+        }
+
         std::optional<std::uint64_t> SizeOfTypeRef(
             const TypeRef& type,
             const std::unordered_map<std::string, TypeRef>& substitutions = {}) {
@@ -1569,8 +1589,15 @@ namespace Rux {
             }
             else if (targetType.kind == TypeRef::Kind::Named) {
                 if (HirSymbol* sym = currentScope->Lookup(targetType.name);
-                    sym && sym->kind == HirSymbol::Kind::Interface) {
-                    const std::string typeName = lowered->type.ToString();
+                    sym && sym->kind == HirSymbol::Kind::Interface &&
+                    lowered->type != targetType) {
+                    std::optional<TypeRef> implementationType =
+                        InterfaceImplementationType(lowered->type, targetType);
+                    if (!implementationType)
+                        implementationType = lowered->type;
+                    const std::string typeName = implementationType->ToString();
+                    if (UnsuffixedIntegerLiteralFits(expr, *implementationType))
+                        lowered->type = *implementationType;
                     auto coerce = std::make_unique<HirCoerceToInterfaceExpr>();
                     coerce->location = expr.location;
                     coerce->type = targetType;
@@ -1827,6 +1854,45 @@ namespace Rux {
                     }
                 }
 
+                if (auto* path = dynamic_cast<const PathExpr*>(e->callee.get());
+                    path && path->segments.size() == 2) {
+                    HirSymbol* first = currentScope->Lookup(path->segments[0]);
+                    if (first && (first->kind == HirSymbol::Kind::Type ||
+                                  first->kind == HirSymbol::Kind::Interface) &&
+                        !LookupEnumVariant(path->segments[0], path->segments[1])) {
+                        TypeRef receiverType = first->type.IsUnknown()
+                                                   ? TypeRef::MakeNamed(first->name)
+                                                   : first->type;
+                        std::vector<HirExprPtr> args;
+                        std::vector<TypeRef> argTypes;
+                        args.reserve(e->args.size());
+                        argTypes.reserve(e->args.size());
+                        for (const auto& arg : e->args) {
+                            auto lowered = LowerExpr(*arg);
+                            argTypes.push_back(lowered->type);
+                            args.push_back(std::move(lowered));
+                        }
+                        if (const FuncDecl* method = LookupMethod(receiverType, path->segments[1], argTypes)) {
+                            TypeRef funcType = AssociatedFunctionType(receiverType, *method);
+                            auto callee = std::make_unique<HirVarExpr>();
+                            callee->location = path->location;
+                            callee->name = CalleeName(path->segments[0], path->segments[1], receiverType, *method);
+                            callee->type = funcType;
+                            auto he = std::make_unique<HirCallExpr>();
+                            he->location = e->location;
+                            he->callee = std::move(callee);
+                            for (std::size_t i = 0; i < args.size(); ++i) {
+                                if (i + 1 < funcType.inner.size() &&
+                                    UnsuffixedIntegerLiteralFits(*e->args[i], funcType.inner[i]))
+                                    args[i]->type = funcType.inner[i];
+                                he->args.push_back(std::move(args[i]));
+                            }
+                            he->type = funcType.inner.empty() ? TypeRef::MakeUnknown() : funcType.inner.back();
+                            return he;
+                        }
+                    }
+                }
+
                 if (auto* ident = dynamic_cast<const IdentExpr*>(e->callee.get())) {
                     std::vector<HirExprPtr> args;
                     std::vector<TypeRef> argTypes;
@@ -1854,11 +1920,8 @@ namespace Rux {
                                     slice->elementType = varElemType;
                                     slice->type =
                                         TypeRef::MakeNamed(SliceTypeName(varElemType));
-                                    for (std::size_t i = fixedCount; i < args.size(); ++i) {
-                                        if (UnsuffixedIntegerLiteralFits(*e->args[i], varElemType))
-                                            args[i]->type = varElemType;
-                                        slice->elements.push_back(std::move(args[i]));
-                                    }
+                                    for (std::size_t i = fixedCount; i < e->args.size(); ++i)
+                                        slice->elements.push_back(LowerExprAs(*e->args[i], varElemType));
                                     args.resize(fixedCount);
                                     args.push_back(std::move(slice));
                                 }

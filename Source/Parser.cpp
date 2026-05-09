@@ -94,6 +94,32 @@ namespace Rux {
         return Peek().location;
     }
 
+    bool Parser::IsGenericStructInitAhead() const noexcept {
+        if (!Check(TokenKind::Less)) return false;
+
+        int angleDepth = 0;
+        for (std::size_t ahead = 0;; ++ahead) {
+            const TokenKind kind = Peek(ahead).kind;
+            if (kind == TokenKind::EndOfFile ||
+                kind == TokenKind::LeftBrace ||
+                kind == TokenKind::Semicolon)
+                return false;
+
+            if (kind == TokenKind::Less) {
+                ++angleDepth;
+                continue;
+            }
+
+            if (kind == TokenKind::Greater) {
+                --angleDepth;
+                if (angleDepth == 0)
+                    return Peek(ahead + 1).kind == TokenKind::LeftBrace;
+                if (angleDepth < 0)
+                    return false;
+            }
+        }
+    }
+
     // Diagnostics
     void Parser::EmitError(const SourceLocation loc, std::string message) {
         diagnostics.push_back(ParserDiagnostic{
@@ -1671,15 +1697,8 @@ namespace Rux {
         if (Check(TokenKind::Ident)) {
             const std::string name = Advance().text;
             std::vector<TypeExprPtr> typeArgs;
-            if (Check(TokenKind::Less)) {
-                const std::size_t savedPos = pos;
-                const std::size_t savedDiagCount = diagnostics.size();
+            if (IsGenericStructInitAhead()) {
                 typeArgs = ParseTypeArgs();
-                if (!Check(TokenKind::LeftBrace)) {
-                    pos = savedPos;
-                    diagnostics.resize(savedDiagCount);
-                    typeArgs.clear();
-                }
             }
             // Struct initialization: Name { field: value, ... }
             // Disabled in control-flow condition contexts to avoid ambiguity.

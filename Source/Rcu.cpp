@@ -228,6 +228,13 @@ namespace Rux {
                 Dword(static_cast<uint32_t>(n));
             }
 
+            void AddRspImm32(int32_t n) const {
+                Byte(0x48);
+                Byte(0x81);
+                Byte(0xC4);
+                Dword(static_cast<uint32_t>(n));
+            }
+
             void Leave() const {
                 Byte(0xC9);
             }
@@ -248,6 +255,14 @@ namespace Rux {
                 Byte(0x48);
                 Byte(0x89);
                 Byte(0x85);
+                Dword(u(d));
+            }
+
+            void MovRaxStoreRsp(const int32_t d) const {
+                Byte(0x48);
+                Byte(0x89);
+                Byte(0x84);
+                Byte(0x24);
                 Dword(u(d));
             }
 
@@ -503,6 +518,24 @@ namespace Rux {
                 Byte(0x0F);
                 Byte(0x10);
                 Byte(static_cast<uint8_t>(0x80 | (n << 3) | 5));
+                Dword(u(d));
+            }
+
+            void MovssXmm0StoreRsp(const int32_t d) const {
+                Byte(0xF3);
+                Byte(0x0F);
+                Byte(0x11);
+                Byte(0x84);
+                Byte(0x24);
+                Dword(u(d));
+            }
+
+            void MovsdXmm0StoreRsp(const int32_t d) const {
+                Byte(0xF2);
+                Byte(0x0F);
+                Byte(0x11);
+                Byte(0x84);
+                Byte(0x24);
                 Dword(u(d));
             }
 
@@ -1061,14 +1094,20 @@ namespace Rux {
         public:
             explicit RcuCodeGen(const LirModule& mod,
                                 const std::vector<LirStructDecl>& structDecls,
+                                const std::vector<std::string>& packageInterfaceNames,
                                 std::string pkgName)
-                : mod(mod), structDecls(structDecls), pkgName(std::move(pkgName)), enc(textData) {}
+                : mod(mod),
+                  structDecls(structDecls),
+                  packageInterfaceNames(packageInterfaceNames),
+                  pkgName(std::move(pkgName)),
+                  enc(textData) {}
 
             RcuFile Generate();
 
         private:
             const LirModule& mod;
             const std::vector<LirStructDecl>& structDecls;
+            const std::vector<std::string>& packageInterfaceNames;
             std::string pkgName;
 
             // Section data buffers
@@ -1170,6 +1209,11 @@ namespace Rux {
                 return t.kind == TypeRef::Kind::Pointer &&
                     !t.inner.empty() &&
                     IsWin64ByRefAggregate(t.inner[0]);
+            }
+
+            static int Win64CallFrameSize(const std::size_t argCount) {
+                const std::size_t stackArgs = argCount > 4 ? argCount - 4 : 0;
+                return AlignUp(static_cast<int>(32 + stackArgs * 8), 16);
             }
 
             uint32_t AddSymbol(RcuSymbol s) {
@@ -1570,7 +1614,7 @@ namespace Rux {
 
             // Build struct layouts
             void BuildLayouts() {
-                for (const auto& name : mod.interfaceNames)
+                for (const auto& name : packageInterfaceNames)
                     interfaceNames.insert(name);
                 for (const auto& s : structDecls) {
                     StructLayout layout;
@@ -1623,9 +1667,27 @@ namespace Rux {
                     // Unified index: rcx/xmm0=0, rdx/xmm1=1, r8/xmm2=2, r9/xmm3=3
                     int idx = startIdx;
                     for (LirReg arg : args) {
-                        if (idx >= 4) break;
                         TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
                         int32_t d = Disp(arg);
+                        if (idx >= 4) {
+                            const int32_t stackArgOff = 32 + (idx - 4) * 8;
+                            if (IsFloat(at)) {
+                                LoadA(arg, at);
+                                if (SizeOf(at) == 4) enc.MovssXmm0StoreRsp(stackArgOff);
+                                else enc.MovsdXmm0StoreRsp(stackArgOff);
+                            }
+                            else if (IsWin64ByRefAggregate(at)) {
+                                enc.LeaRaxStack(d);
+                                enc.MovRaxStoreRsp(stackArgOff);
+                            }
+                            else {
+                                LoadA(arg, at);
+                                enc.MovRaxStoreRsp(stackArgOff);
+                            }
+                            ++idx;
+                            continue;
+                        }
+
                         if (IsFloat(at)) {
                             int sz = SizeOf(at);
                             if (sz == 4) enc.MovssXmmNLoad(idx, d);
@@ -2106,7 +2168,11 @@ namespace Rux {
                     const bool hiddenReturn = win64Call &&
                         instr.dst != LirNoReg &&
                         IsWin64ByRefAggregate(instr.type);
-                    if (win64Call) enc.SubRspShadow();
+                    const int callFrameSize = win64Call
+                                                  ? Win64CallFrameSize(instr.srcs.size() +
+                                                                       (hiddenReturn ? 1 : 0))
+                                                  : 0;
+                    if (win64Call) enc.SubRspImm32(callFrameSize);
                     if (hiddenReturn) {
                         enc.LeaArgStackWin64(0, Disp(instr.dst));
                         EmitCallArgs(instr.srcs, instr.callConv, 1);
@@ -2122,7 +2188,7 @@ namespace Rux {
                     uint32_t ro;
                     enc.Call(ro);
                     AddTextReloc(ro, symIdx);
-                    if (win64Call) enc.AddRspShadow();
+                    if (win64Call) enc.AddRspImm32(callFrameSize);
                     if (instr.dst != LirNoReg && !instr.type.IsOpaque() && !hiddenReturn)
                         StoreReturnValue(instr.dst, instr.type);
                     break;
@@ -2135,7 +2201,11 @@ namespace Rux {
                     const bool hiddenReturn = win64Call &&
                         instr.dst != LirNoReg &&
                         IsWin64ByRefAggregate(instr.type);
-                    if (win64Call) enc.SubRspShadow();
+                    const int callFrameSize = win64Call
+                                                  ? Win64CallFrameSize(args.size() +
+                                                                       (hiddenReturn ? 1 : 0))
+                                                  : 0;
+                    if (win64Call) enc.SubRspImm32(callFrameSize);
                     if (hiddenReturn) {
                         enc.LeaArgStackWin64(0, Disp(instr.dst));
                         EmitCallArgs(args, instr.callConv, 1);
@@ -2145,7 +2215,7 @@ namespace Rux {
                     }
                     enc.MovR10Load(Disp(callee));
                     enc.CallR10();
-                    if (win64Call) enc.AddRspShadow();
+                    if (win64Call) enc.AddRspImm32(callFrameSize);
                     if (instr.dst != LirNoReg && !instr.type.IsOpaque() && !hiddenReturn)
                         StoreReturnValue(instr.dst, instr.type);
                     break;
@@ -2308,8 +2378,39 @@ namespace Rux {
                     int sz = SizeOf(p.type);
                     int32_t d = Disp(p.reg);
                     if (win64Func) {
-                        // Win64: unified index, max 4 register args
-                        if (win64Idx >= 4) break;
+                        // Win64: first 4 args are registers; the rest start above
+                        // return address + saved rbp + 32-byte home space.
+                        if (win64Idx >= 4) {
+                            const int32_t stackArgOff = 48 + (win64Idx - 4) * 8;
+                            if (IsWin64ByRefAggregate(p.type)) {
+                                enc.MovR10Load(stackArgOff);
+                                enc.Byte(0x49);
+                                enc.Byte(0x8B);
+                                enc.Byte(0x02); // mov rax, [r10]
+                                enc.MovRaxStore(d);
+                                enc.Byte(0x49);
+                                enc.Byte(0x8B);
+                                enc.Byte(0x42);
+                                enc.Byte(0x08); // mov rax, [r10 + 8]
+                                enc.MovRaxStore(d + 8);
+                            }
+                            else if (IsFloat(p.type)) {
+                                if (sz == 4) {
+                                    enc.MovssXmm0Load(stackArgOff);
+                                    enc.MovssXmm0Store(d);
+                                }
+                                else {
+                                    enc.MovsdXmm0Load(stackArgOff);
+                                    enc.MovsdXmm0Store(d);
+                                }
+                            }
+                            else {
+                                enc.MovRaxLoad(stackArgOff);
+                                StoreA(p.reg, p.type);
+                            }
+                            ++win64Idx;
+                            continue;
+                        }
                         if (IsWin64ByRefAggregate(p.type)) {
                             enc.MovR10ArgWin64(win64Idx);
                             enc.Byte(0x49);
@@ -2845,11 +2946,15 @@ namespace Rux {
         std::vector<RcuFile> result;
         result.reserve(lir.modules.size());
         std::vector<LirStructDecl> structDecls;
-        for (const auto& mod : lir.modules)
+        std::vector<std::string> interfaceNames;
+        for (const auto& mod : lir.modules) {
             for (const auto& s : mod.structs)
                 structDecls.push_back(s);
+            for (const auto& name : mod.interfaceNames)
+                interfaceNames.push_back(name);
+        }
         for (const auto& mod : lir.modules) {
-            RcuCodeGen gen(mod, structDecls, packageName);
+            RcuCodeGen gen(mod, structDecls, interfaceNames, packageName);
             result.push_back(gen.Generate());
         }
         return result;

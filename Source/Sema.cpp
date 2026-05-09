@@ -920,9 +920,21 @@ namespace Rux {
             if (!sym || sym->kind != Symbol::Kind::Interface) return false;
             // An empty interface is trivially satisfied by every type.
             if (sym->interfaceMethods.empty()) return true;
-            const std::string typeName = exprType.ToString();
-            auto it = typeImplementsInterfaces.find(typeName);
-            return it != typeImplementsInterfaces.end() && it->second.count(targetType.name);
+            auto implements = [&](const TypeRef& type) {
+                const std::string typeName = type.ToString();
+                auto it = typeImplementsInterfaces.find(typeName);
+                return it != typeImplementsInterfaces.end() && it->second.count(targetType.name);
+            };
+            if (implements(exprType)) return true;
+            if (exprType.kind == TypeRef::Kind::Int)
+                return implements(TypeRef::MakeInt64());
+            if (exprType.kind == TypeRef::Kind::Int64)
+                return implements(TypeRef::MakeInt());
+            if (exprType.kind == TypeRef::Kind::UInt)
+                return implements(TypeRef::MakeUInt64());
+            if (exprType.kind == TypeRef::Kind::UInt64)
+                return implements(TypeRef::MakeUInt());
+            return false;
         }
 
         bool CanAssignExprTo(const Expr& expr, const TypeRef& exprType, const TypeRef& targetType) const {
@@ -1775,6 +1787,7 @@ namespace Rux {
                 return;
             }
             DefineImportedSymbol(sym_it->second);
+            ImportSignatureDependencies(sym_it->second, *scope.table);
         }
 
         void DefineImportedSymbol(const Symbol& sym) {
@@ -1787,6 +1800,45 @@ namespace Rux {
                 }
             }
             currentScope->Define(sym, diags, currentFile);
+        }
+
+        void ImportSignatureDependencies(const Symbol& sym,
+                                         const std::unordered_map<std::string, Symbol>& sourceTable) {
+            if (sym.kind != Symbol::Kind::Func) return;
+
+            auto importNamedType = [&](const std::string& name) {
+                if (currentScope->Lookup(name)) return;
+                auto depIt = sourceTable.find(name);
+                if (depIt == sourceTable.end()) return;
+                if (depIt->second.kind == Symbol::Kind::Type ||
+                    depIt->second.kind == Symbol::Kind::Interface)
+                    DefineImportedSymbol(depIt->second);
+            };
+
+            auto visitType = [&](this auto&& self, const TypeExpr& type) -> void {
+                if (const auto* named = dynamic_cast<const NamedTypeExpr*>(&type)) {
+                    importNamedType(named->name);
+                    for (const auto& arg : named->typeArgs)
+                        self(*arg);
+                }
+                else if (const auto* ptr = dynamic_cast<const PointerTypeExpr*>(&type)) {
+                    self(*ptr->pointee);
+                }
+                else if (const auto* slice = dynamic_cast<const SliceTypeExpr*>(&type)) {
+                    self(*slice->element);
+                }
+                else if (const auto* tuple = dynamic_cast<const TupleTypeExpr*>(&type)) {
+                    for (const auto& elem : tuple->elements)
+                        self(*elem);
+                }
+            };
+
+            for (const auto* overload : sym.funcOverloads) {
+                for (const auto& param : overload->params)
+                    visitType(*param.type);
+                if (overload->returnType)
+                    visitType(**overload->returnType);
+            }
         }
 
         void CheckUseDecl(const UseDecl& d) {
@@ -2367,6 +2419,44 @@ namespace Rux {
                         }
 
                         return ResolveInterfaceMethodReturnType(*method);
+                    }
+                }
+
+                if (auto* path = dynamic_cast<const PathExpr*>(e->callee.get())) {
+                    if (path->segments.size() == 2) {
+                        Symbol* first = currentScope->Lookup(path->segments[0]);
+                        if (first && (first->kind == Symbol::Kind::Type ||
+                                      first->kind == Symbol::Kind::Interface)) {
+                            TypeRef receiverType = first->type.IsUnknown()
+                                                       ? TypeRef::MakeNamed(first->name)
+                                                       : first->type;
+                            const std::string& methodName = path->segments[1];
+                            std::vector<TypeRef> argTypes;
+                            argTypes.reserve(e->args.size());
+                            for (const auto& arg : e->args)
+                                argTypes.push_back(CheckExpr(*arg));
+                            if (const FuncDecl* method = LookupMethod(receiverType, methodName, argTypes)) {
+                                std::vector<TypeRef> paramTypes =
+                                    ResolveMethodParamTypes(receiverType, *method);
+                                if (argTypes.size() != paramTypes.size()) {
+                                    EmitError(e->location,
+                                              std::format("function expects {} argument(s), got {}",
+                                                          paramTypes.size(), argTypes.size()));
+                                }
+                                else {
+                                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                                        const TypeRef& argType = argTypes[i];
+                                        const TypeRef& paramType = paramTypes[i];
+                                        if (!argType.IsUnknown() && !paramType.IsUnknown() &&
+                                            !CanAssignExprTo(*e->args[i], argType, paramType))
+                                            EmitError(e->args[i]->location,
+                                                      std::format("cannot pass '{}' to parameter of type '{}'",
+                                                                  argType.ToString(), paramType.ToString()));
+                                    }
+                                }
+                                return ResolveMethodReturnType(receiverType, *method);
+                            }
+                        }
                     }
                 }
 
