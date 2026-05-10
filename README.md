@@ -40,7 +40,21 @@ Here’s how you can get involved:
 
 ## Building
 
-> Build instructions will be available once the compiler reaches an early release.
+### Prerequisites
+
+- [CMake](https://cmake.org/) 4.2 or later
+- A C++26-capable compiler (e.g. Clang 19+, GCC 14+, MSVC 2022+)
+
+### Steps
+
+```sh
+git clone https://github.com/rux-lang/Rux.git
+cd Rux
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+```
+
+The `rux` binary will be placed in the `build/` directory (or `build/Release/` on MSVC).
 
 ## Contributing
 
