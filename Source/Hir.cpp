@@ -11,6 +11,7 @@
 #include <charconv>
 #include <cctype>
 #include <cstdint>
+#include <ctime>
 #include <format>
 #include <fstream>
 #include <limits>
@@ -127,6 +128,8 @@ namespace Rux {
         HirScope* currentScope;
         std::vector<std::unique_ptr<HirScope>> ownedScopes;
         std::string currentFile;
+        std::string currentFunctionName;
+        std::string currentModulePath;
         TypeRef currentReturnType = TypeRef::MakeOpaque();
         bool inImpl = false;
         TypeRef currentSelfType = TypeRef::MakeUnknown();
@@ -805,9 +808,16 @@ namespace Rux {
                 if (ft.kind != TypeRef::Kind::Func || ft.inner.empty()) continue;
                 const std::size_t paramCount = ft.inner.size() - 1;
                 const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-                if (isVariadic ? argTypes.size() < paramCount : paramCount != argTypes.size()) continue;
+                std::size_t requiredCount = 0;
+                for (const auto& p : decl->params)
+                    if (!p.isVariadic && !p.defaultValue)
+                        ++requiredCount;
+                const bool arityOk = isVariadic
+                    ? argTypes.size() >= requiredCount
+                    : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
+                if (!arityOk) continue;
                 bool match = true;
-                for (std::size_t i = 0; i < paramCount; ++i) {
+                for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
                     const TypeRef& paramType = ft.inner[i];
                     if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
                         !argTypes[i].IsAssignableTo(paramType)) {
@@ -970,7 +980,7 @@ namespace Rux {
                     return SizeOfTypeRef(it->second, substitutions);
                 const std::string baseName = BaseTypeName(type.name);
                 if (const auto enumIt = enumDecls.find(baseName); enumIt != enumDecls.end())
-                    return SizeOfTypeRef(EnumBaseType(*enumIt->second), substitutions);
+                    return SizeOfEnum(*enumIt->second, substitutions);
                 if (interfaceDecls.contains(baseName)) return 16;
                 return SizeOfStruct(baseName, substitutions);
             }
@@ -993,6 +1003,68 @@ namespace Rux {
             }
 
             return type.SizeInBytes();
+        }
+
+        std::optional<std::uint64_t> SizeOfEnum(
+            const EnumDecl& decl,
+            const std::unordered_map<std::string, TypeRef>& substitutions = {}) {
+            const auto tagSize = SizeOfTypeRef(EnumBaseType(decl), substitutions);
+            if (!tagSize) return std::nullopt;
+
+            bool hasPayload = false;
+            std::uint64_t maxPayloadSize = 0;
+            std::uint64_t maxPayloadAlign = 1;
+
+            auto fieldLayout = [&](const auto& fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
+                std::uint64_t offset = 0;
+                std::uint64_t maxAlign = 1;
+                for (const auto& field : fields) {
+                    const auto fieldSize = SizeOfTypeExprWithSubstitution(*field, substitutions);
+                    if (!fieldSize) return std::nullopt;
+                    const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
+                    if (align > 1) offset = AlignUp(offset, align);
+                    offset += *fieldSize > 0 ? *fieldSize : 8;
+                    maxAlign = std::max(maxAlign, align);
+                }
+                return std::pair{AlignUp(offset, maxAlign), maxAlign};
+            };
+
+            auto namedFieldLayout = [&](const auto& fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
+                std::uint64_t offset = 0;
+                std::uint64_t maxAlign = 1;
+                for (const auto& field : fields) {
+                    const auto fieldSize = SizeOfTypeExprWithSubstitution(*field.type, substitutions);
+                    if (!fieldSize) return std::nullopt;
+                    const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
+                    if (align > 1) offset = AlignUp(offset, align);
+                    offset += *fieldSize > 0 ? *fieldSize : 8;
+                    maxAlign = std::max(maxAlign, align);
+                }
+                return std::pair{AlignUp(offset, maxAlign), maxAlign};
+            };
+
+            for (const auto& variant : decl.variants) {
+                if (variant.fields.empty() && variant.namedFields.empty())
+                    continue;
+
+                hasPayload = true;
+                auto payload = !variant.fields.empty()
+                    ? fieldLayout(variant.fields)
+                    : namedFieldLayout(variant.namedFields);
+                if (!payload) return std::nullopt;
+                maxPayloadSize = std::max(maxPayloadSize, payload->first);
+                maxPayloadAlign = std::max(maxPayloadAlign, payload->second);
+            }
+
+            if (!hasPayload)
+                return tagSize;
+
+            const std::uint64_t tagAlign = *tagSize > 0 ? std::min<std::uint64_t>(*tagSize, 8) : 1;
+            const std::uint64_t align = std::max(tagAlign, maxPayloadAlign);
+            std::uint64_t offset = *tagSize;
+            if (maxPayloadAlign > 1) offset = AlignUp(offset, maxPayloadAlign);
+            offset += maxPayloadSize;
+            return AlignUp(offset, align);
         }
 
         TypeRef EnumBaseType(const EnumDecl& decl) {
@@ -1138,9 +1210,52 @@ namespace Rux {
             return out;
         }
 
+        // Derives the Rux module path (e.g. "Std::Io") from a source file path.
+        // Finds the "Src" directory component and uses the relative path below it.
+        static std::string FilePathToModulePath(const std::string& filePath) {
+            const std::string generic =
+                std::filesystem::path(filePath).generic_string();
+            std::vector<std::string> parts;
+            std::string cur;
+            for (const char c : generic) {
+                if (c == '/') { if (!cur.empty()) { parts.push_back(cur); cur.clear(); } }
+                else cur += c;
+            }
+            if (!cur.empty()) parts.push_back(cur);
+
+            std::size_t srcIdx = std::string::npos;
+            for (std::size_t i = 0; i < parts.size(); ++i)
+                if (parts[i] == "Src" || parts[i] == "src") srcIdx = i;
+
+            std::vector<std::string> mod;
+            if (srcIdx != std::string::npos && srcIdx + 1 < parts.size()) {
+                for (std::size_t i = srcIdx + 1; i < parts.size(); ++i) {
+                    std::string s = parts[i];
+                    if (i + 1 == parts.size()) {
+                        const auto dot = s.rfind('.');
+                        if (dot != std::string::npos) s = s.substr(0, dot);
+                    }
+                    mod.push_back(s);
+                }
+            } else {
+                std::string stem = parts.empty() ? filePath : parts.back();
+                const auto dot = stem.rfind('.');
+                if (dot != std::string::npos) stem = stem.substr(0, dot);
+                mod.push_back(stem);
+            }
+
+            std::string result;
+            for (std::size_t i = 0; i < mod.size(); ++i) {
+                if (i) result += "::";
+                result += mod[i];
+            }
+            return result;
+        }
+
         // Module lowering
         HirModule LowerModule(const Module& mod) {
             currentFile = mod.name;
+            currentModulePath = FilePathToModulePath(mod.name);
             HirModule hmod;
             hmod.name = mod.name;
             for (const auto& decl : mod.items)
@@ -1177,8 +1292,12 @@ namespace Rux {
             else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl))
                 hmod.typeAliases.push_back(LowerTypeAlias(*d));
             else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl)) {
+                const auto savedModulePath = currentModulePath;
+                currentModulePath = currentModulePath.empty()
+                    ? d->name : currentModulePath + "::" + d->name;
                 for (auto& item : d->items)
                     LowerTopLevelDecl(*item, hmod);
+                currentModulePath = savedModulePath;
             }
             // Import declarations are resolved by sema and have no HIR representation.
         }
@@ -1193,6 +1312,8 @@ namespace Rux {
                                   : TypeRef::MakeOpaque();
             auto savedRet = currentReturnType;
             currentReturnType = retType;
+            auto savedFuncName = currentFunctionName;
+            currentFunctionName = d.name;
             PushScope();
             for (const auto& tp : d.typeParams) {
                 HirSymbol sym;
@@ -1225,6 +1346,7 @@ namespace Rux {
             PopScope();
             currentReturnType = savedRet;
             currentTypeParams = savedTypeParams;
+            currentFunctionName = savedFuncName;
             HirFunc hf;
             hf.name = d.name;
             hf.isPublic = d.isPublic;
@@ -1613,6 +1735,19 @@ namespace Rux {
             return lowered;
         }
 
+        // Like LowerExprAs but, for intrinsic defaults, evaluates at callSiteLoc rather
+        // than at the declaration site (call-site builtins: #line, #column, #file, etc.).
+        HirExprPtr LowerDefaultArg(const Expr& defaultExpr, const TypeRef& targetType,
+                                   const SourceLocation& callSiteLoc) {
+            if (const auto* intr = dynamic_cast<const IntrinsicExpr*>(&defaultExpr)) {
+                IntrinsicExpr tmp;
+                tmp.location = callSiteLoc;
+                tmp.kind = intr->kind;
+                return LowerExprAs(tmp, targetType);
+            }
+            return LowerExprAs(defaultExpr, targetType);
+        }
+
         TypeRef StructInitFieldType(const StructInitExpr& expr, const std::string& fieldName) {
             const auto structIt = structDecls.find(expr.typeName);
             if (structIt == structDecls.end()) {
@@ -1717,6 +1852,54 @@ namespace Rux {
                 he->location = e->location;
                 he->type = TypeRef::MakeUInt64();
                 he->value = std::to_string(SizeOfTypeExpr(*e->type).value_or(0));
+                return he;
+            }
+            if (auto* e = dynamic_cast<const IntrinsicExpr*>(&expr)) {
+                auto he = std::make_unique<HirLiteralExpr>();
+                he->location = e->location;
+                using K = IntrinsicExpr::Kind;
+                switch (e->kind) {
+                case K::Line:
+                    he->type = TypeRef::MakeUInt();
+                    he->value = std::to_string(e->location.line);
+                    break;
+                case K::Column:
+                    he->type = TypeRef::MakeUInt();
+                    he->value = std::to_string(e->location.column);
+                    break;
+                case K::File:
+                    he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                    he->value = std::filesystem::path(currentFile).filename().string();
+                    break;
+                case K::Function:
+                    he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                    he->value = currentFunctionName;
+                    break;
+                case K::Date: {
+                    std::time_t t = std::time(nullptr);
+                    std::tm tm{};
+                    localtime_s(&tm, &t);
+                    char buf[12];
+                    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
+                    he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                    he->value = buf;
+                    break;
+                }
+                case K::Time: {
+                    std::time_t t = std::time(nullptr);
+                    std::tm tm{};
+                    localtime_s(&tm, &t);
+                    char buf[9];
+                    std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm);
+                    he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                    he->value = buf;
+                    break;
+                }
+                case K::Module:
+                    he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                    he->value = currentModulePath;
+                    break;
+                }
                 return he;
             }
             if (auto* e = dynamic_cast<const UnaryExpr*>(&expr)) {
@@ -1912,18 +2095,38 @@ namespace Rux {
                                     !decl->params.empty() && decl->params.back().isVariadic;
                                 const std::size_t fixedCount =
                                     decl->params.size() - (isVariadic ? 1 : 0);
+                                // Inject default arguments for omitted fixed parameters
+                                for (std::size_t i = args.size(); i < fixedCount; ++i) {
+                                    if (decl->params[i].defaultValue) {
+                                        TypeRef pt = (i + 1 < funcType.inner.size())
+                                            ? funcType.inner[i] : TypeRef::MakeUnknown();
+                                        args.push_back(LowerDefaultArg(**decl->params[i].defaultValue, pt, e->location));
+                                    }
+                                }
                                 if (isVariadic) {
                                     TypeRef varElemType =
                                         ResolveType(*decl->params.back().type);
-                                    auto slice = std::make_unique<HirSliceExpr>();
-                                    slice->location = e->location;
-                                    slice->elementType = varElemType;
-                                    slice->type =
-                                        TypeRef::MakeNamed(SliceTypeName(varElemType));
-                                    for (std::size_t i = fixedCount; i < e->args.size(); ++i)
-                                        slice->elements.push_back(LowerExprAs(*e->args[i], varElemType));
-                                    args.resize(fixedCount);
-                                    args.push_back(std::move(slice));
+                                    const bool isSingleSpread =
+                                        (e->args.size() == fixedCount + 1 &&
+                                         dynamic_cast<const SpreadExpr*>(e->args[fixedCount].get()));
+                                    if (isSingleSpread) {
+                                        // Pass the already-lowered slice through directly
+                                        HirExprPtr sliceArg = std::move(args[fixedCount]);
+                                        sliceArg->type =
+                                            TypeRef::MakeNamed(SliceTypeName(varElemType));
+                                        args.resize(fixedCount);
+                                        args.push_back(std::move(sliceArg));
+                                    } else {
+                                        auto slice = std::make_unique<HirSliceExpr>();
+                                        slice->location = e->location;
+                                        slice->elementType = varElemType;
+                                        slice->type =
+                                            TypeRef::MakeNamed(SliceTypeName(varElemType));
+                                        for (std::size_t i = fixedCount; i < e->args.size(); ++i)
+                                            slice->elements.push_back(LowerExprAs(*e->args[i], varElemType));
+                                        args.resize(fixedCount);
+                                        args.push_back(std::move(slice));
+                                    }
                                 }
 
                                 auto callee = std::make_unique<HirVarExpr>();
@@ -1936,7 +2139,7 @@ namespace Rux {
                                 he->type = funcType.inner.back();
                                 he->callee = std::move(callee);
                                 for (std::size_t i = 0; i < args.size(); ++i) {
-                                    if (i + 1 < funcType.inner.size() &&
+                                    if (i < e->args.size() && i + 1 < funcType.inner.size() &&
                                         UnsuffixedIntegerLiteralFits(*e->args[i], funcType.inner[i]))
                                         args[i]->type = funcType.inner[i];
                                     he->args.push_back(std::move(args[i]));
@@ -2206,6 +2409,9 @@ namespace Rux {
                 he->block = LowerBlock(*e->block);
                 return he;
             }
+            if (auto* e = dynamic_cast<const SpreadExpr*>(&expr))
+                return LowerExpr(*e->operand);
+
             // Fallback for unrecognized expression kinds
             auto he = std::make_unique<HirLiteralExpr>();
             he->location = expr.location;

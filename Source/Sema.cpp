@@ -1217,9 +1217,16 @@ namespace Rux {
                 if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) continue;
                 const std::size_t paramCount = funcType.inner.size() - 1;
                 const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-                if (isVariadic ? argTypes.size() < paramCount : paramCount != argTypes.size()) continue;
+                std::size_t requiredCount = 0;
+                for (const auto& p : decl->params)
+                    if (!p.isVariadic && !p.defaultValue)
+                        ++requiredCount;
+                const bool arityOk = isVariadic
+                    ? argTypes.size() >= requiredCount
+                    : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
+                if (!arityOk) continue;
                 bool match = true;
-                for (std::size_t i = 0; i < paramCount; ++i) {
+                for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
                     const TypeRef& paramType = funcType.inner[i];
                     if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
                         !argTypes[i].IsAssignableTo(paramType)) {
@@ -1245,7 +1252,7 @@ namespace Rux {
                     return SizeOfTypeRef(it->second, substitutions);
                 const std::string baseName = BaseTypeName(type.name);
                 if (const auto enumIt = enumDecls.find(baseName); enumIt != enumDecls.end())
-                    return SizeOfTypeRef(EnumBaseType(*enumIt->second), substitutions);
+                    return SizeOfEnum(*enumIt->second, substitutions);
                 // Interface fat pointers are {data: *opaque, vtable: *opaque} = 16 bytes
                 if (Symbol* sym = currentScope->Lookup(baseName);
                     sym && sym->kind == Symbol::Kind::Interface)
@@ -1271,6 +1278,68 @@ namespace Rux {
             }
 
             return type.SizeInBytes();
+        }
+
+        std::optional<std::uint64_t> SizeOfEnum(
+            const EnumDecl& decl,
+            const std::unordered_map<std::string, TypeRef>& substitutions = {}) {
+            const auto tagSize = SizeOfTypeRef(EnumBaseType(decl), substitutions);
+            if (!tagSize) return std::nullopt;
+
+            bool hasPayload = false;
+            std::uint64_t maxPayloadSize = 0;
+            std::uint64_t maxPayloadAlign = 1;
+
+            auto fieldLayout = [&](const auto& fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
+                std::uint64_t offset = 0;
+                std::uint64_t maxAlign = 1;
+                for (const auto& field : fields) {
+                    const auto fieldSize = SizeOfTypeExprWithSubstitution(*field, substitutions);
+                    if (!fieldSize) return std::nullopt;
+                    const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
+                    if (align > 1) offset = AlignUp(offset, align);
+                    offset += *fieldSize > 0 ? *fieldSize : 8;
+                    maxAlign = std::max(maxAlign, align);
+                }
+                return std::pair{AlignUp(offset, maxAlign), maxAlign};
+            };
+
+            auto namedFieldLayout = [&](const auto& fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
+                std::uint64_t offset = 0;
+                std::uint64_t maxAlign = 1;
+                for (const auto& field : fields) {
+                    const auto fieldSize = SizeOfTypeExprWithSubstitution(*field.type, substitutions);
+                    if (!fieldSize) return std::nullopt;
+                    const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
+                    if (align > 1) offset = AlignUp(offset, align);
+                    offset += *fieldSize > 0 ? *fieldSize : 8;
+                    maxAlign = std::max(maxAlign, align);
+                }
+                return std::pair{AlignUp(offset, maxAlign), maxAlign};
+            };
+
+            for (const auto& variant : decl.variants) {
+                if (variant.fields.empty() && variant.namedFields.empty())
+                    continue;
+
+                hasPayload = true;
+                auto payload = !variant.fields.empty()
+                    ? fieldLayout(variant.fields)
+                    : namedFieldLayout(variant.namedFields);
+                if (!payload) return std::nullopt;
+                maxPayloadSize = std::max(maxPayloadSize, payload->first);
+                maxPayloadAlign = std::max(maxPayloadAlign, payload->second);
+            }
+
+            if (!hasPayload)
+                return tagSize;
+
+            const std::uint64_t tagAlign = *tagSize > 0 ? std::min<std::uint64_t>(*tagSize, 8) : 1;
+            const std::uint64_t align = std::max(tagAlign, maxPayloadAlign);
+            std::uint64_t offset = *tagSize;
+            if (maxPayloadAlign > 1) offset = AlignUp(offset, maxPayloadAlign);
+            offset += maxPayloadSize;
+            return AlignUp(offset, align);
         }
 
         TypeRef EnumBaseType(const EnumDecl& decl) {
@@ -1406,8 +1475,20 @@ namespace Rux {
                 Define(self);
             }
 
+            bool seenDefault = false;
             for (const auto& param : d.params) {
                 if (param.name == "self") continue;
+                if (param.isVariadic) {
+                    seenDefault = false; // variadic ends fixed params; reset
+                }
+                else if (param.defaultValue) {
+                    seenDefault = true;
+                }
+                else if (seenDefault) {
+                    EmitError(param.location,
+                              std::format("parameter '{}' without a default value cannot follow a parameter with a default value",
+                                          param.name));
+                }
                 Symbol sym;
                 sym.kind = Symbol::Kind::Var;
                 sym.name = param.name;
@@ -1417,6 +1498,15 @@ namespace Rux {
                     : ResolveType(*param.type);
                 sym.isMut = false;
                 Define(sym);
+                if (param.defaultValue) {
+                    TypeRef paramType = ResolveType(*param.type);
+                    TypeRef defaultType = CheckExpr(**param.defaultValue);
+                    if (!defaultType.IsUnknown() && !paramType.IsUnknown() &&
+                        !CanAssignExprTo(**param.defaultValue, defaultType, paramType))
+                        EmitError(param.location,
+                                  std::format("default value type '{}' does not match parameter type '{}'",
+                                              defaultType.ToString(), paramType.ToString()));
+                }
             }
 
             if (!d.body)
@@ -2253,6 +2343,14 @@ namespace Rux {
                 return TypeRef::MakeUInt64();
             }
 
+            if (dynamic_cast<const IntrinsicExpr*>(&expr)) {
+                const auto* e = static_cast<const IntrinsicExpr*>(&expr);
+                using K = IntrinsicExpr::Kind;
+                if (e->kind == K::Line || e->kind == K::Column)
+                    return TypeRef::MakeUInt();
+                return TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+            }
+
             if (auto* e = dynamic_cast<const UnaryExpr*>(&expr)) {
                 if (e->op == TokenKind::PlusPlus || e->op == TokenKind::MinusMinus)
                     CheckMutability(*e->operand);
@@ -2326,15 +2424,20 @@ namespace Rux {
                                 ? funcType.inner.size() - 1
                                 : 0;
                         const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-                        const bool arityOk = isVariadic ? argTypes.size() >= paramCount
-                                                        : argTypes.size() == paramCount;
+                        std::size_t requiredCount = 0;
+                        for (const auto& p : decl->params)
+                            if (!p.isVariadic && !p.defaultValue)
+                                ++requiredCount;
+                        const bool arityOk = isVariadic ? argTypes.size() >= requiredCount
+                                                        : (argTypes.size() >= requiredCount &&
+                                                           argTypes.size() <= paramCount);
                         if (!arityOk) {
                             EmitError(e->location,
                                       std::format("function expects {} argument(s), got {}",
                                                   paramCount, argTypes.size()));
                         }
                         else {
-                            for (std::size_t i = 0; i < paramCount; ++i) {
+                            for (std::size_t i = 0; i < argTypes.size() && i < paramCount; ++i) {
                                 const TypeRef& paramType = funcType.inner[i];
                                 if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
                                     !CanAssignExprTo(*e->args[i], argTypes[i], paramType))
@@ -2345,12 +2448,28 @@ namespace Rux {
                             if (isVariadic) {
                                 const TypeRef varElemType =
                                     ResolveType(*decl->params.back().type);
-                                for (std::size_t i = paramCount; i < argTypes.size(); ++i) {
-                                    if (!argTypes[i].IsUnknown() && !varElemType.IsUnknown() &&
-                                        !CanAssignExprTo(*e->args[i], argTypes[i], varElemType))
-                                        EmitError(e->args[i]->location,
-                                                  std::format("cannot pass '{}' to variadic parameter of type '{}'",
-                                                              argTypes[i].ToString(), varElemType.ToString()));
+                                const TypeRef sliceType =
+                                    TypeRef::MakeNamed(SliceTypeName(varElemType));
+                                const bool isSingleSpread =
+                                    (argTypes.size() == paramCount + 1 &&
+                                     dynamic_cast<const SpreadExpr*>(e->args[paramCount].get()));
+                                if (isSingleSpread) {
+                                    if (!argTypes[paramCount].IsUnknown() && !sliceType.IsUnknown() &&
+                                        argTypes[paramCount] != sliceType)
+                                        EmitError(e->args[paramCount]->location,
+                                                  std::format("cannot spread '{}' to variadic parameter of type '{}'",
+                                                              argTypes[paramCount].ToString(), varElemType.ToString()));
+                                } else {
+                                    for (std::size_t i = paramCount; i < argTypes.size(); ++i) {
+                                        if (dynamic_cast<const SpreadExpr*>(e->args[i].get()))
+                                            EmitError(e->args[i]->location,
+                                                      "spread argument must be the only variadic argument");
+                                        else if (!argTypes[i].IsUnknown() && !varElemType.IsUnknown() &&
+                                            !CanAssignExprTo(*e->args[i], argTypes[i], varElemType))
+                                            EmitError(e->args[i]->location,
+                                                      std::format("cannot pass '{}' to variadic parameter of type '{}'",
+                                                                  argTypes[i].ToString(), varElemType.ToString()));
+                                    }
                                 }
                             }
                         }
@@ -2622,6 +2741,9 @@ namespace Rux {
                 CheckBlock(*e->block);
                 return TypeRef::MakeUnknown();
             }
+
+            if (auto* e = dynamic_cast<const SpreadExpr*>(&expr))
+                return CheckExpr(*e->operand);
 
             return TypeRef::MakeUnknown();
         }

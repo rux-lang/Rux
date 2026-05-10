@@ -33,6 +33,7 @@
 #ifdef _WIN32
 #  include <windows.h>
 #  include <psapi.h>
+#  include <winhttp.h>
 #else
 #  include <sys/resource.h>
 #  include <sys/wait.h>
@@ -172,9 +173,9 @@ namespace Rux {
             rusage usage{};
             if (getrusage(RUSAGE_SELF, &usage) == 0)
 #  if defined(__APPLE__)
-                return static_cast<std::uintmax_t>(usage.ru_maxrss);
+            return static_cast<std::uintmax_t>(usage.ru_maxrss);
 #  else
-                return static_cast<std::uintmax_t>(usage.ru_maxrss) * 1024;
+            return static_cast<std::uintmax_t>(usage.ru_maxrss) * 1024;
 #  endif
             return 0;
 #endif
@@ -439,6 +440,8 @@ namespace Rux {
         return (output / std::string(profileName)).lexically_normal();
     }
 
+    static std::filesystem::path RegistryPackagesDir();
+
     // Commands
 
     int Cli::RunHelp(std::span<const std::string_view> args, const GlobalOptions&) {
@@ -666,14 +669,18 @@ namespace Rux {
                                pkgName);
                     return false;
                 }
+                std::filesystem::path depRoot;
                 if (dep->path.empty()) {
-                    std::print(stderr,
-                               "error: registry dependencies not yet supported (package '{}')\n",
-                               pkgName);
-                    return false;
+                    depRoot = RegistryPackagesDir() / dep->name;
+                    if (!std::filesystem::exists(depRoot)) {
+                        std::print(stderr,
+                                   "error: package '{}' is not installed — run 'rux install'\n",
+                                   pkgName);
+                        return false;
+                    }
+                } else {
+                    depRoot = (ownerRoot / dep->path).lexically_normal();
                 }
-
-                auto depRoot = (ownerRoot / dep->path).lexically_normal();
                 auto depManifest = Manifest::Load(depRoot / "Rux.toml");
                 if (!depManifest) {
                     std::print(stderr,
@@ -1105,28 +1112,194 @@ namespace Rux {
         return 0;
     }
 
+    // Returns the directory where registry packages are installed.
+    static std::filesystem::path RegistryPackagesDir() {
+#ifdef _WIN32
+        wchar_t buf[MAX_PATH]{};
+        GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
+        return std::filesystem::path(buf) / "Rux" / "Packages";
+#else
+        const char* home = getenv("HOME");
+        return std::filesystem::path(home ? home : "/tmp") / ".rux" / "packages";
+#endif
+    }
+
+#ifdef _WIN32
+    // Fetch the body of an HTTPS URL using WinHTTP. Returns nullopt on failure.
+    static std::optional<std::string> FetchUrl(const std::string& url) {
+        std::wstring wurl(url.begin(), url.end());
+        URL_COMPONENTS comps{};
+        comps.dwStructSize = sizeof(comps);
+        wchar_t hostBuf[512]{}, pathBuf[2048]{};
+        comps.lpszHostName = hostBuf;
+        comps.dwHostNameLength = static_cast<DWORD>(std::size(hostBuf));
+        comps.lpszUrlPath = pathBuf;
+        comps.dwUrlPathLength = static_cast<DWORD>(std::size(pathBuf));
+        if (!WinHttpCrackUrl(wurl.c_str(), 0, 0, &comps)) return std::nullopt;
+
+        HINTERNET hSession = WinHttpOpen(L"Rux/1.0",
+            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+            WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        if (!hSession) return std::nullopt;
+
+        HINTERNET hConnect = WinHttpConnect(hSession, hostBuf, comps.nPort, 0);
+        if (!hConnect) { WinHttpCloseHandle(hSession); return std::nullopt; }
+
+        const DWORD reqFlags = comps.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
+        HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", pathBuf,
+            nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, reqFlags);
+        if (!hRequest) {
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            return std::nullopt;
+        }
+
+        const bool ok = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                                            WINHTTP_NO_REQUEST_DATA, 0, 0, 0)
+                     && WinHttpReceiveResponse(hRequest, nullptr);
+        std::string body;
+        if (ok) {
+            DWORD avail = 0;
+            while (WinHttpQueryDataAvailable(hRequest, &avail) && avail > 0) {
+                std::string buf(avail, '\0');
+                DWORD read = 0;
+                if (!WinHttpReadData(hRequest, buf.data(), avail, &read)) break;
+                body.append(buf.data(), read);
+            }
+        }
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return ok ? std::optional(body) : std::nullopt;
+    }
+#else
+    static std::optional<std::string> FetchUrl(const std::string&) {
+        return std::nullopt;
+    }
+#endif
+
+    // Lookup a string value in a flat JSON object: { "Key": "value", ... }
+    static std::string JsonLookupString(std::string_view json, std::string_view key) {
+        const std::string needle = "\"" + std::string(key) + "\"";
+        std::size_t pos = 0;
+        while ((pos = json.find(needle, pos)) != std::string_view::npos) {
+            std::size_t i = pos + needle.size();
+            while (i < json.size() && (json[i] == ' ' || json[i] == '\t' ||
+                                       json[i] == '\r' || json[i] == '\n')) ++i;
+            if (i >= json.size() || json[i] != ':') { pos = i; continue; }
+            ++i;
+            while (i < json.size() && (json[i] == ' ' || json[i] == '\t' ||
+                                       json[i] == '\r' || json[i] == '\n')) ++i;
+            if (i >= json.size() || json[i] != '"') { pos = i; continue; }
+            ++i;
+            const auto end = json.find('"', i);
+            if (end == std::string_view::npos) break;
+            return std::string(json.substr(i, end - i));
+        }
+        return {};
+    }
+
+    // Clone a git repository into dest. Returns true on success.
+    static bool GitClone(const std::string& repoUrl, const std::filesystem::path& dest) {
+#ifdef _WIN32
+        std::wstring cmd = L"git clone "
+            + std::wstring(repoUrl.begin(), repoUrl.end())
+            + L" \""
+            + dest.wstring()
+            + L"\"";
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        PROCESS_INFORMATION pi{};
+        if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr,
+                            FALSE, 0, nullptr, nullptr, &si, &pi))
+            return false;
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        DWORD exitCode = 1;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return exitCode == 0;
+#else
+        const std::string cmd = "git clone " + repoUrl + " \"" + dest.string() + "\"";
+        return std::system(cmd.c_str()) == 0;
+#endif
+    }
+
     int Cli::RunInstall(const GlobalOptions& opts) {
         const auto manifestPath = RequireManifest();
         if (!manifestPath) return 1;
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
-        if (manifest->dependencies.empty()) {
+
+        // BFS queue of registry package names to install
+        std::vector<std::string> queue;
+        std::unordered_set<std::string> queued;
+        for (const auto& dep : manifest->dependencies) {
+            if (dep.path.empty() && !queued.count(dep.name)) {
+                queue.push_back(dep.name);
+                queued.insert(dep.name);
+            }
+        }
+
+        if (queue.empty()) {
             if (!opts.quiet)
-                std::print("  No dependencies to install.\n");
+                std::print("  No registry dependencies to install.\n");
             return 0;
         }
-        if (!opts.quiet) {
-            std::print("  Installing {} dependencies for {} v{}\n",
-                       manifest->dependencies.size(),
-                       manifest->package.name,
-                       manifest->package.version);
+
+        static constexpr std::string_view kRegistryUrl =
+            "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/Packages.json";
+
+        if (!opts.quiet)
+            std::print("     Fetching registry...\n");
+
+        const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
+        if (!jsonOpt) {
+            std::print(stderr, "error: failed to fetch package registry\n");
+            return 1;
         }
-        for (const auto& dep : manifest->dependencies) {
-            std::string ver = dep.version.empty() ? "latest" : dep.version;
-            if (!opts.quiet)
-                std::print("   Resolving {} @ {}\n", dep.name, ver);
-            // TODO: fetch and build dependency
+
+        int installed = 0;
+        int upToDate = 0;
+        for (std::size_t i = 0; i < queue.size(); ++i) {
+            const std::string& pkgName = queue[i];
+            const std::string repoUrl = JsonLookupString(*jsonOpt, pkgName);
+            if (repoUrl.empty()) {
+                std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
+                return 1;
+            }
+            const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
+            std::error_code ec;
+            std::filesystem::create_directories(pkgDir.parent_path(), ec);
+
+            if (std::filesystem::exists(pkgDir)) {
+                if (!opts.quiet)
+                    std::print("   Up-to-date {}\n", pkgName);
+                ++upToDate;
+            } else {
+                if (!opts.quiet)
+                    std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+                if (!GitClone(repoUrl, pkgDir)) {
+                    std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
+                    return 1;
+                }
+                if (!opts.quiet)
+                    std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+                ++installed;
+            }
+
+            // Enqueue registry deps declared by this package
+            if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
+                for (const auto& dep : depManifest->dependencies) {
+                    if (dep.path.empty() && !queued.count(dep.name)) {
+                        queue.push_back(dep.name);
+                        queued.insert(dep.name);
+                    }
+                }
+            }
         }
+        if (!opts.quiet)
+            std::print("     Summary: {} installed, {} already up-to-date\n", installed, upToDate);
         return 0;
     }
 
@@ -1172,13 +1345,13 @@ namespace Rux {
         else
             root = std::filesystem::current_path() / name;
         if (!opts.quiet)
-            std::print("    Creating {} package '{}'\n",
+            std::print("Creating {} package '{}'\n",
                        type == PackageType::Executable ? "binary" : "library",
                        std::string(name));
         if (!ScaffoldPackage(root, std::string(name), type, /*initMode=*/false))
             return 1;
         if (!opts.quiet)
-            std::print("    Created package '{}' at {}\n",
+            std::print("Created package '{}' at {}\n",
                        std::string(name), root.string());
         return 0;
     }
@@ -1207,18 +1380,17 @@ namespace Rux {
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
         auto [pkgName, pkgVersion] = ParsePackageSpec(spec);
-        bool changed = manifest->AddDependency(pkgName, pkgVersion);
+        const bool changed = manifest->AddDependency(pkgName, pkgVersion);
         if (!manifest->Save(*manifestPath)) {
-            std::print(stderr,
-                       "error: failed to write '{}'\n", manifestPath->string());
+            std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
             return 1;
         }
         if (!opts.quiet) {
-            std::string ver = pkgVersion.empty() ? "latest" : pkgVersion;
+            const std::string ver = pkgVersion.empty() ? "latest" : pkgVersion;
             if (changed)
-                std::print("      Added {} @ {}\n", pkgName, ver);
+                std::print("Added {} @ {}\n", pkgName, ver);
             else
-                std::print("   Up-to-date {} @ {}\n", pkgName, ver);
+                std::print("Up-to-date {} @ {}\n", pkgName, ver);
         }
         return 0;
     }

@@ -141,6 +141,13 @@ namespace Rux {
         case TokenKind::CaretAssign: return "CaretAssign";
         case TokenKind::LessLessAssign: return "LessLessAssign";
         case TokenKind::GreaterGreaterAssign: return "GreaterGreaterAssign";
+        case TokenKind::HashLine:     return "#line";
+        case TokenKind::HashColumn:   return "#column";
+        case TokenKind::HashFile:     return "#file";
+        case TokenKind::HashFunction: return "#function";
+        case TokenKind::HashDate:     return "#date";
+        case TokenKind::HashTime:     return "#time";
+        case TokenKind::HashModule:   return "#module";
         case TokenKind::NewLine: return "NewLine";
         case TokenKind::EndOfFile: return "EndOfFile";
         case TokenKind::Unknown: return "Unknown";

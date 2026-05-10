@@ -51,7 +51,7 @@ target_include_directories(rux PRIVATE
 )
 
 if (WIN32)
-    target_link_libraries(rux PRIVATE Psapi)
+    target_link_libraries(rux PRIVATE Psapi Winhttp)
 endif ()
 
 set_property(TARGET rux

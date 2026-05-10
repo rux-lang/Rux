@@ -369,6 +369,8 @@ namespace Rux {
         p.type = ParseType();
         if (allowVariadic && Match(TokenKind::DotDotDot))
             p.isVariadic = true;
+        if (!p.isVariadic && Match(TokenKind::Assign))
+            p.defaultValue = ParseExpr();
         return p;
     }
 
@@ -1225,6 +1227,12 @@ namespace Rux {
         if (!left) return nullptr;
 
         if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
+            // Leave bare `expr...` for ParseArgList to handle as a spread
+            if (Peek().kind == TokenKind::DotDotDot) {
+                const TokenKind next = Peek(1).kind;
+                if (next == TokenKind::RightParen || next == TokenKind::Comma)
+                    return left;
+            }
             const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
             const auto loc = CurrentLocation();
             Advance();
@@ -1665,6 +1673,27 @@ namespace Rux {
             Expect(TokenKind::RightParen, "expected ')' after sizeof type");
             return e;
         }
+        // Compile-time intrinsics: #line, #column, #file, #function, #date, #time
+        {
+            using K = IntrinsicExpr::Kind;
+            static constexpr std::pair<TokenKind, K> intrinsics[] = {
+                { TokenKind::HashLine,     K::Line },
+                { TokenKind::HashColumn,   K::Column },
+                { TokenKind::HashFile,     K::File },
+                { TokenKind::HashFunction, K::Function },
+                { TokenKind::HashDate,     K::Date },
+                { TokenKind::HashTime,     K::Time },
+                { TokenKind::HashModule,   K::Module },
+            };
+            for (auto [tok, kind] : intrinsics) {
+                if (Match(tok)) {
+                    auto e = std::make_unique<IntrinsicExpr>();
+                    e->location = loc;
+                    e->kind = kind;
+                    return e;
+                }
+            }
+        }
         // Slice literal: [a, b, c]
         if (Match(TokenKind::LeftBracket)) {
             auto e = std::make_unique<SliceExpr>();
@@ -1733,7 +1762,16 @@ namespace Rux {
         std::vector<ExprPtr> args;
         Expect(TokenKind::LeftParen, "expected '('");
         while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-            args.push_back(ParseExpr());
+            auto e = ParseExpr();
+            if (Match(TokenKind::DotDotDot)) {
+                const auto loc = e->location;
+                auto spread = std::make_unique<SpreadExpr>();
+                spread->location = loc;
+                spread->operand = std::move(e);
+                args.push_back(std::move(spread));
+            } else {
+                args.push_back(std::move(e));
+            }
             if (!Match(TokenKind::Comma)) break;
         }
         Expect(TokenKind::RightParen, "expected ')'");
@@ -2415,6 +2453,13 @@ namespace Rux {
                 else if (const auto* sizeOfExpr = dynamic_cast<const SizeOfExpr*>(&expr)) {
                     Pad();
                     out << "SizeOfExpr " << TypeStr(sizeOfExpr->type.get()) << '\n';
+                }
+                else if (const auto* intr = dynamic_cast<const IntrinsicExpr*>(&expr)) {
+                    static constexpr const char* names[] = {
+                        "#line", "#column", "#file", "#function", "#date", "#time", "#module"
+                    };
+                    Pad();
+                    out << "IntrinsicExpr " << names[static_cast<int>(intr->kind)] << '\n';
                 }
                 else if (const auto* unaryExpr = dynamic_cast<const UnaryExpr*>(&expr)) {
                     Pad();

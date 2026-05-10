@@ -200,9 +200,10 @@ namespace Rux {
     }
 
     void Lexer::SkipLineComment() {
-        // Consume everything up to (but not including) the newline
         while (!IsAtEnd() && Peek() != '\n')
             Advance();
+        if (!IsAtEnd())
+            Advance(); // consume the newline so the line counter advances
     }
 
     void Lexer::SkipBlockComment() {
@@ -420,7 +421,26 @@ namespace Rux {
         case ',': return MakeToken(TokenKind::Comma, start, tokenStart);
         case ';': return MakeToken(TokenKind::Semicolon, start, tokenStart);
         case '@': return MakeToken(TokenKind::At, start, tokenStart);
-        case '#': return MakeToken(TokenKind::Hash, start, tokenStart);
+        case '#': {
+            auto isIdentChar = [](char c) {
+                return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+            };
+            auto tryMatch = [&](std::string_view kw) -> bool {
+                for (std::size_t i = 0; i < kw.size(); ++i)
+                    if (Peek(i) != kw[i]) return false;
+                if (isIdentChar(Peek(kw.size()))) return false;
+                for (std::size_t i = 0; i < kw.size(); ++i) Advance();
+                return true;
+            };
+            if (tryMatch("line"))     return MakeToken(TokenKind::HashLine,     start, tokenStart);
+            if (tryMatch("column"))   return MakeToken(TokenKind::HashColumn,   start, tokenStart);
+            if (tryMatch("file"))     return MakeToken(TokenKind::HashFile,     start, tokenStart);
+            if (tryMatch("function")) return MakeToken(TokenKind::HashFunction, start, tokenStart);
+            if (tryMatch("date"))     return MakeToken(TokenKind::HashDate,     start, tokenStart);
+            if (tryMatch("time"))     return MakeToken(TokenKind::HashTime,     start, tokenStart);
+            if (tryMatch("module"))   return MakeToken(TokenKind::HashModule,   start, tokenStart);
+            return MakeToken(TokenKind::Hash, start, tokenStart);
+        }
         case '?': return MakeToken(TokenKind::Question, start, tokenStart);
         case '~': return MakeToken(TokenKind::Tilde, start, tokenStart);
         // :  or  ::

@@ -75,7 +75,7 @@ namespace Rux {
             const bool isBin = (type == PackageType::Executable);
             std::string srcName = isBin ? "Main.rux" : "Lib.rux";
             const std::string srcContent = isBin
-                                               ? "func Main() -> int32 {\n    return 0;\n}\n"
+                                               ? "func Main() -> int {\n    return 0;\n}\n"
                                                : "// " + name + " library\n";
 
             if (!WriteFile(root / "Src" / srcName, srcContent, initMode)) {

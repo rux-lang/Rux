@@ -451,6 +451,12 @@ namespace Rux {
                     locals[p.name] = pr;
                     lf.params.push_back({pr, p.type, p.name});
                 }
+                else if (IsSliceType(p.type)) {
+                    // Slice values are 16-byte {data, length} structs; callers pass a pointer.
+                    // pr holds that pointer directly — FieldPtr handles the indirection.
+                    locals[p.name] = pr;
+                    lf.params.push_back({pr, p.type, p.name});
+                }
                 else {
                     const LirReg slot = EmitAlloca(p.type);
                     EmitStore(pr, slot, p.type);

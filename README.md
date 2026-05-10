@@ -50,7 +50,7 @@ Read the [Contributing guide](CONTRIBUTING.md) to get started.
 
 ## License
 
-Rux is licensed under the [MIT license](https://github.com/rux-lang/Rux/blob/main/LICENSE).
+[MIT](LICENSE)
 
 [XBadge]: https://img.shields.io/badge/follow-%40ruxlang-1DA1F2?logo=x&style=flat&logoColor=white&label=Follow&color=blue
 [BlueskyBadge]: https://img.shields.io/bluesky/followers/ruxlang.bsky.social?style=flat&logo=bluesky&logoColor=white&label=Follow&color=blue

@@ -171,6 +171,12 @@ namespace Rux {
         TypeExprPtr type;
     };
 
+    // #line, #column, #file, #function, #date, #time, #module
+    struct IntrinsicExpr : Expr {
+        enum class Kind { Line, Column, File, Function, Date, Time, Module };
+        Kind kind;
+    };
+
     // !x, -x, ~x, *x, &x
     struct UnaryExpr : Expr {
         TokenKind op;
@@ -246,6 +252,11 @@ namespace Rux {
     // [a, b, c]
     struct SliceExpr : Expr {
         std::vector<ExprPtr> elements;
+    };
+
+    // expr... (spread a slice into a variadic call)
+    struct SpreadExpr : Expr {
+        ExprPtr operand;
     };
 
     // (a, b, c)
@@ -390,6 +401,7 @@ namespace Rux {
         std::string name;
         TypeExprPtr type;
         bool isVariadic = false; // for extern ...
+        std::optional<ExprPtr> defaultValue;
     };
 
     // func [asm] Name<T>(params) -> Type { body }

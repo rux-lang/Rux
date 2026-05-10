@@ -456,6 +456,44 @@ namespace Rux {
                 Dword(u(d));
             }
 
+            void MovRaxArgWin64(const int idx) const {
+                switch (idx) {
+                case 0:
+                    Byte(0x48); Byte(0x89); Byte(0xC8); // mov rax, rcx
+                    break;
+                case 1:
+                    Byte(0x48); Byte(0x89); Byte(0xD0); // mov rax, rdx
+                    break;
+                case 2:
+                    Byte(0x4C); Byte(0x89); Byte(0xC0); // mov rax, r8
+                    break;
+                case 3:
+                    Byte(0x4C); Byte(0x89); Byte(0xC8); // mov rax, r9
+                    break;
+                default:
+                    break;
+                }
+            }
+
+            void MovArgWin64Rax(const int idx) const {
+                switch (idx) {
+                case 0:
+                    Byte(0x48); Byte(0x89); Byte(0xC1); // mov rcx, rax
+                    break;
+                case 1:
+                    Byte(0x48); Byte(0x89); Byte(0xC2); // mov rdx, rax
+                    break;
+                case 2:
+                    Byte(0x49); Byte(0x89); Byte(0xC0); // mov r8, rax
+                    break;
+                case 3:
+                    Byte(0x49); Byte(0x89); Byte(0xC1); // mov r9, rax
+                    break;
+                default:
+                    break;
+                }
+            }
+
             void LeaArgStackWin64(const int idx, const int32_t d) const {
                 static constexpr uint8_t rex[] = {0x48, 0x48, 0x4C, 0x4C};
                 static constexpr uint8_t modrm[] = {0x8D, 0x95, 0x85, 0x8D};
@@ -1205,6 +1243,12 @@ namespace Rux {
                 return SizeOfRuntime(t) == 16;
             }
 
+            [[nodiscard]] bool IsWin64AddressParam(const TypeRef& t) const {
+                if (t.kind != TypeRef::Kind::Named) return false;
+                const std::string base = BaseTypeName(t.name);
+                return base == "Slice" || interfaceNames.count(base) > 0;
+            }
+
             [[nodiscard]] bool IsPointerToWin64ByRefAggregate(const TypeRef& t) const {
                 return t.kind == TypeRef::Kind::Pointer &&
                     !t.inner.empty() &&
@@ -1569,9 +1613,11 @@ namespace Rux {
                     hiddenReturnOff = AllocRegion(8);
                 }
                 for (const auto& p : func.params) {
-                    int sz = SizeOfRuntime(p.type);
+                    int sz = IsWin64AddressParam(p.type) ? 8 : SizeOfRuntime(p.type);
                     AllocSlot(p.reg, sz > 0 ? sz : 8);
-                    regTypes[p.reg] = p.type;
+                    regTypes[p.reg] = IsWin64AddressParam(p.type)
+                                          ? TypeRef::MakePointer(p.type)
+                                          : p.type;
                 }
                 for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
                     for (const auto& instr : func.blocks[bi].instrs) {
@@ -1700,7 +1746,8 @@ namespace Rux {
                             enc.MovArgLoadWin64(idx, d);
                         }
                         else {
-                            enc.MovArgLoadWin64(idx, d);
+                            LoadA(arg, at);
+                            enc.MovArgWin64Rax(idx);
                         }
                         ++idx;
                     }
@@ -2382,7 +2429,11 @@ namespace Rux {
                         // return address + saved rbp + 32-byte home space.
                         if (win64Idx >= 4) {
                             const int32_t stackArgOff = 48 + (win64Idx - 4) * 8;
-                            if (IsWin64ByRefAggregate(p.type)) {
+                            if (IsWin64AddressParam(p.type)) {
+                                enc.MovRaxLoad(stackArgOff);
+                                enc.MovRaxStore(d);
+                            }
+                            else if (IsWin64ByRefAggregate(p.type)) {
                                 enc.MovR10Load(stackArgOff);
                                 enc.Byte(0x49);
                                 enc.Byte(0x8B);
@@ -2411,7 +2462,11 @@ namespace Rux {
                             ++win64Idx;
                             continue;
                         }
-                        if (IsWin64ByRefAggregate(p.type)) {
+                        if (IsWin64AddressParam(p.type)) {
+                            enc.MovRaxArgWin64(win64Idx);
+                            enc.MovRaxStore(d);
+                        }
+                        else if (IsWin64ByRefAggregate(p.type)) {
                             enc.MovR10ArgWin64(win64Idx);
                             enc.Byte(0x49);
                             enc.Byte(0x8B);
@@ -2432,7 +2487,8 @@ namespace Rux {
                             enc.Dword(static_cast<uint32_t>(d));
                         }
                         else {
-                            enc.MovArgStoreWin64(win64Idx, d);
+                            enc.MovRaxArgWin64(win64Idx);
+                            StoreA(p.reg, p.type);
                         }
                         ++win64Idx;
                     }
