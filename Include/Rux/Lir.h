@@ -45,6 +45,8 @@ namespace Rux {
         IndexPtr, // %dst = indexptr *<type> %base, %idx
         // SSA join
         Phi, // %dst = phi <type> [%val, bb], ...
+        // Global address
+        GlobalAddr, // %dst = globaladdr <name> — address of a named global symbol
     };
 
     // LIR Instruction
@@ -118,11 +120,13 @@ namespace Rux {
     struct LirEnumVariant {
         std::string name;
         std::vector<TypeRef> fields;
+        std::optional<std::string> discriminant;
     };
 
     struct LirEnumDecl {
         std::string name;
         bool isPublic = false;
+        TypeRef baseType;
         std::vector<LirEnumVariant> variants;
     };
 
@@ -158,8 +162,15 @@ namespace Rux {
 
     // Module / Package
 
+    // Vtable — a sequence of function-pointer entries emitted in .rodata
+    struct LirVtable {
+        std::string label;               // e.g. __vtable__int64__Display
+        std::vector<std::string> methods; // mangled method names in vtable order
+    };
+
     struct LirModule {
         std::string name;
+        std::vector<std::string> interfaceNames; // interface types (fat ptr = 16 bytes)
         std::vector<LirStructDecl> structs;
         std::vector<LirEnumDecl> enums;
         std::vector<LirUnionDecl> unions;
@@ -167,6 +178,7 @@ namespace Rux {
         std::vector<LirTypeAlias> typeAliases;
         std::vector<LirExternVar> externVars;
         std::vector<LirFunc> funcs;
+        std::vector<LirVtable> vtables;
     };
 
     struct LirPackage {

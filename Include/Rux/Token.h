@@ -123,6 +123,15 @@ namespace Rux {
         LessLessAssign, // <<=
         GreaterGreaterAssign, // >>=
 
+        // Compile-time intrinsics (#line, #column, #file, #function, #date, #time, #module)
+        HashLine,     // #line
+        HashColumn,   // #column
+        HashFile,     // #file
+        HashFunction, // #function
+        HashDate,     // #date
+        HashTime,     // #time
+        HashModule,   // #module
+
         // Special
         NewLine, // significant newline (if the grammar uses them)
         EndOfFile, // end of file

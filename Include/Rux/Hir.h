@@ -64,6 +64,10 @@ namespace Rux {
     struct HirEnumPattern : HirPattern {
         std::vector<std::string> path;
         TypeRef resolvedType;
+        std::optional<std::string> discriminant;
+        bool hasPayload = false;
+        std::vector<std::string> unitDiscriminants;
+        std::vector<std::size_t> argIndices;
         std::vector<HirPatternPtr> args;
     };
 
@@ -161,6 +165,19 @@ namespace Rux {
         std::vector<HirExprPtr> args;
     };
 
+    // Wrap a concrete value into an interface fat pointer {data_ptr, vtable_ptr}
+    struct HirCoerceToInterfaceExpr : HirExpr {
+        HirExprPtr value;
+        std::string vtableLabel;
+    };
+
+    // Call a method through an interface fat pointer (dynamic dispatch via vtable)
+    struct HirInterfaceCallExpr : HirExpr {
+        HirExprPtr fatPtrExpr; // expression that yields the fat-pointer address (8 bytes)
+        int methodIdx = 0;     // index of the method in the vtable
+        std::vector<HirExprPtr> args;
+    };
+
     // a[i]
     struct HirIndexExpr : HirExpr {
         HirExprPtr object;
@@ -212,6 +229,23 @@ namespace Rux {
         HirBlock block;
     };
 
+    struct HirMatchArm {
+        SourceLocation location;
+        HirPatternPtr pattern;
+        HirExprPtr body;
+    };
+
+    // match expr { pat => expr, ... }
+    struct HirMatchExpr : HirExpr {
+        HirExprPtr subject;
+        std::vector<HirMatchArm> arms;
+    };
+
+    struct HirEnumConstructExpr : HirExpr {
+        std::vector<HirExprPtr> payloads;
+        std::string discriminant;
+    };
+
     // HIR Statements
 
     struct HirStmt {
@@ -230,6 +264,8 @@ namespace Rux {
         std::string name;
         HirPatternPtr pattern;
         TypeRef type;
+        TypeRef stackBufferElementType;
+        std::uint64_t stackBufferLength = 0;
         HirExprPtr init;
     };
 
@@ -274,13 +310,6 @@ namespace Rux {
         TypeRef varType;
         HirExprPtr iterable;
         HirBlock body;
-    };
-
-    // match expr { arm, ... }
-    struct HirMatchArm {
-        SourceLocation location;
-        HirPatternPtr pattern;
-        HirExprPtr body;
     };
 
     struct HirMatchStmt : HirStmt {
@@ -347,11 +376,13 @@ namespace Rux {
     struct HirEnumVariant {
         std::string name;
         std::vector<TypeRef> fields;
+        std::optional<std::string> discriminant;
     };
 
     struct HirEnum {
         std::string name;
         bool isPublic = false;
+        TypeRef baseType;
         std::vector<HirEnumVariant> variants;
         SourceLocation location;
     };

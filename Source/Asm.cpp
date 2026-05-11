@@ -39,6 +39,9 @@ namespace Rux {
                     total += SizeOf(elem);
                 return total;
             }
+            case TypeRef::Kind::Named:
+                if (!t.inner.empty()) return SizeOf(t.inner[0]);
+                return 8;
             default: return 8; // int, uint, int64, uint64, float64, pointer, str, named, …
             }
         }
@@ -163,6 +166,7 @@ namespace Rux {
 
             // Struct field layouts (built once)
             LayoutMap layouts;
+            std::unordered_set<std::string> interfaceNames;
 
             // Per-function state
             struct PhiMove {
@@ -265,6 +269,7 @@ namespace Rux {
             [[nodiscard]] int SizeOfRuntime(const TypeRef& t) const {
                 if (t.kind == TypeRef::Kind::Named) {
                     const std::string base = BaseTypeName(t.name);
+                    if (interfaceNames.count(base)) return 16; // {data: *opaque, vtable: *opaque}
                     if (base == "Slice") return 16;
                     auto it = layouts.find(base);
                     if (it != layouts.end()) return it->second.totalSize;
@@ -426,9 +431,12 @@ namespace Rux {
 
             // Module / function generation
             void BuildLayouts() {
-                for (const auto& mod : pkg.modules)
+                for (const auto& mod : pkg.modules) {
+                    for (const auto& name : mod.interfaceNames)
+                        interfaceNames.insert(name);
                     for (const auto& s : mod.structs)
                         layouts[s.name] = ComputeLayout(s, layouts);
+                }
             }
 
             void GenModule(const LirModule& mod) {
@@ -445,6 +453,13 @@ namespace Rux {
                     data << vis;
                     data << c.name << ":  ; " << c.type.ToString() << " = " << c.value << "\n";
                     data << "    ; (constant — initialized at link time)\n";
+                }
+
+                // Vtables
+                for (const auto& vt : mod.vtables) {
+                    rodata << vt.label << ":\n";
+                    for (const auto& m : vt.methods)
+                        rodata << "    dq " << m << "\n";
                 }
 
                 // Functions
@@ -570,6 +585,7 @@ namespace Rux {
                 case LirOpcode::Load: {
                     const TypeRef& t = instr.type;
                     int sz = SizeOf(t);
+                    int runtimeSz = SizeOfRuntime(t);
                     if (!instr.strArg.empty()) {
                         // Named global / constant
                         TI(std::format("{:<8}rax, [rel {}]", "mov", instr.strArg));
@@ -578,6 +594,13 @@ namespace Rux {
                         // Load through pointer in srcs[0]
                         LirReg ptr = instr.srcs[0];
                         TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(ptr)));
+                        if (runtimeSz == 16) {
+                            TI(std::format("{:<8}rax, qword [r10]", "mov"));
+                            TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+                            TI(std::format("{:<8}rax, qword [r10 + 8]", "mov"));
+                            TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst) + 8));
+                            break;
+                        }
                         if (IsFloat(t)) {
                             TI(std::format("{:<8}xmm0, {} [r10]",
                                            sz == 4 ? "movss" : "movsd", PtrSize(sz)));
@@ -608,11 +631,18 @@ namespace Rux {
                     LirReg ptr = instr.srcs[1];
                     const TypeRef& t = instr.type;
                     int sz = SizeOf(t);
+                    int runtimeSz = SizeOfRuntime(t);
 
                     // Load pointer
                     TI(std::format("{:<8}r11, qword [rbp - {}]", "mov", slotMap.at(ptr)));
 
-                    if (IsFloat(t)) {
+                    if (runtimeSz == 16) {
+                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(val)));
+                        TI(std::format("{:<8}qword [r11], rax", "mov"));
+                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(val) + 8));
+                        TI(std::format("{:<8}qword [r11 + 8], rax", "mov"));
+                    }
+                    else if (IsFloat(t)) {
                         TI(std::format("{:<8}xmm0, {} [rbp - {}]",
                                        sz == 4 ? "movss" : "movsd", PtrSize(sz), slotMap.at(val)));
                         TI(std::format("{:<8}{} [r11], xmm0",
@@ -953,6 +983,11 @@ namespace Rux {
                     // The phi dst slot is already allocated; nothing to emit here.
                     break;
 
+                case LirOpcode::GlobalAddr:
+                    TI(std::format("{:<8}rax, [rel {}]", "lea", instr.strArg));
+                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+                    break;
+
                 default:
                     TC(std::format("TODO: opcode {}", static_cast<int>(instr.op)));
                     break;
@@ -981,6 +1016,11 @@ namespace Rux {
                 }
                 if (inner.kind != TypeRef::Kind::Named) return 0;
                 const std::string baseName = BaseTypeName(inner.name);
+                if (interfaceNames.count(baseName)) {
+                    if (fieldName == "data") return 0;
+                    if (fieldName == "vtable") return 8;
+                    return 0;
+                }
                 if (baseName == "Slice") {
                     if (fieldName == "data") return 0;
                     if (fieldName == "length") return 8;
@@ -1029,9 +1069,9 @@ namespace Rux {
                 if (srcs.empty()) return;
                 LirReg callee = srcs[0];
                 std::vector<LirReg> args(srcs.begin() + 1, srcs.end());
-                // Load callee pointer into r10 before setting up args
-                TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(callee)));
                 EmitCallArgs(args);
+                // Load the callee after preparing args because arg setup uses r10.
+                TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(callee)));
                 TI("call    r10");
                 if (dst != LirNoReg && !retType.IsOpaque())
                     StoreA(dst, retType);
@@ -1043,7 +1083,7 @@ namespace Rux {
                     TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
                     if (IsFloat(at)) {
                         if (fltIdx < 8) {
-                            int sz = SizeOf(at);
+                            const int sz = SizeOf(at);
                             TI(std::format("{:<8}{}, {} [rbp - {}]",
                                            sz == 4 ? "movss" : "movsd",
                                            kFltArgRegs[fltIdx], PtrSize(sz), slotMap.at(arg)));
@@ -1052,7 +1092,7 @@ namespace Rux {
                     }
                     else {
                         if (intIdx < 6) {
-                            int sz = std::max(SizeOf(at), 1);
+                            const int sz = std::max(SizeOf(at), 1);
                             TI(std::format("{:<8}{}, {} [rbp - {}]",
                                            "mov", kIntArgRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
                             intIdx++;
@@ -1151,10 +1191,8 @@ namespace Rux {
         // AsmGen::Generate
         std::string AsmGen::Generate() {
             BuildLayouts();
-
             for (const auto& mod : pkg.modules)
                 GenModule(mod);
-
             std::ostringstream out;
             out << "; Generated by Rux Compiler\n";
             out << "; Target:  x86-64  (System V AMD64 ABI, NASM syntax)\n";
@@ -1162,32 +1200,21 @@ namespace Rux {
             out << "; Scratch: r10, r11 (caller-saved)\n";
             out << "\n";
             out << "bits 64\n\n";
-
-            std::string ext = externs.str();
-            if (!ext.empty()) {
+            if (const std::string ext = externs.str(); !ext.empty()) {
                 out << ext << "\n";
             }
-
-            std::string glb = globals.str();
-            if (!glb.empty()) {
+            if (const std::string glb = globals.str(); !glb.empty()) {
                 out << glb << "\n";
             }
-
-            std::string rod = rodata.str();
-            if (!rod.empty()) {
+            if (const std::string rod = rodata.str(); !rod.empty()) {
                 out << "section .rodata\n" << rod << "\n";
             }
-
-            std::string dat = data.str();
-            if (!dat.empty()) {
+            if (const std::string dat = data.str(); !dat.empty()) {
                 out << "section .data\n" << dat << "\n";
             }
-
-            std::string cod = text.str();
-            if (!cod.empty()) {
+            if (const std::string cod = text.str(); !cod.empty()) {
                 out << "section .text\n" << cod;
             }
-
             return out.str();
         }
     }

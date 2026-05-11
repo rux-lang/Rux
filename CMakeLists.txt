@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 4.2)
-project(Rux VERSION 0.1.2)
+project(Rux VERSION 0.2.0)
 
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -51,7 +51,7 @@ target_include_directories(rux PRIVATE
 )
 
 if (WIN32)
-    target_link_libraries(rux PRIVATE Psapi)
+    target_link_libraries(rux PRIVATE Psapi Winhttp)
 endif ()
 
 set_property(TARGET rux

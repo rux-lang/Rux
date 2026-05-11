@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-05-10
+
+Expands the compiler with control flow, composite types, modules, and a richer type system.
+
+### Added
+
+#### Language
+
+- **Control flow** — `if`, `for`, `while`, `do-while` statements
+- **`sizeof` operator** — returns the byte size of a type
+- **Slices** — variable-length views over contiguous memory
+- **Tuples** — fixed-size anonymous product types
+- **Enums** — named sum types
+- **Interfaces** — structural contracts for types
+- **`extend` blocks** — method implementations for types
+- **`module` keyword** — declares the module a source file belongs to
+- **Function overloading** — multiple functions with the same name and different signatures
+- **Function imports** — call functions from other modules
+- **Packages** — multi-file compilation units with dependency resolution
+
+#### CLI
+
+- `rux build` now prints build statistics (files, lines, time) after a successful build
+
+### Fixed
+
+- Dependency resolution error when packages referenced each other
+- Incorrect code generation for `if` conditions
+- Type checking regressions in slices, function calls, and pointer arithmetic
+
+---
+
 ## [0.1.0] - 2026-04-30
 
 Initial release of the Rux compiler and package manager.

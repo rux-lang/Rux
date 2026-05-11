@@ -59,7 +59,8 @@ namespace Rux {
     class Sema {
     public:
         explicit Sema(std::vector<const Module*> userModules,
-                      std::vector<DepPackage> deps = {});
+                      std::vector<DepPackage> deps = {},
+                      std::string packageName = {});
         [[nodiscard]] SemaResult Analyze();
 
         // Write a human-readable dump of the sema result to `path`.
@@ -68,6 +69,7 @@ namespace Rux {
     private:
         std::vector<const Module*> modules;
         std::vector<DepPackage> deps;
+        std::string packageName;
         std::vector<SemaDiagnostic> diags;
         std::vector<SemaSymbol> symbols;
     };

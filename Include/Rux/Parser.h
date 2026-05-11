@@ -59,6 +59,7 @@ namespace Rux {
         [[nodiscard]] bool IsAtEnd() const noexcept;
         [[nodiscard]] const Token& Previous() const noexcept;
         [[nodiscard]] SourceLocation CurrentLocation() const noexcept;
+        [[nodiscard]] bool IsGenericStructInitAhead() const noexcept;
 
         // Diagnostics
         void EmitError(SourceLocation loc, std::string message);
