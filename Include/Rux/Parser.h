@@ -60,6 +60,7 @@ namespace Rux {
         [[nodiscard]] const Token& Previous() const noexcept;
         [[nodiscard]] SourceLocation CurrentLocation() const noexcept;
         [[nodiscard]] bool IsGenericStructInitAhead() const noexcept;
+        [[nodiscard]] bool IsTypeArgListAhead() const noexcept;
 
         // Diagnostics
         void EmitError(SourceLocation loc, std::string message);
@@ -129,6 +130,7 @@ namespace Rux {
         ExprPtr ParseBitAnd();
         ExprPtr ParseEquality();
         ExprPtr ParseComparison();
+        ExprPtr ParseCast();
         ExprPtr ParseShift();
         ExprPtr ParseAdd();
         ExprPtr ParseMul();

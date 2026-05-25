@@ -120,6 +120,37 @@ namespace Rux {
         }
     }
 
+    bool Parser::IsTypeArgListAhead() const noexcept {
+        if (!Check(TokenKind::Less)) return false;
+
+        int angleDepth = 0;
+        for (std::size_t ahead = 0;; ++ahead) {
+            switch (Peek(ahead).kind) {
+                case TokenKind::Less:
+                    ++angleDepth;
+                    continue;
+                case TokenKind::Greater:
+                    --angleDepth;
+                    if (angleDepth == 0) return true;
+                    if (angleDepth < 0)  return false;
+                    continue;
+                case TokenKind::Ident:
+                case TokenKind::Star:
+                case TokenKind::LeftParen:
+                case TokenKind::RightParen:
+                case TokenKind::LeftBracket:
+                case TokenKind::RightBracket:
+                case TokenKind::Comma:
+                case TokenKind::ColonColon:
+                case TokenKind::SelfKeyword:
+                case TokenKind::ConstKeyword:
+                    continue;
+                default:
+                    return false;
+            }
+        }
+    }
+
     // Diagnostics
     void Parser::EmitError(const SourceLocation loc, std::string message) {
         diagnostics.push_back(ParserDiagnostic{
@@ -890,7 +921,7 @@ namespace Rux {
             auto n = std::make_unique<NamedTypeExpr>();
             n->location = loc;
             n->name = first;
-            if (Check(TokenKind::Less))
+            if (IsTypeArgListAhead())
                 n->typeArgs = ParseTypeArgs();
             return n;
         }
@@ -1381,6 +1412,30 @@ namespace Rux {
         return left;
     }
 
+    ExprPtr Parser::ParseCast() {
+        auto left = ParsePostfix();
+        while (CheckAny({TokenKind::AsKeyword, TokenKind::IsKeyword})) {
+            const auto loc = CurrentLocation();
+            if (Match(TokenKind::AsKeyword)) {
+                auto type = ParseType();
+                auto e = std::make_unique<CastExpr>();
+                e->location = loc;
+                e->operand = std::move(left);
+                e->type = std::move(type);
+                left = std::move(e);
+            } else {
+                Match(TokenKind::IsKeyword);
+                auto type = ParseType();
+                auto e = std::make_unique<IsExpr>();
+                e->location = loc;
+                e->operand = std::move(left);
+                e->type = std::move(type);
+                left = std::move(e);
+            }
+        }
+        return left;
+    }
+
     ExprPtr Parser::ParseShift() {
         auto left = ParseAdd();
         while (CheckAny({TokenKind::LessLess, TokenKind::GreaterGreater})) {
@@ -1461,7 +1516,7 @@ namespace Rux {
             e->operand = std::move(operand);
             return e;
         }
-        return ParsePostfix();
+        return ParseCast();
     }
 
     ExprPtr Parser::ParsePostfix() {
@@ -1561,26 +1616,6 @@ namespace Rux {
                 e->location = loc;
                 e->object = std::move(left);
                 e->index = std::move(idx);
-                left = std::move(e);
-                continue;
-            }
-            // as cast
-            if (Match(TokenKind::AsKeyword)) {
-                auto type = ParseType();
-                auto e = std::make_unique<CastExpr>();
-                e->location = loc;
-                e->operand = std::move(left);
-                e->type = std::move(type);
-                left = std::move(e);
-                continue;
-            }
-            // is type check
-            if (Match(TokenKind::IsKeyword)) {
-                auto type = ParseType();
-                auto e = std::make_unique<IsExpr>();
-                e->location = loc;
-                e->operand = std::move(left);
-                e->type = std::move(type);
                 left = std::move(e);
                 continue;
             }

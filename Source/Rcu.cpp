@@ -228,6 +228,13 @@ namespace Rux {
                 Dword(static_cast<uint32_t>(n));
             }
 
+            void TouchRsp() const {
+                Byte(0x48);
+                Byte(0x85);
+                Byte(0x04);
+                Byte(0x24); // test qword [rsp], rax
+            }
+
             void AddRspImm32(int32_t n) const {
                 Byte(0x48);
                 Byte(0x81);
@@ -1705,6 +1712,20 @@ namespace Rux {
                 }
             }
 
+            void EmitStackAlloc(int32_t bytes) const {
+                constexpr int32_t kPageSize = 4096;
+                while (bytes > kPageSize) {
+                    enc.SubRspImm32(kPageSize);
+                    enc.TouchRsp();
+                    bytes -= kPageSize;
+                }
+                if (bytes > 0) {
+                    enc.SubRspImm32(bytes);
+                    if (bytes == kPageSize)
+                        enc.TouchRsp();
+                }
+            }
+
             // Call argument setup
             void EmitCallArgs(const std::vector<LirReg>& args,
                               CallingConvention conv = CallingConvention::Default,
@@ -2413,7 +2434,7 @@ namespace Rux {
                 // Prologue
                 enc.PushRbp();
                 enc.MovRbpRsp();
-                enc.SubRspImm32(frameSize);
+                EmitStackAlloc(frameSize);
                 // Spill ABI param registers to stack slots
                 bool win64Func = EffectiveConv(func.callConv) == CallingConvention::Win64;
                 int intIdx = 0, fltIdx = 0, win64Idx = 0;

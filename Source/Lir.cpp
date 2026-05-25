@@ -270,6 +270,12 @@ namespace Rux {
             return dst;
         }
 
+        LirReg EmitCastIfNeeded(LirReg src, const TypeRef& fromType, const TypeRef& toType) {
+            if (src == LirNoReg || fromType.IsUnknown() || toType.IsUnknown() || fromType == toType)
+                return src;
+            return EmitCast(src, fromType, toType);
+        }
+
         LirReg EmitFieldPtr(LirReg base, std::string field, const TypeRef& elemType) {
             LirReg ptr = NewReg();
             LirInstr i;
@@ -1191,6 +1197,9 @@ namespace Rux {
                 const LirReg current = LowerExpr(*e.target);
                 val = EmitBinary(CompoundOpcode(e.op), current, val, e.type);
             }
+            else {
+                val = EmitCastIfNeeded(val, e.value->type, e.type);
+            }
             const LirReg ptr = LowerLValue(*e.target);
             EmitStore(val, ptr, e.type);
             return val;
@@ -1324,7 +1333,7 @@ namespace Rux {
             }
 
             const LirReg val = LowerExpr(expr);
-            EmitStore(val, slot, type);
+            EmitStore(EmitCastIfNeeded(val, expr.type, type), slot, type);
         }
 
         LirReg LowerTernary(const HirTernaryExpr& e) {
