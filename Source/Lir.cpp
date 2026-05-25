@@ -99,9 +99,16 @@ namespace Rux {
     class LirLowering {
     public:
         LirPackage Run(const HirPackage& hir) {
+            globalConsts.clear();
             for (const auto& mod : hir.modules)
                 for (const auto& iface : mod.interfaces)
                     interfacesByName[iface.name] = &iface;
+            for (const auto& mod : hir.modules) {
+                for (const auto& c : mod.consts) {
+                    globalConsts[c.name] = &c;
+                    globalConsts[mod.name + "::" + c.name] = &c;
+                }
+            }
             LirPackage pkg;
             for (const auto& mod : hir.modules)
                 pkg.modules.push_back(LowerModule(mod));
@@ -114,6 +121,12 @@ namespace Rux {
         LirFunc* fn = nullptr; // function being built (valid only inside LowerFunc)
         std::uint32_t cur = 0; // current basic-block index into fn_->blocks
         std::unordered_map<std::string, LirReg> locals; // name → alloca register
+        std::unordered_map<std::string, const HirConst*> globalConsts;
+        struct LocalConstValue {
+            const HirExpr* value = nullptr;
+            TypeRef type;
+        };
+        std::unordered_map<std::string, LocalConstValue> localConsts;
         std::unordered_map<LirReg, std::vector<LirReg>> enumPayloadSlots;
         std::uint32_t breakTarget = 0;
         std::uint32_t continueTarget = 0;
@@ -376,6 +389,7 @@ namespace Rux {
                 lm.unions.push_back(std::move(ud));
             }
             for (const auto& c : mod.consts) {
+                globalConsts[c.name] = &c;
                 LirConstDecl cd;
                 cd.name = c.name;
                 cd.isPublic = c.isPublic;
@@ -436,6 +450,7 @@ namespace Rux {
         LirFunc LowerFunc(const HirFunc& hf, std::string_view nameOverride = "") {
             nextReg = 0;
             locals.clear();
+            localConsts.clear();
             enumPayloadSlots.clear();
             LirFunc lf;
             lf.name = nameOverride.empty() ? hf.name : std::string(nameOverride);
@@ -598,7 +613,11 @@ namespace Rux {
                 return;
             }
 
-            // HirLocalDecl — placeholder, nothing to emit
+            if (auto* s = dynamic_cast<const HirLocalDecl*>(&stmt)) {
+                if (s->hasConstant)
+                    localConsts[s->constantName] = {s->constantValue.get(), s->constantType};
+                return;
+            }
         }
 
         // Control-flow lowering
@@ -1007,6 +1026,15 @@ namespace Rux {
                 return EmitConst(e->value, e->type);
             }
             if (auto* e = dynamic_cast<const HirVarExpr*>(&expr)) {
+                if (const auto it = localConsts.find(e->name); it != localConsts.end()) {
+                    const TypeRef& constType = it->second.type.IsUnknown() ? e->type : it->second.type;
+                    LirReg value = LowerExpr(*it->second.value);
+                    return EmitCastIfNeeded(value, it->second.value->type, constType);
+                }
+                if (const auto it = globalConsts.find(e->name); it != globalConsts.end()) {
+                    LirReg value = LowerExpr(*it->second->value);
+                    return EmitCastIfNeeded(value, it->second->value->type, it->second->type);
+                }
                 auto it = locals.find(e->name);
                 if (it != locals.end()) {
                     if (IsInterfaceType(e->type))
@@ -1029,6 +1057,10 @@ namespace Rux {
                 for (std::size_t i = 0; i < e->segments.size(); ++i) {
                     if (i) path += "::";
                     path += e->segments[i];
+                }
+                if (const auto it = globalConsts.find(path); it != globalConsts.end()) {
+                    LirReg value = LowerExpr(*it->second->value);
+                    return EmitCastIfNeeded(value, it->second->value->type, it->second->type);
                 }
                 return EmitNamedLoad(path, e->type);
             }

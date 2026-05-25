@@ -1031,6 +1031,14 @@ namespace Rux {
             return TypeRef::MakeNamed(elemName);
         }
 
+        static std::optional<TypeRef> IndexElementType(const TypeRef& type) {
+            if (auto elemType = SliceElementType(type))
+                return elemType;
+            if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty())
+                return type.inner[0];
+            return std::nullopt;
+        }
+
         TypeRef ResolveType(const TypeExpr& expr) {
             if (auto* t = dynamic_cast<const NamedTypeExpr*>(&expr)) {
                 if (t->typeArgs.empty()) {
@@ -1212,29 +1220,32 @@ namespace Rux {
                                                const std::vector<TypeRef>& argTypes) {
             if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) return nullptr;
             if (sym.funcOverloads.size() == 1) return sym.funcOverloads[0];
-            for (const auto* decl : sym.funcOverloads) {
-                TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
-                if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) continue;
-                const std::size_t paramCount = funcType.inner.size() - 1;
-                const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-                std::size_t requiredCount = 0;
-                for (const auto& p : decl->params)
-                    if (!p.isVariadic && !p.defaultValue)
-                        ++requiredCount;
-                const bool arityOk = isVariadic
-                    ? argTypes.size() >= requiredCount
-                    : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
-                if (!arityOk) continue;
-                bool match = true;
-                for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
-                    const TypeRef& paramType = funcType.inner[i];
-                    if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
-                        !argTypes[i].IsAssignableTo(paramType)) {
-                        match = false;
-                        break;
+            for (const bool allowVariadic : {false, true}) {
+                for (const auto* decl : sym.funcOverloads) {
+                    TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+                    if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) continue;
+                    const std::size_t paramCount = funcType.inner.size() - 1;
+                    const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
+                    if (isVariadic != allowVariadic) continue;
+                    std::size_t requiredCount = 0;
+                    for (const auto& p : decl->params)
+                        if (!p.isVariadic && !p.defaultValue)
+                            ++requiredCount;
+                    const bool arityOk = isVariadic
+                        ? argTypes.size() >= requiredCount
+                        : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
+                    if (!arityOk) continue;
+                    bool match = true;
+                    for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
+                        const TypeRef& paramType = funcType.inner[i];
+                        if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
+                            !argTypes[i].IsAssignableTo(paramType)) {
+                            match = false;
+                            break;
+                        }
                     }
+                    if (match) return decl;
                 }
-                if (match) return decl;
             }
             return sym.funcOverloads[0];
         }
@@ -1819,6 +1830,13 @@ namespace Rux {
             std::string displayName;
         };
 
+        static std::string ImportScopeDisplayName(const std::string& pkgName,
+                                                  const std::string& modulePath) {
+            if (modulePath.empty())
+                return std::format("package '{}'", pkgName);
+            return std::format("module '{}'", modulePath);
+        }
+
         ImportScope ResolveImportScope(const UseDecl& d, const std::string& pkgName,
                                        const std::string& modulePath) {
             const std::string logicalModulePath = LogicalModulePathForImport(d);
@@ -1831,13 +1849,13 @@ namespace Rux {
                             logicalIt != pkgIt->second.end()) {
                             return {
                                 &logicalIt->second->Table(),
-                                pkgName + "::" + logicalModulePath
+                                ImportScopeDisplayName(pkgName, logicalModulePath)
                             };
                         }
                     }
                     return {
                         &modIt->second->Table(),
-                        modulePath.empty() ? pkgName : pkgName + "::" + modulePath
+                        ImportScopeDisplayName(pkgName, modulePath)
                     };
                 }
             }
@@ -1859,7 +1877,7 @@ namespace Rux {
             if (matchedScope) {
                 return {
                     &matchedScope->Table(),
-                    matchedPackage + "::" + logicalModulePath
+                    ImportScopeDisplayName(matchedPackage, logicalModulePath)
                 };
             }
 
@@ -1880,7 +1898,7 @@ namespace Rux {
             auto sym_it = scope.table->find(name);
             if (sym_it == scope.table->end()) {
                 EmitError(d.location,
-                          std::format("'{}' not found in '{}'", name, scope.displayName));
+                          std::format("'{}' not found in {}", name, scope.displayName));
                 return;
             }
             DefineImportedSymbol(sym_it->second);
@@ -2618,7 +2636,7 @@ namespace Rux {
             if (auto* e = dynamic_cast<const IndexExpr*>(&expr)) {
                 TypeRef obj = CheckExpr(*e->object);
                 CheckExpr(*e->index);
-                if (auto elemType = SliceElementType(obj))
+                if (auto elemType = IndexElementType(obj))
                     return *elemType;
                 return TypeRef::MakeUnknown();
             }
@@ -2678,6 +2696,11 @@ namespace Rux {
 
                 if (TypeRef fieldType = StructFieldType(obj, e->field); !fieldType.IsUnknown())
                     return fieldType;
+                if (!obj.IsUnknown()) {
+                    EmitError(e->location,
+                              std::format("type '{}' has no field '{}'",
+                                          obj.ToString(), e->field));
+                }
                 return TypeRef::MakeUnknown(); // field type lookup needs full type info
             }
 

@@ -95,6 +95,8 @@ namespace Rux {
 
         // System V AMD64 integer argument registers (in order)
         constexpr std::string_view kIntArgRegs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+        // Microsoft x64 integer argument registers (in order)
+        constexpr std::string_view kWin64IntArgRegs[] = {"rcx", "rdx", "r8", "r9"};
         // System V AMD64 float argument registers (in order)
         constexpr std::string_view kFltArgRegs[] = {"xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7"};
 
@@ -938,13 +940,13 @@ namespace Rux {
                 }
 
                 case LirOpcode::Call: {
-                    EmitCall(instr.strArg, instr.srcs, instr.dst, instr.type, /*indirect=*/false);
+                    EmitCall(instr.strArg, instr.srcs, instr.dst, instr.type, instr.callConv);
                     break;
                 }
 
                 case LirOpcode::CallIndirect: {
                     // strArg empty; srcs[0] = callee, srcs[1..] = args
-                    EmitCallIndirect(instr.srcs, instr.dst, instr.type);
+                    EmitCallIndirect(instr.srcs, instr.dst, instr.type, instr.callConv);
                     break;
                 }
 
@@ -1035,7 +1037,11 @@ namespace Rux {
 
             // Call emission
             void EmitCall(const std::string& callee, const std::vector<LirReg>& args,
-                          LirReg dst, const TypeRef& retType, bool /*indirect*/) {
+                          LirReg dst, const TypeRef& retType, CallingConvention callConv) {
+                const bool win64 = callConv == CallingConvention::Win64;
+                const auto* intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
+                const int maxIntRegs = win64 ? 4 : 6;
+                std::vector<LirReg> stackArgs;
                 // Set up arguments into ABI registers
                 int intIdx = 0, fltIdx = 0;
                 for (LirReg arg : args) {
@@ -1050,34 +1056,74 @@ namespace Rux {
                         }
                     }
                     else {
-                        if (intIdx < 6) {
+                        if (intIdx < maxIntRegs) {
                             int sz = std::max(SizeOf(at), 1);
                             TI(std::format("{:<8}{}, {} [rbp - {}]",
-                                           "mov", kIntArgRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
+                                           "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
                             intIdx++;
                         }
+                        else if (win64) {
+                            stackArgs.push_back(arg);
+                        }
+                    }
+                }
+                const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16) : 0;
+                if (win64) {
+                    TI(std::format("sub     rsp, {}", stackBytes));
+                    for (std::size_t i = 0; i < stackArgs.size(); ++i) {
+                        TypeRef at = regTypes.contains(stackArgs[i]) ? regTypes.at(stackArgs[i]) : TypeRef::MakeInt64();
+                        const int sz = std::max(SizeOf(at), 1);
+                        TI(std::format("{:<8}rax, {} [rbp - {}]",
+                                       "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
+                        TI(std::format("{:<8}qword [rsp + {}], rax", "mov", 32 + i * 8));
                     }
                 }
                 // Stack is already 16-byte aligned: prologue sub rsp,frameSize ensures
                 // rsp ≡ 8 (mod 16) which the ABI requires before a call instruction.
                 TI(std::format("{:<8}{}", "call", callee));
+                if (win64)
+                    TI(std::format("add     rsp, {}", stackBytes));
                 if (dst != LirNoReg && !retType.IsOpaque())
                     StoreA(dst, retType);
             }
 
-            void EmitCallIndirect(const std::vector<LirReg>& srcs, LirReg dst, const TypeRef& retType) {
+            void EmitCallIndirect(const std::vector<LirReg>& srcs, LirReg dst, const TypeRef& retType,
+                                  CallingConvention callConv) {
                 if (srcs.empty()) return;
                 LirReg callee = srcs[0];
                 std::vector<LirReg> args(srcs.begin() + 1, srcs.end());
-                EmitCallArgs(args);
+                const std::vector<LirReg> stackArgs = EmitCallArgs(args, callConv);
+                const int stackBytes = callConv == CallingConvention::Win64
+                                           ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
+                                           : 0;
+                if (callConv == CallingConvention::Win64) {
+                    TI(std::format("sub     rsp, {}", stackBytes));
+                    StoreWin64StackArgs(stackArgs);
+                }
                 // Load the callee after preparing args because arg setup uses r10.
                 TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(callee)));
                 TI("call    r10");
+                if (callConv == CallingConvention::Win64)
+                    TI(std::format("add     rsp, {}", stackBytes));
                 if (dst != LirNoReg && !retType.IsOpaque())
                     StoreA(dst, retType);
             }
 
-            void EmitCallArgs(const std::vector<LirReg>& args) {
+            void StoreWin64StackArgs(const std::vector<LirReg>& stackArgs) {
+                for (std::size_t i = 0; i < stackArgs.size(); ++i) {
+                    TypeRef at = regTypes.contains(stackArgs[i]) ? regTypes.at(stackArgs[i]) : TypeRef::MakeInt64();
+                    const int sz = std::max(SizeOf(at), 1);
+                    TI(std::format("{:<8}rax, {} [rbp - {}]",
+                                   "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
+                    TI(std::format("{:<8}qword [rsp + {}], rax", "mov", 32 + i * 8));
+                }
+            }
+
+            std::vector<LirReg> EmitCallArgs(const std::vector<LirReg>& args, CallingConvention callConv) {
+                const bool win64 = callConv == CallingConvention::Win64;
+                const auto* intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
+                const int maxIntRegs = win64 ? 4 : 6;
+                std::vector<LirReg> stackArgs;
                 int intIdx = 0, fltIdx = 0;
                 for (LirReg arg : args) {
                     TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
@@ -1091,14 +1137,18 @@ namespace Rux {
                         }
                     }
                     else {
-                        if (intIdx < 6) {
+                        if (intIdx < maxIntRegs) {
                             const int sz = std::max(SizeOf(at), 1);
                             TI(std::format("{:<8}{}, {} [rbp - {}]",
-                                           "mov", kIntArgRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
+                                           "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
                             intIdx++;
+                        }
+                        else if (win64) {
+                            stackArgs.push_back(arg);
                         }
                     }
                 }
+                return stackArgs;
             }
 
             // Terminator generation

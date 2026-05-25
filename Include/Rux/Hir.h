@@ -335,6 +335,10 @@ namespace Rux {
     // local declaration inside a block (func, const, type alias declared locally)
     struct HirLocalDecl : HirStmt {
         std::string description;
+        bool hasConstant = false;
+        std::string constantName;
+        TypeRef constantType;
+        HirExprPtr constantValue;
     };
 
     // HIR Declarations

@@ -140,16 +140,20 @@ namespace Rux {
         std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl*>>> methodsByType;
         std::unordered_map<std::string, const InterfaceDecl*> interfaceDecls;
         std::unordered_map<std::string, std::unordered_map<std::string, std::string>> typeInterfaceVtables;
+        std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
 
         // Scope management
         void PushScope() {
             ownedScopes.push_back(std::make_unique<HirScope>(currentScope));
             currentScope = ownedScopes.back().get();
+            constIntegerScopes.emplace_back();
         }
 
         void PopScope() {
             assert(currentScope->Parent() != nullptr && "cannot pop global scope");
             currentScope = currentScope->Parent();
+            if (constIntegerScopes.size() > 1)
+                constIntegerScopes.pop_back();
         }
 
         void Define(HirSymbol sym) const {
@@ -416,6 +420,59 @@ namespace Rux {
             return value;
         }
 
+        static std::optional<std::uint64_t> ParseUnsignedIntegerText(const std::string& rawText) {
+            std::string text = StripNumericLiteralSuffix(rawText);
+            text.erase(std::remove(text.begin(), text.end(), '_'), text.end());
+            if (text.empty() || text[0] == '-') return std::nullopt;
+
+            int base = 10;
+            std::string_view digits(text);
+            if (digits.size() > 2 && digits[0] == '0') {
+                switch (digits[1]) {
+                case 'x':
+                case 'X':
+                    base = 16;
+                    digits.remove_prefix(2);
+                    break;
+                case 'b':
+                case 'B':
+                    base = 2;
+                    digits.remove_prefix(2);
+                    break;
+                case 'o':
+                case 'O':
+                    base = 8;
+                    digits.remove_prefix(2);
+                    break;
+                default:
+                    break;
+                }
+            }
+            if (digits.empty()) return std::nullopt;
+
+            std::uint64_t value = 0;
+            const auto* first = digits.data();
+            const auto* last = first + digits.size();
+            const auto [ptr, ec] = std::from_chars(first, last, value, base);
+            if (ec != std::errc{} || ptr != last) return std::nullopt;
+            return value;
+        }
+
+        std::optional<std::uint64_t> LookupConstInteger(const std::string& name) const {
+            for (auto it = constIntegerScopes.rbegin(); it != constIntegerScopes.rend(); ++it) {
+                if (const auto valueIt = it->find(name); valueIt != it->end())
+                    return valueIt->second;
+            }
+            return std::nullopt;
+        }
+
+        void RegisterConstInteger(const std::string& name, const HirExpr& value) {
+            const auto* literal = dynamic_cast<const HirLiteralExpr*>(&value);
+            if (!literal) return;
+            if (auto parsed = ParseUnsignedIntegerText(literal->value))
+                constIntegerScopes.back()[name] = *parsed;
+        }
+
         static std::optional<std::int64_t> ParseEnumDiscriminant(const std::string& text) {
             std::string cleaned = StripNumericLiteralSuffix(text);
             const bool negative = !cleaned.empty() && cleaned[0] == '-';
@@ -637,6 +694,14 @@ namespace Rux {
             return TypeRef::MakeNamed(elemName);
         }
 
+        static std::optional<TypeRef> IndexElementType(const TypeRef& type) {
+            if (auto elemType = SliceElementType(type))
+                return elemType;
+            if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty())
+                return type.inner[0];
+            return std::nullopt;
+        }
+
         TypeRef ResolveType(const TypeExpr& expr) {
             if (auto* t = dynamic_cast<const NamedTypeExpr*>(&expr)) {
                 if (t->typeArgs.empty()) {
@@ -675,9 +740,11 @@ namespace Rux {
         std::optional<std::uint64_t> FixedSliceTypeSize(const TypeExpr& expr) {
             const auto* slice = dynamic_cast<const SliceTypeExpr*>(&expr);
             if (!slice || !slice->size) return std::nullopt;
-            const auto* literal = dynamic_cast<const LiteralExpr*>(slice->size.get());
-            if (!literal) return std::nullopt;
-            return ParseUnsuffixedIntegerLiteral(literal->token);
+            if (const auto* literal = dynamic_cast<const LiteralExpr*>(slice->size.get()))
+                return ParseUnsuffixedIntegerLiteral(literal->token);
+            if (const auto* ident = dynamic_cast<const IdentExpr*>(slice->size.get()))
+                return LookupConstInteger(ident->name);
+            return std::nullopt;
         }
 
         TypeRef FixedSliceElementType(const TypeExpr& expr) {
@@ -787,13 +854,15 @@ namespace Rux {
         std::string FunctionCalleeName(const std::string& name, const FuncDecl& decl) {
             if (!FunctionIsOverloaded(name))
                 return name;
-            TypeRef ft = MakeFuncType(decl.params, decl.returnType, decl.typeParams);
             std::string out = name + "__";
-            if (ft.kind == TypeRef::Kind::Func && !ft.inner.empty()) {
-                for (std::size_t i = 0; i + 1 < ft.inner.size(); ++i) {
-                    if (i) out += "_";
-                    out += MangleTypeName(ft.inner[i]);
-                }
+            bool first = true;
+            for (const auto& param : decl.params) {
+                TypeRef paramType = param.isVariadic
+                                        ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
+                                        : ResolveType(*param.type);
+                if (!first) out += "_";
+                out += MangleTypeName(paramType);
+                first = false;
             }
             return out;
         }
@@ -803,29 +872,32 @@ namespace Rux {
             const auto it = functionsByName.find(name);
             if (it == functionsByName.end() || it->second.empty()) return nullptr;
             if (it->second.size() == 1) return it->second[0];
-            for (const auto* decl : it->second) {
-                TypeRef ft = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
-                if (ft.kind != TypeRef::Kind::Func || ft.inner.empty()) continue;
-                const std::size_t paramCount = ft.inner.size() - 1;
-                const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-                std::size_t requiredCount = 0;
-                for (const auto& p : decl->params)
-                    if (!p.isVariadic && !p.defaultValue)
-                        ++requiredCount;
-                const bool arityOk = isVariadic
-                    ? argTypes.size() >= requiredCount
-                    : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
-                if (!arityOk) continue;
-                bool match = true;
-                for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
-                    const TypeRef& paramType = ft.inner[i];
-                    if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
-                        !argTypes[i].IsAssignableTo(paramType)) {
-                        match = false;
-                        break;
+            for (const bool allowVariadic : {false, true}) {
+                for (const auto* decl : it->second) {
+                    TypeRef ft = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+                    if (ft.kind != TypeRef::Kind::Func || ft.inner.empty()) continue;
+                    const std::size_t paramCount = ft.inner.size() - 1;
+                    const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
+                    if (isVariadic != allowVariadic) continue;
+                    std::size_t requiredCount = 0;
+                    for (const auto& p : decl->params)
+                        if (!p.isVariadic && !p.defaultValue)
+                            ++requiredCount;
+                    const bool arityOk = isVariadic
+                        ? argTypes.size() >= requiredCount
+                        : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
+                    if (!arityOk) continue;
+                    bool match = true;
+                    for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
+                        const TypeRef& paramType = ft.inner[i];
+                        if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
+                            !argTypes[i].IsAssignableTo(paramType)) {
+                            match = false;
+                            break;
+                        }
                     }
+                    if (match) return decl;
                 }
-                if (match) return decl;
             }
             return it->second[0];
         }
@@ -1486,6 +1558,7 @@ namespace Rux {
             if (HirSymbol* sym = currentScope->Lookup(d.name))
                 sym->type = hc.type;
             hc.location = d.location;
+            RegisterConstInteger(hc.name, *hc.value);
             return hc;
         }
 
@@ -1681,15 +1754,21 @@ namespace Rux {
             if (auto* s = dynamic_cast<const DeclStmt*>(&stmt)) {
                 auto hs = std::make_unique<HirLocalDecl>();
                 hs->location = s->location;
+                CollectDecl(*s->decl);
                 if (auto* fd = dynamic_cast<const FuncDecl*>(s->decl.get()))
                     hs->description = std::format("func {}", fd->name);
-                else if (auto* cd = dynamic_cast<const ConstDecl*>(s->decl.get()))
+                else if (auto* cd = dynamic_cast<const ConstDecl*>(s->decl.get())) {
                     hs->description = std::format("const {}", cd->name);
+                    HirConst constant = LowerConst(*cd);
+                    hs->hasConstant = true;
+                    hs->constantName = std::move(constant.name);
+                    hs->constantType = std::move(constant.type);
+                    hs->constantValue = std::move(constant.value);
+                }
                 else if (auto* ta = dynamic_cast<const TypeAliasDecl*>(s->decl.get()))
                     hs->description = std::format("type {}", ta->name);
                 else
                     hs->description = "<local decl>";
-                CollectDecl(*s->decl);
                 return hs;
             }
             // Unreachable in valid AST
@@ -2257,7 +2336,7 @@ namespace Rux {
                 he->location = e->location;
                 he->object = LowerExpr(*e->object);
                 he->index = LowerExpr(*e->index);
-                if (auto elemType = SliceElementType(he->object->type))
+                if (auto elemType = IndexElementType(he->object->type))
                     he->type = *elemType;
                 return he;
             }
