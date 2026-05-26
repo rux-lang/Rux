@@ -678,7 +678,8 @@ namespace Rux {
                                    pkgName);
                         return false;
                     }
-                } else {
+                }
+                else {
                     depRoot = (ownerRoot / dep->path).lexically_normal();
                 }
                 auto depManifest = Manifest::Load(depRoot / "Rux.toml");
@@ -1138,16 +1139,19 @@ namespace Rux {
         if (!WinHttpCrackUrl(wurl.c_str(), 0, 0, &comps)) return std::nullopt;
 
         HINTERNET hSession = WinHttpOpen(L"Rux/1.0",
-            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-            WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+                                         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
         if (!hSession) return std::nullopt;
 
         HINTERNET hConnect = WinHttpConnect(hSession, hostBuf, comps.nPort, 0);
-        if (!hConnect) { WinHttpCloseHandle(hSession); return std::nullopt; }
+        if (!hConnect) {
+            WinHttpCloseHandle(hSession);
+            return std::nullopt;
+        }
 
         const DWORD reqFlags = comps.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
         HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", pathBuf,
-            nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, reqFlags);
+                                                nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, reqFlags);
         if (!hRequest) {
             WinHttpCloseHandle(hConnect);
             WinHttpCloseHandle(hSession);
@@ -1155,8 +1159,8 @@ namespace Rux {
         }
 
         const bool ok = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
-                                            WINHTTP_NO_REQUEST_DATA, 0, 0, 0)
-                     && WinHttpReceiveResponse(hRequest, nullptr);
+                                           WINHTTP_NO_REQUEST_DATA, 0, 0, 0)
+            && WinHttpReceiveResponse(hRequest, nullptr);
         std::string body;
         if (ok) {
             DWORD avail = 0;
@@ -1185,12 +1189,20 @@ namespace Rux {
         while ((pos = json.find(needle, pos)) != std::string_view::npos) {
             std::size_t i = pos + needle.size();
             while (i < json.size() && (json[i] == ' ' || json[i] == '\t' ||
-                                       json[i] == '\r' || json[i] == '\n')) ++i;
-            if (i >= json.size() || json[i] != ':') { pos = i; continue; }
+                json[i] == '\r' || json[i] == '\n'))
+                ++i;
+            if (i >= json.size() || json[i] != ':') {
+                pos = i;
+                continue;
+            }
             ++i;
             while (i < json.size() && (json[i] == ' ' || json[i] == '\t' ||
-                                       json[i] == '\r' || json[i] == '\n')) ++i;
-            if (i >= json.size() || json[i] != '"') { pos = i; continue; }
+                json[i] == '\r' || json[i] == '\n'))
+                ++i;
+            if (i >= json.size() || json[i] != '"') {
+                pos = i;
+                continue;
+            }
             ++i;
             const auto end = json.find('"', i);
             if (end == std::string_view::npos) break;
@@ -1298,7 +1310,8 @@ namespace Rux {
                 if (!opts.quiet)
                     std::print("   Up-to-date {}\n", pkgName);
                 ++upToDate;
-            } else {
+            }
+            else {
                 if (!opts.quiet)
                     std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
                 if (!GitClone(repoUrl, pkgDir)) {
@@ -1655,7 +1668,8 @@ namespace Rux {
                     return 1;
                 }
                 ++updated;
-            } else {
+            }
+            else {
                 if (!opts.quiet)
                     std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
                 if (!GitClone(repoUrl, pkgDir)) {
