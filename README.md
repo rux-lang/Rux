@@ -47,17 +47,64 @@ Here’s how you can get involved:
 
 - [CMake](https://cmake.org/) 4.2 or later
 - A C++26-capable compiler (e.g. Clang 19+, GCC 14+, MSVC 2022+)
+- A build tool supported by CMake, such as Ninja, Make, or MSBuild
 
-### Steps
+### Clone
 
 ```sh
 git clone https://github.com/rux-lang/Rux.git
 cd Rux
+```
+
+### Build with Clang
+
+Use this configuration when `clang++` is available on your `PATH`.
+
+```sh
+cmake -S . -B build/clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
+cmake --build build/clang --config Release
+```
+
+If you use Ninja explicitly:
+
+```sh
+cmake -S . -B build/clang -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
+cmake --build build/clang
+```
+
+On Windows, Clang can also be used through `clang-cl` from a Visual Studio Developer PowerShell:
+
+```sh
+cmake -S . -B build/clang-cl -G "Visual Studio 17 2022" -T ClangCL
+cmake --build build/clang-cl --config Release
+```
+
+### Build with MSVC
+
+Run these commands from a Visual Studio Developer PowerShell or Developer Command Prompt:
+
+```sh
+cmake -S . -B build/msvc -G "Visual Studio 17 2022" -A x64
+cmake --build build/msvc --config Release
+```
+
+Alternatively, with Ninja and the MSVC compiler environment already loaded:
+
+```sh
+cmake -S . -B build/msvc-ninja -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
+cmake --build build/msvc-ninja
+```
+
+### Generic CMake Build
+
+If your preferred compiler is already the default for your environment:
+
+```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
-The `rux` binary will be placed in the `build/` directory (or `build/Release/` on MSVC).
+The `rux` binary will be placed under the selected build directory. Single-configuration generators usually emit it directly in that directory, while Visual Studio/MSVC multi-configuration builds emit it under `Release/`.
 
 ## Contributing
 
