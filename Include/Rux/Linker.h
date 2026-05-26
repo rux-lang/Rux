@@ -17,8 +17,8 @@ namespace Rux {
         std::string message;
     };
 
-    // Links one or more RcuFile objects into a Windows PE32+ executable (.exe).
-    // Target: Windows x86-64 (AMD64), console subsystem.
+    // Links one or more RcuFile objects into a native x86-64 executable.
+    // Windows hosts emit PE32+; Linux hosts emit ELF64.
     class Linker {
     public:
         explicit Linker(std::vector<RcuFile> objects,
@@ -40,5 +40,8 @@ namespace Rux {
         std::vector<LinkerError> errors;
 
         void Error(std::string msg);
+#if defined(__linux__)
+        [[nodiscard]] bool LinkElf64(const std::filesystem::path& outputPath);
+#endif
     };
 }
