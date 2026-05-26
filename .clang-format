@@ -1,0 +1,27 @@
+BasedOnStyle: LLVM
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+
+BreakBeforeBraces: Attach
+NamespaceIndentation: All
+
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortLoopsOnASingleLine: false
+
+ColumnLimit: 100
+
+AlignAfterOpenBracket: Align
+BinPackArguments: false
+BinPackParameters: false
+
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+SortIncludes: false
+
+IndentCaseLabels: true
+
+SpaceBeforeParens: ControlStatements

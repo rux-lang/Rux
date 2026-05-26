@@ -32,7 +32,7 @@ namespace Rux {
     };
 
     class HirScope {
-    public:
+      public:
         explicit HirScope(HirScope* parent = nullptr) : parent(parent) {}
 
         void Define(HirSymbol sym) {
@@ -51,8 +51,10 @@ namespace Rux {
 
         HirSymbol* Lookup(const std::string& name) {
             auto it = table.find(name);
-            if (it != table.end()) return &it->second;
-            if (parent) return parent->Lookup(name);
+            if (it != table.end())
+                return &it->second;
+            if (parent)
+                return parent->Lookup(name);
             return nullptr;
         }
 
@@ -60,7 +62,7 @@ namespace Rux {
             return parent;
         }
 
-    private:
+      private:
         HirScope* parent;
         std::unordered_map<std::string, HirSymbol> table;
     };
@@ -69,60 +71,96 @@ namespace Rux {
     static std::string_view OpStr(TokenKind op) {
         using TK = TokenKind;
         switch (op) {
-        case TK::Plus: return "+";
-        case TK::Minus: return "-";
-        case TK::Star: return "*";
-        case TK::Slash: return "/";
-        case TK::Percent: return "%";
-        case TK::StarStar: return "**";
-        case TK::PlusPlus: return "++";
-        case TK::MinusMinus: return "--";
-        case TK::Amp: return "&";
-        case TK::Pipe: return "|";
-        case TK::Caret: return "^";
-        case TK::Tilde: return "~";
-        case TK::LessLess: return "<<";
-        case TK::GreaterGreater: return ">>";
-        case TK::AmpAmp: return "&&";
-        case TK::PipePipe: return "||";
-        case TK::Bang: return "!";
-        case TK::Equal: return "==";
-        case TK::BangEqual: return "!=";
-        case TK::Less: return "<";
-        case TK::LessEqual: return "<=";
-        case TK::Greater: return ">";
-        case TK::GreaterEqual: return ">=";
-        case TK::Assign: return "=";
-        case TK::PlusAssign: return "+=";
-        case TK::MinusAssign: return "-=";
-        case TK::StarAssign: return "*=";
-        case TK::SlashAssign: return "/=";
-        case TK::PercentAssign: return "%=";
-        case TK::AmpAssign: return "&=";
-        case TK::PipeAssign: return "|=";
-        case TK::CaretAssign: return "^=";
-        case TK::LessLessAssign: return "<<=";
-        case TK::GreaterGreaterAssign: return ">>=";
-        default: return "?";
+            case TK::Plus:
+                return "+";
+            case TK::Minus:
+                return "-";
+            case TK::Star:
+                return "*";
+            case TK::Slash:
+                return "/";
+            case TK::Percent:
+                return "%";
+            case TK::StarStar:
+                return "**";
+            case TK::PlusPlus:
+                return "++";
+            case TK::MinusMinus:
+                return "--";
+            case TK::Amp:
+                return "&";
+            case TK::Pipe:
+                return "|";
+            case TK::Caret:
+                return "^";
+            case TK::Tilde:
+                return "~";
+            case TK::LessLess:
+                return "<<";
+            case TK::GreaterGreater:
+                return ">>";
+            case TK::AmpAmp:
+                return "&&";
+            case TK::PipePipe:
+                return "||";
+            case TK::Bang:
+                return "!";
+            case TK::Equal:
+                return "==";
+            case TK::BangEqual:
+                return "!=";
+            case TK::Less:
+                return "<";
+            case TK::LessEqual:
+                return "<=";
+            case TK::Greater:
+                return ">";
+            case TK::GreaterEqual:
+                return ">=";
+            case TK::Assign:
+                return "=";
+            case TK::PlusAssign:
+                return "+=";
+            case TK::MinusAssign:
+                return "-=";
+            case TK::StarAssign:
+                return "*=";
+            case TK::SlashAssign:
+                return "/=";
+            case TK::PercentAssign:
+                return "%=";
+            case TK::AmpAssign:
+                return "&=";
+            case TK::PipeAssign:
+                return "|=";
+            case TK::CaretAssign:
+                return "^=";
+            case TK::LessLessAssign:
+                return "<<=";
+            case TK::GreaterGreaterAssign:
+                return ">>=";
+            default:
+                return "?";
         }
     }
 
     // Internal: Lowering
     class Lowering {
-    public:
+      public:
         explicit Lowering(std::vector<const Module*>& modules)
             : modules(modules), currentScope(&globalScope) {}
 
         HirPackage Run() {
             RegisterBuiltins();
-            for (auto* mod : modules) CollectModule(*mod);
+            for (auto* mod : modules)
+                CollectModule(*mod);
             HirPackage pkg;
             for (auto* mod : modules)
                 pkg.modules.push_back(LowerModule(*mod));
             return pkg;
         }
 
-    private:
+      private:
         std::vector<const Module*>& modules;
         HirScope globalScope{nullptr};
         HirScope* currentScope;
@@ -137,9 +175,12 @@ namespace Rux {
         std::unordered_map<std::string, const StructDecl*> structDecls;
         std::unordered_map<std::string, const EnumDecl*> enumDecls;
         std::unordered_map<std::string, std::vector<const FuncDecl*>> functionsByName;
-        std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl*>>> methodsByType;
+        std::unordered_map<std::string,
+                           std::unordered_map<std::string, std::vector<const FuncDecl*>>>
+            methodsByType;
         std::unordered_map<std::string, const InterfaceDecl*> interfaceDecls;
-        std::unordered_map<std::string, std::unordered_map<std::string, std::string>> typeInterfaceVtables;
+        std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
+            typeInterfaceVtables;
 
         // Scope management
         void PushScope() {
@@ -229,48 +270,39 @@ namespace Rux {
                 sym.type = MakeFuncType(d->params, d->returnType, d->typeParams);
                 sym.funcOverloads.push_back(d);
                 globalScope.Define(std::move(sym));
-            }
-            else if (auto* d = dynamic_cast<const StructDecl*>(&decl)) {
+            } else if (auto* d = dynamic_cast<const StructDecl*>(&decl)) {
                 structDecls[d->name] = d;
                 simple(HirSymbol::Kind::Type, d->name, TypeRef::MakeNamed(d->name));
-            }
-            else if (auto* d = dynamic_cast<const EnumDecl*>(&decl)) {
+            } else if (auto* d = dynamic_cast<const EnumDecl*>(&decl)) {
                 enumDecls[d->name] = d;
                 simple(HirSymbol::Kind::Type, d->name, EnumType(*d));
-            }
-            else if (auto* d = dynamic_cast<const UnionDecl*>(&decl))
+            } else if (auto* d = dynamic_cast<const UnionDecl*>(&decl))
                 simple(HirSymbol::Kind::Type, d->name, TypeRef::MakeNamed(d->name));
             else if (auto* d = dynamic_cast<const InterfaceDecl*>(&decl)) {
                 simple(HirSymbol::Kind::Interface, d->name, TypeRef::MakeNamed(d->name));
                 interfaceDecls[d->name] = d;
-            }
-            else if (auto* d = dynamic_cast<const ConstDecl*>(&decl)) {
+            } else if (auto* d = dynamic_cast<const ConstDecl*>(&decl)) {
                 TypeRef constType;
                 if (d->type)
                     constType = ResolveType(*d->type->get());
                 simple(HirSymbol::Kind::Const, d->name, constType);
-            }
-            else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl))
+            } else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl))
                 simple(HirSymbol::Kind::Type, d->name);
             else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl))
-                simple(HirSymbol::Kind::Func, d->name,
-                       MakeFuncType(d->params, d->returnType));
+                simple(HirSymbol::Kind::Func, d->name, MakeFuncType(d->params, d->returnType));
             else if (auto* d = dynamic_cast<const ExternVarDecl*>(&decl)) {
                 HirSymbol sym;
                 sym.kind = HirSymbol::Kind::Var;
                 sym.name = d->name;
                 sym.isMut = true;
                 globalScope.Define(std::move(sym));
-            }
-            else if (auto* d = dynamic_cast<const ExternBlockDecl*>(&decl)) {
+            } else if (auto* d = dynamic_cast<const ExternBlockDecl*>(&decl)) {
                 for (auto& item : d->items)
                     CollectDecl(*item);
-            }
-            else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl)) {
+            } else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl)) {
                 for (auto& item : d->items)
                     CollectDecl(*item);
-            }
-            else if (auto* d = dynamic_cast<const ImplDecl*>(&decl)) {
+            } else if (auto* d = dynamic_cast<const ImplDecl*>(&decl)) {
                 for (const auto& method : d->methods)
                     methodsByType[d->typeName][method->name].push_back(method.get());
                 if (d->interfaceName)
@@ -285,7 +317,8 @@ namespace Rux {
             if (!type.typeArgs.empty()) {
                 name += "<";
                 for (std::size_t i = 0; i < type.typeArgs.size(); ++i) {
-                    if (i) name += ", ";
+                    if (i)
+                        name += ", ";
                     name += ResolveType(*type.typeArgs[i]).ToString();
                 }
                 name += ">";
@@ -298,7 +331,8 @@ namespace Rux {
             if (!expr.typeArgs.empty()) {
                 name += "<";
                 for (std::size_t i = 0; i < expr.typeArgs.size(); ++i) {
-                    if (i) name += ", ";
+                    if (i)
+                        name += ", ";
                     name += ResolveType(*expr.typeArgs[i]).ToString();
                 }
                 name += ">";
@@ -306,8 +340,8 @@ namespace Rux {
             return name;
         }
 
-        std::pair<const EnumDecl*, const EnumDecl::Variant*> LookupEnumVariantInitializer(
-            const std::string& typeName) const {
+        std::pair<const EnumDecl*, const EnumDecl::Variant*>
+        LookupEnumVariantInitializer(const std::string& typeName) const {
             const std::size_t sep = typeName.find("::");
             if (sep == std::string::npos || typeName.find("::", sep + 2) != std::string::npos)
                 return {nullptr, nullptr};
@@ -315,7 +349,8 @@ namespace Rux {
             const std::string enumName = typeName.substr(0, sep);
             const std::string variantName = typeName.substr(sep + 2);
             const auto enumIt = enumDecls.find(enumName);
-            if (enumIt == enumDecls.end()) return {nullptr, nullptr};
+            if (enumIt == enumDecls.end())
+                return {nullptr, nullptr};
             for (const auto& variant : enumIt->second->variants) {
                 if (variant.name == variantName)
                     return {enumIt->second, &variant};
@@ -337,8 +372,10 @@ namespace Rux {
         }
 
         static TypeRef StringLiteralElementType(const Token& tok) {
-            if (tok.text.starts_with("c16\"")) return TypeRef::MakeChar16();
-            if (tok.text.starts_with("c32\"")) return TypeRef::MakeChar32();
+            if (tok.text.starts_with("c16\""))
+                return TypeRef::MakeChar16();
+            if (tok.text.starts_with("c32\""))
+                return TypeRef::MakeChar32();
             return TypeRef::MakeChar8();
         }
 
@@ -347,18 +384,18 @@ namespace Rux {
         }
 
         static TypeRef CharLiteralType(const Token& tok) {
-            if (tok.text.starts_with("c8'")) return TypeRef::MakeChar8();
-            if (tok.text.starts_with("c16'")) return TypeRef::MakeChar16();
-            if (tok.text.starts_with("c32'")) return TypeRef::MakeChar32();
+            if (tok.text.starts_with("c8'"))
+                return TypeRef::MakeChar8();
+            if (tok.text.starts_with("c16'"))
+                return TypeRef::MakeChar16();
+            if (tok.text.starts_with("c32'"))
+                return TypeRef::MakeChar32();
             return TypeRef::MakeChar();
         }
 
         static std::string NumericLiteralSuffix(std::string_view text) {
             static constexpr std::string_view suffixes[] = {
-                "i8", "i16", "i32", "i64",
-                "u8", "u16", "u32", "u64",
-                "f32", "f64"
-            };
+                "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64"};
             for (auto suffix : suffixes) {
                 if (text.size() > suffix.size() &&
                     text.substr(text.size() - suffix.size()) == suffix)
@@ -369,7 +406,8 @@ namespace Rux {
 
         static std::string StripNumericLiteralSuffix(const std::string& text) {
             const std::string suffix = NumericLiteralSuffix(text);
-            if (suffix.empty()) return text;
+            if (suffix.empty())
+                return text;
             return text.substr(0, text.size() - suffix.size());
         }
 
@@ -380,39 +418,42 @@ namespace Rux {
             std::string text;
             text.reserve(tok.text.size());
             for (const char c : tok.text) {
-                if (c != '_') text.push_back(c);
+                if (c != '_')
+                    text.push_back(c);
             }
 
             int base = 10;
             std::string_view digits(text);
             if (digits.size() > 2 && digits[0] == '0') {
                 switch (digits[1]) {
-                case 'x':
-                case 'X':
-                    base = 16;
-                    digits.remove_prefix(2);
-                    break;
-                case 'b':
-                case 'B':
-                    base = 2;
-                    digits.remove_prefix(2);
-                    break;
-                case 'o':
-                case 'O':
-                    base = 8;
-                    digits.remove_prefix(2);
-                    break;
-                default:
-                    break;
+                    case 'x':
+                    case 'X':
+                        base = 16;
+                        digits.remove_prefix(2);
+                        break;
+                    case 'b':
+                    case 'B':
+                        base = 2;
+                        digits.remove_prefix(2);
+                        break;
+                    case 'o':
+                    case 'O':
+                        base = 8;
+                        digits.remove_prefix(2);
+                        break;
+                    default:
+                        break;
                 }
             }
-            if (digits.empty()) return std::nullopt;
+            if (digits.empty())
+                return std::nullopt;
 
             std::uint64_t value = 0;
             const auto* first = digits.data();
             const auto* last = first + digits.size();
             const auto [ptr, ec] = std::from_chars(first, last, value, base);
-            if (ec != std::errc{} || ptr != last) return std::nullopt;
+            if (ec != std::errc{} || ptr != last)
+                return std::nullopt;
             return value;
         }
 
@@ -425,44 +466,49 @@ namespace Rux {
             std::string digitsText;
             digitsText.reserve(cleaned.size());
             for (const char c : cleaned) {
-                if (c != '_') digitsText.push_back(c);
+                if (c != '_')
+                    digitsText.push_back(c);
             }
 
             int base = 10;
             std::string_view digits(digitsText);
             if (digits.size() > 2 && digits[0] == '0') {
                 switch (digits[1]) {
-                case 'x':
-                case 'X':
-                    base = 16;
-                    digits.remove_prefix(2);
-                    break;
-                case 'b':
-                case 'B':
-                    base = 2;
-                    digits.remove_prefix(2);
-                    break;
-                case 'o':
-                case 'O':
-                    base = 8;
-                    digits.remove_prefix(2);
-                    break;
-                default:
-                    break;
+                    case 'x':
+                    case 'X':
+                        base = 16;
+                        digits.remove_prefix(2);
+                        break;
+                    case 'b':
+                    case 'B':
+                        base = 2;
+                        digits.remove_prefix(2);
+                        break;
+                    case 'o':
+                    case 'O':
+                        base = 8;
+                        digits.remove_prefix(2);
+                        break;
+                    default:
+                        break;
                 }
             }
-            if (digits.empty()) return std::nullopt;
+            if (digits.empty())
+                return std::nullopt;
 
             std::uint64_t parsed = 0;
             const auto* first = digits.data();
             const auto* last = first + digits.size();
             const auto [ptr, ec] = std::from_chars(first, last, parsed, base);
-            if (ec != std::errc{} || ptr != last) return std::nullopt;
+            if (ec != std::errc{} || ptr != last)
+                return std::nullopt;
             if (negative) {
                 constexpr auto maxMagnitude =
                     static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) + 1;
-                if (parsed > maxMagnitude) return std::nullopt;
-                if (parsed == maxMagnitude) return std::numeric_limits<std::int64_t>::min();
+                if (parsed > maxMagnitude)
+                    return std::nullopt;
+                if (parsed == maxMagnitude)
+                    return std::numeric_limits<std::int64_t>::min();
                 return -static_cast<std::int64_t>(parsed);
             }
             if (parsed > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
@@ -472,42 +518,41 @@ namespace Rux {
 
         static std::optional<std::uint64_t> UnsignedIntegerMax(const TypeRef& type) {
             switch (type.kind) {
-            case TypeRef::Kind::UInt8: return std::numeric_limits<std::uint8_t>::max();
-            case TypeRef::Kind::UInt16: return std::numeric_limits<std::uint16_t>::max();
-            case TypeRef::Kind::UInt32: return std::numeric_limits<std::uint32_t>::max();
-            case TypeRef::Kind::UInt64:
-            case TypeRef::Kind::UInt:
-                return std::numeric_limits<std::uint64_t>::max();
-            default:
-                return std::nullopt;
+                case TypeRef::Kind::UInt8:
+                    return std::numeric_limits<std::uint8_t>::max();
+                case TypeRef::Kind::UInt16:
+                    return std::numeric_limits<std::uint16_t>::max();
+                case TypeRef::Kind::UInt32:
+                    return std::numeric_limits<std::uint32_t>::max();
+                case TypeRef::Kind::UInt64:
+                case TypeRef::Kind::UInt:
+                    return std::numeric_limits<std::uint64_t>::max();
+                default:
+                    return std::nullopt;
             }
         }
 
-        static std::optional<std::pair<std::int64_t, std::int64_t>> SignedIntegerRange(const TypeRef& type) {
+        static std::optional<std::pair<std::int64_t, std::int64_t>>
+        SignedIntegerRange(const TypeRef& type) {
             switch (type.kind) {
-            case TypeRef::Kind::Int8:
-                return std::pair{
-                    static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::min()),
-                    static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::max())
-                };
-            case TypeRef::Kind::Int16:
-                return std::pair{
-                    static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::min()),
-                    static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::max())
-                };
-            case TypeRef::Kind::Int32:
-                return std::pair{
-                    static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
-                    static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())
-                };
-            case TypeRef::Kind::Int64:
-            case TypeRef::Kind::Int:
-                return std::pair{
-                    std::numeric_limits<std::int64_t>::min(),
-                    std::numeric_limits<std::int64_t>::max()
-                };
-            default:
-                return std::nullopt;
+                case TypeRef::Kind::Int8:
+                    return std::pair{
+                        static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::min()),
+                        static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::max())};
+                case TypeRef::Kind::Int16:
+                    return std::pair{
+                        static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::min()),
+                        static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::max())};
+                case TypeRef::Kind::Int32:
+                    return std::pair{
+                        static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
+                        static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())};
+                case TypeRef::Kind::Int64:
+                case TypeRef::Kind::Int:
+                    return std::pair{std::numeric_limits<std::int64_t>::min(),
+                                     std::numeric_limits<std::int64_t>::max()};
+                default:
+                    return std::nullopt;
             }
         }
 
@@ -518,18 +563,20 @@ namespace Rux {
                 if (const auto* unary = dynamic_cast<const UnaryExpr*>(&expr);
                     unary && unary->op == TokenKind::Minus)
                     literal = dynamic_cast<const LiteralExpr*>(unary->operand.get());
-                if (!literal) return false;
+                if (!literal)
+                    return false;
                 negative = true;
             }
 
             const auto value = ParseUnsuffixedIntegerLiteral(literal->token);
-            if (!value) return false;
+            if (!value)
+                return false;
 
             if (negative) {
                 const auto range = SignedIntegerRange(target);
-                if (!range) return false;
-                const auto minMagnitude =
-                    static_cast<std::uint64_t>(-(range->first + 1)) + 1;
+                if (!range)
+                    return false;
+                const auto minMagnitude = static_cast<std::uint64_t>(-(range->first + 1)) + 1;
                 return *value <= minMagnitude;
             }
 
@@ -552,34 +599,33 @@ namespace Rux {
             if (named->kind == TypeRef::Kind::Named)
                 return BaseTypeName(named->name);
             switch (named->kind) {
-            case TypeRef::Kind::Bool8:
-            case TypeRef::Kind::Bool16:
-            case TypeRef::Kind::Bool32:
-            case TypeRef::Kind::Char8:
-            case TypeRef::Kind::Char16:
-            case TypeRef::Kind::Char32:
-            case TypeRef::Kind::Int8:
-            case TypeRef::Kind::Int16:
-            case TypeRef::Kind::Int32:
-            case TypeRef::Kind::Int64:
-            case TypeRef::Kind::UInt8:
-            case TypeRef::Kind::UInt16:
-            case TypeRef::Kind::UInt32:
-            case TypeRef::Kind::UInt64:
-            case TypeRef::Kind::Int:
-            case TypeRef::Kind::UInt:
-            case TypeRef::Kind::Float32:
-            case TypeRef::Kind::Float64:
-            case TypeRef::Kind::Str:
-                return named->ToString();
-            default:
-                return {};
+                case TypeRef::Kind::Bool8:
+                case TypeRef::Kind::Bool16:
+                case TypeRef::Kind::Bool32:
+                case TypeRef::Kind::Char8:
+                case TypeRef::Kind::Char16:
+                case TypeRef::Kind::Char32:
+                case TypeRef::Kind::Int8:
+                case TypeRef::Kind::Int16:
+                case TypeRef::Kind::Int32:
+                case TypeRef::Kind::Int64:
+                case TypeRef::Kind::UInt8:
+                case TypeRef::Kind::UInt16:
+                case TypeRef::Kind::UInt32:
+                case TypeRef::Kind::UInt64:
+                case TypeRef::Kind::Int:
+                case TypeRef::Kind::UInt:
+                case TypeRef::Kind::Float32:
+                case TypeRef::Kind::Float64:
+                case TypeRef::Kind::Str:
+                    return named->ToString();
+                default:
+                    return {};
             }
         }
 
-        std::unordered_map<std::string, TypeRef> StructTypeSubstitutions(
-            const StructDecl& decl,
-            const std::vector<TypeExprPtr>& typeArgs) {
+        std::unordered_map<std::string, TypeRef>
+        StructTypeSubstitutions(const StructDecl& decl, const std::vector<TypeExprPtr>& typeArgs) {
             std::unordered_map<std::string, TypeRef> substitutions;
             const std::size_t count = std::min(decl.typeParams.size(), typeArgs.size());
             for (std::size_t i = 0; i < count; ++i)
@@ -589,51 +635,86 @@ namespace Rux {
 
         static TypeRef SuffixedLiteralType(const Token& tok) {
             const std::string suffix = NumericLiteralSuffix(tok.text);
-            if (suffix == "i8") return TypeRef::MakeInt8();
-            if (suffix == "i16") return TypeRef::MakeInt16();
-            if (suffix == "i32") return TypeRef::MakeInt32();
-            if (suffix == "i64") return TypeRef::MakeInt64();
-            if (suffix == "u8") return TypeRef::MakeUInt8();
-            if (suffix == "u16") return TypeRef::MakeUInt16();
-            if (suffix == "u32") return TypeRef::MakeUInt32();
-            if (suffix == "u64") return TypeRef::MakeUInt64();
-            if (suffix == "f32") return TypeRef::MakeFloat32();
-            if (suffix == "f64") return TypeRef::MakeFloat64();
-            return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
+            if (suffix == "i8")
+                return TypeRef::MakeInt8();
+            if (suffix == "i16")
+                return TypeRef::MakeInt16();
+            if (suffix == "i32")
+                return TypeRef::MakeInt32();
+            if (suffix == "i64")
+                return TypeRef::MakeInt64();
+            if (suffix == "u8")
+                return TypeRef::MakeUInt8();
+            if (suffix == "u16")
+                return TypeRef::MakeUInt16();
+            if (suffix == "u32")
+                return TypeRef::MakeUInt32();
+            if (suffix == "u64")
+                return TypeRef::MakeUInt64();
+            if (suffix == "f32")
+                return TypeRef::MakeFloat32();
+            if (suffix == "f64")
+                return TypeRef::MakeFloat64();
+            return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64()
+                                                       : TypeRef::MakeInt();
         }
 
         static std::optional<TypeRef> BuiltinTypeFromName(const std::string& name) {
-            if (name == "opaque") return TypeRef::MakeOpaque();
-            if (name == "bool" || name == "bool8") return TypeRef::MakeBool8();
-            if (name == "bool16") return TypeRef::MakeBool16();
-            if (name == "bool32") return TypeRef::MakeBool32();
-            if (name == "char" || name == "char32") return TypeRef::MakeChar32();
-            if (name == "char8") return TypeRef::MakeChar8();
-            if (name == "char16") return TypeRef::MakeChar16();
-            if (name == "int8") return TypeRef::MakeInt8();
-            if (name == "int16") return TypeRef::MakeInt16();
-            if (name == "int32") return TypeRef::MakeInt32();
-            if (name == "int64") return TypeRef::MakeInt64();
-            if (name == "int") return TypeRef::MakeInt();
-            if (name == "uint8") return TypeRef::MakeUInt8();
-            if (name == "uint16") return TypeRef::MakeUInt16();
-            if (name == "uint32") return TypeRef::MakeUInt32();
-            if (name == "uint64") return TypeRef::MakeUInt64();
-            if (name == "uint") return TypeRef::MakeUInt();
-            if (name == "float32") return TypeRef::MakeFloat32();
-            if (name == "float64") return TypeRef::MakeFloat64();
-            if (name == "float") return TypeRef::MakeFloat();
+            if (name == "opaque")
+                return TypeRef::MakeOpaque();
+            if (name == "bool" || name == "bool8")
+                return TypeRef::MakeBool8();
+            if (name == "bool16")
+                return TypeRef::MakeBool16();
+            if (name == "bool32")
+                return TypeRef::MakeBool32();
+            if (name == "char" || name == "char32")
+                return TypeRef::MakeChar32();
+            if (name == "char8")
+                return TypeRef::MakeChar8();
+            if (name == "char16")
+                return TypeRef::MakeChar16();
+            if (name == "int8")
+                return TypeRef::MakeInt8();
+            if (name == "int16")
+                return TypeRef::MakeInt16();
+            if (name == "int32")
+                return TypeRef::MakeInt32();
+            if (name == "int64")
+                return TypeRef::MakeInt64();
+            if (name == "int")
+                return TypeRef::MakeInt();
+            if (name == "uint8")
+                return TypeRef::MakeUInt8();
+            if (name == "uint16")
+                return TypeRef::MakeUInt16();
+            if (name == "uint32")
+                return TypeRef::MakeUInt32();
+            if (name == "uint64")
+                return TypeRef::MakeUInt64();
+            if (name == "uint")
+                return TypeRef::MakeUInt();
+            if (name == "float32")
+                return TypeRef::MakeFloat32();
+            if (name == "float64")
+                return TypeRef::MakeFloat64();
+            if (name == "float")
+                return TypeRef::MakeFloat();
             return std::nullopt;
         }
 
         static std::optional<TypeRef> SliceElementType(const TypeRef& type) {
             if (type.kind == TypeRef::Kind::Slice && !type.inner.empty())
                 return type.inner[0];
-            if (type.kind != TypeRef::Kind::Named) return std::nullopt;
+            if (type.kind != TypeRef::Kind::Named)
+                return std::nullopt;
             constexpr std::string_view prefix = "Slice<";
-            if (!type.name.starts_with(prefix) || type.name.back() != '>') return std::nullopt;
-            std::string elemName = type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
-            if (auto builtin = BuiltinTypeFromName(elemName)) return *builtin;
+            if (!type.name.starts_with(prefix) || type.name.back() != '>')
+                return std::nullopt;
+            std::string elemName =
+                type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
+            if (auto builtin = BuiltinTypeFromName(elemName))
+                return *builtin;
             return TypeRef::MakeNamed(elemName);
         }
 
@@ -641,12 +722,14 @@ namespace Rux {
             if (auto* t = dynamic_cast<const NamedTypeExpr*>(&expr)) {
                 if (t->typeArgs.empty()) {
                     for (const auto& tp : currentTypeParams)
-                        if (tp == t->name) return TypeRef::MakeTypeParam(t->name);
+                        if (tp == t->name)
+                            return TypeRef::MakeTypeParam(t->name);
                 }
                 HirSymbol* sym = currentScope->Lookup(t->name);
                 if (sym && (sym->kind == HirSymbol::Kind::Type ||
-                    sym->kind == HirSymbol::Kind::Interface)) {
-                    if (t->typeArgs.empty() && !sym->type.IsUnknown()) return sym->type;
+                            sym->kind == HirSymbol::Kind::Interface)) {
+                    if (t->typeArgs.empty() && !sym->type.IsUnknown())
+                        return sym->type;
                     if (t->typeArgs.empty()) {
                         if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end())
                             return EnumType(*enumIt->second);
@@ -674,21 +757,24 @@ namespace Rux {
 
         std::optional<std::uint64_t> FixedSliceTypeSize(const TypeExpr& expr) {
             const auto* slice = dynamic_cast<const SliceTypeExpr*>(&expr);
-            if (!slice || !slice->size) return std::nullopt;
+            if (!slice || !slice->size)
+                return std::nullopt;
             const auto* literal = dynamic_cast<const LiteralExpr*>(slice->size.get());
-            if (!literal) return std::nullopt;
+            if (!literal)
+                return std::nullopt;
             return ParseUnsuffixedIntegerLiteral(literal->token);
         }
 
         TypeRef FixedSliceElementType(const TypeExpr& expr) {
             const auto* slice = dynamic_cast<const SliceTypeExpr*>(&expr);
-            if (!slice) return TypeRef::MakeUnknown();
+            if (!slice)
+                return TypeRef::MakeUnknown();
             return ResolveType(*slice->element);
         }
 
-        TypeRef ResolveTypeWithSubstitution(
-            const TypeExpr& expr,
-            const std::unordered_map<std::string, TypeRef>& substitutions) {
+        TypeRef
+        ResolveTypeWithSubstitution(const TypeExpr& expr,
+                                    const std::unordered_map<std::string, TypeRef>& substitutions) {
             if (auto* t = dynamic_cast<const NamedTypeExpr*>(&expr)) {
                 if (t->typeArgs.empty()) {
                     if (auto it = substitutions.find(t->name); it != substitutions.end())
@@ -699,16 +785,20 @@ namespace Rux {
                 TypeRef named = TypeRef::MakeNamed(t->name);
                 named.name += "<";
                 for (std::size_t i = 0; i < t->typeArgs.size(); ++i) {
-                    if (i) named.name += ", ";
-                    named.name += ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions).ToString();
+                    if (i)
+                        named.name += ", ";
+                    named.name +=
+                        ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions).ToString();
                 }
                 named.name += ">";
                 return named;
             }
             if (auto* t = dynamic_cast<const PointerTypeExpr*>(&expr))
-                return TypeRef::MakePointer(ResolveTypeWithSubstitution(*t->pointee, substitutions));
+                return TypeRef::MakePointer(
+                    ResolveTypeWithSubstitution(*t->pointee, substitutions));
             if (auto* t = dynamic_cast<const SliceTypeExpr*>(&expr))
-                return TypeRef::MakeNamed(SliceTypeName(ResolveTypeWithSubstitution(*t->element, substitutions)));
+                return TypeRef::MakeNamed(
+                    SliceTypeName(ResolveTypeWithSubstitution(*t->element, substitutions)));
             if (auto* t = dynamic_cast<const TupleTypeExpr*>(&expr)) {
                 std::vector<TypeRef> elems;
                 for (auto& elem : t->elements)
@@ -720,9 +810,11 @@ namespace Rux {
 
         TypeRef StructFieldType(const TypeRef& objectType, const std::string& fieldName) {
             const std::string typeName = NamedBaseTypeName(objectType);
-            if (typeName.empty()) return TypeRef::MakeUnknown();
+            if (typeName.empty())
+                return TypeRef::MakeUnknown();
             const auto structIt = structDecls.find(typeName);
-            if (structIt == structDecls.end()) return TypeRef::MakeUnknown();
+            if (structIt == structDecls.end())
+                return TypeRef::MakeUnknown();
 
             for (const auto& field : structIt->second->fields) {
                 if (field.name == fieldName)
@@ -735,12 +827,12 @@ namespace Rux {
             std::vector<TypeRef> params;
             params.push_back(receiverType);
             for (const auto& param : method.params) {
-                if (param.isVariadic || param.name == "self") continue;
+                if (param.isVariadic || param.name == "self")
+                    continue;
                 params.push_back(ResolveType(*param.type));
             }
-            TypeRef ret = method.returnType
-                              ? ResolveType(*method.returnType->get())
-                              : TypeRef::MakeOpaque();
+            TypeRef ret =
+                method.returnType ? ResolveType(*method.returnType->get()) : TypeRef::MakeOpaque();
             return TypeRef::MakeFunc(std::move(params), std::move(ret));
         }
 
@@ -751,19 +843,20 @@ namespace Rux {
                                   : TypeRef::MakePointer(receiverType);
             std::vector<TypeRef> params;
             for (const auto& param : method.params) {
-                if (param.isVariadic) continue;
+                if (param.isVariadic)
+                    continue;
                 params.push_back(ResolveType(*param.type));
             }
-            TypeRef ret = method.returnType
-                              ? ResolveType(*method.returnType->get())
-                              : TypeRef::MakeOpaque();
+            TypeRef ret =
+                method.returnType ? ResolveType(*method.returnType->get()) : TypeRef::MakeOpaque();
             currentSelfType = savedSelfType;
             return TypeRef::MakeFunc(std::move(params), std::move(ret));
         }
 
         bool MethodIsOverloaded(const std::string& typeName, const std::string& methodName) const {
             const auto typeIt = methodsByType.find(typeName);
-            if (typeIt == methodsByType.end()) return false;
+            if (typeIt == methodsByType.end())
+                return false;
             const auto methodIt = typeIt->second.find(methodName);
             return methodIt != typeIt->second.end() && methodIt->second.size() > 1;
         }
@@ -791,7 +884,8 @@ namespace Rux {
             std::string out = name + "__";
             if (ft.kind == TypeRef::Kind::Func && !ft.inner.empty()) {
                 for (std::size_t i = 0; i + 1 < ft.inner.size(); ++i) {
-                    if (i) out += "_";
+                    if (i)
+                        out += "_";
                     out += MangleTypeName(ft.inner[i]);
                 }
             }
@@ -801,21 +895,25 @@ namespace Rux {
         const FuncDecl* LookupFunction(const std::string& name,
                                        const std::vector<TypeRef>& argTypes) {
             const auto it = functionsByName.find(name);
-            if (it == functionsByName.end() || it->second.empty()) return nullptr;
-            if (it->second.size() == 1) return it->second[0];
+            if (it == functionsByName.end() || it->second.empty())
+                return nullptr;
+            if (it->second.size() == 1)
+                return it->second[0];
             for (const auto* decl : it->second) {
                 TypeRef ft = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
-                if (ft.kind != TypeRef::Kind::Func || ft.inner.empty()) continue;
+                if (ft.kind != TypeRef::Kind::Func || ft.inner.empty())
+                    continue;
                 const std::size_t paramCount = ft.inner.size() - 1;
                 const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
                 std::size_t requiredCount = 0;
                 for (const auto& p : decl->params)
                     if (!p.isVariadic && !p.defaultValue)
                         ++requiredCount;
-                const bool arityOk = isVariadic
-                    ? argTypes.size() >= requiredCount
-                    : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
-                if (!arityOk) continue;
+                const bool arityOk = isVariadic ? argTypes.size() >= requiredCount
+                                                : (argTypes.size() >= requiredCount &&
+                                                   argTypes.size() <= paramCount);
+                if (!arityOk)
+                    continue;
                 bool match = true;
                 for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
                     const TypeRef& paramType = ft.inner[i];
@@ -825,7 +923,8 @@ namespace Rux {
                         break;
                     }
                 }
-                if (match) return decl;
+                if (match)
+                    return decl;
             }
             return it->second[0];
         }
@@ -833,7 +932,8 @@ namespace Rux {
         const EnumDecl::Variant* LookupEnumVariant(const std::string& enumName,
                                                    const std::string& variantName) const {
             const auto enumIt = enumDecls.find(enumName);
-            if (enumIt == enumDecls.end()) return nullptr;
+            if (enumIt == enumDecls.end())
+                return nullptr;
             for (const auto& variant : enumIt->second->variants) {
                 if (variant.name == variantName)
                     return &variant;
@@ -841,10 +941,12 @@ namespace Rux {
             return nullptr;
         }
 
-        std::optional<std::string> LookupEnumVariantDiscriminant(const std::string& enumName,
-                                                                 const std::string& variantName) const {
+        std::optional<std::string>
+        LookupEnumVariantDiscriminant(const std::string& enumName,
+                                      const std::string& variantName) const {
             const auto enumIt = enumDecls.find(enumName);
-            if (enumIt == enumDecls.end()) return std::nullopt;
+            if (enumIt == enumDecls.end())
+                return std::nullopt;
             const auto& variants = enumIt->second->variants;
             std::int64_t next = 0;
             for (std::size_t i = 0; i < variants.size(); ++i) {
@@ -860,8 +962,7 @@ namespace Rux {
             return std::nullopt;
         }
 
-        TypeRef EnumVariantConstructorType(const EnumDecl& decl,
-                                           const EnumDecl::Variant& variant) {
+        TypeRef EnumVariantConstructorType(const EnumDecl& decl, const EnumDecl::Variant& variant) {
             std::vector<TypeRef> params;
             params.reserve(variant.fields.size() + variant.namedFields.size());
             for (const auto& field : variant.fields)
@@ -873,36 +974,46 @@ namespace Rux {
 
         // Returns the mangled callee name: "Type::method__p1_p2" for overloads,
         // "Type::method" for single-dispatch methods.
-        std::string CalleeName(const std::string& typeName, const std::string& methodName,
-                               const TypeRef& receiverType, const FuncDecl& decl) {
+        std::string CalleeName(const std::string& typeName,
+                               const std::string& methodName,
+                               const TypeRef& receiverType,
+                               const FuncDecl& decl) {
             if (!MethodIsOverloaded(typeName, methodName))
                 return typeName + "::" + methodName;
             TypeRef ft = MethodType(receiverType, decl);
             // ft.inner = [selfType, param1, ..., retType]
             std::string name = typeName + "::" + methodName + "__";
             for (std::size_t i = 1; i + 1 < ft.inner.size(); ++i) {
-                if (i > 1) name += "_";
+                if (i > 1)
+                    name += "_";
                 name += MangleTypeName(ft.inner[i]);
             }
             return name;
         }
 
-        const FuncDecl* LookupMethod(const TypeRef& receiverType, const std::string& methodName,
+        const FuncDecl* LookupMethod(const TypeRef& receiverType,
+                                     const std::string& methodName,
                                      const std::vector<TypeRef>& argTypes = {}) {
             const std::string typeName = NamedBaseTypeName(receiverType);
-            if (typeName.empty()) return nullptr;
+            if (typeName.empty())
+                return nullptr;
             const auto typeIt = methodsByType.find(typeName);
-            if (typeIt == methodsByType.end()) return nullptr;
+            if (typeIt == methodsByType.end())
+                return nullptr;
             const auto methodIt = typeIt->second.find(methodName);
-            if (methodIt == typeIt->second.end()) return nullptr;
+            if (methodIt == typeIt->second.end())
+                return nullptr;
             const auto& overloads = methodIt->second;
-            if (overloads.empty()) return nullptr;
-            if (overloads.size() == 1 || argTypes.empty()) return overloads[0];
+            if (overloads.empty())
+                return nullptr;
+            if (overloads.size() == 1 || argTypes.empty())
+                return overloads[0];
             for (const auto* decl : overloads) {
                 TypeRef ft = MethodType(receiverType, *decl);
                 // ft.inner = [selfType, param1, ..., retType]
                 const std::size_t paramCount = ft.inner.size() >= 2 ? ft.inner.size() - 2 : 0;
-                if (paramCount != argTypes.size()) continue;
+                if (paramCount != argTypes.size())
+                    continue;
                 bool match = true;
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
                     const TypeRef& paramType = ft.inner[i + 1];
@@ -912,23 +1023,29 @@ namespace Rux {
                         break;
                     }
                 }
-                if (match) return decl;
+                if (match)
+                    return decl;
             }
             return overloads[0];
         }
 
-        int InterfaceMethodIndex(const std::string& ifaceName, const std::string& methodName) const {
+        int InterfaceMethodIndex(const std::string& ifaceName,
+                                 const std::string& methodName) const {
             auto it = interfaceDecls.find(ifaceName);
-            if (it == interfaceDecls.end()) return -1;
+            if (it == interfaceDecls.end())
+                return -1;
             const auto& methods = it->second->methods;
             for (int i = 0; i < static_cast<int>(methods.size()); ++i)
-                if (methods[i]->name == methodName) return i;
+                if (methods[i]->name == methodName)
+                    return i;
             return -1;
         }
 
-        TypeRef InterfaceMethodReturnType(const std::string& ifaceName, const std::string& methodName) {
+        TypeRef InterfaceMethodReturnType(const std::string& ifaceName,
+                                          const std::string& methodName) {
             auto it = interfaceDecls.find(ifaceName);
-            if (it == interfaceDecls.end()) return TypeRef::MakeUnknown();
+            if (it == interfaceDecls.end())
+                return TypeRef::MakeUnknown();
             for (const auto& m : it->second->methods)
                 if (m->name == methodName)
                     return m->returnType ? ResolveType(**m->returnType) : TypeRef::MakeOpaque();
@@ -939,11 +1056,14 @@ namespace Rux {
                                                        const std::string& methodName) {
             std::vector<TypeRef> params;
             auto it = interfaceDecls.find(ifaceName);
-            if (it == interfaceDecls.end()) return params;
+            if (it == interfaceDecls.end())
+                return params;
             for (const auto& m : it->second->methods) {
-                if (m->name != methodName) continue;
+                if (m->name != methodName)
+                    continue;
                 for (const auto& param : m->params) {
-                    if (param.isVariadic) continue;
+                    if (param.isVariadic)
+                        continue;
                     params.push_back(ResolveType(*param.type));
                 }
                 return params;
@@ -953,13 +1073,15 @@ namespace Rux {
 
         std::optional<TypeRef> InterfaceImplementationType(const TypeRef& exprType,
                                                            const TypeRef& targetType) const {
-            if (targetType.kind != TypeRef::Kind::Named) return std::nullopt;
+            if (targetType.kind != TypeRef::Kind::Named)
+                return std::nullopt;
             auto hasVtable = [&](const TypeRef& type) {
                 auto typeIt = typeInterfaceVtables.find(type.ToString());
                 return typeIt != typeInterfaceVtables.end() &&
-                    typeIt->second.contains(targetType.name);
+                       typeIt->second.contains(targetType.name);
             };
-            if (hasVtable(exprType)) return exprType;
+            if (hasVtable(exprType))
+                return exprType;
             if (exprType.kind == TypeRef::Kind::Int && hasVtable(TypeRef::MakeInt64()))
                 return TypeRef::MakeInt64();
             if (exprType.kind == TypeRef::Kind::Int64 && hasVtable(TypeRef::MakeInt()))
@@ -971,24 +1093,28 @@ namespace Rux {
             return std::nullopt;
         }
 
-        std::optional<std::uint64_t> SizeOfTypeRef(
-            const TypeRef& type,
-            const std::unordered_map<std::string, TypeRef>& substitutions = {}) {
+        std::optional<std::uint64_t>
+        SizeOfTypeRef(const TypeRef& type,
+                      const std::unordered_map<std::string, TypeRef>& substitutions = {}) {
             if (type.kind == TypeRef::Kind::Named) {
-                if (type.name.starts_with("Slice<")) return 16;
+                if (type.name.starts_with("Slice<"))
+                    return 16;
                 if (auto it = substitutions.find(type.name); it != substitutions.end())
                     return SizeOfTypeRef(it->second, substitutions);
                 const std::string baseName = BaseTypeName(type.name);
                 if (const auto enumIt = enumDecls.find(baseName); enumIt != enumDecls.end())
                     return SizeOfEnum(*enumIt->second, substitutions);
-                if (interfaceDecls.contains(baseName)) return 16;
+                if (interfaceDecls.contains(baseName))
+                    return 16;
                 return SizeOfStruct(baseName, substitutions);
             }
 
             if (type.kind == TypeRef::Kind::Range) {
-                if (type.inner.empty()) return std::nullopt;
+                if (type.inner.empty())
+                    return std::nullopt;
                 const auto elemSize = SizeOfTypeRef(type.inner[0], substitutions);
-                if (!elemSize || *elemSize == 0) return std::nullopt;
+                if (!elemSize || *elemSize == 0)
+                    return std::nullopt;
                 return AlignUp(2 * *elemSize + 1, *elemSize);
             }
 
@@ -996,7 +1122,8 @@ namespace Rux {
                 std::uint64_t total = 0;
                 for (const auto& elem : type.inner) {
                     const auto elemSize = SizeOfTypeRef(elem, substitutions);
-                    if (!elemSize) return std::nullopt;
+                    if (!elemSize)
+                        return std::nullopt;
                     total += *elemSize;
                 }
                 return total;
@@ -1005,38 +1132,48 @@ namespace Rux {
             return type.SizeInBytes();
         }
 
-        std::optional<std::uint64_t> SizeOfEnum(
-            const EnumDecl& decl,
-            const std::unordered_map<std::string, TypeRef>& substitutions = {}) {
+        std::optional<std::uint64_t>
+        SizeOfEnum(const EnumDecl& decl,
+                   const std::unordered_map<std::string, TypeRef>& substitutions = {}) {
             const auto tagSize = SizeOfTypeRef(EnumBaseType(decl), substitutions);
-            if (!tagSize) return std::nullopt;
+            if (!tagSize)
+                return std::nullopt;
 
             bool hasPayload = false;
             std::uint64_t maxPayloadSize = 0;
             std::uint64_t maxPayloadAlign = 1;
 
-            auto fieldLayout = [&](const auto& fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
+            auto fieldLayout =
+                [&](const auto& fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
                 std::uint64_t offset = 0;
                 std::uint64_t maxAlign = 1;
                 for (const auto& field : fields) {
                     const auto fieldSize = SizeOfTypeExprWithSubstitution(*field, substitutions);
-                    if (!fieldSize) return std::nullopt;
-                    const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
-                    if (align > 1) offset = AlignUp(offset, align);
+                    if (!fieldSize)
+                        return std::nullopt;
+                    const std::uint64_t align =
+                        *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
+                    if (align > 1)
+                        offset = AlignUp(offset, align);
                     offset += *fieldSize > 0 ? *fieldSize : 8;
                     maxAlign = std::max(maxAlign, align);
                 }
                 return std::pair{AlignUp(offset, maxAlign), maxAlign};
             };
 
-            auto namedFieldLayout = [&](const auto& fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
+            auto namedFieldLayout =
+                [&](const auto& fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
                 std::uint64_t offset = 0;
                 std::uint64_t maxAlign = 1;
                 for (const auto& field : fields) {
-                    const auto fieldSize = SizeOfTypeExprWithSubstitution(*field.type, substitutions);
-                    if (!fieldSize) return std::nullopt;
-                    const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
-                    if (align > 1) offset = AlignUp(offset, align);
+                    const auto fieldSize =
+                        SizeOfTypeExprWithSubstitution(*field.type, substitutions);
+                    if (!fieldSize)
+                        return std::nullopt;
+                    const std::uint64_t align =
+                        *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
+                    if (align > 1)
+                        offset = AlignUp(offset, align);
                     offset += *fieldSize > 0 ? *fieldSize : 8;
                     maxAlign = std::max(maxAlign, align);
                 }
@@ -1048,10 +1185,10 @@ namespace Rux {
                     continue;
 
                 hasPayload = true;
-                auto payload = !variant.fields.empty()
-                    ? fieldLayout(variant.fields)
-                    : namedFieldLayout(variant.namedFields);
-                if (!payload) return std::nullopt;
+                auto payload = !variant.fields.empty() ? fieldLayout(variant.fields)
+                                                       : namedFieldLayout(variant.namedFields);
+                if (!payload)
+                    return std::nullopt;
                 maxPayloadSize = std::max(maxPayloadSize, payload->first);
                 maxPayloadAlign = std::max(maxPayloadAlign, payload->second);
             }
@@ -1062,7 +1199,8 @@ namespace Rux {
             const std::uint64_t tagAlign = *tagSize > 0 ? std::min<std::uint64_t>(*tagSize, 8) : 1;
             const std::uint64_t align = std::max(tagAlign, maxPayloadAlign);
             std::uint64_t offset = *tagSize;
-            if (maxPayloadAlign > 1) offset = AlignUp(offset, maxPayloadAlign);
+            if (maxPayloadAlign > 1)
+                offset = AlignUp(offset, maxPayloadAlign);
             offset += maxPayloadSize;
             return AlignUp(offset, align);
         }
@@ -1077,19 +1215,23 @@ namespace Rux {
             return type;
         }
 
-        std::optional<std::uint64_t> SizeOfStruct(
-            const std::string& name,
-            const std::unordered_map<std::string, TypeRef>& substitutions = {}) {
+        std::optional<std::uint64_t>
+        SizeOfStruct(const std::string& name,
+                     const std::unordered_map<std::string, TypeRef>& substitutions = {}) {
             const auto structIt = structDecls.find(name);
-            if (structIt == structDecls.end()) return std::nullopt;
+            if (structIt == structDecls.end())
+                return std::nullopt;
 
             std::uint64_t offset = 0;
             std::uint64_t maxAlign = 1;
             for (const auto& field : structIt->second->fields) {
                 const auto fieldSize = SizeOfTypeExprWithSubstitution(*field.type, substitutions);
-                if (!fieldSize) return std::nullopt;
-                const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
-                if (align > 1) offset = AlignUp(offset, align);
+                if (!fieldSize)
+                    return std::nullopt;
+                const std::uint64_t align =
+                    *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
+                if (align > 1)
+                    offset = AlignUp(offset, align);
                 offset += *fieldSize > 0 ? *fieldSize : 8;
                 maxAlign = std::max(maxAlign, align);
             }
@@ -1126,25 +1268,32 @@ namespace Rux {
                 std::size_t i = quote + 1; // skip opening '
                 if (text[i] == '\\' && i + 1 < text.size()) {
                     switch (text[i + 1]) {
-                    case 'n': cp = '\n';
-                        break;
-                    case 't': cp = '\t';
-                        break;
-                    case 'r': cp = '\r';
-                        break;
-                    case '0': cp = 0;
-                        break;
-                    case '\\': cp = '\\';
-                        break;
-                    case '\'': cp = '\'';
-                        break;
-                    case '"': cp = '"';
-                        break;
-                    default: cp = static_cast<unsigned char>(text[i + 1]);
-                        break;
+                        case 'n':
+                            cp = '\n';
+                            break;
+                        case 't':
+                            cp = '\t';
+                            break;
+                        case 'r':
+                            cp = '\r';
+                            break;
+                        case '0':
+                            cp = 0;
+                            break;
+                        case '\\':
+                            cp = '\\';
+                            break;
+                        case '\'':
+                            cp = '\'';
+                            break;
+                        case '"':
+                            cp = '"';
+                            break;
+                        default:
+                            cp = static_cast<unsigned char>(text[i + 1]);
+                            break;
                     }
-                }
-                else if (text[i] != '\'') {
+                } else if (text[i] != '\'') {
                     cp = static_cast<unsigned char>(text[i]);
                 }
             }
@@ -1154,31 +1303,42 @@ namespace Rux {
         static std::string DecodeStringLiteral(const std::string& text) {
             // text is raw source like "hello\n" — strip quotes and decode escapes
             std::string out;
-            if (text.size() < 2) return out;
+            if (text.size() < 2)
+                return out;
             const std::size_t quote = text.find('"');
-            if (quote == std::string::npos) return out;
+            if (quote == std::string::npos)
+                return out;
             for (std::size_t i = quote + 1; i + 1 < text.size(); ++i) {
                 if (text[i] != '\\') {
                     out += text[i];
                     continue;
                 }
-                if (++i + 1 > text.size()) break;
+                if (++i + 1 > text.size())
+                    break;
                 switch (text[i]) {
-                case 'n': out += '\n';
-                    break;
-                case 't': out += '\t';
-                    break;
-                case 'r': out += '\r';
-                    break;
-                case '0': out += '\0';
-                    break;
-                case '\\': out += '\\';
-                    break;
-                case '\'': out += '\'';
-                    break;
-                case '"': out += '"';
-                    break;
-                default: break;
+                    case 'n':
+                        out += '\n';
+                        break;
+                    case 't':
+                        out += '\t';
+                        break;
+                    case 'r':
+                        out += '\r';
+                        break;
+                    case '0':
+                        out += '\0';
+                        break;
+                    case '\\':
+                        out += '\\';
+                        break;
+                    case '\'':
+                        out += '\'';
+                        break;
+                    case '"':
+                        out += '"';
+                        break;
+                    default:
+                        break;
                 }
             }
             return out;
@@ -1186,12 +1346,17 @@ namespace Rux {
 
         static TypeRef LiteralType(const Token& tok) {
             switch (tok.kind) {
-            case TokenKind::IntLiteral:
-            case TokenKind::FloatLiteral: return SuffixedLiteralType(tok);
-            case TokenKind::StringLiteral: return StringLiteralType(tok);
-            case TokenKind::CharLiteral: return CharLiteralType(tok);
-            case TokenKind::BoolLiteral: return TypeRef::MakeBool();
-            default: return TypeRef::MakeUnknown();
+                case TokenKind::IntLiteral:
+                case TokenKind::FloatLiteral:
+                    return SuffixedLiteralType(tok);
+                case TokenKind::StringLiteral:
+                    return StringLiteralType(tok);
+                case TokenKind::CharLiteral:
+                    return CharLiteralType(tok);
+                case TokenKind::BoolLiteral:
+                    return TypeRef::MakeBool();
+                default:
+                    return TypeRef::MakeUnknown();
             }
         }
 
@@ -1202,9 +1367,8 @@ namespace Rux {
                 HirParam hp;
                 hp.name = p.name;
                 hp.isVariadic = p.isVariadic;
-                hp.type = p.isVariadic
-                    ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*p.type)))
-                    : ResolveType(*p.type);
+                hp.type = p.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*p.type)))
+                                       : ResolveType(*p.type);
                 out.push_back(std::move(hp));
             }
             return out;
@@ -1213,19 +1377,25 @@ namespace Rux {
         // Derives the Rux module path (e.g. "Std::Io") from a source file path.
         // Finds the "Src" directory component and uses the relative path below it.
         static std::string FilePathToModulePath(const std::string& filePath) {
-            const std::string generic =
-                std::filesystem::path(filePath).generic_string();
+            const std::string generic = std::filesystem::path(filePath).generic_string();
             std::vector<std::string> parts;
             std::string cur;
             for (const char c : generic) {
-                if (c == '/') { if (!cur.empty()) { parts.push_back(cur); cur.clear(); } }
-                else cur += c;
+                if (c == '/') {
+                    if (!cur.empty()) {
+                        parts.push_back(cur);
+                        cur.clear();
+                    }
+                } else
+                    cur += c;
             }
-            if (!cur.empty()) parts.push_back(cur);
+            if (!cur.empty())
+                parts.push_back(cur);
 
             std::size_t srcIdx = std::string::npos;
             for (std::size_t i = 0; i < parts.size(); ++i)
-                if (parts[i] == "Src" || parts[i] == "src") srcIdx = i;
+                if (parts[i] == "Src" || parts[i] == "src")
+                    srcIdx = i;
 
             std::vector<std::string> mod;
             if (srcIdx != std::string::npos && srcIdx + 1 < parts.size()) {
@@ -1233,20 +1403,23 @@ namespace Rux {
                     std::string s = parts[i];
                     if (i + 1 == parts.size()) {
                         const auto dot = s.rfind('.');
-                        if (dot != std::string::npos) s = s.substr(0, dot);
+                        if (dot != std::string::npos)
+                            s = s.substr(0, dot);
                     }
                     mod.push_back(s);
                 }
             } else {
                 std::string stem = parts.empty() ? filePath : parts.back();
                 const auto dot = stem.rfind('.');
-                if (dot != std::string::npos) stem = stem.substr(0, dot);
+                if (dot != std::string::npos)
+                    stem = stem.substr(0, dot);
                 mod.push_back(stem);
             }
 
             std::string result;
             for (std::size_t i = 0; i < mod.size(); ++i) {
-                if (i) result += "::";
+                if (i)
+                    result += "::";
                 result += mod[i];
             }
             return result;
@@ -1268,8 +1441,7 @@ namespace Rux {
                 HirFunc hf = LowerFunc(*d);
                 hf.name = FunctionCalleeName(d->name, *d);
                 hmod.funcs.push_back(std::move(hf));
-            }
-            else if (auto* d = dynamic_cast<const StructDecl*>(&decl))
+            } else if (auto* d = dynamic_cast<const StructDecl*>(&decl))
                 hmod.structs.push_back(LowerStruct(*d));
             else if (auto* d = dynamic_cast<const EnumDecl*>(&decl))
                 hmod.enums.push_back(LowerEnum(*d));
@@ -1288,13 +1460,12 @@ namespace Rux {
             else if (auto* d = dynamic_cast<const ExternBlockDecl*>(&decl)) {
                 for (auto& item : d->items)
                     LowerTopLevelDecl(*item, hmod);
-            }
-            else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl))
+            } else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl))
                 hmod.typeAliases.push_back(LowerTypeAlias(*d));
             else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl)) {
                 const auto savedModulePath = currentModulePath;
-                currentModulePath = currentModulePath.empty()
-                    ? d->name : currentModulePath + "::" + d->name;
+                currentModulePath =
+                    currentModulePath.empty() ? d->name : currentModulePath + "::" + d->name;
                 for (auto& item : d->items)
                     LowerTopLevelDecl(*item, hmod);
                 currentModulePath = savedModulePath;
@@ -1307,9 +1478,7 @@ namespace Rux {
         HirFunc LowerFunc(const FuncDecl& d, bool isMethod = false) {
             auto savedTypeParams = currentTypeParams;
             currentTypeParams = d.typeParams;
-            TypeRef retType = d.returnType
-                                  ? ResolveType(**d.returnType)
-                                  : TypeRef::MakeOpaque();
+            TypeRef retType = d.returnType ? ResolveType(**d.returnType) : TypeRef::MakeOpaque();
             auto savedRet = currentReturnType;
             currentReturnType = retType;
             auto savedFuncName = currentFunctionName;
@@ -1326,18 +1495,20 @@ namespace Rux {
                 HirSymbol self;
                 self.kind = HirSymbol::Kind::Var;
                 self.name = "self";
-                self.type = currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
+                self.type =
+                    currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
                 self.isMut = true;
                 Define(self);
             }
             for (const auto& param : d.params) {
-                if (param.name == "self") continue;
+                if (param.name == "self")
+                    continue;
                 HirSymbol sym;
                 sym.kind = HirSymbol::Kind::Var;
                 sym.name = param.name;
                 sym.type = param.isVariadic
-                    ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
-                    : ResolveType(*param.type);
+                               ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
+                               : ResolveType(*param.type);
                 Define(sym);
             }
             std::optional<HirBlock> body;
@@ -1437,9 +1608,8 @@ namespace Rux {
                 HirInterfaceMethod hm;
                 hm.name = m->name;
                 hm.location = m->location;
-                hm.returnType = m->returnType
-                                    ? ResolveType(**m->returnType)
-                                    : TypeRef::MakeOpaque();
+                hm.returnType =
+                    m->returnType ? ResolveType(**m->returnType) : TypeRef::MakeOpaque();
                 hm.params = LowerParams(m->params);
                 hi.methods.push_back(std::move(hm));
             }
@@ -1465,7 +1635,8 @@ namespace Rux {
                 HirFunc hf = LowerFunc(*m, /*isMethod=*/true);
                 if (MethodIsOverloaded(d.typeName, m->name)) {
                     TypeRef selfType = TypeRef::MakePointer(TypeRef::MakeNamed(d.typeName));
-                    hf.name = CalleeName(d.typeName, m->name, selfType, *m).substr(d.typeName.size() + 2);
+                    hf.name =
+                        CalleeName(d.typeName, m->name, selfType, *m).substr(d.typeName.size() + 2);
                 }
                 hib.methods.push_back(std::move(hf));
             }
@@ -1496,9 +1667,7 @@ namespace Rux {
             hef.isPublic = d.isPublic;
             hef.callConv = d.callConv;
             hef.isVariadic = d.isVariadic;
-            hef.returnType = d.returnType
-                                 ? ResolveType(**d.returnType)
-                                 : TypeRef::MakeOpaque();
+            hef.returnType = d.returnType ? ResolveType(**d.returnType) : TypeRef::MakeOpaque();
             hef.params = LowerParams(d.params);
             hef.location = d.location;
             return hef;
@@ -1550,9 +1719,10 @@ namespace Rux {
                 const std::optional<TypeRef> explicitType =
                     s->type ? std::optional<TypeRef>(ResolveType(**s->type)) : std::nullopt;
                 if (s->init)
-                    hs->init = explicitType ? LowerExprAs(*s->init, *explicitType) : LowerExpr(*s->init);
+                    hs->init =
+                        explicitType ? LowerExprAs(*s->init, *explicitType) : LowerExpr(*s->init);
                 hs->type = explicitType ? *explicitType
-                                         : (hs->init ? hs->init->type : TypeRef::MakeUnknown());
+                                        : (hs->init ? hs->init->type : TypeRef::MakeUnknown());
                 if (s->type) {
                     if (const auto size = FixedSliceTypeSize(**s->type)) {
                         hs->stackBufferLength = *size;
@@ -1708,11 +1878,9 @@ namespace Rux {
                 lowered->type = targetType;
                 if (auto* literal = dynamic_cast<HirLiteralExpr*>(lowered.get()))
                     literal->value = "0";
-            }
-            else if (targetType.kind == TypeRef::Kind::Named) {
+            } else if (targetType.kind == TypeRef::Kind::Named) {
                 if (HirSymbol* sym = currentScope->Lookup(targetType.name);
-                    sym && sym->kind == HirSymbol::Kind::Interface &&
-                    lowered->type != targetType) {
+                    sym && sym->kind == HirSymbol::Kind::Interface && lowered->type != targetType) {
                     std::optional<TypeRef> implementationType =
                         InterfaceImplementationType(lowered->type, targetType);
                     if (!implementationType)
@@ -1737,7 +1905,8 @@ namespace Rux {
 
         // Like LowerExprAs but, for intrinsic defaults, evaluates at callSiteLoc rather
         // than at the declaration site (call-site builtins: #line, #column, #file, etc.).
-        HirExprPtr LowerDefaultArg(const Expr& defaultExpr, const TypeRef& targetType,
+        HirExprPtr LowerDefaultArg(const Expr& defaultExpr,
+                                   const TypeRef& targetType,
                                    const SourceLocation& callSiteLoc) {
             if (const auto* intr = dynamic_cast<const IntrinsicExpr*>(&defaultExpr)) {
                 IntrinsicExpr tmp;
@@ -1769,6 +1938,16 @@ namespace Rux {
             return TypeRef::MakeUnknown();
         }
 
+        static inline std::tm* localtime_rux(const std::time_t* timer, std::tm* tp) {
+#ifdef _WIN32
+            if (localtime_s(tp, timer) != 0)
+                return nullptr;
+            return tp;
+#else
+            return localtime_r(timer, tp);
+#endif
+        }
+
         HirExprPtr LowerExpr(const Expr& expr) {
             if (auto* e = dynamic_cast<const LiteralExpr*>(&expr)) {
                 auto he = std::make_unique<HirLiteralExpr>();
@@ -1779,7 +1958,7 @@ namespace Rux {
                 else if (e->token.kind == TokenKind::StringLiteral)
                     he->value = DecodeStringLiteral(e->token.text);
                 else if (e->token.kind == TokenKind::IntLiteral ||
-                    e->token.kind == TokenKind::FloatLiteral)
+                         e->token.kind == TokenKind::FloatLiteral)
                     he->value = StripNumericLiteralSuffix(e->token.text);
                 else
                     he->value = e->token.text;
@@ -1796,26 +1975,29 @@ namespace Rux {
             if (dynamic_cast<const SelfExpr*>(&expr)) {
                 auto he = std::make_unique<HirSelfExpr>();
                 he->location = expr.location;
-                he->type = currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
+                he->type =
+                    currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
                 return he;
             }
             if (auto* e = dynamic_cast<const PathExpr*>(&expr)) {
                 if (e->segments.size() == 2) {
                     if (HirSymbol* first = currentScope->Lookup(e->segments[0]);
                         first && (first->kind == HirSymbol::Kind::Type ||
-                            first->kind == HirSymbol::Kind::Interface)) {
+                                  first->kind == HirSymbol::Kind::Interface)) {
                         if (first->kind == HirSymbol::Kind::Type) {
                             if (const auto discriminant =
-                                LookupEnumVariantDiscriminant(e->segments[0], e->segments[1])) {
-                                const auto* variant = LookupEnumVariant(e->segments[0], e->segments[1]);
-                                if (variant && (!variant->fields.empty() || !variant->namedFields.empty())) {
+                                    LookupEnumVariantDiscriminant(e->segments[0], e->segments[1])) {
+                                const auto* variant =
+                                    LookupEnumVariant(e->segments[0], e->segments[1]);
+                                if (variant &&
+                                    (!variant->fields.empty() || !variant->namedFields.empty())) {
                                     auto he = std::make_unique<HirPathExpr>();
                                     he->location = e->location;
                                     he->segments = e->segments;
-                                    he->type = EnumVariantConstructorType(*enumDecls.at(e->segments[0]), *variant);
+                                    he->type = EnumVariantConstructorType(
+                                        *enumDecls.at(e->segments[0]), *variant);
                                     return he;
-                                }
-                                else {
+                                } else {
                                     auto he = std::make_unique<HirLiteralExpr>();
                                     he->location = e->location;
                                     he->type = EnumType(*enumDecls.at(e->segments[0]));
@@ -1824,13 +2006,13 @@ namespace Rux {
                                 }
                             }
                         }
-                        TypeRef receiverType = first->type.IsUnknown()
-                                                   ? TypeRef::MakeNamed(first->name)
-                                                   : first->type;
+                        TypeRef receiverType =
+                            first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
                         if (const FuncDecl* method = LookupMethod(receiverType, e->segments[1])) {
                             auto he = std::make_unique<HirVarExpr>();
                             he->location = e->location;
-                            he->name = CalleeName(e->segments[0], e->segments[1], receiverType, *method);
+                            he->name =
+                                CalleeName(e->segments[0], e->segments[1], receiverType, *method);
                             he->type = AssociatedFunctionType(receiverType, *method);
                             return he;
                         }
@@ -1859,46 +2041,46 @@ namespace Rux {
                 he->location = e->location;
                 using K = IntrinsicExpr::Kind;
                 switch (e->kind) {
-                case K::Line:
-                    he->type = TypeRef::MakeUInt();
-                    he->value = std::to_string(e->location.line);
-                    break;
-                case K::Column:
-                    he->type = TypeRef::MakeUInt();
-                    he->value = std::to_string(e->location.column);
-                    break;
-                case K::File:
-                    he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                    he->value = std::filesystem::path(currentFile).filename().string();
-                    break;
-                case K::Function:
-                    he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                    he->value = currentFunctionName;
-                    break;
-                case K::Date: {
-                    std::time_t t = std::time(nullptr);
-                    std::tm tm{};
-                    localtime_s(&tm, &t);
-                    char buf[12];
-                    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
-                    he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                    he->value = buf;
-                    break;
-                }
-                case K::Time: {
-                    std::time_t t = std::time(nullptr);
-                    std::tm tm{};
-                    localtime_s(&tm, &t);
-                    char buf[9];
-                    std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm);
-                    he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                    he->value = buf;
-                    break;
-                }
-                case K::Module:
-                    he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                    he->value = currentModulePath;
-                    break;
+                    case K::Line:
+                        he->type = TypeRef::MakeUInt();
+                        he->value = std::to_string(e->location.line);
+                        break;
+                    case K::Column:
+                        he->type = TypeRef::MakeUInt();
+                        he->value = std::to_string(e->location.column);
+                        break;
+                    case K::File:
+                        he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                        he->value = std::filesystem::path(currentFile).filename().string();
+                        break;
+                    case K::Function:
+                        he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                        he->value = currentFunctionName;
+                        break;
+                    case K::Date: {
+                        std::time_t t = std::time(nullptr);
+                        std::tm tm{};
+                        localtime_rux(&t, &tm);
+                        char buf[12];
+                        std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
+                        he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                        he->value = buf;
+                        break;
+                    }
+                    case K::Time: {
+                        std::time_t t = std::time(nullptr);
+                        std::tm tm{};
+                        localtime_rux(&t, &tm);
+                        char buf[9];
+                        std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm);
+                        he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                        he->value = buf;
+                        break;
+                    }
+                    case K::Module:
+                        he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                        he->value = currentModulePath;
+                        break;
                 }
                 return he;
             }
@@ -1927,8 +2109,7 @@ namespace Rux {
                     HirExprPtr selfArg;
                     if (left->type.kind == TypeRef::Kind::Pointer) {
                         selfArg = std::move(left);
-                    }
-                    else {
+                    } else {
                         auto addr = std::make_unique<HirUnaryExpr>();
                         addr->location = left->location;
                         addr->op = TokenKind::Amp;
@@ -1944,16 +2125,16 @@ namespace Rux {
 
                     auto call = std::make_unique<HirCallExpr>();
                     call->location = e->location;
-                    call->type = callee->type.inner.empty()
-                                     ? TypeRef::MakeUnknown()
-                                     : callee->type.inner.back();
+                    call->type = callee->type.inner.empty() ? TypeRef::MakeUnknown()
+                                                            : callee->type.inner.back();
                     call->callee = std::move(callee);
                     call->args.push_back(std::move(selfArg));
                     if (call->callee->type.inner.size() > 2) {
                         const TypeRef& expectedType = call->callee->type.inner[1];
                         if (UnsuffixedIntegerLiteralFits(*e->right, expectedType))
                             right->type = expectedType;
-                        else if (IsNullLiteral(*e->right) && expectedType.kind == TypeRef::Kind::Pointer) {
+                        else if (IsNullLiteral(*e->right) &&
+                                 expectedType.kind == TypeRef::Kind::Pointer) {
                             right->type = expectedType;
                             if (auto* lit = dynamic_cast<HirLiteralExpr*>(right.get()))
                                 lit->value = "0";
@@ -1986,23 +2167,22 @@ namespace Rux {
                 he->condition = LowerExpr(*e->condition);
                 he->thenExpr = LowerExpr(*e->thenExpr);
                 he->elseExpr = LowerExpr(*e->elseExpr);
-                he->type = he->thenExpr->type.IsUnknown()
-                               ? he->elseExpr->type
-                               : he->thenExpr->type;
+                he->type = he->thenExpr->type.IsUnknown() ? he->elseExpr->type : he->thenExpr->type;
                 return he;
             }
             if (auto* e = dynamic_cast<const RangeExpr*>(&expr)) {
                 auto he = std::make_unique<HirRangeExpr>();
                 he->location = e->location;
                 he->inclusive = e->inclusive;
-                if (e->lo) he->lo = LowerExpr(*e->lo);
-                if (e->hi) he->hi = LowerExpr(*e->hi);
-                TypeRef elemType = he->lo
-                                       ? he->lo->type
-                                       : he->hi
-                                       ? he->hi->type
-                                       : TypeRef::MakeInt64();
-                if (elemType.IsUnknown()) elemType = TypeRef::MakeInt64();
+                if (e->lo)
+                    he->lo = LowerExpr(*e->lo);
+                if (e->hi)
+                    he->hi = LowerExpr(*e->hi);
+                TypeRef elemType = he->lo   ? he->lo->type
+                                   : he->hi ? he->hi->type
+                                            : TypeRef::MakeInt64();
+                if (elemType.IsUnknown())
+                    elemType = TypeRef::MakeInt64();
                 he->type = TypeRef::MakeRange(elemType);
                 return he;
             }
@@ -2021,18 +2201,20 @@ namespace Rux {
                             auto he = std::make_unique<HirEnumConstructExpr>();
                             he->location = e->location;
                             he->type = EnumType(*enumDecls.at(path->segments[0]));
-                            he->payloads.push_back(LowerExprAs(*e->args[0], ResolveType(*singlePayloadType)));
+                            he->payloads.push_back(
+                                LowerExprAs(*e->args[0], ResolveType(*singlePayloadType)));
                             he->discriminant =
                                 LookupEnumVariantDiscriminant(path->segments[0], path->segments[1])
-                                .value_or("0");
+                                    .value_or("0");
                             return he;
                         }
 
                         auto he = std::make_unique<HirLiteralExpr>();
                         he->location = e->location;
                         he->type = EnumType(*enumDecls.at(path->segments[0]));
-                        he->value = LookupEnumVariantDiscriminant(path->segments[0], path->segments[1])
-                            .value_or("0");
+                        he->value =
+                            LookupEnumVariantDiscriminant(path->segments[0], path->segments[1])
+                                .value_or("0");
                         return he;
                     }
                 }
@@ -2040,12 +2222,12 @@ namespace Rux {
                 if (auto* path = dynamic_cast<const PathExpr*>(e->callee.get());
                     path && path->segments.size() == 2) {
                     HirSymbol* first = currentScope->Lookup(path->segments[0]);
-                    if (first && (first->kind == HirSymbol::Kind::Type ||
-                                  first->kind == HirSymbol::Kind::Interface) &&
+                    if (first &&
+                        (first->kind == HirSymbol::Kind::Type ||
+                         first->kind == HirSymbol::Kind::Interface) &&
                         !LookupEnumVariant(path->segments[0], path->segments[1])) {
-                        TypeRef receiverType = first->type.IsUnknown()
-                                                   ? TypeRef::MakeNamed(first->name)
-                                                   : first->type;
+                        TypeRef receiverType =
+                            first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
                         std::vector<HirExprPtr> args;
                         std::vector<TypeRef> argTypes;
                         args.reserve(e->args.size());
@@ -2055,11 +2237,13 @@ namespace Rux {
                             argTypes.push_back(lowered->type);
                             args.push_back(std::move(lowered));
                         }
-                        if (const FuncDecl* method = LookupMethod(receiverType, path->segments[1], argTypes)) {
+                        if (const FuncDecl* method =
+                                LookupMethod(receiverType, path->segments[1], argTypes)) {
                             TypeRef funcType = AssociatedFunctionType(receiverType, *method);
                             auto callee = std::make_unique<HirVarExpr>();
                             callee->location = path->location;
-                            callee->name = CalleeName(path->segments[0], path->segments[1], receiverType, *method);
+                            callee->name = CalleeName(
+                                path->segments[0], path->segments[1], receiverType, *method);
                             callee->type = funcType;
                             auto he = std::make_unique<HirCallExpr>();
                             he->location = e->location;
@@ -2070,7 +2254,8 @@ namespace Rux {
                                     args[i]->type = funcType.inner[i];
                                 he->args.push_back(std::move(args[i]));
                             }
-                            he->type = funcType.inner.empty() ? TypeRef::MakeUnknown() : funcType.inner.back();
+                            he->type = funcType.inner.empty() ? TypeRef::MakeUnknown()
+                                                              : funcType.inner.back();
                             return he;
                         }
                     }
@@ -2089,7 +2274,8 @@ namespace Rux {
                     HirSymbol* sym = currentScope->Lookup(ident->name);
                     if (sym && sym->kind == HirSymbol::Kind::Func && !sym->funcOverloads.empty()) {
                         if (const FuncDecl* decl = LookupFunction(ident->name, argTypes)) {
-                            TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+                            TypeRef funcType =
+                                MakeFuncType(decl->params, decl->returnType, decl->typeParams);
                             if (funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()) {
                                 const bool isVariadic =
                                     !decl->params.empty() && decl->params.back().isVariadic;
@@ -2099,16 +2285,17 @@ namespace Rux {
                                 for (std::size_t i = args.size(); i < fixedCount; ++i) {
                                     if (decl->params[i].defaultValue) {
                                         TypeRef pt = (i + 1 < funcType.inner.size())
-                                            ? funcType.inner[i] : TypeRef::MakeUnknown();
-                                        args.push_back(LowerDefaultArg(**decl->params[i].defaultValue, pt, e->location));
+                                                         ? funcType.inner[i]
+                                                         : TypeRef::MakeUnknown();
+                                        args.push_back(LowerDefaultArg(
+                                            **decl->params[i].defaultValue, pt, e->location));
                                     }
                                 }
                                 if (isVariadic) {
-                                    TypeRef varElemType =
-                                        ResolveType(*decl->params.back().type);
-                                    const bool isSingleSpread =
-                                        (e->args.size() == fixedCount + 1 &&
-                                         dynamic_cast<const SpreadExpr*>(e->args[fixedCount].get()));
+                                    TypeRef varElemType = ResolveType(*decl->params.back().type);
+                                    const bool isSingleSpread = (e->args.size() == fixedCount + 1 &&
+                                                                 dynamic_cast<const SpreadExpr*>(
+                                                                     e->args[fixedCount].get()));
                                     if (isSingleSpread) {
                                         // Pass the already-lowered slice through directly
                                         HirExprPtr sliceArg = std::move(args[fixedCount]);
@@ -2123,7 +2310,8 @@ namespace Rux {
                                         slice->type =
                                             TypeRef::MakeNamed(SliceTypeName(varElemType));
                                         for (std::size_t i = fixedCount; i < e->args.size(); ++i)
-                                            slice->elements.push_back(LowerExprAs(*e->args[i], varElemType));
+                                            slice->elements.push_back(
+                                                LowerExprAs(*e->args[i], varElemType));
                                         args.resize(fixedCount);
                                         args.push_back(std::move(slice));
                                     }
@@ -2140,7 +2328,8 @@ namespace Rux {
                                 he->callee = std::move(callee);
                                 for (std::size_t i = 0; i < args.size(); ++i) {
                                     if (i < e->args.size() && i + 1 < funcType.inner.size() &&
-                                        UnsuffixedIntegerLiteralFits(*e->args[i], funcType.inner[i]))
+                                        UnsuffixedIntegerLiteralFits(*e->args[i],
+                                                                     funcType.inner[i]))
                                         args[i]->type = funcType.inner[i];
                                     he->args.push_back(std::move(args[i]));
                                 }
@@ -2164,12 +2353,12 @@ namespace Rux {
                             argTypes.push_back(preArgs.back()->type);
                         }
                     }
-                    if (const FuncDecl* method = LookupMethod(receiver->type, field->field, argTypes)) {
+                    if (const FuncDecl* method =
+                            LookupMethod(receiver->type, field->field, argTypes)) {
                         HirExprPtr selfArg;
                         if (receiver->type.kind == TypeRef::Kind::Pointer) {
                             selfArg = std::move(receiver);
-                        }
-                        else {
+                        } else {
                             auto addr = std::make_unique<HirUnaryExpr>();
                             addr->location = receiver->location;
                             addr->op = TokenKind::Amp;
@@ -2179,7 +2368,8 @@ namespace Rux {
                         }
                         auto callee = std::make_unique<HirVarExpr>();
                         callee->location = field->location;
-                        callee->name = CalleeName(receiverBase, field->field, selfArg->type, *method);
+                        callee->name =
+                            CalleeName(receiverBase, field->field, selfArg->type, *method);
                         callee->type = MethodType(selfArg->type, *method);
                         he->callee = std::move(callee);
                         he->args.push_back(std::move(selfArg));
@@ -2190,20 +2380,21 @@ namespace Rux {
                                     if (UnsuffixedIntegerLiteralFits(*e->args[i], expectedType))
                                         preArgs[i]->type = expectedType;
                                     else if (IsNullLiteral(*e->args[i]) &&
-                                        expectedType.kind == TypeRef::Kind::Pointer) {
+                                             expectedType.kind == TypeRef::Kind::Pointer) {
                                         preArgs[i]->type = expectedType;
-                                        if (auto* lit = dynamic_cast<HirLiteralExpr*>(preArgs[i].get()))
+                                        if (auto* lit =
+                                                dynamic_cast<HirLiteralExpr*>(preArgs[i].get()))
                                             lit->value = "0";
                                     }
                                 }
                                 he->args.push_back(std::move(preArgs[i]));
                             }
-                        }
-                        else {
+                        } else {
                             for (std::size_t i = 0; i < e->args.size(); ++i)
-                                he->args.push_back(i + 1 < he->callee->type.inner.size()
-                                                       ? LowerExprAs(*e->args[i], he->callee->type.inner[i + 1])
-                                                       : LowerExpr(*e->args[i]));
+                                he->args.push_back(
+                                    i + 1 < he->callee->type.inner.size()
+                                        ? LowerExprAs(*e->args[i], he->callee->type.inner[i + 1])
+                                        : LowerExpr(*e->args[i]));
                         }
                         he->type = he->callee->type.inner.back();
                         return he;
@@ -2221,16 +2412,16 @@ namespace Rux {
                                 ic->type = InterfaceMethodReturnType(receiverName, field->field);
                                 ic->fatPtrExpr = std::move(receiver);
                                 if (!preArgs.empty()) {
-                                    for (auto& a : preArgs) ic->args.push_back(std::move(a));
-                                }
-                                else {
+                                    for (auto& a : preArgs)
+                                        ic->args.push_back(std::move(a));
+                                } else {
                                     const std::vector<TypeRef> paramTypes =
                                         InterfaceMethodParamTypes(receiverName, field->field);
                                     for (std::size_t i = 0; i < e->args.size(); ++i)
-                                        ic->args.push_back(i < paramTypes.size()
-                                                               ? LowerExprAs(*e->args[i],
-                                                                             paramTypes[i])
-                                                               : LowerExpr(*e->args[i]));
+                                        ic->args.push_back(
+                                            i < paramTypes.size()
+                                                ? LowerExprAs(*e->args[i], paramTypes[i])
+                                                : LowerExpr(*e->args[i]));
                                 }
                                 return ic;
                             }
@@ -2239,16 +2430,14 @@ namespace Rux {
                 }
 
                 he->callee = LowerExpr(*e->callee);
-                const bool hasParamTypes =
-                    he->callee->type.kind == TypeRef::Kind::Func &&
-                    he->callee->type.inner.size() == e->args.size() + 1;
+                const bool hasParamTypes = he->callee->type.kind == TypeRef::Kind::Func &&
+                                           he->callee->type.inner.size() == e->args.size() + 1;
                 for (std::size_t i = 0; i < e->args.size(); ++i)
                     he->args.push_back(hasParamTypes
                                            ? LowerExprAs(*e->args[i], he->callee->type.inner[i])
                                            : LowerExpr(*e->args[i]));
                 // Propagate return type if callee is a known func type
-                if (he->callee->type.kind == TypeRef::Kind::Func &&
-                    !he->callee->type.inner.empty())
+                if (he->callee->type.kind == TypeRef::Kind::Func && !he->callee->type.inner.empty())
                     he->type = he->callee->type.inner.back();
                 return he;
             }
@@ -2267,32 +2456,29 @@ namespace Rux {
                 he->object = LowerExpr(*e->object);
                 he->field = e->field;
                 if (auto elemType = SliceElementType(he->object->type)) {
-                    if (e->field == "data") he->type = TypeRef::MakePointer(*elemType);
-                    else if (e->field == "length") he->type = TypeRef::MakeUInt64();
-                }
-                else if (he->object->type.IsRange()) {
-                    TypeRef elemType = he->object->type.inner.empty()
-                                           ? TypeRef::MakeInt64()
-                                           : he->object->type.inner[0];
+                    if (e->field == "data")
+                        he->type = TypeRef::MakePointer(*elemType);
+                    else if (e->field == "length")
+                        he->type = TypeRef::MakeUInt64();
+                } else if (he->object->type.IsRange()) {
+                    TypeRef elemType = he->object->type.inner.empty() ? TypeRef::MakeInt64()
+                                                                      : he->object->type.inner[0];
                     if (e->field == "lo" || e->field == "hi")
                         he->type = elemType;
                     else if (e->field == "inclusive")
                         he->type = TypeRef::MakeBool();
-                }
-                else if (he->object->type.kind == TypeRef::Kind::Tuple) {
+                } else if (he->object->type.kind == TypeRef::Kind::Tuple) {
                     try {
                         const std::size_t idx = std::stoul(e->field);
                         if (idx < he->object->type.inner.size())
                             he->type = he->object->type.inner[idx];
+                    } catch (...) {
                     }
-                    catch (...) {}
-                }
-                else if (const std::string ifaceName = NamedBaseTypeName(he->object->type);
-                         !ifaceName.empty() && interfaceDecls.contains(ifaceName)) {
+                } else if (const std::string ifaceName = NamedBaseTypeName(he->object->type);
+                           !ifaceName.empty() && interfaceDecls.contains(ifaceName)) {
                     if (e->field == "data" || e->field == "vtable")
                         he->type = TypeRef::MakePointer(TypeRef::MakeOpaque());
-                }
-                else {
+                } else {
                     he->type = StructFieldType(he->object->type, e->field);
                 }
                 return he;
@@ -2308,7 +2494,7 @@ namespace Rux {
                         he->discriminant =
                             LookupEnumVariantDiscriminant(e->typeName.substr(0, sep),
                                                           e->typeName.substr(sep + 2))
-                            .value_or("0");
+                                .value_or("0");
                         for (const auto& field : variant->namedFields) {
                             const StructInitExpr::Field* initField = nullptr;
                             for (const auto& f : e->fields) {
@@ -2328,10 +2514,9 @@ namespace Rux {
                     he->location = e->location;
                     he->type = EnumType(*enumDecl);
                     const std::size_t sep = e->typeName.find("::");
-                    he->value =
-                        LookupEnumVariantDiscriminant(e->typeName.substr(0, sep),
-                                                      e->typeName.substr(sep + 2))
-                        .value_or("0");
+                    he->value = LookupEnumVariantDiscriminant(e->typeName.substr(0, sep),
+                                                              e->typeName.substr(sep + 2))
+                                    .value_or("0");
                     return he;
                 }
 
@@ -2353,7 +2538,8 @@ namespace Rux {
                 TypeRef elemType = TypeRef::MakeUnknown();
                 for (const auto& el : e->elements) {
                     he->elements.push_back(LowerExpr(*el));
-                    if (elemType.IsUnknown()) elemType = he->elements.back()->type;
+                    if (elemType.IsUnknown())
+                        elemType = he->elements.back()->type;
                 }
                 he->elementType = elemType;
                 he->type = TypeRef::MakeNamed(SliceTypeName(elemType));
@@ -2421,34 +2607,41 @@ namespace Rux {
 
         static TypeRef InferUnaryType(TokenKind op, const TypeRef& t) {
             switch (op) {
-            case TokenKind::Bang: return TypeRef::MakeBool();
-            case TokenKind::Amp: return TypeRef::MakePointer(t);
-            case TokenKind::Star: return t.inner.empty() ? TypeRef::MakeUnknown() : t.inner[0];
-            default: return t;
+                case TokenKind::Bang:
+                    return TypeRef::MakeBool();
+                case TokenKind::Amp:
+                    return TypeRef::MakePointer(t);
+                case TokenKind::Star:
+                    return t.inner.empty() ? TypeRef::MakeUnknown() : t.inner[0];
+                default:
+                    return t;
             }
         }
 
         static TypeRef InferBinaryType(TokenKind op, const TypeRef& l, const TypeRef& r) {
             using TK = TokenKind;
             switch (op) {
-            case TK::Plus:
-                if (l.kind == TypeRef::Kind::Pointer && r.IsInteger()) return l;
-                if (l.IsInteger() && r.kind == TypeRef::Kind::Pointer) return r;
-                return l.IsUnknown() ? r : l;
-            case TK::Minus:
-                if (l.kind == TypeRef::Kind::Pointer && r.IsInteger()) return l;
-                return l.IsUnknown() ? r : l;
-            case TK::AmpAmp:
-            case TK::PipePipe:
-            case TK::Equal:
-            case TK::BangEqual:
-            case TK::Less:
-            case TK::LessEqual:
-            case TK::Greater:
-            case TK::GreaterEqual:
-                return TypeRef::MakeBool();
-            default:
-                return l.IsUnknown() ? r : l;
+                case TK::Plus:
+                    if (l.kind == TypeRef::Kind::Pointer && r.IsInteger())
+                        return l;
+                    if (l.IsInteger() && r.kind == TypeRef::Kind::Pointer)
+                        return r;
+                    return l.IsUnknown() ? r : l;
+                case TK::Minus:
+                    if (l.kind == TypeRef::Kind::Pointer && r.IsInteger())
+                        return l;
+                    return l.IsUnknown() ? r : l;
+                case TK::AmpAmp:
+                case TK::PipePipe:
+                case TK::Equal:
+                case TK::BangEqual:
+                case TK::Less:
+                case TK::LessEqual:
+                case TK::Greater:
+                case TK::GreaterEqual:
+                    return TypeRef::MakeBool();
+                default:
+                    return l.IsUnknown() ? r : l;
             }
         }
 
@@ -2535,11 +2728,14 @@ namespace Rux {
                         hp->discriminant = LookupEnumVariantDiscriminant(p->path[0], p->path[1]);
                         variant = LookupEnumVariant(p->path[0], p->path[1]);
                         if (variant)
-                            hp->hasPayload = !variant->fields.empty() || !variant->namedFields.empty();
-                        if (const auto enumIt = enumDecls.find(p->path[0]); enumIt != enumDecls.end()) {
+                            hp->hasPayload =
+                                !variant->fields.empty() || !variant->namedFields.empty();
+                        if (const auto enumIt = enumDecls.find(p->path[0]);
+                            enumIt != enumDecls.end()) {
                             for (const auto& variant : enumIt->second->variants) {
                                 if (variant.fields.empty() && variant.namedFields.empty()) {
-                                    if (auto disc = LookupEnumVariantDiscriminant(p->path[0], variant.name))
+                                    if (auto disc =
+                                            LookupEnumVariantDiscriminant(p->path[0], variant.name))
                                         hp->unitDiscriminants.push_back(*disc);
                                 }
                             }
@@ -2557,24 +2753,23 @@ namespace Rux {
                                 LowerLetPattern(*it->second, ResolveType(*field.type), false));
                         }
                     }
-                }
-                else {
+                } else {
                     for (const auto& arg : p->namedArgs)
                         hp->args.push_back(LowerPattern(*arg.pattern));
                 }
                 for (std::size_t i = 0; i < p->args.size(); ++i) {
                     if (variant && i < variant->fields.size()) {
                         hp->argIndices.push_back(i);
-                        hp->args.push_back(LowerLetPattern(*p->args[i], ResolveType(*variant->fields[i]), false));
-                    }
-                    else if (variant && i - variant->fields.size() < variant->namedFields.size()) {
-                        hp->argIndices.push_back(i);
                         hp->args.push_back(
-                            LowerLetPattern(*p->args[i],
-                                            ResolveType(*variant->namedFields[i - variant->fields.size()].type),
-                                            false));
-                    }
-                    else
+                            LowerLetPattern(*p->args[i], ResolveType(*variant->fields[i]), false));
+                    } else if (variant &&
+                               i - variant->fields.size() < variant->namedFields.size()) {
+                        hp->argIndices.push_back(i);
+                        hp->args.push_back(LowerLetPattern(
+                            *p->args[i],
+                            ResolveType(*variant->namedFields[i - variant->fields.size()].type),
+                            false));
+                    } else
                         hp->args.push_back(LowerPattern(*p->args[i]));
                 }
                 return hp;
@@ -2614,8 +2809,7 @@ namespace Rux {
     };
 
     // Hir public API
-    Hir::Hir(std::vector<const Module*> modules)
-        : modules_(std::move(modules)) {}
+    Hir::Hir(std::vector<const Module*> modules) : modules_(std::move(modules)) {}
 
     HirPackage Hir::Generate() {
         Lowering lowering(modules_);
@@ -2636,7 +2830,8 @@ namespace Rux {
         if (auto* e = dynamic_cast<const HirPathExpr*>(&expr)) {
             std::string s;
             for (std::size_t i = 0; i < e->segments.size(); ++i) {
-                if (i) s += "::";
+                if (i)
+                    s += "::";
                 s += e->segments[i];
             }
             return s;
@@ -2646,11 +2841,11 @@ namespace Rux {
         if (auto* e = dynamic_cast<const HirPostfixExpr*>(&expr))
             return PrintExpr(*e->operand) + (e->op == TokenKind::PlusPlus ? "++" : "--");
         if (auto* e = dynamic_cast<const HirBinaryExpr*>(&expr))
-            return std::format("({} {} {})",
-                               PrintExpr(*e->left), OpStr(e->op), PrintExpr(*e->right));
+            return std::format(
+                "({} {} {})", PrintExpr(*e->left), OpStr(e->op), PrintExpr(*e->right));
         if (auto* e = dynamic_cast<const HirAssignExpr*>(&expr))
-            return std::format("{} {} {}",
-                               PrintExpr(*e->target), OpStr(e->op), PrintExpr(*e->value));
+            return std::format(
+                "{} {} {}", PrintExpr(*e->target), OpStr(e->op), PrintExpr(*e->value));
         if (auto* e = dynamic_cast<const HirTernaryExpr*>(&expr))
             return std::format("{} ? {} : {}",
                                PrintExpr(*e->condition),
@@ -2664,7 +2859,8 @@ namespace Rux {
         if (auto* e = dynamic_cast<const HirCallExpr*>(&expr)) {
             std::string s = PrintExpr(*e->callee) + "(";
             for (std::size_t i = 0; i < e->args.size(); ++i) {
-                if (i) s += ", ";
+                if (i)
+                    s += ", ";
                 s += PrintExpr(*e->args[i]);
             }
             return s + ")";
@@ -2676,7 +2872,8 @@ namespace Rux {
         if (auto* e = dynamic_cast<const HirStructInitExpr*>(&expr)) {
             std::string s = e->typeName + " { ";
             for (std::size_t i = 0; i < e->fields.size(); ++i) {
-                if (i) s += ", ";
+                if (i)
+                    s += ", ";
                 s += e->fields[i].name + ": " + PrintExpr(*e->fields[i].value);
             }
             return s + " }";
@@ -2684,7 +2881,8 @@ namespace Rux {
         if (auto* e = dynamic_cast<const HirSliceExpr*>(&expr)) {
             std::string s = "[";
             for (std::size_t i = 0; i < e->elements.size(); ++i) {
-                if (i) s += ", ";
+                if (i)
+                    s += ", ";
                 s += PrintExpr(*e->elements[i]);
             }
             return s + "]";
@@ -2692,7 +2890,8 @@ namespace Rux {
         if (auto* e = dynamic_cast<const HirTupleExpr*>(&expr)) {
             std::string s = "(";
             for (std::size_t i = 0; i < e->elements.size(); ++i) {
-                if (i) s += ", ";
+                if (i)
+                    s += ", ";
                 s += PrintExpr(*e->elements[i]);
             }
             return s + ")";
@@ -2704,7 +2903,8 @@ namespace Rux {
         if (auto* e = dynamic_cast<const HirMatchExpr*>(&expr)) {
             std::string s = "match " + PrintExpr(*e->subject) + " { ";
             for (std::size_t i = 0; i < e->arms.size(); ++i) {
-                if (i) s += ", ";
+                if (i)
+                    s += ", ";
                 s += PrintPattern(*e->arms[i].pattern) + " => " + PrintExpr(*e->arms[i].body);
             }
             return s + " }";
@@ -2712,7 +2912,8 @@ namespace Rux {
         if (auto* e = dynamic_cast<const HirEnumConstructExpr*>(&expr)) {
             std::string s = "#(";
             for (std::size_t i = 0; i < e->payloads.size(); ++i) {
-                if (i) s += ", ";
+                if (i)
+                    s += ", ";
                 s += PrintExpr(*e->payloads[i]);
             }
             return s + ")#" + e->discriminant;
@@ -2737,13 +2938,15 @@ namespace Rux {
         if (auto* p = dynamic_cast<const HirEnumPattern*>(&pat)) {
             std::string s;
             for (std::size_t i = 0; i < p->path.size(); ++i) {
-                if (i) s += "::";
+                if (i)
+                    s += "::";
                 s += p->path[i];
             }
             if (!p->args.empty()) {
                 s += "(";
                 for (std::size_t i = 0; i < p->args.size(); ++i) {
-                    if (i) s += ", ";
+                    if (i)
+                        s += ", ";
                     s += PrintPattern(*p->args[i]);
                 }
                 s += ")";
@@ -2754,7 +2957,8 @@ namespace Rux {
         if (auto* p = dynamic_cast<const HirStructPattern*>(&pat)) {
             std::string s = p->typeName + " { ";
             for (std::size_t i = 0; i < p->fields.size(); ++i) {
-                if (i) s += ", ";
+                if (i)
+                    s += ", ";
                 s += p->fields[i].name + ": " + PrintPattern(*p->fields[i].pattern);
             }
             return s + " }";
@@ -2762,7 +2966,8 @@ namespace Rux {
         if (auto* p = dynamic_cast<const HirTuplePattern*>(&pat)) {
             std::string s = "(";
             for (std::size_t i = 0; i < p->elements.size(); ++i) {
-                if (i) s += ", ";
+                if (i)
+                    s += ", ";
                 s += PrintPattern(*p->elements[i]);
             }
             return s + ")";
@@ -2788,7 +2993,8 @@ namespace Rux {
         }
         if (auto* s = dynamic_cast<const HirLetStmt*>(&stmt)) {
             out << std::format("{}{} {}: {}",
-                               indent, s->isMut ? "var" : "let",
+                               indent,
+                               s->isMut ? "var" : "let",
                                s->pattern ? PrintPattern(*s->pattern) : s->name,
                                s->type.ToString());
             if (s->stackBufferLength != 0)
@@ -2828,16 +3034,14 @@ namespace Rux {
             return;
         }
         if (auto* s = dynamic_cast<const HirForStmt*>(&stmt)) {
-            out << std::format("{}for {} in {}\n",
-                               indent, s->variable, PrintExpr(*s->iterable));
+            out << std::format("{}for {} in {}\n", indent, s->variable, PrintExpr(*s->iterable));
             DumpBlock(out, s->body, indent + "  ");
             return;
         }
         if (auto* s = dynamic_cast<const HirMatchStmt*>(&stmt)) {
             out << std::format("{}match {}\n", indent, PrintExpr(*s->subject));
             for (const auto& arm : s->arms) {
-                out << std::format("{}  {} =>\n",
-                                   indent, PrintPattern(*arm.pattern));
+                out << std::format("{}  {} =>\n", indent, PrintPattern(*arm.pattern));
                 out << std::format("{}    {}\n", indent, PrintExpr(*arm.body));
             }
             return;
@@ -2863,37 +3067,44 @@ namespace Rux {
         }
     }
 
-    static void DumpFuncSignature(std::ostream& out, const HirFunc& f, const std::string& prefix = "") {
+    static void
+    DumpFuncSignature(std::ostream& out, const HirFunc& f, const std::string& prefix = "") {
         std::string pub = f.isPublic ? "pub " : "";
         std::string asm_ = f.isAsm ? "asm " : "";
         std::string tps;
         if (!f.typeParams.empty()) {
             tps = "<";
             for (std::size_t i = 0; i < f.typeParams.size(); ++i) {
-                if (i) tps += ", ";
+                if (i)
+                    tps += ", ";
                 tps += f.typeParams[i];
             }
             tps += ">";
         }
         std::string params;
         for (std::size_t i = 0; i < f.params.size(); ++i) {
-            if (i) params += ", ";
+            if (i)
+                params += ", ";
             if (f.params[i].isVariadic)
                 params += "...";
             else
                 params += f.params[i].name + ": " + f.params[i].type.ToString();
         }
-        std::string ret = f.returnType.IsOpaque()
-                              ? ""
-                              : " -> " + f.returnType.ToString();
+        std::string ret = f.returnType.IsOpaque() ? "" : " -> " + f.returnType.ToString();
         out << std::format("{}{}{}func {}{}{}{}\n",
-                           prefix, pub, asm_, f.name, tps,
-                           params.empty() ? "()" : "(" + params + ")", ret);
+                           prefix,
+                           pub,
+                           asm_,
+                           f.name,
+                           tps,
+                           params.empty() ? "()" : "(" + params + ")",
+                           ret);
     }
 
     bool Hir::Dump(const HirPackage& package, const std::filesystem::path& path) {
         std::ofstream out(path);
-        if (!out) return false;
+        if (!out)
+            return false;
         out << "=== High-level Intermediate Representation ===\n";
         for (const auto& mod : package.modules) {
             out << '\n';
@@ -2901,38 +3112,37 @@ namespace Rux {
             out << std::string(std::min<std::size_t>(mod.name.size() + 9, 72), '-') << '\n';
             for (const auto& c : mod.consts) {
                 std::string pub = c.isPublic ? "pub " : "";
-                out << std::format("\n{}const {}: {} = {}\n",
-                                   pub, c.name, c.type.ToString(), PrintExpr(*c.value));
+                out << std::format(
+                    "\n{}const {}: {} = {}\n", pub, c.name, c.type.ToString(), PrintExpr(*c.value));
             }
             for (const auto& ta : mod.typeAliases) {
                 std::string pub = ta.isPublic ? "pub " : "";
-                out << std::format("\n{}type {} = {}\n",
-                                   pub, ta.name, ta.type.ToString());
+                out << std::format("\n{}type {} = {}\n", pub, ta.name, ta.type.ToString());
             }
             for (const auto& ev : mod.externVars) {
                 std::string pub = ev.isPublic ? "pub " : "";
-                out << std::format("\nextern {}{}: {}\n",
-                                   pub, ev.name, ev.type.ToString());
+                out << std::format("\nextern {}{}: {}\n", pub, ev.name, ev.type.ToString());
             }
             for (const auto& ef : mod.externFuncs) {
                 std::string pub = ef.isPublic ? "pub " : "";
                 std::string params;
                 for (std::size_t i = 0; i < ef.params.size(); ++i) {
-                    if (i) params += ", ";
-                    if (ef.params[i].isVariadic) params += "...";
-                    else params += ef.params[i].name + ": " + ef.params[i].type.ToString();
+                    if (i)
+                        params += ", ";
+                    if (ef.params[i].isVariadic)
+                        params += "...";
+                    else
+                        params += ef.params[i].name + ": " + ef.params[i].type.ToString();
                 }
-                if (ef.isVariadic && !ef.params.empty()) params += ", ...";
-                std::string ret = ef.returnType.IsOpaque()
-                                      ? ""
-                                      : " -> " + ef.returnType.ToString();
+                if (ef.isVariadic && !ef.params.empty())
+                    params += ", ...";
+                std::string ret = ef.returnType.IsOpaque() ? "" : " -> " + ef.returnType.ToString();
                 std::string attr;
                 if (!ef.dll.empty())
                     attr += std::format("@[Import(lib: \"{}\")]\n", ef.dll);
                 if (ef.callConv == CallingConvention::Win64)
                     attr += "@[Call(.Win64)]\n";
-                out << std::format("\n{}extern {}func {}({}){}\n",
-                                   attr, pub, ef.name, params, ret);
+                out << std::format("\n{}extern {}func {}({}){}\n", attr, pub, ef.name, params, ret);
             }
             for (const auto& s : mod.structs) {
                 std::string pub = s.isPublic ? "pub " : "";
@@ -2940,7 +3150,8 @@ namespace Rux {
                 if (!s.typeParams.empty()) {
                     typeParams = "<";
                     for (std::size_t i = 0; i < s.typeParams.size(); ++i) {
-                        if (i) typeParams += ", ";
+                        if (i)
+                            typeParams += ", ";
                         typeParams += s.typeParams[i];
                     }
                     typeParams += ">";
@@ -2957,11 +3168,11 @@ namespace Rux {
                 for (const auto& v : e.variants) {
                     if (v.fields.empty()) {
                         out << std::format("  {} = {}\n", v.name, v.discriminant.value_or("0"));
-                    }
-                    else {
+                    } else {
                         std::string fields;
                         for (std::size_t i = 0; i < v.fields.size(); ++i) {
-                            if (i) fields += ", ";
+                            if (i)
+                                fields += ", ";
                             fields += v.fields[i].ToString();
                         }
                         if (v.discriminant)
@@ -2983,13 +3194,15 @@ namespace Rux {
                 for (const auto& m : iface.methods) {
                     std::string params;
                     for (std::size_t i = 0; i < m.params.size(); ++i) {
-                        if (i) params += ", ";
-                        if (m.params[i].isVariadic) params += "...";
-                        else params += m.params[i].name + ": " + m.params[i].type.ToString();
+                        if (i)
+                            params += ", ";
+                        if (m.params[i].isVariadic)
+                            params += "...";
+                        else
+                            params += m.params[i].name + ": " + m.params[i].type.ToString();
                     }
-                    std::string ret = m.returnType.IsOpaque()
-                                          ? ""
-                                          : " -> " + m.returnType.ToString();
+                    std::string ret =
+                        m.returnType.IsOpaque() ? "" : " -> " + m.returnType.ToString();
                     out << std::format("  func {}({}){}\n", m.name, params, ret);
                 }
             }
@@ -3014,4 +3227,4 @@ namespace Rux {
         }
         return out.good();
     }
-}
+} // namespace Rux

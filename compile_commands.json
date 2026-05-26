@@ -1,0 +1,86 @@
+[
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/Main.cpp.o -c /home/ok/Code/Rux/Source/Main.cpp",
+  "file": "/home/ok/Code/Rux/Source/Main.cpp",
+  "output": "CMakeFiles/rux.dir/Source/Main.cpp.o"
+},
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/Cli.cpp.o -c /home/ok/Code/Rux/Source/Cli.cpp",
+  "file": "/home/ok/Code/Rux/Source/Cli.cpp",
+  "output": "CMakeFiles/rux.dir/Source/Cli.cpp.o"
+},
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/Manifest.cpp.o -c /home/ok/Code/Rux/Source/Manifest.cpp",
+  "file": "/home/ok/Code/Rux/Source/Manifest.cpp",
+  "output": "CMakeFiles/rux.dir/Source/Manifest.cpp.o"
+},
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/Package.cpp.o -c /home/ok/Code/Rux/Source/Package.cpp",
+  "file": "/home/ok/Code/Rux/Source/Package.cpp",
+  "output": "CMakeFiles/rux.dir/Source/Package.cpp.o"
+},
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/Token.cpp.o -c /home/ok/Code/Rux/Source/Token.cpp",
+  "file": "/home/ok/Code/Rux/Source/Token.cpp",
+  "output": "CMakeFiles/rux.dir/Source/Token.cpp.o"
+},
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/Lexer.cpp.o -c /home/ok/Code/Rux/Source/Lexer.cpp",
+  "file": "/home/ok/Code/Rux/Source/Lexer.cpp",
+  "output": "CMakeFiles/rux.dir/Source/Lexer.cpp.o"
+},
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/SourceLoader.cpp.o -c /home/ok/Code/Rux/Source/SourceLoader.cpp",
+  "file": "/home/ok/Code/Rux/Source/SourceLoader.cpp",
+  "output": "CMakeFiles/rux.dir/Source/SourceLoader.cpp.o"
+},
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/Parser.cpp.o -c /home/ok/Code/Rux/Source/Parser.cpp",
+  "file": "/home/ok/Code/Rux/Source/Parser.cpp",
+  "output": "CMakeFiles/rux.dir/Source/Parser.cpp.o"
+},
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/Sema.cpp.o -c /home/ok/Code/Rux/Source/Sema.cpp",
+  "file": "/home/ok/Code/Rux/Source/Sema.cpp",
+  "output": "CMakeFiles/rux.dir/Source/Sema.cpp.o"
+},
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/Hir.cpp.o -c /home/ok/Code/Rux/Source/Hir.cpp",
+  "file": "/home/ok/Code/Rux/Source/Hir.cpp",
+  "output": "CMakeFiles/rux.dir/Source/Hir.cpp.o"
+},
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/Lir.cpp.o -c /home/ok/Code/Rux/Source/Lir.cpp",
+  "file": "/home/ok/Code/Rux/Source/Lir.cpp",
+  "output": "CMakeFiles/rux.dir/Source/Lir.cpp.o"
+},
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/Asm.cpp.o -c /home/ok/Code/Rux/Source/Asm.cpp",
+  "file": "/home/ok/Code/Rux/Source/Asm.cpp",
+  "output": "CMakeFiles/rux.dir/Source/Asm.cpp.o"
+},
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/Rcu.cpp.o -c /home/ok/Code/Rux/Source/Rcu.cpp",
+  "file": "/home/ok/Code/Rux/Source/Rcu.cpp",
+  "output": "CMakeFiles/rux.dir/Source/Rcu.cpp.o"
+},
+{
+  "directory": "/home/ok/Code/Rux/build",
+  "command": "/usr/bin/c++  -I/home/ok/Code/Rux/Include -I/home/ok/Code/Rux/build/generated -std=gnu++26 -o CMakeFiles/rux.dir/Source/Linker.cpp.o -c /home/ok/Code/Rux/Source/Linker.cpp",
+  "file": "/home/ok/Code/Rux/Source/Linker.cpp",
+  "output": "CMakeFiles/rux.dir/Source/Linker.cpp.o"
+}
+]
