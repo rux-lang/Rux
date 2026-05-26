@@ -43,7 +43,7 @@ namespace Rux {
         static int RunRemove(std::span<const std::string_view> args, const GlobalOptions& opts);
         static int RunRun(std::span<const std::string_view> args, const GlobalOptions& opts);
         static int RunTest(std::span<const std::string_view> args, const GlobalOptions& opts);
-        static int RunUp(std::span<const std::string_view> args, const GlobalOptions& opts);
+        static int RunUpdate(std::span<const std::string_view> args, const GlobalOptions& opts);
 
         // Help printers
         static void PrintHelp();
@@ -59,7 +59,7 @@ namespace Rux {
         static void PrintHelpRemove();
         static void PrintHelpRun();
         static void PrintHelpTest();
-        static void PrintHelpUp();
+        static void PrintHelpUpdate();
         static void PrintHelpVersion();
         static void PrintVersion();
         static void PrintUnknownCommand(std::string_view command);

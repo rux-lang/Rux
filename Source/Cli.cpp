@@ -371,7 +371,7 @@ namespace Rux {
         if (command == "remove") return RunRemove(rest, opts);
         if (command == "run") return RunRun(rest, opts);
         if (command == "test") return RunTest(rest, opts);
-        if (command == "up") return RunUp(rest, opts);
+        if (command == "update") return RunUpdate(rest, opts);
 
         PrintUnknownCommand(command);
         return 1;
@@ -1225,6 +1225,28 @@ namespace Rux {
 #endif
     }
 
+    // Pull latest changes in an existing git repository. Returns true on success.
+    static bool GitPull(const std::filesystem::path& repoDir) {
+#ifdef _WIN32
+        std::wstring cmd = L"git -C \"" + repoDir.wstring() + L"\" pull";
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        PROCESS_INFORMATION pi{};
+        if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr,
+                            FALSE, 0, nullptr, nullptr, &si, &pi))
+            return false;
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        DWORD exitCode = 1;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return exitCode == 0;
+#else
+        const std::string cmd = "git -C \"" + repoDir.string() + "\" pull";
+        return std::system(cmd.c_str()) == 0;
+#endif
+    }
+
     int Cli::RunInstall(const GlobalOptions& opts) {
         const auto manifestPath = RequireManifest();
         if (!manifestPath) return 1;
@@ -1570,29 +1592,93 @@ namespace Rux {
         return 0;
     }
 
-    int Cli::RunUp(std::span<const std::string_view> args, const GlobalOptions& opts) {
-        bool selfOnly = false;
+    int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions& opts) {
         for (auto& arg : args) {
-            if (arg == "--self") {
-                selfOnly = true;
-                continue;
-            }
             if (arg == "-h" || arg == "--help") {
-                PrintHelpUp();
+                PrintHelpUpdate();
                 return 0;
             }
-            PrintUnknownOption(arg, "up");
+            PrintUnknownOption(arg, "update");
             return 1;
         }
-        if (!opts.quiet)
-            std::print("  Checking for updates...\n");
-        // TODO: query release feed
-        if (!opts.quiet) {
-            if (selfOnly)
-                std::print("  Rux {} is the latest compiler version.\n", RUX_VERSION);
-            else
-                std::print("  Rux {} is up to date.\n", RUX_VERSION);
+
+        const auto manifestPath = RequireManifest();
+        if (!manifestPath) return 1;
+        auto manifest = LoadManifest(*manifestPath);
+        if (!manifest) return 1;
+
+        std::vector<std::string> queue;
+        std::unordered_set<std::string> queued;
+        for (const auto& dep : manifest->dependencies) {
+            if (dep.path.empty() && !queued.count(dep.name)) {
+                queue.push_back(dep.name);
+                queued.insert(dep.name);
+            }
         }
+
+        if (queue.empty()) {
+            if (!opts.quiet)
+                std::print("  No registry dependencies to update.\n");
+            return 0;
+        }
+
+        static constexpr std::string_view kRegistryUrl =
+            "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/Packages.json";
+
+        if (!opts.quiet)
+            std::print("     Fetching registry...\n");
+
+        const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
+        if (!jsonOpt) {
+            std::print(stderr, "error: failed to fetch package registry\n");
+            return 1;
+        }
+
+        int updated = 0;
+        int installed = 0;
+        for (std::size_t i = 0; i < queue.size(); ++i) {
+            const std::string& pkgName = queue[i];
+            const std::string repoUrl = JsonLookupString(*jsonOpt, pkgName);
+            if (repoUrl.empty()) {
+                std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
+                return 1;
+            }
+            const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
+            std::error_code ec;
+            std::filesystem::create_directories(pkgDir.parent_path(), ec);
+
+            if (std::filesystem::exists(pkgDir)) {
+                if (!opts.quiet)
+                    std::print("    Updating {}...\n", pkgName);
+                if (!GitPull(pkgDir)) {
+                    std::print(stderr, "error: failed to update '{}'\n", pkgName);
+                    return 1;
+                }
+                ++updated;
+            } else {
+                if (!opts.quiet)
+                    std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+                if (!GitClone(repoUrl, pkgDir)) {
+                    std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
+                    return 1;
+                }
+                if (!opts.quiet)
+                    std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+                ++installed;
+            }
+
+            // Enqueue registry deps declared by this package
+            if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
+                for (const auto& dep : depManifest->dependencies) {
+                    if (dep.path.empty() && !queued.count(dep.name)) {
+                        queue.push_back(dep.name);
+                        queued.insert(dep.name);
+                    }
+                }
+            }
+        }
+        if (!opts.quiet)
+            std::print("     Summary: {} updated, {} newly installed\n", updated, installed);
         return 0;
     }
 
@@ -1615,7 +1701,7 @@ namespace Rux {
             "  remove         Remove a dependency from the manifest\n"
             "  run            Build and run the main executable\n"
             "  test           Run all test targets\n"
-            "  up             Update Rux toolchain\n"
+            "  update         Update dependencies\n"
             "  version        Show version information\n"
             "\n"
             "Options:\n"
@@ -1678,8 +1764,8 @@ namespace Rux {
             PrintHelpTest();
             return;
         }
-        if (command == "up") {
-            PrintHelpUp();
+        if (command == "update") {
+            PrintHelpUpdate();
             return;
         }
         if (command == "version") {
@@ -1882,21 +1968,17 @@ namespace Rux {
         );
     }
 
-    void Cli::PrintHelpUp() {
+    void Cli::PrintHelpUpdate() {
         std::print(
-            "Update Rux toolchain\n"
+            "Update dependencies\n"
             "\n"
-            "Usage: rux up [options]\n"
+            "Usage: rux update\n"
             "\n"
-            "Checks for updates to the Rux compiler, package registry, and tools.\n"
-            "By default, updates all installed toolchain components.\n"
-            "\n"
-            "Options:\n"
-            "  --self    Update only the compiler\n"
+            "Checks all registry dependencies listed in Rux.toml and pulls the latest\n"
+            "changes for each one. Missing packages are cloned from the registry.\n"
             "\n"
             "Examples:\n"
-            "  rux up\n"
-            "  rux up --self\n"
+            "  rux update\n"
         );
     }
 
