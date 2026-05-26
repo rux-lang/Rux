@@ -1232,8 +1232,8 @@ namespace Rux {
                         if (!p.isVariadic && !p.defaultValue)
                             ++requiredCount;
                     const bool arityOk = isVariadic
-                        ? argTypes.size() >= requiredCount
-                        : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
+                                             ? argTypes.size() >= requiredCount
+                                             : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
                     if (!arityOk) continue;
                     bool match = true;
                     for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
@@ -1335,8 +1335,8 @@ namespace Rux {
 
                 hasPayload = true;
                 auto payload = !variant.fields.empty()
-                    ? fieldLayout(variant.fields)
-                    : namedFieldLayout(variant.namedFields);
+                                   ? fieldLayout(variant.fields)
+                                   : namedFieldLayout(variant.namedFields);
                 if (!payload) return std::nullopt;
                 maxPayloadSize = std::max(maxPayloadSize, payload->first);
                 maxPayloadAlign = std::max(maxPayloadAlign, payload->second);
@@ -1497,16 +1497,17 @@ namespace Rux {
                 }
                 else if (seenDefault) {
                     EmitError(param.location,
-                              std::format("parameter '{}' without a default value cannot follow a parameter with a default value",
-                                          param.name));
+                              std::format(
+                                  "parameter '{}' without a default value cannot follow a parameter with a default value",
+                                  param.name));
                 }
                 Symbol sym;
                 sym.kind = Symbol::Kind::Var;
                 sym.name = param.name;
                 sym.location = param.location;
                 sym.type = param.isVariadic
-                    ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
-                    : ResolveType(*param.type);
+                               ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
+                               : ResolveType(*param.type);
                 sym.isMut = false;
                 Define(sym);
                 if (param.defaultValue) {
@@ -2446,9 +2447,10 @@ namespace Rux {
                         for (const auto& p : decl->params)
                             if (!p.isVariadic && !p.defaultValue)
                                 ++requiredCount;
-                        const bool arityOk = isVariadic ? argTypes.size() >= requiredCount
-                                                        : (argTypes.size() >= requiredCount &&
-                                                           argTypes.size() <= paramCount);
+                        const bool arityOk = isVariadic
+                                                 ? argTypes.size() >= requiredCount
+                                                 : (argTypes.size() >= requiredCount &&
+                                                     argTypes.size() <= paramCount);
                         if (!arityOk) {
                             EmitError(e->location,
                                       std::format("function expects {} argument(s), got {}",
@@ -2469,15 +2471,16 @@ namespace Rux {
                                 const TypeRef sliceType =
                                     TypeRef::MakeNamed(SliceTypeName(varElemType));
                                 const bool isSingleSpread =
-                                    (argTypes.size() == paramCount + 1 &&
-                                     dynamic_cast<const SpreadExpr*>(e->args[paramCount].get()));
+                                (argTypes.size() == paramCount + 1 &&
+                                    dynamic_cast<const SpreadExpr*>(e->args[paramCount].get()));
                                 if (isSingleSpread) {
                                     if (!argTypes[paramCount].IsUnknown() && !sliceType.IsUnknown() &&
                                         argTypes[paramCount] != sliceType)
                                         EmitError(e->args[paramCount]->location,
                                                   std::format("cannot spread '{}' to variadic parameter of type '{}'",
                                                               argTypes[paramCount].ToString(), varElemType.ToString()));
-                                } else {
+                                }
+                                else {
                                     for (std::size_t i = paramCount; i < argTypes.size(); ++i) {
                                         if (dynamic_cast<const SpreadExpr*>(e->args[i].get()))
                                             EmitError(e->args[i]->location,
@@ -2530,8 +2533,9 @@ namespace Rux {
                             ResolveInterfaceMethodParamTypes(*method);
                         const bool isVariadic = !method->params.empty() &&
                             method->params.back().isVariadic;
-                        const bool arityOk = isVariadic ? argTypes.size() >= paramTypes.size()
-                                                        : argTypes.size() == paramTypes.size();
+                        const bool arityOk = isVariadic
+                                                 ? argTypes.size() >= paramTypes.size()
+                                                 : argTypes.size() == paramTypes.size();
 
                         if (!arityOk) {
                             EmitError(e->location,
@@ -2570,7 +2574,7 @@ namespace Rux {
                     if (path->segments.size() == 2) {
                         Symbol* first = currentScope->Lookup(path->segments[0]);
                         if (first && (first->kind == Symbol::Kind::Type ||
-                                      first->kind == Symbol::Kind::Interface)) {
+                            first->kind == Symbol::Kind::Interface)) {
                             TypeRef receiverType = first->type.IsUnknown()
                                                        ? TypeRef::MakeNamed(first->name)
                                                        : first->type;

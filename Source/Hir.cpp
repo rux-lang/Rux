@@ -884,8 +884,8 @@ namespace Rux {
                         if (!p.isVariadic && !p.defaultValue)
                             ++requiredCount;
                     const bool arityOk = isVariadic
-                        ? argTypes.size() >= requiredCount
-                        : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
+                                             ? argTypes.size() >= requiredCount
+                                             : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
                     if (!arityOk) continue;
                     bool match = true;
                     for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
@@ -1121,8 +1121,8 @@ namespace Rux {
 
                 hasPayload = true;
                 auto payload = !variant.fields.empty()
-                    ? fieldLayout(variant.fields)
-                    : namedFieldLayout(variant.namedFields);
+                                   ? fieldLayout(variant.fields)
+                                   : namedFieldLayout(variant.namedFields);
                 if (!payload) return std::nullopt;
                 maxPayloadSize = std::max(maxPayloadSize, payload->first);
                 maxPayloadAlign = std::max(maxPayloadAlign, payload->second);
@@ -1275,8 +1275,8 @@ namespace Rux {
                 hp.name = p.name;
                 hp.isVariadic = p.isVariadic;
                 hp.type = p.isVariadic
-                    ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*p.type)))
-                    : ResolveType(*p.type);
+                              ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*p.type)))
+                              : ResolveType(*p.type);
                 out.push_back(std::move(hp));
             }
             return out;
@@ -1290,7 +1290,12 @@ namespace Rux {
             std::vector<std::string> parts;
             std::string cur;
             for (const char c : generic) {
-                if (c == '/') { if (!cur.empty()) { parts.push_back(cur); cur.clear(); } }
+                if (c == '/') {
+                    if (!cur.empty()) {
+                        parts.push_back(cur);
+                        cur.clear();
+                    }
+                }
                 else cur += c;
             }
             if (!cur.empty()) parts.push_back(cur);
@@ -1309,7 +1314,8 @@ namespace Rux {
                     }
                     mod.push_back(s);
                 }
-            } else {
+            }
+            else {
                 std::string stem = parts.empty() ? filePath : parts.back();
                 const auto dot = stem.rfind('.');
                 if (dot != std::string::npos) stem = stem.substr(0, dot);
@@ -1366,7 +1372,8 @@ namespace Rux {
             else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl)) {
                 const auto savedModulePath = currentModulePath;
                 currentModulePath = currentModulePath.empty()
-                    ? d->name : currentModulePath + "::" + d->name;
+                                        ? d->name
+                                        : currentModulePath + "::" + d->name;
                 for (auto& item : d->items)
                     LowerTopLevelDecl(*item, hmod);
                 currentModulePath = savedModulePath;
@@ -1408,8 +1415,8 @@ namespace Rux {
                 sym.kind = HirSymbol::Kind::Var;
                 sym.name = param.name;
                 sym.type = param.isVariadic
-                    ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
-                    : ResolveType(*param.type);
+                               ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
+                               : ResolveType(*param.type);
                 Define(sym);
             }
             std::optional<HirBlock> body;
@@ -1624,8 +1631,9 @@ namespace Rux {
                     s->type ? std::optional<TypeRef>(ResolveType(**s->type)) : std::nullopt;
                 if (s->init)
                     hs->init = explicitType ? LowerExprAs(*s->init, *explicitType) : LowerExpr(*s->init);
-                hs->type = explicitType ? *explicitType
-                                         : (hs->init ? hs->init->type : TypeRef::MakeUnknown());
+                hs->type = explicitType
+                               ? *explicitType
+                               : (hs->init ? hs->init->type : TypeRef::MakeUnknown());
                 if (s->type) {
                     if (const auto size = FixedSliceTypeSize(**s->type)) {
                         hs->stackBufferLength = *size;
@@ -2120,7 +2128,7 @@ namespace Rux {
                     path && path->segments.size() == 2) {
                     HirSymbol* first = currentScope->Lookup(path->segments[0]);
                     if (first && (first->kind == HirSymbol::Kind::Type ||
-                                  first->kind == HirSymbol::Kind::Interface) &&
+                            first->kind == HirSymbol::Kind::Interface) &&
                         !LookupEnumVariant(path->segments[0], path->segments[1])) {
                         TypeRef receiverType = first->type.IsUnknown()
                                                    ? TypeRef::MakeNamed(first->name)
@@ -2178,16 +2186,18 @@ namespace Rux {
                                 for (std::size_t i = args.size(); i < fixedCount; ++i) {
                                     if (decl->params[i].defaultValue) {
                                         TypeRef pt = (i + 1 < funcType.inner.size())
-                                            ? funcType.inner[i] : TypeRef::MakeUnknown();
-                                        args.push_back(LowerDefaultArg(**decl->params[i].defaultValue, pt, e->location));
+                                                         ? funcType.inner[i]
+                                                         : TypeRef::MakeUnknown();
+                                        args.push_back(
+                                            LowerDefaultArg(**decl->params[i].defaultValue, pt, e->location));
                                     }
                                 }
                                 if (isVariadic) {
                                     TypeRef varElemType =
                                         ResolveType(*decl->params.back().type);
                                     const bool isSingleSpread =
-                                        (e->args.size() == fixedCount + 1 &&
-                                         dynamic_cast<const SpreadExpr*>(e->args[fixedCount].get()));
+                                    (e->args.size() == fixedCount + 1 &&
+                                        dynamic_cast<const SpreadExpr*>(e->args[fixedCount].get()));
                                     if (isSingleSpread) {
                                         // Pass the already-lowered slice through directly
                                         HirExprPtr sliceArg = std::move(args[fixedCount]);
@@ -2195,7 +2205,8 @@ namespace Rux {
                                             TypeRef::MakeNamed(SliceTypeName(varElemType));
                                         args.resize(fixedCount);
                                         args.push_back(std::move(sliceArg));
-                                    } else {
+                                    }
+                                    else {
                                         auto slice = std::make_unique<HirSliceExpr>();
                                         slice->location = e->location;
                                         slice->elementType = varElemType;
@@ -2367,7 +2378,7 @@ namespace Rux {
                     catch (...) {}
                 }
                 else if (const std::string ifaceName = NamedBaseTypeName(he->object->type);
-                         !ifaceName.empty() && interfaceDecls.contains(ifaceName)) {
+                    !ifaceName.empty() && interfaceDecls.contains(ifaceName)) {
                     if (e->field == "data" || e->field == "vtable")
                         he->type = TypeRef::MakePointer(TypeRef::MakeOpaque());
                 }

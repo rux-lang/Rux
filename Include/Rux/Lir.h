@@ -164,7 +164,7 @@ namespace Rux {
 
     // Vtable — a sequence of function-pointer entries emitted in .rodata
     struct LirVtable {
-        std::string label;               // e.g. __vtable__int64__Display
+        std::string label; // e.g. __vtable__int64__Display
         std::vector<std::string> methods; // mangled method names in vtable order
     };
 

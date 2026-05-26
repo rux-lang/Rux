@@ -466,16 +466,24 @@ namespace Rux {
             void MovRaxArgWin64(const int idx) const {
                 switch (idx) {
                 case 0:
-                    Byte(0x48); Byte(0x89); Byte(0xC8); // mov rax, rcx
+                    Byte(0x48);
+                    Byte(0x89);
+                    Byte(0xC8); // mov rax, rcx
                     break;
                 case 1:
-                    Byte(0x48); Byte(0x89); Byte(0xD0); // mov rax, rdx
+                    Byte(0x48);
+                    Byte(0x89);
+                    Byte(0xD0); // mov rax, rdx
                     break;
                 case 2:
-                    Byte(0x4C); Byte(0x89); Byte(0xC0); // mov rax, r8
+                    Byte(0x4C);
+                    Byte(0x89);
+                    Byte(0xC0); // mov rax, r8
                     break;
                 case 3:
-                    Byte(0x4C); Byte(0x89); Byte(0xC8); // mov rax, r9
+                    Byte(0x4C);
+                    Byte(0x89);
+                    Byte(0xC8); // mov rax, r9
                     break;
                 default:
                     break;
@@ -485,16 +493,24 @@ namespace Rux {
             void MovArgWin64Rax(const int idx) const {
                 switch (idx) {
                 case 0:
-                    Byte(0x48); Byte(0x89); Byte(0xC1); // mov rcx, rax
+                    Byte(0x48);
+                    Byte(0x89);
+                    Byte(0xC1); // mov rcx, rax
                     break;
                 case 1:
-                    Byte(0x48); Byte(0x89); Byte(0xC2); // mov rdx, rax
+                    Byte(0x48);
+                    Byte(0x89);
+                    Byte(0xC2); // mov rdx, rax
                     break;
                 case 2:
-                    Byte(0x49); Byte(0x89); Byte(0xC0); // mov r8, rax
+                    Byte(0x49);
+                    Byte(0x89);
+                    Byte(0xC0); // mov r8, rax
                     break;
                 case 3:
-                    Byte(0x49); Byte(0x89); Byte(0xC1); // mov r9, rax
+                    Byte(0x49);
+                    Byte(0x89);
+                    Byte(0xC1); // mov r9, rax
                     break;
                 default:
                     break;
@@ -2238,7 +2254,7 @@ namespace Rux {
                         IsWin64ByRefAggregate(instr.type);
                     const int callFrameSize = win64Call
                                                   ? Win64CallFrameSize(instr.srcs.size() +
-                                                                       (hiddenReturn ? 1 : 0))
+                                                      (hiddenReturn ? 1 : 0))
                                                   : 0;
                     if (win64Call) enc.SubRspImm32(callFrameSize);
                     if (hiddenReturn) {
@@ -2271,7 +2287,7 @@ namespace Rux {
                         IsWin64ByRefAggregate(instr.type);
                     const int callFrameSize = win64Call
                                                   ? Win64CallFrameSize(args.size() +
-                                                                       (hiddenReturn ? 1 : 0))
+                                                      (hiddenReturn ? 1 : 0))
                                                   : 0;
                     if (win64Call) enc.SubRspImm32(callFrameSize);
                     if (hiddenReturn) {

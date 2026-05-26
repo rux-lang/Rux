@@ -432,13 +432,13 @@ namespace Rux {
                 for (std::size_t i = 0; i < kw.size(); ++i) Advance();
                 return true;
             };
-            if (tryMatch("line"))     return MakeToken(TokenKind::HashLine,     start, tokenStart);
-            if (tryMatch("column"))   return MakeToken(TokenKind::HashColumn,   start, tokenStart);
-            if (tryMatch("file"))     return MakeToken(TokenKind::HashFile,     start, tokenStart);
+            if (tryMatch("line")) return MakeToken(TokenKind::HashLine, start, tokenStart);
+            if (tryMatch("column")) return MakeToken(TokenKind::HashColumn, start, tokenStart);
+            if (tryMatch("file")) return MakeToken(TokenKind::HashFile, start, tokenStart);
             if (tryMatch("function")) return MakeToken(TokenKind::HashFunction, start, tokenStart);
-            if (tryMatch("date"))     return MakeToken(TokenKind::HashDate,     start, tokenStart);
-            if (tryMatch("time"))     return MakeToken(TokenKind::HashTime,     start, tokenStart);
-            if (tryMatch("module"))   return MakeToken(TokenKind::HashModule,   start, tokenStart);
+            if (tryMatch("date")) return MakeToken(TokenKind::HashDate, start, tokenStart);
+            if (tryMatch("time")) return MakeToken(TokenKind::HashTime, start, tokenStart);
+            if (tryMatch("module")) return MakeToken(TokenKind::HashModule, start, tokenStart);
             return MakeToken(TokenKind::Hash, start, tokenStart);
         }
         case '?': return MakeToken(TokenKind::Question, start, tokenStart);
