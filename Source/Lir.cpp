@@ -122,10 +122,12 @@ namespace Rux {
         std::uint32_t cur = 0; // current basic-block index into fn_->blocks
         std::unordered_map<std::string, LirReg> locals; // name → alloca register
         std::unordered_map<std::string, const HirConst*> globalConsts;
+
         struct LocalConstValue {
             const HirExpr* value = nullptr;
             TypeRef type;
         };
+
         std::unordered_map<std::string, LocalConstValue> localConsts;
         std::unordered_map<LirReg, std::vector<LirReg>> enumPayloadSlots;
         std::uint32_t breakTarget = 0;
@@ -1449,7 +1451,8 @@ namespace Rux {
             if (!e.vtableLabel.empty()) {
                 LirReg vtblAddr = EmitGlobalAddr(e.vtableLabel);
                 EmitStore(vtblAddr, vtblField, ptrType);
-            } else {
+            }
+            else {
                 LirReg zero = EmitConst("0", TypeRef::MakeUInt64());
                 EmitStore(zero, vtblField, ptrType);
             }

@@ -126,27 +126,27 @@ namespace Rux {
         int angleDepth = 0;
         for (std::size_t ahead = 0;; ++ahead) {
             switch (Peek(ahead).kind) {
-                case TokenKind::Less:
-                    ++angleDepth;
-                    continue;
-                case TokenKind::Greater:
-                    --angleDepth;
-                    if (angleDepth == 0) return true;
-                    if (angleDepth < 0)  return false;
-                    continue;
-                case TokenKind::Ident:
-                case TokenKind::Star:
-                case TokenKind::LeftParen:
-                case TokenKind::RightParen:
-                case TokenKind::LeftBracket:
-                case TokenKind::RightBracket:
-                case TokenKind::Comma:
-                case TokenKind::ColonColon:
-                case TokenKind::SelfKeyword:
-                case TokenKind::ConstKeyword:
-                    continue;
-                default:
-                    return false;
+            case TokenKind::Less:
+                ++angleDepth;
+                continue;
+            case TokenKind::Greater:
+                --angleDepth;
+                if (angleDepth == 0) return true;
+                if (angleDepth < 0) return false;
+                continue;
+            case TokenKind::Ident:
+            case TokenKind::Star:
+            case TokenKind::LeftParen:
+            case TokenKind::RightParen:
+            case TokenKind::LeftBracket:
+            case TokenKind::RightBracket:
+            case TokenKind::Comma:
+            case TokenKind::ColonColon:
+            case TokenKind::SelfKeyword:
+            case TokenKind::ConstKeyword:
+                continue;
+            default:
+                return false;
             }
         }
     }
@@ -1423,7 +1423,8 @@ namespace Rux {
                 e->operand = std::move(left);
                 e->type = std::move(type);
                 left = std::move(e);
-            } else {
+            }
+            else {
                 Match(TokenKind::IsKeyword);
                 auto type = ParseType();
                 auto e = std::make_unique<IsExpr>();
@@ -1712,13 +1713,13 @@ namespace Rux {
         {
             using K = IntrinsicExpr::Kind;
             static constexpr std::pair<TokenKind, K> intrinsics[] = {
-                { TokenKind::HashLine,     K::Line },
-                { TokenKind::HashColumn,   K::Column },
-                { TokenKind::HashFile,     K::File },
-                { TokenKind::HashFunction, K::Function },
-                { TokenKind::HashDate,     K::Date },
-                { TokenKind::HashTime,     K::Time },
-                { TokenKind::HashModule,   K::Module },
+                {TokenKind::HashLine, K::Line},
+                {TokenKind::HashColumn, K::Column},
+                {TokenKind::HashFile, K::File},
+                {TokenKind::HashFunction, K::Function},
+                {TokenKind::HashDate, K::Date},
+                {TokenKind::HashTime, K::Time},
+                {TokenKind::HashModule, K::Module},
             };
             for (auto [tok, kind] : intrinsics) {
                 if (Match(tok)) {
@@ -1804,7 +1805,8 @@ namespace Rux {
                 spread->location = loc;
                 spread->operand = std::move(e);
                 args.push_back(std::move(spread));
-            } else {
+            }
+            else {
                 args.push_back(std::move(e));
             }
             if (!Match(TokenKind::Comma)) break;

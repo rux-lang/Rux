@@ -174,6 +174,7 @@ namespace Rux {
     // #line, #column, #file, #function, #date, #time, #module
     struct IntrinsicExpr : Expr {
         enum class Kind { Line, Column, File, Function, Date, Time, Module };
+
         Kind kind;
     };
 

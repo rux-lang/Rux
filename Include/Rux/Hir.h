@@ -174,7 +174,7 @@ namespace Rux {
     // Call a method through an interface fat pointer (dynamic dispatch via vtable)
     struct HirInterfaceCallExpr : HirExpr {
         HirExprPtr fatPtrExpr; // expression that yields the fat-pointer address (8 bytes)
-        int methodIdx = 0;     // index of the method in the vtable
+        int methodIdx = 0; // index of the method in the vtable
         std::vector<HirExprPtr> args;
     };
 
