@@ -1,0 +1,3 @@
+/home/ok/Code/Rux/build/CMakeFiles/rux.dir
+/home/ok/Code/Rux/build/CMakeFiles/edit_cache.dir
+/home/ok/Code/Rux/build/CMakeFiles/rebuild_cache.dir
