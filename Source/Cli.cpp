@@ -17,10 +17,12 @@
 #include "Rux/Linker.h"
 #include "Rux/Version.h"
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <format>
 #include <print>
 #include <string>
@@ -923,7 +925,11 @@ namespace Rux {
 
         const auto root = manifestPath->parent_path();
         const auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
-        const auto exePath = binDir / (manifest->package.name + ".exe");
+        std::string outputName = manifest->package.name;
+#ifdef _WIN32
+        outputName += ".exe";
+#endif
+        const auto exePath = binDir / outputName;
 
         Linker linker(std::move(rcuFiles), std::string(manifest->package.name), {root});
         if (!linker.Link(exePath)) {
@@ -1177,8 +1183,37 @@ namespace Rux {
         return ok ? std::optional(body) : std::nullopt;
     }
 #else
-    static std::optional<std::string> FetchUrl(const std::string&) {
-        return std::nullopt;
+    static std::string ShellQuote(const std::string& value) {
+        std::string quoted = "'";
+        for (const char ch : value) {
+            if (ch == '\'')
+                quoted += "'\\''";
+            else
+                quoted += ch;
+        }
+        quoted += "'";
+        return quoted;
+    }
+
+    static std::optional<std::string> RunCommandCapture(const std::string& command) {
+        FILE* pipe = popen(command.c_str(), "r");
+        if (!pipe) return std::nullopt;
+
+        std::string output;
+        std::array<char, 4096> buffer{};
+        while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
+            output += buffer.data();
+
+        const int status = pclose(pipe);
+        if (status != 0) return std::nullopt;
+        return output;
+    }
+
+    static std::optional<std::string> FetchUrl(const std::string& url) {
+        const std::string quotedUrl = ShellQuote(url);
+        if (auto body = RunCommandCapture("curl -fsSL " + quotedUrl))
+            return body;
+        return RunCommandCapture("wget -qO- " + quotedUrl);
     }
 #endif
 
