@@ -1125,6 +1125,9 @@ namespace Rux {
 #endif
     }
 
+    static constexpr std::string_view kRegistryUrl =
+        "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/Packages.json";
+
 #ifdef _WIN32
     // Fetch the body of an HTTPS URL using WinHTTP. Returns nullopt on failure.
     static std::optional<std::string> FetchUrl(const std::string& url) {
@@ -1281,9 +1284,6 @@ namespace Rux {
             return 0;
         }
 
-        static constexpr std::string_view kRegistryUrl =
-            "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/Packages.json";
-
         if (!opts.quiet)
             std::print("     Fetching registry...\n");
 
@@ -1415,6 +1415,21 @@ namespace Rux {
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
         auto [pkgName, pkgVersion] = ParsePackageSpec(spec);
+
+        if (!opts.quiet)
+            std::print("     Fetching registry...\n");
+
+        const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
+        if (!jsonOpt) {
+            std::print(stderr, "error: failed to fetch package registry\n");
+            return 1;
+        }
+
+        if (JsonLookupString(*jsonOpt, pkgName).empty()) {
+            std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
+            return 1;
+        }
+
         const bool changed = manifest->AddDependency(pkgName, pkgVersion);
         if (!manifest->Save(*manifestPath)) {
             std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
@@ -1634,9 +1649,6 @@ namespace Rux {
                 std::print("  No registry dependencies to update.\n");
             return 0;
         }
-
-        static constexpr std::string_view kRegistryUrl =
-            "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/Packages.json";
 
         if (!opts.quiet)
             std::print("     Fetching registry...\n");
