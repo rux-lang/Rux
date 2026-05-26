@@ -1,6 +1,6 @@
 /*
     Rux Compiler
-    Copyright © 2026 Ivan Muzyka
+    Copyright © 2026 Rux Contributors
     Licensed under the MIT License
 */
 
