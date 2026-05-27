@@ -40,7 +40,7 @@ namespace Rux {
         std::vector<LinkerError> errors;
 
         void Error(std::string msg);
-#if defined(__linux__)
+#if defined(__linux__) || defined(__FreeBSD__)
         [[nodiscard]] bool LinkElf64(const std::filesystem::path& outputPath);
 #endif
     };
