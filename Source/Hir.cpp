@@ -369,7 +369,8 @@ namespace Rux {
             static constexpr std::string_view suffixes[] = {
                 "i8", "i16", "i32", "i64",
                 "u8", "u16", "u32", "u64",
-                "f32", "f64"
+                "f32", "f64",
+                "i", "u"
             };
             for (auto suffix : suffixes) {
                 if (text.size() > suffix.size() &&
@@ -658,10 +659,12 @@ namespace Rux {
             if (suffix == "i16") return TypeRef::MakeInt16();
             if (suffix == "i32") return TypeRef::MakeInt32();
             if (suffix == "i64") return TypeRef::MakeInt64();
+            if (suffix == "i") return TypeRef::MakeInt();
             if (suffix == "u8") return TypeRef::MakeUInt8();
             if (suffix == "u16") return TypeRef::MakeUInt16();
             if (suffix == "u32") return TypeRef::MakeUInt32();
             if (suffix == "u64") return TypeRef::MakeUInt64();
+            if (suffix == "u") return TypeRef::MakeUInt();
             if (suffix == "f32") return TypeRef::MakeFloat32();
             if (suffix == "f64") return TypeRef::MakeFloat64();
             return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
