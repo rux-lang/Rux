@@ -2349,6 +2349,7 @@ namespace Rux {
 
             // Terminator
             void GenTerm(uint32_t blockIdx, const LirTerminator& term, const LirFunc& func) {
+                (void)func;
                 switch (term.kind) {
                 case LirTermKind::Jump: {
                     EmitPhiMoves(blockIdx, term.trueTarget);

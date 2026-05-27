@@ -171,7 +171,7 @@ namespace Rux {
         }
 
         void Jump(std::uint32_t target) const {
-            Terminate(LirTerminator{.kind = LirTermKind::Jump, .trueTarget = target});
+            Terminate(LirTerminator{.kind = LirTermKind::Jump, .trueTarget = target, .retVal = std::nullopt, .retType = {}, .cases = {}});
         }
 
         void Branch(const LirReg cond, const std::uint32_t trueTarget, std::uint32_t falseTarget) const {
@@ -180,6 +180,9 @@ namespace Rux {
                 .cond = cond,
                 .trueTarget = trueTarget,
                 .falseTarget = falseTarget,
+                .retVal = std::nullopt,
+                .retType = {},
+                .cases = {}
             });
         }
 

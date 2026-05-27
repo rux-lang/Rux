@@ -65,7 +65,7 @@ namespace Rux {
         }
 
         // r10 family (caller-saved scratch — primary operand)
-        std::string_view GprB(const int bytes) {
+        [[maybe_unused]] std::string_view GprB(const int bytes) {
             switch (bytes) {
             case 1: return "r10b";
             case 2: return "r10w";
@@ -75,7 +75,7 @@ namespace Rux {
         }
 
         // r11 family (caller-saved scratch — secondary operand)
-        std::string_view GprC(const int bytes) {
+        [[maybe_unused]] std::string_view GprC(const int bytes) {
             switch (bytes) {
             case 1: return "r11b";
             case 2: return "r11w";
@@ -914,7 +914,7 @@ namespace Rux {
                     else if (srcFloat && !dstFloat) {
                         // float → int
                         bool f32src = (src_t.kind == TypeRef::Kind::Float32);
-                        if (bool signed_ = dst_t.IsSigned())
+                        if (bool signed_ = dst_t.IsSigned(); signed_)
                             TI(f32src ? "cvttss2si rax, xmm0" : "cvttsd2si rax, xmm0");
                         else {
                             // Unsigned: no direct instruction; use signed then re-interpret
