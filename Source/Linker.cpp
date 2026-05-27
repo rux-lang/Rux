@@ -15,8 +15,13 @@
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
+
+#if defined(__linux__) || defined(__FreeBSD__)
+#include <filesystem>
+#endif
 
 namespace Rux {
     // PE32+ layout constants
@@ -275,6 +280,9 @@ namespace Rux {
     }
 
     bool Linker::Link(const std::filesystem::path& outputPath) {
+#if defined(__linux__) || defined(__FreeBSD__)
+        return LinkElf64(outputPath);
+#else
         // 1. Collect imported external function names
 
         // Always need ExitProcess for the entry thunk
@@ -807,5 +815,412 @@ namespace Rux {
             padTo(kFileAlign);
         }
         return errors.empty();
+#endif
     }
+
+#if defined(__linux__) || defined(__FreeBSD__)
+    static std::optional<Buf> LinuxCompatThunk(const std::string& name) {
+        static const std::unordered_map<std::string, Buf> thunks = {
+            {"ExitProcess", {
+#if defined(__FreeBSD__)
+                0x48, 0x89, 0xCF, 0xB8, 0x01, 0x00, 0x00, 0x00, 0x0F, 0x05
+#else
+                0x48, 0x89, 0xCF, 0xB8, 0x3C, 0x00, 0x00, 0x00, 0x0F, 0x05
+#endif
+            }},
+            {"GetStdHandle", {
+                0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3
+            }},
+            {"GetProcessHeap", {
+                0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3
+            }},
+            {"HeapFree", {
+                0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3
+            }},
+            {"HeapAlloc", {
+                0x4C, 0x89, 0xC6, 0x31, 0xFF, 0xBA, 0x03, 0x00,
+                0x00, 0x00, 0x41, 0xBA,
+#if defined(__FreeBSD__)
+                0x02, 0x10, 0x00, 0x00,
+#else
+                0x22, 0x00, 0x00, 0x00,
+#endif
+                0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45,
+                0x31, 0xC9,
+#if defined(__FreeBSD__)
+                0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+#else
+                0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
+#endif
+                0x05, 0xC3
+            }},
+            {"HeapReAlloc", {
+                0x48, 0x8B, 0x74, 0x24, 0x28, 0x31, 0xFF, 0xBA,
+                0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
+#if defined(__FreeBSD__)
+                0x02, 0x10, 0x00, 0x00,
+#else
+                0x22, 0x00, 0x00, 0x00,
+#endif
+                0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF,
+                0xFF, 0x45, 0x31, 0xC9,
+#if defined(__FreeBSD__)
+                0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+#else
+                0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
+#endif
+                0x05, 0xC3
+            }},
+            {"RtlCopyMemory", {
+                0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88,
+                0x01, 0x48, 0xFF, 0xC2, 0x48, 0xFF, 0xC1, 0x49,
+                0xFF, 0xC8, 0x75, 0xF1, 0xC3
+            }},
+            {"RtlFillMemory", {
+                0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88, 0x01,
+                0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5,
+                0xC3
+            }},
+            {"RtlZeroMemory", {
+                0x45, 0x31, 0xC0, 0x48, 0x85, 0xD2, 0x74, 0x0B,
+                0x44, 0x88, 0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF,
+                0xCA, 0x75, 0xF5, 0xC3
+            }},
+            {"MultiByteToWideChar", {
+                0x4C, 0x89, 0xC8, 0x4C, 0x8B, 0x54, 0x24, 0x28,
+                0x4D, 0x85, 0xD2, 0x74, 0x19, 0x4D, 0x85, 0xC9,
+                0x7E, 0x14, 0x45, 0x0F, 0xB6, 0x18, 0x66, 0x45,
+                0x89, 0x1A, 0x49, 0xFF, 0xC0, 0x49, 0x83, 0xC2,
+                0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3
+            }},
+            {"WriteConsoleW", {
+                0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x08,
+                0x49, 0x89, 0xD4, 0x4D, 0x89, 0xC5, 0x4D, 0x85,
+                0xED, 0x74, 0x24, 0x41, 0x8A, 0x04, 0x24, 0x88,
+                0x04, 0x24,
+#if defined(__FreeBSD__)
+                0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
+#else
+                0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
+#endif
+                0x01, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE6, 0xBA,
+                0x01, 0x00, 0x00, 0x00, 0x0F, 0x05, 0x49, 0x83,
+                0xC4, 0x02, 0x49, 0xFF, 0xCD, 0xEB, 0xD7, 0x48,
+                0x83, 0xC4, 0x08, 0x41, 0x5D, 0x41, 0x5C, 0xB8,
+                0x01, 0x00, 0x00, 0x00, 0xC3
+            }},
+        };
+
+        const auto it = thunks.find(name);
+        if (it == thunks.end()) return std::nullopt;
+        return it->second;
+    }
+
+    bool Linker::LinkElf64(const std::filesystem::path& outputPath) {
+        static constexpr uint64_t kBase = 0x400000;
+        static constexpr uint64_t kPage = 0x1000;
+        static constexpr uint32_t kPfX = 0x1;
+        static constexpr uint32_t kPfW = 0x2;
+        static constexpr uint32_t kPfR = 0x4;
+
+        const auto alignUp64 = [](const uint64_t v, const uint64_t a) {
+            return (v + a - 1) & ~(a - 1);
+        };
+
+        std::unordered_set<std::string> definedSymbols;
+        std::unordered_set<std::string> linuxCompatExterns;
+        for (const auto& obj : objects)
+            for (const auto& sym : obj.symbols)
+                if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData &&
+                    !sym.name.empty())
+                    definedSymbols.insert(sym.name);
+
+        for (const auto& obj : objects) {
+            for (const auto& sec : obj.sections) {
+                for (const auto& reloc : sec.relocs) {
+                    if (reloc.symbolIndex >= obj.symbols.size()) continue;
+                    const auto& sym = obj.symbols[reloc.symbolIndex];
+                    if ((sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) &&
+                        !definedSymbols.contains(sym.name)) {
+                        if (LinuxCompatThunk(sym.name))
+                            linuxCompatExterns.insert(sym.name);
+                        else
+                            Error("external symbol '" + sym.name + "' is not supported by the Linux ELF linker yet");
+                    }
+                }
+            }
+        }
+        if (!errors.empty()) return false;
+
+        Buf textPre;
+        const size_t kCallMainDisp = textPre.size() + 1;
+        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
+        textPre.insert(textPre.end(), {0x89, 0xC7});                   // mov edi, eax
+#if defined(__FreeBSD__)
+        textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (FreeBSD exit)
+#else
+        textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
+#endif
+        textPre.insert(textPre.end(), {0x0F, 0x05});                   // syscall
+
+        std::unordered_map<std::string, uint32_t> linuxCompatThunkOff;
+        std::vector<std::string> linuxCompatNames(linuxCompatExterns.begin(), linuxCompatExterns.end());
+        std::sort(linuxCompatNames.begin(), linuxCompatNames.end());
+        for (const auto& name : linuxCompatNames) {
+            auto thunk = LinuxCompatThunk(name);
+            if (!thunk) continue;
+            linuxCompatThunkOff[name] = static_cast<uint32_t>(textPre.size());
+            textPre.insert(textPre.end(), thunk->begin(), thunk->end());
+        }
+        const uint32_t preambleSize = static_cast<uint32_t>(textPre.size());
+
+        struct ObjLayout {
+            uint32_t textOff, rodataOff, dataOff;
+        };
+        std::vector<ObjLayout> layouts(objects.size());
+        Buf mergedText, mergedRodata, mergedData;
+
+        for (size_t i = 0; i < objects.size(); ++i) {
+            const auto& obj = objects[i];
+            layouts[i] = {
+                static_cast<uint32_t>(mergedText.size()),
+                static_cast<uint32_t>(mergedRodata.size()),
+                static_cast<uint32_t>(mergedData.size())
+            };
+            for (const auto& sec : obj.sections) {
+                if (sec.type == RcuSecType::Text)
+                    mergedText.insert(mergedText.end(), sec.data.begin(), sec.data.end());
+                else if (sec.type == RcuSecType::RoData)
+                    mergedRodata.insert(mergedRodata.end(), sec.data.begin(), sec.data.end());
+                else if (sec.type == RcuSecType::Data)
+                    mergedData.insert(mergedData.end(), sec.data.begin(), sec.data.end());
+            }
+        }
+
+        Buf textBuf;
+        textBuf.insert(textBuf.end(), textPre.begin(), textPre.end());
+        textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
+
+        const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0));
+        const uint64_t phoff = 64;
+        const uint64_t textOff = alignUp64(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
+        const uint64_t textVA = kBase + textOff;
+        const uint64_t rdataOff = alignUp64(textOff + textBuf.size(), kPage);
+        const uint64_t rdataVA = kBase + rdataOff;
+        const uint64_t dataOff = alignUp64(rdataOff + mergedRodata.size(), kPage);
+        const uint64_t dataVA = kBase + dataOff;
+
+        std::unordered_map<std::string, uint64_t> symMap;
+        for (const auto& [name, off] : linuxCompatThunkOff)
+            symMap[name] = textVA + off;
+
+        for (size_t i = 0; i < objects.size(); ++i) {
+            const auto& obj = objects[i];
+            const auto& lay = layouts[i];
+            for (const auto& sym : obj.symbols) {
+                if (sym.name.empty()) continue;
+                if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData)
+                    continue;
+                if (sym.visibility == RcuSymVis::Local &&
+                    sym.kind != RcuSymKind::Func &&
+                    sym.name != "Main")
+                    continue;
+
+                uint64_t va = 0;
+                if (sym.sectionIdx == RCU_TEXT_IDX)
+                    va = textVA + preambleSize + lay.textOff + sym.value;
+                else if (sym.sectionIdx == RCU_RODATA_IDX)
+                    va = rdataVA + lay.rodataOff + sym.value;
+                else if (sym.sectionIdx == RCU_DATA_IDX)
+                    va = dataVA + lay.dataOff + sym.value;
+                else
+                    continue;
+                symMap.try_emplace(sym.name, va);
+            }
+        }
+
+        {
+            auto it = symMap.find("Main");
+            if (it == symMap.end()) {
+                Error("undefined symbol 'Main' — no entry point found");
+                return false;
+            }
+            const uint64_t nextInst = textVA + kCallMainDisp + 4;
+            Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(it->second - nextInst));
+        }
+
+        for (size_t i = 0; i < objects.size(); ++i) {
+            const auto& obj = objects[i];
+            const auto& lay = layouts[i];
+            for (const auto& sec : obj.sections) {
+                Buf* buf = nullptr;
+                uint32_t baseInBuf = 0;
+                uint64_t secBaseVA = 0;
+                if (sec.type == RcuSecType::Text) {
+                    buf = &textBuf;
+                    baseInBuf = preambleSize + lay.textOff;
+                    secBaseVA = textVA + preambleSize + lay.textOff;
+                }
+                else if (sec.type == RcuSecType::RoData) {
+                    buf = &mergedRodata;
+                    baseInBuf = lay.rodataOff;
+                    secBaseVA = rdataVA + lay.rodataOff;
+                }
+                else if (sec.type == RcuSecType::Data) {
+                    buf = &mergedData;
+                    baseInBuf = lay.dataOff;
+                    secBaseVA = dataVA + lay.dataOff;
+                }
+                else {
+                    continue;
+                }
+
+                for (const auto& reloc : sec.relocs) {
+                    if (reloc.symbolIndex >= obj.symbols.size()) continue;
+                    const auto& sym = obj.symbols[reloc.symbolIndex];
+                    uint64_t targetVA = 0;
+                    if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
+                        auto it = symMap.find(sym.name);
+                        if (it == symMap.end()) {
+                            Error("undefined external symbol '" + sym.name + "'");
+                            continue;
+                        }
+                        targetVA = it->second;
+                    }
+                    else if (sym.visibility != RcuSymVis::Local &&
+                             !sym.name.empty() &&
+                             symMap.contains(sym.name)) {
+                        targetVA = symMap[sym.name];
+                    }
+                    else if (sym.sectionIdx == RCU_TEXT_IDX) {
+                        targetVA = textVA + preambleSize + lay.textOff + sym.value;
+                    }
+                    else if (sym.sectionIdx == RCU_RODATA_IDX) {
+                        targetVA = rdataVA + lay.rodataOff + sym.value;
+                    }
+                    else if (sym.sectionIdx == RCU_DATA_IDX) {
+                        targetVA = dataVA + lay.dataOff + sym.value;
+                    }
+                    else {
+                        continue;
+                    }
+
+                    const size_t patchAt = baseInBuf + reloc.sectionOffset;
+                    const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
+                    if (reloc.type == RcuRelType::Rel32) {
+                        if (patchAt + 4 > buf->size()) continue;
+                        const int32_t disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
+                        Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
+                    }
+                    else if (reloc.type == RcuRelType::Abs64) {
+                        if (patchAt + 8 > buf->size()) continue;
+                        Patch64(*buf, patchAt, targetVA + static_cast<uint64_t>(reloc.addend));
+                    }
+                    else if (reloc.type == RcuRelType::Abs32) {
+                        if (patchAt + 4 > buf->size()) continue;
+                        Patch32(*buf, patchAt, static_cast<uint32_t>(targetVA + reloc.addend));
+                    }
+                }
+            }
+        }
+        if (!errors.empty()) return false;
+
+        std::filesystem::create_directories(outputPath.parent_path());
+        std::ofstream out(outputPath, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            Error("cannot open output file: " + outputPath.string());
+            return false;
+        }
+
+        const auto writeRaw = [&](const void* d, size_t n) {
+            out.write(static_cast<const char*>(d), static_cast<std::streamsize>(n));
+        };
+        const auto wU8 = [&](uint8_t v) { writeRaw(&v, 1); };
+        const auto wU16 = [&](uint16_t v) { writeRaw(&v, 2); };
+        const auto wU32 = [&](uint32_t v) { writeRaw(&v, 4); };
+        const auto wU64 = [&](uint64_t v) { writeRaw(&v, 8); };
+        const auto wBuf = [&](const Buf& b) {
+            if (!b.empty()) writeRaw(b.data(), b.size());
+        };
+        const auto padToOffset = [&](uint64_t offset) {
+            static constexpr uint8_t zeros[4096] = {};
+            while (static_cast<uint64_t>(out.tellp()) < offset) {
+                const uint64_t remaining = offset - static_cast<uint64_t>(out.tellp());
+                writeRaw(zeros, static_cast<size_t>(std::min<uint64_t>(remaining, sizeof(zeros))));
+            }
+        };
+        const auto writePhdr = [&](uint32_t flags,
+                                   uint64_t off,
+                                   uint64_t vaddr,
+                                   uint64_t fileSize,
+                                   uint64_t memSize) {
+            wU32(1); // PT_LOAD
+            wU32(flags);
+            wU64(off);
+            wU64(vaddr);
+            wU64(vaddr);
+            wU64(fileSize);
+            wU64(memSize);
+            wU64(kPage);
+        };
+
+        uint8_t ident[16] = {
+            0x7F, 'E', 'L', 'F',
+            2, 1, 1,
+#if defined(__FreeBSD__)
+            9,  // EI_OSABI: FreeBSD
+#else
+            0,  // EI_OSABI: System V
+#endif
+            0, 0, 0, 0, 0, 0, 0, 0
+        };
+        writeRaw(ident, sizeof(ident));
+        wU16(2);      // ET_EXEC
+        wU16(0x3E);   // EM_X86_64
+        wU32(1);
+        wU64(textVA);
+        wU64(phoff);
+        wU64(0);
+        wU32(0);
+        wU16(64);
+        wU16(56);
+        wU16(phnum);
+        wU16(0);
+        wU16(0);
+        wU16(0);
+
+        writePhdr(kPfR | kPfX, textOff, textVA, textBuf.size(), textBuf.size());
+        writePhdr(kPfR, rdataOff, rdataVA, mergedRodata.size(), mergedRodata.size());
+        if (!mergedData.empty())
+            writePhdr(kPfR | kPfW, dataOff, dataVA, mergedData.size(), mergedData.size());
+
+        padToOffset(textOff);
+        wBuf(textBuf);
+        padToOffset(rdataOff);
+        wBuf(mergedRodata);
+        if (!mergedData.empty()) {
+            padToOffset(dataOff);
+            wBuf(mergedData);
+        }
+
+        out.close();
+        if (!out) {
+            Error("cannot write output file: " + outputPath.string());
+            return false;
+        }
+
+        std::error_code ec;
+        std::filesystem::permissions(outputPath,
+                                     std::filesystem::perms::owner_exec |
+                                     std::filesystem::perms::group_exec |
+                                     std::filesystem::perms::others_exec,
+                                     std::filesystem::perm_options::add,
+                                     ec);
+        if (ec) {
+            Error("cannot mark output executable: " + ec.message());
+            return false;
+        }
+        return true;
+    }
+#endif
 }

@@ -1139,10 +1139,9 @@ namespace Rux {
             }
         };
 
-        // This compiler targets Windows x64 (PE32+) exclusively.
-        // CallingConvention::Default therefore resolves to Win64.
         CallingConvention EffectiveConv(const CallingConvention c) {
-            return c == CallingConvention::Default ? CallingConvention::Win64 : c;
+            if (c != CallingConvention::Default) return c;
+            return CallingConvention::Win64;
         }
 
         // RCU Code Generator: LirModule → RcuFile
