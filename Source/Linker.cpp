@@ -829,7 +829,16 @@ namespace Rux {
 #endif
             }},
             {"GetStdHandle", {
-                0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3
+                0x81, 0xF9, 0xF6, 0xFF, 0xFF, 0xFF, // cmp ecx, -10 (STD_INPUT_HANDLE)
+                0x74, 0x0E,                         // je +14 (return 0)
+                0x81, 0xF9, 0xF5, 0xFF, 0xFF, 0xFF, // cmp ecx, -11 (STD_OUTPUT_HANDLE)
+                0x74, 0x09,                         // je +9 (return 1)
+                0xB8, 0x02, 0x00, 0x00, 0x00,      // mov eax, 2
+                0xC3,                               // ret
+                0x31, 0xC0,                         // xor eax, eax
+                0xC3,                               // ret
+                0xB8, 0x01, 0x00, 0x00, 0x00,      // mov eax, 1
+                0xC3,                               // ret
             }},
             {"GetProcessHeap", {
                 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3
@@ -908,6 +917,24 @@ namespace Rux {
                 0xC4, 0x02, 0x49, 0xFF, 0xCD, 0xEB, 0xD7, 0x48,
                 0x83, 0xC4, 0x08, 0x41, 0x5D, 0x41, 0x5C, 0xB8,
                 0x01, 0x00, 0x00, 0x00, 0xC3
+            }},
+            {"ReadFile", {
+                0x89, 0xCF,                         // mov edi, ecx  (fd)
+                0x48, 0x89, 0xD6,                   // mov rsi, rdx  (buf)
+                0x4C, 0x89, 0xC2,                   // mov rdx, r8   (count)
+#if defined(__FreeBSD__)
+                0xB8, 0x03, 0x00, 0x00, 0x00,      // mov eax, 3 (SYS_read)
+#else
+                0x31, 0xC0,                         // xor eax, eax (SYS_read = 0)
+#endif
+                0x0F, 0x05,                         // syscall
+                0x85, 0xC0,                         // test eax, eax
+                0x78, 0x09,                         // js +9 (error)
+                0x41, 0x89, 0x01,                   // mov [r9], eax  (*bytesRead = result)
+                0xB8, 0x01, 0x00, 0x00, 0x00,      // mov eax, 1 (TRUE)
+                0xC3,                               // ret
+                0x31, 0xC0,                         // xor eax, eax (FALSE)
+                0xC3                                // ret
             }},
         };
 
