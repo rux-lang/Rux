@@ -20,6 +20,14 @@
 #include <unordered_map>
 
 namespace Rux {
+    static bool LocalTime(std::time_t time, std::tm& out) {
+#ifdef _WIN32
+        return localtime_s(&out, &time) == 0;
+#else
+        return localtime_r(&time, &out) != nullptr;
+#endif
+    }
+
     // Internal: Symbol & Scope
     struct HirSymbol {
         enum class Kind { Var, Func, Type, Const, Interface };
@@ -1965,7 +1973,7 @@ namespace Rux {
                 case K::Date: {
                     std::time_t t = std::time(nullptr);
                     std::tm tm{};
-                    localtime_s(&tm, &t);
+                    LocalTime(t, tm);
                     char buf[12];
                     std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
                     he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
@@ -1975,7 +1983,7 @@ namespace Rux {
                 case K::Time: {
                     std::time_t t = std::time(nullptr);
                     std::tm tm{};
-                    localtime_s(&tm, &t);
+                    LocalTime(t, tm);
                     char buf[9];
                     std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm);
                     he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));

@@ -90,6 +90,7 @@ namespace Rux {
 
     // pattern if guard
     struct HirGuardedPattern : HirPattern {
+        ~HirGuardedPattern();
         HirPatternPtr inner;
         HirExprPtr guard;
     };
@@ -226,6 +227,7 @@ namespace Rux {
 
     // { stmts; value }  — block used as expression
     struct HirBlockExpr : HirExpr {
+        ~HirBlockExpr();
         HirBlock block;
     };
 
@@ -497,4 +499,6 @@ namespace Rux {
     private:
         std::vector<const Module*> modules_;
     };
+    inline HirGuardedPattern::~HirGuardedPattern() = default;
+    inline HirBlockExpr::~HirBlockExpr() = default;
 }
