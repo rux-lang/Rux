@@ -936,6 +936,67 @@ namespace Rux {
                 0x31, 0xC0,                         // xor eax, eax (FALSE)
                 0xC3                                // ret
             }},
+#if defined(__linux__)
+            // Rux extern calls currently use the Win64 register layout. These
+            // thunks move that layout into Linux x86_64 syscall registers:
+            // rax=number, rdi/rsi/rdx/r10/r8/r9=args.
+            {"__rux_linux_syscall0", {
+                0x48, 0x89, 0xC8,                   // mov rax, rcx
+                0x0F, 0x05,                         // syscall
+                0xC3                                // ret
+            }},
+            {"__rux_linux_syscall1", {
+                0x48, 0x89, 0xC8,                   // mov rax, rcx
+                0x48, 0x89, 0xD7,                   // mov rdi, rdx
+                0x0F, 0x05,                         // syscall
+                0xC3                                // ret
+            }},
+            {"__rux_linux_syscall2", {
+                0x48, 0x89, 0xC8,                   // mov rax, rcx
+                0x48, 0x89, 0xD7,                   // mov rdi, rdx
+                0x4C, 0x89, 0xC6,                   // mov rsi, r8
+                0x0F, 0x05,                         // syscall
+                0xC3                                // ret
+            }},
+            {"__rux_linux_syscall3", {
+                0x48, 0x89, 0xC8,                   // mov rax, rcx
+                0x48, 0x89, 0xD7,                   // mov rdi, rdx
+                0x4C, 0x89, 0xC6,                   // mov rsi, r8
+                0x4C, 0x89, 0xCA,                   // mov rdx, r9
+                0x0F, 0x05,                         // syscall
+                0xC3                                // ret
+            }},
+            {"__rux_linux_syscall4", {
+                0x48, 0x89, 0xC8,                   // mov rax, rcx
+                0x48, 0x89, 0xD7,                   // mov rdi, rdx
+                0x4C, 0x89, 0xC6,                   // mov rsi, r8
+                0x4C, 0x89, 0xCA,                   // mov rdx, r9
+                0x4C, 0x8B, 0x54, 0x24, 0x28,       // mov r10, [rsp + 40]
+                0x0F, 0x05,                         // syscall
+                0xC3                                // ret
+            }},
+            {"__rux_linux_syscall5", {
+                0x48, 0x89, 0xC8,                   // mov rax, rcx
+                0x48, 0x89, 0xD7,                   // mov rdi, rdx
+                0x4C, 0x89, 0xC6,                   // mov rsi, r8
+                0x4C, 0x89, 0xCA,                   // mov rdx, r9
+                0x4C, 0x8B, 0x54, 0x24, 0x28,       // mov r10, [rsp + 40]
+                0x4C, 0x8B, 0x44, 0x24, 0x30,       // mov r8, [rsp + 48]
+                0x0F, 0x05,                         // syscall
+                0xC3                                // ret
+            }},
+            {"__rux_linux_syscall6", {
+                0x48, 0x89, 0xC8,                   // mov rax, rcx
+                0x48, 0x89, 0xD7,                   // mov rdi, rdx
+                0x4C, 0x89, 0xC6,                   // mov rsi, r8
+                0x4C, 0x89, 0xCA,                   // mov rdx, r9
+                0x4C, 0x8B, 0x54, 0x24, 0x28,       // mov r10, [rsp + 40]
+                0x4C, 0x8B, 0x44, 0x24, 0x30,       // mov r8, [rsp + 48]
+                0x4C, 0x8B, 0x4C, 0x24, 0x38,       // mov r9, [rsp + 56]
+                0x0F, 0x05,                         // syscall
+                0xC3                                // ret
+            }},
+#endif
         };
 
         const auto it = thunks.find(name);
