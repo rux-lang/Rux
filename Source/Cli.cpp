@@ -369,7 +369,9 @@ namespace Rux {
         if (command == "doc") return RunDoc(rest, opts);
         if (command == "fmt") return RunFmt(rest, opts);
         if (command == "init") return RunInit(rest, opts);
-        if (command == "install") return RunInstall(opts);
+        if (command == "install") return RunInstall(rest, opts);
+        if (command == "uninstall") return RunUninstall(rest, opts);
+        if (command == "list") return RunList(rest, opts);
         if (command == "new") return RunNew(rest, opts);
         if (command == "add") return RunAdd(rest, opts);
         if (command == "remove") return RunRemove(rest, opts);
@@ -1299,11 +1301,72 @@ namespace Rux {
 #endif
     }
 
-    int Cli::RunInstall(const GlobalOptions& opts) {
+    int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions& opts) {
+        std::string_view packageSpec;
+        for (auto arg : args) {
+            if (arg == "-h" || arg == "--help") {
+                PrintHelpInstall();
+                return 0;
+            }
+            if (!arg.starts_with('-') && packageSpec.empty()) {
+                packageSpec = arg;
+                continue;
+            }
+            PrintUnknownOption(arg, "install");
+            return 1;
+        }
+
         const auto manifestPath = RequireManifest();
         if (!manifestPath) return 1;
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
+
+        if (!packageSpec.empty()) {
+            auto [pkgName, pkgVersion] = ParsePackageSpec(packageSpec);
+
+            if (!opts.quiet)
+                std::print("     Fetching registry...\n");
+
+            const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
+            if (!jsonOpt) {
+                std::print(stderr, "error: failed to fetch package registry\n");
+                return 1;
+            }
+
+            const std::string repoUrl = JsonLookupString(*jsonOpt, pkgName);
+            if (repoUrl.empty()) {
+                std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
+                return 1;
+            }
+
+            const bool changed = manifest->AddDependency(pkgName, pkgVersion);
+            if (changed) {
+                if (!manifest->Save(*manifestPath)) {
+                    std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
+                    return 1;
+                }
+            }
+
+            const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
+            std::error_code ec;
+            std::filesystem::create_directories(pkgDir.parent_path(), ec);
+
+            if (std::filesystem::exists(pkgDir)) {
+                if (!opts.quiet)
+                    std::print("   Up-to-date {}\n", pkgName);
+            }
+            else {
+                if (!opts.quiet)
+                    std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+                if (!GitClone(repoUrl, pkgDir)) {
+                    std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
+                    return 1;
+                }
+                if (!opts.quiet)
+                    std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+            }
+            return 0;
+        }
 
         // BFS queue of registry package names to install
         std::vector<std::string> queue;
@@ -1372,6 +1435,143 @@ namespace Rux {
         }
         if (!opts.quiet)
             std::print("     Summary: {} installed, {} already up-to-date\n", installed, upToDate);
+        return 0;
+    }
+
+    int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOptions& opts) {
+        std::string_view packageName;
+        for (auto arg : args) {
+            if (arg == "-h" || arg == "--help") {
+                PrintHelpUninstall();
+                return 0;
+            }
+            if (!arg.starts_with('-') && packageName.empty()) {
+                packageName = arg;
+                continue;
+            }
+            PrintUnknownOption(arg, "uninstall");
+            return 1;
+        }
+
+        if (!packageName.empty()) {
+            const std::filesystem::path pkgDir = RegistryPackagesDir() / std::string(packageName);
+            if (!std::filesystem::exists(pkgDir)) {
+                std::print(stderr, "error: package '{}' is not installed\n", packageName);
+                return 1;
+            }
+            std::error_code ec;
+            std::filesystem::remove_all(pkgDir, ec);
+            if (ec) {
+                std::print(stderr, "error: failed to remove '{}': {}\n",
+                           pkgDir.string(), ec.message());
+                return 1;
+            }
+            if (!opts.quiet)
+                std::print("   Uninstalled {}\n", packageName);
+            return 0;
+        }
+
+        const auto manifestPath = RequireManifest();
+        if (!manifestPath) return 1;
+        auto manifest = LoadManifest(*manifestPath);
+        if (!manifest) return 1;
+
+        std::vector<std::string> toRemove;
+        for (const auto& dep : manifest->dependencies)
+            if (dep.path.empty())
+                toRemove.push_back(dep.name);
+
+        if (toRemove.empty()) {
+            if (!opts.quiet)
+                std::print("  No registry dependencies to uninstall.\n");
+            return 0;
+        }
+
+        int removed = 0;
+        int notFound = 0;
+        for (const auto& pkgName : toRemove) {
+            const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
+            if (!std::filesystem::exists(pkgDir)) {
+                if (!opts.quiet)
+                    std::print("  Not installed {}\n", pkgName);
+                ++notFound;
+                continue;
+            }
+            std::error_code ec;
+            std::filesystem::remove_all(pkgDir, ec);
+            if (ec) {
+                std::print(stderr, "error: failed to remove '{}': {}\n",
+                           pkgDir.string(), ec.message());
+                return 1;
+            }
+            if (!opts.quiet)
+                std::print("   Uninstalled {}\n", pkgName);
+            ++removed;
+        }
+        if (!opts.quiet)
+            std::print("     Summary: {} uninstalled, {} not installed\n", removed, notFound);
+        return 0;
+    }
+
+    int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions& opts) {
+        bool global = false;
+        for (auto arg : args) {
+            if (arg == "--global") {
+                global = true;
+                continue;
+            }
+            if (arg == "-h" || arg == "--help") {
+                PrintHelpList();
+                return 0;
+            }
+            PrintUnknownOption(arg, "list");
+            return 1;
+        }
+
+        if (global) {
+            const auto cacheDir = RegistryPackagesDir();
+            std::vector<std::string> packages;
+            std::error_code ec;
+            if (std::filesystem::exists(cacheDir, ec)) {
+                for (const auto& entry : std::filesystem::directory_iterator(cacheDir, ec))
+                    if (entry.is_directory())
+                        packages.push_back(entry.path().filename().string());
+                std::sort(packages.begin(), packages.end());
+            }
+            if (packages.empty()) {
+                if (!opts.quiet)
+                    std::print("  Global cache is empty ({})\n", cacheDir.string());
+                return 0;
+            }
+            std::print("Global cache ({} package{} at {}):\n",
+                       packages.size(),
+                       packages.size() == 1 ? "" : "s",
+                       cacheDir.string());
+            for (const auto& pkg : packages)
+                std::print("  {}\n", pkg);
+            return 0;
+        }
+
+        const auto manifestPath = RequireManifest();
+        if (!manifestPath) return 1;
+        auto manifest = LoadManifest(*manifestPath);
+        if (!manifest) return 1;
+
+        if (manifest->dependencies.empty()) {
+            if (!opts.quiet)
+                std::print("  No dependencies.\n");
+            return 0;
+        }
+
+        std::print("Dependencies ({}):\n", manifest->dependencies.size());
+        for (const auto& dep : manifest->dependencies) {
+            if (!dep.path.empty())
+                std::print("  {} (path: {})\n", dep.name, dep.path);
+            else {
+                const std::string ver = dep.version.empty() ? "latest" : dep.version;
+                std::print("  {} @ {}\n", dep.name, ver);
+            }
+        }
         return 0;
     }
 
@@ -1658,13 +1858,48 @@ namespace Rux {
     }
 
     int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions& opts) {
+        bool global = false;
         for (auto& arg : args) {
+            if (arg == "--global") {
+                global = true;
+                continue;
+            }
             if (arg == "-h" || arg == "--help") {
                 PrintHelpUpdate();
                 return 0;
             }
             PrintUnknownOption(arg, "update");
             return 1;
+        }
+
+        if (global) {
+            const auto cacheDir = RegistryPackagesDir();
+            std::vector<std::filesystem::path> pkgDirs;
+            std::error_code ec;
+            if (std::filesystem::exists(cacheDir, ec)) {
+                for (const auto& entry : std::filesystem::directory_iterator(cacheDir, ec))
+                    if (entry.is_directory())
+                        pkgDirs.push_back(entry.path());
+            }
+            if (pkgDirs.empty()) {
+                if (!opts.quiet)
+                    std::print("  No packages in global cache to update.\n");
+                return 0;
+            }
+            int updated = 0;
+            for (const auto& pkgDir : pkgDirs) {
+                const std::string pkgName = pkgDir.filename().string();
+                if (!opts.quiet)
+                    std::print("    Updating {}...\n", pkgName);
+                if (!GitPull(pkgDir)) {
+                    std::print(stderr, "error: failed to update '{}'\n", pkgName);
+                    return 1;
+                }
+                ++updated;
+            }
+            if (!opts.quiet)
+                std::print("     Summary: {} updated\n", updated);
+            return 0;
         }
 
         const auto manifestPath = RequireManifest();
@@ -1759,11 +1994,13 @@ namespace Rux {
             "  fmt            Format source files and manifests\n"
             "  help           Show help information\n"
             "  init           Initialize a Rux package in the current directory\n"
-            "  install        Download and build dependencies\n"
+            "  install        Install dependencies\n"
+            "  list           List dependencies\n"
             "  new            Create a new Rux package\n"
             "  remove         Remove a dependency from the manifest\n"
             "  run            Build and run the main executable\n"
             "  test           Run all test targets\n"
+            "  uninstall      Uninstall dependencies\n"
             "  update         Update dependencies\n"
             "  version        Show version information\n"
             "\n"
@@ -1811,6 +2048,14 @@ namespace Rux {
             PrintHelpInstall();
             return;
         }
+        if (command == "uninstall") {
+            PrintHelpUninstall();
+            return;
+        }
+        if (command == "list") {
+            PrintHelpList();
+            return;
+        }
         if (command == "new") {
             PrintHelpNew();
             return;
@@ -1848,8 +2093,8 @@ namespace Rux {
             "This command updates Rux.toml accordingly.\n"
             "\n"
             "Examples:\n"
-            "  rux add Json\n"
-            "  rux add [email protected]\n"
+            "  rux add Std\n"
+            "  rux add Std@0.1.0\n"
         );
     }
 
@@ -1960,12 +2205,50 @@ namespace Rux {
 
     void Cli::PrintHelpInstall() {
         std::print(
-            "Download and build all required dependencies defined in Rux.toml\n"
+            "Install dependencies\n"
             "\n"
             "Usage: rux install\n"
+            "       rux install [package]\n"
+            "       rux install [package]@[version]\n"
+            "\n"
+            "Without a package name, downloads all registry dependencies listed in Rux.toml.\n"
+            "With a package name, adds it to Rux.toml and downloads it to the local cache.\n"
             "\n"
             "Examples:\n"
             "  rux install\n"
+            "  rux install Std\n"
+            "  rux install Std@0.1.0\n"
+        );
+    }
+
+    void Cli::PrintHelpUninstall() {
+        std::print(
+            "Uninstall dependencies from the local cache\n"
+            "\n"
+            "Usage: rux uninstall\n"
+            "       rux uninstall [package]\n"
+            "\n"
+            "Without a package name, removes all registry dependencies listed in Rux.toml\n"
+            "from the local cache. With a package name, removes only that package.\n"
+            "\n"
+            "Examples:\n"
+            "  rux uninstall\n"
+            "  rux uninstall Json\n"
+        );
+    }
+
+    void Cli::PrintHelpList() {
+        std::print(
+            "List packages in the manifest file\n"
+            "\n"
+            "Usage: rux list [options]\n"
+            "\n"
+            "Options:\n"
+            "  --global    List all packages in the global cache instead of the manifest\n"
+            "\n"
+            "Examples:\n"
+            "  rux list\n"
+            "  rux list --global\n"
         );
     }
 
@@ -2035,13 +2318,19 @@ namespace Rux {
         std::print(
             "Update dependencies\n"
             "\n"
-            "Usage: rux update\n"
+            "Usage: rux update [options]\n"
             "\n"
-            "Checks all registry dependencies listed in Rux.toml and pulls the latest\n"
-            "changes for each one. Missing packages are cloned from the registry.\n"
+            "Options:\n"
+            "  --global    Update all packages in the global cache instead of only those\n"
+            "              listed in the manifest\n"
+            "\n"
+            "Without --global, checks all registry dependencies listed in Rux.toml and\n"
+            "pulls the latest changes. Missing packages are cloned from the registry.\n"
+            "With --global, updates every package present in the local cache.\n"
             "\n"
             "Examples:\n"
             "  rux update\n"
+            "  rux update --global\n"
         );
     }
 
