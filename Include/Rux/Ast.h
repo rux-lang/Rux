@@ -54,6 +54,8 @@ namespace Rux {
 
     // T[], uint8[4]
     struct SliceTypeExpr : TypeExpr {
+        ~SliceTypeExpr();
+    
         TypeExprPtr element;
         ExprPtr size; // null for unsized slices (T[]), non-null for fixed-size arrays (T[N])
     };
@@ -138,6 +140,7 @@ namespace Rux {
 
     // pattern if guard
     struct GuardedPattern : Pattern {
+        ~GuardedPattern();
         PatternPtr inner;
         ExprPtr guard;
     };
@@ -279,6 +282,7 @@ namespace Rux {
 
     // { stmts; value }  — block used as expression (match arm body)
     struct BlockExpr : Expr {
+        ~BlockExpr();
         std::unique_ptr<Block> block;
     };
 
@@ -387,6 +391,7 @@ namespace Rux {
 
     // declaration inside a block
     struct DeclStmt : Stmt {
+        ~DeclStmt();
         DeclPtr decl;
     };
 
@@ -537,4 +542,8 @@ namespace Rux {
         std::string name; // source file name
         std::vector<DeclPtr> items;
     };
+    inline SliceTypeExpr::~SliceTypeExpr() = default;
+    inline BlockExpr::~BlockExpr() = default;
+    inline DeclStmt::~DeclStmt() = default;
+    inline GuardedPattern::~GuardedPattern() = default;
 }

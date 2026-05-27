@@ -4,6 +4,8 @@
     Licensed under the MIT License
 */
 
+#include "Rux/Ast.h"
+#include "Rux/Hir.h"
 #include "Rux/Cli.h"
 #include "Rux/Lexer.h"
 #include "Rux/Manifest.h"
