@@ -50,7 +50,7 @@ namespace Rux {
             const std::filesystem::path& start = std::filesystem::current_path());
     };
 
-    // Parse a package spec like "Json" or "[email protected]"
+    // Parse a package spec like "Std" or "Std@0.1.0"
     // Returns {name, version} where version may be empty.
     std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec);
 }

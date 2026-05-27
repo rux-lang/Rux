@@ -37,7 +37,9 @@ namespace Rux {
         static int RunDoc(std::span<const std::string_view> args, const GlobalOptions& opts);
         static int RunFmt(std::span<const std::string_view> args, const GlobalOptions& opts);
         static int RunInit(std::span<const std::string_view> args, const GlobalOptions& opts);
-        static int RunInstall(const GlobalOptions& opts);
+        static int RunInstall(std::span<const std::string_view> args, const GlobalOptions& opts);
+        static int RunUninstall(std::span<const std::string_view> args, const GlobalOptions& opts);
+        static int RunList(std::span<const std::string_view> args, const GlobalOptions& opts);
         static int RunNew(std::span<const std::string_view> args, const GlobalOptions& opts);
         static int RunAdd(std::span<const std::string_view> args, const GlobalOptions& opts);
         static int RunRemove(std::span<const std::string_view> args, const GlobalOptions& opts);
@@ -55,6 +57,8 @@ namespace Rux {
         static void PrintHelpFmt();
         static void PrintHelpInit();
         static void PrintHelpInstall();
+        static void PrintHelpUninstall();
+        static void PrintHelpList();
         static void PrintHelpNew();
         static void PrintHelpRemove();
         static void PrintHelpRun();
