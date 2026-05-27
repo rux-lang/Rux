@@ -124,7 +124,7 @@ namespace Rux {
                 return true;
             }
         }
-        dependencies.push_back({name, version});
+        dependencies.push_back({name, version, ""});
         return true;
     }
 
