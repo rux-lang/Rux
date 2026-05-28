@@ -25,66 +25,66 @@
 
 namespace Rux {
     // PE32+ layout constants
-    static constexpr uint64_t kImageBase = 0x140000000ULL;
-    static constexpr uint32_t kSecAlign = 0x1000; // 4 KB section alignment
-    static constexpr uint32_t kFileAlign = 0x200; // 512 B file alignment
-    static constexpr uint16_t kMachineAmd64 = 0x8664;
-    static constexpr uint16_t kMagicPE32P = 0x020B;
-    static constexpr uint16_t kSubsystemCUI = 3; // console
+    [[maybe_unused]] static constexpr uint64_t kImageBase = 0x140000000ULL;
+    [[maybe_unused]] static constexpr uint32_t kSecAlign = 0x1000; // 4 KB section alignment
+    [[maybe_unused]] static constexpr uint32_t kFileAlign = 0x200; // 512 B file alignment
+    [[maybe_unused]] static constexpr uint16_t kMachineAmd64 = 0x8664;
+    [[maybe_unused]] static constexpr uint16_t kMagicPE32P = 0x020B;
+    [[maybe_unused]] static constexpr uint16_t kSubsystemCUI = 3; // console
 
     // IMAGE_SCN_ characteristics
-    static constexpr uint32_t kScnText = 0x60000020u; // CNT_CODE | MEM_EXECUTE | MEM_READ
-    static constexpr uint32_t kScnRData = 0x40000040u; // CNT_INITIALIZED_DATA | MEM_READ
-    static constexpr uint32_t kScnData = 0xC0000040u; // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
+    [[maybe_unused]] static constexpr uint32_t kScnText = 0x60000020u; // CNT_CODE | MEM_EXECUTE | MEM_READ
+    [[maybe_unused]] static constexpr uint32_t kScnRData = 0x40000040u; // CNT_INITIALIZED_DATA | MEM_READ
+    [[maybe_unused]] static constexpr uint32_t kScnData = 0xC0000040u; // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
 
     // DllCharacteristics: NX_COMPAT | TERMINAL_SERVER_AWARE.
     // The linker currently does not emit a .reloc table, so do not opt into
     // ASLR. Absolute relocations such as vtable function pointers must remain
     // valid at the preferred image base.
-    static constexpr uint16_t kDllChars = 0x8100u;
+    [[maybe_unused]] static constexpr uint16_t kDllChars = 0x8100u;
 
     // Buffer helpers
     using Buf = std::vector<uint8_t>;
 
-    static void WriteU8(Buf& b, uint8_t v) {
+    [[maybe_unused]] static void WriteU8(Buf& b, uint8_t v) {
         b.push_back(v);
     }
 
-    static void WriteU16(Buf& b, uint16_t v) {
+    [[maybe_unused]] static void WriteU16(Buf& b, uint16_t v) {
         b.push_back(v & 0xFF);
         b.push_back(v >> 8);
     }
 
-    static void WriteU32(Buf& b, uint32_t v) {
+    [[maybe_unused]] static void WriteU32(Buf& b, uint32_t v) {
         b.push_back(v & 0xFF);
         b.push_back((v >> 8) & 0xFF);
         b.push_back((v >> 16) & 0xFF);
         b.push_back((v >> 24) & 0xFF);
     }
 
-    static void WriteU64(Buf& b, uint64_t v) {
+    [[maybe_unused]] static void WriteU64(Buf& b, uint64_t v) {
         for (int i = 0; i < 8; ++i) b.push_back(static_cast<uint8_t>(v >> (i * 8)));
     }
 
-    static void WriteZeros(Buf& b, size_t n) {
+    [[maybe_unused]] static void WriteZeros(Buf& b, size_t n) {
         b.insert(b.end(), n, 0);
     }
 
-    static void WriteCStr(Buf& b, const char* s) {
+    [[maybe_unused]] static void WriteCStr(Buf& b, const char* s) {
         while (*s) b.push_back(*s++);
         b.push_back(0);
     }
 
-    static void WriteName8(Buf& b, const char* s) {
+    [[maybe_unused]] static void WriteName8(Buf& b, const char* s) {
         size_t len = std::strlen(s);
         for (size_t i = 0; i < 8; ++i) b.push_back(i < len ? static_cast<uint8_t>(s[i]) : 0);
     }
 
-    static void PadTo(Buf& b, size_t align, uint8_t fill = 0) {
+    [[maybe_unused]] static void PadTo(Buf& b, size_t align, uint8_t fill = 0) {
         while (b.size() % align) b.push_back(fill);
     }
 
-    static uint32_t AlignUp(uint32_t v, uint32_t a) {
+    [[maybe_unused]] static uint32_t AlignUp(uint32_t v, uint32_t a) {
         return (v + a - 1) & ~(a - 1);
     }
 
@@ -163,7 +163,7 @@ namespace Rux {
         return off < pe.size();
     }
 
-    static std::optional<std::unordered_set<std::string>> ReadDllExports(const std::filesystem::path& path) {
+    [[maybe_unused]] static std::optional<std::unordered_set<std::string>> ReadDllExports(const std::filesystem::path& path) {
         auto peData = ReadFileBytes(path);
         if (!peData) return std::nullopt;
         const Buf& pe = *peData;
@@ -236,7 +236,7 @@ namespace Rux {
 #endif
     }
 
-    static std::optional<std::filesystem::path> FindDllFile(
+    [[maybe_unused]] static std::optional<std::filesystem::path> FindDllFile(
         const std::string& dll,
         const std::vector<std::filesystem::path>& searchDirs,
         const std::filesystem::path& outputDir) {
@@ -681,7 +681,7 @@ namespace Rux {
         const auto wU64 = [&](uint64_t v) {
             writeRaw(&v, 8);
         };
-        const auto wU8 = [&](uint8_t v) {
+        [[maybe_unused]] const auto wU8 = [&](uint8_t v) {
             writeRaw(&v, 1);
         };
         const auto wBuf = [&](const Buf& b) {
@@ -1223,7 +1223,7 @@ namespace Rux {
         const auto writeRaw = [&](const void* d, size_t n) {
             out.write(static_cast<const char*>(d), static_cast<std::streamsize>(n));
         };
-        const auto wU8 = [&](uint8_t v) { writeRaw(&v, 1); };
+        [[maybe_unused]] const auto wU8 = [&](uint8_t v) { writeRaw(&v, 1); };
         const auto wU16 = [&](uint16_t v) { writeRaw(&v, 2); };
         const auto wU32 = [&](uint32_t v) { writeRaw(&v, 4); };
         const auto wU64 = [&](uint64_t v) { writeRaw(&v, 8); };
