@@ -32,4 +32,4 @@ namespace Rux {
     private:
         LirPackage lir;
     };
-}
+} // namespace Rux

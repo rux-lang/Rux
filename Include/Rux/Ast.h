@@ -547,4 +547,4 @@ namespace Rux {
     inline BlockExpr::~BlockExpr() = default;
     inline DeclStmt::~DeclStmt() = default;
     inline GuardedPattern::~GuardedPattern() = default;
-}
+} // namespace Rux

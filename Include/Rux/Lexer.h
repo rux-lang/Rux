@@ -9,9 +9,9 @@
 #include "Rux/Token.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
-#include <optional>
 
 namespace Rux {
     struct LexerDiagnostic {
@@ -36,8 +36,7 @@ namespace Rux {
 
         // Convenience: read file from disk and lex it.
         // Returns std::nullopt if the file cannot be read.
-        [[nodiscard]] static std::optional<LexerResult>
-        FromFile(const std::filesystem::path& path);
+        [[nodiscard]] static std::optional<LexerResult> FromFile(const std::filesystem::path& path);
 
         // Run the full lexer pass and return all tokens + diagnostics.
         [[nodiscard]] LexerResult Tokenize();
@@ -99,4 +98,4 @@ namespace Rux {
         void EmitError(SourceLocation loc, std::string message);
         void EmitWarning(SourceLocation loc, std::string message);
     };
-}
+} // namespace Rux

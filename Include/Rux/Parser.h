@@ -33,14 +33,13 @@ namespace Rux {
         explicit Parser(std::vector<Token> tokens, std::string sourceName = "<input>");
 
         // Convenience: lex and parse in one step.
-        [[nodiscard]] static std::optional<ParseResult>
-        FromLexResult(const LexerResult& lex, const std::string& sourceName = "<input>");
+        [[nodiscard]] static std::optional<ParseResult> FromLexResult(const LexerResult& lex,
+                                                                      const std::string& sourceName = "<input>");
         [[nodiscard]] ParseResult Parse();
 
         // Dump the parsed AST to a file for debugging.
         // Path defaults to sourceName + ".ast" if not specified.
-        static bool DumpAst(const ParseResult& result,
-                            const std::filesystem::path& path = {});
+        static bool DumpAst(const ParseResult& result, const std::filesystem::path& path = {});
 
     private:
         std::vector<Token> tokens;
@@ -74,9 +73,8 @@ namespace Rux {
         DeclPtr ParseDecl();
 
         // Declarations
-        std::unique_ptr<FuncDecl> ParseFuncDecl(bool isPublic,
-                                                bool isAsm,
-                                                CallingConvention callConv = CallingConvention::Default);
+        std::unique_ptr<FuncDecl>
+        ParseFuncDecl(bool isPublic, bool isAsm, CallingConvention callConv = CallingConvention::Default);
         std::unique_ptr<StructDecl> ParseStructDecl(bool isPublic);
         std::unique_ptr<EnumDecl> ParseEnumDecl(bool isPublic);
         std::unique_ptr<UnionDecl> ParseUnionDecl(bool isPublic);
@@ -147,4 +145,4 @@ namespace Rux {
         // Expression argument list
         std::vector<ExprPtr> ParseArgList(); // ( expr, ... )
     };
-}
+} // namespace Rux

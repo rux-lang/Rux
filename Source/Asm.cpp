@@ -167,7 +167,9 @@ namespace Rux {
         // Code generator
         class AsmGen {
         public:
-            explicit AsmGen(const LirPackage& pkg) : pkg(pkg) {}
+            explicit AsmGen(const LirPackage& pkg)
+                : pkg(pkg) {
+            }
 
             std::string Generate();
 
@@ -206,8 +208,7 @@ namespace Rux {
             int32_t frameSize = 0;
 
             // phiMoves_[fromBlock][toBlock] = list of (dst, src, type)
-            std::unordered_map<uint32_t,
-                               std::unordered_map<uint32_t, std::vector<PhiMove>>> phiMoves;
+            std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::vector<PhiMove>>> phiMoves;
 
             std::unordered_set<std::string> declaredExterns;
 
@@ -239,7 +240,8 @@ namespace Rux {
                 strLabels[val] = lbl;
                 // Emit as NUL-terminated bytes in .rodata
                 rodata << lbl << ":\n    db    ";
-                for (const unsigned char c : val) rodata << static_cast<int>(c) << ", ";
+                for (const unsigned char c : val)
+                    rodata << static_cast<int>(c) << ", ";
                 rodata << "0\n";
                 return lbl;
             }
@@ -279,8 +281,7 @@ namespace Rux {
             }
 
             void NeedExtern(const std::string& name) {
-                if (declaredExterns.insert(name).second)
-                    externs << "extern " << name << "\n";
+                if (declaredExterns.insert(name).second) externs << "extern " << name << "\n";
             }
 
             static std::string BaseTypeName(const std::string& name) {
@@ -328,19 +329,13 @@ namespace Rux {
                     TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", off - 8));
                 }
                 else if (IsFloat(t)) {
-                    TI(std::format("{:<8}xmm0, {} [rbp - {}]",
-                                   sz == 4 ? "movss" : "movsd",
-                                   PtrSize(sz),
-                                   off));
+                    TI(std::format("{:<8}xmm0, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
                 }
                 else if (sz == 8 || sz == 0) {
                     TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", off));
                 }
                 else if (t.IsSigned()) {
-                    TI(std::format("{:<8}rax, {} [rbp - {}]",
-                                   sz == 4 ? "movsxd" : "movsx",
-                                   PtrSize(sz),
-                                   off));
+                    TI(std::format("{:<8}rax, {} [rbp - {}]", sz == 4 ? "movsxd" : "movsx", PtrSize(sz), off));
                 }
                 else {
                     if (sz == 4)
@@ -355,19 +350,13 @@ namespace Rux {
                 int sz = SizeOf(t);
                 int off = slotMap.at(reg);
                 if (IsFloat(t)) {
-                    TI(std::format("{:<8}xmm1, {} [rbp - {}]",
-                                   sz == 4 ? "movss" : "movsd",
-                                   PtrSize(sz),
-                                   off));
+                    TI(std::format("{:<8}xmm1, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
                 }
                 else if (sz == 8 || sz == 0) {
                     TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", off));
                 }
                 else if (t.IsSigned()) {
-                    TI(std::format("{:<8}r10, {} [rbp - {}]",
-                                   sz == 4 ? "movsxd" : "movsx",
-                                   PtrSize(sz),
-                                   off));
+                    TI(std::format("{:<8}r10, {} [rbp - {}]", sz == 4 ? "movsxd" : "movsx", PtrSize(sz), off));
                 }
                 else {
                     if (sz == 4)
@@ -387,18 +376,11 @@ namespace Rux {
                     TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", off - 8));
                 }
                 else if (IsFloat(t)) {
-                    TI(std::format("{:<8}{} [rbp - {}], xmm0",
-                                   sz == 4 ? "movss" : "movsd",
-                                   PtrSize(sz),
-                                   off));
+                    TI(std::format("{:<8}{} [rbp - {}], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
                 }
                 else {
                     int store_sz = (sz > 0) ? sz : 8;
-                    TI(std::format("{:<8}{} [rbp - {}], {}",
-                                   "mov",
-                                   PtrSize(store_sz),
-                                   off,
-                                   GprA(store_sz)));
+                    TI(std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(store_sz), off, GprA(store_sz)));
                 }
             }
 
@@ -521,8 +503,7 @@ namespace Rux {
                 PrepassFunc(func);
 
                 // Global / visibility declaration
-                if (func.isPublic)
-                    globals << "global " << func.name << "\n";
+                if (func.isPublic) globals << "global " << func.name << "\n";
 
                 TB();
                 TC(std::format("── {} ─", func.name));
@@ -531,8 +512,7 @@ namespace Rux {
                 // Prologue
                 TI("push    rbp");
                 TI("mov     rbp, rsp");
-                if (frameSize > 0)
-                    TI(std::format("sub     rsp, {}", frameSize));
+                if (frameSize > 0) TI(std::format("sub     rsp, {}", frameSize));
 
                 // Spill integer parameter ABI registers to their stack slots
                 int intArgIdx = 0, fltArgIdx = 0;
@@ -649,9 +629,7 @@ namespace Rux {
                             break;
                         }
                         if (IsFloat(t)) {
-                            TI(std::format("{:<8}xmm0, {} [r10]",
-                                           sz == 4 ? "movss" : "movsd",
-                                           PtrSize(sz)));
+                            TI(std::format("{:<8}xmm0, {} [r10]", sz == 4 ? "movss" : "movsd", PtrSize(sz)));
                             TI(std::format("{:<8}{} [rbp - {}], xmm0",
                                            sz == 4 ? "movss" : "movsd",
                                            PtrSize(sz),
@@ -662,9 +640,7 @@ namespace Rux {
                             TI(std::format("{:<8}rax, qword [r10]", "mov"));
                         }
                         else if (t.IsSigned()) {
-                            TI(std::format("{:<8}rax, {} [r10]",
-                                           sz == 4 ? "movsxd" : "movsx",
-                                           PtrSize(sz)));
+                            TI(std::format("{:<8}rax, {} [r10]", sz == 4 ? "movsxd" : "movsx", PtrSize(sz)));
                         }
                         else {
                             if (sz == 4)
@@ -694,21 +670,14 @@ namespace Rux {
                         TI(std::format("{:<8}qword [r11 + 8], rax", "mov"));
                     }
                     else if (IsFloat(t)) {
-                        TI(std::format("{:<8}xmm0, {} [rbp - {}]",
-                                       sz == 4 ? "movss" : "movsd",
-                                       PtrSize(sz),
-                                       slotMap.at(val)));
-                        TI(std::format("{:<8}{} [r11], xmm0",
-                                       sz == 4 ? "movss" : "movsd",
-                                       PtrSize(sz)));
+                        TI(std::format(
+                            "{:<8}xmm0, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), slotMap.at(val)));
+                        TI(std::format("{:<8}{} [r11], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz)));
                     }
                     else {
                         int store_sz = (sz > 0) ? sz : 8;
-                        TI(std::format("{:<8}{}, {} [rbp - {}]",
-                                       "mov",
-                                       GprA(store_sz),
-                                       PtrSize(store_sz),
-                                       slotMap.at(val)));
+                        TI(std::format(
+                            "{:<8}{}, {} [rbp - {}]", "mov", GprA(store_sz), PtrSize(store_sz), slotMap.at(val)));
                         TI(std::format("{:<8}{} [r11], {}", "mov", PtrSize(store_sz), GprA(store_sz)));
                     }
                     break;
@@ -807,8 +776,7 @@ namespace Rux {
                             TI("xor     rdx, rdx"); // zero-extend rax
                             TI("div     r10");
                         }
-                        if (instr.op == LirOpcode::Mod)
-                            TI("mov     rax, rdx"); // remainder is in rdx
+                        if (instr.op == LirOpcode::Mod) TI("mov     rax, rdx"); // remainder is in rdx
                         StoreA(instr.dst, t);
                     }
                     break;
@@ -904,15 +872,11 @@ namespace Rux {
                 case LirOpcode::CmpLe:
                 case LirOpcode::CmpGt:
                 case LirOpcode::CmpGe: {
-                    const TypeRef& lhsT = regTypes.contains(instr.srcs[0])
-                        ? regTypes.at(instr.srcs[0])
-                        : instr.type;
+                    const TypeRef& lhsT = regTypes.contains(instr.srcs[0]) ? regTypes.at(instr.srcs[0]) : instr.type;
                     LoadA(instr.srcs[0], lhsT);
                     LoadB(instr.srcs[1], lhsT);
                     if (IsFloat(lhsT)) {
-                        TI(lhsT.kind == TypeRef::Kind::Float32
-                            ? "ucomiss xmm0, xmm1"
-                            : "ucomisd xmm0, xmm1");
+                        TI(lhsT.kind == TypeRef::Kind::Float32 ? "ucomiss xmm0, xmm1" : "ucomisd xmm0, xmm1");
                         std::string_view set;
                         switch (instr.op) {
                         case LirOpcode::CmpEq:
@@ -1033,8 +997,7 @@ namespace Rux {
 
                     // Compute field offset using struct layout
                     int fieldOff = ResolveFieldOffset(base, instr.strArg);
-                    if (fieldOff != 0)
-                        TI(std::format("{:<8}rax, [rax + {}]", "lea", fieldOff));
+                    if (fieldOff != 0) TI(std::format("{:<8}rax, [rax + {}]", "lea", fieldOff));
                     // else pointer is already at the field start
                     TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
                     break;
@@ -1139,11 +1102,8 @@ namespace Rux {
                     else {
                         if (intIdx < maxIntRegs) {
                             int sz = std::max(SizeOf(at), 1);
-                            TI(std::format("{:<8}{}, {} [rbp - {}]",
-                                           "mov",
-                                           intRegs[intIdx],
-                                           PtrSize(sz),
-                                           slotMap.at(arg)));
+                            TI(std::format(
+                                "{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
                             intIdx++;
                         }
                         else if (win64) {
@@ -1157,20 +1117,15 @@ namespace Rux {
                     for (std::size_t i = 0; i < stackArgs.size(); ++i) {
                         TypeRef at = regTypes.contains(stackArgs[i]) ? regTypes.at(stackArgs[i]) : TypeRef::MakeInt64();
                         const int sz = std::max(SizeOf(at), 1);
-                        TI(std::format("{:<8}rax, {} [rbp - {}]",
-                                       "mov",
-                                       PtrSize(sz),
-                                       slotMap.at(stackArgs[i])));
+                        TI(std::format("{:<8}rax, {} [rbp - {}]", "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
                         TI(std::format("{:<8}qword [rsp + {}], rax", "mov", 32 + i * 8));
                     }
                 }
                 // Stack is already 16-byte aligned: prologue sub rsp,frameSize ensures
                 // rsp ≡ 8 (mod 16) which the ABI requires before a call instruction.
                 TI(std::format("{:<8}{}", "call", callee));
-                if (win64)
-                    TI(std::format("add     rsp, {}", stackBytes));
-                if (dst != LirNoReg && !retType.IsOpaque())
-                    StoreA(dst, retType);
+                if (win64) TI(std::format("add     rsp, {}", stackBytes));
+                if (dst != LirNoReg && !retType.IsOpaque()) StoreA(dst, retType);
             }
 
             void EmitCallIndirect(const std::vector<LirReg>& srcs,
@@ -1181,9 +1136,8 @@ namespace Rux {
                 LirReg callee = srcs[0];
                 std::vector<LirReg> args(srcs.begin() + 1, srcs.end());
                 const std::vector<LirReg> stackArgs = EmitCallArgs(args, callConv);
-                const int stackBytes = callConv == CallingConvention::Win64
-                    ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
-                    : 0;
+                const int stackBytes =
+                    callConv == CallingConvention::Win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16) : 0;
                 if (callConv == CallingConvention::Win64) {
                     TI(std::format("sub     rsp, {}", stackBytes));
                     StoreWin64StackArgs(stackArgs);
@@ -1191,20 +1145,15 @@ namespace Rux {
                 // Load the callee after preparing args because arg setup uses r10.
                 TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(callee)));
                 TI("call    r10");
-                if (callConv == CallingConvention::Win64)
-                    TI(std::format("add     rsp, {}", stackBytes));
-                if (dst != LirNoReg && !retType.IsOpaque())
-                    StoreA(dst, retType);
+                if (callConv == CallingConvention::Win64) TI(std::format("add     rsp, {}", stackBytes));
+                if (dst != LirNoReg && !retType.IsOpaque()) StoreA(dst, retType);
             }
 
             void StoreWin64StackArgs(const std::vector<LirReg>& stackArgs) {
                 for (std::size_t i = 0; i < stackArgs.size(); ++i) {
                     TypeRef at = regTypes.contains(stackArgs[i]) ? regTypes.at(stackArgs[i]) : TypeRef::MakeInt64();
                     const int sz = std::max(SizeOf(at), 1);
-                    TI(std::format("{:<8}rax, {} [rbp - {}]",
-                                   "mov",
-                                   PtrSize(sz),
-                                   slotMap.at(stackArgs[i])));
+                    TI(std::format("{:<8}rax, {} [rbp - {}]", "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
                     TI(std::format("{:<8}qword [rsp + {}], rax", "mov", 32 + i * 8));
                 }
             }
@@ -1231,11 +1180,8 @@ namespace Rux {
                     else {
                         if (intIdx < maxIntRegs) {
                             const int sz = std::max(SizeOf(at), 1);
-                            TI(std::format("{:<8}{}, {} [rbp - {}]",
-                                           "mov",
-                                           intRegs[intIdx],
-                                           PtrSize(sz),
-                                           slotMap.at(arg)));
+                            TI(std::format(
+                                "{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
                             intIdx++;
                         }
                         else if (win64) {
@@ -1251,9 +1197,7 @@ namespace Rux {
                 switch (term.kind) {
                 case LirTermKind::Jump: {
                     EmitPhiMoves(blockIdx, term.trueTarget);
-                    TI(std::format("{:<8}{}",
-                                   "jmp",
-                                   BlockLabel(term.trueTarget, func.blocks[term.trueTarget].label)));
+                    TI(std::format("{:<8}{}", "jmp", BlockLabel(term.trueTarget, func.blocks[term.trueTarget].label)));
                     break;
                 }
 
@@ -1315,9 +1259,8 @@ namespace Rux {
                         TI(std::format("{:<8}{}", "je", lbl));
                     }
                     EmitPhiMoves(blockIdx, term.defaultTarget);
-                    TI(std::format("{:<8}{}",
-                                   "jmp",
-                                   BlockLabel(term.defaultTarget, func.blocks[term.defaultTarget].label)));
+                    TI(std::format(
+                        "{:<8}{}", "jmp", BlockLabel(term.defaultTarget, func.blocks[term.defaultTarget].label)));
                     break;
                 }
                 }
@@ -1364,10 +1307,12 @@ namespace Rux {
             }
             return out.str();
         }
-    }
+    } // namespace
 
     // Public API
-    Asm::Asm(LirPackage package) : lir(std::move(package)) {}
+    Asm::Asm(LirPackage package)
+        : lir(std::move(package)) {
+    }
 
     std::string Asm::Generate() const {
         AsmGen gen(lir);
@@ -1382,4 +1327,4 @@ namespace Rux {
         f << text;
         return f.good();
     }
-}
+} // namespace Rux
