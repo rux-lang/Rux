@@ -1194,7 +1194,7 @@ namespace Rux {
                     Branch(lhs, shortBlock, rhsBlock); // true  → skip rhs
                 // Short-circuit path: result is the known constant.
                 SetBlock(shortBlock);
-                LirReg shortVal = EmitConst(e.op == TK::AmpAmp ? "0" : "1", TypeRef::MakeBool());
+                LirReg shortVal = EmitConst(e.op == TK::AmpAmp ? "false" : "true", TypeRef::MakeBool());
                 Jump(mergeBlock);
                 std::uint32_t shortBlockIdx = shortBlock;
                 // Right-hand side path.

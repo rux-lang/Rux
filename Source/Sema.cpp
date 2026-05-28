@@ -1224,30 +1224,34 @@ namespace Rux {
             if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) return nullptr;
             if (sym.funcOverloads.size() == 1) return sym.funcOverloads[0];
             for (const bool allowVariadic : {false, true}) {
-                for (const auto* decl : sym.funcOverloads) {
-                    TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
-                    if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) continue;
-                    const std::size_t paramCount = funcType.inner.size() - 1;
-                    const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-                    if (isVariadic != allowVariadic) continue;
-                    std::size_t requiredCount = 0;
-                    for (const auto& p : decl->params)
-                        if (!p.isVariadic && !p.defaultValue)
-                            ++requiredCount;
-                    const bool arityOk = isVariadic
-                                             ? argTypes.size() >= requiredCount
-                                             : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
-                    if (!arityOk) continue;
-                    bool match = true;
-                    for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
-                        const TypeRef& paramType = funcType.inner[i];
-                        if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
-                            !argTypes[i].IsAssignableTo(paramType)) {
-                            match = false;
-                            break;
+                for (const bool exactOnly : {true, false}) {
+                    for (const auto* decl : sym.funcOverloads) {
+                        TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+                        if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) continue;
+                        const std::size_t paramCount = funcType.inner.size() - 1;
+                        const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
+                        if (isVariadic != allowVariadic) continue;
+                        std::size_t requiredCount = 0;
+                        for (const auto& p : decl->params)
+                            if (!p.isVariadic && !p.defaultValue)
+                                ++requiredCount;
+                        const bool arityOk = isVariadic
+                                                 ? argTypes.size() >= requiredCount
+                                                 : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
+                        if (!arityOk) continue;
+                        bool match = true;
+                        for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
+                            const TypeRef& paramType = funcType.inner[i];
+                            if (argTypes[i].IsUnknown() || paramType.IsUnknown())
+                                continue;
+                            if (exactOnly ? !(argTypes[i] == paramType)
+                                          : !argTypes[i].IsAssignableTo(paramType)) {
+                                match = false;
+                                break;
+                            }
                         }
+                        if (match) return decl;
                     }
-                    if (match) return decl;
                 }
             }
             return sym.funcOverloads[0];

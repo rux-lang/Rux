@@ -68,6 +68,7 @@ namespace Rux {
         [[nodiscard]] bool IsAtEnd() const noexcept;
         [[nodiscard]] char Peek(std::size_t ahead = 0) const noexcept;
         char Advance() noexcept;
+        void AdvanceUtf8CodePoint() noexcept;
         bool Match(char expected) noexcept;
         bool MatchStr(std::string_view s) noexcept;
 

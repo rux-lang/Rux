@@ -884,30 +884,34 @@ namespace Rux {
             if (it == functionsByName.end() || it->second.empty()) return nullptr;
             if (it->second.size() == 1) return it->second[0];
             for (const bool allowVariadic : {false, true}) {
-                for (const auto* decl : it->second) {
-                    TypeRef ft = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
-                    if (ft.kind != TypeRef::Kind::Func || ft.inner.empty()) continue;
-                    const std::size_t paramCount = ft.inner.size() - 1;
-                    const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-                    if (isVariadic != allowVariadic) continue;
-                    std::size_t requiredCount = 0;
-                    for (const auto& p : decl->params)
-                        if (!p.isVariadic && !p.defaultValue)
-                            ++requiredCount;
-                    const bool arityOk = isVariadic
-                                             ? argTypes.size() >= requiredCount
-                                             : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
-                    if (!arityOk) continue;
-                    bool match = true;
-                    for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
-                        const TypeRef& paramType = ft.inner[i];
-                        if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
-                            !argTypes[i].IsAssignableTo(paramType)) {
-                            match = false;
-                            break;
+                for (const bool exactOnly : {true, false}) {
+                    for (const auto* decl : it->second) {
+                        TypeRef ft = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+                        if (ft.kind != TypeRef::Kind::Func || ft.inner.empty()) continue;
+                        const std::size_t paramCount = ft.inner.size() - 1;
+                        const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
+                        if (isVariadic != allowVariadic) continue;
+                        std::size_t requiredCount = 0;
+                        for (const auto& p : decl->params)
+                            if (!p.isVariadic && !p.defaultValue)
+                                ++requiredCount;
+                        const bool arityOk = isVariadic
+                                                 ? argTypes.size() >= requiredCount
+                                                 : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
+                        if (!arityOk) continue;
+                        bool match = true;
+                        for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
+                            const TypeRef& paramType = ft.inner[i];
+                            if (argTypes[i].IsUnknown() || paramType.IsUnknown())
+                                continue;
+                            if (exactOnly ? !(argTypes[i] == paramType)
+                                          : !argTypes[i].IsAssignableTo(paramType)) {
+                                match = false;
+                                break;
+                            }
                         }
+                        if (match) return decl;
                     }
-                    if (match) return decl;
                 }
             }
             return it->second[0];
@@ -1201,9 +1205,31 @@ namespace Rux {
             return SizeOfTypeExprWithSubstitution(expr);
         }
 
+        static std::uint32_t DecodeUtf8CodePoint(const std::string& text, std::size_t i) {
+            const auto byte = [&](std::size_t offset) {
+                return static_cast<std::uint32_t>(
+                    static_cast<unsigned char>(text[i + offset]));
+            };
+
+            const std::uint32_t b0 = byte(0);
+            if ((b0 & 0x80u) == 0) return b0;
+            if ((b0 & 0xE0u) == 0xC0u && i + 1 < text.size())
+                return ((b0 & 0x1Fu) << 6) | (byte(1) & 0x3Fu);
+            if ((b0 & 0xF0u) == 0xE0u && i + 2 < text.size())
+                return ((b0 & 0x0Fu) << 12) |
+                    ((byte(1) & 0x3Fu) << 6) |
+                    (byte(2) & 0x3Fu);
+            if ((b0 & 0xF8u) == 0xF0u && i + 3 < text.size())
+                return ((b0 & 0x07u) << 18) |
+                    ((byte(1) & 0x3Fu) << 12) |
+                    ((byte(2) & 0x3Fu) << 6) |
+                    (byte(3) & 0x3Fu);
+            return b0;
+        }
+
         static std::string DecodeCharLiteral(const std::string& text) {
-            // text is raw source like 'A' or '\n' — strip quotes and decode
-            uint32_t cp = 0;
+            // text is raw source like 'A' or '\n'; strip quotes and decode.
+            std::uint32_t cp = 0;
             const std::size_t quote = text.find('\'');
             if (quote != std::string::npos && quote + 1 < text.size()) {
                 std::size_t i = quote + 1; // skip opening '
@@ -1228,7 +1254,7 @@ namespace Rux {
                     }
                 }
                 else if (text[i] != '\'') {
-                    cp = static_cast<unsigned char>(text[i]);
+                    cp = DecodeUtf8CodePoint(text, i);
                 }
             }
             return std::to_string(cp);
