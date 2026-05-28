@@ -105,7 +105,9 @@ namespace Rux {
         }
 
         [[nodiscard]] std::string FormatDecimal(double value, int decimals) {
-            std::string text = std::format("{:.{}f}", value, decimals);
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(decimals) << value;
+            std::string text = oss.str();
             auto dot = text.find('.');
             if (dot == std::string::npos) return text;
 
@@ -536,6 +538,8 @@ namespace Rux {
             PrintUnknownOption(arg, "build");
             return 1;
         }
+
+        (void)isDebug; // Stop -Wunused-but-set-variable
 
         auto manifestPath = RequireManifest();
         if (!manifestPath) return 1;
