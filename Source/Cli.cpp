@@ -2317,7 +2317,7 @@ namespace Rux {
                    "Usage: rux info [package name]\n"
                    "\n"
                    "Examples:\n"
-                   "  rux new Std\n"
+                   "  rux info Std\n"
                    "  rux info Windows\n");
     }
 
