@@ -280,15 +280,53 @@ namespace Rux {
     }
 
     Token Lexer::ScanIntLiteral(SourceLocation start, std::size_t tokenStart) {
-        // Consume hex / binary / octal digits (and underscores as separators)
+        // Detect base from prefix (set in ScanNumber before calling this).
+        // 0x/0X -> 16, 0b/0B -> 2, 0o/0O -> 8, else 10.
+        const std::string scanned = source.substr(tokenStart, pos - tokenStart);
+        const std::string_view text = scanned;
+        int base = 10;
+        if (text.size() >= 2 && text[0] == '0') {
+            const char prefix = text[1];
+            if (prefix == 'x' || prefix == 'X') base = 16;
+            else if (prefix == 'b' || prefix == 'B') base = 2;
+            else if (prefix == 'o' || prefix == 'O') base = 8;
+        }
+
+        // Valid digit sets per base
+        const auto isValidDigit = [base](char c) -> bool {
+            if (c >= '0' && c <= '9') return c - '0' < base;
+            if (base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return true;
+            return false;
+        };
+
+        // Validate each digit in the already-scanned prefix (skip prefix chars like 0x)
+        const std::size_t skip = (base != 10 && text.size() >= 2 && text[0] == '0') ? 2 : 0;
+        for (std::size_t i = skip; i < text.size(); ++i) {
+            const char c = text[i];
+            if (c == '_') continue;
+            if (!isValidDigit(c)) {
+                EmitError(start, std::string("invalid digit '") + c + "' for base " + std::to_string(base));
+            }
+        }
+
+        // Consume remaining hex / binary / octal digits (and underscores as separators)
+        bool emittedInvalidDigitError = false;
         while (!IsAtEnd()) {
             const char c = Peek();
-            if (std::isalnum(static_cast<unsigned char>(c)) || c == '_')
+            if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
+                // Validate as we consume
+                bool valid = false;
+                if (c >= '0' && c <= '9') valid = c - '0' < base;
+                else if (base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) valid = true;
+                else if (c == '_') valid = true;
+                if (!valid && !emittedInvalidDigitError) {
+                    EmitError(CurrentLocation(), std::string("invalid digit '") + c + "' for base " + std::to_string(base));
+                    emittedInvalidDigitError = true;
+                }
                 Advance();
-            else
-                break;
+            }
+            else break;
         }
-        // TODO: validate digits match the declared base
         return MakeToken(TokenKind::IntLiteral, start, tokenStart);
     }
 
@@ -396,9 +434,60 @@ namespace Rux {
         case '"':
             return "\"";
         case 'u': {
-            // TODO: Unicode escape  \u{XXXX}
-            EmitWarning(loc, "Unicode escape sequences are not yet implemented");
-            return {};
+            // Unicode escape  \u{XXXX}  or  \u{XXXXXXXX}
+            if (!Match('{')) {
+                EmitError(loc, "expected '{' after '\\u'");
+                return {};
+            }
+            unsigned int codepoint = 0;
+            int digits = 0;
+            while (!IsAtEnd() && Peek() != '}') {
+                const char h = Advance();
+                int val = -1;
+                if (h >= '0' && h <= '9') val = h - '0';
+                else if (h >= 'a' && h <= 'f') val = h - 'a' + 10;
+                else if (h >= 'A' && h <= 'F') val = h - 'A' + 10;
+                else {
+                    EmitError(loc, std::string("invalid hex digit '") + h + "' in Unicode escape");
+                    return {};
+                }
+                // Limit to 8 hex digits (32-bit codepoint max)
+                if (digits >= 8) {
+                    EmitError(loc, "Unicode codepoint value too large (max 8 hex digits)");
+                    return {};
+                }
+                codepoint = (codepoint << 4) | val;
+                ++digits;
+            }
+            if (!Match('}')) {
+                EmitError(loc, "expected '}' after Unicode codepoint");
+                return {};
+            }
+            if (codepoint > 0x10FFFF) {
+                EmitError(loc, "Unicode codepoint value out of range (max 0x10FFFF)");
+                return {};
+            }
+            // Encode as UTF-8
+            std::string result;
+            if (codepoint <= 0x7F) {
+                result += static_cast<char>(codepoint);
+            }
+            else if (codepoint <= 0x7FF) {
+                result += static_cast<char>(0xC0 | (codepoint >> 6));
+                result += static_cast<char>(0x80 | (codepoint & 0x3F));
+            }
+            else if (codepoint <= 0xFFFF) {
+                result += static_cast<char>(0xE0 | (codepoint >> 12));
+                result += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+                result += static_cast<char>(0x80 | (codepoint & 0x3F));
+            }
+            else {
+                result += static_cast<char>(0xF0 | (codepoint >> 18));
+                result += static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
+                result += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+                result += static_cast<char>(0x80 | (codepoint & 0x3F));
+            }
+            return result;
         }
         default:
             EmitError(loc, std::string("unknown escape sequence '\\") + c + "'");
