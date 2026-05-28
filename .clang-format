@@ -1,0 +1,103 @@
+# Rux project — C++ code style
+# Requires clang-format 18+ for c++26 Standard support
+---
+Language: Cpp
+Standard: Latest
+BasedOnStyle: LLVM
+
+# Indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+NamespaceIndentation: All
+IndentCaseLabels: false
+KeepEmptyLinesAtTheStartOfBlocks: false
+IndentPPDirectives: AfterHash
+PPIndentWidth: 2
+
+# Line length
+ColumnLimit: 120
+MaxEmptyLinesToKeep: 2
+InsertNewlineAtEOF: true
+
+# Braces
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel: false
+  AfterClass: false
+  AfterControlStatement: false
+  AfterEnum: false
+  AfterFunction: false
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  AfterExternBlock: false
+  BeforeCatch: true
+  BeforeElse: true
+  BeforeWhile: true
+  BeforeLambdaBody: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: false
+
+# Short forms
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLambdasOnASingleLine: All
+AllowShortLoopsOnASingleLine: false
+
+# Constructor initializer lists
+BreakConstructorInitializers: BeforeComma
+ConstructorInitializerIndentWidth: 4
+PackConstructorInitializers: Never
+
+# Templates
+AlwaysBreakTemplateDeclarations: Yes
+
+# Qualifiers, pointers & references
+QualifierAlignment: Left
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# Alignment
+AlignAfterOpenBracket: true
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignOperands: false
+AlignTrailingComments: false
+
+# Parameters & arguments
+BinPackParameters: false
+BinPackArguments: false
+
+# Blank lines around access modifiers
+EmptyLineBeforeAccessModifier: LogicalBlock
+EmptyLineAfterAccessModifier: Never
+
+# Spacing
+SpaceBeforeCpp11BracedList: false
+SpaceInEmptyParentheses: false
+SpacesInAngles: Never
+SpacesInConditionalStatement: false
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+Cpp11BracedListStyle: true
+
+# Include ordering: project headers first, then system headers
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^"Rux/'
+    Priority: 1
+    SortPriority: 1
+  - Regex: '^<'
+    Priority: 2
+    SortPriority: 2
+  - Regex: '.*'
+    Priority: 3
+    SortPriority: 3
+...

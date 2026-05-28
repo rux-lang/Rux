@@ -28,17 +28,21 @@ namespace Rux {
             case TypeRef::Kind::Bool8: // Bool == Bool8
             case TypeRef::Kind::Char8: // Char8
             case TypeRef::Kind::Int8:
-            case TypeRef::Kind::UInt8: return 1;
+            case TypeRef::Kind::UInt8:
+                return 1;
             case TypeRef::Kind::Bool16:
             case TypeRef::Kind::Char16:
             case TypeRef::Kind::Int16:
-            case TypeRef::Kind::UInt16: return 2;
+            case TypeRef::Kind::UInt16:
+                return 2;
             case TypeRef::Kind::Bool32:
             case TypeRef::Kind::Char32: // Char == Char32
             case TypeRef::Kind::Int32:
             case TypeRef::Kind::UInt32:
-            case TypeRef::Kind::Float32: return 4;
-            case TypeRef::Kind::Opaque: return 0;
+            case TypeRef::Kind::Float32:
+                return 4;
+            case TypeRef::Kind::Opaque:
+                return 0;
             case TypeRef::Kind::Tuple: {
                 const auto alignUp = [](int v, int a) {
                     return (v + a - 1) & ~(a - 1);
@@ -57,7 +61,8 @@ namespace Rux {
             case TypeRef::Kind::Named:
                 if (!t.inner.empty()) return SizeOf(t.inner[0]);
                 return 8;
-            default: return 8; // int, uint, int64, uint64, float64, pointer, str, named, …
+            default:
+                return 8; // int, uint, int64, uint64, float64, pointer, str, named, …
             }
         }
 
@@ -530,23 +535,28 @@ namespace Rux {
 
             void MovR10ArgWin64(const int idx) const {
                 switch (idx) {
-                case 0: Byte(0x49);
+                case 0:
+                    Byte(0x49);
                     Byte(0x89);
                     Byte(0xCA);
                     break; // mov r10, rcx
-                case 1: Byte(0x49);
+                case 1:
+                    Byte(0x49);
                     Byte(0x89);
                     Byte(0xD2);
                     break; // mov r10, rdx
-                case 2: Byte(0x4D);
+                case 2:
+                    Byte(0x4D);
                     Byte(0x89);
                     Byte(0xC2);
                     break; // mov r10, r8
-                case 3: Byte(0x4D);
+                case 3:
+                    Byte(0x4D);
                     Byte(0x89);
                     Byte(0xCA);
                     break; // mov r10, r9
-                default: break;
+                default:
+                    break;
                 }
             }
 
@@ -1289,7 +1299,8 @@ namespace Rux {
                 return idx;
             }
 
-            uint32_t GetOrAddExtern(const std::string& name, uint8_t kind,
+            uint32_t GetOrAddExtern(const std::string& name,
+                                    uint8_t kind,
                                     const std::string& dll = {}) {
                 auto it = externSyms.find(name);
                 if (it != externSyms.end()) return it->second;
@@ -1432,7 +1443,9 @@ namespace Rux {
                 textRelocs.push_back({sectionOff, symIdx, RcuRelType::Rel32, addend});
             }
 
-            void AddRodataReloc(uint32_t sectionOff, uint32_t symIdx, uint16_t type,
+            void AddRodataReloc(uint32_t sectionOff,
+                                uint32_t symIdx,
+                                uint16_t type,
                                 int32_t addend = 0) {
                 rodataRelocs.push_back({sectionOff, symIdx, type, addend});
             }
@@ -1655,8 +1668,8 @@ namespace Rux {
                     int sz = IsWin64AddressParam(p.type) ? 8 : SizeOfRuntime(p.type);
                     AllocSlot(p.reg, sz > 0 ? sz : 8);
                     regTypes[p.reg] = IsWin64AddressParam(p.type)
-                                          ? TypeRef::MakePointer(p.type)
-                                          : p.type;
+                        ? TypeRef::MakePointer(p.type)
+                        : p.type;
                 }
                 for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
                     for (const auto& instr : func.blocks[bi].instrs) {
@@ -2195,25 +2208,31 @@ namespace Rux {
                 case LirOpcode::CmpGt:
                 case LirOpcode::CmpGe: {
                     const TypeRef& lhsT = regTypes.contains(instr.srcs[0])
-                                              ? regTypes.at(instr.srcs[0])
-                                              : instr.type;
+                        ? regTypes.at(instr.srcs[0])
+                        : instr.type;
                     LoadA(instr.srcs[0], lhsT);
                     LoadB(instr.srcs[1], lhsT);
                     if (IsFloat(lhsT)) {
                         if (lhsT.kind == TypeRef::Kind::Float32) enc.UcomissXmm01();
                         else enc.UcomisdXmm01();
                         switch (instr.op) {
-                        case LirOpcode::CmpEq: enc.SeteAl();
+                        case LirOpcode::CmpEq:
+                            enc.SeteAl();
                             break;
-                        case LirOpcode::CmpNe: enc.SetneAl();
+                        case LirOpcode::CmpNe:
+                            enc.SetneAl();
                             break;
-                        case LirOpcode::CmpLt: enc.SetbAl();
+                        case LirOpcode::CmpLt:
+                            enc.SetbAl();
                             break;
-                        case LirOpcode::CmpLe: enc.SetbeAl();
+                        case LirOpcode::CmpLe:
+                            enc.SetbeAl();
                             break;
-                        case LirOpcode::CmpGt: enc.SetaAl();
+                        case LirOpcode::CmpGt:
+                            enc.SetaAl();
                             break;
-                        default: enc.SetaeAl();
+                        default:
+                            enc.SetaeAl();
                             break;
                         }
                     }
@@ -2221,17 +2240,23 @@ namespace Rux {
                         enc.CmpRaxR10();
                         bool sig = lhsT.IsSigned();
                         switch (instr.op) {
-                        case LirOpcode::CmpEq: enc.SeteAl();
+                        case LirOpcode::CmpEq:
+                            enc.SeteAl();
                             break;
-                        case LirOpcode::CmpNe: enc.SetneAl();
+                        case LirOpcode::CmpNe:
+                            enc.SetneAl();
                             break;
-                        case LirOpcode::CmpLt: sig ? enc.SetlAl() : enc.SetbAl();
+                        case LirOpcode::CmpLt:
+                            sig ? enc.SetlAl() : enc.SetbAl();
                             break;
-                        case LirOpcode::CmpLe: sig ? enc.SetleAl() : enc.SetbeAl();
+                        case LirOpcode::CmpLe:
+                            sig ? enc.SetleAl() : enc.SetbeAl();
                             break;
-                        case LirOpcode::CmpGt: sig ? enc.SetgAl() : enc.SetaAl();
+                        case LirOpcode::CmpGt:
+                            sig ? enc.SetgAl() : enc.SetaAl();
                             break;
-                        default: sig ? enc.SetgeAl() : enc.SetaeAl();
+                        default:
+                            sig ? enc.SetgeAl() : enc.SetaeAl();
                             break;
                         }
                     }
@@ -2242,8 +2267,8 @@ namespace Rux {
                 case LirOpcode::Cast: {
                     const TypeRef& dstT = instr.type;
                     TypeRef srcT = regTypes.contains(instr.srcs[0])
-                                       ? regTypes.at(instr.srcs[0])
-                                       : dstT;
+                        ? regTypes.at(instr.srcs[0])
+                        : dstT;
                     LoadA(instr.srcs[0], srcT);
                     bool srcFl = IsFloat(srcT), dstFl = IsFloat(dstT);
                     if (srcFl && !dstFl) {
@@ -2269,9 +2294,9 @@ namespace Rux {
                         instr.dst != LirNoReg &&
                         IsWin64ByRefAggregate(instr.type);
                     const int callFrameSize = win64Call
-                                                  ? Win64CallFrameSize(instr.srcs.size() +
-                                                      (hiddenReturn ? 1 : 0))
-                                                  : 0;
+                        ? Win64CallFrameSize(instr.srcs.size() +
+                            (hiddenReturn ? 1 : 0))
+                        : 0;
                     if (win64Call) enc.SubRspImm32(callFrameSize);
                     if (hiddenReturn) {
                         enc.LeaArgStackWin64(0, Disp(instr.dst));
@@ -2302,9 +2327,9 @@ namespace Rux {
                         instr.dst != LirNoReg &&
                         IsWin64ByRefAggregate(instr.type);
                     const int callFrameSize = win64Call
-                                                  ? Win64CallFrameSize(args.size() +
-                                                      (hiddenReturn ? 1 : 0))
-                                                  : 0;
+                        ? Win64CallFrameSize(args.size() +
+                            (hiddenReturn ? 1 : 0))
+                        : 0;
                     if (win64Call) enc.SubRspImm32(callFrameSize);
                     if (hiddenReturn) {
                         enc.LeaArgStackWin64(0, Disp(instr.dst));
@@ -2346,8 +2371,8 @@ namespace Rux {
                     LirReg base = instr.srcs[0];
                     LirReg idx = instr.srcs[1];
                     int elemSz = (instr.type.kind == TypeRef::Kind::Pointer && !instr.type.inner.empty())
-                                     ? SizeOfRuntime(instr.type.inner[0])
-                                     : 8;
+                        ? SizeOfRuntime(instr.type.inner[0])
+                        : 8;
                     if (elemSz < 1) elemSz = 1;
                     enc.MovRaxLoad(Disp(base));
                     LoadB(idx, regTypes.at(idx));
@@ -2378,8 +2403,8 @@ namespace Rux {
                     // Load condition with correct width to avoid reading stack garbage
                     {
                         const TypeRef condT = regTypes.contains(term.cond)
-                                                  ? regTypes.at(term.cond)
-                                                  : TypeRef::MakeBool();
+                            ? regTypes.at(term.cond)
+                            : TypeRef::MakeBool();
                         const int condSz = SizeOf(condT);
                         if (condSz <= 1) enc.MovzxRaxByte(Disp(term.cond));
                         else if (condSz == 2) enc.MovzxRaxWord(Disp(term.cond));
@@ -2929,7 +2954,9 @@ namespace Rux {
                 out << std::format("; Package:       {}\n", f.packageName.empty() ? "<unknown>" : f.packageName);
                 if (f.ruxVersion) {
                     out << std::format("; Rux version:   {}.{}.{}\n",
-                                       f.ruxVersion >> 16, (f.ruxVersion >> 8) & 0xFF, f.ruxVersion & 0xFF);
+                                       f.ruxVersion >> 16,
+                                       (f.ruxVersion >> 8) & 0xFF,
+                                       f.ruxVersion & 0xFF);
                 }
                 out << '\n';
 
@@ -2946,7 +2973,12 @@ namespace Rux {
                     if (s.flags & RcuSecFlag::Strings) flags += 'S';
                     if (flags.empty()) flags = "-";
                     out << std::format("  [{:2}]  {:<10}  flags:{:<5}  align:{:<4}  data:{}B  relocs:{}\n",
-                                       i, s.name, flags, s.alignment, s.data.size(), s.relocs.size());
+                                       i,
+                                       s.name,
+                                       flags,
+                                       s.alignment,
+                                       s.data.size(),
+                                       s.relocs.size());
                 }
                 out << '\n';
 
@@ -2963,30 +2995,42 @@ namespace Rux {
 
                     auto kindStr = "?";
                     switch (s.kind) {
-                    case RcuSymKind::Func: kindStr = "FUNC";
+                    case RcuSymKind::Func:
+                        kindStr = "FUNC";
                         break;
-                    case RcuSymKind::Data: kindStr = "DATA";
+                    case RcuSymKind::Data:
+                        kindStr = "DATA";
                         break;
-                    case RcuSymKind::Const: kindStr = "CONST";
+                    case RcuSymKind::Const:
+                        kindStr = "CONST";
                         break;
-                    case RcuSymKind::Section: kindStr = "SECTION";
+                    case RcuSymKind::Section:
+                        kindStr = "SECTION";
                         break;
-                    case RcuSymKind::File: kindStr = "FILE";
+                    case RcuSymKind::File:
+                        kindStr = "FILE";
                         break;
-                    case RcuSymKind::ExternFunc: kindStr = "EXTFUNC";
+                    case RcuSymKind::ExternFunc:
+                        kindStr = "EXTFUNC";
                         break;
-                    case RcuSymKind::ExternData: kindStr = "EXTDATA";
+                    case RcuSymKind::ExternData:
+                        kindStr = "EXTDATA";
                         break;
                     default: ;
                     }
                     const char* visStr = s.visibility == RcuSymVis::Global
-                                             ? "GLOBAL"
-                                             : s.visibility == RcuSymVis::Weak
-                                             ? "WEAK"
-                                             : "LOCAL";
+                        ? "GLOBAL"
+                        : s.visibility == RcuSymVis::Weak
+                        ? "WEAK"
+                        : "LOCAL";
 
                     out << std::format("  [{:3}]  {:<24}  {:>20}  size={:<6}  {:<8}  {:<6}",
-                                       i, s.name, secStr, s.size, kindStr, visStr);
+                                       i,
+                                       s.name,
+                                       secStr,
+                                       s.size,
+                                       kindStr,
+                                       visStr);
                     if (!s.typeName.empty())
                         out << std::format("  \"{}\"", s.typeName);
                     out << '\n';
@@ -3013,10 +3057,15 @@ namespace Rux {
                             else if (r.type == RcuRelType::Abs32) rt = "ABS_32";
                             else if (r.type == RcuRelType::Rel32) rt = "REL_32";
                             std::string symName = r.symbolIndex < f.symbols.size()
-                                                      ? f.symbols[r.symbolIndex].name
-                                                      : "?";
+                                ? f.symbols[r.symbolIndex].name
+                                : "?";
                             out << std::format("  [{:3}]  off=0x{:04X}  sym[{}]={}  {}  addend={}\n",
-                                               i, r.sectionOffset, r.symbolIndex, symName, rt, r.addend);
+                                               i,
+                                               r.sectionOffset,
+                                               r.symbolIndex,
+                                               symName,
+                                               rt,
+                                               r.addend);
                         }
                         out << '\n';
                     }

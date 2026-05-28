@@ -17,81 +17,144 @@ namespace Rux {
     // Internal helpers
     static std::string_view OpcodeStr(LirOpcode op) {
         switch (op) {
-        case LirOpcode::Const: return "const";
-        case LirOpcode::Alloca: return "alloca";
-        case LirOpcode::Load: return "load";
-        case LirOpcode::Store: return "store";
-        case LirOpcode::Add: return "add";
-        case LirOpcode::Sub: return "sub";
-        case LirOpcode::Mul: return "mul";
-        case LirOpcode::Div: return "div";
-        case LirOpcode::Mod: return "mod";
-        case LirOpcode::Pow: return "pow";
-        case LirOpcode::And: return "and";
-        case LirOpcode::Or: return "or";
-        case LirOpcode::Xor: return "xor";
-        case LirOpcode::Shl: return "shl";
-        case LirOpcode::Shr: return "shr";
-        case LirOpcode::Neg: return "neg";
-        case LirOpcode::Not: return "not";
-        case LirOpcode::BitNot: return "bitnot";
-        case LirOpcode::CmpEq: return "cmpeq";
-        case LirOpcode::CmpNe: return "cmpne";
-        case LirOpcode::CmpLt: return "cmplt";
-        case LirOpcode::CmpLe: return "cmple";
-        case LirOpcode::CmpGt: return "cmpgt";
-        case LirOpcode::CmpGe: return "cmpge";
-        case LirOpcode::Cast: return "cast";
-        case LirOpcode::Call: return "call";
-        case LirOpcode::CallIndirect: return "call_ind";
-        case LirOpcode::FieldPtr: return "fieldptr";
-        case LirOpcode::IndexPtr: return "indexptr";
-        case LirOpcode::Phi: return "phi";
-        case LirOpcode::GlobalAddr: return "globaladdr";
-        default: return "?";
+        case LirOpcode::Const:
+            return "const";
+        case LirOpcode::Alloca:
+            return "alloca";
+        case LirOpcode::Load:
+            return "load";
+        case LirOpcode::Store:
+            return "store";
+        case LirOpcode::Add:
+            return "add";
+        case LirOpcode::Sub:
+            return "sub";
+        case LirOpcode::Mul:
+            return "mul";
+        case LirOpcode::Div:
+            return "div";
+        case LirOpcode::Mod:
+            return "mod";
+        case LirOpcode::Pow:
+            return "pow";
+        case LirOpcode::And:
+            return "and";
+        case LirOpcode::Or:
+            return "or";
+        case LirOpcode::Xor:
+            return "xor";
+        case LirOpcode::Shl:
+            return "shl";
+        case LirOpcode::Shr:
+            return "shr";
+        case LirOpcode::Neg:
+            return "neg";
+        case LirOpcode::Not:
+            return "not";
+        case LirOpcode::BitNot:
+            return "bitnot";
+        case LirOpcode::CmpEq:
+            return "cmpeq";
+        case LirOpcode::CmpNe:
+            return "cmpne";
+        case LirOpcode::CmpLt:
+            return "cmplt";
+        case LirOpcode::CmpLe:
+            return "cmple";
+        case LirOpcode::CmpGt:
+            return "cmpgt";
+        case LirOpcode::CmpGe:
+            return "cmpge";
+        case LirOpcode::Cast:
+            return "cast";
+        case LirOpcode::Call:
+            return "call";
+        case LirOpcode::CallIndirect:
+            return "call_ind";
+        case LirOpcode::FieldPtr:
+            return "fieldptr";
+        case LirOpcode::IndexPtr:
+            return "indexptr";
+        case LirOpcode::Phi:
+            return "phi";
+        case LirOpcode::GlobalAddr:
+            return "globaladdr";
+        default:
+            return "?";
         }
     }
 
     static LirOpcode BinaryOpcode(TokenKind op) {
         using TK = TokenKind;
         switch (op) {
-        case TK::Plus: return LirOpcode::Add;
-        case TK::Minus: return LirOpcode::Sub;
-        case TK::Star: return LirOpcode::Mul;
-        case TK::Slash: return LirOpcode::Div;
-        case TK::Percent: return LirOpcode::Mod;
-        case TK::StarStar: return LirOpcode::Pow;
-        case TK::Amp: return LirOpcode::And;
-        case TK::Pipe: return LirOpcode::Or;
-        case TK::Caret: return LirOpcode::Xor;
-        case TK::LessLess: return LirOpcode::Shl;
-        case TK::GreaterGreater: return LirOpcode::Shr;
-        case TK::AmpAmp: return LirOpcode::And;
-        case TK::PipePipe: return LirOpcode::Or;
-        case TK::Equal: return LirOpcode::CmpEq;
-        case TK::BangEqual: return LirOpcode::CmpNe;
-        case TK::Less: return LirOpcode::CmpLt;
-        case TK::LessEqual: return LirOpcode::CmpLe;
-        case TK::Greater: return LirOpcode::CmpGt;
-        case TK::GreaterEqual: return LirOpcode::CmpGe;
-        default: return LirOpcode::Add;
+        case TK::Plus:
+            return LirOpcode::Add;
+        case TK::Minus:
+            return LirOpcode::Sub;
+        case TK::Star:
+            return LirOpcode::Mul;
+        case TK::Slash:
+            return LirOpcode::Div;
+        case TK::Percent:
+            return LirOpcode::Mod;
+        case TK::StarStar:
+            return LirOpcode::Pow;
+        case TK::Amp:
+            return LirOpcode::And;
+        case TK::Pipe:
+            return LirOpcode::Or;
+        case TK::Caret:
+            return LirOpcode::Xor;
+        case TK::LessLess:
+            return LirOpcode::Shl;
+        case TK::GreaterGreater:
+            return LirOpcode::Shr;
+        case TK::AmpAmp:
+            return LirOpcode::And;
+        case TK::PipePipe:
+            return LirOpcode::Or;
+        case TK::Equal:
+            return LirOpcode::CmpEq;
+        case TK::BangEqual:
+            return LirOpcode::CmpNe;
+        case TK::Less:
+            return LirOpcode::CmpLt;
+        case TK::LessEqual:
+            return LirOpcode::CmpLe;
+        case TK::Greater:
+            return LirOpcode::CmpGt;
+        case TK::GreaterEqual:
+            return LirOpcode::CmpGe;
+        default:
+            return LirOpcode::Add;
         }
     }
 
     static LirOpcode CompoundOpcode(TokenKind op) {
         using TK = TokenKind;
         switch (op) {
-        case TK::PlusAssign: return LirOpcode::Add;
-        case TK::MinusAssign: return LirOpcode::Sub;
-        case TK::StarAssign: return LirOpcode::Mul;
-        case TK::SlashAssign: return LirOpcode::Div;
-        case TK::PercentAssign: return LirOpcode::Mod;
-        case TK::AmpAssign: return LirOpcode::And;
-        case TK::PipeAssign: return LirOpcode::Or;
-        case TK::CaretAssign: return LirOpcode::Xor;
-        case TK::LessLessAssign: return LirOpcode::Shl;
-        case TK::GreaterGreaterAssign: return LirOpcode::Shr;
-        default: return LirOpcode::Add;
+        case TK::PlusAssign:
+            return LirOpcode::Add;
+        case TK::MinusAssign:
+            return LirOpcode::Sub;
+        case TK::StarAssign:
+            return LirOpcode::Mul;
+        case TK::SlashAssign:
+            return LirOpcode::Div;
+        case TK::PercentAssign:
+            return LirOpcode::Mod;
+        case TK::AmpAssign:
+            return LirOpcode::And;
+        case TK::PipeAssign:
+            return LirOpcode::Or;
+        case TK::CaretAssign:
+            return LirOpcode::Xor;
+        case TK::LessLessAssign:
+            return LirOpcode::Shl;
+        case TK::GreaterGreaterAssign:
+            return LirOpcode::Shr;
+        default:
+            return LirOpcode::Add;
         }
     }
 
@@ -171,7 +234,8 @@ namespace Rux {
         }
 
         void Jump(std::uint32_t target) const {
-            Terminate(LirTerminator{.kind = LirTermKind::Jump, .trueTarget = target, .retVal = std::nullopt, .retType = {}, .cases = {}});
+            Terminate(LirTerminator{.kind = LirTermKind::Jump, .trueTarget = target, .retVal = std::nullopt,
+                                    .retType = {}, .cases = {}});
         }
 
         void Branch(const LirReg cond, const std::uint32_t trueTarget, std::uint32_t falseTarget) const {
@@ -328,8 +392,8 @@ namespace Rux {
             return r;
         }
 
-        bool IsInterfaceType(const TypeRef& t) const {
-            return t.kind == TypeRef::Kind::Named && interfacesByName.count(t.name) > 0;
+        [[nodiscard]] bool IsInterfaceType(const TypeRef& t) const {
+            return t.kind == TypeRef::Kind::Named && interfacesByName.contains(t.name);
         }
 
         static bool IsSliceType(const TypeRef& type) {
@@ -465,29 +529,29 @@ namespace Rux {
             lf.returnType = hf.returnType;
             fn = &lf;
             cur = NewBlock("entry");
-            for (const auto& p : hf.params) {
+            for (const auto& [name, type, isVariadic] : hf.params) {
                 const LirReg pr = NewReg();
-                if (p.isVariadic) {
-                    locals[p.name] = pr;
-                    lf.params.push_back({pr, TypeRef::MakePointer(p.type), p.name});
+                if (isVariadic) {
+                    locals[name] = pr;
+                    lf.params.push_back({pr, TypeRef::MakePointer(type), name});
                 }
-                else if (IsInterfaceType(p.type)) {
+                else if (IsInterfaceType(type)) {
                     // Interface values are 16-byte fat ptrs; callers pass their address.
                     // pr holds that address directly — no extra alloca.
-                    locals[p.name] = pr;
-                    lf.params.push_back({pr, p.type, p.name});
+                    locals[name] = pr;
+                    lf.params.push_back({pr, type, name});
                 }
-                else if (IsSliceType(p.type)) {
+                else if (IsSliceType(type)) {
                     // Slice values are 16-byte {data, length} structs; callers pass a pointer.
                     // pr holds that pointer directly — FieldPtr handles the indirection.
-                    locals[p.name] = pr;
-                    lf.params.push_back({pr, p.type, p.name});
+                    locals[name] = pr;
+                    lf.params.push_back({pr, type, name});
                 }
                 else {
-                    const LirReg slot = EmitAlloca(p.type);
-                    EmitStore(pr, slot, p.type);
-                    locals[p.name] = slot;
-                    lf.params.push_back({pr, p.type, p.name});
+                    const LirReg slot = EmitAlloca(type);
+                    EmitStore(pr, slot, type);
+                    locals[name] = slot;
+                    lf.params.push_back({pr, type, name});
                 }
             }
             if (hf.body) {
@@ -528,7 +592,8 @@ namespace Rux {
                     locals[s->name] = slot;
                 if (!s->init && s->stackBufferLength != 0) {
                     LirReg data = EmitAlloca(s->stackBufferElementType, s->stackBufferLength);
-                    LirReg dataField = EmitFieldPtr(slot, "data",
+                    LirReg dataField = EmitFieldPtr(slot,
+                                                    "data",
                                                     TypeRef::MakePointer(s->stackBufferElementType));
                     EmitStore(data, dataField, TypeRef::MakePointer(s->stackBufferElementType));
                     LirReg len = EmitConst(std::to_string(s->stackBufferLength), TypeRef::MakeUInt64());
@@ -651,8 +716,8 @@ namespace Rux {
                 const LirReg elifCond = LowerExpr(*s.elseIfs[i].condition);
                 const std::uint32_t elifThen = NewBlock(std::format("if.elif.then{}", i));
                 const std::uint32_t nextFall = (i + 1 < s.elseIfs.size())
-                                                   ? elifCondBlocks[i + 1]
-                                                   : elseBlock;
+                    ? elifCondBlocks[i + 1]
+                    : elseBlock;
                 Branch(elifCond, elifThen, nextFall);
                 SetBlock(elifThen);
                 LowerBlock(s.elseIfs[i].block);
@@ -732,8 +797,8 @@ namespace Rux {
         void LowerFor(const HirForStmt& s) {
             const bool isRange = s.iterable->type.IsRange();
             const TypeRef elemType = (isRange && !s.iterable->type.inner.empty())
-                                         ? s.iterable->type.inner[0]
-                                         : s.varType;
+                ? s.iterable->type.inner[0]
+                : s.varType;
 
             LirReg slot = EmitAlloca(s.varType);
             locals[s.variable] = slot;
@@ -770,7 +835,9 @@ namespace Rux {
                 LirReg cond;
                 if (literalInclusive.has_value()) {
                     cond = EmitBinary(*literalInclusive ? LirOpcode::CmpLe : LirOpcode::CmpLt,
-                                      iVal, hiCondVal, TypeRef::MakeBool());
+                                      iVal,
+                                      hiCondVal,
+                                      TypeRef::MakeBool());
                 }
                 else {
                     // Keep the Range<T> contract explicit: continue while
@@ -894,7 +961,8 @@ namespace Rux {
         // Pattern lowering
         // Returns a bool register: 1 if the pattern matches `subjectVal`.
         // Side-effects: binds pattern variables into locals
-        void BindLetPattern(const HirPattern& pat, LirReg subjectPtr,
+        void BindLetPattern(const HirPattern& pat,
+                            LirReg subjectPtr,
                             const TypeRef& subjectType) {
             if (dynamic_cast<const HirWildcardPattern*>(&pat))
                 return;
@@ -919,7 +987,8 @@ namespace Rux {
             }
         }
 
-        LirReg LowerPattern(const HirPattern& pat, LirReg subjectVal,
+        LirReg LowerPattern(const HirPattern& pat,
+                            LirReg subjectVal,
                             const TypeRef& subjectType,
                             const std::vector<LirReg>* enumPayload = nullptr) {
             if (dynamic_cast<const HirWildcardPattern*>(&pat))
@@ -1099,8 +1168,8 @@ namespace Rux {
             }
             if (auto* e = dynamic_cast<const HirFieldExpr*>(&expr)) {
                 LirReg base = e->object->type.kind == TypeRef::Kind::Pointer
-                                  ? LowerExpr(*e->object)
-                                  : LowerLValue(*e->object);
+                    ? LowerExpr(*e->object)
+                    : LowerLValue(*e->object);
                 LirReg ptr = EmitFieldPtr(base, e->field, e->type);
                 return EmitLoad(ptr, e->type);
             }
@@ -1692,8 +1761,8 @@ namespace Rux {
             }
             if (auto* e = dynamic_cast<const HirFieldExpr*>(&expr)) {
                 LirReg base = e->object->type.kind == TypeRef::Kind::Pointer
-                                  ? LowerExpr(*e->object)
-                                  : LowerLValue(*e->object);
+                    ? LowerExpr(*e->object)
+                    : LowerLValue(*e->object);
                 return EmitFieldPtr(base, e->field, e->type);
             }
 
@@ -1780,22 +1849,27 @@ namespace Rux {
                 if (i.op == LirOpcode::Call)
                     out << std::format("{} = call {} @{}({})\n", RegStr(i.dst), i.type.ToString(), i.strArg, args);
                 else
-                    out << std::format("{} = call_ind {} {}({})\n", RegStr(i.dst), i.type.ToString(),
-                                       RegStr(i.srcs[0]), args);
+                    out << std::format("{} = call_ind {} {}({})\n",
+                                       RegStr(i.dst),
+                                       i.type.ToString(),
+                                       RegStr(i.srcs[0]),
+                                       args);
             }
             return;
         }
 
         case LirOpcode::FieldPtr:
             out << std::format("{} = fieldptr {} {}, {}\n",
-                               RegStr(i.dst), i.type.ToString(),
+                               RegStr(i.dst),
+                               i.type.ToString(),
                                i.srcs.empty() ? "?" : RegStr(i.srcs[0]),
                                i.strArg);
             return;
 
         case LirOpcode::IndexPtr:
             out << std::format("{} = indexptr {} {}, {}\n",
-                               RegStr(i.dst), i.type.ToString(),
+                               RegStr(i.dst),
+                               i.type.ToString(),
                                !i.srcs.empty() ? RegStr(i.srcs[0]) : "?",
                                i.srcs.size() > 1 ? RegStr(i.srcs[1]) : "?");
             return;
@@ -1816,11 +1890,17 @@ namespace Rux {
             std::string_view opName = OpcodeStr(i.op);
             if (i.srcs.size() == 1)
                 out << std::format("{} = {} {} {}\n",
-                                   RegStr(i.dst), opName, i.type.ToString(), RegStr(i.srcs[0]));
+                                   RegStr(i.dst),
+                                   opName,
+                                   i.type.ToString(),
+                                   RegStr(i.srcs[0]));
             else
                 out << std::format("{} = {} {} {}, {}\n",
-                                   RegStr(i.dst), opName, i.type.ToString(),
-                                   RegStr(i.srcs[0]), RegStr(i.srcs[1]));
+                                   RegStr(i.dst),
+                                   opName,
+                                   i.type.ToString(),
+                                   RegStr(i.srcs[0]),
+                                   RegStr(i.srcs[1]));
             return;
         }
         }
@@ -1849,8 +1929,8 @@ namespace Rux {
                                t.retType.ToString(),
                                RegStr(t.cond),
                                BlockLabel(fn, t.defaultTarget));
-            for (const auto& c : t.cases)
-                out << std::format(", {}: {}", c.value, BlockLabel(fn, c.target));
+            for (const auto& [value, target] : t.cases)
+                out << std::format(", {}: {}", value, BlockLabel(fn, target));
             out << '\n';
             return;
         }
@@ -1932,7 +2012,10 @@ namespace Rux {
             for (const auto& c : mod.consts) {
                 std::string pub = c.isPublic ? "pub " : "";
                 out << std::format("\n{}const {}: {} = {}\n",
-                                   pub, c.name, c.type.ToString(), c.value);
+                                   pub,
+                                   c.name,
+                                   c.type.ToString(),
+                                   c.value);
             }
             for (const auto& ev : mod.externVars) {
                 std::string pub = ev.isPublic ? "pub " : "";
