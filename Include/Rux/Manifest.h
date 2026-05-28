@@ -39,8 +39,11 @@ namespace Rux {
         // Save to Rux.toml. Returns false on write error.
         [[nodiscard]] bool Save(const std::filesystem::path& path) const;
 
-        // Add or update a dependency. Returns false if already present with same version.
+        // Add or update a registry dependency. Returns false if already present with same version.
         bool AddDependency(const std::string& name, const std::string& version);
+
+        // Add or update a path-based dependency. Returns false if already identical.
+        bool AddPathDependency(const std::string& name, const std::string& path);
 
         // Remove a dependency by name. Returns false if not found.
         bool RemoveDependency(const std::string& name);
