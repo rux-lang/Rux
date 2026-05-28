@@ -19,6 +19,7 @@
 #include "Rux/Sema.h"
 #include "Rux/Version.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
