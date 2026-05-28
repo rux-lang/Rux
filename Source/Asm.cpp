@@ -302,8 +302,13 @@ namespace Rux {
             // Load vreg into rax (integer) or xmm0 (float)
             void LoadA(LirReg reg, const TypeRef& t) {
                 int sz = SizeOf(t);
+                int runtimeSz = SizeOfRuntime(t);
                 int off = slotMap.at(reg);
-                if (IsFloat(t)) {
+                if (runtimeSz == 16) {
+                    TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", off));
+                    TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", off - 8));
+                }
+                else if (IsFloat(t)) {
                     TI(std::format("{:<8}xmm0, {} [rbp - {}]",
                                    sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
                 }
@@ -348,8 +353,13 @@ namespace Rux {
             // Store rax (integer) or xmm0 (float) into dst's slot
             void StoreA(LirReg dst, const TypeRef& t) {
                 int sz = SizeOf(t);
+                int runtimeSz = SizeOfRuntime(t);
                 int off = slotMap.at(dst);
-                if (IsFloat(t)) {
+                if (runtimeSz == 16) {
+                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", off));
+                    TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", off - 8));
+                }
+                else if (IsFloat(t)) {
                     TI(std::format("{:<8}{} [rbp - {}], xmm0",
                                    sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
                 }
@@ -566,7 +576,7 @@ namespace Rux {
                         break;
                     }
                     else if (t.kind == TypeRef::Kind::Bool) {
-                        std::string v = (instr.strArg == "true") ? "1" : "0";
+                        std::string v = (instr.strArg == "true" || instr.strArg == "1") ? "1" : "0";
                         TI(std::format("{:<8}rax, {}", "mov", v));
                     }
                     else {
@@ -600,7 +610,7 @@ namespace Rux {
                             TI(std::format("{:<8}rax, qword [r10]", "mov"));
                             TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
                             TI(std::format("{:<8}rax, qword [r10 + 8]", "mov"));
-                            TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst) + 8));
+                            TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst) - 8));
                             break;
                         }
                         if (IsFloat(t)) {
@@ -641,7 +651,7 @@ namespace Rux {
                     if (runtimeSz == 16) {
                         TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(val)));
                         TI(std::format("{:<8}qword [r11], rax", "mov"));
-                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(val) + 8));
+                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(val) - 8));
                         TI(std::format("{:<8}qword [r11 + 8], rax", "mov"));
                     }
                     else if (IsFloat(t)) {

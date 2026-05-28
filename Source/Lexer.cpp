@@ -152,6 +152,28 @@ namespace Rux {
         return c;
     }
 
+    void Lexer::AdvanceUtf8CodePoint() noexcept {
+        if (IsAtEnd()) return;
+
+        const auto lead = static_cast<unsigned char>(Peek());
+        std::size_t byteCount = 1;
+        if ((lead & 0x80u) == 0) {
+            byteCount = 1;
+        }
+        else if ((lead & 0xE0u) == 0xC0u) {
+            byteCount = 2;
+        }
+        else if ((lead & 0xF0u) == 0xE0u) {
+            byteCount = 3;
+        }
+        else if ((lead & 0xF8u) == 0xF0u) {
+            byteCount = 4;
+        }
+
+        for (std::size_t i = 0; i < byteCount && !IsAtEnd(); ++i)
+            Advance();
+    }
+
     bool Lexer::Match(char expected) noexcept {
         if (IsAtEnd() || source[pos] != expected)
             return false;
@@ -367,7 +389,7 @@ namespace Rux {
             ScanEscapeSequence();
         }
         else {
-            Advance();
+            AdvanceUtf8CodePoint();
         }
         if (!Match('\''))
             EmitError(start, "unterminated character literal");
