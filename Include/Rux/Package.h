@@ -10,12 +10,7 @@
 #include <string>
 
 namespace Rux {
-    enum class PackageType {
-        Executable,
-        SharedLibrary,
-        StaticLibrary,
-        Source
-    };
+    enum class PackageType { Executable, SharedLibrary, StaticLibrary, Source };
 
     // Creates the full directory/file scaffold for a new package.
     // root      - directory to create/populate
@@ -28,4 +23,4 @@ namespace Rux {
                          const std::string& name,
                          PackageType type,
                          bool initMode = false);
-}
+} // namespace Rux

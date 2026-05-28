@@ -4,18 +4,19 @@
     Licensed under the MIT License
 */
 
+#include "Rux/Cli.h"
+
+#include "Rux/Asm.h"
 #include "Rux/Ast.h"
 #include "Rux/Hir.h"
-#include "Rux/Cli.h"
 #include "Rux/Lexer.h"
+#include "Rux/Linker.h"
+#include "Rux/Lir.h"
 #include "Rux/Manifest.h"
 #include "Rux/Package.h"
 #include "Rux/Parser.h"
-#include "Rux/Sema.h"
-#include "Rux/Lir.h"
-#include "Rux/Asm.h"
 #include "Rux/Rcu.h"
-#include "Rux/Linker.h"
+#include "Rux/Sema.h"
 #include "Rux/Version.h"
 
 #include <array>
@@ -23,6 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <format>
 #include <print>
 #include <string>
@@ -30,11 +32,10 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <filesystem>
 
 #ifdef _WIN32
-#  include <windows.h>
 #  include <psapi.h>
+#  include <windows.h>
 #  include <winhttp.h>
 #else
 #  include <sys/resource.h>
@@ -68,15 +69,15 @@ namespace Rux {
             std::uintmax_t peakMemoryBytes = 0;
         };
 
-        [[nodiscard]] std::chrono::milliseconds ElapsedMs(
-            const std::chrono::steady_clock::time_point start,
-            const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now()) {
+        [[nodiscard]] std::chrono::milliseconds
+        ElapsedMs(const std::chrono::steady_clock::time_point start,
+                  const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now()) {
             return std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         }
 
-        [[nodiscard]] double ElapsedSeconds(
-            const std::chrono::steady_clock::time_point start,
-            const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now()) {
+        [[nodiscard]] double
+        ElapsedSeconds(const std::chrono::steady_clock::time_point start,
+                       const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now()) {
             return std::chrono::duration<double>(end - start).count();
         }
 
@@ -111,33 +112,27 @@ namespace Rux {
 
             while (!text.empty() && text.back() == '0')
                 text.pop_back();
-            if (!text.empty() && text.back() == '.')
-                text.pop_back();
+            if (!text.empty() && text.back() == '.') text.pop_back();
             return text;
         }
 
         [[nodiscard]] std::string FormatCompactNumber(double value) {
             const double absValue = std::fabs(value);
-            if (absValue >= 1'000'000.0)
-                return FormatDecimal(value / 1'000'000.0, 1) + "M";
-            if (absValue >= 1'000.0)
-                return FormatDecimal(value / 1'000.0, 1) + "K";
+            if (absValue >= 1'000'000.0) return FormatDecimal(value / 1'000'000.0, 1) + "M";
+            if (absValue >= 1'000.0) return FormatDecimal(value / 1'000.0, 1) + "K";
             return FormatNumber(static_cast<std::uintmax_t>(std::llround(value)));
         }
 
         [[nodiscard]] std::string FormatTokenThroughput(double tokensPerSecond) {
             const double absValue = std::fabs(tokensPerSecond);
-            if (absValue >= 1'000'000.0)
-                return FormatDecimal(tokensPerSecond / 1'000'000.0, 1) + " M tok/s";
-            if (absValue >= 1'000.0)
-                return FormatDecimal(tokensPerSecond / 1'000.0, 1) + " K tok/s";
+            if (absValue >= 1'000'000.0) return FormatDecimal(tokensPerSecond / 1'000'000.0, 1) + " M tok/s";
+            if (absValue >= 1'000.0) return FormatDecimal(tokensPerSecond / 1'000.0, 1) + " K tok/s";
             return FormatNumber(static_cast<std::uintmax_t>(std::llround(tokensPerSecond))) + " tok/s";
         }
 
         [[nodiscard]] std::string FormatSize(std::uintmax_t bytes) {
             const double kb = static_cast<double>(bytes) / 1024.0;
-            if (kb < 1024.0)
-                return FormatNumber(static_cast<std::uintmax_t>(std::llround(kb))) + " KB";
+            if (kb < 1024.0) return FormatNumber(static_cast<std::uintmax_t>(std::llround(kb))) + " KB";
 
             const double mb = kb / 1024.0;
             return FormatDecimal(mb, 2) + " MB";
@@ -177,112 +172,100 @@ namespace Rux {
             rusage usage{};
             if (getrusage(RUSAGE_SELF, &usage) == 0)
 #  if defined(__APPLE__)
-            return static_cast<std::uintmax_t>(usage.ru_maxrss);
+                return static_cast<std::uintmax_t>(usage.ru_maxrss);
 #  else
-            return static_cast<std::uintmax_t>(usage.ru_maxrss) * 1024;
+                return static_cast<std::uintmax_t>(usage.ru_maxrss) * 1024;
 #  endif
             return 0;
 #endif
         }
 
-        void PrintBuildStats(const std::filesystem::path& exePath,
-                             std::string_view profileName,
-                             const BuildStats& stats) {
+        void
+        PrintBuildStats(const std::filesystem::path& exePath, std::string_view profileName, const BuildStats& stats) {
             const auto totalMs = stats.total.count();
             const double seconds = stats.totalSeconds;
             const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
             const std::size_t totalLines = stats.localLines + stats.dependencyLines;
             const std::size_t totalTokens = stats.localTokens + stats.dependencyTokens;
             const std::uintmax_t totalSourceSize = stats.localSourceSize + stats.dependencySourceSize;
-            const double tokenThroughput = seconds > 0.0
-                ? static_cast<double>(totalTokens) / seconds
-                : 0.0;
-            const double compileSpeed = seconds > 0.0
-                ? static_cast<double>(totalLines) / seconds
-                : 0.0;
-            const double throughput = seconds > 0.0
-                ? static_cast<double>(totalSourceSize) / 1024.0 / 1024.0 / seconds
-                : 0.0;
+            const double tokenThroughput = seconds > 0.0 ? static_cast<double>(totalTokens) / seconds : 0.0;
+            const double compileSpeed = seconds > 0.0 ? static_cast<double>(totalLines) / seconds : 0.0;
+            const double throughput =
+                seconds > 0.0 ? static_cast<double>(totalSourceSize) / 1024.0 / 1024.0 / seconds : 0.0;
 
-            std::print(
-                "Rux Compiler {}\n"
-                "Target: {}\n"
-                "Mode: {}\n\n"
-                "Build finished successfully.\n\n"
-                "Total build time:            {} ms\n"
-                "  Lexing:                    {} ms\n"
-                "  Parsing:                   {} ms\n"
-                "  Semantic:                  {} ms\n"
-                "  HIR:                       {} ms\n"
-                "  LIR:                       {} ms\n"
-                "  Codegen:                   {} ms\n"
-                "  Linking:                   {} ms\n\n"
-                "Total files:                 {}\n"
-                "  Local files:               {}\n"
-                "  Dependency files:          {}\n\n"
-                "Total lines:                 {}\n"
-                "  Local lines:               {}\n"
-                "  Dependency lines:          {}\n\n"
-                "Total tokens:                {}\n"
-                "  Local tokens:              {}\n"
-                "  Dependency tokens:         {}\n\n"
-                "Total source size:           {}\n"
-                "  Local source size:         {}\n"
-                "  Dependency source size:    {}\n\n"
-                "Output:\n"
-                "  Executable:                {}\n"
-                "  Executable size:           {}\n"
-                "  Peak memory:               {}\n\n"
-                "Performance:\n"
-                "  Compile speed:             {} LOC/s\n"
-                "  Token throughput:          {}\n"
-                "  Total throughput:          {} MB/s\n",
-                RUX_VERSION,
-                TargetName(),
-                profileName,
-                totalMs,
-                stats.lexing.count(),
-                stats.parsing.count(),
-                stats.semantic.count(),
-                stats.hir.count(),
-                stats.lir.count(),
-                stats.codegen.count(),
-                stats.linking.count(),
-                FormatNumber(totalFiles),
-                FormatNumber(stats.localFiles),
-                FormatNumber(stats.dependencyFiles),
-                FormatNumber(totalLines),
-                FormatNumber(stats.localLines),
-                FormatNumber(stats.dependencyLines),
-                FormatNumber(totalTokens),
-                FormatNumber(stats.localTokens),
-                FormatNumber(stats.dependencyTokens),
-                FormatSize(totalSourceSize),
-                FormatSize(stats.localSourceSize),
-                FormatSize(stats.dependencySourceSize),
-                exePath.filename().string(),
-                FormatSize(stats.executableSize),
-                FormatSize(stats.peakMemoryBytes),
-                FormatNumber(static_cast<std::uintmax_t>(std::llround(compileSpeed))),
-                FormatTokenThroughput(tokenThroughput),
-                FormatDecimal(throughput, 2));
+            std::print("Rux Compiler {}\n"
+                       "Target: {}\n"
+                       "Mode: {}\n\n"
+                       "Build finished successfully.\n\n"
+                       "Total build time:            {} ms\n"
+                       "  Lexing:                    {} ms\n"
+                       "  Parsing:                   {} ms\n"
+                       "  Semantic:                  {} ms\n"
+                       "  HIR:                       {} ms\n"
+                       "  LIR:                       {} ms\n"
+                       "  Codegen:                   {} ms\n"
+                       "  Linking:                   {} ms\n\n"
+                       "Total files:                 {}\n"
+                       "  Local files:               {}\n"
+                       "  Dependency files:          {}\n\n"
+                       "Total lines:                 {}\n"
+                       "  Local lines:               {}\n"
+                       "  Dependency lines:          {}\n\n"
+                       "Total tokens:                {}\n"
+                       "  Local tokens:              {}\n"
+                       "  Dependency tokens:         {}\n\n"
+                       "Total source size:           {}\n"
+                       "  Local source size:         {}\n"
+                       "  Dependency source size:    {}\n\n"
+                       "Output:\n"
+                       "  Executable:                {}\n"
+                       "  Executable size:           {}\n"
+                       "  Peak memory:               {}\n\n"
+                       "Performance:\n"
+                       "  Compile speed:             {} LOC/s\n"
+                       "  Token throughput:          {}\n"
+                       "  Total throughput:          {} MB/s\n",
+                       RUX_VERSION,
+                       TargetName(),
+                       profileName,
+                       totalMs,
+                       stats.lexing.count(),
+                       stats.parsing.count(),
+                       stats.semantic.count(),
+                       stats.hir.count(),
+                       stats.lir.count(),
+                       stats.codegen.count(),
+                       stats.linking.count(),
+                       FormatNumber(totalFiles),
+                       FormatNumber(stats.localFiles),
+                       FormatNumber(stats.dependencyFiles),
+                       FormatNumber(totalLines),
+                       FormatNumber(stats.localLines),
+                       FormatNumber(stats.dependencyLines),
+                       FormatNumber(totalTokens),
+                       FormatNumber(stats.localTokens),
+                       FormatNumber(stats.dependencyTokens),
+                       FormatSize(totalSourceSize),
+                       FormatSize(stats.localSourceSize),
+                       FormatSize(stats.dependencySourceSize),
+                       exePath.filename().string(),
+                       FormatSize(stats.executableSize),
+                       FormatSize(stats.peakMemoryBytes),
+                       FormatNumber(static_cast<std::uintmax_t>(std::llround(compileSpeed))),
+                       FormatTokenThroughput(tokenThroughput),
+                       FormatDecimal(throughput, 2));
         }
 
-        void PrintBuildSummary(const std::filesystem::path& exePath,
-                               std::string_view profileName,
-                               const BuildStats& stats) {
+        void
+        PrintBuildSummary(const std::filesystem::path& exePath, std::string_view profileName, const BuildStats& stats) {
             const auto totalMs = stats.total.count();
             const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
             const std::size_t totalLines = stats.localLines + stats.dependencyLines;
             const std::size_t totalTokens = stats.localTokens + stats.dependencyTokens;
-            const double compileSpeed = stats.totalSeconds > 0.0
-                ? static_cast<double>(totalLines) / stats.totalSeconds
-                : 0.0;
+            const double compileSpeed =
+                stats.totalSeconds > 0.0 ? static_cast<double>(totalLines) / stats.totalSeconds : 0.0;
 
-            std::print("Built `{}` [{}] in {} ms\n",
-                       profileName,
-                       exePath.string(),
-                       totalMs);
+            std::print("Built `{}` [{}] in {} ms\n", profileName, exePath.string(), totalMs);
             std::print("{} files | {} LOC | {} tokens | {} LOC/s | {} {}\n",
                        FormatNumber(totalFiles),
                        FormatNumber(totalLines),
@@ -291,10 +274,11 @@ namespace Rux {
                        exePath.filename().string(),
                        FormatSize(stats.executableSize));
         }
-    }
+    } // namespace
 
     Cli::Cli(const int argc, char* argv[])
-        : args(argv, argc) {}
+        : args(argv, argc) {
+    }
 
     int Cli::Run() const {
         // Collect all arguments as string_views (skip argv[0])
@@ -327,8 +311,7 @@ namespace Rux {
                     PrintVersion();
                     return 0;
                 }
-                if (arg == "-q" || arg == "--quiet" ||
-                    arg == "-v" || arg == "--verbose") {
+                if (arg == "-q" || arg == "--quiet" || arg == "-v" || arg == "--verbose") {
                     preCommandGlobals.push_back(arg);
                     continue;
                 }
@@ -430,19 +413,15 @@ namespace Rux {
 
     static std::optional<Manifest> LoadManifest(const std::filesystem::path& path) {
         auto m = Manifest::Load(path);
-        if (!m)
-            std::print(stderr, "error: failed to parse '{}'\n", path.string());
+        if (!m) std::print(stderr, "error: failed to parse '{}'\n", path.string());
         return m;
     }
 
-    static std::filesystem::path ResolveBuildOutputDir(const std::filesystem::path& root,
-                                                       const Manifest& manifest,
-                                                       std::string_view profileName) {
-        std::filesystem::path output = manifest.build.output.empty()
-            ? std::filesystem::path("Bin")
-            : std::filesystem::path(manifest.build.output);
-        if (output.is_relative())
-            output = root / output;
+    static std::filesystem::path
+    ResolveBuildOutputDir(const std::filesystem::path& root, const Manifest& manifest, std::string_view profileName) {
+        std::filesystem::path output =
+            manifest.build.output.empty() ? std::filesystem::path("Bin") : std::filesystem::path(manifest.build.output);
+        if (output.is_relative()) output = root / output;
         return (output / std::string(profileName)).lexically_normal();
     }
 
@@ -574,8 +553,7 @@ namespace Rux {
         lexResults.reserve(loadResult->files.size());
         const auto localLexingStart = std::chrono::steady_clock::now();
         for (const auto& file : loadResult->files) {
-            if (opts.verbose)
-                std::print("     Lexing {}\n", file.path.string());
+            if (opts.verbose) std::print("     Lexing {}\n", file.path.string());
 
             Lexer lexer(file.source, file.path.string());
             auto lexResult = lexer.Tokenize();
@@ -584,13 +562,7 @@ namespace Rux {
             for (const auto& diag : lexResult.diagnostics) {
                 const auto& loc = diag.location;
                 const char* sev = diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
-                std::print(stderr,
-                           "{}:{}:{}: {}: {}\n",
-                           file.path.string(),
-                           loc.line,
-                           loc.column,
-                           sev,
-                           diag.message);
+                std::print(stderr, "{}:{}:{}: {}: {}\n", file.path.string(), loc.line, loc.column, sev, diag.message);
             }
             if (lexResult.HasErrors()) lexErrors = true;
 
@@ -617,8 +589,7 @@ namespace Rux {
         const auto localParsingStart = std::chrono::steady_clock::now();
         for (std::size_t fileIndex = 0; fileIndex < loadResult->files.size(); ++fileIndex) {
             const auto& file = loadResult->files[fileIndex];
-            if (opts.verbose)
-                std::print("    Parsing {}\n", file.path.string());
+            if (opts.verbose) std::print("    Parsing {}\n", file.path.string());
 
             auto& lexResult = lexResults[fileIndex];
             if (lexResult.HasErrors()) continue;
@@ -629,13 +600,7 @@ namespace Rux {
             for (const auto& diag : parseResult.diagnostics) {
                 const auto& loc = diag.location;
                 const char* sev = diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
-                std::print(stderr,
-                           "{}:{}:{}: {}: {}\n",
-                           file.path.string(),
-                           loc.line,
-                           loc.column,
-                           sev,
-                           diag.message);
+                std::print(stderr, "{}:{}:{}: {}: {}\n", file.path.string(), loc.line, loc.column, sev, diag.message);
             }
             if (parseResult.HasErrors()) {
                 parseErrors = true;
@@ -669,10 +634,9 @@ namespace Rux {
             std::vector<PendingPackage> pendingPackages;
             std::unordered_set<std::string> queuedPackageNames;
 
-            auto enqueueDependency =
-                [&](const std::string& pkgName,
-                    const Manifest& ownerManifest,
-                    const std::filesystem::path& ownerRoot) -> bool {
+            auto enqueueDependency = [&](const std::string& pkgName,
+                                         const Manifest& ownerManifest,
+                                         const std::filesystem::path& ownerRoot) -> bool {
                 if (queuedPackageNames.count(pkgName)) return true;
 
                 const Dependency* dep = nullptr;
@@ -683,18 +647,14 @@ namespace Rux {
                     }
 
                 if (!dep) {
-                    std::print(stderr,
-                               "error: package '{}' is not listed in [Dependencies]\n",
-                               pkgName);
+                    std::print(stderr, "error: package '{}' is not listed in [Dependencies]\n", pkgName);
                     return false;
                 }
                 std::filesystem::path depRoot;
                 if (dep->path.empty()) {
                     depRoot = RegistryPackagesDir() / dep->name;
                     if (!std::filesystem::exists(depRoot)) {
-                        std::print(stderr,
-                                   "error: package '{}' is not installed — run 'rux install'\n",
-                                   pkgName);
+                        std::print(stderr, "error: package '{}' is not installed — run 'rux install'\n", pkgName);
                         return false;
                     }
                 }
@@ -703,10 +663,8 @@ namespace Rux {
                 }
                 auto depManifest = Manifest::Load(depRoot / "Rux.toml");
                 if (!depManifest) {
-                    std::print(stderr,
-                               "error: dependency package '{}' was not found at '{}'\n",
-                               pkgName,
-                               depRoot.string());
+                    std::print(
+                        stderr, "error: dependency package '{}' was not found at '{}'\n", pkgName, depRoot.string());
                     return false;
                 }
 
@@ -718,8 +676,7 @@ namespace Rux {
             std::vector<std::string> imports;
             auto collectImports = [&](this auto&& self, const Decl& decl) -> void {
                 if (const auto* ud = dynamic_cast<const UseDecl*>(&decl)) {
-                    if (!ud->path.empty())
-                        imports.push_back(ud->path[0]);
+                    if (!ud->path.empty()) imports.push_back(ud->path[0]);
                     return;
                 }
                 if (const auto* mod = dynamic_cast<const ModuleDecl*>(&decl)) {
@@ -735,8 +692,7 @@ namespace Rux {
                 }
                 for (const auto& pkgName : imports) {
                     if (pkgName == manifest->package.name) continue;
-                    if (!enqueueDependency(pkgName, *manifest, manifestPath->parent_path()))
-                        return 1;
+                    if (!enqueueDependency(pkgName, *manifest, manifestPath->parent_path())) return 1;
                 }
             }
 
@@ -745,10 +701,7 @@ namespace Rux {
                 const Manifest pendingManifest = pendingPackages[pendingIndex].manifest;
                 const std::string packageName = pendingManifest.package.name;
 
-                if (opts.verbose)
-                    std::print("  Loading package {} from {}\n",
-                               packageName,
-                               pendingRoot.string());
+                if (opts.verbose) std::print("  Loading package {} from {}\n", packageName, pendingRoot.string());
 
                 auto depLoadResult = SourceLoader::Load(pendingRoot);
                 if (!depLoadResult) {
@@ -775,9 +728,7 @@ namespace Rux {
                     stats.lexing += ElapsedMs(depLexingStart, depLexingEnd);
                     stats.dependencyTokens += CountTokens(depLex);
                     for (const auto& diag : depLex.diagnostics) {
-                        const char* sev = diag.severity == LexerDiagnostic::Severity::Error
-                            ? "error"
-                            : "warning";
+                        const char* sev = diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
                         std::print(stderr,
                                    "{}:{}:{}: {}: {}\n",
                                    depFile.path.string(),
@@ -793,9 +744,7 @@ namespace Rux {
                     auto depParse = depParser.Parse();
                     stats.parsing += ElapsedMs(depParsingStart);
                     for (const auto& diag : depParse.diagnostics) {
-                        const char* sev = diag.severity == ParserDiagnostic::Severity::Error
-                            ? "error"
-                            : "warning";
+                        const char* sev = diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
                         std::print(stderr,
                                    "{}:{}:{}: {}: {}\n",
                                    depFile.path.string(),
@@ -817,8 +766,7 @@ namespace Rux {
                 }
                 for (const auto& pkgName : imports) {
                     if (pkgName == pendingManifest.package.name) continue;
-                    if (!enqueueDependency(pkgName, pendingManifest, pendingRoot))
-                        return 1;
+                    if (!enqueueDependency(pkgName, pendingManifest, pendingRoot)) return 1;
                 }
 
                 for (auto& depParse : packageParseResults) {
@@ -831,8 +779,7 @@ namespace Rux {
         // Semantic analysis
 
         const auto semanticStart = std::chrono::steady_clock::now();
-        if (opts.verbose)
-            std::print("  Analyzing {}\n", manifest->package.name);
+        if (opts.verbose) std::print("  Analyzing {}\n", manifest->package.name);
 
         std::vector<const Module*> userModules;
         userModules.reserve(parseResults.size());
@@ -846,10 +793,8 @@ namespace Rux {
             for (std::size_t i = 0; i < depParseResults.size(); ++i) {
                 const std::string& pkgName = loadedPackages[i];
                 auto [it, inserted] = pkgIdx.emplace(pkgName, depPackages.size());
-                if (inserted)
-                    depPackages.push_back({pkgName, {}});
-                depPackages[it->second].modules.push_back(
-                    {loadedModuleNames[i], &depParseResults[i].module});
+                if (inserted) depPackages.push_back({pkgName, {}});
+                depPackages[it->second].modules.push_back({loadedModuleNames[i], &depParseResults[i].module});
             }
         }
 
@@ -859,13 +804,7 @@ namespace Rux {
         for (const auto& diag : semaResult.diagnostics) {
             const auto& loc = diag.location;
             const char* sev = diag.severity == SemaDiagnostic::Severity::Error ? "error" : "warning";
-            std::print(stderr,
-                       "{}:{}:{}: {}: {}\n",
-                       diag.sourceName,
-                       loc.line,
-                       loc.column,
-                       sev,
-                       diag.message);
+            std::print(stderr, "{}:{}:{}: {}: {}\n", diag.sourceName, loc.line, loc.column, sev, diag.message);
         }
         if (dumpSema) {
             auto semaDir = manifestPath->parent_path() / "Temp" / "Sema";
@@ -878,8 +817,7 @@ namespace Rux {
         // HIR
 
         const auto hirStart = std::chrono::steady_clock::now();
-        if (opts.verbose)
-            std::print("  Lowering {}\n", manifest->package.name);
+        if (opts.verbose) std::print("  Lowering {}\n", manifest->package.name);
 
         std::vector<const Module*> hirModules;
         hirModules.reserve(depParseResults.size() + parseResults.size());
@@ -901,8 +839,7 @@ namespace Rux {
         // LIR
 
         const auto lirStart = std::chrono::steady_clock::now();
-        if (opts.verbose)
-            std::print("  Emitting LIR for {}\n", manifest->package.name);
+        if (opts.verbose) std::print("  Emitting LIR for {}\n", manifest->package.name);
 
         Lir lir(std::move(hirPackage));
         auto lirPackage = lir.Generate();
@@ -918,8 +855,7 @@ namespace Rux {
 
         const auto codegenStart = std::chrono::steady_clock::now();
         if (dumpAsm) {
-            if (opts.verbose)
-                std::print("  Emitting assembly for {}\n", manifest->package.name);
+            if (opts.verbose) std::print("  Emitting assembly for {}\n", manifest->package.name);
             auto asmDir = manifestPath->parent_path() / "Temp" / "Asm";
             std::filesystem::create_directories(asmDir);
             Asm::Emit(lirPackage, asmDir / "out.asm");
@@ -927,8 +863,7 @@ namespace Rux {
 
         // RCU object generation
 
-        if (opts.verbose)
-            std::print("  Emitting RCU objects for {}\n", manifest->package.name);
+        if (opts.verbose) std::print("  Emitting RCU objects for {}\n", manifest->package.name);
 
         Rcu rcu(lirPackage, std::string(manifest->package.name));
         auto rcuFiles = rcu.Generate();
@@ -952,8 +887,7 @@ namespace Rux {
         // Link
 
         const auto linkingStart = std::chrono::steady_clock::now();
-        if (opts.verbose)
-            std::print("   Linking {}\n", manifest->package.name);
+        if (opts.verbose) std::print("   Linking {}\n", manifest->package.name);
 
         const auto root = manifestPath->parent_path();
         const auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
@@ -1014,26 +948,21 @@ namespace Rux {
         const auto outputDir = manifest->build.output.empty()
             ? root / "Bin"
             : (std::filesystem::path(manifest->build.output).is_relative()
-                ? root / manifest->build.output
-                : std::filesystem::path(manifest->build.output));
+                   ? root / manifest->build.output
+                   : std::filesystem::path(manifest->build.output));
         auto removeDir = [&](const std::filesystem::path& dir) -> bool {
             std::error_code ec;
             if (!std::filesystem::exists(dir)) return true;
             std::filesystem::remove_all(dir, ec);
             if (ec) {
-                std::print(stderr,
-                           "error: failed to remove '{}': {}\n",
-                           dir.string(),
-                           ec.message());
+                std::print(stderr, "error: failed to remove '{}': {}\n", dir.string(), ec.message());
                 return false;
             }
-            if (!opts.quiet)
-                std::print("     Removed {}\n", dir.string());
+            if (!opts.quiet) std::print("     Removed {}\n", dir.string());
             return true;
         };
         bool ok = true;
-        if (!tempOnly)
-            ok &= removeDir(outputDir);
+        if (!tempOnly) ok &= removeDir(outputDir);
         ok &= removeDir(root / "Temp");
         return ok ? 0 : 1;
     }
@@ -1057,14 +986,11 @@ namespace Rux {
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
         if (!opts.quiet)
-            std::print("  Generating documentation for {} v{}\n",
-                       manifest->package.name,
-                       manifest->package.version);
+            std::print("  Generating documentation for {} v{}\n", manifest->package.name, manifest->package.version);
 
         // TODO: documentation generator
 
-        if (openAfter && !opts.quiet)
-            std::print("     Opening documentation...\n");
+        if (openAfter && !opts.quiet) std::print("     Opening documentation...\n");
 
         return 0;
     }
@@ -1092,8 +1018,7 @@ namespace Rux {
         if (!manifestPath) return 1;
         auto root = manifestPath->parent_path();
         if (manifestOnly) {
-            if (!opts.quiet)
-                std::print("  Formatting {}\n", manifestPath->string());
+            if (!opts.quiet) std::print("  Formatting {}\n", manifestPath->string());
             // TODO: TOML formatter
             return 0;
         }
@@ -1103,8 +1028,7 @@ namespace Rux {
             return 0;
         }
         int fileCount = 0;
-        for (const auto& entry :
-             std::filesystem::recursive_directory_iterator(sourceDir)) {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(sourceDir)) {
             if (!entry.is_regular_file()) continue;
             if (entry.path().extension() != ".rux") continue;
             ++fileCount;
@@ -1116,8 +1040,7 @@ namespace Rux {
             }
             // TODO: source formatter
         }
-        if (fileCount == 0 && !opts.quiet)
-            std::print("  No .rux files found.\n");
+        if (fileCount == 0 && !opts.quiet) std::print("  No .rux files found.\n");
         return 0;
     }
 
@@ -1144,13 +1067,10 @@ namespace Rux {
         const auto root = std::filesystem::current_path();
         auto name = root.filename().string();
         if (!opts.quiet)
-            std::print("  Initializing {} package '{}'\n",
-                       type == PackageType::Executable ? "binary" : "library",
-                       name);
-        if (!ScaffoldPackage(root, name, type, /*initMode=*/true))
-            return 1;
-        if (!opts.quiet)
-            std::print("   Initialized package '{}'\n", name);
+            std::print(
+                "  Initializing {} package '{}'\n", type == PackageType::Executable ? "binary" : "library", name);
+        if (!ScaffoldPackage(root, name, type, /*initMode=*/true)) return 1;
+        if (!opts.quiet) std::print("   Initialized package '{}'\n", name);
         return 0;
     }
 
@@ -1182,11 +1102,8 @@ namespace Rux {
         comps.dwUrlPathLength = static_cast<DWORD>(std::size(pathBuf));
         if (!WinHttpCrackUrl(wurl.c_str(), 0, 0, &comps)) return std::nullopt;
 
-        HINTERNET hSession = WinHttpOpen(L"Rux/1.0",
-                                         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                                         WINHTTP_NO_PROXY_NAME,
-                                         WINHTTP_NO_PROXY_BYPASS,
-                                         0);
+        HINTERNET hSession = WinHttpOpen(
+            L"Rux/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
         if (!hSession) return std::nullopt;
 
         HINTERNET hConnect = WinHttpConnect(hSession, hostBuf, comps.nPort, 0);
@@ -1196,27 +1113,17 @@ namespace Rux {
         }
 
         const DWORD reqFlags = comps.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
-        HINTERNET hRequest = WinHttpOpenRequest(hConnect,
-                                                L"GET",
-                                                pathBuf,
-                                                nullptr,
-                                                WINHTTP_NO_REFERER,
-                                                WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                                reqFlags);
+        HINTERNET hRequest = WinHttpOpenRequest(
+            hConnect, L"GET", pathBuf, nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, reqFlags);
         if (!hRequest) {
             WinHttpCloseHandle(hConnect);
             WinHttpCloseHandle(hSession);
             return std::nullopt;
         }
 
-        const bool ok = WinHttpSendRequest(hRequest,
-                                           WINHTTP_NO_ADDITIONAL_HEADERS,
-                                           0,
-                                           WINHTTP_NO_REQUEST_DATA,
-                                           0,
-                                           0,
-                                           0)
-            && WinHttpReceiveResponse(hRequest, nullptr);
+        const bool ok =
+            WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
+            WinHttpReceiveResponse(hRequest, nullptr);
         std::string body;
         if (ok) {
             DWORD avail = 0;
@@ -1261,8 +1168,7 @@ namespace Rux {
 
     static std::optional<std::string> FetchUrl(const std::string& url) {
         const std::string quotedUrl = ShellQuote(url);
-        if (auto body = RunCommandCapture("curl -fsSL " + quotedUrl))
-            return body;
+        if (auto body = RunCommandCapture("curl -fsSL " + quotedUrl)) return body;
         return RunCommandCapture("wget -qO- " + quotedUrl);
     }
 #endif
@@ -1273,16 +1179,14 @@ namespace Rux {
         std::size_t pos = 0;
         while ((pos = json.find(needle, pos)) != std::string_view::npos) {
             std::size_t i = pos + needle.size();
-            while (i < json.size() && (json[i] == ' ' || json[i] == '\t' ||
-                json[i] == '\r' || json[i] == '\n'))
+            while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == '\r' || json[i] == '\n'))
                 ++i;
             if (i >= json.size() || json[i] != ':') {
                 pos = i;
                 continue;
             }
             ++i;
-            while (i < json.size() && (json[i] == ' ' || json[i] == '\t' ||
-                json[i] == '\r' || json[i] == '\n'))
+            while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == '\r' || json[i] == '\n'))
                 ++i;
             if (i >= json.size() || json[i] != '"') {
                 pos = i;
@@ -1299,25 +1203,12 @@ namespace Rux {
     // Clone a git repository into dest. Returns true on success.
     static bool GitClone(const std::string& repoUrl, const std::filesystem::path& dest) {
 #ifdef _WIN32
-        std::wstring cmd = L"git clone "
-            + std::wstring(repoUrl.begin(), repoUrl.end())
-            + L" \""
-            + dest.wstring()
-            + L"\"";
+        std::wstring cmd =
+            L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
-        if (!CreateProcessW(nullptr,
-                            cmd.data(),
-                            nullptr,
-                            nullptr,
-                            FALSE,
-                            0,
-                            nullptr,
-                            nullptr,
-                            &si,
-                            &pi))
-            return false;
+        if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) return false;
         WaitForSingleObject(pi.hProcess, INFINITE);
         DWORD exitCode = 1;
         GetExitCodeProcess(pi.hProcess, &exitCode);
@@ -1337,17 +1228,7 @@ namespace Rux {
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
-        if (!CreateProcessW(nullptr,
-                            cmd.data(),
-                            nullptr,
-                            nullptr,
-                            FALSE,
-                            0,
-                            nullptr,
-                            nullptr,
-                            &si,
-                            &pi))
-            return false;
+        if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) return false;
         WaitForSingleObject(pi.hProcess, INFINITE);
         DWORD exitCode = 1;
         GetExitCodeProcess(pi.hProcess, &exitCode);
@@ -1383,8 +1264,7 @@ namespace Rux {
         if (!packageSpec.empty()) {
             auto [pkgName, pkgVersion] = ParsePackageSpec(packageSpec);
 
-            if (!opts.quiet)
-                std::print("     Fetching registry...\n");
+            if (!opts.quiet) std::print("     Fetching registry...\n");
 
             const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
             if (!jsonOpt) {
@@ -1411,18 +1291,15 @@ namespace Rux {
             std::filesystem::create_directories(pkgDir.parent_path(), ec);
 
             if (std::filesystem::exists(pkgDir)) {
-                if (!opts.quiet)
-                    std::print("   Up-to-date {}\n", pkgName);
+                if (!opts.quiet) std::print("   Up-to-date {}\n", pkgName);
             }
             else {
-                if (!opts.quiet)
-                    std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+                if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
                 if (!GitClone(repoUrl, pkgDir)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
-                if (!opts.quiet)
-                    std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+                if (!opts.quiet) std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
             }
             return 0;
         }
@@ -1438,13 +1315,11 @@ namespace Rux {
         }
 
         if (queue.empty()) {
-            if (!opts.quiet)
-                std::print("  No registry dependencies to install.\n");
+            if (!opts.quiet) std::print("  No registry dependencies to install.\n");
             return 0;
         }
 
-        if (!opts.quiet)
-            std::print("     Fetching registry...\n");
+        if (!opts.quiet) std::print("     Fetching registry...\n");
 
         const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
         if (!jsonOpt) {
@@ -1466,19 +1341,16 @@ namespace Rux {
             std::filesystem::create_directories(pkgDir.parent_path(), ec);
 
             if (std::filesystem::exists(pkgDir)) {
-                if (!opts.quiet)
-                    std::print("   Up-to-date {}\n", pkgName);
+                if (!opts.quiet) std::print("   Up-to-date {}\n", pkgName);
                 ++upToDate;
             }
             else {
-                if (!opts.quiet)
-                    std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+                if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
                 if (!GitClone(repoUrl, pkgDir)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
-                if (!opts.quiet)
-                    std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+                if (!opts.quiet) std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
                 ++installed;
             }
 
@@ -1492,8 +1364,7 @@ namespace Rux {
                 }
             }
         }
-        if (!opts.quiet)
-            std::print("     Summary: {} installed, {} already up-to-date\n", installed, upToDate);
+        if (!opts.quiet) std::print("     Summary: {} installed, {} already up-to-date\n", installed, upToDate);
         return 0;
     }
 
@@ -1521,14 +1392,10 @@ namespace Rux {
             std::error_code ec;
             std::filesystem::remove_all(pkgDir, ec);
             if (ec) {
-                std::print(stderr,
-                           "error: failed to remove '{}': {}\n",
-                           pkgDir.string(),
-                           ec.message());
+                std::print(stderr, "error: failed to remove '{}': {}\n", pkgDir.string(), ec.message());
                 return 1;
             }
-            if (!opts.quiet)
-                std::print("   Uninstalled {}\n", packageName);
+            if (!opts.quiet) std::print("   Uninstalled {}\n", packageName);
             return 0;
         }
 
@@ -1539,12 +1406,10 @@ namespace Rux {
 
         std::vector<std::string> toRemove;
         for (const auto& dep : manifest->dependencies)
-            if (dep.path.empty())
-                toRemove.push_back(dep.name);
+            if (dep.path.empty()) toRemove.push_back(dep.name);
 
         if (toRemove.empty()) {
-            if (!opts.quiet)
-                std::print("  No registry dependencies to uninstall.\n");
+            if (!opts.quiet) std::print("  No registry dependencies to uninstall.\n");
             return 0;
         }
 
@@ -1553,26 +1418,20 @@ namespace Rux {
         for (const auto& pkgName : toRemove) {
             const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
             if (!std::filesystem::exists(pkgDir)) {
-                if (!opts.quiet)
-                    std::print("  Not installed {}\n", pkgName);
+                if (!opts.quiet) std::print("  Not installed {}\n", pkgName);
                 ++notFound;
                 continue;
             }
             std::error_code ec;
             std::filesystem::remove_all(pkgDir, ec);
             if (ec) {
-                std::print(stderr,
-                           "error: failed to remove '{}': {}\n",
-                           pkgDir.string(),
-                           ec.message());
+                std::print(stderr, "error: failed to remove '{}': {}\n", pkgDir.string(), ec.message());
                 return 1;
             }
-            if (!opts.quiet)
-                std::print("   Uninstalled {}\n", pkgName);
+            if (!opts.quiet) std::print("   Uninstalled {}\n", pkgName);
             ++removed;
         }
-        if (!opts.quiet)
-            std::print("     Summary: {} uninstalled, {} not installed\n", removed, notFound);
+        if (!opts.quiet) std::print("     Summary: {} uninstalled, {} not installed\n", removed, notFound);
         return 0;
     }
 
@@ -1597,13 +1456,11 @@ namespace Rux {
             std::error_code ec;
             if (std::filesystem::exists(cacheDir, ec)) {
                 for (const auto& entry : std::filesystem::directory_iterator(cacheDir, ec))
-                    if (entry.is_directory())
-                        packages.push_back(entry.path().filename().string());
+                    if (entry.is_directory()) packages.push_back(entry.path().filename().string());
                 std::sort(packages.begin(), packages.end());
             }
             if (packages.empty()) {
-                if (!opts.quiet)
-                    std::print("  Global cache is empty ({})\n", cacheDir.string());
+                if (!opts.quiet) std::print("  Global cache is empty ({})\n", cacheDir.string());
                 return 0;
             }
             std::print("Global cache ({} package{} at {}):\n",
@@ -1621,8 +1478,7 @@ namespace Rux {
         if (!manifest) return 1;
 
         if (manifest->dependencies.empty()) {
-            if (!opts.quiet)
-                std::print("  No dependencies.\n");
+            if (!opts.quiet) std::print("  No dependencies.\n");
             return 0;
         }
 
@@ -1683,12 +1539,8 @@ namespace Rux {
             std::print("Creating {} package '{}'\n",
                        type == PackageType::Executable ? "binary" : "library",
                        std::string(name));
-        if (!ScaffoldPackage(root, std::string(name), type, /*initMode=*/false))
-            return 1;
-        if (!opts.quiet)
-            std::print("Created package '{}' at {}\n",
-                       std::string(name),
-                       root.string());
+        if (!ScaffoldPackage(root, std::string(name), type, /*initMode=*/false)) return 1;
+        if (!opts.quiet) std::print("Created package '{}' at {}\n", std::string(name), root.string());
         return 0;
     }
 
@@ -1742,8 +1594,7 @@ namespace Rux {
             return 0;
         }
 
-        if (!opts.quiet)
-            std::print("     Fetching registry...\n");
+        if (!opts.quiet) std::print("     Fetching registry...\n");
 
         const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
         if (!jsonOpt) {
@@ -1796,19 +1647,14 @@ namespace Rux {
         if (!manifest) return 1;
         std::string pkgName(name);
         if (!manifest->RemoveDependency(pkgName)) {
-            std::print(stderr,
-                       "error: package '{}' is not a dependency\n",
-                       pkgName);
+            std::print(stderr, "error: package '{}' is not a dependency\n", pkgName);
             return 1;
         }
         if (!manifest->Save(*manifestPath)) {
-            std::print(stderr,
-                       "error: failed to write '{}'\n",
-                       manifestPath->string());
+            std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
             return 1;
         }
-        if (!opts.quiet)
-            std::print("     Removed {}\n", pkgName);
+        if (!opts.quiet) std::print("     Removed {}\n", pkgName);
         return 0;
     }
 
@@ -1842,8 +1688,7 @@ namespace Rux {
         if (!manifest) return 1;
         // Build first
         GlobalOptions buildOpts = opts;
-        if (!opts.verbose)
-            buildOpts.quiet = true;
+        if (!opts.verbose) buildOpts.quiet = true;
 
         std::vector<std::string_view> buildArgs;
         if (isRelease) buildArgs.emplace_back("--release");
@@ -1863,8 +1708,7 @@ namespace Rux {
             std::print(stderr, "error: executable not found: '{}'\n", exePath.string());
             return 1;
         }
-        if (opts.verbose && !opts.quiet)
-            std::print("     Running `{}`\n", exePath.string());
+        if (opts.verbose && !opts.quiet) std::print("     Running `{}`\n", exePath.string());
 #ifdef _WIN32
         std::string cmdLine = "\"" + exePath.string() + "\"";
         for (const auto& a : runArgs) {
@@ -1879,20 +1723,8 @@ namespace Rux {
         si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
         si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
         si.dwFlags = STARTF_USESTDHANDLES;
-        if (!CreateProcessA(nullptr,
-                            cmdLine.data(),
-                            nullptr,
-                            nullptr,
-                            TRUE,
-                            0,
-                            nullptr,
-                            nullptr,
-                            &si,
-                            &pi)) {
-            std::print(stderr,
-                       "error: failed to launch '{}' (code {})\n",
-                       exePath.string(),
-                       GetLastError());
+        if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi)) {
+            std::print(stderr, "error: failed to launch '{}' (code {})\n", exePath.string(), GetLastError());
             return 1;
         }
         WaitForSingleObject(pi.hProcess, INFINITE);
@@ -1947,15 +1779,11 @@ namespace Rux {
         if (!manifestPath) return 1;
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
-        if (!opts.quiet)
-            std::print("     Testing {} v{}\n",
-                       manifest->package.name,
-                       manifest->package.version);
+        if (!opts.quiet) std::print("     Testing {} v{}\n", manifest->package.name, manifest->package.version);
         // TODO: build and run test targets
         std::println("Running executable...");
         std::println("Release: {}", isRelease);
-        if (!opts.quiet)
-            std::print("    Finished running tests\n");
+        if (!opts.quiet) std::print("    Finished running tests\n");
         return 0;
     }
 
@@ -1980,27 +1808,23 @@ namespace Rux {
             std::error_code ec;
             if (std::filesystem::exists(cacheDir, ec)) {
                 for (const auto& entry : std::filesystem::directory_iterator(cacheDir, ec))
-                    if (entry.is_directory())
-                        pkgDirs.push_back(entry.path());
+                    if (entry.is_directory()) pkgDirs.push_back(entry.path());
             }
             if (pkgDirs.empty()) {
-                if (!opts.quiet)
-                    std::print("  No packages in global cache to update.\n");
+                if (!opts.quiet) std::print("  No packages in global cache to update.\n");
                 return 0;
             }
             int updated = 0;
             for (const auto& pkgDir : pkgDirs) {
                 const std::string pkgName = pkgDir.filename().string();
-                if (!opts.quiet)
-                    std::print("    Updating {}...\n", pkgName);
+                if (!opts.quiet) std::print("    Updating {}...\n", pkgName);
                 if (!GitPull(pkgDir)) {
                     std::print(stderr, "error: failed to update '{}'\n", pkgName);
                     return 1;
                 }
                 ++updated;
             }
-            if (!opts.quiet)
-                std::print("     Summary: {} updated\n", updated);
+            if (!opts.quiet) std::print("     Summary: {} updated\n", updated);
             return 0;
         }
 
@@ -2019,13 +1843,11 @@ namespace Rux {
         }
 
         if (queue.empty()) {
-            if (!opts.quiet)
-                std::print("  No registry dependencies to update.\n");
+            if (!opts.quiet) std::print("  No registry dependencies to update.\n");
             return 0;
         }
 
-        if (!opts.quiet)
-            std::print("     Fetching registry...\n");
+        if (!opts.quiet) std::print("     Fetching registry...\n");
 
         const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
         if (!jsonOpt) {
@@ -2047,8 +1869,7 @@ namespace Rux {
             std::filesystem::create_directories(pkgDir.parent_path(), ec);
 
             if (std::filesystem::exists(pkgDir)) {
-                if (!opts.quiet)
-                    std::print("    Updating {}...\n", pkgName);
+                if (!opts.quiet) std::print("    Updating {}...\n", pkgName);
                 if (!GitPull(pkgDir)) {
                     std::print(stderr, "error: failed to update '{}'\n", pkgName);
                     return 1;
@@ -2056,14 +1877,12 @@ namespace Rux {
                 ++updated;
             }
             else {
-                if (!opts.quiet)
-                    std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+                if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
                 if (!GitClone(repoUrl, pkgDir)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
-                if (!opts.quiet)
-                    std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+                if (!opts.quiet) std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
                 ++installed;
             }
 
@@ -2077,44 +1896,41 @@ namespace Rux {
                 }
             }
         }
-        if (!opts.quiet)
-            std::print("     Summary: {} updated, {} newly installed\n", updated, installed);
+        if (!opts.quiet) std::print("     Summary: {} updated, {} newly installed\n", updated, installed);
         return 0;
     }
 
     void Cli::PrintHelp() {
-        std::print(
-            "Rux compiler and package manager\n"
-            "\n"
-            "Usage: rux [command] [options] [-- args...]\n"
-            "\n"
-            "Commands:\n"
-            "  add            Add a dependency to the manifest\n"
-            "  build          Build the current package\n"
-            "  clean          Remove build artifacts\n"
-            "  doc            Generate package documentation\n"
-            "  fmt            Format source files and manifests\n"
-            "  help           Show help information\n"
-            "  init           Initialize a Rux package in the current directory\n"
-            "  install        Install dependencies\n"
-            "  list           List dependencies\n"
-            "  new            Create a new Rux package\n"
-            "  remove         Remove a dependency from the manifest\n"
-            "  run            Build and run the main executable\n"
-            "  test           Run all test targets\n"
-            "  uninstall      Uninstall dependencies\n"
-            "  update         Update dependencies\n"
-            "  version        Show version information\n"
-            "\n"
-            "Options:\n"
-            "  --color <auto|on|off>  Control colored output\n"
-            "  -h, --help             Show help information\n"
-            "  -q, --quiet            Do not show log messages\n"
-            "  -v, --verbose          Use verbose output\n"
-            "  -V, --version          Show version information\n"
-            "\n"
-            "Use 'rux help <command>' for more information about a command.\n"
-        );
+        std::print("Rux compiler and package manager\n"
+                   "\n"
+                   "Usage: rux [command] [options] [-- args...]\n"
+                   "\n"
+                   "Commands:\n"
+                   "  add            Add a dependency to the manifest\n"
+                   "  build          Build the current package\n"
+                   "  clean          Remove build artifacts\n"
+                   "  doc            Generate package documentation\n"
+                   "  fmt            Format source files and manifests\n"
+                   "  help           Show help information\n"
+                   "  init           Initialize a Rux package in the current directory\n"
+                   "  install        Install dependencies\n"
+                   "  list           List dependencies\n"
+                   "  new            Create a new Rux package\n"
+                   "  remove         Remove a dependency from the manifest\n"
+                   "  run            Build and run the main executable\n"
+                   "  test           Run all test targets\n"
+                   "  uninstall      Uninstall dependencies\n"
+                   "  update         Update dependencies\n"
+                   "  version        Show version information\n"
+                   "\n"
+                   "Options:\n"
+                   "  --color <auto|on|off>  Control colored output\n"
+                   "  -h, --help             Show help information\n"
+                   "  -q, --quiet            Do not show log messages\n"
+                   "  -v, --verbose          Use verbose output\n"
+                   "  -V, --version          Show version information\n"
+                   "\n"
+                   "Use 'rux help <command>' for more information about a command.\n");
     }
 
     void Cli::PrintHelpFor(std::string_view command) {
@@ -2186,272 +2002,242 @@ namespace Rux {
     }
 
     void Cli::PrintHelpAdd() {
-        std::print(
-            "Add a dependency to the current package\n"
-            "\n"
-            "Usage: rux add [package]\n"
-            "       rux add [package]@[version]\n"
-            "       rux add [package] --path [path]\n"
-            "\n"
-            "Options:\n"
-            "  --path <path>        Add a local path-based dependency\n"
-            "\n"
-            "This command updates Rux.toml accordingly.\n"
-            "\n"
-            "Examples:\n"
-            "  rux add Std\n"
-            "  rux add Std@0.1.0\n"
-            "  rux add Json --path ../Json\n"
-        );
+        std::print("Add a dependency to the current package\n"
+                   "\n"
+                   "Usage: rux add [package]\n"
+                   "       rux add [package]@[version]\n"
+                   "       rux add [package] --path [path]\n"
+                   "\n"
+                   "Options:\n"
+                   "  --path <path>        Add a local path-based dependency\n"
+                   "\n"
+                   "This command updates Rux.toml accordingly.\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux add Std\n"
+                   "  rux add Std@0.1.0\n"
+                   "  rux add Json --path ../Json\n");
     }
 
     void Cli::PrintHelpBuild() {
-        std::print(
-            "Build the current package\n"
-            "\n"
-            "Usage: rux build [options]\n"
-            "\n"
-            "Options:\n"
-            "  --debug              Build with debug symbols (unoptimized output)\n"
-            "  --profile <n>        Build using a custom profile defined in Rux.toml\n"
-            "  --release            Build with release profile (optimized, no debug info)\n"
-            "  --stats              Print build timing, source, performance, and output statistics\n"
-            "  --target <triple>    Build for the specified target platform (e.g. x86, x64)\n"
-            "  -q, --quiet          Suppress non-essential output (only errors are shown)\n"
-            "  -v, --verbose        Enable verbose output for detailed build information\n"
-            "  --dump-asm           Write x86-64 assembly to Temp/Asm/out.asm\n"
-            "  --dump-ast           Write the parsed AST to Temp/Ast/<file>.ast\n"
-            "  --dump-hir           Write the high-level IR to Temp/Hir/hir.txt\n"
-            "  --dump-lir           Write the low-level IR to Temp/Lir/lir.txt\n"
-            "  --dump-rcu           Write RCU object files to Temp/Obj/ and text dumps to Temp/Rcu/\n"
-            "  --dump-sema          Write semantic analysis results to Temp/Sema/sema.txt\n"
-            "  --dump-tokens        Write the token stream to Temp/Tokens/<file>.tokens\n"
-            "\n"
-            "Artifacts are stored under [Build].Output, defaulting to Bin/Debug/ or Bin/Release/.\n"
-            "\n"
-            "Examples:\n"
-            "  rux build\n"
-            "  rux build --debug\n"
-            "  rux build --release\n"
-            "  rux build --stats\n"
-            "  rux build --verbose --release\n"
-            "  rux build --dump-ast\n"
-            "  rux build --dump-hir\n"
-            "  rux build --dump-lir\n"
-            "  rux build --dump-asm\n"
-            "  rux build --dump-rcu\n"
-        );
+        std::print("Build the current package\n"
+                   "\n"
+                   "Usage: rux build [options]\n"
+                   "\n"
+                   "Options:\n"
+                   "  --debug              Build with debug symbols (unoptimized output)\n"
+                   "  --profile <n>        Build using a custom profile defined in Rux.toml\n"
+                   "  --release            Build with release profile (optimized, no debug info)\n"
+                   "  --stats              Print build timing, source, performance, and output statistics\n"
+                   "  --target <triple>    Build for the specified target platform (e.g. x86, x64)\n"
+                   "  -q, --quiet          Suppress non-essential output (only errors are shown)\n"
+                   "  -v, --verbose        Enable verbose output for detailed build information\n"
+                   "  --dump-asm           Write x86-64 assembly to Temp/Asm/out.asm\n"
+                   "  --dump-ast           Write the parsed AST to Temp/Ast/<file>.ast\n"
+                   "  --dump-hir           Write the high-level IR to Temp/Hir/hir.txt\n"
+                   "  --dump-lir           Write the low-level IR to Temp/Lir/lir.txt\n"
+                   "  --dump-rcu           Write RCU object files to Temp/Obj/ and text dumps to Temp/Rcu/\n"
+                   "  --dump-sema          Write semantic analysis results to Temp/Sema/sema.txt\n"
+                   "  --dump-tokens        Write the token stream to Temp/Tokens/<file>.tokens\n"
+                   "\n"
+                   "Artifacts are stored under [Build].Output, defaulting to Bin/Debug/ or Bin/Release/.\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux build\n"
+                   "  rux build --debug\n"
+                   "  rux build --release\n"
+                   "  rux build --stats\n"
+                   "  rux build --verbose --release\n"
+                   "  rux build --dump-ast\n"
+                   "  rux build --dump-hir\n"
+                   "  rux build --dump-lir\n"
+                   "  rux build --dump-asm\n"
+                   "  rux build --dump-rcu\n");
     }
 
     void Cli::PrintHelpClean() {
-        std::print(
-            "Remove all build artifacts and temporary files\n"
-            "\n"
-            "Usage: rux clean [options]\n"
-            "\n"
-            "Removes the configured build output directory and Temp/ folder.\n"
-            "\n"
-            "Options:\n"
-            "  --temp    Removes only Temp/ directory\n"
-            "\n"
-            "Examples:\n"
-            "  rux clean\n"
-            "  rux clean --temp\n"
-        );
+        std::print("Remove all build artifacts and temporary files\n"
+                   "\n"
+                   "Usage: rux clean [options]\n"
+                   "\n"
+                   "Removes the configured build output directory and Temp/ folder.\n"
+                   "\n"
+                   "Options:\n"
+                   "  --temp    Removes only Temp/ directory\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux clean\n"
+                   "  rux clean --temp\n");
     }
 
     void Cli::PrintHelpDoc() {
-        std::print(
-            "Generate documentation for the package\n"
-            "\n"
-            "Usage: rux doc [options]\n"
-            "\n"
-            "Options:\n"
-            "  --open    Open documentation after the generation\n"
-            "\n"
-            "Examples:\n"
-            "  rux doc\n"
-            "  rux doc --open\n"
-        );
+        std::print("Generate documentation for the package\n"
+                   "\n"
+                   "Usage: rux doc [options]\n"
+                   "\n"
+                   "Options:\n"
+                   "  --open    Open documentation after the generation\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux doc\n"
+                   "  rux doc --open\n");
     }
 
     void Cli::PrintHelpFmt() {
-        std::print(
-            "Format all *.rux source files\n"
-            "\n"
-            "Usage: rux fmt [options]\n"
-            "\n"
-            "Options:\n"
-            "  --check       Check formatting without modifying files\n"
-            "  --manifest    Format only the manifest (Rux.toml)\n"
-            "\n"
-            "Examples:\n"
-            "  rux fmt\n"
-            "  rux fmt --check\n"
-            "  rux fmt --manifest\n"
-        );
+        std::print("Format all *.rux source files\n"
+                   "\n"
+                   "Usage: rux fmt [options]\n"
+                   "\n"
+                   "Options:\n"
+                   "  --check       Check formatting without modifying files\n"
+                   "  --manifest    Format only the manifest (Rux.toml)\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux fmt\n"
+                   "  rux fmt --check\n"
+                   "  rux fmt --manifest\n");
     }
 
     void Cli::PrintHelpInit() {
-        std::print(
-            "Initialize a new package in the current directory\n"
-            "\n"
-            "Usage: rux init [options]\n"
-            "\n"
-            "If Rux.toml does not exist, it will be created.\n"
-            "\n"
-            "Options:\n"
-            "  --bin    Create a binary package\n"
-            "  --lib    Create a library package\n"
-            "\n"
-            "Examples:\n"
-            "  rux init\n"
-            "  rux init --bin\n"
-        );
+        std::print("Initialize a new package in the current directory\n"
+                   "\n"
+                   "Usage: rux init [options]\n"
+                   "\n"
+                   "If Rux.toml does not exist, it will be created.\n"
+                   "\n"
+                   "Options:\n"
+                   "  --bin    Create a binary package\n"
+                   "  --lib    Create a library package\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux init\n"
+                   "  rux init --bin\n");
     }
 
     void Cli::PrintHelpInstall() {
-        std::print(
-            "Install dependencies\n"
-            "\n"
-            "Usage: rux install\n"
-            "       rux install [package]\n"
-            "       rux install [package]@[version]\n"
-            "\n"
-            "Without a package name, downloads all registry dependencies listed in Rux.toml.\n"
-            "With a package name, adds it to Rux.toml and downloads it to the local cache.\n"
-            "\n"
-            "Examples:\n"
-            "  rux install\n"
-            "  rux install Std\n"
-            "  rux install Std@0.1.0\n"
-        );
+        std::print("Install dependencies\n"
+                   "\n"
+                   "Usage: rux install\n"
+                   "       rux install [package]\n"
+                   "       rux install [package]@[version]\n"
+                   "\n"
+                   "Without a package name, downloads all registry dependencies listed in Rux.toml.\n"
+                   "With a package name, adds it to Rux.toml and downloads it to the local cache.\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux install\n"
+                   "  rux install Std\n"
+                   "  rux install Std@0.1.0\n");
     }
 
     void Cli::PrintHelpUninstall() {
-        std::print(
-            "Uninstall dependencies from the local cache\n"
-            "\n"
-            "Usage: rux uninstall\n"
-            "       rux uninstall [package]\n"
-            "\n"
-            "Without a package name, removes all registry dependencies listed in Rux.toml\n"
-            "from the local cache. With a package name, removes only that package.\n"
-            "\n"
-            "Examples:\n"
-            "  rux uninstall\n"
-            "  rux uninstall Json\n"
-        );
+        std::print("Uninstall dependencies from the local cache\n"
+                   "\n"
+                   "Usage: rux uninstall\n"
+                   "       rux uninstall [package]\n"
+                   "\n"
+                   "Without a package name, removes all registry dependencies listed in Rux.toml\n"
+                   "from the local cache. With a package name, removes only that package.\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux uninstall\n"
+                   "  rux uninstall Json\n");
     }
 
     void Cli::PrintHelpList() {
-        std::print(
-            "List packages in the manifest file\n"
-            "\n"
-            "Usage: rux list [options]\n"
-            "\n"
-            "Options:\n"
-            "  --global    List all packages in the global cache instead of the manifest\n"
-            "\n"
-            "Examples:\n"
-            "  rux list\n"
-            "  rux list --global\n"
-        );
+        std::print("List packages in the manifest file\n"
+                   "\n"
+                   "Usage: rux list [options]\n"
+                   "\n"
+                   "Options:\n"
+                   "  --global    List all packages in the global cache instead of the manifest\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux list\n"
+                   "  rux list --global\n");
     }
 
     void Cli::PrintHelpNew() {
-        std::print(
-            "Create a new Rux package in a new directory\n"
-            "\n"
-            "Usage: rux new [name] [options]\n"
-            "\n"
-            "Options:\n"
-            "  --bin           Create a binary application (default)\n"
-            "  --lib           Create a library package\n"
-            "  --path <dir>    Create in a specific directory\n"
-            "\n"
-            "Examples:\n"
-            "  rux new Program\n"
-            "  rux new Program --bin\n"
-        );
+        std::print("Create a new Rux package in a new directory\n"
+                   "\n"
+                   "Usage: rux new [name] [options]\n"
+                   "\n"
+                   "Options:\n"
+                   "  --bin           Create a binary application (default)\n"
+                   "  --lib           Create a library package\n"
+                   "  --path <dir>    Create in a specific directory\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux new Program\n"
+                   "  rux new Program --bin\n");
     }
 
     void Cli::PrintHelpRemove() {
-        std::print(
-            "Remove a dependency from the manifest\n"
-            "\n"
-            "Usage: rux remove [name]\n"
-            "\n"
-            "Examples:\n"
-            "  rux remove Json\n"
-            "  rux remove Random\n"
-        );
+        std::print("Remove a dependency from the manifest\n"
+                   "\n"
+                   "Usage: rux remove [name]\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux remove Json\n"
+                   "  rux remove Random\n");
     }
 
     void Cli::PrintHelpRun() {
-        std::print(
-            "Build and execute a runnable target\n"
-            "\n"
-            "Usage: rux run [options] [-- args...]\n"
-            "\n"
-            "Arguments after '--' are forwarded to the executable.\n"
-            "\n"
-            "Options:\n"
-            "  --release    Build with release profile\n"
-            "\n"
-            "Examples:\n"
-            "  rux run\n"
-            "  rux run --release\n"
-            "  rux run -- --port 8080\n"
-        );
+        std::print("Build and execute a runnable target\n"
+                   "\n"
+                   "Usage: rux run [options] [-- args...]\n"
+                   "\n"
+                   "Arguments after '--' are forwarded to the executable.\n"
+                   "\n"
+                   "Options:\n"
+                   "  --release    Build with release profile\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux run\n"
+                   "  rux run --release\n"
+                   "  rux run -- --port 8080\n");
     }
 
     void Cli::PrintHelpTest() {
-        std::print(
-            "Run package unit tests\n"
-            "\n"
-            "Usage: rux test [options]\n"
-            "\n"
-            "Options:\n"
-            "  --release    Build with release profile\n"
-            "\n"
-            "Examples:\n"
-            "  rux test\n"
-            "  rux test --release\n"
-        );
+        std::print("Run package unit tests\n"
+                   "\n"
+                   "Usage: rux test [options]\n"
+                   "\n"
+                   "Options:\n"
+                   "  --release    Build with release profile\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux test\n"
+                   "  rux test --release\n");
     }
 
     void Cli::PrintHelpUpdate() {
-        std::print(
-            "Update dependencies\n"
-            "\n"
-            "Usage: rux update [options]\n"
-            "\n"
-            "Options:\n"
-            "  --global    Update all packages in the global cache instead of only those\n"
-            "              listed in the manifest\n"
-            "\n"
-            "Without --global, checks all registry dependencies listed in Rux.toml and\n"
-            "pulls the latest changes. Missing packages are cloned from the registry.\n"
-            "With --global, updates every package present in the local cache.\n"
-            "\n"
-            "Examples:\n"
-            "  rux update\n"
-            "  rux update --global\n"
-        );
+        std::print("Update dependencies\n"
+                   "\n"
+                   "Usage: rux update [options]\n"
+                   "\n"
+                   "Options:\n"
+                   "  --global    Update all packages in the global cache instead of only those\n"
+                   "              listed in the manifest\n"
+                   "\n"
+                   "Without --global, checks all registry dependencies listed in Rux.toml and\n"
+                   "pulls the latest changes. Missing packages are cloned from the registry.\n"
+                   "With --global, updates every package present in the local cache.\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux update\n"
+                   "  rux update --global\n");
     }
 
     void Cli::PrintHelpVersion() {
-        std::print(
-            "Show information about the Rux toolchain version\n"
-            "\n"
-            "Usage: rux version\n"
-            "\n"
-            "Examples:\n"
-            "  rux version\n"
-            "  rux -V\n"
-            "  rux --version\n"
-        );
+        std::print("Show information about the Rux toolchain version\n"
+                   "\n"
+                   "Usage: rux version\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux version\n"
+                   "  rux -V\n"
+                   "  rux --version\n");
     }
 
     void Cli::PrintVersion() {
@@ -2469,9 +2255,6 @@ namespace Rux {
         if (command.empty())
             std::print(stderr, "error: unknown option '{}'\n", option);
         else
-            std::print(stderr,
-                       "error: unknown option '{}' for command '{}'\n",
-                       option,
-                       command);
+            std::print(stderr, "error: unknown option '{}' for command '{}'\n", option, command);
     }
-}
+} // namespace Rux

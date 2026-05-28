@@ -28,13 +28,29 @@ namespace Rux {
         Load, // %dst = load <type> %ptr  |  %dst = load <type> <name>
         Store, // store <type> %val, %ptr
         // Arithmetic
-        Add, Sub, Mul, Div, Mod, Pow,
+        Add,
+        Sub,
+        Mul,
+        Div,
+        Mod,
+        Pow,
         // Bitwise / shift
-        And, Or, Xor, Shl, Shr,
+        And,
+        Or,
+        Xor,
+        Shl,
+        Shr,
         // Unary
-        Neg, Not, BitNot,
+        Neg,
+        Not,
+        BitNot,
         // Comparisons (result: bool)
-        CmpEq, CmpNe, CmpLt, CmpLe, CmpGt, CmpGe,
+        CmpEq,
+        CmpNe,
+        CmpLt,
+        CmpLe,
+        CmpGt,
+        CmpGe,
         // Type operations
         Cast, // %dst = cast %src : <from> to <to>
         // Calls
@@ -201,4 +217,4 @@ namespace Rux {
     private:
         HirPackage hir;
     };
-}
+} // namespace Rux

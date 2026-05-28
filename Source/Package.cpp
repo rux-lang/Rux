@@ -5,6 +5,7 @@
 */
 
 #include "Rux/Package.h"
+
 #include "Rux/Manifest.h"
 
 #include <fstream>
@@ -13,9 +14,7 @@
 
 namespace Rux {
     // Write a file only if it does not already exist (init mode) or always (new mode).
-    static bool WriteFile(const std::filesystem::path& path,
-                          const std::string_view content,
-                          const bool skipIfExists) {
+    static bool WriteFile(const std::filesystem::path& path, const std::string_view content, const bool skipIfExists) {
         if (skipIfExists && std::filesystem::exists(path)) return true;
         std::ofstream f(path);
         if (!f) return false;
@@ -45,12 +44,7 @@ namespace Rux {
             }
         }
         // Subdirectories
-        for (const auto& subdir : {
-                 root / "Bin" / "Debug",
-                 root / "Bin" / "Release",
-                 root / "Src",
-                 root / "Temp"
-             }) {
+        for (const auto& subdir : {root / "Bin" / "Debug", root / "Bin" / "Release", root / "Src", root / "Temp"}) {
             if (!MakeDir(subdir)) {
                 std::print(stderr, "error: cannot create directory '{}'\n", subdir.string());
                 return false;
@@ -74,23 +68,19 @@ namespace Rux {
         {
             const bool isBin = (type == PackageType::Executable);
             std::string srcName = isBin ? "Main.rux" : "Lib.rux";
-            const std::string srcContent = isBin
-                ? "func Main() -> int {\n    return 0;\n}\n"
-                : "// " + name + " library\n";
+            const std::string srcContent =
+                isBin ? "func Main() -> int {\n    return 0;\n}\n" : "// " + name + " library\n";
 
             if (!WriteFile(root / "Src" / srcName, srcContent, initMode)) {
-                std::print(stderr,
-                           "error: cannot write Src/{}\n",
-                           srcName);
+                std::print(stderr, "error: cannot write Src/{}\n", srcName);
                 return false;
             }
         }
         // .gitignore
         {
-            constexpr std::string_view gitignore =
-                "# Rux build outputs\n"
-                "Bin/\n"
-                "Temp/\n";
+            constexpr std::string_view gitignore = "# Rux build outputs\n"
+                                                   "Bin/\n"
+                                                   "Temp/\n";
             if (!WriteFile(root / ".gitignore", gitignore, initMode)) {
                 std::print(stderr, "error: cannot write .gitignore\n");
                 return false;
@@ -98,4 +88,4 @@ namespace Rux {
         }
         return true;
     }
-}
+} // namespace Rux
