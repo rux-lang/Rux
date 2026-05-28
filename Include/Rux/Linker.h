@@ -44,4 +44,4 @@ namespace Rux {
         [[nodiscard]] bool LinkElf64(const std::filesystem::path& outputPath);
 #endif
     };
-}
+} // namespace Rux

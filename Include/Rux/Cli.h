@@ -69,4 +69,4 @@ namespace Rux {
         static void PrintUnknownCommand(std::string_view command);
         static void PrintUnknownOption(std::string_view option, std::string_view command = {});
     };
-}
+} // namespace Rux
