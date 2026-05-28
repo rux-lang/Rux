@@ -1449,8 +1449,16 @@ namespace Rux {
             // Load A (rax / xmm0) and B (r10 / xmm1)
             void LoadA(const LirReg reg, const TypeRef& t) const {
                 const int sz = SizeOf(t);
+                const int runtimeSz = SizeOfRuntime(t);
                 const int32_t d = Disp(reg);
-                if (IsFloat(t)) {
+                if (runtimeSz == 16) {
+                    enc.MovRaxLoad(d);
+                    enc.MovR10Load(d + 8);
+                    enc.Byte(0x4C);
+                    enc.Byte(0x89);
+                    enc.Byte(0xD2); // mov rdx, r10
+                }
+                else if (IsFloat(t)) {
                     if (t.kind == TypeRef::Kind::Float32) enc.MovssXmm0Load(d);
                     else enc.MovsdXmm0Load(d);
                 }
@@ -1493,8 +1501,16 @@ namespace Rux {
 
             void StoreA(LirReg dst, const TypeRef& t) const {
                 int sz = SizeOf(t);
+                int runtimeSz = SizeOfRuntime(t);
                 int32_t d = Disp(dst);
-                if (IsFloat(t)) {
+                if (runtimeSz == 16) {
+                    enc.MovRaxStore(d);
+                    enc.Byte(0x48);
+                    enc.Byte(0x89);
+                    enc.Byte(0x95);
+                    enc.Dword(static_cast<uint32_t>(d + 8)); // mov [rbp+disp+8], rdx
+                }
+                else if (IsFloat(t)) {
                     if (t.kind == TypeRef::Kind::Float32) enc.MovssXmm0Store(d);
                     else enc.MovsdXmm0Store(d);
                 }
@@ -1841,7 +1857,7 @@ namespace Rux {
                         enc.MovsdXmm0Store(Disp(instr.dst));
                     }
                     else if (t.IsBool()) {
-                        enc.MovEaxImm32(instr.strArg == "true" ? 1 : 0);
+                        enc.MovEaxImm32((instr.strArg == "true" || instr.strArg == "1") ? 1 : 0);
                         StoreA(instr.dst, t);
                     }
                     else {
