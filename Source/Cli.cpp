@@ -19,6 +19,7 @@
 #include "Rux/Sema.h"
 #include "Rux/Version.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -1457,7 +1458,7 @@ namespace Rux {
             if (std::filesystem::exists(cacheDir, ec)) {
                 for (const auto& entry : std::filesystem::directory_iterator(cacheDir, ec))
                     if (entry.is_directory()) packages.push_back(entry.path().filename().string());
-                std::sort(packages.begin(), packages.end());
+                std::ranges::sort(packages);
             }
             if (packages.empty()) {
                 if (!opts.quiet) std::print("  Global cache is empty ({})\n", cacheDir.string());
