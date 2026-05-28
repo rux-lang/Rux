@@ -9,15 +9,14 @@
 #include <cassert>
 #include <cctype>
 #include <fstream>
+#include <ostream>
 #include <print>
 #include <sstream>
-#include <ostream>
 
 namespace Rux {
     bool LexerResult::HasErrors() const noexcept {
         for (const auto& d : diagnostics) {
-            if (d.severity == LexerDiagnostic::Severity::Error)
-                return true;
+            if (d.severity == LexerDiagnostic::Severity::Error) return true;
         }
         return false;
     }
@@ -25,7 +24,8 @@ namespace Rux {
 
     Lexer::Lexer(std::string source, std::string sourceName)
         : source(std::move(source))
-          , sourceName(std::move(sourceName)) {}
+        , sourceName(std::move(sourceName)) {
+    }
 
     std::optional<LexerResult> Lexer::FromFile(const std::filesystem::path& path) {
         std::ifstream f(path, std::ios::binary);
@@ -51,16 +51,11 @@ namespace Rux {
         col = 1;
         ScanAll();
         // Always append a synthetic EOF token
-        tokens.push_back(Token{
-            TokenKind::EndOfFile,
-            {},
-            CurrentLocation()
-        });
+        tokens.push_back(Token{TokenKind::EndOfFile, {}, CurrentLocation()});
         return LexerResult{std::move(tokens), std::move(diagnostics)};
     }
 
-    bool Lexer::DumpTokens(const LexerResult& result,
-                           const std::filesystem::path& path) {
+    bool Lexer::DumpTokens(const LexerResult& result, const std::filesystem::path& path) {
         std::ofstream f(path);
         if (!f) return false;
         for (const auto& tok : result.tokens) {
@@ -78,9 +73,7 @@ namespace Rux {
                            "{:>4}:{:<4}  {}  {}\n",
                            d.location.line,
                            d.location.column,
-                           d.severity == LexerDiagnostic::Severity::Error
-                           ? "error  "
-                           : "warning",
+                           d.severity == LexerDiagnostic::Severity::Error ? "error  " : "warning",
                            d.message);
             }
         }
@@ -103,31 +96,21 @@ namespace Rux {
         const char c = Peek();
         // Prefixed string literals
         if (c == 'c') {
-            if (Peek(1) == '8' && Peek(2) == '"')
-                return ScanString(start, 2);
-            if (Peek(1) == '8' && Peek(2) == '\'')
-                return ScanChar(start, 2);
-            if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '"')
-                return ScanString(start, 3);
-            if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '\'')
-                return ScanChar(start, 3);
-            if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '"')
-                return ScanString(start, 3);
-            if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '\'')
-                return ScanChar(start, 3);
+            if (Peek(1) == '8' && Peek(2) == '"') return ScanString(start, 2);
+            if (Peek(1) == '8' && Peek(2) == '\'') return ScanChar(start, 2);
+            if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '"') return ScanString(start, 3);
+            if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '\'') return ScanChar(start, 3);
+            if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '"') return ScanString(start, 3);
+            if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '\'') return ScanChar(start, 3);
         }
         // Identifiers / keywords
-        if (std::isalpha(static_cast<unsigned char>(c)) || c == '_')
-            return ScanIdent(start);
+        if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') return ScanIdent(start);
         // Numeric literals
-        if (std::isdigit(static_cast<unsigned char>(c)))
-            return ScanNumber(start);
+        if (std::isdigit(static_cast<unsigned char>(c))) return ScanNumber(start);
         // String literals
-        if (c == '"')
-            return ScanString(start);
+        if (c == '"') return ScanString(start);
         // Char literals
-        if (c == '\'')
-            return ScanChar(start);
+        if (c == '\'') return ScanChar(start);
         // Operators, punctuation, and everything else
         return ScanSymbol(start);
     }
@@ -177,8 +160,7 @@ namespace Rux {
     }
 
     bool Lexer::Match(char expected) noexcept {
-        if (IsAtEnd() || source[pos] != expected)
-            return false;
+        if (IsAtEnd() || source[pos] != expected) return false;
         Advance();
         return true;
     }
@@ -187,7 +169,8 @@ namespace Rux {
         if (pos + s.size() > source.size()) return false;
         for (std::size_t i = 0; i < s.size(); ++i)
             if (source[pos + i] != s[i]) return false;
-        for (std::size_t i = 0; i < s.size(); ++i) Advance();
+        for (std::size_t i = 0; i < s.size(); ++i)
+            Advance();
         return true;
     }
 
@@ -226,8 +209,7 @@ namespace Rux {
     void Lexer::SkipLineComment() {
         while (!IsAtEnd() && Peek() != '\n')
             Advance();
-        if (!IsAtEnd())
-            Advance(); // consume the newline so the line counter advances
+        if (!IsAtEnd()) Advance(); // consume the newline so the line counter advances
     }
 
     void Lexer::SkipBlockComment() {
@@ -250,16 +232,14 @@ namespace Rux {
                 Advance();
             }
         }
-        if (depth > 0)
-            EmitError(CurrentLocation(), "unterminated block comment");
+        if (depth > 0) EmitError(CurrentLocation(), "unterminated block comment");
     }
 
     Token Lexer::ScanIdent(SourceLocation start) {
         const std::size_t tokenStart = pos;
         while (!IsAtEnd()) {
             const char c = Peek();
-            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_')
-                break;
+            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') break;
             Advance();
         }
         std::string text = source.substr(tokenStart, pos - tokenStart);
@@ -294,8 +274,7 @@ namespace Rux {
         // Check for floating-point  .  or  e/E
         const bool hasDot = Peek() == '.' && std::isdigit(static_cast<unsigned char>(Peek(1)));
         const bool hasExp = (Peek() == 'e' || Peek() == 'E');
-        if (hasDot || hasExp)
-            return ScanFloatSuffix(start, tokenStart);
+        if (hasDot || hasExp) return ScanFloatSuffix(start, tokenStart);
         ConsumeNumberSuffix();
         return MakeToken(TokenKind::IntLiteral, start, tokenStart);
     }
@@ -337,11 +316,9 @@ namespace Rux {
     }
 
     void Lexer::ConsumeNumberSuffix() {
-        if (!std::isalpha(static_cast<unsigned char>(Peek())))
-            return;
+        if (!std::isalpha(static_cast<unsigned char>(Peek()))) return;
         while (!IsAtEnd()) {
-            if (const char c = Peek(); !std::isalnum(static_cast<unsigned char>(c)) && c != '_')
-                break;
+            if (const char c = Peek(); !std::isalnum(static_cast<unsigned char>(c)) && c != '_') break;
             Advance();
         }
     }
@@ -371,11 +348,7 @@ namespace Rux {
             Advance(); // consume closing  "
 
         // token text preserves the original source spelling (including quotes)
-        return Token{
-            TokenKind::StringLiteral,
-            source.substr(tokenStart, pos - tokenStart),
-            start
-        };
+        return Token{TokenKind::StringLiteral, source.substr(tokenStart, pos - tokenStart), start};
     }
 
     // ScanChar
@@ -393,13 +366,8 @@ namespace Rux {
         else {
             AdvanceUtf8CodePoint();
         }
-        if (!Match('\''))
-            EmitError(start, "unterminated character literal");
-        return Token{
-            TokenKind::CharLiteral,
-            source.substr(tokenStart, pos - tokenStart),
-            start
-        };
+        if (!Match('\'')) EmitError(start, "unterminated character literal");
+        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
     }
 
     // ScanEscapeSequence (shared by string and char scanners)
@@ -462,14 +430,13 @@ namespace Rux {
         case '@':
             return MakeToken(TokenKind::At, start, tokenStart);
         case '#': {
-            auto isIdentChar = [](char c) {
-                return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
-            };
+            auto isIdentChar = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
             auto tryMatch = [&](std::string_view kw) -> bool {
                 for (std::size_t i = 0; i < kw.size(); ++i)
                     if (Peek(i) != kw[i]) return false;
                 if (isIdentChar(Peek(kw.size()))) return false;
-                for (std::size_t i = 0; i < kw.size(); ++i) Advance();
+                for (std::size_t i = 0; i < kw.size(); ++i)
+                    Advance();
                 return true;
             };
             if (tryMatch("line")) return MakeToken(TokenKind::HashLine, start, tokenStart);
@@ -487,18 +454,12 @@ namespace Rux {
             return MakeToken(TokenKind::Tilde, start, tokenStart);
         // :  or  ::
         case ':':
-            return MakeToken(Match(':')
-                             ? TokenKind::ColonColon
-                             : TokenKind::Colon,
-                             start,
-                             tokenStart);
+            return MakeToken(Match(':') ? TokenKind::ColonColon : TokenKind::Colon, start, tokenStart);
         // .  or  ..  or  ...  or  ..=
         case '.':
             if (Match('.')) {
-                if (Match('.'))
-                    return MakeToken(TokenKind::DotDotDot, start, tokenStart);
-                if (Match('='))
-                    return MakeToken(TokenKind::DotDotEqual, start, tokenStart);
+                if (Match('.')) return MakeToken(TokenKind::DotDotDot, start, tokenStart);
+                if (Match('=')) return MakeToken(TokenKind::DotDotEqual, start, tokenStart);
                 return MakeToken(TokenKind::DotDot, start, tokenStart);
             }
             return MakeToken(TokenKind::Dot, start, tokenStart);
@@ -523,19 +484,11 @@ namespace Rux {
 
         // /  or  /=   (comments already consumed in SkipWhitespace)
         case '/':
-            return MakeToken(Match('=')
-                             ? TokenKind::SlashAssign
-                             : TokenKind::Slash,
-                             start,
-                             tokenStart);
+            return MakeToken(Match('=') ? TokenKind::SlashAssign : TokenKind::Slash, start, tokenStart);
 
         // %  or  %=
         case '%':
-            return MakeToken(Match('=')
-                             ? TokenKind::PercentAssign
-                             : TokenKind::Percent,
-                             start,
-                             tokenStart);
+            return MakeToken(Match('=') ? TokenKind::PercentAssign : TokenKind::Percent, start, tokenStart);
 
         // &  or  &=  or  &&
         case '&':
@@ -551,19 +504,11 @@ namespace Rux {
 
         // ^  or  ^=
         case '^':
-            return MakeToken(Match('=')
-                             ? TokenKind::CaretAssign
-                             : TokenKind::Caret,
-                             start,
-                             tokenStart);
+            return MakeToken(Match('=') ? TokenKind::CaretAssign : TokenKind::Caret, start, tokenStart);
 
         // !  or  !=
         case '!':
-            return MakeToken(Match('=')
-                             ? TokenKind::BangEqual
-                             : TokenKind::Bang,
-                             start,
-                             tokenStart);
+            return MakeToken(Match('=') ? TokenKind::BangEqual : TokenKind::Bang, start, tokenStart);
 
         // =  or  ==  or  =>
         case '=':
@@ -574,32 +519,17 @@ namespace Rux {
         // <  or  <=  or  <<=  or  <<
         case '<':
             if (Match('<')) {
-                return MakeToken(Match('=')
-                                 ? TokenKind::LessLessAssign
-                                 : TokenKind::LessLess,
-                                 start,
-                                 tokenStart);
+                return MakeToken(Match('=') ? TokenKind::LessLessAssign : TokenKind::LessLess, start, tokenStart);
             }
-            return MakeToken(Match('=')
-                             ? TokenKind::LessEqual
-                             : TokenKind::Less,
-                             start,
-                             tokenStart);
+            return MakeToken(Match('=') ? TokenKind::LessEqual : TokenKind::Less, start, tokenStart);
 
         // >  or  >=  or  >>=  or  >>
         case '>':
             if (Match('>')) {
-                return MakeToken(Match('=')
-                                 ? TokenKind::GreaterGreaterAssign
-                                 : TokenKind::GreaterGreater,
-                                 start,
-                                 tokenStart);
+                return MakeToken(
+                    Match('=') ? TokenKind::GreaterGreaterAssign : TokenKind::GreaterGreater, start, tokenStart);
             }
-            return MakeToken(Match('=')
-                             ? TokenKind::GreaterEqual
-                             : TokenKind::Greater,
-                             start,
-                             tokenStart);
+            return MakeToken(Match('=') ? TokenKind::GreaterEqual : TokenKind::Greater, start, tokenStart);
 
         default:
             return ScanUnknown(start);
@@ -608,38 +538,19 @@ namespace Rux {
 
     Token Lexer::ScanUnknown(const SourceLocation start) {
         const std::size_t tokenStart = pos - 1; // already advanced past the char
-        EmitError(start,
-                  std::string("unexpected character '") + source[tokenStart] + "'");
-        return Token{
-            TokenKind::Unknown,
-            source.substr(tokenStart, 1),
-            start
-        };
+        EmitError(start, std::string("unexpected character '") + source[tokenStart] + "'");
+        return Token{TokenKind::Unknown, source.substr(tokenStart, 1), start};
     }
 
-    Token Lexer::MakeToken(const TokenKind kind,
-                           const SourceLocation start,
-                           const std::size_t tokenStart) const {
-        return Token{
-            kind,
-            source.substr(tokenStart, pos - tokenStart),
-            start
-        };
+    Token Lexer::MakeToken(const TokenKind kind, const SourceLocation start, const std::size_t tokenStart) const {
+        return Token{kind, source.substr(tokenStart, pos - tokenStart), start};
     }
 
     void Lexer::EmitError(const SourceLocation loc, std::string message) {
-        diagnostics.push_back(LexerDiagnostic{
-            LexerDiagnostic::Severity::Error,
-            loc,
-            std::move(message)
-        });
+        diagnostics.push_back(LexerDiagnostic{LexerDiagnostic::Severity::Error, loc, std::move(message)});
     }
 
     void Lexer::EmitWarning(const SourceLocation loc, std::string message) {
-        diagnostics.push_back(LexerDiagnostic{
-            LexerDiagnostic::Severity::Warning,
-            loc,
-            std::move(message)
-        });
+        diagnostics.push_back(LexerDiagnostic{LexerDiagnostic::Severity::Warning, loc, std::move(message)});
     }
-}
+} // namespace Rux
