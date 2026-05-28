@@ -171,4 +171,4 @@ namespace Rux {
 
     // Name of a TokenKind suitable for error messages.
     [[nodiscard]] std::string_view TokenKindName(TokenKind kind) noexcept;
-}
+} // namespace Rux

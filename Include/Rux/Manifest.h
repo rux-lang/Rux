@@ -6,10 +6,10 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
 #include <filesystem>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace Rux {
     struct Dependency {
@@ -49,11 +49,11 @@ namespace Rux {
         bool RemoveDependency(const std::string& name);
 
         // Find the manifest file by walking up from the current directory.
-        static std::optional<std::filesystem::path> Find(
-            const std::filesystem::path& start = std::filesystem::current_path());
+        static std::optional<std::filesystem::path>
+        Find(const std::filesystem::path& start = std::filesystem::current_path());
     };
 
     // Parse a package spec like "Std" or "Std@0.1.0"
     // Returns {name, version} where version may be empty.
     std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec);
-}
+} // namespace Rux

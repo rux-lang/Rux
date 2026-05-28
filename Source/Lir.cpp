@@ -209,8 +209,7 @@ namespace Rux {
         }
 
         [[nodiscard]] std::uint32_t NewBlock(std::string label = "") const {
-            if (label.empty())
-                label = std::format("bb{}", fn->blocks.size());
+            if (label.empty()) label = std::format("bb{}", fn->blocks.size());
             fn->blocks.push_back({std::move(label), {}, std::nullopt});
             return static_cast<std::uint32_t>(fn->blocks.size() - 1);
         }
@@ -229,25 +228,22 @@ namespace Rux {
         }
 
         void Terminate(LirTerminator t) const {
-            if (!fn->blocks[cur].term.has_value())
-                fn->blocks[cur].term = std::move(t);
+            if (!fn->blocks[cur].term.has_value()) fn->blocks[cur].term = std::move(t);
         }
 
         void Jump(std::uint32_t target) const {
-            Terminate(LirTerminator{.kind = LirTermKind::Jump, .trueTarget = target, .retVal = std::nullopt,
-                                    .retType = {}, .cases = {}});
+            Terminate(LirTerminator{
+                .kind = LirTermKind::Jump, .trueTarget = target, .retVal = std::nullopt, .retType = {}, .cases = {}});
         }
 
         void Branch(const LirReg cond, const std::uint32_t trueTarget, std::uint32_t falseTarget) const {
-            Terminate(LirTerminator{
-                .kind = LirTermKind::Branch,
-                .cond = cond,
-                .trueTarget = trueTarget,
-                .falseTarget = falseTarget,
-                .retVal = std::nullopt,
-                .retType = {},
-                .cases = {}
-            });
+            Terminate(LirTerminator{.kind = LirTermKind::Branch,
+                                    .cond = cond,
+                                    .trueTarget = trueTarget,
+                                    .falseTarget = falseTarget,
+                                    .retVal = std::nullopt,
+                                    .retType = {},
+                                    .cases = {}});
         }
 
         void Return(const std::optional<LirReg> val, TypeRef type) const {
@@ -353,8 +349,7 @@ namespace Rux {
         }
 
         LirReg EmitCastIfNeeded(LirReg src, const TypeRef& fromType, const TypeRef& toType) {
-            if (src == LirNoReg || fromType.IsUnknown() || toType.IsUnknown() || fromType == toType)
-                return src;
+            if (src == LirNoReg || fromType.IsUnknown() || toType.IsUnknown() || fromType == toType) return src;
             return EmitCast(src, fromType, toType);
         }
 
@@ -403,9 +398,7 @@ namespace Rux {
 
         static bool IsStringSliceLiteral(const HirLiteralExpr& e) {
             return e.type.kind == TypeRef::Kind::Named &&
-            (e.type.name == "Slice<char8>" ||
-                e.type.name == "Slice<char16>" ||
-                e.type.name == "Slice<char32>");
+                (e.type.name == "Slice<char8>" || e.type.name == "Slice<char16>" || e.type.name == "Slice<char32>");
         }
 
         static TypeRef StringSliceElementType(const HirLiteralExpr& e) {
@@ -421,11 +414,9 @@ namespace Rux {
             // Build calling-convention map before lowering functions
             funcConvs.clear();
             for (const auto& ef : mod.externFuncs)
-                if (ef.callConv != CallingConvention::Default)
-                    funcConvs[ef.name] = ef.callConv;
+                if (ef.callConv != CallingConvention::Default) funcConvs[ef.name] = ef.callConv;
             for (const auto& f : mod.funcs)
-                if (f.callConv != CallingConvention::Default)
-                    funcConvs[f.name] = f.callConv;
+                if (f.callConv != CallingConvention::Default) funcConvs[f.name] = f.callConv;
 
             LirModule lm;
             lm.name = mod.name;
@@ -506,10 +497,8 @@ namespace Rux {
 
         // Render a simple constant expression to a printable string.
         static std::string PrintConstExpr(const HirExpr& e) {
-            if (auto* lit = dynamic_cast<const HirLiteralExpr*>(&e))
-                return lit->value;
-            if (auto* v = dynamic_cast<const HirVarExpr*>(&e))
-                return v->name;
+            if (auto* lit = dynamic_cast<const HirLiteralExpr*>(&e)) return lit->value;
+            if (auto* v = dynamic_cast<const HirVarExpr*>(&e)) return v->name;
             if (auto* b = dynamic_cast<const HirBinaryExpr*>(&e))
                 return PrintConstExpr(*b->left) + " op " + PrintConstExpr(*b->right);
             return "<const>";
@@ -556,8 +545,7 @@ namespace Rux {
             }
             if (hf.body) {
                 LowerBlock(*hf.body);
-                if (!IsTerminated())
-                    Return(std::nullopt, TypeRef::MakeOpaque());
+                if (!IsTerminated()) Return(std::nullopt, TypeRef::MakeOpaque());
             }
             return lf;
         }
@@ -588,13 +576,10 @@ namespace Rux {
         void LowerStmt(const HirStmt& stmt) {
             if (auto* s = dynamic_cast<const HirLetStmt*>(&stmt)) {
                 LirReg slot = EmitAlloca(s->type);
-                if (!s->pattern)
-                    locals[s->name] = slot;
+                if (!s->pattern) locals[s->name] = slot;
                 if (!s->init && s->stackBufferLength != 0) {
                     LirReg data = EmitAlloca(s->stackBufferElementType, s->stackBufferLength);
-                    LirReg dataField = EmitFieldPtr(slot,
-                                                    "data",
-                                                    TypeRef::MakePointer(s->stackBufferElementType));
+                    LirReg dataField = EmitFieldPtr(slot, "data", TypeRef::MakePointer(s->stackBufferElementType));
                     EmitStore(data, dataField, TypeRef::MakePointer(s->stackBufferElementType));
                     LirReg len = EmitConst(std::to_string(s->stackBufferLength), TypeRef::MakeUInt64());
                     LirReg lenField = EmitFieldPtr(slot, "length", TypeRef::MakeUInt64());
@@ -603,8 +588,7 @@ namespace Rux {
                 if (s->init) {
                     StoreExprIntoSlot(*s->init, slot, s->type);
                 }
-                if (s->pattern)
-                    BindLetPattern(*s->pattern, slot, s->type);
+                if (s->pattern) BindLetPattern(*s->pattern, slot, s->type);
                 return;
             }
 
@@ -617,8 +601,7 @@ namespace Rux {
                 if (s->value) {
                     LirReg val = LowerExpr(**s->value);
                     TypeRef retType = fn ? fn->returnType : (*s->value)->type;
-                    if (val != LirNoReg && !retType.IsUnknown() &&
-                        (*s->value)->type != retType) {
+                    if (val != LirNoReg && !retType.IsUnknown() && (*s->value)->type != retType) {
                         LirReg casted = NewReg();
                         LirInstr cast;
                         cast.dst = casted;
@@ -684,8 +667,7 @@ namespace Rux {
             }
 
             if (auto* s = dynamic_cast<const HirLocalDecl*>(&stmt)) {
-                if (s->hasConstant)
-                    localConsts[s->constantName] = {s->constantValue.get(), s->constantType};
+                if (s->hasConstant) localConsts[s->constantName] = {s->constantValue.get(), s->constantType};
                 return;
             }
         }
@@ -700,8 +682,7 @@ namespace Rux {
             elifCondBlocks.reserve(s.elseIfs.size());
             for (std::size_t i = 0; i < s.elseIfs.size(); ++i)
                 elifCondBlocks.push_back(NewBlock(std::format("if.elif{}", i)));
-            std::uint32_t elseBlock =
-                s.elseBlock ? NewBlock("if.else") : mergeBlock;
+            std::uint32_t elseBlock = s.elseBlock ? NewBlock("if.else") : mergeBlock;
             // Main condition
             const LirReg cond0 = LowerExpr(*s.condition);
             const std::uint32_t thenBb0 = NewBlock("if.then");
@@ -715,9 +696,7 @@ namespace Rux {
                 SetBlock(elifCondBlocks[i]);
                 const LirReg elifCond = LowerExpr(*s.elseIfs[i].condition);
                 const std::uint32_t elifThen = NewBlock(std::format("if.elif.then{}", i));
-                const std::uint32_t nextFall = (i + 1 < s.elseIfs.size())
-                    ? elifCondBlocks[i + 1]
-                    : elseBlock;
+                const std::uint32_t nextFall = (i + 1 < s.elseIfs.size()) ? elifCondBlocks[i + 1] : elseBlock;
                 Branch(elifCond, elifThen, nextFall);
                 SetBlock(elifThen);
                 LowerBlock(s.elseIfs[i].block);
@@ -796,9 +775,8 @@ namespace Rux {
 
         void LowerFor(const HirForStmt& s) {
             const bool isRange = s.iterable->type.IsRange();
-            const TypeRef elemType = (isRange && !s.iterable->type.inner.empty())
-                ? s.iterable->type.inner[0]
-                : s.varType;
+            const TypeRef elemType =
+                (isRange && !s.iterable->type.inner.empty()) ? s.iterable->type.inner[0] : s.varType;
 
             LirReg slot = EmitAlloca(s.varType);
             locals[s.variable] = slot;
@@ -834,10 +812,8 @@ namespace Rux {
                 LirReg hiCondVal = EmitLoad(hiPtr, elemType);
                 LirReg cond;
                 if (literalInclusive.has_value()) {
-                    cond = EmitBinary(*literalInclusive ? LirOpcode::CmpLe : LirOpcode::CmpLt,
-                                      iVal,
-                                      hiCondVal,
-                                      TypeRef::MakeBool());
+                    cond = EmitBinary(
+                        *literalInclusive ? LirOpcode::CmpLe : LirOpcode::CmpLt, iVal, hiCondVal, TypeRef::MakeBool());
                 }
                 else {
                     // Keep the Range<T> contract explicit: continue while
@@ -946,8 +922,7 @@ namespace Rux {
                 const auto& arm = s.arms[i];
                 const bool isLast = (i + 1 == s.arms.size());
                 std::uint32_t bodyBlock = NewBlock(std::format("match.arm{}", i));
-                std::uint32_t nextBlock =
-                    isLast ? mergeBlock : NewBlock(std::format("match.next{}", i));
+                std::uint32_t nextBlock = isLast ? mergeBlock : NewBlock(std::format("match.next{}", i));
                 LirReg matched = LowerPattern(*arm.pattern, subjectVal, s.subject->type, subjectPayload);
                 Branch(matched, bodyBlock, nextBlock);
                 SetBlock(bodyBlock);
@@ -961,11 +936,8 @@ namespace Rux {
         // Pattern lowering
         // Returns a bool register: 1 if the pattern matches `subjectVal`.
         // Side-effects: binds pattern variables into locals
-        void BindLetPattern(const HirPattern& pat,
-                            LirReg subjectPtr,
-                            const TypeRef& subjectType) {
-            if (dynamic_cast<const HirWildcardPattern*>(&pat))
-                return;
+        void BindLetPattern(const HirPattern& pat, LirReg subjectPtr, const TypeRef& subjectType) {
+            if (dynamic_cast<const HirWildcardPattern*>(&pat)) return;
 
             if (auto* p = dynamic_cast<const HirBindingPattern*>(&pat)) {
                 const TypeRef bindType = p->type.IsUnknown() ? subjectType : p->type;
@@ -991,8 +963,7 @@ namespace Rux {
                             LirReg subjectVal,
                             const TypeRef& subjectType,
                             const std::vector<LirReg>* enumPayload = nullptr) {
-            if (dynamic_cast<const HirWildcardPattern*>(&pat))
-                return EmitConst("1", TypeRef::MakeBool());
+            if (dynamic_cast<const HirWildcardPattern*>(&pat)) return EmitConst("1", TypeRef::MakeBool());
             if (auto* p = dynamic_cast<const HirLiteralPattern*>(&pat)) {
                 LirReg lit = EmitConst(p->value, p->type);
                 return EmitBinary(LirOpcode::CmpEq, subjectVal, lit, TypeRef::MakeBool());
@@ -1095,8 +1066,7 @@ namespace Rux {
 
         LirReg LowerExpr(const HirExpr& expr) {
             if (auto* e = dynamic_cast<const HirLiteralExpr*>(&expr)) {
-                if (IsStringSliceLiteral(*e))
-                    return LowerStringLiteralSlice(*e);
+                if (IsStringSliceLiteral(*e)) return LowerStringLiteralSlice(*e);
                 return EmitConst(e->value, e->type);
             }
             if (auto* e = dynamic_cast<const HirVarExpr*>(&expr)) {
@@ -1111,8 +1081,7 @@ namespace Rux {
                 }
                 auto it = locals.find(e->name);
                 if (it != locals.end()) {
-                    if (IsInterfaceType(e->type))
-                        return it->second; // fat-ptr address lives in the slot
+                    if (IsInterfaceType(e->type)) return it->second; // fat-ptr address lives in the slot
                     return EmitLoad(it->second, e->type);
                 }
                 return EmitNamedLoad(e->name, e->type);
@@ -1120,8 +1089,7 @@ namespace Rux {
             if (dynamic_cast<const HirSelfExpr*>(&expr)) {
                 auto it = locals.find("self");
                 if (it != locals.end()) {
-                    if (IsInterfaceType(expr.type))
-                        return it->second;
+                    if (IsInterfaceType(expr.type)) return it->second;
                     return EmitLoad(it->second, expr.type);
                 }
                 return EmitNamedLoad("self", expr.type);
@@ -1138,47 +1106,32 @@ namespace Rux {
                 }
                 return EmitNamedLoad(path, e->type);
             }
-            if (auto* e = dynamic_cast<const HirUnaryExpr*>(&expr))
-                return LowerUnary(*e);
-            if (auto* e = dynamic_cast<const HirPostfixExpr*>(&expr))
-                return LowerPostfix(*e);
-            if (auto* e = dynamic_cast<const HirBinaryExpr*>(&expr))
-                return LowerBinary(*e);
-            if (auto* e = dynamic_cast<const HirAssignExpr*>(&expr))
-                return LowerAssign(*e);
-            if (auto* e = dynamic_cast<const HirTernaryExpr*>(&expr))
-                return LowerTernary(*e);
-            if (auto* e = dynamic_cast<const HirMatchExpr*>(&expr))
-                return LowerMatchExpr(*e);
-            if (auto* e = dynamic_cast<const HirEnumConstructExpr*>(&expr))
-                return LowerEnumConstruct(*e);
-            if (auto* e = dynamic_cast<const HirCallExpr*>(&expr))
-                return LowerCall(*e);
-            if (auto* e = dynamic_cast<const HirCoerceToInterfaceExpr*>(&expr))
-                return LowerCoerceToInterface(*e);
-            if (auto* e = dynamic_cast<const HirInterfaceCallExpr*>(&expr))
-                return LowerInterfaceCall(*e);
+            if (auto* e = dynamic_cast<const HirUnaryExpr*>(&expr)) return LowerUnary(*e);
+            if (auto* e = dynamic_cast<const HirPostfixExpr*>(&expr)) return LowerPostfix(*e);
+            if (auto* e = dynamic_cast<const HirBinaryExpr*>(&expr)) return LowerBinary(*e);
+            if (auto* e = dynamic_cast<const HirAssignExpr*>(&expr)) return LowerAssign(*e);
+            if (auto* e = dynamic_cast<const HirTernaryExpr*>(&expr)) return LowerTernary(*e);
+            if (auto* e = dynamic_cast<const HirMatchExpr*>(&expr)) return LowerMatchExpr(*e);
+            if (auto* e = dynamic_cast<const HirEnumConstructExpr*>(&expr)) return LowerEnumConstruct(*e);
+            if (auto* e = dynamic_cast<const HirCallExpr*>(&expr)) return LowerCall(*e);
+            if (auto* e = dynamic_cast<const HirCoerceToInterfaceExpr*>(&expr)) return LowerCoerceToInterface(*e);
+            if (auto* e = dynamic_cast<const HirInterfaceCallExpr*>(&expr)) return LowerInterfaceCall(*e);
             if (auto* e = dynamic_cast<const HirIndexExpr*>(&expr)) {
                 LirReg idx = LowerExpr(*e->index);
                 LirReg sliceBase = LowerSliceDataPtr(*e->object, e->type);
                 LirReg ptr = EmitIndexPtr(sliceBase, idx, e->type);
-                if (IsInterfaceType(e->type))
-                    return ptr;
+                if (IsInterfaceType(e->type)) return ptr;
                 return EmitLoad(ptr, e->type);
             }
             if (auto* e = dynamic_cast<const HirFieldExpr*>(&expr)) {
-                LirReg base = e->object->type.kind == TypeRef::Kind::Pointer
-                    ? LowerExpr(*e->object)
-                    : LowerLValue(*e->object);
+                LirReg base =
+                    e->object->type.kind == TypeRef::Kind::Pointer ? LowerExpr(*e->object) : LowerLValue(*e->object);
                 LirReg ptr = EmitFieldPtr(base, e->field, e->type);
                 return EmitLoad(ptr, e->type);
             }
-            if (auto* e = dynamic_cast<const HirStructInitExpr*>(&expr))
-                return LowerStructInit(*e);
-            if (auto* e = dynamic_cast<const HirSliceExpr*>(&expr))
-                return LowerSlice(*e);
-            if (auto* e = dynamic_cast<const HirTupleExpr*>(&expr))
-                return LowerTuple(*e);
+            if (auto* e = dynamic_cast<const HirStructInitExpr*>(&expr)) return LowerStructInit(*e);
+            if (auto* e = dynamic_cast<const HirSliceExpr*>(&expr)) return LowerSlice(*e);
+            if (auto* e = dynamic_cast<const HirTupleExpr*>(&expr)) return LowerTuple(*e);
             if (auto* e = dynamic_cast<const HirCastExpr*>(&expr))
                 return EmitCast(LowerExpr(*e->operand), e->operand->type, e->type);
             if (auto* e = dynamic_cast<const HirIsExpr*>(&expr)) {
@@ -1197,8 +1150,7 @@ namespace Rux {
                 LowerBlock(e->block);
                 return EmitConst("0", e->type);
             }
-            if (auto* e = dynamic_cast<const HirRangeExpr*>(&expr))
-                return LowerRange(*e);
+            if (auto* e = dynamic_cast<const HirRangeExpr*>(&expr)) return LowerRange(*e);
             return EmitConst("0", expr.type);
         }
 
@@ -1229,8 +1181,7 @@ namespace Rux {
             case TK::Amp: {
                 // Address-of: return the alloca slot for named locals, otherwise materialize a temporary.
                 if (auto* v = dynamic_cast<const HirVarExpr*>(e.operand.get()))
-                    if (const auto it = locals.find(v->name); it != locals.end())
-                        return it->second;
+                    if (const auto it = locals.find(v->name); it != locals.end()) return it->second;
                 // Non-addressable: evaluate into a temp slot.
                 const LirReg val = LowerExpr(*e.operand);
                 const LirReg slot = EmitAlloca(e.operand->type);
@@ -1312,15 +1263,13 @@ namespace Rux {
         }
 
         static TypeRef SliceElementTypeFromType(const TypeRef& type) {
-            if (type.kind == TypeRef::Kind::Slice && !type.inner.empty())
-                return type.inner[0];
+            if (type.kind == TypeRef::Kind::Slice && !type.inner.empty()) return type.inner[0];
             if (type.kind == TypeRef::Kind::Named) {
                 if (type.name == "Slice<char16>") return TypeRef::MakeChar16();
                 if (type.name == "Slice<char32>") return TypeRef::MakeChar32();
                 constexpr std::string_view prefix = "Slice<";
                 if (type.name.starts_with(prefix) && type.name.ends_with(">")) {
-                    const std::string elemName =
-                        type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
+                    const std::string elemName = type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
                     if (elemName == "bool" || elemName == "bool8") return TypeRef::MakeBool();
                     if (elemName == "char8") return TypeRef::MakeChar8();
                     if (elemName == "char16") return TypeRef::MakeChar16();
@@ -1575,11 +1524,9 @@ namespace Rux {
         }
 
         LirReg LowerEnumConstruct(const HirEnumConstructExpr& e) {
-            if (e.payloads.empty())
-                return EmitConst(e.discriminant, TypeRef::MakeInt64());
+            if (e.payloads.empty()) return EmitConst(e.discriminant, TypeRef::MakeInt64());
             LirReg payload = LowerExpr(*e.payloads[0]);
-            if (e.payloads[0]->type.kind != TypeRef::Kind::Int64 &&
-                e.payloads[0]->type.kind != TypeRef::Kind::Int)
+            if (e.payloads[0]->type.kind != TypeRef::Kind::Int64 && e.payloads[0]->type.kind != TypeRef::Kind::Int)
                 payload = EmitCast(payload, e.payloads[0]->type, TypeRef::MakeInt64());
             LirReg shift = EmitConst("32", TypeRef::MakeInt64());
             LirReg shifted = EmitBinary(LirOpcode::Shl, payload, shift, TypeRef::MakeInt64());
@@ -1702,8 +1649,7 @@ namespace Rux {
 
         void StoreSliceInit(const HirSliceExpr& e, LirReg slot) {
             TypeRef elemType = e.elementType;
-            if (elemType.IsUnknown() && !e.elements.empty())
-                elemType = e.elements.front()->type;
+            if (elemType.IsUnknown() && !e.elements.empty()) elemType = e.elements.front()->type;
             LirReg data = EmitAlloca(elemType);
             fn->blocks[cur].instrs.back().strArg = std::to_string(e.elements.size());
             for (std::size_t i = 0; i < e.elements.size(); ++i) {
@@ -1719,8 +1665,7 @@ namespace Rux {
         }
 
         LirReg LowerSliceDataPtr(const HirExpr& object, const TypeRef& elemType) {
-            if (!IsSliceType(object.type))
-                return LowerExpr(object);
+            if (!IsSliceType(object.type)) return LowerExpr(object);
             LirReg slicePtr = LowerLValue(object);
             LirReg dataField = EmitFieldPtr(slicePtr, "data", TypeRef::MakePointer(elemType));
             return EmitLoad(dataField, TypeRef::MakePointer(elemType));
@@ -1760,9 +1705,8 @@ namespace Rux {
                 return slot;
             }
             if (auto* e = dynamic_cast<const HirFieldExpr*>(&expr)) {
-                LirReg base = e->object->type.kind == TypeRef::Kind::Pointer
-                    ? LowerExpr(*e->object)
-                    : LowerLValue(*e->object);
+                LirReg base =
+                    e->object->type.kind == TypeRef::Kind::Pointer ? LowerExpr(*e->object) : LowerLValue(*e->object);
                 return EmitFieldPtr(base, e->field, e->type);
             }
 
@@ -1772,8 +1716,7 @@ namespace Rux {
                 return EmitIndexPtr(sliceBase, idx, e->type);
             }
             if (auto* e = dynamic_cast<const HirUnaryExpr*>(&expr)) {
-                if (e->op == TokenKind::Star)
-                    return LowerExpr(*e->operand); // pointer dereference
+                if (e->op == TokenKind::Star) return LowerExpr(*e->operand); // pointer dereference
             }
             // Non-addressable fallback: spill to a temp slot.
             LirReg val = LowerExpr(expr);
@@ -1785,7 +1728,8 @@ namespace Rux {
 
     // Lir public API
     Lir::Lir(HirPackage package)
-        : hir(std::move(package)) {}
+        : hir(std::move(package)) {
+    }
 
     LirPackage Lir::Generate() const {
         LirLowering lowering;
@@ -1849,11 +1793,8 @@ namespace Rux {
                 if (i.op == LirOpcode::Call)
                     out << std::format("{} = call {} @{}({})\n", RegStr(i.dst), i.type.ToString(), i.strArg, args);
                 else
-                    out << std::format("{} = call_ind {} {}({})\n",
-                                       RegStr(i.dst),
-                                       i.type.ToString(),
-                                       RegStr(i.srcs[0]),
-                                       args);
+                    out << std::format(
+                        "{} = call_ind {} {}({})\n", RegStr(i.dst), i.type.ToString(), RegStr(i.srcs[0]), args);
             }
             return;
         }
@@ -1878,9 +1819,7 @@ namespace Rux {
             std::string preds;
             for (std::size_t k = 0; k < i.phiPreds.size(); ++k) {
                 if (k) preds += ", ";
-                preds += std::format("[{}, {}]",
-                                     RegStr(i.phiPreds[k].first),
-                                     BlockLabel(fn, i.phiPreds[k].second));
+                preds += std::format("[{}, {}]", RegStr(i.phiPreds[k].first), BlockLabel(fn, i.phiPreds[k].second));
             }
             out << std::format("{} = phi {} {}\n", RegStr(i.dst), i.type.ToString(), preds);
             return;
@@ -1889,11 +1828,7 @@ namespace Rux {
             // Unary (one src) or binary (two srcs)
             std::string_view opName = OpcodeStr(i.op);
             if (i.srcs.size() == 1)
-                out << std::format("{} = {} {} {}\n",
-                                   RegStr(i.dst),
-                                   opName,
-                                   i.type.ToString(),
-                                   RegStr(i.srcs[0]));
+                out << std::format("{} = {} {} {}\n", RegStr(i.dst), opName, i.type.ToString(), RegStr(i.srcs[0]));
             else
                 out << std::format("{} = {} {} {}, {}\n",
                                    RegStr(i.dst),
@@ -1913,10 +1848,8 @@ namespace Rux {
             out << std::format("jmp {}\n", BlockLabel(fn, t.trueTarget));
             return;
         case LirTermKind::Branch:
-            out << std::format("br {}, {}, {}\n",
-                               RegStr(t.cond),
-                               BlockLabel(fn, t.trueTarget),
-                               BlockLabel(fn, t.falseTarget));
+            out << std::format(
+                "br {}, {}, {}\n", RegStr(t.cond), BlockLabel(fn, t.trueTarget), BlockLabel(fn, t.falseTarget));
             return;
         case LirTermKind::Return:
             if (t.retVal)
@@ -1925,10 +1858,8 @@ namespace Rux {
                 out << "ret void\n";
             return;
         case LirTermKind::Switch: {
-            out << std::format("switch {} {}, default: {}",
-                               t.retType.ToString(),
-                               RegStr(t.cond),
-                               BlockLabel(fn, t.defaultTarget));
+            out << std::format(
+                "switch {} {}, default: {}", t.retType.ToString(), RegStr(t.cond), BlockLabel(fn, t.defaultTarget));
             for (const auto& [value, target] : t.cases)
                 out << std::format(", {}: {}", value, BlockLabel(fn, target));
             out << '\n';
@@ -1951,8 +1882,7 @@ namespace Rux {
             out << std::format("  {}:\n", block.label);
             for (const auto& instr : block.instrs)
                 DumpInstr(out, instr, fn);
-            if (block.term)
-                DumpTerminator(out, *block.term, fn);
+            if (block.term) DumpTerminator(out, *block.term, fn);
         }
     }
 
@@ -2011,11 +1941,7 @@ namespace Rux {
             }
             for (const auto& c : mod.consts) {
                 std::string pub = c.isPublic ? "pub " : "";
-                out << std::format("\n{}const {}: {} = {}\n",
-                                   pub,
-                                   c.name,
-                                   c.type.ToString(),
-                                   c.value);
+                out << std::format("\n{}const {}: {} = {}\n", pub, c.name, c.type.ToString(), c.value);
             }
             for (const auto& ev : mod.externVars) {
                 std::string pub = ev.isPublic ? "pub " : "";
@@ -2027,4 +1953,4 @@ namespace Rux {
 
         return out.good();
     }
-}
+} // namespace Rux

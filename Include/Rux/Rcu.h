@@ -23,7 +23,7 @@ namespace Rux {
         constexpr uint32_t RoData = 3;
         constexpr uint32_t Bss = 4;
         constexpr uint32_t Meta = 5;
-    }
+    } // namespace RcuSecType
 
     namespace RcuSecFlag {
         constexpr uint32_t Alloc = 0x01;
@@ -32,7 +32,7 @@ namespace Rux {
         constexpr uint32_t Write = 0x08;
         constexpr uint32_t Merge = 0x10;
         constexpr uint32_t Strings = 0x20;
-    }
+    } // namespace RcuSecFlag
 
     namespace RcuSymKind {
         constexpr uint8_t Unknown = 0;
@@ -43,20 +43,20 @@ namespace Rux {
         constexpr uint8_t File = 5;
         constexpr uint8_t ExternFunc = 6;
         constexpr uint8_t ExternData = 7;
-    }
+    } // namespace RcuSymKind
 
     namespace RcuSymVis {
         constexpr uint8_t Local = 0;
         constexpr uint8_t Global = 1;
         constexpr uint8_t Weak = 2;
-    }
+    } // namespace RcuSymVis
 
     namespace RcuRelType {
         constexpr uint16_t None = 0;
         constexpr uint16_t Abs64 = 1;
         constexpr uint16_t Abs32 = 2;
         constexpr uint16_t Rel32 = 3;
-    }
+    } // namespace RcuRelType
 
     constexpr uint16_t RCU_SEC_EXTERNAL = 0xFFFF;
     constexpr uint16_t RCU_SEC_ABSOLUTE = 0xFFFE;
@@ -128,4 +128,4 @@ namespace Rux {
         LirPackage lir;
         std::string packageName;
     };
-}
+} // namespace Rux

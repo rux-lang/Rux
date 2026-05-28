@@ -73,4 +73,4 @@ namespace Rux {
         std::vector<SemaDiagnostic> diags;
         std::vector<SemaSymbol> symbols;
     };
-}
+} // namespace Rux

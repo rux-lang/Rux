@@ -502,4 +502,4 @@ namespace Rux {
 
     inline HirGuardedPattern::~HirGuardedPattern() = default;
     inline HirBlockExpr::~HirBlockExpr() = default;
-}
+} // namespace Rux

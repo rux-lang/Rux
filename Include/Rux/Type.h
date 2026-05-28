@@ -17,12 +17,24 @@ namespace Rux {
         enum class Kind {
             Unknown, // unresolved / error recovery
             Opaque,
-            Bool8, Bool16, Bool32,
-            Char8, Char16, Char32,
-            Int8, Int16, Int32, Int64,
-            UInt8, UInt16, UInt32, UInt64,
-            Int, UInt, // platform-dependent: 64-bit on x64, 32-bit on x86
-            Float32, Float64,
+            Bool8,
+            Bool16,
+            Bool32,
+            Char8,
+            Char16,
+            Char32,
+            Int8,
+            Int16,
+            Int32,
+            Int64,
+            UInt8,
+            UInt16,
+            UInt32,
+            UInt64,
+            Int,
+            UInt, // platform-dependent: 64-bit on x64, 32-bit on x86
+            Float32,
+            Float64,
             Str, // String
             Pointer, // *T  — inner[0] = pointee
             Slice, // T[] / T[N]  — inner[0] = element
@@ -268,4 +280,4 @@ namespace Rux {
             return !(*this == other);
         }
     };
-}
+} // namespace Rux
