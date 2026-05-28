@@ -64,7 +64,8 @@ namespace Rux {
         std::ofstream f(path);
         if (!f) return false;
         for (const auto& tok : result.tokens) {
-            std::print(f, "{:>4}:{:<4}  {:<16}  {}\n",
+            std::print(f,
+                       "{:>4}:{:<4}  {:<16}  {}\n",
                        tok.location.line,
                        tok.location.column,
                        std::string(TokenKindName(tok.kind)),
@@ -73,12 +74,13 @@ namespace Rux {
         if (!result.diagnostics.empty()) {
             std::print(f, "\n--- diagnostics ---\n");
             for (const auto& d : result.diagnostics) {
-                std::print(f, "{:>4}:{:<4}  {}  {}\n",
+                std::print(f,
+                           "{:>4}:{:<4}  {}  {}\n",
                            d.location.line,
                            d.location.column,
                            d.severity == LexerDiagnostic::Severity::Error
-                               ? "error  "
-                               : "warning",
+                           ? "error  "
+                           : "warning",
                            d.message);
             }
         }
@@ -411,13 +413,20 @@ namespace Rux {
         }
         const char c = Advance();
         switch (c) {
-        case 'n': return "\n";
-        case 't': return "\t";
-        case 'r': return "\r";
-        case '0': return "\0";
-        case '\\': return "\\";
-        case '\'': return "'";
-        case '"': return "\"";
+        case 'n':
+            return "\n";
+        case 't':
+            return "\t";
+        case 'r':
+            return "\r";
+        case '0':
+            return "\0";
+        case '\\':
+            return "\\";
+        case '\'':
+            return "'";
+        case '"':
+            return "\"";
         case 'u': {
             // TODO: Unicode escape  \u{XXXX}
             EmitWarning(loc, "Unicode escape sequences are not yet implemented");
@@ -434,15 +443,24 @@ namespace Rux {
         const std::size_t tokenStart = pos;
         switch (Advance()) {
         // Single-character unambiguous tokens
-        case '(': return MakeToken(TokenKind::LeftParen, start, tokenStart);
-        case ')': return MakeToken(TokenKind::RightParen, start, tokenStart);
-        case '{': return MakeToken(TokenKind::LeftBrace, start, tokenStart);
-        case '}': return MakeToken(TokenKind::RightBrace, start, tokenStart);
-        case '[': return MakeToken(TokenKind::LeftBracket, start, tokenStart);
-        case ']': return MakeToken(TokenKind::RightBracket, start, tokenStart);
-        case ',': return MakeToken(TokenKind::Comma, start, tokenStart);
-        case ';': return MakeToken(TokenKind::Semicolon, start, tokenStart);
-        case '@': return MakeToken(TokenKind::At, start, tokenStart);
+        case '(':
+            return MakeToken(TokenKind::LeftParen, start, tokenStart);
+        case ')':
+            return MakeToken(TokenKind::RightParen, start, tokenStart);
+        case '{':
+            return MakeToken(TokenKind::LeftBrace, start, tokenStart);
+        case '}':
+            return MakeToken(TokenKind::RightBrace, start, tokenStart);
+        case '[':
+            return MakeToken(TokenKind::LeftBracket, start, tokenStart);
+        case ']':
+            return MakeToken(TokenKind::RightBracket, start, tokenStart);
+        case ',':
+            return MakeToken(TokenKind::Comma, start, tokenStart);
+        case ';':
+            return MakeToken(TokenKind::Semicolon, start, tokenStart);
+        case '@':
+            return MakeToken(TokenKind::At, start, tokenStart);
         case '#': {
             auto isIdentChar = [](char c) {
                 return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
@@ -463,14 +481,17 @@ namespace Rux {
             if (tryMatch("module")) return MakeToken(TokenKind::HashModule, start, tokenStart);
             return MakeToken(TokenKind::Hash, start, tokenStart);
         }
-        case '?': return MakeToken(TokenKind::Question, start, tokenStart);
-        case '~': return MakeToken(TokenKind::Tilde, start, tokenStart);
+        case '?':
+            return MakeToken(TokenKind::Question, start, tokenStart);
+        case '~':
+            return MakeToken(TokenKind::Tilde, start, tokenStart);
         // :  or  ::
         case ':':
             return MakeToken(Match(':')
-                                 ? TokenKind::ColonColon
-                                 : TokenKind::Colon,
-                             start, tokenStart);
+                             ? TokenKind::ColonColon
+                             : TokenKind::Colon,
+                             start,
+                             tokenStart);
         // .  or  ..  or  ...  or  ..=
         case '.':
             if (Match('.')) {
@@ -503,16 +524,18 @@ namespace Rux {
         // /  or  /=   (comments already consumed in SkipWhitespace)
         case '/':
             return MakeToken(Match('=')
-                                 ? TokenKind::SlashAssign
-                                 : TokenKind::Slash,
-                             start, tokenStart);
+                             ? TokenKind::SlashAssign
+                             : TokenKind::Slash,
+                             start,
+                             tokenStart);
 
         // %  or  %=
         case '%':
             return MakeToken(Match('=')
-                                 ? TokenKind::PercentAssign
-                                 : TokenKind::Percent,
-                             start, tokenStart);
+                             ? TokenKind::PercentAssign
+                             : TokenKind::Percent,
+                             start,
+                             tokenStart);
 
         // &  or  &=  or  &&
         case '&':
@@ -529,16 +552,18 @@ namespace Rux {
         // ^  or  ^=
         case '^':
             return MakeToken(Match('=')
-                                 ? TokenKind::CaretAssign
-                                 : TokenKind::Caret,
-                             start, tokenStart);
+                             ? TokenKind::CaretAssign
+                             : TokenKind::Caret,
+                             start,
+                             tokenStart);
 
         // !  or  !=
         case '!':
             return MakeToken(Match('=')
-                                 ? TokenKind::BangEqual
-                                 : TokenKind::Bang,
-                             start, tokenStart);
+                             ? TokenKind::BangEqual
+                             : TokenKind::Bang,
+                             start,
+                             tokenStart);
 
         // =  or  ==  or  =>
         case '=':
@@ -550,27 +575,31 @@ namespace Rux {
         case '<':
             if (Match('<')) {
                 return MakeToken(Match('=')
-                                     ? TokenKind::LessLessAssign
-                                     : TokenKind::LessLess,
-                                 start, tokenStart);
+                                 ? TokenKind::LessLessAssign
+                                 : TokenKind::LessLess,
+                                 start,
+                                 tokenStart);
             }
             return MakeToken(Match('=')
-                                 ? TokenKind::LessEqual
-                                 : TokenKind::Less,
-                             start, tokenStart);
+                             ? TokenKind::LessEqual
+                             : TokenKind::Less,
+                             start,
+                             tokenStart);
 
         // >  or  >=  or  >>=  or  >>
         case '>':
             if (Match('>')) {
                 return MakeToken(Match('=')
-                                     ? TokenKind::GreaterGreaterAssign
-                                     : TokenKind::GreaterGreater,
-                                 start, tokenStart);
+                                 ? TokenKind::GreaterGreaterAssign
+                                 : TokenKind::GreaterGreater,
+                                 start,
+                                 tokenStart);
             }
             return MakeToken(Match('=')
-                                 ? TokenKind::GreaterEqual
-                                 : TokenKind::Greater,
-                             start, tokenStart);
+                             ? TokenKind::GreaterEqual
+                             : TokenKind::Greater,
+                             start,
+                             tokenStart);
 
         default:
             return ScanUnknown(start);

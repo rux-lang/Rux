@@ -75,12 +75,13 @@ namespace Rux {
             const bool isBin = (type == PackageType::Executable);
             std::string srcName = isBin ? "Main.rux" : "Lib.rux";
             const std::string srcContent = isBin
-                                               ? "func Main() -> int {\n    return 0;\n}\n"
-                                               : "// " + name + " library\n";
+                ? "func Main() -> int {\n    return 0;\n}\n"
+                : "// " + name + " library\n";
 
             if (!WriteFile(root / "Src" / srcName, srcContent, initMode)) {
                 std::print(stderr,
-                           "error: cannot write Src/{}\n", srcName);
+                           "error: cannot write Src/{}\n",
+                           srcName);
                 return false;
             }
         }

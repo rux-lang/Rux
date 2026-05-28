@@ -54,8 +54,8 @@ namespace Rux {
 
     // T[], uint8[4]
     struct SliceTypeExpr : TypeExpr {
-        ~SliceTypeExpr();
-    
+        ~SliceTypeExpr() override;
+
         TypeExprPtr element;
         ExprPtr size; // null for unsized slices (T[]), non-null for fixed-size arrays (T[N])
     };
@@ -100,11 +100,11 @@ namespace Rux {
         std::string name;
     };
 
-    // lo..hi  or  lo...hi
+    // lo..hi
     struct RangePattern : Pattern {
         PatternPtr lo;
         PatternPtr hi;
-        bool inclusive; // false = ..  true = ...
+        bool inclusive;
     };
 
     // Event.Click(x, y)
@@ -140,7 +140,7 @@ namespace Rux {
 
     // pattern if guard
     struct GuardedPattern : Pattern {
-        ~GuardedPattern();
+        ~GuardedPattern() override;
         PatternPtr inner;
         ExprPtr guard;
     };
@@ -214,7 +214,7 @@ namespace Rux {
         ExprPtr elseExpr;
     };
 
-    // lo..hi  or  lo...hi
+    // lo..hi
     struct RangeExpr : Expr {
         ExprPtr lo; // may be null for prefix ranges
         ExprPtr hi; // may be null for suffix ranges
@@ -282,7 +282,7 @@ namespace Rux {
 
     // { stmts; value }  — block used as expression (match arm body)
     struct BlockExpr : Expr {
-        ~BlockExpr();
+        ~BlockExpr() override;
         std::unique_ptr<Block> block;
     };
 
@@ -391,7 +391,7 @@ namespace Rux {
 
     // declaration inside a block
     struct DeclStmt : Stmt {
-        ~DeclStmt();
+        ~DeclStmt() override;
         DeclPtr decl;
     };
 
@@ -542,6 +542,7 @@ namespace Rux {
         std::string name; // source file name
         std::vector<DeclPtr> items;
     };
+
     inline SliceTypeExpr::~SliceTypeExpr() = default;
     inline BlockExpr::~BlockExpr() = default;
     inline DeclStmt::~DeclStmt() = default;

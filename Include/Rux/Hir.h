@@ -53,7 +53,7 @@ namespace Rux {
         TypeRef type;
     };
 
-    // lo..hi  or  lo...hi
+    // lo..hi
     struct HirRangePattern : HirPattern {
         HirPatternPtr lo;
         HirPatternPtr hi;
@@ -90,7 +90,7 @@ namespace Rux {
 
     // pattern if guard
     struct HirGuardedPattern : HirPattern {
-        ~HirGuardedPattern();
+        ~HirGuardedPattern() override;
         HirPatternPtr inner;
         HirExprPtr guard;
     };
@@ -153,7 +153,7 @@ namespace Rux {
         HirExprPtr elseExpr;
     };
 
-    // lo..hi  or  lo...hi
+    // lo..hi
     struct HirRangeExpr : HirExpr {
         HirExprPtr lo;
         HirExprPtr hi;
@@ -227,7 +227,7 @@ namespace Rux {
 
     // { stmts; value }  — block used as expression
     struct HirBlockExpr : HirExpr {
-        ~HirBlockExpr();
+        ~HirBlockExpr() override;
         HirBlock block;
     };
 
@@ -499,6 +499,7 @@ namespace Rux {
     private:
         std::vector<const Module*> modules_;
     };
+
     inline HirGuardedPattern::~HirGuardedPattern() = default;
     inline HirBlockExpr::~HirBlockExpr() = default;
 }
