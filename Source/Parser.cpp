@@ -9,7 +9,6 @@
 #include <cassert>
 #include <format>
 #include <fstream>
-#include <print>
 
 namespace Rux {
     // ParseResult
@@ -229,21 +228,29 @@ namespace Rux {
 
             if (++i + 1 > text.size()) break;
             switch (text[i]) {
-            case 'n': out += '\n';
+            case 'n':
+                out += '\n';
                 break;
-            case 't': out += '\t';
+            case 't':
+                out += '\t';
                 break;
-            case 'r': out += '\r';
+            case 'r':
+                out += '\r';
                 break;
-            case '0': out += '\0';
+            case '0':
+                out += '\0';
                 break;
-            case '\\': out += '\\';
+            case '\\':
+                out += '\\';
                 break;
-            case '\'': out += '\'';
+            case '\'':
+                out += '\'';
                 break;
-            case '"': out += '"';
+            case '"':
+                out += '"';
                 break;
-            default: out += text[i];
+            default:
+                out += text[i];
                 break;
             }
         }
@@ -415,7 +422,8 @@ namespace Rux {
     }
 
     // func
-    std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(bool isPublic, bool isAsm,
+    std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(bool isPublic,
+                                                    bool isAsm,
                                                     CallingConvention callConv) {
         const auto loc = CurrentLocation();
         Expect(TokenKind::FuncKeyword, "expected 'func'");
@@ -2033,39 +2041,72 @@ namespace Rux {
 
             static std::string_view OpStr(const TokenKind op) noexcept {
                 switch (op) {
-                case TokenKind::Plus: return "+";
-                case TokenKind::Minus: return "-";
-                case TokenKind::Star: return "*";
-                case TokenKind::Slash: return "/";
-                case TokenKind::Percent: return "%";
-                case TokenKind::StarStar: return "**";
-                case TokenKind::Amp: return "&";
-                case TokenKind::Pipe: return "|";
-                case TokenKind::Caret: return "^";
-                case TokenKind::Tilde: return "~";
-                case TokenKind::LessLess: return "<<";
-                case TokenKind::GreaterGreater: return ">>";
-                case TokenKind::AmpAmp: return "&&";
-                case TokenKind::PipePipe: return "||";
-                case TokenKind::Bang: return "!";
-                case TokenKind::Equal: return "==";
-                case TokenKind::BangEqual: return "!=";
-                case TokenKind::Less: return "<";
-                case TokenKind::LessEqual: return "<=";
-                case TokenKind::Greater: return ">";
-                case TokenKind::GreaterEqual: return ">=";
-                case TokenKind::Assign: return "=";
-                case TokenKind::PlusAssign: return "+=";
-                case TokenKind::MinusAssign: return "-=";
-                case TokenKind::StarAssign: return "*=";
-                case TokenKind::SlashAssign: return "/=";
-                case TokenKind::PercentAssign: return "%=";
-                case TokenKind::AmpAssign: return "&=";
-                case TokenKind::PipeAssign: return "|=";
-                case TokenKind::CaretAssign: return "^=";
-                case TokenKind::LessLessAssign: return "<<=";
-                case TokenKind::GreaterGreaterAssign: return ">>=";
-                default: return "?";
+                case TokenKind::Plus:
+                    return "+";
+                case TokenKind::Minus:
+                    return "-";
+                case TokenKind::Star:
+                    return "*";
+                case TokenKind::Slash:
+                    return "/";
+                case TokenKind::Percent:
+                    return "%";
+                case TokenKind::StarStar:
+                    return "**";
+                case TokenKind::Amp:
+                    return "&";
+                case TokenKind::Pipe:
+                    return "|";
+                case TokenKind::Caret:
+                    return "^";
+                case TokenKind::Tilde:
+                    return "~";
+                case TokenKind::LessLess:
+                    return "<<";
+                case TokenKind::GreaterGreater:
+                    return ">>";
+                case TokenKind::AmpAmp:
+                    return "&&";
+                case TokenKind::PipePipe:
+                    return "||";
+                case TokenKind::Bang:
+                    return "!";
+                case TokenKind::Equal:
+                    return "==";
+                case TokenKind::BangEqual:
+                    return "!=";
+                case TokenKind::Less:
+                    return "<";
+                case TokenKind::LessEqual:
+                    return "<=";
+                case TokenKind::Greater:
+                    return ">";
+                case TokenKind::GreaterEqual:
+                    return ">=";
+                case TokenKind::Assign:
+                    return "=";
+                case TokenKind::PlusAssign:
+                    return "+=";
+                case TokenKind::MinusAssign:
+                    return "-=";
+                case TokenKind::StarAssign:
+                    return "*=";
+                case TokenKind::SlashAssign:
+                    return "/=";
+                case TokenKind::PercentAssign:
+                    return "%=";
+                case TokenKind::AmpAssign:
+                    return "&=";
+                case TokenKind::PipeAssign:
+                    return "|=";
+                case TokenKind::CaretAssign:
+                    return "^=";
+                case TokenKind::LessLessAssign:
+                    return "<<=";
+                case TokenKind::GreaterGreaterAssign:
+                    return ">>=";
+                default:
+                    return "?";
                 }
             }
 
@@ -2258,7 +2299,8 @@ namespace Rux {
                     out << '}';
                     break;
                 }
-                default: break;
+                default:
+                    break;
                 }
                 out << "'\n";
             }
@@ -2655,19 +2697,26 @@ namespace Rux {
                 Pad();
                 out << "LiteralExpr (";
                 switch (e.token.kind) {
-                case TokenKind::IntLiteral: out << "int";
+                case TokenKind::IntLiteral:
+                    out << "int";
                     break;
-                case TokenKind::FloatLiteral: out << "float";
+                case TokenKind::FloatLiteral:
+                    out << "float";
                     break;
-                case TokenKind::StringLiteral: out << "string";
+                case TokenKind::StringLiteral:
+                    out << "string";
                     break;
-                case TokenKind::CharLiteral: out << "char32";
+                case TokenKind::CharLiteral:
+                    out << "char32";
                     break;
-                case TokenKind::BoolLiteral: out << "bool8";
+                case TokenKind::BoolLiteral:
+                    out << "bool8";
                     break;
-                case TokenKind::NullKeyword: out << "null";
+                case TokenKind::NullKeyword:
+                    out << "null";
                     break;
-                default: out << "?";
+                default:
+                    out << "?";
                     break;
                 }
                 out << ") '" << e.token.text << "'\n";
@@ -2769,8 +2818,8 @@ namespace Rux {
                                  d.location.line,
                                  d.location.column,
                                  d.severity == ParserDiagnostic::Severity::Error
-                                     ? "error  "
-                                     : "warning",
+                                 ? "error  "
+                                 : "warning",
                                  d.message);
             }
         }

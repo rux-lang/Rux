@@ -74,7 +74,8 @@ namespace Rux {
         DeclPtr ParseDecl();
 
         // Declarations
-        std::unique_ptr<FuncDecl> ParseFuncDecl(bool isPublic, bool isAsm,
+        std::unique_ptr<FuncDecl> ParseFuncDecl(bool isPublic,
+                                                bool isAsm,
                                                 CallingConvention callConv = CallingConvention::Default);
         std::unique_ptr<StructDecl> ParseStructDecl(bool isPublic);
         std::unique_ptr<EnumDecl> ParseEnumDecl(bool isPublic);

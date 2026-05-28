@@ -12,7 +12,6 @@
 #include "Rux/Package.h"
 #include "Rux/Parser.h"
 #include "Rux/Sema.h"
-#include "Rux/Hir.h"
 #include "Rux/Lir.h"
 #include "Rux/Asm.h"
 #include "Rux/Rcu.h"
@@ -21,7 +20,6 @@
 
 #include <array>
 #include <chrono>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -197,14 +195,14 @@ namespace Rux {
             const std::size_t totalTokens = stats.localTokens + stats.dependencyTokens;
             const std::uintmax_t totalSourceSize = stats.localSourceSize + stats.dependencySourceSize;
             const double tokenThroughput = seconds > 0.0
-                                               ? static_cast<double>(totalTokens) / seconds
-                                               : 0.0;
+                ? static_cast<double>(totalTokens) / seconds
+                : 0.0;
             const double compileSpeed = seconds > 0.0
-                                            ? static_cast<double>(totalLines) / seconds
-                                            : 0.0;
+                ? static_cast<double>(totalLines) / seconds
+                : 0.0;
             const double throughput = seconds > 0.0
-                                          ? static_cast<double>(totalSourceSize) / 1024.0 / 1024.0 / seconds
-                                          : 0.0;
+                ? static_cast<double>(totalSourceSize) / 1024.0 / 1024.0 / seconds
+                : 0.0;
 
             std::print(
                 "Rux Compiler {}\n"
@@ -278,8 +276,8 @@ namespace Rux {
             const std::size_t totalLines = stats.localLines + stats.dependencyLines;
             const std::size_t totalTokens = stats.localTokens + stats.dependencyTokens;
             const double compileSpeed = stats.totalSeconds > 0.0
-                                            ? static_cast<double>(totalLines) / stats.totalSeconds
-                                            : 0.0;
+                ? static_cast<double>(totalLines) / stats.totalSeconds
+                : 0.0;
 
             std::print("Built `{}` [{}] in {} ms\n",
                        profileName,
@@ -441,8 +439,8 @@ namespace Rux {
                                                        const Manifest& manifest,
                                                        std::string_view profileName) {
         std::filesystem::path output = manifest.build.output.empty()
-                                           ? std::filesystem::path("Bin")
-                                           : std::filesystem::path(manifest.build.output);
+            ? std::filesystem::path("Bin")
+            : std::filesystem::path(manifest.build.output);
         if (output.is_relative())
             output = root / output;
         return (output / std::string(profileName)).lexically_normal();
@@ -586,8 +584,13 @@ namespace Rux {
             for (const auto& diag : lexResult.diagnostics) {
                 const auto& loc = diag.location;
                 const char* sev = diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
-                std::print(stderr, "{}:{}:{}: {}: {}\n",
-                           file.path.string(), loc.line, loc.column, sev, diag.message);
+                std::print(stderr,
+                           "{}:{}:{}: {}: {}\n",
+                           file.path.string(),
+                           loc.line,
+                           loc.column,
+                           sev,
+                           diag.message);
             }
             if (lexResult.HasErrors()) lexErrors = true;
 
@@ -626,8 +629,13 @@ namespace Rux {
             for (const auto& diag : parseResult.diagnostics) {
                 const auto& loc = diag.location;
                 const char* sev = diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
-                std::print(stderr, "{}:{}:{}: {}: {}\n",
-                           file.path.string(), loc.line, loc.column, sev, diag.message);
+                std::print(stderr,
+                           "{}:{}:{}: {}: {}\n",
+                           file.path.string(),
+                           loc.line,
+                           loc.column,
+                           sev,
+                           diag.message);
             }
             if (parseResult.HasErrors()) {
                 parseErrors = true;
@@ -662,7 +670,8 @@ namespace Rux {
             std::unordered_set<std::string> queuedPackageNames;
 
             auto enqueueDependency =
-                [&](const std::string& pkgName, const Manifest& ownerManifest,
+                [&](const std::string& pkgName,
+                    const Manifest& ownerManifest,
                     const std::filesystem::path& ownerRoot) -> bool {
                 if (queuedPackageNames.count(pkgName)) return true;
 
@@ -696,7 +705,8 @@ namespace Rux {
                 if (!depManifest) {
                     std::print(stderr,
                                "error: dependency package '{}' was not found at '{}'\n",
-                               pkgName, depRoot.string());
+                               pkgName,
+                               depRoot.string());
                     return false;
                 }
 
@@ -737,7 +747,8 @@ namespace Rux {
 
                 if (opts.verbose)
                     std::print("  Loading package {} from {}\n",
-                               packageName, pendingRoot.string());
+                               packageName,
+                               pendingRoot.string());
 
                 auto depLoadResult = SourceLoader::Load(pendingRoot);
                 if (!depLoadResult) {
@@ -765,11 +776,15 @@ namespace Rux {
                     stats.dependencyTokens += CountTokens(depLex);
                     for (const auto& diag : depLex.diagnostics) {
                         const char* sev = diag.severity == LexerDiagnostic::Severity::Error
-                                              ? "error"
-                                              : "warning";
-                        std::print(stderr, "{}:{}:{}: {}: {}\n",
-                                   depFile.path.string(), diag.location.line,
-                                   diag.location.column, sev, diag.message);
+                            ? "error"
+                            : "warning";
+                        std::print(stderr,
+                                   "{}:{}:{}: {}: {}\n",
+                                   depFile.path.string(),
+                                   diag.location.line,
+                                   diag.location.column,
+                                   sev,
+                                   diag.message);
                     }
                     if (depLex.HasErrors()) return 1;
 
@@ -779,11 +794,15 @@ namespace Rux {
                     stats.parsing += ElapsedMs(depParsingStart);
                     for (const auto& diag : depParse.diagnostics) {
                         const char* sev = diag.severity == ParserDiagnostic::Severity::Error
-                                              ? "error"
-                                              : "warning";
-                        std::print(stderr, "{}:{}:{}: {}: {}\n",
-                                   depFile.path.string(), diag.location.line,
-                                   diag.location.column, sev, diag.message);
+                            ? "error"
+                            : "warning";
+                        std::print(stderr,
+                                   "{}:{}:{}: {}: {}\n",
+                                   depFile.path.string(),
+                                   diag.location.line,
+                                   diag.location.column,
+                                   sev,
+                                   diag.message);
                     }
                     if (depParse.HasErrors()) return 1;
 
@@ -840,8 +859,13 @@ namespace Rux {
         for (const auto& diag : semaResult.diagnostics) {
             const auto& loc = diag.location;
             const char* sev = diag.severity == SemaDiagnostic::Severity::Error ? "error" : "warning";
-            std::print(stderr, "{}:{}:{}: {}: {}\n",
-                       diag.sourceName, loc.line, loc.column, sev, diag.message);
+            std::print(stderr,
+                       "{}:{}:{}: {}: {}\n",
+                       diag.sourceName,
+                       loc.line,
+                       loc.column,
+                       sev,
+                       diag.message);
         }
         if (dumpSema) {
             auto semaDir = manifestPath->parent_path() / "Temp" / "Sema";
@@ -917,8 +941,8 @@ namespace Rux {
 
             for (const auto& rcuFile : rcuFiles) {
                 std::filesystem::path stem = rcuFile.sourcePath.empty()
-                                                 ? std::filesystem::path("out")
-                                                 : std::filesystem::path(rcuFile.sourcePath).stem();
+                    ? std::filesystem::path("out")
+                    : std::filesystem::path(rcuFile.sourcePath).stem();
                 Rcu::Emit(rcuFile, objDir / (stem.string() + ".rcu"));
                 Rcu::Dump(rcuFile, dumpDir / (stem.string() + ".rcu.txt"));
             }
@@ -988,10 +1012,10 @@ namespace Rux {
         if (!manifest) return 1;
         const auto root = manifestPath->parent_path();
         const auto outputDir = manifest->build.output.empty()
-                                   ? root / "Bin"
-                                   : (std::filesystem::path(manifest->build.output).is_relative()
-                                          ? root / manifest->build.output
-                                          : std::filesystem::path(manifest->build.output));
+            ? root / "Bin"
+            : (std::filesystem::path(manifest->build.output).is_relative()
+                ? root / manifest->build.output
+                : std::filesystem::path(manifest->build.output));
         auto removeDir = [&](const std::filesystem::path& dir) -> bool {
             std::error_code ec;
             if (!std::filesystem::exists(dir)) return true;
@@ -999,7 +1023,8 @@ namespace Rux {
             if (ec) {
                 std::print(stderr,
                            "error: failed to remove '{}': {}\n",
-                           dir.string(), ec.message());
+                           dir.string(),
+                           ec.message());
                 return false;
             }
             if (!opts.quiet)
@@ -1033,7 +1058,8 @@ namespace Rux {
         if (!manifest) return 1;
         if (!opts.quiet)
             std::print("  Generating documentation for {} v{}\n",
-                       manifest->package.name, manifest->package.version);
+                       manifest->package.name,
+                       manifest->package.version);
 
         // TODO: documentation generator
 
@@ -1119,7 +1145,8 @@ namespace Rux {
         auto name = root.filename().string();
         if (!opts.quiet)
             std::print("  Initializing {} package '{}'\n",
-                       type == PackageType::Executable ? "binary" : "library", name);
+                       type == PackageType::Executable ? "binary" : "library",
+                       name);
         if (!ScaffoldPackage(root, name, type, /*initMode=*/true))
             return 1;
         if (!opts.quiet)
@@ -1157,7 +1184,9 @@ namespace Rux {
 
         HINTERNET hSession = WinHttpOpen(L"Rux/1.0",
                                          WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                                         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+                                         WINHTTP_NO_PROXY_NAME,
+                                         WINHTTP_NO_PROXY_BYPASS,
+                                         0);
         if (!hSession) return std::nullopt;
 
         HINTERNET hConnect = WinHttpConnect(hSession, hostBuf, comps.nPort, 0);
@@ -1167,16 +1196,26 @@ namespace Rux {
         }
 
         const DWORD reqFlags = comps.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
-        HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", pathBuf,
-                                                nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, reqFlags);
+        HINTERNET hRequest = WinHttpOpenRequest(hConnect,
+                                                L"GET",
+                                                pathBuf,
+                                                nullptr,
+                                                WINHTTP_NO_REFERER,
+                                                WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                                reqFlags);
         if (!hRequest) {
             WinHttpCloseHandle(hConnect);
             WinHttpCloseHandle(hSession);
             return std::nullopt;
         }
 
-        const bool ok = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
-                                           WINHTTP_NO_REQUEST_DATA, 0, 0, 0)
+        const bool ok = WinHttpSendRequest(hRequest,
+                                           WINHTTP_NO_ADDITIONAL_HEADERS,
+                                           0,
+                                           WINHTTP_NO_REQUEST_DATA,
+                                           0,
+                                           0,
+                                           0)
             && WinHttpReceiveResponse(hRequest, nullptr);
         std::string body;
         if (ok) {
@@ -1268,8 +1307,16 @@ namespace Rux {
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
-        if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr,
-                            FALSE, 0, nullptr, nullptr, &si, &pi))
+        if (!CreateProcessW(nullptr,
+                            cmd.data(),
+                            nullptr,
+                            nullptr,
+                            FALSE,
+                            0,
+                            nullptr,
+                            nullptr,
+                            &si,
+                            &pi))
             return false;
         WaitForSingleObject(pi.hProcess, INFINITE);
         DWORD exitCode = 1;
@@ -1290,8 +1337,16 @@ namespace Rux {
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
-        if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr,
-                            FALSE, 0, nullptr, nullptr, &si, &pi))
+        if (!CreateProcessW(nullptr,
+                            cmd.data(),
+                            nullptr,
+                            nullptr,
+                            FALSE,
+                            0,
+                            nullptr,
+                            nullptr,
+                            &si,
+                            &pi))
             return false;
         WaitForSingleObject(pi.hProcess, INFINITE);
         DWORD exitCode = 1;
@@ -1466,8 +1521,10 @@ namespace Rux {
             std::error_code ec;
             std::filesystem::remove_all(pkgDir, ec);
             if (ec) {
-                std::print(stderr, "error: failed to remove '{}': {}\n",
-                           pkgDir.string(), ec.message());
+                std::print(stderr,
+                           "error: failed to remove '{}': {}\n",
+                           pkgDir.string(),
+                           ec.message());
                 return 1;
             }
             if (!opts.quiet)
@@ -1504,8 +1561,10 @@ namespace Rux {
             std::error_code ec;
             std::filesystem::remove_all(pkgDir, ec);
             if (ec) {
-                std::print(stderr, "error: failed to remove '{}': {}\n",
-                           pkgDir.string(), ec.message());
+                std::print(stderr,
+                           "error: failed to remove '{}': {}\n",
+                           pkgDir.string(),
+                           ec.message());
                 return 1;
             }
             if (!opts.quiet)
@@ -1628,7 +1687,8 @@ namespace Rux {
             return 1;
         if (!opts.quiet)
             std::print("Created package '{}' at {}\n",
-                       std::string(name), root.string());
+                       std::string(name),
+                       root.string());
         return 0;
     }
 
@@ -1737,12 +1797,14 @@ namespace Rux {
         std::string pkgName(name);
         if (!manifest->RemoveDependency(pkgName)) {
             std::print(stderr,
-                       "error: package '{}' is not a dependency\n", pkgName);
+                       "error: package '{}' is not a dependency\n",
+                       pkgName);
             return 1;
         }
         if (!manifest->Save(*manifestPath)) {
             std::print(stderr,
-                       "error: failed to write '{}'\n", manifestPath->string());
+                       "error: failed to write '{}'\n",
+                       manifestPath->string());
             return 1;
         }
         if (!opts.quiet)
@@ -1817,10 +1879,20 @@ namespace Rux {
         si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
         si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
         si.dwFlags = STARTF_USESTDHANDLES;
-        if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr,
-                            TRUE, 0, nullptr, nullptr, &si, &pi)) {
-            std::print(stderr, "error: failed to launch '{}' (code {})\n",
-                       exePath.string(), GetLastError());
+        if (!CreateProcessA(nullptr,
+                            cmdLine.data(),
+                            nullptr,
+                            nullptr,
+                            TRUE,
+                            0,
+                            nullptr,
+                            nullptr,
+                            &si,
+                            &pi)) {
+            std::print(stderr,
+                       "error: failed to launch '{}' (code {})\n",
+                       exePath.string(),
+                       GetLastError());
             return 1;
         }
         WaitForSingleObject(pi.hProcess, INFINITE);
@@ -1877,7 +1949,8 @@ namespace Rux {
         if (!manifest) return 1;
         if (!opts.quiet)
             std::print("     Testing {} v{}\n",
-                       manifest->package.name, manifest->package.version);
+                       manifest->package.name,
+                       manifest->package.version);
         // TODO: build and run test targets
         std::println("Running executable...");
         std::println("Release: {}", isRelease);
@@ -2397,6 +2470,8 @@ namespace Rux {
             std::print(stderr, "error: unknown option '{}'\n", option);
         else
             std::print(stderr,
-                       "error: unknown option '{}' for command '{}'\n", option, command);
+                       "error: unknown option '{}' for command '{}'\n",
+                       option,
+                       command);
     }
 }

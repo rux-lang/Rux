@@ -163,7 +163,8 @@ namespace Rux {
         return off < pe.size();
     }
 
-    [[maybe_unused]] static std::optional<std::unordered_set<std::string>> ReadDllExports(const std::filesystem::path& path) {
+    [[maybe_unused]] static std::optional<std::unordered_set<std::string>> ReadDllExports(
+        const std::filesystem::path& path) {
         auto peData = ReadFileBytes(path);
         if (!peData) return std::nullopt;
         const Buf& pe = *peData;
@@ -493,8 +494,8 @@ namespace Rux {
             dataFileOff = rdataFileOff + rdataFileSize;
         }
         const uint32_t sizeOfImage = !mergedData.empty()
-                                         ? dataRva + AlignUp(dataVirtSize, kSecAlign)
-                                         : rdataRva + AlignUp(rdataVirtSize, kSecAlign);
+            ? dataRva + AlignUp(dataVirtSize, kSecAlign)
+            : rdataRva + AlignUp(rdataVirtSize, kSecAlign);
 
         // 6. Patch .rdata import table with real RVAs
         for (size_t g = 0; g < importDllNames.size(); ++g) {
@@ -823,11 +824,11 @@ namespace Rux {
         static const std::unordered_map<std::string, Buf> thunks = {
             {"ExitProcess", {
 #if defined(__FreeBSD__)
-                0x48, 0x89, 0xCF, 0xB8, 0x01, 0x00, 0x00, 0x00, 0x0F, 0x05
+    0x48, 0x89, 0xCF, 0xB8, 0x01, 0x00, 0x00, 0x00, 0x0F, 0x05
 #else
-                0x48, 0x89, 0xCF, 0xB8, 0x3C, 0x00, 0x00, 0x00, 0x0F, 0x05
+    0x48, 0x89, 0xCF, 0xB8, 0x3C, 0x00, 0x00, 0x00, 0x0F, 0x05
 #endif
-            }},
+    }},
             {"GetStdHandle", {
                 0x81, 0xF9, 0xF6, 0xFF, 0xFF, 0xFF, // cmp ecx, -10 (STD_INPUT_HANDLE)
                 0x74, 0x0E,                         // je +14 (return 0)
@@ -850,35 +851,35 @@ namespace Rux {
                 0x4C, 0x89, 0xC6, 0x31, 0xFF, 0xBA, 0x03, 0x00,
                 0x00, 0x00, 0x41, 0xBA,
 #if defined(__FreeBSD__)
-                0x02, 0x10, 0x00, 0x00,
+    0x02, 0x10, 0x00, 0x00,
 #else
-                0x22, 0x00, 0x00, 0x00,
+    0x22, 0x00, 0x00, 0x00,
 #endif
-                0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45,
+    0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45,
                 0x31, 0xC9,
 #if defined(__FreeBSD__)
-                0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+    0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
 #else
-                0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
+    0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
 #endif
-                0x05, 0xC3
+    0x05, 0xC3
             }},
             {"HeapReAlloc", {
                 0x48, 0x8B, 0x74, 0x24, 0x28, 0x31, 0xFF, 0xBA,
                 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
 #if defined(__FreeBSD__)
-                0x02, 0x10, 0x00, 0x00,
+    0x02, 0x10, 0x00, 0x00,
 #else
-                0x22, 0x00, 0x00, 0x00,
+    0x22, 0x00, 0x00, 0x00,
 #endif
-                0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF,
+    0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF,
                 0xFF, 0x45, 0x31, 0xC9,
 #if defined(__FreeBSD__)
-                0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+    0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
 #else
-                0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
+    0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
 #endif
-                0x05, 0xC3
+    0x05, 0xC3
             }},
             {"RtlCopyMemory", {
                 0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88,
@@ -908,11 +909,11 @@ namespace Rux {
                 0xED, 0x74, 0x24, 0x41, 0x8A, 0x04, 0x24, 0x88,
                 0x04, 0x24,
 #if defined(__FreeBSD__)
-                0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
+    0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
 #else
-                0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
+    0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
 #endif
-                0x01, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE6, 0xBA,
+    0x01, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE6, 0xBA,
                 0x01, 0x00, 0x00, 0x00, 0x0F, 0x05, 0x49, 0x83,
                 0xC4, 0x02, 0x49, 0xFF, 0xCD, 0xEB, 0xD7, 0x48,
                 0x83, 0xC4, 0x08, 0x41, 0x5D, 0x41, 0x5C, 0xB8,
@@ -921,13 +922,13 @@ namespace Rux {
             {"ReadFile", {
                 0x89, 0xCF,                         // mov edi, ecx  (fd)
                 0x48, 0x89, 0xD6,                   // mov rsi, rdx  (buf)
-                0x4C, 0x89, 0xC2,                   // mov rdx, r8   (count)
+                0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
 #if defined(__FreeBSD__)
-                0xB8, 0x03, 0x00, 0x00, 0x00,      // mov eax, 3 (SYS_read)
+    0xB8, 0x03, 0x00, 0x00, 0x00, // mov eax, 3 (SYS_read)
 #else
-                0x31, 0xC0,                         // xor eax, eax (SYS_read = 0)
+    0x31, 0xC0, // xor eax, eax (SYS_read = 0)
 #endif
-                0x0F, 0x05,                         // syscall
+    0x0F, 0x05,                         // syscall
                 0x85, 0xC0,                         // test eax, eax
                 0x78, 0x09,                         // js +9 (error)
                 0x41, 0x89, 0x01,                   // mov [r9], eax  (*bytesRead = result)
@@ -937,10 +938,10 @@ namespace Rux {
                 0xC3                                // ret
             }},
 #if defined(__linux__)
-            // Rux extern calls currently use the Win64 register layout. These
-            // thunks move that layout into Linux x86_64 syscall registers:
-            // rax=number, rdi/rsi/rdx/r10/r8/r9=args.
-            {"__rux_linux_syscall0", {
+    // Rux extern calls currently use the Win64 register layout. These
+    // thunks move that layout into Linux x86_64 syscall registers:
+    // rax=number, rdi/rsi/rdx/r10/r8/r9=args.
+    {"__rux_linux_syscall0", {
                 0x48, 0x89, 0xC8,                   // mov rax, rcx
                 0x0F, 0x05,                         // syscall
                 0xC3                                // ret
@@ -997,10 +998,10 @@ namespace Rux {
                 0xC3                                // ret
             }},
 #endif
-        };
+    };
 
-        const auto it = thunks.find(name);
-        if (it == thunks.end()) return std::nullopt;
+    const auto it = thunks.find(name);
+        if (it== thunks.end()) return std::nullopt;
         return it->second;
     }
 
@@ -1043,32 +1044,38 @@ namespace Rux {
         Buf textPre;
         const size_t kCallMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
-        textPre.insert(textPre.end(), {0x89, 0xC7});                   // mov edi, eax
+        textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax
 #if defined(__FreeBSD__)
-        textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (FreeBSD exit)
+    textPre.insert (textPre.end(),  {
+        0xB8, 0x01, 0x00, 0x00, 0x00
+    }); // mov eax, 1  (FreeBSD exit)
 #else
-        textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
+    textPre.insert (textPre.end(),  {
+        0xB8, 0x3C, 0x00, 0x00, 0x00
+    }); // mov eax, 60 (Linux exit)
 #endif
-        textPre.insert(textPre.end(), {0x0F, 0x05});                   // syscall
+    textPre.insert (textPre.end(),  {
+        0x0F, 0x05
+    }); // syscall
 
-        std::unordered_map<std::string, uint32_t> linuxCompatThunkOff;
-        std::vector<std::string> linuxCompatNames(linuxCompatExterns.begin(), linuxCompatExterns.end());
-        std::sort(linuxCompatNames.begin(), linuxCompatNames.end());
+    std::unordered_map<std::string, uint32_t> linuxCompatThunkOff;
+    std::vector<std::string> linuxCompatNames(linuxCompatExterns.begin(), linuxCompatExterns.end());
+    std::sort (linuxCompatNames.begin(), linuxCompatNames.end());
         for (const auto& name : linuxCompatNames) {
             auto thunk = LinuxCompatThunk(name);
             if (!thunk) continue;
             linuxCompatThunkOff[name] = static_cast<uint32_t>(textPre.size());
             textPre.insert(textPre.end(), thunk->begin(), thunk->end());
         }
-        const uint32_t preambleSize = static_cast<uint32_t>(textPre.size());
+    const uint32_t preambleSize = static_cast<uint32_t>(textPre.size());
 
-        struct ObjLayout {
-            uint32_t textOff, rodataOff, dataOff;
-        };
-        std::vector<ObjLayout> layouts(objects.size());
-        Buf mergedText, mergedRodata, mergedData;
+    struct ObjLayout {
+        uint32_t textOff, rodataOff, dataOff;
+    };
+    std::vector<ObjLayout> layouts(objects.size());
+    Buf mergedText, mergedRodata, mergedData;
 
-        for (size_t i = 0; i < objects.size(); ++i) {
+        for (size_t i =0; i<objects.size();++i) {
             const auto& obj = objects[i];
             layouts[i] = {
                 static_cast<uint32_t>(mergedText.size()),
@@ -1085,24 +1092,24 @@ namespace Rux {
             }
         }
 
-        Buf textBuf;
-        textBuf.insert(textBuf.end(), textPre.begin(), textPre.end());
-        textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
+    Buf textBuf;
+    textBuf.insert (textBuf.end(), textPre.begin(), textPre.end());
+    textBuf.insert (textBuf.end(), mergedText.begin(), mergedText.end());
 
-        const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0));
-        const uint64_t phoff = 64;
-        const uint64_t textOff = alignUp64(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
-        const uint64_t textVA = kBase + textOff;
-        const uint64_t rdataOff = alignUp64(textOff + textBuf.size(), kPage);
-        const uint64_t rdataVA = kBase + rdataOff;
-        const uint64_t dataOff = alignUp64(rdataOff + mergedRodata.size(), kPage);
-        const uint64_t dataVA = kBase + dataOff;
+    const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0));
+    const uint64_t phoff = 64;
+    const uint64_t textOff = alignUp64(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
+    const uint64_t textVA = kBase + textOff;
+    const uint64_t rdataOff = alignUp64(textOff + textBuf.size(), kPage);
+    const uint64_t rdataVA = kBase + rdataOff;
+    const uint64_t dataOff = alignUp64(rdataOff + mergedRodata.size(), kPage);
+    const uint64_t dataVA = kBase + dataOff;
 
-        std::unordered_map<std::string, uint64_t> symMap;
+    std::unordered_map<std::string, uint64_t> symMap;
         for (const auto& [name, off] : linuxCompatThunkOff)
-            symMap[name] = textVA + off;
+    symMap [name] = textVA + off;
 
-        for (size_t i = 0; i < objects.size(); ++i) {
+        for (size_t i =0; i<objects.size();++i) {
             const auto& obj = objects[i];
             const auto& lay = layouts[i];
             for (const auto& sym : obj.symbols) {
@@ -1137,7 +1144,7 @@ namespace Rux {
             Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(it->second - nextInst));
         }
 
-        for (size_t i = 0; i < objects.size(); ++i) {
+        for (size_t i =0; i<objects.size();++i) {
             const auto& obj = objects[i];
             const auto& lay = layouts[i];
             for (const auto& sec : obj.sections) {
@@ -1213,101 +1220,109 @@ namespace Rux {
         }
         if (!errors.empty()) return false;
 
-        std::filesystem::create_directories(outputPath.parent_path());
-        std::ofstream out(outputPath, std::ios::binary | std::ios::trunc);
+    std::filesystem::create_directories (outputPath.parent_path());
+    std::ofstream out(outputPath, std::ios::binary | std::ios::trunc);
         if (!out) {
             Error("cannot open output file: " + outputPath.string());
             return false;
         }
 
-        const auto writeRaw = [&](const void* d, size_t n) {
-            out.write(static_cast<const char*>(d), static_cast<std::streamsize>(n));
-        };
-        [[maybe_unused]] const auto wU8 = [&](uint8_t v) { writeRaw(&v, 1); };
-        const auto wU16 = [&](uint16_t v) { writeRaw(&v, 2); };
-        const auto wU32 = [&](uint32_t v) { writeRaw(&v, 4); };
-        const auto wU64 = [&](uint64_t v) { writeRaw(&v, 8); };
-        const auto wBuf = [&](const Buf& b) {
-            if (!b.empty()) writeRaw(b.data(), b.size());
-        };
-        const auto padToOffset = [&](uint64_t offset) {
-            static constexpr uint8_t zeros[4096] = {};
-            while (static_cast<uint64_t>(out.tellp()) < offset) {
-                const uint64_t remaining = offset - static_cast<uint64_t>(out.tellp());
-                writeRaw(zeros, static_cast<size_t>(std::min<uint64_t>(remaining, sizeof(zeros))));
-            }
-        };
-        const auto writePhdr = [&](uint32_t flags,
-                                   uint64_t off,
-                                   uint64_t vaddr,
-                                   uint64_t fileSize,
-                                   uint64_t memSize) {
-            wU32(1); // PT_LOAD
-            wU32(flags);
-            wU64(off);
-            wU64(vaddr);
-            wU64(vaddr);
-            wU64(fileSize);
-            wU64(memSize);
-            wU64(kPage);
-        };
+    const auto writeRaw = [&](const void* d, size_t n) {
+        out.write(static_cast<const char*>(d), static_cast<std::streamsize>(n));
+    };
+    [[maybe_unused]] const auto wU8 = [&](uint8_t v) {
+        writeRaw(&v, 1);
+    };
+    const auto wU16 = [&](uint16_t v) {
+        writeRaw(&v, 2);
+    };
+    const auto wU32 = [&](uint32_t v) {
+        writeRaw(&v, 4);
+    };
+    const auto wU64 = [&](uint64_t v) {
+        writeRaw(&v, 8);
+    };
+    const auto wBuf = [&](const Buf& b) {
+        if (!b.empty()) writeRaw(b.data(), b.size());
+    };
+    const auto padToOffset = [&](uint64_t offset) {
+        static constexpr uint8_t zeros[4096] = {};
+        while (static_cast<uint64_t>(out.tellp()) < offset) {
+            const uint64_t remaining = offset - static_cast<uint64_t>(out.tellp());
+            writeRaw(zeros, static_cast<size_t>(std::min<uint64_t>(remaining, sizeof(zeros))));
+        }
+    };
+    const auto writePhdr = [&](uint32_t flags,
+                               uint64_t off,
+                               uint64_t vaddr,
+                               uint64_t fileSize,
+                               uint64_t memSize) {
+        wU32(1); // PT_LOAD
+        wU32(flags);
+        wU64(off);
+        wU64(vaddr);
+        wU64(vaddr);
+        wU64(fileSize);
+        wU64(memSize);
+        wU64(kPage);
+    };
 
-        uint8_t ident[16] = {
-            0x7F, 'E', 'L', 'F',
-            2, 1, 1,
+    uint8_t ident[16] = {
+        0x7F, 'E', 'L', 'F',
+        2, 1, 1,
 #if defined(__FreeBSD__)
-            9,  // EI_OSABI: FreeBSD
+    9, // EI_OSABI: FreeBSD
 #else
-            0,  // EI_OSABI: System V
+    0, // EI_OSABI: System V
 #endif
-            0, 0, 0, 0, 0, 0, 0, 0
+    0, 0, 0, 0, 0, 0, 0, 0
         };
-        writeRaw(ident, sizeof(ident));
-        wU16(2);      // ET_EXEC
-        wU16(0x3E);   // EM_X86_64
-        wU32(1);
-        wU64(textVA);
-        wU64(phoff);
-        wU64(0);
-        wU32(0);
-        wU16(64);
-        wU16(56);
-        wU16(phnum);
-        wU16(0);
-        wU16(0);
-        wU16(0);
+    writeRaw(ident, sizeof(ident));
+    wU16 (2); // ET_EXEC
+    wU16 (0x3E); // EM_X86_64
+    wU32 (1);
+    wU64 (textVA);
+    wU64 (phoff);
+    wU64 (0);
+    wU32 (0);
+    wU16 (64);
+    wU16 (56);
+    wU16 (phnum);
+    wU16 (0);
+    wU16 (0);
+    wU16 (0);
 
-        writePhdr(kPfR | kPfX, textOff, textVA, textBuf.size(), textBuf.size());
-        writePhdr(kPfR, rdataOff, rdataVA, mergedRodata.size(), mergedRodata.size());
+    writePhdr (kPfR| kPfX, textOff, textVA, textBuf.size(), textBuf.size());
+    writePhdr(kPfR, rdataOff, rdataVA, mergedRodata.size(), mergedRodata.size());
         if (!mergedData.empty())
-            writePhdr(kPfR | kPfW, dataOff, dataVA, mergedData.size(), mergedData.size());
+    writePhdr (kPfR| kPfW, dataOff, dataVA, mergedData.size(), mergedData.size());
 
-        padToOffset(textOff);
-        wBuf(textBuf);
-        padToOffset(rdataOff);
-        wBuf(mergedRodata);
+    padToOffset (textOff);
+    wBuf (textBuf);
+    padToOffset (rdataOff);
+    wBuf (mergedRodata);
         if (!mergedData.empty()) {
             padToOffset(dataOff);
             wBuf(mergedData);
         }
 
-        out.close();
+    out.close();
         if (!out) {
             Error("cannot write output file: " + outputPath.string());
             return false;
         }
 
-        std::error_code ec;
-        std::filesystem::permissions(outputPath,
-                                     std::filesystem::perms::owner_exec |
-                                     std::filesystem::perms::group_exec |
-                                     std::filesystem::perms::others_exec,
-                                     std::filesystem::perm_options::add,
-                                     ec);
+    std::error_code ec;
+    std::filesystem::permissions(outputPath,
+                                 std::filesystem::perms::owner_exec |
+                                 std::filesystem::perms::group_exec |
+                                 std::filesystem::perms::others_exec,
+                                 std::filesystem::perm_options::add,
+                                 ec);
         if (ec) {
-            Error("cannot mark output executable: " + ec.message());
-            return false;
-        }
+        Error("cannot mark output executable: " + ec.message());
+        return false;
+    }
         return true;
     }
 #endif
