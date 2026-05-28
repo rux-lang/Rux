@@ -1630,10 +1630,20 @@ namespace Rux {
 
     int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions& opts) {
         std::string_view spec;
-        for (auto arg : args) {
+        std::string_view pathArg;
+        for (std::size_t i = 0; i < args.size(); ++i) {
+            std::string_view arg = args[i];
             if (arg == "-h" || arg == "--help") {
                 PrintHelpAdd();
                 return 0;
+            }
+            if (arg == "--path") {
+                if (i + 1 >= args.size()) {
+                    std::print(stderr, "error: '--path' requires an argument\n");
+                    return 1;
+                }
+                pathArg = args[++i];
+                continue;
             }
             if (!arg.starts_with('-') && spec.empty()) {
                 spec = arg;
@@ -1652,6 +1662,21 @@ namespace Rux {
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
         auto [pkgName, pkgVersion] = ParsePackageSpec(spec);
+
+        if (!pathArg.empty()) {
+            const bool changed = manifest->AddPathDependency(pkgName, std::string(pathArg));
+            if (!manifest->Save(*manifestPath)) {
+                std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
+                return 1;
+            }
+            if (!opts.quiet) {
+                if (changed)
+                    std::print("Added {} @ path '{}'\n", pkgName, pathArg);
+                else
+                    std::print("Up-to-date {} @ path '{}'\n", pkgName, pathArg);
+            }
+            return 0;
+        }
 
         if (!opts.quiet)
             std::print("     Fetching registry...\n");
@@ -2089,12 +2114,17 @@ namespace Rux {
             "\n"
             "Usage: rux add [package]\n"
             "       rux add [package]@[version]\n"
+            "       rux add [package] --path [path]\n"
+            "\n"
+            "Options:\n"
+            "  --path <path>        Add a local path-based dependency\n"
             "\n"
             "This command updates Rux.toml accordingly.\n"
             "\n"
             "Examples:\n"
             "  rux add Std\n"
             "  rux add Std@0.1.0\n"
+            "  rux add Json --path ../Json\n"
         );
     }
 

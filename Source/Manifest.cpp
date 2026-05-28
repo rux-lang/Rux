@@ -128,6 +128,19 @@ namespace Rux {
         return true;
     }
 
+    bool Manifest::AddPathDependency(const std::string& name, const std::string& path) {
+        for (auto& dep : dependencies) {
+            if (dep.name == name) {
+                if (dep.path == path) return false;
+                dep.version = {};
+                dep.path = path;
+                return true;
+            }
+        }
+        dependencies.push_back({name, {}, path});
+        return true;
+    }
+
     bool Manifest::RemoveDependency(const std::string& name) {
         auto it = std::ranges::find_if(dependencies,
                                        [&](const Dependency& d) {
