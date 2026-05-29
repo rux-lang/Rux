@@ -146,7 +146,7 @@ Add the Rux input to your `flake.nix`:
     };
   };
 }
-
+```
 
 ### macOS notes
 
@@ -189,4 +189,4 @@ Read the [Contributing guide](CONTRIBUTING.md) to get started.
 [TelegramUrl]: https://t.me/ruxlang
 [LicenseUrl]: https://github.com/rux-lang/Rux/blob/main/LICENSE
 
-```
+```text
