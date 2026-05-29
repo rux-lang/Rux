@@ -8,7 +8,7 @@ Each domain contains two sections:
 - **🚧 Hypothetical Required Code** — representing features currently missing in the language, written as proposals.
 
 > [!IMPORTANT]
-> Code blocks marked with 🚧 **WILL NOT COMPILE** in Rux v0.2.0.
+> Code blocks marked with "🚧" **WILL NOT COMPILE** in Rux v0.2.0.
 > They demonstrate what must be added to the language to make it viable for these specific systems programming fields.
 
 ---
