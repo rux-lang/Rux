@@ -8,22 +8,21 @@
 
 #include <algorithm>
 #include <fstream>
-#include <print>
+#include <ranges>
 
 namespace Rux {
     static constexpr std::string_view whitespace = " \t\r\n";
 
-    static std::string_view Trim(const std::string_view s) noexcept {
+    static constexpr std::string_view Trim(const std::string_view s) noexcept {
         const auto start = s.find_first_not_of(whitespace);
-        if (start == std::string_view::npos) return {};
-
-        const auto end = s.find_last_not_of(whitespace);
-        return s.substr(start, end - start + 1);
+        return (start == std::string_view::npos) ? "" : s.substr(start, s.find_last_not_of(whitespace) - start + 1);
     }
 
-    static std::string_view Unquote(std::string_view s) noexcept {
+    static constexpr std::string_view Unquote(std::string_view s) noexcept {
         s = Trim(s);
-        if (s.size() >= 2 && s.front() == '"' && s.back() == '"') s = s.substr(1, s.size() - 2);
+        if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
+            return s.substr(1, s.size() - 2);
+        }
         return s;
     }
 
@@ -76,10 +75,10 @@ namespace Rux {
     }
 
     std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec) {
-        const auto at = spec.find('@');
-        if (at == std::string_view::npos) return {std::string(spec), {}};
-
-        return {std::string(spec.substr(0, at)), std::string(spec.substr(at + 1))};
+        if (const auto at = spec.find('@'); at != std::string_view::npos) {
+            return {std::string(Trim(spec.substr(0, at))), std::string(Trim(spec.substr(at + 1)))};
+        }
+        return {std::string(Trim(spec)), {}};
     }
 
     std::optional<Manifest> Manifest::Load(const std::filesystem::path& path) {
@@ -87,26 +86,26 @@ namespace Rux {
         if (!file) return std::nullopt;
 
         Manifest m;
-
         std::string line;
-        std::string_view section;
+        std::string section;
 
         while (std::getline(file, line)) {
             std::string_view trimmed = Trim(line);
 
-            if (trimmed.empty() || trimmed.front() == '#') continue;
+            if (trimmed.empty() || trimmed.starts_with('#')) continue;
 
-            if (trimmed.front() == '[') {
-                if (const auto end = trimmed.find(']'); end != std::string_view::npos)
-                    section = Trim(trimmed.substr(1, end - 1));
+            if (trimmed.starts_with('[')) {
+                if (const auto close = trimmed.find(']'); close != std::string_view::npos) {
+                    section = Trim(trimmed.substr(1, close - 1));
+                }
                 continue;
             }
 
             const auto eq = trimmed.find('=');
             if (eq == std::string_view::npos) continue;
 
-            std::string_view key = Trim(trimmed.substr(0, eq));
-            std::string_view value = Unquote(trimmed.substr(eq + 1));
+            const auto key = Trim(trimmed.substr(0, eq));
+            const auto value = Unquote(Trim(trimmed.substr(eq + 1)));
 
             if (section == "Package") {
                 if (key == "Name")
@@ -128,23 +127,20 @@ namespace Rux {
             }
         }
 
-        return m.package.name.empty() ? std::nullopt : std::optional{std::move(m)};
+        if (m.package.name.empty()) return std::nullopt;
+        return m;
     }
 
     bool Manifest::Save(const std::filesystem::path& path) const {
         std::ofstream file(path);
         if (!file) return false;
 
-        auto write_kv = [&](const std::string_view k, const std::string_view v) {
-            file << k << " = \"" << v << "\"\n";
-        };
-
-        file << "[Package]\n";
-        write_kv("Name", package.name);
-        write_kv("Version", package.version);
-        write_kv("Type", package.type);
-        file << "\n[Build]\n";
-        write_kv("Output", build.output);
+        file << "[Package]\n"
+             << "Name    = \"" << package.name << "\"\n"
+             << "Version = \"" << package.version << "\"\n"
+             << "Type    = \"" << package.type << "\"\n"
+             << "\n[Build]\n"
+             << "Output  = \"" << build.output << "\"\n";
 
         if (!dependencies.empty()) {
             file << "\n[Dependencies]\n";
@@ -193,6 +189,7 @@ namespace Rux {
                 }
             }
         }
+
         return file.good();
     }
 
@@ -235,20 +232,22 @@ namespace Rux {
     }
 
     bool Manifest::RemoveDependency(const std::string& name) {
-        auto [first, last] = std::ranges::remove(dependencies, name, &Dependency::name);
-        if (first == last) return false;
-        dependencies.erase(first, last);
-        return true;
+        return std::erase_if(dependencies, [&](const Dependency& d) { return d.name == name; }) > 0;
     }
 
     std::optional<std::filesystem::path> Manifest::Find(const std::filesystem::path& start) {
         auto dir = std::filesystem::absolute(start);
+
         while (true) {
-            if (std::filesystem::exists(dir / "Rux.toml")) return dir / "Rux.toml";
+            if (auto candidate = dir / "Rux.toml"; std::filesystem::exists(candidate)) {
+                return candidate;
+            }
             auto parent = dir.parent_path();
             if (parent == dir) break;
             dir = std::move(parent);
         }
+
         return std::nullopt;
     }
+
 } // namespace Rux
