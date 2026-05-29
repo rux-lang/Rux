@@ -21,6 +21,7 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -160,6 +161,24 @@ namespace Rux {
 #else
             return os;
 #endif
+        }
+
+        [[nodiscard]] std::string HostTargetTriple() {
+#if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__) || defined(__amd64__))
+            return "windows-x64";
+#elif defined(__linux__) && (defined(__x86_64__) || defined(__amd64__))
+            return "linux-x64";
+#else
+            return "unknown";
+#endif
+        }
+
+        [[nodiscard]] bool IsSupportedTargetTriple(const std::string_view target) {
+            return target == "linux-x64" || target == "windows-x64";
+        }
+
+        [[nodiscard]] std::string DependencyPackageName(const Dependency& dep) {
+            return dep.package.empty() ? dep.name : dep.package;
         }
 
         [[nodiscard]] std::uintmax_t PeakMemoryBytes() {
@@ -524,6 +543,23 @@ namespace Rux {
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) return 1;
 
+        std::string targetName = target.empty() ? HostTargetTriple() : std::string(target);
+        if (!IsSupportedTargetTriple(targetName)) {
+            std::print(stderr,
+                       "error: unsupported target '{}'; supported targets are linux-x64 and windows-x64\n",
+                       targetName);
+            return 1;
+        }
+        const std::string hostTarget = HostTargetTriple();
+        if (hostTarget != "unknown" && targetName != hostTarget) {
+            // Target selection is currently used for source/dependency choice.
+            // Linking foreign executable formats is kept explicit until the
+            // backends support it end-to-end.
+            std::print(
+                stderr, "error: cross-target build from '{}' to '{}' is not supported yet\n", hostTarget, targetName);
+            return 1;
+        }
+
         std::string_view profileName = isRelease ? "Release" : "Debug";
         if (!profile.empty()) profileName = profile;
 
@@ -639,8 +675,11 @@ namespace Rux {
                                          const std::filesystem::path& ownerRoot) -> bool {
                 if (queuedPackageNames.count(pkgName)) return true;
 
+                // Resolve imports through the target view of the owning
+                // manifest. This is what maps Platform to Linux on linux-x64.
+                const auto deps = ownerManifest.EffectiveDependencies(targetName);
                 const Dependency* dep = nullptr;
-                for (const auto& d : ownerManifest.dependencies)
+                for (const auto& d : deps)
                     if (d.name == pkgName) {
                         dep = &d;
                         break;
@@ -652,9 +691,11 @@ namespace Rux {
                 }
                 std::filesystem::path depRoot;
                 if (dep->path.empty()) {
-                    depRoot = RegistryPackagesDir() / dep->name;
+                    depRoot = RegistryPackagesDir() / DependencyPackageName(*dep);
                     if (!std::filesystem::exists(depRoot)) {
-                        std::print(stderr, "error: package '{}' is not installed — run 'rux install'\n", pkgName);
+                        std::print(stderr,
+                                   "error: package '{}' is not installed — run 'rux install'\n",
+                                   DependencyPackageName(*dep));
                         return false;
                     }
                 }
@@ -669,7 +710,9 @@ namespace Rux {
                 }
 
                 queuedPackageNames.insert(pkgName);
-                pendingPackages.push_back({pkgName, depRoot, std::move(*depManifest)});
+                // Keep the import name as the package namespace loaded into
+                // Sema, even when the files came from another package name.
+                pendingPackages.push_back({dep->name, depRoot, std::move(*depManifest)});
                 return true;
             };
 
@@ -699,7 +742,7 @@ namespace Rux {
             for (std::size_t pendingIndex = 0; pendingIndex < pendingPackages.size(); ++pendingIndex) {
                 const std::filesystem::path pendingRoot = pendingPackages[pendingIndex].root;
                 const Manifest pendingManifest = pendingPackages[pendingIndex].manifest;
-                const std::string packageName = pendingManifest.package.name;
+                const std::string packageName = pendingPackages[pendingIndex].name;
 
                 if (opts.verbose) std::print("  Loading package {} from {}\n", packageName, pendingRoot.string());
 
@@ -765,7 +808,7 @@ namespace Rux {
                     }
                 }
                 for (const auto& pkgName : imports) {
-                    if (pkgName == pendingManifest.package.name) continue;
+                    if (pkgName == pendingManifest.package.name || pkgName == packageName) continue;
                     if (!enqueueDependency(pkgName, pendingManifest, pendingRoot)) return 1;
                 }
 
@@ -1307,10 +1350,12 @@ namespace Rux {
         // BFS queue of registry package names to install
         std::vector<std::string> queue;
         std::unordered_set<std::string> queued;
-        for (const auto& dep : manifest->dependencies) {
-            if (dep.path.empty() && !queued.count(dep.name)) {
-                queue.push_back(dep.name);
-                queued.insert(dep.name);
+        const std::string installTarget = HostTargetTriple();
+        for (const auto& dep : manifest->EffectiveDependencies(installTarget)) {
+            const std::string packageName = DependencyPackageName(dep);
+            if (dep.path.empty() && !queued.count(packageName)) {
+                queue.push_back(packageName);
+                queued.insert(packageName);
             }
         }
 
@@ -1356,10 +1401,11 @@ namespace Rux {
 
             // Enqueue registry deps declared by this package
             if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
-                for (const auto& dep : depManifest->dependencies) {
-                    if (dep.path.empty() && !queued.count(dep.name)) {
-                        queue.push_back(dep.name);
-                        queued.insert(dep.name);
+                for (const auto& dep : depManifest->EffectiveDependencies(installTarget)) {
+                    const std::string depPackageName = DependencyPackageName(dep);
+                    if (dep.path.empty() && !queued.count(depPackageName)) {
+                        queue.push_back(depPackageName);
+                        queued.insert(depPackageName);
                     }
                 }
             }
@@ -1405,8 +1451,8 @@ namespace Rux {
         if (!manifest) return 1;
 
         std::vector<std::string> toRemove;
-        for (const auto& dep : manifest->dependencies)
-            if (dep.path.empty()) toRemove.push_back(dep.name);
+        for (const auto& dep : manifest->EffectiveDependencies(HostTargetTriple()))
+            if (dep.path.empty()) toRemove.push_back(DependencyPackageName(dep));
 
         if (toRemove.empty()) {
             if (!opts.quiet) std::print("  No registry dependencies to uninstall.\n");
@@ -1835,10 +1881,12 @@ namespace Rux {
 
         std::vector<std::string> queue;
         std::unordered_set<std::string> queued;
-        for (const auto& dep : manifest->dependencies) {
-            if (dep.path.empty() && !queued.count(dep.name)) {
-                queue.push_back(dep.name);
-                queued.insert(dep.name);
+        const std::string updateTarget = HostTargetTriple();
+        for (const auto& dep : manifest->EffectiveDependencies(updateTarget)) {
+            const std::string packageName = DependencyPackageName(dep);
+            if (dep.path.empty() && !queued.count(packageName)) {
+                queue.push_back(packageName);
+                queued.insert(packageName);
             }
         }
 
@@ -1888,10 +1936,11 @@ namespace Rux {
 
             // Enqueue registry deps declared by this package
             if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
-                for (const auto& dep : depManifest->dependencies) {
-                    if (dep.path.empty() && !queued.count(dep.name)) {
-                        queue.push_back(dep.name);
-                        queued.insert(dep.name);
+                for (const auto& dep : depManifest->EffectiveDependencies(updateTarget)) {
+                    const std::string depPackageName = DependencyPackageName(dep);
+                    if (dep.path.empty() && !queued.count(depPackageName)) {
+                        queue.push_back(depPackageName);
+                        queued.insert(depPackageName);
                     }
                 }
             }
