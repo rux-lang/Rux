@@ -36,7 +36,15 @@ namespace Rux {
         if (keyPos == std::string_view::npos) return {};
         const auto eqPos = inner.find('=', keyPos + keyName.size());
         if (eqPos == std::string_view::npos) return {};
-        const auto rawVal = Trim(inner.substr(eqPos + 1));
+        std::size_t valueEnd = eqPos + 1;
+        bool inString = false;
+        while (valueEnd < inner.size()) {
+            const char c = inner[valueEnd];
+            if (c == '"') inString = !inString;
+            if (!inString && c == ',') break;
+            ++valueEnd;
+        }
+        const auto rawVal = Trim(inner.substr(eqPos + 1, valueEnd - eqPos - 1));
         if (rawVal.size() >= 2 && rawVal.front() == '"' && rawVal.back() == '"')
             return std::string(rawVal.substr(1, rawVal.size() - 2));
         return std::string(rawVal);
