@@ -21,18 +21,17 @@ namespace Rux {
     };
 
     /**
-     * @brief Initializes a new Rux project structure.
+     * @brief Scaffolds a new Rux package structure.
      *
-     * Creates the standard directory hierarchy (Bin, Src, Temp) and
-     * generates default project files (Rux.toml, .gitignore).
+     * Creates standard directories, a default Rux.toml manifest,
+     * and starter source files depending on package type.
      *
-     * @param root      Path to the project folder.
-     * @param name      Name of the package.
-     * @param type      The project's build target (executable, library, etc.).
-     * @param initMode  If true, attempts to scaffold in an existing directory
-     * without overwriting existing files.
+     * @param root Project root directory
+     * @param name Package name
+     * @param type Package type (executable or library)
+     * @param initMode If true, does not fail when directory already exists
      *
-     * @return true on success, false if any file or directory creation fails.
+     * @return true on success, false on failure
      */
     bool ScaffoldPackage(const std::filesystem::path& root,
                          const std::string& name,
