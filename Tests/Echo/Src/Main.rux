@@ -1,42 +1,34 @@
 // Stdin round-trip: reads bytes from standard input and echoes them back to
-// standard output, exercising the ReadFile thunk (the `read` path, including
-// the bytes-read out-parameter) alongside GetStdHandle and WriteConsoleW.
+// standard output, exercising the ReadFile and WriteFile thunks (the `read`
+// and `write` paths, including their bytes-transferred out-parameters)
+// alongside GetStdHandle.
 //
-// ReadFile yields raw bytes (char8) while WriteConsoleW consumes UTF-16
-// (char16), so each input byte is widened into a char16 before writing — the
-// thunk emits the low byte of each unit, reproducing the input exactly for
-// ASCII/UTF-8 text. Buffers use `.data` pointers, which alias the backing
-// storage and double as the call arguments. Tests/run_io_test.sh pipes a known
+// Both calls work in raw bytes (char8), so the input is echoed verbatim with
+// no widening. WriteFile (unlike WriteConsoleW) writes to any handle, so the
+// output is capturable when the harness pipes stdout. The trailing arg to each
+// is lpOverlapped (null = synchronous). Tests/run_io_test.sh pipes a known
 // string in and asserts it comes back unchanged.
 
 @[Import(lib: "kernel32")]
 extern func GetStdHandle(handle: int) -> int;
 
 @[Import(lib: "kernel32")]
-extern func ReadFile(handle: int, buffer: *char8, count: uint64, read: *uint64) -> bool;
+extern func ReadFile(handle: int, buffer: *char8, count: uint64, read: *uint64, overlapped: int) -> bool;
 
 @[Import(lib: "kernel32")]
-extern func WriteConsoleW(handle: int, buffer: *char16, count: uint64) -> bool;
+extern func WriteFile(handle: int, buffer: *char8, count: uint64, written: *uint64, overlapped: int) -> bool;
 
 func Main() -> int {
     var inbuf: char8[1024];
-    var outbuf: char16[1024];
     var read: uint64 = 0;
+    var written: uint64 = 0;
 
     let stdin = GetStdHandle(-10); // STD_INPUT_HANDLE
     let stdout = GetStdHandle(-11); // STD_OUTPUT_HANDLE
 
-    let src = inbuf.data;
-    let dst = outbuf.data;
+    let buf = inbuf.data;
 
-    ReadFile(stdin, src, 1024, &read);
-
-    var i: uint64 = 0;
-    while i < read {
-        dst[i] = src[i] as char16; // widen byte -> UTF-16 unit
-        i = i + 1;
-    }
-
-    WriteConsoleW(stdout, dst, read);
+    ReadFile(stdin, buf, 1024, &read, 0);
+    WriteFile(stdout, buf, read, &written, 0);
     return 0;
 }

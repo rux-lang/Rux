@@ -1,0 +1,37 @@
+name: Windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    # windows-latest is x86-64, so Rux's PE32+ backend emits executables that
+    # run natively here. The I/O thunks resolve against the real GetStdHandle /
+    # WriteFile / ReadFile imports.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # CMakeLists requires CMake >= 3.31; pull a known-recent CMake + Ninja
+      # rather than relying on whatever ships on the runner image.
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      # Builds with the bundled MSVC toolchain (VS 2022) via the Visual Studio
+      # generator, matching the MSVC build path in CMakeLists.
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Run I/O thunk tests
+        # Run under bash (Git Bash ships on the runner). The script cd's into
+        # each package, so rux must be an absolute path; MSVC emits it under
+        # the per-config Release/ subdirectory.
+        shell: bash
+        run: Tests/run_io_test.sh "$GITHUB_WORKSPACE/build/Release/rux.exe"
