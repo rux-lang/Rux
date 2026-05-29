@@ -188,5 +188,3 @@ Read the [Contributing guide](CONTRIBUTING.md) to get started.
 [MastodonUrl]: https://mastodon.social/@ruxlang
 [TelegramUrl]: https://t.me/ruxlang
 [LicenseUrl]: https://github.com/rux-lang/Rux/blob/main/LICENSE
-
-```text
