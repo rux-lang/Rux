@@ -21,6 +21,17 @@ namespace Rux {
     namespace fs = std::filesystem;
     using ScaffoldResult = std::expected<void, std::string>;
 
+    /**
+     * @brief Writes a file with the given content.
+     *
+     * If @p skipIfExists is true and the file already exists,
+     * the function succeeds without modifying it.
+     *
+     * @param path Output file path
+     * @param content File content
+     * @param skipIfExists Whether to skip writing if file already exists
+     * @return std::expected<void, std::string> error message on failure
+     */
     static ScaffoldResult WriteFile(const fs::path& path, const std::string_view content, const bool skipIfExists) {
         if (skipIfExists && fs::exists(path)) return {};
 
@@ -30,6 +41,12 @@ namespace Rux {
         return std::unexpected(std::format("failed to write file: {}", path.string()));
     }
 
+    /**
+     * @brief Creates a directory tree.
+     *
+     * @param path Directory path to create
+     * @return std::expected<void, std::string> error message on failure
+     */
     static ScaffoldResult MakeDir(const fs::path& path) {
         if (std::error_code ec; fs::create_directories(path, ec) || !ec) return {};
         return std::unexpected(std::format("failed to create directory: {}", path.string()));
