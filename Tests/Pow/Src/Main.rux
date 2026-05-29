@@ -1,0 +1,18 @@
+// Exercises the integer ** (exponentiation) operator end to end. Integer **
+// lowers to a call to the compiler-synthesized __rux_ipow helper; before that
+// helper existed the call landed on an undefined symbol and the program failed
+// to launch, so this doubles as a regression test for that fix.
+//
+// Returns 0 when every case matches its expected value; otherwise it returns
+// the 1-based index of the first failing case, so a non-zero exit code points
+// straight at the broken case. Tests/run_pow_test.sh asserts the exit code.
+
+func Main() -> int {
+    if 2 ** 10 != 1024 { return 1; }
+    if 3 ** 4 != 81 { return 2; }
+    if 10 ** 3 != 1000 { return 3; }
+    if 7 ** 1 != 7 { return 4; }
+    if 5 ** 0 != 1 { return 5; }
+    if 2 ** 0 != 1 { return 6; }
+    return 0;
+}
