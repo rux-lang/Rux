@@ -1958,10 +1958,17 @@ namespace Rux {
     int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions& opts) {
         std::string_view packageName;
 
+        bool jsonOutput = false;
+
         for (auto arg : args) {
             if (arg == "-h" || arg == "--help") {
                 PrintHelpInfo();
                 return 0;
+            }
+
+            if (arg == "--json") {
+                jsonOutput = true;
+                continue;
             }
 
             if (!arg.starts_with('-') && packageName.empty()) {
@@ -1992,27 +1999,60 @@ namespace Rux {
             std::print(stderr, "error: failed to parse '{}'\n", manifestPath.string());
             return 1;
         }
-        std::print(
-            "Name:     {}\n"
-            "Version:  {}\n"
-            "Type:     {}\n",
-            manifest->package.name,
-            manifest->package.version,
-            manifest->package.type
-        );
 
-        if (!manifest->dependencies.empty()) {
-            std::print("\nDependencies:\n");
+        // not using nlohmann/json.hpp to keep compiler as small and fast as possible
+        if (jsonOutput) {
+            std::print("{}\n", "{");
+            std::print("  \"name\": \"{}\",\n", manifest->package.name);
+            std::print("  \"version\": \"{}\",\n", manifest->package.version);
+            std::print("  \"type\": \"{}\",\n", manifest->package.type);
+            std::print("  \"dependencies\": [\n");
 
-            for (const auto& dep : manifest->dependencies) {
-                if (!dep.path.empty())
-                    std::print("  - {} (path: {})\n", dep.name, dep.path);
-                else
-                    std::print("  - {} @ {}\n",
-                        dep.name,
-                        dep.version.empty() ? "*" : dep.version);
+            for (size_t i = 0; i < manifest->dependencies.size(); ++i) {
+                const auto& dep = manifest->dependencies[i];
+                std::print("    {}", "{");
+                std::print("\"name\": \"{}\"", dep.name);
+
+                if (!dep.path.empty()) {
+                    std::print(", \"path\": \"{}\"", dep.path);
+                } else {
+                    std::print(", \"version\": \"{}\"", dep.version.empty() ? "*" : dep.version);
+                }
+
+                // Only add a comma if this isn't the last element in the vector
+                if (i + 1 < manifest->dependencies.size()) {
+                    std::print("    {},\n", "}");
+                } else {
+                    std::print("    {}\n", "}");
+                }
             }
+
+            std::print("  ]\n");
+            std::print("{}\n", "}");
+        } else {
+            std::print(
+                "Name:     {}\n"
+                "Version:  {}\n"
+                "Type:     {}\n",
+                manifest->package.name,
+                manifest->package.version,
+                manifest->package.type
+            );
+
+            if (!manifest->dependencies.empty()) {
+                std::print("\nDependencies:\n");
+
+                for (const auto& dep : manifest->dependencies) {
+                    if (!dep.path.empty())
+                        std::print("  - {} (path: {})\n", dep.name, dep.path);
+                    else
+                        std::print("  - {} @ {}\n",
+                            dep.name,
+                            dep.version.empty() ? "*" : dep.version);
+                }
+            }            
         }
+
 
         return 0;
     }
@@ -2367,6 +2407,8 @@ namespace Rux {
                    "\n"
                    "Usage: rux info [package name]\n"
                    "\n"
+                   "Options:\n"
+                   "  --json    Returns a json instead of a string"
                    "Examples:\n"
                    "  rux info Std\n"
                    "  rux info Windows\n");
