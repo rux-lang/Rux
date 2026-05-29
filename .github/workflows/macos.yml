@@ -1,0 +1,39 @@
+name: macOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    # macos-14 is Apple Silicon (arm64). Rux emits x86-64 Mach-O executables,
+    # so the produced test binaries run through Rosetta 2 (installed below).
+    # (Intel macos-13 runners are scarce/being retired and queue indefinitely,
+    # so we don't gate CI on them; the Rosetta path exercises the same output.)
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rux's C++26 sources need a recent Clang; Apple's bundled clang is too old.
+      - name: Install toolchain
+        run: brew install llvm cmake ninja
+
+      - name: Install Rosetta 2
+        run: softwareupdate --install-rosetta --agree-to-license
+
+      - name: Configure
+        run: |
+          CLANGXX="$(brew --prefix llvm)/bin/clang++"
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_CXX_COMPILER="$CLANGXX" \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run I/O thunk tests
+        # The test script cd's into each package, so rux must be an absolute path.
+        run: Tests/run_io_test.sh "$GITHUB_WORKSPACE/build/rux"
