@@ -19,6 +19,10 @@
 [![Telegram][TelegramBadge]][TelegramUrl]
 [![License][LicenseBadge]][LicenseUrl]
 
+[![Linux](https://github.com/rux-lang/Rux/actions/workflows/linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/linux.yml)
+[![macOS](https://github.com/rux-lang/Rux/actions/workflows/macos.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/macos.yml)
+[![Windows](https://github.com/rux-lang/Rux/actions/workflows/windows.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/windows.yml)
+
 Rux is a fast, compiled, strongly typed, multi-paradigm, general-purpose programming language.
 
 ## Project Status
@@ -110,6 +114,38 @@ To install it onto your system:
 
 ```sh
 cmake --install build --prefix /usr/local
+```
+
+### NixOS
+
+Once the Rux flake is available in your repository (or any public Git host), you can easily add it as a dependency in your own Nix configuration or project.
+
+#### In a NixOS Flake
+
+Add the Rux input to your `flake.nix`:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    rux.url = "github:rux-lang/Rux";
+    # Optionally pin a specific branch or tag:
+    # rux.url = "github:rux-lang/Rux/main";
+  };
+
+  outputs = { self, nixpkgs, rux }: {
+    nixosConfigurations.my-machine = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        ({ pkgs, ... }: {
+          environment.systemPackages = [
+            rux.packages.${pkgs.system}.default
+          ];
+        })
+      ];
+    };
+  };
+}
 ```
 
 ### macOS notes
