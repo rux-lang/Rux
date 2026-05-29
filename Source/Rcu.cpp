@@ -1217,6 +1217,9 @@ namespace Rux {
             std::unordered_map<std::string, uint32_t> funcSyms;
             std::unordered_map<std::string, uint32_t> dataSyms;
 
+            // Symbol index of the synthesized integer-pow helper (~0u until used).
+            uint32_t ipowSym = ~0u;
+
             // Struct field layouts
             struct FieldLayout {
                 std::string name;
@@ -1315,6 +1318,57 @@ namespace Rux {
                 uint32_t idx = AddSymbol(s);
                 externSyms[name] = idx;
                 return idx;
+            }
+
+            // Lazily declares the synthesized integer exponentiation helper and
+            // returns its symbol index. The body is emitted once per object by
+            // EmitIntPowHelper(), after all user functions, so forward calls to
+            // it resolve like any other local text symbol.
+            uint32_t EnsureIntPowHelper() {
+                if (ipowSym == ~0u) {
+                    RcuSymbol s;
+                    s.name = "__rux_ipow";
+                    s.sectionIdx = RCU_TEXT_IDX;
+                    s.value = 0; // patched to the real offset in EmitIntPowHelper
+                    s.kind = RcuSymKind::Func;
+                    s.visibility = RcuSymVis::Local;
+                    ipowSym = AddSymbol(s);
+                }
+                return ipowSym;
+            }
+
+            // Emits the integer exponentiation helper into .text:
+            //   rax = rdi ** rsi   (signed exponent)
+            // Exponentiation by squaring; a negative exponent yields 0 and a
+            // zero exponent yields 1. Works for every integer width because the
+            // low bits of a two's-complement product are width-independent, so
+            // no libm/CRT dependency is needed on any backend.
+            void EmitIntPowHelper() {
+                if (ipowSym == ~0u) return;
+                symbols[ipowSym].value = enc.Size();
+                // clang-format off
+                static constexpr std::uint8_t kThunk[] = {
+                    0x48, 0x85, 0xF6,                         // test rsi, rsi    ; exponent
+                    0x78, 0x20,                               // js   .negative   ; exp < 0 -> 0
+                    0xB8, 0x01, 0x00, 0x00, 0x00,             // mov  eax, 1      ; result = 1
+                    // .loop:
+                    0x48, 0x85, 0xF6,                         // test rsi, rsi
+                    0x74, 0x18,                               // jz   .done       ; exp == 0
+                    0x48, 0xF7, 0xC6, 0x01, 0x00, 0x00, 0x00, // test rsi, 1
+                    0x74, 0x04,                               // jz   .square
+                    0x48, 0x0F, 0xAF, 0xC7,                   // imul rax, rdi    ; result *= base
+                    // .square:
+                    0x48, 0x0F, 0xAF, 0xFF,                   // imul rdi, rdi    ; base *= base
+                    0x48, 0xD1, 0xFE,                         // sar  rsi, 1      ; exp >>= 1
+                    0xEB, 0xE5,                               // jmp  .loop
+                    // .negative:
+                    0x31, 0xC0,                               // xor  eax, eax    ; result = 0
+                    // .done:
+                    0xC3,                                     // ret
+                };
+                // clang-format on
+                for (const std::uint8_t b : kThunk)
+                    enc.Byte(b);
             }
 
             void PredeclareFunctions() {
@@ -2180,7 +2234,7 @@ namespace Rux {
                         AddTextReloc(ro, sym);
                     }
                     else {
-                        uint32_t sym = GetOrAddExtern("__rux_ipow", RcuSymKind::ExternFunc);
+                        uint32_t sym = EnsureIntPowHelper();
                         LoadA(instr.srcs[0], t);
                         LoadB(instr.srcs[1], t);
                         enc.MovArgLoad(0, Disp(instr.srcs[0]));
@@ -2709,6 +2763,8 @@ namespace Rux {
                 // Functions
                 for (const auto& func : mod.funcs)
                     GenFunc(func);
+                // Runtime helpers referenced by the generated code, emitted once.
+                EmitIntPowHelper();
             }
         };
 
