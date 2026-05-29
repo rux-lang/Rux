@@ -567,7 +567,6 @@ namespace Rux {
 
         // *  or  *=  or  **
         case '*':
-            if (Match('*')) return MakeToken(TokenKind::StarStar, start, tokenStart);
             if (Match('=')) return MakeToken(TokenKind::StarAssign, start, tokenStart);
             return MakeToken(TokenKind::Star, start, tokenStart);
 
