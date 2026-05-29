@@ -19,15 +19,15 @@ namespace Rux {
         return std::string(s.substr(start, end - start + 1));
     }
 
-    // Parse the Path value out of an inline table like { Path = "../../Packages/Std" }
-    static std::string ParseInlineTablePath(std::string_view val) {
+    // Parse a string value out of an inline table like { Path = "../../Packages/Std" }.
+    static std::string ParseInlineTableString(std::string_view val, std::string_view keyName) {
         const auto open = val.find('{');
         const auto close = val.rfind('}');
         if (open == std::string_view::npos || close == std::string_view::npos || close <= open) return {};
         std::string_view inner = val.substr(open + 1, close - open - 1);
-        const auto keyPos = inner.find("Path");
+        const auto keyPos = inner.find(keyName);
         if (keyPos == std::string_view::npos) return {};
-        const auto eqPos = inner.find('=', keyPos + 4);
+        const auto eqPos = inner.find('=', keyPos + keyName.size());
         if (eqPos == std::string_view::npos) return {};
         const auto rawVal = Trim(inner.substr(eqPos + 1));
         if (rawVal.size() >= 2 && rawVal.front() == '"' && rawVal.back() == '"')
@@ -38,6 +38,30 @@ namespace Rux {
     static std::string Unquote(std::string_view s) {
         if (s.size() >= 2 && s.front() == '"' && s.back() == '"') return std::string(s.substr(1, s.size() - 2));
         return std::string(s);
+    }
+
+    static Dependency ParseDependency(std::string key, const std::string& value) {
+        Dependency dep;
+        dep.name = std::move(key);
+        if (!value.empty() && value.front() == '{') {
+            dep.package = ParseInlineTableString(value, "Package");
+            dep.path = ParseInlineTableString(value, "Path");
+            dep.version = ParseInlineTableString(value, "Version");
+        }
+        else {
+            dep.version = value == "*" ? "" : value;
+        }
+        return dep;
+    }
+
+    static std::optional<std::string> TargetNameFromDependenciesSection(const std::string& section) {
+        constexpr std::string_view prefix = "Target.";
+        constexpr std::string_view suffix = ".Dependencies";
+        if (!section.starts_with(prefix) || !section.ends_with(suffix)) return std::nullopt;
+        const auto begin = prefix.size();
+        const auto len = section.size() - prefix.size() - suffix.size();
+        if (len == 0) return std::nullopt;
+        return section.substr(begin, len);
     }
 
     std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec) {
@@ -77,13 +101,10 @@ namespace Rux {
             }
             else if (section == "Dependencies") {
                 // Name = "version"  OR  Name = "*"  OR  Name = { Path = "..." }
-                Dependency dep;
-                dep.name = key;
-                if (!value.empty() && value.front() == '{')
-                    dep.path = ParseInlineTablePath(value);
-                else
-                    dep.version = value == "*" ? "" : value;
-                m.dependencies.push_back(std::move(dep));
+                m.dependencies.push_back(ParseDependency(std::move(key), value));
+            }
+            else if (auto target = TargetNameFromDependenciesSection(section)) {
+                m.targetDependencies[*target].push_back(ParseDependency(std::move(key), value));
             }
         }
         if (m.package.name.empty()) return std::nullopt;
@@ -102,8 +123,44 @@ namespace Rux {
         if (!dependencies.empty()) {
             file << "\n[Dependencies]\n";
             for (const auto& dep : dependencies) {
-                if (!dep.path.empty())
-                    file << dep.name << " = { Path = \"" << dep.path << "\" }\n";
+                const bool hasPackageAlias = !dep.package.empty() && dep.package != dep.name;
+                if (!dep.path.empty() || hasPackageAlias) {
+                    file << dep.name << " = { ";
+                    bool wrote = false;
+                    if (hasPackageAlias) {
+                        file << "Package = \"" << dep.package << "\"";
+                        wrote = true;
+                    }
+                    if (!dep.path.empty()) {
+                        if (wrote) file << ", ";
+                        file << "Path = \"" << dep.path << "\"";
+                    }
+                    file << " }\n";
+                }
+                else {
+                    std::string ver = dep.version.empty() ? "*" : dep.version;
+                    file << dep.name << " = \"" << ver << "\"\n";
+                }
+            }
+        }
+        for (const auto& [target, deps] : targetDependencies) {
+            if (deps.empty()) continue;
+            file << "\n[Target." << target << ".Dependencies]\n";
+            for (const auto& dep : deps) {
+                const bool hasPackageAlias = !dep.package.empty() && dep.package != dep.name;
+                if (!dep.path.empty() || hasPackageAlias) {
+                    file << dep.name << " = { ";
+                    bool wrote = false;
+                    if (hasPackageAlias) {
+                        file << "Package = \"" << dep.package << "\"";
+                        wrote = true;
+                    }
+                    if (!dep.path.empty()) {
+                        if (wrote) file << ", ";
+                        file << "Path = \"" << dep.path << "\"";
+                    }
+                    file << " }\n";
+                }
                 else {
                     std::string ver = dep.version.empty() ? "*" : dep.version;
                     file << dep.name << " = \"" << ver << "\"\n";
@@ -121,7 +178,7 @@ namespace Rux {
                 return true;
             }
         }
-        dependencies.push_back({name, version, ""});
+        dependencies.push_back({name, {}, version, {}});
         return true;
     }
 
@@ -134,8 +191,24 @@ namespace Rux {
                 return true;
             }
         }
-        dependencies.push_back({name, {}, path});
+        dependencies.push_back({name, {}, {}, path});
         return true;
+    }
+
+    std::vector<Dependency> Manifest::EffectiveDependencies(const std::string& target) const {
+        std::vector<Dependency> result = dependencies;
+        auto it = targetDependencies.find(target);
+        if (it == targetDependencies.end()) return result;
+
+        for (const auto& targetDep : it->second) {
+            auto existing =
+                std::ranges::find_if(result, [&](const Dependency& dep) { return dep.name == targetDep.name; });
+            if (existing == result.end())
+                result.push_back(targetDep);
+            else
+                *existing = targetDep;
+        }
+        return result;
     }
 
     bool Manifest::RemoveDependency(const std::string& name) {
