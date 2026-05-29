@@ -34,10 +34,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <cmath>
 #ifdef _WIN32
-#  include <windows.h>
 #  include <psapi.h>
+#  include <windows.h>
 #  include <winhttp.h>
 #else
 #  include <sys/resource.h>
@@ -145,8 +144,16 @@ namespace Rux {
             std::string os = "Windows";
 #elif defined(__APPLE__)
             std::string os = "macOS";
+#elif defined(__OpenBSD__)
+            std::string os = "OpenBSD";
 #elif defined(__linux__)
             std::string os = "Linux";
+#elif defined(__FreeBSD__)
+            std::string os = "FreeBSD";
+#elif defined(__DragonFly__)
+            std::string os = "DragonFly";
+#elif defined(__NetBSD__)
+            std::string os = "NetBSD";
 #else
             std::string os = "Unknown";
 #endif
@@ -167,7 +174,9 @@ namespace Rux {
         [[nodiscard]] std::string HostTargetTriple() {
 #if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__) || defined(__amd64__))
             return "windows-x64";
-#elif defined(__linux__) && (defined(__x86_64__) || defined(__amd64__))
+#elif (defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) ||                    \
+       defined(__DragonFly__)) &&                                                                                      \
+    (defined(__x86_64__) || defined(__amd64__))
             return "linux-x64";
 #else
             return "unknown";
@@ -1990,14 +1999,12 @@ namespace Rux {
             std::print(stderr, "error: failed to parse '{}'\n", manifestPath.string());
             return 1;
         }
-        std::print(
-            "Name:     {}\n"
-            "Version:  {}\n"
-            "Type:     {}\n",
-            manifest->package.name,
-            manifest->package.version,
-            manifest->package.type
-        );
+        std::print("Name:     {}\n"
+                   "Version:  {}\n"
+                   "Type:     {}\n",
+                   manifest->package.name,
+                   manifest->package.version,
+                   manifest->package.type);
 
         if (!manifest->dependencies.empty()) {
             std::print("\nDependencies:\n");
@@ -2006,9 +2013,7 @@ namespace Rux {
                 if (!dep.path.empty())
                     std::print("  - {} (path: {})\n", dep.name, dep.path);
                 else
-                    std::print("  - {} @ {}\n",
-                        dep.name,
-                        dep.version.empty() ? "*" : dep.version);
+                    std::print("  - {} @ {}\n", dep.name, dep.version.empty() ? "*" : dep.version);
             }
         }
 
