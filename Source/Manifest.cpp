@@ -36,7 +36,12 @@ namespace Rux {
         if (keyPos == std::string_view::npos) return {};
         const auto eqPos = inner.find('=', keyPos + keyName.size());
         if (eqPos == std::string_view::npos) return {};
-        const auto rawVal = Trim(inner.substr(eqPos + 1));
+        std::string_view rawVal = inner.substr(eqPos + 1);
+        // Stop at comma if present (for multi-field inline tables)
+        const auto commaPos = rawVal.find(',');
+        if (commaPos != std::string_view::npos)
+            rawVal = rawVal.substr(0, commaPos);
+        rawVal = Trim(rawVal);
         if (rawVal.size() >= 2 && rawVal.front() == '"' && rawVal.back() == '"')
             return std::string(rawVal.substr(1, rawVal.size() - 2));
         return std::string(rawVal);
