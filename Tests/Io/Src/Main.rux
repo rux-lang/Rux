@@ -1,25 +1,29 @@
 // Exercises the OS-interaction (I/O) thunks the linker provides on hosts
-// without native Win32: GetStdHandle and WriteConsoleW. The codegen lowers
-// these extern calls with the Win64 register layout, and each backend maps
-// them onto host primitives:
+// without native Win32: GetStdHandle and WriteFile. The codegen lowers these
+// extern calls with the Win64 register layout, and each backend maps them onto
+// host primitives:
 //   - Windows: the real kernel32 functions
 //   - Linux/FreeBSD: ELF syscall thunks (write)
 //   - macOS: Mach-O syscall thunks (write, BSD class mask)
 //
-// A `c16"..."` literal is a Slice<char16> (UTF-16). `.data` yields a pointer
-// into read-only data and `.length` the element count, which is exactly what
-// WriteConsoleW consumes. Tests/run_io_test.sh builds this and asserts the
-// printed output, so it doubles as a regression test for the thunks.
+// WriteFile (unlike WriteConsoleW) writes to any handle — console, pipe, or
+// file — so its output is capturable when the test harness redirects stdout
+// through a pipe. A `c8"..."` literal is a Slice<char8> (UTF-8): `.data` yields
+// a pointer into read-only data and `.length` the byte count, exactly what
+// WriteFile consumes. The trailing arg is lpOverlapped (null = synchronous).
+// Tests/run_io_test.sh builds this and asserts the printed output, so it
+// doubles as a regression test for the thunks.
 
 @[Import(lib: "kernel32")]
 extern func GetStdHandle(handle: int) -> int;
 
 @[Import(lib: "kernel32")]
-extern func WriteConsoleW(handle: int, buffer: *char16, count: uint64) -> bool;
+extern func WriteFile(handle: int, buffer: *char8, count: uint64, written: *uint64, overlapped: int) -> bool;
 
 func Main() -> int {
-    let text = c16"Hello from a Rux binary via I/O thunks!\n";
+    let text = c8"Hello from a Rux binary via I/O thunks!\n";
+    var written: uint64 = 0;
     let stdout = GetStdHandle(-11); // STD_OUTPUT_HANDLE
-    WriteConsoleW(stdout, text.data, text.length);
+    WriteFile(stdout, text.data, text.length, &written, 0);
     return 0;
 }

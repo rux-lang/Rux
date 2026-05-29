@@ -15,7 +15,7 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Rux's C++26 sources need a recent Clang; Apple's bundled clang is too old.
       - name: Install toolchain
