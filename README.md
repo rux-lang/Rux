@@ -116,11 +116,11 @@ To install it onto your system:
 cmake --install build --prefix /usr/local
 ```
 
-### Using Rux as a Flake Input
+### NixOS
 
 Once the Rux flake is available in your repository (or any public Git host), you can easily add it as a dependency in your own Nix configuration or project.
 
-#### In a NixOS configuration
+#### In a NixOS Flake
 
 Add the Rux input to your `flake.nix`:
 
@@ -128,9 +128,9 @@ Add the Rux input to your `flake.nix`:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    rux.url = "github:Szyroi/Rux";          # or github:rux-lang/Rux once merged
+    rux.url = "github:rux-lang/Rux";
     # Optionally pin a specific branch or tag:
-    # rux.url = "github:Szyroi/Rux/main";
+    # rux.url = "github:rux-lang/Rux/main";
   };
 
   outputs = { self, nixpkgs, rux }: {
