@@ -106,6 +106,20 @@ cmake --build build --config Release
 
 The `rux` binary will be placed under the selected build directory. Single-configuration generators usually emit it directly in that directory, while Visual Studio/MSVC multi-configuration builds emit it under `Release/`.
 
+To install it onto your system:
+
+```sh
+cmake --install build --prefix /usr/local
+```
+
+### macOS notes
+
+On macOS, `rux` produces statically linked, ad-hoc code-signed Mach-O
+executables. Generated programs are currently **x86-64 only** — on Apple
+Silicon they run through Rosetta 2 (the `rux` compiler itself builds and runs
+natively on arm64). A Homebrew formula for distributing `rux` lives under
+[`packaging/homebrew/`](packaging/homebrew/).
+
 ## Contributing
 
 The Rux repository is hosted at [rux-lang/Rux](https://github.com/rux-lang/Rux) on GitHub.
