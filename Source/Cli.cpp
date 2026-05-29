@@ -32,7 +32,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
+#include <cmath>
 #ifdef _WIN32
 #  include <psapi.h>
 #  include <windows.h>
