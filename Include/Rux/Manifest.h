@@ -7,6 +7,7 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -14,6 +15,7 @@
 namespace Rux {
     struct Dependency {
         std::string name;
+        std::string package; // registry/package name; empty means same as name
         std::string version; // empty = "latest"
         std::string path; // for path-based deps: { Path = "..." }, empty if version-based
     };
@@ -32,6 +34,7 @@ namespace Rux {
         Package package;
         Build build;
         std::vector<Dependency> dependencies;
+        std::map<std::string, std::vector<Dependency>> targetDependencies;
 
         // Load from Rux.toml. Returns null on parse error.
         static std::optional<Manifest> Load(const std::filesystem::path& path);
@@ -44,6 +47,9 @@ namespace Rux {
 
         // Add or update a path-based dependency. Returns false if already identical.
         bool AddPathDependency(const std::string& name, const std::string& path);
+
+        // Base dependencies overlaid with [Target.<triple>.Dependencies].
+        [[nodiscard]] std::vector<Dependency> EffectiveDependencies(const std::string& target) const;
 
         // Remove a dependency by name. Returns false if not found.
         bool RemoveDependency(const std::string& name);
