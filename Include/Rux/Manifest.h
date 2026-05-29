@@ -13,53 +13,104 @@
 #include <vector>
 
 namespace Rux {
+    /**
+     * @brief A dependency entry in a Rux.toml manifest.
+     *
+     * A dependency can either be:
+     *  - version-based (version is set, path is empty)
+     *  - path-based (path is set, version is ignored)
+     */
     struct Dependency {
         std::string name;
         std::string package; // registry/package name; empty means same as name
         std::string version; // empty = "latest"
         std::string path; // for path-based deps: { Path = "..." }, empty if version-based
+        std::string version; ///< Version string (empty = latest)
+        std::string path; ///< Local path dependency (empty if registry-based)
     };
 
+    /**
+     * @brief Package metadata section of the manifest.
+     */
     struct Package {
         std::string name;
+
+        /// Semantic version (default: 0.1.0)
         std::string version = "0.1.0";
-        std::string type = "bin"; // "bin" | "lib"
+
+        /// Package type: "bin" or "lib"
+        std::string type = "bin";
     };
 
+    /**
+     * @brief Build configuration section.
+     */
     struct Build {
+        /// Output directory or artifact name.
         std::string output = "Bin";
     };
 
+    /**
+     * @brief Represents a parsed Rux.toml manifest.
+     */
     struct Manifest {
         Package package;
         Build build;
         std::vector<Dependency> dependencies;
         std::map<std::string, std::vector<Dependency>> targetDependencies;
 
-        // Load from Rux.toml. Returns null on parse error.
+        /**
+         * @brief Load a manifest from disk.
+         * @param path Path to Rux.toml
+         * @return Parsed manifest or std::nullopt on failure
+         */
         static std::optional<Manifest> Load(const std::filesystem::path& path);
 
-        // Save to Rux.toml. Returns false on write error.
+        /**
+         * @brief Save manifest to disk.
+         * @param path Output file path
+         * @return true on success, false on failure
+         */
         [[nodiscard]] bool Save(const std::filesystem::path& path) const;
 
-        // Add or update a registry dependency. Returns false if already present with same version.
+        /**
+         * @brief Add or update a registry dependency.
+         * @return false if already exists with same version
+         */
         bool AddDependency(const std::string& name, const std::string& version);
 
-        // Add or update a path-based dependency. Returns false if already identical.
+        /**
+         * @brief Add or update a path-based dependency.
+         * @return false if already exists with same path
+         */
         bool AddPathDependency(const std::string& name, const std::string& path);
 
-        // Base dependencies overlaid with [Target.<triple>.Dependencies].
-        [[nodiscard]] std::vector<Dependency> EffectiveDependencies(const std::string& target) const;
-
-        // Remove a dependency by name. Returns false if not found.
+        /**
+         * @brief Remove a dependency by name.
+         * @return false if not found
+         */
         bool RemoveDependency(const std::string& name);
 
-        // Find the manifest file by walking up from the current directory.
+        /**
+         * @brief Find a Rux.toml by walking up directories.
+         * @param start Starting directory
+         * @return Path if found, otherwise std::nullopt
+         */
         static std::optional<std::filesystem::path>
         Find(const std::filesystem::path& start = std::filesystem::current_path());
     };
 
-    // Parse a package spec like "Std" or "Std@0.1.0"
-    // Returns {name, version} where version may be empty.
+    /**
+     * @brief Parse a package specification string.
+     *
+     * Examples:
+     * @code
+     * "Std"       -> { "Std", "" }
+     * "Std@1.2.0" -> { "Std", "1.2.0" }
+     * @endcode
+     *
+     * @param spec Package spec string
+     * @return Pair of {name, version}
+     */
     std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec);
 } // namespace Rux

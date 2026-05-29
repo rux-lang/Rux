@@ -1,0 +1,7 @@
+[Package]
+Name    = "echo_test"
+Version = "0.1.0"
+Type    = "bin"
+
+[Build]
+Output = "Bin"

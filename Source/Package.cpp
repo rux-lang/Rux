@@ -8,84 +8,89 @@
 
 #include "Rux/Manifest.h"
 
+#include <algorithm>
+#include <expected>
+#include <filesystem>
 #include <fstream>
 #include <print>
-#include <system_error>
+#include <ranges>
+#include <string_view>
+#include <vector>
 
 namespace Rux {
-    // Write a file only if it does not already exist (init mode) or always (new mode).
-    static bool WriteFile(const std::filesystem::path& path, const std::string_view content, const bool skipIfExists) {
-        if (skipIfExists && std::filesystem::exists(path)) return true;
-        std::ofstream f(path);
-        if (!f) return false;
-        f << content;
-        return f.good();
+    namespace fs = std::filesystem;
+    using ScaffoldResult = std::expected<void, std::string>;
+
+    /**
+     * @brief Writes a file with the given content.
+     *
+     * If @p skipIfExists is true and the file already exists,
+     * the function succeeds without modifying it.
+     *
+     * @param path Output file path
+     * @param content File content
+     * @param skipIfExists Whether to skip writing if file already exists
+     * @return std::expected<void, std::string> error message on failure
+     */
+    static ScaffoldResult WriteFile(const fs::path& path, const std::string_view content, const bool skipIfExists) {
+        if (skipIfExists && fs::exists(path)) return {};
+
+        if (std::ofstream f{path, std::ios::binary}; f.write(content.data(), content.size())) {
+            return {};
+        }
+        return std::unexpected(std::format("failed to write file: {}", path.string()));
     }
 
-    static bool MakeDir(const std::filesystem::path& path) {
-        std::error_code ec;
-        std::filesystem::create_directories(path, ec);
-        return !ec;
+    /**
+     * @brief Creates a directory tree.
+     *
+     * @param path Directory path to create
+     * @return std::expected<void, std::string> error message on failure
+     */
+    static ScaffoldResult MakeDir(const fs::path& path) {
+        if (std::error_code ec; fs::create_directories(path, ec) || !ec) return {};
+        return std::unexpected(std::format("failed to create directory: {}", path.string()));
     }
 
-    bool ScaffoldPackage(const std::filesystem::path& root,
-                         const std::string& name,
-                         const PackageType type,
-                         const bool initMode) {
-        // In new mode create the root directory; in init mode it already exists.
-        if (!initMode) {
-            if (std::filesystem::exists(root)) {
-                std::print(stderr, "error: directory '{}' already exists\n", root.string());
-                return false;
-            }
-            if (!MakeDir(root)) {
-                std::print(stderr, "error: cannot create directory '{}'\n", root.string());
-                return false;
-            }
+    bool ScaffoldPackage(const fs::path& root, const std::string& name, const PackageType type, const bool initMode) {
+        if (!initMode && fs::exists(root)) {
+            std::println(stderr, "error: directory '{}' already exists", root.string());
+            return false;
         }
-        // Subdirectories
-        for (const auto& subdir : {root / "Bin" / "Debug", root / "Bin" / "Release", root / "Src", root / "Temp"}) {
-            if (!MakeDir(subdir)) {
-                std::print(stderr, "error: cannot create directory '{}'\n", subdir.string());
-                return false;
-            }
-        }
-        // Rux.toml
-        {
-            auto tomlPath = root / "Rux.toml";
-            if (!initMode || !std::filesystem::exists(tomlPath)) {
-                Manifest m;
-                m.package.name = name;
-                m.package.version = "0.1.0";
-                m.package.type = (type == PackageType::Executable) ? "bin" : "lib";
-                if (!m.Save(tomlPath)) {
-                    std::print(stderr, "error: cannot write Rux.toml\n");
-                    return false;
-                }
-            }
-        }
-        // Src/Main.rux  (bin)  or  Src/Lib.rux  (lib)
-        {
-            const bool isBin = (type == PackageType::Executable);
-            std::string srcName = isBin ? "Main.rux" : "Lib.rux";
-            const std::string srcContent =
-                isBin ? "func Main() -> int {\n    return 0;\n}\n" : "// " + name + " library\n";
 
-            if (!WriteFile(root / "Src" / srcName, srcContent, initMode)) {
-                std::print(stderr, "error: cannot write Src/{}\n", srcName);
+        auto run_task = [](auto&& task_result) -> bool {
+            if (!task_result) {
+                std::println(stderr, "error: {}", task_result.error());
+                return false;
+            }
+            return true;
+        };
+
+        if (const std::vector dirs = {root / "Bin/Debug", root / "Bin/Release", root / "Src", root / "Temp"};
+            !std::ranges::all_of(dirs, [&](const auto& p) { return run_task(MakeDir(p)); })) {
+            return false;
+        }
+
+        if (const auto tomlPath = root / "Rux.toml"; !initMode || !fs::exists(tomlPath)) {
+            Manifest m;
+            m.package = {.name = name, .version = "0.1.0", .type = (type == PackageType::Executable ? "bin" : "lib")};
+            if (!m.Save(tomlPath)) {
+                std::println(stderr, "error: cannot write Rux.toml");
                 return false;
             }
         }
-        // .gitignore
-        {
-            constexpr std::string_view gitignore = "# Rux build outputs\n"
-                                                   "Bin/\n"
-                                                   "Temp/\n";
-            if (!WriteFile(root / ".gitignore", gitignore, initMode)) {
-                std::print(stderr, "error: cannot write .gitignore\n");
-                return false;
-            }
-        }
-        return true;
+
+        const bool isBin = (type == PackageType::Executable);
+        const std::string_view srcContent = isBin ? "func Main() -> int {\n    return 0;\n}\n" : "// Library\n";
+
+        struct FileTask {
+            fs::path path;
+            std::string_view content;
+        };
+        const FileTask tasks[] = {{root / "Src" / (isBin ? "Main.rux" : "Lib.rux"), srcContent},
+                                  {root / ".gitignore", "# Rux build outputs\nBin/\nTemp/\n"}};
+
+        return std::ranges::all_of(tasks,
+                                   [&](const auto& t) { return run_task(WriteFile(t.path, t.content, initMode)); });
     }
 } // namespace Rux

@@ -46,6 +46,7 @@ namespace Rux {
         static int RunRun(std::span<const std::string_view> args, const GlobalOptions& opts);
         static int RunTest(std::span<const std::string_view> args, const GlobalOptions& opts);
         static int RunUpdate(std::span<const std::string_view> args, const GlobalOptions& opts);
+        static int RunInfo(std::span<const std::string_view> args, const GlobalOptions& opts);
 
         // Help printers
         static void PrintHelp();
@@ -65,6 +66,7 @@ namespace Rux {
         static void PrintHelpTest();
         static void PrintHelpUpdate();
         static void PrintHelpVersion();
+        static void PrintHelpInfo();
         static void PrintVersion();
         static void PrintUnknownCommand(std::string_view command);
         static void PrintUnknownOption(std::string_view option, std::string_view command = {});
