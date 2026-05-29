@@ -33,7 +33,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
+#include <cmath>
 #ifdef _WIN32
 // windows.h must come first: psapi.h and winhttp.h rely on its types
 // (DWORD, SIZE_T, ...) and won't compile if included before it.
