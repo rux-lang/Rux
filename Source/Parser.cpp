@@ -1418,17 +1418,26 @@ namespace Rux {
     // ** is right-associative (exponentiation)
     ExprPtr Parser::ParseExp() {
         auto left = ParseUnary();
-        if (Check(TokenKind::StarStar)) {
+
+        if (Check(TokenKind::Star) &&
+            Peek(1).kind == TokenKind::Star)
+        {
             const auto loc = CurrentLocation();
-            Advance();
+
+            Advance(); // first *
+            Advance(); // second *
+
             auto right = ParseExp(); // right-associative
+
             auto e = std::make_unique<BinaryExpr>();
             e->location = loc;
-            e->op = TokenKind::StarStar;
+            e->op = TokenKind::StarStar; // keep AST/LIR compatibility
             e->left = std::move(left);
             e->right = std::move(right);
+
             return e;
         }
+
         return left;
     }
 
