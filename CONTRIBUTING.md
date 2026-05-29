@@ -20,7 +20,9 @@ Thank you for your interest in contributing to the Rux programming language!
    ```sh
    git commit -am "Short description of change"
    ```
-4. Push and open a Pull Request against `main`.
+4. Push your branch and open a Pull Request against `dev`.
+
+> Note: All contributions should target the `dev` branch. Changes are reviewed and tested there before being merged into `main` for releases.
 
 ## Pull Request Guidelines
 
