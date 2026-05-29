@@ -19,8 +19,13 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || \
+    defined(__illumos__) || defined(__sun) || defined(__Solaris__)
 #  include <filesystem>
+#endif
+
+#if defined(__illumos__) || defined(__sun) || defined(__Solaris__)
+#  include <sys/syscall.h>
 #endif
 
 #if defined(_WIN32)
@@ -301,8 +306,9 @@ namespace Rux {
     }
 
     bool Linker::Link(const std::filesystem::path& outputPath) {
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
-        return LinkElf64(outputPath);
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || \
+    defined(__illumos__) || defined(__sun) || defined(__Solaris__)
+    return LinkElf64(outputPath);
 #elif defined(__APPLE__)
         return LinkMachO64(outputPath);
 #else
@@ -823,13 +829,17 @@ namespace Rux {
 #endif
     }
 
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || \
+    defined(__illumos__) || defined(__sun) || defined(__Solaris__)
     static std::optional<Buf> LinuxCompatThunk(const std::string& name) {
         static const std::unordered_map<std::string, Buf> thunks = {
             {"ExitProcess",
              {
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
-                 0x48, 0x89, 0xCF, 0xB8, 0x01, 0x00, 0x00, 0x00, 0x0F, 0x05
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || defined(__illumos__) || \
+      defined(__sun) || defined(__Solaris__)
+                 0x48, 0x89, 0xCF, 0xB8, static_cast<uint8_t>(SYS_exit & 0xFF),
+                 static_cast<uint8_t>((SYS_exit >> 8) & 0xFF), static_cast<uint8_t>((SYS_exit >> 16) & 0xFF),
+                 static_cast<uint8_t>((SYS_exit >> 24) & 0xFF), 0x0F, 0x05
 #  else
                  0x48, 0x89, 0xCF, 0xB8, 0x3C, 0x00, 0x00, 0x00, 0x0F, 0x05
 #  endif
@@ -850,7 +860,8 @@ namespace Rux {
             {"GetProcessHeap", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"HeapFree", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"HeapAlloc", {0x4C, 0x89, 0xC6, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || defined(__illumos__) || \
+      defined(__sun) || defined(__Solaris__)
                            0x02, 0x10, 0x00, 0x00,
 #  else
                            0x22, 0x00, 0x00, 0x00,
@@ -862,12 +873,18 @@ namespace Rux {
                            0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
 #  elif defined(__DragonFly__) || defined(__NetBSD__)
                            0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
+#  elif defined(__illumos__) || defined(__sun) || defined(__Solaris__)
+                           0xB8, static_cast<uint8_t>(SYS_mmap & 0xFF),
+                           static_cast<uint8_t>((SYS_mmap >> 8) & 0xFF),
+                           static_cast<uint8_t>((SYS_mmap >> 16) & 0xFF),
+                           static_cast<uint8_t>((SYS_mmap >> 24) & 0xFF), 0x0F,
 #  else
                            0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
 #  endif
                            0x05, 0xC3}},
             {"HeapReAlloc", {0x48, 0x8B, 0x74, 0x24, 0x28, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || defined(__illumos__) || \
+      defined(__sun) || defined(__Solaris__)
                              0x02, 0x10, 0x00, 0x00,
 #  else
                              0x22, 0x00, 0x00, 0x00,
@@ -879,6 +896,11 @@ namespace Rux {
                              0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
 #  elif defined(__DragonFly__) || defined(__NetBSD__)
                              0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
+#  elif defined(__illumos__) || defined(__sun) || defined(__Solaris__)
+                             0xB8, static_cast<uint8_t>(SYS_mmap & 0xFF),
+                             static_cast<uint8_t>((SYS_mmap >> 8) & 0xFF),
+                             static_cast<uint8_t>((SYS_mmap >> 16) & 0xFF),
+                             static_cast<uint8_t>((SYS_mmap >> 24) & 0xFF), 0x0F,
 #  else
                              0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
 #  endif
@@ -921,8 +943,12 @@ namespace Rux {
                                      0x49, 0xFF, 0xC0, 0x49, 0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
             {"WriteConsoleW", {0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x08, 0x49, 0x89, 0xD4, 0x4D, 0x89,
                                0xC5, 0x4D, 0x85, 0xED, 0x74, 0x24, 0x41, 0x8A, 0x04, 0x24, 0x88, 0x04, 0x24,
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
-                               0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || defined(__illumos__) || \
+      defined(__sun) || defined(__Solaris__)
+                               0xB8, static_cast<uint8_t>(SYS_write & 0xFF),
+                               static_cast<uint8_t>((SYS_write >> 8) & 0xFF),
+                               static_cast<uint8_t>((SYS_write >> 16) & 0xFF),
+                               static_cast<uint8_t>((SYS_write >> 24) & 0xFF), 0xBF,
 #  else
                                0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
 #  endif
@@ -934,8 +960,11 @@ namespace Rux {
                  0x89, 0xCF, // mov edi, ecx  (fd)
                  0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
                  0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
-                 0xB8, 0x03, 0x00, 0x00, 0x00, // mov eax, 3 (SYS_read)
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || defined(__illumos__) || \
+      defined(__sun) || defined(__Solaris__)
+                 0xB8, static_cast<uint8_t>(SYS_read & 0xFF),
+                 static_cast<uint8_t>((SYS_read >> 8) & 0xFF), static_cast<uint8_t>((SYS_read >> 16) & 0xFF),
+                 static_cast<uint8_t>((SYS_read >> 24) & 0xFF), // mov eax, SYS_read
 #  else
                  0x31, 0xC0, // xor eax, eax (SYS_read = 0)
 #  endif
@@ -955,8 +984,11 @@ namespace Rux {
                  0x89, 0xCF, // mov edi, ecx  (fd)
                  0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
                  0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
-                 0xB8, 0x04, 0x00, 0x00, 0x00, // mov eax, 4 (SYS_write)
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || defined(__illumos__) || \
+      defined(__sun) || defined(__Solaris__)
+                 0xB8, static_cast<uint8_t>(SYS_write & 0xFF),
+                 static_cast<uint8_t>((SYS_write >> 8) & 0xFF), static_cast<uint8_t>((SYS_write >> 16) & 0xFF),
+                 static_cast<uint8_t>((SYS_write >> 24) & 0xFF), // mov eax, SYS_write
 #  else
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (SYS_write)
 #  endif
@@ -969,7 +1001,7 @@ namespace Rux {
                  0x31, 0xC0, // xor eax, eax (FALSE)
                  0xC3 // ret
              }},
-#  if defined(__linux__)
+#  if defined(__linux__) || defined(__illumos__) || defined(__sun) || defined(__Solaris__)
             // Rux extern calls currently use the Win64 register layout. These
             // thunks move that layout into Linux x86_64 syscall registers:
             // rax=number, rdi/rsi/rdx/r10/r8/r9=args.
@@ -1105,7 +1137,8 @@ namespace Rux {
         const size_t kCallMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
         textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || defined(__illumos__) || \
+      defined(__sun) || defined(__Solaris__)
         textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD exit)
 #  else
         textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
@@ -1329,6 +1362,8 @@ namespace Rux {
                              12, // EI_OSABI: OpenBSD
 #  elif defined(__NetBSD__)
                              2, // EI_OSABI: NetBSD
+#  elif defined(__illumos__) || defined(__sun) || defined(__Solaris__)
+                             6, // EI_OSABI: Solaris/illumos
 #  else
                              0, // EI_OSABI: System V
 #  endif

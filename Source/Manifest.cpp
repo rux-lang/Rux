@@ -208,7 +208,12 @@ namespace Rux {
     std::vector<Dependency> Manifest::EffectiveDependencies(const std::string& target) const {
         std::vector<Dependency> result = dependencies;
         auto it = targetDependencies.find(target);
-        if (it == targetDependencies.end()) return result;
+        if (it == targetDependencies.end()) {
+            // illumos-based systems often reuse Linux-oriented dependency
+            // sections in manifests until a dedicated illumos section exists.
+            if (target == "illumos-x64") it = targetDependencies.find("linux-x64");
+            if (it == targetDependencies.end()) return result;
+        }
 
         for (const auto& targetDep : it->second) {
             auto existing =

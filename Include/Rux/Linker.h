@@ -40,7 +40,8 @@ namespace Rux {
         std::vector<LinkerError> errors;
 
         void Error(std::string msg);
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || \
+    defined(__illumos__) || defined(__sun) || defined(__Solaris__)
         [[nodiscard]] bool LinkElf64(const std::filesystem::path& outputPath);
 #elif defined(__APPLE__)
         [[nodiscard]] bool LinkMachO64(const std::filesystem::path& outputPath);

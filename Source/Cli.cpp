@@ -145,6 +145,8 @@ namespace Rux {
             std::string os = "Windows";
 #elif defined(__APPLE__)
             std::string os = "macOS";
+#elif defined(__illumos__) || defined(__sun) || defined(__Solaris__)
+            std::string os = "illumos";
 #elif defined(__OpenBSD__)
             std::string os = "OpenBSD";
 #elif defined(__linux__)
@@ -179,6 +181,8 @@ namespace Rux {
             // Rux currently emits x86-64 Mach-O binaries on macOS, even when
             // the compiler itself runs on arm64.
             return "macos-x64";
+#elif defined(__illumos__) || defined(__sun) || defined(__Solaris__)
+            return "illumos-x64";
 #elif (defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) ||                    \
        defined(__DragonFly__)) &&                                                                                      \
     (defined(__x86_64__) || defined(__amd64__))
@@ -189,10 +193,11 @@ namespace Rux {
         }
 
         [[nodiscard]] bool IsSupportedTargetTriple(const std::string_view target) {
-            return target == "linux-x64" || target == "windows-x64" || target == "macos-x64";
+            return target == "linux-x64" || target == "illumos-x64" || target == "windows-x64" || target == "macos-x64";
         }
 
-        [[nodiscard]] std::string DependencyPackageName(const Dependency& dep) {
+        [[nodiscard]] std::string DependencyPackageName(const Dependency& dep, const std::string_view hostTarget) {
+            if (dep.package.empty() && hostTarget == "illumos-x64" && dep.name == "Linux") return "Illumos";
             return dep.package.empty() ? dep.name : dep.package;
         }
 
@@ -692,7 +697,8 @@ namespace Rux {
                 if (queuedPackageNames.count(pkgName)) return true;
 
                 // Resolve imports through the target view of the owning
-                // manifest. This is what maps Platform to Linux on linux-x64.
+                // manifest. This is what maps Platform to Linux on linux-x64
+                // and Linux to Illumos on illumos-x64.
                 const auto deps = ownerManifest.EffectiveDependencies(targetName);
                 const Dependency* dep = nullptr;
                 for (const auto& d : deps)
@@ -707,11 +713,11 @@ namespace Rux {
                 }
                 std::filesystem::path depRoot;
                 if (dep->path.empty()) {
-                    depRoot = RegistryPackagesDir() / DependencyPackageName(*dep);
+                    depRoot = RegistryPackagesDir() / DependencyPackageName(*dep, targetName);
                     if (!std::filesystem::exists(depRoot)) {
                         std::print(stderr,
                                    "error: package '{}' is not installed — run 'rux install'\n",
-                                   DependencyPackageName(*dep));
+                                   DependencyPackageName(*dep, targetName));
                         return false;
                     }
                 }
@@ -1368,7 +1374,7 @@ namespace Rux {
         std::unordered_set<std::string> queued;
         const std::string installTarget = HostTargetTriple();
         for (const auto& dep : manifest->EffectiveDependencies(installTarget)) {
-            const std::string packageName = DependencyPackageName(dep);
+            const std::string packageName = DependencyPackageName(dep, installTarget);
             if (dep.path.empty() && !queued.count(packageName)) {
                 queue.push_back(packageName);
                 queued.insert(packageName);
@@ -1418,7 +1424,7 @@ namespace Rux {
             // Enqueue registry deps declared by this package
             if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
                 for (const auto& dep : depManifest->EffectiveDependencies(installTarget)) {
-                    const std::string depPackageName = DependencyPackageName(dep);
+                    const std::string depPackageName = DependencyPackageName(dep, installTarget);
                     if (dep.path.empty() && !queued.count(depPackageName)) {
                         queue.push_back(depPackageName);
                         queued.insert(depPackageName);
@@ -1467,8 +1473,9 @@ namespace Rux {
         if (!manifest) return 1;
 
         std::vector<std::string> toRemove;
-        for (const auto& dep : manifest->EffectiveDependencies(HostTargetTriple()))
-            if (dep.path.empty()) toRemove.push_back(DependencyPackageName(dep));
+        const std::string hostTarget = HostTargetTriple();
+        for (const auto& dep : manifest->EffectiveDependencies(hostTarget))
+            if (dep.path.empty()) toRemove.push_back(DependencyPackageName(dep, hostTarget));
 
         if (toRemove.empty()) {
             if (!opts.quiet) std::print("  No registry dependencies to uninstall.\n");
@@ -1899,7 +1906,7 @@ namespace Rux {
         std::unordered_set<std::string> queued;
         const std::string updateTarget = HostTargetTriple();
         for (const auto& dep : manifest->EffectiveDependencies(updateTarget)) {
-            const std::string packageName = DependencyPackageName(dep);
+            const std::string packageName = DependencyPackageName(dep, updateTarget);
             if (dep.path.empty() && !queued.count(packageName)) {
                 queue.push_back(packageName);
                 queued.insert(packageName);
@@ -1953,7 +1960,7 @@ namespace Rux {
             // Enqueue registry deps declared by this package
             if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
                 for (const auto& dep : depManifest->EffectiveDependencies(updateTarget)) {
-                    const std::string depPackageName = DependencyPackageName(dep);
+                    const std::string depPackageName = DependencyPackageName(dep, updateTarget);
                     if (dep.path.empty() && !queued.count(depPackageName)) {
                         queue.push_back(depPackageName);
                         queued.insert(depPackageName);
