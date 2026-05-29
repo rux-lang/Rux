@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 # Builds and runs the I/O thunk test packages and asserts their behavior,
 # verifying the linker's OS-interaction thunks end-to-end:
-#   - Tests/Io   : GetStdHandle + WriteConsoleW (stdout)
-#   - Tests/Echo : GetStdHandle + ReadFile + WriteConsoleW (stdin round-trip)
+#   - Tests/Io   : GetStdHandle + WriteFile (stdout)
+#   - Tests/Echo : GetStdHandle + ReadFile + WriteFile (stdin round-trip)
 #
 # Usage:
 #   Tests/run_io_test.sh [path-to-rux]
@@ -50,7 +50,7 @@ build_pkg() {
 
 failures=0
 
-# 1. stdout test: WriteConsoleW + GetStdHandle.
+# 1. stdout test: WriteFile + GetStdHandle.
 IO_BIN=$(build_pkg "Io" "io_test")
 IO_EXPECTED="Hello from a Rux binary via I/O thunks!"
 set +e
@@ -66,7 +66,7 @@ else
     failures=$((failures + 1))
 fi
 
-# 2. stdin round-trip: ReadFile + WriteConsoleW + GetStdHandle.
+# 2. stdin round-trip: ReadFile + WriteFile + GetStdHandle.
 ECHO_BIN=$(build_pkg "Echo" "echo_test")
 ECHO_INPUT="round-trip via stdin thunks"
 set +e

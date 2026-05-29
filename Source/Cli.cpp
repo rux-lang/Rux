@@ -35,8 +35,10 @@
 #include <vector>
 
 #ifdef _WIN32
-#  include <psapi.h>
+// windows.h must come first: psapi.h and winhttp.h rely on its types
+// (DWORD, SIZE_T, ...) and won't compile if included before it.
 #  include <windows.h>
+#  include <psapi.h>
 #  include <winhttp.h>
 #else
 #  include <sys/resource.h>
