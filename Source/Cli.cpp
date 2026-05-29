@@ -19,6 +19,7 @@
 #include "Rux/Sema.h"
 #include "Rux/Version.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -33,10 +34,10 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
+#include <cmath>
 #ifdef _WIN32
-#  include <psapi.h>
 #  include <windows.h>
+#  include <psapi.h>
 #  include <winhttp.h>
 #else
 #  include <sys/resource.h>
@@ -380,6 +381,7 @@ namespace Rux {
         if (command == "run") return RunRun(rest, opts);
         if (command == "test") return RunTest(rest, opts);
         if (command == "update") return RunUpdate(rest, opts);
+        if (command == "info") return RunInfo(rest, opts);
 
         PrintUnknownCommand(command);
         return 1;
@@ -1503,7 +1505,7 @@ namespace Rux {
             if (std::filesystem::exists(cacheDir, ec)) {
                 for (const auto& entry : std::filesystem::directory_iterator(cacheDir, ec))
                     if (entry.is_directory()) packages.push_back(entry.path().filename().string());
-                std::sort(packages.begin(), packages.end());
+                std::ranges::sort(packages);
             }
             if (packages.empty()) {
                 if (!opts.quiet) std::print("  Global cache is empty ({})\n", cacheDir.string());
@@ -1949,6 +1951,70 @@ namespace Rux {
         return 0;
     }
 
+    // TODO: Make this look in the registry instead of installed packages
+    // TODO: Extend Package manifest metadata support
+    int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions& opts) {
+        std::string_view packageName;
+
+        for (auto arg : args) {
+            if (arg == "-h" || arg == "--help") {
+                PrintHelpInfo();
+                return 0;
+            }
+
+            if (!arg.starts_with('-') && packageName.empty()) {
+                packageName = arg;
+                continue;
+            }
+
+            PrintUnknownOption(arg, "info");
+            return 1;
+        }
+
+        if (packageName.empty()) {
+            std::print(stderr, "error: missing package name\n");
+            return 1;
+        }
+
+        const auto packageDir = RegistryPackagesDir() / std::string(packageName);
+        const auto manifestPath = packageDir / "Rux.toml";
+
+        if (!std::filesystem::exists(manifestPath)) {
+            std::print(stderr, "error: package '{}' is not installed\n", packageName);
+            return 1;
+        }
+
+        auto manifest = Manifest::Load(manifestPath);
+
+        if (!manifest) {
+            std::print(stderr, "error: failed to parse '{}'\n", manifestPath.string());
+            return 1;
+        }
+        std::print(
+            "Name:     {}\n"
+            "Version:  {}\n"
+            "Type:     {}\n",
+            manifest->package.name,
+            manifest->package.version,
+            manifest->package.type
+        );
+
+        if (!manifest->dependencies.empty()) {
+            std::print("\nDependencies:\n");
+
+            for (const auto& dep : manifest->dependencies) {
+                if (!dep.path.empty())
+                    std::print("  - {} (path: {})\n", dep.name, dep.path);
+                else
+                    std::print("  - {} @ {}\n",
+                        dep.name,
+                        dep.version.empty() ? "*" : dep.version);
+            }
+        }
+
+        return 0;
+    }
+
     void Cli::PrintHelp() {
         std::print("Rux compiler and package manager\n"
                    "\n"
@@ -1971,6 +2037,7 @@ namespace Rux {
                    "  uninstall      Uninstall dependencies\n"
                    "  update         Update dependencies\n"
                    "  version        Show version information\n"
+                   "  info           Show package metadata and manifest information.\n"
                    "\n"
                    "Options:\n"
                    "  --color <auto|on|off>  Control colored output\n"
@@ -2041,6 +2108,10 @@ namespace Rux {
         }
         if (command == "update") {
             PrintHelpUpdate();
+            return;
+        }
+        if (command == "info") {
+            PrintHelpInfo();
             return;
         }
         if (command == "version") {
@@ -2287,6 +2358,16 @@ namespace Rux {
                    "  rux version\n"
                    "  rux -V\n"
                    "  rux --version\n");
+    }
+
+    void Cli::PrintHelpInfo() {
+        std::print("Show information about an installed Rux package\n"
+                   "\n"
+                   "Usage: rux info [package name]\n"
+                   "\n"
+                   "Examples:\n"
+                   "  rux info Std\n"
+                   "  rux info Windows\n");
     }
 
     void Cli::PrintVersion() {
