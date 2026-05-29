@@ -25,8 +25,6 @@ namespace Rux {
         std::string package; // registry/package name; empty means same as name
         std::string version; // empty = "latest"
         std::string path; // for path-based deps: { Path = "..." }, empty if version-based
-        std::string version; ///< Version string (empty = latest)
-        std::string path; ///< Local path dependency (empty if registry-based)
     };
 
     /**
@@ -90,6 +88,13 @@ namespace Rux {
          * @return false if not found
          */
         bool RemoveDependency(const std::string& name);
+
+        /**
+         * @brief Get combined global and target-specific dependencies.
+         * @param target Target name
+         * @return Merged dependency list
+         */
+        [[nodiscard]] std::vector<Dependency> EffectiveDependencies(const std::string& target) const;
 
         /**
          * @brief Find a Rux.toml by walking up directories.

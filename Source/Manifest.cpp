@@ -42,22 +42,6 @@ namespace Rux {
         return std::string(rawVal);
     }
 
-        if (open == std::string_view::npos || close <= open) return {};
-
-        const std::string_view inner = Trim(val.substr(open + 1, close - open - 1));
-
-        const auto keyPos = inner.find("Path");
-        if (keyPos == std::string_view::npos ||
-            (keyPos > 0 && std::isalnum(static_cast<unsigned char>(inner[keyPos - 1])))) {
-            return {};
-        }
-
-        const auto eqPos = inner.find('=', keyPos);
-        if (eqPos == std::string_view::npos) return {};
-
-        return std::string(Unquote(Trim(inner.substr(eqPos + 1))));
-    }
-
     static Dependency ParseDependency(std::string key, const std::string& value) {
         Dependency dep;
         dep.name = std::move(key);
@@ -127,15 +111,10 @@ namespace Rux {
                 if (key == "Output") m.build.output = value;
             }
             else if (section == "Dependencies") {
-                auto& [name, version, path] = m.dependencies.emplace_back();
-                name = key;
-
-                if (std::string_view v = Trim(value); v.starts_with('{') && v.ends_with('}')) {
-                    path = ParseInlineTablePath(v);
-                }
-                else {
-                    version = (v == "*") ? "" : std::string(v);
-                }
+                m.dependencies.push_back(ParseDependency(std::string(key), std::string(value)));
+            }
+            else if (const auto target = TargetNameFromDependenciesSection(section)) {
+                m.targetDependencies[*target].push_back(ParseDependency(std::string(key), std::string(value)));
             }
         }
 
@@ -196,7 +175,7 @@ namespace Rux {
                     file << " }\n";
                 }
                 else {
-                    file << name << " = \"" << (version.empty() ? "*" : version) << "\"\n";
+                    file << dep.name << " = \"" << (dep.version.empty() ? "*" : dep.version) << "\"\n";
                 }
             }
         }
@@ -211,7 +190,7 @@ namespace Rux {
             it->path.clear();
             return true;
         }
-        dependencies.push_back({name, version, {}});
+        dependencies.push_back({name, {}, version, {}});
         return true;
     }
 
