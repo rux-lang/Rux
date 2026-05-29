@@ -116,6 +116,38 @@ To install it onto your system:
 cmake --install build --prefix /usr/local
 ```
 
+### Using Rux as a Flake Input
+
+Once the Rux flake is available in your repository (or any public Git host), you can easily add it as a dependency in your own Nix configuration or project.
+
+#### In a NixOS configuration
+
+Add the Rux input to your `flake.nix`:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    rux.url = "github:Szyroi/Rux";          # or github:rux-lang/Rux once merged
+    # Optionally pin a specific branch or tag:
+    # rux.url = "github:Szyroi/Rux/main";
+  };
+
+  outputs = { self, nixpkgs, rux }: {
+    nixosConfigurations.my-machine = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        ({ pkgs, ... }: {
+          environment.systemPackages = [
+            rux.packages.${pkgs.system}.default
+          ];
+        })
+      ];
+    };
+  };
+}
+
+
 ### macOS notes
 
 On macOS, `rux` produces statically linked, ad-hoc code-signed Mach-O
@@ -156,3 +188,5 @@ Read the [Contributing guide](CONTRIBUTING.md) to get started.
 [MastodonUrl]: https://mastodon.social/@ruxlang
 [TelegramUrl]: https://t.me/ruxlang
 [LicenseUrl]: https://github.com/rux-lang/Rux/blob/main/LICENSE
+
+```
