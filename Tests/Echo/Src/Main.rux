@@ -1,0 +1,34 @@
+// Stdin round-trip: reads bytes from standard input and echoes them back to
+// standard output, exercising the ReadFile and WriteFile thunks (the `read`
+// and `write` paths, including their bytes-transferred out-parameters)
+// alongside GetStdHandle.
+//
+// Both calls work in raw bytes (char8), so the input is echoed verbatim with
+// no widening. WriteFile (unlike WriteConsoleW) writes to any handle, so the
+// output is capturable when the harness pipes stdout. The trailing arg to each
+// is lpOverlapped (null = synchronous). Tests/run_io_test.sh pipes a known
+// string in and asserts it comes back unchanged.
+
+@[Import(lib: "kernel32")]
+extern func GetStdHandle(handle: int) -> int;
+
+@[Import(lib: "kernel32")]
+extern func ReadFile(handle: int, buffer: *char8, count: uint64, read: *uint64, overlapped: int) -> bool;
+
+@[Import(lib: "kernel32")]
+extern func WriteFile(handle: int, buffer: *char8, count: uint64, written: *uint64, overlapped: int) -> bool;
+
+func Main() -> int {
+    var inbuf: char8[1024];
+    var read: uint64 = 0;
+    var written: uint64 = 0;
+
+    let stdin = GetStdHandle(-10); // STD_INPUT_HANDLE
+    let stdout = GetStdHandle(-11); // STD_OUTPUT_HANDLE
+
+    let buf = inbuf.data;
+
+    ReadFile(stdin, buf, 1024, &read, 0);
+    WriteFile(stdout, buf, read, &written, 0);
+    return 0;
+}
