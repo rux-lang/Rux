@@ -44,3 +44,6 @@ jobs:
       - name: Run I/O thunk tests
         # The test script cd's into each package, so rux must be an absolute path.
         run: Tests/run_io_test.sh "$GITHUB_WORKSPACE/build/rux"
+
+      - name: Run integer ** test
+        run: Tests/run_pow_test.sh "$GITHUB_WORKSPACE/build/rux"
