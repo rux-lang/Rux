@@ -254,6 +254,10 @@ namespace Rux {
                     else
                         EmitWarning(CurrentLocation(), std::format("unknown calling convention '.{}'", variant));
                 }
+                else if (attrName == "Target" && Check(TokenKind::StringLiteral)) {
+                    // @[Target("Windows")] — positional OS string
+                    attrs.targetOs = DecodeStringLiteralText(Advance().text);
+                }
                 else {
                     // Parse key: value pairs until ')'
                     while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
@@ -301,7 +305,7 @@ namespace Rux {
         if (Check(TokenKind::InterfaceKeyword)) return ParseInterfaceDecl(isPublic);
         if (Check(TokenKind::ExtendKeyword)) return ParseImplDecl();
         if (Check(TokenKind::ModuleKeyword)) return ParseModuleDecl(isPublic);
-        if (Check(TokenKind::ImportKeyword)) return ParseUseDecl();
+        if (Check(TokenKind::ImportKeyword)) return ParseUseDecl(std::move(attrs));
         if (Check(TokenKind::ConstKeyword)) return ParseConstDecl(isPublic);
         if (Check(TokenKind::TypeKeyword)) return ParseTypeAliasDecl(isPublic);
         if (Check(TokenKind::ExternKeyword)) return ParseExternDecl(isPublic, std::move(attrs));
@@ -608,12 +612,13 @@ namespace Rux {
     }
 
     // import
-    std::unique_ptr<UseDecl> Parser::ParseUseDecl() {
+    std::unique_ptr<UseDecl> Parser::ParseUseDecl(ParsedAttrs attrs) {
         const auto loc = CurrentLocation();
         Expect(TokenKind::ImportKeyword, "expected 'import'");
 
         auto decl = std::make_unique<UseDecl>();
         decl->location = loc;
+        decl->targetOs = std::move(attrs.targetOs);
 
         // Parse path segments separated by '.' or '::'
         decl->path.push_back(Expect(TokenKind::Ident, "expected module path").text);
@@ -2200,6 +2205,8 @@ namespace Rux {
             }
 
             void PrintUseDecl(const UseDecl& u) const {
+                Pad();
+                if (!u.targetOs.empty()) out << "@[Target(\"" << u.targetOs << "\")]\n";
                 Pad();
                 out << "ImportDecl '";
                 for (std::size_t i = 0; i < u.path.size(); ++i) {
