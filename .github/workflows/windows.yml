@@ -47,3 +47,7 @@ jobs:
       - name: Run escape decoding test
         shell: bash
         run: Tests/run_unicode_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
+
+      - name: Run numeric literal suffix test
+        shell: bash
+        run: Tests/run_numeric_suffix_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
