@@ -1321,6 +1321,7 @@ namespace Rux {
         devBranch
             ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
             : "git clone " + repoUrl + " \"" + dest.string() + "\"";
+    return std::system(cmd.c_str()) == 0;            
 #endif
     }
 
