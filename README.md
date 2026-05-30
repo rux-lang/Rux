@@ -19,6 +19,10 @@
 [![Telegram][TelegramBadge]][TelegramUrl]
 [![License][LicenseBadge]][LicenseUrl]
 
+[![Linux](https://github.com/rux-lang/Rux/actions/workflows/linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/linux.yml)
+[![macOS](https://github.com/rux-lang/Rux/actions/workflows/macos.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/macos.yml)
+[![Windows](https://github.com/rux-lang/Rux/actions/workflows/windows.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/windows.yml)
+
 Rux is a fast, compiled, strongly typed, multi-paradigm, general-purpose programming language.
 
 ## Project Status
