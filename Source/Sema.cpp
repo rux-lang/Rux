@@ -493,6 +493,7 @@ namespace Rux {
         }
 
         void ResolveDeclSignature(const Decl& decl) {
+            if (!DeclMatchesTarget(decl)) return;
             if (auto* d = dynamic_cast<const FuncDecl*>(&decl)) {
                 if (Symbol* sym = globalScope.Lookup(d->name))
                     sym->type = MakeFuncType(d->params, d->returnType, d->typeParams);
@@ -521,6 +522,7 @@ namespace Rux {
         }
 
         void ResolveDeclSignatureInScope(const Decl& decl, Scope& scope) {
+            if (!DeclMatchesTarget(decl)) return;
             if (auto* d = dynamic_cast<const FuncDecl*>(&decl)) {
                 if (Symbol* sym = scope.Lookup(d->name))
                     sym->type = MakeFuncType(d->params, d->returnType, d->typeParams);
@@ -553,6 +555,7 @@ namespace Rux {
         }
 
         void ApplyDeclImports(const Decl& decl) {
+            if (!DeclMatchesTarget(decl)) return;
             if (auto* d = dynamic_cast<const UseDecl*>(&decl)) {
                 CheckUseDecl(*d);
             }
@@ -580,6 +583,7 @@ namespace Rux {
                          Scope& scope,
                          const std::string* packageName = nullptr,
                          const std::string& modulePath = "") {
+            if (!DeclMatchesTarget(decl)) return;
             // Records the symbol in `scope` and, for top-level (global) scope,
             // also appends a SemaSymbol to `symbols_` for the dump.
             bool isGlobal = (&scope == &globalScope);
@@ -1386,6 +1390,7 @@ namespace Rux {
         }
 
         void CheckDecl(const Decl& decl) {
+            if (!DeclMatchesTarget(decl)) return;
             if (auto* d = dynamic_cast<const FuncDecl*>(&decl))
                 CheckFuncDecl(*d);
             else if (auto* d = dynamic_cast<const StructDecl*>(&decl))
@@ -1903,11 +1908,16 @@ namespace Rux {
 #endif
         }
 
+        [[nodiscard]] std::string_view EffectiveOs() const {
+            return targetOs.empty() ? HostOs() : std::string_view(targetOs);
+        }
+
+        [[nodiscard]] bool DeclMatchesTarget(const Decl& d) const {
+            return d.targetOs.empty() || d.targetOs == EffectiveOs();
+        }
+
         void CheckUseDecl(const UseDecl& d) {
-            if (!d.targetOs.empty()) {
-                const std::string_view effectiveOs = targetOs.empty() ? HostOs() : std::string_view(targetOs);
-                if (d.targetOs != effectiveOs) return;
-            }
+            if (!DeclMatchesTarget(d)) return;
             if (d.path.empty()) {
                 EmitError(d.location, "empty import path");
                 return;
