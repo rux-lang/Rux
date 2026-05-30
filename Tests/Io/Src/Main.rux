@@ -3,7 +3,7 @@
 // extern calls with the Win64 register layout, and each backend maps them onto
 // host primitives:
 //   - Windows: the real kernel32 functions
-//   - Linux/FreeBSD: ELF syscall thunks (write)
+//   - Linux/FreeBSD/OpenBSD/NetBSD/DragonFlyBSD: ELF syscall thunks (write)
 //   - macOS: Mach-O syscall thunks (write, BSD class mask)
 //
 // WriteFile (unlike WriteConsoleW) writes to any handle — console, pipe, or
