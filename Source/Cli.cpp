@@ -36,7 +36,8 @@
 #include <vector>
 
 
-// Do NOT move these includes.
+// Do NOT move this includes. But if clang-format moved it then move up windows.h
+// clang-format -i Source/*.cpp Include/Rux/*.h
 // psapi.h depends on definitions from windows.h.
 // If reordered, MSVC will unleash an ancient curse upon this file.
 #ifdef _WIN32
@@ -2086,23 +2087,38 @@ namespace Rux {
             for (char ch : s) {
                 unsigned char u_ch = static_cast<unsigned char>(ch);
                 switch (u_ch) {
-                    case '"':  out += "\\\""; break;
-                    case '\\': out += "\\\\"; break;
-                    case '\b': out += "\\b";  break;
-                    case '\f': out += "\\f";  break;
-                    case '\n': out += "\\n";  break;
-                    case '\r': out += "\\r";  break;
-                    case '\t': out += "\\t";  break;
-                    default: {
-                        if (u_ch < 0x20) {
-                            char buf[7];
-                            std::snprintf(buf, sizeof(buf), "\\u%04x", u_ch);
-                            out += buf;
-                        } else {
-                            out += ch;
-                        }
-                        break;
+                case '"':
+                    out += "\\\"";
+                    break;
+                case '\\':
+                    out += "\\\\";
+                    break;
+                case '\b':
+                    out += "\\b";
+                    break;
+                case '\f':
+                    out += "\\f";
+                    break;
+                case '\n':
+                    out += "\\n";
+                    break;
+                case '\r':
+                    out += "\\r";
+                    break;
+                case '\t':
+                    out += "\\t";
+                    break;
+                default: {
+                    if (u_ch < 0x20) {
+                        char buf[7];
+                        std::snprintf(buf, sizeof(buf), "\\u%04x", u_ch);
+                        out += buf;
                     }
+                    else {
+                        out += ch;
+                    }
+                    break;
+                }
                 }
             }
             return out;
@@ -2141,13 +2157,13 @@ namespace Rux {
 
         auto EmitDiag = [&](std::string file, int line, int column, std::string severity, std::string message) {
             if (jsonOutput) {
-                jsonDiags.push_back({
-                    std::move(file), line, column, std::move(severity), std::move(message)
-                });
-            } else {
+                jsonDiags.push_back({std::move(file), line, column, std::move(severity), std::move(message)});
+            }
+            else {
                 if (file.empty()) {
                     std::print(stderr, "error: {}\n", message);
-                } else {
+                }
+                else {
                     std::print(stderr, "{}:{}:{}: {}: {}\n", file, line, column, severity, message);
                 }
             }
@@ -2174,8 +2190,11 @@ namespace Rux {
         if (!IsSupportedTargetTriple(targetName)) {
             if (jsonOutput) {
                 EmitFatal("unsupported target '" + targetName + "'");
-            } else {
-                std::print(stderr, "error: unsupported target '{}'; supported targets are linux-x64 and windows-x64\n", targetName);
+            }
+            else {
+                std::print(stderr,
+                           "error: unsupported target '{}'; supported targets are linux-x64 and windows-x64\n",
+                           targetName);
             }
             return 1;
         }
@@ -2184,17 +2203,21 @@ namespace Rux {
         if (hostTarget != "unknown" && targetName != hostTarget) {
             if (jsonOutput) {
                 EmitFatal("cross-target build from '" + hostTarget + "' to '" + targetName + "' is not supported yet");
-            } else {
-                std::print(stderr, "error: cross-target build from '{}' to '{}' is not supported yet\n", hostTarget, targetName);
+            }
+            else {
+                std::print(stderr,
+                           "error: cross-target build from '{}' to '{}' is not supported yet\n",
+                           hostTarget,
+                           targetName);
             }
             return 1;
         }
 
         if (!opts.quiet && !jsonOutput) {
             std::print("Checking {} v{} [{}]\n",
-                    manifest->package.name,
-                    manifest->package.version,
-                    manifestPath->parent_path().string());
+                       manifest->package.name,
+                       manifest->package.version,
+                       manifestPath->parent_path().string());
         }
 
         auto loadResult = SourceLoader::Load(manifestPath->parent_path());
@@ -2207,7 +2230,8 @@ namespace Rux {
             if (jsonOutput) {
                 EmitDiag("", 0, 0, "error", err);
                 hadErrors = true;
-            } else {
+            }
+            else {
                 std::print(stderr, "{}", err);
             }
         }
@@ -2217,8 +2241,7 @@ namespace Rux {
         lexResults.reserve(loadResult->files.size());
 
         for (const auto& file : loadResult->files) {
-            if (opts.verbose && !jsonOutput)
-                std::print("    Lexing {}\n", file.path.string());
+            if (opts.verbose && !jsonOutput) std::print("    Lexing {}\n", file.path.string());
 
             Lexer lexer(file.source, file.path.string());
             auto lexResult = lexer.Tokenize();
@@ -2226,7 +2249,8 @@ namespace Rux {
             for (const auto& diag : lexResult.diagnostics) {
                 const auto& loc = diag.location;
                 const char* sev = diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
-                EmitDiag(file.path.string(), static_cast<int>(loc.line), static_cast<int>(loc.column), sev, diag.message);
+                EmitDiag(
+                    file.path.string(), static_cast<int>(loc.line), static_cast<int>(loc.column), sev, diag.message);
                 if (diag.severity == LexerDiagnostic::Severity::Error) lexErrors = true;
             }
             lexResults.push_back(std::move(lexResult));
@@ -2240,8 +2264,7 @@ namespace Rux {
 
         for (std::size_t fileIndex = 0; fileIndex < loadResult->files.size(); ++fileIndex) {
             const auto& file = loadResult->files[fileIndex];
-            if (opts.verbose && !jsonOutput)
-                std::print("    Parsing {}\n", file.path.string());
+            if (opts.verbose && !jsonOutput) std::print("    Parsing {}\n", file.path.string());
 
             auto& lexResult = lexResults[fileIndex];
             if (lexResult.HasErrors()) continue;
@@ -2252,12 +2275,12 @@ namespace Rux {
             for (const auto& diag : parseResult.diagnostics) {
                 const auto& loc = diag.location;
                 const char* sev = diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
-                EmitDiag(file.path.string(), static_cast<int>(loc.line), static_cast<int>(loc.column), sev, diag.message);
+                EmitDiag(
+                    file.path.string(), static_cast<int>(loc.line), static_cast<int>(loc.column), sev, diag.message);
                 if (diag.severity == ParserDiagnostic::Severity::Error) parseErrors = true;
             }
 
-            if (!parseResult.HasErrors())
-                parseResults.push_back(std::move(parseResult));
+            if (!parseResult.HasErrors()) parseResults.push_back(std::move(parseResult));
         }
 
         if (parseErrors) hadErrors = true;
@@ -2276,13 +2299,13 @@ namespace Rux {
         std::unordered_set<std::string> queuedPackageNames;
 
         auto enqueueDependency = [&](const std::string& pkgName,
-                                    const Manifest& ownerManifest,
-                                    const std::filesystem::path& ownerRoot) -> bool {
+                                     const Manifest& ownerManifest,
+                                     const std::filesystem::path& ownerRoot) -> bool {
             if (queuedPackageNames.count(pkgName)) return true;
 
             const auto deps = ownerManifest.EffectiveDependencies(targetName);
             std::optional<Dependency> targetDep;
-            
+
             for (const auto& d : deps) {
                 if (d.name == pkgName) {
                     targetDep = d;
@@ -2299,22 +2322,33 @@ namespace Rux {
             if (targetDep->path.empty()) {
                 depRoot = RegistryPackagesDir() / DependencyPackageName(*targetDep);
                 if (!std::filesystem::exists(depRoot)) {
-                    EmitDiag("", 0, 0, "error", "package '" + DependencyPackageName(*targetDep) + "' is not installed — run 'rux install'");
+                    EmitDiag("",
+                             0,
+                             0,
+                             "error",
+                             "package '" + DependencyPackageName(*targetDep) +
+                                 "' is not installed — run 'rux install'");
                     return false;
                 }
-            } else {
+            }
+            else {
                 depRoot = (ownerRoot / targetDep->path).lexically_normal();
-                
+
                 auto rel = depRoot.lexically_relative(ownerRoot);
                 if (!rel.empty() && rel.begin()->string() == "..") {
-                    EmitDiag("", 0, 0, "error", "package '" + pkgName + "' contains an invalid path escaping root bounds");
+                    EmitDiag(
+                        "", 0, 0, "error", "package '" + pkgName + "' contains an invalid path escaping root bounds");
                     return false;
                 }
             }
 
             auto depManifest = Manifest::Load(depRoot / "Rux.toml");
             if (!depManifest) {
-                EmitDiag("", 0, 0, "error", "dependency package '" + pkgName + "' was not found at '" + depRoot.string() + "'");
+                EmitDiag("",
+                         0,
+                         0,
+                         "error",
+                         "dependency package '" + pkgName + "' was not found at '" + depRoot.string() + "'");
                 return false;
             }
 
@@ -2324,10 +2358,10 @@ namespace Rux {
         };
 
         std::vector<std::string> imports;
-        
+
         struct ImportCollector {
             std::vector<std::string>& imports;
-            
+
             void collect(const Decl& decl) {
                 if (const auto* ud = dynamic_cast<const UseDecl*>(&decl)) {
                     if (!ud->path.empty()) imports.push_back(ud->path[0]);
@@ -2374,11 +2408,12 @@ namespace Rux {
                     if (jsonOutput) {
                         EmitDiag("", 0, 0, "error", error);
                         hadErrors = true;
-                    } else {
+                    }
+                    else {
                         std::print(stderr, "{}", error);
                     }
                 }
-                
+
                 if (!depLoadResult->errors.empty()) {
                     hadErrors = true;
                     break;
@@ -2393,7 +2428,11 @@ namespace Rux {
 
                     for (const auto& diag : depLex.diagnostics) {
                         const char* sev = diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
-                        EmitDiag(depFile.path.string(), static_cast<int>(diag.location.line), static_cast<int>(diag.location.column), sev, diag.message);
+                        EmitDiag(depFile.path.string(),
+                                 static_cast<int>(diag.location.line),
+                                 static_cast<int>(diag.location.column),
+                                 sev,
+                                 diag.message);
                         if (diag.severity == LexerDiagnostic::Severity::Error) hadErrors = true;
                     }
                     if (depLex.HasErrors()) {
@@ -2406,7 +2445,11 @@ namespace Rux {
 
                     for (const auto& diag : depParse.diagnostics) {
                         const char* sev = diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
-                        EmitDiag(depFile.path.string(), static_cast<int>(diag.location.line), static_cast<int>(diag.location.column), sev, diag.message);
+                        EmitDiag(depFile.path.string(),
+                                 static_cast<int>(diag.location.line),
+                                 static_cast<int>(diag.location.column),
+                                 sev,
+                                 diag.message);
                         if (diag.severity == ParserDiagnostic::Severity::Error) hadErrors = true;
                     }
                     if (depParse.HasErrors()) {
@@ -2416,7 +2459,7 @@ namespace Rux {
 
                     packageParseResults.push_back(std::move(depParse));
                 }
-                
+
                 if (hadErrors) break;
 
                 imports.clear();
@@ -2434,7 +2477,7 @@ namespace Rux {
                         break;
                     }
                 }
-                
+
                 if (hadErrors) break;
 
                 for (auto& depParse : packageParseResults) {
@@ -2470,8 +2513,7 @@ namespace Rux {
                 if (diag.severity == SemaDiagnostic::Severity::Error) hadErrors = true;
             }
 
-            if (semaResult.HasErrors())
-                hadErrors = true;
+            if (semaResult.HasErrors()) hadErrors = true;
         }
 
         if (jsonOutput) {
@@ -2860,21 +2902,19 @@ namespace Rux {
     }
 
     void Cli::PrintHelpCheck() {
-        std::print(
-            "Check package source code for errors.\n\n"
+        std::print("Check package source code for errors.\n\n"
 
-            "Usage:\n"
-            "  rux check [options]\n\n"
+                   "Usage:\n"
+                   "  rux check [options]\n\n"
 
-            "Options:\n"
-            "  --json            Output diagnostics as JSON\n"
-            "  --target <triple> Check for a specific target\n"
+                   "Options:\n"
+                   "  --json            Output diagnostics as JSON\n"
+                   "  --target <triple> Check for a specific target\n"
 
-            "Examples:\n"
-            "  rux check\n"
-            "  rux check --json\n"
-            "  rux check --target windows-x64\n"
-        );
+                   "Examples:\n"
+                   "  rux check\n"
+                   "  rux check --json\n"
+                   "  rux check --target windows-x64\n");
     }
 
     void Cli::PrintVersion() {

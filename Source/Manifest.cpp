@@ -242,8 +242,8 @@ namespace Rux {
             auto it = targetDependencies.find(key);
             if (it == targetDependencies.end()) return;
             for (const auto& targetDep : it->second) {
-                auto existing = std::ranges::find_if(result,
-                                                     [&](const Dependency& dep) { return dep.name == targetDep.name; });
+                auto existing =
+                    std::ranges::find_if(result, [&](const Dependency& dep) { return dep.name == targetDep.name; });
                 if (existing == result.end())
                     result.push_back(targetDep);
                 else

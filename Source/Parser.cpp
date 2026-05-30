@@ -1424,9 +1424,7 @@ namespace Rux {
     ExprPtr Parser::ParseExp() {
         auto left = ParseUnary();
 
-        if (Check(TokenKind::Star) &&
-            Peek(1).kind == TokenKind::Star)
-        {
+        if (Check(TokenKind::Star) && Peek(1).kind == TokenKind::Star) {
             const auto loc = CurrentLocation();
 
             Advance(); // first *

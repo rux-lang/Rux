@@ -19,7 +19,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#if defined(__linux__) || defined(__FreeBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
 #  include <filesystem>
 #endif
 
@@ -249,8 +249,7 @@ namespace Rux {
         std::vector<std::filesystem::path> candidates{dllPath};
         if (dllPath.extension().empty()) candidates.emplace_back(dll + ".dll");
 
-        const auto probe =
-            [&](const std::filesystem::path& dir) -> std::optional<std::filesystem::path> {
+        const auto probe = [&](const std::filesystem::path& dir) -> std::optional<std::filesystem::path> {
             if (dir.empty()) return std::nullopt;
             for (const auto& name : candidates) {
                 if (FileExists(dir / name)) return dir / name;
@@ -301,7 +300,7 @@ namespace Rux {
     }
 
     bool Linker::Link(const std::filesystem::path& outputPath) {
-#if defined(__linux__) || defined(__FreeBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
         return LinkElf64(outputPath);
 #elif defined(__APPLE__)
         return LinkMachO64(outputPath);
@@ -823,12 +822,12 @@ namespace Rux {
 #endif
     }
 
-#if defined(__linux__) || defined(__FreeBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
     static std::optional<Buf> LinuxCompatThunk(const std::string& name) {
         static const std::unordered_map<std::string, Buf> thunks = {
             {"ExitProcess",
              {
-#  if defined(__FreeBSD__)
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
                  0x48, 0x89, 0xCF, 0xB8, 0x01, 0x00, 0x00, 0x00, 0x0F, 0x05
 #  else
                  0x48, 0x89, 0xCF, 0xB8, 0x3C, 0x00, 0x00, 0x00, 0x0F, 0x05
@@ -850,7 +849,7 @@ namespace Rux {
             {"GetProcessHeap", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"HeapFree", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"HeapAlloc", {0x4C, 0x89, 0xC6, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
-#  if defined(__FreeBSD__)
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
                            0x02, 0x10, 0x00, 0x00,
 #  else
                            0x22, 0x00, 0x00, 0x00,
@@ -858,12 +857,16 @@ namespace Rux {
                            0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
 #  if defined(__FreeBSD__)
                            0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+#  elif defined(__OpenBSD__)
+                           0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
+#  elif defined(__DragonFly__) || defined(__NetBSD__)
+                           0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
 #  else
                            0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
 #  endif
                            0x05, 0xC3}},
             {"HeapReAlloc", {0x48, 0x8B, 0x74, 0x24, 0x28, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
-#  if defined(__FreeBSD__)
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
                              0x02, 0x10, 0x00, 0x00,
 #  else
                              0x22, 0x00, 0x00, 0x00,
@@ -871,6 +874,10 @@ namespace Rux {
                              0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
 #  if defined(__FreeBSD__)
                              0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+#  elif defined(__OpenBSD__)
+                             0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
+#  elif defined(__DragonFly__) || defined(__NetBSD__)
+                             0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
 #  else
                              0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
 #  endif
@@ -878,32 +885,71 @@ namespace Rux {
             {"RtlCopyMemory", {0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88, 0x01, 0x48, 0xFF,
                                0xC2, 0x48, 0xFF, 0xC1, 0x49, 0xFF, 0xC8, 0x75, 0xF1, 0xC3}},
             {"RtlCompareMemory",
-            {
-                0x49, 0x85, 0xC0,             // test r8, r8
-                    0x74, 0x2A,                   // jz done_zero
+             {
+                 0x49,
+                 0x85,
+                 0xC0, // test r8, r8
+                 0x74,
+                 0x2A, // jz done_zero
 
-                    0x48, 0x31, 0xC0,             // xor rax, rax (result = 0)
+                 0x48,
+                 0x31,
+                 0xC0, // xor rax, rax (result = 0)
 
-                    // --- align loop (16 bytes SIMD) ---
-                    0x49, 0x83, 0xF8, 0x10,       // cmp r8, 16
-                    0x72, 0x1E,                   // jb byte_tail
+                 // --- align loop (16 bytes SIMD) ---
+                 0x49,
+                 0x83,
+                 0xF8,
+                 0x10, // cmp r8, 16
+                 0x72,
+                 0x1E, // jb byte_tail
 
-                    0xF3, 0x0F, 0x6F, 0x01,       // movdqu xmm0, [rcx]
-                    0xF3, 0x0F, 0x6F, 0x12,       // movdqu xmm1, [rdx]
+                 0xF3,
+                 0x0F,
+                 0x6F,
+                 0x01, // movdqu xmm0, [rcx]
+                 0xF3,
+                 0x0F,
+                 0x6F,
+                 0x12, // movdqu xmm1, [rdx]
 
-                    0x66, 0x0F, 0x74, 0xC1,       // pcmpeqb xmm0, xmm1
-                    0x66, 0x0F, 0xD7, 0xC0,       // pmovmskb eax, xmm0
+                 0x66,
+                 0x0F,
+                 0x74,
+                 0xC1, // pcmpeqb xmm0, xmm1
+                 0x66,
+                 0x0F,
+                 0xD7,
+                 0xC0, // pmovmskb eax, xmm0
 
-                    0x3D, 0xFF, 0xFF, 0x00, 0x00, // cmp eax, 0xFFFF
-                    0x75, 0x1A,                   // jne mismatch
+                 0x3D,
+                 0xFF,
+                 0xFF,
+                 0x00,
+                 0x00, // cmp eax, 0xFFFF
+                 0x75,
+                 0x1A, // jne mismatch
 
-                    0x48, 0x83, 0xC1, 0x10,       // rcx += 16
-                    0x48, 0x83, 0xC2, 0x10,       // rdx += 16
-                    0x48, 0x83, 0xC0, 0x10,       // rax += 16
-                    0x49, 0x83, 0xE8, 0x10,       // r8  -= 16
+                 0x48,
+                 0x83,
+                 0xC1,
+                 0x10, // rcx += 16
+                 0x48,
+                 0x83,
+                 0xC2,
+                 0x10, // rdx += 16
+                 0x48,
+                 0x83,
+                 0xC0,
+                 0x10, // rax += 16
+                 0x49,
+                 0x83,
+                 0xE8,
+                 0x10, // r8  -= 16
 
-                    0xEB, 0xDA,                   // jmp loop
-            }},
+                 0xEB,
+                 0xDA, // jmp loop
+             }},
             {"RtlFillMemory",
              {0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88, 0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
             {"RtlZeroMemory", {0x45, 0x31, 0xC0, 0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88,
@@ -913,7 +959,7 @@ namespace Rux {
                                      0x49, 0xFF, 0xC0, 0x49, 0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
             {"WriteConsoleW", {0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x08, 0x49, 0x89, 0xD4, 0x4D, 0x89,
                                0xC5, 0x4D, 0x85, 0xED, 0x74, 0x24, 0x41, 0x8A, 0x04, 0x24, 0x88, 0x04, 0x24,
-#  if defined(__FreeBSD__)
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
                                0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
 #  else
                                0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
@@ -926,7 +972,7 @@ namespace Rux {
                  0x89, 0xCF, // mov edi, ecx  (fd)
                  0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
                  0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
-#  if defined(__FreeBSD__)
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
                  0xB8, 0x03, 0x00, 0x00, 0x00, // mov eax, 3 (SYS_read)
 #  else
                  0x31, 0xC0, // xor eax, eax (SYS_read = 0)
@@ -947,7 +993,7 @@ namespace Rux {
                  0x89, 0xCF, // mov edi, ecx  (fd)
                  0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
                  0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
-#  if defined(__FreeBSD__)
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
                  0xB8, 0x04, 0x00, 0x00, 0x00, // mov eax, 4 (SYS_write)
 #  else
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (SYS_write)
@@ -1086,7 +1132,7 @@ namespace Rux {
                         if (LinuxCompatThunk(sym.name))
                             linuxCompatExterns.insert(sym.name);
                         else
-                            Error("external symbol '" + sym.name + "' is not supported by the Linux ELF linker yet");
+                            Error("external symbol '" + sym.name + "' is not supported by the ELF linker yet");
                     }
                 }
             }
@@ -1097,8 +1143,8 @@ namespace Rux {
         const size_t kCallMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
         textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax
-#  if defined(__FreeBSD__)
-        textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (FreeBSD exit)
+#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+        textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD exit)
 #  else
         textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
 #  endif
@@ -1121,6 +1167,18 @@ namespace Rux {
         std::vector<ObjLayout> layouts(objects.size());
         Buf mergedText, mergedRodata, mergedData;
 
+#  if defined(__NetBSD__)
+        // Prepend NetBSD ELF Note
+        mergedRodata.insert(mergedRodata.end(),
+                            {
+                                0x07, 0x00, 0x00, 0x00, // Name size (7)
+                                0x04, 0x00, 0x00, 0x00, // Desc size (4)
+                                0x01, 0x00, 0x00, 0x00, // Type (1 = OS version)
+                                'N',  'e',  't',  'B',  'S', 'D', 0, 0, // Name (NetBSD\0\0)
+                                0x00, 0xCA, 0x9A, 0x3B // Desc (1000000000)
+                            });
+#  endif
+
         for (size_t i = 0; i < objects.size(); ++i) {
             const auto& obj = objects[i];
             layouts[i] = {static_cast<uint32_t>(mergedText.size()),
@@ -1140,7 +1198,11 @@ namespace Rux {
         textBuf.insert(textBuf.end(), textPre.begin(), textPre.end());
         textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
 
-        const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0));
+        const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0)
+#  if defined(__NetBSD__)
+                                                     + 1
+#  endif
+        );
         const uint64_t phoff = 64;
         const uint64_t textOff = alignUp64(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
         const uint64_t textVA = kBase + textOff;
@@ -1300,8 +1362,12 @@ namespace Rux {
                              2,
                              1,
                              1,
-#  if defined(__FreeBSD__)
+#  if defined(__FreeBSD__) || defined(__DragonFly__)
                              9, // EI_OSABI: FreeBSD
+#  elif defined(__OpenBSD__)
+                             12, // EI_OSABI: OpenBSD
+#  elif defined(__NetBSD__)
+                             2, // EI_OSABI: NetBSD
 #  else
                              0, // EI_OSABI: System V
 #  endif
@@ -1330,6 +1396,17 @@ namespace Rux {
 
         writePhdr(kPfR | kPfX, textOff, textVA, textBuf.size(), textBuf.size());
         writePhdr(kPfR, rdataOff, rdataVA, mergedRodata.size(), mergedRodata.size());
+#  if defined(__NetBSD__)
+        // Write PT_NOTE program header pointing to the NetBSD note at the start of .rodata
+        wU32(4); // p_type: PT_NOTE
+        wU32(kPfR); // p_flags: PF_R
+        wU64(rdataOff); // p_offset
+        wU64(rdataVA); // p_vaddr
+        wU64(rdataVA); // p_paddr
+        wU64(24); // p_filesz: 24 bytes
+        wU64(24); // p_memsz: 24 bytes
+        wU64(4); // p_align: 4 bytes
+#  endif
         if (!mergedData.empty()) writePhdr(kPfR | kPfW, dataOff, dataVA, mergedData.size(), mergedData.size());
 
         padToOffset(textOff);
@@ -1372,9 +1449,16 @@ namespace Rux {
         static const std::unordered_map<std::string, Buf> thunks = {
             {"ExitProcess",
              {
-                 0x48, 0x89, 0xCF, // mov rdi, rcx  (exit code)
-                 0xB8, 0x01, 0x00, 0x00, 0x02, // mov eax, 0x2000001 (SYS_exit)
-                 0x0F, 0x05 // syscall
+                 0x48,
+                 0x89,
+                 0xCF, // mov rdi, rcx  (exit code)
+                 0xB8,
+                 0x01,
+                 0x00,
+                 0x00,
+                 0x02, // mov eax, 0x2000001 (SYS_exit)
+                 0x0F,
+                 0x05 // syscall
              }},
             {"GetStdHandle",
              {

@@ -287,9 +287,12 @@ namespace Rux {
         int base = 10;
         if (text.size() >= 2 && text[0] == '0') {
             const char prefix = text[1];
-            if (prefix == 'x' || prefix == 'X') base = 16;
-            else if (prefix == 'b' || prefix == 'B') base = 2;
-            else if (prefix == 'o' || prefix == 'O') base = 8;
+            if (prefix == 'x' || prefix == 'X')
+                base = 16;
+            else if (prefix == 'b' || prefix == 'B')
+                base = 2;
+            else if (prefix == 'o' || prefix == 'O')
+                base = 8;
         }
 
         // Valid digit sets per base
@@ -316,16 +319,21 @@ namespace Rux {
             if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
                 // Validate as we consume
                 bool valid = false;
-                if (c >= '0' && c <= '9') valid = c - '0' < base;
-                else if (base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) valid = true;
-                else if (c == '_') valid = true;
+                if (c >= '0' && c <= '9')
+                    valid = c - '0' < base;
+                else if (base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+                    valid = true;
+                else if (c == '_')
+                    valid = true;
                 if (!valid && !emittedInvalidDigitError) {
-                    EmitError(CurrentLocation(), std::string("invalid digit '") + c + "' for base " + std::to_string(base));
+                    EmitError(CurrentLocation(),
+                              std::string("invalid digit '") + c + "' for base " + std::to_string(base));
                     emittedInvalidDigitError = true;
                 }
                 Advance();
             }
-            else break;
+            else
+                break;
         }
         return MakeToken(TokenKind::IntLiteral, start, tokenStart);
     }
@@ -444,9 +452,12 @@ namespace Rux {
             while (!IsAtEnd() && Peek() != '}') {
                 const char h = Advance();
                 int val = -1;
-                if (h >= '0' && h <= '9') val = h - '0';
-                else if (h >= 'a' && h <= 'f') val = h - 'a' + 10;
-                else if (h >= 'A' && h <= 'F') val = h - 'A' + 10;
+                if (h >= '0' && h <= '9')
+                    val = h - '0';
+                else if (h >= 'a' && h <= 'f')
+                    val = h - 'a' + 10;
+                else if (h >= 'A' && h <= 'F')
+                    val = h - 'A' + 10;
                 else {
                     EmitError(loc, std::string("invalid hex digit '") + h + "' in Unicode escape");
                     return {};
