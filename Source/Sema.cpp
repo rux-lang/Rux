@@ -920,6 +920,16 @@ namespace Rux {
                 !UnsuffixedIntegerLiteralFits(expr, targetType);
         }
 
+        // Picks the diagnostic for a rejected assignment/conversion. An unsuffixed
+        // integer literal that does not fit the target gets a dedicated "out of
+        // range" message; everything else uses `fallback`. Keeps the wording
+        // consistent across let, return, assignment, const, and field positions.
+        static std::string AssignmentErrorMessage(const Expr& expr, const TypeRef& targetType, std::string fallback) {
+            if (IsIntegerLiteralOutOfRangeFor(expr, targetType))
+                return std::format("integer literal is out of range for type '{}'", targetType.ToString());
+            return fallback;
+        }
+
         bool TypeImplementsInterface(const TypeRef& exprType, const TypeRef& targetType) const {
             if (targetType.kind != TypeRef::Kind::Named) return false;
             Symbol* sym = currentScope->Lookup(targetType.name);
@@ -1481,9 +1491,12 @@ namespace Rux {
                     if (!defaultType.IsUnknown() && !paramType.IsUnknown() &&
                         !CanAssignExprTo(**param.defaultValue, defaultType, paramType))
                         EmitError(param.location,
-                                  std::format("default value type '{}' does not match parameter type '{}'",
-                                              defaultType.ToString(),
-                                              paramType.ToString()));
+                                  AssignmentErrorMessage(
+                                      **param.defaultValue,
+                                      paramType,
+                                      std::format("default value type '{}' does not match parameter type '{}'",
+                                                  defaultType.ToString(),
+                                                  paramType.ToString())));
                 }
             }
 
@@ -1561,11 +1574,14 @@ namespace Rux {
                         TypeRef fieldType = ResolveType(*fieldIt->second->type);
                         if (!valueType.IsUnknown() && !fieldType.IsUnknown() &&
                             !CanAssignExprTo(*f.value, valueType, fieldType))
-                            EmitError(f.location,
-                                      std::format("cannot assign '{}' to field '{}' of type '{}'",
-                                                  valueType.ToString(),
-                                                  f.name,
-                                                  fieldType.ToString()));
+                            EmitError(
+                                f.location,
+                                AssignmentErrorMessage(*f.value,
+                                                       fieldType,
+                                                       std::format("cannot assign '{}' to field '{}' of type '{}'",
+                                                                   valueType.ToString(),
+                                                                   f.name,
+                                                                   fieldType.ToString())));
                     }
 
                     for (const auto& field : variant->namedFields) {
@@ -1617,10 +1633,12 @@ namespace Rux {
                 if (!valueType.IsUnknown() && !fieldType.IsUnknown() &&
                     !CanAssignExprTo(*f.value, valueType, fieldType))
                     EmitError(f.location,
-                              std::format("cannot assign '{}' to field '{}' of type '{}'",
-                                          valueType.ToString(),
-                                          f.name,
-                                          fieldType.ToString()));
+                              AssignmentErrorMessage(*f.value,
+                                                     fieldType,
+                                                     std::format("cannot assign '{}' to field '{}' of type '{}'",
+                                                                 valueType.ToString(),
+                                                                 f.name,
+                                                                 fieldType.ToString())));
             }
 
             for (const auto& field : decl.fields) {
@@ -1750,9 +1768,11 @@ namespace Rux {
             if (d.type && !valueType.IsUnknown() && !constType.IsUnknown() &&
                 !CanAssignExprTo(*d.value, valueType, constType))
                 EmitError(d.value->location,
-                          std::format("cannot assign '{}' to constant of type '{}'",
-                                      valueType.ToString(),
-                                      constType.ToString()));
+                          AssignmentErrorMessage(*d.value,
+                                                 constType,
+                                                 std::format("cannot assign '{}' to constant of type '{}'",
+                                                             valueType.ToString(),
+                                                             constType.ToString())));
             if (Symbol* sym = currentScope->Lookup(d.name)) sym->type = constType;
         }
 
@@ -1981,11 +2001,11 @@ namespace Rux {
 
                 if (s->init && s->type && !initType.IsUnknown() && !declType.IsUnknown() &&
                     !CanAssignExprTo(*s->init, initType, declType))
-                    EmitError(
-                        s->location,
-                        IsIntegerLiteralOutOfRangeFor(*s->init, declType)
-                            ? std::format("integer literal is out of range for type '{}'", declType.ToString())
-                            : std::format("cannot assign '{}' to '{}'", initType.ToString(), declType.ToString()));
+                    EmitError(s->location,
+                              AssignmentErrorMessage(
+                                  *s->init,
+                                  declType,
+                                  std::format("cannot assign '{}' to '{}'", initType.ToString(), declType.ToString())));
 
                 if (s->pattern) {
                     CheckLetPattern(*s->pattern, declType, s->isMut);
@@ -2069,9 +2089,11 @@ namespace Rux {
                         !currentReturnType.IsUnknown() && !currentReturnType.IsOpaque() &&
                         !CanAssignExprTo(**s->value, valType, currentReturnType))
                         EmitError(s->location,
-                                  std::format("return type mismatch: expected '{}', found '{}'",
-                                              currentReturnType.ToString(),
-                                              valType.ToString()));
+                                  AssignmentErrorMessage(**s->value,
+                                                         currentReturnType,
+                                                         std::format("return type mismatch: expected '{}', found '{}'",
+                                                                     currentReturnType.ToString(),
+                                                                     valType.ToString())));
                 }
                 else if (!currentReturnType.IsOpaque() && !currentReturnType.IsUnknown()) {
                     EmitError(s->location,
@@ -2317,7 +2339,10 @@ namespace Rux {
                 TypeRef tgt = CheckExpr(*e->target);
                 TypeRef val = CheckExpr(*e->value);
                 if (!tgt.IsUnknown() && !val.IsUnknown() && !CanAssignExprTo(*e->value, val, tgt))
-                    EmitError(e->location, std::format("cannot assign '{}' to '{}'", val.ToString(), tgt.ToString()));
+                    EmitError(
+                        e->location,
+                        AssignmentErrorMessage(
+                            *e->value, tgt, std::format("cannot assign '{}' to '{}'", val.ToString(), tgt.ToString())));
                 return TypeRef::MakeOpaque();
             }
 
@@ -2654,10 +2679,13 @@ namespace Rux {
                         resultType = armType;
                     }
                     else if (!armType.IsUnknown() && !CanAssignExprTo(*arm.body, armType, resultType)) {
-                        EmitError(arm.location,
-                                  std::format("match arm type mismatch: expected '{}', found '{}'",
-                                              resultType.ToString(),
-                                              armType.ToString()));
+                        EmitError(
+                            arm.location,
+                            AssignmentErrorMessage(*arm.body,
+                                                   resultType,
+                                                   std::format("match arm type mismatch: expected '{}', found '{}'",
+                                                               resultType.ToString(),
+                                                               armType.ToString())));
                     }
                 }
                 return resultType;
