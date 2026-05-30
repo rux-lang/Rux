@@ -249,8 +249,7 @@ namespace Rux {
         std::vector<std::filesystem::path> candidates{dllPath};
         if (dllPath.extension().empty()) candidates.emplace_back(dll + ".dll");
 
-        const auto probe =
-            [&](const std::filesystem::path& dir) -> std::optional<std::filesystem::path> {
+        const auto probe = [&](const std::filesystem::path& dir) -> std::optional<std::filesystem::path> {
             if (dir.empty()) return std::nullopt;
             for (const auto& name : candidates) {
                 if (FileExists(dir / name)) return dir / name;
@@ -886,32 +885,71 @@ namespace Rux {
             {"RtlCopyMemory", {0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88, 0x01, 0x48, 0xFF,
                                0xC2, 0x48, 0xFF, 0xC1, 0x49, 0xFF, 0xC8, 0x75, 0xF1, 0xC3}},
             {"RtlCompareMemory",
-            {
-                0x49, 0x85, 0xC0,             // test r8, r8
-                    0x74, 0x2A,                   // jz done_zero
+             {
+                 0x49,
+                 0x85,
+                 0xC0, // test r8, r8
+                 0x74,
+                 0x2A, // jz done_zero
 
-                    0x48, 0x31, 0xC0,             // xor rax, rax (result = 0)
+                 0x48,
+                 0x31,
+                 0xC0, // xor rax, rax (result = 0)
 
-                    // --- align loop (16 bytes SIMD) ---
-                    0x49, 0x83, 0xF8, 0x10,       // cmp r8, 16
-                    0x72, 0x1E,                   // jb byte_tail
+                 // --- align loop (16 bytes SIMD) ---
+                 0x49,
+                 0x83,
+                 0xF8,
+                 0x10, // cmp r8, 16
+                 0x72,
+                 0x1E, // jb byte_tail
 
-                    0xF3, 0x0F, 0x6F, 0x01,       // movdqu xmm0, [rcx]
-                    0xF3, 0x0F, 0x6F, 0x12,       // movdqu xmm1, [rdx]
+                 0xF3,
+                 0x0F,
+                 0x6F,
+                 0x01, // movdqu xmm0, [rcx]
+                 0xF3,
+                 0x0F,
+                 0x6F,
+                 0x12, // movdqu xmm1, [rdx]
 
-                    0x66, 0x0F, 0x74, 0xC1,       // pcmpeqb xmm0, xmm1
-                    0x66, 0x0F, 0xD7, 0xC0,       // pmovmskb eax, xmm0
+                 0x66,
+                 0x0F,
+                 0x74,
+                 0xC1, // pcmpeqb xmm0, xmm1
+                 0x66,
+                 0x0F,
+                 0xD7,
+                 0xC0, // pmovmskb eax, xmm0
 
-                    0x3D, 0xFF, 0xFF, 0x00, 0x00, // cmp eax, 0xFFFF
-                    0x75, 0x1A,                   // jne mismatch
+                 0x3D,
+                 0xFF,
+                 0xFF,
+                 0x00,
+                 0x00, // cmp eax, 0xFFFF
+                 0x75,
+                 0x1A, // jne mismatch
 
-                    0x48, 0x83, 0xC1, 0x10,       // rcx += 16
-                    0x48, 0x83, 0xC2, 0x10,       // rdx += 16
-                    0x48, 0x83, 0xC0, 0x10,       // rax += 16
-                    0x49, 0x83, 0xE8, 0x10,       // r8  -= 16
+                 0x48,
+                 0x83,
+                 0xC1,
+                 0x10, // rcx += 16
+                 0x48,
+                 0x83,
+                 0xC2,
+                 0x10, // rdx += 16
+                 0x48,
+                 0x83,
+                 0xC0,
+                 0x10, // rax += 16
+                 0x49,
+                 0x83,
+                 0xE8,
+                 0x10, // r8  -= 16
 
-                    0xEB, 0xDA,                   // jmp loop
-            }},
+                 0xEB,
+                 0xDA, // jmp loop
+             }},
             {"RtlFillMemory",
              {0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88, 0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
             {"RtlZeroMemory", {0x45, 0x31, 0xC0, 0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88,
@@ -1129,16 +1167,17 @@ namespace Rux {
         std::vector<ObjLayout> layouts(objects.size());
         Buf mergedText, mergedRodata, mergedData;
 
-#if defined(__NetBSD__)
+#  if defined(__NetBSD__)
         // Prepend NetBSD ELF Note
-        mergedRodata.insert(mergedRodata.end(), {
-            0x07, 0x00, 0x00, 0x00, // Name size (7)
-            0x04, 0x00, 0x00, 0x00, // Desc size (4)
-            0x01, 0x00, 0x00, 0x00, // Type (1 = OS version)
-            'N', 'e', 't', 'B', 'S', 'D', 0, 0, // Name (NetBSD\0\0)
-            0x00, 0xCA, 0x9A, 0x3B  // Desc (1000000000)
-        });
-#endif
+        mergedRodata.insert(mergedRodata.end(),
+                            {
+                                0x07, 0x00, 0x00, 0x00, // Name size (7)
+                                0x04, 0x00, 0x00, 0x00, // Desc size (4)
+                                0x01, 0x00, 0x00, 0x00, // Type (1 = OS version)
+                                'N',  'e',  't',  'B',  'S', 'D', 0, 0, // Name (NetBSD\0\0)
+                                0x00, 0xCA, 0x9A, 0x3B // Desc (1000000000)
+                            });
+#  endif
 
         for (size_t i = 0; i < objects.size(); ++i) {
             const auto& obj = objects[i];
@@ -1160,9 +1199,9 @@ namespace Rux {
         textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
 
         const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0)
-#if defined(__NetBSD__)
+#  if defined(__NetBSD__)
                                                      + 1
-#endif
+#  endif
         );
         const uint64_t phoff = 64;
         const uint64_t textOff = alignUp64(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
@@ -1357,7 +1396,7 @@ namespace Rux {
 
         writePhdr(kPfR | kPfX, textOff, textVA, textBuf.size(), textBuf.size());
         writePhdr(kPfR, rdataOff, rdataVA, mergedRodata.size(), mergedRodata.size());
-#if defined(__NetBSD__)
+#  if defined(__NetBSD__)
         // Write PT_NOTE program header pointing to the NetBSD note at the start of .rodata
         wU32(4); // p_type: PT_NOTE
         wU32(kPfR); // p_flags: PF_R
@@ -1367,7 +1406,7 @@ namespace Rux {
         wU64(24); // p_filesz: 24 bytes
         wU64(24); // p_memsz: 24 bytes
         wU64(4); // p_align: 4 bytes
-#endif
+#  endif
         if (!mergedData.empty()) writePhdr(kPfR | kPfW, dataOff, dataVA, mergedData.size(), mergedData.size());
 
         padToOffset(textOff);
@@ -1410,9 +1449,16 @@ namespace Rux {
         static const std::unordered_map<std::string, Buf> thunks = {
             {"ExitProcess",
              {
-                 0x48, 0x89, 0xCF, // mov rdi, rcx  (exit code)
-                 0xB8, 0x01, 0x00, 0x00, 0x02, // mov eax, 0x2000001 (SYS_exit)
-                 0x0F, 0x05 // syscall
+                 0x48,
+                 0x89,
+                 0xCF, // mov rdi, rcx  (exit code)
+                 0xB8,
+                 0x01,
+                 0x00,
+                 0x00,
+                 0x02, // mov eax, 0x2000001 (SYS_exit)
+                 0x0F,
+                 0x05 // syscall
              }},
             {"GetStdHandle",
              {
