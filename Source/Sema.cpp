@@ -327,12 +327,14 @@ namespace Rux {
                  std::vector<DepPackage>& deps,
                  const std::string& packageName,
                  std::vector<SemaDiagnostic>& diags,
-                 std::vector<SemaSymbol>& symbols)
+                 std::vector<SemaSymbol>& symbols,
+                 const std::string& targetOs)
             : modules(modules)
             , deps(deps)
             , packageName(packageName)
             , diags(diags)
             , symbols(symbols)
+            , targetOs(targetOs)
             , currentScope(&globalScope) {
         }
 
@@ -381,6 +383,7 @@ namespace Rux {
         const std::string& packageName;
         std::vector<SemaDiagnostic>& diags;
         std::vector<SemaSymbol>& symbols;
+        const std::string& targetOs;
         Scope globalScope{nullptr};
         Scope* currentScope;
         // packageModuleScopes[pkgName][modulePath] = logical module scope.
@@ -1888,7 +1891,23 @@ namespace Rux {
             }
         }
 
+        static std::string_view HostOs() noexcept {
+#if defined(_WIN32)
+            return "Windows";
+#elif defined(__APPLE__)
+            return "macOS";
+#elif defined(__linux__)
+            return "Linux";
+#else
+            return "";
+#endif
+        }
+
         void CheckUseDecl(const UseDecl& d) {
+            if (!d.targetOs.empty()) {
+                const std::string_view effectiveOs = targetOs.empty() ? HostOs() : std::string_view(targetOs);
+                if (d.targetOs != effectiveOs) return;
+            }
             if (d.path.empty()) {
                 EmitError(d.location, "empty import path");
                 return;
@@ -2852,14 +2871,18 @@ namespace Rux {
     };
 
     // Sema public API
-    Sema::Sema(std::vector<const Module*> userModules, std::vector<DepPackage> deps, std::string packageName)
+    Sema::Sema(std::vector<const Module*> userModules,
+               std::vector<DepPackage> deps,
+               std::string packageName,
+               std::string targetOs)
         : modules(std::move(userModules))
         , deps(std::move(deps))
-        , packageName(std::move(packageName)) {
+        , packageName(std::move(packageName))
+        , targetOs(std::move(targetOs)) {
     }
 
     SemaResult Sema::Analyze() {
-        Analyzer analyzer(modules, deps, packageName, diags, symbols);
+        Analyzer analyzer(modules, deps, packageName, diags, symbols, targetOs);
         analyzer.Run();
         return SemaResult{std::move(diags), std::move(symbols)};
     }

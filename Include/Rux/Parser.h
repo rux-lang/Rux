@@ -72,6 +72,17 @@ namespace Rux {
         // Top-level
         DeclPtr ParseDecl();
 
+        // Attribute parsing
+        struct ParsedAttrs {
+            std::string importLib;
+            CallingConvention callConv = CallingConvention::Default;
+            std::string targetOs;
+        };
+
+        // Parses zero or more @[AttrName(...)] attributes before a declaration.
+        ParsedAttrs ParseAttrs();
+        DeclPtr ParseExternDecl(bool isPublic, ParsedAttrs attrs);
+
         // Declarations
         std::unique_ptr<FuncDecl>
         ParseFuncDecl(bool isPublic, bool isAsm, CallingConvention callConv = CallingConvention::Default);
@@ -81,19 +92,9 @@ namespace Rux {
         std::unique_ptr<InterfaceDecl> ParseInterfaceDecl(bool isPublic);
         std::unique_ptr<ImplDecl> ParseImplDecl();
         std::unique_ptr<ModuleDecl> ParseModuleDecl(bool isPublic);
-        std::unique_ptr<UseDecl> ParseUseDecl();
+        std::unique_ptr<UseDecl> ParseUseDecl(ParsedAttrs attrs);
         std::unique_ptr<ConstDecl> ParseConstDecl(bool isPublic);
         std::unique_ptr<TypeAliasDecl> ParseTypeAliasDecl(bool isPublic);
-
-        // Attribute parsing
-        struct ParsedAttrs {
-            std::string importLib;
-            CallingConvention callConv = CallingConvention::Default;
-        };
-
-        // Parses zero or more @[AttrName(...)] attributes before a declaration.
-        ParsedAttrs ParseAttrs();
-        DeclPtr ParseExternDecl(bool isPublic, ParsedAttrs attrs);
 
         // Shared declaration helpers
         Param ParseParam(bool allowVariadic = false);

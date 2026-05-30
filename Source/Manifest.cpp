@@ -65,13 +65,33 @@ namespace Rux {
     }
 
     static std::optional<std::string> TargetNameFromDependenciesSection(const std::string& section) {
-        constexpr std::string_view prefix = "Target.";
-        constexpr std::string_view suffix = ".Dependencies";
-        if (!section.starts_with(prefix) || !section.ends_with(suffix)) return std::nullopt;
-        const auto begin = prefix.size();
-        const auto len = section.size() - prefix.size() - suffix.size();
-        if (len == 0) return std::nullopt;
-        return section.substr(begin, len);
+        // [Target.OS.Dependencies] — legacy format
+        {
+            constexpr std::string_view prefix = "Target.";
+            constexpr std::string_view suffix = ".Dependencies";
+            if (section.starts_with(prefix) && section.ends_with(suffix)) {
+                const auto begin = prefix.size();
+                const auto len = section.size() - prefix.size() - suffix.size();
+                if (len > 0) return section.substr(begin, len);
+            }
+        }
+        // [Dependencies.Target.OS] — preferred format
+        {
+            constexpr std::string_view prefix = "Dependencies.Target.";
+            if (section.starts_with(prefix)) {
+                const auto os = section.substr(prefix.size());
+                if (!os.empty()) return std::string(os);
+            }
+        }
+        return std::nullopt;
+    }
+
+    // Extract the OS name from a target triple (e.g. "windows-x64" → "Windows").
+    static std::string OsFromTriple(const std::string& triple) {
+        if (triple.starts_with("windows")) return "Windows";
+        if (triple.starts_with("linux")) return "Linux";
+        if (triple.starts_with("macos") || triple.starts_with("darwin")) return "macOS";
+        return {};
     }
 
     std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec) {
@@ -215,17 +235,25 @@ namespace Rux {
 
     std::vector<Dependency> Manifest::EffectiveDependencies(const std::string& target) const {
         std::vector<Dependency> result = dependencies;
-        auto it = targetDependencies.find(target);
-        if (it == targetDependencies.end()) return result;
 
-        for (const auto& targetDep : it->second) {
-            auto existing =
-                std::ranges::find_if(result, [&](const Dependency& dep) { return dep.name == targetDep.name; });
-            if (existing == result.end())
-                result.push_back(targetDep);
-            else
-                *existing = targetDep;
-        }
+        auto mergeFrom = [&](const std::string& key) {
+            auto it = targetDependencies.find(key);
+            if (it == targetDependencies.end()) return;
+            for (const auto& targetDep : it->second) {
+                auto existing = std::ranges::find_if(result,
+                                                     [&](const Dependency& dep) { return dep.name == targetDep.name; });
+                if (existing == result.end())
+                    result.push_back(targetDep);
+                else
+                    *existing = targetDep;
+            }
+        };
+
+        mergeFrom(target); // exact key (e.g. "windows-x64" or "Windows")
+        const std::string osName = OsFromTriple(target);
+        if (!osName.empty() && osName != target)
+            mergeFrom(osName); // OS-name key (e.g. "Windows" when target is "windows-x64")
+
         return result;
     }
 
