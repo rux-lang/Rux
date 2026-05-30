@@ -70,6 +70,7 @@ namespace Rux {
             constexpr std::string_view prefix = "Target.";
             constexpr std::string_view suffix = ".Dependencies";
             if (section.starts_with(prefix) && section.ends_with(suffix)) {
+                if (section.size() <= prefix.size() + suffix.size()) return std::nullopt;
                 const auto begin = prefix.size();
                 const auto len = section.size() - prefix.size() - suffix.size();
                 if (len > 0) return section.substr(begin, len);
@@ -251,6 +252,7 @@ namespace Rux {
             }
         };
 
+        mergeFrom("*"); // wildcard dependencies
         mergeFrom(target); // exact key (e.g. "windows-x64" or "Windows")
         const std::string osName = OsFromTriple(target);
         if (!osName.empty() && osName != target)
