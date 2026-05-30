@@ -292,23 +292,28 @@ namespace Rux {
         bool isPublic = false;
         if (Match(TokenKind::PubKeyword)) isPublic = true;
 
+        auto withTarget = [&](DeclPtr decl) -> DeclPtr {
+            if (decl && decl->targetOs.empty()) decl->targetOs = attrs.targetOs;
+            return decl;
+        };
+
         // asm func
         if (Check(TokenKind::Ident) && Peek().text == "asm" && Peek(1).Is(TokenKind::FuncKeyword)) {
             Advance(); // consume 'asm'
-            return ParseFuncDecl(isPublic, true, attrs.callConv);
+            return withTarget(ParseFuncDecl(isPublic, true, attrs.callConv));
         }
 
-        if (Check(TokenKind::FuncKeyword)) return ParseFuncDecl(isPublic, false, attrs.callConv);
-        if (Check(TokenKind::StructKeyword)) return ParseStructDecl(isPublic);
-        if (Check(TokenKind::EnumKeyword)) return ParseEnumDecl(isPublic);
-        if (Check(TokenKind::UnionKeyword)) return ParseUnionDecl(isPublic);
-        if (Check(TokenKind::InterfaceKeyword)) return ParseInterfaceDecl(isPublic);
-        if (Check(TokenKind::ExtendKeyword)) return ParseImplDecl();
-        if (Check(TokenKind::ModuleKeyword)) return ParseModuleDecl(isPublic);
+        if (Check(TokenKind::FuncKeyword)) return withTarget(ParseFuncDecl(isPublic, false, attrs.callConv));
+        if (Check(TokenKind::StructKeyword)) return withTarget(ParseStructDecl(isPublic));
+        if (Check(TokenKind::EnumKeyword)) return withTarget(ParseEnumDecl(isPublic));
+        if (Check(TokenKind::UnionKeyword)) return withTarget(ParseUnionDecl(isPublic));
+        if (Check(TokenKind::InterfaceKeyword)) return withTarget(ParseInterfaceDecl(isPublic));
+        if (Check(TokenKind::ExtendKeyword)) return withTarget(ParseImplDecl());
+        if (Check(TokenKind::ModuleKeyword)) return withTarget(ParseModuleDecl(isPublic));
         if (Check(TokenKind::ImportKeyword)) return ParseUseDecl(std::move(attrs));
-        if (Check(TokenKind::ConstKeyword)) return ParseConstDecl(isPublic);
-        if (Check(TokenKind::TypeKeyword)) return ParseTypeAliasDecl(isPublic);
-        if (Check(TokenKind::ExternKeyword)) return ParseExternDecl(isPublic, std::move(attrs));
+        if (Check(TokenKind::ConstKeyword)) return withTarget(ParseConstDecl(isPublic));
+        if (Check(TokenKind::TypeKeyword)) return withTarget(ParseTypeAliasDecl(isPublic));
+        if (Check(TokenKind::ExternKeyword)) return withTarget(ParseExternDecl(isPublic, attrs));
 
         EmitError(loc, std::format("unexpected token '{}', expected a declaration", Peek().text));
         return nullptr;
