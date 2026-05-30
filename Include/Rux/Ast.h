@@ -399,6 +399,7 @@ namespace Rux {
     struct Decl {
         SourceLocation location;
         bool isPublic = false;
+        std::string targetOs; // empty = unconditional; "Windows", "Linux" = platform-conditional
         virtual ~Decl() = default;
     };
 
@@ -499,7 +500,6 @@ namespace Rux {
         enum class Kind { Single, Glob, Multi } kind = Kind::Single;
 
         std::vector<std::string> names; // for Multi
-        std::string targetOs; // empty = unconditional; "Windows", "Linux", "macOS" = platform-conditional
     };
 
     // const Name[: Type] = expr;
