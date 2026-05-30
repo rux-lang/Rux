@@ -1296,10 +1296,16 @@ namespace Rux {
     }
 
     // Clone a git repository into dest. Returns true on success.
-    static bool GitClone(const std::string& repoUrl, const std::filesystem::path& dest) {
+    static bool GitClone(const std::string& repoUrl, const std::filesystem::path& dest, bool devBranch) {
 #ifdef _WIN32
-        std::wstring cmd =
-            L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
+        std::wstring cmd{};
+        if (!devBranch) {
+            cmd =
+                L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
+        } else {
+            cmd =
+                L"git clone --branch dev " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
+        }
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
@@ -1311,8 +1317,10 @@ namespace Rux {
         CloseHandle(pi.hThread);
         return exitCode == 0;
 #else
-        const std::string cmd = "git clone " + repoUrl + " \"" + dest.string() + "\"";
-        return std::system(cmd.c_str()) == 0;
+    const std::string cmd =
+        devBranch
+            ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
+            : "git clone " + repoUrl + " \"" + dest.string() + "\"";
 #endif
     }
 
@@ -1338,10 +1346,15 @@ namespace Rux {
 
     int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions& opts) {
         std::string_view packageSpec;
+        bool packageFromDev = false;
         for (auto arg : args) {
             if (arg == "-h" || arg == "--help") {
                 PrintHelpInstall();
                 return 0;
+            }
+            if (arg == "--dev") {
+                packageFromDev = true;
+                continue;
             }
             if (!arg.starts_with('-') && packageSpec.empty()) {
                 packageSpec = arg;
@@ -1390,7 +1403,7 @@ namespace Rux {
             }
             else {
                 if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
-                if (!GitClone(repoUrl, pkgDir)) {
+                if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
@@ -1443,7 +1456,7 @@ namespace Rux {
             }
             else {
                 if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
-                if (!GitClone(repoUrl, pkgDir)) {
+                if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
@@ -1978,7 +1991,7 @@ namespace Rux {
             }
             else {
                 if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
-                if (!GitClone(repoUrl, pkgDir)) {
+                if (!GitClone(repoUrl, pkgDir, false)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
