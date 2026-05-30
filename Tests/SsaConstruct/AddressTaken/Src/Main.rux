@@ -1,0 +1,12 @@
+// SSA test: address-taken variable must NOT be promoted.
+// `x` is passed by pointer to `inc`, so its alloca escapes.
+// After SSA construction the alloca/store/load pattern must still be present.
+func inc(p: *int) {
+    *p = *p + 1;
+}
+
+func Main() -> int {
+    var x: int = 5;
+    inc(&x);
+    return x; // 6
+}

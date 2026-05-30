@@ -1,0 +1,23 @@
+// Live-across-call register allocation test.
+//
+// Variables that are live before and after a function call MUST be placed in
+// callee-saved registers (rbx, r12–r15) — caller-saved registers (rax, rcx,
+// rdx, rsi, rdi, r8–r11) are clobbered by the callee.
+//
+// `double_it` is a helper so the compiler cannot inline it.  The variable
+// `before_call` must survive the call to `double_it`; if the allocator places
+// it in a caller-saved register the value will be trashed and the sum will be
+// wrong.
+
+func double_it(x: int) -> int {
+    return x * 2;
+}
+
+func Main() -> int {
+    let before_call: int = 7;
+    let doubled: int = double_it(before_call);
+    let result: int = before_call + doubled;
+    // expected: 7 + 14 = 21
+    if result != 21 { return 1; }
+    return 0;
+}

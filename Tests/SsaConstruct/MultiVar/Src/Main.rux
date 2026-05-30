@@ -1,0 +1,10 @@
+// SSA test: multiple variables all promoted simultaneously.
+// All five scalars should disappear as alloca/load/store triples.
+func Main() -> int {
+    let a: int = 1;
+    let b: int = 2;
+    let c: int = 3;
+    let d: int = 4;
+    let e: int = 5;
+    return a + b + c + d + e; // 15
+}

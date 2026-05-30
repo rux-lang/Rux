@@ -1,0 +1,33 @@
+// Branch variable / phi-node register allocation test.
+//
+// Variables defined in one branch and used after the merge point are
+// represented by phi nodes in the LIR.  The register allocator must assign
+// consistent locations (register or stack slot) to both the phi destination
+// and its predecessor sources so that EmitPhiMoves generates correct code.
+//
+// `x` is defined differently depending on the condition; its value after the
+// if/else must reflect the correct branch.
+
+func Main() -> int {
+    let condition: bool = true;
+    var x: int = 0;
+    if condition {
+        x = 10;
+    } else {
+        x = 20;
+    }
+    // condition is true so x should be 10
+    if x != 10 { return 1; }
+
+    var y: int = 0;
+    let flag: bool = false;
+    if flag {
+        y = 100;
+    } else {
+        y = 200;
+    }
+    // flag is false so y should be 200
+    if y != 200 { return 2; }
+
+    return 0;
+}

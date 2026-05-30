@@ -1,0 +1,8 @@
+// SSA test: simple scalar promotion.
+// A single local variable assigned once.  After SSA construction:
+//   - No alloca/load/store for x
+//   - %N = const int 42 directly feeds the return
+func Main() -> int {
+    let x: int = 42;
+    return x;
+}

@@ -1,0 +1,7 @@
+[Package]
+Name    = "regalloc_manyvars"
+Version = "0.1.0"
+Type    = "bin"
+
+[Build]
+Output = "Bin"

@@ -36,7 +36,7 @@ fi
 echo "Using rux: $RUX"
 
 pkg="$SCRIPT_DIR/Pow"
-( cd "$pkg" && "$RUX" build >/dev/null )
+( cd "$pkg" && "$RUX" build --target linux-x64 >/dev/null )
 bin="$pkg/Bin/Debug/pow_test"
 [ -f "$bin" ] || bin="$bin.exe"
 if [ ! -f "$bin" ]; then

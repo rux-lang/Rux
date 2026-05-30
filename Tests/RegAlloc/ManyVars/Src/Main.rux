@@ -1,0 +1,23 @@
+// Register pressure / spilling test.
+//
+// Declares more simultaneously-live integer variables than there are
+// callee-saved registers (5: rbx, r12–r15), forcing the allocator to spill
+// at least one variable back to the stack.  If spilling is broken the results
+// will be corrupted and the function returns a non-zero exit code.
+//
+// All eight variables are live at the same time when computing the final sum,
+// so at least three of them must be spilled (8 – 5 = 3).
+
+func Main() -> int {
+    let a: int = 1;
+    let b: int = 2;
+    let c: int = 3;
+    let d: int = 4;
+    let e: int = 5;
+    let f: int = 6;
+    let g: int = 7;
+    let h: int = 8;
+    let total: int = a + b + c + d + e + f + g + h;
+    if total != 36 { return 1; }
+    return 0;
+}

@@ -38,7 +38,7 @@ echo "Using rux: $RUX"
 build_pkg() {
     pkg="$SCRIPT_DIR/$1"
     name="$2"
-    ( cd "$pkg" && "$RUX" build >/dev/null )
+    ( cd "$pkg" && "$RUX" build --target linux-x64 >/dev/null )
     bin="$pkg/Bin/Debug/$name"
     [ -f "$bin" ] || bin="$bin.exe"
     if [ ! -f "$bin" ]; then

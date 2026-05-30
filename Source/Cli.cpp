@@ -13,6 +13,9 @@
 #include "Rux/Linker.h"
 #include "Rux/Lir.h"
 #include "Rux/Manifest.h"
+#include "Rux/SsaConstruct.h"
+#include "Rux/CopyProp.h"
+#include "Rux/ConstFold.h"
 #include "Rux/Package.h"
 #include "Rux/Parser.h"
 #include "Rux/Rcu.h"
@@ -895,6 +898,24 @@ namespace Rux {
 
         Lir lir(std::move(hirPackage));
         auto lirPackage = lir.Generate();
+
+        // SSA construction pass — promotes scalar alloca/load/store triples
+        // into direct register defs and phi nodes.  Must run before any
+        // codegen or optimization pass that assumes SSA form.
+        SsaConstruct::Run(lirPackage);
+
+        // Copy propagation + DCE — eliminates the trivial Cast copies that
+        // SsaConstruct emits during renaming and removes any instructions
+        // whose results become unused as a result.
+        CopyProp::Run(lirPackage);
+
+        // Constant folding + dead branch elimination — evaluates compile-time
+        // constant arithmetic and comparisons, folds conditional branches whose
+        // condition is constant, removes unreachable blocks, and repairs phi
+        // predecessor lists.  A second CopyProp run eliminates trivial copies
+        // that branch elimination may have introduced (single-pred phis).
+        ConstFold::Run(lirPackage);
+        CopyProp::Run(lirPackage);
 
         if (dumpLir) {
             auto lirDir = manifestPath->parent_path() / "Temp" / "Lir";

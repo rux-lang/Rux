@@ -6,9 +6,11 @@
 
 #include "Rux/Asm.h"
 
+#include <algorithm>
 #include <cstring>
 #include <format>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -58,6 +60,362 @@ namespace Rux {
         int AlignUp(int v, int a) {
             return (v + a - 1) & ~(a - 1);
         }
+
+        // ── Physical register pool ────────────────────────────────────────────────
+        // The allocator uses two tiers of registers:
+        //
+        //   Callee-saved (rbx, r12–r15):  survive function calls; need
+        //   save/restore in the prologue/epilogue.  Suitable for ALL intervals.
+        //
+        //   Caller-saved (rsi, rdi, r8, r9):  clobbered by calls; NO
+        //   save/restore needed.  Only suitable for intervals that do NOT span
+        //   any Call / CallIndirect instruction.
+        //
+        // Excluded from allocation:
+        //   rax — accumulator (LoadA/StoreA, call return value)
+        //   r10 — scratch B (LoadB, codegen scratch)
+        //   r11 — scratch C (various codegen)
+        //   rcx — implicit shift count (cl) for SHL/SHR/SAR
+        //   rdx — implicit dividend high / remainder for DIV/IDIV
+        //   rsp, rbp — frame management
+        //
+        // This gives 9 allocatable registers (5 callee-saved + 4 caller-saved),
+        // nearly doubling the previous 5-register pool.
+        enum class PhysReg : uint8_t {
+            // Callee-saved (indices 0–4) — need prologue/epilogue save
+            Rbx = 0,
+            R12,
+            R13,
+            R14,
+            R15,
+            // Caller-saved (indices 5–8) — no save needed
+            Rsi,
+            Rdi,
+            R8,
+            R9,
+            Count, // sentinel — must be last
+        };
+        static constexpr int kPhysRegCount    = static_cast<int>(PhysReg::Count); // 9
+        static constexpr int kCalleeSavedCount = 5; // first 5 are callee-saved
+
+        static constexpr std::string_view kPhysReg64[kPhysRegCount] = {
+            "rbx", "r12", "r13", "r14", "r15", "rsi", "rdi", "r8", "r9"};
+        static constexpr std::string_view kPhysReg32[kPhysRegCount] = {
+            "ebx", "r12d", "r13d", "r14d", "r15d", "esi", "edi", "r8d", "r9d"};
+        static constexpr std::string_view kPhysReg16[kPhysRegCount] = {
+            "bx", "r12w", "r13w", "r14w", "r15w", "si", "di", "r8w", "r9w"};
+        static constexpr std::string_view kPhysReg8[kPhysRegCount] = {
+            "bl", "r12b", "r13b", "r14b", "r15b", "sil", "dil", "r8b", "r9b"};
+
+        static bool IsCalleeSaved(PhysReg r) {
+            return static_cast<int>(r) < kCalleeSavedCount;
+        }
+
+        static std::string_view PhysRegName(PhysReg r, int bytes) {
+            const int i = static_cast<int>(r);
+            switch (bytes) {
+            case 1:  return kPhysReg8[i];
+            case 2:  return kPhysReg16[i];
+            case 4:  return kPhysReg32[i];
+            default: return kPhysReg64[i];
+            }
+        }
+
+        // ── Linear Scan Register Allocator ────────────────────────────────────────
+        //
+        // Poletto & Sarkar 1999 algorithm with backward-dataflow liveness for
+        // correctness across loops and back-edges.
+        //
+        // Allocates 9 integer registers (5 callee-saved + 4 caller-saved) to
+        // virtual registers.  Intervals that span a Call/CallIndirect instruction
+        // are restricted to callee-saved registers only (because caller-saved
+        // registers are clobbered by the call).  Float vregs and vregs that
+        // exceed register pressure fall back to the existing stack-slot scheme.
+        struct RegAssignResult {
+            std::unordered_map<LirReg, PhysReg> inReg; // vreg → physical reg
+            bool used[kPhysRegCount] = {};              // which regs need save/restore
+        };
+
+        class LinearScanAllocator {
+        public:
+            RegAssignResult Run(const LirFunc& func) {
+                if (func.blocks.empty()) return {};
+                const uint32_t n = static_cast<uint32_t>(func.blocks.size());
+
+                // 1. Build successors / predecessors from block terminators
+                std::vector<std::vector<uint32_t>> succs(n), preds(n);
+                for (uint32_t b = 0; b < n; b++) {
+                    if (!func.blocks[b].term) continue;
+                    const auto& t = *func.blocks[b].term;
+                    auto addEdge = [&](uint32_t to) {
+                        if (to < n) {
+                            succs[b].push_back(to);
+                            preds[to].push_back(b);
+                        }
+                    };
+                    switch (t.kind) {
+                    case LirTermKind::Jump:   addEdge(t.trueTarget); break;
+                    case LirTermKind::Branch: addEdge(t.trueTarget); addEdge(t.falseTarget); break;
+                    case LirTermKind::Switch:
+                        addEdge(t.defaultTarget);
+                        for (const auto& c : t.cases) addEdge(c.target);
+                        break;
+                    case LirTermKind::Return: break;
+                    }
+                }
+
+                // 2. Instruction numbering: block b occupies [blockStart[b], blockStart[b]+|instrs|+1)
+                std::vector<int> blockStart(n);
+                {
+                    int pos = 0;
+                    for (uint32_t b = 0; b < n; b++) {
+                        blockStart[b] = pos;
+                        pos += static_cast<int>(func.blocks[b].instrs.size()) + 1; // +1 for terminator
+                    }
+                }
+
+                // 3. Per-block use / def sets for backward dataflow
+                std::vector<std::unordered_set<LirReg>> use(n), def(n);
+                // Phi dsts defined at block entry (mark first so intra-block uses don't bubble up)
+                for (uint32_t b = 0; b < n; b++)
+                    for (const auto& instr : func.blocks[b].instrs)
+                        if (instr.op == LirOpcode::Phi && instr.dst != LirNoReg)
+                            def[b].insert(instr.dst);
+                // Regular instructions
+                for (uint32_t b = 0; b < n; b++) {
+                    for (const auto& instr : func.blocks[b].instrs) {
+                        if (instr.op == LirOpcode::Phi) continue; // phi srcs handled below
+                        for (LirReg s : instr.srcs)
+                            if (s != LirNoReg && !def[b].count(s)) use[b].insert(s);
+                        if (instr.dst != LirNoReg) def[b].insert(instr.dst);
+                    }
+                    if (func.blocks[b].term) {
+                        const auto& t = *func.blocks[b].term;
+                        if (t.cond != LirNoReg && !def[b].count(t.cond))
+                            use[b].insert(t.cond);
+                        if (t.retVal && *t.retVal != LirNoReg && !def[b].count(*t.retVal))
+                            use[b].insert(*t.retVal);
+                    }
+                }
+                // Phi src operands are used in their predecessor blocks
+                for (uint32_t b = 0; b < n; b++)
+                    for (const auto& instr : func.blocks[b].instrs)
+                        if (instr.op == LirOpcode::Phi)
+                            for (const auto& [src, pred] : instr.phiPreds)
+                                if (src != LirNoReg && pred < n && !def[pred].count(src))
+                                    use[pred].insert(src);
+
+                // 4. Backward dataflow → live_in / live_out
+                std::vector<std::unordered_set<LirReg>> liveIn(n), liveOut(n);
+                bool changed = true;
+                while (changed) {
+                    changed = false;
+                    for (uint32_t b = n; b-- > 0;) {
+                        std::unordered_set<LirReg> newOut;
+                        for (uint32_t s : succs[b])
+                            newOut.insert(liveIn[s].begin(), liveIn[s].end());
+                        std::unordered_set<LirReg> newIn = use[b];
+                        for (LirReg r : newOut)
+                            if (!def[b].count(r)) newIn.insert(r);
+                        if (newOut != liveOut[b] || newIn != liveIn[b]) {
+                            liveOut[b] = std::move(newOut);
+                            liveIn[b]  = std::move(newIn);
+                            changed    = true;
+                        }
+                    }
+                }
+
+                // 5. Build live intervals [from, to) per vreg
+                std::unordered_map<LirReg, IState> imap;
+                imap.reserve(256);
+
+                auto extendTo   = [&](LirReg r, int to) {
+                    if (r == LirNoReg) return;
+                    imap[r].to = std::max(imap[r].to, to);
+                };
+                auto extendFrom = [&](LirReg r, int from) {
+                    if (r == LirNoReg) return;
+                    auto& iv = imap[r];
+                    iv.from = std::min(iv.from, from);
+                    if (iv.to == 0) iv.to = from + 1;
+                };
+                auto setDef     = [&](LirReg r, int pos) {
+                    if (r == LirNoReg) return;
+                    auto& iv = imap[r];
+                    iv.from = std::min(iv.from, pos);
+                    iv.to   = std::max(iv.to, pos + 1);
+                };
+
+                for (uint32_t b = 0; b < n; b++) {
+                    const int bStart = blockStart[b];
+                    const int bTerm  = bStart + static_cast<int>(func.blocks[b].instrs.size());
+                    for (LirReg r : liveOut[b]) { extendFrom(r, bStart); extendTo(r, bTerm + 1); }
+                    for (LirReg r : liveIn[b])    extendFrom(r, bStart);
+                    for (const auto& instr : func.blocks[b].instrs)
+                        if (instr.op == LirOpcode::Phi && instr.dst != LirNoReg)
+                            setDef(instr.dst, bStart);
+                    for (int i = 0; i < static_cast<int>(func.blocks[b].instrs.size()); i++) {
+                        const auto& instr = func.blocks[b].instrs[i];
+                        if (instr.op == LirOpcode::Phi) continue;
+                        const int pos = bStart + i;
+                        for (LirReg s : instr.srcs) if (s != LirNoReg) extendTo(s, pos + 1);
+                        if (instr.dst != LirNoReg) setDef(instr.dst, pos);
+                    }
+                    if (func.blocks[b].term) {
+                        const auto& t = *func.blocks[b].term;
+                        if (t.cond != LirNoReg) extendTo(t.cond, bTerm + 1);
+                        if (t.retVal && *t.retVal != LirNoReg) extendTo(*t.retVal, bTerm + 1);
+                    }
+                }
+                // Phi srcs live at end of their predecessor
+                for (uint32_t b = 0; b < n; b++)
+                    for (const auto& instr : func.blocks[b].instrs)
+                        if (instr.op == LirOpcode::Phi)
+                            for (const auto& [src, pred] : instr.phiPreds)
+                                if (src != LirNoReg && pred < n) {
+                                    int predTerm = blockStart[pred] +
+                                        static_cast<int>(func.blocks[pred].instrs.size());
+                                    extendTo(src, predTerm + 1);
+                                }
+
+                // 6. Collect call instruction positions (for caller-saved constraint)
+                std::vector<int> callPositions;
+                for (uint32_t b = 0; b < n; b++) {
+                    const int bStart = blockStart[b];
+                    for (int i = 0; i < static_cast<int>(func.blocks[b].instrs.size()); i++) {
+                        const auto& instr = func.blocks[b].instrs[i];
+                        if (instr.op == LirOpcode::Call || instr.op == LirOpcode::CallIndirect)
+                            callPositions.push_back(bStart + i);
+                    }
+                }
+
+                // 7. Run linear scan on the collected intervals
+                return RunLinearScan(imap, callPositions);
+            }
+
+        private:
+            struct LiveInterval {
+                LirReg vreg    = LirNoReg;
+                int from       = 0;
+                int to         = 0;
+                bool spansCall = false; // true → must use callee-saved register
+            };
+            struct IState { int from = std::numeric_limits<int>::max(); int to = 0; };
+
+            // Returns true if interval [from, to) overlaps any call position.
+            static bool SpansAnyCall(int from, int to, const std::vector<int>& calls) {
+                // Binary search for first call >= from
+                auto it = std::lower_bound(calls.begin(), calls.end(), from);
+                return it != calls.end() && *it < to;
+            }
+
+            RegAssignResult RunLinearScan(const std::unordered_map<LirReg, IState>& imap,
+                                          const std::vector<int>& callPositions) {
+                // Collect integer vregs with valid intervals (skip trivially dead ones)
+                std::vector<LiveInterval> ivs;
+                ivs.reserve(imap.size());
+                for (const auto& [r, s] : imap)
+                    if (s.from < s.to) {
+                        LiveInterval li{r, s.from, s.to, false};
+                        li.spansCall = SpansAnyCall(s.from, s.to, callPositions);
+                        ivs.push_back(li);
+                    }
+                // Sort by start, tie-break by end
+                std::sort(ivs.begin(), ivs.end(), [](const LiveInterval& a, const LiveInterval& b) {
+                    return a.from < b.from || (a.from == b.from && a.to < b.to);
+                });
+
+                // Free register pools (back = allocated first):
+                //   calleeFree — rbx, r12–r15 (usable by ALL intervals)
+                //   callerFree — rsi, rdi, r8, r9 (only for non-call-spanning)
+                std::vector<PhysReg> calleeFree = {
+                    PhysReg::R15, PhysReg::R14, PhysReg::R13, PhysReg::R12, PhysReg::Rbx};
+                std::vector<PhysReg> callerFree = {
+                    PhysReg::R9, PhysReg::R8, PhysReg::Rdi, PhysReg::Rsi};
+                // Active intervals sorted by end point (ascending)
+                std::vector<const LiveInterval*> active;
+
+                RegAssignResult result;
+                for (const LiveInterval& iv : ivs) {
+                    // Expire intervals that ended before iv starts
+                    {
+                        std::vector<const LiveInterval*> still;
+                        for (const LiveInterval* act : active) {
+                            if (act->to <= iv.from) {
+                                PhysReg freed = result.inReg.at(act->vreg);
+                                if (IsCalleeSaved(freed))
+                                    calleeFree.push_back(freed);
+                                else
+                                    callerFree.push_back(freed);
+                            } else {
+                                still.push_back(act);
+                            }
+                        }
+                        active = std::move(still);
+                    }
+
+                    // Choose the appropriate pool based on whether this interval
+                    // spans a call instruction.
+                    PhysReg chosen = PhysReg::Count; // sentinel = not assigned
+                    if (iv.spansCall) {
+                        // Must use callee-saved
+                        if (!calleeFree.empty()) {
+                            chosen = calleeFree.back();
+                            calleeFree.pop_back();
+                        }
+                    } else {
+                        // Prefer caller-saved (to save callee-saved for others)
+                        if (!callerFree.empty()) {
+                            chosen = callerFree.back();
+                            callerFree.pop_back();
+                        } else if (!calleeFree.empty()) {
+                            chosen = calleeFree.back();
+                            calleeFree.pop_back();
+                        }
+                    }
+
+                    if (chosen != PhysReg::Count) {
+                        result.inReg[iv.vreg] = chosen;
+                        result.used[static_cast<int>(chosen)] = true;
+                        InsertActive(active, &iv);
+                    } else {
+                        // All appropriate regs are occupied — try to evict
+                        // Find the active interval with the furthest end that
+                        // is in an appropriate pool for this interval.
+                        const LiveInterval* worst = nullptr;
+                        decltype(active.begin()) worstIt;
+                        for (auto it = active.begin(); it != active.end(); ++it) {
+                            PhysReg r = result.inReg.at((*it)->vreg);
+                            // A call-spanning iv can only evict from callee-saved
+                            if (iv.spansCall && !IsCalleeSaved(r)) continue;
+                            if ((*it)->to > iv.to) {
+                                if (!worst || (*it)->to > worst->to) {
+                                    worst = *it;
+                                    worstIt = it;
+                                }
+                            }
+                        }
+                        if (worst) {
+                            PhysReg reg = result.inReg.at(worst->vreg);
+                            result.inReg.erase(worst->vreg);
+                            result.inReg[iv.vreg] = reg;
+                            active.erase(worstIt);
+                            InsertActive(active, &iv);
+                        }
+                        // else: iv is spilled (not in result.inReg)
+                    }
+                }
+                return result;
+            }
+
+            static void InsertActive(std::vector<const LiveInterval*>& active,
+                                     const LiveInterval* iv) {
+                auto pos = std::lower_bound(
+                    active.begin(), active.end(), iv,
+                    [](const LiveInterval* a, const LiveInterval* b) { return a->to < b->to; });
+                active.insert(pos, iv);
+            }
+        };
 
         // x86-64 register names sized for the rax family
         std::string_view GprA(int bytes) {
@@ -201,10 +559,17 @@ namespace Rux {
             };
 
             std::string curFunc;
-            std::unordered_map<LirReg, int32_t> slotMap; // vreg → rbp offset (positive, address = rbp - offset)
-            std::unordered_map<LirReg, int32_t> allocaData; // alloca vreg → data region rbp offset
-            std::unordered_map<LirReg, TypeRef> regTypes; // vreg → value type (pointer for alloca)
-            int32_t nextOff = 0;
+
+            // ── Register allocation ───────────────────────────────────────────────
+            std::unordered_map<LirReg, PhysReg> regAssign; // vreg → callee-saved phys reg
+            bool    csaveUsed[kPhysRegCount]  = {};        // which callee-saved regs are used
+            int32_t csaveSlots[kPhysRegCount] = {};        // frame slot offset for each save
+
+            // ── Stack frame (spilled vregs + alloca data regions) ─────────────────
+            std::unordered_map<LirReg, int32_t> slotMap;    // spilled vreg → rbp offset
+            std::unordered_map<LirReg, int32_t> allocaData; // alloca vreg → data-region rbp offset
+            std::unordered_map<LirReg, TypeRef> regTypes;   // vreg → value type
+            int32_t nextOff   = 0;
             int32_t frameSize = 0;
 
             // phiMoves_[fromBlock][toBlock] = list of (dst, src, type)
@@ -328,7 +693,7 @@ namespace Rux {
                 return SizeOf(t);
             }
 
-            // Stack slot allocation
+            // ── Stack slot helpers ────────────────────────────────────────────────
             int32_t AllocSlot(LirReg reg, int bytes) {
                 if (auto it = slotMap.find(reg); it != slotMap.end()) return it->second;
                 int al = (bytes > 0) ? std::min(bytes, 8) : 1;
@@ -345,28 +710,40 @@ namespace Rux {
                 return nextOff;
             }
 
-            // Load/store helpers
-            // Integer loads promote to 64-bit (sign- or zero-extend as needed).
-            // Float loads use xmm0 (primary) or xmm1 (secondary).
-            // Load vreg into rax (integer) or xmm0 (float)
+            // ── Load / store helpers ──────────────────────────────────────────────
+            // All four helpers check regAssign first so register-assigned vregs never
+            // touch the stack. Spilled vregs and float vregs fall through to slotMap.
+
+            // Load vreg → rax (integer) or xmm0 (float)
             void LoadA(LirReg reg, const TypeRef& t) {
-                int sz = SizeOf(t);
-                int runtimeSz = SizeOfRuntime(t);
-                int off = slotMap.at(reg);
+                const int sz = SizeOf(t);
+                const int runtimeSz = SizeOfRuntime(t);
+                if (auto it = regAssign.find(reg); it != regAssign.end() && !IsFloat(t) && runtimeSz != 16) {
+                    const std::string_view phys = kPhysReg64[static_cast<int>(it->second)];
+                    if (sz == 8 || sz == 0)
+                        TI(std::format("{:<8}rax, {}", "mov", phys));
+                    else if (t.IsSigned())
+                        TI(std::format("{:<8}rax, {}", sz == 4 ? "movsxd" : "movsx",
+                                       PhysRegName(it->second, sz)));
+                    else if (sz == 4)
+                        TI(std::format("{:<8}eax, {}", "mov", PhysRegName(it->second, 4)));
+                    else
+                        TI(std::format("{:<8}rax, {}", "movzx", PhysRegName(it->second, sz)));
+                    return;
+                }
+                const int off = slotMap.at(reg);
                 if (runtimeSz == 16) {
                     TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", off));
                     TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", off - 8));
-                }
-                else if (IsFloat(t)) {
-                    TI(std::format("{:<8}xmm0, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
-                }
-                else if (sz == 8 || sz == 0) {
+                } else if (IsFloat(t)) {
+                    TI(std::format("{:<8}xmm0, {} [rbp - {}]",
+                                   sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
+                } else if (sz == 8 || sz == 0) {
                     TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", off));
-                }
-                else if (t.IsSigned()) {
-                    TI(std::format("{:<8}rax, {} [rbp - {}]", sz == 4 ? "movsxd" : "movsx", PtrSize(sz), off));
-                }
-                else {
+                } else if (t.IsSigned()) {
+                    TI(std::format("{:<8}rax, {} [rbp - {}]",
+                                   sz == 4 ? "movsxd" : "movsx", PtrSize(sz), off));
+                } else {
                     if (sz == 4)
                         TI(std::format("{:<8}eax, dword [rbp - {}]", "mov", off));
                     else
@@ -374,20 +751,31 @@ namespace Rux {
                 }
             }
 
-            // Load vreg into r10 (integer) or xmm1 (float)
+            // Load vreg → r10 (integer) or xmm1 (float)
             void LoadB(LirReg reg, const TypeRef& t) {
-                int sz = SizeOf(t);
-                int off = slotMap.at(reg);
+                const int sz = SizeOf(t);
+                if (auto it = regAssign.find(reg); it != regAssign.end() && !IsFloat(t)) {
+                    if (sz == 8 || sz == 0)
+                        TI(std::format("{:<8}r10, {}", "mov", kPhysReg64[static_cast<int>(it->second)]));
+                    else if (t.IsSigned())
+                        TI(std::format("{:<8}r10, {}", sz == 4 ? "movsxd" : "movsx",
+                                       PhysRegName(it->second, sz)));
+                    else if (sz == 4)
+                        TI(std::format("{:<8}r10d, {}", "mov", PhysRegName(it->second, 4)));
+                    else
+                        TI(std::format("{:<8}r10, {}", "movzx", PhysRegName(it->second, sz)));
+                    return;
+                }
+                const int off = slotMap.at(reg);
                 if (IsFloat(t)) {
-                    TI(std::format("{:<8}xmm1, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
-                }
-                else if (sz == 8 || sz == 0) {
+                    TI(std::format("{:<8}xmm1, {} [rbp - {}]",
+                                   sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
+                } else if (sz == 8 || sz == 0) {
                     TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", off));
-                }
-                else if (t.IsSigned()) {
-                    TI(std::format("{:<8}r10, {} [rbp - {}]", sz == 4 ? "movsxd" : "movsx", PtrSize(sz), off));
-                }
-                else {
+                } else if (t.IsSigned()) {
+                    TI(std::format("{:<8}r10, {} [rbp - {}]",
+                                   sz == 4 ? "movsxd" : "movsx", PtrSize(sz), off));
+                } else {
                     if (sz == 4)
                         TI(std::format("{:<8}r10d, dword [rbp - {}]", "mov", off));
                     else
@@ -395,21 +783,50 @@ namespace Rux {
                 }
             }
 
-            // Store rax (integer) or xmm0 (float) into dst's slot
+            // Store rax (integer) or xmm0 (float) → vreg's location
             void StoreA(LirReg dst, const TypeRef& t) {
-                int sz = SizeOf(t);
-                int runtimeSz = SizeOfRuntime(t);
-                int off = slotMap.at(dst);
+                const int sz = SizeOf(t);
+                const int runtimeSz = SizeOfRuntime(t);
+                if (auto it = regAssign.find(dst); it != regAssign.end() && !IsFloat(t) && runtimeSz != 16) {
+                    if (sz == 8 || sz == 0)
+                        TI(std::format("{:<8}{}, rax", "mov", kPhysReg64[static_cast<int>(it->second)]));
+                    else if (sz == 4)
+                        TI(std::format("{:<8}{}, eax", "mov", PhysRegName(it->second, 4)));
+                    else
+                        TI(std::format("{:<8}{}, {}", "mov", PhysRegName(it->second, sz), GprA(sz)));
+                    return;
+                }
+                const int off = slotMap.at(dst);
                 if (runtimeSz == 16) {
                     TI(std::format("{:<8}qword [rbp - {}], rax", "mov", off));
                     TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", off - 8));
+                } else if (IsFloat(t)) {
+                    TI(std::format("{:<8}{} [rbp - {}], xmm0",
+                                   sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
+                } else {
+                    const int store_sz = (sz > 0) ? sz : 8;
+                    TI(std::format("{:<8}{} [rbp - {}], {}", "mov",
+                                   PtrSize(store_sz), off, GprA(store_sz)));
                 }
-                else if (IsFloat(t)) {
-                    TI(std::format("{:<8}{} [rbp - {}], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
+            }
+
+            // Load vreg's 64-bit integer value into any named destination GPR.
+            void LoadGpr64(LirReg reg, std::string_view dest) {
+                if (auto it = regAssign.find(reg); it != regAssign.end()) {
+                    const std::string_view src = kPhysReg64[static_cast<int>(it->second)];
+                    if (src != dest) TI(std::format("{:<8}{}, {}", "mov", dest, src));
+                } else {
+                    TI(std::format("{:<8}{}, qword [rbp - {}]", "mov", dest, slotMap.at(reg)));
                 }
-                else {
-                    int store_sz = (sz > 0) ? sz : 8;
-                    TI(std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(store_sz), off, GprA(store_sz)));
+            }
+
+            // Store src GPR's 64-bit value into vreg's location.
+            void StoreGpr64(LirReg dst, std::string_view src) {
+                if (auto it = regAssign.find(dst); it != regAssign.end()) {
+                    const std::string_view d = kPhysReg64[static_cast<int>(it->second)];
+                    if (d != src) TI(std::format("{:<8}{}, {}", "mov", d, src));
+                } else {
+                    TI(std::format("{:<8}qword [rbp - {}], {}", "mov", slotMap.at(dst), src));
                 }
             }
 
@@ -419,31 +836,52 @@ namespace Rux {
                 return "." + curFunc + "_" + label;
             }
 
-            // Phi move emission
+            // Phi move emission: src may be in register or on stack
             void EmitPhiMoves(uint32_t fromBlock, uint32_t toBlock) {
                 auto it1 = phiMoves.find(fromBlock);
                 if (it1 == phiMoves.end()) return;
                 auto it2 = it1->second.find(toBlock);
                 if (it2 == it1->second.end()) return;
                 for (const auto& m : it2->second) {
-                    if (!slotMap.contains(m.src)) continue;
+                    if (!regAssign.count(m.src) && !slotMap.count(m.src)) continue;
+                    if (!regAssign.count(m.dst) && !slotMap.count(m.dst)) continue;
+                    // Optimized: both in registers → direct mov (skip if same reg)
+                    auto srcIt = regAssign.find(m.src);
+                    auto dstIt = regAssign.find(m.dst);
+                    if (srcIt != regAssign.end() && dstIt != regAssign.end() && !IsFloat(m.type)) {
+                        if (srcIt->second != dstIt->second) {
+                            TI(std::format("{:<8}{}, {}", "mov",
+                                           kPhysReg64[static_cast<int>(dstIt->second)],
+                                           kPhysReg64[static_cast<int>(srcIt->second)]));
+                        }
+                        continue;
+                    }
                     LoadA(m.src, m.type);
                     StoreA(m.dst, m.type);
                 }
             }
 
-            // Pre-pass
+            // Pre-pass: run linear scan allocator, then assign stack slots for spills
             void PrepassFunc(const LirFunc& func) {
-                nextOff = 0;
+                nextOff   = 0;
                 frameSize = 0;
                 slotMap.clear();
                 allocaData.clear();
                 regTypes.clear();
                 phiMoves.clear();
+                regAssign.clear();
+                std::fill(std::begin(csaveUsed),  std::end(csaveUsed),  false);
+                std::fill(std::begin(csaveSlots), std::end(csaveSlots), 0);
 
-                // Parameters
+                // Run linear scan to get register assignments
+                LinearScanAllocator lsa;
+                auto alloc = lsa.Run(func);
+                regAssign = std::move(alloc.inReg);
+                for (int i = 0; i < kPhysRegCount; i++) csaveUsed[i] = alloc.used[i];
+
+                // Parameters: allocate stack slots only for spilled params
                 for (const auto& p : func.params) {
-                    AllocSlot(p.reg, 8); // always 8 bytes — value enters via ABI reg
+                    if (!regAssign.count(p.reg)) AllocSlot(p.reg, 8);
                     regTypes[p.reg] = p.type;
                 }
 
@@ -451,37 +889,46 @@ namespace Rux {
                 for (uint32_t bi = 0; bi < func.blocks.size(); bi++) {
                     const auto& block = func.blocks[bi];
                     for (const auto& instr : block.instrs) {
-                        if (instr.op == LirOpcode::Phi) {
+                        if (instr.op == LirOpcode::Phi)
                             for (const auto& [src, pred] : instr.phiPreds)
                                 phiMoves[pred][bi].push_back({instr.dst, src, instr.type});
-                        }
                         if (instr.dst == LirNoReg) continue;
 
                         if (instr.op == LirOpcode::Alloca) {
-                            AllocSlot(instr.dst, 8); // pointer slot
+                            if (!regAssign.count(instr.dst)) AllocSlot(instr.dst, 8);
                             int dataSz;
                             if (!instr.strArg.empty()) {
                                 int count = std::stoi(instr.strArg);
-                                const TypeRef& et = instr.type.inner.empty() ? instr.type : instr.type.inner[0];
+                                const TypeRef& et =
+                                    instr.type.inner.empty() ? instr.type : instr.type.inner[0];
                                 int elemSz = SizeOfRuntime(et);
                                 dataSz = count * (elemSz > 0 ? elemSz : 8);
-                            }
-                            else {
+                            } else {
                                 dataSz = SizeOfRuntime(instr.type);
                             }
                             allocaData[instr.dst] = AllocRegion(dataSz > 0 ? dataSz : 8);
-                            regTypes[instr.dst] = TypeRef::MakePointer(instr.type);
-                        }
-                        else {
+                            regTypes[instr.dst]   = TypeRef::MakePointer(instr.type);
+                        } else {
                             int sz = SizeOfRuntime(instr.type);
-                            AllocSlot(instr.dst, sz > 0 ? sz : 8);
+                            if (!regAssign.count(instr.dst))
+                                AllocSlot(instr.dst, sz > 0 ? sz : 8);
                             regTypes[instr.dst] = instr.type;
                         }
                     }
                 }
 
+                // Reserve frame slots for callee-saved register saves ONLY.
+                // Caller-saved regs (rsi, rdi, r8, r9) do not need saving because
+                // they're only assigned to intervals that don't span calls.
+                for (int i = 0; i < kCalleeSavedCount; i++) {
+                    if (csaveUsed[i]) {
+                        nextOff = AlignUp(nextOff, 8) + 8;
+                        csaveSlots[i] = nextOff;
+                    }
+                }
+
                 frameSize = AlignUp(nextOff, 16);
-                if (frameSize == 0) frameSize = 16; // always reserve at least one slot for alignment
+                if (frameSize == 0) frameSize = 16;
             }
 
             // Module / function generation
@@ -543,32 +990,44 @@ namespace Rux {
                 TI("mov     rbp, rsp");
                 if (frameSize > 0) TI(std::format("sub     rsp, {}", frameSize));
 
-                // Spill integer parameter ABI registers to their stack slots
+                // Save callee-saved registers that the allocator assigned to vregs.
+                // Use MOV into reserved frame slots (not push/pop) so all rbp-relative
+                // offsets remain stable regardless of the number of saved registers.
+                // Only callee-saved regs need saving; caller-saved don't.
+                for (int i = 0; i < kCalleeSavedCount; i++) {
+                    if (csaveUsed[i])
+                        TI(std::format("{:<8}qword [rbp - {}], {}", "mov",
+                                       csaveSlots[i], kPhysReg64[i]));
+                }
+
+                // Move parameter ABI registers into their destinations.
+                // If a param was allocated to a callee-saved physical reg → MOV directly.
+                // Otherwise spill to its stack slot as before.
                 int intArgIdx = 0, fltArgIdx = 0;
                 for (const auto& p : func.params) {
                     int sz = SizeOf(p.type);
-                    int off = slotMap.at(p.reg);
                     if (IsFloat(p.type)) {
                         if (fltArgIdx < 8) {
+                            int off = slotMap.at(p.reg); // float params always spilled
                             TI(std::format("{:<8}{} [rbp - {}], {}",
                                            sz == 4 ? "movss" : "movsd",
-                                           PtrSize(sz),
-                                           off,
-                                           kFltArgRegs[fltArgIdx]));
+                                           PtrSize(sz), off, kFltArgRegs[fltArgIdx]));
                             fltArgIdx++;
                         }
-                        // Remaining float params arrive on the stack (System V): skip for now
-                    }
-                    else {
+                    } else {
                         if (intArgIdx < 6) {
-                            TI(std::format("{:<8}{} [rbp - {}], {}",
-                                           "mov",
-                                           PtrSize(std::max(sz, 1)),
-                                           off,
-                                           kIntArgRegs[intArgIdx]));
+                            const std::string_view abiReg = kIntArgRegs[intArgIdx];
+                            if (auto it = regAssign.find(p.reg); it != regAssign.end()) {
+                                const std::string_view dest = kPhysReg64[static_cast<int>(it->second)];
+                                if (dest != abiReg)
+                                    TI(std::format("{:<8}{}, {}", "mov", dest, abiReg));
+                            } else {
+                                int off = slotMap.at(p.reg);
+                                TI(std::format("{:<8}{} [rbp - {}], {}",
+                                               "mov", PtrSize(std::max(sz, 1)), off, abiReg));
+                            }
                             intArgIdx++;
                         }
-                        // Stack params beyond the 6th: at [rbp + 16 + 8*n]
                     }
                 }
 
@@ -596,6 +1055,61 @@ namespace Rux {
                     TI("nop    ; missing terminator");
             }
 
+            // ── Optimized register-to-register binary operation ──────────────────
+            // When both sources and the destination are register-assigned (non-float),
+            // emit a 2-instruction sequence (mov + op) instead of the 4-instruction
+            // LoadA/LoadB/op/StoreA sequence through the rax accumulator.
+            //
+            // For addition, uses LEA for a single-instruction 3-operand form.
+            //
+            // Returns true if the optimized path was emitted.
+            bool TryEmitRegRegBinOp(const LirInstr& instr, std::string_view opName) {
+                if (instr.srcs.size() != 2) return false;
+                auto itDst = regAssign.find(instr.dst);
+                auto itA   = regAssign.find(instr.srcs[0]);
+                auto itB   = regAssign.find(instr.srcs[1]);
+                if (itDst == regAssign.end() || itA == regAssign.end() || itB == regAssign.end())
+                    return false;
+
+                const std::string_view dstR = kPhysReg64[static_cast<int>(itDst->second)];
+                const std::string_view srcA = kPhysReg64[static_cast<int>(itA->second)];
+                const std::string_view srcB = kPhysReg64[static_cast<int>(itB->second)];
+
+                // For ADD: use lea dst, [srcA + srcB] — single instruction
+                if (instr.op == LirOpcode::Add) {
+                    TI(std::format("{:<8}{}, [{} + {}]", "lea", dstR, srcA, srcB));
+                    return true;
+                }
+
+                // For other ops: mov dst, srcA; op dst, srcB
+                // (Skip mov if dst == srcA — the value is already there)
+                if (dstR != srcA)
+                    TI(std::format("{:<8}{}, {}", "mov", dstR, srcA));
+                TI(std::format("{:<8}{}, {}", opName, dstR, srcB));
+                return true;
+            }
+
+            // Optimized register-to-register comparison.
+            // Returns true if emitted.
+            bool TryEmitRegRegCmp(const LirInstr& instr, std::string_view setcc) {
+                if (instr.srcs.size() != 2) return false;
+                auto itDst = regAssign.find(instr.dst);
+                auto itA   = regAssign.find(instr.srcs[0]);
+                auto itB   = regAssign.find(instr.srcs[1]);
+                if (itDst == regAssign.end() || itA == regAssign.end() || itB == regAssign.end())
+                    return false;
+
+                const std::string_view dstR  = kPhysReg64[static_cast<int>(itDst->second)];
+                const std::string_view dst8  = kPhysReg8[static_cast<int>(itDst->second)];
+                const std::string_view srcA  = kPhysReg64[static_cast<int>(itA->second)];
+                const std::string_view srcB  = kPhysReg64[static_cast<int>(itB->second)];
+
+                TI(std::format("{:<8}{}, {}", "cmp", srcA, srcB));
+                TI(std::format("{:<8}{}", setcc, dst8));
+                TI(std::format("{:<8}{}, {}", "movzx", dstR, dst8));
+                return true;
+            }
+
             // Instruction generation
             void GenInstr(const LirInstr& instr, const LirFunc& /*func*/) {
                 switch (instr.op) {
@@ -605,6 +1119,12 @@ namespace Rux {
                     int sz = SizeOf(t);
                     if (t.kind == TypeRef::Kind::Str) {
                         std::string lbl = InternStr(instr.strArg);
+                        // If register-assigned, LEA directly into the physical reg
+                        if (auto it = regAssign.find(instr.dst); it != regAssign.end()) {
+                            TI(std::format("{:<8}{}, {}", "lea",
+                                           kPhysReg64[static_cast<int>(it->second)], lbl));
+                            break;
+                        }
                         TI(std::format("{:<8}rax, {}", "lea", lbl));
                     }
                     else if (t.kind == TypeRef::Kind::Float32) {
@@ -621,11 +1141,24 @@ namespace Rux {
                     }
                     else if (t.kind == TypeRef::Kind::Bool) {
                         std::string v = (instr.strArg == "true" || instr.strArg == "1") ? "1" : "0";
+                        // If register-assigned, MOV directly
+                        if (auto it = regAssign.find(instr.dst); it != regAssign.end()) {
+                            TI(std::format("{:<8}{}, {}", "mov",
+                                           kPhysReg64[static_cast<int>(it->second)], v));
+                            break;
+                        }
                         TI(std::format("{:<8}rax, {}", "mov", v));
                     }
                     else {
                         // Integer / char: the literal is the numeric value
-                        TI(std::format("{:<8}rax, {}", "mov", instr.strArg.empty() ? "0" : instr.strArg));
+                        const std::string& val = instr.strArg.empty() ? "0" : instr.strArg;
+                        // If register-assigned, MOV directly (skip rax)
+                        if (auto it = regAssign.find(instr.dst); it != regAssign.end()) {
+                            TI(std::format("{:<8}{}, {}", "mov",
+                                           kPhysReg64[static_cast<int>(it->second)], val));
+                            break;
+                        }
+                        TI(std::format("{:<8}rax, {}", "mov", val));
                     }
                     StoreA(instr.dst, sz > 0 ? t : TypeRef::MakeInt64());
                     break;
@@ -634,7 +1167,7 @@ namespace Rux {
                 case LirOpcode::Alloca: {
                     int32_t dataOff = allocaData.at(instr.dst);
                     TI(std::format("{:<8}rax, [rbp - {}]", "lea", dataOff));
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+                    StoreGpr64(instr.dst, "rax");
                     break;
                 }
 
@@ -649,7 +1182,7 @@ namespace Rux {
                     else {
                         // Load through pointer in srcs[0]
                         LirReg ptr = instr.srcs[0];
-                        TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(ptr)));
+                        LoadGpr64(ptr, "r10");
                         if (runtimeSz == 16) {
                             TI(std::format("{:<8}rax, qword [r10]", "mov"));
                             TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
@@ -690,7 +1223,7 @@ namespace Rux {
                     int runtimeSz = SizeOfRuntime(t);
 
                     // Load pointer
-                    TI(std::format("{:<8}r11, qword [rbp - {}]", "mov", slotMap.at(ptr)));
+                    LoadGpr64(ptr, "r11");
 
                     if (runtimeSz == 16) {
                         TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(val)));
@@ -705,8 +1238,7 @@ namespace Rux {
                     }
                     else {
                         int store_sz = (sz > 0) ? sz : 8;
-                        TI(std::format(
-                            "{:<8}{}, {} [rbp - {}]", "mov", GprA(store_sz), PtrSize(store_sz), slotMap.at(val)));
+                        LoadA(val, t);
                         TI(std::format("{:<8}{} [r11], {}", "mov", PtrSize(store_sz), GprA(store_sz)));
                     }
                     break;
@@ -738,31 +1270,22 @@ namespace Rux {
                         StoreA(instr.dst, t);
                     }
                     else {
-                        LoadA(instr.srcs[0], t);
-                        LoadB(instr.srcs[1], t);
-                        std::string_view op;
+                        // Try optimized reg-to-reg path first
+                        std::string_view opN;
                         switch (instr.op) {
-                        case LirOpcode::Add:
-                            op = "add";
-                            break;
-                        case LirOpcode::Sub:
-                            op = "sub";
-                            break;
-                        case LirOpcode::And:
-                            op = "and";
-                            break;
-                        case LirOpcode::Or:
-                            op = "or";
-                            break;
-                        case LirOpcode::Xor:
-                            op = "xor";
-                            break;
-                        default:
-                            op = "add";
-                            break;
+                        case LirOpcode::Add: opN = "add"; break;
+                        case LirOpcode::Sub: opN = "sub"; break;
+                        case LirOpcode::And: opN = "and"; break;
+                        case LirOpcode::Or:  opN = "or";  break;
+                        case LirOpcode::Xor: opN = "xor"; break;
+                        default:             opN = "add"; break;
                         }
-                        TI(std::format("{:<8}rax, r10", op));
-                        StoreA(instr.dst, t);
+                        if (!TryEmitRegRegBinOp(instr, opN)) {
+                            LoadA(instr.srcs[0], t);
+                            LoadB(instr.srcs[1], t);
+                            TI(std::format("{:<8}rax, r10", opN));
+                            StoreA(instr.dst, t);
+                        }
                     }
                     break;
                 }
@@ -776,10 +1299,12 @@ namespace Rux {
                         StoreA(instr.dst, t);
                     }
                     else {
-                        LoadA(instr.srcs[0], t);
-                        LoadB(instr.srcs[1], t);
-                        TI("imul    rax, r10");
-                        StoreA(instr.dst, t);
+                        if (!TryEmitRegRegBinOp(instr, "imul")) {
+                            LoadA(instr.srcs[0], t);
+                            LoadB(instr.srcs[1], t);
+                            TI("imul    rax, r10");
+                            StoreA(instr.dst, t);
+                        }
                     }
                     break;
                 }
@@ -839,7 +1364,7 @@ namespace Rux {
                     const TypeRef& t = instr.type;
                     LoadA(instr.srcs[0], t);
                     // Shift count must be in cl
-                    TI(std::format("{:<8}r11, qword [rbp - {}]", "mov", slotMap.at(instr.srcs[1])));
+                    LoadGpr64(instr.srcs[1], "r11");
                     TI("mov     rcx, r11");
                     if (bool isShr = (instr.op == LirOpcode::Shr); isShr && t.IsSigned())
                         TI("sar     rax, cl");
@@ -902,30 +1427,33 @@ namespace Rux {
                 case LirOpcode::CmpGt:
                 case LirOpcode::CmpGe: {
                     const TypeRef& lhsT = regTypes.contains(instr.srcs[0]) ? regTypes.at(instr.srcs[0]) : instr.type;
+                    if (!IsFloat(lhsT)) {
+                        // Determine the SETcc instruction
+                        std::string_view set;
+                        bool sig = lhsT.IsSigned();
+                        switch (instr.op) {
+                        case LirOpcode::CmpEq:  set = "sete";                   break;
+                        case LirOpcode::CmpNe:  set = "setne";                  break;
+                        case LirOpcode::CmpLt:  set = sig ? "setl"  : "setb";   break;
+                        case LirOpcode::CmpLe:  set = sig ? "setle" : "setbe";  break;
+                        case LirOpcode::CmpGt:  set = sig ? "setg"  : "seta";   break;
+                        default:                set = sig ? "setge" : "setae";   break;
+                        }
+                        if (TryEmitRegRegCmp(instr, set)) break;
+                    }
+                    // Fallback: float or spilled operands
                     LoadA(instr.srcs[0], lhsT);
                     LoadB(instr.srcs[1], lhsT);
                     if (IsFloat(lhsT)) {
                         TI(lhsT.kind == TypeRef::Kind::Float32 ? "ucomiss xmm0, xmm1" : "ucomisd xmm0, xmm1");
                         std::string_view set;
                         switch (instr.op) {
-                        case LirOpcode::CmpEq:
-                            set = "sete";
-                            break;
-                        case LirOpcode::CmpNe:
-                            set = "setne";
-                            break;
-                        case LirOpcode::CmpLt:
-                            set = "setb";
-                            break;
-                        case LirOpcode::CmpLe:
-                            set = "setbe";
-                            break;
-                        case LirOpcode::CmpGt:
-                            set = "seta";
-                            break;
-                        default:
-                            set = "setae";
-                            break;
+                        case LirOpcode::CmpEq:  set = "sete";  break;
+                        case LirOpcode::CmpNe:  set = "setne"; break;
+                        case LirOpcode::CmpLt:  set = "setb";  break;
+                        case LirOpcode::CmpLe:  set = "setbe"; break;
+                        case LirOpcode::CmpGt:  set = "seta";  break;
+                        default:                set = "setae";  break;
                         }
                         TI(std::format("{:<8}al", set));
                     }
@@ -934,24 +1462,12 @@ namespace Rux {
                         std::string_view set;
                         bool sig = lhsT.IsSigned();
                         switch (instr.op) {
-                        case LirOpcode::CmpEq:
-                            set = "sete";
-                            break;
-                        case LirOpcode::CmpNe:
-                            set = "setne";
-                            break;
-                        case LirOpcode::CmpLt:
-                            set = sig ? "setl" : "setb";
-                            break;
-                        case LirOpcode::CmpLe:
-                            set = sig ? "setle" : "setbe";
-                            break;
-                        case LirOpcode::CmpGt:
-                            set = sig ? "setg" : "seta";
-                            break;
-                        default:
-                            set = sig ? "setge" : "setae";
-                            break;
+                        case LirOpcode::CmpEq:  set = "sete";                   break;
+                        case LirOpcode::CmpNe:  set = "setne";                  break;
+                        case LirOpcode::CmpLt:  set = sig ? "setl"  : "setb";   break;
+                        case LirOpcode::CmpLe:  set = sig ? "setle" : "setbe";  break;
+                        case LirOpcode::CmpGt:  set = sig ? "setg"  : "seta";   break;
+                        default:                set = sig ? "setge" : "setae";   break;
                         }
                         TI(std::format("{:<8}al", set));
                     }
@@ -972,6 +1488,20 @@ namespace Rux {
 
                     bool srcFloat = IsFloat(src_t);
                     bool dstFloat = IsFloat(dst_t);
+
+                    // Optimized: int→int cast where both are register-assigned
+                    // is just a direct register move (or nothing if same reg).
+                    if (!srcFloat && !dstFloat) {
+                        auto itSrc = regAssign.find(instr.srcs[0]);
+                        auto itDst = regAssign.find(instr.dst);
+                        if (itSrc != regAssign.end() && itDst != regAssign.end()) {
+                            if (itSrc->second != itDst->second)
+                                TI(std::format("{:<8}{}, {}", "mov",
+                                               kPhysReg64[static_cast<int>(itDst->second)],
+                                               kPhysReg64[static_cast<int>(itSrc->second)]));
+                            break;
+                        }
+                    }
 
                     LoadA(instr.srcs[0], src_t);
 
@@ -1022,13 +1552,13 @@ namespace Rux {
                 case LirOpcode::FieldPtr: {
                     LirReg base = instr.srcs[0];
                     // Load base pointer
-                    TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(base)));
+                    LoadGpr64(base, "rax");
 
                     // Compute field offset using struct layout
                     int fieldOff = ResolveFieldOffset(base, instr.strArg);
                     if (fieldOff != 0) TI(std::format("{:<8}rax, [rax + {}]", "lea", fieldOff));
                     // else pointer is already at the field start
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+                    StoreGpr64(instr.dst, "rax");
                     break;
                 }
 
@@ -1040,11 +1570,11 @@ namespace Rux {
                         : 8;
                     if (elemSz < 1) elemSz = 1;
 
-                    TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(base)));
+                    LoadGpr64(base, "rax");
                     LoadB(idx, regTypes.at(idx));
                     TI(std::format("{:<8}r11, r10, {}", "imul", elemSz));
                     TI("add     rax, r11");
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+                    StoreGpr64(instr.dst, "rax");
                     break;
                 }
 
@@ -1055,7 +1585,7 @@ namespace Rux {
 
                 case LirOpcode::GlobalAddr:
                     TI(std::format("{:<8}rax, [rel {}]", "lea", instr.strArg));
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+                    StoreGpr64(instr.dst, "rax");
                     break;
 
                 default:
@@ -1113,26 +1643,35 @@ namespace Rux {
                 const auto* intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
                 const int maxIntRegs = win64 ? 4 : 6;
                 std::vector<LirReg> stackArgs;
-                // Set up arguments into ABI registers
+                // Set up arguments into ABI registers.
+                // Uses LoadGpr64 which handles both register-assigned and
+                // stack-spilled vregs correctly.
                 int intIdx = 0, fltIdx = 0;
                 for (LirReg arg : args) {
                     TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
                     if (IsFloat(at)) {
                         if (fltIdx < 8) {
                             int sz = SizeOf(at);
-                            TI(std::format("{:<8}{}, {} [rbp - {}]",
-                                           sz == 4 ? "movss" : "movsd",
-                                           kFltArgRegs[fltIdx],
-                                           PtrSize(sz),
-                                           slotMap.at(arg)));
+                            if (auto rit = regAssign.find(arg); rit != regAssign.end()) {
+                                // Float in int reg (shouldn't normally happen, but be safe)
+                                TI(std::format("{:<8}{}, {} [rbp - {}]",
+                                               sz == 4 ? "movss" : "movsd",
+                                               kFltArgRegs[fltIdx],
+                                               PtrSize(sz),
+                                               slotMap.at(arg)));
+                            } else {
+                                TI(std::format("{:<8}{}, {} [rbp - {}]",
+                                               sz == 4 ? "movss" : "movsd",
+                                               kFltArgRegs[fltIdx],
+                                               PtrSize(sz),
+                                               slotMap.at(arg)));
+                            }
                             fltIdx++;
                         }
                     }
                     else {
                         if (intIdx < maxIntRegs) {
-                            int sz = std::max(SizeOf(at), 1);
-                            TI(std::format(
-                                "{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
+                            LoadGpr64(arg, intRegs[intIdx]);
                             intIdx++;
                         }
                         else if (win64) {
@@ -1144,9 +1683,7 @@ namespace Rux {
                 if (win64) {
                     TI(std::format("sub     rsp, {}", stackBytes));
                     for (std::size_t i = 0; i < stackArgs.size(); ++i) {
-                        TypeRef at = regTypes.contains(stackArgs[i]) ? regTypes.at(stackArgs[i]) : TypeRef::MakeInt64();
-                        const int sz = std::max(SizeOf(at), 1);
-                        TI(std::format("{:<8}rax, {} [rbp - {}]", "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
+                        LoadGpr64(stackArgs[i], "rax");
                         TI(std::format("{:<8}qword [rsp + {}], rax", "mov", 32 + i * 8));
                     }
                 }
@@ -1172,7 +1709,7 @@ namespace Rux {
                     StoreWin64StackArgs(stackArgs);
                 }
                 // Load the callee after preparing args because arg setup uses r10.
-                TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(callee)));
+                LoadGpr64(callee, "r10");
                 TI("call    r10");
                 if (callConv == CallingConvention::Win64) TI(std::format("add     rsp, {}", stackBytes));
                 if (dst != LirNoReg && !retType.IsOpaque()) StoreA(dst, retType);
@@ -1180,9 +1717,7 @@ namespace Rux {
 
             void StoreWin64StackArgs(const std::vector<LirReg>& stackArgs) {
                 for (std::size_t i = 0; i < stackArgs.size(); ++i) {
-                    TypeRef at = regTypes.contains(stackArgs[i]) ? regTypes.at(stackArgs[i]) : TypeRef::MakeInt64();
-                    const int sz = std::max(SizeOf(at), 1);
-                    TI(std::format("{:<8}rax, {} [rbp - {}]", "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
+                    LoadGpr64(stackArgs[i], "rax");
                     TI(std::format("{:<8}qword [rsp + {}], rax", "mov", 32 + i * 8));
                 }
             }
@@ -1208,9 +1743,7 @@ namespace Rux {
                     }
                     else {
                         if (intIdx < maxIntRegs) {
-                            const int sz = std::max(SizeOf(at), 1);
-                            TI(std::format(
-                                "{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
+                            LoadGpr64(arg, intRegs[intIdx]);
                             intIdx++;
                         }
                         else if (win64) {
@@ -1231,18 +1764,14 @@ namespace Rux {
                 }
 
                 case LirTermKind::Branch: {
-                    // Load condition — use the actual size to avoid reading stack garbage
-                    TypeRef condT = regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeBool();
-                    int condSz = SizeOf(condT);
-                    if (condSz <= 1)
-                        TI(std::format("{:<8}rax, byte [rbp - {}]", "movzx", slotMap.at(term.cond)));
-                    else if (condSz == 2)
-                        TI(std::format("{:<8}rax, word [rbp - {}]", "movzx", slotMap.at(term.cond)));
-                    else if (condSz == 4)
-                        TI(std::format("{:<8}eax, dword [rbp - {}]", "mov", slotMap.at(term.cond)));
-                    else
-                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(term.cond)));
-                    TI("test    rax, rax");
+                    // If condition is register-assigned, TEST it directly
+                    if (auto it = regAssign.find(term.cond); it != regAssign.end()) {
+                        const std::string_view condR = kPhysReg64[static_cast<int>(it->second)];
+                        TI(std::format("{:<8}{}, {}", "test", condR, condR));
+                    } else {
+                        LoadGpr64(term.cond, "rax");
+                        TI("test    rax, rax");
+                    }
 
                     std::string trueLabel = BlockLabel(term.trueTarget, func.blocks[term.trueTarget].label);
                     std::string falseLabel = BlockLabel(term.falseTarget, func.blocks[term.falseTarget].label);
@@ -1280,8 +1809,7 @@ namespace Rux {
                 }
 
                 case LirTermKind::Switch: {
-                    TypeRef condT = regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeInt64();
-                    TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(term.cond)));
+                    LoadGpr64(term.cond, "rax");
                     for (const auto& c : term.cases) {
                         TI(std::format("{:<8}rax, {}", "cmp", c.value));
                         std::string lbl = BlockLabel(c.target, func.blocks[c.target].label);
@@ -1302,6 +1830,13 @@ namespace Rux {
             }
 
             void EmitEpilogue() {
+                // Restore callee-saved regs in reverse order before returning.
+                // Only callee-saved regs have frame slots; caller-saved don't need restore.
+                for (int i = kCalleeSavedCount - 1; i >= 0; i--) {
+                    if (csaveUsed[i])
+                        TI(std::format("{:<8}{}, qword [rbp - {}]", "mov",
+                                       kPhysReg64[i], csaveSlots[i]));
+                }
                 TI("leave");
                 TI("ret");
             }

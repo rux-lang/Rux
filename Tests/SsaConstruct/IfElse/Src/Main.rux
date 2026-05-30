@@ -1,0 +1,18 @@
+// SSA test: if/else join — phi node required.
+// After SSA construction, the merge block must contain a phi node
+// choosing between the two definitions of x.
+// The condition is derived from a function call so that constant folding
+// cannot determine the branch direction and the phi is preserved.
+func GetN() -> int {
+    return 1;
+}
+func Main() -> int {
+    let n = GetN();
+    var x: int = 0;
+    if n > 0 {
+        x = 10;
+    } else {
+        x = 20;
+    }
+    return x;
+}

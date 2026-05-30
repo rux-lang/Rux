@@ -1,0 +1,21 @@
+// Loop variable register allocation test.
+//
+// A loop counter that increments 10 times is the simplest case where the
+// register allocator should assign the counter to a callee-saved register
+// (e.g. rbx) instead of spilling it to a stack slot on every iteration.
+//
+// The expected value after the loop is 10.  Any non-zero exit code indicates
+// a wrong result, which would reveal a liveness / phi-node bug in the
+// allocator.
+
+func Main() -> int {
+    var sum: int = 0;
+    var i: int = 0;
+    while i < 10 {
+        sum = sum + i;
+        i = i + 1;
+    }
+    // sum = 0+1+2+…+9 = 45
+    if sum != 45 { return 1; }
+    return 0;
+}
