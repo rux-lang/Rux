@@ -40,3 +40,6 @@ jobs:
 
       - name: Run integer ** test
         run: Tests/run_pow_test.sh "$GITHUB_WORKSPACE/build/rux"
+
+      - name: Run escape decoding test
+        run: Tests/run_unicode_test.sh "$GITHUB_WORKSPACE/build/rux"
