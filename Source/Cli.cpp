@@ -184,6 +184,37 @@ namespace Rux {
             return target == "linux-x64" || target == "windows-x64";
         }
 
+        [[nodiscard]] std::string_view TargetOsName(const std::string_view target) {
+            if (target.starts_with("linux-")) return "Linux";
+            if (target.starts_with("windows-")) return "Windows";
+            return "";
+        }
+
+        [[nodiscard]] bool DeclMatchesTarget(const Decl& decl, const std::string_view target) {
+            return decl.targetOs.empty() || decl.targetOs == TargetOsName(target);
+        }
+
+        void PruneDeclsForTarget(std::vector<DeclPtr>& decls, const std::string_view target);
+
+        void PruneDeclForTarget(Decl& decl, const std::string_view target) {
+            if (auto* module = dynamic_cast<ModuleDecl*>(&decl)) {
+                PruneDeclsForTarget(module->items, target);
+            }
+            else if (auto* block = dynamic_cast<ExternBlockDecl*>(&decl)) {
+                PruneDeclsForTarget(block->items, target);
+            }
+        }
+
+        void PruneDeclsForTarget(std::vector<DeclPtr>& decls, const std::string_view target) {
+            std::erase_if(decls, [&](const DeclPtr& decl) { return !decl || !DeclMatchesTarget(*decl, target); });
+            for (const auto& decl : decls)
+                PruneDeclForTarget(*decl, target);
+        }
+
+        void PruneModuleForTarget(Module& module, const std::string_view target) {
+            PruneDeclsForTarget(module.items, target);
+        }
+
         [[nodiscard]] std::string DependencyPackageName(const Dependency& dep) {
             return dep.package.empty() ? dep.name : dep.package;
         }
@@ -651,6 +682,7 @@ namespace Rux {
                 parseErrors = true;
                 continue;
             }
+            PruneModuleForTarget(parseResult.module, targetName);
 
             if (dumpAst) {
                 auto tempDir = manifestPath->parent_path() / "Temp" / "Ast";
@@ -733,9 +765,8 @@ namespace Rux {
             std::vector<std::string> imports;
             auto collectImports = [&](this auto&& self, const Decl& decl) -> void {
                 if (const auto* ud = dynamic_cast<const UseDecl*>(&decl)) {
-                    if (!ud->path.empty() &&
-                        (ud->targetOs.empty() || ud->targetOs == currentOs))
-                        imports.push_back(ud->path[0]);
+                    if (!DeclMatchesTarget(*ud, targetName)) return;
+                    if (!ud->path.empty()) imports.push_back(ud->path[0]);
                     return;
                 }
                 if (const auto* mod = dynamic_cast<const ModuleDecl*>(&decl)) {
@@ -813,6 +844,7 @@ namespace Rux {
                                    diag.message);
                     }
                     if (depParse.HasErrors()) return 1;
+                    PruneModuleForTarget(depParse.module, targetName);
 
                     packageParseResults.push_back(std::move(depParse));
                 }
@@ -1260,10 +1292,16 @@ namespace Rux {
     }
 
     // Clone a git repository into dest. Returns true on success.
-    static bool GitClone(const std::string& repoUrl, const std::filesystem::path& dest) {
+    static bool GitClone(const std::string& repoUrl, const std::filesystem::path& dest, bool devBranch) {
 #ifdef _WIN32
-        std::wstring cmd =
-            L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
+        std::wstring cmd{};
+        if (!devBranch) {
+            cmd =
+                L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
+        } else {
+            cmd =
+                L"git clone --branch dev " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
+        }
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
@@ -1275,8 +1313,11 @@ namespace Rux {
         CloseHandle(pi.hThread);
         return exitCode == 0;
 #else
-        const std::string cmd = "git clone " + repoUrl + " \"" + dest.string() + "\"";
-        return std::system(cmd.c_str()) == 0;
+    const std::string cmd =
+        devBranch
+            ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
+            : "git clone " + repoUrl + " \"" + dest.string() + "\"";
+    return std::system(cmd.c_str()) == 0;            
 #endif
     }
 
@@ -1302,10 +1343,15 @@ namespace Rux {
 
     int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions& opts) {
         std::string_view packageSpec;
+        bool packageFromDev = false;
         for (auto arg : args) {
             if (arg == "-h" || arg == "--help") {
                 PrintHelpInstall();
                 return 0;
+            }
+            if (arg == "--dev") {
+                packageFromDev = true;
+                continue;
             }
             if (!arg.starts_with('-') && packageSpec.empty()) {
                 packageSpec = arg;
@@ -1354,7 +1400,7 @@ namespace Rux {
             }
             else {
                 if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
-                if (!GitClone(repoUrl, pkgDir)) {
+                if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
@@ -1407,7 +1453,7 @@ namespace Rux {
             }
             else {
                 if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
-                if (!GitClone(repoUrl, pkgDir)) {
+                if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
@@ -1942,7 +1988,7 @@ namespace Rux {
             }
             else {
                 if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
-                if (!GitClone(repoUrl, pkgDir)) {
+                if (!GitClone(repoUrl, pkgDir, false)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
@@ -2278,7 +2324,10 @@ namespace Rux {
                 if (diag.severity == ParserDiagnostic::Severity::Error) parseErrors = true;
             }
 
-            if (!parseResult.HasErrors()) parseResults.push_back(std::move(parseResult));
+            if (!parseResult.HasErrors()) {
+                PruneModuleForTarget(parseResult.module, targetName);
+                parseResults.push_back(std::move(parseResult));
+            }
         }
 
         if (parseErrors) hadErrors = true;
@@ -2364,14 +2413,14 @@ namespace Rux {
 
         struct ImportCollector {
             std::vector<std::string>& imports;
+            std::string_view target;
 
             const std::string& currentOs;
 
             void collect(const Decl& decl) {
                 if (const auto* ud = dynamic_cast<const UseDecl*>(&decl)) {
-                    if (!ud->path.empty() &&
-                        (ud->targetOs.empty() || ud->targetOs == currentOs))
-                        imports.push_back(ud->path[0]);
+                    if (!DeclMatchesTarget(*ud, target)) return;
+                    if (!ud->path.empty()) imports.push_back(ud->path[0]);
                     return;
                 }
                 if (const auto* mod = dynamic_cast<const ModuleDecl*>(&decl)) {
@@ -2380,7 +2429,7 @@ namespace Rux {
                     }
                 }
             }
-        } collector{imports, currentOs};
+        } collector{imports, targetName};
 
         for (const auto& pr : parseResults) {
             imports.clear();
@@ -2463,6 +2512,7 @@ namespace Rux {
                         hadErrors = true;
                         break;
                     }
+                    PruneModuleForTarget(depParse.module, targetName);
 
                     packageParseResults.push_back(std::move(depParse));
                 }
