@@ -1098,6 +1098,22 @@ namespace Rux {
                  0x0F, 0x05, // syscall
                  0xC3 // ret
              }},
+             {"__rux_linux_nanosleep",
+              {
+                  0x48, 0xC7, 0xC0, 0x23, 0x00, 0x00, 0x00, // mov rax, 35
+                  0x48, 0x89, 0xCF, // mov rdi, rcx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_linux_clock_gettime",
+              {
+                  0x48, 0xC7, 0xC0, 0xE4, 0x00, 0x00, 0x00, // mov rax, 228
+                  0x48, 0x63, 0xF9, // movsxd rdi, ecx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
 #  endif
         };
 
