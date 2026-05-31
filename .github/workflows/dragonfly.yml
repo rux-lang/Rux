@@ -1,0 +1,37 @@
+name: DragonFly BSD
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    name: DragonFly BSD x86-64
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build and test in DragonFly BSD VM
+        uses: vmactions/dragonflybsd-vm@v1
+        with:
+          usesh: true
+          copyback: false
+          prepare: |
+            uname -a
+            pkg install -y cmake llvm
+
+          run: |
+            failed=0
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+            cmake --build build
+            echo "---IO THUNK TESTS---"
+            ./Tests/run_io_test.sh "$PWD/build/rux" || failed=1
+            echo "---POW TEST---"
+            ./Tests/run_pow_test.sh "$PWD/build/rux" || failed=1
+            echo "---UNICODE TEST---"
+            ./Tests/run_unicode_test.sh "$PWD/build/rux" || failed=1
+            if [ "$failed" -ne 0 ]; then echo "SOME TESTS FAILED"; exit 1; fi
+            echo "ALL TESTS PASSED"
