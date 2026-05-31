@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <string_view>
 
 #if defined(_WIN32)
 #  define RUX_OS_WINDOWS 1
@@ -202,76 +203,31 @@ namespace Rux::Platform {
     enum class BuildMode : std::uint8_t { Debug, Release };
     enum class Endian : std::uint8_t { Little, Big };
 
-    enum class CpuFeature : std::uint64_t {
-        None = 0,
-        SSE2 = 1ull << 0,
-        SSE4_2 = 1ull << 1,
-        AVX = 1ull << 2,
-        AVX2 = 1ull << 3,
-        AVX512 = 1ull << 4,
-        BMI1 = 1ull << 10,
-        BMI2 = 1ull << 11,
-        POPCNT = 1ull << 12,
-        NEON = 1ull << 20,
-        SVE = 1ull << 21,
-        RVV = 1ull << 22,
-        FMA = 1ull << 30,
-        LZCNT = 1ull << 31,
-    };
+    using CpuFeatures = std::uint64_t;
 
-    constexpr CpuFeature operator|(CpuFeature a, CpuFeature b) noexcept {
-        return static_cast<CpuFeature>(static_cast<std::uint64_t>(a) | static_cast<std::uint64_t>(b));
-    }
-    constexpr CpuFeature operator&(CpuFeature a, CpuFeature b) noexcept {
-        return static_cast<CpuFeature>(static_cast<std::uint64_t>(a) & static_cast<std::uint64_t>(b));
-    }
-    constexpr CpuFeature operator^(CpuFeature a, CpuFeature b) noexcept {
-        return static_cast<CpuFeature>(static_cast<std::uint64_t>(a) ^ static_cast<std::uint64_t>(b));
-    }
-    constexpr CpuFeature operator~(CpuFeature a) noexcept {
-        return static_cast<CpuFeature>(~static_cast<std::uint64_t>(a));
-    }
-    constexpr CpuFeature& operator|=(CpuFeature& a, CpuFeature b) noexcept {
-        return a = a | b;
-    }
-    constexpr CpuFeature& operator&=(CpuFeature& a, CpuFeature b) noexcept {
-        return a = a & b;
-    }
-    constexpr CpuFeature& operator^=(CpuFeature& a, CpuFeature b) noexcept {
-        return a = a ^ b;
+    namespace CpuFeature {
+        inline constexpr CpuFeatures None = 0;
+
+        inline constexpr CpuFeatures SSE2 = 1ull << 0;
+        inline constexpr CpuFeatures SSE4_2 = 1ull << 1;
+
+        inline constexpr CpuFeatures AVX = 1ull << 2;
+        inline constexpr CpuFeatures AVX2 = 1ull << 3;
+        inline constexpr CpuFeatures AVX512 = 1ull << 4;
+
+        inline constexpr CpuFeatures BMI1 = 1ull << 10;
+        inline constexpr CpuFeatures BMI2 = 1ull << 11;
+        inline constexpr CpuFeatures POPCNT = 1ull << 12;
+
+        inline constexpr CpuFeatures NEON = 1ull << 20;
+        inline constexpr CpuFeatures SVE = 1ull << 21;
+        inline constexpr CpuFeatures RVV = 1ull << 22;
+    } // namespace CpuFeature
+
+    [[nodiscard]] constexpr bool Has(CpuFeatures f, CpuFeatures mask) noexcept {
+        return (mask & f) != 0;
     }
 
-    struct CpuFeatures {
-        std::uint64_t bits{0};
-
-        [[nodiscard]] constexpr bool Has(CpuFeature f) const noexcept {
-            return (bits & static_cast<std::uint64_t>(f)) != 0;
-        }
-
-        template <CpuFeature... Fs>
-        [[nodiscard]] constexpr bool HasAny() const noexcept {
-            return (Has(Fs) || ...);
-        }
-
-        template <CpuFeature... Fs>
-        [[nodiscard]] constexpr bool HasAll() const noexcept {
-            return (Has(Fs) && ...);
-        }
-
-        [[nodiscard]] constexpr bool HasVectorISA() const noexcept {
-            return HasAny<CpuFeature::AVX,
-                          CpuFeature::AVX2,
-                          CpuFeature::AVX512,
-                          CpuFeature::NEON,
-                          CpuFeature::SVE,
-                          CpuFeature::RVV>();
-        }
-
-        constexpr CpuFeatures& operator|=(CpuFeature f) noexcept {
-            bits |= static_cast<std::uint64_t>(f);
-            return *this;
-        }
-    };
 
     struct MemoryInfo {
         std::uint64_t page_size{};
@@ -352,47 +308,122 @@ namespace Rux::Platform {
     };
 
     template <typename T>
+    struct TargetInfo {
+        static constexpr OS os = T::os;
+        static constexpr Arch arch = T::arch;
+        static constexpr Compiler compiler = T::compiler;
+        static constexpr BuildMode mode = T::mode;
+        static constexpr CpuFeatures cpu = T::cpu;
+
+        static constexpr bool Is64Bit = (arch == Arch::X64 || arch == Arch::ARM64 || arch == Arch::RISCV64);
+
+        static constexpr bool IsDebug = (mode == BuildMode::Debug);
+    };
+
+    template <typename T>
     struct Platform {
-        [[nodiscard]] static constexpr bool Is64Bit() noexcept {
-            return T::arch == Arch::X64 || T::arch == Arch::ARM64 || T::arch == Arch::RISCV64;
+        using Info = TargetInfo<T>;
+
+        static constexpr bool Is64Bit() noexcept {
+            return Info::Is64Bit;
         }
-        [[nodiscard]] static constexpr bool IsDebug() noexcept {
-            return T::mode == BuildMode::Debug;
+
+        static constexpr bool IsDebug() noexcept {
+            return Info::IsDebug;
         }
-        [[nodiscard]] static constexpr bool Has(CpuFeature f) noexcept {
-            return T::cpu.Has(f);
+
+        static constexpr bool Has(CpuFeatures f) noexcept {
+            return (Info::cpu & f) != 0;
         }
-        [[nodiscard]] static constexpr bool HasSIMD() noexcept {
-            return T::cpu.HasVectorISA();
+
+        static constexpr bool HasSIMD() noexcept {
+            return (Info::cpu &
+                    (CpuFeature::AVX | CpuFeature::AVX2 | CpuFeature::AVX512 | CpuFeature::NEON | CpuFeature::SVE |
+                     CpuFeature::RVV)) != 0;
         }
-        [[nodiscard]] static constexpr bool IsX86() noexcept {
-            return T::arch == Arch::X86 || T::arch == Arch::X64;
+
+        static constexpr bool IsX86() noexcept {
+            return Info::arch == Arch::X86 || Info::arch == Arch::X64;
+        }
+
+        static constexpr std::string_view GetOSName(OS os) noexcept {
+            switch (os) {
+            case OS::Windows:
+                return "Windows";
+            case OS::Linux:
+                return "Linux";
+            case OS::MacOS:
+                return "macOS";
+            case OS::FreeBSD:
+                return "FreeBSD";
+            case OS::OpenBSD:
+                return "OpenBSD";
+            case OS::NetBSD:
+                return "NetBSD";
+            case OS::DragonFlyBSD:
+                return "DragonFlyBSD";
+            case OS::Solaris:
+                return "Solaris";
+            case OS::Illumos:
+                return "Illumos";
+            default:
+                return "Unknown";
+            }
+        }
+
+        static constexpr std::string_view GetArchName(Arch arch) noexcept {
+            switch (arch) {
+            case Arch::X64:
+                return "x64";
+            case Arch::X86:
+                return "x86";
+            case Arch::ARM64:
+                return "arm64";
+            case Arch::ARM32:
+                return "arm";
+            case Arch::RISCV64:
+                return "riscv64";
+            case Arch::RISCV32:
+                return "riscv32";
+            default:
+                return "unknown";
+            }
         }
     };
+
+    enum class DispatchIndex : std::uint8_t { Scalar = 0, SSE2 = 1, AVX = 2, AVX2 = 3, AVX512 = 4, NEON = 5, Count };
+
+    [[nodiscard]] inline DispatchIndex GetBestIndex(CpuFeatures f) noexcept {
+        if (f & CpuFeature::AVX512) return DispatchIndex::AVX512;
+        if (f & CpuFeature::AVX2) return DispatchIndex::AVX2;
+        if (f & CpuFeature::AVX) return DispatchIndex::AVX;
+        if (f & CpuFeature::SSE2) return DispatchIndex::SSE2;
+        if (f & CpuFeature::NEON) return DispatchIndex::NEON;
+        return DispatchIndex::Scalar;
+    }
 
     template <typename Fn>
     struct DispatchTable {
-        Fn scalar{};
-        Fn sse2{};
-        Fn avx{};
-        Fn avx2{};
-        Fn avx512{};
-        Fn neon{};
+        Fn table[static_cast<std::uint8_t>(DispatchIndex::Count)]{};
     };
 
     template <typename Fn>
-    [[nodiscard]] inline Fn SelectBest(const DispatchTable<Fn>& table, const CpuFeatures& runtime_features) noexcept {
-        if (runtime_features.Has(CpuFeature::AVX512) && table.avx512) return table.avx512;
-        if (runtime_features.Has(CpuFeature::AVX2) && table.avx2) return table.avx2;
-        if (runtime_features.Has(CpuFeature::AVX) && table.avx) return table.avx;
-        if (runtime_features.Has(CpuFeature::SSE2) && table.sse2) return table.sse2;
-        if (runtime_features.Has(CpuFeature::NEON) && table.neon) return table.neon;
-        return table.scalar;
+    constexpr void Set(DispatchTable<Fn>& t, DispatchIndex i, Fn fn) noexcept {
+        t.table[static_cast<std::uint8_t>(i)] = fn;
     }
 
-    using Current = Platform<Target<GetCompileTimeOS(),
-                                    GetCompileTimeArch(),
-                                    GetCompileTimeCompiler(),
-                                    GetCompileTimeBuildMode(),
-                                    DetectCompileTimeCpuFeatures()>>;
+    template <typename Fn>
+    [[nodiscard]] inline Fn SelectBest(const DispatchTable<Fn>& table, CpuFeatures runtime) noexcept {
+        const auto idx = GetBestIndex(runtime);
+        return table.table[static_cast<std::uint8_t>(idx)];
+    }
+
+    using CurrentTarget = Target<GetCompileTimeOS(),
+                                 GetCompileTimeArch(),
+                                 GetCompileTimeCompiler(),
+                                 GetCompileTimeBuildMode(),
+                                 DetectCompileTimeCpuFeatures()>;
+
+    using CurrentPlatform = Platform<CurrentTarget>;
+    using HostInfo = TargetInfo<CurrentTarget>;
 } // namespace Rux::Platform
