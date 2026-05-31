@@ -981,8 +981,10 @@ namespace Rux {
                  0x4D, 0x89, 0xC8, // mov r8, r9  (save output pointer to r8 before syscall)
                  0x0F, 0x05, // syscall
                  0x85, 0xC0, // test eax, eax
-                 0x78, 0x0C, // js +12 (error)
+                 0x78, 0x11, // js +17 (error)
                  0x4D, 0x89, 0xC1, // mov r9, r8  (restore output pointer)
+                 0x4D, 0x85, 0xC9, // test r9, r9
+                 0x74, 0x03, // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax  (*bytesRead = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
                  0xC3, // ret
@@ -1004,8 +1006,10 @@ namespace Rux {
                  0x4D, 0x89, 0xC8, // mov r8, r9  (save output pointer to r8 before syscall)
                  0x0F, 0x05, // syscall
                  0x85, 0xC0, // test eax, eax
-                 0x78, 0x0C, // js +12 (error)
+                 0x78, 0x11, // js +17 (error)
                  0x4D, 0x89, 0xC1, // mov r9, r8  (restore output pointer)
+                 0x4D, 0x85, 0xC9, // test r9, r9
+                 0x74, 0x03, // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax  (*bytesWritten = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
                  0xC3, // ret
