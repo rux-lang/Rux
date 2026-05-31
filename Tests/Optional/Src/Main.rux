@@ -1,0 +1,39 @@
+// Optional Type and Operators Test
+// Tests T?, ?., and ?? syntax added in v0.3.0
+
+module Main;
+
+struct User {
+    name: string,
+    age: int32,
+}
+
+struct Settings {
+    user: User,
+    theme: string,
+}
+
+func Main() -> int32 {
+    // Optional type (T? sugar for Option<T>)
+    let maybe_name: string? = null;
+    let maybe_port: int32? = 8080;
+
+    // Null coalescing
+    let port = maybe_port ?? 3000;      // 8080
+    let fallback = maybe_name ?? "default";  // "default"
+
+    // Chained null coalescing (right-associative)
+    let chained = maybe_port ?? 9090 ?? 3000;  // 8080
+
+    // Struct with optional chaining
+    let user = User { name: "Alice", age: 30 };
+    let settings = Settings { user: user, theme: "dark" };
+
+    // Optional chaining on field access
+    let user_name = settings?.user?.name;
+
+    // Optional chaining with null coalescing
+    let theme = settings?.theme ?? "light";
+
+    return 0;
+}

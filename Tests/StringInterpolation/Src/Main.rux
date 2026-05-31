@@ -1,0 +1,27 @@
+// Tests f-string interpolation — new in v0.3.0.
+//
+// f"..." strings embed expressions inside {braces}:
+//   f"Hello, {name}!"           — variable interpolation
+//   f"Result: {a + b}"          — expression interpolation
+//   f"Nested: {f"{inner}"}"     — nested f-strings
+//
+// This test exercises the compile-time parsing of interpolated strings.
+// Since we can only test via exit codes, we verify length/computation.
+
+func Main() -> int {
+    let name = "Rux";
+    let greeting = f"Hello, {name}!";
+
+    // Verify the interpolated string produces the right length
+    // "Hello, Rux!" = 11 chars
+    if greeting.length != 11 { return 1; }
+
+    // Expression interpolation
+    let a = 10;
+    let b = 20;
+    let msg = f"Sum: {a + b}";
+    // "Sum: 30" = 7 chars
+    if msg.length != 7 { return 2; }
+
+    return 0;
+}

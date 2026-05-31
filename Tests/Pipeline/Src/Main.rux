@@ -1,0 +1,37 @@
+// Pipeline Operator Test
+// Tests |> operator added in v0.3.0
+
+module Main;
+
+func Square(x: int32) -> int32 {
+    return x * x;
+}
+
+func Double(x: int32) -> int32 {
+    return x * 2;
+}
+
+func AddOne(x: int32) -> int32 {
+    return x + 1;
+}
+
+func Negate(x: int32) -> int32 {
+    return -x;
+}
+
+func Main() -> int32 {
+    // Simple pipeline
+    let a = 5 |> Square;          // Square(5) = 25
+
+    // Chained pipeline
+    let b = 3 |> Double |> Square;  // Square(Double(3)) = Square(6) = 36
+
+    // Multi-step pipeline
+    let c = 2 |> AddOne |> Double |> Square;  // Square(Double(AddOne(2))) = Square(Double(3)) = Square(6) = 36
+
+    // Pipeline with negate
+    let d = 4 |> Negate;          // Negate(4) = -4
+    let e = -3 |> Square |> Negate;  // Negate(Square(-3)) = Negate(9) = -9
+
+    return 0;
+}

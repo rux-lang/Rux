@@ -1,0 +1,25 @@
+// String Interpolation Test
+// Tests f-string syntax added in v0.3.0
+
+module Main;
+
+func Main() -> int32 {
+    let name = "Rux";
+    let version = 3;
+
+    // Simple variable interpolation
+    let greeting = f"Hello, {name}!";
+
+    // Expression interpolation
+    let x = 10;
+    let y = 20;
+    let math = f"{x} + {y} = {x + y}";
+
+    // Escape sequences
+    let escaped = f"Line 1\nLine 2\tTabbed";
+
+    // Escaped braces
+    let braces = f"Use {{curly braces}} in strings";
+
+    return 0;
+}

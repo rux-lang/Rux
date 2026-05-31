@@ -117,11 +117,22 @@ namespace Rux {
         std::unique_ptr<ForStmt> ParseForStmt();
         std::unique_ptr<MatchStmt> ParseMatchStmt();
         std::unique_ptr<ReturnStmt> ParseReturnStmt();
+<<<<<<< HEAD
+=======
+        std::unique_ptr<TryCatchStmt> ParseTryCatchStmt();
+        std::unique_ptr<DeferStmt> ParseDeferStmt();
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
 
         // Expressions (Pratt / precedence-climbing)
         ExprPtr ParseExpr();
         ExprPtr ParseAssign();
+<<<<<<< HEAD
         ExprPtr ParseRange();
+=======
+        ExprPtr ParsePipeline();
+        ExprPtr ParseRange();
+        ExprPtr ParseNullCoalescing();
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
         ExprPtr ParseTernary();
         ExprPtr ParseOr();
         ExprPtr ParseAnd();

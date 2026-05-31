@@ -1,0 +1,44 @@
+// Tests the defer statement — new in v0.3.0.
+//
+// defer { ... }
+//   - Schedules a block to run when the enclosing scope exits.
+//   - Defers execute in LIFO order (last deferred = first executed).
+//   - Useful for cleanup: closing files, releasing locks, freeing memory.
+//
+// Returns 0 on success.
+
+func Main() -> int {
+    var counter = 0;
+
+    // Defer increments counter after the block completes
+    {
+        defer {
+            counter = counter + 1;
+        }
+        // counter is still 0 here
+        if counter != 0 { return 1; }
+    }
+    // After scope exit, defer ran: counter should be 1
+    if counter != 1 { return 2; }
+
+    // Multiple defers execute in LIFO order
+    var order = 0;
+    var step1 = 0;
+    var step2 = 0;
+    {
+        defer {
+            step1 = order;
+            order = order + 1;
+        }
+        defer {
+            step2 = order;
+            order = order + 1;
+        }
+        // Both defers pending
+    }
+    // Second defer ran first (LIFO): step2 should have order=0, step1 should have order=1
+    if step2 != 0 { return 3; }
+    if step1 != 1 { return 4; }
+
+    return 0;
+}

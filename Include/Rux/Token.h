@@ -58,6 +58,14 @@ namespace Rux {
         SelfKeyword, // self
         SuperKeyword, // super
 
+<<<<<<< HEAD
+=======
+        // New keywords (v0.3.0)
+        TryKeyword, // try
+        CatchKeyword, // catch
+        DeferKeyword, // defer
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
         // Punctuation
         LeftParen, // (
         RightParen, // )
@@ -132,6 +140,14 @@ namespace Rux {
         HashTime, // #time
         HashModule, // #module
 
+<<<<<<< HEAD
+=======
+        // New operators (v0.3.0)
+        QuestionDot, // ?.   (optional chaining)
+        QuestionQuestion, // ??   (null coalescing)
+        PipeArrow, // |>   (pipeline operator)
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
         // Special
         NewLine, // significant newline (if the grammar uses them)
         EndOfFile, // end of file

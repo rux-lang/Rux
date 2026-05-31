@@ -103,6 +103,11 @@ namespace Rux {
             if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '"') return ScanString(start, 3);
             if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '\'') return ScanChar(start, 3);
         }
+<<<<<<< HEAD
+=======
+        // Interpolated string literal: f"..."
+        if (c == 'f' && Peek(1) == '"') return ScanString(start, 1);
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
         // Identifiers / keywords
         if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') return ScanIdent(start);
         // Numeric literals
@@ -549,6 +554,11 @@ namespace Rux {
             return MakeToken(TokenKind::Hash, start, tokenStart);
         }
         case '?':
+<<<<<<< HEAD
+=======
+            if (Match('.')) return MakeToken(TokenKind::QuestionDot, start, tokenStart);
+            if (Match('?')) return MakeToken(TokenKind::QuestionQuestion, start, tokenStart);
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
             return MakeToken(TokenKind::Question, start, tokenStart);
         case '~':
             return MakeToken(TokenKind::Tilde, start, tokenStart);
@@ -595,10 +605,18 @@ namespace Rux {
             if (Match('=')) return MakeToken(TokenKind::AmpAssign, start, tokenStart);
             return MakeToken(TokenKind::Amp, start, tokenStart);
 
+<<<<<<< HEAD
         // |  or  |=  or  ||
         case '|':
             if (Match('|')) return MakeToken(TokenKind::PipePipe, start, tokenStart);
             if (Match('=')) return MakeToken(TokenKind::PipeAssign, start, tokenStart);
+=======
+        // |  or  |=  or  ||  or  |>
+        case '|':
+            if (Match('|')) return MakeToken(TokenKind::PipePipe, start, tokenStart);
+            if (Match('=')) return MakeToken(TokenKind::PipeAssign, start, tokenStart);
+            if (Match('>')) return MakeToken(TokenKind::PipeArrow, start, tokenStart);
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
             return MakeToken(TokenKind::Pipe, start, tokenStart);
 
         // ^  or  ^=

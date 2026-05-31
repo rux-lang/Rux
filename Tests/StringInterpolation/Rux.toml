@@ -1,0 +1,4 @@
+[package]
+name = "string_interpolation_test"
+version = "0.1.0"
+entry = "Src/Main.rux"

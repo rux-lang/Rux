@@ -4,15 +4,151 @@ This document provides concrete code examples for each systems domain analyzed i
 [rux_gap_analysis.md](file:///c:/Users/muham/OneDrive/Documents/G_Github/Rux/docs/rux_gap_analysis.md).
 
 Each domain contains two sections:
+<<<<<<< HEAD
 - **✅ Current Rux Code** — utilizing actual Rux v0.2.0 syntax.
 - **🚧 Hypothetical Required Code** — representing features currently missing in the language, written as proposals.
 
 > [!IMPORTANT]
 > Code blocks marked with "🚧" **WILL NOT COMPILE** in Rux v0.2.0.
+=======
+- **✅ Current Rux Code** — utilizing actual Rux v0.3.0 syntax.
+- **🚧 Hypothetical Required Code** — representing features currently missing in the language, written as proposals.
+
+> [!IMPORTANT]
+> Code blocks marked with "🚧" **WILL NOT COMPILE** in Rux v0.3.0.
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
 > They demonstrate what must be added to the language to make it viable for these specific systems programming fields.
 
 ---
 
+<<<<<<< HEAD
+=======
+## 0. New in v0.3.0 — Language Features Showcase
+
+The following examples demonstrate features added in Rux v0.3.0:
+
+### Lambda Expressions
+
+```rux
+// Lambdas use |params| body syntax — perfect for callbacks and functional patterns.
+func Map(values: int[], f: func(int) -> int) -> int[] {
+    var result: int[];
+    for v in values {
+        result.push(f(v));
+    }
+    return result;
+}
+
+func Main() -> int {
+    // Single-expression lambda
+    let double = |x| x * 2;
+
+    // Lambda with block body
+    let transform = |x: int| {
+        let y = x + 1;
+        return y * y;
+    };
+
+    // Passing lambdas to higher-order functions
+    let numbers = [1, 2, 3, 4, 5];
+    let doubled = Map(numbers, |n| n * 2);
+
+    // Zero-parameter lambda
+    let constant = || 42;
+    return 0;
+}
+```
+
+### String Interpolation
+
+```rux
+func Main() -> int {
+    let name = "Rux";
+    let version = 3;
+
+    // f-strings embed expressions inside {braces}
+    let greeting = f"Hello, {name} v{version}.0!";
+    let math = f"2 + 2 = {2 + 2}";
+
+    return 0;
+}
+```
+
+### Optional Chaining & Null-Coalescing
+
+```rux
+struct Config {
+    host: String,
+    port: int,
+}
+
+func Main() -> int {
+    let config: Config? = null;
+
+    // Null-coalescing: provide defaults for nullable values
+    let port = config?.port ?? 8080;
+
+    // Chain of optionals
+    let host = config?.host ?? "localhost";
+
+    return 0;
+}
+```
+
+### Pipeline Operator
+
+```rux
+func double(x: int) -> int { return x * 2; }
+func addTen(x: int) -> int { return x + 10; }
+func square(x: int) -> int { return x * x; }
+
+func Main() -> int {
+    // |> passes left side as argument to right side
+    let result = 5 |> double |> addTen |> square;
+    // Equivalent to: square(addTen(double(5))) = square(addTen(10)) = square(20) = 400
+
+    return 0;
+}
+```
+
+### Try/Catch Error Handling
+
+```rux
+func divide(a: int, b: int) -> int {
+    if b == 0 { return -1; }
+    return a / b;
+}
+
+func Main() -> int {
+    try {
+        let result = divide(10, 0);
+    } catch err {
+        // Handle the error
+    }
+    return 0;
+}
+```
+
+### Defer Statements
+
+```rux
+import Std::Fs::File;
+
+func ReadConfig(path: String) -> String {
+    let file = File::open(path);
+    defer {
+        file.close(); // Always runs when function exits
+    }
+
+    return file.readAll();
+}
+```
+
+---
+
+---
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
 ## 1. Operating Systems
 
 ### ✅ Current Rux Code — Basic Memory Manipulation

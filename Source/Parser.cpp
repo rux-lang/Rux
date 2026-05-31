@@ -840,6 +840,17 @@ namespace Rux {
             base = std::move(a);
         }
 
+<<<<<<< HEAD
+=======
+        // Postfix optional suffix: T?
+        while (Match(TokenKind::Question)) {
+            auto o = std::make_unique<OptionalTypeExpr>();
+            o->location = loc;
+            o->inner = std::move(base);
+            base = std::move(o);
+        }
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
         return base;
     }
 
@@ -933,6 +944,11 @@ namespace Rux {
         }
         if (Check(TokenKind::MatchKeyword)) return ParseMatchStmt();
         if (Check(TokenKind::ReturnKeyword)) return ParseReturnStmt();
+<<<<<<< HEAD
+=======
+        if (Check(TokenKind::TryKeyword)) return ParseTryCatchStmt();
+        if (Check(TokenKind::DeferKeyword)) return ParseDeferStmt();
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
 
         if (Check(TokenKind::BreakKeyword)) {
             Advance();
@@ -967,7 +983,13 @@ namespace Rux {
                       TokenKind::ModuleKeyword,
                       TokenKind::ConstKeyword,
                       TokenKind::TypeKeyword,
+<<<<<<< HEAD
                       TokenKind::ExternKeyword})) {
+=======
+                      TokenKind::ExternKeyword,
+                      TokenKind::TryKeyword,
+                      TokenKind::DeferKeyword})) {
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
             auto ds = std::make_unique<DeclStmt>();
             ds->location = loc;
             ds->decl = ParseDecl();
@@ -1152,6 +1174,35 @@ namespace Rux {
         return s;
     }
 
+<<<<<<< HEAD
+=======
+    std::unique_ptr<TryCatchStmt> Parser::ParseTryCatchStmt() {
+        const auto loc = CurrentLocation();
+        Expect(TokenKind::TryKeyword, "expected 'try'");
+
+        auto s = std::make_unique<TryCatchStmt>();
+        s->location = loc;
+        s->tryBlock = ParseBlock();
+
+        Expect(TokenKind::CatchKeyword, "expected 'catch' after try block");
+        if (Check(TokenKind::Ident)) s->catchVar = Advance().text;
+        s->catchBlock = ParseBlock();
+
+        return s;
+    }
+
+    std::unique_ptr<DeferStmt> Parser::ParseDeferStmt() {
+        const auto loc = CurrentLocation();
+        Expect(TokenKind::DeferKeyword, "expected 'defer'");
+
+        auto s = std::make_unique<DeferStmt>();
+        s->location = loc;
+        s->body = ParseBlock();
+
+        return s;
+    }
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
     // Expressions
     ExprPtr Parser::ParseExpr() {
         return ParseAssign();
@@ -1159,7 +1210,11 @@ namespace Rux {
 
     // right-associative: a = b = c  =>  a = (b = c)
     ExprPtr Parser::ParseAssign() {
+<<<<<<< HEAD
         auto left = ParseRange();
+=======
+        auto left = ParsePipeline();
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
         if (!left) return nullptr;
 
         static constexpr TokenKind kAssignOps[] = {
@@ -1193,7 +1248,11 @@ namespace Rux {
     }
 
     ExprPtr Parser::ParseRange() {
+<<<<<<< HEAD
         auto left = ParseTernary();
+=======
+        auto left = ParseNullCoalescing();
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
         if (!left) return nullptr;
 
         if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
@@ -1205,7 +1264,11 @@ namespace Rux {
             const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
             const auto loc = CurrentLocation();
             Advance();
+<<<<<<< HEAD
             auto right = ParseTernary();
+=======
+            auto right = ParseNullCoalescing();
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
             auto e = std::make_unique<RangeExpr>();
             e->location = loc;
             e->inclusive = incl;
@@ -1216,6 +1279,45 @@ namespace Rux {
         return left;
     }
 
+<<<<<<< HEAD
+=======
+    // Pipeline operator: expr |> func  (left-associative)
+    ExprPtr Parser::ParsePipeline() {
+        auto left = ParseRange();
+        if (!left) return nullptr;
+
+        while (Check(TokenKind::PipeArrow)) {
+            const auto loc = CurrentLocation();
+            Advance(); // consume |>
+            auto right = ParseRange();
+            auto e = std::make_unique<PipelineExpr>();
+            e->location = loc;
+            e->left = std::move(left);
+            e->right = std::move(right);
+            left = std::move(e);
+        }
+        return left;
+    }
+
+    // Null-coalescing: expr ?? default  (right-associative)
+    ExprPtr Parser::ParseNullCoalescing() {
+        auto left = ParseTernary();
+        if (!left) return nullptr;
+
+        if (Check(TokenKind::QuestionQuestion)) {
+            const auto loc = CurrentLocation();
+            Advance(); // consume ??
+            auto right = ParseNullCoalescing(); // right-associative
+            auto e = std::make_unique<NullCoalescingExpr>();
+            e->location = loc;
+            e->left = std::move(left);
+            e->right = std::move(right);
+            return e;
+        }
+        return left;
+    }
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
     ExprPtr Parser::ParseTernary() {
         auto cond = ParseOr();
         if (!cond) return nullptr;
@@ -1469,6 +1571,27 @@ namespace Rux {
         if (!left) return nullptr;
         while (true) {
             const auto loc = CurrentLocation();
+<<<<<<< HEAD
+=======
+            // Optional chaining: expr?.field  expr?.method(args)
+            if (Match(TokenKind::QuestionDot)) {
+                std::string name;
+                if (Check(TokenKind::IntLiteral))
+                    name = Advance().text;
+                else
+                    name = Expect(TokenKind::Ident, "expected field name after '?.'").text;
+
+                auto e = std::make_unique<OptionalChainExpr>();
+                e->location = loc;
+                e->object = std::move(left);
+                e->member = name;
+                if (Check(TokenKind::LeftParen) && !name.empty() && !std::isdigit(name[0])) {
+                    e->callArgs = ParseArgList();
+                }
+                left = std::move(e);
+                continue;
+            }
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
             // Method/field/tuple-index: expr.field  expr.method(args)  expr.0
             if (Match(TokenKind::Dot)) {
                 std::string name;
@@ -1698,6 +1821,122 @@ namespace Rux {
             Expect(TokenKind::RightParen, "expected ')'");
             return first;
         }
+<<<<<<< HEAD
+=======
+        // Lambda: || { body }  or  |params| expr  or  |params| { body }
+        if (Check(TokenKind::Pipe) && !IsAtEnd()) {
+            auto e = std::make_unique<LambdaExpr>();
+            e->location = loc;
+            Advance(); // consume first |
+
+            // Parse parameter list between | ... |
+            if (!Check(TokenKind::Pipe)) {
+                do {
+                    e->params.push_back(ParseParam());
+                } while (Match(TokenKind::Comma));
+            }
+            Expect(TokenKind::Pipe, "expected '|' to close lambda parameters");
+
+            // Optional return type
+            if (Match(TokenKind::Arrow)) {
+                e->returnType = ParseType();
+            }
+
+            // Body: block or expression
+            if (Check(TokenKind::LeftBrace)) {
+                e->blockBody = ParseBlock();
+            }
+            else {
+                e->body = ParseExpr();
+            }
+
+            return e;
+        }
+
+        // Interpolated string: f"Hello, {name}! Age: {age + 1}"
+        // The lexer scans f"..." as a single StringLiteral token with "f" prefix
+        if (Check(TokenKind::StringLiteral) && Peek().text.size() >= 3 && Peek().text[0] == 'f' && Peek().text[1] == '"') {
+            std::string raw = Advance().text; // f"..." token text
+            // Strip the f" prefix and trailing "
+            raw = raw.substr(2, raw.size() - 3);
+
+            auto e = std::make_unique<InterpolatedStringExpr>();
+            e->location = loc;
+
+            std::string textBuf;
+            for (std::size_t i = 0; i < raw.size(); ++i) {
+                if (raw[i] == '{') {
+                    // Flush text
+                    if (!textBuf.empty()) {
+                        InterpolatedStringExpr::Part part;
+                        part.kind = InterpolatedStringExpr::Part::Kind::Text;
+                        part.text = std::move(textBuf);
+                        e->parts.push_back(std::move(part));
+                        textBuf.clear();
+                    }
+                    // Find matching '}'
+                    std::size_t depth = 1;
+                    std::size_t start = i + 1;
+                    while (start < raw.size() && depth > 0) {
+                        if (raw[start] == '{') ++depth;
+                        else if (raw[start] == '}') --depth;
+                        ++start;
+                    }
+                    std::string exprStr = raw.substr(i + 1, start - i - 2);
+                    // Parse the expression from the extracted string
+                    Lexer lex(std::move(exprStr), sourceName + ":interp");
+                    auto lexResult = lex.Tokenize();
+                    Parser exprParser(lexResult.tokens, sourceName + ":interp");
+                    auto parsed = exprParser.Parse();
+                    if (!parsed.module.items.empty()) {
+                        // The expression was parsed as a declaration/expression - try to extract it
+                        // For now, we store the raw text and handle it during semantic analysis
+                    }
+                    // Fallback: store as text for now, full parsing during Sema
+                    InterpolatedStringExpr::Part part;
+                    part.kind = InterpolatedStringExpr::Part::Kind::Expression;
+                    // Store expression text as a literal for now
+                    auto lit = std::make_unique<LiteralExpr>();
+                    lit->location = loc;
+                    Token t;
+                    t.kind = TokenKind::StringLiteral;
+                    t.text = exprStr;
+                    t.location = loc;
+                    lit->token = t;
+                    part.expr = std::move(lit);
+                    e->parts.push_back(std::move(part));
+
+                    i = start - 1; // skip past '}'
+                }
+                else if (raw[i] == '\\' && i + 1 < raw.size()) {
+                    // Handle escape sequences inside interpolated strings
+                    switch (raw[i + 1]) {
+                    case 'n': textBuf += '\n'; break;
+                    case 't': textBuf += '\t'; break;
+                    case 'r': textBuf += '\r'; break;
+                    case '{': textBuf += '{'; break;
+                    case '}': textBuf += '}'; break;
+                    case '\\': textBuf += '\\'; break;
+                    default: textBuf += raw[i]; textBuf += raw[i + 1]; break;
+                    }
+                    ++i;
+                }
+                else {
+                    textBuf += raw[i];
+                }
+            }
+            // Flush remaining text
+            if (!textBuf.empty()) {
+                InterpolatedStringExpr::Part part;
+                part.kind = InterpolatedStringExpr::Part::Kind::Text;
+                part.text = std::move(textBuf);
+                e->parts.push_back(std::move(part));
+            }
+
+            return e;
+        }
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
         // Identifier, possible struct init, or path expression
         if (Check(TokenKind::Ident)) {
             const std::string name = Advance().text;

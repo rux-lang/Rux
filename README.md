@@ -25,9 +25,73 @@
 
 Rux is a fast, compiled, strongly typed, multi-paradigm, general-purpose programming language.
 
+<<<<<<< HEAD
 ## Project Status
 
 Currently, under development.
+=======
+## What's New in v0.3.0
+
+| Feature | Syntax | Description |
+|---|---|---|
+| **Lambda expressions** | `\|x\| x + 1` | Inline closures with `params \| body` syntax |
+| **String interpolation** | `f"Hello, {name}!"` | Embed expressions inside strings |
+| **Optional chaining** | `obj?.field` | Safe member access on nullable values |
+| **Null-coalescing** | `value ?? default` | Default values for null expressions |
+| **Pipeline operator** | `x \|> f \|> g` | Clean function composition chains |
+| **Try/catch** | `try { } catch e { }` | Structured error handling |
+| **Defer** | `defer { }` | Scope-exit cleanup (LIFO order) |
+| **Optional types** | `T?` | Sugar for nullable/optional types |
+
+## Features
+
+- **Compiled** — direct native code via custom x86-64 backend; no interpreter overhead
+- **Strongly typed** — static type checking with type inference
+- **Multi-paradigm** — structs, enums, interfaces, closures, pattern matching
+- **Systems-friendly** — manual memory layout, `extern` FFI, inline pointers
+- **Modern syntax** — lambdas, string interpolation, pipeline operator, optional types
+- **Cross-platform** — Windows, Linux, FreeBSD, macOS (x86-64)
+- **Built-in package manager** — `rux install`, `rux new`, `rux build`
+- **Module system** — `import`, `module`, `pub` visibility control
+
+### New in v0.3.0 — Code Examples
+
+```rux
+// Lambda expressions
+let double = |x: int32| x * 2;
+let greet = |name: string| { return f"Hello, {name}!"; };
+
+// String interpolation
+let name = "Rux";
+let msg = f"Welcome to {name} version {3}.0!";
+
+// Optional chaining & null coalescing
+let port: int32? = config?.port ?? 8080;
+
+// Pipeline operator
+let result = 5 |> Square |> Double;  // Double(Square(5))
+
+// Try/catch error handling
+try {
+    let data = ReadFile("config.toml");
+} catch err {
+    PrintLine("Error reading config");
+}
+
+// Defer for cleanup
+func Process() -> int32 {
+    defer { Cleanup(); }
+    return DoWork();
+}
+
+// Optional type
+let maybe: string? = null;
+```
+
+## Project Status
+
+Currently, under active development. See [CHANGELOG.md](CHANGELOG.md) for the latest updates.
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
 
 ## Documentation
 

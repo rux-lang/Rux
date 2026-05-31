@@ -1,0 +1,146 @@
+// Rux v0.3.0 Feature Test
+// Tests all new language features added in the v0.3.0 release
+
+module Main;
+
+// ============================================================================
+// Feature 1: Lambda / Closure Expressions
+// ============================================================================
+
+// Lambda with single expression body
+let double = |x: int32| x * 2;
+
+// Lambda with block body
+let greet = |name: string| {
+    return name;
+};
+
+// Lambda with no parameters
+let get_value = || 42;
+
+// Lambda with multiple parameters
+let add = |a: int32, b: int32| a + b;
+
+// Lambda with explicit return type
+let parse_int = |s: string| -> int32 { return 0; };
+
+// ============================================================================
+// Feature 2: String Interpolation
+// ============================================================================
+
+let name = "Rux";
+let version = 3;
+let greeting = f"Hello, {name}! Welcome to version {version}.0";
+
+// Interpolated string with expressions
+let x = 10;
+let y = 20;
+let math = f"The sum of {x} and {y} is {x + y}";
+
+// ============================================================================
+// Feature 3: Optional Chaining (?.)
+// ============================================================================
+
+struct Config {
+    host: string,
+    port: int32,
+}
+
+let config: Config = Config { host: "localhost", port: 8080 };
+
+// Optional chaining on field access
+let host = config?.host;
+
+// ============================================================================
+// Feature 4: Null Coalescing (??)
+// ============================================================================
+
+let default_port = 3000;
+let actual_port = config?.port ?? default_port;
+
+// Chained null coalescing (right-associative)
+let fallback = config?.port ?? 8080 ?? 3000;
+
+// ============================================================================
+// Feature 5: Pipeline Operator (|>)
+// ============================================================================
+
+func Square(x: int32) -> int32 {
+    return x * x;
+}
+
+func AddOne(x: int32) -> int32 {
+    return x + 1;
+}
+
+// Pipeline: 5 |> Square => Square(5) = 25
+let result1 = 5 |> Square;
+
+// Chained pipeline: 3 |> AddOne |> Square => Square(AddOne(3)) = Square(4) = 16
+let result2 = 3 |> AddOne |> Square;
+
+// ============================================================================
+// Feature 6: Try/Catch Error Handling
+// ============================================================================
+
+func SafeDivide(a: int32, b: int32) -> int32 {
+    try {
+        if b == 0 {
+            return 0;
+        }
+        return a / b;
+    } catch err {
+        return 0;
+    }
+}
+
+// ============================================================================
+// Feature 7: Defer Statement
+// ============================================================================
+
+func ProcessData() -> int32 {
+    var result: int32 = 0;
+
+    defer {
+        // Cleanup runs at scope exit
+        result = result + 1;
+    }
+
+    result = 42;
+    return result;
+}
+
+// ============================================================================
+// Feature 8: Optional Type (T?)
+// ============================================================================
+
+// T? is sugar for Option<T>
+let maybe_name: string? = null;
+let maybe_port: int32? = 8080;
+
+// ============================================================================
+// Main Entry Point
+// ============================================================================
+
+func Main() -> int32 {
+    // Test lambda
+    let d = double(21);
+    let s = add(3, 4);
+
+    // Test string interpolation
+    let msg = f"Result: {d}, Sum: {s}";
+
+    // Test optional chaining and null coalescing
+    let port = config?.port ?? 3000;
+
+    // Test pipeline
+    let piped = 10 |> Square;
+
+    // Test try/catch
+    let safe = SafeDivide(10, 2);
+
+    // Test defer
+    let processed = ProcessData();
+
+    return 0;
+}

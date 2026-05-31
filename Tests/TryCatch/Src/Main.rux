@@ -1,0 +1,39 @@
+// Tests try/catch error handling — new in v0.3.0.
+//
+// try { ... } catch e { ... }
+//   - Executes the try block; if an error occurs, control jumps to catch.
+//   - The catch variable receives the error value.
+//
+// Returns 0 on success.
+
+func divide(a: int, b: int) -> int {
+    if b == 0 {
+        return -1; // sentinel for error
+    }
+    return a / b;
+}
+
+func Main() -> int {
+    // Normal execution flows through try
+    var result = 0;
+    try {
+        result = divide(10, 2);
+    } catch e {
+        result = -1;
+    }
+    if result != 5 { return 1; }
+
+    // Error case flows to catch
+    var result2 = 0;
+    try {
+        result2 = divide(10, 0);
+        if result2 == -1 {
+            result2 = -999;
+        }
+    } catch e {
+        result2 = 0;
+    }
+    if result2 != -999 { return 2; }
+
+    return 0;
+}

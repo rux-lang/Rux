@@ -1063,6 +1063,11 @@ namespace Rux {
             }
             if (dynamic_cast<const SelfTypeExpr*>(&expr))
                 return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
+<<<<<<< HEAD
+=======
+            if (auto* t = dynamic_cast<const OptionalTypeExpr*>(&expr))
+                return TypeRef::MakeNamed("Option", {ResolveType(*t->inner)});
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
             return TypeRef::MakeUnknown();
         }
 
@@ -2094,6 +2099,27 @@ namespace Rux {
                 CollectDecl(*s->decl, *currentScope);
                 CheckDecl(*s->decl);
             }
+<<<<<<< HEAD
+=======
+            else if (auto* s = dynamic_cast<const TryCatchStmt*>(&stmt)) {
+                CheckBlock(*s->tryBlock);
+                PushScope();
+                if (!s->catchVar.empty()) {
+                    Symbol sym;
+                    sym.kind = Symbol::Kind::Var;
+                    sym.name = s->catchVar;
+                    sym.location = s->location;
+                    sym.type = TypeRef::MakeNamed("Error");
+                    sym.isMut = false;
+                    Define(sym);
+                }
+                CheckBlock(*s->catchBlock);
+                PopScope();
+            }
+            else if (auto* s = dynamic_cast<const DeferStmt*>(&stmt)) {
+                CheckBlock(*s->body);
+            }
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
         }
 
         void CheckLetPattern(const Pattern& pat, const TypeRef& type, bool isMut) {
@@ -2670,6 +2696,78 @@ namespace Rux {
 
             if (auto* e = dynamic_cast<const SpreadExpr*>(&expr)) return CheckExpr(*e->operand);
 
+<<<<<<< HEAD
+=======
+            // Lambda expression: |params| expr  or  |params| { body }
+            if (auto* e = dynamic_cast<const LambdaExpr*>(&expr)) {
+                PushScope();
+                std::vector<TypeRef> paramTypes;
+                for (const auto& p : e->params) {
+                    TypeRef paramType = p.type ? ResolveType(*p.type) : TypeRef::MakeUnknown();
+                    paramTypes.push_back(paramType);
+                    Symbol sym;
+                    sym.kind = Symbol::Kind::Var;
+                    sym.name = p.name;
+                    sym.location = p.location;
+                    sym.type = paramType;
+                    sym.isMut = false;
+                    Define(sym);
+                }
+                TypeRef returnType = TypeRef::MakeUnknown();
+                if (e->body) {
+                    returnType = CheckExpr(*e->body);
+                }
+                else if (e->blockBody) {
+                    CheckBlock(*e->blockBody);
+                }
+                PopScope();
+                if (e->returnType) {
+                    TypeRef declared = ResolveType(*e->returnType);
+                    return TypeRef::MakeFunc(std::move(paramTypes), declared);
+                }
+                return TypeRef::MakeFunc(std::move(paramTypes), returnType);
+            }
+
+            // Optional chaining: expr?.field  or  expr?.method(args)
+            if (auto* e = dynamic_cast<const OptionalChainExpr*>(&expr)) {
+                TypeRef obj = CheckExpr(*e->object);
+                if (e->callArgs.empty()) {
+                    // Field access — result is optional
+                    return TypeRef::MakeNamed("Option", {TypeRef::MakeUnknown()});
+                }
+                // Method call — result is optional
+                for (const auto& arg : e->callArgs) CheckExpr(*arg);
+                return TypeRef::MakeNamed("Option", {TypeRef::MakeUnknown()});
+            }
+
+            // Null coalescing: expr ?? default
+            if (auto* e = dynamic_cast<const NullCoalescingExpr*>(&expr)) {
+                TypeRef left = CheckExpr(*e->left);
+                TypeRef right = CheckExpr(*e->right);
+                return right.IsUnknown() ? left : right;
+            }
+
+            // Pipeline: expr |> func  (desugars to func(expr))
+            if (auto* e = dynamic_cast<const PipelineExpr*>(&expr)) {
+                TypeRef left = CheckExpr(*e->left);
+                TypeRef right = CheckExpr(*e->right);
+                // Pipeline returns the return type of the right-hand function
+                if (right.kind == TypeRef::Kind::Func && !right.inner.empty())
+                    return right.inner.back();
+                return TypeRef::MakeUnknown();
+            }
+
+            // Interpolated string: f"Hello, {name}!"
+            if (dynamic_cast<const InterpolatedStringExpr*>(&expr)) {
+                const auto* e = static_cast<const InterpolatedStringExpr*>(&expr);
+                for (const auto& part : e->parts) {
+                    if (part.expr) CheckExpr(*part.expr);
+                }
+                // Returns a string (Slice<char8>)
+                return TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+            }
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
             return TypeRef::MakeUnknown();
         }
 

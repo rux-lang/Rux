@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.31)
+<<<<<<< HEAD
 project(Rux VERSION 0.2.3)
+=======
+project(Rux VERSION 0.3.0)
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
 
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

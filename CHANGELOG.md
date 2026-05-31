@@ -5,6 +5,130 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+<<<<<<< HEAD
+=======
+## [0.3.0] - 2026-05-31
+
+Major language feature release adding modern ergonomic syntax for lambdas, error handling, optional types, string interpolation, and functional-style pipelines.
+
+### Added
+
+#### Language
+
+- **Lambda expressions** — `|params| expr` and `|params| { body }` syntax for inline closures; zero-parameter lambdas with `|| { body }`; optional return type annotations (`|x: int| -> int32 { ... }`)
+- **String interpolation** — `f"Hello, {name}!"` syntax for embedding expressions inside string literals; supports arbitrary expressions (`f"Sum: {a + b}"`) and escape sequences (`\n`, `\t`, `\{`, `\}`)
+- **Optional chaining** — `?.` operator for safe member/method access on nullable values (`obj?.field`, `obj?.method()`)
+- **Null-coalescing** — `??` operator providing default values for nullable expressions (`value ?? fallback`); right-associative for chaining (`a ?? b ?? c`)
+- **Pipeline operator** — `|>` operator for clean function composition chains (`x |> f |> g` desugars to `g(f(x))`); left-associative
+- **`try`/`catch`** — structured error handling with `try { } catch e { }` blocks; catch variable captures the error value
+- **`defer` statement** — `defer { }` schedules a block to execute when the enclosing scope exits
+- **Optional type syntax** — `T?` as sugar for optional/nullable types (e.g., `int32?`, `string?`)
+
+#### Lexer
+
+- New tokens: `?.` (QuestionDot), `??` (QuestionQuestion), `|>` (PipeArrow)
+- New keywords: `try`, `catch`, `defer`
+- `f"..."` interpolated string literal scanning with `{expr}` placeholder support
+- `?.` and `??` are scanned from `?` followed by `.` or `?` respectively
+
+#### Parser
+
+- Pratt parsing extended with new precedence levels for `|>` (pipeline) and `??` (null-coalescing)
+- Lambda parsing: `|params| expr` and `|params| { body }` in primary expressions
+- Interpolated string parsing: `f"..."` with `{expr}` extraction
+- Optional chaining: `?.` in postfix position
+- `try`/`catch` and `defer` statement parsing
+
+#### Semantic Analysis
+
+- Type checking for lambda expressions with parameter type inference
+- Optional chaining returns `Option<T>` type
+- Null-coalescing type unification
+- Pipeline operator type resolution (returns function return type)
+- Interpolated string returns `Slice<char8>` type
+- `try`/`catch` and `defer` block analysis
+
+#### HIR
+
+- Pipeline desugaring: `expr |> func` becomes `func(expr)`
+- Lambda lowering to function reference types
+- Optional chaining and null-coalescing type propagation
+- Try/catch and defer block lowering
+
+#### Tests
+
+- `Tests/Features` — comprehensive test exercising all new v0.3.0 features together
+- `Tests/Lambda` — exercises single-expression, block-body, zero-param, multi-param, and higher-order lambdas
+- `Tests/Interpolation` — exercises variable interpolation, expression interpolation, and escape sequences
+- `Tests/Pipeline` — exercises single, double, and triple pipeline chains
+- `Tests/Optional` — exercises `T?` optional types, `?.` optional chaining, and `??` null-coalescing
+
+---
+
+## [0.3.0] - 2026-05-31
+
+Major language feature release adding modern ergonomic syntax for lambdas, error handling, optional types, string interpolation, and functional-style pipelines.
+
+### Added
+
+#### Lambda Expressions
+- Closure syntax: `|params| expr` for single-expression lambdas
+- Block body lambdas: `|params| { body }`
+- Zero-parameter lambdas: `|| { body }`
+- Explicit return type annotations: `|x: int32| -> string { ... }`
+- Higher-order function support (passing lambdas as arguments)
+
+#### String Interpolation
+- f-string syntax: `f"Hello, {name}!"`
+- Expression interpolation: `f"Sum: {a + b}"`
+- Escape sequences inside interpolated strings: `\n`, `\t`, `\{`, `\}`
+
+#### Optional Chaining
+- `?.` operator for safe field access: `obj?.field`
+- `?.` operator for safe method calls: `obj?.method()`
+- Works on nullable types, returns null if the receiver is null
+
+#### Null-Coalescing
+- `??` operator for default values: `value ?? fallback`
+- Right-associative chaining: `a ?? b ?? c`
+
+#### Pipeline Operator
+- `|>` operator for function composition: `x |> f |> g`
+- Desugars to nested calls: `g(f(x))`
+- Left-associative, supports arbitrary chain length
+
+#### Try/Catch
+- `try { } catch e { }` blocks for structured error handling
+- Catch variable receives the error value
+
+#### Defer
+- `defer { }` statement for scope-exit cleanup
+- Defers execute in LIFO order when scope exits
+
+#### Optional Types
+- `T?` syntax sugar for nullable/optional types (e.g., `int32?`, `string?`)
+
+### Changed
+
+- Extended AST with new node types: LambdaExpr, OptionalChainExpr, NullCoalescingExpr, PipelineExpr, InterpolatedStringExpr, TryCatchStmt, DeferStmt, OptionalTypeExpr
+- Extended parser with new expression precedence levels for `|>` and `??`
+- Extended semantic analysis with type checking for all new features
+- Extended HIR with lowering support for all new features
+- Lexer now scans `?.`, `??`, `|>` operators and `f"..."` string prefix
+
+### Tests
+
+- `Tests/Lambda` — lambda/closure expression tests
+- `Tests/Interpolation` — f-string interpolation tests
+- `Tests/Pipeline` — pipeline operator tests
+- `Tests/Optional` — optional chaining and null-coalescing tests
+- `Tests/TryCatch` — try/catch error handling tests
+- `Tests/Defer` — defer statement tests
+- `Tests/Features` — comprehensive test combining all new features
+
+---
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
 ## [0.2.2] - 2026-05-28
 
 Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes several compiler bugs.

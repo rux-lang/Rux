@@ -43,6 +43,12 @@ namespace Rux {
             {"null", TokenKind::NullKeyword},
             {"self", TokenKind::SelfKeyword},
             {"super", TokenKind::SuperKeyword},
+<<<<<<< HEAD
+=======
+            {"try", TokenKind::TryKeyword},
+            {"catch", TokenKind::CatchKeyword},
+            {"defer", TokenKind::DeferKeyword},
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
             {"true", TokenKind::BoolLiteral},
             {"false", TokenKind::BoolLiteral},
         };
@@ -244,6 +250,21 @@ namespace Rux {
             return "#time";
         case TokenKind::HashModule:
             return "#module";
+<<<<<<< HEAD
+=======
+        case TokenKind::TryKeyword:
+            return "TryKeyword";
+        case TokenKind::CatchKeyword:
+            return "CatchKeyword";
+        case TokenKind::DeferKeyword:
+            return "DeferKeyword";
+        case TokenKind::QuestionDot:
+            return "QuestionDot";
+        case TokenKind::QuestionQuestion:
+            return "QuestionQuestion";
+        case TokenKind::PipeArrow:
+            return "PipeArrow";
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
         case TokenKind::NewLine:
             return "NewLine";
         case TokenKind::EndOfFile:
@@ -255,7 +276,11 @@ namespace Rux {
     }
 
     bool Token::IsKeyword() const noexcept {
+<<<<<<< HEAD
         return kind >= TokenKind::IfKeyword && kind <= TokenKind::SuperKeyword;
+=======
+        return kind >= TokenKind::IfKeyword && kind <= TokenKind::DeferKeyword;
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
     }
 
     bool Token::IsLiteral() const noexcept {
@@ -263,7 +288,12 @@ namespace Rux {
     }
 
     bool Token::IsOperator() const noexcept {
+<<<<<<< HEAD
         return kind >= TokenKind::Plus && kind <= TokenKind::GreaterGreaterAssign;
+=======
+        return (kind >= TokenKind::Plus && kind <= TokenKind::GreaterGreaterAssign) ||
+               kind == TokenKind::QuestionDot || kind == TokenKind::QuestionQuestion || kind == TokenKind::PipeArrow;
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
     }
 
     std::string Token::Describe() const {

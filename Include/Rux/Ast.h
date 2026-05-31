@@ -70,6 +70,15 @@ namespace Rux {
         std::vector<TypeExprPtr> elements;
     };
 
+<<<<<<< HEAD
+=======
+    // T?  (sugar for Option<T>)
+    struct OptionalTypeExpr : TypeExpr {
+        ~OptionalTypeExpr() override;
+        TypeExprPtr inner;
+    };
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
     // self used as a type (interface method params)
     struct SelfTypeExpr : TypeExpr {};
 
@@ -263,6 +272,47 @@ namespace Rux {
         ExprPtr operand;
     };
 
+<<<<<<< HEAD
+=======
+    // |params| expr  or  |params| { body }
+    struct LambdaExpr : Expr {
+        ~LambdaExpr() override;
+        std::vector<Param> params;
+        std::optional<TypeExprPtr> returnType;
+        ExprPtr body; // single expression
+        std::unique_ptr<Block> blockBody; // block body (alternative to single expr)
+    };
+
+    // expr?.field  or  expr?.method(args)
+    struct OptionalChainExpr : Expr {
+        ExprPtr object;
+        std::string member;
+        std::vector<ExprPtr> callArgs; // non-empty if this is a method call
+    };
+
+    // expr ?? defaultExpr
+    struct NullCoalescingExpr : Expr {
+        ExprPtr left;
+        ExprPtr right;
+    };
+
+    // expr |> func  (pipeline operator)
+    struct PipelineExpr : Expr {
+        ExprPtr left;
+        ExprPtr right;
+    };
+
+    // f"Hello, {name}! Age: {age + 1}"
+    struct InterpolatedStringExpr : Expr {
+        struct Part {
+            enum class Kind { Text, Expression } kind;
+            std::string text; // for Text parts
+            ExprPtr expr;     // for Expression parts
+        };
+        std::vector<Part> parts;
+    };
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
     // (a, b, c)
     struct TupleExpr : Expr {
         std::vector<ExprPtr> elements;
@@ -379,6 +429,23 @@ namespace Rux {
         std::optional<ExprPtr> value;
     };
 
+<<<<<<< HEAD
+=======
+    // try { body } catch e { handler }
+    struct TryCatchStmt : Stmt {
+        ~TryCatchStmt() override;
+        std::unique_ptr<Block> tryBlock;
+        std::string catchVar; // variable name in catch
+        std::unique_ptr<Block> catchBlock;
+    };
+
+    // defer { body }
+    struct DeferStmt : Stmt {
+        ~DeferStmt() override;
+        std::unique_ptr<Block> body;
+    };
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
     // break [label];
     struct BreakStmt : Stmt {
         std::string label; // empty = break innermost loop
@@ -545,7 +612,17 @@ namespace Rux {
     };
 
     inline SliceTypeExpr::~SliceTypeExpr() = default;
+<<<<<<< HEAD
     inline BlockExpr::~BlockExpr() = default;
     inline DeclStmt::~DeclStmt() = default;
     inline GuardedPattern::~GuardedPattern() = default;
+=======
+    inline OptionalTypeExpr::~OptionalTypeExpr() = default;
+    inline BlockExpr::~BlockExpr() = default;
+    inline DeclStmt::~DeclStmt() = default;
+    inline GuardedPattern::~GuardedPattern() = default;
+    inline LambdaExpr::~LambdaExpr() = default;
+    inline TryCatchStmt::~TryCatchStmt() = default;
+    inline DeferStmt::~DeferStmt() = default;
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
 } // namespace Rux

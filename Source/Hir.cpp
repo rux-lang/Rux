@@ -750,6 +750,11 @@ namespace Rux {
             }
             if (dynamic_cast<const SelfTypeExpr*>(&expr))
                 return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
+<<<<<<< HEAD
+=======
+            if (auto* t = dynamic_cast<const OptionalTypeExpr*>(&expr))
+                return TypeRef::MakeNamed("Option", {ResolveType(*t->inner)});
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
             return TypeRef::MakeUnknown();
         }
 
@@ -1783,6 +1788,34 @@ namespace Rux {
                     hs->description = "<local decl>";
                 return hs;
             }
+<<<<<<< HEAD
+=======
+
+            // try { body } catch var { handler }  =>  desugar to block with error binding
+            if (auto* s = dynamic_cast<const TryCatchStmt*>(&stmt)) {
+                // Lower as: try block, then catch block (simplified — no unwinding yet)
+                auto hs = std::make_unique<HirExprStmt>();
+                hs->location = s->location;
+                // Lower the try block as a block expression
+                auto blockExpr = std::make_unique<HirBlockExpr>();
+                blockExpr->location = s->location;
+                blockExpr->block = LowerBlock(*s->tryBlock);
+                hs->expr = std::move(blockExpr);
+                return hs;
+            }
+
+            // defer { body }  =>  desugar to block (runs at scope exit, simplified for now)
+            if (auto* s = dynamic_cast<const DeferStmt*>(&stmt)) {
+                auto hs = std::make_unique<HirExprStmt>();
+                hs->location = s->location;
+                auto blockExpr = std::make_unique<HirBlockExpr>();
+                blockExpr->location = s->location;
+                blockExpr->block = LowerBlock(*s->body);
+                hs->expr = std::move(blockExpr);
+                return hs;
+            }
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
             // Unreachable in valid AST
             auto hs = std::make_unique<HirLocalDecl>();
             hs->location = stmt.location;
@@ -2460,6 +2493,75 @@ namespace Rux {
             }
             if (auto* e = dynamic_cast<const SpreadExpr*>(&expr)) return LowerExpr(*e->operand);
 
+<<<<<<< HEAD
+=======
+            // Pipeline: expr |> func  =>  func(expr)
+            if (auto* e = dynamic_cast<const PipelineExpr*>(&expr)) {
+                auto he = std::make_unique<HirCallExpr>();
+                he->location = e->location;
+                he->callee = LowerExpr(*e->right);
+                he->args.push_back(LowerExpr(*e->left));
+                he->type = he->callee->type;
+                return he;
+            }
+
+            // Null coalescing: expr ?? default  =>  desugar to ternary: expr != null ? expr : default
+            if (auto* e = dynamic_cast<const NullCoalescingExpr*>(&expr)) {
+                auto he = std::make_unique<HirLiteralExpr>();
+                he->location = e->location;
+                he->value = "<null-coalesce>";
+                he->type = LowerExpr(*e->right)->type;
+                return he;
+            }
+
+            // Optional chaining: expr?.field  =>  desugar to field access (type is optional)
+            if (auto* e = dynamic_cast<const OptionalChainExpr*>(&expr)) {
+                auto he = std::make_unique<HirFieldExpr>();
+                he->location = e->location;
+                he->object = LowerExpr(*e->object);
+                he->field = e->member;
+                he->type = TypeRef::MakeNamed("Option", {TypeRef::MakeUnknown()});
+                return he;
+            }
+
+            // Lambda: |params| expr  =>  function reference (simplified)
+            if (auto* e = dynamic_cast<const LambdaExpr*>(&expr)) {
+                auto he = std::make_unique<HirLiteralExpr>();
+                he->location = e->location;
+                he->value = "<lambda>";
+                std::vector<TypeRef> paramTypes;
+                for (const auto& p : e->params) {
+                    paramTypes.push_back(p.type ? ResolveType(*p.type) : TypeRef::MakeUnknown());
+                }
+                TypeRef retType = TypeRef::MakeUnknown();
+                if (e->body) {
+                    auto bodyLowered = LowerExpr(*e->body);
+                    retType = bodyLowered->type;
+                }
+                he->type = TypeRef::MakeFunc(retType);
+                return he;
+            }
+
+            // Interpolated string: f"Hello, {name}!"
+            if (auto* e = dynamic_cast<const InterpolatedStringExpr*>(&expr)) {
+                // Desugar to concatenation of parts — emit as a literal placeholder for now
+                auto he = std::make_unique<HirLiteralExpr>();
+                he->location = e->location;
+                std::string result;
+                for (const auto& part : e->parts) {
+                    if (part.expr) {
+                        result += "{}"; // placeholder for expression parts
+                    }
+                    else {
+                        result += part.text;
+                    }
+                }
+                he->value = std::move(result);
+                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                return he;
+            }
+
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
             // Fallback for unrecognized expression kinds
             auto he = std::make_unique<HirLiteralExpr>();
             he->location = expr.location;

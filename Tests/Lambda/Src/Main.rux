@@ -1,0 +1,41 @@
+// Lambda Expression Test
+// Tests closure/lambda syntax added in v0.3.0
+
+module Main;
+
+// Single expression lambda
+let double = |x: int32| x * 2;
+
+// Multi-parameter lambda
+let add = |a: int32, b: int32| a + b;
+
+// Lambda with block body
+let abs_val = |x: int32| {
+    if x < 0 {
+        return -x;
+    }
+    return x;
+};
+
+// Lambda with no parameters
+let constant = || 42;
+
+// Lambda with explicit return type
+let to_string = |n: int32| -> string { return ""; };
+
+// Higher-order function using lambda
+func Apply(f: func(int32) -> int32, value: int32) -> int32 {
+    return f(value);
+}
+
+func Main() -> int32 {
+    let d = double(21);        // 42
+    let s = add(3, 4);         // 7
+    let a = abs_val(-5);       // 5
+    let c = constant();        // 42
+
+    // Pass lambda as argument
+    let tripled = Apply(|x: int32| x * 3, 10);  // 30
+
+    return 0;
+}

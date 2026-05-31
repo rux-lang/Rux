@@ -82,7 +82,11 @@ namespace Rux {
         // Scanners for each token family
         Token ScanIdent(SourceLocation start);
         Token ScanNumber(SourceLocation start); // int and float
+<<<<<<< HEAD
         Token ScanString(SourceLocation start, std::size_t prefixLen = 0); // "…" / c8"…" / c16"…" / c32"…"
+=======
+        Token ScanString(SourceLocation start, std::size_t prefixLen = 0); // "…" / c8"…" / c16"…" / c32"…" / f"…"
+>>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
         Token ScanChar(SourceLocation start, std::size_t prefixLen = 0); // '…' / c8'…' / c16'…' / c32'…'
         Token ScanSymbol(SourceLocation start); // operators & punctuation
         Token ScanUnknown(SourceLocation start); // fallback for bad chars
