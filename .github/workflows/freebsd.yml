@@ -26,6 +26,12 @@ jobs:
           run: |
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
             cmake --build build
+            echo "---DIRECT IO TEST---"
+            mkdir -p diotest/Src
+            printf '[Package]\nName = "diotest"\nType = "bin"\n[Build]\nOutput = "Bin"\n' > diotest/Rux.toml
+            printf '@[Import(lib: "kernel32")]\nextern func GetStdHandle(handle: int) -> int;\n@[Import(lib: "kernel32")]\nextern func WriteFile(h: int, buf: *char8, cnt: uint64, written: *uint64, ov: int) -> bool;\nfunc Main() -> int {\nlet stdout = GetStdHandle(-11);\nlet text = c8"IO_TEST\\n";\nvar w: uint64 = 0;\nWriteFile(stdout, text.data, text.length, &w, 0);\nreturn 0;\n}\n' > diotest/Src/Main.rux
+            cd diotest && ../build/rux build && ../build/rux run; echo "DIRECT_IO_EXIT: $?"
+            cd ..
             echo "---IO THUNK TESTS---"
             ./Tests/run_io_test.sh "$PWD/build/rux" || echo "IO_TEST_EXIT: $?"
             echo "---POW TEST---"
