@@ -23,10 +23,7 @@ jobs:
             pkg install -y cmake llvm
 
           run: |
-            cmake -S . -B build \
-              -DCMAKE_CXX_COMPILER=clang++ \
-              -DCMAKE_CXX_FLAGS="-stdlib=libc++" \
-              -DCMAKE_BUILD_TYPE=Release
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
             cmake --build build
             ./Tests/run_io_test.sh
             ./Tests/run_pow_test.sh
