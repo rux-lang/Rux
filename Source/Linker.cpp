@@ -1476,7 +1476,11 @@ namespace Rux {
                              0,
                              0};
         writeRaw(ident, sizeof(ident));
+#  if defined(__OpenBSD__)
+        wU16(3); // ET_DYN (PIE — OpenBSD requires it)
+#  else
         wU16(2); // ET_EXEC
+#  endif
         wU16(0x3E); // EM_X86_64
         wU32(1);
         wU64(textVA);
