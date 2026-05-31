@@ -1263,6 +1263,16 @@ namespace Rux {
                                 'N',  'e',  't',  'B',  'S', 'D', 0, 0, // Name (NetBSD\0\0)
                                 0x00, 0xCA, 0x9A, 0x3B // Desc (1000000000)
                             });
+#  elif defined(__OpenBSD__)
+        // Prepend OpenBSD ELF Note (required for execve to accept the binary)
+        mergedRodata.insert(mergedRodata.end(),
+                            {
+                                0x08, 0x00, 0x00, 0x00, // Name size (7 + null, padded to 8)
+                                0x04, 0x00, 0x00, 0x00, // Desc size (4)
+                                0x01, 0x00, 0x00, 0x00, // Type (NT_OPENBSD_IDENT)
+                                'O',  'p',  'e',  'n',  'B', 'S', 'D', 0, // Name (OpenBSD\0)
+                                0x00, 0x00, 0x00, 0x00 // Desc (0 = any version)
+                            });
 #  endif
 
         for (size_t i = 0; i < objects.size(); ++i) {
@@ -1482,8 +1492,8 @@ namespace Rux {
 
         writePhdr(kPfR | kPfX, textOff, textVA, textBuf.size(), textBuf.size());
         writePhdr(kPfR, rdataOff, rdataVA, mergedRodata.size(), mergedRodata.size());
-#  if RUX_OS_NETBSD
-        // Write PT_NOTE program header pointing to the NetBSD note at the start of .rodata
+#  if RUX_OS_NETBSD || RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
+        // Write PT_NOTE program header pointing to the OS note at the start of .rodata
         wU32(4); // p_type: PT_NOTE
         wU32(kPfR); // p_flags: PF_R
         wU64(rdataOff); // p_offset
