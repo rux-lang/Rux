@@ -24,14 +24,14 @@ jobs:
             pkg install -y cmake llvm
 
           run: |
-            set +e
+            failed=0
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
             cmake --build build
-            echo "---SYS_WRITE C TEST---"
-            printf '#include <unistd.h>\nint main() { write(1, "c_test\\n", 7); return 0; }\n' > /tmp/test.c && cc -o /tmp/test /tmp/test.c && /tmp/test; echo "C_EXIT: $?"
             echo "---IO THUNK TESTS---"
-            ./Tests/run_io_test.sh "$PWD/build/rux"
+            ./Tests/run_io_test.sh "$PWD/build/rux" || failed=1
             echo "---POW TEST---"
-            ./Tests/run_pow_test.sh "$PWD/build/rux"
+            ./Tests/run_pow_test.sh "$PWD/build/rux" || failed=1
             echo "---UNICODE TEST---"
-            ./Tests/run_unicode_test.sh "$PWD/build/rux"
+            ./Tests/run_unicode_test.sh "$PWD/build/rux" || failed=1
+            if [ "$failed" -ne 0 ]; then echo "SOME TESTS FAILED"; exit 1; fi
+            echo "ALL TESTS PASSED"
