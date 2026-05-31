@@ -725,10 +725,17 @@ namespace Rux {
                 return true;
             };
 
+            const std::string currentOs = targetName.starts_with("windows") ? "Windows"
+                                           : targetName.starts_with("linux")   ? "Linux"
+                                           : targetName.starts_with("macos") || targetName.starts_with("darwin") ? "macOS"
+                                           : std::string{};
+
             std::vector<std::string> imports;
             auto collectImports = [&](this auto&& self, const Decl& decl) -> void {
                 if (const auto* ud = dynamic_cast<const UseDecl*>(&decl)) {
-                    if (!ud->path.empty()) imports.push_back(ud->path[0]);
+                    if (!ud->path.empty() &&
+                        (ud->targetOs.empty() || ud->targetOs == currentOs))
+                        imports.push_back(ud->path[0]);
                     return;
                 }
                 if (const auto* mod = dynamic_cast<const ModuleDecl*>(&decl)) {
@@ -2348,14 +2355,23 @@ namespace Rux {
             return true;
         };
 
+        const std::string currentOs = targetName.starts_with("windows") ? "Windows"
+                                      : targetName.starts_with("linux")   ? "Linux"
+                                      : targetName.starts_with("macos") || targetName.starts_with("darwin") ? "macOS"
+                                      : std::string{};
+
         std::vector<std::string> imports;
 
         struct ImportCollector {
             std::vector<std::string>& imports;
 
+            const std::string& currentOs;
+
             void collect(const Decl& decl) {
                 if (const auto* ud = dynamic_cast<const UseDecl*>(&decl)) {
-                    if (!ud->path.empty()) imports.push_back(ud->path[0]);
+                    if (!ud->path.empty() &&
+                        (ud->targetOs.empty() || ud->targetOs == currentOs))
+                        imports.push_back(ud->path[0]);
                     return;
                 }
                 if (const auto* mod = dynamic_cast<const ModuleDecl*>(&decl)) {
@@ -2364,7 +2380,7 @@ namespace Rux {
                     }
                 }
             }
-        } collector{imports};
+        } collector{imports, currentOs};
 
         for (const auto& pr : parseResults) {
             imports.clear();
