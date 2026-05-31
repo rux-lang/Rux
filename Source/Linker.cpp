@@ -970,6 +970,8 @@ namespace Rux {
                                0x08, 0x41, 0x5D, 0x41, 0x5C, 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"ReadFile",
              {
+                 0x57, // push rdi (non-volatile in Win64)
+                 0x56, // push rsi (non-volatile in Win64)
                  0x89, 0xCF, // mov edi, ecx  (fd)
                  0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
                  0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
@@ -980,17 +982,23 @@ namespace Rux {
 #  endif
                  0x0F, 0x05, // syscall
                  0x85, 0xC0, // test eax, eax
-                 0x78, 0x09, // js +9 (error)
+                 0x78, 0x0B, // js +11 (error)
                  0x41, 0x89, 0x01, // mov [r9], eax  (*bytesRead = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
+                 0x5E, // pop rsi
+                 0x5F, // pop rdi
                  0xC3, // ret
                  0x31, 0xC0, // xor eax, eax (FALSE)
+                 0x5E, // pop rsi
+                 0x5F, // pop rdi
                  0xC3 // ret
              }},
             // WriteFile(handle, buf, count, *bytesWritten, overlapped) -> write(fd, buf, count).
             // Same shape as ReadFile; only the syscall number differs.
             {"WriteFile",
              {
+                 0x57, // push rdi (non-volatile in Win64)
+                 0x56, // push rsi (non-volatile in Win64)
                  0x89, 0xCF, // mov edi, ecx  (fd)
                  0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
                  0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
@@ -1001,11 +1009,15 @@ namespace Rux {
 #  endif
                  0x0F, 0x05, // syscall
                  0x85, 0xC0, // test eax, eax
-                 0x78, 0x09, // js +9 (error)
+                 0x78, 0x0B, // js +11 (error)
                  0x41, 0x89, 0x01, // mov [r9], eax  (*bytesWritten = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
+                 0x5E, // pop rsi
+                 0x5F, // pop rdi
                  0xC3, // ret
                  0x31, 0xC0, // xor eax, eax (FALSE)
+                 0x5E, // pop rsi
+                 0x5F, // pop rdi
                  0xC3 // ret
              }},
 #  if RUX_OS_LINUX || RUX_IS_BSD
