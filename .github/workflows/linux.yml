@@ -50,3 +50,6 @@ jobs:
 
       - name: Run @[Target] import filtering test
         run: Tests/run_target_import_test.sh "$GITHUB_WORKSPACE/build/rux"
+        
+      - name: Run escape decoding test
+        run: Tests/run_unicode_test.sh "$GITHUB_WORKSPACE/build/rux"

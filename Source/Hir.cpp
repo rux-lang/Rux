@@ -1192,6 +1192,55 @@ namespace Rux {
             return b0;
         }
 
+        // Appends `cp` to `out` encoded as UTF-8.
+        static void AppendUtf8(std::string& out, std::uint32_t cp) {
+            if (cp <= 0x7F) {
+                out += static_cast<char>(cp);
+            }
+            else if (cp <= 0x7FF) {
+                out += static_cast<char>(0xC0 | (cp >> 6));
+                out += static_cast<char>(0x80 | (cp & 0x3F));
+            }
+            else if (cp <= 0xFFFF) {
+                out += static_cast<char>(0xE0 | (cp >> 12));
+                out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                out += static_cast<char>(0x80 | (cp & 0x3F));
+            }
+            else {
+                out += static_cast<char>(0xF0 | (cp >> 18));
+                out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+                out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                out += static_cast<char>(0x80 | (cp & 0x3F));
+            }
+        }
+
+        // Decodes a `\u{...}` escape body. `uPos` is the index of the 'u'. On
+        // success writes the code point to `cp` and returns the index of the
+        // closing '}'; on a malformed body it returns `uPos` unchanged. The
+        // lexer already validates these escapes, so the failure path is purely
+        // defensive.
+        static std::size_t ParseUnicodeEscape(const std::string& text, std::size_t uPos, std::uint32_t& cp) {
+            std::size_t j = uPos + 1;
+            if (j >= text.size() || text[j] != '{') return uPos;
+            ++j;
+            std::uint32_t value = 0;
+            std::size_t digits = 0;
+            for (; j < text.size() && text[j] != '}'; ++j, ++digits) {
+                const char h = text[j];
+                if (h >= '0' && h <= '9')
+                    value = (value << 4) | static_cast<std::uint32_t>(h - '0');
+                else if (h >= 'a' && h <= 'f')
+                    value = (value << 4) | static_cast<std::uint32_t>(h - 'a' + 10);
+                else if (h >= 'A' && h <= 'F')
+                    value = (value << 4) | static_cast<std::uint32_t>(h - 'A' + 10);
+                else
+                    return uPos;
+            }
+            if (digits == 0 || j >= text.size() || text[j] != '}') return uPos;
+            cp = value;
+            return j;
+        }
+
         static std::string DecodeCharLiteral(const std::string& text) {
             // text is raw source like 'A' or '\n'; strip quotes and decode.
             std::uint32_t cp = 0;
@@ -1221,6 +1270,12 @@ namespace Rux {
                     case '"':
                         cp = '"';
                         break;
+                    case 'u': {
+                        // \u{XXXX} — Unicode escape ('u' sits at i + 1)
+                        std::uint32_t u = 0;
+                        if (ParseUnicodeEscape(text, i + 1, u) != i + 1) cp = u;
+                        break;
+                    }
                     default:
                         cp = static_cast<unsigned char>(text[i + 1]);
                         break;
@@ -1267,6 +1322,15 @@ namespace Rux {
                 case '"':
                     out += '"';
                     break;
+                case 'u': {
+                    // \u{XXXX} — Unicode escape, encoded as UTF-8 ('u' sits at i)
+                    std::uint32_t u = 0;
+                    if (const std::size_t end = ParseUnicodeEscape(text, i, u); end != i) {
+                        AppendUtf8(out, u);
+                        i = end; // the loop's ++i then steps past the closing '}'
+                    }
+                    break;
+                }
                 default:
                     break;
                 }

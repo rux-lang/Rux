@@ -47,3 +47,7 @@ jobs:
       - name: Run @[Target] import filtering test
         shell: bash
         run: Tests/run_target_import_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
+        
+      - name: Run escape decoding test
+        shell: bash
+        run: Tests/run_unicode_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
