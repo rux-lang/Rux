@@ -21,11 +21,11 @@ jobs:
           copyback: false
           prepare: |
             uname -a
-            pkg install -y cmake llvm
+            pkg install -y cmake llvm libc++
 
           run: |
             failed=0
-            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS="-stdlib=libc++"
             cmake --build build
             echo "---IO THUNK TESTS---"
             ./Tests/run_io_test.sh "$PWD/build/rux" || failed=1
