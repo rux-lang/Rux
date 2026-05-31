@@ -1008,7 +1008,7 @@ namespace Rux {
                  0x31, 0xC0, // xor eax, eax (FALSE)
                  0xC3 // ret
              }},
-#  if RUX_OS_LINUX
+#  if RUX_OS_LINUX || RUX_IS_BSD
             // Rux extern calls currently use the Win64 register layout. These
             // thunks move that layout into Linux x86_64 syscall registers:
             // rax=number, rdi/rsi/rdx/r10/r8/r9=args.
@@ -1099,44 +1099,80 @@ namespace Rux {
                  0x0F, 0x05, // syscall
                  0xC3 // ret
              }},
-            {"__rux_linux_nanosleep",
-             {
-                 0x48,
-                 0xC7,
-                 0xC0,
-                 0x23,
-                 0x00,
-                 0x00,
-                 0x00, // mov rax, 35
-                 0x48,
-                 0x89,
-                 0xCF, // mov rdi, rcx
-                 0x48,
-                 0x89,
-                 0xD6, // mov rsi, rdx
-                 0x0F,
-                 0x05, // syscall
-                 0xC3 // ret
-             }},
-            {"__rux_linux_clock_gettime",
-             {
-                 0x48,
-                 0xC7,
-                 0xC0,
-                 0xE4,
-                 0x00,
-                 0x00,
-                 0x00, // mov rax, 228
-                 0x48,
-                 0x63,
-                 0xF9, // movsxd rdi, ecx
-                 0x48,
-                 0x89,
-                 0xD6, // mov rsi, rdx
-                 0x0F,
-                 0x05, // syscall
-                 0xC3 // ret
-             }},
+             {"__rux_linux_nanosleep",
+              {
+                  0x48, 0xC7, 0xC0, 0x23, 0x00, 0x00, 0x00, // mov rax, 35
+                  0x48, 0x89, 0xCF, // mov rdi, rcx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_linux_clock_gettime",
+              {
+                  0x48, 0xC7, 0xC0, 0xE4, 0x00, 0x00, 0x00, // mov rax, 228
+                  0x48, 0x63, 0xF9, // movsxd rdi, ecx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_nanosleep",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0x48, 0xC7, 0xC0, 0xF0, 0x00, 0x00, 0x00, // mov rax, 240
+#  elif defined(__OpenBSD__)
+                  0x48, 0xC7, 0xC0, 0x5B, 0x00, 0x00, 0x00, // mov rax, 91
+#  endif
+                  0x48, 0x89, 0xCF, // mov rdi, rcx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_clock_gettime",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0x48, 0xC7, 0xC0, 0xE8, 0x00, 0x00, 0x00, // mov rax, 232
+#  elif defined(__OpenBSD__)
+                  0x48, 0xC7, 0xC0, 0x57, 0x00, 0x00, 0x00, // mov rax, 87
+#  endif
+                  0x48, 0x63, 0xF9, // movsxd rdi, ecx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_mmap",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0x48, 0xC7, 0xC0, 0xDD, 0x01, 0x00, 0x00, // mov rax, 477
+#  elif defined(__OpenBSD__)
+                  0x48, 0xC7, 0xC0, 0xC5, 0x00, 0x00, 0x00, // mov rax, 197
+#  endif
+                  0x48, 0x89, 0xCF, // mov rdi, rcx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x4C, 0x89, 0xC2, // mov rdx, r8
+                  0x4D, 0x89, 0xCA, // mov r10, r9
+                  0x4C, 0x8B, 0x44, 0x24, 0x28, // mov r8, [rsp + 40]
+                  0x4C, 0x8B, 0x4C, 0x24, 0x30, // mov r9, [rsp + 48]
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_const_MAP_ANONYMOUS",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0xB8, 0x00, 0x10, 0x00, 0x00, // mov eax, 4096
+#  elif defined(__OpenBSD__)
+                  0xB8, 0x20, 0x00, 0x00, 0x00, // mov eax, 32
+#  endif
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_const_CLOCK_MONOTONIC",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0xB8, 0x04, 0x00, 0x00, 0x00, // mov eax, 4
+#  elif defined(__OpenBSD__)
+                  0xB8, 0x03, 0x00, 0x00, 0x00, // mov eax, 3
+#  endif
+                  0xC3 // ret
+              }},
 #  endif
         };
 
