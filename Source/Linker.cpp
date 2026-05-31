@@ -1273,6 +1273,16 @@ namespace Rux {
                                 'O',  'p',  'e',  'n',  'B', 'S', 'D', 0, // Name (OpenBSD\0)
                                 0x00, 0x00, 0x00, 0x00 // Desc (0 = any version)
                             });
+#  elif defined(__DragonFly__)
+        // Prepend DragonFly ELF Note (required for execve to accept the binary)
+        mergedRodata.insert(mergedRodata.end(),
+                            {
+                                0x0A, 0x00, 0x00, 0x00, // Name size (9 + null, padded to 12)
+                                0x04, 0x00, 0x00, 0x00, // Desc size (4)
+                                0x01, 0x00, 0x00, 0x00, // Type
+                                'D',  'r',  'a',  'g',  'o', 'n', 'F', 'l', 'y', 0, 0, 0, // Name (DragonFly\0\0\0)
+                                0x00, 0x00, 0x00, 0x00 // Desc
+                            });
 #  endif
 
         for (size_t i = 0; i < objects.size(); ++i) {
@@ -1459,9 +1469,9 @@ namespace Rux {
                              1,
                              1,
 #  if RUX_OS_FREEBSD || RUX_OS_DRAGONFLY
-                             9, // EI_OSABI: FreeBSD
+                              9, // EI_OSABI: FreeBSD
 #  elif RUX_OS_OPENBSD
-                             12, // EI_OSABI: OpenBSD
+                              12, // EI_OSABI: OpenBSD
 #  elif RUX_OS_NETBSD
                              2, // EI_OSABI: NetBSD
 #  else
@@ -1476,7 +1486,7 @@ namespace Rux {
                              0,
                              0};
         writeRaw(ident, sizeof(ident));
-#  if defined(__OpenBSD__)
+#  if RUX_OS_OPENBSD
         wU16(3); // ET_DYN (PIE — OpenBSD requires it)
 #  else
         wU16(2); // ET_EXEC
