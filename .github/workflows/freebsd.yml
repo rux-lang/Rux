@@ -30,6 +30,6 @@ jobs:
             cmake --build build
 
           run: |
-            ./Tests/run_io_test.sh "$PWD/build/rux"
-            ./Tests/run_pow_test.sh "$PWD/build/rux"
-            ./Tests/run_unicode_test.sh "$PWD/build/rux"
+            ./Tests/run_io_test.sh
+            ./Tests/run_pow_test.sh
+            ./Tests/run_unicode_test.sh
