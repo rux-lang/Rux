@@ -1,0 +1,35 @@
+name: FreeBSD
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    name: FreeBSD x86-64
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build and test in FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          copyback: false
+          prepare: |
+            pkg install -y cmake llvm
+
+          build: |
+            cmake -S . -B build \
+              -DCMAKE_CXX_COMPILER=clang++ \
+              -DCMAKE_CXX_FLAGS="-stdlib=libc++" \
+              -DCMAKE_BUILD_TYPE=Release
+            cmake --build build
+
+          run: |
+            ./Tests/run_io_test.sh "$PWD/build/rux"
+            ./Tests/run_pow_test.sh "$PWD/build/rux"
+            ./Tests/run_unicode_test.sh "$PWD/build/rux"
