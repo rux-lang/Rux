@@ -52,3 +52,6 @@ jobs:
 
       - name: Run constant expression coercion test
         run: Tests/run_const_expr_test.sh "$GITHUB_WORKSPACE/build/rux"
+
+      - name: Run cast precedence test
+        run: Tests/run_cast_precedence_test.sh "$GITHUB_WORKSPACE/build/rux"
