@@ -26,16 +26,13 @@ jobs:
           run: |
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
             cmake --build build
-            echo 'import Std::Io::Print; func Main() -> int { Print("hello\n"); return 0; }' > /tmp/test.rux
-            echo '[Package]' > /tmp/Rux.toml
-            echo 'Name = "test"' >> /tmp/Rux.toml
-            echo 'Type = "bin"' >> /tmp/Rux.toml
-            echo '[Dependencies]' >> /tmp/Rux.toml
-            echo 'Std = "*"' >> /tmp/Rux.toml
-            mkdir -p /tmp/Src
-            cp /tmp/test.rux /tmp/Src/Main.rux
-            cd /tmp && ./build/rux build && ./build/rux run
+            echo "---BASIC TEST---"
+            mkdir -p test_simple/Src
+            printf 'import Std::Io::Print;\nfunc Main() -> int { Print("hello\\n"); return 0; }\n' > test_simple/Src/Main.rux
+            printf '[Package]\nName = "test"\nType = "bin"\n[Build]\nOutput = "Bin"\n[Dependencies]\nStd = "*"\n' > test_simple/Rux.toml
+            cd test_simple && ../build/rux build && ../build/rux run
             echo "---BASIC TEST DONE---"
-            ./Tests/run_io_test.sh
-            ./Tests/run_pow_test.sh
-            ./Tests/run_unicode_test.sh
+            cd ..
+            ./Tests/run_io_test.sh "$PWD/build/rux"
+            ./Tests/run_pow_test.sh "$PWD/build/rux"
+            ./Tests/run_unicode_test.sh "$PWD/build/rux"
