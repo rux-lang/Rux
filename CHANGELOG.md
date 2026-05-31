@@ -5,7 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-<<<<<<< HEAD
 =======
 ## [0.3.0] - 2026-05-31
 
@@ -64,71 +63,6 @@ Major language feature release adding modern ergonomic syntax for lambdas, error
 - `Tests/Optional` — exercises `T?` optional types, `?.` optional chaining, and `??` null-coalescing
 
 ---
-
-## [0.3.0] - 2026-05-31
-
-Major language feature release adding modern ergonomic syntax for lambdas, error handling, optional types, string interpolation, and functional-style pipelines.
-
-### Added
-
-#### Lambda Expressions
-- Closure syntax: `|params| expr` for single-expression lambdas
-- Block body lambdas: `|params| { body }`
-- Zero-parameter lambdas: `|| { body }`
-- Explicit return type annotations: `|x: int32| -> string { ... }`
-- Higher-order function support (passing lambdas as arguments)
-
-#### String Interpolation
-- f-string syntax: `f"Hello, {name}!"`
-- Expression interpolation: `f"Sum: {a + b}"`
-- Escape sequences inside interpolated strings: `\n`, `\t`, `\{`, `\}`
-
-#### Optional Chaining
-- `?.` operator for safe field access: `obj?.field`
-- `?.` operator for safe method calls: `obj?.method()`
-- Works on nullable types, returns null if the receiver is null
-
-#### Null-Coalescing
-- `??` operator for default values: `value ?? fallback`
-- Right-associative chaining: `a ?? b ?? c`
-
-#### Pipeline Operator
-- `|>` operator for function composition: `x |> f |> g`
-- Desugars to nested calls: `g(f(x))`
-- Left-associative, supports arbitrary chain length
-
-#### Try/Catch
-- `try { } catch e { }` blocks for structured error handling
-- Catch variable receives the error value
-
-#### Defer
-- `defer { }` statement for scope-exit cleanup
-- Defers execute in LIFO order when scope exits
-
-#### Optional Types
-- `T?` syntax sugar for nullable/optional types (e.g., `int32?`, `string?`)
-
-### Changed
-
-- Extended AST with new node types: LambdaExpr, OptionalChainExpr, NullCoalescingExpr, PipelineExpr, InterpolatedStringExpr, TryCatchStmt, DeferStmt, OptionalTypeExpr
-- Extended parser with new expression precedence levels for `|>` and `??`
-- Extended semantic analysis with type checking for all new features
-- Extended HIR with lowering support for all new features
-- Lexer now scans `?.`, `??`, `|>` operators and `f"..."` string prefix
-
-### Tests
-
-- `Tests/Lambda` — lambda/closure expression tests
-- `Tests/Interpolation` — f-string interpolation tests
-- `Tests/Pipeline` — pipeline operator tests
-- `Tests/Optional` — optional chaining and null-coalescing tests
-- `Tests/TryCatch` — try/catch error handling tests
-- `Tests/Defer` — defer statement tests
-- `Tests/Features` — comprehensive test combining all new features
-
----
-
->>>>>>> 3f33986 (feat: Rux v0.3.0 ΓÇö lambdas, string interpolation, optional chaining, pipeline, try/catch, defer, optional types)
 ## [0.2.2] - 2026-05-28
 
 Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes several compiler bugs.
