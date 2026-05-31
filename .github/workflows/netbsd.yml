@@ -25,7 +25,8 @@ jobs:
 
           run: |
             failed=0
-            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++14
+            export CXX=/usr/pkg/bin/g++14
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
             cmake --build build
             echo "---IO THUNK TESTS---"
             ./Tests/run_io_test.sh "$PWD/build/rux" || failed=1
