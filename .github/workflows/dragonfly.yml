@@ -21,7 +21,7 @@ jobs:
           copyback: false
           prepare: |
             uname -a
-            pkg install -y cmake llvm libc++
+            pkg install -y cmake llvm libcxx
 
           run: |
             failed=0
