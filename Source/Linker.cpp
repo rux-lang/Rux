@@ -982,7 +982,9 @@ namespace Rux {
 #  endif
                  0x0F, 0x05, // syscall
                  0x85, 0xC0, // test eax, eax
-                 0x78, 0x0B, // js +11 (error)
+                 0x78, 0x10, // js +16 (error)
+                 0x4D, 0x85, 0xC9, // test r9, r9
+                 0x74, 0x03, // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax  (*bytesRead = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
                  0x5E, // pop rsi
@@ -1009,7 +1011,9 @@ namespace Rux {
 #  endif
                  0x0F, 0x05, // syscall
                  0x85, 0xC0, // test eax, eax
-                 0x78, 0x0B, // js +11 (error)
+                 0x78, 0x10, // js +16 (error)
+                 0x4D, 0x85, 0xC9, // test r9, r9
+                 0x74, 0x03, // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax  (*bytesWritten = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
                  0x5E, // pop rsi
