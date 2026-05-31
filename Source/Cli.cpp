@@ -757,11 +757,6 @@ namespace Rux {
                 return true;
             };
 
-            const std::string currentOs = targetName.starts_with("windows") ? "Windows"
-                                           : targetName.starts_with("linux")   ? "Linux"
-                                           : targetName.starts_with("macos") || targetName.starts_with("darwin") ? "macOS"
-                                           : std::string{};
-
             std::vector<std::string> imports;
             auto collectImports = [&](this auto&& self, const Decl& decl) -> void {
                 if (const auto* ud = dynamic_cast<const UseDecl*>(&decl)) {
@@ -2404,18 +2399,11 @@ namespace Rux {
             return true;
         };
 
-        const std::string currentOs = targetName.starts_with("windows") ? "Windows"
-                                      : targetName.starts_with("linux")   ? "Linux"
-                                      : targetName.starts_with("macos") || targetName.starts_with("darwin") ? "macOS"
-                                      : std::string{};
-
         std::vector<std::string> imports;
 
         struct ImportCollector {
             std::vector<std::string>& imports;
             std::string_view target;
-
-            const std::string& currentOs;
 
             void collect(const Decl& decl) {
                 if (const auto* ud = dynamic_cast<const UseDecl*>(&decl)) {
