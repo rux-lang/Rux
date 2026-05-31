@@ -1215,6 +1215,7 @@ namespace Rux {
         if (!errors.empty()) return false;
 
         Buf textPre;
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
         const size_t kCallMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
         textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax
@@ -1689,6 +1690,7 @@ namespace Rux {
 
         // 2. Entry preamble: call Main; exit(eax).
         Buf textPre;
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
         const size_t kCallMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
         textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax (exit code)
