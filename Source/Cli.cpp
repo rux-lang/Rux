@@ -41,8 +41,6 @@
 // psapi.h depends on definitions from windows.h.
 // If reordered, MSVC will unleash an ancient curse upon this file.
 #ifdef _WIN32
-// windows.h must come first: psapi.h and winhttp.h rely on its types
-// (DWORD, SIZE_T, ...) and won't compile if included before it.
 #  include <windows.h>
 #  include <psapi.h>
 #  include <winhttp.h>
@@ -155,6 +153,14 @@ namespace Rux {
             std::string os = "macOS";
 #elif defined(__linux__)
             std::string os = "Linux";
+#elif defined(__FreeBSD__)
+            std::string os = "FreeBSD";
+#elif defined(__OpenBSD__)
+            std::string os = "OpenBSD";
+#elif defined(__NetBSD__)
+            std::string os = "NetBSD";
+#elif defined(__illumos__)
+            std::string os = "Illumos";
 #else
             std::string os = "Unknown";
 #endif
@@ -176,26 +182,37 @@ namespace Rux {
 #if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__) || defined(__amd64__))
             return "windows-x64";
 #elif defined(__linux__) && (defined(__x86_64__) || defined(__amd64__))
-#elif defined(__APPLE__)
-            // Rux currently emits x86-64 Mach-O binaries on macOS, even when
-            // the compiler itself runs on arm64.
-            return "macos-x64";
-#elif (defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) ||                    \
-       defined(__DragonFly__)) &&                                                                                      \
-    (defined(__x86_64__) || defined(__amd64__))
             return "linux-x64";
+#elif defined(__APPLE__) && defined(__aarch64__)
+            return "macos-arm64";
+#elif defined(__APPLE__) && (defined(__x86_64__) || defined(__amd64__))
+            return "macos-x64";
+#elif defined(__FreeBSD__) && (defined(__x86_64__) || defined(__amd64__))
+            return "freebsd-x64";
+#elif defined(__OpenBSD__) && (defined(__x86_64__) || defined(__amd64__))
+            return "openbsd-x64";
+#elif defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+            return "netbsd-x64";
+#elif defined(__illumos__) && (defined(__x86_64__) || defined(__amd64__))
+            return "illumos-x64";
 #else
             return "unknown";
 #endif
         }
 
         [[nodiscard]] bool IsSupportedTargetTriple(const std::string_view target) {
-            return target == "linux-x64" || target == "windows-x64" || target == "macos-x64";
+            return target == "linux-x64" || target == "windows-x64" || target == "macos-x64" ||
+                target == "macos-arm64" || target == "freebsd-x64" || target == "openbsd-x64" ||
+                target == "netbsd-x64" || target == "illumos-x64";
         }
 
         [[nodiscard]] std::string_view TargetOsName(const std::string_view target) {
             if (target.starts_with("linux-")) return "Linux";
             if (target.starts_with("windows-")) return "Windows";
+            if (target.starts_with("macos-")) return "macOS";
+            if (target.starts_with("freebsd-") || target.starts_with("openbsd-") || target.starts_with("netbsd-"))
+                return "BSD";
+            if (target.starts_with("illumos-")) return "Illumos";
             return "";
         }
 
@@ -595,7 +612,9 @@ namespace Rux {
         std::string targetName = target.empty() ? HostTargetTriple() : std::string(target);
         if (!IsSupportedTargetTriple(targetName)) {
             std::print(stderr,
-                       "error: unsupported target '{}'; supported targets are linux-x64, macos-x64, and windows-x64\n",
+                       "error: unsupported target '{}'; supported targets are "
+                       "linux-x64, windows-x64, macos-x64, macos-arm64, "
+                       "freebsd-x64, openbsd-x64, netbsd-x64, illumos-x64\n",
                        targetName);
             return 1;
         }
@@ -1300,11 +1319,11 @@ namespace Rux {
 #ifdef _WIN32
         std::wstring cmd{};
         if (!devBranch) {
-            cmd =
-                L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
-        } else {
-            cmd =
-                L"git clone --branch dev " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
+            cmd = L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
+        }
+        else {
+            cmd = L"git clone --branch dev " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() +
+                L"\"";
         }
         STARTUPINFOW si{};
         si.cb = sizeof(si);
@@ -1317,11 +1336,9 @@ namespace Rux {
         CloseHandle(pi.hThread);
         return exitCode == 0;
 #else
-    const std::string cmd =
-        devBranch
-            ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
-            : "git clone " + repoUrl + " \"" + dest.string() + "\"";
-    return std::system(cmd.c_str()) == 0;            
+        const std::string cmd = devBranch ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
+                                          : "git clone " + repoUrl + " \"" + dest.string() + "\"";
+        return std::system(cmd.c_str()) == 0;
 #endif
     }
 
