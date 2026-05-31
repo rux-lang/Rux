@@ -27,6 +27,8 @@ jobs:
             set +e
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
             cmake --build build
+            echo "---SYS_WRITE C TEST---"
+            printf '#include <unistd.h>\nint main() { write(1, "c_test\\n", 7); return 0; }\n' > /tmp/test.c && cc -o /tmp/test /tmp/test.c && /tmp/test; echo "C_EXIT: $?"
             echo "---IO THUNK TESTS---"
             ./Tests/run_io_test.sh "$PWD/build/rux"
             echo "---POW TEST---"
