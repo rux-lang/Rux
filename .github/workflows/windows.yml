@@ -43,3 +43,7 @@ jobs:
       - name: Run integer ** test
         shell: bash
         run: Tests/run_pow_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
+
+      - name: Run @[Target] import filtering test
+        shell: bash
+        run: Tests/run_target_import_test.sh "$GITHUB_WORKSPACE/build/rux.exe"

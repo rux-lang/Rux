@@ -1,0 +1,13 @@
+[Package]
+Name    = "PlatformLib"
+Version = "0.1.0"
+Type    = "Source"
+
+[Dependencies.Target.Linux]
+LinuxHelper = { Path = "../LinuxHelper" }
+
+[Dependencies.Target.macOS]
+MacosHelper = { Path = "../MacosHelper" }
+
+[Dependencies.Target.Windows]
+WinHelper = { Path = "../WinHelper" }

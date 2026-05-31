@@ -1,0 +1,13 @@
+// Regression test for issue #64.
+// Verifies that the compiler correctly ignores @[Target("Linux")] imports when
+// building on Windows and vice-versa. Before the fix, collectImports() would
+// blindly collect every import regardless of @[Target], causing:
+//   error: package 'LinuxHelper' is not listed in [Dependencies]
+// even though LinuxHelper is declared only under [Dependencies.Target.Linux].
+// The fact that this builds successfully (exit 0) is the assertion.
+
+import PlatformLib::PlatformLib;
+
+func Main() -> int {
+    return 0;
+}
