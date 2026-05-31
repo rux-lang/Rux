@@ -1216,8 +1216,10 @@ namespace Rux {
 
         Buf textPre;
         textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
         const size_t kCallMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x08}); // add rsp, 8 (undo sub)
         textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax
 #  if RUX_IS_BSD
         textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD exit)
@@ -1691,8 +1693,10 @@ namespace Rux {
         // 2. Entry preamble: call Main; exit(eax).
         Buf textPre;
         textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
         const size_t kCallMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x08}); // add rsp, 8 (undo sub)
         textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax (exit code)
         textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x02}); // mov eax, 0x2000001 (SYS_exit)
         textPre.insert(textPre.end(), {0x0F, 0x05}); // syscall
