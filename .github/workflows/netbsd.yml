@@ -21,11 +21,11 @@ jobs:
           copyback: false
           prepare: |
             uname -a
-            pkg_add cmake llvm
+            pkg_add cmake gcc14
 
           run: |
             failed=0
-            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS="-stdlib=libc++"
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++14
             cmake --build build
             echo "---IO THUNK TESTS---"
             ./Tests/run_io_test.sh "$PWD/build/rux" || failed=1
