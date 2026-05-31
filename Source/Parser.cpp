@@ -256,7 +256,16 @@ namespace Rux {
                 }
                 else if (attrName == "Target" && Check(TokenKind::StringLiteral)) {
                     // @[Target("Windows")] — positional OS string
-                    attrs.targetOs = DecodeStringLiteralText(Advance().text);
+                    const Token tok = Advance();
+                    std::string os = DecodeStringLiteralText(tok.text);
+                    if (os == "MacOS" || os == "Macos" || os == "macos") os = "macOS";
+                    if (os != "BSD" && os != "Illumos" && os != "Linux" && os != "macOS" && os != "Windows")
+                        EmitError(
+                            tok.location,
+                            std::format(
+                                "unsupported target '{}'; valid targets are: BSD, Illumos, Linux, macOS, Windows", os));
+                    else
+                        attrs.targetOs = std::move(os);
                 }
                 else {
                     // Parse key: value pairs until ')'
