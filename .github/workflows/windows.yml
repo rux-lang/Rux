@@ -58,3 +58,7 @@ jobs:
       - name: Run DLL build test
         shell: bash
         run: Tests/run_dll_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
+
+      - name: Run constant expression coercion test
+        shell: bash
+        run: Tests/run_const_expr_test.sh "$GITHUB_WORKSPACE/build/rux.exe"

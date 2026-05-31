@@ -962,9 +962,96 @@ namespace Rux {
             return false;
         }
 
+        // Folds a compile-time-constant integer expression (unsuffixed integer
+        // literals combined with the integer operators) to its int64 value, using
+        // the same two's-complement wrapping the generated code produces at run
+        // time, so the folded value always matches what the program computes.
+        // Returns nullopt when the expression is not such a constant, so callers
+        // fall back to ordinary type checking. Division/modulo by zero and the
+        // INT64_MIN / -1 overflow are left unfolded and keep their runtime
+        // behavior; '**' is not folded (it lowers to a runtime helper call).
+        static std::optional<std::int64_t> EvalConstInt(const Expr& expr) {
+            using I = std::int64_t;
+            using U = std::uint64_t;
+
+            if (const auto* lit = dynamic_cast<const LiteralExpr*>(&expr)) {
+                if (lit->token.kind != TokenKind::IntLiteral || !NumericLiteralSuffix(lit->token.text).empty())
+                    return std::nullopt;
+                const auto v = ParseUnsuffixedIntegerLiteral(lit->token);
+                if (!v || *v > static_cast<U>(std::numeric_limits<I>::max())) return std::nullopt;
+                return static_cast<I>(*v);
+            }
+
+            if (const auto* un = dynamic_cast<const UnaryExpr*>(&expr)) {
+                const auto v = EvalConstInt(*un->operand);
+                if (!v) return std::nullopt;
+                switch (un->op) {
+                case TokenKind::Plus:
+                    return *v;
+                case TokenKind::Minus:
+                    return static_cast<I>(0u - static_cast<U>(*v));
+                case TokenKind::Tilde:
+                    return ~*v;
+                default:
+                    return std::nullopt;
+                }
+            }
+
+            if (const auto* bin = dynamic_cast<const BinaryExpr*>(&expr)) {
+                const auto l = EvalConstInt(*bin->left);
+                const auto r = EvalConstInt(*bin->right);
+                if (!l || !r) return std::nullopt;
+                const U lu = static_cast<U>(*l);
+                const U ru = static_cast<U>(*r);
+                switch (bin->op) {
+                case TokenKind::Plus:
+                    return static_cast<I>(lu + ru);
+                case TokenKind::Minus:
+                    return static_cast<I>(lu - ru);
+                case TokenKind::Star:
+                    return static_cast<I>(lu * ru);
+                case TokenKind::Slash:
+                    if (*r == 0 || (*l == std::numeric_limits<I>::min() && *r == -1)) return std::nullopt;
+                    return *l / *r;
+                case TokenKind::Percent:
+                    if (*r == 0 || (*l == std::numeric_limits<I>::min() && *r == -1)) return std::nullopt;
+                    return *l % *r;
+                case TokenKind::Amp:
+                    return *l & *r;
+                case TokenKind::Pipe:
+                    return *l | *r;
+                case TokenKind::Caret:
+                    return *l ^ *r;
+                case TokenKind::LessLess:
+                    if (*r < 0 || *r >= 64) return std::nullopt;
+                    return static_cast<I>(lu << static_cast<U>(*r));
+                case TokenKind::GreaterGreater:
+                    if (*r < 0 || *r >= 64) return std::nullopt;
+                    return *l >> *r;
+                default:
+                    return std::nullopt;
+                }
+            }
+
+            return std::nullopt;
+        }
+
+        static bool ConstantFitsTarget(std::int64_t value, const TypeRef& target) {
+            if (const auto max = UnsignedIntegerMax(target))
+                return value >= 0 && static_cast<std::uint64_t>(value) <= *max;
+            if (const auto range = SignedIntegerRange(target)) return value >= range->first && value <= range->second;
+            return false;
+        }
+
         bool CanAssignExprTo(const Expr& expr, const TypeRef& exprType, const TypeRef& targetType) const {
             if (targetType.IsInteger() && IsUnsuffixedIntegerLiteral(expr))
                 return UnsuffixedIntegerLiteralFits(expr, targetType);
+
+            // A constant integer expression (e.g. 10 + 2 * (5 - 3)) coerces to any
+            // integer type it fits in, the same way a bare literal does.
+            if (targetType.IsInteger())
+                if (const auto folded = EvalConstInt(expr); folded && ConstantFitsTarget(*folded, targetType))
+                    return true;
 
             return exprType.IsAssignableTo(targetType) ||
                 (IsNullLiteral(expr) && targetType.kind == TypeRef::Kind::Pointer) ||

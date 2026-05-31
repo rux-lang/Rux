@@ -56,3 +56,6 @@ jobs:
 
       - name: Run numeric literal suffix test
         run: Tests/run_numeric_suffix_test.sh "$GITHUB_WORKSPACE/build/rux"
+
+      - name: Run constant expression coercion test
+        run: Tests/run_const_expr_test.sh "$GITHUB_WORKSPACE/build/rux"
