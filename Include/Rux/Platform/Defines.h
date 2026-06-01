@@ -54,7 +54,7 @@
 #  define RUX_OS_ILLUMOS 0
 #endif
 
-#if defined(__sun) && defined(__SVR4)
+#if defined(__sun) && defined(__SVR4) && !defined(__illumos__)
 #  define RUX_OS_SOLARIS 1
 #else
 #  define RUX_OS_SOLARIS 0
@@ -63,6 +63,7 @@
 #define RUX_IS_BSD (RUX_OS_FREEBSD || RUX_OS_OPENBSD || RUX_OS_NETBSD || RUX_OS_DRAGONFLY)
 #define RUX_IS_UNIX (RUX_OS_LINUX || RUX_OS_MACOS || RUX_IS_BSD || RUX_OS_SOLARIS || RUX_OS_ILLUMOS)
 #define RUX_IS_SUNOS (RUX_OS_SOLARIS || RUX_OS_ILLUMOS)
+#define RUX_IS_ELF_OS (RUX_OS_LINUX || RUX_IS_BSD || RUX_OS_ILLUMOS || RUX_OS_SOLARIS)
 
 #if defined(__x86_64__) || defined(_M_X64)
 #  define RUX_ARCH_X64 1
