@@ -1305,9 +1305,10 @@ namespace Rux {
         textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
 
         const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0)
-#  if RUX_OS_NETBSD
-                                                     + 1
+#  if RUX_OS_NETBSD || RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
+                                                     + 1       // PT_NOTE
 #  endif
+
         );
         const uint64_t phoff = 64;
         const uint64_t textOff = alignUp64(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
@@ -1488,14 +1489,10 @@ namespace Rux {
                              0,
                              0};
         writeRaw(ident, sizeof(ident));
-#  if RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
-        wU16(3); // ET_DYN (PIE — OpenBSD and DragonFly require it)
-#  else
         wU16(2); // ET_EXEC
-#  endif
         wU16(0x3E); // EM_X86_64
         wU32(1);
-        wU64(textVA);
+        wU64(textVA); // e_entry
         wU64(phoff);
         wU64(0);
         wU32(0);
