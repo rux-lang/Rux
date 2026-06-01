@@ -178,6 +178,7 @@ namespace Rux {
                                                    "freebsd-x64",
                                                    "openbsd-x64",
                                                    "netbsd-x64",
+                                                   "dragonfly-x64",
                                                    "illumos-x64"};
 
             return std::ranges::contains(supported_targets, target);
@@ -194,7 +195,8 @@ namespace Rux {
             if (os_prefix == "linux") return "Linux";
             if (os_prefix == "windows") return "Windows";
             if (os_prefix == "macos") return "macOS";
-            if (os_prefix == "freebsd" || os_prefix == "openbsd" || os_prefix == "netbsd") return "BSD";
+            if (os_prefix == "freebsd" || os_prefix == "openbsd" || os_prefix == "netbsd"
+                || os_prefix == "dragonfly") return "BSD";
             if (os_prefix == "illumos") return "Illumos";
 
             return "";
@@ -895,7 +897,7 @@ namespace Rux {
             }
         }
 
-        Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name);
+        Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name, std::string(TargetOsName(targetName)));
         auto semaResult = sema.Analyze();
 
         for (const auto& diag : semaResult.diagnostics) {
@@ -2264,7 +2266,9 @@ namespace Rux {
             }
             else {
                 std::print(stderr,
-                           "error: unsupported target '{}'; supported targets are linux-x64 and windows-x64\n",
+                           "error: unsupported target '{}'; supported targets are "
+                           "linux-x64, windows-x64, macos-x64, macos-arm64, "
+                           "freebsd-x64, openbsd-x64, netbsd-x64, dragonfly-x64, illumos-x64\n",
                            targetName);
             }
             return 1;
@@ -2580,7 +2584,7 @@ namespace Rux {
                 depPackages[it->second].modules.push_back({loadedModuleNames[i], &depParseResults[i].module});
             }
 
-            Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name);
+            Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name, std::string(TargetOsName(targetName)));
             auto semaResult = sema.Analyze();
 
             for (const auto& diag : semaResult.diagnostics) {
