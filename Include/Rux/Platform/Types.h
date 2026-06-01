@@ -9,8 +9,6 @@
 #include <cstdint>
 #include <string_view>
 
-#include "./Defines.h"
-
 namespace Rux::Platform {
 
     inline constexpr std::size_t CacheLineSize = 64;
