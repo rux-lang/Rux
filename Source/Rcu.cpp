@@ -2442,10 +2442,10 @@ namespace Rux {
                 }
                 case LirOpcode::GlobalAddr: {
                     uint32_t symIdx;
-                    if (const auto it = dataSyms.find(instr.strArg); it != dataSyms.end())
-                        symIdx = it->second;
-                    else if (const auto it = funcSyms.find(instr.strArg); it != funcSyms.end())
-                        symIdx = it->second;
+                    if (const auto dataIt = dataSyms.find(instr.strArg); dataIt != dataSyms.end())
+                        symIdx = dataIt->second;
+                    else if (const auto funcIt = funcSyms.find(instr.strArg); funcIt != funcSyms.end())
+                        symIdx = funcIt->second;
                     else
                         symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternData);
                     uint32_t relocOff;
