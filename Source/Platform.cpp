@@ -179,13 +179,25 @@ namespace Rux::Platform {
 
             info.physical_cores = info.logical_cores;
 
-#elif RUX_OS_MACOS || RUX_IS_BSD
+#elif RUX_OS_MACOS || (RUX_IS_BSD && !RUX_OS_OPENBSD)
 
             size_t s = sizeof(info.physical_cores);
             sysctlbyname("hw.physicalcpu", &info.physical_cores, &s, nullptr, 0);
 
             s = sizeof(info.cache_line_size);
             sysctlbyname("hw.cachelinesize", &info.cache_line_size, &s, nullptr, 0);
+
+#elif RUX_OS_OPENBSD
+
+            int mib_cores[2] = {CTL_HW, HW_NCPU};
+            size_t s = sizeof(info.physical_cores);
+            sysctl(mib_cores, 2, &info.physical_cores, &s, nullptr, 0);
+
+#  ifdef HW_CACHELINE
+            int mib_cache[2] = {CTL_HW, HW_CACHELINE};
+            s = sizeof(info.cache_line_size);
+            sysctl(mib_cache, 2, &info.cache_line_size, &s, nullptr, 0);
+#  endif
 
 #endif
 
