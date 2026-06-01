@@ -1468,8 +1468,10 @@ namespace Rux {
                              2,
                              1,
                              1,
-#  if RUX_OS_FREEBSD || RUX_OS_DRAGONFLY
+#  if RUX_OS_FREEBSD
                               9, // EI_OSABI: FreeBSD
+#  elif RUX_OS_DRAGONFLY
+                              0, // EI_OSABI: System V
 #  elif RUX_OS_OPENBSD
                               12, // EI_OSABI: OpenBSD
 #  elif RUX_OS_NETBSD
@@ -1486,8 +1488,8 @@ namespace Rux {
                              0,
                              0};
         writeRaw(ident, sizeof(ident));
-#  if RUX_OS_OPENBSD
-        wU16(3); // ET_DYN (PIE — OpenBSD requires it)
+#  if RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
+        wU16(3); // ET_DYN (PIE — OpenBSD and DragonFly require it)
 #  else
         wU16(2); // ET_EXEC
 #  endif
