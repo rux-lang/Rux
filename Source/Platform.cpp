@@ -140,7 +140,7 @@ namespace Rux::Platform {
         [[nodiscard]] RuntimeCpuInfo DetectRuntimeCpuInfo() noexcept {
             RuntimeCpuInfo info{};
 
-            info.logical_cores = std::max(1u, std::thread::hardware_concurrency());
+            info.logical_cores = (std::max)(1u, std::thread::hardware_concurrency());
 
             info.features = DetectCpuFeaturesImpl();
 
