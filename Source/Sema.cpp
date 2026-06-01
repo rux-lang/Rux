@@ -4,8 +4,10 @@
     Licensed under the MIT License
 */
 
+
 #include "Rux/Sema.h"
 
+#include "Rux/Platform/Host.h"
 #include "Rux/Type.h"
 
 #include <algorithm>
@@ -327,12 +329,14 @@ namespace Rux {
                  std::vector<DepPackage>& deps,
                  const std::string& packageName,
                  std::vector<SemaDiagnostic>& diags,
-                 std::vector<SemaSymbol>& symbols)
+                 std::vector<SemaSymbol>& symbols,
+                 const std::string& targetOs)
             : modules(modules)
             , deps(deps)
             , packageName(packageName)
             , diags(diags)
             , symbols(symbols)
+            , targetOs(targetOs)
             , currentScope(&globalScope) {
         }
 
@@ -381,6 +385,7 @@ namespace Rux {
         const std::string& packageName;
         std::vector<SemaDiagnostic>& diags;
         std::vector<SemaSymbol>& symbols;
+        const std::string& targetOs;
         Scope globalScope{nullptr};
         Scope* currentScope;
         // packageModuleScopes[pkgName][modulePath] = logical module scope.
@@ -490,6 +495,7 @@ namespace Rux {
         }
 
         void ResolveDeclSignature(const Decl& decl) {
+            if (!DeclMatchesTarget(decl)) return;
             if (auto* d = dynamic_cast<const FuncDecl*>(&decl)) {
                 if (Symbol* sym = globalScope.Lookup(d->name))
                     sym->type = MakeFuncType(d->params, d->returnType, d->typeParams);
@@ -518,6 +524,7 @@ namespace Rux {
         }
 
         void ResolveDeclSignatureInScope(const Decl& decl, Scope& scope) {
+            if (!DeclMatchesTarget(decl)) return;
             if (auto* d = dynamic_cast<const FuncDecl*>(&decl)) {
                 if (Symbol* sym = scope.Lookup(d->name))
                     sym->type = MakeFuncType(d->params, d->returnType, d->typeParams);
@@ -550,6 +557,7 @@ namespace Rux {
         }
 
         void ApplyDeclImports(const Decl& decl) {
+            if (!DeclMatchesTarget(decl)) return;
             if (auto* d = dynamic_cast<const UseDecl*>(&decl)) {
                 CheckUseDecl(*d);
             }
@@ -577,6 +585,7 @@ namespace Rux {
                          Scope& scope,
                          const std::string* packageName = nullptr,
                          const std::string& modulePath = "") {
+            if (!DeclMatchesTarget(decl)) return;
             // Records the symbol in `scope` and, for top-level (global) scope,
             // also appends a SemaSymbol to `symbols_` for the dump.
             bool isGlobal = (&scope == &globalScope);
@@ -917,6 +926,16 @@ namespace Rux {
                 !UnsuffixedIntegerLiteralFits(expr, targetType);
         }
 
+        // Picks the diagnostic for a rejected assignment/conversion. An unsuffixed
+        // integer literal that does not fit the target gets a dedicated "out of
+        // range" message; everything else uses `fallback`. Keeps the wording
+        // consistent across let, return, assignment, const, and field positions.
+        static std::string AssignmentErrorMessage(const Expr& expr, const TypeRef& targetType, std::string fallback) {
+            if (IsIntegerLiteralOutOfRangeFor(expr, targetType))
+                return std::format("integer literal is out of range for type '{}'", targetType.ToString());
+            return fallback;
+        }
+
         bool TypeImplementsInterface(const TypeRef& exprType, const TypeRef& targetType) const {
             if (targetType.kind != TypeRef::Kind::Named) return false;
             Symbol* sym = currentScope->Lookup(targetType.name);
@@ -1024,44 +1043,105 @@ namespace Rux {
             return std::nullopt;
         }
 
+
         TypeRef ResolveType(const TypeExpr& expr) {
-            if (auto* t = dynamic_cast<const NamedTypeExpr*>(&expr)) {
-                if (t->typeArgs.empty()) {
-                    for (const auto& tp : currentTypeParams)
-                        if (tp == t->name) return TypeRef::MakeTypeParam(t->name);
+            // Helper to resolve enums from the global declaration table
+            auto ResolveEnumType = [&](const std::string& name) -> TypeRef {
+                if (const auto it = enumDecls.find(name); it != enumDecls.end()) return EnumType(*it->second);
+                return TypeRef::MakeUnknown();
+            };
+
+            if (const auto* t = dynamic_cast<const NamedTypeExpr*>(&expr)) {
+                for (const auto& tp : currentTypeParams) {
+                    if (tp == t->name) {
+                        if (!t->typeArgs.empty()) {
+                            EmitError(expr.location,
+                                      std::format("Type parameter '{}' cannot take type arguments", t->name));
+                            return TypeRef::MakeUnknown();
+                        }
+                        return TypeRef::MakeTypeParam(t->name);
+                    }
                 }
 
-                Symbol* sym = currentScope->Lookup(t->name);
-                if (sym && (sym->kind == Symbol::Kind::Type || sym->kind == Symbol::Kind::Interface)) {
-                    if (t->typeArgs.empty() && !sym->type.IsUnknown()) return sym->type; // builtin
-                    if (t->typeArgs.empty()) {
-                        if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end())
-                            return EnumType(*enumIt->second);
-                    }
-                    return TypeRef::MakeNamed(GenericTypeName(*t)); // user-defined
+                std::vector<TypeRef> resolvedArgs;
+                bool hasUnknownArgs = false;
+                for (const auto& argExpr : t->typeArgs) {
+                    TypeRef argType = ResolveType(*argExpr);
+                    if (argType.IsUnknown()) hasUnknownArgs = true;
+                    resolvedArgs.push_back(argType);
                 }
-                if (structDecls.contains(t->name)) return TypeRef::MakeNamed(GenericTypeName(*t));
+
+                if (hasUnknownArgs) return TypeRef::MakeUnknown();
+                Symbol* sym = currentScope ? currentScope->Lookup(t->name) : nullptr;
+                if (sym && (sym->kind == Symbol::Kind::Type || sym->kind == Symbol::Kind::Interface)) {
+                    // Return base type if no generic arguments are provided
+                    if (t->typeArgs.empty() && !sym->type.IsUnknown()) return sym->type;
+
+                    return TypeRef::MakeNamed(GenericTypeName(*t));
+                }
+
+                TypeRef enumType = ResolveEnumType(t->name);
+                if (!enumType.IsUnknown()) {
+                    if (!t->typeArgs.empty()) {
+                        EmitError(expr.location, std::format("Enum '{}' cannot take type arguments", t->name));
+                        return TypeRef::MakeUnknown();
+                    }
+                    return enumType;
+                }
+
+                if (structDecls.contains(t->name)) {
+                    return TypeRef::MakeNamed(GenericTypeName(*t));
+                }
+
                 EmitError(expr.location, std::format("unknown type '{}'", t->name));
                 return TypeRef::MakeUnknown();
             }
-            if (auto* t = dynamic_cast<const PathTypeExpr*>(&expr)) {
-                // Simplified: treat path as Named with last segment
-                return TypeRef::MakeNamed(t->segments.back());
+
+            if (const auto* t = dynamic_cast<const PathTypeExpr*>(&expr)) {
+                if (t->segments.empty()) {
+                    EmitError(expr.location, "empty type path");
+                    return TypeRef::MakeUnknown();
+                }
+
+                std::string fullPath = t->segments.front();
+                for (size_t i = 1; i < t->segments.size(); ++i) {
+                    fullPath += "::" + t->segments[i];
+                }
+                return TypeRef::MakeNamed(fullPath);
             }
-            if (auto* t = dynamic_cast<const PointerTypeExpr*>(&expr))
-                return TypeRef::MakePointer(ResolveType(*t->pointee));
-            if (auto* t = dynamic_cast<const SliceTypeExpr*>(&expr))
-                return TypeRef::MakeNamed(SliceTypeName(ResolveType(*t->element)));
-            if (auto* t = dynamic_cast<const TupleTypeExpr*>(&expr)) {
+
+            if (const auto* t = dynamic_cast<const PointerTypeExpr*>(&expr)) {
+                TypeRef pointeeType = ResolveType(*t->pointee);
+                if (pointeeType.IsUnknown()) return TypeRef::MakeUnknown();
+                return TypeRef::MakePointer(pointeeType);
+            }
+
+            if (const auto* t = dynamic_cast<const SliceTypeExpr*>(&expr)) {
+                TypeRef elemType = ResolveType(*t->element);
+                if (elemType.IsUnknown()) return TypeRef::MakeUnknown();
+                return TypeRef::MakeNamed(SliceTypeName(elemType));
+            }
+
+            if (const auto* t = dynamic_cast<const TupleTypeExpr*>(&expr)) {
                 std::vector<TypeRef> elems;
-                for (auto& e : t->elements)
-                    elems.push_back(ResolveType(*e));
+                elems.reserve(t->elements.size());
+
+                for (const auto& e : t->elements) {
+                    TypeRef elem = ResolveType(*e);
+                    if (elem.IsUnknown()) return TypeRef::MakeUnknown();
+                    elems.push_back(elem);
+                }
+
                 return TypeRef::MakeTuple(std::move(elems));
             }
-            if (dynamic_cast<const SelfTypeExpr*>(&expr))
+
+            if (dynamic_cast<const SelfTypeExpr*>(&expr)) {
                 return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
+            }
+
             return TypeRef::MakeUnknown();
         }
+
 
         TypeRef ResolveTypeWithSubstitution(const TypeExpr& expr,
                                             const std::unordered_map<std::string, TypeRef>& substitutions) {
@@ -1383,6 +1463,7 @@ namespace Rux {
         }
 
         void CheckDecl(const Decl& decl) {
+            if (!DeclMatchesTarget(decl)) return;
             if (auto* d = dynamic_cast<const FuncDecl*>(&decl))
                 CheckFuncDecl(*d);
             else if (auto* d = dynamic_cast<const StructDecl*>(&decl))
@@ -1478,9 +1559,12 @@ namespace Rux {
                     if (!defaultType.IsUnknown() && !paramType.IsUnknown() &&
                         !CanAssignExprTo(**param.defaultValue, defaultType, paramType))
                         EmitError(param.location,
-                                  std::format("default value type '{}' does not match parameter type '{}'",
-                                              defaultType.ToString(),
-                                              paramType.ToString()));
+                                  AssignmentErrorMessage(
+                                      **param.defaultValue,
+                                      paramType,
+                                      std::format("default value type '{}' does not match parameter type '{}'",
+                                                  defaultType.ToString(),
+                                                  paramType.ToString())));
                 }
             }
 
@@ -1558,11 +1642,14 @@ namespace Rux {
                         TypeRef fieldType = ResolveType(*fieldIt->second->type);
                         if (!valueType.IsUnknown() && !fieldType.IsUnknown() &&
                             !CanAssignExprTo(*f.value, valueType, fieldType))
-                            EmitError(f.location,
-                                      std::format("cannot assign '{}' to field '{}' of type '{}'",
-                                                  valueType.ToString(),
-                                                  f.name,
-                                                  fieldType.ToString()));
+                            EmitError(
+                                f.location,
+                                AssignmentErrorMessage(*f.value,
+                                                       fieldType,
+                                                       std::format("cannot assign '{}' to field '{}' of type '{}'",
+                                                                   valueType.ToString(),
+                                                                   f.name,
+                                                                   fieldType.ToString())));
                     }
 
                     for (const auto& field : variant->namedFields) {
@@ -1614,10 +1701,12 @@ namespace Rux {
                 if (!valueType.IsUnknown() && !fieldType.IsUnknown() &&
                     !CanAssignExprTo(*f.value, valueType, fieldType))
                     EmitError(f.location,
-                              std::format("cannot assign '{}' to field '{}' of type '{}'",
-                                          valueType.ToString(),
-                                          f.name,
-                                          fieldType.ToString()));
+                              AssignmentErrorMessage(*f.value,
+                                                     fieldType,
+                                                     std::format("cannot assign '{}' to field '{}' of type '{}'",
+                                                                 valueType.ToString(),
+                                                                 f.name,
+                                                                 fieldType.ToString())));
             }
 
             for (const auto& field : decl.fields) {
@@ -1747,9 +1836,11 @@ namespace Rux {
             if (d.type && !valueType.IsUnknown() && !constType.IsUnknown() &&
                 !CanAssignExprTo(*d.value, valueType, constType))
                 EmitError(d.value->location,
-                          std::format("cannot assign '{}' to constant of type '{}'",
-                                      valueType.ToString(),
-                                      constType.ToString()));
+                          AssignmentErrorMessage(*d.value,
+                                                 constType,
+                                                 std::format("cannot assign '{}' to constant of type '{}'",
+                                                             valueType.ToString(),
+                                                             constType.ToString())));
             if (Symbol* sym = currentScope->Lookup(d.name)) sym->type = constType;
         }
 
@@ -1888,7 +1979,20 @@ namespace Rux {
             }
         }
 
+        static std::string_view HostOs() noexcept {
+            return ToString(Platform::HostOS);
+        }
+
+        [[nodiscard]] std::string_view EffectiveOs() const {
+            return targetOs.empty() ? HostOs() : std::string_view(targetOs);
+        }
+
+        [[nodiscard]] bool DeclMatchesTarget(const Decl& d) const {
+            return d.targetOs.empty() || d.targetOs == EffectiveOs();
+        }
+
         void CheckUseDecl(const UseDecl& d) {
+            if (!DeclMatchesTarget(d)) return;
             if (d.path.empty()) {
                 EmitError(d.location, "empty import path");
                 return;
@@ -1962,11 +2066,11 @@ namespace Rux {
 
                 if (s->init && s->type && !initType.IsUnknown() && !declType.IsUnknown() &&
                     !CanAssignExprTo(*s->init, initType, declType))
-                    EmitError(
-                        s->location,
-                        IsIntegerLiteralOutOfRangeFor(*s->init, declType)
-                            ? std::format("integer literal is out of range for type '{}'", declType.ToString())
-                            : std::format("cannot assign '{}' to '{}'", initType.ToString(), declType.ToString()));
+                    EmitError(s->location,
+                              AssignmentErrorMessage(
+                                  *s->init,
+                                  declType,
+                                  std::format("cannot assign '{}' to '{}'", initType.ToString(), declType.ToString())));
 
                 if (s->pattern) {
                     CheckLetPattern(*s->pattern, declType, s->isMut);
@@ -2050,9 +2154,11 @@ namespace Rux {
                         !currentReturnType.IsUnknown() && !currentReturnType.IsOpaque() &&
                         !CanAssignExprTo(**s->value, valType, currentReturnType))
                         EmitError(s->location,
-                                  std::format("return type mismatch: expected '{}', found '{}'",
-                                              currentReturnType.ToString(),
-                                              valType.ToString()));
+                                  AssignmentErrorMessage(**s->value,
+                                                         currentReturnType,
+                                                         std::format("return type mismatch: expected '{}', found '{}'",
+                                                                     currentReturnType.ToString(),
+                                                                     valType.ToString())));
                 }
                 else if (!currentReturnType.IsOpaque() && !currentReturnType.IsUnknown()) {
                     EmitError(s->location,
@@ -2298,7 +2404,10 @@ namespace Rux {
                 TypeRef tgt = CheckExpr(*e->target);
                 TypeRef val = CheckExpr(*e->value);
                 if (!tgt.IsUnknown() && !val.IsUnknown() && !CanAssignExprTo(*e->value, val, tgt))
-                    EmitError(e->location, std::format("cannot assign '{}' to '{}'", val.ToString(), tgt.ToString()));
+                    EmitError(
+                        e->location,
+                        AssignmentErrorMessage(
+                            *e->value, tgt, std::format("cannot assign '{}' to '{}'", val.ToString(), tgt.ToString())));
                 return TypeRef::MakeOpaque();
             }
 
@@ -2635,10 +2744,13 @@ namespace Rux {
                         resultType = armType;
                     }
                     else if (!armType.IsUnknown() && !CanAssignExprTo(*arm.body, armType, resultType)) {
-                        EmitError(arm.location,
-                                  std::format("match arm type mismatch: expected '{}', found '{}'",
-                                              resultType.ToString(),
-                                              armType.ToString()));
+                        EmitError(
+                            arm.location,
+                            AssignmentErrorMessage(*arm.body,
+                                                   resultType,
+                                                   std::format("match arm type mismatch: expected '{}', found '{}'",
+                                                               resultType.ToString(),
+                                                               armType.ToString())));
                     }
                 }
                 return resultType;
@@ -2852,14 +2964,18 @@ namespace Rux {
     };
 
     // Sema public API
-    Sema::Sema(std::vector<const Module*> userModules, std::vector<DepPackage> deps, std::string packageName)
+    Sema::Sema(std::vector<const Module*> userModules,
+               std::vector<DepPackage> deps,
+               std::string packageName,
+               std::string targetOs)
         : modules(std::move(userModules))
         , deps(std::move(deps))
-        , packageName(std::move(packageName)) {
+        , packageName(std::move(packageName))
+        , targetOs(std::move(targetOs)) {
     }
 
     SemaResult Sema::Analyze() {
-        Analyzer analyzer(modules, deps, packageName, diags, symbols);
+        Analyzer analyzer(modules, deps, packageName, diags, symbols, targetOs);
         analyzer.Run();
         return SemaResult{std::move(diags), std::move(symbols)};
     }

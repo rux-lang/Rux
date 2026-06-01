@@ -399,6 +399,7 @@ namespace Rux {
     struct Decl {
         SourceLocation location;
         bool isPublic = false;
+        std::string targetOs; // empty = unconditional; "Windows", "Linux" = platform-conditional
         virtual ~Decl() = default;
     };
 

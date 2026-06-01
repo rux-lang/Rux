@@ -36,7 +36,15 @@ namespace Rux {
         if (keyPos == std::string_view::npos) return {};
         const auto eqPos = inner.find('=', keyPos + keyName.size());
         if (eqPos == std::string_view::npos) return {};
-        const auto rawVal = Trim(inner.substr(eqPos + 1));
+        std::size_t valueEnd = eqPos + 1;
+        bool inString = false;
+        while (valueEnd < inner.size()) {
+            const char c = inner[valueEnd];
+            if (c == '"') inString = !inString;
+            if (!inString && c == ',') break;
+            ++valueEnd;
+        }
+        const auto rawVal = Trim(inner.substr(eqPos + 1, valueEnd - eqPos - 1));
         if (rawVal.size() >= 2 && rawVal.front() == '"' && rawVal.back() == '"')
             return std::string(rawVal.substr(1, rawVal.size() - 2));
         return std::string(rawVal);
@@ -57,13 +65,43 @@ namespace Rux {
     }
 
     static std::optional<std::string> TargetNameFromDependenciesSection(const std::string& section) {
-        constexpr std::string_view prefix = "Target.";
-        constexpr std::string_view suffix = ".Dependencies";
-        if (!section.starts_with(prefix) || !section.ends_with(suffix)) return std::nullopt;
-        const auto begin = prefix.size();
-        const auto len = section.size() - prefix.size() - suffix.size();
-        if (len == 0) return std::nullopt;
-        return section.substr(begin, len);
+        // [Target.OS.Dependencies] — legacy format
+        {
+            constexpr std::string_view prefix = "Target.";
+            constexpr std::string_view suffix = ".Dependencies";
+            if (section.starts_with(prefix) && section.ends_with(suffix)) {
+                if (section.size() <= prefix.size() + suffix.size()) return std::nullopt;
+                const auto begin = prefix.size();
+                const auto len = section.size() - prefix.size() - suffix.size();
+                if (len > 0) return section.substr(begin, len);
+            }
+        }
+        // [Dependencies.Target.OS] — preferred format
+        {
+            constexpr std::string_view prefix = "Dependencies.Target.";
+            if (section.starts_with(prefix)) {
+                const auto os = section.substr(prefix.size());
+                if (!os.empty()) return std::string(os);
+            }
+        }
+        return std::nullopt;
+    }
+
+    // Canonicalize OS names from Rux.toml section keys (e.g. "MacOS" → "macOS").
+    static std::string CanonicalOsName(const std::string& name) {
+        if (name == "MacOS" || name == "Macos" || name == "macos") return "macOS";
+        return name;
+    }
+
+    // Extract the OS name from a target triple (e.g. "windows-x64" → "Windows").
+    static std::string OsFromTriple(const std::string& triple) {
+        if (triple.starts_with("windows")) return "Windows";
+        if (triple.starts_with("linux")) return "Linux";
+        if (triple.starts_with("macos") || triple.starts_with("darwin")) return "macOS";
+        if (triple.starts_with("freebsd") || triple.starts_with("openbsd") || triple.starts_with("netbsd"))
+            return "BSD";
+        if (triple.starts_with("illumos")) return "Illumos";
+        return {};
     }
 
     std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec) {
@@ -114,7 +152,8 @@ namespace Rux {
                 m.dependencies.push_back(ParseDependency(std::string(key), std::string(value)));
             }
             else if (const auto target = TargetNameFromDependenciesSection(section)) {
-                m.targetDependencies[*target].push_back(ParseDependency(std::string(key), std::string(value)));
+                m.targetDependencies[CanonicalOsName(*target)].push_back(
+                    ParseDependency(std::string(key), std::string(value)));
             }
         }
 
@@ -207,17 +246,26 @@ namespace Rux {
 
     std::vector<Dependency> Manifest::EffectiveDependencies(const std::string& target) const {
         std::vector<Dependency> result = dependencies;
-        auto it = targetDependencies.find(target);
-        if (it == targetDependencies.end()) return result;
 
-        for (const auto& targetDep : it->second) {
-            auto existing =
-                std::ranges::find_if(result, [&](const Dependency& dep) { return dep.name == targetDep.name; });
-            if (existing == result.end())
-                result.push_back(targetDep);
-            else
-                *existing = targetDep;
-        }
+        auto mergeFrom = [&](const std::string& key) {
+            auto it = targetDependencies.find(key);
+            if (it == targetDependencies.end()) return;
+            for (const auto& targetDep : it->second) {
+                auto existing =
+                    std::ranges::find_if(result, [&](const Dependency& dep) { return dep.name == targetDep.name; });
+                if (existing == result.end())
+                    result.push_back(targetDep);
+                else
+                    *existing = targetDep;
+            }
+        };
+
+        mergeFrom("*"); // wildcard dependencies
+        mergeFrom(target); // exact key (e.g. "windows-x64" or "Windows")
+        const std::string osName = OsFromTriple(target);
+        if (!osName.empty() && osName != target)
+            mergeFrom(osName); // OS-name key (e.g. "Windows" when target is "windows-x64")
+
         return result;
     }
 

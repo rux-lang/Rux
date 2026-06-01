@@ -15,6 +15,8 @@
 #include "Rux/Manifest.h"
 #include "Rux/Package.h"
 #include "Rux/Parser.h"
+#include "Rux/Platform/Defines.h"
+#include "Rux/Platform/Host.h"
 #include "Rux/Rcu.h"
 #include "Rux/Sema.h"
 #include "Rux/Version.h"
@@ -34,9 +36,21 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#ifdef _WIN32
-#  define NOMINMAX
+
+// This is separate from the other ifdef because otherwise clang-format attempts
+// to change the order, which makes MSVC cry.
+
+#if RUX_OS_WINDOWS
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 #  include <windows.h>
+#endif
+
+#if RUX_OS_WINDOWS
 #  include <psapi.h>
 #  include <winhttp.h>
 #else
@@ -48,6 +62,7 @@
 #include "Rux/SourceLoader.h"
 
 namespace Rux {
+    using namespace Platform;
     namespace {
         struct BuildStats {
             std::chrono::milliseconds lexing{0};
@@ -141,77 +156,95 @@ namespace Rux {
         }
 
         [[nodiscard]] std::string TargetName() {
-#if defined(_WIN32)
-            std::string os = "Windows";
-#elif defined(__APPLE__)
-            std::string os = "macOS";
-#elif defined(__OpenBSD__)
-            std::string os = "OpenBSD";
-#elif defined(__linux__)
-            std::string os = "Linux";
-#elif defined(__FreeBSD__)
-            std::string os = "FreeBSD";
-#elif defined(__DragonFly__)
-            std::string os = "DragonFly";
-#elif defined(__NetBSD__)
-            std::string os = "NetBSD";
-#else
-            std::string os = "Unknown";
-#endif
+            if constexpr (HostArch == Arch::Unknown) {
+                return std::string{ToString(HostOS)};
+            }
 
-#if defined(_M_X64) || defined(__x86_64__) || defined(__amd64__)
-            return os + " x64";
-#elif defined(_M_IX86) || defined(__i386__)
-            return os + " x86";
-#elif defined(_M_ARM64) || defined(__aarch64__)
-            return os + " arm64";
-#elif defined(_M_ARM) || defined(__arm__)
-            return os + " arm";
-#else
-            return os;
-#endif
+            return std::format("{} {}", ToString(HostOS), ToString(HostArch));
         }
 
         [[nodiscard]] std::string HostTargetTriple() {
-#if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__) || defined(__amd64__))
-            return "windows-x64";
-#elif defined(__APPLE__)
-            // Rux currently emits x86-64 Mach-O binaries on macOS, even when
-            // the compiler itself runs on arm64.
-            return "macos-x64";
-#elif (defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) ||                    \
-       defined(__DragonFly__)) &&                                                                                      \
-    (defined(__x86_64__) || defined(__amd64__))
-            return "linux-x64";
-#else
-            return "unknown";
-#endif
+            auto triple = std::format("{}-{}", ToString(HostOS), ToString(HostArch));
+            std::transform(std::begin(triple), std::end(triple), std::begin(triple), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            return triple;
         }
 
         [[nodiscard]] bool IsSupportedTargetTriple(const std::string_view target) {
-            return target == "linux-x64" || target == "windows-x64" || target == "macos-x64";
+            constexpr std::array supported_targets{"linux-x64",
+                                                   "windows-x64",
+                                                   "macos-x64",
+                                                   "macos-arm64",
+                                                   "freebsd-x64",
+                                                   "openbsd-x64",
+                                                   "netbsd-x64",
+                                                   "illumos-x64"};
+
+            return std::ranges::contains(supported_targets, target);
+        }
+
+        [[nodiscard]] std::string_view TargetOsName(const std::string_view target) {
+            const auto dash_pos = target.find('-');
+            if (dash_pos == std::string_view::npos) {
+                return "";
+            }
+
+            const auto os_prefix = target.substr(0, dash_pos);
+
+            if (os_prefix == "linux") return "Linux";
+            if (os_prefix == "windows") return "Windows";
+            if (os_prefix == "macos") return "macOS";
+            if (os_prefix == "freebsd" || os_prefix == "openbsd" || os_prefix == "netbsd") return "BSD";
+            if (os_prefix == "illumos") return "Illumos";
+
+            return "";
+        }
+
+        [[nodiscard]] bool DeclMatchesTarget(const Decl& decl, const std::string_view target) {
+            return decl.targetOs.empty() || decl.targetOs == TargetOsName(target);
+        }
+
+        void PruneDeclsForTarget(std::vector<DeclPtr>& decls, const std::string_view target);
+
+        void PruneDeclForTarget(Decl& decl, const std::string_view target) {
+            if (auto* module = dynamic_cast<ModuleDecl*>(&decl)) {
+                PruneDeclsForTarget(module->items, target);
+            }
+            else if (auto* block = dynamic_cast<ExternBlockDecl*>(&decl)) {
+                PruneDeclsForTarget(block->items, target);
+            }
+        }
+
+        void PruneDeclsForTarget(std::vector<DeclPtr>& decls, const std::string_view target) {
+            std::erase_if(decls, [&](const DeclPtr& decl) { return !decl || !DeclMatchesTarget(*decl, target); });
+            for (const auto& decl : decls)
+                PruneDeclForTarget(*decl, target);
+        }
+
+        void PruneModuleForTarget(Module& module, const std::string_view target) {
+            PruneDeclsForTarget(module.items, target);
         }
 
         [[nodiscard]] std::string DependencyPackageName(const Dependency& dep) {
             return dep.package.empty() ? dep.name : dep.package;
         }
 
-        [[nodiscard]] std::uintmax_t PeakMemoryBytes() {
-#ifdef _WIN32
+        [[nodiscard]] std::uintmax_t PeakMemoryBytes() noexcept {
+#if RUX_OS_WINDOWS
             PROCESS_MEMORY_COUNTERS counters{};
-            if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters)))
-                return counters.PeakWorkingSetSize;
-            return 0;
-#else
+            if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters))) {
+                return static_cast<std::uintmax_t>(counters.PeakWorkingSetSize);
+            }
+#elif RUX_IS_UNIX
             rusage usage{};
-            if (getrusage(RUSAGE_SELF, &usage) == 0)
-#  if defined(__APPLE__)
-                return static_cast<std::uintmax_t>(usage.ru_maxrss);
-#  else
-                return static_cast<std::uintmax_t>(usage.ru_maxrss) * 1024;
-#  endif
-            return 0;
+            if (getrusage(RUSAGE_SELF, &usage) == 0) {
+                // macOS reports bytes directly; other Unices report in KB.
+                constexpr std::uintmax_t unitMultiplier = (HostOS == OS::MacOS) ? 1ULL : 1024ULL;
+                return static_cast<std::uintmax_t>(usage.ru_maxrss) * unitMultiplier;
+            }
 #endif
+            return 0;
         }
 
         void
@@ -396,6 +429,7 @@ namespace Rux {
         if (command == "test") return RunTest(rest, opts);
         if (command == "update") return RunUpdate(rest, opts);
         if (command == "info") return RunInfo(rest, opts);
+        if (command == "check") return RunCheck(rest, opts);
 
         PrintUnknownCommand(command);
         return 1;
@@ -562,7 +596,9 @@ namespace Rux {
         std::string targetName = target.empty() ? HostTargetTriple() : std::string(target);
         if (!IsSupportedTargetTriple(targetName)) {
             std::print(stderr,
-                       "error: unsupported target '{}'; supported targets are linux-x64, macos-x64, and windows-x64\n",
+                       "error: unsupported target '{}'; supported targets are "
+                       "linux-x64, windows-x64, macos-x64, macos-arm64, "
+                       "freebsd-x64, openbsd-x64, netbsd-x64, illumos-x64\n",
                        targetName);
             return 1;
         }
@@ -658,6 +694,7 @@ namespace Rux {
                 parseErrors = true;
                 continue;
             }
+            PruneModuleForTarget(parseResult.module, targetName);
 
             if (dumpAst) {
                 auto tempDir = manifestPath->parent_path() / "Temp" / "Ast";
@@ -735,6 +772,7 @@ namespace Rux {
             std::vector<std::string> imports;
             auto collectImports = [&](this auto&& self, const Decl& decl) -> void {
                 if (const auto* ud = dynamic_cast<const UseDecl*>(&decl)) {
+                    if (!DeclMatchesTarget(*ud, targetName)) return;
                     if (!ud->path.empty()) imports.push_back(ud->path[0]);
                     return;
                 }
@@ -813,6 +851,7 @@ namespace Rux {
                                    diag.message);
                     }
                     if (depParse.HasErrors()) return 1;
+                    PruneModuleForTarget(depParse.module, targetName);
 
                     packageParseResults.push_back(std::move(depParse));
                 }
@@ -950,13 +989,14 @@ namespace Rux {
 
         const auto root = manifestPath->parent_path();
         const auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
+        const bool buildDll = (manifest->package.type == "Dll" || manifest->package.type == "dll");
         std::string outputName = manifest->package.name;
-#ifdef _WIN32
-        outputName += ".exe";
-#endif
+        if constexpr (HostOS == OS::Windows) {
+            outputName += buildDll ? ".dll" : ".exe";
+        }
         const auto exePath = binDir / outputName;
 
-        Linker linker(std::move(rcuFiles), std::string(manifest->package.name), {root});
+        Linker linker(std::move(rcuFiles), std::string(manifest->package.name), {root}, buildDll);
         if (!linker.Link(exePath)) {
             for (const auto& err : linker.Errors())
                 std::print(stderr, "error: {}\n", err.message);
@@ -1133,9 +1173,12 @@ namespace Rux {
         return 0;
     }
 
+    static constexpr std::string_view kRegistryUrl =
+        "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/Packages.json";
+
     // Returns the directory where registry packages are installed.
     static std::filesystem::path RegistryPackagesDir() {
-#ifdef _WIN32
+#if RUX_OS_WINDOWS
         wchar_t buf[MAX_PATH]{};
         GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
         return std::filesystem::path(buf) / "Rux" / "Packages";
@@ -1145,10 +1188,7 @@ namespace Rux {
 #endif
     }
 
-    static constexpr std::string_view kRegistryUrl =
-        "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/Packages.json";
-
-#ifdef _WIN32
+#if RUX_OS_WINDOWS
     // Fetch the body of an HTTPS URL using WinHTTP. Returns nullopt on failure.
     static std::optional<std::string> FetchUrl(const std::string& url) {
         std::wstring wurl(url.begin(), url.end());
@@ -1200,28 +1240,48 @@ namespace Rux {
     }
 #else
     static std::string ShellQuote(const std::string& value) {
-        std::string quoted = "'";
-        for (const char ch : value) {
-            if (ch == '\'')
-                quoted += "'\\''";
-            else
-                quoted += ch;
+        std::size_t single_quotes = 0;
+        for (std::size_t i = 0; i < value.size(); ++i) {
+            if (value[i] == '\'') {
+                ++single_quotes;
+            }
         }
-        quoted += "'";
+
+        std::string quoted;
+        // Reserve the exact memory buffer size upfront.
+        // Formula: original size + 2 (for the outer single quotes) + 3 extra bytes per inner quote ('\'')
+        quoted.reserve(value.size() + (single_quotes * 3) + 2);
+
+        quoted += '\'';
+        for (std::size_t i = 0; i < value.size(); ++i) {
+            const char ch = value[i];
+            if (ch == '\'') {
+                quoted += "'\\''";
+            }
+            else {
+                quoted += ch;
+            }
+        }
+        quoted += '\'';
+
         return quoted;
     }
 
     static std::optional<std::string> RunCommandCapture(const std::string& command) {
-        FILE* pipe = popen(command.c_str(), "r");
+        FILE* pipe = ::popen(command.c_str(), "r");
         if (!pipe) return std::nullopt;
 
         std::string output;
         std::array<char, 4096> buffer{};
-        while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
-            output += buffer.data();
 
-        const int status = pclose(pipe);
-        if (status != 0) return std::nullopt;
+        while (::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
+            output.append(buffer.data());
+
+        const int status = ::pclose(pipe);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            return std::nullopt;
+        }
+
         return output;
     }
 
@@ -1260,10 +1320,16 @@ namespace Rux {
     }
 
     // Clone a git repository into dest. Returns true on success.
-    static bool GitClone(const std::string& repoUrl, const std::filesystem::path& dest) {
-#ifdef _WIN32
-        std::wstring cmd =
-            L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
+    static bool GitClone(const std::string& repoUrl, const std::filesystem::path& dest, bool devBranch) {
+#if RUX_OS_WINDOWS
+        std::wstring cmd{};
+        if (!devBranch) {
+            cmd = L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
+        }
+        else {
+            cmd = L"git clone --branch dev " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() +
+                L"\"";
+        }
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
@@ -1275,14 +1341,15 @@ namespace Rux {
         CloseHandle(pi.hThread);
         return exitCode == 0;
 #else
-        const std::string cmd = "git clone " + repoUrl + " \"" + dest.string() + "\"";
+        const std::string cmd = devBranch ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
+                                          : "git clone " + repoUrl + " \"" + dest.string() + "\"";
         return std::system(cmd.c_str()) == 0;
 #endif
     }
 
     // Pull latest changes in an existing git repository. Returns true on success.
     static bool GitPull(const std::filesystem::path& repoDir) {
-#ifdef _WIN32
+#if RUX_OS_WINDOWS
         std::wstring cmd = L"git -C \"" + repoDir.wstring() + L"\" pull";
         STARTUPINFOW si{};
         si.cb = sizeof(si);
@@ -1302,10 +1369,15 @@ namespace Rux {
 
     int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions& opts) {
         std::string_view packageSpec;
+        bool packageFromDev = false;
         for (auto arg : args) {
             if (arg == "-h" || arg == "--help") {
                 PrintHelpInstall();
                 return 0;
+            }
+            if (arg == "--dev") {
+                packageFromDev = true;
+                continue;
             }
             if (!arg.starts_with('-') && packageSpec.empty()) {
                 packageSpec = arg;
@@ -1354,7 +1426,7 @@ namespace Rux {
             }
             else {
                 if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
-                if (!GitClone(repoUrl, pkgDir)) {
+                if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
@@ -1407,7 +1479,7 @@ namespace Rux {
             }
             else {
                 if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
-                if (!GitClone(repoUrl, pkgDir)) {
+                if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
@@ -1761,17 +1833,24 @@ namespace Rux {
         std::string_view profileName = isRelease ? "Release" : "Debug";
         auto root = manifestPath->parent_path();
         auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
+        const bool runDll = (manifest->package.type == "Dll" || manifest->package.type == "dll");
+        if (runDll) {
+            std::print(stderr, "error: cannot run a DLL package directly\n");
+            return 1;
+        }
         std::string exeName = manifest->package.name;
-#ifdef _WIN32
-        exeName += ".exe";
-#endif
+
+        if constexpr (HostOS == OS::Windows) {
+            exeName.append(".exe");
+        }
+
         auto exePath = binDir / exeName;
         if (!std::filesystem::exists(exePath)) {
             std::print(stderr, "error: executable not found: '{}'\n", exePath.string());
             return 1;
         }
         if (opts.verbose && !opts.quiet) std::print("     Running `{}`\n", exePath.string());
-#ifdef _WIN32
+#if RUX_OS_WINDOWS
         std::string cmdLine = "\"" + exePath.string() + "\"";
         for (const auto& a : runArgs) {
             cmdLine += " \"";
@@ -1942,7 +2021,7 @@ namespace Rux {
             }
             else {
                 if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
-                if (!GitClone(repoUrl, pkgDir)) {
+                if (!GitClone(repoUrl, pkgDir, false)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
@@ -1968,12 +2047,20 @@ namespace Rux {
     // TODO: Make this look in the registry instead of installed packages
     // TODO: Extend Package manifest metadata support
     int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions& opts) {
+        (void)opts;
         std::string_view packageName;
+
+        bool jsonOutput = false;
 
         for (auto arg : args) {
             if (arg == "-h" || arg == "--help") {
                 PrintHelpInfo();
                 return 0;
+            }
+
+            if (arg == "--json") {
+                jsonOutput = true;
+                continue;
             }
 
             if (!arg.starts_with('-') && packageName.empty()) {
@@ -2004,25 +2091,536 @@ namespace Rux {
             std::print(stderr, "error: failed to parse '{}'\n", manifestPath.string());
             return 1;
         }
-        std::print("Name:     {}\n"
-                   "Version:  {}\n"
-                   "Type:     {}\n",
-                   manifest->package.name,
-                   manifest->package.version,
-                   manifest->package.type);
 
-        if (!manifest->dependencies.empty()) {
-            std::print("\nDependencies:\n");
+        // not using nlohmann/json.hpp to keep compiler as small and fast as possible
+        if (jsonOutput) {
+            std::print("{}\n", "{");
+            std::print("  \"name\": \"{}\",\n", manifest->package.name);
+            std::print("  \"version\": \"{}\",\n", manifest->package.version);
+            std::print("  \"type\": \"{}\",\n", manifest->package.type);
+            std::print("  \"dependencies\": [\n");
 
-            for (const auto& dep : manifest->dependencies) {
-                if (!dep.path.empty())
-                    std::print("  - {} (path: {})\n", dep.name, dep.path);
-                else
-                    std::print("  - {} @ {}\n", dep.name, dep.version.empty() ? "*" : dep.version);
+            for (size_t i = 0; i < manifest->dependencies.size(); ++i) {
+                const auto& dep = manifest->dependencies[i];
+                std::print("    {}", "{");
+                std::print("\"name\": \"{}\"", dep.name);
+
+                if (!dep.path.empty()) {
+                    std::print(", \"path\": \"{}\"", dep.path);
+                }
+                else {
+                    std::print(", \"version\": \"{}\"", dep.version.empty() ? "*" : dep.version);
+                }
+
+                // Only add a comma if this isn't the last element in the vector
+                if (i + 1 < manifest->dependencies.size()) {
+                    std::print("    {},\n", "}");
+                }
+                else {
+                    std::print("    {}\n", "}");
+                }
+            }
+
+            std::print("  ]\n");
+            std::print("{}\n", "}");
+        }
+        else {
+            std::print("Name:     {}\n"
+                       "Version:  {}\n"
+                       "Type:     {}\n",
+                       manifest->package.name,
+                       manifest->package.version,
+                       manifest->package.type);
+
+            if (!manifest->dependencies.empty()) {
+                std::print("\nDependencies:\n");
+
+                for (const auto& dep : manifest->dependencies) {
+                    if (!dep.path.empty())
+                        std::print("  - {} (path: {})\n", dep.name, dep.path);
+                    else
+                        std::print("  - {} @ {}\n", dep.name, dep.version.empty() ? "*" : dep.version);
+                }
             }
         }
 
+
         return 0;
+    }
+
+    int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions& opts) {
+        struct JsonDiagnostic {
+            std::string file;
+            int line = 0;
+            int column = 0;
+            std::string severity;
+            std::string message;
+        };
+
+        auto JsonEscape = [](std::string_view s) -> std::string {
+            std::string out;
+            if (s.size() < ((std::numeric_limits<size_t>::max)() - 128)) {
+                out.reserve(s.size() + (s.size() / 10) + 16);
+            }
+            for (char ch : s) {
+                unsigned char u_ch = static_cast<unsigned char>(ch);
+                switch (u_ch) {
+                case '"':
+                    out += "\\\"";
+                    break;
+                case '\\':
+                    out += "\\\\";
+                    break;
+                case '\b':
+                    out += "\\b";
+                    break;
+                case '\f':
+                    out += "\\f";
+                    break;
+                case '\n':
+                    out += "\\n";
+                    break;
+                case '\r':
+                    out += "\\r";
+                    break;
+                case '\t':
+                    out += "\\t";
+                    break;
+                default: {
+                    if (u_ch < 0x20) {
+                        char buf[7];
+                        std::snprintf(buf, sizeof(buf), "\\u%04x", u_ch);
+                        out += buf;
+                    }
+                    else {
+                        out += ch;
+                    }
+                    break;
+                }
+                }
+            }
+            return out;
+        };
+
+        bool jsonOutput = false;
+        std::string_view target;
+
+        for (std::size_t i = 0; i < args.size(); ++i) {
+            std::string_view arg = args[i];
+
+            if (arg == "-q" || arg == "--quiet") continue;
+            if (arg == "-v" || arg == "--verbose") continue;
+
+            if (arg == "--json") {
+                jsonOutput = true;
+                continue;
+            }
+
+            if (arg == "--target" && i + 1 < args.size()) {
+                target = args[++i];
+                continue;
+            }
+
+            if (arg == "-h" || arg == "--help") {
+                PrintHelpCheck();
+                return 0;
+            }
+
+            PrintUnknownOption(arg, "check");
+            return 1;
+        }
+
+        std::vector<JsonDiagnostic> jsonDiags;
+        bool hadErrors = false;
+
+        auto EmitDiag = [&](std::string file, int line, int column, std::string severity, std::string message) {
+            if (jsonOutput) {
+                jsonDiags.push_back({std::move(file), line, column, std::move(severity), std::move(message)});
+            }
+            else {
+                if (file.empty()) {
+                    std::print(stderr, "error: {}\n", message);
+                }
+                else {
+                    std::print(stderr, "{}:{}:{}: {}: {}\n", file, line, column, severity, message);
+                }
+            }
+        };
+
+        auto EmitFatal = [&](std::string message) {
+            EmitDiag("", 0, 0, "error", std::move(message));
+            hadErrors = true;
+        };
+
+        auto manifestPath = RequireManifest();
+        if (!manifestPath) {
+            if (jsonOutput) EmitFatal("could not find 'Rux.toml' in current directory or any parent directory");
+            return 1;
+        }
+
+        auto manifest = LoadManifest(*manifestPath);
+        if (!manifest) {
+            if (jsonOutput) EmitFatal("failed to parse 'Rux.toml'");
+            return 1;
+        }
+
+        std::string targetName = target.empty() ? HostTargetTriple() : std::string(target);
+        if (!IsSupportedTargetTriple(targetName)) {
+            if (jsonOutput) {
+                EmitFatal("unsupported target '" + targetName + "'");
+            }
+            else {
+                std::print(stderr,
+                           "error: unsupported target '{}'; supported targets are linux-x64 and windows-x64\n",
+                           targetName);
+            }
+            return 1;
+        }
+
+        const std::string hostTarget = HostTargetTriple();
+        if (hostTarget != "unknown" && targetName != hostTarget) {
+            if (jsonOutput) {
+                EmitFatal("cross-target build from '" + hostTarget + "' to '" + targetName + "' is not supported yet");
+            }
+            else {
+                std::print(stderr,
+                           "error: cross-target build from '{}' to '{}' is not supported yet\n",
+                           hostTarget,
+                           targetName);
+            }
+            return 1;
+        }
+
+        if (!opts.quiet && !jsonOutput) {
+            std::print("Checking {} v{} [{}]\n",
+                       manifest->package.name,
+                       manifest->package.version,
+                       manifestPath->parent_path().string());
+        }
+
+        auto loadResult = SourceLoader::Load(manifestPath->parent_path());
+        if (!loadResult) {
+            if (jsonOutput) EmitFatal("failed to load source files");
+            return 1;
+        }
+
+        for (const auto& err : loadResult->errors) {
+            if (jsonOutput) {
+                EmitDiag("", 0, 0, "error", err);
+                hadErrors = true;
+            }
+            else {
+                std::print(stderr, "{}", err);
+            }
+        }
+
+        bool lexErrors = false;
+        std::vector<LexerResult> lexResults;
+        lexResults.reserve(loadResult->files.size());
+
+        for (const auto& file : loadResult->files) {
+            if (opts.verbose && !jsonOutput) std::print("    Lexing {}\n", file.path.string());
+
+            Lexer lexer(file.source, file.path.string());
+            auto lexResult = lexer.Tokenize();
+
+            for (const auto& diag : lexResult.diagnostics) {
+                const auto& loc = diag.location;
+                const char* sev = diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
+                EmitDiag(
+                    file.path.string(), static_cast<int>(loc.line), static_cast<int>(loc.column), sev, diag.message);
+                if (diag.severity == LexerDiagnostic::Severity::Error) lexErrors = true;
+            }
+            lexResults.push_back(std::move(lexResult));
+        }
+
+        if (lexErrors) hadErrors = true;
+
+        bool parseErrors = false;
+        std::vector<ParseResult> parseResults;
+        parseResults.reserve(loadResult->files.size());
+
+        for (std::size_t fileIndex = 0; fileIndex < loadResult->files.size(); ++fileIndex) {
+            const auto& file = loadResult->files[fileIndex];
+            if (opts.verbose && !jsonOutput) std::print("    Parsing {}\n", file.path.string());
+
+            auto& lexResult = lexResults[fileIndex];
+            if (lexResult.HasErrors()) continue;
+
+            Parser parser(std::move(lexResult.tokens), file.path.string());
+            auto parseResult = parser.Parse();
+
+            for (const auto& diag : parseResult.diagnostics) {
+                const auto& loc = diag.location;
+                const char* sev = diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
+                EmitDiag(
+                    file.path.string(), static_cast<int>(loc.line), static_cast<int>(loc.column), sev, diag.message);
+                if (diag.severity == ParserDiagnostic::Severity::Error) parseErrors = true;
+            }
+
+            if (!parseResult.HasErrors()) {
+                PruneModuleForTarget(parseResult.module, targetName);
+                parseResults.push_back(std::move(parseResult));
+            }
+        }
+
+        if (parseErrors) hadErrors = true;
+
+        std::vector<ParseResult> depParseResults;
+        std::vector<std::string> loadedPackages;
+        std::vector<std::string> loadedModuleNames;
+
+        struct PendingPackage {
+            std::string name;
+            std::filesystem::path root;
+            Manifest manifest;
+        };
+
+        std::vector<PendingPackage> pendingPackages;
+        std::unordered_set<std::string> queuedPackageNames;
+
+        auto enqueueDependency = [&](const std::string& pkgName,
+                                     const Manifest& ownerManifest,
+                                     const std::filesystem::path& ownerRoot) -> bool {
+            if (queuedPackageNames.count(pkgName)) return true;
+
+            const auto deps = ownerManifest.EffectiveDependencies(targetName);
+            std::optional<Dependency> targetDep;
+
+            for (const auto& d : deps) {
+                if (d.name == pkgName) {
+                    targetDep = d;
+                    break;
+                }
+            }
+
+            if (!targetDep) {
+                EmitDiag("", 0, 0, "error", "package '" + pkgName + "' is not listed in [Dependencies]");
+                return false;
+            }
+
+            std::filesystem::path depRoot;
+            if (targetDep->path.empty()) {
+                depRoot = RegistryPackagesDir() / DependencyPackageName(*targetDep);
+                if (!std::filesystem::exists(depRoot)) {
+                    EmitDiag("",
+                             0,
+                             0,
+                             "error",
+                             "package '" + DependencyPackageName(*targetDep) +
+                                 "' is not installed — run 'rux install'");
+                    return false;
+                }
+            }
+            else {
+                depRoot = (ownerRoot / targetDep->path).lexically_normal();
+
+                auto rel = depRoot.lexically_relative(ownerRoot);
+                if (!rel.empty() && rel.begin()->string() == "..") {
+                    EmitDiag(
+                        "", 0, 0, "error", "package '" + pkgName + "' contains an invalid path escaping root bounds");
+                    return false;
+                }
+            }
+
+            auto depManifest = Manifest::Load(depRoot / "Rux.toml");
+            if (!depManifest) {
+                EmitDiag("",
+                         0,
+                         0,
+                         "error",
+                         "dependency package '" + pkgName + "' was not found at '" + depRoot.string() + "'");
+                return false;
+            }
+
+            queuedPackageNames.insert(pkgName);
+            pendingPackages.push_back({targetDep->name, depRoot, std::move(*depManifest)});
+            return true;
+        };
+
+        std::vector<std::string> imports;
+
+        struct ImportCollector {
+            std::vector<std::string>& imports;
+            std::string_view target;
+
+            void collect(const Decl& decl) {
+                if (const auto* ud = dynamic_cast<const UseDecl*>(&decl)) {
+                    if (!DeclMatchesTarget(*ud, target)) return;
+                    if (!ud->path.empty()) imports.push_back(ud->path[0]);
+                    return;
+                }
+                if (const auto* mod = dynamic_cast<const ModuleDecl*>(&decl)) {
+                    for (const auto& item : mod->items) {
+                        if (item) collect(*item);
+                    }
+                }
+            }
+        } collector{imports, targetName};
+
+        for (const auto& pr : parseResults) {
+            imports.clear();
+            for (const auto& decl : pr.module.items) {
+                if (decl) collector.collect(*decl);
+            }
+
+            for (const auto& pkgName : imports) {
+                if (pkgName == manifest->package.name) continue;
+                if (!enqueueDependency(pkgName, *manifest, manifestPath->parent_path())) {
+                    hadErrors = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hadErrors) {
+            for (std::size_t pendingIndex = 0; pendingIndex < pendingPackages.size(); ++pendingIndex) {
+                const auto& pendingPkg = pendingPackages[pendingIndex];
+
+                if (opts.verbose && !jsonOutput) {
+                    std::print(" Loading package {} from {}\n", pendingPkg.name, pendingPkg.root.string());
+                }
+
+                auto depLoadResult = SourceLoader::Load(pendingPkg.root);
+                if (!depLoadResult) {
+                    hadErrors = true;
+                    break;
+                }
+
+                for (const auto& error : depLoadResult->errors) {
+                    if (jsonOutput) {
+                        EmitDiag("", 0, 0, "error", error);
+                        hadErrors = true;
+                    }
+                    else {
+                        std::print(stderr, "{}", error);
+                    }
+                }
+
+                if (!depLoadResult->errors.empty()) {
+                    hadErrors = true;
+                    break;
+                }
+
+                std::vector<ParseResult> packageParseResults;
+                packageParseResults.reserve(depLoadResult->files.size());
+
+                for (const auto& depFile : depLoadResult->files) {
+                    Lexer depLexer(depFile.source, depFile.path.string());
+                    auto depLex = depLexer.Tokenize();
+
+                    for (const auto& diag : depLex.diagnostics) {
+                        const char* sev = diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
+                        EmitDiag(depFile.path.string(),
+                                 static_cast<int>(diag.location.line),
+                                 static_cast<int>(diag.location.column),
+                                 sev,
+                                 diag.message);
+                        if (diag.severity == LexerDiagnostic::Severity::Error) hadErrors = true;
+                    }
+                    if (depLex.HasErrors()) {
+                        hadErrors = true;
+                        break;
+                    }
+
+                    Parser depParser(std::move(depLex.tokens), depFile.path.string());
+                    auto depParse = depParser.Parse();
+
+                    for (const auto& diag : depParse.diagnostics) {
+                        const char* sev = diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
+                        EmitDiag(depFile.path.string(),
+                                 static_cast<int>(diag.location.line),
+                                 static_cast<int>(diag.location.column),
+                                 sev,
+                                 diag.message);
+                        if (diag.severity == ParserDiagnostic::Severity::Error) hadErrors = true;
+                    }
+                    if (depParse.HasErrors()) {
+                        hadErrors = true;
+                        break;
+                    }
+                    PruneModuleForTarget(depParse.module, targetName);
+
+                    packageParseResults.push_back(std::move(depParse));
+                }
+
+                if (hadErrors) break;
+
+                imports.clear();
+                for (const auto& pr : packageParseResults) {
+                    for (const auto& decl : pr.module.items) {
+                        if (decl) collector.collect(*decl);
+                    }
+                }
+
+                for (const auto& pkgName : imports) {
+                    const auto& currentPkg = pendingPackages[pendingIndex];
+                    if (pkgName == currentPkg.manifest.package.name || pkgName == currentPkg.name) continue;
+                    if (!enqueueDependency(pkgName, currentPkg.manifest, currentPkg.root)) {
+                        hadErrors = true;
+                        break;
+                    }
+                }
+
+                if (hadErrors) break;
+
+                for (auto& depParse : packageParseResults) {
+                    loadedModuleNames.push_back(depParse.module.name);
+                    depParseResults.push_back(std::move(depParse));
+                    loadedPackages.push_back(pendingPackages[pendingIndex].name);
+                }
+            }
+        }
+
+        if (!hadErrors) {
+            std::vector<const Module*> userModules;
+            userModules.reserve(parseResults.size());
+            for (const auto& pr : parseResults)
+                userModules.push_back(&pr.module);
+
+            std::vector<DepPackage> depPackages;
+            std::unordered_map<std::string, std::size_t> pkgIdx;
+            for (std::size_t i = 0; i < depParseResults.size(); ++i) {
+                const std::string& pkgName = loadedPackages[i];
+                auto [it, inserted] = pkgIdx.emplace(pkgName, depPackages.size());
+                if (inserted) depPackages.push_back({pkgName, {}});
+                depPackages[it->second].modules.push_back({loadedModuleNames[i], &depParseResults[i].module});
+            }
+
+            Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name);
+            auto semaResult = sema.Analyze();
+
+            for (const auto& diag : semaResult.diagnostics) {
+                const auto& loc = diag.location;
+                const char* sev = diag.severity == SemaDiagnostic::Severity::Error ? "error" : "warning";
+                EmitDiag(diag.sourceName, static_cast<int>(loc.line), static_cast<int>(loc.column), sev, diag.message);
+                if (diag.severity == SemaDiagnostic::Severity::Error) hadErrors = true;
+            }
+
+            if (semaResult.HasErrors()) hadErrors = true;
+        }
+
+        if (jsonOutput) {
+            std::print("{{\n");
+            std::print("  \"success\": {},\n", hadErrors ? "false" : "true");
+            std::print("  \"diagnostics\": [\n");
+
+            for (std::size_t i = 0; i < jsonDiags.size(); ++i) {
+                const auto& d = jsonDiags[i];
+                std::print("    {{");
+                std::print("\"file\":\"{}\",", JsonEscape(d.file));
+                std::print("\"line\":{},", d.line);
+                std::print("\"column\":{},", d.column);
+                std::print("\"severity\":\"{}\",", JsonEscape(d.severity));
+                std::print("\"message\":\"{}\"", JsonEscape(d.message));
+                std::print("}}{}\n", (i + 1 < jsonDiags.size()) ? "," : "");
+            }
+
+            std::print("  ]\n");
+            std::print("}}\n");
+        }
+
+        return hadErrors ? 1 : 0;
     }
 
     void Cli::PrintHelp() {
@@ -2048,6 +2646,7 @@ namespace Rux {
                    "  update         Update dependencies\n"
                    "  version        Show version information\n"
                    "  info           Show package metadata and manifest information.\n"
+                   "  check          Check package source code for errors without building\n"
                    "\n"
                    "Options:\n"
                    "  --color <auto|on|off>  Control colored output\n"
@@ -2122,6 +2721,10 @@ namespace Rux {
         }
         if (command == "info") {
             PrintHelpInfo();
+            return;
+        }
+        if (command == "check") {
+            PrintHelpCheck();
             return;
         }
         if (command == "version") {
@@ -2250,14 +2853,18 @@ namespace Rux {
                    "Usage: rux install\n"
                    "       rux install [package]\n"
                    "       rux install [package]@[version]\n"
+                   "       rux install --dev [package]\n"
                    "\n"
                    "Without a package name, downloads all registry dependencies listed in Rux.toml.\n"
                    "With a package name, adds it to Rux.toml and downloads it to the local cache.\n"
+                   "Use --dev to clone the package repository's dev branch instead of the default branch.\n"
                    "\n"
                    "Examples:\n"
                    "  rux install\n"
                    "  rux install Std\n"
-                   "  rux install Std@0.1.0\n");
+                   "  rux install Std@0.1.0\n"
+                   "  rux install --dev Std\n"
+                   "  rux install --dev Windows\n");
     }
 
     void Cli::PrintHelpUninstall() {
@@ -2375,9 +2982,27 @@ namespace Rux {
                    "\n"
                    "Usage: rux info [package name]\n"
                    "\n"
+                   "Options:\n"
+                   "  --json    Returns a json instead of a string"
                    "Examples:\n"
                    "  rux info Std\n"
                    "  rux info Windows\n");
+    }
+
+    void Cli::PrintHelpCheck() {
+        std::print("Check package source code for errors.\n\n"
+
+                   "Usage:\n"
+                   "  rux check [options]\n\n"
+
+                   "Options:\n"
+                   "  --json            Output diagnostics as JSON\n"
+                   "  --target <triple> Check for a specific target\n"
+
+                   "Examples:\n"
+                   "  rux check\n"
+                   "  rux check --json\n"
+                   "  rux check --target windows-x64\n");
     }
 
     void Cli::PrintVersion() {
