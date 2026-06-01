@@ -15,6 +15,7 @@ configure_file(
 
 add_executable(rux
         Source/Main.cpp
+        Source/Platform.cpp
         Source/Cli.cpp
         Source/Manifest.cpp
         Source/Package.cpp
@@ -28,6 +29,12 @@ add_executable(rux
         Source/Asm.cpp
         Source/Rcu.cpp
         Source/Linker.cpp
+        Include/Rux/Platform/ABI.h
+        Include/Rux/Platform/Defines.h
+        Include/Rux/Platform/Host.h
+        Include/Rux/Platform/Platform.h
+        Include/Rux/Platform/Target.h
+        Include/Rux/Platform/Types.h
         Include/Rux/Cli.h
         Include/Rux/Manifest.h
         Include/Rux/Package.h
