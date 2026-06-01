@@ -6,6 +6,8 @@
 
 #include "Rux/Hir.h"
 
+#include "Rux/Platform.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -21,7 +23,7 @@
 
 namespace Rux {
     static bool LocalTime(std::time_t time, std::tm& out) {
-#ifdef _WIN32
+#if RUX_OS_WINDOWS
         return localtime_s(&out, &time) == 0;
 #else
         return localtime_r(&time, &out) != nullptr;

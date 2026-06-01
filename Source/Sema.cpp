@@ -4,8 +4,10 @@
     Licensed under the MIT License
 */
 
+
 #include "Rux/Sema.h"
 
+#include "Rux/Platform.h"
 #include "Rux/Type.h"
 
 #include <algorithm>
@@ -1041,12 +1043,11 @@ namespace Rux {
             return std::nullopt;
         }
 
-        
+
         TypeRef ResolveType(const TypeExpr& expr) {
             // Helper to resolve enums from the global declaration table
             auto ResolveEnumType = [&](const std::string& name) -> TypeRef {
-                if (const auto it = enumDecls.find(name); it != enumDecls.end())
-                    return EnumType(*it->second);
+                if (const auto it = enumDecls.find(name); it != enumDecls.end()) return EnumType(*it->second);
                 return TypeRef::MakeUnknown();
             };
 
@@ -1054,7 +1055,8 @@ namespace Rux {
                 for (const auto& tp : currentTypeParams) {
                     if (tp == t->name) {
                         if (!t->typeArgs.empty()) {
-                            EmitError(expr.location, std::format("Type parameter '{}' cannot take type arguments", t->name));
+                            EmitError(expr.location,
+                                      std::format("Type parameter '{}' cannot take type arguments", t->name));
                             return TypeRef::MakeUnknown();
                         }
                         return TypeRef::MakeTypeParam(t->name);
@@ -1072,12 +1074,10 @@ namespace Rux {
                 if (hasUnknownArgs) return TypeRef::MakeUnknown();
                 Symbol* sym = currentScope ? currentScope->Lookup(t->name) : nullptr;
                 if (sym && (sym->kind == Symbol::Kind::Type || sym->kind == Symbol::Kind::Interface)) {
-                    
                     // Return base type if no generic arguments are provided
-                    if (t->typeArgs.empty() && !sym->type.IsUnknown())
-                        return sym->type;
+                    if (t->typeArgs.empty() && !sym->type.IsUnknown()) return sym->type;
 
-                    return TypeRef::MakeNamed(GenericTypeName(*t)); 
+                    return TypeRef::MakeNamed(GenericTypeName(*t));
                 }
 
                 TypeRef enumType = ResolveEnumType(t->name);
@@ -1980,11 +1980,11 @@ namespace Rux {
         }
 
         static std::string_view HostOs() noexcept {
-#if defined(_WIN32)
+#if RUX_OS_WINDOWS
             return "Windows";
-#elif defined(__APPLE__)
+#elif RUX_OS_MACOS
             return "macOS";
-#elif defined(__linux__)
+#elif RUX_OS_LINUX
             return "Linux";
 #else
             return "";
