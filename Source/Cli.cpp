@@ -165,8 +165,9 @@ namespace Rux {
 
         [[nodiscard]] std::string HostTargetTriple() {
             auto triple = std::format("{}-{}", ToString(HostOS), ToString(HostArch));
-            std::transform(
-                std::begin(triple), std::end(triple), std::begin(triple), [](auto c) { return std::tolower(c); });
+            std::transform(std::begin(triple), std::end(triple), std::begin(triple), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
             return triple;
         }
 
@@ -990,13 +991,14 @@ namespace Rux {
 
         const auto root = manifestPath->parent_path();
         const auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
+        const bool buildDll = (manifest->package.type == "Dll" || manifest->package.type == "dll");
         std::string outputName = manifest->package.name;
         if constexpr (HostOS == OS::Windows) {
-            outputName += ".exe";
+            outputName += buildDll ? ".dll" : ".exe";
         }
         const auto exePath = binDir / outputName;
 
-        Linker linker(std::move(rcuFiles), std::string(manifest->package.name), {root});
+        Linker linker(std::move(rcuFiles), std::string(manifest->package.name), {root}, buildDll);
         if (!linker.Link(exePath)) {
             for (const auto& err : linker.Errors())
                 std::print(stderr, "error: {}\n", err.message);
@@ -1833,6 +1835,11 @@ namespace Rux {
         std::string_view profileName = isRelease ? "Release" : "Debug";
         auto root = manifestPath->parent_path();
         auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
+        const bool runDll = (manifest->package.type == "Dll" || manifest->package.type == "dll");
+        if (runDll) {
+            std::print(stderr, "error: cannot run a DLL package directly\n");
+            return 1;
+        }
         std::string exeName = manifest->package.name;
 
         if constexpr (HostOS == OS::Windows) {
@@ -2850,14 +2857,18 @@ namespace Rux {
                    "Usage: rux install\n"
                    "       rux install [package]\n"
                    "       rux install [package]@[version]\n"
+                   "       rux install --dev [package]\n"
                    "\n"
                    "Without a package name, downloads all registry dependencies listed in Rux.toml.\n"
                    "With a package name, adds it to Rux.toml and downloads it to the local cache.\n"
+                   "Use --dev to clone the package repository's dev branch instead of the default branch.\n"
                    "\n"
                    "Examples:\n"
                    "  rux install\n"
                    "  rux install Std\n"
-                   "  rux install Std@0.1.0\n");
+                   "  rux install Std@0.1.0\n"
+                   "  rux install --dev Std\n"
+                   "  rux install --dev Windows\n");
     }
 
     void Cli::PrintHelpUninstall() {

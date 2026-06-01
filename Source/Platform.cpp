@@ -14,7 +14,12 @@
 #include <vector>
 
 #if RUX_OS_WINDOWS
-#  define WIN32_LEAN_AND_MEAN
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 #  include <windows.h>
 #elif RUX_OS_LINUX
 #  include <sys/auxv.h>

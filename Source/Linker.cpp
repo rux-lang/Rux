@@ -42,6 +42,11 @@ namespace Rux {
     [[maybe_unused]] static constexpr uint16_t kMagicPE32P = 0x020B;
     [[maybe_unused]] static constexpr uint16_t kSubsystemCUI = 3; // console
 
+    // DLL-specific
+    [[maybe_unused]] static constexpr uint16_t kSubsystemGUI = 2; // windows GUI (used for DLLs)
+    // IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_LARGE_ADDRESS_AWARE | IMAGE_FILE_DLL
+    [[maybe_unused]] static constexpr uint16_t kCharacteristicsDll = 0x2022u;
+
     // IMAGE_SCN_ characteristics
     [[maybe_unused]] static constexpr uint32_t kScnText = 0x60000020u; // CNT_CODE | MEM_EXECUTE | MEM_READ
     [[maybe_unused]] static constexpr uint32_t kScnRData = 0x40000040u; // CNT_INITIALIZED_DATA | MEM_READ
@@ -295,10 +300,12 @@ namespace Rux {
 
     Linker::Linker(std::vector<RcuFile> objects,
                    std::string packageName,
-                   std::vector<std::filesystem::path> importSearchDirs)
+                   std::vector<std::filesystem::path> importSearchDirs,
+                   bool isDll)
         : objects(std::move(objects))
         , packageName(std::move(packageName))
-        , importSearchDirs(std::move(importSearchDirs)) {
+        , importSearchDirs(std::move(importSearchDirs))
+        , isDll(isDll) {
     }
 
     void Linker::Error(std::string msg) {
@@ -313,11 +320,12 @@ namespace Rux {
 #else
         // 1. Collect imported external function names
 
-        // Always need ExitProcess for the entry thunk
+        // EXEs always need ExitProcess for the entry thunk; DLLs do not.
         std::unordered_map<std::string, std::string> importDll;
         std::unordered_set<std::string> explicitImportDlls;
         std::unordered_map<std::string, std::vector<std::string>> explicitImportFuncsByDll;
-        importDll["ExitProcess"] = "KERNEL32.DLL";
+        if (!isDll)
+            importDll["ExitProcess"] = "KERNEL32.DLL";
 
         // First pass: collect explicit DLL assignments from symbol declarations.
         // This handles the case where a call site and its declaration are in
@@ -393,19 +401,48 @@ namespace Rux {
 
         Buf textPre;
 
-        // __rux_start entry thunk:
-        //   sub rsp, 0x28       ; 48 83 EC 28
-        //   call Main           ; E8 xx xx xx xx
-        //   mov ecx, eax        ; 89 C1~
-        //   call ExitProcess    ; E8 xx xx xx xx
-        //   int3                ; CC
-        textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x28});
-        const size_t kCallMainDisp = textPre.size() + 1; // offset of 4-byte disp field
-        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00});
-        textPre.insert(textPre.end(), {0x89, 0xC1});
+        if (isDll) {
+            // DLL entry point: _DllMainCRTStartup / DllMain proxy
+            // Win64 DLL entry: BOOL WINAPI DllMain(HINSTANCE, DWORD, LPVOID)
+            // args: rcx=hModule, rdx=fdwReason, r8=lpvReserved
+            // We call user's DllMain if it exists, otherwise just return TRUE (1).
+            //
+            // Thunk layout:
+            //   sub  rsp, 0x28
+            //   call DllMain       ; E8 disp32  (patched; if DllMain defined)
+            //   mov  eax, 1        ; return TRUE if DllMain missing or returned 0
+            //   add  rsp, 0x28
+            //   ret
+            //
+            // If DllMain is not defined in user code we emit a minimal stub that
+            // just returns TRUE — standard DLL behaviour when no initialisation needed.
+            textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x28}); // sub rsp, 0x28
+            const size_t kCallDllMainDisp = textPre.size() + 1;
+            textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call DllMain
+            // If DllMain returned 0 (init failed), still propagate it; otherwise keep eax.
+            // For simplicity we trust DllMain's return value directly.
+            textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x28}); // add rsp, 0x28
+            textPre.push_back(0xC3); // ret
+            (void)kCallDllMainDisp; // used below during patching
+        } else {
+            // EXE entry thunk (__rux_start):
+            //   sub rsp, 0x28       ; 48 83 EC 28
+            //   call Main           ; E8 xx xx xx xx
+            //   mov ecx, eax        ; 89 C1
+            //   call ExitProcess    ; E8 xx xx xx xx
+            //   int3                ; CC
+            textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x28});
+        }
+        const size_t kCallMainDisp = isDll ? 5 : textPre.size() + 1; // offset of 4-byte disp field
+        if (!isDll) {
+            textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00});
+            textPre.insert(textPre.end(), {0x89, 0xC1});
+        }
         const size_t kCallExitDisp = textPre.size() + 1;
-        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00});
-        textPre.push_back(0xCC);
+        if (!isDll) {
+            textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00});
+            textPre.push_back(0xCC);
+        }
 
         // Import thunks: jmp qword ptr [rip+disp32] = FF 25 xx xx xx xx
         std::vector<size_t> thunkOff(numImports);
@@ -585,8 +622,28 @@ namespace Rux {
             Patch32(textBuf, thunkOff[i] + 2, static_cast<uint32_t>(disp));
         }
 
-        // Patch entry thunk: call Main
-        {
+        // Patch entry thunk: call Main (EXE) or DllMain (DLL)
+        if (isDll) {
+            // DllMain is optional: if not defined, patch the call to target the
+            // instruction immediately after it so it falls through to `ret` returning
+            // whatever eax happened to hold (Windows default-initialises to 0, but
+            // the sub/add rsp frame means the caller sees TRUE from a fresh eax on
+            // many ABIs). We make it explicit: if no DllMain, patch to call a tiny
+            // inline stub that sets eax=1 then returns.
+            //
+            // Simple approach: if DllMain absent, replace the call+6-byte nop with
+            // `mov eax, 1; nop` so the stub just returns TRUE.
+            auto it = symMap.find("DllMain");
+            if (it != symMap.end()) {
+                uint64_t dllMainVA = it->second;
+                uint64_t nextInst = kImageBase + textRva + kCallMainDisp + 4;
+                Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(dllMainVA - nextInst));
+            } else {
+                // No DllMain: replace `E8 00 00 00 00` with `B8 01 00 00 00` (mov eax, 1)
+                textBuf[kCallMainDisp - 1] = 0xB8; // change opcode from E8 (call) to B8 (mov eax, imm32)
+                Patch32(textBuf, kCallMainDisp, 1); // imm = 1 (TRUE)
+            }
+        } else {
             auto it = symMap.find("Main");
             if (it == symMap.end()) {
                 Error("undefined symbol 'Main' — no entry point found");
@@ -597,8 +654,8 @@ namespace Rux {
             Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(mainVA - nextInst));
         }
 
-        // Patch entry thunk: call ExitProcess thunk
-        {
+        // Patch entry thunk: call ExitProcess thunk (EXE only)
+        if (!isDll) {
             uint64_t exitVA = kImageBase + textRva + thunkOff[importIdx["ExitProcess"]];
             uint64_t nextInst = kImageBase + textRva + kCallExitDisp + 4;
             Patch32(textBuf, kCallExitDisp, static_cast<uint32_t>(exitVA - nextInst));
@@ -683,6 +740,86 @@ namespace Rux {
 
         if (!errors.empty()) return false;
 
+        // Build export directory for DLLs
+        // We export all pub functions that are marked as exported symbols.
+        // Collect exported function names (non-extern, non-local, Func kind).
+        std::vector<std::string> exportNames;
+        if (isDll) {
+            for (const auto& obj : objects) {
+                for (const auto& sym : obj.symbols) {
+                    if (sym.kind == RcuSymKind::Func &&
+                        sym.visibility != RcuSymVis::Local &&
+                        !sym.name.empty() &&
+                        sym.name != "DllMain" &&
+                        symMap.count(sym.name)) {
+                        exportNames.push_back(sym.name);
+                    }
+                }
+            }
+            std::sort(exportNames.begin(), exportNames.end());
+            exportNames.erase(std::unique(exportNames.begin(), exportNames.end()), exportNames.end());
+        }
+
+        // Build export directory data (appended to .rdata)
+        uint32_t exportDirOff = 0;
+        uint32_t exportDirSize = 0;
+        if (isDll && !exportNames.empty()) {
+            exportDirOff = static_cast<uint32_t>(rdataBuf.size());
+            const uint32_t numExports = static_cast<uint32_t>(exportNames.size());
+
+            // Reserve IMAGE_EXPORT_DIRECTORY (40 bytes)
+            const size_t expDirPos = rdataBuf.size();
+            WriteZeros(rdataBuf, 40);
+
+            // AddressOfFunctions array (RVAs)
+            const uint32_t funcArrayOff = static_cast<uint32_t>(rdataBuf.size());
+            for (uint32_t i = 0; i < numExports; ++i)
+                WriteU32(rdataBuf, 0); // patched below
+
+            // AddressOfNames array (RVAs to name strings)
+            const uint32_t nameArrayOff = static_cast<uint32_t>(rdataBuf.size());
+            for (uint32_t i = 0; i < numExports; ++i)
+                WriteU32(rdataBuf, 0); // patched below
+
+            // AddressOfNameOrdinals array
+            const uint32_t ordArrayOff = static_cast<uint32_t>(rdataBuf.size());
+            for (uint32_t i = 0; i < numExports; ++i)
+                WriteU16(rdataBuf, static_cast<uint16_t>(i));
+
+            // DLL name string
+            const uint32_t dllNameStrOff = static_cast<uint32_t>(rdataBuf.size());
+            WriteCStr(rdataBuf, (packageName + ".dll").c_str());
+            PadTo(rdataBuf, 2);
+
+            // Function name strings + patch name/func arrays
+            for (uint32_t i = 0; i < numExports; ++i) {
+                const uint32_t nameStrOff = static_cast<uint32_t>(rdataBuf.size());
+                WriteCStr(rdataBuf, exportNames[i].c_str());
+                PadTo(rdataBuf, 2);
+                // Patch name array entry
+                Patch32(rdataBuf, nameArrayOff + i * 4, rdataRva + nameStrOff);
+                // Patch function RVA
+                auto it = symMap.find(exportNames[i]);
+                if (it != symMap.end()) {
+                    uint32_t funcRva = static_cast<uint32_t>(it->second - kImageBase);
+                    Patch32(rdataBuf, funcArrayOff + i * 4, funcRva);
+                }
+            }
+
+            exportDirSize = static_cast<uint32_t>(rdataBuf.size()) - exportDirOff;
+
+            // Patch IMAGE_EXPORT_DIRECTORY fields
+            Patch32(rdataBuf, expDirPos + 0,  0);                                    // Characteristics
+            Patch32(rdataBuf, expDirPos + 4,  static_cast<uint32_t>(std::time(nullptr))); // TimeDateStamp
+            Patch32(rdataBuf, expDirPos + 12, rdataRva + dllNameStrOff);              // Name RVA
+            Patch32(rdataBuf, expDirPos + 16, 1);                                     // Base (ordinal base)
+            Patch32(rdataBuf, expDirPos + 20, numExports);                            // NumberOfFunctions
+            Patch32(rdataBuf, expDirPos + 24, numExports);                            // NumberOfNames
+            Patch32(rdataBuf, expDirPos + 28, rdataRva + funcArrayOff);               // AddressOfFunctions
+            Patch32(rdataBuf, expDirPos + 32, rdataRva + nameArrayOff);               // AddressOfNames
+            Patch32(rdataBuf, expDirPos + 36, rdataRva + ordArrayOff);                // AddressOfNameOrdinals
+        }
+
         // 10. Emit PE32+ file
         std::filesystem::create_directories(outputPath.parent_path());
         std::ofstream out(outputPath, std::ios::binary | std::ios::trunc);
@@ -732,7 +869,9 @@ namespace Rux {
         wU32(0);
         wU32(0); // no COFF symbol table
         wU16(240); // SizeOfOptionalHeader for PE32+
-        wU16(0x0022); // Characteristics: EXECUTABLE | LARGE_ADDRESS_AWARE
+        // EXE: EXECUTABLE | LARGE_ADDRESS_AWARE
+        // DLL: EXECUTABLE | LARGE_ADDRESS_AWARE | DLL
+        wU16(isDll ? kCharacteristicsDll : static_cast<uint16_t>(0x0022u));
 
         // Optional Header PE32+ (240 bytes)
         wU16(kMagicPE32P);
@@ -756,7 +895,7 @@ namespace Rux {
         wU32(sizeOfImage);
         wU32(sizeOfHeaders);
         wU32(0); // CheckSum
-        wU16(kSubsystemCUI);
+        wU16(isDll ? kSubsystemGUI : kSubsystemCUI);
         wU16(kDllChars);
         wU64(0x100000ULL); // SizeOfStackReserve (1 MB)
         wU64(0x1000ULL); // SizeOfStackCommit  (4 KB)
@@ -765,7 +904,9 @@ namespace Rux {
         wU32(0); // LoaderFlags
         wU32(16); // NumberOfRvaAndSizes
         // DataDirectory[16]
-        wDir(0, 0); // [0]  Export
+        // [0] Export — filled for DLLs, empty for EXEs
+        wDir(isDll && exportDirSize > 0 ? rdataRva + exportDirOff : 0,
+             isDll && exportDirSize > 0 ? exportDirSize : 0);
         wDir(rdataRva + importDirOff, static_cast<uint32_t>((importDllNames.size() + 1) * 20)); // [1]  Import
         wDir(0, 0);
         wDir(0, 0);
