@@ -28,6 +28,8 @@
 #elif RUX_IS_BSD
 #  include <sys/sysctl.h>
 #  include <unistd.h>
+#elif RUX_IS_SUNOS
+#  include <unistd.h>
 #endif
 
 #if RUX_ARCH_X86 || RUX_ARCH_X64
@@ -179,6 +181,10 @@ namespace Rux::Platform {
 
             info.physical_cores = info.logical_cores;
 
+#elif RUX_IS_SUNOS
+
+            info.physical_cores = info.logical_cores;
+
 #elif RUX_OS_MACOS || (RUX_IS_BSD && !RUX_OS_OPENBSD)
 
             size_t s = sizeof(info.physical_cores);
@@ -239,6 +245,18 @@ namespace Rux::Platform {
             info.total_bytes = uint64_t(s.totalram) * s.mem_unit;
 
             info.available_bytes = uint64_t(s.freeram) * s.mem_unit;
+        }
+
+#elif RUX_IS_SUNOS
+
+        {
+            long pages = sysconf(_SC_PHYS_PAGES);
+            long avpages = sysconf(_SC_AVPHYS_PAGES);
+            long psize = sysconf(_SC_PAGESIZE);
+            if (pages > 0 && psize > 0) {
+                info.total_bytes = uint64_t(pages) * uint64_t(psize);
+                info.available_bytes = uint64_t(avpages > 0 ? avpages : pages) * uint64_t(psize);
+            }
         }
 
 #elif RUX_OS_MACOS
