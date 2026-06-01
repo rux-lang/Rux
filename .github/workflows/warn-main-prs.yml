@@ -1,0 +1,45 @@
+name: Warn PRs Against Main
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  pull-requests: write
+
+jobs:
+  check-base-branch:
+    if: github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Comment warning
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const body = [
+              "## ⚠️ Pull Request Targets Main",
+              "",
+              "This pull request is targeting the **main** branch.",
+              "",
+              "Please retarget this PR to **dev** unless this is an approved hotfix, release, or other exceptional case.",
+              "",
+              "You can change the target branch using GitHub's **Edit** button on the pull request page.",
+              "",
+              "This check will fail until the base branch is changed."
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body
+            });
+
+      - name: Fail workflow
+        run: |
+          echo "::error::Pull requests must target the dev branch."
+          exit 1
