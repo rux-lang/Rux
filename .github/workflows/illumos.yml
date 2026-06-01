@@ -21,7 +21,7 @@ jobs:
           copyback: false
           prepare: |
             uname -a
-            pkg install -y cmake gcc
+            pkg install --accept developer/gcc14 ooce/developer/cmake
 
           run: |
             failed=0
