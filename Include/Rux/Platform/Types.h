@@ -102,23 +102,23 @@ namespace Rux::Platform {
     [[nodiscard]] constexpr std::string_view ToString(OS os) noexcept {
         switch (os) {
         case OS::Windows:
-            return "windows";
+            return "Windows";
         case OS::Linux:
-            return "linux";
+            return "Linux";
         case OS::MacOS:
-            return "macos";
+            return "macOS";
         case OS::FreeBSD:
-            return "freebsd";
+            return "FreeBSD";
         case OS::OpenBSD:
-            return "openbsd";
+            return "OpenBSD";
         case OS::NetBSD:
-            return "netbsd";
+            return "NetBSD";
         case OS::DragonFlyBSD:
-            return "dragonflybsd";
+            return "DragonflyBSD";
         case OS::Solaris:
-            return "solaris";
+            return "Solaris";
         case OS::Illumos:
-            return "illumos";
+            return "Illumos";
         default:
             return "unknown";
         }
@@ -129,7 +129,7 @@ namespace Rux::Platform {
         case Arch::X86_32:
             return "x86";
         case Arch::X86_64:
-            return "x86_64";
+            return "x64";
         case Arch::ARM32:
             return "arm32";
         case Arch::ARM64:
