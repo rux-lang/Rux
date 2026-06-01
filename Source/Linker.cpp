@@ -978,9 +978,13 @@ namespace Rux {
 #  else
                  0x31, 0xC0, // xor eax, eax (SYS_read = 0)
 #  endif
+                 0x4D, 0x89, 0xC8, // mov r8, r9  (save output pointer to r8 before syscall)
                  0x0F, 0x05, // syscall
                  0x85, 0xC0, // test eax, eax
-                 0x78, 0x09, // js +9 (error)
+                 0x78, 0x11, // js +17 (error)
+                 0x4D, 0x89, 0xC1, // mov r9, r8  (restore output pointer)
+                 0x4D, 0x85, 0xC9, // test r9, r9
+                 0x74, 0x03, // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax  (*bytesRead = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
                  0xC3, // ret
@@ -999,16 +1003,20 @@ namespace Rux {
 #  else
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (SYS_write)
 #  endif
+                 0x4D, 0x89, 0xC8, // mov r8, r9  (save output pointer to r8 before syscall)
                  0x0F, 0x05, // syscall
                  0x85, 0xC0, // test eax, eax
-                 0x78, 0x09, // js +9 (error)
+                 0x78, 0x11, // js +17 (error)
+                 0x4D, 0x89, 0xC1, // mov r9, r8  (restore output pointer)
+                 0x4D, 0x85, 0xC9, // test r9, r9
+                 0x74, 0x03, // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax  (*bytesWritten = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
                  0xC3, // ret
                  0x31, 0xC0, // xor eax, eax (FALSE)
                  0xC3 // ret
              }},
-#  if RUX_OS_LINUX
+#  if RUX_OS_LINUX || RUX_IS_BSD
             // Rux extern calls currently use the Win64 register layout. These
             // thunks move that layout into Linux x86_64 syscall registers:
             // rax=number, rdi/rsi/rdx/r10/r8/r9=args.
@@ -1099,44 +1107,80 @@ namespace Rux {
                  0x0F, 0x05, // syscall
                  0xC3 // ret
              }},
-            {"__rux_linux_nanosleep",
-             {
-                 0x48,
-                 0xC7,
-                 0xC0,
-                 0x23,
-                 0x00,
-                 0x00,
-                 0x00, // mov rax, 35
-                 0x48,
-                 0x89,
-                 0xCF, // mov rdi, rcx
-                 0x48,
-                 0x89,
-                 0xD6, // mov rsi, rdx
-                 0x0F,
-                 0x05, // syscall
-                 0xC3 // ret
-             }},
-            {"__rux_linux_clock_gettime",
-             {
-                 0x48,
-                 0xC7,
-                 0xC0,
-                 0xE4,
-                 0x00,
-                 0x00,
-                 0x00, // mov rax, 228
-                 0x48,
-                 0x63,
-                 0xF9, // movsxd rdi, ecx
-                 0x48,
-                 0x89,
-                 0xD6, // mov rsi, rdx
-                 0x0F,
-                 0x05, // syscall
-                 0xC3 // ret
-             }},
+             {"__rux_linux_nanosleep",
+              {
+                  0x48, 0xC7, 0xC0, 0x23, 0x00, 0x00, 0x00, // mov rax, 35
+                  0x48, 0x89, 0xCF, // mov rdi, rcx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_linux_clock_gettime",
+              {
+                  0x48, 0xC7, 0xC0, 0xE4, 0x00, 0x00, 0x00, // mov rax, 228
+                  0x48, 0x63, 0xF9, // movsxd rdi, ecx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_nanosleep",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0x48, 0xC7, 0xC0, 0xF0, 0x00, 0x00, 0x00, // mov rax, 240
+#  elif defined(__OpenBSD__)
+                  0x48, 0xC7, 0xC0, 0x5B, 0x00, 0x00, 0x00, // mov rax, 91
+#  endif
+                  0x48, 0x89, 0xCF, // mov rdi, rcx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_clock_gettime",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0x48, 0xC7, 0xC0, 0xE8, 0x00, 0x00, 0x00, // mov rax, 232
+#  elif defined(__OpenBSD__)
+                  0x48, 0xC7, 0xC0, 0x57, 0x00, 0x00, 0x00, // mov rax, 87
+#  endif
+                  0x48, 0x63, 0xF9, // movsxd rdi, ecx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_mmap",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0x48, 0xC7, 0xC0, 0xDD, 0x01, 0x00, 0x00, // mov rax, 477
+#  elif defined(__OpenBSD__)
+                  0x48, 0xC7, 0xC0, 0xC5, 0x00, 0x00, 0x00, // mov rax, 197
+#  endif
+                  0x48, 0x89, 0xCF, // mov rdi, rcx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x4C, 0x89, 0xC2, // mov rdx, r8
+                  0x4D, 0x89, 0xCA, // mov r10, r9
+                  0x4C, 0x8B, 0x44, 0x24, 0x28, // mov r8, [rsp + 40]
+                  0x4C, 0x8B, 0x4C, 0x24, 0x30, // mov r9, [rsp + 48]
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_const_MAP_ANONYMOUS",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0xB8, 0x00, 0x10, 0x00, 0x00, // mov eax, 4096
+#  elif defined(__OpenBSD__)
+                  0xB8, 0x20, 0x00, 0x00, 0x00, // mov eax, 32
+#  endif
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_const_CLOCK_MONOTONIC",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0xB8, 0x04, 0x00, 0x00, 0x00, // mov eax, 4
+#  elif defined(__OpenBSD__)
+                  0xB8, 0x03, 0x00, 0x00, 0x00, // mov eax, 3
+#  endif
+                  0xC3 // ret
+              }},
 #  endif
         };
 
@@ -1179,8 +1223,11 @@ namespace Rux {
         if (!errors.empty()) return false;
 
         Buf textPre;
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
         const size_t kCallMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x08}); // add rsp, 8 (undo sub)
         textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax
 #  if RUX_IS_BSD
         textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD exit)
@@ -1216,6 +1263,26 @@ namespace Rux {
                                 'N',  'e',  't',  'B',  'S', 'D', 0, 0, // Name (NetBSD\0\0)
                                 0x00, 0xCA, 0x9A, 0x3B // Desc (1000000000)
                             });
+#  elif defined(__OpenBSD__)
+        // Prepend OpenBSD ELF Note (required for execve to accept the binary)
+        mergedRodata.insert(mergedRodata.end(),
+                            {
+                                0x08, 0x00, 0x00, 0x00, // Name size (7 + null, padded to 8)
+                                0x04, 0x00, 0x00, 0x00, // Desc size (4)
+                                0x01, 0x00, 0x00, 0x00, // Type (NT_OPENBSD_IDENT)
+                                'O',  'p',  'e',  'n',  'B', 'S', 'D', 0, // Name (OpenBSD\0)
+                                0x00, 0x00, 0x00, 0x00 // Desc (0 = any version)
+                            });
+#  elif defined(__DragonFly__)
+        // Prepend DragonFly ELF Note (required for execve to accept the binary)
+        mergedRodata.insert(mergedRodata.end(),
+                            {
+                                0x0A, 0x00, 0x00, 0x00, // Name size (9 + null, padded to 12)
+                                0x04, 0x00, 0x00, 0x00, // Desc size (4)
+                                0x01, 0x00, 0x00, 0x00, // Type
+                                'D',  'r',  'a',  'g',  'o', 'n', 'F', 'l', 'y', 0, 0, 0, // Name (DragonFly\0\0\0)
+                                0x00, 0x00, 0x00, 0x00 // Desc
+                            });
 #  endif
 
         for (size_t i = 0; i < objects.size(); ++i) {
@@ -1238,9 +1305,10 @@ namespace Rux {
         textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
 
         const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0)
-#  if RUX_OS_NETBSD
-                                                     + 1
+#  if RUX_OS_NETBSD || RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
+                                                     + 1       // PT_NOTE
 #  endif
+
         );
         const uint64_t phoff = 64;
         const uint64_t textOff = alignUp64(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
@@ -1401,10 +1469,12 @@ namespace Rux {
                              2,
                              1,
                              1,
-#  if RUX_OS_FREEBSD || RUX_OS_DRAGONFLY
-                             9, // EI_OSABI: FreeBSD
+#  if RUX_OS_FREEBSD
+                              9, // EI_OSABI: FreeBSD
+#  elif RUX_OS_DRAGONFLY
+                              0, // EI_OSABI: System V
 #  elif RUX_OS_OPENBSD
-                             12, // EI_OSABI: OpenBSD
+                              12, // EI_OSABI: OpenBSD
 #  elif RUX_OS_NETBSD
                              2, // EI_OSABI: NetBSD
 #  else
@@ -1422,7 +1492,7 @@ namespace Rux {
         wU16(2); // ET_EXEC
         wU16(0x3E); // EM_X86_64
         wU32(1);
-        wU64(textVA);
+        wU64(textVA); // e_entry
         wU64(phoff);
         wU64(0);
         wU32(0);
@@ -1435,8 +1505,8 @@ namespace Rux {
 
         writePhdr(kPfR | kPfX, textOff, textVA, textBuf.size(), textBuf.size());
         writePhdr(kPfR, rdataOff, rdataVA, mergedRodata.size(), mergedRodata.size());
-#  if RUX_OS_NETBSD
-        // Write PT_NOTE program header pointing to the NetBSD note at the start of .rodata
+#  if RUX_OS_NETBSD || RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
+        // Write PT_NOTE program header pointing to the OS note at the start of .rodata
         wU32(4); // p_type: PT_NOTE
         wU32(kPfR); // p_flags: PF_R
         wU64(rdataOff); // p_offset
@@ -1653,8 +1723,11 @@ namespace Rux {
 
         // 2. Entry preamble: call Main; exit(eax).
         Buf textPre;
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
         const size_t kCallMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x08}); // add rsp, 8 (undo sub)
         textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax (exit code)
         textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x02}); // mov eax, 0x2000001 (SYS_exit)
         textPre.insert(textPre.end(), {0x0F, 0x05}); // syscall

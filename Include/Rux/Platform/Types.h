@@ -112,7 +112,7 @@ namespace Rux::Platform {
         case OS::NetBSD:
             return "NetBSD";
         case OS::DragonFlyBSD:
-            return "DragonflyBSD";
+            return "Dragonfly";
         case OS::Solaris:
             return "Solaris";
         case OS::Illumos:

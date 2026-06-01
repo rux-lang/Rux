@@ -20,9 +20,12 @@
 #  include <sys/auxv.h>
 #  include <sys/sysinfo.h>
 #  include <unistd.h>
-#elif RUX_OS_MACOS || RUX_IS_BSD
+#elif RUX_OS_MACOS
 #  include <mach/mach.h>
 #  include <mach/mach_host.h>
+#  include <sys/sysctl.h>
+#  include <unistd.h>
+#elif RUX_IS_BSD
 #  include <sys/sysctl.h>
 #  include <unistd.h>
 #endif
@@ -137,7 +140,7 @@ namespace Rux::Platform {
         [[nodiscard]] RuntimeCpuInfo DetectRuntimeCpuInfo() noexcept {
             RuntimeCpuInfo info{};
 
-            info.logical_cores = std::max(1u, std::thread::hardware_concurrency());
+            info.logical_cores = (std::max)(1u, std::thread::hardware_concurrency());
 
             info.features = DetectCpuFeaturesImpl();
 
@@ -176,13 +179,25 @@ namespace Rux::Platform {
 
             info.physical_cores = info.logical_cores;
 
-#elif RUX_OS_MACOS || RUX_IS_BSD
+#elif RUX_OS_MACOS || (RUX_IS_BSD && !RUX_OS_OPENBSD)
 
             size_t s = sizeof(info.physical_cores);
             sysctlbyname("hw.physicalcpu", &info.physical_cores, &s, nullptr, 0);
 
             s = sizeof(info.cache_line_size);
             sysctlbyname("hw.cachelinesize", &info.cache_line_size, &s, nullptr, 0);
+
+#elif RUX_OS_OPENBSD
+
+            int mib_cores[2] = {CTL_HW, HW_NCPU};
+            size_t s = sizeof(info.physical_cores);
+            sysctl(mib_cores, 2, &info.physical_cores, &s, nullptr, 0);
+
+#  ifdef HW_CACHELINE
+            int mib_cache[2] = {CTL_HW, HW_CACHELINE};
+            s = sizeof(info.cache_line_size);
+            sysctl(mib_cache, 2, &info.cache_line_size, &s, nullptr, 0);
+#  endif
 
 #endif
 
@@ -246,7 +261,13 @@ namespace Rux::Platform {
 
 #elif RUX_IS_BSD
 
+#  if defined(HW_MEMSIZE)
         int mib[2] = {CTL_HW, HW_MEMSIZE};
+#  elif defined(HW_REALMEM)
+        int mib[2] = {CTL_HW, HW_REALMEM};
+#  else
+        int mib[2] = {CTL_HW, HW_PHYSMEM};
+#  endif
         size_t len = sizeof(info.total_bytes);
 
         sysctl(mib, 2, &info.total_bytes, &len, nullptr, 0);
