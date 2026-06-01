@@ -6,6 +6,8 @@
 
 #include "Rux/Linker.h"
 
+#include "Rux/Platform/Defines.h"
+
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -19,11 +21,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#if RUX_OS_LINUX || RUX_IS_BSD
 #  include <filesystem>
 #endif
 
-#if defined(_WIN32)
+#if RUX_OS_WINDOWS
 // NOMINMAX: keep windows.h from defining min/max macros that would clobber the
 // std::max/std::min calls in the PE linker below.
 #  define NOMINMAX
@@ -31,6 +33,7 @@
 #endif
 
 namespace Rux {
+#if RUX_OS_WINDOWS
     // PE32+ layout constants
     [[maybe_unused]] static constexpr uint64_t kImageBase = 0x140000000ULL;
     [[maybe_unused]] static constexpr uint32_t kSecAlign = 0x1000; // 4 KB section alignment
@@ -49,6 +52,7 @@ namespace Rux {
     // ASLR. Absolute relocations such as vtable function pointers must remain
     // valid at the preferred image base.
     [[maybe_unused]] static constexpr uint16_t kDllChars = 0x8100u;
+#endif
 
     // Buffer helpers
     using Buf = std::vector<uint8_t>;
@@ -116,6 +120,7 @@ namespace Rux {
         return std::filesystem::is_regular_file(path, ec);
     }
 
+#if RUX_OS_WINDOWS
     static std::optional<Buf> ReadFileBytes(const std::filesystem::path& path) {
         std::ifstream in(path, std::ios::binary | std::ios::ate);
         if (!in) return std::nullopt;
@@ -221,9 +226,10 @@ namespace Rux {
 
         return exports;
     }
+#endif
 
     static std::string GetPathEnv() {
-#if defined(_MSC_VER)
+#if RUX_COMPILER_MSVC
         char* value = nullptr;
         size_t size = 0;
         if (_dupenv_s(&value, &size, "PATH") != 0 || value == nullptr) return {};
@@ -264,7 +270,7 @@ namespace Rux {
 
         if (auto hit = probe(std::filesystem::current_path())) return hit;
 
-#if defined(_WIN32)
+#if RUX_OS_WINDOWS
         // System DLLs (kernel32, user32, ...) live in the Windows system
         // directory, which is the authoritative source for them — don't rely on
         // it happening to be on PATH (it isn't under some shells, e.g. Git Bash).
@@ -300,9 +306,9 @@ namespace Rux {
     }
 
     bool Linker::Link(const std::filesystem::path& outputPath) {
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#if RUX_OS_LINUX || RUX_IS_BSD
         return LinkElf64(outputPath);
-#elif defined(__APPLE__)
+#elif RUX_OS_MACOS
         return LinkMachO64(outputPath);
 #else
         // 1. Collect imported external function names
@@ -822,17 +828,11 @@ namespace Rux {
 #endif
     }
 
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+
+#if RUX_OS_LINUX || RUX_IS_BSD
     static std::optional<Buf> LinuxCompatThunk(const std::string& name) {
         static const std::unordered_map<std::string, Buf> thunks = {
-            {"ExitProcess",
-             {
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
-                 0x48, 0x89, 0xCF, 0xB8, 0x01, 0x00, 0x00, 0x00, 0x0F, 0x05
-#  else
-                 0x48, 0x89, 0xCF, 0xB8, 0x3C, 0x00, 0x00, 0x00, 0x0F, 0x05
-#  endif
-             }},
+            {"ExitProcess", {0x48, 0x89, 0xCF, 0xB8, (RUX_IS_BSD ? 0x01 : 0x3C), 0x00, 0x00, 0x00, 0x0F, 0x05}},
             {"GetStdHandle",
              {
                  0x81, 0xF9, 0xF6, 0xFF, 0xFF, 0xFF, // cmp ecx, -10 (STD_INPUT_HANDLE)
@@ -849,34 +849,35 @@ namespace Rux {
             {"GetProcessHeap", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"HeapFree", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"HeapAlloc", {0x4C, 0x89, 0xC6, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+
+#  if RUX_IS_BSD
                            0x02, 0x10, 0x00, 0x00,
 #  else
                            0x22, 0x00, 0x00, 0x00,
 #  endif
                            0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
-#  if defined(__FreeBSD__)
+#  if RUX_OS_FREEBSD
                            0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
-#  elif defined(__OpenBSD__)
+#  elif RUX_OS_OPENBSD
                            0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
-#  elif defined(__DragonFly__) || defined(__NetBSD__)
+#  elif RUX_OS_DRAGONFLY || RUX_OS_NETBSD
                            0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
 #  else
                            0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
 #  endif
                            0x05, 0xC3}},
             {"HeapReAlloc", {0x48, 0x8B, 0x74, 0x24, 0x28, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#  if RUX_IS_BSD
                              0x02, 0x10, 0x00, 0x00,
 #  else
                              0x22, 0x00, 0x00, 0x00,
 #  endif
                              0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
-#  if defined(__FreeBSD__)
+#  if RUX_OS_FREEBSD
                              0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
-#  elif defined(__OpenBSD__)
+#  elif RUX_OS_OPENBSD
                              0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
-#  elif defined(__DragonFly__) || defined(__NetBSD__)
+#  elif RUX_OS_DRAGONFLY || RUX_OS_NETBSD
                              0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
 #  else
                              0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
@@ -959,7 +960,7 @@ namespace Rux {
                                      0x49, 0xFF, 0xC0, 0x49, 0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
             {"WriteConsoleW", {0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x08, 0x49, 0x89, 0xD4, 0x4D, 0x89,
                                0xC5, 0x4D, 0x85, 0xED, 0x74, 0x24, 0x41, 0x8A, 0x04, 0x24, 0x88, 0x04, 0x24,
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#  if RUX_IS_BSD
                                0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
 #  else
                                0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
@@ -972,7 +973,7 @@ namespace Rux {
                  0x89, 0xCF, // mov edi, ecx  (fd)
                  0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
                  0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#  if RUX_IS_BSD
                  0xB8, 0x03, 0x00, 0x00, 0x00, // mov eax, 3 (SYS_read)
 #  else
                  0x31, 0xC0, // xor eax, eax (SYS_read = 0)
@@ -993,7 +994,7 @@ namespace Rux {
                  0x89, 0xCF, // mov edi, ecx  (fd)
                  0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
                  0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#  if RUX_IS_BSD
                  0xB8, 0x04, 0x00, 0x00, 0x00, // mov eax, 4 (SYS_write)
 #  else
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (SYS_write)
@@ -1007,7 +1008,7 @@ namespace Rux {
                  0x31, 0xC0, // xor eax, eax (FALSE)
                  0xC3 // ret
              }},
-#  if defined(__linux__)
+#  if RUX_OS_LINUX
             // Rux extern calls currently use the Win64 register layout. These
             // thunks move that layout into Linux x86_64 syscall registers:
             // rax=number, rdi/rsi/rdx/r10/r8/r9=args.
@@ -1098,22 +1099,44 @@ namespace Rux {
                  0x0F, 0x05, // syscall
                  0xC3 // ret
              }},
-             {"__rux_linux_nanosleep",
-              {
-                  0x48, 0xC7, 0xC0, 0x23, 0x00, 0x00, 0x00, // mov rax, 35
-                  0x48, 0x89, 0xCF, // mov rdi, rcx
-                  0x48, 0x89, 0xD6, // mov rsi, rdx
-                  0x0F, 0x05, // syscall
-                  0xC3 // ret
-              }},
-             {"__rux_linux_clock_gettime",
-              {
-                  0x48, 0xC7, 0xC0, 0xE4, 0x00, 0x00, 0x00, // mov rax, 228
-                  0x48, 0x63, 0xF9, // movsxd rdi, ecx
-                  0x48, 0x89, 0xD6, // mov rsi, rdx
-                  0x0F, 0x05, // syscall
-                  0xC3 // ret
-              }},
+            {"__rux_linux_nanosleep",
+             {
+                 0x48,
+                 0xC7,
+                 0xC0,
+                 0x23,
+                 0x00,
+                 0x00,
+                 0x00, // mov rax, 35
+                 0x48,
+                 0x89,
+                 0xCF, // mov rdi, rcx
+                 0x48,
+                 0x89,
+                 0xD6, // mov rsi, rdx
+                 0x0F,
+                 0x05, // syscall
+                 0xC3 // ret
+             }},
+            {"__rux_linux_clock_gettime",
+             {
+                 0x48,
+                 0xC7,
+                 0xC0,
+                 0xE4,
+                 0x00,
+                 0x00,
+                 0x00, // mov rax, 228
+                 0x48,
+                 0x63,
+                 0xF9, // movsxd rdi, ecx
+                 0x48,
+                 0x89,
+                 0xD6, // mov rsi, rdx
+                 0x0F,
+                 0x05, // syscall
+                 0xC3 // ret
+             }},
 #  endif
         };
 
@@ -1159,7 +1182,7 @@ namespace Rux {
         const size_t kCallMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
         textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#  if RUX_IS_BSD
         textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD exit)
 #  else
         textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
@@ -1183,7 +1206,7 @@ namespace Rux {
         std::vector<ObjLayout> layouts(objects.size());
         Buf mergedText, mergedRodata, mergedData;
 
-#  if defined(__NetBSD__)
+#  if RUX_OS_NETBSD
         // Prepend NetBSD ELF Note
         mergedRodata.insert(mergedRodata.end(),
                             {
@@ -1215,7 +1238,7 @@ namespace Rux {
         textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
 
         const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0)
-#  if defined(__NetBSD__)
+#  if RUX_OS_NETBSD
                                                      + 1
 #  endif
         );
@@ -1378,11 +1401,11 @@ namespace Rux {
                              2,
                              1,
                              1,
-#  if defined(__FreeBSD__) || defined(__DragonFly__)
+#  if RUX_OS_FREEBSD || RUX_OS_DRAGONFLY
                              9, // EI_OSABI: FreeBSD
-#  elif defined(__OpenBSD__)
+#  elif RUX_OS_OPENBSD
                              12, // EI_OSABI: OpenBSD
-#  elif defined(__NetBSD__)
+#  elif RUX_OS_NETBSD
                              2, // EI_OSABI: NetBSD
 #  else
                              0, // EI_OSABI: System V
@@ -1412,7 +1435,7 @@ namespace Rux {
 
         writePhdr(kPfR | kPfX, textOff, textVA, textBuf.size(), textBuf.size());
         writePhdr(kPfR, rdataOff, rdataVA, mergedRodata.size(), mergedRodata.size());
-#  if defined(__NetBSD__)
+#  if RUX_OS_NETBSD
         // Write PT_NOTE program header pointing to the NetBSD note at the start of .rodata
         wU32(4); // p_type: PT_NOTE
         wU32(kPfR); // p_flags: PF_R
@@ -1454,7 +1477,7 @@ namespace Rux {
     }
 #endif
 
-#if defined(__APPLE__)
+#if RUX_OS_MACOS
     // macOS x86-64 syscalls use the BSD class mask (0x2000000 | <unix number>),
     // the System V AMD64 argument registers (rdi/rsi/rdx/r10/r8/r9), and the
     // `syscall` instruction. Rux extern calls arrive in the Win64 layout
