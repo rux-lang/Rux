@@ -36,7 +36,7 @@ namespace Rux {
         /// Semantic version (default: 0.1.0)
         std::string version = "0.1.0";
 
-        /// Package type: "bin", "lib", or "dll" (Windows PE32+ shared library)
+        /// Package type: "bin", "sharedlib", or "dll" (Windows PE32+ shared library)
         std::string type = "bin";
     };
 
