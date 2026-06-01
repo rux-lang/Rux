@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.31)
-project(Rux VERSION 0.2.3)
+project(Rux VERSION 0.2.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

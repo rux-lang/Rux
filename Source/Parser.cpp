@@ -2057,30 +2057,30 @@ namespace Rux {
             // Declarations
 
             void PrintDecl(const Decl& decl) {
-                if (const auto* p = dynamic_cast<const FuncDecl*>(&decl))
-                    PrintFuncDecl(*p);
-                else if (const auto* p = dynamic_cast<const StructDecl*>(&decl))
-                    PrintStructDecl(*p);
-                else if (const auto* p = dynamic_cast<const EnumDecl*>(&decl))
-                    PrintEnumDecl(*p);
-                else if (const auto* p = dynamic_cast<const UnionDecl*>(&decl))
-                    PrintUnionDecl(*p);
-                else if (const auto* p = dynamic_cast<const InterfaceDecl*>(&decl))
-                    PrintInterfaceDecl(*p);
-                else if (const auto* p = dynamic_cast<const ImplDecl*>(&decl))
-                    PrintImplDecl(*p);
-                else if (const auto* p = dynamic_cast<const ModuleDecl*>(&decl))
-                    PrintModuleDecl(*p);
-                else if (const auto* p = dynamic_cast<const UseDecl*>(&decl))
-                    PrintUseDecl(*p);
-                else if (const auto* p = dynamic_cast<const ConstDecl*>(&decl))
-                    PrintConstDecl(*p);
-                else if (const auto* p = dynamic_cast<const TypeAliasDecl*>(&decl))
-                    PrintTypeAliasDecl(*p);
-                else if (const auto* p = dynamic_cast<const ExternFuncDecl*>(&decl))
-                    PrintExternFuncDecl(*p);
-                else if (const auto* p = dynamic_cast<const ExternVarDecl*>(&decl))
-                    PrintExternVarDecl(*p);
+                if (const auto* fn = dynamic_cast<const FuncDecl*>(&decl))
+                    PrintFuncDecl(*fn);
+                else if (const auto* st = dynamic_cast<const StructDecl*>(&decl))
+                    PrintStructDecl(*st);
+                else if (const auto* en = dynamic_cast<const EnumDecl*>(&decl))
+                    PrintEnumDecl(*en);
+                else if (const auto* un = dynamic_cast<const UnionDecl*>(&decl))
+                    PrintUnionDecl(*un);
+                else if (const auto* iface = dynamic_cast<const InterfaceDecl*>(&decl))
+                    PrintInterfaceDecl(*iface);
+                else if (const auto* impl = dynamic_cast<const ImplDecl*>(&decl))
+                    PrintImplDecl(*impl);
+                else if (const auto* mod = dynamic_cast<const ModuleDecl*>(&decl))
+                    PrintModuleDecl(*mod);
+                else if (const auto* use = dynamic_cast<const UseDecl*>(&decl))
+                    PrintUseDecl(*use);
+                else if (const auto* cnst = dynamic_cast<const ConstDecl*>(&decl))
+                    PrintConstDecl(*cnst);
+                else if (const auto* alias = dynamic_cast<const TypeAliasDecl*>(&decl))
+                    PrintTypeAliasDecl(*alias);
+                else if (const auto* extFn = dynamic_cast<const ExternFuncDecl*>(&decl))
+                    PrintExternFuncDecl(*extFn);
+                else if (const auto* extVar = dynamic_cast<const ExternVarDecl*>(&decl))
+                    PrintExternVarDecl(*extVar);
             }
 
             void PrintFuncDecl(const FuncDecl& f) {
@@ -2301,37 +2301,35 @@ namespace Rux {
 
             // Statements
             void PrintStmt(const Stmt& stmt) {
-                if (const auto* p = dynamic_cast<const LetStmt*>(&stmt))
-                    PrintLetStmt(*p);
-                else if (const auto* p = dynamic_cast<const IfStmt*>(&stmt))
-                    PrintIfStmt(*p);
-                else if (const auto* p = dynamic_cast<const WhileStmt*>(&stmt))
-                    PrintWhileStmt(*p);
-                else if (const auto* p = dynamic_cast<const ForStmt*>(&stmt))
-                    PrintForStmt(*p);
-                else if (const auto* p = dynamic_cast<const MatchStmt*>(&stmt))
-                    PrintMatchStmt(*p);
-                else if (const auto* p = dynamic_cast<const ReturnStmt*>(&stmt))
-                    PrintReturnStmt(*p);
-                else if (const auto* p = dynamic_cast<const BreakStmt*>(&stmt)) {
-                    (void)p;
+                if (const auto* let = dynamic_cast<const LetStmt*>(&stmt))
+                    PrintLetStmt(*let);
+                else if (const auto* ifStmt = dynamic_cast<const IfStmt*>(&stmt))
+                    PrintIfStmt(*ifStmt);
+                else if (const auto* whileStmt = dynamic_cast<const WhileStmt*>(&stmt))
+                    PrintWhileStmt(*whileStmt);
+                else if (const auto* forStmt = dynamic_cast<const ForStmt*>(&stmt))
+                    PrintForStmt(*forStmt);
+                else if (const auto* matchStmt = dynamic_cast<const MatchStmt*>(&stmt))
+                    PrintMatchStmt(*matchStmt);
+                else if (const auto* ret = dynamic_cast<const ReturnStmt*>(&stmt))
+                    PrintReturnStmt(*ret);
+                else if (dynamic_cast<const BreakStmt*>(&stmt)) {
                     Pad();
                     out << "BreakStmt\n";
                 }
-                else if (const auto* p = dynamic_cast<const ContinueStmt*>(&stmt)) {
-                    (void)p;
+                else if (dynamic_cast<const ContinueStmt*>(&stmt)) {
                     Pad();
                     out << "ContinueStmt\n";
                 }
-                else if (const auto* p = dynamic_cast<const ExprStmt*>(&stmt)) {
+                else if (const auto* exprStmt = dynamic_cast<const ExprStmt*>(&stmt)) {
                     Pad();
                     out << "ExprStmt\n";
                     ++indent;
-                    if (p->expr) PrintExpr(*p->expr);
+                    if (exprStmt->expr) PrintExpr(*exprStmt->expr);
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const DeclStmt*>(&stmt)) {
-                    if (p->decl) PrintDecl(*p->decl);
+                else if (const auto* declStmt = dynamic_cast<const DeclStmt*>(&stmt)) {
+                    if (declStmt->decl) PrintDecl(*declStmt->decl);
                 }
             }
 
@@ -2498,60 +2496,60 @@ namespace Rux {
                     if (assignExpr->value) PrintExpr(*assignExpr->value);
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const TernaryExpr*>(&expr)) {
+                else if (const auto* tern = dynamic_cast<const TernaryExpr*>(&expr)) {
                     Pad();
                     out << "TernaryExpr\n";
                     ++indent;
                     Pad();
                     out << "Condition\n";
                     ++indent;
-                    if (p->condition) PrintExpr(*p->condition);
+                    if (tern->condition) PrintExpr(*tern->condition);
                     --indent;
                     Pad();
                     out << "Then\n";
                     ++indent;
-                    if (p->thenExpr) PrintExpr(*p->thenExpr);
+                    if (tern->thenExpr) PrintExpr(*tern->thenExpr);
                     --indent;
                     Pad();
                     out << "Else\n";
                     ++indent;
-                    if (p->elseExpr) PrintExpr(*p->elseExpr);
+                    if (tern->elseExpr) PrintExpr(*tern->elseExpr);
                     --indent;
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const RangeExpr*>(&expr)) {
+                else if (const auto* rng = dynamic_cast<const RangeExpr*>(&expr)) {
                     Pad();
-                    out << "RangeExpr " << (p->inclusive ? "..." : "..") << '\n';
+                    out << "RangeExpr " << (rng->inclusive ? "..." : "..") << '\n';
                     ++indent;
-                    if (p->lo) PrintExpr(*p->lo);
-                    if (p->hi) PrintExpr(*p->hi);
+                    if (rng->lo) PrintExpr(*rng->lo);
+                    if (rng->hi) PrintExpr(*rng->hi);
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const CallExpr*>(&expr)) {
+                else if (const auto* call = dynamic_cast<const CallExpr*>(&expr)) {
                     Pad();
                     out << "CallExpr\n";
                     ++indent;
                     Pad();
                     out << "Callee\n";
                     ++indent;
-                    if (p->callee) PrintExpr(*p->callee);
+                    if (call->callee) PrintExpr(*call->callee);
                     --indent;
-                    if (!p->args.empty()) {
+                    if (!call->args.empty()) {
                         Pad();
-                        out << "Args [" << p->args.size() << "]\n";
+                        out << "Args [" << call->args.size() << "]\n";
                         ++indent;
-                        for (const auto& a : p->args)
+                        for (const auto& a : call->args)
                             if (a) PrintExpr(*a);
                         --indent;
                     }
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const IndexExpr*>(&expr)) {
+                else if (const auto* index = dynamic_cast<const IndexExpr*>(&expr)) {
                     Pad();
                     out << "IndexExpr\n";
                     ++indent;
-                    if (p->object) PrintExpr(*p->object);
-                    if (p->index) PrintExpr(*p->index);
+                    if (index->object) PrintExpr(*index->object);
+                    if (index->index) PrintExpr(*index->index);
                     --indent;
                 }
                 else if (const auto* fieldExpr = dynamic_cast<const FieldExpr*>(&expr)) {
@@ -2660,38 +2658,38 @@ namespace Rux {
                     Pad();
                     out << "WildcardPattern\n";
                 }
-                else if (const auto* p = dynamic_cast<const LiteralPattern*>(&pat)) {
+                else if (const auto* litPat = dynamic_cast<const LiteralPattern*>(&pat)) {
                     Pad();
-                    out << "LiteralPattern '" << p->value.text << "'\n";
+                    out << "LiteralPattern '" << litPat->value.text << "'\n";
                 }
-                else if (const auto* p = dynamic_cast<const IdentPattern*>(&pat)) {
+                else if (const auto* idPat = dynamic_cast<const IdentPattern*>(&pat)) {
                     Pad();
-                    out << "IdentPattern '" << p->name << "'\n";
+                    out << "IdentPattern '" << idPat->name << "'\n";
                 }
-                else if (const auto* p = dynamic_cast<const RangePattern*>(&pat)) {
+                else if (const auto* rngPat = dynamic_cast<const RangePattern*>(&pat)) {
                     Pad();
-                    out << "RangePattern " << (p->inclusive ? "..." : "..") << '\n';
+                    out << "RangePattern " << (rngPat->inclusive ? "..." : "..") << '\n';
                     ++indent;
-                    if (p->lo) PrintPattern(*p->lo);
-                    if (p->hi) PrintPattern(*p->hi);
+                    if (rngPat->lo) PrintPattern(*rngPat->lo);
+                    if (rngPat->hi) PrintPattern(*rngPat->hi);
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const EnumPattern*>(&pat)) {
+                else if (const auto* enumPat = dynamic_cast<const EnumPattern*>(&pat)) {
                     Pad();
                     out << "EnumPattern '";
-                    for (std::size_t i = 0; i < p->path.size(); ++i) {
+                    for (std::size_t i = 0; i < enumPat->path.size(); ++i) {
                         if (i) out << '.';
-                        out << p->path[i];
+                        out << enumPat->path[i];
                     }
                     out << "'";
-                    if (!p->args.empty()) out << " [" << p->args.size() << " bindings]";
-                    if (!p->namedArgs.empty()) out << " [" << p->namedArgs.size() << " fields]";
+                    if (!enumPat->args.empty()) out << " [" << enumPat->args.size() << " bindings]";
+                    if (!enumPat->namedArgs.empty()) out << " [" << enumPat->namedArgs.size() << " fields]";
                     out << '\n';
-                    if (!p->args.empty() || !p->namedArgs.empty()) {
+                    if (!enumPat->args.empty() || !enumPat->namedArgs.empty()) {
                         ++indent;
-                        for (const auto& a : p->args)
+                        for (const auto& a : enumPat->args)
                             if (a) PrintPattern(*a);
-                        for (const auto& a : p->namedArgs) {
+                        for (const auto& a : enumPat->namedArgs) {
                             Pad();
                             out << "." << a.name << ":\n";
                             ++indent;
@@ -2701,11 +2699,11 @@ namespace Rux {
                         --indent;
                     }
                 }
-                else if (const auto* p = dynamic_cast<const StructPattern*>(&pat)) {
+                else if (const auto* structPat = dynamic_cast<const StructPattern*>(&pat)) {
                     Pad();
-                    out << "StructPattern '" << p->typeName << "'\n";
+                    out << "StructPattern '" << structPat->typeName << "'\n";
                     ++indent;
-                    for (const auto& f : p->fields) {
+                    for (const auto& f : structPat->fields) {
                         Pad();
                         out << "." << f.name << ":\n";
                         ++indent;
@@ -2714,23 +2712,23 @@ namespace Rux {
                     }
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const TuplePattern*>(&pat)) {
+                else if (const auto* tuplePat = dynamic_cast<const TuplePattern*>(&pat)) {
                     Pad();
-                    out << "TuplePattern [" << p->elements.size() << "]\n";
+                    out << "TuplePattern [" << tuplePat->elements.size() << "]\n";
                     ++indent;
-                    for (const auto& e : p->elements)
+                    for (const auto& e : tuplePat->elements)
                         if (e) PrintPattern(*e);
                     --indent;
                 }
-                else if (const auto* p = dynamic_cast<const GuardedPattern*>(&pat)) {
+                else if (const auto* guardedPat = dynamic_cast<const GuardedPattern*>(&pat)) {
                     Pad();
                     out << "GuardedPattern\n";
                     ++indent;
-                    if (p->inner) PrintPattern(*p->inner);
+                    if (guardedPat->inner) PrintPattern(*guardedPat->inner);
                     Pad();
                     out << "Guard\n";
                     ++indent;
-                    if (p->guard) PrintExpr(*p->guard);
+                    if (guardedPat->guard) PrintExpr(*guardedPat->guard);
                     --indent;
                     --indent;
                 }
