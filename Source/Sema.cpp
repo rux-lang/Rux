@@ -7,7 +7,7 @@
 
 #include "Rux/Sema.h"
 
-#include "Rux/Platform.h"
+#include "Rux/Platform/Host.h"
 #include "Rux/Type.h"
 
 #include <algorithm>
@@ -1980,15 +1980,7 @@ namespace Rux {
         }
 
         static std::string_view HostOs() noexcept {
-#if RUX_OS_WINDOWS
-            return "Windows";
-#elif RUX_OS_MACOS
-            return "macOS";
-#elif RUX_OS_LINUX
-            return "Linux";
-#else
-            return "";
-#endif
+            return ToString(Platform::HostOS);
         }
 
         [[nodiscard]] std::string_view EffectiveOs() const {

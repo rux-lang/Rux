@@ -15,7 +15,8 @@
 #include "Rux/Manifest.h"
 #include "Rux/Package.h"
 #include "Rux/Parser.h"
-#include "Rux/Platform.h"
+#include "Rux/Platform/Defines.h"
+#include "Rux/Platform/Host.h"
 #include "Rux/Rcu.h"
 #include "Rux/Sema.h"
 #include "Rux/Version.h"
@@ -36,16 +37,22 @@
 #include <unordered_set>
 #include <vector>
 
+// This is separate from the other ifdef because otherwise clang-format attempts
+// to change the order, which makes MSVC cry.
 
-// Do NOT move this includes. But if clang-format moved it then move up windows.h
-// clang-format -i Source/*.cpp Include/Rux/*.h
-// psapi.h depends on definitions from windows.h.
-// If reordered, MSVC will unleash an ancient curse upon this file.
 #if RUX_OS_WINDOWS
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 #  include <windows.h>
+#endif
+
+#if RUX_OS_WINDOWS
 #  include <psapi.h>
 #  include <winhttp.h>
-
 #else
 #  include <sys/resource.h>
 #  include <sys/wait.h>
@@ -55,6 +62,7 @@
 #include "Rux/SourceLoader.h"
 
 namespace Rux {
+    using namespace Platform;
     namespace {
         struct BuildStats {
             std::chrono::milliseconds lexing{0};
@@ -148,86 +156,47 @@ namespace Rux {
         }
 
         [[nodiscard]] std::string TargetName() {
-#if RUX_OS_WINDOWS
-            std::string os = "Windows";
-#elif RUX_OS_MACOS
-            std::string os = "macOS";
-#elif RUX_OS_LINUX
-            std::string os = "Linux";
-#elif RUX_OS_FREEBSD
-            std::string os = "FreeBSD";
-#elif RUX_OS_OPENBSD
-            std::string os = "OpenBSD";
-#elif RUX_OS_NETBSD
-            std::string os = "NetBSD";
-#elif RUX_OS_ILLUMOS
-            std::string os = "Illumos";
-#else
-            std::string os = "Unknown";
-#endif
+            if constexpr (HostArch == Arch::Unknown) {
+                return std::string{ToString(HostOS)};
+            }
 
-#if RUX_ARCH_X64
-            return os + " x64";
-#elif RUX_ARCH_X86
-            return os + " x86";
-#elif RUX_ARCH_ARM64
-            return os + " arm64";
-#elif RUX_ARCH_ARM32
-            return os + " arm";
-#else
-            return os;
-#endif
+            return std::format("{} {}", ToString(HostOS), ToString(HostArch));
         }
 
         [[nodiscard]] std::string HostTargetTriple() {
-#if RUX_ARCH_X64
-            constexpr auto arch = "x64";
-#elif RUX_ARCH_ARM64
-            constexpr auto arch = "arm64";
-#else
-            constexpr auto arch = "unknown";
-#endif
-
-
-#if RUX_OS_WINDOWS
-            return std::string("windows-") + arch;
-
-#elif RUX_OS_LINUX || defined(__linux__)
-            return std::string("linux-") + arch;
-
-#elif RUX_OS_MACOS || defined(__APPLE__)
-            return std::string("macos-") + arch;
-
-#elif RUX_OS_FREEBSD
-            return std::string("freebsd-") + arch;
-
-#elif RUX_OS_OPENBSD
-            return std::string("openbsd-") + arch;
-
-#elif RUX_OS_NETBSD
-            return std::string("netbsd-") + arch;
-
-#elif RUX_OS_ILLUMOS
-            return std::string("illumos-") + arch;
-
-#else
-            return "unknown-unknown";
-#endif
+            auto triple = std::format("{}-{}", ToString(HostOS), ToString(HostArch));
+            std::transform(
+                std::begin(triple), std::end(triple), std::begin(triple), [](auto c) { return std::tolower(c); });
+            return triple;
         }
 
         [[nodiscard]] bool IsSupportedTargetTriple(const std::string_view target) {
-            return target == "linux-x64" || target == "windows-x64" || target == "macos-x64" ||
-                target == "macos-arm64" || target == "freebsd-x64" || target == "openbsd-x64" ||
-                target == "netbsd-x64" || target == "illumos-x64";
+            constexpr std::array supported_targets{"linux-x64",
+                                                   "windows-x64",
+                                                   "macos-x64",
+                                                   "macos-arm64",
+                                                   "freebsd-x64",
+                                                   "openbsd-x64",
+                                                   "netbsd-x64",
+                                                   "illumos-x64"};
+
+            return std::ranges::contains(supported_targets, target);
         }
 
         [[nodiscard]] std::string_view TargetOsName(const std::string_view target) {
-            if (target.starts_with("linux-")) return "Linux";
-            if (target.starts_with("windows-")) return "Windows";
-            if (target.starts_with("macos-")) return "macOS";
-            if (target.starts_with("freebsd-") || target.starts_with("openbsd-") || target.starts_with("netbsd-"))
-                return "BSD";
-            if (target.starts_with("illumos-")) return "Illumos";
+            const auto dash_pos = target.find('-');
+            if (dash_pos == std::string_view::npos) {
+                return "";
+            }
+
+            const auto os_prefix = target.substr(0, dash_pos);
+
+            if (os_prefix == "linux") return "Linux";
+            if (os_prefix == "windows") return "Windows";
+            if (os_prefix == "macos") return "macOS";
+            if (os_prefix == "freebsd" || os_prefix == "openbsd" || os_prefix == "netbsd") return "BSD";
+            if (os_prefix == "illumos") return "Illumos";
+
             return "";
         }
 
@@ -260,22 +229,21 @@ namespace Rux {
             return dep.package.empty() ? dep.name : dep.package;
         }
 
-        [[nodiscard]] std::uintmax_t PeakMemoryBytes() {
+        [[nodiscard]] std::uintmax_t PeakMemoryBytes() noexcept {
 #if RUX_OS_WINDOWS
             PROCESS_MEMORY_COUNTERS counters{};
-            if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters)))
-                return counters.PeakWorkingSetSize;
-            return 0;
-#else
+            if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters))) {
+                return static_cast<std::uintmax_t>(counters.PeakWorkingSetSize);
+            }
+#elif RUX_IS_UNIX
             rusage usage{};
-            if (getrusage(RUSAGE_SELF, &usage) == 0)
-#  if RUX_OS_MACOS
-                return static_cast<std::uintmax_t>(usage.ru_maxrss);
-#  else
-                return static_cast<std::uintmax_t>(usage.ru_maxrss) * 1024;
-#  endif
-            return 0;
+            if (getrusage(RUSAGE_SELF, &usage) == 0) {
+                // macOS reports bytes directly; other Unices report in KB.
+                constexpr std::uintmax_t unitMultiplier = (HostOS == OS::MacOS) ? 1ULL : 1024ULL;
+                return static_cast<std::uintmax_t>(usage.ru_maxrss) * unitMultiplier;
+            }
 #endif
+            return 0;
         }
 
         void
@@ -1021,9 +989,9 @@ namespace Rux {
         const auto root = manifestPath->parent_path();
         const auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
         std::string outputName = manifest->package.name;
-#if RUX_OS_WINDOWS
-        outputName += ".exe";
-#endif
+        if constexpr (HostOS == OS::Windows) {
+            outputName += ".exe";
+        }
         const auto exePath = binDir / outputName;
 
         Linker linker(std::move(rcuFiles), std::string(manifest->package.name), {root});
@@ -1203,6 +1171,9 @@ namespace Rux {
         return 0;
     }
 
+    static constexpr std::string_view kRegistryUrl =
+        "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/Packages.json";
+
     // Returns the directory where registry packages are installed.
     static std::filesystem::path RegistryPackagesDir() {
 #if RUX_OS_WINDOWS
@@ -1214,9 +1185,6 @@ namespace Rux {
         return std::filesystem::path(home ? home : "/tmp") / ".rux" / "packages";
 #endif
     }
-
-    static constexpr std::string_view kRegistryUrl =
-        "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/Packages.json";
 
 #if RUX_OS_WINDOWS
     // Fetch the body of an HTTPS URL using WinHTTP. Returns nullopt on failure.
@@ -1270,28 +1238,48 @@ namespace Rux {
     }
 #else
     static std::string ShellQuote(const std::string& value) {
-        std::string quoted = "'";
-        for (const char ch : value) {
-            if (ch == '\'')
-                quoted += "'\\''";
-            else
-                quoted += ch;
+        std::size_t single_quotes = 0;
+        for (std::size_t i = 0; i < value.size(); ++i) {
+            if (value[i] == '\'') {
+                ++single_quotes;
+            }
         }
-        quoted += "'";
+
+        std::string quoted;
+        // Reserve the exact memory buffer size upfront.
+        // Formula: original size + 2 (for the outer single quotes) + 3 extra bytes per inner quote ('\'')
+        quoted.reserve(value.size() + (single_quotes * 3) + 2);
+
+        quoted += '\'';
+        for (std::size_t i = 0; i < value.size(); ++i) {
+            const char ch = value[i];
+            if (ch == '\'') {
+                quoted += "'\\''";
+            }
+            else {
+                quoted += ch;
+            }
+        }
+        quoted += '\'';
+
         return quoted;
     }
 
     static std::optional<std::string> RunCommandCapture(const std::string& command) {
-        FILE* pipe = popen(command.c_str(), "r");
+        FILE* pipe = ::popen(command.c_str(), "r");
         if (!pipe) return std::nullopt;
 
         std::string output;
         std::array<char, 4096> buffer{};
-        while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
-            output += buffer.data();
 
-        const int status = pclose(pipe);
-        if (status != 0) return std::nullopt;
+        while (::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
+            output.append(buffer.data());
+
+        const int status = ::pclose(pipe);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            return std::nullopt;
+        }
+
         return output;
     }
 
@@ -1844,9 +1832,11 @@ namespace Rux {
         auto root = manifestPath->parent_path();
         auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
         std::string exeName = manifest->package.name;
-#if RUX_OS_WINDOWS
-        exeName += ".exe";
-#endif
+
+        if constexpr (HostOS == OS::Windows) {
+            exeName.append(".exe");
+        }
+
         auto exePath = binDir / exeName;
         if (!std::filesystem::exists(exePath)) {
             std::print(stderr, "error: executable not found: '{}'\n", exePath.string());
@@ -2050,6 +2040,7 @@ namespace Rux {
     // TODO: Make this look in the registry instead of installed packages
     // TODO: Extend Package manifest metadata support
     int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions& opts) {
+        (void)opts;
         std::string_view packageName;
 
         bool jsonOutput = false;

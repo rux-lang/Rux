@@ -6,7 +6,7 @@
 
 #include "Rux/Hir.h"
 
-#include "Rux/Platform.h"
+#include "Rux/Platform/Defines.h"
 
 #include <algorithm>
 #include <cassert>
