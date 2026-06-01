@@ -20,9 +20,12 @@
 #  include <sys/auxv.h>
 #  include <sys/sysinfo.h>
 #  include <unistd.h>
-#elif RUX_OS_MACOS || RUX_IS_BSD
+#elif RUX_OS_MACOS
 #  include <mach/mach.h>
 #  include <mach/mach_host.h>
+#  include <sys/sysctl.h>
+#  include <unistd.h>
+#elif RUX_IS_BSD
 #  include <sys/sysctl.h>
 #  include <unistd.h>
 #endif
@@ -246,7 +249,13 @@ namespace Rux::Platform {
 
 #elif RUX_IS_BSD
 
+#  if defined(HW_MEMSIZE)
         int mib[2] = {CTL_HW, HW_MEMSIZE};
+#  elif defined(HW_REALMEM)
+        int mib[2] = {CTL_HW, HW_REALMEM};
+#  else
+        int mib[2] = {CTL_HW, HW_PHYSMEM};
+#  endif
         size_t len = sizeof(info.total_bytes);
 
         sysctl(mib, 2, &info.total_bytes, &len, nullptr, 0);
