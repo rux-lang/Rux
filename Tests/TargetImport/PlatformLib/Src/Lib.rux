@@ -1,0 +1,16 @@
+// Cross-platform dependency that imports different packages per OS.
+// LinuxHelper only exists in [Dependencies.Target.Linux]; it must never be
+// resolved on a Windows build. WinHelper only exists in
+// [Dependencies.Target.Windows]; it must never be resolved on a Linux build.
+
+@[Target("Linux")]
+import LinuxHelper::LinuxHelper;
+
+@[Target("macOS")]
+import MacosHelper::MacosHelper;
+
+@[Target("Windows")]
+import WinHelper::WinHelper;
+
+module PlatformLib {
+}

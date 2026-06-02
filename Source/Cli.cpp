@@ -15,6 +15,8 @@
 #include "Rux/Manifest.h"
 #include "Rux/Package.h"
 #include "Rux/Parser.h"
+#include "Rux/Platform/Defines.h"
+#include "Rux/Platform/Host.h"
 #include "Rux/Rcu.h"
 #include "Rux/Sema.h"
 #include "Rux/Version.h"
@@ -35,16 +37,22 @@
 #include <unordered_set>
 #include <vector>
 
+// This is separate from the other ifdef because otherwise clang-format attempts
+// to change the order, which makes MSVC cry.
 
-// Do NOT move this includes. But if clang-format moved it then move up windows.h
-// clang-format -i Source/*.cpp Include/Rux/*.h
-// psapi.h depends on definitions from windows.h.
-// If reordered, MSVC will unleash an ancient curse upon this file.
-#ifdef _WIN32
+#if RUX_OS_WINDOWS
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 #  include <windows.h>
+#endif
+
+#if RUX_OS_WINDOWS
 #  include <psapi.h>
 #  include <winhttp.h>
-
 #else
 #  include <sys/resource.h>
 #  include <sys/wait.h>
@@ -54,6 +62,7 @@
 #include "Rux/SourceLoader.h"
 
 namespace Rux {
+    using namespace Platform;
     namespace {
         struct BuildStats {
             std::chrono::milliseconds lexing{0};
@@ -147,46 +156,50 @@ namespace Rux {
         }
 
         [[nodiscard]] std::string TargetName() {
-#if defined(_WIN32)
-            std::string os = "Windows";
-#elif defined(__APPLE__)
-            std::string os = "macOS";
-#elif defined(__linux__)
-            std::string os = "Linux";
-#else
-            std::string os = "Unknown";
-#endif
+            if constexpr (HostArch == Arch::Unknown) {
+                return std::string{ToString(HostOS)};
+            }
 
-#if defined(_M_X64) || defined(__x86_64__) || defined(__amd64__)
-            return os + " x64";
-#elif defined(_M_IX86) || defined(__i386__)
-            return os + " x86";
-#elif defined(_M_ARM64) || defined(__aarch64__)
-            return os + " arm64";
-#elif defined(_M_ARM) || defined(__arm__)
-            return os + " arm";
-#else
-            return os;
-#endif
+            return std::format("{} {}", ToString(HostOS), ToString(HostArch));
         }
 
         [[nodiscard]] std::string HostTargetTriple() {
-#if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__) || defined(__amd64__))
-            return "windows-x64";
-#elif defined(__linux__) && (defined(__x86_64__) || defined(__amd64__))
-            return "linux-x64";
-#else
-            return "unknown";
-#endif
+            auto triple = std::format("{}-{}", ToString(HostOS), ToString(HostArch));
+            std::transform(std::begin(triple), std::end(triple), std::begin(triple), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            return triple;
         }
 
         [[nodiscard]] bool IsSupportedTargetTriple(const std::string_view target) {
-            return target == "linux-x64" || target == "windows-x64";
+            constexpr std::array supported_targets{"linux-x64",
+                                                   "windows-x64",
+                                                   "macos-x64",
+                                                   "macos-aarch64",
+                                                   "freebsd-x64",
+                                                   "openbsd-x64",
+                                                   "netbsd-x64",
+                                                   "dragonfly-x64",
+                                                   "illumos-x64"};
+
+            return std::ranges::contains(supported_targets, target);
         }
 
         [[nodiscard]] std::string_view TargetOsName(const std::string_view target) {
-            if (target.starts_with("linux-")) return "Linux";
-            if (target.starts_with("windows-")) return "Windows";
+            const auto dash_pos = target.find('-');
+            if (dash_pos == std::string_view::npos) {
+                return "";
+            }
+
+            const auto os_prefix = target.substr(0, dash_pos);
+
+            if (os_prefix == "linux") return "Linux";
+            if (os_prefix == "windows") return "Windows";
+            if (os_prefix == "macos") return "macOS";
+            if (os_prefix == "freebsd" || os_prefix == "openbsd" || os_prefix == "netbsd"
+                || os_prefix == "dragonfly") return "BSD";
+            if (os_prefix == "illumos") return "Illumos";
+
             return "";
         }
 
@@ -219,22 +232,21 @@ namespace Rux {
             return dep.package.empty() ? dep.name : dep.package;
         }
 
-        [[nodiscard]] std::uintmax_t PeakMemoryBytes() {
-#ifdef _WIN32
+        [[nodiscard]] std::uintmax_t PeakMemoryBytes() noexcept {
+#if RUX_OS_WINDOWS
             PROCESS_MEMORY_COUNTERS counters{};
-            if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters)))
-                return counters.PeakWorkingSetSize;
-            return 0;
-#else
+            if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters))) {
+                return static_cast<std::uintmax_t>(counters.PeakWorkingSetSize);
+            }
+#elif RUX_IS_UNIX
             rusage usage{};
-            if (getrusage(RUSAGE_SELF, &usage) == 0)
-#  if defined(__APPLE__)
-                return static_cast<std::uintmax_t>(usage.ru_maxrss);
-#  else
-                return static_cast<std::uintmax_t>(usage.ru_maxrss) * 1024;
-#  endif
-            return 0;
+            if (getrusage(RUSAGE_SELF, &usage) == 0) {
+                // macOS reports bytes directly; other Unices report in KB.
+                constexpr std::uintmax_t unitMultiplier = (HostOS == OS::MacOS) ? 1ULL : 1024ULL;
+                return static_cast<std::uintmax_t>(usage.ru_maxrss) * unitMultiplier;
+            }
 #endif
+            return 0;
         }
 
         void
@@ -586,7 +598,9 @@ namespace Rux {
         std::string targetName = target.empty() ? HostTargetTriple() : std::string(target);
         if (!IsSupportedTargetTriple(targetName)) {
             std::print(stderr,
-                       "error: unsupported target '{}'; supported targets are linux-x64 and windows-x64\n",
+                       "error: unsupported target '{}'; supported targets are "
+                       "linux-x64, windows-x64, macos-x64, macos-arm64, "
+                       "freebsd-x64, openbsd-x64, netbsd-x64, illumos-x64\n",
                        targetName);
             return 1;
         }
@@ -884,7 +898,7 @@ namespace Rux {
             }
         }
 
-        Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name);
+        Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name, std::string(TargetOsName(targetName)));
         auto semaResult = sema.Analyze();
 
         for (const auto& diag : semaResult.diagnostics) {
@@ -977,13 +991,14 @@ namespace Rux {
 
         const auto root = manifestPath->parent_path();
         const auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
+        const bool buildDll = (manifest->package.type == "Dll" || manifest->package.type == "dll");
         std::string outputName = manifest->package.name;
-#ifdef _WIN32
-        outputName += ".exe";
-#endif
+        if constexpr (HostOS == OS::Windows) {
+            outputName += buildDll ? ".dll" : ".exe";
+        }
         const auto exePath = binDir / outputName;
 
-        Linker linker(std::move(rcuFiles), std::string(manifest->package.name), {root});
+        Linker linker(std::move(rcuFiles), std::string(manifest->package.name), {root}, buildDll);
         if (!linker.Link(exePath)) {
             for (const auto& err : linker.Errors())
                 std::print(stderr, "error: {}\n", err.message);
@@ -1160,9 +1175,12 @@ namespace Rux {
         return 0;
     }
 
+    static constexpr std::string_view kRegistryUrl =
+        "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/Packages.json";
+
     // Returns the directory where registry packages are installed.
     static std::filesystem::path RegistryPackagesDir() {
-#ifdef _WIN32
+#if RUX_OS_WINDOWS
         wchar_t buf[MAX_PATH]{};
         GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
         return std::filesystem::path(buf) / "Rux" / "Packages";
@@ -1172,10 +1190,7 @@ namespace Rux {
 #endif
     }
 
-    static constexpr std::string_view kRegistryUrl =
-        "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/Packages.json";
-
-#ifdef _WIN32
+#if RUX_OS_WINDOWS
     // Fetch the body of an HTTPS URL using WinHTTP. Returns nullopt on failure.
     static std::optional<std::string> FetchUrl(const std::string& url) {
         std::wstring wurl(url.begin(), url.end());
@@ -1227,28 +1242,48 @@ namespace Rux {
     }
 #else
     static std::string ShellQuote(const std::string& value) {
-        std::string quoted = "'";
-        for (const char ch : value) {
-            if (ch == '\'')
-                quoted += "'\\''";
-            else
-                quoted += ch;
+        std::size_t single_quotes = 0;
+        for (std::size_t i = 0; i < value.size(); ++i) {
+            if (value[i] == '\'') {
+                ++single_quotes;
+            }
         }
-        quoted += "'";
+
+        std::string quoted;
+        // Reserve the exact memory buffer size upfront.
+        // Formula: original size + 2 (for the outer single quotes) + 3 extra bytes per inner quote ('\'')
+        quoted.reserve(value.size() + (single_quotes * 3) + 2);
+
+        quoted += '\'';
+        for (std::size_t i = 0; i < value.size(); ++i) {
+            const char ch = value[i];
+            if (ch == '\'') {
+                quoted += "'\\''";
+            }
+            else {
+                quoted += ch;
+            }
+        }
+        quoted += '\'';
+
         return quoted;
     }
 
     static std::optional<std::string> RunCommandCapture(const std::string& command) {
-        FILE* pipe = popen(command.c_str(), "r");
+        FILE* pipe = ::popen(command.c_str(), "r");
         if (!pipe) return std::nullopt;
 
         std::string output;
         std::array<char, 4096> buffer{};
-        while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
-            output += buffer.data();
 
-        const int status = pclose(pipe);
-        if (status != 0) return std::nullopt;
+        while (::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
+            output.append(buffer.data());
+
+        const int status = ::pclose(pipe);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            return std::nullopt;
+        }
+
         return output;
     }
 
@@ -1288,14 +1323,14 @@ namespace Rux {
 
     // Clone a git repository into dest. Returns true on success.
     static bool GitClone(const std::string& repoUrl, const std::filesystem::path& dest, bool devBranch) {
-#ifdef _WIN32
+#if RUX_OS_WINDOWS
         std::wstring cmd{};
         if (!devBranch) {
-            cmd =
-                L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
-        } else {
-            cmd =
-                L"git clone --branch dev " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
+            cmd = L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
+        }
+        else {
+            cmd = L"git clone --branch dev " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() +
+                L"\"";
         }
         STARTUPINFOW si{};
         si.cb = sizeof(si);
@@ -1308,17 +1343,15 @@ namespace Rux {
         CloseHandle(pi.hThread);
         return exitCode == 0;
 #else
-    const std::string cmd =
-        devBranch
-            ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
-            : "git clone " + repoUrl + " \"" + dest.string() + "\"";
-    return std::system(cmd.c_str()) == 0;            
+        const std::string cmd = devBranch ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
+                                          : "git clone " + repoUrl + " \"" + dest.string() + "\"";
+        return std::system(cmd.c_str()) == 0;
 #endif
     }
 
     // Pull latest changes in an existing git repository. Returns true on success.
     static bool GitPull(const std::filesystem::path& repoDir) {
-#ifdef _WIN32
+#if RUX_OS_WINDOWS
         std::wstring cmd = L"git -C \"" + repoDir.wstring() + L"\" pull";
         STARTUPINFOW si{};
         si.cb = sizeof(si);
@@ -1339,32 +1372,33 @@ namespace Rux {
     int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions& opts) {
         std::string_view packageSpec;
         bool packageFromDev = false;
+
         for (auto arg : args) {
             if (arg == "-h" || arg == "--help") {
                 PrintHelpInstall();
                 return 0;
             }
+
             if (arg == "--dev") {
                 packageFromDev = true;
                 continue;
             }
+
             if (!arg.starts_with('-') && packageSpec.empty()) {
                 packageSpec = arg;
                 continue;
             }
+
             PrintUnknownOption(arg, "install");
             return 1;
         }
 
-        const auto manifestPath = RequireManifest();
-        if (!manifestPath) return 1;
-        auto manifest = LoadManifest(*manifestPath);
-        if (!manifest) return 1;
-
+        // Install a specific package without requiring a manifest
         if (!packageSpec.empty()) {
             auto [pkgName, pkgVersion] = ParsePackageSpec(packageSpec);
 
-            if (!opts.quiet) std::print("     Fetching registry...\n");
+            if (!opts.quiet)
+                std::print("     Fetching registry...\n");
 
             const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
             if (!jsonOpt) {
@@ -1378,50 +1412,63 @@ namespace Rux {
                 return 1;
             }
 
-            const bool changed = manifest->AddDependency(pkgName, pkgVersion);
-            if (changed) {
-                if (!manifest->Save(*manifestPath)) {
-                    std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
-                    return 1;
-                }
-            }
-
             const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
+
             std::error_code ec;
             std::filesystem::create_directories(pkgDir.parent_path(), ec);
 
             if (std::filesystem::exists(pkgDir)) {
-                if (!opts.quiet) std::print("   Up-to-date {}\n", pkgName);
+                if (!opts.quiet)
+                    std::print("   Up-to-date {}\n", pkgName);
             }
             else {
-                if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+                if (!opts.quiet)
+                    std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+
                 if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
-                if (!opts.quiet) std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+
+                if (!opts.quiet)
+                    std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
             }
+
             return 0;
         }
 
-        // BFS queue of registry package names to install
+        // Install dependencies from current project
+        const auto manifestPath = RequireManifest();
+        if (!manifestPath)
+            return 1;
+
+        auto manifest = LoadManifest(*manifestPath);
+        if (!manifest)
+            return 1;
+
         std::vector<std::string> queue;
         std::unordered_set<std::string> queued;
+
         const std::string installTarget = HostTargetTriple();
+
         for (const auto& dep : manifest->EffectiveDependencies(installTarget)) {
             const std::string packageName = DependencyPackageName(dep);
-            if (dep.path.empty() && !queued.count(packageName)) {
+
+            if (dep.path.empty() && !queued.contains(packageName)) {
                 queue.push_back(packageName);
                 queued.insert(packageName);
             }
         }
 
         if (queue.empty()) {
-            if (!opts.quiet) std::print("  No registry dependencies to install.\n");
+            if (!opts.quiet)
+                std::print("  No registry dependencies to install.\n");
+
             return 0;
         }
 
-        if (!opts.quiet) std::print("     Fetching registry...\n");
+        if (!opts.quiet)
+            std::print("     Fetching registry...\n");
 
         const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
         if (!jsonOpt) {
@@ -1431,43 +1478,58 @@ namespace Rux {
 
         int installed = 0;
         int upToDate = 0;
+
         for (std::size_t i = 0; i < queue.size(); ++i) {
             const std::string& pkgName = queue[i];
+
             const std::string repoUrl = JsonLookupString(*jsonOpt, pkgName);
             if (repoUrl.empty()) {
                 std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
                 return 1;
             }
+
             const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
+
             std::error_code ec;
             std::filesystem::create_directories(pkgDir.parent_path(), ec);
 
             if (std::filesystem::exists(pkgDir)) {
-                if (!opts.quiet) std::print("   Up-to-date {}\n", pkgName);
+                if (!opts.quiet)
+                    std::print("   Up-to-date {}\n", pkgName);
+
                 ++upToDate;
             }
             else {
-                if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+                if (!opts.quiet)
+                    std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+
                 if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
-                if (!opts.quiet) std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+
+                if (!opts.quiet)
+                    std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+
                 ++installed;
             }
 
-            // Enqueue registry deps declared by this package
             if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
                 for (const auto& dep : depManifest->EffectiveDependencies(installTarget)) {
                     const std::string depPackageName = DependencyPackageName(dep);
-                    if (dep.path.empty() && !queued.count(depPackageName)) {
+
+                    if (dep.path.empty() && !queued.contains(depPackageName)) {
                         queue.push_back(depPackageName);
                         queued.insert(depPackageName);
                     }
                 }
             }
         }
-        if (!opts.quiet) std::print("     Summary: {} installed, {} already up-to-date\n", installed, upToDate);
+
+        if (!opts.quiet)
+            std::print("     Summary: {} installed, {} already up-to-date\n",
+                    installed, upToDate);
+
         return 0;
     }
 
@@ -1802,17 +1864,24 @@ namespace Rux {
         std::string_view profileName = isRelease ? "Release" : "Debug";
         auto root = manifestPath->parent_path();
         auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
+        const bool runDll = (manifest->package.type == "Dll" || manifest->package.type == "dll");
+        if (runDll) {
+            std::print(stderr, "error: cannot run a DLL package directly\n");
+            return 1;
+        }
         std::string exeName = manifest->package.name;
-#ifdef _WIN32
-        exeName += ".exe";
-#endif
+
+        if constexpr (HostOS == OS::Windows) {
+            exeName.append(".exe");
+        }
+
         auto exePath = binDir / exeName;
         if (!std::filesystem::exists(exePath)) {
             std::print(stderr, "error: executable not found: '{}'\n", exePath.string());
             return 1;
         }
         if (opts.verbose && !opts.quiet) std::print("     Running `{}`\n", exePath.string());
-#ifdef _WIN32
+#if RUX_OS_WINDOWS
         std::string cmdLine = "\"" + exePath.string() + "\"";
         for (const auto& a : runArgs) {
             cmdLine += " \"";
@@ -2009,6 +2078,7 @@ namespace Rux {
     // TODO: Make this look in the registry instead of installed packages
     // TODO: Extend Package manifest metadata support
     int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions& opts) {
+        (void)opts;
         std::string_view packageName;
 
         bool jsonOutput = false;
@@ -2232,7 +2302,9 @@ namespace Rux {
             }
             else {
                 std::print(stderr,
-                           "error: unsupported target '{}'; supported targets are linux-x64 and windows-x64\n",
+                           "error: unsupported target '{}'; supported targets are "
+                           "linux-x64, windows-x64, macos-x64, macos-arm64, "
+                           "freebsd-x64, openbsd-x64, netbsd-x64, dragonfly-x64, illumos-x64\n",
                            targetName);
             }
             return 1;
@@ -2548,7 +2620,7 @@ namespace Rux {
                 depPackages[it->second].modules.push_back({loadedModuleNames[i], &depParseResults[i].module});
             }
 
-            Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name);
+            Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name, std::string(TargetOsName(targetName)));
             auto semaResult = sema.Analyze();
 
             for (const auto& diag : semaResult.diagnostics) {
@@ -2814,14 +2886,18 @@ namespace Rux {
                    "Usage: rux install\n"
                    "       rux install [package]\n"
                    "       rux install [package]@[version]\n"
+                   "       rux install --dev [package]\n"
                    "\n"
                    "Without a package name, downloads all registry dependencies listed in Rux.toml.\n"
                    "With a package name, adds it to Rux.toml and downloads it to the local cache.\n"
+                   "Use --dev to clone the package repository's dev branch instead of the default branch.\n"
                    "\n"
                    "Examples:\n"
                    "  rux install\n"
                    "  rux install Std\n"
-                   "  rux install Std@0.1.0\n");
+                   "  rux install Std@0.1.0\n"
+                   "  rux install --dev Std\n"
+                   "  rux install --dev Windows\n");
     }
 
     void Cli::PrintHelpUninstall() {
