@@ -6,6 +6,8 @@
 
 #include "Rux/Linker.h"
 
+#include "Rux/Platform/Defines.h"
+
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -19,11 +21,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#if RUX_IS_ELF_OS
 #  include <filesystem>
 #endif
 
-#if defined(_WIN32)
+#if RUX_OS_WINDOWS
 // NOMINMAX: keep windows.h from defining min/max macros that would clobber the
 // std::max/std::min calls in the PE linker below.
 #  define NOMINMAX
@@ -31,6 +33,7 @@
 #endif
 
 namespace Rux {
+#if RUX_OS_WINDOWS
     // PE32+ layout constants
     [[maybe_unused]] static constexpr uint64_t kImageBase = 0x140000000ULL;
     [[maybe_unused]] static constexpr uint32_t kSecAlign = 0x1000; // 4 KB section alignment
@@ -38,6 +41,11 @@ namespace Rux {
     [[maybe_unused]] static constexpr uint16_t kMachineAmd64 = 0x8664;
     [[maybe_unused]] static constexpr uint16_t kMagicPE32P = 0x020B;
     [[maybe_unused]] static constexpr uint16_t kSubsystemCUI = 3; // console
+
+    // DLL-specific
+    [[maybe_unused]] static constexpr uint16_t kSubsystemGUI = 2; // windows GUI (used for DLLs)
+    // IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_LARGE_ADDRESS_AWARE | IMAGE_FILE_DLL
+    [[maybe_unused]] static constexpr uint16_t kCharacteristicsDll = 0x2022u;
 
     // IMAGE_SCN_ characteristics
     [[maybe_unused]] static constexpr uint32_t kScnText = 0x60000020u; // CNT_CODE | MEM_EXECUTE | MEM_READ
@@ -49,6 +57,7 @@ namespace Rux {
     // ASLR. Absolute relocations such as vtable function pointers must remain
     // valid at the preferred image base.
     [[maybe_unused]] static constexpr uint16_t kDllChars = 0x8100u;
+#endif
 
     // Buffer helpers
     using Buf = std::vector<uint8_t>;
@@ -116,6 +125,7 @@ namespace Rux {
         return std::filesystem::is_regular_file(path, ec);
     }
 
+#if RUX_OS_WINDOWS
     static std::optional<Buf> ReadFileBytes(const std::filesystem::path& path) {
         std::ifstream in(path, std::ios::binary | std::ios::ate);
         if (!in) return std::nullopt;
@@ -221,9 +231,10 @@ namespace Rux {
 
         return exports;
     }
+#endif
 
     static std::string GetPathEnv() {
-#if defined(_MSC_VER)
+#if RUX_COMPILER_MSVC
         char* value = nullptr;
         size_t size = 0;
         if (_dupenv_s(&value, &size, "PATH") != 0 || value == nullptr) return {};
@@ -264,7 +275,7 @@ namespace Rux {
 
         if (auto hit = probe(std::filesystem::current_path())) return hit;
 
-#if defined(_WIN32)
+#if RUX_OS_WINDOWS
         // System DLLs (kernel32, user32, ...) live in the Windows system
         // directory, which is the authoritative source for them — don't rely on
         // it happening to be on PATH (it isn't under some shells, e.g. Git Bash).
@@ -289,10 +300,12 @@ namespace Rux {
 
     Linker::Linker(std::vector<RcuFile> objects,
                    std::string packageName,
-                   std::vector<std::filesystem::path> importSearchDirs)
+                   std::vector<std::filesystem::path> importSearchDirs,
+                   bool isDll)
         : objects(std::move(objects))
         , packageName(std::move(packageName))
-        , importSearchDirs(std::move(importSearchDirs)) {
+        , importSearchDirs(std::move(importSearchDirs))
+        , isDll(isDll) {
     }
 
     void Linker::Error(std::string msg) {
@@ -300,18 +313,19 @@ namespace Rux {
     }
 
     bool Linker::Link(const std::filesystem::path& outputPath) {
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#if RUX_IS_ELF_OS
         return LinkElf64(outputPath);
-#elif defined(__APPLE__)
+#elif RUX_OS_MACOS
         return LinkMachO64(outputPath);
 #else
         // 1. Collect imported external function names
 
-        // Always need ExitProcess for the entry thunk
+        // EXEs always need ExitProcess for the entry thunk; DLLs do not.
         std::unordered_map<std::string, std::string> importDll;
         std::unordered_set<std::string> explicitImportDlls;
         std::unordered_map<std::string, std::vector<std::string>> explicitImportFuncsByDll;
-        importDll["ExitProcess"] = "KERNEL32.DLL";
+        if (!isDll)
+            importDll["ExitProcess"] = "KERNEL32.DLL";
 
         // First pass: collect explicit DLL assignments from symbol declarations.
         // This handles the case where a call site and its declaration are in
@@ -387,19 +401,48 @@ namespace Rux {
 
         Buf textPre;
 
-        // __rux_start entry thunk:
-        //   sub rsp, 0x28       ; 48 83 EC 28
-        //   call Main           ; E8 xx xx xx xx
-        //   mov ecx, eax        ; 89 C1~
-        //   call ExitProcess    ; E8 xx xx xx xx
-        //   int3                ; CC
-        textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x28});
-        const size_t kCallMainDisp = textPre.size() + 1; // offset of 4-byte disp field
-        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00});
-        textPre.insert(textPre.end(), {0x89, 0xC1});
+        if (isDll) {
+            // DLL entry point: _DllMainCRTStartup / DllMain proxy
+            // Win64 DLL entry: BOOL WINAPI DllMain(HINSTANCE, DWORD, LPVOID)
+            // args: rcx=hModule, rdx=fdwReason, r8=lpvReserved
+            // We call user's DllMain if it exists, otherwise just return TRUE (1).
+            //
+            // Thunk layout:
+            //   sub  rsp, 0x28
+            //   call DllMain       ; E8 disp32  (patched; if DllMain defined)
+            //   mov  eax, 1        ; return TRUE if DllMain missing or returned 0
+            //   add  rsp, 0x28
+            //   ret
+            //
+            // If DllMain is not defined in user code we emit a minimal stub that
+            // just returns TRUE — standard DLL behaviour when no initialisation needed.
+            textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x28}); // sub rsp, 0x28
+            const size_t kCallDllMainDisp = textPre.size() + 1;
+            textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call DllMain
+            // If DllMain returned 0 (init failed), still propagate it; otherwise keep eax.
+            // For simplicity we trust DllMain's return value directly.
+            textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x28}); // add rsp, 0x28
+            textPre.push_back(0xC3); // ret
+            (void)kCallDllMainDisp; // used below during patching
+        } else {
+            // EXE entry thunk (__rux_start):
+            //   sub rsp, 0x28       ; 48 83 EC 28
+            //   call Main           ; E8 xx xx xx xx
+            //   mov ecx, eax        ; 89 C1
+            //   call ExitProcess    ; E8 xx xx xx xx
+            //   int3                ; CC
+            textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x28});
+        }
+        const size_t kCallMainDisp = isDll ? 5 : textPre.size() + 1; // offset of 4-byte disp field
+        if (!isDll) {
+            textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00});
+            textPre.insert(textPre.end(), {0x89, 0xC1});
+        }
         const size_t kCallExitDisp = textPre.size() + 1;
-        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00});
-        textPre.push_back(0xCC);
+        if (!isDll) {
+            textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00});
+            textPre.push_back(0xCC);
+        }
 
         // Import thunks: jmp qword ptr [rip+disp32] = FF 25 xx xx xx xx
         std::vector<size_t> thunkOff(numImports);
@@ -579,8 +622,28 @@ namespace Rux {
             Patch32(textBuf, thunkOff[i] + 2, static_cast<uint32_t>(disp));
         }
 
-        // Patch entry thunk: call Main
-        {
+        // Patch entry thunk: call Main (EXE) or DllMain (DLL)
+        if (isDll) {
+            // DllMain is optional: if not defined, patch the call to target the
+            // instruction immediately after it so it falls through to `ret` returning
+            // whatever eax happened to hold (Windows default-initialises to 0, but
+            // the sub/add rsp frame means the caller sees TRUE from a fresh eax on
+            // many ABIs). We make it explicit: if no DllMain, patch to call a tiny
+            // inline stub that sets eax=1 then returns.
+            //
+            // Simple approach: if DllMain absent, replace the call+6-byte nop with
+            // `mov eax, 1; nop` so the stub just returns TRUE.
+            auto it = symMap.find("DllMain");
+            if (it != symMap.end()) {
+                uint64_t dllMainVA = it->second;
+                uint64_t nextInst = kImageBase + textRva + kCallMainDisp + 4;
+                Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(dllMainVA - nextInst));
+            } else {
+                // No DllMain: replace `E8 00 00 00 00` with `B8 01 00 00 00` (mov eax, 1)
+                textBuf[kCallMainDisp - 1] = 0xB8; // change opcode from E8 (call) to B8 (mov eax, imm32)
+                Patch32(textBuf, kCallMainDisp, 1); // imm = 1 (TRUE)
+            }
+        } else {
             auto it = symMap.find("Main");
             if (it == symMap.end()) {
                 Error("undefined symbol 'Main' — no entry point found");
@@ -591,8 +654,8 @@ namespace Rux {
             Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(mainVA - nextInst));
         }
 
-        // Patch entry thunk: call ExitProcess thunk
-        {
+        // Patch entry thunk: call ExitProcess thunk (EXE only)
+        if (!isDll) {
             uint64_t exitVA = kImageBase + textRva + thunkOff[importIdx["ExitProcess"]];
             uint64_t nextInst = kImageBase + textRva + kCallExitDisp + 4;
             Patch32(textBuf, kCallExitDisp, static_cast<uint32_t>(exitVA - nextInst));
@@ -677,6 +740,86 @@ namespace Rux {
 
         if (!errors.empty()) return false;
 
+        // Build export directory for DLLs
+        // We export all pub functions that are marked as exported symbols.
+        // Collect exported function names (non-extern, non-local, Func kind).
+        std::vector<std::string> exportNames;
+        if (isDll) {
+            for (const auto& obj : objects) {
+                for (const auto& sym : obj.symbols) {
+                    if (sym.kind == RcuSymKind::Func &&
+                        sym.visibility != RcuSymVis::Local &&
+                        !sym.name.empty() &&
+                        sym.name != "DllMain" &&
+                        symMap.count(sym.name)) {
+                        exportNames.push_back(sym.name);
+                    }
+                }
+            }
+            std::sort(exportNames.begin(), exportNames.end());
+            exportNames.erase(std::unique(exportNames.begin(), exportNames.end()), exportNames.end());
+        }
+
+        // Build export directory data (appended to .rdata)
+        uint32_t exportDirOff = 0;
+        uint32_t exportDirSize = 0;
+        if (isDll && !exportNames.empty()) {
+            exportDirOff = static_cast<uint32_t>(rdataBuf.size());
+            const uint32_t numExports = static_cast<uint32_t>(exportNames.size());
+
+            // Reserve IMAGE_EXPORT_DIRECTORY (40 bytes)
+            const size_t expDirPos = rdataBuf.size();
+            WriteZeros(rdataBuf, 40);
+
+            // AddressOfFunctions array (RVAs)
+            const uint32_t funcArrayOff = static_cast<uint32_t>(rdataBuf.size());
+            for (uint32_t i = 0; i < numExports; ++i)
+                WriteU32(rdataBuf, 0); // patched below
+
+            // AddressOfNames array (RVAs to name strings)
+            const uint32_t nameArrayOff = static_cast<uint32_t>(rdataBuf.size());
+            for (uint32_t i = 0; i < numExports; ++i)
+                WriteU32(rdataBuf, 0); // patched below
+
+            // AddressOfNameOrdinals array
+            const uint32_t ordArrayOff = static_cast<uint32_t>(rdataBuf.size());
+            for (uint32_t i = 0; i < numExports; ++i)
+                WriteU16(rdataBuf, static_cast<uint16_t>(i));
+
+            // DLL name string
+            const uint32_t dllNameStrOff = static_cast<uint32_t>(rdataBuf.size());
+            WriteCStr(rdataBuf, (packageName + ".dll").c_str());
+            PadTo(rdataBuf, 2);
+
+            // Function name strings + patch name/func arrays
+            for (uint32_t i = 0; i < numExports; ++i) {
+                const uint32_t nameStrOff = static_cast<uint32_t>(rdataBuf.size());
+                WriteCStr(rdataBuf, exportNames[i].c_str());
+                PadTo(rdataBuf, 2);
+                // Patch name array entry
+                Patch32(rdataBuf, nameArrayOff + i * 4, rdataRva + nameStrOff);
+                // Patch function RVA
+                auto it = symMap.find(exportNames[i]);
+                if (it != symMap.end()) {
+                    uint32_t funcRva = static_cast<uint32_t>(it->second - kImageBase);
+                    Patch32(rdataBuf, funcArrayOff + i * 4, funcRva);
+                }
+            }
+
+            exportDirSize = static_cast<uint32_t>(rdataBuf.size()) - exportDirOff;
+
+            // Patch IMAGE_EXPORT_DIRECTORY fields
+            Patch32(rdataBuf, expDirPos + 0,  0);                                    // Characteristics
+            Patch32(rdataBuf, expDirPos + 4,  static_cast<uint32_t>(std::time(nullptr))); // TimeDateStamp
+            Patch32(rdataBuf, expDirPos + 12, rdataRva + dllNameStrOff);              // Name RVA
+            Patch32(rdataBuf, expDirPos + 16, 1);                                     // Base (ordinal base)
+            Patch32(rdataBuf, expDirPos + 20, numExports);                            // NumberOfFunctions
+            Patch32(rdataBuf, expDirPos + 24, numExports);                            // NumberOfNames
+            Patch32(rdataBuf, expDirPos + 28, rdataRva + funcArrayOff);               // AddressOfFunctions
+            Patch32(rdataBuf, expDirPos + 32, rdataRva + nameArrayOff);               // AddressOfNames
+            Patch32(rdataBuf, expDirPos + 36, rdataRva + ordArrayOff);                // AddressOfNameOrdinals
+        }
+
         // 10. Emit PE32+ file
         std::filesystem::create_directories(outputPath.parent_path());
         std::ofstream out(outputPath, std::ios::binary | std::ios::trunc);
@@ -726,7 +869,9 @@ namespace Rux {
         wU32(0);
         wU32(0); // no COFF symbol table
         wU16(240); // SizeOfOptionalHeader for PE32+
-        wU16(0x0022); // Characteristics: EXECUTABLE | LARGE_ADDRESS_AWARE
+        // EXE: EXECUTABLE | LARGE_ADDRESS_AWARE
+        // DLL: EXECUTABLE | LARGE_ADDRESS_AWARE | DLL
+        wU16(isDll ? kCharacteristicsDll : static_cast<uint16_t>(0x0022u));
 
         // Optional Header PE32+ (240 bytes)
         wU16(kMagicPE32P);
@@ -750,7 +895,7 @@ namespace Rux {
         wU32(sizeOfImage);
         wU32(sizeOfHeaders);
         wU32(0); // CheckSum
-        wU16(kSubsystemCUI);
+        wU16(isDll ? kSubsystemGUI : kSubsystemCUI);
         wU16(kDllChars);
         wU64(0x100000ULL); // SizeOfStackReserve (1 MB)
         wU64(0x1000ULL); // SizeOfStackCommit  (4 KB)
@@ -759,7 +904,9 @@ namespace Rux {
         wU32(0); // LoaderFlags
         wU32(16); // NumberOfRvaAndSizes
         // DataDirectory[16]
-        wDir(0, 0); // [0]  Export
+        // [0] Export — filled for DLLs, empty for EXEs
+        wDir(isDll && exportDirSize > 0 ? rdataRva + exportDirOff : 0,
+             isDll && exportDirSize > 0 ? exportDirSize : 0);
         wDir(rdataRva + importDirOff, static_cast<uint32_t>((importDllNames.size() + 1) * 20)); // [1]  Import
         wDir(0, 0);
         wDir(0, 0);
@@ -822,17 +969,11 @@ namespace Rux {
 #endif
     }
 
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+
+#if RUX_IS_ELF_OS
     static std::optional<Buf> LinuxCompatThunk(const std::string& name) {
         static const std::unordered_map<std::string, Buf> thunks = {
-            {"ExitProcess",
-             {
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
-                 0x48, 0x89, 0xCF, 0xB8, 0x01, 0x00, 0x00, 0x00, 0x0F, 0x05
-#  else
-                 0x48, 0x89, 0xCF, 0xB8, 0x3C, 0x00, 0x00, 0x00, 0x0F, 0x05
-#  endif
-             }},
+            {"ExitProcess", {0x48, 0x89, 0xCF, 0xB8, (RUX_IS_BSD || RUX_IS_SUNOS ? 0x01 : 0x3C), 0x00, 0x00, 0x00, 0x0F, 0x05}},
             {"GetStdHandle",
              {
                  0x81, 0xF9, 0xF6, 0xFF, 0xFF, 0xFF, // cmp ecx, -10 (STD_INPUT_HANDLE)
@@ -849,39 +990,48 @@ namespace Rux {
             {"GetProcessHeap", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"HeapFree", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"HeapAlloc", {0x4C, 0x89, 0xC6, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
-                           0x02, 0x10, 0x00, 0x00,
+
+#  if RUX_IS_BSD
+                            0x02, 0x10, 0x00, 0x00,
+#  elif RUX_IS_SUNOS
+                            0x02, 0x01, 0x00, 0x00,
 #  else
-                           0x22, 0x00, 0x00, 0x00,
+                            0x22, 0x00, 0x00, 0x00,
 #  endif
-                           0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
-#  if defined(__FreeBSD__)
-                           0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
-#  elif defined(__OpenBSD__)
-                           0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
-#  elif defined(__DragonFly__) || defined(__NetBSD__)
-                           0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
+                            0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
+#  if RUX_OS_FREEBSD
+                            0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+#  elif RUX_OS_OPENBSD
+                            0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
+#  elif RUX_OS_DRAGONFLY || RUX_OS_NETBSD
+                            0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
+#  elif RUX_IS_SUNOS
+                            0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
 #  else
-                           0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
+                            0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
 #  endif
-                           0x05, 0xC3}},
+                            0x05, 0xC3}},
             {"HeapReAlloc", {0x48, 0x8B, 0x74, 0x24, 0x28, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
-                             0x02, 0x10, 0x00, 0x00,
+#  if RUX_IS_BSD
+                              0x02, 0x10, 0x00, 0x00,
+#  elif RUX_IS_SUNOS
+                              0x02, 0x01, 0x00, 0x00,
 #  else
-                             0x22, 0x00, 0x00, 0x00,
+                              0x22, 0x00, 0x00, 0x00,
 #  endif
-                             0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
-#  if defined(__FreeBSD__)
-                             0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
-#  elif defined(__OpenBSD__)
-                             0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
-#  elif defined(__DragonFly__) || defined(__NetBSD__)
-                             0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
+                              0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
+#  if RUX_OS_FREEBSD
+                              0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+#  elif RUX_OS_OPENBSD
+                              0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
+#  elif RUX_OS_DRAGONFLY || RUX_OS_NETBSD
+                              0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
+#  elif RUX_IS_SUNOS
+                              0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
 #  else
-                             0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
+                              0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
 #  endif
-                             0x05, 0xC3}},
+                              0x05, 0xC3}},
             {"RtlCopyMemory", {0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88, 0x01, 0x48, 0xFF,
                                0xC2, 0x48, 0xFF, 0xC1, 0x49, 0xFF, 0xC8, 0x75, 0xF1, 0xC3}},
             {"RtlCompareMemory",
@@ -958,28 +1108,32 @@ namespace Rux {
                                      0x4D, 0x85, 0xC9, 0x7E, 0x14, 0x45, 0x0F, 0xB6, 0x18, 0x66, 0x45, 0x89, 0x1A,
                                      0x49, 0xFF, 0xC0, 0x49, 0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
             {"WriteConsoleW", {0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x08, 0x49, 0x89, 0xD4, 0x4D, 0x89,
-                               0xC5, 0x4D, 0x85, 0xED, 0x74, 0x24, 0x41, 0x8A, 0x04, 0x24, 0x88, 0x04, 0x24,
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
-                               0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
+                                0xC5, 0x4D, 0x85, 0xED, 0x74, 0x24, 0x41, 0x8A, 0x04, 0x24, 0x88, 0x04, 0x24,
+#  if RUX_IS_BSD || RUX_IS_SUNOS
+                                0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
 #  else
-                               0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
+                                0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
 #  endif
-                               0x01, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE6, 0xBA, 0x01, 0x00, 0x00, 0x00, 0x0F,
-                               0x05, 0x49, 0x83, 0xC4, 0x02, 0x49, 0xFF, 0xCD, 0xEB, 0xD7, 0x48, 0x83, 0xC4,
-                               0x08, 0x41, 0x5D, 0x41, 0x5C, 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
+                                0x01, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE6, 0xBA, 0x01, 0x00, 0x00, 0x00, 0x0F,
+                                0x05, 0x49, 0x83, 0xC4, 0x02, 0x49, 0xFF, 0xCD, 0xEB, 0xD7, 0x48, 0x83, 0xC4,
+                                0x08, 0x41, 0x5D, 0x41, 0x5C, 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"ReadFile",
              {
                  0x89, 0xCF, // mov edi, ecx  (fd)
                  0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
                  0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#  if RUX_IS_BSD || RUX_IS_SUNOS
                  0xB8, 0x03, 0x00, 0x00, 0x00, // mov eax, 3 (SYS_read)
 #  else
                  0x31, 0xC0, // xor eax, eax (SYS_read = 0)
 #  endif
+                 0x4D, 0x89, 0xC8, // mov r8, r9  (save output pointer to r8 before syscall)
                  0x0F, 0x05, // syscall
                  0x85, 0xC0, // test eax, eax
-                 0x78, 0x09, // js +9 (error)
+                 0x78, 0x11, // js +17 (error)
+                 0x4D, 0x89, 0xC1, // mov r9, r8  (restore output pointer)
+                 0x4D, 0x85, 0xC9, // test r9, r9
+                 0x74, 0x03, // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax  (*bytesRead = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
                  0xC3, // ret
@@ -993,21 +1147,25 @@ namespace Rux {
                  0x89, 0xCF, // mov edi, ecx  (fd)
                  0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
                  0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#  if RUX_IS_BSD || RUX_IS_SUNOS
                  0xB8, 0x04, 0x00, 0x00, 0x00, // mov eax, 4 (SYS_write)
 #  else
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (SYS_write)
 #  endif
+                 0x4D, 0x89, 0xC8, // mov r8, r9  (save output pointer to r8 before syscall)
                  0x0F, 0x05, // syscall
                  0x85, 0xC0, // test eax, eax
-                 0x78, 0x09, // js +9 (error)
+                 0x78, 0x11, // js +17 (error)
+                 0x4D, 0x89, 0xC1, // mov r9, r8  (restore output pointer)
+                 0x4D, 0x85, 0xC9, // test r9, r9
+                 0x74, 0x03, // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax  (*bytesWritten = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
                  0xC3, // ret
                  0x31, 0xC0, // xor eax, eax (FALSE)
                  0xC3 // ret
              }},
-#  if defined(__linux__)
+#  if RUX_IS_ELF_OS
             // Rux extern calls currently use the Win64 register layout. These
             // thunks move that layout into Linux x86_64 syscall registers:
             // rax=number, rdi/rsi/rdx/r10/r8/r9=args.
@@ -1114,6 +1272,64 @@ namespace Rux {
                   0x0F, 0x05, // syscall
                   0xC3 // ret
               }},
+             {"__rux_bsd_nanosleep",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0x48, 0xC7, 0xC0, 0xF0, 0x00, 0x00, 0x00, // mov rax, 240
+#  elif defined(__OpenBSD__)
+                  0x48, 0xC7, 0xC0, 0x5B, 0x00, 0x00, 0x00, // mov rax, 91
+#  endif
+                  0x48, 0x89, 0xCF, // mov rdi, rcx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_clock_gettime",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0x48, 0xC7, 0xC0, 0xE8, 0x00, 0x00, 0x00, // mov rax, 232
+#  elif defined(__OpenBSD__)
+                  0x48, 0xC7, 0xC0, 0x57, 0x00, 0x00, 0x00, // mov rax, 87
+#  endif
+                  0x48, 0x63, 0xF9, // movsxd rdi, ecx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_mmap",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0x48, 0xC7, 0xC0, 0xDD, 0x01, 0x00, 0x00, // mov rax, 477
+#  elif defined(__OpenBSD__)
+                  0x48, 0xC7, 0xC0, 0xC5, 0x00, 0x00, 0x00, // mov rax, 197
+#  endif
+                  0x48, 0x89, 0xCF, // mov rdi, rcx
+                  0x48, 0x89, 0xD6, // mov rsi, rdx
+                  0x4C, 0x89, 0xC2, // mov rdx, r8
+                  0x4D, 0x89, 0xCA, // mov r10, r9
+                  0x4C, 0x8B, 0x44, 0x24, 0x28, // mov r8, [rsp + 40]
+                  0x4C, 0x8B, 0x4C, 0x24, 0x30, // mov r9, [rsp + 48]
+                  0x0F, 0x05, // syscall
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_const_MAP_ANONYMOUS",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0xB8, 0x00, 0x10, 0x00, 0x00, // mov eax, 4096
+#  elif defined(__OpenBSD__)
+                  0xB8, 0x20, 0x00, 0x00, 0x00, // mov eax, 32
+#  endif
+                  0xC3 // ret
+              }},
+             {"__rux_bsd_const_CLOCK_MONOTONIC",
+              {
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                  0xB8, 0x04, 0x00, 0x00, 0x00, // mov eax, 4
+#  elif defined(__OpenBSD__)
+                  0xB8, 0x03, 0x00, 0x00, 0x00, // mov eax, 3
+#  endif
+                  0xC3 // ret
+              }},
 #  endif
         };
 
@@ -1156,11 +1372,14 @@ namespace Rux {
         if (!errors.empty()) return false;
 
         Buf textPre;
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
         const size_t kCallMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x08}); // add rsp, 8 (undo sub)
         textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax
-#  if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
-        textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD exit)
+#  if RUX_IS_BSD || RUX_IS_SUNOS
+        textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD/Illumos exit)
 #  else
         textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
 #  endif
@@ -1183,7 +1402,7 @@ namespace Rux {
         std::vector<ObjLayout> layouts(objects.size());
         Buf mergedText, mergedRodata, mergedData;
 
-#  if defined(__NetBSD__)
+#  if RUX_OS_NETBSD
         // Prepend NetBSD ELF Note
         mergedRodata.insert(mergedRodata.end(),
                             {
@@ -1192,6 +1411,26 @@ namespace Rux {
                                 0x01, 0x00, 0x00, 0x00, // Type (1 = OS version)
                                 'N',  'e',  't',  'B',  'S', 'D', 0, 0, // Name (NetBSD\0\0)
                                 0x00, 0xCA, 0x9A, 0x3B // Desc (1000000000)
+                            });
+#  elif defined(__OpenBSD__)
+        // Prepend OpenBSD ELF Note (required for execve to accept the binary)
+        mergedRodata.insert(mergedRodata.end(),
+                            {
+                                0x08, 0x00, 0x00, 0x00, // Name size (7 + null, padded to 8)
+                                0x04, 0x00, 0x00, 0x00, // Desc size (4)
+                                0x01, 0x00, 0x00, 0x00, // Type (NT_OPENBSD_IDENT)
+                                'O',  'p',  'e',  'n',  'B', 'S', 'D', 0, // Name (OpenBSD\0)
+                                0x00, 0x00, 0x00, 0x00 // Desc (0 = any version)
+                            });
+#  elif defined(__DragonFly__)
+        // Prepend DragonFly ELF Note (required for execve to accept the binary)
+        mergedRodata.insert(mergedRodata.end(),
+                            {
+                                0x0A, 0x00, 0x00, 0x00, // Name size (9 + null, padded to 12)
+                                0x04, 0x00, 0x00, 0x00, // Desc size (4)
+                                0x01, 0x00, 0x00, 0x00, // Type
+                                'D',  'r',  'a',  'g',  'o', 'n', 'F', 'l', 'y', 0, 0, 0, // Name (DragonFly\0\0\0)
+                                0x00, 0x00, 0x00, 0x00 // Desc
                             });
 #  endif
 
@@ -1215,9 +1454,10 @@ namespace Rux {
         textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
 
         const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0)
-#  if defined(__NetBSD__)
-                                                     + 1
+#  if RUX_OS_NETBSD || RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
+                                                     + 1       // PT_NOTE
 #  endif
+
         );
         const uint64_t phoff = 64;
         const uint64_t textOff = alignUp64(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
@@ -1378,14 +1618,18 @@ namespace Rux {
                              2,
                              1,
                              1,
-#  if defined(__FreeBSD__) || defined(__DragonFly__)
-                             9, // EI_OSABI: FreeBSD
-#  elif defined(__OpenBSD__)
-                             12, // EI_OSABI: OpenBSD
-#  elif defined(__NetBSD__)
-                             2, // EI_OSABI: NetBSD
+#  if RUX_OS_FREEBSD
+                               9, // EI_OSABI: FreeBSD
+#  elif RUX_OS_DRAGONFLY
+                               0, // EI_OSABI: System V
+#  elif RUX_OS_OPENBSD
+                               12, // EI_OSABI: OpenBSD
+#  elif RUX_OS_NETBSD
+                              2, // EI_OSABI: NetBSD
+#  elif RUX_IS_SUNOS
+                              6, // EI_OSABI: Solaris/Illumos
 #  else
-                             0, // EI_OSABI: System V
+                              0, // EI_OSABI: System V
 #  endif
                              0,
                              0,
@@ -1399,7 +1643,7 @@ namespace Rux {
         wU16(2); // ET_EXEC
         wU16(0x3E); // EM_X86_64
         wU32(1);
-        wU64(textVA);
+        wU64(textVA); // e_entry
         wU64(phoff);
         wU64(0);
         wU32(0);
@@ -1412,8 +1656,8 @@ namespace Rux {
 
         writePhdr(kPfR | kPfX, textOff, textVA, textBuf.size(), textBuf.size());
         writePhdr(kPfR, rdataOff, rdataVA, mergedRodata.size(), mergedRodata.size());
-#  if defined(__NetBSD__)
-        // Write PT_NOTE program header pointing to the NetBSD note at the start of .rodata
+#  if RUX_OS_NETBSD || RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
+        // Write PT_NOTE program header pointing to the OS note at the start of .rodata
         wU32(4); // p_type: PT_NOTE
         wU32(kPfR); // p_flags: PF_R
         wU64(rdataOff); // p_offset
@@ -1454,7 +1698,7 @@ namespace Rux {
     }
 #endif
 
-#if defined(__APPLE__)
+#if RUX_OS_MACOS
     // macOS x86-64 syscalls use the BSD class mask (0x2000000 | <unix number>),
     // the System V AMD64 argument registers (rdi/rsi/rdx/r10/r8/r9), and the
     // `syscall` instruction. Rux extern calls arrive in the Win64 layout
@@ -1562,7 +1806,9 @@ namespace Rux {
                  0x4C, 0x89, 0xC2, // mov rdx, r8  (count)
                  0xB8, 0x03, 0x00, 0x00, 0x02, // mov eax, 0x2000003 (SYS_read)
                  0x0F, 0x05, // syscall
-                 0x72, 0x09, // jc +9 (error)
+                 0x72, 0x0E, // jc +14 (error)
+                 0x4D, 0x85, 0xC9, // test r9, r9 (null check)
+                 0x74, 0x03, // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax (*bytesRead = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
                  0xC3, // ret
@@ -1573,12 +1819,14 @@ namespace Rux {
             // Same shape as ReadFile; SYS_write instead of SYS_read.
             {"WriteFile",
              {
-                 0x89, 0xCF, // mov edi, ecx (fd)
-                 0x48, 0x89, 0xD6, // mov rsi, rdx (buf)
-                 0x4C, 0x89, 0xC2, // mov rdx, r8  (count)
+                 0x89, 0xCF, // mov edi, ecx  (fd)
+                 0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
+                 0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
                  0xB8, 0x04, 0x00, 0x00, 0x02, // mov eax, 0x2000004 (SYS_write)
                  0x0F, 0x05, // syscall
-                 0x72, 0x09, // jc +9 (error)
+                 0x72, 0x0E, // jc +14 (error)
+                 0x4D, 0x85, 0xC9, // test r9, r9 (null check)
+                 0x74, 0x03, // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax (*bytesWritten = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
                  0xC3, // ret
@@ -1630,8 +1878,11 @@ namespace Rux {
 
         // 2. Entry preamble: call Main; exit(eax).
         Buf textPre;
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
         const size_t kCallMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x08}); // add rsp, 8 (undo sub)
         textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax (exit code)
         textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x02}); // mov eax, 0x2000001 (SYS_exit)
         textPre.insert(textPre.end(), {0x0F, 0x05}); // syscall

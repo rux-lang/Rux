@@ -19,8 +19,13 @@
 [![Telegram][TelegramBadge]][TelegramUrl]
 [![License][LicenseBadge]][LicenseUrl]
 
+[![DragonFly BSD](https://github.com/rux-lang/Rux/actions/workflows/dragonfly.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/dragonfly.yml)
+[![FreeBSD](https://github.com/rux-lang/Rux/actions/workflows/freebsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/freebsd.yml)
+[![Illumos](https://github.com/rux-lang/Rux/actions/workflows/illumos.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/illumos.yml)
 [![Linux](https://github.com/rux-lang/Rux/actions/workflows/linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/linux.yml)
 [![macOS](https://github.com/rux-lang/Rux/actions/workflows/macos.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/macos.yml)
+[![NetBSD](https://github.com/rux-lang/Rux/actions/workflows/netbsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/netbsd.yml)
+[![OpenBSD](https://github.com/rux-lang/Rux/actions/workflows/openbsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/openbsd.yml)
 [![Windows](https://github.com/rux-lang/Rux/actions/workflows/windows.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/windows.yml)
 
 Rux is a fast, compiled, strongly typed, multi-paradigm, general-purpose programming language.
@@ -175,8 +180,8 @@ Read the [Contributing guide](CONTRIBUTING.md) to get started.
 [YouTubeBadge]: https://img.shields.io/youtube/channel/subscribers/UCNqQ7NIA5pBl3ZO--nOyvDA?style=flat&logo=youtube&logoColor=white&label=YouTube&color=blue
 [BlueskyBadge]: https://img.shields.io/bluesky/followers/ruxlang.bsky.social?style=flat&logo=Bluesky&logoColor=white&label=Bluesky&color=blue
 [MastodonBadge]: https://img.shields.io/mastodon/follow/113727153489087809?domain=mastodon.social&style=flat&logo=mastodon&logoColor=white&label=Mastodon&color=blue
-[XBadge]: https://img.shields.io/badge/11-gray?logo=x&style=flat&logoColor=white&label=Twitter&color=blue
-[TelegramBadge]: https://img.shields.io/badge/10-gray?style=flat&logo=telegram&logoColor=white&label=Telegram&color=blue
+[XBadge]: https://img.shields.io/badge/52-gray?logo=x&style=flat&logoColor=white&label=Twitter&color=blue
+[TelegramBadge]: https://img.shields.io/badge/46-gray?style=flat&logo=telegram&logoColor=white&label=Telegram&color=blue
 [LicenseBadge]: https://img.shields.io/github/license/rux-lang/Rux?style=flat
 [GitHubUrl]: https://github.com/rux-lang
 [DiscussionUrl]: https://github.com/rux-lang/Rux/discussions

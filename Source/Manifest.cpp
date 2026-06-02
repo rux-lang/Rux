@@ -87,11 +87,21 @@ namespace Rux {
         return std::nullopt;
     }
 
+    // Canonicalize OS names from Rux.toml section keys (e.g. "MacOS" → "macOS").
+    static std::string CanonicalOsName(const std::string& name) {
+        if (name == "MacOS" || name == "Macos" || name == "macos") return "macOS";
+        return name;
+    }
+
     // Extract the OS name from a target triple (e.g. "windows-x64" → "Windows").
     static std::string OsFromTriple(const std::string& triple) {
         if (triple.starts_with("windows")) return "Windows";
         if (triple.starts_with("linux")) return "Linux";
         if (triple.starts_with("macos") || triple.starts_with("darwin")) return "macOS";
+        if (triple.starts_with("freebsd") || triple.starts_with("openbsd") || triple.starts_with("netbsd")
+            || triple.starts_with("dragonfly"))
+            return "BSD";
+        if (triple.starts_with("illumos")) return "Illumos";
         return {};
     }
 
@@ -143,7 +153,8 @@ namespace Rux {
                 m.dependencies.push_back(ParseDependency(std::string(key), std::string(value)));
             }
             else if (const auto target = TargetNameFromDependenciesSection(section)) {
-                m.targetDependencies[*target].push_back(ParseDependency(std::string(key), std::string(value)));
+                m.targetDependencies[CanonicalOsName(*target)].push_back(
+                    ParseDependency(std::string(key), std::string(value)));
             }
         }
 

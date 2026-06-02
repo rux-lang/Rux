@@ -38,10 +38,17 @@ namespace Rux {
             case TypeRef::Kind::Opaque:
                 return 0;
             case TypeRef::Kind::Tuple: {
-                int total = 0;
-                for (const auto& elem : t.inner)
-                    total += SizeOf(elem);
-                return total;
+                const auto alignUp = [](int v, int a) { return (v + a - 1) & ~(a - 1); };
+                int offset = 0;
+                int maxAlign = 1;
+                for (const auto& elem : t.inner) {
+                    const int sz = SizeOf(elem);
+                    const int al = sz > 0 ? std::min(sz, 8) : 1;
+                    if (al > 1) offset = alignUp(offset, al);
+                    offset += sz > 0 ? sz : 8;
+                    maxAlign = std::max(maxAlign, al);
+                }
+                return alignUp(offset, maxAlign);
             }
             case TypeRef::Kind::Named:
                 if (!t.inner.empty()) return SizeOf(t.inner[0]);
@@ -1079,9 +1086,17 @@ namespace Rux {
                     catch (...) {
                         return 0;
                     }
+                    if (idx >= inner.inner.size()) return 0;
                     int offset = 0;
-                    for (std::size_t i = 0; i < idx && i < inner.inner.size(); ++i)
-                        offset += SizeOf(inner.inner[i]);
+                    for (std::size_t i = 0; i < idx && i < inner.inner.size(); ++i) {
+                        const int sz = SizeOf(inner.inner[i]);
+                        const int al = sz > 0 ? std::min(sz, 8) : 1;
+                        if (al > 1) offset = AlignUp(offset, al);
+                        offset += sz > 0 ? sz : 8;
+                    }
+                    const int fieldSize = SizeOf(inner.inner[idx]);
+                    const int fieldAlign = fieldSize > 0 ? std::min(fieldSize, 8) : 1;
+                    if (fieldAlign > 1) offset = AlignUp(offset, fieldAlign);
                     return offset;
                 }
                 if (inner.kind != TypeRef::Kind::Named) return 0;

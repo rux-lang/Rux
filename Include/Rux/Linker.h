@@ -23,9 +23,10 @@ namespace Rux {
     public:
         explicit Linker(std::vector<RcuFile> objects,
                         std::string packageName,
-                        std::vector<std::filesystem::path> importSearchDirs = {});
+                        std::vector<std::filesystem::path> importSearchDirs = {},
+                        bool isDll = false);
 
-        // Produce the EXE at outputPath. Creates parent directories as needed.
+        // Produce the EXE or DLL at outputPath. Creates parent directories as needed.
         // Returns false if any errors occurred; call Errors() for details.
         [[nodiscard]] bool Link(const std::filesystem::path& outputPath);
 
@@ -38,9 +39,10 @@ namespace Rux {
         std::string packageName;
         std::vector<std::filesystem::path> importSearchDirs;
         std::vector<LinkerError> errors;
+        bool isDll = false;
 
         void Error(std::string msg);
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || defined(__illumos__) || (defined(__sun) && defined(__SVR4))
         [[nodiscard]] bool LinkElf64(const std::filesystem::path& outputPath);
 #elif defined(__APPLE__)
         [[nodiscard]] bool LinkMachO64(const std::filesystem::path& outputPath);

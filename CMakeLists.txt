@@ -1,8 +1,22 @@
 cmake_minimum_required(VERSION 3.31)
-project(Rux VERSION 0.2.3)
+project(Rux VERSION 0.3.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Handle C++26 cleanly across all toolchains
+if (MSVC)
+    # Bypasses CMake feature tracking limits by directly enforcing MSVC's latest flag
+    add_compile_options(/std:c++latest)
+else()
+    set(CMAKE_CXX_STANDARD 26)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+endif()
+
+# Target libc++ specifically for Clang on Linux to support C++26 features like <print>
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT APPLE AND UNIX)
+    add_compile_options(-stdlib=libc++)
+    add_link_options(-stdlib=libc++)
+endif()
 
 string(TIMESTAMP RUX_BUILD_DATE "%Y-%m-%d")
 string(TIMESTAMP RUX_BUILD_TIME "%H:%M:%S")
@@ -15,6 +29,7 @@ configure_file(
 
 add_executable(rux
         Source/Main.cpp
+        Source/Platform.cpp
         Source/Cli.cpp
         Source/Manifest.cpp
         Source/Package.cpp
@@ -28,6 +43,12 @@ add_executable(rux
         Source/Asm.cpp
         Source/Rcu.cpp
         Source/Linker.cpp
+        Include/Rux/Platform/ABI.h
+        Include/Rux/Platform/Defines.h
+        Include/Rux/Platform/Host.h
+        Include/Rux/Platform/Platform.h
+        Include/Rux/Platform/Target.h
+        Include/Rux/Platform/Types.h
         Include/Rux/Cli.h
         Include/Rux/Manifest.h
         Include/Rux/Package.h

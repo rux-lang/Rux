@@ -1,0 +1,7 @@
+[Package]
+Name    = "dll_test"
+Version = "0.1.0"
+Type    = "Dll"
+
+[Build]
+Output = "Bin"

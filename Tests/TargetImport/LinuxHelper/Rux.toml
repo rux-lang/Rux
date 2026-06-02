@@ -1,0 +1,4 @@
+[Package]
+Name    = "LinuxHelper"
+Version = "0.1.0"
+Type    = "Source"

@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+---
+
+## [0.3.0] - 2026-06-01
+
+Adds broad multi-platform host support, a revamped platform abstraction layer, new language features, a macOS linker backend, Windows DLL output, and many bug fixes.
+
+### Added
+
+#### Language
+
+- **Target attributes** — `#[Target(...)]` attributes to conditionally compile code per platform
+- **Unicode escape sequences** — `\u{...}` escapes in string and character literals
+
+#### Linker
+
+- **Windows PE32+ DLL output** — emit `.dll` artifacts when `Type = "Dll"` in `Rux.toml` (export directory, optional `DllMain`)
+- **macOS Mach-O linker backend** — native x86-64 Mach-O executable output on macOS
+
+#### Platform
+
+- **OpenBSD x86-64 host** — native compilation and execution on OpenBSD x86-64
+- **NetBSD x86-64 host** — native compilation and execution on NetBSD x86-64
+- **DragonFly BSD x86-64 host** — native compilation and execution on DragonFly BSD x86-64
+- **Illumos x86-64 host** — native compilation and execution on Illumos/OmniOS x86-64
+- **Platform abstraction layer** — revamped `Platform` implementation with platform macros and CPU feature detection at runtime
+- **BSD and Illumos ELF target support** — correct ELF OSABI, `PT_NOTE`, `ET_DYN` per target
+- **Target-specific platform dependencies** — `[target.<triple>.dependencies]` in `Rux.toml`
+
+#### Syscall Thunks
+
+- `nanosleep` and `clock_gettime` typed syscall thunks (Linux)
+- `RtlCompareMemory` thunk (Windows)
+
+#### CLI / Package Manager
+
+- `rux check` — type-check the current package without producing a binary
+- `rux info [--json]` — display installed package information; `--json` outputs machine-readable JSON
+- `rux install --dev` — install a package as a dev dependency
+- Inline TOML table dependency fields in `Rux.toml`
+
+#### Build / Infrastructure
+
+- Nix Flake derivation for reproducible builds
+- Windows, Linux, macOS, FreeBSD, OpenBSD, NetBSD, DragonFly BSD, and Illumos CI runners
+- macOS Homebrew formula and `install` target
+- `Tests/Dll` — minimal DLL smoke test and `Tests/run_dll_test.sh` (Windows CI)
+
+### Fixed
+
+- Enums and type aliases not resolving inside `extern` blocks
+- Integer `**` (power) operator — defines `__rux_ipow` runtime helper
+- Double pointer parsing bug
+- Out-of-range integer literals now report a clear diagnostic outside `let` bindings
+- Platform dependency resolution via wildcard targets and robust TOML parsing
+- `ReadFile`/`WriteFile` thunks: preserve R9 across syscall, guard `mov [r9]` with null check, preserve non-volatile RDI/RSI on Win64
+- Entry stack alignment: pre-adjust RSP before `call Main`
+- OpenBSD ELF header fixes for `execve` compatibility
+- `bool` and `float` type handling regressions
+- Windows `std::max` macro conflict with compiler internals
+- UB in `gitclone` due to missing `return`
+
+---
+
 ## [0.2.2] - 2026-05-28
 
 Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes several compiler bugs.
