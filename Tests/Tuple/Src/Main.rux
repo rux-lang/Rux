@@ -1,0 +1,50 @@
+func Main() -> int {
+    if sizeof((int8, int32, int8)) != 12u64 { return 1; }
+    if sizeof((int32, int8)) != 8u64 { return 2; }
+    if sizeof((int8, int16, int32)) != 8u64 { return 3; }
+    if sizeof((int64, int8, int64)) != 24u64 { return 4; }
+    if sizeof((float64, int32, float64)) != 24u64 { return 5; }
+    if sizeof((int32, int32, int32)) != 12u64 { return 6; }
+    if sizeof((int8, int8, int8)) != 3u64 { return 7; }
+
+    let t1 = (1i8, 1000i32, 2i8);
+    if t1.0 != 1i8 { return 8; }
+    if t1.1 != 1000i32 { return 9; }
+    if t1.2 != 2i8 { return 10; }
+
+    let t2 = (42i32, 7i8);
+    if t2.0 != 42i32 { return 11; }
+    if t2.1 != 7i8 { return 12; }
+
+    let t3 = (10i8, 20i16, 30i32);
+    if t3.0 != 10i8 { return 13; }
+    if t3.1 != 20i16 { return 14; }
+    if t3.2 != 30i32 { return 15; }
+
+    let t4 = (10000000000i64, 5i8, 20000000000i64);
+    if t4.0 != 10000000000i64 { return 16; }
+    if t4.1 != 5i8 { return 17; }
+    if t4.2 != 20000000000i64 { return 18; }
+
+    let t5 = (3.14f64, 99i32, 2.71f64);
+    if t5.0 != 3.14f64 { return 19; }
+    if t5.1 != 99i32 { return 20; }
+    if t5.2 != 2.71f64 { return 21; }
+
+    let (a, b, c) = (100i16, 200i32, 300i64);
+    if a != 100i16 { return 22; }
+    if b != 200i32 { return 23; }
+    if c != 300i64 { return 24; }
+
+    // ---- nested tuples ----
+
+    let nested = ((1i8, 2i16), (3i32, 4i64));
+    let inner = nested.0;
+    if inner.0 != 1i8 { return 25; }
+    if inner.1 != 2i16 { return 26; }
+    let inner2 = nested.1;
+    if inner2.0 != 3i32 { return 27; }
+    if inner2.1 != 4i64 { return 28; }
+
+    return 0;
+}

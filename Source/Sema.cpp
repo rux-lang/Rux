@@ -147,13 +147,17 @@ namespace Rux {
             return alignUp(2 * *elemSize + 1, *elemSize);
         }
         case Kind::Tuple: {
-            std::uint64_t total = 0;
+            std::uint64_t offset = 0;
+            std::uint64_t maxAlign = 1;
             for (const auto& elem : inner) {
                 const auto elemSize = elem.SizeInBytes();
                 if (!elemSize) return std::nullopt;
-                total += *elemSize;
+                const std::uint64_t al = *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8)) : 1;
+                if (al > 1) offset = alignUp(offset, al);
+                offset += *elemSize > 0 ? *elemSize : 8;
+                maxAlign = std::max(maxAlign, al);
             }
-            return total;
+            return alignUp(offset, maxAlign);
         }
         case Kind::Named:
             if (!inner.empty()) return inner[0].SizeInBytes();
@@ -1329,13 +1333,18 @@ namespace Rux {
             }
 
             if (type.kind == TypeRef::Kind::Tuple) {
-                std::uint64_t total = 0;
+                auto alignUp = [](std::uint64_t v, std::uint64_t a) { return (v + a - 1) & ~(a - 1); };
+                std::uint64_t offset = 0;
+                std::uint64_t maxAlign = 1;
                 for (const auto& elem : type.inner) {
                     const auto elemSize = SizeOfTypeRef(elem, substitutions);
                     if (!elemSize) return std::nullopt;
-                    total += *elemSize;
+                    const std::uint64_t al = *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8)) : 1;
+                    if (al > 1) offset = alignUp(offset, al);
+                    offset += *elemSize > 0 ? *elemSize : 8;
+                    maxAlign = std::max(maxAlign, al);
                 }
-                return total;
+                return alignUp(offset, maxAlign);
             }
 
             return type.SizeInBytes();
