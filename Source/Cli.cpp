@@ -175,7 +175,7 @@ namespace Rux {
             constexpr std::array supported_targets{"linux-x64",
                                                    "windows-x64",
                                                    "macos-x64",
-                                                   "macos-arm64",
+                                                   "macos-aarch64",
                                                    "freebsd-x64",
                                                    "openbsd-x64",
                                                    "netbsd-x64",
