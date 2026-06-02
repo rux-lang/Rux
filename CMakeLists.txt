@@ -13,7 +13,7 @@ else()
 endif()
 
 # Target libc++ specifically for Clang on Linux to support C++26 features like <print>
-if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT APPLE AND UNIX)
     add_compile_options(-stdlib=libc++)
     add_link_options(-stdlib=libc++)
 endif()
