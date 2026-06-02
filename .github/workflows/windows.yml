@@ -51,4 +51,3 @@ jobs:
       - name: Run DLL build test
         shell: bash
         run: Tests/run_dll_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
-
