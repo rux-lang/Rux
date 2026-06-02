@@ -131,7 +131,7 @@ namespace Rux::Platform {
         case Arch::ARM32:
             return "arm32";
         case Arch::ARM64:
-            return "aarch64";
+            return "arm64";
         case Arch::RISCV32:
             return "riscv32";
         case Arch::RISCV64:
