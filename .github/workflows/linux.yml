@@ -53,3 +53,6 @@ jobs:
         
       - name: Run escape decoding test
         run: Tests/run_unicode_test.sh "$GITHUB_WORKSPACE/build/rux"
+
+      - name: Run numeric literal suffix test
+        run: Tests/run_numeric_suffix_test.sh "$GITHUB_WORKSPACE/build/rux"

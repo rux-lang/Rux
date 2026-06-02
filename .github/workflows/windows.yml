@@ -52,6 +52,9 @@ jobs:
         shell: bash
         run: Tests/run_unicode_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
 
+      - name: Run numeric literal suffix test
+        shell: bash
+        run: Tests/run_numeric_suffix_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
       - name: Run DLL build test
         shell: bash
         run: Tests/run_dll_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
