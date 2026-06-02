@@ -1,9 +1,16 @@
 cmake_minimum_required(VERSION 3.31)
 project(Rux VERSION 0.3.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 26)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Handle C++26 cleanly across all toolchains
+if (MSVC)
+    # Bypasses CMake feature tracking limits by directly enforcing MSVC's latest flag
+    add_compile_options(/std:c++latest)
+else()
+    set(CMAKE_CXX_STANDARD 26)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+endif()
 
 # Target libc++ specifically for Clang on Linux to support C++26 features like <print>
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT APPLE AND UNIX)
