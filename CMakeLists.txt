@@ -2,7 +2,16 @@ cmake_minimum_required(VERSION 3.31)
 project(Rux VERSION 0.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Fix for Clang + C++26 standard library (<print>, etc.) on Linux
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if (CMAKE_SYSTEM_NAME MATCHES "Linux")
+        add_compile_options(-stdlib=libc++)
+        add_link_options(-stdlib=libc++ -lc++abi)
+    endif()
+endif()
 
 string(TIMESTAMP RUX_BUILD_DATE "%Y-%m-%d")
 string(TIMESTAMP RUX_BUILD_TIME "%H:%M:%S")
