@@ -1,96 +1,102 @@
 # Bahasa Pemrograman Rux: Analisis Kesenjangan Teknis Lengkap
 
-Dokumen ini memberikan evaluasi yang sangat teknis dan sangat realistis mengenai bahasa pemrograman Rux (saat ini v0.2.0) dibandingkan dengan bahasa sistem mapan seperti Rust, Zig, C++, dan Go. Ambisi Rux untuk menjadi bahasa yang "ramah-logam" (metal-friendly) dengan overhead nol membutuhkan penyelesaian rintangan rekayasa dan ekosistem yang signifikan sebelum dapat dianggap siap untuk produksi (production-ready).
+Dokumen ini memberikan evaluasi yang sangat teknis dan sangat realistis mengenai bahasa pemrograman Rux (saat ini v0.3.0) dibandingkan dengan bahasa sistem mapan seperti Rust, Zig, C++, dan Go. Ambisi Rux untuk menjadi bahasa yang "ramah-logam" (metal-friendly) dengan overhead nol membutuhkan penyelesaian rintangan rekayasa dan ekosistem yang signifikan sebelum dapat dianggap siap untuk produksi (production-ready).
 
 ## 1. Kesenjangan Ekosistem Bahasa Inti
 
 Rux masih dalam tahap awal. Komponen inti berikut ini hilang, belum matang, atau sepenuhnya bersifat teoretis:
 
-*   **Kelengkapan Standard Library:** Pustaka standar `Std` masih sangat mendasar. Kurang struktur data yang komprehensif (hash maps, trees, concurrent queues), manipulasi string tingkat lanjut (regex, normalisasi Unicode di luar UTF-8 dasar), dan algoritma standar.
-*   **Kematangan Package Manager:** Package manager bawaan tidak memiliki dukungan registry terdesentralisasi, dependency lockfiles (seperti `Cargo.lock`), reproducible builds, dan alat audit kerentanan.
-*   **Resolusi Dependensi & SemVer:** Algoritma resolusi dependensi tingkat lanjut (seperti PubGrub yang digunakan di Cargo) untuk menangani kendala versi yang kompleks, peer dependencies, dan konflik diamond dependency belum ada.
-*   **Arsitektur Kompiler:** Kompiler C++ kustom tidak memiliki pass optimisasi selama puluhan tahun yang ada di LLVM atau GCC. Backend kustom berarti memelihara emitter spesifik arsitektur (x86-64, ARM64, RISC-V) dari nol, yang sangat memperlambat ekspansi platform.
-*   **Dukungan Linker:** Rux menggunakan format `.rcu` kustom dan linker khusus. Integrasi dengan sistem linker standar (LLD, GNU ld, mold) dan pembuatan info debug (DWARF, PDB) kemungkinan belum matang atau tidak ada, mempersulit interop C/C++ dan debugging.
-*   **Stabilitas ABI:** Tidak ada ABI stabil yang didefinisikan.
-*   **Model Manajemen Memori & Kepemilikan (Ownership):** Rux mengandalkan pointer mentah (`*T`) dan referensi (`&T`) tanpa borrow checker. Ini berarti ia menawarkan manajemen memori manual gaya C tanpa jaminan keamanan compile-time dari Rust atau keamanan spasial dari pola alokator Zig.
-*   **Sistem Alokator:** Kurangnya antarmuka alokator yang dapat dipasang (pluggable) (seperti `std.mem.Allocator` di Zig). Bahasa sistem membutuhkan arena allocators, fixed-buffer allocators, dan pelacakan memori kustom.
-*   **Model Penanganan Kesalahan (Error Handling):** Menggunakan tipe `Result`, tetapi kurang mekanisme propagasi yang ergonomis (seperti operator `?` di Rust atau `try`/`catch` di Zig) dan pembuatan backtrace terperinci saat panic.
-*   **Refleksi/Introspeksi (Reflection/Introspection):** Nol refleksi runtime. Tidak ada refleksi compile-time (`comptime` di Zig) untuk metaprogramming.
-*   **Metaprogramming & Makro:** Tidak ada sistem makro tingkat AST atau procedural macros, yang sangat membatasi pembuatan pustaka ergonomis (misalnya, ORM, serialisasi).
-*   **Implementasi Generik:** Generik ada tetapi kemungkinan dimonomorfisasi secara naif. Batasan trait/interface tingkat lanjut, tipe terkait (associated types), dan spesialisasi generik tidak ada.
-*   **Eksekusi Compile-time:** Tidak ada mesin eksekusi compile-time (CTFE) yang kuat untuk mengevaluasi logika kompleks selama kompilasi.
-*   **Kompilasi Inkremental:** Hilang atau belum matang. Sangat penting untuk basis kode yang besar.
-*   **Kompilasi Lintas Platform (Cross-platform):** Saat ini hanya menargetkan Windows x86-64. Tidak ada konsep sysroot untuk kompilasi silang tanpa batas ke Linux, macOS, iOS, atau Android.
-*   **JIT/AOT & Dukungan WebAssembly:** Tidak ada dukungan JIT. Tidak ada target WebAssembly (`wasm32-unknown-unknown`), menguncinya dari ekosistem browser.
+* **Kelengkapan Standard Library:** Pustaka standar `Std` masih sangat mendasar. Kurang struktur data yang komprehensif (hash maps, trees, concurrent queues), manipulasi string tingkat lanjut (regex, normalisasi Unicode di luar UTF-8 dasar), dan algoritma standar.
+* **Kematangan Package Manager:** Package manager bawaan tidak memiliki dukungan registry terdesentralisasi, dependency lockfiles (seperti `Cargo.lock`), reproducible builds, dan alat audit kerentanan.
+* **Resolusi Dependensi & SemVer:** Algoritma resolusi dependensi tingkat lanjut (seperti PubGrub yang digunakan di Cargo) untuk menangani kendala versi yang kompleks, peer dependencies, dan konflik diamond dependency belum ada.
+* **Arsitektur Kompiler:** Kompiler C++ kustom tidak memiliki pass optimisasi selama puluhan tahun yang ada di LLVM atau GCC. Backend kustom berarti memelihara emitter spesifik arsitektur (x86-64, ARM64, RISC-V) dari nol, yang sangat memperlambat ekspansi platform.
+* **Dukungan Linker:** Rux menggunakan format `.rcu` kustom dan linker khusus. Integrasi dengan sistem linker standar (LLD, GNU ld, mold) dan pembuatan info debug (DWARF, PDB) kemungkinan belum matang atau tidak ada, mempersulit interop C/C++ dan debugging.
+* **Stabilitas ABI:** Tidak ada ABI stabil yang didefinisikan.
+* **Model Manajemen Memori & Kepemilikan (Ownership):** Rux mengandalkan pointer mentah (`*T`) dan referensi (`&T`) tanpa borrow checker. Ini berarti ia menawarkan manajemen memori manual gaya C tanpa jaminan keamanan compile-time dari Rust atau keamanan spasial dari pola alokator Zig.
+* **Sistem Alokator:** Kurangnya antarmuka alokator yang dapat dipasang (pluggable) (seperti `std.mem.Allocator` di Zig). Bahasa sistem membutuhkan arena allocators, fixed-buffer allocators, dan pelacakan memori kustom.
+* **Model Penanganan Kesalahan (Error Handling):** Menggunakan tipe `Result`, tetapi kurang mekanisme propagasi yang ergonomis (seperti operator `?` di Rust atau `try`/`catch` di Zig) dan pembuatan backtrace terperinci saat panic.
+* **Refleksi/Introspeksi (Reflection/Introspection):** Nol refleksi runtime. Tidak ada refleksi compile-time (`comptime` di Zig) untuk metaprogramming.
+* **Metaprogramming & Makro:** Tidak ada sistem makro tingkat AST atau procedural macros, yang sangat membatasi pembuatan pustaka ergonomis (misalnya, ORM, serialisasi).
+* **Implementasi Generik:** Generik ada tetapi kemungkinan dimonomorfisasi secara naif. Batasan trait/interface tingkat lanjut, tipe terkait (associated types), dan spesialisasi generik tidak ada.
+* **Eksekusi Compile-time:** Tidak ada mesin eksekusi compile-time (CTFE) yang kuat untuk mengevaluasi logika kompleks selama kompilasi.
+* **Kompilasi Inkremental:** Hilang atau belum matang. Sangat penting untuk basis kode yang besar.
+* **Kompilasi Lintas Platform (Cross-platform):** Saat ini hanya menargetkan Windows x86-64. Tidak ada konsep sysroot untuk kompilasi silang tanpa batas ke Linux, macOS, iOS, atau Android.
+* **JIT/AOT & Dukungan WebAssembly:** Tidak ada dukungan JIT. Tidak ada target WebAssembly (`wasm32-unknown-unknown`), menguncinya dari ekosistem browser.
 
 ## 2. Kesenjangan Lapisan Runtime & Konkurensi
 
 Sebuah bahasa sistem modern membutuhkan cerita konkurensi yang kuat. Rux saat ini memiliki kesenjangan besar di sini:
 
-*   **Primitif Konkurensi:** Tidak ada atomics standar (`std::atomic`), mutexes, condition variables, rwlocks, dan abstraksi memory barrier.
-*   **Arsitektur Multithreading:** Tidak ada API threading standar di seluruh sistem operasi (membungkus `pthreads` atau Windows `CreateThread`).
-*   **Runtime Async matang / Scheduler:** Tidak ada runtime asinkron yang matang (seperti `tokio` atau `async-std`). Tidak ada event loop, integrasi epoll/kqueue/IOCP, atau task scheduler.
-*   **Sistem Coroutine:** Dukungan stackless atau stackful coroutine tidak ada.
-*   **Green Thread:** Tidak ada model threading M:N atau implementasi green thread (seperti goroutine milik Go).
-*   **Async/Await stabil:** Syntactic sugar untuk generasi state machine asinkron (`async`/`await`) benar-benar tidak ada. Membangun layanan jaringan berkonkurensi tinggi saat ini akan membutuhkan callback hell atau manajemen state machine manual.
+* **Primitif Konkurensi:** Tidak ada atomics standar (`std::atomic`), mutexes, condition variables, rwlocks, dan abstraksi memory barrier.
+* **Arsitektur Multithreading:** Tidak ada API threading standar di seluruh sistem operasi (membungkus `pthreads` atau Windows `CreateThread`).
+* **Runtime Async matang / Scheduler:** Tidak ada runtime asinkron yang matang (seperti `tokio` atau `async-std`). Tidak ada event loop, integrasi epoll/kqueue/IOCP, atau task scheduler.
+* **Sistem Coroutine:** Dukungan stackless atau stackful coroutine tidak ada.
+* **Green Thread:** Tidak ada model threading M:N atau implementasi green thread (seperti goroutine milik Go).
+* **Async/Await stabil:** Syntactic sugar untuk generasi state machine asinkron (`async`/`await`) benar-benar tidak ada. Membangun layanan jaringan berkonkurensi tinggi saat ini akan membutuhkan callback hell atau manajemen state machine manual.
 
 ## 3. Pustaka dan Framework yang Hilang
 
 Ekosistem Rux masih kosong. Ekosistem ini tidak memiliki hampir semua pustaka tingkat industri yang dibutuhkan untuk pengembangan perangkat lunak modern:
 
-**Jaringan & Web**
-*   Klien/server HTTP/1.1, HTTP/2, HTTP/3, dan QUIC.
-*   Framework REST, GraphQL, dan WebSocket.
-*   Lapisan abstraksi TCP/UDP.
-*   Dukungan TLS/SSL (binding OpenSSL atau implementasi native seperti `rustls`).
-*   Framework gRPC dan pembuat kode Protobuf/FlatBuffers.
+## Jaringan & Web
 
-**Pemrosesan & Penyimpanan Data**
-*   Parser: JSON, YAML, TOML, XML.
-*   Framework Serialisasi/Deserialisasi yang kuat (seperti `serde`).
-*   Driver Database: SQL (Postgres, MySQL, SQLite), NoSQL (MongoDB), klien Redis.
-*   ORM atau type-safe query builders.
-*   Klien event streaming Kafka/RabbitMQ.
+* Klien/server HTTP/1.1, HTTP/2, HTTP/3, dan QUIC.
+* Framework REST, GraphQL, dan WebSocket.
+* Lapisan abstraksi TCP/UDP.
+* Dukungan TLS/SSL (binding OpenSSL atau implementasi native seperti `rustls`).
+* Framework gRPC dan pembuat kode Protobuf/FlatBuffers.
 
-**Keamanan & Kripto**
-*   Primitif Kriptografi (AES, RSA, ECC, SHA-256, Argon2).
-*   Pustaka autentikasi JWT/OAuth.
+## Pemrosesan & Penyimpanan Data
 
-**Multimedia & UI**
-*   Pustaka pemrosesan gambar, video, dan audio.
-*   Toolkit GUI (Retained atau Immediate Mode) dan framework aplikasi Desktop.
-*   Dukungan Game engine, framework ECS (Entity Component System), Physics engines.
-*   Binding OpenGL/Vulkan/DirectX/Metal.
+* Parser: JSON, YAML, TOML, XML.
+* Framework Serialisasi/Deserialisasi yang kuat (seperti `serde`).
+* Driver Database: SQL (Postgres, MySQL, SQLite), NoSQL (MongoDB), klien Redis.
+* ORM atau type-safe query builders.
+* Klien event streaming Kafka/RabbitMQ.
 
-**Sains & AI**
-*   Pustaka matematika yang dioptimalkan SIMD.
-*   Dukungan CUDA/ROCm.
-*   Binding ke runtime TensorFlow, PyTorch, atau ONNX.
+## Keamanan & Kripto
 
-**Cloud & DevOps**
-*   SDK AWS/GCP/Azure.
-*   Klien API dan integrasi Kubernetes dan Docker.
-*   Observabilitas: Framework logging, Metrics, dan Distributed Tracing (OpenTelemetry).
+* Primitif Kriptografi (AES, RSA, ECC, SHA-256, Argon2).
+* Pustaka autentikasi JWT/OAuth.
+
+## Multimedia & UI
+
+* Pustaka pemrosesan gambar, video, dan audio.
+* Toolkit GUI (Retained atau Immediate Mode) dan framework aplikasi Desktop.
+* Dukungan Game engine, framework ECS (Entity Component System), Physics engines.
+* Binding OpenGL/Vulkan/DirectX/Metal.
+
+## Sains & AI
+
+* Pustaka matematika yang dioptimalkan SIMD.
+* Dukungan CUDA/ROCm.
+* Binding ke runtime TensorFlow, PyTorch, atau ONNX.
+
+## Cloud & DevOps
+
+* SDK AWS/GCP/Azure.
+* Klien API dan integrasi Kubernetes dan Docker.
+* Observabilitas: Framework logging, Metrics, dan Distributed Tracing (OpenTelemetry).
 
 ## 4. Kekurangan Perkakas Pengembang (Developer Tooling)
 
 Meskipun Rux memiliki CLI dasar, pengalaman pengembang industri membutuhkan:
 
-*   **Integrasi Debugger:** Biner `.rcu` kustom kemungkinan tidak memiliki pemetaan DWARF/PDB yang kuat untuk debugging yang mulus di GDB, LLDB, atau Visual Studio.
-*   **Sanitizer:** Kurang AddressSanitizer (ASan), MemorySanitizer (MSan), ThreadSanitizer (TSan), dan UndefinedBehaviorSanitizer (UBSan).
-*   **Integrasi Profiler:** Kurangnya integrasi dengan `perf`, VTune, atau perkakas flamegraph standar.
-*   **Pengujian (Testing):** Membutuhkan pengujian fuzz (integrasi `libFuzzer`), property-based testing, dan framework mocking.
-*   **Language Server Protocol (LSP):** Server LSP memerlukan dukungan semantic token, penyelesaian otomatis (auto-completion) yang andal, alat refactoring, dan integrasi IDE yang mendalam di seluruh VSCode, JetBrains, dan Neovim.
+* **Integrasi Debugger:** Biner `.rcu` kustom kemungkinan tidak memiliki pemetaan DWARF/PDB yang kuat untuk debugging yang mulus di GDB, LLDB, atau Visual Studio.
+* **Sanitizer:** Kurang AddressSanitizer (ASan), MemorySanitizer (MSan), ThreadSanitizer (TSan), dan UndefinedBehaviorSanitizer (UBSan).
+* **Integrasi Profiler:** Kurangnya integrasi dengan `perf`, VTune, atau perkakas flamegraph standar.
+* **Pengujian (Testing):** Membutuhkan pengujian fuzz (integrasi `libFuzzer`), property-based testing, dan framework mocking.
+* **Language Server Protocol (LSP):** Server LSP memerlukan dukungan semantic token, penyelesaian otomatis (auto-completion) yang andal, alat refactoring, dan integrasi IDE yang mendalam di seluruh VSCode, JetBrains, dan Neovim.
 
 ## 5. Analisis Kesiapan Produksi (Production Readiness)
 
 Rux saat ini adalah bahasa eksperimental/hobi.
 
-*   **Adopsi Perusahaan (Enterprise):** Terhalang oleh kurangnya ekosistem, ABI yang stabil, audit keamanan, jaminan LTS (Long Term Support), dan dukungan korporat.
-*   **Adopsi Cloud-Native:** Terhalang oleh kurangnya runtime async, dukungan Linux, framework HTTP/gRPC, dan alat observabilitas.
-*   **Adopsi Embedded:** Terhalang oleh backend kompiler kustom. Tanpa LLVM, menargetkan beragam mikrokontroler (ARM Cortex-M, RISC-V, Xtensa) membutuhkan upaya manual yang sangat besar. Lingkungan `no_std` dan skrip linker kustom belum ada.
-*   **Pengembangan Sistem Operasi:** Rux "ramah-logam", tetapi menulis OS membutuhkan dukungan inline assembly, kontrol presisi atas tata letak memori, dan operasi memori volatile, yang saat ini belum matang.
-*   **Adopsi Game Engine:** Terhalang oleh kurangnya pustaka matematika, SIMD, binding grafis API lintas platform, dan ekosistem yang matang untuk pipeline aset.
+* **Adopsi Perusahaan (Enterprise):** Terhalang oleh kurangnya ekosistem, ABI yang stabil, audit keamanan, jaminan LTS (Long Term Support), dan dukungan korporat.
+* **Adopsi Cloud-Native:** Terhalang oleh kurangnya runtime async, dukungan Linux, framework HTTP/gRPC, dan alat observabilitas.
+* **Adopsi Embedded:** Terhalang oleh backend kompiler kustom. Tanpa LLVM, menargetkan beragam mikrokontroler (ARM Cortex-M, RISC-V, Xtensa) membutuhkan upaya manual yang sangat besar. Lingkungan `no_std` dan skrip linker kustom belum ada.
+* **Pengembangan Sistem Operasi:** Rux "ramah-logam", tetapi menulis OS membutuhkan dukungan inline assembly, kontrol presisi atas tata letak memori, dan operasi memori volatile, yang saat ini belum matang.
+* **Adopsi Game Engine:** Terhalang oleh kurangnya pustaka matematika, SIMD, binding grafis API lintas platform, dan ekosistem yang matang untuk pipeline aset.
 
 ---
 
@@ -107,10 +113,11 @@ Bagian ini mengevaluasi secara mendalam kesiapan Rux untuk 10 domain utama di ma
 Membangun kernel atau OS membutuhkan kontrol paling absolut atas perangkat keras. Ini adalah ujian terakhir bagi bahasa sistem.
 
 **Apa yang sudah ada di Rux:**
-*   Inline assembly (dasar)
-*   Pointer mentah (`*T`) dan akses memori langsung
-*   Kompilasi ke native binary tanpa runtime/GC
-*   FFI untuk memanggil fungsi C
+
+* Inline assembly (dasar)
+* Pointer mentah (`*T`) dan akses memori langsung
+* Kompilasi ke native binary tanpa runtime/GC
+* FFI untuk memanggil fungsi C
 
 **Apa yang hilang secara kritis:**
 
@@ -138,10 +145,11 @@ Membangun kernel atau OS membutuhkan kontrol paling absolut atas perangkat keras
 Kompiler adalah perangkat lunak yang intensif pada manipulasi tree/graph, pattern matching, dan pass pipeline.
 
 **Apa yang sudah ada di Rux:**
-*   Tipe data kuat (struct, enum, union)
-*   Interface untuk polimorfisme
-*   Generik dasar
-*   Modul dan package system
+
+* Tipe data kuat (struct, enum, union)
+* Interface untuk polimorfisme
+* Generik dasar
+* Modul dan package system
 
 **Apa yang hilang secara kritis:**
 
@@ -169,9 +177,10 @@ Kompiler adalah perangkat lunak yang intensif pada manipulasi tree/graph, patter
 Runtime engine mencakup interpreter bahasa, VM (seperti JVM, V8, WASM runtimes), dan execution environments.
 
 **Apa yang sudah ada di Rux:**
-*   Akses memori tingkat rendah
-*   FFI
-*   Tipe numerik lebar (hingga 512-bit)
+
+* Akses memori tingkat rendah
+* FFI
+* Tipe numerik lebar (hingga 512-bit)
 
 **Apa yang hilang secara kritis:**
 
@@ -199,8 +208,9 @@ Runtime engine mencakup interpreter bahasa, VM (seperti JVM, V8, WASM runtimes),
 Database engine membutuhkan I/O efisien, concurrency tinggi, struktur data canggih, dan ketahanan terhadap crash (crash safety).
 
 **Apa yang sudah ada di Rux:**
-*   Tipe data yang ketat
-*   Kompilasi ke native tanpa GC
+
+* Tipe data yang ketat
+* Kompilasi ke native tanpa GC
 
 **Apa yang hilang secara kritis:**
 
@@ -229,8 +239,9 @@ Database engine membutuhkan I/O efisien, concurrency tinggi, struktur data cangg
 Game engine membutuhkan rendering real-time, fisika, audio, input, dan manajemen aset, semuanya pada frame budget yang ketat (~16ms untuk 60 FPS).
 
 **Apa yang sudah ada di Rux:**
-*   Kompilasi native tanpa GC pause
-*   Tipe data union untuk memory reinterpretation
+
+* Kompilasi native tanpa GC pause
+* Tipe data union untuk memory reinterpretation
 
 **Apa yang hilang secara kritis:**
 
@@ -260,9 +271,10 @@ Game engine membutuhkan rendering real-time, fisika, audio, input, dan manajemen
 Embedded system beroperasi di mikrokontroler dengan RAM terbatas (sering <256KB), tanpa OS, dan dengan kebutuhan hard real-time.
 
 **Apa yang sudah ada di Rux:**
-*   Tidak ada GC — cocok untuk embedded
-*   Inline assembly
-*   Tipe integer eksplisit (int8 sampai int512)
+
+* Tidak ada GC — cocok untuk embedded
+* Inline assembly
+* Tipe integer eksplisit (int8 sampai int512)
 
 **Apa yang hilang secara kritis:**
 
@@ -291,7 +303,8 @@ Embedded system beroperasi di mikrokontroler dengan RAM terbatas (sering <256KB)
 Networking stack mencakup implementasi protokol dari layer 2 (Ethernet) hingga layer 7 (HTTP), firewall, proxy, load balancer, dan service mesh.
 
 **Apa yang sudah ada di Rux:**
-*   FFI untuk memanggil socket API OS
+
+* FFI untuk memanggil socket API OS
 
 **Apa yang hilang secara kritis:**
 
@@ -321,10 +334,11 @@ Networking stack mencakup implementasi protokol dari layer 2 (Ethernet) hingga l
 CLI tools adalah use case yang paling realistis untuk bahasa muda. Kompilasi cepat ke binary tunggal adalah keunggulan.
 
 **Apa yang sudah ada di Rux:**
-*   Kompilasi ke single binary
-*   Print/PrintLine ke stdout
-*   Tipe data dasar
-*   Startup time cepat (tanpa runtime)
+
+* Kompilasi ke single binary
+* Print/PrintLine ke stdout
+* Tipe data dasar
+* Startup time cepat (tanpa runtime)
 
 **Apa yang hilang secara kritis:**
 
@@ -353,8 +367,9 @@ CLI tools adalah use case yang paling realistis untuk bahasa muda. Kompilasi cep
 Virtualisasi mencakup hypervisors (Type 1 & 2), container runtimes, dan emulator. Ini membutuhkan kontrol perangkat keras yang sangat rendah.
 
 **Apa yang sudah ada di Rux:**
-*   Inline assembly
-*   Akses memori mentah
+
+* Inline assembly
+* Akses memori mentah
 
 **Apa yang hilang secara kritis:**
 
@@ -382,9 +397,10 @@ Virtualisasi mencakup hypervisors (Type 1 & 2), container runtimes, dan emulator
 Driver perangkat berjalan di kernel space dengan hak akses tertinggi. Satu bug = kernel panic / blue screen.
 
 **Apa yang sudah ada di Rux:**
-*   Pointer mentah
-*   Inline assembly
-*   Union untuk memory reinterpretation
+
+* Pointer mentah
+* Inline assembly
+* Union untuk memory reinterpretation
 
 **Apa yang hilang secara kritis:**
 
@@ -426,44 +442,49 @@ Driver perangkat berjalan di kernel space dengan hak akses tertinggi. Satu bug =
 
 ## 7. Analisis Keamanan
 
-*   **Keamanan Memori:** Rux tidak memiliki borrow checker. Dengan mengekspos pointer mentah dan manajemen memori manual tanpa verifikasi kompiler, ia rentan terhadap kerentanan use-after-free, double-free, dan buffer overflow, mirip dengan C/C++.
-*   **Race Conditions:** Tanpa semantik kepemilikan yang ketat, data races dalam konteks multithreaded sangat mungkin terjadi dan tidak terdeteksi pada waktu kompilasi.
-*   **Undefined Behavior (UB):** Bahasa ini membutuhkan strategi mitigasi formal untuk UB.
-*   **Rantai Pasokan (Supply Chain):** Package manager tidak memiliki verifikasi tanda tangan kriptografi dan kemampuan audit dependensi.
+* **Keamanan Memori:** Rux tidak memiliki borrow checker. Dengan mengekspos pointer mentah dan manajemen memori manual tanpa verifikasi kompiler, ia rentan terhadap kerentanan use-after-free, double-free, dan buffer overflow, mirip dengan C/C++.
+* **Race Conditions:** Tanpa semantik kepemilikan yang ketat, data races dalam konteks multithreaded sangat mungkin terjadi dan tidak terdeteksi pada waktu kompilasi.
+* **Undefined Behavior (UB):** Bahasa ini membutuhkan strategi mitigasi formal untuk UB.
+* **Rantai Pasokan (Supply Chain):** Package manager tidak memiliki verifikasi tanda tangan kriptografi dan kemampuan audit dependensi.
 
 ## 8. Analisis Performa
 
-*   **Dibandingkan C/C++/Rust/Zig:** Backend kompiler kustom Rux sangat tidak mungkin menandingi kehebatan optimisasi LLVM atau GCC. Meskipun menghindari jeda GC, kode mesin yang dihasilkan akan kekurangan vektorisasi agresif, loop unrolling, inline heuristics, dan optimisasi penjadwalan instruksi.
-*   **Dibandingkan Go:** Rux kemungkinan akan memiliki jejak memori yang lebih kecil dan waktu mulai (startup) yang lebih cepat karena tidak adanya runtime besar dan GC. Namun, Go akan jauh mengungguli Rux dalam skenario konkurensi karena scheduler dan stack jaringannya yang matang.
-*   **Ukuran Biner/Waktu Mulai:** Seharusnya sangat baik (sangat kecil dan cepat) karena filosofi nol-runtime.
-*   **SIMD:** Kurangnya auto-vektorisasi dan SIMD intrinsik yang eksplisit akan melumpuhkan beban kerja komputasi berat.
+* **Dibandingkan C/C++/Rust/Zig:** Backend kompiler kustom Rux sangat tidak mungkin menandingi kehebatan optimisasi LLVM atau GCC. Meskipun menghindari jeda GC, kode mesin yang dihasilkan akan kekurangan vektorisasi agresif, loop unrolling, inline heuristics, dan optimisasi penjadwalan instruksi.
+* **Dibandingkan Go:** Rux kemungkinan akan memiliki jejak memori yang lebih kecil dan waktu mulai (startup) yang lebih cepat karena tidak adanya runtime besar dan GC. Namun, Go akan jauh mengungguli Rux dalam skenario konkurensi karena scheduler dan stack jaringannya yang matang.
+* **Ukuran Biner/Waktu Mulai:** Seharusnya sangat baik (sangat kecil dan cepat) karena filosofi nol-runtime.
+* **SIMD:** Kurangnya auto-vektorisasi dan SIMD intrinsik yang eksplisit akan melumpuhkan beban kerja komputasi berat.
 
 ## 9. Rekomendasi Peta Jalan (Roadmap) Multi-Tahun yang Realistis
 
 Untuk bersaing dengan bahasa sistem modern, Rux membutuhkan upaya rekayasa multi-tahun yang melelahkan.
 
 ### Fase 1: Persyaratan Fondasi (Tahun 1-2)
-*   **Ekspansi Platform:** Membangun dukungan backend untuk Linux dan macOS (x86_64 dan ARM64).
-*   **Transisi LLVM (Sangat Disarankan):** Meninggalkan backend kustom dan beralih ke LLVM frontend. Ini secara instan memecahkan kesenjangan optimisasi, kompilasi silang, dan masalah dukungan platform.
-*   **Strategi Keamanan Memori:** Memperkenalkan mekanisme keamanan spasial/temporal (misalnya, antarmuka alokator gaya Zig, atau anotasi lifetime yang ketat).
-*   **Interop C:** Menstabilkan batas FFI dan membangun alat bindgen untuk mengurai header C secara otomatis.
+
+* **Ekspansi Platform:** Membangun dukungan backend untuk Linux dan macOS (x86_64 dan ARM64).
+* **Transisi LLVM (Sangat Disarankan):** Meninggalkan backend kustom dan beralih ke LLVM frontend. Ini secara instan memecahkan kesenjangan optimisasi, kompilasi silang, dan masalah dukungan platform.
+* **Strategi Keamanan Memori:** Memperkenalkan mekanisme keamanan spasial/temporal (misalnya, antarmuka alokator gaya Zig, atau anotasi lifetime yang ketat).
+* **Interop C:** Menstabilkan batas FFI dan membangun alat bindgen untuk mengurai header C secara otomatis.
 
 ### Fase 2: Runtime & Konkurensi (Tahun 2-3)
-*   **Inti Standard Library:** Hash maps, aliran I/O yang kuat, matematika standar, primitif threading.
-*   **Model Konkurensi:** Menerapkan thread OS standar. Merancang generator state machine async/await di kompiler.
-*   **Penyemaian Ekosistem:** Pengelola (maintainers) inti harus membangun parser JSON, klien HTTP, dan pembungkus kriptografi pertama.
+
+* **Inti Standard Library:** Hash maps, aliran I/O yang kuat, matematika standar, primitif threading.
+* **Model Konkurensi:** Menerapkan thread OS standar. Merancang generator state machine async/await di kompiler.
+* **Penyemaian Ekosistem:** Pengelola (maintainers) inti harus membangun parser JSON, klien HTTP, dan pembungkus kriptografi pertama.
 
 ### Fase 3: Kematangan Perkakas (Tahun 3-4)
-*   **Dukungan Debugger:** Mengeluarkan simbol debug DWARF/PDB yang kuat.
-*   **LSP & IDE:** Membangun Language Server yang tangguh dan tahan banting.
-*   **Package Manager:** Menambahkan lockfiles, dependensi Git, dan mode offline.
+
+* **Dukungan Debugger:** Mengeluarkan simbol debug DWARF/PDB yang kuat.
+* **LSP & IDE:** Membangun Language Server yang tangguh dan tahan banting.
+* **Package Manager:** Menambahkan lockfiles, dependensi Git, dan mode offline.
 
 ### Fase 4: Ekosistem Industri (Tahun 4-5)
-*   **Web & Cloud:** Runtime async yang matang, server HTTP/2, driver Postgres, implementasi TLS.
-*   **WebAssembly:** Target kompilasi WASM.
-*   **Komunitas:** Mendorong pembuatan paket pihak ketiga, menulis buku/tutorial yang komprehensif.
+
+* **Web & Cloud:** Runtime async yang matang, server HTTP/2, driver Postgres, implementasi TLS.
+* **WebAssembly:** Target kompilasi WASM.
+* **Komunitas:** Mendorong pembuatan paket pihak ketiga, menulis buku/tutorial yang komprehensif.
 
 ### Fase 5: Infrastruktur Tingkat Enterprise (Tahun 5+)
-*   **Stabilitas Bahasa:** Mendeklarasikan v1.0. Menjanjikan kompatibilitas ke belakang (backward compatibility).
-*   **Audit Keamanan:** Audit keamanan formal untuk kompiler dan pustaka standar.
-*   **Sponsor Korporat:** Mengamankan pendanaan untuk pengelola (maintainer) yang berdedikasi.
+
+* **Stabilitas Bahasa:** Mendeklarasikan v1.0. Menjanjikan kompatibilitas ke belakang (backward compatibility).
+* **Audit Keamanan:** Audit keamanan formal untuk kompiler dan pustaka standar.
+* **Sponsor Korporat:** Mengamankan pendanaan untuk pengelola (maintainer) yang berdedikasi.
