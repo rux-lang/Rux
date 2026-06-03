@@ -2450,6 +2450,10 @@ namespace Rux {
                         sym && sym->kind == Symbol::Kind::Func && !sym->funcOverloads.empty()) {
                         const FuncDecl* decl = LookupFunctionOverload(*sym, argTypes);
                         if (!decl) return TypeRef::MakeUnknown();
+                        if (!decl->warnMessage.empty())
+                            EmitWarning(e->location, decl->warnMessage);
+                        if (!decl->errorMessage.empty())
+                            EmitError(e->location, decl->errorMessage);
                         TypeRef funcType = FunctionType(*decl);
                         const std::size_t paramCount = funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()
                             ? funcType.inner.size() - 1
@@ -2516,6 +2520,10 @@ namespace Rux {
                     for (const auto& arg : e->args)
                         argTypes.push_back(CheckExpr(*arg));
                     if (const FuncDecl* method = LookupMethod(receiverType, field->field, argTypes)) {
+                        if (!method->warnMessage.empty())
+                            EmitWarning(e->location, method->warnMessage);
+                        if (!method->errorMessage.empty())
+                            EmitError(e->location, method->errorMessage);
                         std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
 
                         if (argTypes.size() != paramTypes.size()) {
