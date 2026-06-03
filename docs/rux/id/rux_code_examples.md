@@ -4,11 +4,12 @@ Dokumen ini berisi contoh kode program untuk setiap domain yang dianalisis dalam
 [rux_gap_analysis.md](file:///C:/Users/muham/.gemini/antigravity-ide/brain/ab579b92-ee55-4c21-9e88-0ef4a61bd9be/rux_gap_analysis.md).
 
 Setiap domain memiliki dua bagian:
-- **✅ Kode Rux Saat Ini** — menggunakan sintaks v0.2.0 yang sebenarnya
+
+- **✅ Kode Rux Saat Ini** — menggunakan sintaks v0.3.0 yang sebenarnya
 - **🚧 Kode Hipotetis yang Dibutuhkan** — fitur yang belum ada, ditulis sebagai proposal
 
 > [!IMPORTANT]
-> Kode dengan label 🚧 **TIDAK BISA DIKOMPILASI** di Rux v0.2.0.
+> Kode dengan label 🚧 **TIDAK BISA DIKOMPILASI** di Rux v0.3.0.
 > Kode tersebut menunjukkan apa yang *seharusnya* ada agar Rux bisa
 > digunakan di domain tersebut.
 
