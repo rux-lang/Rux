@@ -65,5 +65,8 @@ set_property(TARGET rux
         PROPERTY MSVC_RUNTIME_LIBRARY "$<IF:$<CONFIG:Release>,MultiThreaded,MultiThreadedDebugDLL>"
 )
 
+
 include(GNUInstallDirs)
 install(TARGETS rux RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/generated/Rux/Version.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/Rux)
