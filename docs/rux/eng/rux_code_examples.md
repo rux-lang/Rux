@@ -4,11 +4,12 @@ This document provides concrete code examples for each systems domain analyzed i
 [rux_gap_analysis.md](file:///c:/Users/muham/OneDrive/Documents/G_Github/Rux/docs/rux_gap_analysis.md).
 
 Each domain contains two sections:
-- **✅ Current Rux Code** — utilizing actual Rux v0.2.0 syntax.
+
+- **✅ Current Rux Code** — utilizing actual Rux v0.3.0 syntax.
 - **🚧 Hypothetical Required Code** — representing features currently missing in the language, written as proposals.
 
 > [!IMPORTANT]
-> Code blocks marked with "🚧" **WILL NOT COMPILE** in Rux v0.2.0.
+> Code blocks marked with "🚧" **WILL NOT COMPILE** in Rux v0.3.0.
 > They demonstrate what must be added to the language to make it viable for these specific systems programming fields.
 
 ---
@@ -398,7 +399,7 @@ func (gc: &mut GarbageCollector) Collect() {
 func (gc: &mut GarbageCollector) Mark(obj: *GCObject) {
     if obj == null || (*obj).marked { return; }
     (*obj).marked = true;
-    
+
     // Recursive tracing based on object shape
     match (*obj).kind {
         ObjectKind::GCArray { items, len } => {
@@ -448,7 +449,7 @@ struct Cell {
 func CreatePage(page_id: uint32, page_type: uint8) -> *uint8 {
     let page: *uint8 = Alloc(PAGE_SIZE) as *uint8;
     let header = page as *PageHeader;
-    
+
     // 🔴 Limit: Pointer cast writing can be erratic in v0.2.0
     PrintLine("Created page with ID and type");
     return page;
@@ -522,7 +523,7 @@ func (pool: &mut BufferPool) GetPage(page_id: uint32) -> Result<*uint8, DbError>
 
     pool.pages.insert(page_id, buf);
     pool.lock.write_unlock();
-    
+
     return Ok(buf);
 }
 
@@ -893,11 +894,11 @@ struct IPv4Header {
 // High-performance zero-copy packet parser
 func ParsePacket(raw_bytes: &[uint8]) -> Option<(EthernetHeader, IPv4Header)> {
     if raw_bytes.len() < 34 { return None; } // Minimum headers size
-    
+
     // Zero-copy deserialization using memory reinterpret casts
     let eth = *(raw_bytes.as_ptr() as *EthernetHeader);
     let ip = *((raw_bytes.as_ptr() + 14) as *IPv4Header);
-    
+
     return Some((eth, ip));
 }
 
@@ -1014,7 +1015,7 @@ func Main() -> int {
             return 1;
         }
     };
-    
+
     let result = RunSubprocess(&config.command, &["--all"])?;
     PrintLine(result);
     return 0;
@@ -1089,7 +1090,7 @@ func (vmm: &mut VirtualMemoryManager) MapMemory() -> Result<(), HResultError> {
         vmm.size,
         WHvMapGpaRangeFlagRead | WHvMapGpaRangeFlagWrite | WHvMapGpaRangeFlagExecute
     );
-    
+
     if status != S_OK {
         return Err(HResultError::from(status));
     }
@@ -1146,7 +1147,7 @@ func Main() -> int {
         device_id: 0x10D3, // Gigabit Network Card
         subsystem_id: 0,
     };
-    
+
     if MatchDevice(local_card, 0x8086) {
         PrintLine("Intel PCI network device detected");
     }
@@ -1195,7 +1196,7 @@ func EvtDeviceAdd(driver: WDFDRIVER, device_init: *mut WDFDEVICE_INIT) -> NTSTAT
 
     let context = WdfDeviceGetContext::<DriverContext>(device);
     (*context).lock = SpinLock::new();
-    
+
     // Map hardware resources to virtual CPU memory space
     (*context).io_port_base = MmMapIoSpace(0xFD000000 as PHYSICAL_ADDRESS, 4096, MmNonCached) as *mut uint8;
 
@@ -1209,7 +1210,7 @@ func OnHardwareInterrupt(interrupt: WDFINTERRUPT, message_id: ULONG) -> BOOLEAN 
     let context = WdfDeviceGetContext::<DriverContext>(device);
 
     context.lock.acquire();
-    
+
     // Read hardware status register from volatile address
     let irq_status = unsafe { read_volatile(context.io_port_base + 0x04) };
     if irq_status & 0x01 != 0 {
@@ -1218,7 +1219,7 @@ func OnHardwareInterrupt(interrupt: WDFINTERRUPT, message_id: ULONG) -> BOOLEAN 
         context.lock.release();
         return TRUE;
     }
-    
+
     context.lock.release();
     return FALSE;
 }
