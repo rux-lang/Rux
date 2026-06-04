@@ -2,7 +2,7 @@
 
 `rux.rb` is the source-of-truth Homebrew formula for the `rux` compiler. It
 builds from source via CMake using Homebrew's LLVM (Apple's bundled clang is
-too old for Rux's C++26 sources).
+often too old for Rux's C++26 `<print>` usage).
 
 Homebrew formulae live in a **tap** repository, not in this repo, so the steps
 below copy `rux.rb` into a tap.

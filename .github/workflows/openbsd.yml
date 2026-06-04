@@ -26,9 +26,4 @@ jobs:
           run: |
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
             cmake --build build
-            echo "=========================================================================================="
-            echo "BUILD SUCCESSFUL!"
-            echo "Note: Low-level runtime execution tests are skipped on OpenBSD."
-            echo "Rux's backend emits raw assembly thunks that utilize direct kernel syscalls,"
-            echo "which are blocked by OpenBSD's security model (requires libc.so syscall pinning)."
-            echo "=========================================================================================="
+            ctest --test-dir build --output-on-failure

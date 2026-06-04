@@ -10,8 +10,8 @@ class Rux < Formula
   license "MIT"
   head "https://github.com/rux-lang/Rux.git", branch: "main"
 
-  # Rux is written in C++26; Apple's bundled clang is too old, so build with
-  # Homebrew's LLVM. CMake 3.31+ is required by the build.
+  # Rux is written in C++26 and uses <print>; Apple's bundled clang may be too
+  # old, so build with Homebrew's LLVM. CMake 3.31+ is required by the build.
   depends_on "cmake" => :build
   depends_on "llvm" => :build
 

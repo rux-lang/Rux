@@ -22,7 +22,9 @@
 #if RUX_OS_WINDOWS
 // NOMINMAX: keep windows.h from defining min/max macros that would clobber the
 // std::max/std::min calls in the PE linker below.
-#  define NOMINMAX
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 #  include <windows.h>
 #endif
 
@@ -55,6 +57,22 @@ namespace Rux {
 
     // Buffer helpers
     using Buf = std::vector<uint8_t>;
+
+#if defined(__APPLE__)
+    static std::string ShellQuote(const std::string& value) {
+        std::string quoted;
+        quoted.reserve(value.size() + 2);
+        quoted += '\'';
+        for (char ch : value) {
+            if (ch == '\'')
+                quoted += "'\\''";
+            else
+                quoted += ch;
+        }
+        quoted += '\'';
+        return quoted;
+    }
+#endif
 
     [[maybe_unused]] static void WriteU8(Buf& b, uint8_t v) {
         b.push_back(v);
@@ -2305,7 +2323,7 @@ namespace Rux {
 
         // Ad-hoc sign in place. Apple Silicon SIGKILLs unsigned binaries, including
         // x86-64 ones run under Rosetta 2; on Intel this is harmless but still valid.
-        const std::string signCmd = "codesign --force --sign - \"" + outputPath.string() + "\" 2>/dev/null";
+        const std::string signCmd = "codesign --force --sign - " + ShellQuote(outputPath.string()) + " 2>/dev/null";
         if (std::system(signCmd.c_str()) != 0) {
             Error("ad-hoc codesign failed (need Xcode command line tools); binary will not run on Apple Silicon");
             return false;

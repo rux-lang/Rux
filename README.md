@@ -54,8 +54,8 @@ Here’s how you can get involved:
 
 ### Prerequisites
 
-- [CMake](https://cmake.org/) 4.2 or later
-- A C++26-capable compiler (e.g. Clang 19+, GCC 14+, MSVC 2022+)
+- [CMake](https://cmake.org/) 3.31 or later
+- A C++26-capable compiler with `<print>` support (e.g. Clang 19+, GCC 14+, MSVC 2022+)
 - A build tool supported by CMake, such as Ninja, Make, or MSBuild
 
 ### Clone
@@ -113,12 +113,23 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
+Release builds enable LTO/IPO automatically when the selected toolchain supports it
+(except MinGW, where it stays opt-in to avoid archive-tool plugin warnings). For
+machine-local maximum performance, add `-DRUX_ENABLE_NATIVE_OPTIMIZATIONS=ON`
+at configure time. Leave native optimizations off for redistributable binaries.
+
 The `rux` binary will be placed under the selected build directory. Single-configuration generators usually emit it directly in that directory, while Visual Studio/MSVC multi-configuration builds emit it under `Release/`.
 
 To install it onto your system:
 
 ```sh
 cmake --install build --prefix /usr/local
+```
+
+To run the cross-platform smoke tests:
+
+```sh
+ctest --test-dir build --output-on-failure
 ```
 
 ### NixOS

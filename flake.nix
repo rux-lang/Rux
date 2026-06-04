@@ -16,14 +16,9 @@
     in {
       packages.default = pkgs.stdenv.mkDerivation rec {
         pname = "rux";
-        version = "v0.2.2";
+        version = "0.3.0";
 
-        src = pkgs.fetchFromGitHub {
-          owner = "rux-lang";
-          repo = "Rux";
-          rev = "${version}";
-          hash = "sha256-mOPksefI4u3xZUKNkiC9aXoYUyjNpnSP7/aqTZaBff0=";
-        };
+        src = self;
 
         nativeBuildInputs = with pkgs; [cmake ninja];
 
@@ -49,7 +44,7 @@
           description = "Rux Compiler (GCC, Ninja, Out‑of‑Source)";
           homepage = "https://rux-lang.dev";
           license = licenses.mit;
-          platforms = platforms.linux;
+          platforms = platforms.unix;
         };
       };
     });

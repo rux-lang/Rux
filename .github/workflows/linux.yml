@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Rux's C++26 sources need a recent Clang; the distro's default is too old.
+      # Rux uses C++26 <print>; the distro's default toolchain is often too old.
       - name: Install Clang
         run: |
           wget https://apt.llvm.org/llvm.sh
@@ -23,8 +23,7 @@ jobs:
           sudo ./llvm.sh 20
           sudo apt-get install -y libc++-20-dev libc++abi-20-dev
 
-      # CMakeLists requires CMake >= 3.31, newer than the apt package; this also
-      # provides Ninja.
+      # Use a recent CMake and Ninja instead of relying on the runner image.
       - name: Install CMake and Ninja
         uses: lukka/get-cmake@latest
 
@@ -41,18 +40,5 @@ jobs:
       - name: Build
         run: cmake --build build
 
-      - name: Run I/O thunk tests
-        # The test script cd's into each package, so rux must be an absolute path.
-        run: Tests/run_io_test.sh "$GITHUB_WORKSPACE/build/rux"
-
-      - name: Run integer ** test
-        run: Tests/run_pow_test.sh "$GITHUB_WORKSPACE/build/rux"
-
-      - name: Run @[Target] import filtering test
-        run: Tests/run_target_import_test.sh "$GITHUB_WORKSPACE/build/rux"
-        
-      - name: Run escape decoding test
-        run: Tests/run_unicode_test.sh "$GITHUB_WORKSPACE/build/rux"
-
-      - name: Run numeric literal suffix test
-        run: Tests/run_numeric_suffix_test.sh "$GITHUB_WORKSPACE/build/rux"
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

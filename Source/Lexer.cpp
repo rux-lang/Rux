@@ -2,10 +2,12 @@
 
 #include <cassert>
 #include <cctype>
+#include <limits>
 #include <fstream>
+#include <iterator>
 #include <ostream>
 #include <print>
-#include <sstream>
+#include <system_error>
 
 namespace Rux {
     bool LexerResult::HasErrors() const noexcept {
@@ -27,18 +29,31 @@ namespace Rux {
             std::print(stderr, "error: cannot open '{}'\n", path.string());
             return std::nullopt;
         }
-        std::ostringstream ss;
-        ss << f.rdbuf();
+
+        std::string source;
+        std::error_code ec;
+        const auto size = std::filesystem::file_size(path, ec);
+        constexpr auto maxSize = (std::min)(static_cast<std::uintmax_t>((std::numeric_limits<std::size_t>::max)()),
+                                            static_cast<std::uintmax_t>((std::numeric_limits<std::streamsize>::max)()));
+        if (!ec && size <= maxSize) {
+            source.resize(static_cast<std::size_t>(size));
+            if (!source.empty()) f.read(source.data(), static_cast<std::streamsize>(source.size()));
+        }
+        else {
+            source.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+        }
+
         if (!f && !f.eof()) {
             std::print(stderr, "error: failed to read '{}'\n", path.string());
             return std::nullopt;
         }
-        Lexer lex(ss.str(), path.string());
+        Lexer lex(std::move(source), path.string());
         return lex.Tokenize();
     }
 
     LexerResult Lexer::Tokenize() {
         tokens.clear();
+        tokens.reserve(source.size() / 3 + 2);
         diagnostics.clear();
         pos = 0;
         line = 1;
