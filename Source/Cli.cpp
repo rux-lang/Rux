@@ -204,7 +204,26 @@ namespace Rux {
         }
 
         [[nodiscard]] bool DeclMatchesTarget(const Decl& decl, const std::string_view target) {
-            return decl.targetOs.empty() || decl.targetOs == TargetOsName(target);
+            if (decl.targetOs.empty()) return true;
+            const std::string_view targetOs = TargetOsName(target);
+            // Normalize both sides for robust comparison.
+            if (decl.targetOs.size() != targetOs.size()) return false;
+            // Case-insensitive comparison handles any casing in @[Target("...")].
+            for (std::size_t i = 0; i < decl.targetOs.size(); ++i)
+                if (std::tolower(static_cast<unsigned char>(decl.targetOs[i])) !=
+                    std::tolower(static_cast<unsigned char>(targetOs[i])))
+                    return false;
+            return true;
+        }
+
+        // Known platform package names.  If a source file imports one of these
+        // and the name does not match the current build target it is a platform-
+        // specific import that should have been pruned; skip it gracefully.
+        [[nodiscard]] bool IsPlatformPackageName(const std::string_view name) {
+            return name == "Windows" || name == "Linux" || name == "macOS" || name == "BSD" || name == "Illumos";
+        }
+        [[nodiscard]] bool PlatformPackageMatchesTarget(const std::string_view name, const std::string_view target) {
+            return name == TargetOsName(target);
         }
 
         void PruneDeclsForTarget(std::vector<DeclPtr>& decls, const std::string_view target);
