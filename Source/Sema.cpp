@@ -297,6 +297,14 @@ namespace Rux {
             return true;
         }
 
+        void Reserve(std::size_t count) {
+            table.reserve(count);
+        }
+
+        [[nodiscard]] std::size_t Size() const noexcept {
+            return table.size();
+        }
+
         Symbol* Lookup(const std::string& name) {
             auto it = table.find(name);
             if (it != table.end()) return &it->second;
@@ -347,6 +355,10 @@ namespace Rux {
             for (auto& pkg : deps) {
                 auto rootScope = std::make_unique<Scope>(&globalScope);
                 Scope* rootScopePtr = rootScope.get();
+                std::size_t packageItemCount = 0;
+                for (auto& entry : pkg.modules)
+                    packageItemCount += entry.module->items.size();
+                rootScope->Reserve(rootScope->Size() + packageItemCount);
                 for (auto& entry : pkg.modules) {
                     currentFile = entry.module->name;
                     for (const auto& decl : entry.module->items)
@@ -369,6 +381,7 @@ namespace Rux {
             // itself by name, expose the global/module scopes through the same
             // package import table used for dependencies.
             if (!packageName.empty()) packageModuleScopes[packageName][""] = &globalScope;
+            ReserveForModules(modules);
             for (auto* mod : modules)
                 CollectModule(*mod);
             for (auto* mod : modules)
@@ -405,6 +418,19 @@ namespace Rux {
         std::unordered_map<std::string, const InterfaceDecl*> interfaceDecls;
         std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl*>>> methodsByType;
         std::unordered_map<std::string, std::unordered_set<std::string>> typeImplementsInterfaces;
+
+        void ReserveForModules(const std::vector<const Module*>& mods) {
+            std::size_t itemCount = 0;
+            for (const auto* mod : mods)
+                itemCount += mod->items.size();
+
+            globalScope.Reserve(globalScope.Size() + itemCount);
+            symbols.reserve(symbols.size() + itemCount);
+            structDecls.reserve(structDecls.size() + itemCount);
+            enumDecls.reserve(enumDecls.size() + itemCount);
+            interfaceDecls.reserve(interfaceDecls.size() + itemCount);
+            methodsByType.reserve(methodsByType.size() + itemCount);
+        }
 
         // Diagnostics
 
@@ -677,6 +703,7 @@ namespace Rux {
                 else {
                     auto moduleScope = std::make_unique<Scope>(&scope);
                     moduleScopePtr = moduleScope.get();
+                    moduleScopePtr->Reserve(d->items.size());
                     ownedScopes.push_back(std::move(moduleScope));
 
                     Symbol sym;

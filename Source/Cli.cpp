@@ -65,6 +65,7 @@ namespace Rux {
     using namespace Platform;
     namespace {
         struct BuildStats {
+            std::chrono::milliseconds loading{0};
             std::chrono::milliseconds lexing{0};
             std::chrono::milliseconds parsing{0};
             std::chrono::milliseconds semantic{0};
@@ -267,6 +268,7 @@ namespace Rux {
                        "Mode: {}\n\n"
                        "Build finished successfully.\n\n"
                        "Total build time:            {} ms\n"
+                       "  Loading:                   {} ms\n"
                        "  Lexing:                    {} ms\n"
                        "  Parsing:                   {} ms\n"
                        "  Semantic:                  {} ms\n"
@@ -298,6 +300,7 @@ namespace Rux {
                        TargetName(),
                        profileName,
                        totalMs,
+                       stats.loading.count(),
                        stats.lexing.count(),
                        stats.parsing.count(),
                        stats.semantic.count(),
@@ -626,8 +629,10 @@ namespace Rux {
         // ── Lex ───────────────────────────────────────────────────────────────
 
         BuildStats stats;
+        const auto localLoadingStart = std::chrono::steady_clock::now();
         auto loadResult = SourceLoader::Load(manifestPath->parent_path());
         if (!loadResult) return 1;
+        stats.loading += ElapsedMs(localLoadingStart);
 
         stats.localFiles = loadResult->files.size();
         for (const auto& file : loadResult->files) {
@@ -709,6 +714,8 @@ namespace Rux {
         }
         stats.parsing += ElapsedMs(localParsingStart);
         if (parseErrors) return 1;
+        loadResult.reset();
+        std::vector<LexerResult>().swap(lexResults);
 
         // Load dependency packages referenced by import declarations
 
@@ -802,10 +809,12 @@ namespace Rux {
 
                 if (opts.verbose) std::print("  Loading package {} from {}\n", packageName, pendingRoot.string());
 
+                const auto depLoadingStart = std::chrono::steady_clock::now();
                 auto depLoadResult = SourceLoader::Load(pendingRoot);
                 if (!depLoadResult) {
                     return 1;
                 }
+                stats.loading += ElapsedMs(depLoadingStart);
                 stats.dependencyFiles += depLoadResult->files.size();
                 for (const auto& depFile : depLoadResult->files) {
                     stats.dependencyLines += CountLines(depFile.source);
@@ -857,6 +866,7 @@ namespace Rux {
 
                     packageParseResults.push_back(std::move(depParse));
                 }
+                depLoadResult.reset();
 
                 imports.clear();
                 for (const auto& pr : packageParseResults) {
@@ -1191,6 +1201,38 @@ namespace Rux {
     }
 
 #if RUX_OS_WINDOWS
+    static std::wstring WidenArg(std::string_view value) {
+        return std::wstring(value.begin(), value.end());
+    }
+
+    static std::wstring WindowsCommandLineQuote(std::wstring_view value) {
+        std::wstring quoted;
+        quoted.reserve(value.size() + 2);
+        quoted += L'"';
+
+        std::size_t backslashes = 0;
+        for (wchar_t ch : value) {
+            if (ch == L'\\') {
+                ++backslashes;
+                continue;
+            }
+
+            if (ch == L'"') {
+                quoted.append(backslashes * 2 + 1, L'\\');
+                quoted += ch;
+            }
+            else {
+                quoted.append(backslashes, L'\\');
+                quoted += ch;
+            }
+            backslashes = 0;
+        }
+
+        quoted.append(backslashes * 2, L'\\');
+        quoted += L'"';
+        return quoted;
+    }
+
     // Fetch the body of an HTTPS URL using WinHTTP. Returns nullopt on failure.
     static std::optional<std::string> FetchUrl(const std::string& url) {
         std::wstring wurl(url.begin(), url.end());
@@ -1324,14 +1366,11 @@ namespace Rux {
     // Clone a git repository into dest. Returns true on success.
     static bool GitClone(const std::string& repoUrl, const std::filesystem::path& dest, bool devBranch) {
 #if RUX_OS_WINDOWS
-        std::wstring cmd{};
-        if (!devBranch) {
-            cmd = L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
-        }
-        else {
-            cmd = L"git clone --branch dev " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() +
-                L"\"";
-        }
+        std::wstring cmd = L"git clone ";
+        if (devBranch) cmd += L"--branch dev ";
+        cmd += WindowsCommandLineQuote(WidenArg(repoUrl));
+        cmd += L" ";
+        cmd += WindowsCommandLineQuote(dest.wstring());
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
@@ -1343,8 +1382,9 @@ namespace Rux {
         CloseHandle(pi.hThread);
         return exitCode == 0;
 #else
-        const std::string cmd = devBranch ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
-                                          : "git clone " + repoUrl + " \"" + dest.string() + "\"";
+        const std::string cmd = devBranch
+            ? "git clone -b dev " + ShellQuote(repoUrl) + " " + ShellQuote(dest.string())
+            : "git clone " + ShellQuote(repoUrl) + " " + ShellQuote(dest.string());
         return std::system(cmd.c_str()) == 0;
 #endif
     }
@@ -1352,7 +1392,7 @@ namespace Rux {
     // Pull latest changes in an existing git repository. Returns true on success.
     static bool GitPull(const std::filesystem::path& repoDir) {
 #if RUX_OS_WINDOWS
-        std::wstring cmd = L"git -C \"" + repoDir.wstring() + L"\" pull";
+        std::wstring cmd = L"git -C " + WindowsCommandLineQuote(repoDir.wstring()) + L" pull";
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
@@ -1364,7 +1404,7 @@ namespace Rux {
         CloseHandle(pi.hThread);
         return exitCode == 0;
 #else
-        const std::string cmd = "git -C \"" + repoDir.string() + "\" pull";
+        const std::string cmd = "git -C " + ShellQuote(repoDir.string()) + " pull";
         return std::system(cmd.c_str()) == 0;
 #endif
     }
@@ -1853,20 +1893,19 @@ namespace Rux {
         }
         if (opts.verbose && !opts.quiet) std::print("     Running `{}`\n", exePath.string());
 #if RUX_OS_WINDOWS
-        std::string cmdLine = "\"" + exePath.string() + "\"";
+        std::wstring cmdLine = WindowsCommandLineQuote(exePath.wstring());
         for (const auto& a : runArgs) {
-            cmdLine += " \"";
-            cmdLine += std::string(a);
-            cmdLine += '"';
+            cmdLine += L" ";
+            cmdLine += WindowsCommandLineQuote(WidenArg(a));
         }
-        STARTUPINFOA si{};
+        STARTUPINFOW si{};
         PROCESS_INFORMATION pi{};
         si.cb = sizeof(si);
         si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
         si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
         si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
         si.dwFlags = STARTF_USESTDHANDLES;
-        if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi)) {
+        if (!CreateProcessW(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi)) {
             std::print(stderr, "error: failed to launch '{}' (code {})\n", exePath.string(), GetLastError());
             return 1;
         }

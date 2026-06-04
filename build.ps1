@@ -1,9 +1,22 @@
-# Build rux with MSVC (requires Visual Studio 2022 Build Tools).
+# Build rux with CMake on Windows.
 $ErrorActionPreference = "Stop"
-$vcvars = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-$cmake = "${env:ProgramFiles}\CMake\bin\cmake.exe"
 $root = $PSScriptRoot
 
-cmd /c "`"$vcvars`" && cd /d `"$root`" && `"$cmake`" -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release && `"$cmake`" --build build"
+$cmake = (Get-Command cmake -ErrorAction SilentlyContinue).Source
+if (-not $cmake) {
+    $cmake = Join-Path $env:ProgramFiles "CMake\bin\cmake.exe"
+}
+if (-not (Test-Path $cmake)) {
+    throw "cmake was not found on PATH or under Program Files"
+}
+
+$vsGenerator = "Visual Studio 17 2022"
+$buildDir = Join-Path $root "build\msvc"
+
+& $cmake -S $root -B $buildDir -G $vsGenerator -A x64
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-Write-Host "Built: $root\build\rux.exe"
+
+& $cmake --build $buildDir --config Release
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host "Built: $buildDir\Release\rux.exe"

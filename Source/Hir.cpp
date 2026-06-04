@@ -59,6 +59,14 @@ namespace Rux {
             table.emplace(sym.name, std::move(sym));
         }
 
+        void Reserve(std::size_t count) {
+            table.reserve(count);
+        }
+
+        [[nodiscard]] std::size_t Size() const noexcept {
+            return table.size();
+        }
+
         HirSymbol* Lookup(const std::string& name) {
             auto it = table.find(name);
             if (it != table.end()) return &it->second;
@@ -162,9 +170,11 @@ namespace Rux {
 
         HirPackage Run() {
             RegisterBuiltins();
+            ReserveForModules(modules);
             for (auto* mod : modules)
                 CollectModule(*mod);
             HirPackage pkg;
+            pkg.modules.reserve(modules.size());
             for (auto* mod : modules)
                 pkg.modules.push_back(LowerModule(*mod));
             return pkg;
@@ -189,6 +199,19 @@ namespace Rux {
         std::unordered_map<std::string, const InterfaceDecl*> interfaceDecls;
         std::unordered_map<std::string, std::unordered_map<std::string, std::string>> typeInterfaceVtables;
         std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
+
+        void ReserveForModules(const std::vector<const Module*>& mods) {
+            std::size_t itemCount = 0;
+            for (const auto* mod : mods)
+                itemCount += mod->items.size();
+
+            globalScope.Reserve(globalScope.Size() + itemCount);
+            functionsByName.reserve(functionsByName.size() + itemCount);
+            structDecls.reserve(structDecls.size() + itemCount);
+            enumDecls.reserve(enumDecls.size() + itemCount);
+            interfaceDecls.reserve(interfaceDecls.size() + itemCount);
+            methodsByType.reserve(methodsByType.size() + itemCount);
+        }
 
         // Scope management
         void PushScope() {
@@ -1423,6 +1446,7 @@ namespace Rux {
             currentModulePath = FilePathToModulePath(mod.name);
             HirModule hmod;
             hmod.name = mod.name;
+            hmod.funcs.reserve(mod.items.size());
             for (const auto& decl : mod.items)
                 LowerTopLevelDecl(*decl, hmod);
             return hmod;

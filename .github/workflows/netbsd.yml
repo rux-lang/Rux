@@ -24,18 +24,10 @@ jobs:
             pkg_add cmake gcc14
 
           run: |
-            failed=0
             CXX=$(find /usr/pkg -name "g++*14*" -o -name "g++*14" 2>/dev/null | head -1)
             if [ -z "$CXX" ]; then CXX=$(find /usr/pkg -name "g++*" -type f 2>/dev/null | head -1); fi
             export CXX
             echo "Using CXX=$CXX"
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
             cmake --build build
-            echo "---IO THUNK TESTS---"
-            ./Tests/run_io_test.sh "$PWD/build/rux" || failed=1
-            echo "---POW TEST---"
-            ./Tests/run_pow_test.sh "$PWD/build/rux" || failed=1
-            echo "---UNICODE TEST---"
-            ./Tests/run_unicode_test.sh "$PWD/build/rux" || failed=1
-            if [ "$failed" -ne 0 ]; then echo "SOME TESTS FAILED"; exit 1; fi
-            echo "ALL TESTS PASSED"
+            ctest --test-dir build --output-on-failure

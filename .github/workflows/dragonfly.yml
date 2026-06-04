@@ -24,15 +24,7 @@ jobs:
             pkg install -y cmake llvm gcc14
 
           run: |
-            failed=0
             export LD_LIBRARY_PATH="/usr/local/lib/gcc14:/usr/local/lib"
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++14
             cmake --build build
-            echo "---IO THUNK TESTS---"
-            ./Tests/run_io_test.sh "$PWD/build/rux" || failed=1
-            echo "---POW TEST---"
-            ./Tests/run_pow_test.sh "$PWD/build/rux" || failed=1
-            echo "---UNICODE TEST---"
-            ./Tests/run_unicode_test.sh "$PWD/build/rux" || failed=1
-            if [ "$failed" -ne 0 ]; then echo "SOME TESTS FAILED"; exit 1; fi
-            echo "ALL TESTS PASSED"
+            ctest --test-dir build --output-on-failure
