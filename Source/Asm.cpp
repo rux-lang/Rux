@@ -52,6 +52,7 @@ namespace Rux {
             }
             case TypeRef::Kind::Named:
                 if (!t.inner.empty()) return SizeOf(t.inner[0]);
+                if (t.name == "Slice" || t.name.starts_with("Slice<")) return 16;
                 return 8;
             default:
                 return 8; // int, uint, int64, uint64, float64, pointer, str, named, …
@@ -156,9 +157,14 @@ namespace Rux {
                 int sz = SizeOf(f.type);
                 int al = sz > 0 ? std::min(sz, 8) : 1;
                 if (f.type.kind == TypeRef::Kind::Named) {
-                    if (auto it = known.find(BaseTypeName(f.type.name)); it != known.end()) {
+                    const auto baseName = BaseTypeName(f.type.name);
+                    if (auto it = known.find(baseName); it != known.end()) {
                         sz = it->second.totalSize;
                         al = it->second.alignment;
+                    }
+                    else if (baseName == "Slice" || baseName.starts_with("Slice<")) {
+                        sz = 16;
+                        al = 8;
                     }
                 }
                 if (al > 1) offset = AlignUp(offset, al);
