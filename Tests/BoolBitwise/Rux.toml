@@ -1,0 +1,7 @@
+[Package]
+Name    = "bool_bitwise_test"
+Version = "0.1.0"
+Type    = "bin"
+
+[Build]
+Output = "Bin"

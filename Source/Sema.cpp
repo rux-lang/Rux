@@ -2820,7 +2820,8 @@ namespace Rux {
                     EmitError(loc, std::format("unary '-' applied to non-numeric type '{}'", t.ToString()));
                 return t;
             case TokenKind::Tilde:
-                if (!t.IsInteger()) EmitError(loc, std::format("'~' applied to non-integer type '{}'", t.ToString()));
+                if (!t.IsInteger() && !t.IsBool())
+                    EmitError(loc, std::format("'~' applied to non-integer type '{}'", t.ToString()));
                 return t;
             case TokenKind::Star:
                 if (t.kind != TypeRef::Kind::Pointer)
@@ -3026,10 +3027,14 @@ namespace Rux {
             case TK::Caret:
             case TK::LessLess:
             case TK::GreaterGreater: {
-                if (!isIntegerOrChar(l)) {
+                auto isBitwiseOperand = [](const TypeRef& t) {
+                    return t.IsInteger() || t.IsBool() || t.kind == TypeRef::Kind::Char8 ||
+                        t.kind == TypeRef::Kind::Char16 || t.kind == TypeRef::Kind::Char32;
+                };
+                if (!isBitwiseOperand(l)) {
                     EmitError(loc, std::format("bitwise operator applied to non-integer type '{}'", l.ToString()));
                 }
-                else if (!isIntegerOrChar(r)) {
+                else if (!isBitwiseOperand(r)) {
                     EmitError(loc,
                               std::format("bitwise operator right operand must be integer, got '{}'", r.ToString()));
                 }
