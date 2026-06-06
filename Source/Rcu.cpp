@@ -824,6 +824,16 @@ namespace Rux {
                 Byte(0xD0);
             }
 
+            // XOR RAX, imm32 (sign-extended). Used for `~` on bools to fold
+            // the value back to 0 or 1 (logical NOT), matching the docs at
+            // Web/src/docs/types/bool.md (issue #95).
+            void XorRaxImmediate(std::int32_t imm) const {
+                Byte(0x48);
+                Byte(0x81);
+                Byte(0xF0);
+                Dword(static_cast<std::uint32_t>(imm));
+            }
+
             // Division
             void Cqo() const {
                 Byte(0x48);
@@ -2299,7 +2309,18 @@ namespace Rux {
                 }
                 case LirOpcode::BitNot: {
                     LoadA(instr.srcs[0], instr.type);
-                    enc.NotRax();
+                    if (instr.type.IsBool()) {
+                        // For bools, ~ is logical NOT (xor with 1) so that
+                        // ~true == false and ~false == true, matching the
+                        // docs at Web/src/docs/types/bool.md (issue #95).
+                        // A plain bitwise NOT would leave 0xFE in the low
+                        // byte for `~true`, which the bool loads back as
+                        // truthy.
+                        enc.XorRaxImmediate(1);
+                    }
+                    else {
+                        enc.NotRax();
+                    }
                     StoreA(instr.dst, instr.type);
                     break;
                 }

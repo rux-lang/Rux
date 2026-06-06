@@ -1,0 +1,69 @@
+func Main() -> int {
+    // ---- bool8 ----
+    let a8: bool8 = true;
+    let b8: bool8 = false;
+
+    let c8: bool8 = a8 & b8;
+    if c8 { return 1; }
+
+    let d8: bool8 = a8 | b8;
+    if !d8 { return 2; }
+
+    let e8: bool8 = a8 ^ b8;
+    if !e8 { return 3; }
+
+    let f8: bool8 = ~a8;
+    if f8 { return 4; }
+
+    let f8b: bool8 = ~b8;
+    if !f8b { return 5; }
+
+    // truth table for & (left, right) -> expected
+    let tt8: bool8 = a8 & a8;
+    if !tt8 { return 6; }
+    let tf8: bool8 = a8 & b8;
+    if tf8 { return 7; }
+    let ft8: bool8 = b8 & a8;
+    if ft8 { return 8; }
+    let ff8: bool8 = b8 & b8;
+    if ff8 { return 9; }
+
+    // ---- bool16 ----
+    let a16: bool16 = true;
+    let b16: bool16 = false;
+    let c16: bool16 = a16 & b16;
+    if c16 { return 10; }
+    let d16: bool16 = a16 | b16;
+    if !d16 { return 11; }
+    let e16: bool16 = a16 ^ b16;
+    if !e16 { return 12; }
+    let f16: bool16 = ~a16;
+    if f16 { return 13; }
+    let g16: bool16 = a16 ^ a16;
+    if g16 { return 14; }
+
+    // ---- bool32 ----
+    let a32: bool32 = true;
+    let b32: bool32 = false;
+    let c32: bool32 = a32 & b32;
+    if c32 { return 15; }
+    let d32: bool32 = a32 | b32;
+    if !d32 { return 16; }
+    let e32: bool32 = a32 ^ b32;
+    if !e32 { return 17; }
+    let f32: bool32 = ~a32;
+    if f32 { return 18; }
+
+    // ---- De Morgan sanity: !(a & b) == !a | !b ----
+    let p: bool8 = true;
+    let q: bool8 = false;
+    if (!(p & q) != (!p | !q)) { return 19; }
+
+    // ---- mixed bool widths ----
+    let m1: bool8 = a8 & a16;         // bool8 & bool16  -> bool8
+    if !m1 { return 20; }
+    let m2: bool32 = a32 | b8;        // bool32 | bool8  -> bool32
+    if !m2 { return 21; }
+
+    return 0;
+}
