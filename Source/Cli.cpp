@@ -1,9 +1,3 @@
-/*
-    Rux Compiler
-    Copyright © 2026 Ivan Muzyka
-    Licensed under the MIT License
-*/
-
 #include "Rux/Cli.h"
 
 #include "Rux/Asm.h"
@@ -196,8 +190,8 @@ namespace Rux {
             if (os_prefix == "linux") return "Linux";
             if (os_prefix == "windows") return "Windows";
             if (os_prefix == "macos") return "macOS";
-            if (os_prefix == "freebsd" || os_prefix == "openbsd" || os_prefix == "netbsd"
-                || os_prefix == "dragonfly") return "BSD";
+            if (os_prefix == "freebsd" || os_prefix == "openbsd" || os_prefix == "netbsd" || os_prefix == "dragonfly")
+                return "BSD";
             if (os_prefix == "illumos") return "Illumos";
 
             return "";
@@ -917,7 +911,10 @@ namespace Rux {
             }
         }
 
-        Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name, std::string(TargetOsName(targetName)));
+        Sema sema(std::move(userModules),
+                  std::move(depPackages),
+                  manifest->package.name,
+                  std::string(TargetOsName(targetName)));
         auto semaResult = sema.Analyze();
 
         for (const auto& diag : semaResult.diagnostics) {
@@ -1416,8 +1413,7 @@ namespace Rux {
         if (!packageSpec.empty()) {
             auto [pkgName, pkgVersion] = ParsePackageSpec(packageSpec);
 
-            if (!opts.quiet)
-                std::print("     Fetching registry...\n");
+            if (!opts.quiet) std::print("     Fetching registry...\n");
 
             const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
             if (!jsonOpt) {
@@ -1437,20 +1433,17 @@ namespace Rux {
             std::filesystem::create_directories(pkgDir.parent_path(), ec);
 
             if (std::filesystem::exists(pkgDir)) {
-                if (!opts.quiet)
-                    std::print("   Up-to-date {}\n", pkgName);
+                if (!opts.quiet) std::print("   Up-to-date {}\n", pkgName);
             }
             else {
-                if (!opts.quiet)
-                    std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+                if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
 
                 if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
 
-                if (!opts.quiet)
-                    std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+                if (!opts.quiet) std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
             }
 
             return 0;
@@ -1458,12 +1451,10 @@ namespace Rux {
 
         // Install dependencies from current project
         const auto manifestPath = RequireManifest();
-        if (!manifestPath)
-            return 1;
+        if (!manifestPath) return 1;
 
         auto manifest = LoadManifest(*manifestPath);
-        if (!manifest)
-            return 1;
+        if (!manifest) return 1;
 
         std::vector<std::string> queue;
         std::unordered_set<std::string> queued;
@@ -1480,14 +1471,12 @@ namespace Rux {
         }
 
         if (queue.empty()) {
-            if (!opts.quiet)
-                std::print("  No registry dependencies to install.\n");
+            if (!opts.quiet) std::print("  No registry dependencies to install.\n");
 
             return 0;
         }
 
-        if (!opts.quiet)
-            std::print("     Fetching registry...\n");
+        if (!opts.quiet) std::print("     Fetching registry...\n");
 
         const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
         if (!jsonOpt) {
@@ -1513,22 +1502,19 @@ namespace Rux {
             std::filesystem::create_directories(pkgDir.parent_path(), ec);
 
             if (std::filesystem::exists(pkgDir)) {
-                if (!opts.quiet)
-                    std::print("   Up-to-date {}\n", pkgName);
+                if (!opts.quiet) std::print("   Up-to-date {}\n", pkgName);
 
                 ++upToDate;
             }
             else {
-                if (!opts.quiet)
-                    std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+                if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
 
                 if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
 
-                if (!opts.quiet)
-                    std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+                if (!opts.quiet) std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
 
                 ++installed;
             }
@@ -1545,9 +1531,7 @@ namespace Rux {
             }
         }
 
-        if (!opts.quiet)
-            std::print("     Summary: {} installed, {} already up-to-date\n",
-                    installed, upToDate);
+        if (!opts.quiet) std::print("     Summary: {} installed, {} already up-to-date\n", installed, upToDate);
 
         return 0;
     }
@@ -2639,7 +2623,10 @@ namespace Rux {
                 depPackages[it->second].modules.push_back({loadedModuleNames[i], &depParseResults[i].module});
             }
 
-            Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name, std::string(TargetOsName(targetName)));
+            Sema sema(std::move(userModules),
+                      std::move(depPackages),
+                      manifest->package.name,
+                      std::string(TargetOsName(targetName)));
             auto semaResult = sema.Analyze();
 
             for (const auto& diag : semaResult.diagnostics) {

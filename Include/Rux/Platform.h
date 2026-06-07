@@ -1,9 +1,3 @@
-/*
-    Rux Compiler
-    Copyright © 2026 Ivan Muzyka
-    Licensed under the MIT License
-*/
-
 #pragma once
 
 #include "Platform/ABI.h"

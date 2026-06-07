@@ -1,9 +1,3 @@
-/*
-    Rux Compiler
-    Copyright © 2026 Ivan Muzyka
-    Licensed under the MIT License
-*/
-
 #include "Rux/Linker.h"
 
 #include "Rux/Platform/Defines.h"
@@ -324,8 +318,7 @@ namespace Rux {
         std::unordered_map<std::string, std::string> importDll;
         std::unordered_set<std::string> explicitImportDlls;
         std::unordered_map<std::string, std::vector<std::string>> explicitImportFuncsByDll;
-        if (!isDll)
-            importDll["ExitProcess"] = "KERNEL32.DLL";
+        if (!isDll) importDll["ExitProcess"] = "KERNEL32.DLL";
 
         // First pass: collect explicit DLL assignments from symbol declarations.
         // This handles the case where a call site and its declaration are in
@@ -424,7 +417,8 @@ namespace Rux {
             textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x28}); // add rsp, 0x28
             textPre.push_back(0xC3); // ret
             (void)kCallDllMainDisp; // used below during patching
-        } else {
+        }
+        else {
             // EXE entry thunk (__rux_start):
             //   sub rsp, 0x28       ; 48 83 EC 28
             //   call Main           ; E8 xx xx xx xx
@@ -638,12 +632,14 @@ namespace Rux {
                 uint64_t dllMainVA = it->second;
                 uint64_t nextInst = kImageBase + textRva + kCallMainDisp + 4;
                 Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(dllMainVA - nextInst));
-            } else {
+            }
+            else {
                 // No DllMain: replace `E8 00 00 00 00` with `B8 01 00 00 00` (mov eax, 1)
                 textBuf[kCallMainDisp - 1] = 0xB8; // change opcode from E8 (call) to B8 (mov eax, imm32)
                 Patch32(textBuf, kCallMainDisp, 1); // imm = 1 (TRUE)
             }
-        } else {
+        }
+        else {
             auto it = symMap.find("Main");
             if (it == symMap.end()) {
                 Error("undefined symbol 'Main' — no entry point found");
@@ -747,11 +743,8 @@ namespace Rux {
         if (isDll) {
             for (const auto& obj : objects) {
                 for (const auto& sym : obj.symbols) {
-                    if (sym.kind == RcuSymKind::Func &&
-                        sym.visibility != RcuSymVis::Local &&
-                        !sym.name.empty() &&
-                        sym.name != "DllMain" &&
-                        symMap.count(sym.name)) {
+                    if (sym.kind == RcuSymKind::Func && sym.visibility != RcuSymVis::Local && !sym.name.empty() &&
+                        sym.name != "DllMain" && symMap.count(sym.name)) {
                         exportNames.push_back(sym.name);
                     }
                 }
@@ -809,15 +802,15 @@ namespace Rux {
             exportDirSize = static_cast<uint32_t>(rdataBuf.size()) - exportDirOff;
 
             // Patch IMAGE_EXPORT_DIRECTORY fields
-            Patch32(rdataBuf, expDirPos + 0,  0);                                    // Characteristics
-            Patch32(rdataBuf, expDirPos + 4,  static_cast<uint32_t>(std::time(nullptr))); // TimeDateStamp
-            Patch32(rdataBuf, expDirPos + 12, rdataRva + dllNameStrOff);              // Name RVA
-            Patch32(rdataBuf, expDirPos + 16, 1);                                     // Base (ordinal base)
-            Patch32(rdataBuf, expDirPos + 20, numExports);                            // NumberOfFunctions
-            Patch32(rdataBuf, expDirPos + 24, numExports);                            // NumberOfNames
-            Patch32(rdataBuf, expDirPos + 28, rdataRva + funcArrayOff);               // AddressOfFunctions
-            Patch32(rdataBuf, expDirPos + 32, rdataRva + nameArrayOff);               // AddressOfNames
-            Patch32(rdataBuf, expDirPos + 36, rdataRva + ordArrayOff);                // AddressOfNameOrdinals
+            Patch32(rdataBuf, expDirPos + 0, 0); // Characteristics
+            Patch32(rdataBuf, expDirPos + 4, static_cast<uint32_t>(std::time(nullptr))); // TimeDateStamp
+            Patch32(rdataBuf, expDirPos + 12, rdataRva + dllNameStrOff); // Name RVA
+            Patch32(rdataBuf, expDirPos + 16, 1); // Base (ordinal base)
+            Patch32(rdataBuf, expDirPos + 20, numExports); // NumberOfFunctions
+            Patch32(rdataBuf, expDirPos + 24, numExports); // NumberOfNames
+            Patch32(rdataBuf, expDirPos + 28, rdataRva + funcArrayOff); // AddressOfFunctions
+            Patch32(rdataBuf, expDirPos + 32, rdataRva + nameArrayOff); // AddressOfNames
+            Patch32(rdataBuf, expDirPos + 36, rdataRva + ordArrayOff); // AddressOfNameOrdinals
         }
 
         // 10. Emit PE32+ file
@@ -905,8 +898,7 @@ namespace Rux {
         wU32(16); // NumberOfRvaAndSizes
         // DataDirectory[16]
         // [0] Export — filled for DLLs, empty for EXEs
-        wDir(isDll && exportDirSize > 0 ? rdataRva + exportDirOff : 0,
-             isDll && exportDirSize > 0 ? exportDirSize : 0);
+        wDir(isDll && exportDirSize > 0 ? rdataRva + exportDirOff : 0, isDll && exportDirSize > 0 ? exportDirSize : 0);
         wDir(rdataRva + importDirOff, static_cast<uint32_t>((importDllNames.size() + 1) * 20)); // [1]  Import
         wDir(0, 0);
         wDir(0, 0);
@@ -973,7 +965,8 @@ namespace Rux {
 #if RUX_IS_ELF_OS
     static std::optional<Buf> LinuxCompatThunk(const std::string& name) {
         static const std::unordered_map<std::string, Buf> thunks = {
-            {"ExitProcess", {0x48, 0x89, 0xCF, 0xB8, (RUX_IS_BSD || RUX_IS_SUNOS ? 0x01 : 0x3C), 0x00, 0x00, 0x00, 0x0F, 0x05}},
+            {"ExitProcess",
+             {0x48, 0x89, 0xCF, 0xB8, (RUX_IS_BSD || RUX_IS_SUNOS ? 0x01 : 0x3C), 0x00, 0x00, 0x00, 0x0F, 0x05}},
             {"GetStdHandle",
              {
                  0x81, 0xF9, 0xF6, 0xFF, 0xFF, 0xFF, // cmp ecx, -10 (STD_INPUT_HANDLE)
@@ -992,46 +985,46 @@ namespace Rux {
             {"HeapAlloc", {0x4C, 0x89, 0xC6, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
 
 #  if RUX_IS_BSD
-                            0x02, 0x10, 0x00, 0x00,
+                           0x02, 0x10, 0x00, 0x00,
 #  elif RUX_IS_SUNOS
-                            0x02, 0x01, 0x00, 0x00,
+                           0x02, 0x01, 0x00, 0x00,
 #  else
-                            0x22, 0x00, 0x00, 0x00,
+                           0x22, 0x00, 0x00, 0x00,
 #  endif
-                            0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
+                           0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
 #  if RUX_OS_FREEBSD
-                            0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+                           0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
 #  elif RUX_OS_OPENBSD
-                            0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
+                           0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
 #  elif RUX_OS_DRAGONFLY || RUX_OS_NETBSD
-                            0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
+                           0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
 #  elif RUX_IS_SUNOS
-                            0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
+                           0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
 #  else
-                            0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
+                           0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
 #  endif
-                            0x05, 0xC3}},
+                           0x05, 0xC3}},
             {"HeapReAlloc", {0x48, 0x8B, 0x74, 0x24, 0x28, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
 #  if RUX_IS_BSD
-                              0x02, 0x10, 0x00, 0x00,
+                             0x02, 0x10, 0x00, 0x00,
 #  elif RUX_IS_SUNOS
-                              0x02, 0x01, 0x00, 0x00,
+                             0x02, 0x01, 0x00, 0x00,
 #  else
-                              0x22, 0x00, 0x00, 0x00,
+                             0x22, 0x00, 0x00, 0x00,
 #  endif
-                              0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
+                             0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
 #  if RUX_OS_FREEBSD
-                              0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+                             0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
 #  elif RUX_OS_OPENBSD
-                              0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
+                             0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
 #  elif RUX_OS_DRAGONFLY || RUX_OS_NETBSD
-                              0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
+                             0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
 #  elif RUX_IS_SUNOS
-                              0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
+                             0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
 #  else
-                              0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
+                             0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
 #  endif
-                              0x05, 0xC3}},
+                             0x05, 0xC3}},
             {"RtlCopyMemory", {0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88, 0x01, 0x48, 0xFF,
                                0xC2, 0x48, 0xFF, 0xC1, 0x49, 0xFF, 0xC8, 0x75, 0xF1, 0xC3}},
             {"RtlCompareMemory",
@@ -1108,15 +1101,15 @@ namespace Rux {
                                      0x4D, 0x85, 0xC9, 0x7E, 0x14, 0x45, 0x0F, 0xB6, 0x18, 0x66, 0x45, 0x89, 0x1A,
                                      0x49, 0xFF, 0xC0, 0x49, 0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
             {"WriteConsoleW", {0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x08, 0x49, 0x89, 0xD4, 0x4D, 0x89,
-                                0xC5, 0x4D, 0x85, 0xED, 0x74, 0x24, 0x41, 0x8A, 0x04, 0x24, 0x88, 0x04, 0x24,
+                               0xC5, 0x4D, 0x85, 0xED, 0x74, 0x24, 0x41, 0x8A, 0x04, 0x24, 0x88, 0x04, 0x24,
 #  if RUX_IS_BSD || RUX_IS_SUNOS
-                                0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
+                               0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
 #  else
-                                0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
+                               0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
 #  endif
-                                0x01, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE6, 0xBA, 0x01, 0x00, 0x00, 0x00, 0x0F,
-                                0x05, 0x49, 0x83, 0xC4, 0x02, 0x49, 0xFF, 0xCD, 0xEB, 0xD7, 0x48, 0x83, 0xC4,
-                                0x08, 0x41, 0x5D, 0x41, 0x5C, 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
+                               0x01, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE6, 0xBA, 0x01, 0x00, 0x00, 0x00, 0x0F,
+                               0x05, 0x49, 0x83, 0xC4, 0x02, 0x49, 0xFF, 0xCD, 0xEB, 0xD7, 0x48, 0x83, 0xC4,
+                               0x08, 0x41, 0x5D, 0x41, 0x5C, 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"ReadFile",
              {
                  0x89, 0xCF, // mov edi, ecx  (fd)
@@ -1256,80 +1249,152 @@ namespace Rux {
                  0x0F, 0x05, // syscall
                  0xC3 // ret
              }},
-             {"__rux_linux_nanosleep",
-              {
-                  0x48, 0xC7, 0xC0, 0x23, 0x00, 0x00, 0x00, // mov rax, 35
-                  0x48, 0x89, 0xCF, // mov rdi, rcx
-                  0x48, 0x89, 0xD6, // mov rsi, rdx
-                  0x0F, 0x05, // syscall
-                  0xC3 // ret
-              }},
-             {"__rux_linux_clock_gettime",
-              {
-                  0x48, 0xC7, 0xC0, 0xE4, 0x00, 0x00, 0x00, // mov rax, 228
-                  0x48, 0x63, 0xF9, // movsxd rdi, ecx
-                  0x48, 0x89, 0xD6, // mov rsi, rdx
-                  0x0F, 0x05, // syscall
-                  0xC3 // ret
-              }},
-             {"__rux_bsd_nanosleep",
-              {
-#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
-                  0x48, 0xC7, 0xC0, 0xF0, 0x00, 0x00, 0x00, // mov rax, 240
-#  elif defined(__OpenBSD__)
-                  0x48, 0xC7, 0xC0, 0x5B, 0x00, 0x00, 0x00, // mov rax, 91
-#  endif
-                  0x48, 0x89, 0xCF, // mov rdi, rcx
-                  0x48, 0x89, 0xD6, // mov rsi, rdx
-                  0x0F, 0x05, // syscall
-                  0xC3 // ret
-              }},
-             {"__rux_bsd_clock_gettime",
-              {
-#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
-                  0x48, 0xC7, 0xC0, 0xE8, 0x00, 0x00, 0x00, // mov rax, 232
-#  elif defined(__OpenBSD__)
-                  0x48, 0xC7, 0xC0, 0x57, 0x00, 0x00, 0x00, // mov rax, 87
-#  endif
-                  0x48, 0x63, 0xF9, // movsxd rdi, ecx
-                  0x48, 0x89, 0xD6, // mov rsi, rdx
-                  0x0F, 0x05, // syscall
-                  0xC3 // ret
-              }},
-             {"__rux_bsd_mmap",
-              {
-#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
-                  0x48, 0xC7, 0xC0, 0xDD, 0x01, 0x00, 0x00, // mov rax, 477
-#  elif defined(__OpenBSD__)
-                  0x48, 0xC7, 0xC0, 0xC5, 0x00, 0x00, 0x00, // mov rax, 197
-#  endif
-                  0x48, 0x89, 0xCF, // mov rdi, rcx
-                  0x48, 0x89, 0xD6, // mov rsi, rdx
-                  0x4C, 0x89, 0xC2, // mov rdx, r8
-                  0x4D, 0x89, 0xCA, // mov r10, r9
-                  0x4C, 0x8B, 0x44, 0x24, 0x28, // mov r8, [rsp + 40]
-                  0x4C, 0x8B, 0x4C, 0x24, 0x30, // mov r9, [rsp + 48]
-                  0x0F, 0x05, // syscall
-                  0xC3 // ret
-              }},
-             {"__rux_bsd_const_MAP_ANONYMOUS",
-              {
-#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
-                  0xB8, 0x00, 0x10, 0x00, 0x00, // mov eax, 4096
-#  elif defined(__OpenBSD__)
-                  0xB8, 0x20, 0x00, 0x00, 0x00, // mov eax, 32
-#  endif
-                  0xC3 // ret
-              }},
-             {"__rux_bsd_const_CLOCK_MONOTONIC",
-              {
-#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
-                  0xB8, 0x04, 0x00, 0x00, 0x00, // mov eax, 4
-#  elif defined(__OpenBSD__)
-                  0xB8, 0x03, 0x00, 0x00, 0x00, // mov eax, 3
-#  endif
-                  0xC3 // ret
-              }},
+            {"__rux_linux_nanosleep",
+             {
+                 0x48,
+                 0xC7,
+                 0xC0,
+                 0x23,
+                 0x00,
+                 0x00,
+                 0x00, // mov rax, 35
+                 0x48,
+                 0x89,
+                 0xCF, // mov rdi, rcx
+                 0x48,
+                 0x89,
+                 0xD6, // mov rsi, rdx
+                 0x0F,
+                 0x05, // syscall
+                 0xC3 // ret
+             }},
+            {"__rux_linux_clock_gettime",
+             {
+                 0x48,
+                 0xC7,
+                 0xC0,
+                 0xE4,
+                 0x00,
+                 0x00,
+                 0x00, // mov rax, 228
+                 0x48,
+                 0x63,
+                 0xF9, // movsxd rdi, ecx
+                 0x48,
+                 0x89,
+                 0xD6, // mov rsi, rdx
+                 0x0F,
+                 0x05, // syscall
+                 0xC3 // ret
+             }},
+            {"__rux_bsd_nanosleep",
+             {
+#    if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                 0x48,
+                 0xC7,
+                 0xC0,
+                 0xF0,
+                 0x00,
+                 0x00,
+                 0x00, // mov rax, 240
+#    elif defined(__OpenBSD__)
+                 0x48,
+                 0xC7,
+                 0xC0,
+                 0x5B,
+                 0x00,
+                 0x00,
+                 0x00, // mov rax, 91
+#    endif
+                 0x48,
+                 0x89,
+                 0xCF, // mov rdi, rcx
+                 0x48,
+                 0x89,
+                 0xD6, // mov rsi, rdx
+                 0x0F,
+                 0x05, // syscall
+                 0xC3 // ret
+             }},
+            {"__rux_bsd_clock_gettime",
+             {
+#    if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                 0x48,
+                 0xC7,
+                 0xC0,
+                 0xE8,
+                 0x00,
+                 0x00,
+                 0x00, // mov rax, 232
+#    elif defined(__OpenBSD__)
+                 0x48,
+                 0xC7,
+                 0xC0,
+                 0x57,
+                 0x00,
+                 0x00,
+                 0x00, // mov rax, 87
+#    endif
+                 0x48,
+                 0x63,
+                 0xF9, // movsxd rdi, ecx
+                 0x48,
+                 0x89,
+                 0xD6, // mov rsi, rdx
+                 0x0F,
+                 0x05, // syscall
+                 0xC3 // ret
+             }},
+            {"__rux_bsd_mmap",
+             {
+#    if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                 0x48, 0xC7, 0xC0, 0xDD, 0x01, 0x00, 0x00, // mov rax, 477
+#    elif defined(__OpenBSD__)
+                 0x48, 0xC7, 0xC0, 0xC5, 0x00, 0x00, 0x00, // mov rax, 197
+#    endif
+                 0x48, 0x89, 0xCF, // mov rdi, rcx
+                 0x48, 0x89, 0xD6, // mov rsi, rdx
+                 0x4C, 0x89, 0xC2, // mov rdx, r8
+                 0x4D, 0x89, 0xCA, // mov r10, r9
+                 0x4C, 0x8B, 0x44, 0x24, 0x28, // mov r8, [rsp + 40]
+                 0x4C, 0x8B, 0x4C, 0x24, 0x30, // mov r9, [rsp + 48]
+                 0x0F, 0x05, // syscall
+                 0xC3 // ret
+             }},
+            {"__rux_bsd_const_MAP_ANONYMOUS",
+             {
+#    if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                 0xB8,
+                 0x00,
+                 0x10,
+                 0x00,
+                 0x00, // mov eax, 4096
+#    elif defined(__OpenBSD__)
+                 0xB8,
+                 0x20,
+                 0x00,
+                 0x00,
+                 0x00, // mov eax, 32
+#    endif
+                 0xC3 // ret
+             }},
+            {"__rux_bsd_const_CLOCK_MONOTONIC",
+             {
+#    if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+                 0xB8,
+                 0x04,
+                 0x00,
+                 0x00,
+                 0x00, // mov eax, 4
+#    elif defined(__OpenBSD__)
+                 0xB8,
+                 0x03,
+                 0x00,
+                 0x00,
+                 0x00, // mov eax, 3
+#    endif
+                 0xC3 // ret
+             }},
 #  endif
         };
 
@@ -1455,7 +1520,7 @@ namespace Rux {
 
         const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0)
 #  if RUX_OS_NETBSD || RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
-                                                     + 1       // PT_NOTE
+                                                     + 1 // PT_NOTE
 #  endif
 
         );
@@ -1619,17 +1684,17 @@ namespace Rux {
                              1,
                              1,
 #  if RUX_OS_FREEBSD
-                               9, // EI_OSABI: FreeBSD
+                             9, // EI_OSABI: FreeBSD
 #  elif RUX_OS_DRAGONFLY
-                               0, // EI_OSABI: System V
+                             0, // EI_OSABI: System V
 #  elif RUX_OS_OPENBSD
-                               12, // EI_OSABI: OpenBSD
+                             12, // EI_OSABI: OpenBSD
 #  elif RUX_OS_NETBSD
-                              2, // EI_OSABI: NetBSD
+                             2, // EI_OSABI: NetBSD
 #  elif RUX_IS_SUNOS
-                              6, // EI_OSABI: Solaris/Illumos
+                             6, // EI_OSABI: Solaris/Illumos
 #  else
-                              0, // EI_OSABI: System V
+                             0, // EI_OSABI: System V
 #  endif
                              0,
                              0,
