@@ -178,10 +178,10 @@ Read the [Contributing guide](CONTRIBUTING.md) to get started.
 [DiscordBadge]: https://img.shields.io/discord/1321469752811585576?style=flat&logo=discord&logoColor=white&label=Discord&color=blue
 [RedditBadge]: https://img.shields.io/reddit/subreddit-subscribers/ruxlang?style=flat&logo=reddit&logoColor=white&label=Reddit&color=blue
 [YouTubeBadge]: https://img.shields.io/youtube/channel/subscribers/UCNqQ7NIA5pBl3ZO--nOyvDA?style=flat&logo=youtube&logoColor=white&label=YouTube&color=blue
-[BlueskyBadge]: https://img.shields.io/bluesky/followers/ruxlang.bsky.social?style=flat&logo=Bluesky&logoColor=white&label=Bluesky&color=blue
+[BlueskyBadge]: https://img.shields.io/bluesky/followers/rux-lang.dev?style=flat&logo=Bluesky&logoColor=white&label=Bluesky&color=blue
 [MastodonBadge]: https://img.shields.io/mastodon/follow/113727153489087809?domain=mastodon.social&style=flat&logo=mastodon&logoColor=white&label=Mastodon&color=blue
-[XBadge]: https://img.shields.io/badge/52-gray?logo=x&style=flat&logoColor=white&label=Twitter&color=blue
-[TelegramBadge]: https://img.shields.io/badge/46-gray?style=flat&logo=telegram&logoColor=white&label=Telegram&color=blue
+[XBadge]: https://img.shields.io/badge/60-gray?logo=x&style=flat&logoColor=white&label=Twitter&color=blue
+[TelegramBadge]: https://img.shields.io/badge/56-gray?style=flat&logo=telegram&logoColor=white&label=Telegram&color=blue
 [LicenseBadge]: https://img.shields.io/github/license/rux-lang/Rux?style=flat
 [GitHubUrl]: https://github.com/rux-lang
 [DiscussionUrl]: https://github.com/rux-lang/Rux/discussions
@@ -189,7 +189,7 @@ Read the [Contributing guide](CONTRIBUTING.md) to get started.
 [RedditUrl]: https://www.reddit.com/r/ruxlang
 [YouTubeUrl]: https://www.youtube.com/@ruxlang
 [XUrl]: https://x.com/ruxlang
-[BlueskyUrl]: https://bsky.app/profile/ruxlang.bsky.social
+[BlueskyUrl]: https://bsky.app/profile/rux-lang.dev
 [MastodonUrl]: https://mastodon.social/@ruxlang
 [TelegramUrl]: https://t.me/ruxlang
 [LicenseUrl]: https://github.com/rux-lang/Rux/blob/main/LICENSE
