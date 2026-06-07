@@ -1,9 +1,3 @@
-/*
-    Rux Compiler
-    Copyright © 2026 Rux Contributors
-    Licensed under the MIT License
-*/
-
 #include "Rux/Platform/Platform.h"
 
 #include "Rux/Platform/Host.h"

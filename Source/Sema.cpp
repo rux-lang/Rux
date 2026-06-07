@@ -1,10 +1,3 @@
-/*
-    Rux Compiler
-    Copyright © 2026 Ivan Muzyka
-    Licensed under the MIT License
-*/
-
-
 #include "Rux/Sema.h"
 
 #include "Rux/Platform/Host.h"

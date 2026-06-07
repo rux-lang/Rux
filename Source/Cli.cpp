@@ -1,9 +1,3 @@
-/*
-    Rux Compiler
-    Copyright © 2026 Ivan Muzyka
-    Licensed under the MIT License
-*/
-
 #include "Rux/Cli.h"
 
 #include "Rux/Asm.h"
@@ -196,8 +190,8 @@ namespace Rux {
             if (os_prefix == "linux") return "Linux";
             if (os_prefix == "windows") return "Windows";
             if (os_prefix == "macos") return "macOS";
-            if (os_prefix == "freebsd" || os_prefix == "openbsd" || os_prefix == "netbsd"
-                || os_prefix == "dragonfly") return "BSD";
+            if (os_prefix == "freebsd" || os_prefix == "openbsd" || os_prefix == "netbsd" || os_prefix == "dragonfly")
+                return "BSD";
             if (os_prefix == "illumos") return "Illumos";
 
             return "";
@@ -898,7 +892,10 @@ namespace Rux {
             }
         }
 
-        Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name, std::string(TargetOsName(targetName)));
+        Sema sema(std::move(userModules),
+                  std::move(depPackages),
+                  manifest->package.name,
+                  std::string(TargetOsName(targetName)));
         auto semaResult = sema.Analyze();
 
         for (const auto& diag : semaResult.diagnostics) {
@@ -2591,7 +2588,10 @@ namespace Rux {
                 depPackages[it->second].modules.push_back({loadedModuleNames[i], &depParseResults[i].module});
             }
 
-            Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name, std::string(TargetOsName(targetName)));
+            Sema sema(std::move(userModules),
+                      std::move(depPackages),
+                      manifest->package.name,
+                      std::string(TargetOsName(targetName)));
             auto semaResult = sema.Analyze();
 
             for (const auto& diag : semaResult.diagnostics) {

@@ -1,9 +1,3 @@
-/*
-    Rux Compiler
-    Copyright © 2026 Ivan Muzyka
-    Licensed under the MIT License
-*/
-
 #include "Rux/Manifest.h"
 
 #include <algorithm>
@@ -98,8 +92,8 @@ namespace Rux {
         if (triple.starts_with("windows")) return "Windows";
         if (triple.starts_with("linux")) return "Linux";
         if (triple.starts_with("macos") || triple.starts_with("darwin")) return "macOS";
-        if (triple.starts_with("freebsd") || triple.starts_with("openbsd") || triple.starts_with("netbsd")
-            || triple.starts_with("dragonfly"))
+        if (triple.starts_with("freebsd") || triple.starts_with("openbsd") || triple.starts_with("netbsd") ||
+            triple.starts_with("dragonfly"))
             return "BSD";
         if (triple.starts_with("illumos")) return "Illumos";
         return {};
@@ -150,8 +144,7 @@ namespace Rux {
                 if (key == "Output") m.build.output = value;
             }
             else if (section == "Dependencies") {
-                // Name = "version"  OR  Name = "*"  OR  Name = { Path = "..." }
-                m.dependencies.push_back(ParseDependency(std::move(key), value));
+                m.dependencies.push_back(ParseDependency(std::string(key), std::string(value)));
             }
             else if (const auto target = TargetNameFromDependenciesSection(section)) {
                 m.targetDependencies[CanonicalOsName(*target)].push_back(
@@ -216,8 +209,7 @@ namespace Rux {
                     file << " }\n";
                 }
                 else {
-                    std::string ver = dep.version.empty() ? "*" : dep.version;
-                    file << dep.name << " = \"" << ver << "\"\n";
+                    file << dep.name << " = \"" << (dep.version.empty() ? "*" : dep.version) << "\"\n";
                 }
             }
         }
