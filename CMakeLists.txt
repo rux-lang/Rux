@@ -66,6 +66,11 @@ add_executable(rux
         Include/Rux/Linker.h
 )
 
+# GCC/MinGW: link experimental libstdc++ extensions (needed for <print> support in some builds)
+if (MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_libraries(rux PRIVATE stdc++exp)
+endif()
+
 target_include_directories(rux PRIVATE
         Include
         ${CMAKE_CURRENT_BINARY_DIR}/generated
