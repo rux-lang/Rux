@@ -2912,29 +2912,23 @@ namespace Rux {
                 return t.IsInteger() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
                     t.kind == TypeRef::Kind::Char32;
             };
+            auto isChar = [](TypeRef::Kind k) {
+                return k == TypeRef::Kind::Char8 || k == TypeRef::Kind::Char16 || k == TypeRef::Kind::Char32;
+            };
             auto getCompatibleType = [&](const Expr& left,
                                          const TypeRef& lt,
                                          const Expr& right,
                                          const TypeRef& rt) -> std::optional<TypeRef> {
-                if ((lt.IsInteger() &&
-                     (rt.kind == TypeRef::Kind::Char8 || rt.kind == TypeRef::Kind::Char16 ||
-                      rt.kind == TypeRef::Kind::Char32)) ||
-                    (rt.IsInteger() &&
-                     (lt.kind == TypeRef::Kind::Char8 || lt.kind == TypeRef::Kind::Char16 ||
-                      lt.kind == TypeRef::Kind::Char32))) {
+                if ((lt.IsInteger() && isChar(rt.kind)) || (rt.IsInteger() && isChar(lt.kind)))
                     return lt.IsInteger() ? lt : rt;
-                }
-                if (lt.kind == rt.kind &&
-                    (lt.kind == TypeRef::Kind::Char8 || lt.kind == TypeRef::Kind::Char16 ||
-                     lt.kind == TypeRef::Kind::Char32)) {
+                if (isChar(lt.kind) && isChar(rt.kind))
                     return lt;
-                }
-                if (CanAssignExprTo(right, rt, lt)) {
+                if (lt.IsInteger() && rt.IsInteger())
                     return lt;
-                }
-                if (CanAssignExprTo(left, lt, rt)) {
+                if (CanAssignExprTo(right, rt, lt))
+                    return lt;
+                if (CanAssignExprTo(left, lt, rt))
                     return rt;
-                }
                 return std::nullopt;
             };
 
