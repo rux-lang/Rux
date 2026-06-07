@@ -43,27 +43,6 @@ add_executable(rux
         Source/Asm.cpp
         Source/Rcu.cpp
         Source/Linker.cpp
-        Include/Rux/Platform/ABI.h
-        Include/Rux/Platform/Defines.h
-        Include/Rux/Platform/Host.h
-        Include/Rux/Platform/Platform.h
-        Include/Rux/Platform/Target.h
-        Include/Rux/Platform/Types.h
-        Include/Rux/Cli.h
-        Include/Rux/Manifest.h
-        Include/Rux/Package.h
-        Include/Rux/Token.h
-        Include/Rux/Lexer.h
-        Include/Rux/SourceLoader.h
-        Include/Rux/Ast.h
-        Include/Rux/Parser.h
-        Include/Rux/Type.h
-        Include/Rux/Sema.h
-        Include/Rux/Hir.h
-        Include/Rux/Lir.h
-        Include/Rux/Asm.h
-        Include/Rux/Rcu.h
-        Include/Rux/Linker.h
 )
 
 # GCC/MinGW: link experimental libstdc++ extensions (needed for <print> support in some builds)
