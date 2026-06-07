@@ -1,0 +1,10 @@
+[Package]
+Name    = "target_import_test"
+Version = "0.1.0"
+Type    = "bin"
+
+[Build]
+Output = "Bin"
+
+[Dependencies]
+PlatformLib = { Path = "PlatformLib" }

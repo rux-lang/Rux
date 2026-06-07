@@ -169,7 +169,7 @@ namespace Rux {
             constexpr std::array supported_targets{"linux-x64",
                                                    "windows-x64",
                                                    "macos-x64",
-                                                   "macos-arm64",
+                                                   "macos-aarch64",
                                                    "freebsd-x64",
                                                    "openbsd-x64",
                                                    "netbsd-x64",
@@ -198,7 +198,26 @@ namespace Rux {
         }
 
         [[nodiscard]] bool DeclMatchesTarget(const Decl& decl, const std::string_view target) {
-            return decl.targetOs.empty() || decl.targetOs == TargetOsName(target);
+            if (decl.targetOs.empty()) return true;
+            const std::string_view targetOs = TargetOsName(target);
+            // Normalize both sides for robust comparison.
+            if (decl.targetOs.size() != targetOs.size()) return false;
+            // Case-insensitive comparison handles any casing in @[Target("...")].
+            for (std::size_t i = 0; i < decl.targetOs.size(); ++i)
+                if (std::tolower(static_cast<unsigned char>(decl.targetOs[i])) !=
+                    std::tolower(static_cast<unsigned char>(targetOs[i])))
+                    return false;
+            return true;
+        }
+
+        // Known platform package names.  If a source file imports one of these
+        // and the name does not match the current build target it is a platform-
+        // specific import that should have been pruned; skip it gracefully.
+        [[nodiscard]] bool IsPlatformPackageName(const std::string_view name) {
+            return name == "Windows" || name == "Linux" || name == "macOS" || name == "BSD" || name == "Illumos";
+        }
+        [[nodiscard]] bool PlatformPackageMatchesTarget(const std::string_view name, const std::string_view target) {
+            return name == TargetOsName(target);
         }
 
         void PruneDeclsForTarget(std::vector<DeclPtr>& decls, const std::string_view target);
@@ -1369,28 +1388,28 @@ namespace Rux {
     int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions& opts) {
         std::string_view packageSpec;
         bool packageFromDev = false;
+
         for (auto arg : args) {
             if (arg == "-h" || arg == "--help") {
                 PrintHelpInstall();
                 return 0;
             }
+
             if (arg == "--dev") {
                 packageFromDev = true;
                 continue;
             }
+
             if (!arg.starts_with('-') && packageSpec.empty()) {
                 packageSpec = arg;
                 continue;
             }
+
             PrintUnknownOption(arg, "install");
             return 1;
         }
 
-        const auto manifestPath = RequireManifest();
-        if (!manifestPath) return 1;
-        auto manifest = LoadManifest(*manifestPath);
-        if (!manifest) return 1;
-
+        // Install a specific package without requiring a manifest
         if (!packageSpec.empty()) {
             auto [pkgName, pkgVersion] = ParsePackageSpec(packageSpec);
 
@@ -1408,15 +1427,8 @@ namespace Rux {
                 return 1;
             }
 
-            const bool changed = manifest->AddDependency(pkgName, pkgVersion);
-            if (changed) {
-                if (!manifest->Save(*manifestPath)) {
-                    std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
-                    return 1;
-                }
-            }
-
             const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
+
             std::error_code ec;
             std::filesystem::create_directories(pkgDir.parent_path(), ec);
 
@@ -1425,22 +1437,34 @@ namespace Rux {
             }
             else {
                 if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+
                 if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
+
                 if (!opts.quiet) std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
             }
+
             return 0;
         }
 
-        // BFS queue of registry package names to install
+        // Install dependencies from current project
+        const auto manifestPath = RequireManifest();
+        if (!manifestPath) return 1;
+
+        auto manifest = LoadManifest(*manifestPath);
+        if (!manifest) return 1;
+
         std::vector<std::string> queue;
         std::unordered_set<std::string> queued;
+
         const std::string installTarget = HostTargetTriple();
+
         for (const auto& dep : manifest->EffectiveDependencies(installTarget)) {
             const std::string packageName = DependencyPackageName(dep);
-            if (dep.path.empty() && !queued.count(packageName)) {
+
+            if (dep.path.empty() && !queued.contains(packageName)) {
                 queue.push_back(packageName);
                 queued.insert(packageName);
             }
@@ -1448,6 +1472,7 @@ namespace Rux {
 
         if (queue.empty()) {
             if (!opts.quiet) std::print("  No registry dependencies to install.\n");
+
             return 0;
         }
 
@@ -1461,43 +1486,53 @@ namespace Rux {
 
         int installed = 0;
         int upToDate = 0;
+
         for (std::size_t i = 0; i < queue.size(); ++i) {
             const std::string& pkgName = queue[i];
+
             const std::string repoUrl = JsonLookupString(*jsonOpt, pkgName);
             if (repoUrl.empty()) {
                 std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
                 return 1;
             }
+
             const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
+
             std::error_code ec;
             std::filesystem::create_directories(pkgDir.parent_path(), ec);
 
             if (std::filesystem::exists(pkgDir)) {
                 if (!opts.quiet) std::print("   Up-to-date {}\n", pkgName);
+
                 ++upToDate;
             }
             else {
                 if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+
                 if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                     std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                     return 1;
                 }
+
                 if (!opts.quiet) std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+
                 ++installed;
             }
 
-            // Enqueue registry deps declared by this package
             if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
                 for (const auto& dep : depManifest->EffectiveDependencies(installTarget)) {
                     const std::string depPackageName = DependencyPackageName(dep);
-                    if (dep.path.empty() && !queued.count(depPackageName)) {
+
+                    if (dep.path.empty() && !queued.contains(depPackageName)) {
                         queue.push_back(depPackageName);
                         queued.insert(depPackageName);
                     }
                 }
             }
         }
+
         if (!opts.quiet) std::print("     Summary: {} installed, {} already up-to-date\n", installed, upToDate);
+
         return 0;
     }
 

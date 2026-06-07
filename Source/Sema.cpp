@@ -85,6 +85,16 @@ namespace Rux {
         if (other.kind == Kind::Int && (kind == Kind::Int8 || kind == Kind::Int16 || kind == Kind::Int32)) return true;
         if (other.kind == Kind::UInt && (kind == Kind::UInt8 || kind == Kind::UInt16 || kind == Kind::UInt32))
             return true;
+        // smaller fixed-width signed integers widen to larger signed integers
+        if (other.kind == Kind::Int64 && (kind == Kind::Int8 || kind == Kind::Int16 || kind == Kind::Int32))
+            return true;
+        if (other.kind == Kind::Int32 && (kind == Kind::Int8 || kind == Kind::Int16)) return true;
+        if (other.kind == Kind::Int16 && kind == Kind::Int8) return true;
+        // smaller fixed-width unsigned integers widen to larger unsigned integers
+        if (other.kind == Kind::UInt64 && (kind == Kind::UInt8 || kind == Kind::UInt16 || kind == Kind::UInt32))
+            return true;
+        if (other.kind == Kind::UInt32 && (kind == Kind::UInt8 || kind == Kind::UInt16)) return true;
+        if (other.kind == Kind::UInt16 && kind == Kind::UInt8) return true;
         // Numeric types must match exactly unless an explicit cast is used.
         if (IsNumeric() && other.IsNumeric()) return false;
         // Bool types are mutually assignable across widths
@@ -140,13 +150,17 @@ namespace Rux {
             return alignUp(2 * *elemSize + 1, *elemSize);
         }
         case Kind::Tuple: {
-            std::uint64_t total = 0;
+            std::uint64_t offset = 0;
+            std::uint64_t maxAlign = 1;
             for (const auto& elem : inner) {
                 const auto elemSize = elem.SizeInBytes();
                 if (!elemSize) return std::nullopt;
-                total += *elemSize;
+                const std::uint64_t al = *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8)) : 1;
+                if (al > 1) offset = alignUp(offset, al);
+                offset += *elemSize > 0 ? *elemSize : 8;
+                maxAlign = std::max(maxAlign, al);
             }
-            return total;
+            return alignUp(offset, maxAlign);
         }
         case Kind::Named:
             if (!inner.empty()) return inner[0].SizeInBytes();
@@ -1322,13 +1336,18 @@ namespace Rux {
             }
 
             if (type.kind == TypeRef::Kind::Tuple) {
-                std::uint64_t total = 0;
+                auto alignUp = [](std::uint64_t v, std::uint64_t a) { return (v + a - 1) & ~(a - 1); };
+                std::uint64_t offset = 0;
+                std::uint64_t maxAlign = 1;
                 for (const auto& elem : type.inner) {
                     const auto elemSize = SizeOfTypeRef(elem, substitutions);
                     if (!elemSize) return std::nullopt;
-                    total += *elemSize;
+                    const std::uint64_t al = *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8)) : 1;
+                    if (al > 1) offset = alignUp(offset, al);
+                    offset += *elemSize > 0 ? *elemSize : 8;
+                    maxAlign = std::max(maxAlign, al);
                 }
-                return total;
+                return alignUp(offset, maxAlign);
             }
 
             return type.SizeInBytes();
@@ -2389,7 +2408,7 @@ namespace Rux {
             if (auto* e = dynamic_cast<const BinaryExpr*>(&expr)) {
                 TypeRef l = CheckExpr(*e->left);
                 TypeRef r = CheckExpr(*e->right);
-                return CheckBinary(e->op, l, r, *e->right, e->location);
+                return CheckBinary(e->op, l, r, *e->left, *e->right, e->location);
             }
 
             if (auto* e = dynamic_cast<const AssignExpr*>(&expr)) {
@@ -2434,6 +2453,8 @@ namespace Rux {
                         sym && sym->kind == Symbol::Kind::Func && !sym->funcOverloads.empty()) {
                         const FuncDecl* decl = LookupFunctionOverload(*sym, argTypes);
                         if (!decl) return TypeRef::MakeUnknown();
+                        if (!decl->warnMessage.empty()) EmitWarning(e->location, decl->warnMessage);
+                        if (!decl->errorMessage.empty()) EmitError(e->location, decl->errorMessage);
                         TypeRef funcType = FunctionType(*decl);
                         const std::size_t paramCount = funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()
                             ? funcType.inner.size() - 1
@@ -2500,6 +2521,8 @@ namespace Rux {
                     for (const auto& arg : e->args)
                         argTypes.push_back(CheckExpr(*arg));
                     if (const FuncDecl* method = LookupMethod(receiverType, field->field, argTypes)) {
+                        if (!method->warnMessage.empty()) EmitWarning(e->location, method->warnMessage);
+                        if (!method->errorMessage.empty()) EmitError(e->location, method->errorMessage);
                         std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
 
                         if (argTypes.size() != paramTypes.size()) {
@@ -2786,7 +2809,8 @@ namespace Rux {
                     EmitError(loc, std::format("unary '-' applied to non-numeric type '{}'", t.ToString()));
                 return t;
             case TokenKind::Tilde:
-                if (!t.IsInteger()) EmitError(loc, std::format("'~' applied to non-integer type '{}'", t.ToString()));
+                if (!t.IsInteger() && !t.IsBool())
+                    EmitError(loc, std::format("'~' applied to non-integer type '{}'", t.ToString()));
                 return t;
             case TokenKind::Star:
                 if (t.kind != TypeRef::Kind::Pointer)
@@ -2853,8 +2877,12 @@ namespace Rux {
             }
         }
 
-        TypeRef
-        CheckBinary(TokenKind op, const TypeRef& l, const TypeRef& r, const Expr& rightExpr, SourceLocation loc) {
+        TypeRef CheckBinary(TokenKind op,
+                            const TypeRef& l,
+                            const TypeRef& r,
+                            const Expr& leftExpr,
+                            const Expr& rightExpr,
+                            SourceLocation loc) {
             if (l.IsUnknown() || r.IsUnknown()) return TypeRef::MakeUnknown();
 
             const std::string_view opName = BinaryOperatorName(op);
@@ -2876,43 +2904,143 @@ namespace Rux {
                 }
             }
 
+            auto isNumericOrChar = [](const TypeRef& t) {
+                return t.IsNumeric() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
+                    t.kind == TypeRef::Kind::Char32;
+            };
+            auto isIntegerOrChar = [](const TypeRef& t) {
+                return t.IsInteger() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
+                    t.kind == TypeRef::Kind::Char32;
+            };
+            auto getCompatibleType = [&](const Expr& left,
+                                         const TypeRef& lt,
+                                         const Expr& right,
+                                         const TypeRef& rt) -> std::optional<TypeRef> {
+                if ((lt.IsInteger() &&
+                     (rt.kind == TypeRef::Kind::Char8 || rt.kind == TypeRef::Kind::Char16 ||
+                      rt.kind == TypeRef::Kind::Char32)) ||
+                    (rt.IsInteger() &&
+                     (lt.kind == TypeRef::Kind::Char8 || lt.kind == TypeRef::Kind::Char16 ||
+                      lt.kind == TypeRef::Kind::Char32))) {
+                    return lt.IsInteger() ? lt : rt;
+                }
+                if (lt.kind == rt.kind &&
+                    (lt.kind == TypeRef::Kind::Char8 || lt.kind == TypeRef::Kind::Char16 ||
+                     lt.kind == TypeRef::Kind::Char32)) {
+                    return lt;
+                }
+                if (CanAssignExprTo(right, rt, lt)) {
+                    return lt;
+                }
+                if (CanAssignExprTo(left, lt, rt)) {
+                    return rt;
+                }
+                return std::nullopt;
+            };
+
             using TK = TokenKind;
             switch (op) {
-            case TK::Plus:
-                if (l.kind == TypeRef::Kind::Pointer && r.IsInteger()) return l;
-                if (l.IsInteger() && r.kind == TypeRef::Kind::Pointer) return r;
-                if (!l.IsNumeric()) EmitError(loc, std::format("'+' applied to non-numeric type '{}'", l.ToString()));
+            case TK::Plus: {
+                if (l.kind == TypeRef::Kind::Pointer && isIntegerOrChar(r)) return l;
+                if (isIntegerOrChar(l) && r.kind == TypeRef::Kind::Pointer) return r;
+                if (!isNumericOrChar(l)) {
+                    EmitError(loc, std::format("'+' applied to non-numeric type '{}'", l.ToString()));
+                }
+                else if (!isNumericOrChar(r)) {
+                    EmitError(loc, std::format("'+' right operand must be numeric, got '{}'", r.ToString()));
+                }
+                else {
+                    auto res = getCompatibleType(leftExpr, l, rightExpr, r);
+                    if (!res.has_value()) {
+                        EmitError(
+                            loc,
+                            std::format("mismatched types in addition: '{}' and '{}'", l.ToString(), r.ToString()));
+                    }
+                    else {
+                        return *res;
+                    }
+                }
                 return l;
+            }
 
-            case TK::Minus:
-                if (l.kind == TypeRef::Kind::Pointer && r.IsInteger()) return l;
-                if (!l.IsNumeric()) EmitError(loc, std::format("'-' applied to non-numeric type '{}'", l.ToString()));
+            case TK::Minus: {
+                if (l.kind == TypeRef::Kind::Pointer && isIntegerOrChar(r)) return l;
+                if (!isNumericOrChar(l)) {
+                    EmitError(loc, std::format("'-' applied to non-numeric type '{}'", l.ToString()));
+                }
+                else if (!isNumericOrChar(r)) {
+                    EmitError(loc, std::format("'-' right operand must be numeric, got '{}'", r.ToString()));
+                }
+                else {
+                    auto res = getCompatibleType(leftExpr, l, rightExpr, r);
+                    if (!res.has_value()) {
+                        EmitError(
+                            loc,
+                            std::format("mismatched types in subtraction: '{}' and '{}'", l.ToString(), r.ToString()));
+                    }
+                    else {
+                        return *res;
+                    }
+                }
                 return l;
+            }
 
             case TK::Star:
             case TK::Slash:
             case TK::Percent:
-            case TK::StarStar:
-                if (!l.IsNumeric())
-                    EmitError(loc,
-                              std::format("'{}' applied to non-numeric type '{}'",
-                                          op == TK::Plus          ? "+"
-                                              : op == TK::Minus   ? "-"
-                                              : op == TK::Star    ? "*"
-                                              : op == TK::Slash   ? "/"
-                                              : op == TK::Percent ? "%"
-                                                                  : "**",
-                                          l.ToString()));
+            case TK::StarStar: {
+                std::string opStr = op == TK::Star ? "*" : op == TK::Slash ? "/" : op == TK::Percent ? "%" : "**";
+                if (!isNumericOrChar(l)) {
+                    EmitError(loc, std::format("'{}' applied to non-numeric type '{}'", opStr, l.ToString()));
+                }
+                else if (!isNumericOrChar(r)) {
+                    EmitError(loc, std::format("'{}' right operand must be numeric, got '{}'", opStr, r.ToString()));
+                }
+                else {
+                    auto res = getCompatibleType(leftExpr, l, rightExpr, r);
+                    if (!res.has_value()) {
+                        EmitError(loc,
+                                  std::format("mismatched types in binary operation: '{}' and '{}'",
+                                              l.ToString(),
+                                              r.ToString()));
+                    }
+                    else {
+                        return *res;
+                    }
+                }
                 return l;
+            }
 
             case TK::Amp:
             case TK::Pipe:
             case TK::Caret:
             case TK::LessLess:
-            case TK::GreaterGreater:
-                if (!l.IsInteger())
+            case TK::GreaterGreater: {
+                auto isBitwiseOperand = [](const TypeRef& t) {
+                    return t.IsInteger() || t.IsBool() || t.kind == TypeRef::Kind::Char8 ||
+                        t.kind == TypeRef::Kind::Char16 || t.kind == TypeRef::Kind::Char32;
+                };
+                if (!isBitwiseOperand(l)) {
                     EmitError(loc, std::format("bitwise operator applied to non-integer type '{}'", l.ToString()));
+                }
+                else if (!isBitwiseOperand(r)) {
+                    EmitError(loc,
+                              std::format("bitwise operator right operand must be integer, got '{}'", r.ToString()));
+                }
+                else {
+                    auto res = getCompatibleType(leftExpr, l, rightExpr, r);
+                    if (!res.has_value()) {
+                        EmitError(loc,
+                                  std::format("mismatched types in bitwise operation: '{}' and '{}'",
+                                              l.ToString(),
+                                              r.ToString()));
+                    }
+                    else {
+                        return *res;
+                    }
+                }
                 return l;
+            }
 
             case TK::AmpAmp:
             case TK::PipePipe:
@@ -2931,8 +3059,21 @@ namespace Rux {
             case TK::Less:
             case TK::LessEqual:
             case TK::Greater:
-            case TK::GreaterEqual:
+            case TK::GreaterEqual: {
+                bool compat = false;
+                if ((op == TK::Equal || op == TK::BangEqual) &&
+                    ((l.IsBool() && r.IsInteger()) || (l.IsInteger() && r.IsBool()))) {
+                    compat = true;
+                }
+                else if (getCompatibleType(leftExpr, l, rightExpr, r).has_value()) {
+                    compat = true;
+                }
+                if (!compat) {
+                    EmitError(loc,
+                              std::format("cannot compare mismatched types '{}' and '{}'", l.ToString(), r.ToString()));
+                }
                 return TypeRef::MakeBool();
+            }
 
             default:
                 return TypeRef::MakeUnknown();

@@ -224,14 +224,14 @@ namespace Rux {
     }
 
     // Parses zero or more @[AttrName(...)] attributes that precede a declaration.
-    // Returns the lib value from the first @[Import(lib: "...")] found.
-    // Unknown attributes are parsed and silently ignored for forward compatibility.
+    // Unknown attribute names are a compilation error.
     Parser::ParsedAttrs Parser::ParseAttrs() {
         ParsedAttrs attrs;
         while (Check(TokenKind::At)) {
             Advance(); // consume '@'
             Expect(TokenKind::LeftBracket, "expected '[' after '@'");
 
+            const SourceLocation attrLoc = CurrentLocation();
             std::string attrName;
             if (Check(TokenKind::Ident)) attrName = Advance().text;
 
@@ -261,8 +261,16 @@ namespace Rux {
                     else
                         attrs.targetOs = std::move(os);
                 }
-                else {
-                    // Parse key: value pairs until ')'
+                else if (attrName == "Warn" && Check(TokenKind::StringLiteral)) {
+                    // @[Warn("message")] — emit a compiler warning at each call site
+                    attrs.warnMessage = DecodeStringLiteralText(Advance().text);
+                }
+                else if (attrName == "Error" && Check(TokenKind::StringLiteral)) {
+                    // @[Error("message")] — emit a compiler error at each call site
+                    attrs.errorMessage = DecodeStringLiteralText(Advance().text);
+                }
+                else if (attrName == "Import") {
+                    // @[Import(lib: "...")] — DLL import library
                     while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                         if (!Check(TokenKind::Ident)) {
                             Advance();
@@ -270,15 +278,23 @@ namespace Rux {
                         }
                         std::string key = Advance().text;
                         if (!Match(TokenKind::Colon)) continue;
-                        if (attrName == "Import" && key == "lib" && Check(TokenKind::StringLiteral))
+                        if (key == "lib" && Check(TokenKind::StringLiteral))
                             attrs.importLib = DecodeStringLiteralText(Advance().text);
                         else
                             Advance(); // skip unknown value
                         if (!Match(TokenKind::Comma)) break;
                     }
                 }
+                else {
+                    EmitError(attrLoc, std::format("unknown attribute '{}'", attrName));
+                    while (!Check(TokenKind::RightParen) && !IsAtEnd())
+                        Advance();
+                }
 
                 Expect(TokenKind::RightParen, "expected ')' to close attribute");
+            }
+            else {
+                EmitError(attrLoc, std::format("unknown attribute '{}'", attrName));
             }
 
             Expect(TokenKind::RightBracket, "expected ']' to close attribute");
@@ -296,7 +312,11 @@ namespace Rux {
         if (Match(TokenKind::PubKeyword)) isPublic = true;
 
         auto withTarget = [&](DeclPtr decl) -> DeclPtr {
-            if (decl && decl->targetOs.empty()) decl->targetOs = attrs.targetOs;
+            if (decl) {
+                if (decl->targetOs.empty()) decl->targetOs = attrs.targetOs;
+                if (decl->warnMessage.empty()) decl->warnMessage = attrs.warnMessage;
+                if (decl->errorMessage.empty()) decl->errorMessage = attrs.errorMessage;
+            }
             return decl;
         };
 

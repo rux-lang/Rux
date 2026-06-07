@@ -71,6 +71,8 @@ namespace Rux {
             std::string importLib;
             CallingConvention callConv = CallingConvention::Default;
             std::string targetOs;
+            std::string warnMessage;
+            std::string errorMessage;
         };
 
         // Parses zero or more @[AttrName(...)] attributes before a declaration.

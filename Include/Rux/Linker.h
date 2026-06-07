@@ -12,7 +12,7 @@ namespace Rux {
     };
 
     // Links one or more RcuFile objects into a native x86-64 executable.
-    // Windows hosts emit PE32+; Linux hosts emit ELF64; macOS hosts emit Mach-O.
+    // Windows hosts emit PE32+; Unix-like hosts emit ELF64; macOS hosts emit Mach-O.
     class Linker {
     public:
         explicit Linker(std::vector<RcuFile> objects,

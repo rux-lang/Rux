@@ -276,8 +276,7 @@ namespace Rux {
     Token Lexer::ScanIntLiteral(SourceLocation start, std::size_t tokenStart) {
         // Detect base from prefix (set in ScanNumber before calling this).
         // 0x/0X -> 16, 0b/0B -> 2, 0o/0O -> 8, else 10.
-        const std::string scanned = source.substr(tokenStart, pos - tokenStart);
-        const std::string_view text = scanned;
+        const std::string_view text(source.data() + tokenStart, pos - tokenStart);
         int base = 10;
         if (text.size() >= 2 && text[0] == '0') {
             const char prefix = text[1];
@@ -289,46 +288,25 @@ namespace Rux {
                 base = 8;
         }
 
-        // Valid digit sets per base
-        const auto isValidDigit = [base](char c) -> bool {
-            if (c >= '0' && c <= '9') return c - '0' < base;
-            if (base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return true;
-            return false;
-        };
-
-        // Validate each digit in the already-scanned prefix (skip prefix chars like 0x)
-        const std::size_t skip = (base != 10 && text.size() >= 2 && text[0] == '0') ? 2 : 0;
-        for (std::size_t i = skip; i < text.size(); ++i) {
-            const char c = text[i];
-            if (c == '_') continue;
-            if (!isValidDigit(c)) {
-                EmitError(start, std::string("invalid digit '") + c + "' for base " + std::to_string(base));
-            }
-        }
-
-        // Consume remaining hex / binary / octal digits (and underscores as separators)
-        bool emittedInvalidDigitError = false;
+        // Consume the valid base digits (and '_' separators), stopping at the first
+        // character that is not a digit for this base so a type suffix (e.g. 0xFFu)
+        // can follow, exactly like the decimal literal path in ScanNumber.
+        std::size_t digitCount = 0;
         while (!IsAtEnd()) {
             const char c = Peek();
-            if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
-                // Validate as we consume
-                bool valid = false;
-                if (c >= '0' && c <= '9')
-                    valid = c - '0' < base;
-                else if (base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
-                    valid = true;
-                else if (c == '_')
-                    valid = true;
-                if (!valid && !emittedInvalidDigitError) {
-                    EmitError(CurrentLocation(),
-                              std::string("invalid digit '") + c + "' for base " + std::to_string(base));
-                    emittedInvalidDigitError = true;
-                }
-                Advance();
-            }
-            else
-                break;
+            bool valid = false;
+            if (c >= '0' && c <= '9')
+                valid = c - '0' < base;
+            else if (base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+                valid = true;
+            else if (c == '_')
+                valid = true;
+            if (!valid) break;
+            if (c != '_') ++digitCount;
+            Advance();
         }
+        if (digitCount == 0) EmitError(start, "expected digits after base prefix");
+        ConsumeNumberSuffix();
         return MakeToken(TokenKind::IntLiteral, start, tokenStart);
     }
 

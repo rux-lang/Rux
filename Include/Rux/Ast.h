@@ -394,6 +394,8 @@ namespace Rux {
         SourceLocation location;
         bool isPublic = false;
         std::string targetOs; // empty = unconditional; "Windows", "Linux" = platform-conditional
+        std::string warnMessage; // non-empty = emit this warning at each call site
+        std::string errorMessage; // non-empty = emit this error at each call site
         virtual ~Decl() = default;
     };
 

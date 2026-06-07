@@ -28,7 +28,7 @@
 [![OpenBSD](https://github.com/rux-lang/Rux/actions/workflows/openbsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/openbsd.yml)
 [![Windows](https://github.com/rux-lang/Rux/actions/workflows/windows.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/windows.yml)
 
-Rux is a fast, compiled, strongly typed, multi-paradigm, general-purpose programming language.
+Rux is a fast, compiled, strongly typed, multi-paradigm programming language.
 
 ## Project Status
 
@@ -46,7 +46,7 @@ Currently, under development.
 Here’s how you can get involved:
 
 - Join the conversation on [GitHub Discussions](https://github.com/rux-lang/rux/discussions), [Discord](https://discord.com/invite/uvSHjtZSVG), or [Reddit](https://www.reddit.com/r/ruxlang)
-- Subscribe on [YouTube](https://www.youtube.com/@ruxlang), [X](https://x.com/ruxlang), [Bluesky](https://bsky.app/profile/ruxlang.bsky.social), [Mastodon](https://mastodon.social/@ruxlang), [Telegram](https://t.me/ruxlang) to get early updates, dev logs, and sneak peeks
+- Subscribe on [YouTube](https://www.youtube.com/@ruxlang), [X](https://x.com/ruxlang), [Bluesky](https://bsky.app/profile/rux-lang.dev), [Mastodon](https://mastodon.social/@ruxlang), [Telegram](https://t.me/ruxlang) to get early updates, dev logs, and sneak peeks
 - Contribute ideas — from grammar tweaks to mascot variants, we’re open to playful and technical input alike
 - Discuss architecture — compiler design, type systems, and extensibility are all on the table
 

@@ -32,13 +32,21 @@ namespace Rux {
             case TypeRef::Kind::Opaque:
                 return 0;
             case TypeRef::Kind::Tuple: {
-                int total = 0;
-                for (const auto& elem : t.inner)
-                    total += SizeOf(elem);
-                return total;
+                const auto alignUp = [](int v, int a) { return (v + a - 1) & ~(a - 1); };
+                int offset = 0;
+                int maxAlign = 1;
+                for (const auto& elem : t.inner) {
+                    const int sz = SizeOf(elem);
+                    const int al = sz > 0 ? std::min(sz, 8) : 1;
+                    if (al > 1) offset = alignUp(offset, al);
+                    offset += sz > 0 ? sz : 8;
+                    maxAlign = std::max(maxAlign, al);
+                }
+                return alignUp(offset, maxAlign);
             }
             case TypeRef::Kind::Named:
                 if (!t.inner.empty()) return SizeOf(t.inner[0]);
+                if (t.name == "Slice" || t.name.starts_with("Slice<")) return 16;
                 return 8;
             default:
                 return 8; // int, uint, int64, uint64, float64, pointer, str, named, …
@@ -143,9 +151,14 @@ namespace Rux {
                 int sz = SizeOf(f.type);
                 int al = sz > 0 ? std::min(sz, 8) : 1;
                 if (f.type.kind == TypeRef::Kind::Named) {
-                    if (auto it = known.find(BaseTypeName(f.type.name)); it != known.end()) {
+                    const auto baseName = BaseTypeName(f.type.name);
+                    if (auto it = known.find(baseName); it != known.end()) {
                         sz = it->second.totalSize;
                         al = it->second.alignment;
+                    }
+                    else if (baseName == "Slice" || baseName.starts_with("Slice<")) {
+                        sz = 16;
+                        al = 8;
                     }
                 }
                 if (al > 1) offset = AlignUp(offset, al);
@@ -1073,9 +1086,17 @@ namespace Rux {
                     catch (...) {
                         return 0;
                     }
+                    if (idx >= inner.inner.size()) return 0;
                     int offset = 0;
-                    for (std::size_t i = 0; i < idx && i < inner.inner.size(); ++i)
-                        offset += SizeOf(inner.inner[i]);
+                    for (std::size_t i = 0; i < idx && i < inner.inner.size(); ++i) {
+                        const int sz = SizeOf(inner.inner[i]);
+                        const int al = sz > 0 ? std::min(sz, 8) : 1;
+                        if (al > 1) offset = AlignUp(offset, al);
+                        offset += sz > 0 ? sz : 8;
+                    }
+                    const int fieldSize = SizeOf(inner.inner[idx]);
+                    const int fieldAlign = fieldSize > 0 ? std::min(fieldSize, 8) : 1;
+                    if (fieldAlign > 1) offset = AlignUp(offset, fieldAlign);
                     return offset;
                 }
                 if (inner.kind != TypeRef::Kind::Named) return 0;
@@ -1121,6 +1142,9 @@ namespace Rux {
                                            slotMap.at(arg)));
                             fltIdx++;
                         }
+                        else {
+                            stackArgs.push_back(arg);
+                        }
                     }
                     else {
                         if (intIdx < maxIntRegs) {
@@ -1129,25 +1153,21 @@ namespace Rux {
                                 "{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
                             intIdx++;
                         }
-                        else if (win64) {
+                        else {
                             stackArgs.push_back(arg);
                         }
                     }
                 }
-                const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16) : 0;
-                if (win64) {
+                const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
+                                             : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
+                if (stackBytes > 0) {
                     TI(std::format("sub     rsp, {}", stackBytes));
-                    for (std::size_t i = 0; i < stackArgs.size(); ++i) {
-                        TypeRef at = regTypes.contains(stackArgs[i]) ? regTypes.at(stackArgs[i]) : TypeRef::MakeInt64();
-                        const int sz = std::max(SizeOf(at), 1);
-                        TI(std::format("{:<8}rax, {} [rbp - {}]", "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
-                        TI(std::format("{:<8}qword [rsp + {}], rax", "mov", 32 + i * 8));
-                    }
+                    StoreStackArgs(stackArgs, win64);
                 }
                 // Stack is already 16-byte aligned: prologue sub rsp,frameSize ensures
                 // rsp ≡ 8 (mod 16) which the ABI requires before a call instruction.
                 TI(std::format("{:<8}{}", "call", callee));
-                if (win64) TI(std::format("add     rsp, {}", stackBytes));
+                if (stackBytes > 0) TI(std::format("add     rsp, {}", stackBytes));
                 if (dst != LirNoReg && !retType.IsOpaque()) StoreA(dst, retType);
             }
 
@@ -1159,25 +1179,35 @@ namespace Rux {
                 LirReg callee = srcs[0];
                 std::vector<LirReg> args(srcs.begin() + 1, srcs.end());
                 const std::vector<LirReg> stackArgs = EmitCallArgs(args, callConv);
-                const int stackBytes =
-                    callConv == CallingConvention::Win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16) : 0;
-                if (callConv == CallingConvention::Win64) {
+                const bool win64 = callConv == CallingConvention::Win64;
+                const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
+                                             : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
+                if (stackBytes > 0) {
                     TI(std::format("sub     rsp, {}", stackBytes));
-                    StoreWin64StackArgs(stackArgs);
+                    StoreStackArgs(stackArgs, win64);
                 }
                 // Load the callee after preparing args because arg setup uses r10.
                 TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(callee)));
                 TI("call    r10");
-                if (callConv == CallingConvention::Win64) TI(std::format("add     rsp, {}", stackBytes));
+                if (stackBytes > 0) TI(std::format("add     rsp, {}", stackBytes));
                 if (dst != LirNoReg && !retType.IsOpaque()) StoreA(dst, retType);
             }
 
-            void StoreWin64StackArgs(const std::vector<LirReg>& stackArgs) {
+            void StoreStackArgs(const std::vector<LirReg>& stackArgs, bool win64) {
                 for (std::size_t i = 0; i < stackArgs.size(); ++i) {
                     TypeRef at = regTypes.contains(stackArgs[i]) ? regTypes.at(stackArgs[i]) : TypeRef::MakeInt64();
                     const int sz = std::max(SizeOf(at), 1);
-                    TI(std::format("{:<8}rax, {} [rbp - {}]", "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
-                    TI(std::format("{:<8}qword [rsp + {}], rax", "mov", 32 + i * 8));
+                    if (sz == 8) {
+                        TI(std::format("{:<8}rax, {} [rbp - {}]", "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
+                    }
+                    else if (sz == 4) {
+                        TI(std::format("{:<8}eax, {} [rbp - {}]", "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
+                    }
+                    else {
+                        TI(std::format("{:<8}rax, {} [rbp - {}]", "movzx", PtrSize(sz), slotMap.at(stackArgs[i])));
+                    }
+                    const int offset = win64 ? (32 + i * 8) : (i * 8);
+                    TI(std::format("{:<8}qword [rsp + {}], rax", "mov", offset));
                 }
             }
 
@@ -1199,6 +1229,9 @@ namespace Rux {
                                            slotMap.at(arg)));
                             fltIdx++;
                         }
+                        else {
+                            stackArgs.push_back(arg);
+                        }
                     }
                     else {
                         if (intIdx < maxIntRegs) {
@@ -1207,7 +1240,7 @@ namespace Rux {
                                 "{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
                             intIdx++;
                         }
-                        else if (win64) {
+                        else {
                             stackArgs.push_back(arg);
                         }
                     }

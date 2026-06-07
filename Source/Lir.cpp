@@ -522,13 +522,14 @@ namespace Rux {
                     // Interface values are 16-byte fat ptrs; callers pass their address.
                     // pr holds that address directly — no extra alloca.
                     locals[name] = pr;
-                    lf.params.push_back({pr, type, name});
+                    lf.params.push_back({pr, TypeRef::MakePointer(type), name});
                 }
                 else if (IsSliceType(type)) {
                     // Slice values are 16-byte {data, length} structs; callers pass a pointer.
                     // pr holds that pointer directly — FieldPtr handles the indirection.
+                    // Register with Pointer<type> so ResolveFieldOffset can compute field offsets.
                     locals[name] = pr;
-                    lf.params.push_back({pr, type, name});
+                    lf.params.push_back({pr, TypeRef::MakePointer(type), name});
                 }
                 else {
                     const LirReg slot = EmitAlloca(type);
@@ -1531,8 +1532,15 @@ namespace Rux {
         LirReg LowerCall(const HirCallExpr& e) {
             std::vector<LirReg> argRegs;
             argRegs.reserve(e.args.size());
-            for (const auto& arg : e.args)
-                argRegs.push_back(LowerExpr(*arg));
+            for (const auto& arg : e.args) {
+                // Slice types are 16-byte {data, length} structs. The callee
+                // expects a POINTER to the struct (not the 16-byte value, which
+                // wouldn't fit in a single ABI register), so take the lvalue.
+                if (IsSliceType(arg->type))
+                    argRegs.push_back(LowerLValue(*arg));
+                else
+                    argRegs.push_back(LowerExpr(*arg));
+            }
             const LirReg dst = e.type.IsOpaque() ? LirNoReg : NewReg();
             LirInstr ci;
             ci.dst = dst;
@@ -1711,6 +1719,15 @@ namespace Rux {
             }
             if (auto* e = dynamic_cast<const HirUnaryExpr*>(&expr)) {
                 if (e->op == TokenKind::Star) return LowerExpr(*e->operand); // pointer dereference
+            }
+            if (auto* e = dynamic_cast<const HirLiteralExpr*>(&expr)) {
+                // String literals: return the alloca slot directly instead of
+                // spilling through the 16-byte fallback (which would misread
+                // the alloca vreg's 8-byte pointer slot as the slice value).
+                if (IsStringSliceLiteral(*e)) return LowerStringLiteralSlice(*e);
+                LirReg slot = EmitAlloca(expr.type);
+                EmitStore(EmitConst(e->value, e->type), slot, expr.type);
+                return slot;
             }
             // Non-addressable fallback: spill to a temp slot.
             LirReg val = LowerExpr(expr);
