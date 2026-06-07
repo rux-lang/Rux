@@ -2202,6 +2202,76 @@ namespace Rux {
                     }
                 }
 
+                if (auto* path = dynamic_cast<const PathExpr*>(e->callee.get()); path && path->segments.size() >= 2) {
+                    std::vector<HirExprPtr> args;
+                    std::vector<TypeRef> argTypes;
+                    args.reserve(e->args.size());
+                    argTypes.reserve(e->args.size());
+                    for (const auto& arg : e->args) {
+                        auto lowered = LowerExpr(*arg);
+                        argTypes.push_back(lowered->type);
+                        args.push_back(std::move(lowered));
+                    }
+                    const std::string& funcName = path->segments.back();
+                    HirSymbol* sym = currentScope->Lookup(funcName);
+                    if (sym && sym->kind == HirSymbol::Kind::Func && !sym->funcOverloads.empty()) {
+                        if (const FuncDecl* decl = LookupFunction(funcName, argTypes)) {
+                            TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+                            if (funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()) {
+                                const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
+                                const std::size_t fixedCount = decl->params.size() - (isVariadic ? 1 : 0);
+                                for (std::size_t i = args.size(); i < fixedCount; ++i) {
+                                    if (decl->params[i].defaultValue) {
+                                        TypeRef pt = (i + 1 < funcType.inner.size()) ? funcType.inner[i]
+                                                                                     : TypeRef::MakeUnknown();
+                                        args.push_back(
+                                            LowerDefaultArg(**decl->params[i].defaultValue, pt, e->location));
+                                    }
+                                }
+                                if (isVariadic) {
+                                    TypeRef varElemType = ResolveType(*decl->params.back().type);
+                                    const bool isSingleSpread =
+                                        (e->args.size() == fixedCount + 1 &&
+                                         dynamic_cast<const SpreadExpr*>(e->args[fixedCount].get()));
+                                    if (isSingleSpread) {
+                                        HirExprPtr sliceArg = std::move(args[fixedCount]);
+                                        sliceArg->type = TypeRef::MakeNamed(SliceTypeName(varElemType));
+                                        args.resize(fixedCount);
+                                        args.push_back(std::move(sliceArg));
+                                    }
+                                    else {
+                                        auto slice = std::make_unique<HirSliceExpr>();
+                                        slice->location = e->location;
+                                        slice->elementType = varElemType;
+                                        slice->type = TypeRef::MakeNamed(SliceTypeName(varElemType));
+                                        for (std::size_t i = fixedCount; i < e->args.size(); ++i)
+                                            slice->elements.push_back(LowerExprAs(*e->args[i], varElemType));
+                                        args.resize(fixedCount);
+                                        args.push_back(std::move(slice));
+                                    }
+                                }
+
+                                auto callee = std::make_unique<HirVarExpr>();
+                                callee->location = path->location;
+                                callee->name = FunctionCalleeName(funcName, *decl);
+                                callee->type = funcType;
+
+                                auto he = std::make_unique<HirCallExpr>();
+                                he->location = e->location;
+                                he->type = funcType.inner.back();
+                                he->callee = std::move(callee);
+                                for (std::size_t i = 0; i < args.size(); ++i) {
+                                    if (i < e->args.size() && i + 1 < funcType.inner.size() &&
+                                        UnsuffixedIntegerLiteralFits(*e->args[i], funcType.inner[i]))
+                                        args[i]->type = funcType.inner[i];
+                                    he->args.push_back(std::move(args[i]));
+                                }
+                                return he;
+                            }
+                        }
+                    }
+                }
+
                 if (auto* ident = dynamic_cast<const IdentExpr*>(e->callee.get())) {
                     std::vector<HirExprPtr> args;
                     std::vector<TypeRef> argTypes;
