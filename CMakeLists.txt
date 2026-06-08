@@ -27,12 +27,30 @@ configure_file(
         @ONLY
 )
 
-file(GLOB_RECURSE RUX_SOURCES 
-    Sources/*.cpp
-    Include/Rux/*.h
-)
 
-add_executable(rux ${RUX_SOURCES})
+add_executable(rux
+        Source/Main.cpp
+        Source/Platform.cpp
+        Source/Cli/Cli.cpp
+        Source/Cli/Commands/HelpCmd.cpp
+        Source/Cli/Commands/Base/BuildCmd.cpp
+        Source/Cli/Commands/Base/CheckCmd.cpp
+        Source/Cli/Commands/Base/InstallCmd.cpp
+        Source/Cli/Commands/Base/PackageCmd.cpp
+        Source/Cli/Commands/Base/UtilityCmd.cpp
+        Source/Manifest.cpp
+        Source/Package.cpp
+        Source/Token.cpp
+        Source/Lexer.cpp
+        Source/SourceLoader.cpp
+        Source/Parser.cpp
+        Source/Sema.cpp
+        Source/Hir.cpp
+        Source/Lir.cpp
+        Source/Asm.cpp
+        Source/Rcu.cpp
+        Source/Linker.cpp
+)
 
 # GCC/MinGW: link experimental libstdc++ extensions (needed for <print> support in some builds)
 if (MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
