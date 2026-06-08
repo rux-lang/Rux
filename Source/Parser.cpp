@@ -1709,6 +1709,17 @@ namespace Rux {
             Expect(TokenKind::RightBracket, "expected ']'");
             return e;
         }
+        // Array literal: { expr, expr, ... }
+        if (Match(TokenKind::LeftBrace)) {
+            auto e = std::make_unique<SliceExpr>();
+            e->location = loc;
+            while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+                e->elements.push_back(ParseExpr());
+                if (!Match(TokenKind::Comma)) break;
+            }
+            Expect(TokenKind::RightBrace, "expected '}'");
+            return e;
+        }
         // Grouped expression or tuple: (expr)  or  (expr, expr, ...)
         if (Match(TokenKind::LeftParen)) {
             auto first = ParseExpr();
