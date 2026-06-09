@@ -362,7 +362,7 @@ namespace Rux {
                 int off = slotMap.at(reg);
                 if (runtimeSz == 16) {
                     TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", off));
-                    TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", off - 8));
+                    TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", off + 8));
                 }
                 else if (IsFloat(t)) {
                     TI(std::format("{:<8}xmm0, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
@@ -409,7 +409,7 @@ namespace Rux {
                 int off = slotMap.at(dst);
                 if (runtimeSz == 16) {
                     TI(std::format("{:<8}qword [rbp - {}], rax", "mov", off));
-                    TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", off - 8));
+                    TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", off + 8));
                 }
                 else if (IsFloat(t)) {
                     TI(std::format("{:<8}{} [rbp - {}], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
@@ -661,7 +661,7 @@ namespace Rux {
                             TI(std::format("{:<8}rax, qword [r10]", "mov"));
                             TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
                             TI(std::format("{:<8}rax, qword [r10 + 8]", "mov"));
-                            TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst) - 8));
+                            TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst) + 8));
                             break;
                         }
                         if (IsFloat(t)) {
@@ -702,7 +702,7 @@ namespace Rux {
                     if (runtimeSz == 16) {
                         TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(val)));
                         TI(std::format("{:<8}qword [r11], rax", "mov"));
-                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(val) - 8));
+                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(val) + 8));
                         TI(std::format("{:<8}qword [r11 + 8], rax", "mov"));
                     }
                     else if (IsFloat(t)) {

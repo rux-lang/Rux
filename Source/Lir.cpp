@@ -1256,7 +1256,7 @@ namespace Rux {
         }
 
         LirReg LowerAssign(const HirAssignExpr& e) {
-            if (e.op == TokenKind::Assign && IsInterfaceType(e.type)) {
+            if (e.op == TokenKind::Assign && (IsInterfaceType(e.type) || IsSliceType(e.type))) {
                 const LirReg ptr = LowerLValue(*e.target);
                 StoreExprIntoSlot(*e.value, ptr, e.type);
                 return ptr;
