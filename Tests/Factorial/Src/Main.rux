@@ -1,0 +1,88 @@
+func FactRec(n: int) -> int {
+    if n == 0 { return 1; }
+    return n * FactRec(n - 1);
+}
+
+func FactIter(n: int) -> int {
+    var result: int = 1;
+
+    for i in 1..=n {
+        result *= i;
+    }
+
+    return result;
+}
+
+func CheckFactorialConsistency(n: int) -> int {
+    let r: int = FactRec(n);
+    let i: int = FactIter(n);
+
+    if r != i {
+        return 27 + n;
+    }
+
+    return r;
+}
+
+func Expected(n: int) -> int {
+    if n == 0 { return 1; }
+    if n == 1 { return 1; }
+    if n == 2 { return 2; }
+    if n == 3 { return 6; }
+    if n == 4 { return 24; }
+    if n == 5 { return 120; }
+    if n == 6 { return 720; }
+    if n == 7 { return 5040; }
+    if n == 8 { return 40320; }
+    if n == 9 { return 362880; }
+    if n == 10 { return 3628800; }
+    if n == 11 { return 39916800; }
+    if n == 12 { return 479001600; }
+    return -1;
+}
+
+func Main() -> int {
+
+    for i in 0..=12 {
+        let exp: int = Expected(i);
+
+        let rec: int = FactRec(i);
+        if rec != exp { return 2 * i + 1; }
+
+        let iter: int = FactIter(i);
+        if iter != exp { return 2 * i + 2; }
+    }
+
+    for i in 0..=11 {
+        if CheckFactorialConsistency(i) != FactRec(i) {
+            return 27 + i;
+        }
+    }
+
+    for i in 0..=4 {
+        let x: int = FactRec(i) + FactIter(i);
+        let y: int = 2 * Expected(i);
+
+        if x != y {
+            return 39 + i;
+        }
+    }
+
+    for i in 0..=10 {
+        let a: int = FactRec(i);
+        let b: int = FactRec(i);
+
+        if a != b {
+            return 49 + i;
+        }
+
+        let c: int = FactIter(i);
+        let d: int = FactIter(i);
+
+        if c != d {
+            return 59 + i;
+        }
+    }
+
+    return 0;
+}
