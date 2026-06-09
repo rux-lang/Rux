@@ -281,60 +281,63 @@ namespace Rux {
             // Check
             constexpr std::array check_usage = {"[options]"sv};
             constexpr std::array check_opts = {
-                OptionDoc{.flags = "--json"sv, .desc = "Output diagnostics as JSON"sv},
-                OptionDoc{.flags = "--target <triple>"sv, .desc = "Check for a specific target"sv}};
+                OptionDoc{.flags = "--json"sv, .desc = "Output diagnostics in JSON format"sv},
+                OptionDoc{.flags = "--target <triple>"sv,
+                          .desc = "Check code health for a specific target platform"sv}};
             constexpr std::array check_exs = {""sv, "--json"sv, "--target windows-x64"sv};
 
             // Clean
             constexpr std::array clean_usage = {"[options]"sv};
             constexpr std::array clean_opts = {
-                OptionDoc{.flags = "--temp"sv, .desc = "Removes only Temp/ directory"sv}};
+                OptionDoc{.flags = "--temp"sv, .desc = "Remove only the temporary build directory (Temp/)"sv}};
             constexpr std::array clean_exs = {""sv, "--temp"sv};
 
             // Doc
             constexpr std::array doc_usage = {"[options]"sv};
             constexpr std::array doc_opts = {
-                OptionDoc{.flags = "--open"sv, .desc = "Open documentation after the generation"sv}};
+                OptionDoc{.flags = "--open"sv, .desc = "Open the generated documentation index in a browser"sv}};
             constexpr std::array doc_exs = {""sv, "--open"sv};
 
             // Fmt
             constexpr std::array fmt_usage = {"[options]"sv};
             constexpr std::array fmt_opts = {
-                OptionDoc{.flags = "--check"sv, .desc = "Check formatting without modifying files"sv},
-                OptionDoc{.flags = "--manifest"sv, .desc = "Format only the manifest (Rux.toml)"sv}};
+                OptionDoc{.flags = "--check"sv,
+                          .desc = "Check file formatting status without modifying source files"sv},
+                OptionDoc{.flags = "--manifest"sv, .desc = "Format only the manifest configuration file (Rux.toml)"sv}};
             constexpr std::array fmt_exs = {""sv, "--check"sv, "--manifest"sv};
 
             // Info
             constexpr std::array info_usage = {"[package name]"sv};
             constexpr std::array info_opts = {
-                OptionDoc{.flags = "--json"sv, .desc = "Returns a JSON instead of a string"sv}};
+                OptionDoc{.flags = "--json"sv, .desc = "Output package metadata in JSON format"sv}};
             constexpr std::array info_exs = {"Std"sv, "Windows"sv};
 
             // Init
             constexpr std::array init_usage = {"[options]"sv};
-            constexpr std::array init_opts = {OptionDoc{.flags = "--bin"sv, .desc = "Create a binary package"sv},
-                                              OptionDoc{.flags = "--lib"sv, .desc = "Create a library package"sv}};
+            constexpr std::array init_opts = {
+                OptionDoc{.flags = "--bin"sv, .desc = "Create an executable binary package configuration"sv},
+                OptionDoc{.flags = "--lib"sv, .desc = "Create a library package configuration"sv}};
             constexpr std::array init_exs = {""sv, "--bin"sv};
 
             // Install
             constexpr std::array install_usage = {""sv, "[package]"sv, "[package]@[version]"sv, "--dev [package]"sv};
             constexpr std::array install_opts = {
-                OptionDoc{.flags = "--dev"sv,
-                          .desc = "Clone the package repository's dev branch instead of the default branch"sv}};
+                OptionDoc{.flags = "--dev"sv, .desc = "Clone the package repository's development branch"sv}};
             constexpr std::array install_exs = {""sv, "Std"sv, "Std@0.1.0"sv, "--dev Std"sv, "--dev Windows"sv};
 
             // List
             constexpr std::array list_usage = {"[options]"sv};
-            constexpr std::array list_opts = {OptionDoc{
-                .flags = "--global"sv, .desc = "List all packages in the global cache instead of the manifest"sv}};
+            constexpr std::array list_opts = {
+                OptionDoc{.flags = "--global"sv,
+                          .desc = "List packages in the global environment cache instead of the local manifest"sv}};
             constexpr std::array list_exs = {""sv, "--global"sv};
 
             // New
             constexpr std::array new_usage = {"[name] [options]"sv};
             constexpr std::array new_opts = {
-                OptionDoc{.flags = "--bin"sv, .desc = "Create a binary application (default)"sv},
-                OptionDoc{.flags = "--lib"sv, .desc = "Create a library package"sv},
-                OptionDoc{.flags = "--path <dir>"sv, .desc = "Create in a specific directory"sv}};
+                OptionDoc{.flags = "--bin"sv, .desc = "Create an executable binary package application (default)"sv},
+                OptionDoc{.flags = "--lib"sv, .desc = "Create a library code package"sv},
+                OptionDoc{.flags = "--path <dir>"sv, .desc = "Create the workspace in a specific directory"sv}};
             constexpr std::array new_exs = {"Program"sv, "Program --bin"sv};
 
             // Remove
@@ -358,9 +361,8 @@ namespace Rux {
 
             // Update
             constexpr std::array update_usage = {"[options]"sv};
-            constexpr std::array update_opts = {OptionDoc{
-                .flags = "--global"sv,
-                .desc = "Update all packages in the global cache instead of only those listed in the manifest"sv}};
+            constexpr std::array update_opts = {
+                OptionDoc{.flags = "--global"sv, .desc = "Update all entries in the global environment cache"sv}};
             constexpr std::array update_exs = {""sv, "--global"sv};
 
             // Version
@@ -369,7 +371,7 @@ namespace Rux {
 
         namespace GlobalOpts {
             constexpr std::array catalog = {
-                OptionDoc{.flags = "--color <auto|on|off>"sv, .desc = "Control colored output"sv},
+                OptionDoc{.flags = "--color <auto|on|off>"sv, .desc = "Control colored console output"sv},
                 OptionDoc{.flags = "-h, --help"sv, .desc = "Show help information"sv},
                 OptionDoc{.flags = "-q, --quiet"sv, .desc = "Do not show log messages"sv},
                 OptionDoc{.flags = "-v, --verbose"sv, .desc = "Use verbose output"sv},
@@ -379,7 +381,8 @@ namespace Rux {
         constexpr std::array G_COMMAND_HELP_MAPS = {
             CommandDoc{.name = "add"sv,
                        .shortDesc = "Add a dependency to the manifest"sv,
-                       .description = "Add a dependency to the current package"sv,
+                       .description =
+                           "Add a brand new external dependency link directly into the package configuration file."sv,
                        .usage = Data::add_usage,
                        .postUsage = {},
                        .footer = "This command updates Rux.toml accordingly."sv,
@@ -396,23 +399,27 @@ namespace Rux {
                        .examples = Data::build_exs,
                        .options = Data::build_opts},
 
-            CommandDoc{.name = "check"sv,
-                       .shortDesc = "Check package source code for errors"sv,
-                       .description = {} /* Fallback */,
-                       .usage = Data::check_usage,
-                       .postUsage = {},
-                       .footer = {},
-                       .examples = Data::check_exs,
-                       .options = Data::check_opts},
+            CommandDoc{
+                .name = "check"sv,
+                .shortDesc = "Check package source code for errors without building"sv,
+                .description =
+                    "Parse and analyze the source workspace files for syntactic or semantic safety flaws without emitting compilation binaries."sv,
+                .usage = Data::check_usage,
+                .postUsage = {},
+                .footer = {},
+                .examples = Data::check_exs,
+                .options = Data::check_opts},
 
-            CommandDoc{.name = "clean"sv,
-                       .shortDesc = "Remove build artifacts"sv,
-                       .description = "Remove all build artifacts and temporary files"sv,
-                       .usage = Data::clean_usage,
-                       .postUsage = "Removes the configured build output directory and Temp/ folder."sv,
-                       .footer = {},
-                       .examples = Data::clean_exs,
-                       .options = Data::clean_opts},
+            CommandDoc{
+                .name = "clean"sv,
+                .shortDesc = "Remove build artifacts"sv,
+                .description =
+                    "Purge compiled code modules, system logs, and cached local build tracking states from the environment workspace."sv,
+                .usage = Data::clean_usage,
+                .postUsage = "Removes the configured build output directory and Temp/ folder."sv,
+                .footer = {},
+                .examples = Data::clean_exs,
+                .options = Data::clean_opts},
 
             CommandDoc{.name = "doc"sv,
                        .shortDesc = "Generate package documentation"sv,
@@ -425,7 +432,7 @@ namespace Rux {
 
             CommandDoc{.name = "fmt"sv,
                        .shortDesc = "Format source files and manifests"sv,
-                       .description = "Format all *.rux source files"sv,
+                       .description = "Format all *.rux source files and *.toml manifests"sv,
                        .usage = Data::fmt_usage,
                        .postUsage = {},
                        .footer = {},
@@ -442,7 +449,7 @@ namespace Rux {
                        .options = {}},
 
             CommandDoc{.name = "info"sv,
-                       .shortDesc = "Show package metadata and manifest"sv,
+                       .shortDesc = "Show package metadata and manifest information"sv,
                        .description = "Show information about an installed Rux package"sv,
                        .usage = Data::info_usage,
                        .postUsage = {},
@@ -451,8 +458,8 @@ namespace Rux {
                        .options = Data::info_opts},
 
             CommandDoc{.name = "init"sv,
-                       .shortDesc = "Initialize a Rux package in the directory"sv,
-                       .description = "Initialize a new package in the current directory"sv,
+                       .shortDesc = "Initialize a Rux package in the current directory"sv,
+                       .description = {},
                        .usage = Data::init_usage,
                        .postUsage = {},
                        .footer = "If Rux.toml does not exist, it will be created."sv,
@@ -465,8 +472,7 @@ namespace Rux {
                 .description = {} /* Fallback */,
                 .usage = Data::install_usage,
                 .postUsage =
-                    "Without a package name, downloads all registry dependencies listed in Rux.toml.\nWith a package "
-                    "name, adds it to Rux.toml and downloads it to the local cache."sv,
+                    "Without a package name, downloads all registry dependencies listed in Rux.toml.\nWith a package name, adds it to Rux.toml and downloads it to the local cache."sv,
                 .footer = {},
                 .examples = Data::install_exs,
                 .options = Data::install_opts},
@@ -533,11 +539,8 @@ namespace Rux {
                 .shortDesc = "Update dependencies"sv,
                 .description = {} /* Fallback */,
                 .usage = Data::update_usage,
-                .postUsage = {},
-                .footer =
-                    "Without --global, checks all registry dependencies listed in Rux.toml and pulls the latest "
-                    "changes. Missing packages are cloned from the registry.\nWith --global, updates every package "
-                    "present in the local cache."sv,
+                .postUsage =
+                    "Without --global, checks all registry dependencies listed in Rux.toml and pulls the latest changes. Missing packages are cloned from the registry.\nWith --global, updates every package present in the local cache."sv,
                 .examples = Data::update_exs,
                 .options = Data::update_opts},
 
