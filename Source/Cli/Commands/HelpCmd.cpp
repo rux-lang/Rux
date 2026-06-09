@@ -444,8 +444,8 @@ namespace Rux {
                        .shortDesc = "Initialize a Rux package in the directory"sv,
                        .description = "Initialize a new package in the current directory"sv,
                        .usage = Data::init_usage,
-                       .postUsage = "If Rux.toml does not exist, it will be created."sv,
-                       .footer = {},
+                       .postUsage = {},
+                       .footer = "If Rux.toml does not exist, it will be created."sv,
                        .examples = Data::init_exs,
                        .options = Data::init_opts},
 
