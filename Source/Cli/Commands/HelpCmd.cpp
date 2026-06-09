@@ -205,7 +205,7 @@ namespace Rux {
                           const std::string_view right,
                           const size_t leftWidth,
                           const size_t termWidth) -> void {
-            const size_t indent = leftWidth + Layout::AlignedPadding;
+            const size_t indent = Layout::BlockIndent + leftWidth + Layout::AlignedPadding;
             const size_t width = UsableWidth(termWidth, indent);
             bool first = true;
 
