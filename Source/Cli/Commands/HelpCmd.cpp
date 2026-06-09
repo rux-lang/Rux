@@ -626,7 +626,6 @@ namespace Rux {
         std::println("");
 
         PrintBlock(""sv, postUsage, termWidth);
-        PrintBlock(""sv, footer, termWidth);
 
         if (!options.empty()) {
             const auto optWidth = MaxSize(options, &OptionDoc::flags);
@@ -637,6 +636,8 @@ namespace Rux {
             }
             std::println("");
         }
+
+        PrintBlock(""sv, footer, termWidth);
 
         if (!examples.empty()) {
             std::println("Examples:");
