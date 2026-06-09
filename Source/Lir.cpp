@@ -1130,16 +1130,10 @@ namespace Rux {
             if (auto* e = dynamic_cast<const HirCastExpr*>(&expr))
                 return EmitCast(LowerExpr(*e->operand), e->operand->type, e->type);
             if (auto* e = dynamic_cast<const HirIsExpr*>(&expr)) {
-                LirReg src = LowerExpr(*e->operand);
-                LirReg dst = NewReg();
-                LirInstr i;
-                i.dst = dst;
-                i.op = LirOpcode::Call;
-                i.type = TypeRef::MakeBool();
-                i.srcs = {src};
-                i.strArg = "@is_type:" + e->checkType.ToString();
-                Emit(std::move(i));
-                return dst;
+                // Should only be reached for interface types (rejected by sema).
+                // Return false as a safe fallback.
+                LowerExpr(*e->operand);
+                return EmitConst("false", TypeRef::MakeBool());
             }
             if (auto* e = dynamic_cast<const HirBlockExpr*>(&expr)) {
                 LowerBlock(e->block);

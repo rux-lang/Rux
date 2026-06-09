@@ -2564,10 +2564,10 @@ namespace Rux {
                 return he;
             }
             if (auto* e = dynamic_cast<const IsExpr*>(&expr)) {
-                auto he = std::make_unique<HirIsExpr>();
-                he->location = e->location;
-                he->operand = LowerExpr(*e->operand);
-                he->checkType = ResolveType(*e->type);
+                // The answer is statically known for all non-interface types.
+                // Interface types are rejected by Sema, so this path never reaches Lir.
+                auto he = std::make_unique<HirLiteralExpr>();
+                he->value = LowerExpr(*e->operand)->type == ResolveType(*e->type) ? "true" : "false";
                 he->type = TypeRef::MakeBool();
                 return he;
             }
