@@ -60,7 +60,7 @@ namespace Rux {
 
         template <std::ranges::input_range Range, typename Proj = std::identity>
             requires Sizable<std::indirect_result_t<Proj, std::ranges::iterator_t<Range>>>
-        constexpr auto MaxSize(const Range& range, Proj proj = {}) -> std::size_t {
+        constexpr std::size_t MaxSize(const Range& range, Proj proj = {}) {
             std::size_t maxSize = 0;
 
             for (const auto& item : range) {
@@ -84,7 +84,7 @@ namespace Rux {
         } // namespace Layout
 
 
-        auto GetTerminalWidth() -> std::size_t {
+        std::size_t GetTerminalWidth() {
 #if RUX_OS_WINDOWS
             CONSOLE_SCREEN_BUFFER_INFO csbi;
             if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi) == TRUE) {
@@ -101,7 +101,7 @@ namespace Rux {
             return Layout::DefaultWidth;
         }
 
-        constexpr auto UsableWidth(const std::size_t terminalWidth, const std::size_t indent) -> std::size_t {
+        constexpr std::size_t UsableWidth(const std::size_t terminalWidth, const std::size_t indent) {
             if (terminalWidth <= indent) {
                 return Layout::MinDescriptionWidth;
             }
@@ -110,7 +110,7 @@ namespace Rux {
         }
 
         template <typename Callback>
-        constexpr auto ProcessLine(std::string_view line, const std::size_t width, Callback callback) -> void {
+        constexpr void ProcessLine(std::string_view line, const std::size_t width, Callback callback) {
             while (!line.empty()) {
                 // Skip leading spaces by sliding the view forward
                 const auto firstNonSpace = line.find_first_not_of(Layout::Whitespace);
@@ -148,7 +148,7 @@ namespace Rux {
         }
 
         template <typename Callback>
-        constexpr auto Wrap(std::string_view text, std::size_t width, Callback callback) -> void {
+        constexpr void Wrap(std::string_view text, const std::size_t width, Callback callback) {
             while (!text.empty()) {
                 const auto newLinePos = text.find('\n');
 
@@ -169,7 +169,7 @@ namespace Rux {
             }
         }
 
-        auto PrintCmdLine(std::string_view cmd, std::string_view suffix) -> void {
+        void PrintCmdLine(std::string_view cmd, std::string_view suffix) {
             std::print("{0:<{1}}{2}", "", Layout::BlockIndent, Layout::CliName);
 
             if (!cmd.empty()) {
@@ -183,10 +183,10 @@ namespace Rux {
             std::println();
         }
 
-        auto PrintBlock(std::string_view title,
-                        std::string_view text,
-                        size_t term_width,
-                        size_t indent = Layout::BlockIndent) -> void {
+        void PrintBlock(std::string_view title,
+                        const std::string_view text,
+                        const size_t termWidth,
+                        const size_t indent = Layout::BlockIndent) {
             if (text.empty()) {
                 return;
             }
@@ -195,7 +195,7 @@ namespace Rux {
                 std::println("{}:", title);
             }
 
-            const size_t usable = UsableWidth(term_width, indent);
+            const size_t usable = UsableWidth(termWidth, indent);
 
             Wrap(text, usable, [&](std::string_view line) -> void {
                 // If the line is empty, pad with 0 spaces (prints just a newline)
@@ -205,10 +205,10 @@ namespace Rux {
             std::println("");
         }
 
-        auto PrintAligned(const std::string_view left,
+        void PrintAligned(const std::string_view left,
                           const std::string_view right,
                           const size_t leftWidth,
-                          const size_t termWidth) -> void {
+                          const size_t termWidth) {
             const size_t indent = Layout::BlockIndent + leftWidth + Layout::AlignedPadding;
             const size_t width = UsableWidth(termWidth, indent);
             bool first = true;
@@ -579,11 +579,11 @@ namespace Rux {
         constexpr auto G_OPT_WIDTH = MaxSize(GlobalOpts::catalog, &OptionDoc::flags);
     } // namespace
 
-    auto Cli::PrintHelp() -> void {
+    void Cli::PrintHelp() {
         const size_t termWidth = GetTerminalWidth();
 
         std::println("Rux compiler and package manager\n");
-        std::println("Usage: rux [command] [options] [-- args...]\n");
+        std::println("Usage: {} [command] [options] [-- args...]\n", Layout::CliName);
 
         std::println("Commands:");
         for (const auto& cmd : G_COMMAND_HELP_MAPS) {
@@ -598,7 +598,7 @@ namespace Rux {
         std::println("\nUse 'rux help <command>' for more information about a command.");
     }
 
-    auto Cli::PrintHelpFor(const std::string_view command) -> void {
+    void Cli::PrintHelpFor(const std::string_view command) {
         if (command == "help") {
             PrintHelp();
             return;
@@ -651,16 +651,16 @@ namespace Rux {
         }
     }
 
-    auto Cli::PrintVersion() -> void {
+    void Cli::PrintVersion() {
         std::println("Rux {} ({} {})", RUX_VERSION, RUX_BUILD_DATE, RUX_BUILD_TIME);
     }
 
-    auto Cli::PrintUnknownCommand(std::string_view command) -> void {
+    void Cli::PrintUnknownCommand(std::string_view command) {
         std::println(stderr, "error: unknown command '{}'", command);
         std::println(stderr, "\nUse 'rux help' for a list of available commands.");
     }
 
-    auto Cli::PrintUnknownOption(std::string_view option, std::string_view command) -> void {
+    void Cli::PrintUnknownOption(std::string_view option, std::string_view command) {
         if (command.empty()) {
             std::println(stderr, "error: unknown option '{}'", option);
             std::println(stderr, "\nUse 'rux help' for a list of global options.");
