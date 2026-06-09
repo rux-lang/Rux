@@ -3,11 +3,11 @@ function(add_rux_test name)
 
     add_test(NAME ${name}
             COMMAND ${CMAKE_COMMAND}
-            -DTEST_DIR=${test_dir}
-            -DRUX=$<TARGET_FILE:rux>
-            -DTEST_CONFIG=$<CONFIG>
-            -P ${test_dir}/Test.cmake
-            WORKING_DIRECTORY ${test_dir}
+            "-DTEST_DIR=${test_dir}"
+            "-DRUX=$<TARGET_FILE:rux>"
+            "-DTEST_CONFIG=$<CONFIG>"
+            -P "${test_dir}/Test.cmake"
+            WORKING_DIRECTORY "${test_dir}"
     )
 
     set_tests_properties(${name} PROPERTIES

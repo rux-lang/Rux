@@ -3,8 +3,16 @@ function(rux_register_error code message)
 endfunction()
 
 function(rux_prepare_test test_dir bin_name out_binary)
+    set(config_dir "Debug")
+    set(rux_args "")
+
+    if (TEST_CONFIG STREQUAL "Release")
+        set(config_dir "Release")
+        set(rux_args "--release")
+    endif ()
+
     execute_process(
-            COMMAND "${RUX}" build
+            COMMAND "${RUX}" build ${rux_args}
             WORKING_DIRECTORY "${test_dir}"
             RESULT_VARIABLE build_rc
             OUTPUT_VARIABLE build_log
@@ -12,30 +20,34 @@ function(rux_prepare_test test_dir bin_name out_binary)
     )
 
     if (NOT build_rc EQUAL 0)
-        message(FATAL_ERROR
-                "FAIL: Build phase failed (${test_dir})\n"
-                "Exit code: ${build_rc}\n"
-                "${build_log}"
-        )
+        message(FATAL_ERROR "Build failed for ${bin_name}:\n${build_log}")
     endif ()
 
-    if (NOT DEFINED TEST_CONFIG)
-        if (DEFINED CMAKE_BUILD_TYPE AND NOT CMAKE_BUILD_TYPE STREQUAL "")
-            set(TEST_CONFIG "${CMAKE_BUILD_TYPE}")
+    cmake_path(APPEND test_dir "Bin" "${config_dir}" "${bin_name}${CMAKE_EXECUTABLE_SUFFIX}" OUTPUT_VARIABLE target_bin_path)
+
+    if (NOT EXISTS "${target_bin_path}")
+        if (config_dir STREQUAL "Debug")
+            cmake_path(APPEND test_dir "Bin" "Release" "${bin_name}${CMAKE_EXECUTABLE_SUFFIX}" OUTPUT_VARIABLE fallback_bin_path)
         else ()
-            set(TEST_CONFIG "Debug")
+            cmake_path(APPEND test_dir "Bin" "Debug" "${bin_name}${CMAKE_EXECUTABLE_SUFFIX}" OUTPUT_VARIABLE fallback_bin_path)
+        endif ()
+
+        if (EXISTS "${fallback_bin_path}")
+            message(STATUS "Binary not found in ${config_dir}, using fallback: ${fallback_bin_path}")
+            set(target_bin_path "${fallback_bin_path}")
         endif ()
     endif ()
 
-    set(${out_binary}
-            "${test_dir}/Bin/${TEST_CONFIG}/${bin_name}${CMAKE_EXECUTABLE_SUFFIX}"
-            PARENT_SCOPE
-    )
+    if (NOT EXISTS "${target_bin_path}")
+        message(FATAL_ERROR "Binary not found at expected path: ${target_bin_path}")
+    endif ()
+
+    set(${out_binary} "${target_bin_path}" PARENT_SCOPE)
 endfunction()
 
 function(rux_assert_executable bin_path)
     if (NOT EXISTS "${bin_path}")
-        message(FATAL_ERROR "FAIL: Binary not found: ${bin_path}")
+        message(FATAL_ERROR "Binary not found: ${bin_path}")
     endif ()
 
     execute_process(
@@ -47,8 +59,8 @@ function(rux_assert_executable bin_path)
     )
 
     if (run_rc EQUAL 0)
-        cmake_path(GET bin_path FILENAME test_executable)
-        message(STATUS "PASS: ${test_executable}")
+        cmake_path(GET bin_path FILENAME test_name)
+        message(STATUS "PASS: ${test_name}")
         return()
     endif ()
 
@@ -58,12 +70,10 @@ function(rux_assert_executable bin_path)
     endif ()
 
     set(msg "FAIL: ${error_msg}\nExit code: ${run_rc}")
-
-    if (NOT run_stdout STREQUAL "")
+    if (run_stdout)
         string(APPEND msg "\nStdout:\n${run_stdout}")
     endif ()
-
-    if (NOT run_stderr STREQUAL "")
+    if (run_stderr)
         string(APPEND msg "\nStderr:\n${run_stderr}")
     endif ()
 
@@ -79,52 +89,34 @@ function(rux_add_io_test)
     set(oneValueArgs NAME BINARY STDIN EXPECT)
     cmake_parse_arguments(RUX_IO "" "${oneValueArgs}" "" ${ARGN})
 
-    if (NOT DEFINED RUX_IO_NAME OR NOT DEFINED RUX_IO_BINARY OR NOT DEFINED RUX_IO_EXPECT)
-        message(FATAL_ERROR "rux_add_io_test: Missing required arguments (NAME, BINARY, EXPECT)")
+    if (NOT RUX_IO_NAME OR NOT RUX_IO_BINARY OR NOT RUX_IO_EXPECT)
+        message(FATAL_ERROR "rux_add_io_test: Missing required arguments.")
     endif ()
 
-    if (NOT DEFINED RUX_IO_STDIN)
-        set(RUX_IO_STDIN "")
-    endif ()
-
-    if (NOT EXISTS "${RUX_IO_BINARY}")
-        message(FATAL_ERROR "Binary not found: ${RUX_IO_BINARY}")
-    endif ()
-
-    string(RANDOM LENGTH 8 rand_suffix)
-    set(temp_input_file "${CMAKE_CURRENT_BINARY_DIR}/${RUX_IO_NAME}_${rand_suffix}_stdin.txt")
-    file(WRITE "${temp_input_file}" "${RUX_IO_STDIN}")
+    string(RANDOM LENGTH 8 rand)
+    set(stdin_file "${CMAKE_CURRENT_BINARY_DIR}/${RUX_IO_NAME}_${rand}.txt")
+    file(WRITE "${stdin_file}" "${RUX_IO_STDIN}")
 
     execute_process(
             COMMAND "${RUX_IO_BINARY}"
-            INPUT_FILE "${temp_input_file}"
+            INPUT_FILE "${stdin_file}"
             OUTPUT_VARIABLE raw_stdout
             ERROR_VARIABLE raw_stderr
             RESULT_VARIABLE rc
             TIMEOUT 5
     )
 
-    file(REMOVE "${temp_input_file}")
+    file(REMOVE "${stdin_file}")
 
-    rux_normalize(run_stdout "${raw_stdout}")
+    rux_normalize(actual "${raw_stdout}")
     rux_normalize(expected "${RUX_IO_EXPECT}")
 
     if (NOT rc EQUAL 0)
-        message(FATAL_ERROR
-                "TEST FAILED: ${RUX_IO_NAME}\n"
-                "Exit code: ${rc}\n"
-                "Stderr:\n${raw_stderr}\n"
-                "Stdout:\n${raw_stdout}\n"
-        )
+        message(FATAL_ERROR "TEST FAILED: ${RUX_IO_NAME}\nExit code: ${rc}\nStderr: ${raw_stderr}")
     endif ()
 
-    if (NOT run_stdout STREQUAL expected)
-        message(FATAL_ERROR
-                "TEST FAILED: ${RUX_IO_NAME}\n"
-                "Output mismatch\n\n"
-                "EXPECTED:\n${expected}\n\n"
-                "ACTUAL:\n${run_stdout}\n"
-        )
+    if (NOT actual STREQUAL expected)
+        message(FATAL_ERROR "TEST FAILED: ${RUX_IO_NAME}\n\nEXPECTED:\n${expected}\n\nACTUAL:\n${actual}\n")
     endif ()
 
     message(STATUS "PASS: ${RUX_IO_NAME}")
