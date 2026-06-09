@@ -26,8 +26,18 @@
 #  endif
 #  include <windows.h>
 #else
-#  include <sys/ioctl.h>
 #  include <unistd.h>
+#  if defined(__has_include)
+#    if __has_include(<sys/termios.h>)
+#      include <sys/termios.h>
+#    elif __has_include(<termios.h>)
+#      include <termios.h>
+#    endif
+#    if __has_include(<stropts.h>)
+#      include <stropts.h>
+#    endif
+#  endif
+#  include <sys/ioctl.h>
 #endif
 
 
