@@ -55,6 +55,7 @@
     #include <psapi.h>
     #include <winhttp.h>
 #else
+    #include <fcntl.h>
     #include <sys/resource.h>
     #include <sys/wait.h>
     #include <unistd.h>
@@ -196,17 +197,30 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions& op
         return 1;
     }
 
-    auto manifestPath = RequireManifest();
-    if (!manifestPath) return 1;
-    auto manifest = LoadManifest(*manifestPath);
-    if (!manifest) return 1;
+    auto manifestPath = Manifest::Find();
+    std::filesystem::path projectRoot;
+    std::filesystem::path testsDir;
 
-    if (!opts.quiet)
-        std::print("     Testing {} v{}\n", manifest->package.name, manifest->package.version);
+    if (manifestPath) {
+        auto manifest = LoadManifest(*manifestPath);
+        if (!manifest) return 1;
+        if (!opts.quiet)
+            std::print("     Testing {} v{}\n", manifest->package.name, manifest->package.version);
+        projectRoot = manifestPath->parent_path();
+        testsDir = projectRoot / "Tests";
+    } else {
+        projectRoot = std::filesystem::current_path();
+        testsDir = projectRoot / "Tests";
+        std::error_code ec;
+        if (!std::filesystem::exists(testsDir, ec)) {
+            RequireManifest(); // Prints standard "Rux.toml not found" error
+            return 1;
+        }
+        if (!opts.quiet)
+            std::print("     Testing workspace tests\n");
+    }
 
     const std::string_view profileName = isRelease ? "Release" : "Debug";
-    const auto projectRoot = manifestPath->parent_path();
-    const auto testsDir = projectRoot / "Tests";
 
     // Collect test package directories: any subdirectory of Tests/ that
     // contains a Rux.toml with Type = "bin".
@@ -291,11 +305,12 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions& op
 
         // Execute the test binary and capture its exit code.
 #if RUX_OS_WINDOWS
+        HANDLE hNul = CreateFileA("NUL", GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
         std::string cmdLine = "\"" + exePath.string() + "\"";
         STARTUPINFOA si{};
         PROCESS_INFORMATION pi{};
         si.cb = sizeof(si);
-        si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
+        si.hStdInput  = hNul != INVALID_HANDLE_VALUE ? hNul : GetStdHandle(STD_INPUT_HANDLE);
         si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
         si.hStdError  = GetStdHandle(STD_ERROR_HANDLE);
         si.dwFlags    = STARTF_USESTDHANDLES;
@@ -304,6 +319,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions& op
             std::print(stderr,
                        "error: failed to launch '{}' (code {})\n",
                        exePath.string(), GetLastError());
+            if (hNul != INVALID_HANDLE_VALUE) CloseHandle(hNul);
             return -1;
         }
         WaitForSingleObject(pi.hProcess, INFINITE);
@@ -311,6 +327,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions& op
         GetExitCodeProcess(pi.hProcess, &exitCode);
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
+        if (hNul != INVALID_HANDLE_VALUE) CloseHandle(hNul);
         return static_cast<int>(exitCode);
 #else
         const std::string exeStr = exePath.string();
@@ -321,6 +338,11 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions& op
             return -1;
         }
         if (pid == 0) {
+            int fd = open("/dev/null", O_RDONLY);
+            if (fd >= 0) {
+                dup2(fd, 0);
+                close(fd);
+            }
             execv(exeStr.c_str(), const_cast<char* const*>(argv));
             std::print(stderr, "error: failed to launch '{}'\n", exeStr);
             _exit(127);
