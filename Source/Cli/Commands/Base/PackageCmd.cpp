@@ -195,16 +195,171 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions& op
         PrintUnknownOption(arg, "test");
         return 1;
     }
+
     auto manifestPath = RequireManifest();
     if (!manifestPath) return 1;
     auto manifest = LoadManifest(*manifestPath);
     if (!manifest) return 1;
-    if (!opts.quiet) std::print("     Testing {} v{}\n", manifest->package.name, manifest->package.version);
-    // TODO: build and run test targets
-    std::println("Running executable...");
-    std::println("Release: {}", isRelease);
-    if (!opts.quiet) std::print("    Finished running tests\n");
-    return 0;
+
+    if (!opts.quiet)
+        std::print("     Testing {} v{}\n", manifest->package.name, manifest->package.version);
+
+    const std::string_view profileName = isRelease ? "Release" : "Debug";
+    const auto projectRoot = manifestPath->parent_path();
+    const auto testsDir = projectRoot / "Tests";
+
+    // Collect test package directories: any subdirectory of Tests/ that
+    // contains a Rux.toml with Type = "bin".
+    std::vector<std::filesystem::path> testPackages;
+    {
+        std::error_code ec;
+        if (!std::filesystem::exists(testsDir, ec)) {
+            if (!opts.quiet) std::print("  No Tests/ directory found — nothing to run.\n");
+            return 0;
+        }
+        for (const auto& entry : std::filesystem::directory_iterator(testsDir, ec)) {
+            if (!entry.is_directory()) continue;
+            const auto toml = entry.path() / "Rux.toml";
+            if (!std::filesystem::exists(toml)) continue;
+            auto pkgManifest = Manifest::Load(toml);
+            if (!pkgManifest) continue;
+            // Only run binary packages (not DLLs / shared libraries).
+            const auto& type = pkgManifest->package.type;
+            if (type != "bin" && type != "Bin") continue;
+            testPackages.push_back(entry.path());
+        }
+        std::sort(testPackages.begin(), testPackages.end());
+    }
+
+    if (testPackages.empty()) {
+        if (!opts.quiet) std::print("  No test packages found in Tests/.\n");
+        return 0;
+    }
+
+    // Helper: run rux build inside a package directory, then execute the
+    // resulting binary. Returns the process exit code, or -1 on build/launch
+    // failure.
+    auto runOne = [&](const std::filesystem::path& pkgDir) -> int {
+        // Load the package manifest to derive the executable name and output path.
+        auto pkgManifest = Manifest::Load(pkgDir / "Rux.toml");
+        if (!pkgManifest) {
+            std::print(stderr, "error: failed to parse '{}'\n", (pkgDir / "Rux.toml").string());
+            return -1;
+        }
+
+        // Build: temporarily change the working directory into the package root
+        // so that RequireManifest() and source paths resolve correctly.
+        const auto savedCwd = std::filesystem::current_path();
+        std::error_code ec;
+        std::filesystem::current_path(pkgDir, ec);
+        if (ec) {
+            std::print(stderr, "error: cannot chdir into '{}': {}\n", pkgDir.string(), ec.message());
+            return -1;
+        }
+
+        GlobalOptions buildOpts = opts;
+        buildOpts.quiet = true; // suppress per-file build output for tests
+        std::vector<std::string_view> buildArgs;
+        if (isRelease) buildArgs.emplace_back("--release");
+        buildArgs.emplace_back("--quiet");
+
+        const int buildRc = RunBuild(buildArgs, buildOpts);
+        std::filesystem::current_path(savedCwd, ec); // always restore CWD
+
+        if (buildRc != 0) {
+            std::print(stderr, "error: build failed for test package '{}'\n", pkgDir.filename().string());
+            return -1;
+        }
+
+        // Locate the built executable.
+        const auto binDir = ResolveBuildOutputDir(pkgDir, *pkgManifest, profileName);
+        std::string exeName = pkgManifest->package.name;
+#if RUX_OS_WINDOWS
+        exeName += ".exe";
+#endif
+        const auto exePath = binDir / exeName;
+
+        if (!std::filesystem::exists(exePath)) {
+            std::print(stderr,
+                       "error: built executable not found at '{}'\n",
+                       exePath.string());
+            return -1;
+        }
+
+        if (opts.verbose)
+            std::print("     Running `{}`\n", exePath.string());
+
+        // Execute the test binary and capture its exit code.
+#if RUX_OS_WINDOWS
+        std::string cmdLine = "\"" + exePath.string() + "\"";
+        STARTUPINFOA si{};
+        PROCESS_INFORMATION pi{};
+        si.cb = sizeof(si);
+        si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
+        si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+        si.hStdError  = GetStdHandle(STD_ERROR_HANDLE);
+        si.dwFlags    = STARTF_USESTDHANDLES;
+        if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0,
+                            nullptr, nullptr, &si, &pi)) {
+            std::print(stderr,
+                       "error: failed to launch '{}' (code {})\n",
+                       exePath.string(), GetLastError());
+            return -1;
+        }
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        DWORD exitCode = 0;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return static_cast<int>(exitCode);
+#else
+        const std::string exeStr = exePath.string();
+        const char* argv[] = {exeStr.c_str(), nullptr};
+        const pid_t pid = fork();
+        if (pid < 0) {
+            std::print(stderr, "error: fork failed\n");
+            return -1;
+        }
+        if (pid == 0) {
+            execv(exeStr.c_str(), const_cast<char* const*>(argv));
+            std::print(stderr, "error: failed to launch '{}'\n", exeStr);
+            _exit(127);
+        }
+        int status = 0;
+        waitpid(pid, &status, 0);
+        return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+#endif
+    };
+
+    // Run every discovered test package and tally results.
+    int passed = 0;
+    int failed = 0;
+
+    for (const auto& pkgDir : testPackages) {
+        const std::string label = pkgDir.filename().string();
+        if (!opts.quiet) std::print("      Running test package: {}\n", label);
+
+        const int rc = runOne(pkgDir);
+        if (rc == 0) {
+            ++passed;
+            if (!opts.quiet) std::print("    PASS: {}\n", label);
+        } else {
+            ++failed;
+            std::print(stderr,
+                       "    FAIL: {} (exit {})\n",
+                       label,
+                       rc == -1 ? std::string("build/launch error") : std::to_string(rc));
+        }
+    }
+
+    // Summary line.
+    const int total = passed + failed;
+    if (!opts.quiet || failed > 0) {
+        std::print("{}: {} passed, {} failed, {} total\n",
+                   failed == 0 ? "ok" : "FAILED",
+                   passed, failed, total);
+    }
+    return failed == 0 ? 0 : 1;
 }
 
 int Cli::RunInit(std::span<const std::string_view> args, const GlobalOptions& opts) {
