@@ -1406,7 +1406,7 @@ namespace Rux {
                     }
                 }
             }
-            return sym.funcOverloads[0];
+            return nullptr;
         }
 
         TypeRef FunctionType(const FuncDecl& decl) {
