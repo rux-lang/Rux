@@ -1423,8 +1423,11 @@ namespace Rux {
                 if (const auto enumIt = enumDecls.find(baseName); enumIt != enumDecls.end())
                     return SizeOfEnum(*enumIt->second, substitutions);
                 // Interface fat pointers are {data: *opaque, vtable: *opaque} = 16 bytes
-                if (Symbol* sym = currentScope->Lookup(baseName); sym && sym->kind == Symbol::Kind::Interface)
-                    return 16;
+                if (Symbol* sym = currentScope->Lookup(baseName); sym) {
+                    if (sym->kind == Symbol::Kind::Interface) return 16;
+                    if (sym->kind == Symbol::Kind::Type && !sym->type.IsUnknown())
+                        return SizeOfTypeRef(sym->type, substitutions);
+                }
                 return SizeOfStruct(baseName, substitutions);
             }
 
