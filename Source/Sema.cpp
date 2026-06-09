@@ -76,6 +76,9 @@ namespace Rux {
         if (*this == other) return true;
         // float32 widens implicitly to float64 / float (safe, no precision loss in range)
         if (kind == Kind::Float32 && other.kind == Kind::Float64) return true;
+        // char widens implicitly: char8 → char16, char8/char16 → char32
+        if (kind == Kind::Char8 && (other.kind == Kind::Char16 || other.kind == Kind::Char32)) return true;
+        if (kind == Kind::Char16 && other.kind == Kind::Char32) return true;
         // int/uint interoperate with their fixed-width platform equivalents (x64: 64-bit)
         if (kind == Kind::Int64 && other.kind == Kind::Int) return true;
         if (kind == Kind::Int && other.kind == Kind::Int64) return true;
@@ -3196,7 +3199,6 @@ namespace Rux {
                     EmitError(target.location, std::format("cannot assign to immutable variable '{}'", e->name));
                 }
             }
-            // Field and index targets: would need full type info to check properly
         }
     };
 
