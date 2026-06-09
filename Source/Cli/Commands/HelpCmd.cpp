@@ -290,9 +290,6 @@ namespace Rux {
                 OptionDoc{.flags = "--manifest"sv, .desc = "Format only the manifest (Rux.toml)"sv}};
             constexpr std::array fmt_exs = {""sv, "--check"sv, "--manifest"sv};
 
-            // Help
-            constexpr std::array help_usage = {"[command]"sv};
-
             // Info
             constexpr std::array info_usage = {"[package name]"sv};
             constexpr std::array info_opts = {
@@ -374,6 +371,7 @@ namespace Rux {
                        .footer = "This command updates Rux.toml accordingly."sv,
                        .examples = Data::add_exs,
                        .options = Data::add_opts},
+
             CommandDoc{.name = "build"sv,
                        .shortDesc = "Build the current package"sv,
                        .description = {} /* Fallback */,
@@ -383,6 +381,7 @@ namespace Rux {
                            "Artifacts are stored under [Build].Output, defaulting to Bin/Debug/ or Bin/Release/."sv,
                        .examples = Data::build_exs,
                        .options = Data::build_opts},
+
             CommandDoc{.name = "check"sv,
                        .shortDesc = "Check package source code for errors"sv,
                        .description = {} /* Fallback */,
@@ -391,6 +390,7 @@ namespace Rux {
                        .footer = {},
                        .examples = Data::check_exs,
                        .options = Data::check_opts},
+
             CommandDoc{.name = "clean"sv,
                        .shortDesc = "Remove build artifacts"sv,
                        .description = "Remove all build artifacts and temporary files"sv,
@@ -399,6 +399,7 @@ namespace Rux {
                        .footer = {},
                        .examples = Data::clean_exs,
                        .options = Data::clean_opts},
+
             CommandDoc{.name = "doc"sv,
                        .shortDesc = "Generate package documentation"sv,
                        .description = {} /* Fallback */,
@@ -407,6 +408,7 @@ namespace Rux {
                        .footer = {},
                        .examples = Data::doc_exs,
                        .options = Data::doc_opts},
+
             CommandDoc{.name = "fmt"sv,
                        .shortDesc = "Format source files and manifests"sv,
                        .description = "Format all *.rux source files"sv,
@@ -415,14 +417,16 @@ namespace Rux {
                        .footer = {},
                        .examples = Data::fmt_exs,
                        .options = Data::fmt_opts},
+
             CommandDoc{.name = "help"sv,
                        .shortDesc = "Show help information"sv,
                        .description = {},
-                       .usage = Data::help_usage,
+                       .usage = {},
                        .postUsage = {},
                        .footer = {},
                        .examples = {},
                        .options = {}},
+
             CommandDoc{.name = "info"sv,
                        .shortDesc = "Show package metadata and manifest"sv,
                        .description = "Show information about an installed Rux package"sv,
@@ -431,6 +435,7 @@ namespace Rux {
                        .footer = {},
                        .examples = Data::info_exs,
                        .options = Data::info_opts},
+
             CommandDoc{.name = "init"sv,
                        .shortDesc = "Initialize a Rux package in the directory"sv,
                        .description = "Initialize a new package in the current directory"sv,
@@ -439,6 +444,7 @@ namespace Rux {
                        .footer = {},
                        .examples = Data::init_exs,
                        .options = Data::init_opts},
+
             CommandDoc{
                 .name = "install"sv,
                 .shortDesc = "Install dependencies"sv,
@@ -450,6 +456,7 @@ namespace Rux {
                 .footer = {},
                 .examples = Data::install_exs,
                 .options = Data::install_opts},
+
             CommandDoc{.name = "list"sv,
                        .shortDesc = "List dependencies"sv,
                        .description = "List packages in the manifest file"sv,
@@ -458,6 +465,7 @@ namespace Rux {
                        .footer = {},
                        .examples = Data::list_exs,
                        .options = Data::list_opts},
+
             CommandDoc{.name = "new"sv,
                        .shortDesc = "Create a new Rux package"sv,
                        .description = "Create a new Rux package in a new directory"sv,
@@ -466,6 +474,7 @@ namespace Rux {
                        .footer = {},
                        .examples = Data::new_exs,
                        .options = Data::new_opts},
+
             CommandDoc{.name = "remove"sv,
                        .shortDesc = "Remove a dependency from the manifest"sv,
                        .description = {} /* Fallback */,
@@ -474,6 +483,7 @@ namespace Rux {
                        .footer = {},
                        .examples = Data::remove_exs,
                        .options = {}},
+
             CommandDoc{.name = "run"sv,
                        .shortDesc = "Build and run the main executable"sv,
                        .description = "Build and execute a runnable target"sv,
@@ -482,6 +492,7 @@ namespace Rux {
                        .footer = {},
                        .examples = Data::run_exs,
                        .options = Data::run_opts},
+
             CommandDoc{.name = "test"sv,
                        .shortDesc = "Run all test targets"sv,
                        .description = "Run package unit tests"sv,
@@ -490,6 +501,7 @@ namespace Rux {
                        .footer = {},
                        .examples = Data::test_exs,
                        .options = Data::test_opts},
+
             CommandDoc{
                 .name = "uninstall"sv,
                 .shortDesc = "Uninstall dependencies"sv,
@@ -501,6 +513,7 @@ namespace Rux {
                 .footer = {},
                 .examples = Data::uninstall_exs,
                 .options = {}},
+
             CommandDoc{
                 .name = "update"sv,
                 .shortDesc = "Update dependencies"sv,
@@ -513,6 +526,7 @@ namespace Rux {
                     "present in the local cache."sv,
                 .examples = Data::update_exs,
                 .options = Data::update_opts},
+
             CommandDoc{.name = "version"sv,
                        .shortDesc = "Show version information"sv,
                        .description = "Show information about the Rux toolchain version"sv,
@@ -564,6 +578,9 @@ namespace Rux {
     auto Cli::PrintHelp() -> void {
         const size_t termWidth = GetTerminalWidth();
 
+        std::println("Rux compiler and package manager\n");
+        std::println("Usage: rux [command] [options] [-- args...]\n");
+
         std::println("Commands:");
         for (const auto& cmd : G_COMMAND_HELP_MAPS) {
             PrintAligned(cmd.name, cmd.shortDesc, G_CMD_WIDTH, termWidth);
@@ -577,7 +594,7 @@ namespace Rux {
         std::println("\nUse 'rux help <command>' for more information about a command.");
     }
 
-    auto Cli::PrintHelpFor(std::string_view command) -> void {
+    auto Cli::PrintHelpFor(const std::string_view command) -> void {
         if (command == "help") {
             PrintHelp();
             return;
