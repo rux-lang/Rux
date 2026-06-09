@@ -1,14 +1,15 @@
-#include "Rux/Cli/Cli.h"
+// Copyright (c) Rux contributors
+// SPDX-License-Identifier: MIT
 
 #include "Rux/Asm.h"
 #include "Rux/Ast.h"
+#include "Rux/Cli/Cli.h"
 #include "Rux/Cli/CliInternals.h"
 #include "Rux/Hir.h"
 #include "Rux/Lexer.h"
 #include "Rux/Linker.h"
 #include "Rux/Lir.h"
 #include "Rux/Manifest.h"
-#include "Rux/Package.h"
 #include "Rux/Parser.h"
 #include "Rux/Platform/Defines.h"
 #include "Rux/Platform/Host.h"
@@ -17,17 +18,12 @@
 #include "Rux/Version.h"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
-#include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <format>
-#include <iomanip>
 #include <print>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -53,7 +49,6 @@
 
 #if RUX_OS_WINDOWS
     #include <psapi.h>
-    #include <winhttp.h>
 #else
     #include <sys/resource.h>
     #include <sys/wait.h>
@@ -133,7 +128,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
             continue;
         }
         if (arg == "-h" || arg == "--help") {
-            PrintHelpBuild();
+            PrintHelpFor("build");
             return 0;
         }
         PrintUnknownOption(arg, "build");
@@ -585,7 +580,7 @@ int Cli::RunClean(std::span<const std::string_view> args, const GlobalOptions& o
             continue;
         }
         if (arg == "-h" || arg == "--help") {
-            PrintHelpClean();
+            PrintHelpFor("clean");
             return 0;
         }
         PrintUnknownOption(arg, "clean");
@@ -635,7 +630,7 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions& opt
             continue;
         }
         if (arg == "-h" || arg == "--help") {
-            PrintHelpRun();
+            PrintHelpFor("run");
             return 0;
         }
         PrintUnknownOption(arg, "run");
