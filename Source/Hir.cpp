@@ -294,7 +294,7 @@ namespace Rux {
                 simple(HirSymbol::Kind::Const, d->name, constType);
             }
             else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl))
-                simple(HirSymbol::Kind::Type, d->name);
+                simple(HirSymbol::Kind::Type, d->name, ResolveType(*d->type));
             else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl))
                 simple(HirSymbol::Kind::Func, d->name, MakeFuncType(d->params, d->returnType));
             else if (auto* d = dynamic_cast<const ExternVarDecl*>(&decl)) {

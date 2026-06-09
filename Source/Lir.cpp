@@ -1233,6 +1233,25 @@ namespace Rux {
             }
             const LirReg lhs = LowerExpr(*e.left);
             const LirReg rhs = LowerExpr(*e.right);
+
+            // Scale integer operand by element size for pointer arithmetic.
+            if ((e.op == TK::Plus || e.op == TK::Minus) && e.type.kind == TypeRef::Kind::Pointer && !e.type.inner.empty()) {
+                const auto elemSize = e.type.inner[0].SizeInBytes();
+                if (elemSize && *elemSize > 1) {
+                    if (e.left->type.kind == TypeRef::Kind::Pointer) {
+                        // ptr + int or ptr - int: scale the right (integer) operand
+                        const LirReg sz = EmitConst(std::to_string(*elemSize), e.right->type);
+                        const LirReg scaled = EmitBinary(LirOpcode::Mul, rhs, sz, e.right->type);
+                        return EmitBinary(BinaryOpcode(e.op), lhs, scaled, e.type);
+                    } else {
+                        // int + ptr: scale the left (integer) operand
+                        const LirReg sz = EmitConst(std::to_string(*elemSize), e.left->type);
+                        const LirReg scaled = EmitBinary(LirOpcode::Mul, lhs, sz, e.left->type);
+                        return EmitBinary(BinaryOpcode(e.op), scaled, rhs, e.type);
+                    }
+                }
+            }
+
             return EmitBinary(BinaryOpcode(e.op), lhs, rhs, e.type);
         }
 
