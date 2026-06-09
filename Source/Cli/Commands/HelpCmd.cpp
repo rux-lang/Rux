@@ -591,8 +591,8 @@ namespace Rux {
         }
 
         std::println("\nOptions:");
-        for (const auto& opt : GlobalOpts::catalog) {
-            PrintAligned(opt.flags, opt.desc, G_OPT_WIDTH, termWidth);
+        for (const auto& [flags, desc] : GlobalOpts::catalog) {
+            PrintAligned(flags, desc, G_OPT_WIDTH, termWidth);
         }
 
         std::println("\nUse 'rux help <command>' for more information about a command.");
