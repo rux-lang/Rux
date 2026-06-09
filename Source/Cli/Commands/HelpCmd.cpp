@@ -170,7 +170,17 @@ namespace Rux {
         }
 
         void PrintCmdLine(std::string_view cmd, std::string_view suffix) {
-            std::print("{0:<{1}}{2}", "", Layout::BlockIndent, Layout::CliName);
+            std::print("{0:<{1}}", "", Layout::BlockIndent);
+
+            // If the example is already a complete command line starting with "rux",
+            // print it directly and bail out early.
+            if (suffix.starts_with(Layout::CliName)) {
+                std::println("{}", suffix);
+                return;
+            }
+
+            // Otherwise, construct the standard "rux <cmd> <suffix>" layout
+            std::print("{}", Layout::CliName);
 
             if (!cmd.empty()) {
                 std::print(" {}", cmd);
