@@ -2845,8 +2845,14 @@ namespace Rux {
             }
 
             if (auto* e = dynamic_cast<const IsExpr*>(&expr)) {
-                CheckExpr(*e->operand);
+                TypeRef operandType = CheckExpr(*e->operand);
                 ResolveType(*e->type);
+                const std::string ifaceName = NamedBaseTypeName(operandType);
+                if (!ifaceName.empty()) {
+                    Symbol* sym = currentScope->Lookup(ifaceName);
+                    if (sym && sym->kind == Symbol::Kind::Interface)
+                        EmitError(e->location, "runtime type checking with 'is' on interface types is not yet implemented");
+                }
                 return TypeRef::MakeBool();
             }
 
