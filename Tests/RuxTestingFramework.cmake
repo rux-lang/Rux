@@ -23,7 +23,12 @@ function(rux_prepare_test test_dir bin_name out_binary)
         message(FATAL_ERROR "Build failed for ${bin_name}:\n${build_log}")
     endif ()
 
-    set(expected_filename "${bin_name}${CMAKE_EXECUTABLE_SUFFIX}")
+    if (WIN32)
+        set(expected_filename "${bin_name}.exe")
+    else ()
+        set(expected_filename "${bin_name}")
+    endif ()
+
     cmake_path(APPEND test_dir "Bin" "${config_dir}" "${expected_filename}" OUTPUT_VARIABLE target_bin_path)
 
     if (NOT EXISTS "${target_bin_path}")
