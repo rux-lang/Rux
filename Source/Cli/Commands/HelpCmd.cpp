@@ -73,7 +73,8 @@ namespace Rux {
 
         namespace Layout {
             constexpr std::size_t DefaultWidth = 80;
-            constexpr std::size_t MinWidth = 40;
+            constexpr std::size_t MinTerminalWidth = 48;
+            constexpr std::size_t MinDescriptionWidth = 24;
 
             constexpr std::size_t BlockIndent = 4;
             constexpr std::size_t AlignedPadding = 2;
@@ -88,12 +89,12 @@ namespace Rux {
             CONSOLE_SCREEN_BUFFER_INFO csbi;
             if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi) == TRUE) {
                 const auto width = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-                return std::max(static_cast<std::size_t>(width), Layout::MinWidth);
+                return std::max(static_cast<std::size_t>(width), Layout::MinTerminalWidth);
             }
 #else
             winsize w{};
             if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) != -1 && w.ws_col > 0) {
-                return std::max(static_cast<std::size_t>(w.ws_col), Layout::MinWidth);
+                return std::max(static_cast<std::size_t>(w.ws_col), Layout::MinTerminalWidth);
             }
 #endif
 
@@ -102,10 +103,10 @@ namespace Rux {
 
         constexpr auto UsableWidth(const std::size_t terminalWidth, const std::size_t indent) -> std::size_t {
             if (terminalWidth <= indent) {
-                return Layout::MinWidth;
+                return Layout::MinDescriptionWidth;
             }
 
-            return std::max(terminalWidth - indent, Layout::MinWidth);
+            return std::max(terminalWidth - indent, Layout::MinDescriptionWidth);
         }
 
         template <typename Callback>
