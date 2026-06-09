@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include <span>
@@ -46,23 +49,6 @@ namespace Rux {
             // Help printers
             static void PrintHelp();
             static void PrintHelpFor(std::string_view command);
-            static void PrintHelpAdd();
-            static void PrintHelpBuild();
-            static void PrintHelpClean();
-            static void PrintHelpDoc();
-            static void PrintHelpFmt();
-            static void PrintHelpInit();
-            static void PrintHelpInstall();
-            static void PrintHelpUninstall();
-            static void PrintHelpList();
-            static void PrintHelpNew();
-            static void PrintHelpRemove();
-            static void PrintHelpRun();
-            static void PrintHelpTest();
-            static void PrintHelpUpdate();
-            static void PrintHelpVersion();
-            static void PrintHelpInfo();
-            static void PrintHelpCheck();
             static void PrintVersion();
             static void PrintUnknownCommand(std::string_view command);
             static void PrintUnknownOption(std::string_view option, std::string_view command = {});
