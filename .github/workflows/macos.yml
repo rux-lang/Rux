@@ -34,21 +34,5 @@ jobs:
       - name: Build
         run: cmake --build build
 
-      - name: Run I/O thunk tests
-        # The test script cd's into each package, so rux must be an absolute path.
-        run: Tests/run_io_test.sh "$GITHUB_WORKSPACE/build/rux"
-
-      - name: Run integer ** test
-        run: Tests/run_pow_test.sh "$GITHUB_WORKSPACE/build/rux"
-
-      - name: Run @[Target] import filtering test
-        run: Tests/run_target_import_test.sh "$GITHUB_WORKSPACE/build/rux"
-        
-      - name: Run escape decoding test
-        run: Tests/run_unicode_test.sh "$GITHUB_WORKSPACE/build/rux"
-
-      - name: Run numeric literal suffix test
-        run: Tests/run_numeric_suffix_test.sh "$GITHUB_WORKSPACE/build/rux"
-
-      - name: Run constant expression coercion test
-        run: Tests/run_const_expr_test.sh "$GITHUB_WORKSPACE/build/rux"
+      - name: Run Rux Test Suite
+        run: ctest --test-dir build -C Release --output-on-failure
