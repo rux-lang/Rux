@@ -26,5 +26,5 @@ jobs:
           run: |
             failed=0
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-            cmake --build build --parallel
+            cmake --build build --parallel 4
             ctest --test-dir build -C Release --output-on-failure
