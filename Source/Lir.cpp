@@ -1152,9 +1152,16 @@ namespace Rux {
         LirReg LowerPostfix(const HirPostfixExpr& e) {
             const LirReg ptr = LowerLValue(*e.operand);
             const LirReg old_val = EmitLoad(ptr, e.type);
-            const LirReg one = EmitConst("1", e.type);
+            LirReg delta = EmitConst("1", e.type);
+            if (e.type.kind == TypeRef::Kind::Pointer && !e.type.inner.empty()) {
+                const auto elemSize = e.type.inner[0].SizeInBytes();
+                if (elemSize && *elemSize > 1) {
+                    const LirReg sz = EmitConst(std::to_string(*elemSize), e.type);
+                    delta = EmitBinary(LirOpcode::Mul, delta, sz, e.type);
+                }
+            }
             const LirOpcode op = (e.op == TokenKind::PlusPlus) ? LirOpcode::Add : LirOpcode::Sub;
-            const LirReg new_val = EmitBinary(op, old_val, one, e.type);
+            const LirReg new_val = EmitBinary(op, old_val, delta, e.type);
             EmitStore(new_val, ptr, e.type);
             return old_val;
         }
@@ -1187,11 +1194,18 @@ namespace Rux {
             case TK::MinusMinus: {
                 const LirReg ptr = LowerLValue(*e.operand);
                 const LirReg old_val = EmitLoad(ptr, e.type);
-                const LirReg one = EmitConst("1", e.type);
+                LirReg delta = EmitConst("1", e.type);
+                if (e.type.kind == TypeRef::Kind::Pointer && !e.type.inner.empty()) {
+                    const auto elemSize = e.type.inner[0].SizeInBytes();
+                    if (elemSize && *elemSize > 1) {
+                        const LirReg sz = EmitConst(std::to_string(*elemSize), e.type);
+                        delta = EmitBinary(LirOpcode::Mul, delta, sz, e.type);
+                    }
+                }
                 const LirOpcode aop = (e.op == TK::PlusPlus) ? LirOpcode::Add : LirOpcode::Sub;
-                const LirReg new_val = EmitBinary(aop, old_val, one, e.type);
+                const LirReg new_val = EmitBinary(aop, old_val, delta, e.type);
                 EmitStore(new_val, ptr, e.type);
-                return new_val; // prefix: return new value
+                return new_val;
             }
             default:
                 return EmitUnary(LirOpcode::Not, LowerExpr(*e.operand), e.type);
@@ -1256,7 +1270,7 @@ namespace Rux {
         }
 
         LirReg LowerAssign(const HirAssignExpr& e) {
-            if (e.op == TokenKind::Assign && IsInterfaceType(e.type)) {
+            if (e.op == TokenKind::Assign && (IsInterfaceType(e.type) || IsSliceType(e.type))) {
                 const LirReg ptr = LowerLValue(*e.target);
                 StoreExprIntoSlot(*e.value, ptr, e.type);
                 return ptr;
@@ -1266,6 +1280,13 @@ namespace Rux {
             if (e.op != TokenKind::Assign) {
                 // Compound assignment: load current value, compute, then store.
                 const LirReg current = LowerExpr(*e.target);
+                if (e.type.kind == TypeRef::Kind::Pointer && !e.type.inner.empty()) {
+                    const auto elemSize = e.type.inner[0].SizeInBytes();
+                    if (elemSize && *elemSize > 1) {
+                        const LirReg sz = EmitConst(std::to_string(*elemSize), e.type);
+                        val = EmitBinary(LirOpcode::Mul, val, sz, e.type);
+                    }
+                }
                 val = EmitBinary(CompoundOpcode(e.op), current, val, e.type);
             }
             else {
