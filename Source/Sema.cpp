@@ -658,8 +658,21 @@ namespace Rux {
                                        false});
                 }
             }
-            else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl))
-                simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "type alias");
+            else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl)) {
+                Symbol sym;
+                sym.kind = Symbol::Kind::Type;
+                sym.name = d->name;
+                sym.location = d->location;
+                sym.type = ResolveType(*d->type);
+                if (scope.Define(sym, diags, currentFile) && isGlobal) {
+                    symbols.push_back({SemaSymbol::Kind::Type,
+                                       d->name,
+                                       currentFile,
+                                       d->location,
+                                       sym.type.IsUnknown() ? "" : sym.type.ToString(),
+                                       false});
+                }
+            }
             else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl))
                 simple(Symbol::Kind::Func, d->name, SemaSymbol::Kind::Func, "extern");
             else if (auto* d = dynamic_cast<const ExternVarDecl*>(&decl)) {
