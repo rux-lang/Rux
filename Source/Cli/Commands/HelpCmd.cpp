@@ -183,7 +183,10 @@ namespace Rux {
             std::println();
         }
 
-        auto PrintBlock(std::string_view title, std::string_view text, size_t term_width) -> void {
+        auto PrintBlock(std::string_view title,
+                        std::string_view text,
+                        size_t term_width,
+                        size_t indent = Layout::BlockIndent) -> void {
             if (text.empty()) {
                 return;
             }
@@ -192,11 +195,11 @@ namespace Rux {
                 std::println("{}:", title);
             }
 
-            const size_t usable = UsableWidth(term_width, Layout::BlockIndent);
+            const size_t usable = UsableWidth(term_width, indent);
 
             Wrap(text, usable, [&](std::string_view line) -> void {
                 // If the line is empty, pad with 0 spaces (prints just a newline)
-                std::println("{0:<{1}}{2}", "", line.empty() ? 0 : Layout::BlockIndent, line);
+                std::println("{0:<{1}}{2}", "", line.empty() ? 0 : indent, line);
             });
 
             std::println("");
@@ -637,7 +640,7 @@ namespace Rux {
             std::println("");
         }
 
-        PrintBlock(""sv, footer, termWidth);
+        PrintBlock(""sv, footer, termWidth, 0);
 
         if (!examples.empty()) {
             std::println("Examples:");
