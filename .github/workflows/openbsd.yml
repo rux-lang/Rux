@@ -25,7 +25,7 @@ jobs:
 
           run: |
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-            cmake --build build
+            cmake --build build --parallel
             # Excluded within CMake, it won't actually run the tests, but it makes it
             # easier for when we can actually enable them
             ctest --test-dir build -C Release --output-on-failure

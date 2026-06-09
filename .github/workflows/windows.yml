@@ -32,7 +32,7 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build
+        run: cmake --build build --parallel
 
       - name: Run Rux Test Suite
         run: ctest --test-dir build -C Release --output-on-failure

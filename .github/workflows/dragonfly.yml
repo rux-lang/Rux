@@ -26,5 +26,5 @@ jobs:
           run: |
             export LD_LIBRARY_PATH="/usr/local/lib/gcc14:/usr/local/lib"
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++14
-            cmake --build build
+            cmake --build build --parallel
             ctest --test-dir build -C Release --output-on-failure
