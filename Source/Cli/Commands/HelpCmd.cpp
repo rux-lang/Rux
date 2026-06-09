@@ -307,7 +307,7 @@ namespace Rux {
             // Info
             constexpr std::array info_usage = {"[package name]"sv};
             constexpr std::array info_opts = {
-                OptionDoc{.flags = "--json"sv, .desc = "Returns a json instead of a string"sv}};
+                OptionDoc{.flags = "--json"sv, .desc = "Returns a JSON instead of a string"sv}};
             constexpr std::array info_exs = {"Std"sv, "Windows"sv};
 
             // Init
