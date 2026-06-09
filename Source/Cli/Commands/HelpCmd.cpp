@@ -75,8 +75,8 @@ namespace Rux {
             constexpr std::size_t DefaultWidth = 80;
             constexpr std::size_t MinWidth = 40;
 
-            constexpr std::size_t BlockIndent = 2;
-            constexpr std::size_t AlignedPadding = 4;
+            constexpr std::size_t BlockIndent = 4;
+            constexpr std::size_t AlignedPadding = 2;
 
             constexpr auto Whitespace = " \t"sv;
             constexpr auto CliName = "rux"sv;
