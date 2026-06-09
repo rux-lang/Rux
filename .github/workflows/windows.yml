@@ -2,9 +2,9 @@ name: Windows
 
 on:
   push:
-    branches: [main, dev]
+    branches: [ main, dev ]
   pull_request:
-    branches: [main, dev]
+    branches: [ main, dev ]
 
 jobs:
   build-and-test:
@@ -32,33 +32,7 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build
+        run: cmake --build build --parallel 4
 
-      - name: Run I/O thunk tests
-        # Run under bash (Git Bash ships on the runner). The script cd's into
-        # each package, so rux must be an absolute path.
-        shell: bash
-        run: Tests/run_io_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
-
-      - name: Run integer ** test
-        shell: bash
-        run: Tests/run_pow_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
-
-      - name: Run @[Target] import filtering test
-        shell: bash
-        run: Tests/run_target_import_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
-        
-      - name: Run escape decoding test
-        shell: bash
-        run: Tests/run_unicode_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
-
-      - name: Run numeric literal suffix test
-        shell: bash
-        run: Tests/run_numeric_suffix_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
-      - name: Run DLL build test
-        shell: bash
-        run: Tests/run_dll_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
-
-      - name: Run constant expression coercion test
-        shell: bash
-        run: Tests/run_const_expr_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
+      - name: Run Rux Test Suite
+        run: ctest --test-dir build -C Release --output-on-failure
