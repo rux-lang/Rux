@@ -21,7 +21,7 @@ func Main() -> int {
 	// if 9.0 ** 0.5 != 3.0 { return 8; }
 
 	// Floating remainder
-	//if 5.5 % 2.0 != 1.5 { return 9; }
+	if (7.0 % -3.0 != 1.0) || (-7.0 % 3.0 != -1.0) { return 9; }
 
 	// Unary operators
 	if -5.0 != -5.0 { return 10; }

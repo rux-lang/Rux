@@ -1009,6 +1009,58 @@ namespace Rux {
                 Byte(0xC1);
             }
 
+            void FmodssXmm01() const {
+                // xmm2 = x
+                Byte(0x0F);
+                Byte(0x28);
+                Byte(0xD0); // movaps xmm2, xmm0
+
+                // xmm3 = y
+                Byte(0x0F);
+                Byte(0x28);
+                Byte(0xD9); // movaps xmm3, xmm1
+
+                // xmm0 = x / y
+                Byte(0xF3);
+                Byte(0x0F);
+                Byte(0x5E);
+                Byte(0xC1); // divss xmm0, xmm1
+
+                // eax = trunc(x / y)
+                Byte(0xF3);
+                Byte(0x0F);
+                Byte(0x2C);
+                Byte(0xC0); // cvttss2si eax, xmm0
+
+                // xmm0 = float(eax)
+                Byte(0x66);
+                Byte(0x0F);
+                Byte(0xEF);
+                Byte(0xC0); // pxor xmm0, xmm0
+
+                Byte(0xF3);
+                Byte(0x0F);
+                Byte(0x2A);
+                Byte(0xC0); // cvtsi2ss xmm0, eax
+
+                // xmm0 *= y
+                Byte(0xF3);
+                Byte(0x0F);
+                Byte(0x59);
+                Byte(0xC3); // mulss xmm0, xmm3
+
+                // xmm2 -= xmm0
+                Byte(0xF3);
+                Byte(0x0F);
+                Byte(0x5C);
+                Byte(0xD0); // subss xmm2, xmm0
+
+                // result -> xmm0
+                Byte(0x0F);
+                Byte(0x28);
+                Byte(0xC2); // movaps xmm0, xmm2
+            }
+
             void AddsdXmm01() const {
                 Byte(0xF2);
                 Byte(0x0F);
@@ -1035,6 +1087,63 @@ namespace Rux {
                 Byte(0x0F);
                 Byte(0x5E);
                 Byte(0xC1);
+            }
+
+            void FmodsdXmm01() const {
+                // xmm2 = x
+                Byte(0x66);
+                Byte(0x0F);
+                Byte(0x28);
+                Byte(0xD0); // movapd xmm2, xmm0
+
+                // xmm3 = y
+                Byte(0x66);
+                Byte(0x0F);
+                Byte(0x28);
+                Byte(0xD9); // movapd xmm3, xmm1
+
+                // xmm0 = x / y
+                Byte(0xF2);
+                Byte(0x0F);
+                Byte(0x5E);
+                Byte(0xC1); // divsd xmm0, xmm1
+
+                // rax = trunc(x / y)
+                Byte(0xF2);
+                Byte(0x48);
+                Byte(0x0F);
+                Byte(0x2C);
+                Byte(0xC0); // cvttsd2si rax, xmm0
+
+                // xmm0 = double(rax)
+                Byte(0x66);
+                Byte(0x0F);
+                Byte(0xEF);
+                Byte(0xC0); // pxor xmm0, xmm0
+
+                Byte(0xF2);
+                Byte(0x48);
+                Byte(0x0F);
+                Byte(0x2A);
+                Byte(0xC0); // cvtsi2sd xmm0, rax
+
+                // xmm0 *= y
+                Byte(0xF2);
+                Byte(0x0F);
+                Byte(0x59);
+                Byte(0xC3); // mulsd xmm0, xmm3
+
+                // xmm2 -= xmm0
+                Byte(0xF2);
+                Byte(0x0F);
+                Byte(0x5C);
+                Byte(0xD0); // subsd xmm2, xmm0
+
+                // result -> xmm0
+                Byte(0x66);
+                Byte(0x0F);
+                Byte(0x28);
+                Byte(0xC2); // movapd xmm0, xmm2
             }
 
             // Float compare
@@ -2224,10 +2333,18 @@ namespace Rux {
                     if (const TypeRef& t = instr.type; IsFloat(t)) {
                         LoadA(instr.srcs[0], t);
                         LoadB(instr.srcs[1], t);
-                        if (t.kind == TypeRef::Kind::Float32)
-                            enc.DivssXmm01();
-                        else
-                            enc.DivsdXmm01();
+                        if (instr.op == LirOpcode::Div) {
+                            if (t.kind == TypeRef::Kind::Float32)
+                                enc.DivssXmm01();
+                            else
+                                enc.DivsdXmm01();
+                        }
+                        else { // Mod
+                            if (t.kind == TypeRef::Kind::Float32)
+                                enc.FmodssXmm01();
+                            else
+                                enc.FmodsdXmm01();
+                        }
                         StoreA(instr.dst, t);
                     }
                     else {
@@ -2357,15 +2474,15 @@ namespace Rux {
                         switch (instr.op) {
                         case LirOpcode::CmpEq:
                             // ordered && equal
-                            enc.SeteAl();      // AL = ZF
-                            enc.SetnpDl();     // DL = !PF
+                            enc.SeteAl(); // AL = ZF
+                            enc.SetnpDl(); // DL = !PF
                             enc.AndAlDl();
                             break;
 
                         case LirOpcode::CmpNe:
                             // unordered || unequal
-                            enc.SetneAl();     // AL = !ZF
-                            enc.SetpDl();      // DL = PF
+                            enc.SetneAl(); // AL = !ZF
+                            enc.SetpDl(); // DL = PF
                             enc.OrAlDl();
                             break;
 
