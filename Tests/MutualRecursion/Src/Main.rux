@@ -1,0 +1,28 @@
+func IsEven(n: int) -> bool {
+    if n == 0 { return true; }
+    return IsOdd(n - 1);
+}
+
+func IsOdd(n: int) -> bool {
+    if n == 0 { return false; }
+    return IsEven(n - 1);
+}
+
+func Main() -> int {
+
+    for i in 0..=100 {
+
+        let even: bool = IsEven(i);
+        let odd: bool = IsOdd(i);
+
+        if i % 2 == 0 {
+            if even != true { return 2 * i + 1; }
+            if odd  != false { return 2 * i + 2; }
+        } else {
+            if even != false { return 2 * i + 1; }
+            if odd  != true { return 2 * i + 2; }
+        }
+    }
+
+    return 0;
+}
