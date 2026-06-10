@@ -1,7 +1,10 @@
 [Package]
-Name    = "floating_point_types_test"
+Name = "floating_point_types_test"
 Version = "0.1.0"
-Type    = "bin"
+Type = "bin"
 
 [Build]
 Output = "Bin"
+
+[Dependencies]
+Std = "*"
