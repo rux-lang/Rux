@@ -79,7 +79,7 @@ The binary's exit code is the sole signal: **0 = PASS, anything else = FAIL**.
 This lets test packages assert arbitrary conditions without any test framework:
 
 ```rux
-pub fn Main() -> int {
+func Main() -> int {
     // returning a non-zero value here will fail the test
     if 2 ** 10 != 1024 { return 1; }
     return 0;

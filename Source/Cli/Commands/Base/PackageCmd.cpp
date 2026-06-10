@@ -217,7 +217,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions& op
             return 1;
         }
         if (!opts.quiet)
-            std::print("     Testing workspace tests\n");
+            std::print("     Running workspace tests\n");
     }
 
     const std::string_view profileName = isRelease ? "Release" : "Debug";
