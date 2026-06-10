@@ -22,7 +22,8 @@ Thank you for your interest in contributing to the Rux programming language!
    ```
 4. Push your branch and open a Pull Request against `dev`.
 
-> Note: All contributions should target the `dev` branch. Changes are reviewed and tested there before being merged into `main` for releases.
+> [!IMPORTANT]
+> All contributions should target the `dev` branch. Changes are reviewed and tested there before being merged into `main` for releases.
 
 ## Pull Request Guidelines
 
