@@ -5,6 +5,3 @@ Type = "bin"
 
 [Build]
 Output = "Bin"
-
-[Dependencies]
-Std = "*"

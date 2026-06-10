@@ -1,5 +1,10 @@
-import Std::{ IsInfinite, IsNan };
-import Std::Io::*;
+func IsNan(value: float64) -> bool {
+    return value != value;
+}
+
+func IsInfinite(value: float64) -> bool {
+    return value - value != 0.0;
+}
 
 func Main() -> int {
 	// Basic literals
