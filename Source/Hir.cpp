@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #include "Rux/Hir.h"
 
 #include "Rux/Platform/Defines.h"

@@ -1,4 +1,4 @@
-// Copyright (c) Rux contributors
+// Copyright (c) Rux contributors.
 // SPDX-License-Identifier: MIT
 
 #include "Rux/Asm.h"
