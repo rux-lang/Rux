@@ -19,7 +19,7 @@ endfunction()
 # Rux's backend emits raw assembly thunks that utilize direct kernel syscalls,
 # which are blocked by OpenBSD's security model (requires libc.so syscall pinning).
 if (NOT CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
-    add_rux_test(BoolBitwise)
+    add_rux_test(BooleanTypes)
     add_rux_test(ConstExpr)
     if (WIN32)
         add_rux_test(Dll)
