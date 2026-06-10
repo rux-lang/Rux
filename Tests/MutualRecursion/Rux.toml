@@ -1,5 +1,5 @@
 [Package]
-Name    = "bool_bitwise_test"
+Name    = "mutual_recursion_test"
 Version = "0.1.0"
 Type    = "bin"
 

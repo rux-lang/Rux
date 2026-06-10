@@ -2,9 +2,9 @@ name: Windows
 
 on:
   push:
-    branches: [main, dev]
+    branches: [ main, dev ]
   pull_request:
-    branches: [main, dev]
+    branches: [ main, dev ]
 
 jobs:
   build-and-test:
@@ -32,7 +32,7 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build
+        run: cmake --build build --parallel 4
 
       - name: Run I/O thunk tests
         # Run under bash (Git Bash ships on the runner). The script cd's into
@@ -66,3 +66,6 @@ jobs:
       - name: Run cast precedence test
         shell: bash
         run: Tests/run_cast_precedence_test.sh "$GITHUB_WORKSPACE/build/rux.exe"
+
+      - name: Run Rux Test Suite
+        run: ctest --test-dir build -C Release --output-on-failure

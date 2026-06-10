@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #include "Rux/Hir.h"
 
 #include "Rux/Platform/Defines.h"
@@ -294,7 +297,7 @@ namespace Rux {
                 simple(HirSymbol::Kind::Const, d->name, constType);
             }
             else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl))
-                simple(HirSymbol::Kind::Type, d->name);
+                simple(HirSymbol::Kind::Type, d->name, ResolveType(*d->type));
             else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl))
                 simple(HirSymbol::Kind::Func, d->name, MakeFuncType(d->params, d->returnType));
             else if (auto* d = dynamic_cast<const ExternVarDecl*>(&decl)) {
@@ -2564,10 +2567,10 @@ namespace Rux {
                 return he;
             }
             if (auto* e = dynamic_cast<const IsExpr*>(&expr)) {
-                auto he = std::make_unique<HirIsExpr>();
-                he->location = e->location;
-                he->operand = LowerExpr(*e->operand);
-                he->checkType = ResolveType(*e->type);
+                // The answer is statically known for all non-interface types.
+                // Interface types are rejected by Sema, so this path never reaches Lir.
+                auto he = std::make_unique<HirLiteralExpr>();
+                he->value = LowerExpr(*e->operand)->type == ResolveType(*e->type) ? "true" : "false";
                 he->type = TypeRef::MakeBool();
                 return he;
             }

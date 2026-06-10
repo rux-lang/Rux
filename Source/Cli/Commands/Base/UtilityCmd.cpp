@@ -1,36 +1,24 @@
-#include "Rux/Cli/Cli.h"
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
 
-#include "Rux/Asm.h"
-#include "Rux/Ast.h"
+#include "Rux/Cli/Cli.h"
 #include "Rux/Cli/CliInternals.h"
 #include "Rux/Hir.h"
-#include "Rux/Lexer.h"
-#include "Rux/Linker.h"
-#include "Rux/Lir.h"
 #include "Rux/Manifest.h"
 #include "Rux/Package.h"
-#include "Rux/Parser.h"
 #include "Rux/Platform/Defines.h"
 #include "Rux/Platform/Host.h"
-#include "Rux/Rcu.h"
-#include "Rux/Sema.h"
 #include "Rux/Version.h"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
-#include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <format>
-#include <iomanip>
 #include <print>
-#include <sstream>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -53,14 +41,11 @@
 
 #if RUX_OS_WINDOWS
     #include <psapi.h>
-    #include <winhttp.h>
 #else
     #include <sys/resource.h>
     #include <sys/wait.h>
     #include <unistd.h>
 #endif
-
-#include "Rux/SourceLoader.h"
 
 using namespace Rux;
 using namespace Platform;
@@ -92,7 +77,7 @@ int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions& opt
             continue;
         }
         if (arg == "-h" || arg == "--help") {
-            PrintHelpFmt();
+            PrintHelpFor("fmt");
             return 0;
         }
         PrintUnknownOption(arg, "fmt");
@@ -136,7 +121,7 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions& opt
             continue;
         }
         if (arg == "-h" || arg == "--help") {
-            PrintHelpDoc();
+            PrintHelpFor("doc");
             return 0;
         }
         PrintUnknownOption(arg, "doc");
@@ -164,7 +149,7 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions& op
             continue;
         }
         if (arg == "-h" || arg == "--help") {
-            PrintHelpList();
+            PrintHelpFor("list");
             return 0;
         }
         PrintUnknownOption(arg, "list");
@@ -235,7 +220,7 @@ int Cli::RunNew(const std::span<const std::string_view> args, const GlobalOption
             continue;
         }
         if (arg == "-h" || arg == "--help") {
-            PrintHelpNew();
+            PrintHelpFor("new");
             return 0;
         }
         if (!arg.starts_with('-') && name.empty()) {
@@ -247,7 +232,7 @@ int Cli::RunNew(const std::span<const std::string_view> args, const GlobalOption
     }
     if (name.empty()) {
         std::print(stderr, "error: missing package name\n\n");
-        PrintHelpNew();
+        PrintHelpFor("new");
         return 1;
     }
     const auto type = (lib && !bin) ? PackageType::SharedLibrary : PackageType::Executable;
@@ -272,7 +257,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions& 
             continue;
         }
         if (arg == "-h" || arg == "--help") {
-            PrintHelpUpdate();
+            PrintHelpFor("update");
             return 0;
         }
         PrintUnknownOption(arg, "update");
@@ -391,7 +376,7 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions& op
 
     for (auto arg : args) {
         if (arg == "-h" || arg == "--help") {
-            PrintHelpInfo();
+            PrintHelpFor("info");
             return 0;
         }
 

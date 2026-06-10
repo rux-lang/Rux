@@ -3,10 +3,6 @@
 // `10 + 2 * (5 - 3)` as int32. Before the fix only a bare literal coerced, so a
 // literal arithmetic expression assigned to a sized int was rejected with
 // "cannot assign 'int' to 'int32'".
-//
-// Returns 0 when every value is correct; otherwise the 1-based index of the
-// first failing check, so a non-zero exit pinpoints the broken case.
-// Tests/run_const_expr_test.sh asserts the exit code.
 
 func Main() -> int {
     let a: int32 = 10 + 2 * (5 - 3);

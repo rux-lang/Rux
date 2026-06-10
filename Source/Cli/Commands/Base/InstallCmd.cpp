@@ -1,36 +1,23 @@
-#include "Rux/Cli/Cli.h"
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
 
-#include "Rux/Asm.h"
-#include "Rux/Ast.h"
+#include "Rux/Cli/Cli.h"
 #include "Rux/Cli/CliInternals.h"
 #include "Rux/Hir.h"
-#include "Rux/Lexer.h"
-#include "Rux/Linker.h"
-#include "Rux/Lir.h"
 #include "Rux/Manifest.h"
-#include "Rux/Package.h"
-#include "Rux/Parser.h"
 #include "Rux/Platform/Defines.h"
 #include "Rux/Platform/Host.h"
-#include "Rux/Rcu.h"
-#include "Rux/Sema.h"
 #include "Rux/Version.h"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
-#include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <format>
-#include <iomanip>
 #include <print>
-#include <sstream>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -53,14 +40,11 @@
 
 #if RUX_OS_WINDOWS
     #include <psapi.h>
-    #include <winhttp.h>
 #else
     #include <sys/resource.h>
     #include <sys/wait.h>
     #include <unistd.h>
 #endif
-
-#include "Rux/SourceLoader.h"
 
 using namespace Rux;
 using namespace Platform;
@@ -72,7 +56,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions&
 
     for (auto arg : args) {
         if (arg == "-h" || arg == "--help") {
-            PrintHelpInstall();
+            PrintHelpFor("install");
             return 0;
         }
 
@@ -224,7 +208,7 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
     std::string_view packageName;
     for (auto arg : args) {
         if (arg == "-h" || arg == "--help") {
-            PrintHelpUninstall();
+            PrintHelpFor("uninstall");
             return 0;
         }
         if (!arg.starts_with('-') && packageName.empty()) {

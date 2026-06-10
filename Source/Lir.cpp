@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #include "Rux/Lir.h"
 
 #include <format>
@@ -1130,16 +1133,10 @@ namespace Rux {
             if (auto* e = dynamic_cast<const HirCastExpr*>(&expr))
                 return EmitCast(LowerExpr(*e->operand), e->operand->type, e->type);
             if (auto* e = dynamic_cast<const HirIsExpr*>(&expr)) {
-                LirReg src = LowerExpr(*e->operand);
-                LirReg dst = NewReg();
-                LirInstr i;
-                i.dst = dst;
-                i.op = LirOpcode::Call;
-                i.type = TypeRef::MakeBool();
-                i.srcs = {src};
-                i.strArg = "@is_type:" + e->checkType.ToString();
-                Emit(std::move(i));
-                return dst;
+                // Should only be reached for interface types (rejected by sema).
+                // Return false as a safe fallback.
+                LowerExpr(*e->operand);
+                return EmitConst("false", TypeRef::MakeBool());
             }
             if (auto* e = dynamic_cast<const HirBlockExpr*>(&expr)) {
                 LowerBlock(e->block);
@@ -1152,9 +1149,16 @@ namespace Rux {
         LirReg LowerPostfix(const HirPostfixExpr& e) {
             const LirReg ptr = LowerLValue(*e.operand);
             const LirReg old_val = EmitLoad(ptr, e.type);
-            const LirReg one = EmitConst("1", e.type);
+            LirReg delta = EmitConst("1", e.type);
+            if (e.type.kind == TypeRef::Kind::Pointer && !e.type.inner.empty()) {
+                const auto elemSize = e.type.inner[0].SizeInBytes();
+                if (elemSize && *elemSize > 1) {
+                    const LirReg sz = EmitConst(std::to_string(*elemSize), e.type);
+                    delta = EmitBinary(LirOpcode::Mul, delta, sz, e.type);
+                }
+            }
             const LirOpcode op = (e.op == TokenKind::PlusPlus) ? LirOpcode::Add : LirOpcode::Sub;
-            const LirReg new_val = EmitBinary(op, old_val, one, e.type);
+            const LirReg new_val = EmitBinary(op, old_val, delta, e.type);
             EmitStore(new_val, ptr, e.type);
             return old_val;
         }
@@ -1187,11 +1191,18 @@ namespace Rux {
             case TK::MinusMinus: {
                 const LirReg ptr = LowerLValue(*e.operand);
                 const LirReg old_val = EmitLoad(ptr, e.type);
-                const LirReg one = EmitConst("1", e.type);
+                LirReg delta = EmitConst("1", e.type);
+                if (e.type.kind == TypeRef::Kind::Pointer && !e.type.inner.empty()) {
+                    const auto elemSize = e.type.inner[0].SizeInBytes();
+                    if (elemSize && *elemSize > 1) {
+                        const LirReg sz = EmitConst(std::to_string(*elemSize), e.type);
+                        delta = EmitBinary(LirOpcode::Mul, delta, sz, e.type);
+                    }
+                }
                 const LirOpcode aop = (e.op == TK::PlusPlus) ? LirOpcode::Add : LirOpcode::Sub;
-                const LirReg new_val = EmitBinary(aop, old_val, one, e.type);
+                const LirReg new_val = EmitBinary(aop, old_val, delta, e.type);
                 EmitStore(new_val, ptr, e.type);
-                return new_val; // prefix: return new value
+                return new_val;
             }
             default:
                 return EmitUnary(LirOpcode::Not, LowerExpr(*e.operand), e.type);
@@ -1233,11 +1244,30 @@ namespace Rux {
             }
             const LirReg lhs = LowerExpr(*e.left);
             const LirReg rhs = LowerExpr(*e.right);
+
+            // Scale integer operand by element size for pointer arithmetic.
+            if ((e.op == TK::Plus || e.op == TK::Minus) && e.type.kind == TypeRef::Kind::Pointer && !e.type.inner.empty()) {
+                const auto elemSize = e.type.inner[0].SizeInBytes();
+                if (elemSize && *elemSize > 1) {
+                    if (e.left->type.kind == TypeRef::Kind::Pointer) {
+                        // ptr + int or ptr - int: scale the right (integer) operand
+                        const LirReg sz = EmitConst(std::to_string(*elemSize), e.right->type);
+                        const LirReg scaled = EmitBinary(LirOpcode::Mul, rhs, sz, e.right->type);
+                        return EmitBinary(BinaryOpcode(e.op), lhs, scaled, e.type);
+                    } else {
+                        // int + ptr: scale the left (integer) operand
+                        const LirReg sz = EmitConst(std::to_string(*elemSize), e.left->type);
+                        const LirReg scaled = EmitBinary(LirOpcode::Mul, lhs, sz, e.left->type);
+                        return EmitBinary(BinaryOpcode(e.op), scaled, rhs, e.type);
+                    }
+                }
+            }
+
             return EmitBinary(BinaryOpcode(e.op), lhs, rhs, e.type);
         }
 
         LirReg LowerAssign(const HirAssignExpr& e) {
-            if (e.op == TokenKind::Assign && IsInterfaceType(e.type)) {
+            if (e.op == TokenKind::Assign && (IsInterfaceType(e.type) || IsSliceType(e.type))) {
                 const LirReg ptr = LowerLValue(*e.target);
                 StoreExprIntoSlot(*e.value, ptr, e.type);
                 return ptr;
@@ -1247,6 +1277,13 @@ namespace Rux {
             if (e.op != TokenKind::Assign) {
                 // Compound assignment: load current value, compute, then store.
                 const LirReg current = LowerExpr(*e.target);
+                if (e.type.kind == TypeRef::Kind::Pointer && !e.type.inner.empty()) {
+                    const auto elemSize = e.type.inner[0].SizeInBytes();
+                    if (elemSize && *elemSize > 1) {
+                        const LirReg sz = EmitConst(std::to_string(*elemSize), e.type);
+                        val = EmitBinary(LirOpcode::Mul, val, sz, e.type);
+                    }
+                }
                 val = EmitBinary(CompoundOpcode(e.op), current, val, e.type);
             }
             else {

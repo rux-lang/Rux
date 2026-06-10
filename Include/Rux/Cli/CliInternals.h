@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 // File contains functions and values that were inside the Anonymous namespace.
 // I gave the functions and values a proper namespace so they can be used elsewhere.
 // I also Refactored some of the code to use standard library features.

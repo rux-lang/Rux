@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #include "Rux/Sema.h"
 
 #include "Rux/Platform/Host.h"
@@ -76,6 +79,9 @@ namespace Rux {
         if (*this == other) return true;
         // float32 widens implicitly to float64 / float (safe, no precision loss in range)
         if (kind == Kind::Float32 && other.kind == Kind::Float64) return true;
+        // char widens implicitly: char8 → char16, char8/char16 → char32
+        if (kind == Kind::Char8 && (other.kind == Kind::Char16 || other.kind == Kind::Char32)) return true;
+        if (kind == Kind::Char16 && other.kind == Kind::Char32) return true;
         // int/uint interoperate with their fixed-width platform equivalents (x64: 64-bit)
         if (kind == Kind::Int64 && other.kind == Kind::Int) return true;
         if (kind == Kind::Int && other.kind == Kind::Int64) return true;
@@ -658,8 +664,21 @@ namespace Rux {
                                        false});
                 }
             }
-            else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl))
-                simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "type alias");
+            else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl)) {
+                Symbol sym;
+                sym.kind = Symbol::Kind::Type;
+                sym.name = d->name;
+                sym.location = d->location;
+                sym.type = ResolveType(*d->type);
+                if (scope.Define(sym, diags, currentFile) && isGlobal) {
+                    symbols.push_back({SemaSymbol::Kind::Type,
+                                       d->name,
+                                       currentFile,
+                                       d->location,
+                                       sym.type.IsUnknown() ? "" : sym.type.ToString(),
+                                       false});
+                }
+            }
             else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl))
                 simple(Symbol::Kind::Func, d->name, SemaSymbol::Kind::Func, "extern");
             else if (auto* d = dynamic_cast<const ExternVarDecl*>(&decl)) {
@@ -1393,7 +1412,7 @@ namespace Rux {
                     }
                 }
             }
-            return sym.funcOverloads[0];
+            return nullptr;
         }
 
         TypeRef FunctionType(const FuncDecl& decl) {
@@ -1410,8 +1429,11 @@ namespace Rux {
                 if (const auto enumIt = enumDecls.find(baseName); enumIt != enumDecls.end())
                     return SizeOfEnum(*enumIt->second, substitutions);
                 // Interface fat pointers are {data: *opaque, vtable: *opaque} = 16 bytes
-                if (Symbol* sym = currentScope->Lookup(baseName); sym && sym->kind == Symbol::Kind::Interface)
-                    return 16;
+                if (Symbol* sym = currentScope->Lookup(baseName); sym) {
+                    if (sym->kind == Symbol::Kind::Interface) return 16;
+                    if (sym->kind == Symbol::Kind::Type && !sym->type.IsUnknown())
+                        return SizeOfTypeRef(sym->type, substitutions);
+                }
                 return SizeOfStruct(baseName, substitutions);
             }
 
@@ -2829,8 +2851,14 @@ namespace Rux {
             }
 
             if (auto* e = dynamic_cast<const IsExpr*>(&expr)) {
-                CheckExpr(*e->operand);
+                TypeRef operandType = CheckExpr(*e->operand);
                 ResolveType(*e->type);
+                const std::string ifaceName = NamedBaseTypeName(operandType);
+                if (!ifaceName.empty()) {
+                    Symbol* sym = currentScope->Lookup(ifaceName);
+                    if (sym && sym->kind == Symbol::Kind::Interface)
+                        EmitError(e->location, "runtime type checking with 'is' on interface types is not yet implemented");
+                }
                 return TypeRef::MakeBool();
             }
 
@@ -3174,7 +3202,6 @@ namespace Rux {
                     EmitError(target.location, std::format("cannot assign to immutable variable '{}'", e->name));
                 }
             }
-            // Field and index targets: would need full type info to check properly
         }
     };
 

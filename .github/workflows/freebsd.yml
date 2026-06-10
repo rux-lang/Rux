@@ -26,12 +26,5 @@ jobs:
           run: |
             failed=0
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-            cmake --build build
-            echo "---IO THUNK TESTS---"
-            ./Tests/run_io_test.sh "$PWD/build/rux" || failed=1
-            echo "---POW TEST---"
-            ./Tests/run_pow_test.sh "$PWD/build/rux" || failed=1
-            echo "---UNICODE TEST---"
-            ./Tests/run_unicode_test.sh "$PWD/build/rux" || failed=1
-            if [ "$failed" -ne 0 ]; then echo "SOME TESTS FAILED"; exit 1; fi
-            echo "ALL TESTS PASSED"
+            cmake --build build --parallel 4
+            ctest --test-dir build -C Release --output-on-failure
