@@ -891,17 +891,22 @@ namespace Rux {
                 Dword(u(v));
             }
 
-            // SETcc AL + MOVZX RAX, AL
             void SeteAl() const {
                 Byte(0x0F);
                 Byte(0x94);
-                Byte(0xC0);
+                Byte(0xC0); // sete al
             }
 
             void SetneAl() const {
                 Byte(0x0F);
                 Byte(0x95);
-                Byte(0xC0);
+                Byte(0xC0); // setne al
+            }
+
+            void SetnpDl() const {
+                Byte(0x0F);
+                Byte(0x9B);
+                Byte(0xC2); // setnp dl
             }
 
             void SetlAl() const {
@@ -957,6 +962,22 @@ namespace Rux {
                 Byte(0x0F);
                 Byte(0xB6);
                 Byte(0xC0);
+            }
+
+            void SetpDl() const {
+                Byte(0x0F);
+                Byte(0x9A);
+                Byte(0xC2); // setp dl
+            }
+
+            void AndAlDl() const {
+                Byte(0x20);
+                Byte(0xD0); // and al, dl
+            }
+
+            void OrAlDl() const {
+                Byte(0x08);
+                Byte(0xD0); // or al, dl
             }
 
             // Float arithmetic (XMM0 op XMM1 → XMM0)
@@ -2332,24 +2353,48 @@ namespace Rux {
                             enc.UcomissXmm01();
                         else
                             enc.UcomisdXmm01();
+
                         switch (instr.op) {
                         case LirOpcode::CmpEq:
-                            enc.SeteAl();
+                            // ordered && equal
+                            enc.SeteAl();      // AL = ZF
+                            enc.SetnpDl();     // DL = !PF
+                            enc.AndAlDl();
                             break;
+
                         case LirOpcode::CmpNe:
-                            enc.SetneAl();
+                            // unordered || unequal
+                            enc.SetneAl();     // AL = !ZF
+                            enc.SetpDl();      // DL = PF
+                            enc.OrAlDl();
                             break;
+
                         case LirOpcode::CmpLt:
+                            // ordered && CF
                             enc.SetbAl();
+                            enc.SetnpDl();
+                            enc.AndAlDl();
                             break;
+
                         case LirOpcode::CmpLe:
+                            // ordered && (CF || ZF)
                             enc.SetbeAl();
+                            enc.SetnpDl();
+                            enc.AndAlDl();
                             break;
+
                         case LirOpcode::CmpGt:
+                            // ordered && (!CF && !ZF)
                             enc.SetaAl();
+                            enc.SetnpDl();
+                            enc.AndAlDl();
                             break;
-                        default:
+
+                        case LirOpcode::CmpGe:
+                            // ordered && !CF
                             enc.SetaeAl();
+                            enc.SetnpDl();
+                            enc.AndAlDl();
                             break;
                         }
                     }
