@@ -8,6 +8,6 @@ func Sink(x: float64) -> int { return 2; }
 
 func Main() -> int {
     let f = Foo { x: 5 };
-    Sink(f);   // no overload accepts Foo — must be a compile error
+    Sink(f);   // no overload accepts Foo
     return 0;
 }
