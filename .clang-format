@@ -57,8 +57,3 @@ RemoveParentheses: ReturnStatement
 RemoveSemicolon: true
 SeparateDefinitionBlocks: Always
 TabWidth: 4
-KeepEmptyLinesAtTheStartOfBlocks: false
-SpaceInEmptyParentheses: false
-SpacesInConditionalStatement: false
-SpacesInCStyleCastParentheses: false
-SpacesInParentheses: false
