@@ -875,7 +875,26 @@ namespace Rux {
         const FuncDecl* LookupFunction(const std::string& name, const std::vector<TypeRef>& argTypes) {
             const auto it = functionsByName.find(name);
             if (it == functionsByName.end() || it->second.empty()) return nullptr;
-            if (it->second.size() == 1) return it->second[0];
+            if (it->second.size() == 1) {
+                // Single-candidate validation. We must still verify arity and assignability
+                // to prevent bogus calls from silently bypassing the type-checker.
+                const auto* decl = it->second[0];
+                TypeRef ft = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+                if (ft.kind != TypeRef::Kind::Func || ft.inner.empty()) return decl;
+                const std::size_t paramCount = ft.inner.size() - 1;
+                const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
+                std::size_t requiredCount = 0;
+                for (const auto& p : decl->params)
+                    if (!p.isVariadic && !p.defaultValue) ++requiredCount;
+                const bool arityOk = isVariadic ? argTypes.size() >= requiredCount
+                                                : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
+                if (!arityOk) return nullptr;
+                for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
+                    if (argTypes[i].IsUnknown() || ft.inner[i].IsUnknown()) continue;
+                    if (!argTypes[i].IsAssignableTo(ft.inner[i])) return nullptr;
+                }
+                return decl;
+            }
             for (const bool allowVariadic : {false, true}) {
                 for (const bool exactOnly : {true, false}) {
                     for (const auto* decl : it->second) {
@@ -904,7 +923,7 @@ namespace Rux {
                     }
                 }
             }
-            return it->second[0];
+            return nullptr;
         }
 
         const EnumDecl::Variant* LookupEnumVariant(const std::string& enumName, const std::string& variantName) const {
@@ -971,7 +990,21 @@ namespace Rux {
             if (methodIt == typeIt->second.end()) return nullptr;
             const auto& overloads = methodIt->second;
             if (overloads.empty()) return nullptr;
-            if (overloads.size() == 1 || argTypes.empty()) return overloads[0];
+            // Best-effort scrape for property access (missing args).
+            if (argTypes.empty()) return overloads[0];
+            if (overloads.size() == 1) {
+                // Single candidate: strictly enforce arity/types to prevent silent AST corruption.
+                const auto* decl = overloads[0];
+                TypeRef ft = MethodType(receiverType, *decl);
+                const std::size_t paramCount = ft.inner.size() >= 2 ? ft.inner.size() - 2 : 0;
+                if (paramCount != argTypes.size()) return nullptr;
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    const TypeRef& paramType = ft.inner[i + 1];
+                    if (argTypes[i].IsUnknown() || paramType.IsUnknown()) continue;
+                    if (!argTypes[i].IsAssignableTo(paramType)) return nullptr;
+                }
+                return decl;
+            }
             for (const auto* decl : overloads) {
                 TypeRef ft = MethodType(receiverType, *decl);
                 // ft.inner = [selfType, param1, ..., retType]
@@ -987,7 +1020,7 @@ namespace Rux {
                 }
                 if (match) return decl;
             }
-            return overloads[0];
+            return nullptr;
         }
 
         int InterfaceMethodIndex(const std::string& ifaceName, const std::string& methodName) const {
