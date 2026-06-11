@@ -32,7 +32,9 @@ namespace Rux {
     static ScaffoldResult WriteFile(const fs::path& path,
                                     const std::string_view content,
                                     const bool skipIfExists) {
-        if (skipIfExists && fs::exists(path)) return {};
+        if (skipIfExists && fs::exists(path)) {
+            return {};
+        }
 
         if (std::ofstream f{path, std::ios::binary};
             f.write(content.data(), content.size())) {
@@ -49,8 +51,9 @@ namespace Rux {
      * @return std::expected<void, std::string> error message on failure
      */
     static ScaffoldResult MakeDir(const fs::path& path) {
-        if (std::error_code ec; fs::create_directories(path, ec) || !ec)
+        if (std::error_code ec; fs::create_directories(path, ec) || !ec) {
             return {};
+        }
         return std::unexpected(
             std::format("failed to create directory: {}", path.string()));
     }

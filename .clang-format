@@ -35,6 +35,7 @@ IncludeCategories:
     SortPriority: 3
 IndentPPDirectives: AfterHash
 IndentWidth: 4
+InsertBraces: true
 InsertNewlineAtEOF: true
 MaxEmptyLinesToKeep: 2
 NamespaceIndentation: All

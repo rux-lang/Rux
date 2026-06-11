@@ -45,11 +45,15 @@ namespace Rux {
     std::optional<SourceFile>
     SourceLoader::LoadFile(const std::filesystem::path& path) {
         std::ifstream stream(path);
-        if (!stream) return std::nullopt;
+        if (!stream) {
+            return std::nullopt;
+        }
 
         std::ostringstream buf;
         buf << stream.rdbuf();
-        if (!stream && !stream.eof()) return std::nullopt;
+        if (!stream && !stream.eof()) {
+            return std::nullopt;
+        }
 
         return SourceFile{
             .path = std::filesystem::absolute(path),
@@ -62,8 +66,12 @@ namespace Rux {
         std::vector<std::filesystem::path> paths;
         for (const auto& entry :
              std::filesystem::recursive_directory_iterator(srcDir)) {
-            if (!entry.is_regular_file()) continue;
-            if (entry.path().extension() != ".rux") continue;
+            if (!entry.is_regular_file()) {
+                continue;
+            }
+            if (entry.path().extension() != ".rux") {
+                continue;
+            }
             paths.push_back(entry.path());
         }
         // Sort for deterministic ordering across platforms

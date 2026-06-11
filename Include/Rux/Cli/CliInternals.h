@@ -117,17 +117,26 @@ namespace Rux::Misc {
     }
 
     inline std::size_t CountLines(std::string_view source) {
-        if (source.empty()) return 0;
+        if (source.empty()) {
+            return 0;
+        }
 
         std::size_t lines = 0;
-        for (const char ch : source)
-            if (ch == '\n') ++lines;
-        if (source.back() != '\n') ++lines;
+        for (const char ch : source) {
+            if (ch == '\n') {
+                ++lines;
+            }
+        }
+        if (source.back() != '\n') {
+            ++lines;
+        }
         return lines;
     }
 
     inline std::size_t CountTokens(const LexerResult& result) {
-        if (result.tokens.empty()) return 0;
+        if (result.tokens.empty()) {
+            return 0;
+        }
         return result.tokens.back().IsEof() ? result.tokens.size() - 1
                                             : result.tokens.size();
     }
@@ -136,8 +145,9 @@ namespace Rux::Misc {
         std::string digits = std::to_string(value);
         for (std::ptrdiff_t i = static_cast<std::ptrdiff_t>(digits.size()) - 3;
              i > 0;
-             i -= 3)
+             i -= 3) {
             digits.insert(static_cast<std::size_t>(i), 1, ',');
+        }
         return digits;
     }
 
@@ -146,28 +156,38 @@ namespace Rux::Misc {
         oss << std::fixed << std::setprecision(decimals) << value;
         std::string text = oss.str();
         auto dot = text.find('.');
-        if (dot == std::string::npos) return text;
+        if (dot == std::string::npos) {
+            return text;
+        }
 
-        while (!text.empty() && text.back() == '0')
+        while (!text.empty() && text.back() == '0') {
             text.pop_back();
-        if (!text.empty() && text.back() == '.') text.pop_back();
+        }
+        if (!text.empty() && text.back() == '.') {
+            text.pop_back();
+        }
         return text;
     }
 
     inline std::string FormatCompactNumber(double value) {
         const double absValue = std::fabs(value);
-        if (absValue >= 1'000'000.0)
+        if (absValue >= 1'000'000.0) {
             return FormatDecimal(value / 1'000'000.0, 1) + "M";
-        if (absValue >= 1'000.0) return FormatDecimal(value / 1'000.0, 1) + "K";
+        }
+        if (absValue >= 1'000.0) {
+            return FormatDecimal(value / 1'000.0, 1) + "K";
+        }
         return FormatNumber(static_cast<std::uintmax_t>(std::llround(value)));
     }
 
     inline std::string FormatTokenThroughput(double tokensPerSecond) {
         const double absValue = std::fabs(tokensPerSecond);
-        if (absValue >= 1'000'000.0)
+        if (absValue >= 1'000'000.0) {
             return FormatDecimal(tokensPerSecond / 1'000'000.0, 1) + " M tok/s";
-        if (absValue >= 1'000.0)
+        }
+        if (absValue >= 1'000.0) {
             return FormatDecimal(tokensPerSecond / 1'000.0, 1) + " K tok/s";
+        }
         return FormatNumber(
                    static_cast<std::uintmax_t>(std::llround(tokensPerSecond))) +
                " tok/s";
@@ -175,9 +195,10 @@ namespace Rux::Misc {
 
     inline std::string FormatSize(std::uintmax_t bytes) {
         const double kb = static_cast<double>(bytes) / 1024.0;
-        if (kb < 1024.0)
+        if (kb < 1024.0) {
             return FormatNumber(static_cast<std::uintmax_t>(std::llround(kb))) +
                    " KB";
+        }
 
         const double mb = kb / 1024.0;
         return FormatDecimal(mb, 2) + " MB";
@@ -224,28 +245,43 @@ namespace Rux::Misc {
 
         const auto os_prefix = target.substr(0, dash_pos);
 
-        if (os_prefix == "linux") return "Linux";
-        if (os_prefix == "windows") return "Windows";
-        if (os_prefix == "macos") return "macOS";
+        if (os_prefix == "linux") {
+            return "Linux";
+        }
+        if (os_prefix == "windows") {
+            return "Windows";
+        }
+        if (os_prefix == "macos") {
+            return "macOS";
+        }
         if (os_prefix == "freebsd" || os_prefix == "openbsd" ||
-            os_prefix == "netbsd" || os_prefix == "dragonfly")
+            os_prefix == "netbsd" || os_prefix == "dragonfly") {
             return "BSD";
-        if (os_prefix == "illumos") return "Illumos";
+        }
+        if (os_prefix == "illumos") {
+            return "Illumos";
+        }
 
         return "";
     }
 
     inline bool DeclMatchesTarget(const Decl& decl,
                                   const std::string_view target) {
-        if (decl.targetOs.empty()) return true;
+        if (decl.targetOs.empty()) {
+            return true;
+        }
         const std::string_view targetOs = TargetOsName(target);
         // Normalize both sides for robust comparison.
-        if (decl.targetOs.size() != targetOs.size()) return false;
+        if (decl.targetOs.size() != targetOs.size()) {
+            return false;
+        }
         // Case-insensitive comparison handles any casing in @[Target("...")].
-        for (std::size_t i = 0; i < decl.targetOs.size(); ++i)
+        for (std::size_t i = 0; i < decl.targetOs.size(); ++i) {
             if (std::tolower(static_cast<unsigned char>(decl.targetOs[i])) !=
-                std::tolower(static_cast<unsigned char>(targetOs[i])))
+                std::tolower(static_cast<unsigned char>(targetOs[i]))) {
                 return false;
+            }
+        }
         return true;
     }
 
@@ -279,8 +315,9 @@ namespace Rux::Misc {
         std::erase_if(decls, [&](const DeclPtr& decl) {
             return !decl || !DeclMatchesTarget(*decl, target);
         });
-        for (const auto& decl : decls)
+        for (const auto& decl : decls) {
             PruneDeclForTarget(*decl, target);
+        }
     }
 
     inline void PruneModuleForTarget(Module& module,
@@ -436,8 +473,9 @@ namespace Rux::Misc {
     inline std::optional<Manifest>
     LoadManifest(const std::filesystem::path& path) {
         auto m = Manifest::Load(path);
-        if (!m)
+        if (!m) {
             std::print(stderr, "error: failed to parse '{}'\n", path.string());
+        }
         return m;
     }
 
@@ -449,7 +487,9 @@ namespace Rux::Misc {
             manifest.build.output.empty()
                 ? std::filesystem::path("Bin")
                 : std::filesystem::path(manifest.build.output);
-        if (output.is_relative()) output = root / output;
+        if (output.is_relative()) {
+            output = root / output;
+        }
         return (output / std::string(profileName)).lexically_normal();
     }
 
@@ -479,7 +519,9 @@ inline std::optional<std::string> FetchUrl(const std::string& url) {
 
     FILE* pipe = _popen(cmd.c_str(), "r");
 
-    if (!pipe) return std::nullopt;
+    if (!pipe) {
+        return std::nullopt;
+    }
 
     while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
         result += buffer.data();
@@ -517,13 +559,16 @@ inline std::string ShellQuote(const std::string& value) {
 inline std::optional<std::string>
 RunCommandCapture(const std::string& command) {
     FILE* pipe = ::popen(command.c_str(), "r");
-    if (!pipe) return std::nullopt;
+    if (!pipe) {
+        return std::nullopt;
+    }
 
     std::string output;
     std::array<char, 4096> buffer{};
 
-    while (::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
+    while (::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe)) {
         output.append(buffer.data());
+    }
 
     const int status = ::pclose(pipe);
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
@@ -534,7 +579,9 @@ RunCommandCapture(const std::string& command) {
 
 inline std::optional<std::string> FetchUrl(const std::string& url) {
     const std::string quotedUrl = ShellQuote(url);
-    if (auto body = RunCommandCapture("curl -fsSL " + quotedUrl)) return body;
+    if (auto body = RunCommandCapture("curl -fsSL " + quotedUrl)) {
+        return body;
+    }
     return RunCommandCapture("wget -qO- " + quotedUrl);
 }
 #endif
@@ -557,22 +604,28 @@ namespace Rux {
             }
             if (arg == "--color") {
                 if (i + 1 < args.size()) {
-                    if (const std::string_view val = args[++i]; val == "on")
+                    if (const std::string_view val = args[++i]; val == "on") {
                         opts.color = ColorMode::On;
-                    else if (val == "off")
+                    }
+                    else if (val == "off") {
                         opts.color = ColorMode::Off;
-                    else
+                    }
+                    else {
                         opts.color = ColorMode::Auto;
+                    }
                 }
                 continue;
             }
             if (arg.starts_with("--color=")) {
-                if (const std::string_view val = arg.substr(8); val == "on")
+                if (const std::string_view val = arg.substr(8); val == "on") {
                     opts.color = ColorMode::On;
-                else if (val == "off")
+                }
+                else if (val == "off") {
                     opts.color = ColorMode::Off;
-                else
+                }
+                else {
                     opts.color = ColorMode::Auto;
+                }
             }
         }
         return opts;
@@ -586,23 +639,27 @@ namespace Rux {
         while ((pos = json.find(needle, pos)) != std::string_view::npos) {
             std::size_t i = pos + needle.size();
             while (i < json.size() && (json[i] == ' ' || json[i] == '\t' ||
-                                       json[i] == '\r' || json[i] == '\n'))
+                                       json[i] == '\r' || json[i] == '\n')) {
                 ++i;
+            }
             if (i >= json.size() || json[i] != ':') {
                 pos = i;
                 continue;
             }
             ++i;
             while (i < json.size() && (json[i] == ' ' || json[i] == '\t' ||
-                                       json[i] == '\r' || json[i] == '\n'))
+                                       json[i] == '\r' || json[i] == '\n')) {
                 ++i;
+            }
             if (i >= json.size() || json[i] != '"') {
                 pos = i;
                 continue;
             }
             ++i;
             const auto end = json.find('"', i);
-            if (end == std::string_view::npos) break;
+            if (end == std::string_view::npos) {
+                break;
+            }
             return std::string(json.substr(i, end - i));
         }
         return {};
@@ -617,7 +674,9 @@ namespace Rux {
             manifest.build.output.empty()
                 ? std::filesystem::path("bin")
                 : std::filesystem::path(manifest.build.output);
-        if (output.is_relative()) output = root / output;
+        if (output.is_relative()) {
+            output = root / output;
+        }
         return (output / std::string(profileName)).lexically_normal();
     }
 
@@ -648,8 +707,9 @@ namespace Rux {
                             nullptr,
                             nullptr,
                             &si,
-                            &pi))
+                            &pi)) {
             return false;
+        }
         WaitForSingleObject(pi.hProcess, INFINITE);
         DWORD exitCode = 1;
         GetExitCodeProcess(pi.hProcess, &exitCode);
@@ -682,8 +742,9 @@ namespace Rux {
                             nullptr,
                             nullptr,
                             &si,
-                            &pi))
+                            &pi)) {
             return false;
+        }
         WaitForSingleObject(pi.hProcess, INFINITE);
         DWORD exitCode = 1;
         GetExitCodeProcess(pi.hProcess, &exitCode);

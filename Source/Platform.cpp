@@ -86,11 +86,21 @@ namespace Rux::Platform {
             __cpuid(1, r[0], r[1], r[2], r[3]);
 #  endif
 
-            if (r[3] & (1 << 26)) f |= CpuFeature::SSE2;
-            if (r[2] & (1 << 0)) f |= CpuFeature::SSE3;
-            if (r[2] & (1 << 9)) f |= CpuFeature::SSSE3;
-            if (r[2] & (1 << 19)) f |= CpuFeature::SSE41;
-            if (r[2] & (1 << 20)) f |= CpuFeature::SSE42;
+            if (r[3] & (1 << 26)) {
+                f |= CpuFeature::SSE2;
+            }
+            if (r[2] & (1 << 0)) {
+                f |= CpuFeature::SSE3;
+            }
+            if (r[2] & (1 << 9)) {
+                f |= CpuFeature::SSSE3;
+            }
+            if (r[2] & (1 << 19)) {
+                f |= CpuFeature::SSE41;
+            }
+            if (r[2] & (1 << 20)) {
+                f |= CpuFeature::SSE42;
+            }
 
             // AVX requires OS support
             const bool avx_hw = r[2] & (1 << 28);
@@ -108,18 +118,26 @@ namespace Rux::Platform {
             __cpuid_count(7, 0, r[0], r[1], r[2], r[3]);
 #  endif
 
-            if (r[1] & (1 << 5)) f |= CpuFeature::AVX2;
+            if (r[1] & (1 << 5)) {
+                f |= CpuFeature::AVX2;
+            }
 
             // NOTE: simplified AVX-512 detection (still OS-dependent in real
             // systems)
-            if (r[1] & (1 << 16)) f |= CpuFeature::AVX512;
+            if (r[1] & (1 << 16)) {
+                f |= CpuFeature::AVX512;
+            }
 
 #elif RUX_ARCH_ARM64 || RUX_ARCH_ARM32
 
 #  if RUX_OS_LINUX
             unsigned long hw = getauxval(AT_HWCAP);
-            if (hw & HWCAP_ASIMD) f |= CpuFeature::NEON;
-            if (hw & HWCAP_SVE) f |= CpuFeature::SVE;
+            if (hw & HWCAP_ASIMD) {
+                f |= CpuFeature::NEON;
+            }
+            if (hw & HWCAP_SVE) {
+                f |= CpuFeature::SVE;
+            }
 #  elif RUX_OS_MACOS
             f |= CpuFeature::NEON;
 #  else
@@ -130,7 +148,9 @@ namespace Rux::Platform {
 
 #  if RUX_OS_LINUX
             unsigned long hw = getauxval(AT_HWCAP);
-            if (hw & (1 << ('V' - 'A'))) f |= CpuFeature::RVV;
+            if (hw & (1 << ('V' - 'A'))) {
+                f |= CpuFeature::RVV;
+            }
 #  else
             f = HostCpuFeatures;
 #  endif
@@ -172,8 +192,9 @@ namespace Rux::Platform {
                 for (size_t i = 0; i < count; ++i) {
                     const auto& e = entries[i];
 
-                    if (e.Relationship == RelationProcessorCore)
+                    if (e.Relationship == RelationProcessorCore) {
                         ++info.physical_cores;
+                    }
 
                     else if (e.Relationship == RelationCache &&
                              e.Cache.Level == 1 && e.Cache.Type == CacheData) {
@@ -219,9 +240,13 @@ namespace Rux::Platform {
 
 #endif
 
-            if (!info.cache_line_size) info.cache_line_size = CacheLineSize;
+            if (!info.cache_line_size) {
+                info.cache_line_size = CacheLineSize;
+            }
 
-            if (!info.physical_cores) info.physical_cores = info.logical_cores;
+            if (!info.physical_cores) {
+                info.physical_cores = info.logical_cores;
+            }
 
             return info;
         }

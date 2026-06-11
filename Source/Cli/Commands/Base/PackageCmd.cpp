@@ -81,9 +81,13 @@ int Cli::RunAdd(std::span<const std::string_view> args,
         return 1;
     }
     auto manifestPath = RequireManifest();
-    if (!manifestPath) return 1;
+    if (!manifestPath) {
+        return 1;
+    }
     auto manifest = LoadManifest(*manifestPath);
-    if (!manifest) return 1;
+    if (!manifest) {
+        return 1;
+    }
     auto [pkgName, pkgVersion] = ParsePackageSpec(spec);
 
     if (!pathArg.empty()) {
@@ -96,15 +100,19 @@ int Cli::RunAdd(std::span<const std::string_view> args,
             return 1;
         }
         if (!opts.quiet) {
-            if (changed)
+            if (changed) {
                 std::print("Added {} @ path '{}'\n", pkgName, pathArg);
-            else
+            }
+            else {
                 std::print("Up-to-date {} @ path '{}'\n", pkgName, pathArg);
+            }
         }
         return 0;
     }
 
-    if (!opts.quiet) std::print("     Fetching registry...\n");
+    if (!opts.quiet) {
+        std::print("     Fetching registry...\n");
+    }
 
     const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
     if (!jsonOpt) {
@@ -126,10 +134,12 @@ int Cli::RunAdd(std::span<const std::string_view> args,
     }
     if (!opts.quiet) {
         const std::string ver = pkgVersion.empty() ? "latest" : pkgVersion;
-        if (changed)
+        if (changed) {
             std::print("Added {} @ {}\n", pkgName, ver);
-        else
+        }
+        else {
             std::print("Up-to-date {} @ {}\n", pkgName, ver);
+        }
     }
     return 0;
 }
@@ -155,9 +165,13 @@ int Cli::RunRemove(std::span<const std::string_view> args,
         return 1;
     }
     auto manifestPath = RequireManifest();
-    if (!manifestPath) return 1;
+    if (!manifestPath) {
+        return 1;
+    }
     auto manifest = LoadManifest(*manifestPath);
-    if (!manifest) return 1;
+    if (!manifest) {
+        return 1;
+    }
     std::string pkgName(name);
     if (!manifest->RemoveDependency(pkgName)) {
         std::print(
@@ -169,7 +183,9 @@ int Cli::RunRemove(std::span<const std::string_view> args,
             stderr, "error: failed to write '{}'\n", manifestPath->string());
         return 1;
     }
-    if (!opts.quiet) std::print("     Removed {}\n", pkgName);
+    if (!opts.quiet) {
+        std::print("     Removed {}\n", pkgName);
+    }
     return 0;
 }
 
@@ -189,17 +205,24 @@ int Cli::RunTest(std::span<const std::string_view> args,
         return 1;
     }
     auto manifestPath = RequireManifest();
-    if (!manifestPath) return 1;
+    if (!manifestPath) {
+        return 1;
+    }
     auto manifest = LoadManifest(*manifestPath);
-    if (!manifest) return 1;
-    if (!opts.quiet)
+    if (!manifest) {
+        return 1;
+    }
+    if (!opts.quiet) {
         std::print("     Testing {} v{}\n",
                    manifest->package.name,
                    manifest->package.version);
+    }
     // TODO: build and run test targets
     std::println("Running executable...");
     std::println("Release: {}", isRelease);
-    if (!opts.quiet) std::print("    Finished running tests\n");
+    if (!opts.quiet) {
+        std::print("    Finished running tests\n");
+    }
     return 0;
 }
 
@@ -227,11 +250,16 @@ int Cli::RunInit(std::span<const std::string_view> args,
         (lib && !bin) ? PackageType::SharedLibrary : PackageType::Executable;
     const auto root = std::filesystem::current_path();
     auto name = root.filename().string();
-    if (!opts.quiet)
+    if (!opts.quiet) {
         std::print("  Initializing {} package '{}'\n",
                    type == PackageType::Executable ? "binary" : "library",
                    name);
-    if (!ScaffoldPackage(root, name, type, /*initMode=*/true)) return 1;
-    if (!opts.quiet) std::print("   Initialized package '{}'\n", name);
+    }
+    if (!ScaffoldPackage(root, name, type, /*initMode=*/true)) {
+        return 1;
+    }
+    if (!opts.quiet) {
+        std::print("   Initialized package '{}'\n", name);
+    }
     return 0;
 }

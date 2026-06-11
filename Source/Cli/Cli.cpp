@@ -77,8 +77,9 @@ int Cli::Run() const {
     // Collect all arguments as string_views (skip argv[0])
     std::vector<std::string_view> sv;
     sv.reserve(static_cast<std::size_t>(args.size()));
-    for (auto* a : args.subspan(1))
+    for (auto* a : args.subspan(1)) {
         sv.emplace_back(a);
+    }
 
     if (sv.empty()) {
         PrintHelp();
@@ -111,7 +112,9 @@ int Cli::Run() const {
             }
             if (arg == "--color") {
                 preCommandGlobals.push_back(arg);
-                if (i + 1 < sv.size()) preCommandGlobals.push_back(sv[++i]);
+                if (i + 1 < sv.size()) {
+                    preCommandGlobals.push_back(sv[++i]);
+                }
                 continue;
             }
             if (arg.starts_with("--color=")) {
@@ -140,24 +143,60 @@ int Cli::Run() const {
     GlobalOptions opts = ParseGlobalOptions(allArgs);
     std::span<const std::string_view> rest(cmdArgs);
 
-    if (command == "help") return RunHelp(rest, opts);
-    if (command == "version") return RunVersion(opts);
-    if (command == "build") return RunBuild(rest, opts);
-    if (command == "clean") return RunClean(rest, opts);
-    if (command == "doc") return RunDoc(rest, opts);
-    if (command == "fmt") return RunFmt(rest, opts);
-    if (command == "init") return RunInit(rest, opts);
-    if (command == "install") return RunInstall(rest, opts);
-    if (command == "uninstall") return RunUninstall(rest, opts);
-    if (command == "list") return RunList(rest, opts);
-    if (command == "new") return RunNew(rest, opts);
-    if (command == "add") return RunAdd(rest, opts);
-    if (command == "remove") return RunRemove(rest, opts);
-    if (command == "run") return RunRun(rest, opts);
-    if (command == "test") return RunTest(rest, opts);
-    if (command == "update") return RunUpdate(rest, opts);
-    if (command == "info") return RunInfo(rest, opts);
-    if (command == "check") return RunCheck(rest, opts);
+    if (command == "help") {
+        return RunHelp(rest, opts);
+    }
+    if (command == "version") {
+        return RunVersion(opts);
+    }
+    if (command == "build") {
+        return RunBuild(rest, opts);
+    }
+    if (command == "clean") {
+        return RunClean(rest, opts);
+    }
+    if (command == "doc") {
+        return RunDoc(rest, opts);
+    }
+    if (command == "fmt") {
+        return RunFmt(rest, opts);
+    }
+    if (command == "init") {
+        return RunInit(rest, opts);
+    }
+    if (command == "install") {
+        return RunInstall(rest, opts);
+    }
+    if (command == "uninstall") {
+        return RunUninstall(rest, opts);
+    }
+    if (command == "list") {
+        return RunList(rest, opts);
+    }
+    if (command == "new") {
+        return RunNew(rest, opts);
+    }
+    if (command == "add") {
+        return RunAdd(rest, opts);
+    }
+    if (command == "remove") {
+        return RunRemove(rest, opts);
+    }
+    if (command == "run") {
+        return RunRun(rest, opts);
+    }
+    if (command == "test") {
+        return RunTest(rest, opts);
+    }
+    if (command == "update") {
+        return RunUpdate(rest, opts);
+    }
+    if (command == "info") {
+        return RunInfo(rest, opts);
+    }
+    if (command == "check") {
+        return RunCheck(rest, opts);
+    }
 
     PrintUnknownCommand(command);
     return 1;

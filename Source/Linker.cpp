@@ -83,8 +83,9 @@ namespace Rux {
     }
 
     [[maybe_unused]] static void WriteU64(Buf& b, uint64_t v) {
-        for (int i = 0; i < 8; ++i)
+        for (int i = 0; i < 8; ++i) {
             b.push_back(static_cast<uint8_t>(v >> (i * 8)));
+        }
     }
 
     [[maybe_unused]] static void WriteZeros(Buf& b, size_t n) {
@@ -92,20 +93,23 @@ namespace Rux {
     }
 
     [[maybe_unused]] static void WriteCStr(Buf& b, const char* s) {
-        while (*s)
+        while (*s) {
             b.push_back(*s++);
+        }
         b.push_back(0);
     }
 
     [[maybe_unused]] static void WriteName8(Buf& b, const char* s) {
         size_t len = std::strlen(s);
-        for (size_t i = 0; i < 8; ++i)
+        for (size_t i = 0; i < 8; ++i) {
             b.push_back(i < len ? static_cast<uint8_t>(s[i]) : 0);
+        }
     }
 
     [[maybe_unused]] static void PadTo(Buf& b, size_t align, uint8_t fill = 0) {
-        while (b.size() % align)
+        while (b.size() % align) {
             b.push_back(fill);
+        }
     }
 
     [[maybe_unused]] static uint32_t AlignUp(uint32_t v, uint32_t a) {
@@ -120,8 +124,9 @@ namespace Rux {
     }
 
     static void Patch64(Buf& b, size_t off, uint64_t v) {
-        for (int i = 0; i < 8; ++i)
+        for (int i = 0; i < 8; ++i) {
             b[off + i] = static_cast<uint8_t>(v >> (i * 8));
+        }
     }
 
     static bool FileExists(const std::filesystem::path& path) {
@@ -132,26 +137,37 @@ namespace Rux {
 #if RUX_OS_WINDOWS
     static std::optional<Buf> ReadFileBytes(const std::filesystem::path& path) {
         std::ifstream in(path, std::ios::binary | std::ios::ate);
-        if (!in) return std::nullopt;
+        if (!in) {
+            return std::nullopt;
+        }
         const auto size = in.tellg();
-        if (size < 0) return std::nullopt;
+        if (size < 0) {
+            return std::nullopt;
+        }
         Buf data(static_cast<size_t>(size));
         in.seekg(0);
-        if (!data.empty())
+        if (!data.empty()) {
             in.read(reinterpret_cast<char*>(data.data()),
                     static_cast<std::streamsize>(data.size()));
-        if (!in && !in.eof()) return std::nullopt;
+        }
+        if (!in && !in.eof()) {
+            return std::nullopt;
+        }
         return data;
     }
 
     static bool ReadU16At(const Buf& b, size_t off, uint16_t& out) {
-        if (off + 2 > b.size()) return false;
+        if (off + 2 > b.size()) {
+            return false;
+        }
         out = static_cast<uint16_t>(b[off] | (b[off + 1] << 8));
         return true;
     }
 
     static bool ReadU32At(const Buf& b, size_t off, uint32_t& out) {
-        if (off + 4 > b.size()) return false;
+        if (off + 4 > b.size()) {
+            return false;
+        }
         out = static_cast<uint32_t>(b[off]) |
               (static_cast<uint32_t>(b[off + 1]) << 8) |
               (static_cast<uint32_t>(b[off + 2]) << 16) |
@@ -170,14 +186,17 @@ namespace Rux {
             if (!ReadU32At(pe, sec + 8, virtualSize) ||
                 !ReadU32At(pe, sec + 12, virtualAddress) ||
                 !ReadU32At(pe, sec + 16, rawSize) ||
-                !ReadU32At(pe, sec + 20, rawPtr))
+                !ReadU32At(pe, sec + 20, rawPtr)) {
                 return std::nullopt;
+            }
 
             const uint32_t span = std::max(virtualSize, rawSize);
             if (rva >= virtualAddress && rva < virtualAddress + span) {
                 const size_t off =
                     static_cast<size_t>(rawPtr) + (rva - virtualAddress);
-                if (off < pe.size()) return off;
+                if (off < pe.size()) {
+                    return off;
+                }
                 return std::nullopt;
             }
         }
@@ -185,32 +204,40 @@ namespace Rux {
     }
 
     static bool ReadPeCString(const Buf& pe, size_t off, std::string& out) {
-        if (off >= pe.size()) return false;
+        if (off >= pe.size()) {
+            return false;
+        }
         out.clear();
-        while (off < pe.size() && pe[off] != 0)
+        while (off < pe.size() && pe[off] != 0) {
             out.push_back(static_cast<char>(pe[off++]));
+        }
         return off < pe.size();
     }
 
     [[maybe_unused]] static std::optional<std::unordered_set<std::string>>
     ReadDllExports(const std::filesystem::path& path) {
         auto peData = ReadFileBytes(path);
-        if (!peData) return std::nullopt;
+        if (!peData) {
+            return std::nullopt;
+        }
         const Buf& pe = *peData;
 
         uint32_t peOff32 = 0;
-        if (pe.size() < 0x40 || !ReadU32At(pe, 0x3C, peOff32))
+        if (pe.size() < 0x40 || !ReadU32At(pe, 0x3C, peOff32)) {
             return std::nullopt;
+        }
         const size_t peOff = peOff32;
         if (peOff + 24 > pe.size() || pe[peOff] != 'P' ||
-            pe[peOff + 1] != 'E' || pe[peOff + 2] != 0 || pe[peOff + 3] != 0)
+            pe[peOff + 1] != 'E' || pe[peOff + 2] != 0 || pe[peOff + 3] != 0) {
             return std::nullopt;
+        }
 
         uint16_t sectionCount = 0, optionalSize = 0, magic = 0;
         if (!ReadU16At(pe, peOff + 6, sectionCount) ||
             !ReadU16At(pe, peOff + 20, optionalSize) ||
-            !ReadU16At(pe, peOff + 24, magic))
+            !ReadU16At(pe, peOff + 24, magic)) {
             return std::nullopt;
+        }
 
         const size_t optionalOff = peOff + 24;
         const size_t dataDirOff =
@@ -218,36 +245,50 @@ namespace Rux {
         uint32_t exportRva = 0, exportSize = 0;
         if (dataDirOff + 8 > optionalOff + optionalSize ||
             !ReadU32At(pe, dataDirOff, exportRva) ||
-            !ReadU32At(pe, dataDirOff + 4, exportSize))
+            !ReadU32At(pe, dataDirOff + 4, exportSize)) {
             return std::nullopt;
+        }
 
         std::unordered_set<std::string> exports;
-        if (exportRva == 0 || exportSize == 0) return exports;
+        if (exportRva == 0 || exportSize == 0) {
+            return exports;
+        }
 
         const size_t sectionTable = optionalOff + optionalSize;
         auto exportOff =
             PeRvaToOffset(pe, exportRva, sectionTable, sectionCount);
-        if (!exportOff || *exportOff + 40 > pe.size()) return std::nullopt;
+        if (!exportOff || *exportOff + 40 > pe.size()) {
+            return std::nullopt;
+        }
 
         uint32_t nameCount = 0, namesRva = 0;
         if (!ReadU32At(pe, *exportOff + 24, nameCount) ||
-            !ReadU32At(pe, *exportOff + 32, namesRva))
+            !ReadU32At(pe, *exportOff + 32, namesRva)) {
             return std::nullopt;
+        }
 
         auto namesOff = PeRvaToOffset(pe, namesRva, sectionTable, sectionCount);
-        if (!namesOff) return std::nullopt;
+        if (!namesOff) {
+            return std::nullopt;
+        }
 
         for (uint32_t i = 0; i < nameCount; ++i) {
             uint32_t nameRva = 0;
-            if (!ReadU32At(pe, *namesOff + static_cast<size_t>(i) * 4, nameRva))
+            if (!ReadU32At(
+                    pe, *namesOff + static_cast<size_t>(i) * 4, nameRva)) {
                 return std::nullopt;
+            }
 
             auto nameOff =
                 PeRvaToOffset(pe, nameRva, sectionTable, sectionCount);
-            if (!nameOff) return std::nullopt;
+            if (!nameOff) {
+                return std::nullopt;
+            }
 
             std::string name;
-            if (!ReadPeCString(pe, *nameOff, name)) return std::nullopt;
+            if (!ReadPeCString(pe, *nameOff, name)) {
+                return std::nullopt;
+            }
             exports.insert(std::move(name));
         }
 
@@ -259,8 +300,9 @@ namespace Rux {
 #if RUX_COMPILER_MSVC
         char* value = nullptr;
         size_t size = 0;
-        if (_dupenv_s(&value, &size, "PATH") != 0 || value == nullptr)
+        if (_dupenv_s(&value, &size, "PATH") != 0 || value == nullptr) {
             return {};
+        }
         std::unique_ptr<char, decltype(&std::free)> owned(value, &std::free);
         return std::string(value, size > 0 ? size - 1 : 0);
 #else
@@ -274,33 +316,47 @@ namespace Rux {
                 const std::vector<std::filesystem::path>& searchDirs,
                 const std::filesystem::path& outputDir) {
         const std::filesystem::path dllPath(dll);
-        if (dllPath.is_absolute())
+        if (dllPath.is_absolute()) {
             return FileExists(dllPath)
                      ? std::optional<std::filesystem::path>(dllPath)
                      : std::nullopt;
+        }
 
         // Candidate file names to probe in each search location. Imports are
         // commonly declared without an extension (e.g. @[Import(lib:
         // "kernel32")]); mirror the OS loader and also try the name with ".dll"
         // appended.
         std::vector<std::filesystem::path> candidates{dllPath};
-        if (dllPath.extension().empty()) candidates.emplace_back(dll + ".dll");
+        if (dllPath.extension().empty()) {
+            candidates.emplace_back(dll + ".dll");
+        }
 
         const auto probe = [&](const std::filesystem::path& dir)
             -> std::optional<std::filesystem::path> {
-            if (dir.empty()) return std::nullopt;
+            if (dir.empty()) {
+                return std::nullopt;
+            }
             for (const auto& name : candidates) {
-                if (FileExists(dir / name)) return dir / name;
+                if (FileExists(dir / name)) {
+                    return dir / name;
+                }
             }
             return std::nullopt;
         };
 
-        if (auto hit = probe(outputDir)) return hit;
+        if (auto hit = probe(outputDir)) {
+            return hit;
+        }
 
-        for (const auto& dir : searchDirs)
-            if (auto hit = probe(dir)) return hit;
+        for (const auto& dir : searchDirs) {
+            if (auto hit = probe(dir)) {
+                return hit;
+            }
+        }
 
-        if (auto hit = probe(std::filesystem::current_path())) return hit;
+        if (auto hit = probe(std::filesystem::current_path())) {
+            return hit;
+        }
 
 #if RUX_OS_WINDOWS
         // System DLLs (kernel32, user32, ...) live in the Windows system
@@ -310,20 +366,27 @@ namespace Rux {
         {
             wchar_t sysDir[MAX_PATH];
             const UINT len = GetSystemDirectoryW(sysDir, MAX_PATH);
-            if (len > 0 && len < MAX_PATH)
-                if (auto hit =
-                        probe(std::filesystem::path(std::wstring(sysDir, len))))
+            if (len > 0 && len < MAX_PATH) {
+                if (auto hit = probe(
+                        std::filesystem::path(std::wstring(sysDir, len)))) {
                     return hit;
+                }
+            }
         }
 #endif
 
         const std::string pathEnv = GetPathEnv();
-        if (pathEnv.empty()) return std::nullopt;
+        if (pathEnv.empty()) {
+            return std::nullopt;
+        }
 
         std::stringstream ss(pathEnv);
         std::string dir;
-        while (std::getline(ss, dir, ';'))
-            if (auto hit = probe(std::filesystem::path(dir))) return hit;
+        while (std::getline(ss, dir, ';')) {
+            if (auto hit = probe(std::filesystem::path(dir))) {
+                return hit;
+            }
+        }
 
         return std::nullopt;
     }
@@ -355,7 +418,9 @@ namespace Rux {
         std::unordered_set<std::string> explicitImportDlls;
         std::unordered_map<std::string, std::vector<std::string>>
             explicitImportFuncsByDll;
-        if (!isDll) importDll["ExitProcess"] = "KERNEL32.DLL";
+        if (!isDll) {
+            importDll["ExitProcess"] = "KERNEL32.DLL";
+        }
 
         // First pass: collect explicit DLL assignments from symbol
         // declarations. This handles the case where a call site and its
@@ -377,11 +442,14 @@ namespace Rux {
         // callee is defined in another RcuFile — those must NOT be treated as
         // OS DLL imports.
         std::unordered_set<std::string> definedSymbols;
-        for (const auto& obj : objects)
-            for (const auto& sym : obj.symbols)
+        for (const auto& obj : objects) {
+            for (const auto& sym : obj.symbols) {
                 if (sym.kind != RcuSymKind::ExternFunc &&
-                    sym.kind != RcuSymKind::ExternData && !sym.name.empty())
+                    sym.kind != RcuSymKind::ExternData && !sym.name.empty()) {
                     definedSymbols.insert(sym.name);
+                }
+            }
+        }
 
         // Second pass: collect imports from relocations. For compiler-generated
         // extern symbols (e.g. runtime helpers) that carry no explicit DLL,
@@ -391,11 +459,14 @@ namespace Rux {
         for (const auto& obj : objects) {
             for (const auto& sec : obj.sections) {
                 for (const auto& reloc : sec.relocs) {
-                    if (reloc.symbolIndex >= obj.symbols.size()) continue;
+                    if (reloc.symbolIndex >= obj.symbols.size()) {
+                        continue;
+                    }
                     const auto& sym = obj.symbols[reloc.symbolIndex];
                     if (sym.kind == RcuSymKind::ExternFunc &&
-                        !definedSymbols.count(sym.name))
+                        !definedSymbols.count(sym.name)) {
                         importDll.try_emplace(sym.name, "KERNEL32.DLL");
+                    }
                 }
             }
         }
@@ -403,13 +474,15 @@ namespace Rux {
         // Sorted for determinism
         std::vector<std::string> importNames;
         importNames.reserve(importDll.size());
-        for (const auto& [n, _] : importDll)
+        for (const auto& [n, _] : importDll) {
             importNames.push_back(n);
+        }
         std::sort(importNames.begin(), importNames.end());
 
         std::unordered_map<std::string, size_t> importIdx;
-        for (size_t i = 0; i < importNames.size(); ++i)
+        for (size_t i = 0; i < importNames.size(); ++i) {
             importIdx[importNames[i]] = i;
+        }
         const size_t numImports = importNames.size();
 
         const auto outputDir = outputPath.parent_path();
@@ -428,12 +501,15 @@ namespace Rux {
             }
 
             for (const auto& func : explicitImportFuncsByDll[dll]) {
-                if (!exports->contains(func))
+                if (!exports->contains(func)) {
                     Error("import function '" + func +
                           "' was not found in DLL '" + dll + "'");
+                }
             }
         }
-        if (!errors.empty()) return false;
+        if (!errors.empty()) {
+            return false;
+        }
 
         // 2. Build .text preamble (entry thunk + import thunks)
 
@@ -512,15 +588,18 @@ namespace Rux {
                           static_cast<uint32_t>(mergedRodata.size()),
                           static_cast<uint32_t>(mergedData.size())};
             for (const auto& sec : obj.sections) {
-                if (sec.type == RcuSecType::Text)
+                if (sec.type == RcuSecType::Text) {
                     mergedText.insert(
                         mergedText.end(), sec.data.begin(), sec.data.end());
-                else if (sec.type == RcuSecType::RoData)
+                }
+                else if (sec.type == RcuSecType::RoData) {
                     mergedRodata.insert(
                         mergedRodata.end(), sec.data.begin(), sec.data.end());
-                else if (sec.type == RcuSecType::Data)
+                }
+                else if (sec.type == RcuSecType::Data) {
                     mergedData.insert(
                         mergedData.end(), sec.data.begin(), sec.data.end());
+                }
             }
         }
 
@@ -538,8 +617,9 @@ namespace Rux {
             rdataBuf.end(), mergedRodata.begin(), mergedRodata.end());
         PadTo(rdataBuf, 8);
         std::map<std::string, std::vector<size_t>> importsByDll;
-        for (size_t i = 0; i < numImports; ++i)
+        for (size_t i = 0; i < numImports; ++i) {
             importsByDll[importDll[importNames[i]]].push_back(i);
+        }
         const uint32_t importDirOff = static_cast<uint32_t>(rdataBuf.size());
         const size_t importDirPos = rdataBuf.size();
         WriteZeros(rdataBuf, (importsByDll.size() + 1) * 20);
@@ -565,9 +645,10 @@ namespace Rux {
         for (size_t g = 0; g < importDllNames.size(); ++g) {
             iatGroupOff[g] = static_cast<uint32_t>(rdataBuf.size());
             iatPos[g] = rdataBuf.size();
-            for (size_t j = 0; j < importDllMembers[g].size(); ++j)
+            for (size_t j = 0; j < importDllMembers[g].size(); ++j) {
                 iatEntryOff[importDllMembers[g][j]] =
                     iatGroupOff[g] + static_cast<uint32_t>(j * 8);
+            }
             WriteZeros(rdataBuf, (importDllMembers[g].size() + 1) * 8);
         }
         const uint32_t iatSize =
@@ -582,8 +663,9 @@ namespace Rux {
         for (size_t i = 0; i < numImports; ++i) {
             hintNameOff[i] = static_cast<uint32_t>(rdataBuf.size());
             WriteU16(rdataBuf, 0); // hint
-            for (char c : importNames[i])
+            for (char c : importNames[i]) {
                 rdataBuf.push_back(static_cast<uint8_t>(c));
+            }
             rdataBuf.push_back(0);
             PadTo(rdataBuf, 2);
         }
@@ -641,8 +723,9 @@ namespace Rux {
         std::unordered_map<std::string, uint64_t> symMap;
 
         // Add all imported function thunks first
-        for (size_t i = 0; i < numImports; ++i)
+        for (size_t i = 0; i < numImports; ++i) {
             symMap[importNames[i]] = kImageBase + textRva + thunkOff[i];
+        }
 
         // Add symbols defined in each RCU file. Local data/constant symbols are
         // intentionally not added here: generated labels such as __f64_0 are
@@ -651,23 +734,31 @@ namespace Rux {
             const auto& obj = objects[i];
             const auto& lay = layouts[i];
             for (const auto& sym : obj.symbols) {
-                if (sym.name.empty()) continue;
-                if (sym.kind == RcuSymKind::ExternFunc ||
-                    sym.kind == RcuSymKind::ExternData)
-                    continue; // already handled via thunks
-                if (sym.visibility == RcuSymVis::Local &&
-                    sym.kind != RcuSymKind::Func && sym.name != "Main")
+                if (sym.name.empty()) {
                     continue;
+                }
+                if (sym.kind == RcuSymKind::ExternFunc ||
+                    sym.kind == RcuSymKind::ExternData) {
+                    continue; // already handled via thunks
+                }
+                if (sym.visibility == RcuSymVis::Local &&
+                    sym.kind != RcuSymKind::Func && sym.name != "Main") {
+                    continue;
+                }
                 uint64_t va = 0;
-                if (sym.sectionIdx == RCU_TEXT_IDX)
+                if (sym.sectionIdx == RCU_TEXT_IDX) {
                     va = kImageBase + textRva + preambleSize + lay.textOff +
                          sym.value;
-                else if (sym.sectionIdx == RCU_RODATA_IDX)
+                }
+                else if (sym.sectionIdx == RCU_RODATA_IDX) {
                     va = kImageBase + rdataRva + lay.rodataOff + sym.value;
-                else if (sym.sectionIdx == RCU_DATA_IDX)
+                }
+                else if (sym.sectionIdx == RCU_DATA_IDX) {
                     va = kImageBase + dataRva + lay.dataOff + sym.value;
-                else
+                }
+                else {
                     continue;
+                }
                 symMap.try_emplace(sym.name, va); // first definition wins
             }
         }
@@ -767,7 +858,9 @@ namespace Rux {
                 }
 
                 for (const auto& reloc : sec.relocs) {
-                    if (reloc.symbolIndex >= obj.symbols.size()) continue;
+                    if (reloc.symbolIndex >= obj.symbols.size()) {
+                        continue;
+                    }
                     const auto& sym = obj.symbols[reloc.symbolIndex];
 
                     // Resolve target VA
@@ -790,34 +883,44 @@ namespace Rux {
                     }
                     else {
                         // Unnamed or purely local — compute from section index
-                        if (sym.sectionIdx == RCU_TEXT_IDX)
+                        if (sym.sectionIdx == RCU_TEXT_IDX) {
                             targetVA = kImageBase + textRva + preambleSize +
                                        lay.textOff + sym.value;
-                        else if (sym.sectionIdx == RCU_RODATA_IDX)
+                        }
+                        else if (sym.sectionIdx == RCU_RODATA_IDX) {
                             targetVA = kImageBase + rdataRva + lay.rodataOff +
                                        sym.value;
-                        else if (sym.sectionIdx == RCU_DATA_IDX)
+                        }
+                        else if (sym.sectionIdx == RCU_DATA_IDX) {
                             targetVA =
                                 kImageBase + dataRva + lay.dataOff + sym.value;
-                        else
+                        }
+                        else {
                             continue;
+                        }
                     }
                     const size_t patchAt = baseInBuf + reloc.sectionOffset;
                     const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
                     if (reloc.type == RcuRelType::Rel32) {
-                        if (patchAt + 4 > buf->size()) continue;
+                        if (patchAt + 4 > buf->size()) {
+                            continue;
+                        }
                         int32_t disp = static_cast<int32_t>(
                             targetVA + reloc.addend - (siteVA + 4));
                         Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
                     }
                     else if (reloc.type == RcuRelType::Abs64) {
-                        if (patchAt + 8 > buf->size()) continue;
+                        if (patchAt + 8 > buf->size()) {
+                            continue;
+                        }
                         Patch64(*buf,
                                 patchAt,
                                 targetVA + static_cast<uint64_t>(reloc.addend));
                     }
                     else if (reloc.type == RcuRelType::Abs32) {
-                        if (patchAt + 4 > buf->size()) continue;
+                        if (patchAt + 4 > buf->size()) {
+                            continue;
+                        }
                         Patch32(*buf,
                                 patchAt,
                                 static_cast<uint32_t>(targetVA + reloc.addend));
@@ -826,7 +929,9 @@ namespace Rux {
             }
         }
 
-        if (!errors.empty()) return false;
+        if (!errors.empty()) {
+            return false;
+        }
 
         // Build export directory for DLLs
         // We export all pub functions that are marked as exported symbols.
@@ -864,19 +969,22 @@ namespace Rux {
             // AddressOfFunctions array (RVAs)
             const uint32_t funcArrayOff =
                 static_cast<uint32_t>(rdataBuf.size());
-            for (uint32_t i = 0; i < numExports; ++i)
+            for (uint32_t i = 0; i < numExports; ++i) {
                 WriteU32(rdataBuf, 0); // patched below
+            }
 
             // AddressOfNames array (RVAs to name strings)
             const uint32_t nameArrayOff =
                 static_cast<uint32_t>(rdataBuf.size());
-            for (uint32_t i = 0; i < numExports; ++i)
+            for (uint32_t i = 0; i < numExports; ++i) {
                 WriteU32(rdataBuf, 0); // patched below
+            }
 
             // AddressOfNameOrdinals array
             const uint32_t ordArrayOff = static_cast<uint32_t>(rdataBuf.size());
-            for (uint32_t i = 0; i < numExports; ++i)
+            for (uint32_t i = 0; i < numExports; ++i) {
                 WriteU16(rdataBuf, static_cast<uint16_t>(i));
+            }
 
             // DLL name string
             const uint32_t dllNameStrOff =
@@ -953,8 +1061,9 @@ namespace Rux {
         const auto wSec8 = [&](const char* s) {
             char buf8[8] = {};
             size_t len = std::strlen(s);
-            for (size_t k = 0; k < 8 && k < len; ++k)
+            for (size_t k = 0; k < 8 && k < len; ++k) {
                 buf8[k] = s[k];
+            }
             writeRaw(buf8, 8);
         };
 
@@ -1616,7 +1725,9 @@ namespace Rux {
         };
 
         const auto it = thunks.find(name);
-        if (it == thunks.end()) return std::nullopt;
+        if (it == thunks.end()) {
+            return std::nullopt;
+        }
         return it->second;
     }
 
@@ -1633,30 +1744,39 @@ namespace Rux {
 
         std::unordered_set<std::string> definedSymbols;
         std::unordered_set<std::string> linuxCompatExterns;
-        for (const auto& obj : objects)
-            for (const auto& sym : obj.symbols)
+        for (const auto& obj : objects) {
+            for (const auto& sym : obj.symbols) {
                 if (sym.kind != RcuSymKind::ExternFunc &&
-                    sym.kind != RcuSymKind::ExternData && !sym.name.empty())
+                    sym.kind != RcuSymKind::ExternData && !sym.name.empty()) {
                     definedSymbols.insert(sym.name);
+                }
+            }
+        }
 
         for (const auto& obj : objects) {
             for (const auto& sec : obj.sections) {
                 for (const auto& reloc : sec.relocs) {
-                    if (reloc.symbolIndex >= obj.symbols.size()) continue;
+                    if (reloc.symbolIndex >= obj.symbols.size()) {
+                        continue;
+                    }
                     const auto& sym = obj.symbols[reloc.symbolIndex];
                     if ((sym.kind == RcuSymKind::ExternFunc ||
                          sym.kind == RcuSymKind::ExternData) &&
                         !definedSymbols.contains(sym.name)) {
-                        if (LinuxCompatThunk(sym.name))
+                        if (LinuxCompatThunk(sym.name)) {
                             linuxCompatExterns.insert(sym.name);
-                        else
+                        }
+                        else {
                             Error("external symbol '" + sym.name +
                                   "' is not supported by the ELF linker yet");
+                        }
                     }
                 }
             }
         }
-        if (!errors.empty()) return false;
+        if (!errors.empty()) {
+            return false;
+        }
 
         Buf textPre;
         textPre.insert(textPre.end(),
@@ -1687,7 +1807,9 @@ namespace Rux {
         std::sort(linuxCompatNames.begin(), linuxCompatNames.end());
         for (const auto& name : linuxCompatNames) {
             auto thunk = LinuxCompatThunk(name);
-            if (!thunk) continue;
+            if (!thunk) {
+                continue;
+            }
             linuxCompatThunkOff[name] = static_cast<uint32_t>(textPre.size());
             textPre.insert(textPre.end(), thunk->begin(), thunk->end());
         }
@@ -1741,15 +1863,18 @@ namespace Rux {
                           static_cast<uint32_t>(mergedRodata.size()),
                           static_cast<uint32_t>(mergedData.size())};
             for (const auto& sec : obj.sections) {
-                if (sec.type == RcuSecType::Text)
+                if (sec.type == RcuSecType::Text) {
                     mergedText.insert(
                         mergedText.end(), sec.data.begin(), sec.data.end());
-                else if (sec.type == RcuSecType::RoData)
+                }
+                else if (sec.type == RcuSecType::RoData) {
                     mergedRodata.insert(
                         mergedRodata.end(), sec.data.begin(), sec.data.end());
-                else if (sec.type == RcuSecType::Data)
+                }
+                else if (sec.type == RcuSecType::Data) {
                     mergedData.insert(
                         mergedData.end(), sec.data.begin(), sec.data.end());
+                }
             }
         }
 
@@ -1775,30 +1900,39 @@ namespace Rux {
         const uint64_t dataVA = kBase + dataOff;
 
         std::unordered_map<std::string, uint64_t> symMap;
-        for (const auto& [name, off] : linuxCompatThunkOff)
+        for (const auto& [name, off] : linuxCompatThunkOff) {
             symMap[name] = textVA + off;
+        }
 
         for (size_t i = 0; i < objects.size(); ++i) {
             const auto& obj = objects[i];
             const auto& lay = layouts[i];
             for (const auto& sym : obj.symbols) {
-                if (sym.name.empty()) continue;
+                if (sym.name.empty()) {
+                    continue;
+                }
                 if (sym.kind == RcuSymKind::ExternFunc ||
-                    sym.kind == RcuSymKind::ExternData)
+                    sym.kind == RcuSymKind::ExternData) {
                     continue;
+                }
                 if (sym.visibility == RcuSymVis::Local &&
-                    sym.kind != RcuSymKind::Func && sym.name != "Main")
+                    sym.kind != RcuSymKind::Func && sym.name != "Main") {
                     continue;
+                }
 
                 uint64_t va = 0;
-                if (sym.sectionIdx == RCU_TEXT_IDX)
+                if (sym.sectionIdx == RCU_TEXT_IDX) {
                     va = textVA + preambleSize + lay.textOff + sym.value;
-                else if (sym.sectionIdx == RCU_RODATA_IDX)
+                }
+                else if (sym.sectionIdx == RCU_RODATA_IDX) {
                     va = rdataVA + lay.rodataOff + sym.value;
-                else if (sym.sectionIdx == RCU_DATA_IDX)
+                }
+                else if (sym.sectionIdx == RCU_DATA_IDX) {
                     va = dataVA + lay.dataOff + sym.value;
-                else
+                }
+                else {
                     continue;
+                }
                 symMap.try_emplace(sym.name, va);
             }
         }
@@ -1842,7 +1976,9 @@ namespace Rux {
                 }
 
                 for (const auto& reloc : sec.relocs) {
-                    if (reloc.symbolIndex >= obj.symbols.size()) continue;
+                    if (reloc.symbolIndex >= obj.symbols.size()) {
+                        continue;
+                    }
                     const auto& sym = obj.symbols[reloc.symbolIndex];
                     uint64_t targetVA = 0;
                     if (sym.kind == RcuSymKind::ExternFunc ||
@@ -1876,19 +2012,25 @@ namespace Rux {
                     const size_t patchAt = baseInBuf + reloc.sectionOffset;
                     const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
                     if (reloc.type == RcuRelType::Rel32) {
-                        if (patchAt + 4 > buf->size()) continue;
+                        if (patchAt + 4 > buf->size()) {
+                            continue;
+                        }
                         const int32_t disp = static_cast<int32_t>(
                             targetVA + reloc.addend - (siteVA + 4));
                         Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
                     }
                     else if (reloc.type == RcuRelType::Abs64) {
-                        if (patchAt + 8 > buf->size()) continue;
+                        if (patchAt + 8 > buf->size()) {
+                            continue;
+                        }
                         Patch64(*buf,
                                 patchAt,
                                 targetVA + static_cast<uint64_t>(reloc.addend));
                     }
                     else if (reloc.type == RcuRelType::Abs32) {
-                        if (patchAt + 4 > buf->size()) continue;
+                        if (patchAt + 4 > buf->size()) {
+                            continue;
+                        }
                         Patch32(*buf,
                                 patchAt,
                                 static_cast<uint32_t>(targetVA + reloc.addend));
@@ -1896,7 +2038,9 @@ namespace Rux {
                 }
             }
         }
-        if (!errors.empty()) return false;
+        if (!errors.empty()) {
+            return false;
+        }
 
         std::filesystem::create_directories(outputPath.parent_path());
         std::ofstream out(outputPath, std::ios::binary | std::ios::trunc);
@@ -1914,7 +2058,9 @@ namespace Rux {
         const auto wU32 = [&](uint32_t v) { writeRaw(&v, 4); };
         const auto wU64 = [&](uint64_t v) { writeRaw(&v, 8); };
         const auto wBuf = [&](const Buf& b) {
-            if (!b.empty()) writeRaw(b.data(), b.size());
+            if (!b.empty()) {
+                writeRaw(b.data(), b.size());
+            }
         };
         const auto padToOffset = [&](uint64_t offset) {
             static constexpr uint8_t zeros[4096] = {};
@@ -1999,12 +2145,13 @@ namespace Rux {
         wU64(24);       // p_memsz: 24 bytes
         wU64(4);        // p_align: 4 bytes
 #  endif
-        if (!mergedData.empty())
+        if (!mergedData.empty()) {
             writePhdr(kPfR | kPfW,
                       dataOff,
                       dataVA,
                       mergedData.size(),
                       mergedData.size());
+        }
 
         padToOffset(textOff);
         wBuf(textBuf);
@@ -2276,7 +2423,9 @@ namespace Rux {
         };
 
         const auto it = thunks.find(name);
-        if (it == thunks.end()) return std::nullopt;
+        if (it == thunks.end()) {
+            return std::nullopt;
+        }
         return it->second;
     }
 
@@ -2297,32 +2446,41 @@ namespace Rux {
 
         // 1. Resolve externs: each must be satisfiable by a compat thunk.
         std::unordered_set<std::string> definedSymbols;
-        for (const auto& obj : objects)
-            for (const auto& sym : obj.symbols)
+        for (const auto& obj : objects) {
+            for (const auto& sym : obj.symbols) {
                 if (sym.kind != RcuSymKind::ExternFunc &&
-                    sym.kind != RcuSymKind::ExternData && !sym.name.empty())
+                    sym.kind != RcuSymKind::ExternData && !sym.name.empty()) {
                     definedSymbols.insert(sym.name);
+                }
+            }
+        }
 
         std::unordered_set<std::string> macCompatExterns;
         for (const auto& obj : objects) {
             for (const auto& sec : obj.sections) {
                 for (const auto& reloc : sec.relocs) {
-                    if (reloc.symbolIndex >= obj.symbols.size()) continue;
+                    if (reloc.symbolIndex >= obj.symbols.size()) {
+                        continue;
+                    }
                     const auto& sym = obj.symbols[reloc.symbolIndex];
                     if ((sym.kind == RcuSymKind::ExternFunc ||
                          sym.kind == RcuSymKind::ExternData) &&
                         !definedSymbols.contains(sym.name)) {
-                        if (MacCompatThunk(sym.name))
+                        if (MacCompatThunk(sym.name)) {
                             macCompatExterns.insert(sym.name);
-                        else
+                        }
+                        else {
                             Error("external symbol '" + sym.name +
                                   "' is not supported by the macOS Mach-O "
                                   "linker yet");
+                        }
                     }
                 }
             }
         }
-        if (!errors.empty()) return false;
+        if (!errors.empty()) {
+            return false;
+        }
 
         // 2. Entry preamble: call Main; exit(eax).
         Buf textPre;
@@ -2349,7 +2507,9 @@ namespace Rux {
         std::sort(macCompatNames.begin(), macCompatNames.end());
         for (const auto& name : macCompatNames) {
             auto thunk = MacCompatThunk(name);
-            if (!thunk) continue;
+            if (!thunk) {
+                continue;
+            }
             macCompatThunkOff[name] = static_cast<uint32_t>(textPre.size());
             textPre.insert(textPre.end(), thunk->begin(), thunk->end());
         }
@@ -2367,15 +2527,18 @@ namespace Rux {
                           static_cast<uint32_t>(mergedRodata.size()),
                           static_cast<uint32_t>(mergedData.size())};
             for (const auto& sec : obj.sections) {
-                if (sec.type == RcuSecType::Text)
+                if (sec.type == RcuSecType::Text) {
                     mergedText.insert(
                         mergedText.end(), sec.data.begin(), sec.data.end());
-                else if (sec.type == RcuSecType::RoData)
+                }
+                else if (sec.type == RcuSecType::RoData) {
                     mergedRodata.insert(
                         mergedRodata.end(), sec.data.begin(), sec.data.end());
-                else if (sec.type == RcuSecType::Data)
+                }
+                else if (sec.type == RcuSecType::Data) {
                     mergedData.insert(
                         mergedData.end(), sec.data.begin(), sec.data.end());
+                }
             }
         }
 
@@ -2423,30 +2586,39 @@ namespace Rux {
 
         // 7. Symbol VAs (thunks + defined symbols).
         std::unordered_map<std::string, uint64_t> symMap;
-        for (const auto& [name, off] : macCompatThunkOff)
+        for (const auto& [name, off] : macCompatThunkOff) {
             symMap[name] = textVA + off;
+        }
 
         for (size_t i = 0; i < objects.size(); ++i) {
             const auto& obj = objects[i];
             const auto& lay = layouts[i];
             for (const auto& sym : obj.symbols) {
-                if (sym.name.empty()) continue;
+                if (sym.name.empty()) {
+                    continue;
+                }
                 if (sym.kind == RcuSymKind::ExternFunc ||
-                    sym.kind == RcuSymKind::ExternData)
+                    sym.kind == RcuSymKind::ExternData) {
                     continue;
+                }
                 if (sym.visibility == RcuSymVis::Local &&
-                    sym.kind != RcuSymKind::Func && sym.name != "Main")
+                    sym.kind != RcuSymKind::Func && sym.name != "Main") {
                     continue;
+                }
 
                 uint64_t va = 0;
-                if (sym.sectionIdx == RCU_TEXT_IDX)
+                if (sym.sectionIdx == RCU_TEXT_IDX) {
                     va = textVA + preambleSize + lay.textOff + sym.value;
-                else if (sym.sectionIdx == RCU_RODATA_IDX)
+                }
+                else if (sym.sectionIdx == RCU_RODATA_IDX) {
                     va = rodataVA + lay.rodataOff + sym.value;
-                else if (sym.sectionIdx == RCU_DATA_IDX)
+                }
+                else if (sym.sectionIdx == RCU_DATA_IDX) {
                     va = dataVA + lay.dataOff + sym.value;
-                else
+                }
+                else {
                     continue;
+                }
                 symMap.try_emplace(sym.name, va);
             }
         }
@@ -2491,7 +2663,9 @@ namespace Rux {
                 }
 
                 for (const auto& reloc : sec.relocs) {
-                    if (reloc.symbolIndex >= obj.symbols.size()) continue;
+                    if (reloc.symbolIndex >= obj.symbols.size()) {
+                        continue;
+                    }
                     const auto& sym = obj.symbols[reloc.symbolIndex];
                     uint64_t targetVA = 0;
                     if (sym.kind == RcuSymKind::ExternFunc ||
@@ -2525,19 +2699,25 @@ namespace Rux {
                     const size_t patchAt = baseInBuf + reloc.sectionOffset;
                     const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
                     if (reloc.type == RcuRelType::Rel32) {
-                        if (patchAt + 4 > buf->size()) continue;
+                        if (patchAt + 4 > buf->size()) {
+                            continue;
+                        }
                         const int32_t disp = static_cast<int32_t>(
                             targetVA + reloc.addend - (siteVA + 4));
                         Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
                     }
                     else if (reloc.type == RcuRelType::Abs64) {
-                        if (patchAt + 8 > buf->size()) continue;
+                        if (patchAt + 8 > buf->size()) {
+                            continue;
+                        }
                         Patch64(*buf,
                                 patchAt,
                                 targetVA + static_cast<uint64_t>(reloc.addend));
                     }
                     else if (reloc.type == RcuRelType::Abs32) {
-                        if (patchAt + 4 > buf->size()) continue;
+                        if (patchAt + 4 > buf->size()) {
+                            continue;
+                        }
                         Patch32(*buf,
                                 patchAt,
                                 static_cast<uint32_t>(targetVA + reloc.addend));
@@ -2545,14 +2725,17 @@ namespace Rux {
                 }
             }
         }
-        if (!errors.empty()) return false;
+        if (!errors.empty()) {
+            return false;
+        }
 
         // 9. Build the load commands.
         const auto wSegName = [](Buf& b, const char* s) {
             char n[16] = {};
             std::strncpy(n, s, sizeof(n));
-            for (size_t i = 0; i < sizeof(n); ++i)
+            for (size_t i = 0; i < sizeof(n); ++i) {
                 b.push_back(static_cast<uint8_t>(n[i]));
+            }
         };
 
         Buf lc;
@@ -2656,10 +2839,11 @@ namespace Rux {
         WriteU32(lc, kThreadCmd);
         WriteU32(lc, 4);  // flavor x86_THREAD_STATE64
         WriteU32(lc, 42); // count (21 uint64 registers = 42 uint32)
-        for (int reg = 0; reg < 21; ++reg)
+        for (int reg = 0; reg < 21; ++reg) {
             WriteU64(lc,
                      reg == 16 ? textVA
                                : 0); // register 16 == rip == entry point
+        }
 
         if (lc.size() != sizeOfCmds) {
             Error("internal: Mach-O load-command size mismatch");
@@ -2679,7 +2863,9 @@ namespace Rux {
                       static_cast<std::streamsize>(n));
         };
         const auto wBuf = [&](const Buf& b) {
-            if (!b.empty()) writeRaw(b.data(), b.size());
+            if (!b.empty()) {
+                writeRaw(b.data(), b.size());
+            }
         };
         const auto padToOffset = [&](uint64_t offset) {
             static constexpr uint8_t zeros[4096] = {};
