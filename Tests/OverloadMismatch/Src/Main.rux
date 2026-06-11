@@ -1,0 +1,13 @@
+// Regression: #107 (Overload resolution failure).
+// Ensures Sema emits a hard error for unresolved overloads instead of 
+// silently falling back to the wrong function and trashing the ABI.
+struct Foo { x: int32; }
+
+func Sink(x: int32) -> int { return 1; }
+func Sink(x: float64) -> int { return 2; }
+
+func Main() -> int {
+    let f = Foo { x: 5 };
+    Sink(f);   // no overload accepts Foo — must be a compile error
+    return 0;
+}
