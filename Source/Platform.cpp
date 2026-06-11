@@ -110,7 +110,8 @@ namespace Rux::Platform {
 
             if (r[1] & (1 << 5)) f |= CpuFeature::AVX2;
 
-            // NOTE: simplified AVX-512 detection (still OS-dependent in real systems)
+            // NOTE: simplified AVX-512 detection (still OS-dependent in real
+            // systems)
             if (r[1] & (1 << 16)) f |= CpuFeature::AVX512;
 
 #elif RUX_ARCH_ARM64 || RUX_ARCH_ARM32
@@ -144,7 +145,8 @@ namespace Rux::Platform {
         [[nodiscard]] RuntimeCpuInfo DetectRuntimeCpuInfo() noexcept {
             RuntimeCpuInfo info{};
 
-            info.logical_cores = (std::max)(1u, std::thread::hardware_concurrency());
+            info.logical_cores =
+                (std::max)(1u, std::thread::hardware_concurrency());
 
             info.features = DetectCpuFeaturesImpl();
 
@@ -156,11 +158,16 @@ namespace Rux::Platform {
             std::vector<uint8_t> buffer(len);
 
             if (len > 0 &&
-                GetLogicalProcessorInformation(reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(buffer.data()),
-                                               &len)) {
-                auto* entries = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(buffer.data());
+                GetLogicalProcessorInformation(
+                    reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(
+                        buffer.data()),
+                    &len)) {
+                auto* entries =
+                    reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(
+                        buffer.data());
 
-                size_t count = len / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+                size_t count =
+                    len / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
 
                 for (size_t i = 0; i < count; ++i) {
                     const auto& e = entries[i];
@@ -168,7 +175,8 @@ namespace Rux::Platform {
                     if (e.Relationship == RelationProcessorCore)
                         ++info.physical_cores;
 
-                    else if (e.Relationship == RelationCache && e.Cache.Level == 1 && e.Cache.Type == CacheData) {
+                    else if (e.Relationship == RelationCache &&
+                             e.Cache.Level == 1 && e.Cache.Type == CacheData) {
                         info.cache_line_size = e.Cache.LineSize;
                     }
                 }
@@ -190,10 +198,12 @@ namespace Rux::Platform {
 #elif RUX_OS_MACOS || (RUX_IS_BSD && !RUX_OS_OPENBSD)
 
             size_t s = sizeof(info.physical_cores);
-            sysctlbyname("hw.physicalcpu", &info.physical_cores, &s, nullptr, 0);
+            sysctlbyname(
+                "hw.physicalcpu", &info.physical_cores, &s, nullptr, 0);
 
             s = sizeof(info.cache_line_size);
-            sysctlbyname("hw.cachelinesize", &info.cache_line_size, &s, nullptr, 0);
+            sysctlbyname(
+                "hw.cachelinesize", &info.cache_line_size, &s, nullptr, 0);
 
 #elif RUX_OS_OPENBSD
 
@@ -257,7 +267,8 @@ namespace Rux::Platform {
             long psize = sysconf(_SC_PAGESIZE);
             if (pages > 0 && psize > 0) {
                 info.total_bytes = uint64_t(pages) * uint64_t(psize);
-                info.available_bytes = uint64_t(avpages > 0 ? avpages : pages) * uint64_t(psize);
+                info.available_bytes =
+                    uint64_t(avpages > 0 ? avpages : pages) * uint64_t(psize);
             }
         }
 
@@ -271,9 +282,12 @@ namespace Rux::Platform {
         vm_statistics64 vm{};
         mach_msg_type_number_t c = HOST_VM_INFO64_COUNT;
 
-        if (host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t)&vm, &c) == KERN_SUCCESS) {
+        if (host_statistics64(
+                mach_host_self(), HOST_VM_INFO64, (host_info64_t)&vm, &c) ==
+            KERN_SUCCESS) {
             auto page = sysconf(_SC_PAGESIZE);
-            info.available_bytes = uint64_t(vm.free_count + vm.inactive_count) * page;
+            info.available_bytes =
+                uint64_t(vm.free_count + vm.inactive_count) * page;
         }
         else {
             info.available_bytes = info.total_bytes;

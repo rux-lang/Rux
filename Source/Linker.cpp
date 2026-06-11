@@ -33,21 +33,28 @@ namespace Rux {
 #if RUX_OS_WINDOWS
     // PE32+ layout constants
     [[maybe_unused]] static constexpr uint64_t kImageBase = 0x140000000ULL;
-    [[maybe_unused]] static constexpr uint32_t kSecAlign = 0x1000; // 4 KB section alignment
-    [[maybe_unused]] static constexpr uint32_t kFileAlign = 0x200; // 512 B file alignment
+    [[maybe_unused]] static constexpr uint32_t kSecAlign =
+        0x1000; // 4 KB section alignment
+    [[maybe_unused]] static constexpr uint32_t kFileAlign =
+        0x200; // 512 B file alignment
     [[maybe_unused]] static constexpr uint16_t kMachineAmd64 = 0x8664;
     [[maybe_unused]] static constexpr uint16_t kMagicPE32P = 0x020B;
     [[maybe_unused]] static constexpr uint16_t kSubsystemCUI = 3; // console
 
     // DLL-specific
-    [[maybe_unused]] static constexpr uint16_t kSubsystemGUI = 2; // windows GUI (used for DLLs)
-    // IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_LARGE_ADDRESS_AWARE | IMAGE_FILE_DLL
+    [[maybe_unused]] static constexpr uint16_t kSubsystemGUI =
+        2; // windows GUI (used for DLLs)
+    // IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_LARGE_ADDRESS_AWARE |
+    // IMAGE_FILE_DLL
     [[maybe_unused]] static constexpr uint16_t kCharacteristicsDll = 0x2022u;
 
     // IMAGE_SCN_ characteristics
-    [[maybe_unused]] static constexpr uint32_t kScnText = 0x60000020u; // CNT_CODE | MEM_EXECUTE | MEM_READ
-    [[maybe_unused]] static constexpr uint32_t kScnRData = 0x40000040u; // CNT_INITIALIZED_DATA | MEM_READ
-    [[maybe_unused]] static constexpr uint32_t kScnData = 0xC0000040u; // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
+    [[maybe_unused]] static constexpr uint32_t kScnText =
+        0x60000020u; // CNT_CODE | MEM_EXECUTE | MEM_READ
+    [[maybe_unused]] static constexpr uint32_t kScnRData =
+        0x40000040u; // CNT_INITIALIZED_DATA | MEM_READ
+    [[maybe_unused]] static constexpr uint32_t kScnData =
+        0xC0000040u; // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
 
     // DllCharacteristics: NX_COMPAT | TERMINAL_SERVER_AWARE.
     // The linker currently does not emit a .reloc table, so do not opt into
@@ -130,7 +137,9 @@ namespace Rux {
         if (size < 0) return std::nullopt;
         Buf data(static_cast<size_t>(size));
         in.seekg(0);
-        if (!data.empty()) in.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size()));
+        if (!data.empty())
+            in.read(reinterpret_cast<char*>(data.data()),
+                    static_cast<std::streamsize>(data.size()));
         if (!in && !in.eof()) return std::nullopt;
         return data;
     }
@@ -143,23 +152,31 @@ namespace Rux {
 
     static bool ReadU32At(const Buf& b, size_t off, uint32_t& out) {
         if (off + 4 > b.size()) return false;
-        out = static_cast<uint32_t>(b[off]) | (static_cast<uint32_t>(b[off + 1]) << 8) |
-            (static_cast<uint32_t>(b[off + 2]) << 16) | (static_cast<uint32_t>(b[off + 3]) << 24);
+        out = static_cast<uint32_t>(b[off]) |
+            (static_cast<uint32_t>(b[off + 1]) << 8) |
+            (static_cast<uint32_t>(b[off + 2]) << 16) |
+            (static_cast<uint32_t>(b[off + 3]) << 24);
         return true;
     }
 
-    static std::optional<size_t>
-    PeRvaToOffset(const Buf& pe, uint32_t rva, size_t sectionTable, uint16_t sectionCount) {
+    static std::optional<size_t> PeRvaToOffset(const Buf& pe,
+                                               uint32_t rva,
+                                               size_t sectionTable,
+                                               uint16_t sectionCount) {
         for (uint16_t i = 0; i < sectionCount; ++i) {
             const size_t sec = sectionTable + static_cast<size_t>(i) * 40;
-            uint32_t virtualSize = 0, virtualAddress = 0, rawSize = 0, rawPtr = 0;
-            if (!ReadU32At(pe, sec + 8, virtualSize) || !ReadU32At(pe, sec + 12, virtualAddress) ||
-                !ReadU32At(pe, sec + 16, rawSize) || !ReadU32At(pe, sec + 20, rawPtr))
+            uint32_t virtualSize = 0, virtualAddress = 0, rawSize = 0,
+                     rawPtr = 0;
+            if (!ReadU32At(pe, sec + 8, virtualSize) ||
+                !ReadU32At(pe, sec + 12, virtualAddress) ||
+                !ReadU32At(pe, sec + 16, rawSize) ||
+                !ReadU32At(pe, sec + 20, rawPtr))
                 return std::nullopt;
 
             const uint32_t span = std::max(virtualSize, rawSize);
             if (rva >= virtualAddress && rva < virtualAddress + span) {
-                const size_t off = static_cast<size_t>(rawPtr) + (rva - virtualAddress);
+                const size_t off =
+                    static_cast<size_t>(rawPtr) + (rva - virtualAddress);
                 if (off < pe.size()) return off;
                 return std::nullopt;
             }
@@ -182,21 +199,25 @@ namespace Rux {
         const Buf& pe = *peData;
 
         uint32_t peOff32 = 0;
-        if (pe.size() < 0x40 || !ReadU32At(pe, 0x3C, peOff32)) return std::nullopt;
+        if (pe.size() < 0x40 || !ReadU32At(pe, 0x3C, peOff32))
+            return std::nullopt;
         const size_t peOff = peOff32;
-        if (peOff + 24 > pe.size() || pe[peOff] != 'P' || pe[peOff + 1] != 'E' || pe[peOff + 2] != 0 ||
-            pe[peOff + 3] != 0)
+        if (peOff + 24 > pe.size() || pe[peOff] != 'P' ||
+            pe[peOff + 1] != 'E' || pe[peOff + 2] != 0 || pe[peOff + 3] != 0)
             return std::nullopt;
 
         uint16_t sectionCount = 0, optionalSize = 0, magic = 0;
-        if (!ReadU16At(pe, peOff + 6, sectionCount) || !ReadU16At(pe, peOff + 20, optionalSize) ||
+        if (!ReadU16At(pe, peOff + 6, sectionCount) ||
+            !ReadU16At(pe, peOff + 20, optionalSize) ||
             !ReadU16At(pe, peOff + 24, magic))
             return std::nullopt;
 
         const size_t optionalOff = peOff + 24;
-        const size_t dataDirOff = magic == 0x020B ? optionalOff + 112 : optionalOff + 96;
+        const size_t dataDirOff =
+            magic == 0x020B ? optionalOff + 112 : optionalOff + 96;
         uint32_t exportRva = 0, exportSize = 0;
-        if (dataDirOff + 8 > optionalOff + optionalSize || !ReadU32At(pe, dataDirOff, exportRva) ||
+        if (dataDirOff + 8 > optionalOff + optionalSize ||
+            !ReadU32At(pe, dataDirOff, exportRva) ||
             !ReadU32At(pe, dataDirOff + 4, exportSize))
             return std::nullopt;
 
@@ -204,11 +225,13 @@ namespace Rux {
         if (exportRva == 0 || exportSize == 0) return exports;
 
         const size_t sectionTable = optionalOff + optionalSize;
-        auto exportOff = PeRvaToOffset(pe, exportRva, sectionTable, sectionCount);
+        auto exportOff =
+            PeRvaToOffset(pe, exportRva, sectionTable, sectionCount);
         if (!exportOff || *exportOff + 40 > pe.size()) return std::nullopt;
 
         uint32_t nameCount = 0, namesRva = 0;
-        if (!ReadU32At(pe, *exportOff + 24, nameCount) || !ReadU32At(pe, *exportOff + 32, namesRva))
+        if (!ReadU32At(pe, *exportOff + 24, nameCount) ||
+            !ReadU32At(pe, *exportOff + 32, namesRva))
             return std::nullopt;
 
         auto namesOff = PeRvaToOffset(pe, namesRva, sectionTable, sectionCount);
@@ -216,9 +239,11 @@ namespace Rux {
 
         for (uint32_t i = 0; i < nameCount; ++i) {
             uint32_t nameRva = 0;
-            if (!ReadU32At(pe, *namesOff + static_cast<size_t>(i) * 4, nameRva)) return std::nullopt;
+            if (!ReadU32At(pe, *namesOff + static_cast<size_t>(i) * 4, nameRva))
+                return std::nullopt;
 
-            auto nameOff = PeRvaToOffset(pe, nameRva, sectionTable, sectionCount);
+            auto nameOff =
+                PeRvaToOffset(pe, nameRva, sectionTable, sectionCount);
             if (!nameOff) return std::nullopt;
 
             std::string name;
@@ -234,7 +259,8 @@ namespace Rux {
 #if RUX_COMPILER_MSVC
         char* value = nullptr;
         size_t size = 0;
-        if (_dupenv_s(&value, &size, "PATH") != 0 || value == nullptr) return {};
+        if (_dupenv_s(&value, &size, "PATH") != 0 || value == nullptr)
+            return {};
         std::unique_ptr<char, decltype(&std::free)> owned(value, &std::free);
         return std::string(value, size > 0 ? size - 1 : 0);
 #else
@@ -249,15 +275,19 @@ namespace Rux {
                 const std::filesystem::path& outputDir) {
         const std::filesystem::path dllPath(dll);
         if (dllPath.is_absolute())
-            return FileExists(dllPath) ? std::optional<std::filesystem::path>(dllPath) : std::nullopt;
+            return FileExists(dllPath)
+                ? std::optional<std::filesystem::path>(dllPath)
+                : std::nullopt;
 
         // Candidate file names to probe in each search location. Imports are
-        // commonly declared without an extension (e.g. @[Import(lib: "kernel32")]);
-        // mirror the OS loader and also try the name with ".dll" appended.
+        // commonly declared without an extension (e.g. @[Import(lib:
+        // "kernel32")]); mirror the OS loader and also try the name with ".dll"
+        // appended.
         std::vector<std::filesystem::path> candidates{dllPath};
         if (dllPath.extension().empty()) candidates.emplace_back(dll + ".dll");
 
-        const auto probe = [&](const std::filesystem::path& dir) -> std::optional<std::filesystem::path> {
+        const auto probe = [&](const std::filesystem::path& dir)
+            -> std::optional<std::filesystem::path> {
             if (dir.empty()) return std::nullopt;
             for (const auto& name : candidates) {
                 if (FileExists(dir / name)) return dir / name;
@@ -275,12 +305,15 @@ namespace Rux {
 #if RUX_OS_WINDOWS
         // System DLLs (kernel32, user32, ...) live in the Windows system
         // directory, which is the authoritative source for them — don't rely on
-        // it happening to be on PATH (it isn't under some shells, e.g. Git Bash).
+        // it happening to be on PATH (it isn't under some shells, e.g. Git
+        // Bash).
         {
             wchar_t sysDir[MAX_PATH];
             const UINT len = GetSystemDirectoryW(sysDir, MAX_PATH);
             if (len > 0 && len < MAX_PATH)
-                if (auto hit = probe(std::filesystem::path(std::wstring(sysDir, len)))) return hit;
+                if (auto hit =
+                        probe(std::filesystem::path(std::wstring(sysDir, len))))
+                    return hit;
         }
 #endif
 
@@ -320,15 +353,18 @@ namespace Rux {
         // EXEs always need ExitProcess for the entry thunk; DLLs do not.
         std::unordered_map<std::string, std::string> importDll;
         std::unordered_set<std::string> explicitImportDlls;
-        std::unordered_map<std::string, std::vector<std::string>> explicitImportFuncsByDll;
+        std::unordered_map<std::string, std::vector<std::string>>
+            explicitImportFuncsByDll;
         if (!isDll) importDll["ExitProcess"] = "KERNEL32.DLL";
 
-        // First pass: collect explicit DLL assignments from symbol declarations.
-        // This handles the case where a call site and its declaration are in
-        // different translation units — the declaration carries the DLL name.
+        // First pass: collect explicit DLL assignments from symbol
+        // declarations. This handles the case where a call site and its
+        // declaration are in different translation units — the declaration
+        // carries the DLL name.
         for (const auto& obj : objects) {
             for (const auto& sym : obj.symbols) {
-                if (sym.kind == RcuSymKind::ExternFunc && !sym.typeName.empty()) {
+                if (sym.kind == RcuSymKind::ExternFunc &&
+                    !sym.typeName.empty()) {
                     importDll[sym.name] = sym.typeName;
                     explicitImportDlls.insert(sym.typeName);
                     explicitImportFuncsByDll[sym.typeName].push_back(sym.name);
@@ -336,25 +372,29 @@ namespace Rux {
             }
         }
 
-        // Collect all symbol names that are defined (non-extern) across all objects.
-        // Cross-module calls produce ExternFunc relocations but the callee is defined
-        // in another RcuFile — those must NOT be treated as OS DLL imports.
+        // Collect all symbol names that are defined (non-extern) across all
+        // objects. Cross-module calls produce ExternFunc relocations but the
+        // callee is defined in another RcuFile — those must NOT be treated as
+        // OS DLL imports.
         std::unordered_set<std::string> definedSymbols;
         for (const auto& obj : objects)
             for (const auto& sym : obj.symbols)
-                if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData && !sym.name.empty())
+                if (sym.kind != RcuSymKind::ExternFunc &&
+                    sym.kind != RcuSymKind::ExternData && !sym.name.empty())
                     definedSymbols.insert(sym.name);
 
         // Second pass: collect imports from relocations. For compiler-generated
-        // extern symbols (e.g. runtime helpers) that carry no explicit DLL, fall
-        // back to KERNEL32.DLL so existing behaviour is preserved.
-        // Skip symbols that are defined locally (cross-module references, not DLL imports).
+        // extern symbols (e.g. runtime helpers) that carry no explicit DLL,
+        // fall back to KERNEL32.DLL so existing behaviour is preserved. Skip
+        // symbols that are defined locally (cross-module references, not DLL
+        // imports).
         for (const auto& obj : objects) {
             for (const auto& sec : obj.sections) {
                 for (const auto& reloc : sec.relocs) {
                     if (reloc.symbolIndex >= obj.symbols.size()) continue;
                     const auto& sym = obj.symbols[reloc.symbolIndex];
-                    if (sym.kind == RcuSymKind::ExternFunc && !definedSymbols.count(sym.name))
+                    if (sym.kind == RcuSymKind::ExternFunc &&
+                        !definedSymbols.count(sym.name))
                         importDll.try_emplace(sym.name, "KERNEL32.DLL");
                 }
             }
@@ -382,13 +422,15 @@ namespace Rux {
 
             auto exports = ReadDllExports(*dllPath);
             if (!exports) {
-                Error("could not read export table from import DLL '" + dll + "'");
+                Error("could not read export table from import DLL '" + dll +
+                      "'");
                 continue;
             }
 
             for (const auto& func : explicitImportFuncsByDll[dll]) {
                 if (!exports->contains(func))
-                    Error("import function '" + func + "' was not found in DLL '" + dll + "'");
+                    Error("import function '" + func +
+                          "' was not found in DLL '" + dll + "'");
             }
         }
         if (!errors.empty()) return false;
@@ -401,24 +443,29 @@ namespace Rux {
             // DLL entry point: _DllMainCRTStartup / DllMain proxy
             // Win64 DLL entry: BOOL WINAPI DllMain(HINSTANCE, DWORD, LPVOID)
             // args: rcx=hModule, rdx=fdwReason, r8=lpvReserved
-            // We call user's DllMain if it exists, otherwise just return TRUE (1).
+            // We call user's DllMain if it exists, otherwise just return TRUE
+            // (1).
             //
             // Thunk layout:
             //   sub  rsp, 0x28
             //   call DllMain       ; E8 disp32  (patched; if DllMain defined)
-            //   mov  eax, 1        ; return TRUE if DllMain missing or returned 0
-            //   add  rsp, 0x28
-            //   ret
+            //   mov  eax, 1        ; return TRUE if DllMain missing or returned
+            //   0 add  rsp, 0x28 ret
             //
-            // If DllMain is not defined in user code we emit a minimal stub that
-            // just returns TRUE — standard DLL behaviour when no initialisation needed.
-            textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x28}); // sub rsp, 0x28
+            // If DllMain is not defined in user code we emit a minimal stub
+            // that just returns TRUE — standard DLL behaviour when no
+            // initialisation needed.
+            textPre.insert(textPre.end(),
+                           {0x48, 0x83, 0xEC, 0x28}); // sub rsp, 0x28
             const size_t kCallDllMainDisp = textPre.size() + 1;
-            textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call DllMain
-            // If DllMain returned 0 (init failed), still propagate it; otherwise keep eax.
-            // For simplicity we trust DllMain's return value directly.
-            textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x28}); // add rsp, 0x28
-            textPre.push_back(0xC3); // ret
+            textPre.insert(textPre.end(),
+                           {0xE8, 0x00, 0x00, 0x00, 0x00}); // call DllMain
+            // If DllMain returned 0 (init failed), still propagate it;
+            // otherwise keep eax. For simplicity we trust DllMain's return
+            // value directly.
+            textPre.insert(textPre.end(),
+                           {0x48, 0x83, 0xC4, 0x28}); // add rsp, 0x28
+            textPre.push_back(0xC3);                  // ret
             (void)kCallDllMainDisp; // used below during patching
         }
         else {
@@ -430,7 +477,8 @@ namespace Rux {
             //   int3                ; CC
             textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x28});
         }
-        const size_t kCallMainDisp = isDll ? 5 : textPre.size() + 1; // offset of 4-byte disp field
+        const size_t kCallMainDisp =
+            isDll ? 5 : textPre.size() + 1; // offset of 4-byte disp field
         if (!isDll) {
             textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00});
             textPre.insert(textPre.end(), {0x89, 0xC1});
@@ -465,11 +513,14 @@ namespace Rux {
                           static_cast<uint32_t>(mergedData.size())};
             for (const auto& sec : obj.sections) {
                 if (sec.type == RcuSecType::Text)
-                    mergedText.insert(mergedText.end(), sec.data.begin(), sec.data.end());
+                    mergedText.insert(
+                        mergedText.end(), sec.data.begin(), sec.data.end());
                 else if (sec.type == RcuSecType::RoData)
-                    mergedRodata.insert(mergedRodata.end(), sec.data.begin(), sec.data.end());
+                    mergedRodata.insert(
+                        mergedRodata.end(), sec.data.begin(), sec.data.end());
                 else if (sec.type == RcuSecType::Data)
-                    mergedData.insert(mergedData.end(), sec.data.begin(), sec.data.end());
+                    mergedData.insert(
+                        mergedData.end(), sec.data.begin(), sec.data.end());
             }
         }
 
@@ -483,7 +534,8 @@ namespace Rux {
         //   [IMAGE_IMPORT_BY_NAME entries per function]
 
         Buf rdataBuf;
-        rdataBuf.insert(rdataBuf.end(), mergedRodata.begin(), mergedRodata.end());
+        rdataBuf.insert(
+            rdataBuf.end(), mergedRodata.begin(), mergedRodata.end());
         PadTo(rdataBuf, 8);
         std::map<std::string, std::vector<size_t>> importsByDll;
         for (size_t i = 0; i < numImports; ++i)
@@ -514,10 +566,12 @@ namespace Rux {
             iatGroupOff[g] = static_cast<uint32_t>(rdataBuf.size());
             iatPos[g] = rdataBuf.size();
             for (size_t j = 0; j < importDllMembers[g].size(); ++j)
-                iatEntryOff[importDllMembers[g][j]] = iatGroupOff[g] + static_cast<uint32_t>(j * 8);
+                iatEntryOff[importDllMembers[g][j]] =
+                    iatGroupOff[g] + static_cast<uint32_t>(j * 8);
             WriteZeros(rdataBuf, (importDllMembers[g].size() + 1) * 8);
         }
-        const uint32_t iatSize = static_cast<uint32_t>(rdataBuf.size()) - iatOff;
+        const uint32_t iatSize =
+            static_cast<uint32_t>(rdataBuf.size()) - iatOff;
         std::vector<uint32_t> dllNameOff(importDllNames.size());
         for (size_t g = 0; g < importDllNames.size(); ++g) {
             dllNameOff[g] = static_cast<uint32_t>(rdataBuf.size());
@@ -539,22 +593,25 @@ namespace Rux {
         const uint32_t rawHdrBytes = 64 + 4 + 20 + 240 + numSections * 40;
         const uint32_t sizeOfHeaders = AlignUp(rawHdrBytes, kFileAlign);
         const uint32_t textRva = AlignUp(sizeOfHeaders, kSecAlign);
-        const uint32_t textVirtSize = preambleSize + static_cast<uint32_t>(mergedText.size());
+        const uint32_t textVirtSize =
+            preambleSize + static_cast<uint32_t>(mergedText.size());
         const uint32_t textFileSize = AlignUp(textVirtSize, kFileAlign);
         const uint32_t textFileOff = sizeOfHeaders;
         const uint32_t rdataRva = textRva + AlignUp(textVirtSize, kSecAlign);
         const uint32_t rdataVirtSize = static_cast<uint32_t>(rdataBuf.size());
         const uint32_t rdataFileSize = AlignUp(rdataVirtSize, kFileAlign);
         const uint32_t rdataFileOff = textFileOff + textFileSize;
-        uint32_t dataRva = 0, dataVirtSize = 0, dataFileSize = 0, dataFileOff = 0;
+        uint32_t dataRva = 0, dataVirtSize = 0, dataFileSize = 0,
+                 dataFileOff = 0;
         if (!mergedData.empty()) {
             dataRva = rdataRva + AlignUp(rdataVirtSize, kSecAlign);
             dataVirtSize = static_cast<uint32_t>(mergedData.size());
             dataFileSize = AlignUp(dataVirtSize, kFileAlign);
             dataFileOff = rdataFileOff + rdataFileSize;
         }
-        const uint32_t sizeOfImage = !mergedData.empty() ? dataRva + AlignUp(dataVirtSize, kSecAlign)
-                                                         : rdataRva + AlignUp(rdataVirtSize, kSecAlign);
+        const uint32_t sizeOfImage = !mergedData.empty()
+            ? dataRva + AlignUp(dataVirtSize, kSecAlign)
+            : rdataRva + AlignUp(rdataVirtSize, kSecAlign);
 
         // 6. Patch .rdata import table with real RVAs
         for (size_t g = 0; g < importDllNames.size(); ++g) {
@@ -562,15 +619,20 @@ namespace Rux {
                 const size_t importIndex = importDllMembers[g][j];
                 const uint64_t hnRva = rdataRva + hintNameOff[importIndex];
                 Patch64(rdataBuf, intPos[g] + j * 8, hnRva); // INT entry
-                Patch64(rdataBuf, iatPos[g] + j * 8, hnRva); // IAT entry (pre-bind)
+                Patch64(
+                    rdataBuf, iatPos[g] + j * 8, hnRva); // IAT entry (pre-bind)
             }
             // Patch IMAGE_IMPORT_DESCRIPTOR
             const size_t descPos = importDirPos + g * 20;
-            Patch32(rdataBuf, descPos + 0, rdataRva + intOff[g]); // OriginalFirstThunk
-            Patch32(rdataBuf, descPos + 4, 0); // TimeDateStamp
+            Patch32(rdataBuf,
+                    descPos + 0,
+                    rdataRva + intOff[g]);               // OriginalFirstThunk
+            Patch32(rdataBuf, descPos + 4, 0);           // TimeDateStamp
             Patch32(rdataBuf, descPos + 8, 0xFFFFFFFFu); // ForwarderChain
             Patch32(rdataBuf, descPos + 12, rdataRva + dllNameOff[g]); // Name
-            Patch32(rdataBuf, descPos + 16, rdataRva + iatGroupOff[g]); // FirstThunk (IAT)
+            Patch32(rdataBuf,
+                    descPos + 16,
+                    rdataRva + iatGroupOff[g]); // FirstThunk (IAT)
         }
         // null descriptor and null thunk terminators already zeroed
 
@@ -590,12 +652,16 @@ namespace Rux {
             const auto& lay = layouts[i];
             for (const auto& sym : obj.symbols) {
                 if (sym.name.empty()) continue;
-                if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData)
+                if (sym.kind == RcuSymKind::ExternFunc ||
+                    sym.kind == RcuSymKind::ExternData)
                     continue; // already handled via thunks
-                if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func && sym.name != "Main") continue;
+                if (sym.visibility == RcuSymVis::Local &&
+                    sym.kind != RcuSymKind::Func && sym.name != "Main")
+                    continue;
                 uint64_t va = 0;
                 if (sym.sectionIdx == RCU_TEXT_IDX)
-                    va = kImageBase + textRva + preambleSize + lay.textOff + sym.value;
+                    va = kImageBase + textRva + preambleSize + lay.textOff +
+                        sym.value;
                 else if (sym.sectionIdx == RCU_RODATA_IDX)
                     va = kImageBase + rdataRva + lay.rodataOff + sym.value;
                 else if (sym.sectionIdx == RCU_DATA_IDX)
@@ -622,23 +688,28 @@ namespace Rux {
         // Patch entry thunk: call Main (EXE) or DllMain (DLL)
         if (isDll) {
             // DllMain is optional: if not defined, patch the call to target the
-            // instruction immediately after it so it falls through to `ret` returning
-            // whatever eax happened to hold (Windows default-initialises to 0, but
-            // the sub/add rsp frame means the caller sees TRUE from a fresh eax on
-            // many ABIs). We make it explicit: if no DllMain, patch to call a tiny
-            // inline stub that sets eax=1 then returns.
+            // instruction immediately after it so it falls through to `ret`
+            // returning whatever eax happened to hold (Windows
+            // default-initialises to 0, but the sub/add rsp frame means the
+            // caller sees TRUE from a fresh eax on many ABIs). We make it
+            // explicit: if no DllMain, patch to call a tiny inline stub that
+            // sets eax=1 then returns.
             //
-            // Simple approach: if DllMain absent, replace the call+6-byte nop with
-            // `mov eax, 1; nop` so the stub just returns TRUE.
+            // Simple approach: if DllMain absent, replace the call+6-byte nop
+            // with `mov eax, 1; nop` so the stub just returns TRUE.
             auto it = symMap.find("DllMain");
             if (it != symMap.end()) {
                 uint64_t dllMainVA = it->second;
                 uint64_t nextInst = kImageBase + textRva + kCallMainDisp + 4;
-                Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(dllMainVA - nextInst));
+                Patch32(textBuf,
+                        kCallMainDisp,
+                        static_cast<uint32_t>(dllMainVA - nextInst));
             }
             else {
-                // No DllMain: replace `E8 00 00 00 00` with `B8 01 00 00 00` (mov eax, 1)
-                textBuf[kCallMainDisp - 1] = 0xB8; // change opcode from E8 (call) to B8 (mov eax, imm32)
+                // No DllMain: replace `E8 00 00 00 00` with `B8 01 00 00 00`
+                // (mov eax, 1)
+                textBuf[kCallMainDisp - 1] =
+                    0xB8; // change opcode from E8 (call) to B8 (mov eax, imm32)
                 Patch32(textBuf, kCallMainDisp, 1); // imm = 1 (TRUE)
             }
         }
@@ -650,14 +721,19 @@ namespace Rux {
             }
             uint64_t mainVA = it->second;
             uint64_t nextInst = kImageBase + textRva + kCallMainDisp + 4;
-            Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(mainVA - nextInst));
+            Patch32(textBuf,
+                    kCallMainDisp,
+                    static_cast<uint32_t>(mainVA - nextInst));
         }
 
         // Patch entry thunk: call ExitProcess thunk (EXE only)
         if (!isDll) {
-            uint64_t exitVA = kImageBase + textRva + thunkOff[importIdx["ExitProcess"]];
+            uint64_t exitVA =
+                kImageBase + textRva + thunkOff[importIdx["ExitProcess"]];
             uint64_t nextInst = kImageBase + textRva + kCallExitDisp + 4;
-            Patch32(textBuf, kCallExitDisp, static_cast<uint32_t>(exitVA - nextInst));
+            Patch32(textBuf,
+                    kCallExitDisp,
+                    static_cast<uint32_t>(exitVA - nextInst));
         }
 
         // 9. Patch user code relocations
@@ -672,7 +748,8 @@ namespace Rux {
                 if (sec.type == RcuSecType::Text) {
                     buf = &textBuf;
                     baseInBuf = preambleSize + lay.textOff;
-                    secBaseVA = kImageBase + textRva + preambleSize + lay.textOff;
+                    secBaseVA =
+                        kImageBase + textRva + preambleSize + lay.textOff;
                 }
                 else if (sec.type == RcuSecType::RoData) {
                     buf = &rdataBuf;
@@ -698,23 +775,29 @@ namespace Rux {
                         // OS import: resolved via thunk
                         auto it = symMap.find(sym.name);
                         if (it == symMap.end()) {
-                            Error("undefined external symbol '" + sym.name + "'");
+                            Error("undefined external symbol '" + sym.name +
+                                  "'");
                             continue;
                         }
                         targetVA = it->second;
                     }
-                    else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() && symMap.count(sym.name)) {
-                        // Named exported symbol, including cross-module references.
+                    else if (sym.visibility != RcuSymVis::Local &&
+                             !sym.name.empty() && symMap.count(sym.name)) {
+                        // Named exported symbol, including cross-module
+                        // references.
                         targetVA = symMap[sym.name];
                     }
                     else {
                         // Unnamed or purely local — compute from section index
                         if (sym.sectionIdx == RCU_TEXT_IDX)
-                            targetVA = kImageBase + textRva + preambleSize + lay.textOff + sym.value;
+                            targetVA = kImageBase + textRva + preambleSize +
+                                lay.textOff + sym.value;
                         else if (sym.sectionIdx == RCU_RODATA_IDX)
-                            targetVA = kImageBase + rdataRva + lay.rodataOff + sym.value;
+                            targetVA = kImageBase + rdataRva + lay.rodataOff +
+                                sym.value;
                         else if (sym.sectionIdx == RCU_DATA_IDX)
-                            targetVA = kImageBase + dataRva + lay.dataOff + sym.value;
+                            targetVA =
+                                kImageBase + dataRva + lay.dataOff + sym.value;
                         else
                             continue;
                     }
@@ -722,16 +805,21 @@ namespace Rux {
                     const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
                     if (reloc.type == RcuRelType::Rel32) {
                         if (patchAt + 4 > buf->size()) continue;
-                        int32_t disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
+                        int32_t disp = static_cast<int32_t>(
+                            targetVA + reloc.addend - (siteVA + 4));
                         Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
                     }
                     else if (reloc.type == RcuRelType::Abs64) {
                         if (patchAt + 8 > buf->size()) continue;
-                        Patch64(*buf, patchAt, targetVA + static_cast<uint64_t>(reloc.addend));
+                        Patch64(*buf,
+                                patchAt,
+                                targetVA + static_cast<uint64_t>(reloc.addend));
                     }
                     else if (reloc.type == RcuRelType::Abs32) {
                         if (patchAt + 4 > buf->size()) continue;
-                        Patch32(*buf, patchAt, static_cast<uint32_t>(targetVA + reloc.addend));
+                        Patch32(*buf,
+                                patchAt,
+                                static_cast<uint32_t>(targetVA + reloc.addend));
                     }
                 }
             }
@@ -746,14 +834,18 @@ namespace Rux {
         if (isDll) {
             for (const auto& obj : objects) {
                 for (const auto& sym : obj.symbols) {
-                    if (sym.kind == RcuSymKind::Func && sym.visibility != RcuSymVis::Local && !sym.name.empty() &&
-                        sym.name != "DllMain" && symMap.count(sym.name)) {
+                    if (sym.kind == RcuSymKind::Func &&
+                        sym.visibility != RcuSymVis::Local &&
+                        !sym.name.empty() && sym.name != "DllMain" &&
+                        symMap.count(sym.name)) {
                         exportNames.push_back(sym.name);
                     }
                 }
             }
             std::sort(exportNames.begin(), exportNames.end());
-            exportNames.erase(std::unique(exportNames.begin(), exportNames.end()), exportNames.end());
+            exportNames.erase(
+                std::unique(exportNames.begin(), exportNames.end()),
+                exportNames.end());
         }
 
         // Build export directory data (appended to .rdata)
@@ -761,19 +853,22 @@ namespace Rux {
         uint32_t exportDirSize = 0;
         if (isDll && !exportNames.empty()) {
             exportDirOff = static_cast<uint32_t>(rdataBuf.size());
-            const uint32_t numExports = static_cast<uint32_t>(exportNames.size());
+            const uint32_t numExports =
+                static_cast<uint32_t>(exportNames.size());
 
             // Reserve IMAGE_EXPORT_DIRECTORY (40 bytes)
             const size_t expDirPos = rdataBuf.size();
             WriteZeros(rdataBuf, 40);
 
             // AddressOfFunctions array (RVAs)
-            const uint32_t funcArrayOff = static_cast<uint32_t>(rdataBuf.size());
+            const uint32_t funcArrayOff =
+                static_cast<uint32_t>(rdataBuf.size());
             for (uint32_t i = 0; i < numExports; ++i)
                 WriteU32(rdataBuf, 0); // patched below
 
             // AddressOfNames array (RVAs to name strings)
-            const uint32_t nameArrayOff = static_cast<uint32_t>(rdataBuf.size());
+            const uint32_t nameArrayOff =
+                static_cast<uint32_t>(rdataBuf.size());
             for (uint32_t i = 0; i < numExports; ++i)
                 WriteU32(rdataBuf, 0); // patched below
 
@@ -783,13 +878,15 @@ namespace Rux {
                 WriteU16(rdataBuf, static_cast<uint16_t>(i));
 
             // DLL name string
-            const uint32_t dllNameStrOff = static_cast<uint32_t>(rdataBuf.size());
+            const uint32_t dllNameStrOff =
+                static_cast<uint32_t>(rdataBuf.size());
             WriteCStr(rdataBuf, (packageName + ".dll").c_str());
             PadTo(rdataBuf, 2);
 
             // Function name strings + patch name/func arrays
             for (uint32_t i = 0; i < numExports; ++i) {
-                const uint32_t nameStrOff = static_cast<uint32_t>(rdataBuf.size());
+                const uint32_t nameStrOff =
+                    static_cast<uint32_t>(rdataBuf.size());
                 WriteCStr(rdataBuf, exportNames[i].c_str());
                 PadTo(rdataBuf, 2);
                 // Patch name array entry
@@ -797,23 +894,34 @@ namespace Rux {
                 // Patch function RVA
                 auto it = symMap.find(exportNames[i]);
                 if (it != symMap.end()) {
-                    uint32_t funcRva = static_cast<uint32_t>(it->second - kImageBase);
+                    uint32_t funcRva =
+                        static_cast<uint32_t>(it->second - kImageBase);
                     Patch32(rdataBuf, funcArrayOff + i * 4, funcRva);
                 }
             }
 
-            exportDirSize = static_cast<uint32_t>(rdataBuf.size()) - exportDirOff;
+            exportDirSize =
+                static_cast<uint32_t>(rdataBuf.size()) - exportDirOff;
 
             // Patch IMAGE_EXPORT_DIRECTORY fields
             Patch32(rdataBuf, expDirPos + 0, 0); // Characteristics
-            Patch32(rdataBuf, expDirPos + 4, static_cast<uint32_t>(std::time(nullptr))); // TimeDateStamp
-            Patch32(rdataBuf, expDirPos + 12, rdataRva + dllNameStrOff); // Name RVA
+            Patch32(rdataBuf,
+                    expDirPos + 4,
+                    static_cast<uint32_t>(std::time(nullptr))); // TimeDateStamp
+            Patch32(
+                rdataBuf, expDirPos + 12, rdataRva + dllNameStrOff); // Name RVA
             Patch32(rdataBuf, expDirPos + 16, 1); // Base (ordinal base)
             Patch32(rdataBuf, expDirPos + 20, numExports); // NumberOfFunctions
             Patch32(rdataBuf, expDirPos + 24, numExports); // NumberOfNames
-            Patch32(rdataBuf, expDirPos + 28, rdataRva + funcArrayOff); // AddressOfFunctions
-            Patch32(rdataBuf, expDirPos + 32, rdataRva + nameArrayOff); // AddressOfNames
-            Patch32(rdataBuf, expDirPos + 36, rdataRva + ordArrayOff); // AddressOfNameOrdinals
+            Patch32(rdataBuf,
+                    expDirPos + 28,
+                    rdataRva + funcArrayOff); // AddressOfFunctions
+            Patch32(rdataBuf,
+                    expDirPos + 32,
+                    rdataRva + nameArrayOff); // AddressOfNames
+            Patch32(rdataBuf,
+                    expDirPos + 36,
+                    rdataRva + ordArrayOff); // AddressOfNameOrdinals
         }
 
         // 10. Emit PE32+ file
@@ -823,7 +931,9 @@ namespace Rux {
             Error("cannot open output file: " + outputPath.string());
             return false;
         }
-        const auto writeRaw = [&](const void* d, size_t n) { out.write(static_cast<const char*>(d), n); };
+        const auto writeRaw = [&](const void* d, size_t n) {
+            out.write(static_cast<const char*>(d), n);
+        };
         const auto wU16 = [&](uint16_t v) { writeRaw(&v, 2); };
         const auto wU32 = [&](uint32_t v) { writeRaw(&v, 4); };
         const auto wU64 = [&](uint64_t v) { writeRaw(&v, 8); };
@@ -849,10 +959,12 @@ namespace Rux {
 
         // DOS header (e_lfanew = 0x40 so PE signature follows immediately)
         static const uint8_t kDosHdr[64] = {
-            0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00,
-            0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00,
+            0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00,
+            0x00, 0xFF, 0xFF, 0x00, 0x00, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00,
         };
         writeRaw(kDosHdr, 64);
 
@@ -863,7 +975,7 @@ namespace Rux {
         wU16(static_cast<uint16_t>(numSections));
         wU32(static_cast<uint32_t>(std::time(nullptr)));
         wU32(0);
-        wU32(0); // no COFF symbol table
+        wU32(0);   // no COFF symbol table
         wU16(240); // SizeOfOptionalHeader for PE32+
         // EXE: EXECUTABLE | LARGE_ADDRESS_AWARE
         // DLL: EXECUTABLE | LARGE_ADDRESS_AWARE | DLL
@@ -872,10 +984,10 @@ namespace Rux {
         // Optional Header PE32+ (240 bytes)
         wU16(kMagicPE32P);
         wU8(14);
-        wU8(0); // Linker version 14.0
-        wU32(textFileSize); // SizeOfCode
+        wU8(0);                             // Linker version 14.0
+        wU32(textFileSize);                 // SizeOfCode
         wU32(rdataFileSize + dataFileSize); // SizeOfInitializedData
-        wU32(0); // SizeOfUninitializedData
+        wU32(0);                            // SizeOfUninitializedData
         wU32(textRva); // AddressOfEntryPoint (__rux_start at start of .text)
         wU32(textRva); // BaseOfCode
         wU64(kImageBase);
@@ -894,15 +1006,18 @@ namespace Rux {
         wU16(isDll ? kSubsystemGUI : kSubsystemCUI);
         wU16(kDllChars);
         wU64(0x100000ULL); // SizeOfStackReserve (1 MB)
-        wU64(0x1000ULL); // SizeOfStackCommit  (4 KB)
+        wU64(0x1000ULL);   // SizeOfStackCommit  (4 KB)
         wU64(0x100000ULL); // SizeOfHeapReserve  (1 MB)
-        wU64(0x1000ULL); // SizeOfHeapCommit   (4 KB)
-        wU32(0); // LoaderFlags
-        wU32(16); // NumberOfRvaAndSizes
+        wU64(0x1000ULL);   // SizeOfHeapCommit   (4 KB)
+        wU32(0);           // LoaderFlags
+        wU32(16);          // NumberOfRvaAndSizes
         // DataDirectory[16]
         // [0] Export — filled for DLLs, empty for EXEs
-        wDir(isDll && exportDirSize > 0 ? rdataRva + exportDirOff : 0, isDll && exportDirSize > 0 ? exportDirSize : 0);
-        wDir(rdataRva + importDirOff, static_cast<uint32_t>((importDllNames.size() + 1) * 20)); // [1]  Import
+        wDir(isDll && exportDirSize > 0 ? rdataRva + exportDirOff : 0,
+             isDll && exportDirSize > 0 ? exportDirSize : 0);
+        wDir(rdataRva + importDirOff,
+             static_cast<uint32_t>((importDllNames.size() + 1) *
+                                   20)); // [1]  Import
         wDir(0, 0);
         wDir(0, 0);
         wDir(0, 0);
@@ -912,7 +1027,7 @@ namespace Rux {
         wDir(0, 0);
         wDir(0, 0);
         wDir(0, 0);
-        wDir(0, 0); // [8..11]
+        wDir(0, 0);                       // [8..11]
         wDir(rdataRva + iatOff, iatSize); // [12] IAT
         wDir(0, 0);
         wDir(0, 0);
@@ -969,67 +1084,83 @@ namespace Rux {
     static std::optional<Buf> LinuxCompatThunk(const std::string& name) {
         static const std::unordered_map<std::string, Buf> thunks = {
             {"ExitProcess",
-             {0x48, 0x89, 0xCF, 0xB8, (RUX_IS_BSD || RUX_IS_SUNOS ? 0x01 : 0x3C), 0x00, 0x00, 0x00, 0x0F, 0x05}},
+             {0x48,
+              0x89,
+              0xCF,
+              0xB8,
+              (RUX_IS_BSD || RUX_IS_SUNOS ? 0x01 : 0x3C),
+              0x00,
+              0x00,
+              0x00,
+              0x0F,
+              0x05}},
             {"GetStdHandle",
              {
-                 0x81, 0xF9, 0xF6, 0xFF, 0xFF, 0xFF, // cmp ecx, -10 (STD_INPUT_HANDLE)
+                 0x81, 0xF9, 0xF6, 0xFF, 0xFF,
+                 0xFF,       // cmp ecx, -10 (STD_INPUT_HANDLE)
                  0x74, 0x0E, // je +14 (return 0)
-                 0x81, 0xF9, 0xF5, 0xFF, 0xFF, 0xFF, // cmp ecx, -11 (STD_OUTPUT_HANDLE)
+                 0x81, 0xF9, 0xF5, 0xFF, 0xFF,
+                 0xFF,       // cmp ecx, -11 (STD_OUTPUT_HANDLE)
                  0x74, 0x09, // je +9 (return 1)
                  0xB8, 0x02, 0x00, 0x00, 0x00, // mov eax, 2
-                 0xC3, // ret
-                 0x31, 0xC0, // xor eax, eax
-                 0xC3, // ret
+                 0xC3,                         // ret
+                 0x31, 0xC0,                   // xor eax, eax
+                 0xC3,                         // ret
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1
-                 0xC3, // ret
+                 0xC3,                         // ret
              }},
             {"GetProcessHeap", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"HeapFree", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
-            {"HeapAlloc", {0x4C, 0x89, 0xC6, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
+            {"HeapAlloc",
+             {0x4C, 0x89, 0xC6, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00,
+              0x41, 0xBA,
 
 #  if RUX_IS_BSD
-                           0x02, 0x10, 0x00, 0x00,
+              0x02, 0x10, 0x00, 0x00,
 #  elif RUX_IS_SUNOS
-                           0x02, 0x01, 0x00, 0x00,
+              0x02, 0x01, 0x00, 0x00,
 #  else
-                           0x22, 0x00, 0x00, 0x00,
+              0x22, 0x00, 0x00, 0x00,
 #  endif
-                           0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
+              0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
 #  if RUX_OS_FREEBSD
-                           0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+              0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
 #  elif RUX_OS_OPENBSD
-                           0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
+              0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
 #  elif RUX_OS_DRAGONFLY || RUX_OS_NETBSD
-                           0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
+              0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
 #  elif RUX_IS_SUNOS
-                           0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
+              0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
 #  else
-                           0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
+              0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
 #  endif
-                           0x05, 0xC3}},
-            {"HeapReAlloc", {0x48, 0x8B, 0x74, 0x24, 0x28, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
+              0x05, 0xC3}},
+            {"HeapReAlloc",
+             {0x48, 0x8B, 0x74, 0x24, 0x28, 0x31, 0xFF, 0xBA, 0x03, 0x00,
+              0x00, 0x00, 0x41, 0xBA,
 #  if RUX_IS_BSD
-                             0x02, 0x10, 0x00, 0x00,
+              0x02, 0x10, 0x00, 0x00,
 #  elif RUX_IS_SUNOS
-                             0x02, 0x01, 0x00, 0x00,
+              0x02, 0x01, 0x00, 0x00,
 #  else
-                             0x22, 0x00, 0x00, 0x00,
+              0x22, 0x00, 0x00, 0x00,
 #  endif
-                             0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
+              0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
 #  if RUX_OS_FREEBSD
-                             0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+              0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
 #  elif RUX_OS_OPENBSD
-                             0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
+              0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
 #  elif RUX_OS_DRAGONFLY || RUX_OS_NETBSD
-                             0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
+              0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
 #  elif RUX_IS_SUNOS
-                             0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
+              0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
 #  else
-                             0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
+              0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
 #  endif
-                             0x05, 0xC3}},
-            {"RtlCopyMemory", {0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88, 0x01, 0x48, 0xFF,
-                               0xC2, 0x48, 0xFF, 0xC1, 0x49, 0xFF, 0xC8, 0x75, 0xF1, 0xC3}},
+              0x05, 0xC3}},
+            {"RtlCopyMemory",
+             {0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88, 0x01, 0x48, 0xFF,
+              0xC2, 0x48, 0xFF, 0xC1, 0x49, 0xFF, 0xC8, 0x75, 0xF1, 0xC3}},
             {"RtlCompareMemory",
              {
                  0x49,
@@ -1097,25 +1228,48 @@ namespace Rux {
                  0xDA, // jmp loop
              }},
             {"RtlFillMemory",
-             {0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88, 0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
-            {"RtlZeroMemory", {0x45, 0x31, 0xC0, 0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88,
-                               0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
-            {"MultiByteToWideChar", {0x4C, 0x89, 0xC8, 0x4C, 0x8B, 0x54, 0x24, 0x28, 0x4D, 0x85, 0xD2, 0x74, 0x19,
-                                     0x4D, 0x85, 0xC9, 0x7E, 0x14, 0x45, 0x0F, 0xB6, 0x18, 0x66, 0x45, 0x89, 0x1A,
-                                     0x49, 0xFF, 0xC0, 0x49, 0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
-            {"WriteConsoleW", {0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x08, 0x49, 0x89, 0xD4, 0x4D, 0x89,
-                               0xC5, 0x4D, 0x85, 0xED, 0x74, 0x24, 0x41, 0x8A, 0x04, 0x24, 0x88, 0x04, 0x24,
+             {0x48,
+              0x85,
+              0xD2,
+              0x74,
+              0x0B,
+              0x44,
+              0x88,
+              0x01,
+              0x48,
+              0xFF,
+              0xC1,
+              0x48,
+              0xFF,
+              0xCA,
+              0x75,
+              0xF5,
+              0xC3}},
+            {"RtlZeroMemory",
+             {0x45, 0x31, 0xC0, 0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88,
+              0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
+            {"MultiByteToWideChar",
+             {0x4C, 0x89, 0xC8, 0x4C, 0x8B, 0x54, 0x24, 0x28, 0x4D, 0x85,
+              0xD2, 0x74, 0x19, 0x4D, 0x85, 0xC9, 0x7E, 0x14, 0x45, 0x0F,
+              0xB6, 0x18, 0x66, 0x45, 0x89, 0x1A, 0x49, 0xFF, 0xC0, 0x49,
+              0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
+            {"WriteConsoleW",
+             {0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x08, 0x49, 0x89,
+              0xD4, 0x4D, 0x89, 0xC5, 0x4D, 0x85, 0xED, 0x74, 0x24, 0x41,
+              0x8A, 0x04, 0x24, 0x88, 0x04, 0x24,
 #  if RUX_IS_BSD || RUX_IS_SUNOS
-                               0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
+              0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
 #  else
-                               0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
+              0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
 #  endif
-                               0x01, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE6, 0xBA, 0x01, 0x00, 0x00, 0x00, 0x0F,
-                               0x05, 0x49, 0x83, 0xC4, 0x02, 0x49, 0xFF, 0xCD, 0xEB, 0xD7, 0x48, 0x83, 0xC4,
-                               0x08, 0x41, 0x5D, 0x41, 0x5C, 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
+              0x01, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE6, 0xBA, 0x01, 0x00,
+              0x00, 0x00, 0x0F, 0x05, 0x49, 0x83, 0xC4, 0x02, 0x49, 0xFF,
+              0xCD, 0xEB, 0xD7, 0x48, 0x83, 0xC4, 0x08, 0x41, 0x5D, 0x41,
+              0x5C, 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"ReadFile",
              {
-                 0x89, 0xCF, // mov edi, ecx  (fd)
+                 0x89,
+                 0xCF, // mov edi, ecx  (fd)
                  0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
                  0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
 #  if RUX_IS_BSD || RUX_IS_SUNOS
@@ -1123,24 +1277,34 @@ namespace Rux {
 #  else
                  0x31, 0xC0, // xor eax, eax (SYS_read = 0)
 #  endif
-                 0x4D, 0x89, 0xC8, // mov r8, r9  (save output pointer to r8 before syscall)
-                 0x0F, 0x05, // syscall
-                 0x85, 0xC0, // test eax, eax
-                 0x78, 0x11, // js +17 (error)
+                 0x4D,
+                 0x89,
+                 0xC8, // mov r8, r9  (save output pointer to r8
+                       // before syscall)
+                 0x0F,
+                 0x05, // syscall
+                 0x85,
+                 0xC0, // test eax, eax
+                 0x78,
+                 0x11, // js +17 (error)
                  0x4D, 0x89, 0xC1, // mov r9, r8  (restore output pointer)
                  0x4D, 0x85, 0xC9, // test r9, r9
-                 0x74, 0x03, // jz +3 (skip if null)
+                 0x74,
+                 0x03, // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax  (*bytesRead = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
                  0xC3, // ret
-                 0x31, 0xC0, // xor eax, eax (FALSE)
-                 0xC3 // ret
+                 0x31,
+                 0xC0, // xor eax, eax (FALSE)
+                 0xC3  // ret
              }},
-            // WriteFile(handle, buf, count, *bytesWritten, overlapped) -> write(fd, buf, count).
-            // Same shape as ReadFile; only the syscall number differs.
+            // WriteFile(handle, buf, count, *bytesWritten, overlapped) ->
+            // write(fd, buf, count). Same shape as ReadFile; only the syscall
+            // number differs.
             {"WriteFile",
              {
-                 0x89, 0xCF, // mov edi, ecx  (fd)
+                 0x89,
+                 0xCF, // mov edi, ecx  (fd)
                  0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
                  0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
 #  if RUX_IS_BSD || RUX_IS_SUNOS
@@ -1148,18 +1312,26 @@ namespace Rux {
 #  else
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (SYS_write)
 #  endif
-                 0x4D, 0x89, 0xC8, // mov r8, r9  (save output pointer to r8 before syscall)
-                 0x0F, 0x05, // syscall
-                 0x85, 0xC0, // test eax, eax
-                 0x78, 0x11, // js +17 (error)
+                 0x4D,
+                 0x89,
+                 0xC8, // mov r8, r9  (save output pointer to r8
+                       // before syscall)
+                 0x0F,
+                 0x05, // syscall
+                 0x85,
+                 0xC0, // test eax, eax
+                 0x78,
+                 0x11, // js +17 (error)
                  0x4D, 0x89, 0xC1, // mov r9, r8  (restore output pointer)
                  0x4D, 0x85, 0xC9, // test r9, r9
-                 0x74, 0x03, // jz +3 (skip if null)
+                 0x74,
+                 0x03, // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax  (*bytesWritten = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
                  0xC3, // ret
-                 0x31, 0xC0, // xor eax, eax (FALSE)
-                 0xC3 // ret
+                 0x31,
+                 0xC0, // xor eax, eax (FALSE)
+                 0xC3  // ret
              }},
 #  if RUX_IS_ELF_OS
             // Rux extern calls currently use the Win64 register layout. These
@@ -1172,7 +1344,7 @@ namespace Rux {
                  0xC8, // mov rax, rcx
                  0x0F,
                  0x05, // syscall
-                 0xC3 // ret
+                 0xC3  // ret
              }},
             {"__rux_linux_syscall1",
              {
@@ -1184,7 +1356,7 @@ namespace Rux {
                  0xD7, // mov rdi, rdx
                  0x0F,
                  0x05, // syscall
-                 0xC3 // ret
+                 0xC3  // ret
              }},
             {"__rux_linux_syscall2",
              {
@@ -1199,7 +1371,7 @@ namespace Rux {
                  0xC6, // mov rsi, r8
                  0x0F,
                  0x05, // syscall
-                 0xC3 // ret
+                 0xC3  // ret
              }},
             {"__rux_linux_syscall3",
              {
@@ -1217,40 +1389,40 @@ namespace Rux {
                  0xCA, // mov rdx, r9
                  0x0F,
                  0x05, // syscall
-                 0xC3 // ret
+                 0xC3  // ret
              }},
             {"__rux_linux_syscall4",
              {
-                 0x48, 0x89, 0xC8, // mov rax, rcx
-                 0x48, 0x89, 0xD7, // mov rdi, rdx
-                 0x4C, 0x89, 0xC6, // mov rsi, r8
-                 0x4C, 0x89, 0xCA, // mov rdx, r9
+                 0x48, 0x89, 0xC8,             // mov rax, rcx
+                 0x48, 0x89, 0xD7,             // mov rdi, rdx
+                 0x4C, 0x89, 0xC6,             // mov rsi, r8
+                 0x4C, 0x89, 0xCA,             // mov rdx, r9
                  0x4C, 0x8B, 0x54, 0x24, 0x28, // mov r10, [rsp + 40]
-                 0x0F, 0x05, // syscall
-                 0xC3 // ret
+                 0x0F, 0x05,                   // syscall
+                 0xC3                          // ret
              }},
             {"__rux_linux_syscall5",
              {
-                 0x48, 0x89, 0xC8, // mov rax, rcx
-                 0x48, 0x89, 0xD7, // mov rdi, rdx
-                 0x4C, 0x89, 0xC6, // mov rsi, r8
-                 0x4C, 0x89, 0xCA, // mov rdx, r9
+                 0x48, 0x89, 0xC8,             // mov rax, rcx
+                 0x48, 0x89, 0xD7,             // mov rdi, rdx
+                 0x4C, 0x89, 0xC6,             // mov rsi, r8
+                 0x4C, 0x89, 0xCA,             // mov rdx, r9
                  0x4C, 0x8B, 0x54, 0x24, 0x28, // mov r10, [rsp + 40]
                  0x4C, 0x8B, 0x44, 0x24, 0x30, // mov r8, [rsp + 48]
-                 0x0F, 0x05, // syscall
-                 0xC3 // ret
+                 0x0F, 0x05,                   // syscall
+                 0xC3                          // ret
              }},
             {"__rux_linux_syscall6",
              {
-                 0x48, 0x89, 0xC8, // mov rax, rcx
-                 0x48, 0x89, 0xD7, // mov rdi, rdx
-                 0x4C, 0x89, 0xC6, // mov rsi, r8
-                 0x4C, 0x89, 0xCA, // mov rdx, r9
+                 0x48, 0x89, 0xC8,             // mov rax, rcx
+                 0x48, 0x89, 0xD7,             // mov rdi, rdx
+                 0x4C, 0x89, 0xC6,             // mov rsi, r8
+                 0x4C, 0x89, 0xCA,             // mov rdx, r9
                  0x4C, 0x8B, 0x54, 0x24, 0x28, // mov r10, [rsp + 40]
                  0x4C, 0x8B, 0x44, 0x24, 0x30, // mov r8, [rsp + 48]
                  0x4C, 0x8B, 0x4C, 0x24, 0x38, // mov r9, [rsp + 56]
-                 0x0F, 0x05, // syscall
-                 0xC3 // ret
+                 0x0F, 0x05,                   // syscall
+                 0xC3                          // ret
              }},
             {"__rux_linux_nanosleep",
              {
@@ -1269,7 +1441,7 @@ namespace Rux {
                  0xD6, // mov rsi, rdx
                  0x0F,
                  0x05, // syscall
-                 0xC3 // ret
+                 0xC3  // ret
              }},
             {"__rux_linux_clock_gettime",
              {
@@ -1288,7 +1460,7 @@ namespace Rux {
                  0xD6, // mov rsi, rdx
                  0x0F,
                  0x05, // syscall
-                 0xC3 // ret
+                 0xC3  // ret
              }},
             {"__rux_bsd_nanosleep",
              {
@@ -1317,7 +1489,7 @@ namespace Rux {
                  0xD6, // mov rsi, rdx
                  0x0F,
                  0x05, // syscall
-                 0xC3 // ret
+                 0xC3  // ret
              }},
             {"__rux_bsd_clock_gettime",
              {
@@ -1346,7 +1518,7 @@ namespace Rux {
                  0xD6, // mov rsi, rdx
                  0x0F,
                  0x05, // syscall
-                 0xC3 // ret
+                 0xC3  // ret
              }},
             {"__rux_bsd_mmap",
              {
@@ -1355,14 +1527,14 @@ namespace Rux {
 #    elif defined(__OpenBSD__)
                  0x48, 0xC7, 0xC0, 0xC5, 0x00, 0x00, 0x00, // mov rax, 197
 #    endif
-                 0x48, 0x89, 0xCF, // mov rdi, rcx
-                 0x48, 0x89, 0xD6, // mov rsi, rdx
-                 0x4C, 0x89, 0xC2, // mov rdx, r8
-                 0x4D, 0x89, 0xCA, // mov r10, r9
+                 0x48, 0x89, 0xCF,             // mov rdi, rcx
+                 0x48, 0x89, 0xD6,             // mov rsi, rdx
+                 0x4C, 0x89, 0xC2,             // mov rdx, r8
+                 0x4D, 0x89, 0xCA,             // mov r10, r9
                  0x4C, 0x8B, 0x44, 0x24, 0x28, // mov r8, [rsp + 40]
                  0x4C, 0x8B, 0x4C, 0x24, 0x30, // mov r9, [rsp + 48]
-                 0x0F, 0x05, // syscall
-                 0xC3 // ret
+                 0x0F, 0x05,                   // syscall
+                 0xC3                          // ret
              }},
             {"__rux_bsd_const_MAP_ANONYMOUS",
              {
@@ -1413,13 +1585,16 @@ namespace Rux {
         static constexpr uint32_t kPfW = 0x2;
         static constexpr uint32_t kPfR = 0x4;
 
-        const auto alignUp64 = [](const uint64_t v, const uint64_t a) { return (v + a - 1) & ~(a - 1); };
+        const auto alignUp64 = [](const uint64_t v, const uint64_t a) {
+            return (v + a - 1) & ~(a - 1);
+        };
 
         std::unordered_set<std::string> definedSymbols;
         std::unordered_set<std::string> linuxCompatExterns;
         for (const auto& obj : objects)
             for (const auto& sym : obj.symbols)
-                if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData && !sym.name.empty())
+                if (sym.kind != RcuSymKind::ExternFunc &&
+                    sym.kind != RcuSymKind::ExternData && !sym.name.empty())
                     definedSymbols.insert(sym.name);
 
         for (const auto& obj : objects) {
@@ -1427,12 +1602,14 @@ namespace Rux {
                 for (const auto& reloc : sec.relocs) {
                     if (reloc.symbolIndex >= obj.symbols.size()) continue;
                     const auto& sym = obj.symbols[reloc.symbolIndex];
-                    if ((sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) &&
+                    if ((sym.kind == RcuSymKind::ExternFunc ||
+                         sym.kind == RcuSymKind::ExternData) &&
                         !definedSymbols.contains(sym.name)) {
                         if (LinuxCompatThunk(sym.name))
                             linuxCompatExterns.insert(sym.name);
                         else
-                            Error("external symbol '" + sym.name + "' is not supported by the ELF linker yet");
+                            Error("external symbol '" + sym.name +
+                                  "' is not supported by the ELF linker yet");
                     }
                 }
             }
@@ -1440,21 +1617,31 @@ namespace Rux {
         if (!errors.empty()) return false;
 
         Buf textPre;
-        textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
-        textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
+        textPre.insert(textPre.end(),
+                       {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
+        textPre.insert(
+            textPre.end(),
+            {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
         const size_t kCallMainDisp = textPre.size() + 1;
-        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
-        textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x08}); // add rsp, 8 (undo sub)
+        textPre.insert(textPre.end(),
+                       {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
+        textPre.insert(textPre.end(),
+                       {0x48, 0x83, 0xC4, 0x08});    // add rsp, 8 (undo sub)
         textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax
 #  if RUX_IS_BSD || RUX_IS_SUNOS
-        textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD/Illumos exit)
+        textPre.insert(
+            textPre.end(),
+            {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD/Illumos exit)
 #  else
-        textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
+        textPre.insert(
+            textPre.end(),
+            {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
 #  endif
         textPre.insert(textPre.end(), {0x0F, 0x05}); // syscall
 
         std::unordered_map<std::string, uint32_t> linuxCompatThunkOff;
-        std::vector<std::string> linuxCompatNames(linuxCompatExterns.begin(), linuxCompatExterns.end());
+        std::vector<std::string> linuxCompatNames(linuxCompatExterns.begin(),
+                                                  linuxCompatExterns.end());
         std::sort(linuxCompatNames.begin(), linuxCompatNames.end());
         for (const auto& name : linuxCompatNames) {
             auto thunk = LinuxCompatThunk(name);
@@ -1477,29 +1664,33 @@ namespace Rux {
                                 0x07, 0x00, 0x00, 0x00, // Name size (7)
                                 0x04, 0x00, 0x00, 0x00, // Desc size (4)
                                 0x01, 0x00, 0x00, 0x00, // Type (1 = OS version)
-                                'N',  'e',  't',  'B',  'S', 'D', 0, 0, // Name (NetBSD\0\0)
+                                'N',  'e',  't',  'B',
+                                'S',  'D',  0,    0,   // Name (NetBSD\0\0)
                                 0x00, 0xCA, 0x9A, 0x3B // Desc (1000000000)
                             });
 #  elif defined(__OpenBSD__)
         // Prepend OpenBSD ELF Note (required for execve to accept the binary)
-        mergedRodata.insert(mergedRodata.end(),
-                            {
-                                0x08, 0x00, 0x00, 0x00, // Name size (7 + null, padded to 8)
-                                0x04, 0x00, 0x00, 0x00, // Desc size (4)
-                                0x01, 0x00, 0x00, 0x00, // Type (NT_OPENBSD_IDENT)
-                                'O',  'p',  'e',  'n',  'B', 'S', 'D', 0, // Name (OpenBSD\0)
-                                0x00, 0x00, 0x00, 0x00 // Desc (0 = any version)
-                            });
+        mergedRodata.insert(
+            mergedRodata.end(),
+            {
+                0x08, 0x00, 0x00, 0x00, // Name size (7 + null, padded to 8)
+                0x04, 0x00, 0x00, 0x00, // Desc size (4)
+                0x01, 0x00, 0x00, 0x00, // Type (NT_OPENBSD_IDENT)
+                'O',  'p',  'e',  'n',  'B', 'S', 'D', 0, // Name (OpenBSD\0)
+                0x00, 0x00, 0x00, 0x00 // Desc (0 = any version)
+            });
 #  elif defined(__DragonFly__)
         // Prepend DragonFly ELF Note (required for execve to accept the binary)
-        mergedRodata.insert(mergedRodata.end(),
-                            {
-                                0x0A, 0x00, 0x00, 0x00, // Name size (9 + null, padded to 12)
-                                0x04, 0x00, 0x00, 0x00, // Desc size (4)
-                                0x01, 0x00, 0x00, 0x00, // Type
-                                'D',  'r',  'a',  'g',  'o', 'n', 'F', 'l', 'y', 0, 0, 0, // Name (DragonFly\0\0\0)
-                                0x00, 0x00, 0x00, 0x00 // Desc
-                            });
+        mergedRodata.insert(
+            mergedRodata.end(),
+            {
+                0x0A, 0x00, 0x00, 0x00, // Name size (9 + null, padded to 12)
+                0x04, 0x00, 0x00, 0x00, // Desc size (4)
+                0x01, 0x00, 0x00, 0x00, // Type
+                'D',  'r',  'a',  'g',  'o', 'n',
+                'F',  'l',  'y',  0,    0,   0, // Name (DragonFly\0\0\0)
+                0x00, 0x00, 0x00, 0x00          // Desc
+            });
 #  endif
 
         for (size_t i = 0; i < objects.size(); ++i) {
@@ -1509,11 +1700,14 @@ namespace Rux {
                           static_cast<uint32_t>(mergedData.size())};
             for (const auto& sec : obj.sections) {
                 if (sec.type == RcuSecType::Text)
-                    mergedText.insert(mergedText.end(), sec.data.begin(), sec.data.end());
+                    mergedText.insert(
+                        mergedText.end(), sec.data.begin(), sec.data.end());
                 else if (sec.type == RcuSecType::RoData)
-                    mergedRodata.insert(mergedRodata.end(), sec.data.begin(), sec.data.end());
+                    mergedRodata.insert(
+                        mergedRodata.end(), sec.data.begin(), sec.data.end());
                 else if (sec.type == RcuSecType::Data)
-                    mergedData.insert(mergedData.end(), sec.data.begin(), sec.data.end());
+                    mergedData.insert(
+                        mergedData.end(), sec.data.begin(), sec.data.end());
             }
         }
 
@@ -1521,18 +1715,21 @@ namespace Rux {
         textBuf.insert(textBuf.end(), textPre.begin(), textPre.end());
         textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
 
-        const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0)
+        const uint16_t phnum =
+            static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0)
 #  if RUX_OS_NETBSD || RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
-                                                     + 1 // PT_NOTE
+                                  + 1 // PT_NOTE
 #  endif
 
-        );
+            );
         const uint64_t phoff = 64;
-        const uint64_t textOff = alignUp64(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
+        const uint64_t textOff =
+            alignUp64(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
         const uint64_t textVA = kBase + textOff;
         const uint64_t rdataOff = alignUp64(textOff + textBuf.size(), kPage);
         const uint64_t rdataVA = kBase + rdataOff;
-        const uint64_t dataOff = alignUp64(rdataOff + mergedRodata.size(), kPage);
+        const uint64_t dataOff =
+            alignUp64(rdataOff + mergedRodata.size(), kPage);
         const uint64_t dataVA = kBase + dataOff;
 
         std::unordered_map<std::string, uint64_t> symMap;
@@ -1544,8 +1741,12 @@ namespace Rux {
             const auto& lay = layouts[i];
             for (const auto& sym : obj.symbols) {
                 if (sym.name.empty()) continue;
-                if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) continue;
-                if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func && sym.name != "Main") continue;
+                if (sym.kind == RcuSymKind::ExternFunc ||
+                    sym.kind == RcuSymKind::ExternData)
+                    continue;
+                if (sym.visibility == RcuSymVis::Local &&
+                    sym.kind != RcuSymKind::Func && sym.name != "Main")
+                    continue;
 
                 uint64_t va = 0;
                 if (sym.sectionIdx == RCU_TEXT_IDX)
@@ -1567,7 +1768,9 @@ namespace Rux {
                 return false;
             }
             const uint64_t nextInst = textVA + kCallMainDisp + 4;
-            Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(it->second - nextInst));
+            Patch32(textBuf,
+                    kCallMainDisp,
+                    static_cast<uint32_t>(it->second - nextInst));
         }
 
         for (size_t i = 0; i < objects.size(); ++i) {
@@ -1600,19 +1803,23 @@ namespace Rux {
                     if (reloc.symbolIndex >= obj.symbols.size()) continue;
                     const auto& sym = obj.symbols[reloc.symbolIndex];
                     uint64_t targetVA = 0;
-                    if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
+                    if (sym.kind == RcuSymKind::ExternFunc ||
+                        sym.kind == RcuSymKind::ExternData) {
                         auto it = symMap.find(sym.name);
                         if (it == symMap.end()) {
-                            Error("undefined external symbol '" + sym.name + "'");
+                            Error("undefined external symbol '" + sym.name +
+                                  "'");
                             continue;
                         }
                         targetVA = it->second;
                     }
-                    else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() && symMap.contains(sym.name)) {
+                    else if (sym.visibility != RcuSymVis::Local &&
+                             !sym.name.empty() && symMap.contains(sym.name)) {
                         targetVA = symMap[sym.name];
                     }
                     else if (sym.sectionIdx == RCU_TEXT_IDX) {
-                        targetVA = textVA + preambleSize + lay.textOff + sym.value;
+                        targetVA =
+                            textVA + preambleSize + lay.textOff + sym.value;
                     }
                     else if (sym.sectionIdx == RCU_RODATA_IDX) {
                         targetVA = rdataVA + lay.rodataOff + sym.value;
@@ -1628,16 +1835,21 @@ namespace Rux {
                     const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
                     if (reloc.type == RcuRelType::Rel32) {
                         if (patchAt + 4 > buf->size()) continue;
-                        const int32_t disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
+                        const int32_t disp = static_cast<int32_t>(
+                            targetVA + reloc.addend - (siteVA + 4));
                         Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
                     }
                     else if (reloc.type == RcuRelType::Abs64) {
                         if (patchAt + 8 > buf->size()) continue;
-                        Patch64(*buf, patchAt, targetVA + static_cast<uint64_t>(reloc.addend));
+                        Patch64(*buf,
+                                patchAt,
+                                targetVA + static_cast<uint64_t>(reloc.addend));
                     }
                     else if (reloc.type == RcuRelType::Abs32) {
                         if (patchAt + 4 > buf->size()) continue;
-                        Patch32(*buf, patchAt, static_cast<uint32_t>(targetVA + reloc.addend));
+                        Patch32(*buf,
+                                patchAt,
+                                static_cast<uint32_t>(targetVA + reloc.addend));
                     }
                 }
             }
@@ -1652,7 +1864,8 @@ namespace Rux {
         }
 
         const auto writeRaw = [&](const void* d, size_t n) {
-            out.write(static_cast<const char*>(d), static_cast<std::streamsize>(n));
+            out.write(static_cast<const char*>(d),
+                      static_cast<std::streamsize>(n));
         };
         [[maybe_unused]] const auto wU8 = [&](uint8_t v) { writeRaw(&v, 1); };
         const auto wU16 = [&](uint16_t v) { writeRaw(&v, 2); };
@@ -1664,11 +1877,18 @@ namespace Rux {
         const auto padToOffset = [&](uint64_t offset) {
             static constexpr uint8_t zeros[4096] = {};
             while (static_cast<uint64_t>(out.tellp()) < offset) {
-                const uint64_t remaining = offset - static_cast<uint64_t>(out.tellp());
-                writeRaw(zeros, static_cast<size_t>(std::min<uint64_t>(remaining, sizeof(zeros))));
+                const uint64_t remaining =
+                    offset - static_cast<uint64_t>(out.tellp());
+                writeRaw(zeros,
+                         static_cast<size_t>(
+                             std::min<uint64_t>(remaining, sizeof(zeros))));
             }
         };
-        const auto writePhdr = [&](uint32_t flags, uint64_t off, uint64_t vaddr, uint64_t fileSize, uint64_t memSize) {
+        const auto writePhdr = [&](uint32_t flags,
+                                   uint64_t off,
+                                   uint64_t vaddr,
+                                   uint64_t fileSize,
+                                   uint64_t memSize) {
             wU32(1); // PT_LOAD
             wU32(flags);
             wU64(off);
@@ -1708,7 +1928,7 @@ namespace Rux {
                              0,
                              0};
         writeRaw(ident, sizeof(ident));
-        wU16(2); // ET_EXEC
+        wU16(2);    // ET_EXEC
         wU16(0x3E); // EM_X86_64
         wU32(1);
         wU64(textVA); // e_entry
@@ -1723,19 +1943,26 @@ namespace Rux {
         wU16(0);
 
         writePhdr(kPfR | kPfX, textOff, textVA, textBuf.size(), textBuf.size());
-        writePhdr(kPfR, rdataOff, rdataVA, mergedRodata.size(), mergedRodata.size());
+        writePhdr(
+            kPfR, rdataOff, rdataVA, mergedRodata.size(), mergedRodata.size());
 #  if RUX_OS_NETBSD || RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
-        // Write PT_NOTE program header pointing to the OS note at the start of .rodata
-        wU32(4); // p_type: PT_NOTE
-        wU32(kPfR); // p_flags: PF_R
+        // Write PT_NOTE program header pointing to the OS note at the start of
+        // .rodata
+        wU32(4);        // p_type: PT_NOTE
+        wU32(kPfR);     // p_flags: PF_R
         wU64(rdataOff); // p_offset
-        wU64(rdataVA); // p_vaddr
-        wU64(rdataVA); // p_paddr
-        wU64(24); // p_filesz: 24 bytes
-        wU64(24); // p_memsz: 24 bytes
-        wU64(4); // p_align: 4 bytes
+        wU64(rdataVA);  // p_vaddr
+        wU64(rdataVA);  // p_paddr
+        wU64(24);       // p_filesz: 24 bytes
+        wU64(24);       // p_memsz: 24 bytes
+        wU64(4);        // p_align: 4 bytes
 #  endif
-        if (!mergedData.empty()) writePhdr(kPfR | kPfW, dataOff, dataVA, mergedData.size(), mergedData.size());
+        if (!mergedData.empty())
+            writePhdr(kPfR | kPfW,
+                      dataOff,
+                      dataVA,
+                      mergedData.size(),
+                      mergedData.size());
 
         padToOffset(textOff);
         wBuf(textBuf);
@@ -1754,7 +1981,8 @@ namespace Rux {
 
         std::error_code ec;
         std::filesystem::permissions(outputPath,
-                                     std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec |
+                                     std::filesystem::perms::owner_exec |
+                                         std::filesystem::perms::group_exec |
                                          std::filesystem::perms::others_exec,
                                      std::filesystem::perm_options::add,
                                      ec);
@@ -1770,9 +1998,10 @@ namespace Rux {
     // macOS x86-64 syscalls use the BSD class mask (0x2000000 | <unix number>),
     // the System V AMD64 argument registers (rdi/rsi/rdx/r10/r8/r9), and the
     // `syscall` instruction. Rux extern calls arrive in the Win64 layout
-    // (rcx/rdx/r8/r9), so each thunk shuffles those into syscall registers — the
-    // shuffle is identical to the Linux thunks; only the syscall numbers differ.
-    // The pure-computation thunks are byte-identical to their Linux counterparts.
+    // (rcx/rdx/r8/r9), so each thunk shuffles those into syscall registers —
+    // the shuffle is identical to the Linux thunks; only the syscall numbers
+    // differ. The pure-computation thunks are byte-identical to their Linux
+    // counterparts.
     static std::optional<Buf> MacCompatThunk(const std::string& name) {
         static const std::unordered_map<std::string, Buf> thunks = {
             {"ExitProcess",
@@ -1790,47 +2019,83 @@ namespace Rux {
              }},
             {"GetStdHandle",
              {
-                 0x81, 0xF9, 0xF6, 0xFF, 0xFF, 0xFF, // cmp ecx, -10 (STD_INPUT_HANDLE)
+                 0x81, 0xF9, 0xF6, 0xFF, 0xFF,
+                 0xFF,       // cmp ecx, -10 (STD_INPUT_HANDLE)
                  0x74, 0x0E, // je +14 (return 0)
-                 0x81, 0xF9, 0xF5, 0xFF, 0xFF, 0xFF, // cmp ecx, -11 (STD_OUTPUT_HANDLE)
+                 0x81, 0xF9, 0xF5, 0xFF, 0xFF,
+                 0xFF,       // cmp ecx, -11 (STD_OUTPUT_HANDLE)
                  0x74, 0x09, // je +9 (return 1)
                  0xB8, 0x02, 0x00, 0x00, 0x00, // mov eax, 2 (stderr)
-                 0xC3, // ret
-                 0x31, 0xC0, // xor eax, eax (stdin = fd 0)
-                 0xC3, // ret
+                 0xC3,                         // ret
+                 0x31, 0xC0,                   // xor eax, eax (stdin = fd 0)
+                 0xC3,                         // ret
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (stdout = fd 1)
-                 0xC3, // ret
+                 0xC3,                         // ret
              }},
             {"GetProcessHeap", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
             {"HeapFree", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
-            // HeapAlloc(heap, flags, size) -> mmap(NULL, size, RW, MAP_PRIVATE|MAP_ANON, -1, 0).
-            // BSD MAP_PRIVATE|MAP_ANON = 0x1002; macOS SYS_mmap = 0x20000C5.
+            // HeapAlloc(heap, flags, size) -> mmap(NULL, size, RW,
+            // MAP_PRIVATE|MAP_ANON, -1, 0). BSD MAP_PRIVATE|MAP_ANON = 0x1002;
+            // macOS SYS_mmap = 0x20000C5.
             {"HeapAlloc",
              {
-                 0x4C, 0x89, 0xC6, // mov rsi, r8  (size)
-                 0x31, 0xFF, // xor edi, edi (addr = NULL)
-                 0xBA, 0x03, 0x00, 0x00, 0x00, // mov edx, 3 (PROT_READ|PROT_WRITE)
-                 0x41, 0xBA, 0x02, 0x10, 0x00, 0x00, // mov r10d, 0x1002 (MAP_PRIVATE|MAP_ANON)
+                 0x4C,
+                 0x89,
+                 0xC6, // mov rsi, r8  (size)
+                 0x31,
+                 0xFF, // xor edi, edi (addr = NULL)
+                 0xBA,
+                 0x03,
+                 0x00,
+                 0x00,
+                 0x00, // mov edx, 3
+                       // (PROT_READ|PROT_WRITE)
+                 0x41,
+                 0xBA,
+                 0x02,
+                 0x10,
+                 0x00,
+                 0x00, // mov r10d, 0x1002
+                       // (MAP_PRIVATE|MAP_ANON)
                  0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, // mov r8, -1 (fd)
-                 0x45, 0x31, 0xC9, // xor r9d, r9d (offset 0)
+                 0x45,
+                 0x31,
+                 0xC9, // xor r9d, r9d (offset 0)
                  0xB8, 0xC5, 0x00, 0x00, 0x02, // mov eax, 0x20000C5 (SYS_mmap)
-                 0x0F, 0x05, // syscall
-                 0xC3 // ret
+                 0x0F,
+                 0x05, // syscall
+                 0xC3  // ret
              }},
-            // HeapReAlloc(heap, flags, ptr, newSize): crude — fresh mmap of newSize, no copy.
+            // HeapReAlloc(heap, flags, ptr, newSize): crude — fresh mmap of
+            // newSize, no copy.
             {"HeapReAlloc",
              {
-                 0x48, 0x8B, 0x74, 0x24, 0x28, // mov rsi, [rsp+40] (newSize, 4th Win64 stack arg)
-                 0x31, 0xFF, // xor edi, edi
+                 0x48,
+                 0x8B,
+                 0x74,
+                 0x24,
+                 0x28, // mov rsi, [rsp+40] (newSize,
+                       // 4th Win64 stack arg)
+                 0x31,
+                 0xFF, // xor edi, edi
                  0xBA, 0x03, 0x00, 0x00, 0x00, // mov edx, 3
-                 0x41, 0xBA, 0x02, 0x10, 0x00, 0x00, // mov r10d, 0x1002
+                 0x41,
+                 0xBA,
+                 0x02,
+                 0x10,
+                 0x00,
+                 0x00, // mov r10d, 0x1002
                  0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, // mov r8, -1
-                 0x45, 0x31, 0xC9, // xor r9d, r9d
+                 0x45,
+                 0x31,
+                 0xC9, // xor r9d, r9d
                  0xB8, 0xC5, 0x00, 0x00, 0x02, // mov eax, 0x20000C5 (SYS_mmap)
-                 0x0F, 0x05, // syscall
-                 0xC3 // ret
+                 0x0F,
+                 0x05, // syscall
+                 0xC3  // ret
              }},
-            // Munmap(addr, length) -> munmap(addr, length). macOS SYS_munmap = 0x2000049.
+            // Munmap(addr, length) -> munmap(addr, length). macOS SYS_munmap =
+            // 0x2000049.
             {"Munmap",
              {
                  0x48,
@@ -1846,78 +2111,101 @@ namespace Rux {
                  0x02, // mov eax, 0x2000049 (SYS_munmap)
                  0x0F,
                  0x05, // syscall
-                 0xC3 // ret
+                 0xC3  // ret
              }},
-            {"RtlCopyMemory", {0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88, 0x01, 0x48, 0xFF,
-                               0xC2, 0x48, 0xFF, 0xC1, 0x49, 0xFF, 0xC8, 0x75, 0xF1, 0xC3}},
+            {"RtlCopyMemory",
+             {0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88, 0x01, 0x48, 0xFF,
+              0xC2, 0x48, 0xFF, 0xC1, 0x49, 0xFF, 0xC8, 0x75, 0xF1, 0xC3}},
             {"RtlFillMemory",
-             {0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88, 0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
-            {"RtlZeroMemory", {0x45, 0x31, 0xC0, 0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88,
-                               0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
-            {"MultiByteToWideChar", {0x4C, 0x89, 0xC8, 0x4C, 0x8B, 0x54, 0x24, 0x28, 0x4D, 0x85, 0xD2, 0x74, 0x19,
-                                     0x4D, 0x85, 0xC9, 0x7E, 0x14, 0x45, 0x0F, 0xB6, 0x18, 0x66, 0x45, 0x89, 0x1A,
-                                     0x49, 0xFF, 0xC0, 0x49, 0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
-            // WriteConsoleW(handle, buf, count, ...) -> per WCHAR, write(1, lowByte, 1).
+             {0x48,
+              0x85,
+              0xD2,
+              0x74,
+              0x0B,
+              0x44,
+              0x88,
+              0x01,
+              0x48,
+              0xFF,
+              0xC1,
+              0x48,
+              0xFF,
+              0xCA,
+              0x75,
+              0xF5,
+              0xC3}},
+            {"RtlZeroMemory",
+             {0x45, 0x31, 0xC0, 0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88,
+              0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
+            {"MultiByteToWideChar",
+             {0x4C, 0x89, 0xC8, 0x4C, 0x8B, 0x54, 0x24, 0x28, 0x4D, 0x85,
+              0xD2, 0x74, 0x19, 0x4D, 0x85, 0xC9, 0x7E, 0x14, 0x45, 0x0F,
+              0xB6, 0x18, 0x66, 0x45, 0x89, 0x1A, 0x49, 0xFF, 0xC0, 0x49,
+              0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
+            // WriteConsoleW(handle, buf, count, ...) -> per WCHAR, write(1,
+            // lowByte, 1).
             {"WriteConsoleW",
              {
-                 0x41, 0x54, // push r12
-                 0x41, 0x55, // push r13
-                 0x48, 0x83, 0xEC, 0x08, // sub rsp, 8
-                 0x49, 0x89, 0xD4, // mov r12, rdx (buffer)
-                 0x4D, 0x89, 0xC5, // mov r13, r8  (char count)
-                 0x4D, 0x85, 0xED, // test r13, r13
-                 0x74, 0x24, // jz +36 (epilogue)
-                 0x41, 0x8A, 0x04, 0x24, // mov al, [r12]
-                 0x88, 0x04, 0x24, // mov [rsp], al
+                 0x41, 0x54,                   // push r12
+                 0x41, 0x55,                   // push r13
+                 0x48, 0x83, 0xEC, 0x08,       // sub rsp, 8
+                 0x49, 0x89, 0xD4,             // mov r12, rdx (buffer)
+                 0x4D, 0x89, 0xC5,             // mov r13, r8  (char count)
+                 0x4D, 0x85, 0xED,             // test r13, r13
+                 0x74, 0x24,                   // jz +36 (epilogue)
+                 0x41, 0x8A, 0x04, 0x24,       // mov al, [r12]
+                 0x88, 0x04, 0x24,             // mov [rsp], al
                  0xB8, 0x04, 0x00, 0x00, 0x02, // mov eax, 0x2000004 (SYS_write)
                  0xBF, 0x01, 0x00, 0x00, 0x00, // mov edi, 1 (stdout)
-                 0x48, 0x89, 0xE6, // mov rsi, rsp
+                 0x48, 0x89, 0xE6,             // mov rsi, rsp
                  0xBA, 0x01, 0x00, 0x00, 0x00, // mov edx, 1
-                 0x0F, 0x05, // syscall
-                 0x49, 0x83, 0xC4, 0x02, // add r12, 2 (next WCHAR)
-                 0x49, 0xFF, 0xCD, // dec r13
-                 0xEB, 0xD7, // jmp loop
-                 0x48, 0x83, 0xC4, 0x08, // add rsp, 8
-                 0x41, 0x5D, // pop r13
-                 0x41, 0x5C, // pop r12
+                 0x0F, 0x05,                   // syscall
+                 0x49, 0x83, 0xC4, 0x02,       // add r12, 2 (next WCHAR)
+                 0x49, 0xFF, 0xCD,             // dec r13
+                 0xEB, 0xD7,                   // jmp loop
+                 0x48, 0x83, 0xC4, 0x08,       // add rsp, 8
+                 0x41, 0x5D,                   // pop r13
+                 0x41, 0x5C,                   // pop r12
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
-                 0xC3 // ret
+                 0xC3                          // ret
              }},
             // ReadFile(handle, buf, count, *bytesRead) -> read(fd, buf, count).
-            // macOS sets the carry flag on syscall error (errno in rax), so branch on carry.
+            // macOS sets the carry flag on syscall error (errno in rax), so
+            // branch on carry.
             {"ReadFile",
              {
-                 0x89, 0xCF, // mov edi, ecx (fd)
-                 0x48, 0x89, 0xD6, // mov rsi, rdx (buf)
-                 0x4C, 0x89, 0xC2, // mov rdx, r8  (count)
+                 0x89, 0xCF,                   // mov edi, ecx (fd)
+                 0x48, 0x89, 0xD6,             // mov rsi, rdx (buf)
+                 0x4C, 0x89, 0xC2,             // mov rdx, r8  (count)
                  0xB8, 0x03, 0x00, 0x00, 0x02, // mov eax, 0x2000003 (SYS_read)
-                 0x0F, 0x05, // syscall
-                 0x72, 0x0E, // jc +14 (error)
-                 0x4D, 0x85, 0xC9, // test r9, r9 (null check)
-                 0x74, 0x03, // jz +3 (skip if null)
+                 0x0F, 0x05,                   // syscall
+                 0x72, 0x0E,                   // jc +14 (error)
+                 0x4D, 0x85, 0xC9,             // test r9, r9 (null check)
+                 0x74, 0x03,                   // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax (*bytesRead = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
-                 0xC3, // ret
-                 0x31, 0xC0, // xor eax, eax (FALSE)
-                 0xC3 // ret
+                 0xC3,                         // ret
+                 0x31, 0xC0,                   // xor eax, eax (FALSE)
+                 0xC3                          // ret
              }},
-            // WriteFile(handle, buf, count, *bytesWritten, overlapped) -> write(fd, buf, count).
-            // Same shape as ReadFile; SYS_write instead of SYS_read.
+            // WriteFile(handle, buf, count, *bytesWritten, overlapped) ->
+            // write(fd, buf, count). Same shape as ReadFile; SYS_write instead
+            // of SYS_read.
             {"WriteFile",
              {
-                 0x89, 0xCF, // mov edi, ecx  (fd)
-                 0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
-                 0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
+                 0x89, 0xCF,                   // mov edi, ecx  (fd)
+                 0x48, 0x89, 0xD6,             // mov rsi, rdx  (buf)
+                 0x4C, 0x89, 0xC2,             // mov rdx, r8   (count)
                  0xB8, 0x04, 0x00, 0x00, 0x02, // mov eax, 0x2000004 (SYS_write)
-                 0x0F, 0x05, // syscall
-                 0x72, 0x0E, // jc +14 (error)
-                 0x4D, 0x85, 0xC9, // test r9, r9 (null check)
-                 0x74, 0x03, // jz +3 (skip if null)
+                 0x0F, 0x05,                   // syscall
+                 0x72, 0x0E,                   // jc +14 (error)
+                 0x4D, 0x85, 0xC9,             // test r9, r9 (null check)
+                 0x74, 0x03,                   // jz +3 (skip if null)
                  0x41, 0x89, 0x01, // mov [r9], eax (*bytesWritten = result)
                  0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
-                 0xC3, // ret
-                 0x31, 0xC0, // xor eax, eax (FALSE)
-                 0xC3 // ret
+                 0xC3,                         // ret
+                 0x31, 0xC0,                   // xor eax, eax (FALSE)
+                 0xC3                          // ret
              }},
         };
 
@@ -1926,22 +2214,27 @@ namespace Rux {
         return it->second;
     }
 
-    // Links RcuFile objects into a static x86-64 Mach-O executable. No dyld: the
-    // kernel jumps straight to our entry via LC_UNIXTHREAD, and all OS interaction
-    // goes through raw syscalls in the compat thunks (same model as LinkElf64).
-    // The result is ad-hoc code-signed because Apple Silicon refuses to run any
-    // unsigned binary (including x86-64 ones translated by Rosetta 2).
+    // Links RcuFile objects into a static x86-64 Mach-O executable. No dyld:
+    // the kernel jumps straight to our entry via LC_UNIXTHREAD, and all OS
+    // interaction goes through raw syscalls in the compat thunks (same model as
+    // LinkElf64). The result is ad-hoc code-signed because Apple Silicon
+    // refuses to run any unsigned binary (including x86-64 ones translated by
+    // Rosetta 2).
     bool Linker::LinkMachO64(const std::filesystem::path& outputPath) {
-        static constexpr uint64_t kBase = 0x100000000ULL; // __TEXT base (after 4 GiB __PAGEZERO)
+        static constexpr uint64_t kBase =
+            0x100000000ULL; // __TEXT base (after 4 GiB __PAGEZERO)
         static constexpr uint64_t kPage = 0x1000;
 
-        const auto alignUp64 = [](const uint64_t v, const uint64_t a) { return (v + a - 1) & ~(a - 1); };
+        const auto alignUp64 = [](const uint64_t v, const uint64_t a) {
+            return (v + a - 1) & ~(a - 1);
+        };
 
         // 1. Resolve externs: each must be satisfiable by a compat thunk.
         std::unordered_set<std::string> definedSymbols;
         for (const auto& obj : objects)
             for (const auto& sym : obj.symbols)
-                if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData && !sym.name.empty())
+                if (sym.kind != RcuSymKind::ExternFunc &&
+                    sym.kind != RcuSymKind::ExternData && !sym.name.empty())
                     definedSymbols.insert(sym.name);
 
         std::unordered_set<std::string> macCompatExterns;
@@ -1950,12 +2243,15 @@ namespace Rux {
                 for (const auto& reloc : sec.relocs) {
                     if (reloc.symbolIndex >= obj.symbols.size()) continue;
                     const auto& sym = obj.symbols[reloc.symbolIndex];
-                    if ((sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) &&
+                    if ((sym.kind == RcuSymKind::ExternFunc ||
+                         sym.kind == RcuSymKind::ExternData) &&
                         !definedSymbols.contains(sym.name)) {
                         if (MacCompatThunk(sym.name))
                             macCompatExterns.insert(sym.name);
                         else
-                            Error("external symbol '" + sym.name + "' is not supported by the macOS Mach-O linker yet");
+                            Error("external symbol '" + sym.name +
+                                  "' is not supported by the macOS Mach-O "
+                                  "linker yet");
                     }
                 }
             }
@@ -1964,18 +2260,26 @@ namespace Rux {
 
         // 2. Entry preamble: call Main; exit(eax).
         Buf textPre;
-        textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
-        textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
+        textPre.insert(textPre.end(),
+                       {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
+        textPre.insert(
+            textPre.end(),
+            {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
         const size_t kCallMainDisp = textPre.size() + 1;
-        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
-        textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x08}); // add rsp, 8 (undo sub)
+        textPre.insert(textPre.end(),
+                       {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
+        textPre.insert(textPre.end(),
+                       {0x48, 0x83, 0xC4, 0x08});    // add rsp, 8 (undo sub)
         textPre.insert(textPre.end(), {0x89, 0xC7}); // mov edi, eax (exit code)
-        textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x02}); // mov eax, 0x2000001 (SYS_exit)
+        textPre.insert(
+            textPre.end(),
+            {0xB8, 0x01, 0x00, 0x00, 0x02}); // mov eax, 0x2000001 (SYS_exit)
         textPre.insert(textPre.end(), {0x0F, 0x05}); // syscall
 
         // 3. Append compat thunks after the preamble (sorted for determinism).
         std::unordered_map<std::string, uint32_t> macCompatThunkOff;
-        std::vector<std::string> macCompatNames(macCompatExterns.begin(), macCompatExterns.end());
+        std::vector<std::string> macCompatNames(macCompatExterns.begin(),
+                                                macCompatExterns.end());
         std::sort(macCompatNames.begin(), macCompatNames.end());
         for (const auto& name : macCompatNames) {
             auto thunk = MacCompatThunk(name);
@@ -1998,11 +2302,14 @@ namespace Rux {
                           static_cast<uint32_t>(mergedData.size())};
             for (const auto& sec : obj.sections) {
                 if (sec.type == RcuSecType::Text)
-                    mergedText.insert(mergedText.end(), sec.data.begin(), sec.data.end());
+                    mergedText.insert(
+                        mergedText.end(), sec.data.begin(), sec.data.end());
                 else if (sec.type == RcuSecType::RoData)
-                    mergedRodata.insert(mergedRodata.end(), sec.data.begin(), sec.data.end());
+                    mergedRodata.insert(
+                        mergedRodata.end(), sec.data.begin(), sec.data.end());
                 else if (sec.type == RcuSecType::Data)
-                    mergedData.insert(mergedData.end(), sec.data.begin(), sec.data.end());
+                    mergedData.insert(
+                        mergedData.end(), sec.data.begin(), sec.data.end());
             }
         }
 
@@ -2011,22 +2318,27 @@ namespace Rux {
         textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
 
         // 5. Fixed load-command set keeps header size constant:
-        //    __PAGEZERO, __TEXT(__text,__const), __DATA(__data), __LINKEDIT, LC_UNIXTHREAD.
-        constexpr uint32_t kSegCmd = 72; // segment_command_64 (no trailing sections)
+        //    __PAGEZERO, __TEXT(__text,__const), __DATA(__data), __LINKEDIT,
+        //    LC_UNIXTHREAD.
+        constexpr uint32_t kSegCmd =
+            72; // segment_command_64 (no trailing sections)
         constexpr uint32_t kSect = 80; // section_64
-        constexpr uint32_t kThreadCmd = 184; // LC_UNIXTHREAD with x86_THREAD_STATE64 (count 42)
+        constexpr uint32_t kThreadCmd =
+            184; // LC_UNIXTHREAD with x86_THREAD_STATE64 (count 42)
         constexpr uint32_t kNCmds = 5;
         const uint32_t sizeOfCmds = kSegCmd + // __PAGEZERO
-            (kSegCmd + 2 * kSect) + // __TEXT
-            (kSegCmd + 1 * kSect) + // __DATA
-            kSegCmd + // __LINKEDIT
+            (kSegCmd + 2 * kSect) +           // __TEXT
+            (kSegCmd + 1 * kSect) +           // __DATA
+            kSegCmd +                         // __LINKEDIT
             kThreadCmd;
         const uint64_t headerSize = 32 + sizeOfCmds;
 
-        // 6. File/VA layout. Invariant: every segment's VA == kBase + its file offset,
+        // 6. File/VA layout. Invariant: every segment's VA == kBase + its file
+        // offset,
         //    so the file is page-padded between segments to match vm sizes.
-        //    Reserve slack after the load commands: `codesign` inserts a 16-byte
-        //    LC_CODE_SIGNATURE there, and without room it would overwrite __text.
+        //    Reserve slack after the load commands: `codesign` inserts a
+        //    16-byte LC_CODE_SIGNATURE there, and without room it would
+        //    overwrite __text.
         static constexpr uint64_t kCodeSigLcSlack = 32;
         const uint64_t textOff = alignUp64(headerSize + kCodeSigLcSlack, 16);
         const uint64_t textVA = kBase + textOff;
@@ -2037,7 +2349,8 @@ namespace Rux {
 
         const uint64_t dataOff = alignUp64(textSegFileEnd, kPage);
         const uint64_t dataVA = kBase + dataOff;
-        const uint64_t dataVMSize = alignUp64(std::max<uint64_t>(mergedData.size(), 1), kPage);
+        const uint64_t dataVMSize =
+            alignUp64(std::max<uint64_t>(mergedData.size(), 1), kPage);
 
         const uint64_t linkeditOff = dataOff + dataVMSize;
         const uint64_t linkeditVA = kBase + linkeditOff;
@@ -2052,8 +2365,12 @@ namespace Rux {
             const auto& lay = layouts[i];
             for (const auto& sym : obj.symbols) {
                 if (sym.name.empty()) continue;
-                if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) continue;
-                if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func && sym.name != "Main") continue;
+                if (sym.kind == RcuSymKind::ExternFunc ||
+                    sym.kind == RcuSymKind::ExternData)
+                    continue;
+                if (sym.visibility == RcuSymVis::Local &&
+                    sym.kind != RcuSymKind::Func && sym.name != "Main")
+                    continue;
 
                 uint64_t va = 0;
                 if (sym.sectionIdx == RCU_TEXT_IDX)
@@ -2075,7 +2392,9 @@ namespace Rux {
                 return false;
             }
             const uint64_t nextInst = textVA + kCallMainDisp + 4;
-            Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(it->second - nextInst));
+            Patch32(textBuf,
+                    kCallMainDisp,
+                    static_cast<uint32_t>(it->second - nextInst));
         }
 
         // 8. Apply relocations (identical logic to LinkElf64, Mach-O VAs).
@@ -2109,19 +2428,23 @@ namespace Rux {
                     if (reloc.symbolIndex >= obj.symbols.size()) continue;
                     const auto& sym = obj.symbols[reloc.symbolIndex];
                     uint64_t targetVA = 0;
-                    if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
+                    if (sym.kind == RcuSymKind::ExternFunc ||
+                        sym.kind == RcuSymKind::ExternData) {
                         auto it = symMap.find(sym.name);
                         if (it == symMap.end()) {
-                            Error("undefined external symbol '" + sym.name + "'");
+                            Error("undefined external symbol '" + sym.name +
+                                  "'");
                             continue;
                         }
                         targetVA = it->second;
                     }
-                    else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() && symMap.contains(sym.name)) {
+                    else if (sym.visibility != RcuSymVis::Local &&
+                             !sym.name.empty() && symMap.contains(sym.name)) {
                         targetVA = symMap[sym.name];
                     }
                     else if (sym.sectionIdx == RCU_TEXT_IDX) {
-                        targetVA = textVA + preambleSize + lay.textOff + sym.value;
+                        targetVA =
+                            textVA + preambleSize + lay.textOff + sym.value;
                     }
                     else if (sym.sectionIdx == RCU_RODATA_IDX) {
                         targetVA = rodataVA + lay.rodataOff + sym.value;
@@ -2137,16 +2460,21 @@ namespace Rux {
                     const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
                     if (reloc.type == RcuRelType::Rel32) {
                         if (patchAt + 4 > buf->size()) continue;
-                        const int32_t disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
+                        const int32_t disp = static_cast<int32_t>(
+                            targetVA + reloc.addend - (siteVA + 4));
                         Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
                     }
                     else if (reloc.type == RcuRelType::Abs64) {
                         if (patchAt + 8 > buf->size()) continue;
-                        Patch64(*buf, patchAt, targetVA + static_cast<uint64_t>(reloc.addend));
+                        Patch64(*buf,
+                                patchAt,
+                                targetVA + static_cast<uint64_t>(reloc.addend));
                     }
                     else if (reloc.type == RcuRelType::Abs32) {
                         if (patchAt + 4 > buf->size()) continue;
-                        Patch32(*buf, patchAt, static_cast<uint32_t>(targetVA + reloc.addend));
+                        Patch32(*buf,
+                                patchAt,
+                                static_cast<uint32_t>(targetVA + reloc.addend));
                     }
                 }
             }
@@ -2166,14 +2494,14 @@ namespace Rux {
         WriteU32(lc, 0x19); // LC_SEGMENT_64
         WriteU32(lc, kSegCmd);
         wSegName(lc, "__PAGEZERO");
-        WriteU64(lc, 0); // vmaddr
+        WriteU64(lc, 0);     // vmaddr
         WriteU64(lc, kBase); // vmsize (4 GiB)
-        WriteU64(lc, 0); // fileoff
-        WriteU64(lc, 0); // filesize
-        WriteU32(lc, 0); // maxprot
-        WriteU32(lc, 0); // initprot
-        WriteU32(lc, 0); // nsects
-        WriteU32(lc, 0); // flags
+        WriteU64(lc, 0);     // fileoff
+        WriteU64(lc, 0);     // filesize
+        WriteU32(lc, 0);     // maxprot
+        WriteU32(lc, 0);     // initprot
+        WriteU32(lc, 0);     // nsects
+        WriteU32(lc, 0);     // flags
 
         // __TEXT (R|X): header + __text + __const
         WriteU32(lc, 0x19);
@@ -2181,12 +2509,12 @@ namespace Rux {
         wSegName(lc, "__TEXT");
         WriteU64(lc, kBase); // vmaddr (segment maps from fileoff 0)
         WriteU64(lc, textSegVMSize);
-        WriteU64(lc, 0); // fileoff
+        WriteU64(lc, 0);              // fileoff
         WriteU64(lc, textSegFileEnd); // filesize
-        WriteU32(lc, 0x05); // maxprot R|X
-        WriteU32(lc, 0x05); // initprot R|X
-        WriteU32(lc, 2); // nsects
-        WriteU32(lc, 0); // flags
+        WriteU32(lc, 0x05);           // maxprot R|X
+        WriteU32(lc, 0x05);           // initprot R|X
+        WriteU32(lc, 2);              // nsects
+        WriteU32(lc, 0);              // flags
         //   section __text
         wSegName(lc, "__text");
         wSegName(lc, "__TEXT");
@@ -2196,7 +2524,9 @@ namespace Rux {
         WriteU32(lc, 4); // align 2^4
         WriteU32(lc, 0); // reloff
         WriteU32(lc, 0); // nreloc
-        WriteU32(lc, 0x80000400); // S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS
+        WriteU32(
+            lc,
+            0x80000400); // S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS
         WriteU32(lc, 0);
         WriteU32(lc, 0);
         WriteU32(lc, 0);
@@ -2224,7 +2554,7 @@ namespace Rux {
         WriteU64(lc, mergedData.size());
         WriteU32(lc, 0x03); // maxprot R|W
         WriteU32(lc, 0x03); // initprot R|W
-        WriteU32(lc, 1); // nsects
+        WriteU32(lc, 1);    // nsects
         WriteU32(lc, 0);
         //   section __data
         wSegName(lc, "__data");
@@ -2240,26 +2570,30 @@ namespace Rux {
         WriteU32(lc, 0);
         WriteU32(lc, 0);
 
-        // __LINKEDIT (empty placeholder; codesign grows it and adds LC_CODE_SIGNATURE)
+        // __LINKEDIT (empty placeholder; codesign grows it and adds
+        // LC_CODE_SIGNATURE)
         WriteU32(lc, 0x19);
         WriteU32(lc, kSegCmd);
         wSegName(lc, "__LINKEDIT");
         WriteU64(lc, linkeditVA);
         WriteU64(lc, kPage);
         WriteU64(lc, linkeditOff);
-        WriteU64(lc, 0); // filesize
+        WriteU64(lc, 0);    // filesize
         WriteU32(lc, 0x01); // maxprot R
         WriteU32(lc, 0x01); // initprot R
         WriteU32(lc, 0);
         WriteU32(lc, 0);
 
-        // LC_UNIXTHREAD (x86_THREAD_STATE64): set entry rip, leave rsp 0 (kernel default stack)
+        // LC_UNIXTHREAD (x86_THREAD_STATE64): set entry rip, leave rsp 0
+        // (kernel default stack)
         WriteU32(lc, 0x05); // LC_UNIXTHREAD
         WriteU32(lc, kThreadCmd);
-        WriteU32(lc, 4); // flavor x86_THREAD_STATE64
+        WriteU32(lc, 4);  // flavor x86_THREAD_STATE64
         WriteU32(lc, 42); // count (21 uint64 registers = 42 uint32)
         for (int reg = 0; reg < 21; ++reg)
-            WriteU64(lc, reg == 16 ? textVA : 0); // register 16 == rip == entry point
+            WriteU64(lc,
+                     reg == 16 ? textVA
+                               : 0); // register 16 == rip == entry point
 
         if (lc.size() != sizeOfCmds) {
             Error("internal: Mach-O load-command size mismatch");
@@ -2275,7 +2609,8 @@ namespace Rux {
         }
 
         const auto writeRaw = [&](const void* d, size_t n) {
-            out.write(static_cast<const char*>(d), static_cast<std::streamsize>(n));
+            out.write(static_cast<const char*>(d),
+                      static_cast<std::streamsize>(n));
         };
         const auto wBuf = [&](const Buf& b) {
             if (!b.empty()) writeRaw(b.data(), b.size());
@@ -2283,8 +2618,11 @@ namespace Rux {
         const auto padToOffset = [&](uint64_t offset) {
             static constexpr uint8_t zeros[4096] = {};
             while (static_cast<uint64_t>(out.tellp()) < offset) {
-                const uint64_t remaining = offset - static_cast<uint64_t>(out.tellp());
-                writeRaw(zeros, static_cast<size_t>(std::min<uint64_t>(remaining, sizeof(zeros))));
+                const uint64_t remaining =
+                    offset - static_cast<uint64_t>(out.tellp());
+                writeRaw(zeros,
+                         static_cast<size_t>(
+                             std::min<uint64_t>(remaining, sizeof(zeros))));
             }
         };
 
@@ -2292,11 +2630,11 @@ namespace Rux {
         WriteU32(hdr, 0xFEEDFACF); // MH_MAGIC_64
         WriteU32(hdr, 0x01000007); // CPU_TYPE_X86_64
         WriteU32(hdr, 0x00000003); // CPU_SUBTYPE_X86_64_ALL
-        WriteU32(hdr, 2); // MH_EXECUTE
+        WriteU32(hdr, 2);          // MH_EXECUTE
         WriteU32(hdr, kNCmds);
         WriteU32(hdr, sizeOfCmds);
         WriteU32(hdr, 0x00000001); // MH_NOUNDEFS
-        WriteU32(hdr, 0); // reserved
+        WriteU32(hdr, 0);          // reserved
         wBuf(hdr);
         wBuf(lc);
         padToOffset(textOff);
@@ -2315,7 +2653,8 @@ namespace Rux {
 
         std::error_code ec;
         std::filesystem::permissions(outputPath,
-                                     std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec |
+                                     std::filesystem::perms::owner_exec |
+                                         std::filesystem::perms::group_exec |
                                          std::filesystem::perms::others_exec,
                                      std::filesystem::perm_options::add,
                                      ec);
@@ -2324,11 +2663,15 @@ namespace Rux {
             return false;
         }
 
-        // Ad-hoc sign in place. Apple Silicon SIGKILLs unsigned binaries, including
-        // x86-64 ones run under Rosetta 2; on Intel this is harmless but still valid.
-        const std::string signCmd = "codesign --force --sign - \"" + outputPath.string() + "\" 2>/dev/null";
+        // Ad-hoc sign in place. Apple Silicon SIGKILLs unsigned binaries,
+        // including x86-64 ones run under Rosetta 2; on Intel this is harmless
+        // but still valid.
+        const std::string signCmd = "codesign --force --sign - \"" +
+            outputPath.string() + "\" 2>/dev/null";
         if (std::system(signCmd.c_str()) != 0) {
-            Error("ad-hoc codesign failed (need Xcode command line tools); binary will not run on Apple Silicon");
+            Error("ad-hoc codesign failed (need Xcode command line tools); "
+                  "binary will not run on "
+                  "Apple Silicon");
             return false;
         }
 

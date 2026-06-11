@@ -43,24 +43,24 @@
  */
 
 #if RUX_OS_WINDOWS
-    #ifndef WIN32_LEAN_AND_MEAN
-        #define WIN32_LEAN_AND_MEAN
-    #endif
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
 
-    #ifndef NOMINMAX
-        #define NOMINMAX
-    #endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 
-    #include <windows.h>
+#  include <windows.h>
 #endif
 
 #if RUX_OS_WINDOWS
-    #include <psapi.h>
-    #include <winhttp.h>
+#  include <psapi.h>
+#  include <winhttp.h>
 #else
-    #include <sys/resource.h>
-    #include <sys/wait.h>
-    #include <unistd.h>
+#  include <sys/resource.h>
+#  include <sys/wait.h>
+#  include <unistd.h>
 #endif
 
 #include "Rux/SourceLoader.h"
@@ -69,7 +69,9 @@ using namespace Rux;
 using namespace Platform;
 using namespace Misc;
 
-Cli::Cli(const int argc, char* argv[]) : args(argv, argc) {}
+Cli::Cli(const int argc, char* argv[])
+    : args(argv, argc) {
+}
 
 int Cli::Run() const {
     // Collect all arguments as string_views (skip argv[0])
@@ -102,7 +104,8 @@ int Cli::Run() const {
                 PrintVersion();
                 return 0;
             }
-            if (arg == "-q" || arg == "--quiet" || arg == "-v" || arg == "--verbose") {
+            if (arg == "-q" || arg == "--quiet" || arg == "-v" ||
+                arg == "--verbose") {
                 preCommandGlobals.push_back(arg);
                 continue;
             }
@@ -130,7 +133,8 @@ int Cli::Run() const {
 
     // Merge pre-command globals with command args for option parsing
     std::vector<std::string_view> allArgs;
-    allArgs.insert(allArgs.end(), preCommandGlobals.begin(), preCommandGlobals.end());
+    allArgs.insert(
+        allArgs.end(), preCommandGlobals.begin(), preCommandGlobals.end());
     allArgs.insert(allArgs.end(), cmdArgs.begin(), cmdArgs.end());
 
     GlobalOptions opts = ParseGlobalOptions(allArgs);

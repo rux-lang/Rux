@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // File contains functions and values that were inside the Anonymous namespace.
-// I gave the functions and values a proper namespace so they can be used elsewhere.
-// I also Refactored some of the code to use standard library features.
+// I gave the functions and values a proper namespace so they can be used
+// elsewhere. I also Refactored some of the code to use standard library
+// features.
 //
 // These utilities are primarily used by:
 //   - BuildCmd.cpp (build statistics, manifest loading)
@@ -37,19 +38,19 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <fstream>
+#include <iomanip>
+#include <optional>
 #include <print>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <cstdlib>
-#include <iomanip>
-#include <sstream>
-#include <optional>
-#include <fstream>
 
 // This is separate from the other ifdef because otherwise clang-format attempts
 // to change the order, which makes MSVC cry.
@@ -102,12 +103,16 @@ namespace Rux::Misc {
 
     inline std::chrono::milliseconds
     ElapsedMs(const std::chrono::steady_clock::time_point start,
-              const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now()) {
-        return std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+              const std::chrono::steady_clock::time_point end =
+                  std::chrono::steady_clock::now()) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(end -
+                                                                     start);
     }
 
-    inline double ElapsedSeconds(const std::chrono::steady_clock::time_point start,
-                                 const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now()) {
+    inline double
+    ElapsedSeconds(const std::chrono::steady_clock::time_point start,
+                   const std::chrono::steady_clock::time_point end =
+                       std::chrono::steady_clock::now()) {
         return std::chrono::duration<double>(end - start).count();
     }
 
@@ -123,12 +128,15 @@ namespace Rux::Misc {
 
     inline std::size_t CountTokens(const LexerResult& result) {
         if (result.tokens.empty()) return 0;
-        return result.tokens.back().IsEof() ? result.tokens.size() - 1 : result.tokens.size();
+        return result.tokens.back().IsEof() ? result.tokens.size() - 1
+                                            : result.tokens.size();
     }
 
     inline std::string FormatNumber(std::uintmax_t value) {
         std::string digits = std::to_string(value);
-        for (std::ptrdiff_t i = static_cast<std::ptrdiff_t>(digits.size()) - 3; i > 0; i -= 3)
+        for (std::ptrdiff_t i = static_cast<std::ptrdiff_t>(digits.size()) - 3;
+             i > 0;
+             i -= 3)
             digits.insert(static_cast<std::size_t>(i), 1, ',');
         return digits;
     }
@@ -148,21 +156,28 @@ namespace Rux::Misc {
 
     inline std::string FormatCompactNumber(double value) {
         const double absValue = std::fabs(value);
-        if (absValue >= 1'000'000.0) return FormatDecimal(value / 1'000'000.0, 1) + "M";
+        if (absValue >= 1'000'000.0)
+            return FormatDecimal(value / 1'000'000.0, 1) + "M";
         if (absValue >= 1'000.0) return FormatDecimal(value / 1'000.0, 1) + "K";
         return FormatNumber(static_cast<std::uintmax_t>(std::llround(value)));
     }
 
     inline std::string FormatTokenThroughput(double tokensPerSecond) {
         const double absValue = std::fabs(tokensPerSecond);
-        if (absValue >= 1'000'000.0) return FormatDecimal(tokensPerSecond / 1'000'000.0, 1) + " M tok/s";
-        if (absValue >= 1'000.0) return FormatDecimal(tokensPerSecond / 1'000.0, 1) + " K tok/s";
-        return FormatNumber(static_cast<std::uintmax_t>(std::llround(tokensPerSecond))) + " tok/s";
+        if (absValue >= 1'000'000.0)
+            return FormatDecimal(tokensPerSecond / 1'000'000.0, 1) + " M tok/s";
+        if (absValue >= 1'000.0)
+            return FormatDecimal(tokensPerSecond / 1'000.0, 1) + " K tok/s";
+        return FormatNumber(
+                   static_cast<std::uintmax_t>(std::llround(tokensPerSecond))) +
+            " tok/s";
     }
 
     inline std::string FormatSize(std::uintmax_t bytes) {
         const double kb = static_cast<double>(bytes) / 1024.0;
-        if (kb < 1024.0) return FormatNumber(static_cast<std::uintmax_t>(std::llround(kb))) + " KB";
+        if (kb < 1024.0)
+            return FormatNumber(static_cast<std::uintmax_t>(std::llround(kb))) +
+                " KB";
 
         const double mb = kb / 1024.0;
         return FormatDecimal(mb, 2) + " MB";
@@ -177,10 +192,13 @@ namespace Rux::Misc {
     }
 
     inline std::string HostTargetTriple() {
-        auto triple = std::format("{}-{}", ToString(HostOS), ToString(HostArch));
-        std::transform(std::begin(triple), std::end(triple), std::begin(triple), [](unsigned char c) {
-            return static_cast<char>(std::tolower(c));
-        });
+        auto triple =
+            std::format("{}-{}", ToString(HostOS), ToString(HostArch));
+        std::transform(
+            std::begin(triple),
+            std::end(triple),
+            std::begin(triple),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return triple;
     }
 
@@ -209,14 +227,16 @@ namespace Rux::Misc {
         if (os_prefix == "linux") return "Linux";
         if (os_prefix == "windows") return "Windows";
         if (os_prefix == "macos") return "macOS";
-        if (os_prefix == "freebsd" || os_prefix == "openbsd" || os_prefix == "netbsd" || os_prefix == "dragonfly")
+        if (os_prefix == "freebsd" || os_prefix == "openbsd" ||
+            os_prefix == "netbsd" || os_prefix == "dragonfly")
             return "BSD";
         if (os_prefix == "illumos") return "Illumos";
 
         return "";
     }
 
-    inline bool DeclMatchesTarget(const Decl& decl, const std::string_view target) {
+    inline bool DeclMatchesTarget(const Decl& decl,
+                                  const std::string_view target) {
         if (decl.targetOs.empty()) return true;
         const std::string_view targetOs = TargetOsName(target);
         // Normalize both sides for robust comparison.
@@ -233,14 +253,17 @@ namespace Rux::Misc {
     // and the name does not match the current build target it is a platform-
     // specific import that should have been pruned; skip it gracefully.
     inline bool IsPlatformPackageName(const std::string_view name) {
-        return name == "Windows" || name == "Linux" || name == "macOS" || name == "BSD" || name == "Illumos";
+        return name == "Windows" || name == "Linux" || name == "macOS" ||
+            name == "BSD" || name == "Illumos";
     }
 
-    inline bool PlatformPackageMatchesTarget(const std::string_view name, const std::string_view target) {
+    inline bool PlatformPackageMatchesTarget(const std::string_view name,
+                                             const std::string_view target) {
         return name == TargetOsName(target);
     }
 
-    inline void PruneDeclsForTarget(std::vector<DeclPtr>& decls, const std::string_view target);
+    inline void PruneDeclsForTarget(std::vector<DeclPtr>& decls,
+                                    const std::string_view target);
 
     inline void PruneDeclForTarget(Decl& decl, const std::string_view target) {
         if (auto* module = dynamic_cast<ModuleDecl*>(&decl)) {
@@ -251,13 +274,17 @@ namespace Rux::Misc {
         }
     }
 
-    inline void PruneDeclsForTarget(std::vector<DeclPtr>& decls, const std::string_view target) {
-        std::erase_if(decls, [&](const DeclPtr& decl) { return !decl || !DeclMatchesTarget(*decl, target); });
+    inline void PruneDeclsForTarget(std::vector<DeclPtr>& decls,
+                                    const std::string_view target) {
+        std::erase_if(decls, [&](const DeclPtr& decl) {
+            return !decl || !DeclMatchesTarget(*decl, target);
+        });
         for (const auto& decl : decls)
             PruneDeclForTarget(*decl, target);
     }
 
-    inline void PruneModuleForTarget(Module& module, const std::string_view target) {
+    inline void PruneModuleForTarget(Module& module,
+                                     const std::string_view target) {
         PruneDeclsForTarget(module.items, target);
     }
 
@@ -268,32 +295,41 @@ namespace Rux::Misc {
     inline std::uintmax_t PeakMemoryBytes() noexcept {
 #if RUX_OS_WINDOWS
         PROCESS_MEMORY_COUNTERS counters{};
-        if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters))) {
+        if (GetProcessMemoryInfo(
+                GetCurrentProcess(), &counters, sizeof(counters))) {
             return static_cast<std::uintmax_t>(counters.PeakWorkingSetSize);
         }
 #elif RUX_IS_UNIX
         rusage usage{};
         if (getrusage(RUSAGE_SELF, &usage) == 0) {
             // macOS reports bytes directly; other Unices report in KB.
-            constexpr std::uintmax_t unitMultiplier = (HostOS == OS::MacOS) ? 1ULL : 1024ULL;
-            return static_cast<std::uintmax_t>(usage.ru_maxrss) * unitMultiplier;
+            constexpr std::uintmax_t unitMultiplier =
+                (HostOS == OS::MacOS) ? 1ULL : 1024ULL;
+            return static_cast<std::uintmax_t>(usage.ru_maxrss) *
+                unitMultiplier;
         }
 #endif
         return 0;
     }
 
-    inline void
-    PrintBuildStats(const std::filesystem::path& exePath, std::string_view profileName, const BuildStats& stats) {
+    inline void PrintBuildStats(const std::filesystem::path& exePath,
+                                std::string_view profileName,
+                                const BuildStats& stats) {
         const auto totalMs = stats.total.count();
         const double seconds = stats.totalSeconds;
         const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
         const std::size_t totalLines = stats.localLines + stats.dependencyLines;
-        const std::size_t totalTokens = stats.localTokens + stats.dependencyTokens;
-        const std::uintmax_t totalSourceSize = stats.localSourceSize + stats.dependencySourceSize;
-        const double tokenThroughput = seconds > 0.0 ? static_cast<double>(totalTokens) / seconds : 0.0;
-        const double compileSpeed = seconds > 0.0 ? static_cast<double>(totalLines) / seconds : 0.0;
-        const double throughput =
-            seconds > 0.0 ? static_cast<double>(totalSourceSize) / 1024.0 / 1024.0 / seconds : 0.0;
+        const std::size_t totalTokens =
+            stats.localTokens + stats.dependencyTokens;
+        const std::uintmax_t totalSourceSize =
+            stats.localSourceSize + stats.dependencySourceSize;
+        const double tokenThroughput =
+            seconds > 0.0 ? static_cast<double>(totalTokens) / seconds : 0.0;
+        const double compileSpeed =
+            seconds > 0.0 ? static_cast<double>(totalLines) / seconds : 0.0;
+        const double throughput = seconds > 0.0
+            ? static_cast<double>(totalSourceSize) / 1024.0 / 1024.0 / seconds
+            : 0.0;
 
         std::print("Rux Compiler {}\n"
                    "Target: {}\n"
@@ -353,21 +389,28 @@ namespace Rux::Misc {
                    exePath.filename().string(),
                    FormatSize(stats.executableSize),
                    FormatSize(stats.peakMemoryBytes),
-                   FormatNumber(static_cast<std::uintmax_t>(std::llround(compileSpeed))),
+                   FormatNumber(
+                       static_cast<std::uintmax_t>(std::llround(compileSpeed))),
                    FormatTokenThroughput(tokenThroughput),
                    FormatDecimal(throughput, 2));
     }
 
-    inline void
-    PrintBuildSummary(const std::filesystem::path& exePath, std::string_view profileName, const BuildStats& stats) {
+    inline void PrintBuildSummary(const std::filesystem::path& exePath,
+                                  std::string_view profileName,
+                                  const BuildStats& stats) {
         const auto totalMs = stats.total.count();
         const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
         const std::size_t totalLines = stats.localLines + stats.dependencyLines;
-        const std::size_t totalTokens = stats.localTokens + stats.dependencyTokens;
-        const double compileSpeed =
-            stats.totalSeconds > 0.0 ? static_cast<double>(totalLines) / stats.totalSeconds : 0.0;
+        const std::size_t totalTokens =
+            stats.localTokens + stats.dependencyTokens;
+        const double compileSpeed = stats.totalSeconds > 0.0
+            ? static_cast<double>(totalLines) / stats.totalSeconds
+            : 0.0;
 
-        std::print("Built `{}` [{}] in {} ms\n", profileName, exePath.string(), totalMs);
+        std::print("Built `{}` [{}] in {} ms\n",
+                   profileName,
+                   exePath.string(),
+                   totalMs);
         std::print("{} files | {} LOC | {} tokens | {} LOC/s | {} {}\n",
                    FormatNumber(totalFiles),
                    FormatNumber(totalLines),
@@ -381,39 +424,48 @@ namespace Rux::Misc {
         auto path = Manifest::Find();
         if (!path) {
             std::print(stderr,
-                       "error: could not find 'Rux.toml' in '{}' or any parent directory\n",
+                       "error: could not find 'Rux.toml' in '{}' or any parent "
+                       "directory\n",
                        std::filesystem::current_path().string());
         }
         return path;
     }
 
-    inline std::optional<Manifest> LoadManifest(const std::filesystem::path& path) {
+    inline std::optional<Manifest>
+    LoadManifest(const std::filesystem::path& path) {
         auto m = Manifest::Load(path);
-        if (!m) std::print(stderr, "error: failed to parse '{}'\n", path.string());
+        if (!m)
+            std::print(stderr, "error: failed to parse '{}'\n", path.string());
         return m;
     }
 
-    inline std::filesystem::path ResolveBuildOutputDir(const std::filesystem::path& root, const Manifest& manifest, std::string_view profileName) {
-        std::filesystem::path output =
-            manifest.build.output.empty() ? std::filesystem::path("Bin") : std::filesystem::path(manifest.build.output);
+    inline std::filesystem::path
+    ResolveBuildOutputDir(const std::filesystem::path& root,
+                          const Manifest& manifest,
+                          std::string_view profileName) {
+        std::filesystem::path output = manifest.build.output.empty()
+            ? std::filesystem::path("Bin")
+            : std::filesystem::path(manifest.build.output);
         if (output.is_relative()) output = root / output;
         return (output / std::string(profileName)).lexically_normal();
     }
 
     inline std::filesystem::path RegistryPackagesDir() {
-        #if RUX_OS_WINDOWS
-            wchar_t buf[MAX_PATH]{};
-            GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
-            return std::filesystem::path(buf) / "Rux" / "Packages";
-        #else
-            const char* home = getenv("HOME");
-            return std::filesystem::path(home ? home : "/tmp") / ".rux" / "packages";
-        #endif
+#if RUX_OS_WINDOWS
+        wchar_t buf[MAX_PATH]{};
+        GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
+        return std::filesystem::path(buf) / "Rux" / "Packages";
+#else
+        const char* home = getenv("HOME");
+        return std::filesystem::path(home ? home : "/tmp") / ".rux" /
+            "packages";
+#endif
     }
 } // namespace Rux::Misc
 
 inline constexpr std::string_view kRegistryUrl =
-    "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/Packages.json";
+    "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/"
+    "Packages.json";
 
 #if RUX_OS_WINDOWS
 // Fetch the body of an HTTPS URL using WinHTTP. Returns nullopt on failure.
@@ -459,7 +511,8 @@ inline std::string ShellQuote(const std::string& value) {
     return quoted;
 }
 
-inline std::optional<std::string> RunCommandCapture(const std::string& command) {
+inline std::optional<std::string>
+RunCommandCapture(const std::string& command) {
     FILE* pipe = ::popen(command.c_str(), "r");
     if (!pipe) return std::nullopt;
 
@@ -486,7 +539,8 @@ inline std::optional<std::string> FetchUrl(const std::string& url) {
 namespace Rux {
 
     // Parse global options from the command line arguments.
-    inline GlobalOptions Cli::ParseGlobalOptions(std::span<const std::string_view> args) {
+    inline GlobalOptions
+    Cli::ParseGlobalOptions(std::span<const std::string_view> args) {
         GlobalOptions opts;
         for (std::size_t i = 0; i < args.size(); ++i) {
             std::string_view arg = args[i];
@@ -522,19 +576,24 @@ namespace Rux {
     }
 
     // Lookup a string value in a flat JSON object: { "Key": "value", ... }
-    inline std::string JsonLookupString(std::string_view json, std::string_view key) {
+    inline std::string JsonLookupString(std::string_view json,
+                                        std::string_view key) {
         const std::string needle = "\"" + std::string(key) + "\"";
         std::size_t pos = 0;
         while ((pos = json.find(needle, pos)) != std::string_view::npos) {
             std::size_t i = pos + needle.size();
-            while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == '\r' || json[i] == '\n'))
+            while (i < json.size() &&
+                   (json[i] == ' ' || json[i] == '\t' || json[i] == '\r' ||
+                    json[i] == '\n'))
                 ++i;
             if (i >= json.size() || json[i] != ':') {
                 pos = i;
                 continue;
             }
             ++i;
-            while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == '\r' || json[i] == '\n'))
+            while (i < json.size() &&
+                   (json[i] == ' ' || json[i] == '\t' || json[i] == '\r' ||
+                    json[i] == '\n'))
                 ++i;
             if (i >= json.size() || json[i] != '"') {
                 pos = i;
@@ -550,28 +609,45 @@ namespace Rux {
 
     // Resolve the build output directory for a given profile.
     inline std::filesystem::path
-    ResolveBuildOutputDir(const std::filesystem::path& root, const Manifest& manifest, std::string_view profileName) {
-        std::filesystem::path output =
-            manifest.build.output.empty() ? std::filesystem::path("bin") : std::filesystem::path(manifest.build.output);
+    ResolveBuildOutputDir(const std::filesystem::path& root,
+                          const Manifest& manifest,
+                          std::string_view profileName) {
+        std::filesystem::path output = manifest.build.output.empty()
+            ? std::filesystem::path("bin")
+            : std::filesystem::path(manifest.build.output);
         if (output.is_relative()) output = root / output;
         return (output / std::string(profileName)).lexically_normal();
     }
 
     // Clone a git repository into dest. Returns true on success.
-    inline bool GitClone(const std::string& repoUrl, const std::filesystem::path& dest, bool devBranch) {
+    inline bool GitClone(const std::string& repoUrl,
+                         const std::filesystem::path& dest,
+                         bool devBranch) {
 #if RUX_OS_WINDOWS
         std::wstring cmd{};
         if (!devBranch) {
-            cmd = L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
+            cmd = L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) +
+                L" \"" + dest.wstring() + L"\"";
         }
         else {
-            cmd = L"git clone --branch dev " + std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() +
-                L"\"";
+            cmd = L"git clone --branch dev " +
+                std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" +
+                dest.wstring() + L"\"";
         }
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
-        if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) return false;
+        if (!CreateProcessW(nullptr,
+                            cmd.data(),
+                            nullptr,
+                            nullptr,
+                            FALSE,
+                            0,
+                            nullptr,
+                            nullptr,
+                            &si,
+                            &pi))
+            return false;
         WaitForSingleObject(pi.hProcess, INFINITE);
         DWORD exitCode = 1;
         GetExitCodeProcess(pi.hProcess, &exitCode);
@@ -579,20 +655,32 @@ namespace Rux {
         CloseHandle(pi.hThread);
         return exitCode == 0;
 #else
-        const std::string cmd = devBranch ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
-                                          : "git clone " + repoUrl + " \"" + dest.string() + "\"";
+        const std::string cmd = devBranch
+            ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
+            : "git clone " + repoUrl + " \"" + dest.string() + "\"";
         return std::system(cmd.c_str()) == 0;
 #endif
     }
 
-    // Pull latest changes in an existing git repository. Returns true on success.
+    // Pull latest changes in an existing git repository. Returns true on
+    // success.
     inline bool GitPull(const std::filesystem::path& repoDir) {
 #if RUX_OS_WINDOWS
         std::wstring cmd = L"git -C \"" + repoDir.wstring() + L"\" pull";
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
-        if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) return false;
+        if (!CreateProcessW(nullptr,
+                            cmd.data(),
+                            nullptr,
+                            nullptr,
+                            FALSE,
+                            0,
+                            nullptr,
+                            nullptr,
+                            &si,
+                            &pi))
+            return false;
         WaitForSingleObject(pi.hProcess, INFINITE);
         DWORD exitCode = 1;
         GetExitCodeProcess(pi.hProcess, &exitCode);

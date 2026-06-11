@@ -28,23 +28,23 @@
  */
 
 #if RUX_OS_WINDOWS
-    #ifndef WIN32_LEAN_AND_MEAN
-        #define WIN32_LEAN_AND_MEAN
-    #endif
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
 
-    #ifndef NOMINMAX
-        #define NOMINMAX
-    #endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 
-    #include <windows.h>
+#  include <windows.h>
 #endif
 
 #if RUX_OS_WINDOWS
-    #include <psapi.h>
+#  include <psapi.h>
 #else
-    #include <sys/resource.h>
-    #include <sys/wait.h>
-    #include <unistd.h>
+#  include <sys/resource.h>
+#  include <sys/wait.h>
+#  include <unistd.h>
 #endif
 
 using namespace Rux;
@@ -64,7 +64,8 @@ int Cli::RunVersion(const GlobalOptions&) {
     return 0;
 }
 
-int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunFmt(std::span<const std::string_view> args,
+                const GlobalOptions& opts) {
     bool check = false;
     bool manifestOnly = false;
     for (auto& arg : args) {
@@ -87,7 +88,8 @@ int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions& opt
     if (!manifestPath) return 1;
     auto root = manifestPath->parent_path();
     if (manifestOnly) {
-        if (!opts.quiet) std::print("  Formatting {}\n", manifestPath->string());
+        if (!opts.quiet)
+            std::print("  Formatting {}\n", manifestPath->string());
         // TODO: TOML formatter
         return 0;
     }
@@ -97,7 +99,8 @@ int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions& opt
         return 0;
     }
     int fileCount = 0;
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(sourceDir)) {
+    for (const auto& entry :
+         std::filesystem::recursive_directory_iterator(sourceDir)) {
         if (!entry.is_regular_file()) continue;
         if (entry.path().extension() != ".rux") continue;
         ++fileCount;
@@ -113,7 +116,8 @@ int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions& opt
     return 0;
 }
 
-int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunDoc(std::span<const std::string_view> args,
+                const GlobalOptions& opts) {
     bool openAfter = false;
     for (auto& arg : args) {
         if (arg == "--open") {
@@ -132,7 +136,9 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions& opt
     auto manifest = LoadManifest(*manifestPath);
     if (!manifest) return 1;
     if (!opts.quiet)
-        std::print("  Generating documentation for {} v{}\n", manifest->package.name, manifest->package.version);
+        std::print("  Generating documentation for {} v{}\n",
+                   manifest->package.name,
+                   manifest->package.version);
 
     // TODO: documentation generator
 
@@ -141,7 +147,8 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions& opt
     return 0;
 }
 
-int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunList(std::span<const std::string_view> args,
+                 const GlobalOptions& opts) {
     bool global = false;
     for (auto arg : args) {
         if (arg == "--global") {
@@ -161,12 +168,15 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions& op
         std::vector<std::string> packages;
         std::error_code ec;
         if (std::filesystem::exists(cacheDir, ec)) {
-            for (const auto& entry : std::filesystem::directory_iterator(cacheDir, ec))
-                if (entry.is_directory()) packages.push_back(entry.path().filename().string());
+            for (const auto& entry :
+                 std::filesystem::directory_iterator(cacheDir, ec))
+                if (entry.is_directory())
+                    packages.push_back(entry.path().filename().string());
             std::ranges::sort(packages);
         }
         if (packages.empty()) {
-            if (!opts.quiet) std::print("  Global cache is empty ({})\n", cacheDir.string());
+            if (!opts.quiet)
+                std::print("  Global cache is empty ({})\n", cacheDir.string());
             return 0;
         }
         std::print("Global cache ({} package{} at {}):\n",
@@ -193,14 +203,16 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions& op
         if (!dep.path.empty())
             std::print("  {} (path: {})\n", dep.name, dep.path);
         else {
-            const std::string ver = dep.version.empty() ? "latest" : dep.version;
+            const std::string ver =
+                dep.version.empty() ? "latest" : dep.version;
             std::print("  {} @ {}\n", dep.name, ver);
         }
     }
     return 0;
 }
 
-int Cli::RunNew(const std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunNew(const std::span<const std::string_view> args,
+                const GlobalOptions& opts) {
     std::string_view name;
     bool bin = false;
     bool lib = false;
@@ -235,21 +247,27 @@ int Cli::RunNew(const std::span<const std::string_view> args, const GlobalOption
         PrintHelpFor("new");
         return 1;
     }
-    const auto type = (lib && !bin) ? PackageType::SharedLibrary : PackageType::Executable;
+    const auto type =
+        (lib && !bin) ? PackageType::SharedLibrary : PackageType::Executable;
     std::filesystem::path root;
     if (!customPath.empty())
         root = std::filesystem::path(customPath) / name;
     else
         root = std::filesystem::current_path() / name;
     if (!opts.quiet)
+        std::print("Creating {} package '{}'\n",
+                   type == PackageType::Executable ? "binary" : "library",
+                   std::string(name));
+    if (!ScaffoldPackage(root, std::string(name), type, /*initMode=*/false))
+        return 1;
+    if (!opts.quiet)
         std::print(
-            "Creating {} package '{}'\n", type == PackageType::Executable ? "binary" : "library", std::string(name));
-    if (!ScaffoldPackage(root, std::string(name), type, /*initMode=*/false)) return 1;
-    if (!opts.quiet) std::print("Created package '{}' at {}\n", std::string(name), root.string());
+            "Created package '{}' at {}\n", std::string(name), root.string());
     return 0;
 }
 
-int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunUpdate(std::span<const std::string_view> args,
+                   const GlobalOptions& opts) {
     bool global = false;
     for (auto& arg : args) {
         if (arg == "--global") {
@@ -269,11 +287,13 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions& 
         std::vector<std::filesystem::path> pkgDirs;
         std::error_code ec;
         if (std::filesystem::exists(cacheDir, ec)) {
-            for (const auto& entry : std::filesystem::directory_iterator(cacheDir, ec))
+            for (const auto& entry :
+                 std::filesystem::directory_iterator(cacheDir, ec))
                 if (entry.is_directory()) pkgDirs.push_back(entry.path());
         }
         if (pkgDirs.empty()) {
-            if (!opts.quiet) std::print("  No packages in global cache to update.\n");
+            if (!opts.quiet)
+                std::print("  No packages in global cache to update.\n");
             return 0;
         }
         int updated = 0;
@@ -325,7 +345,8 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions& 
         const std::string& pkgName = queue[i];
         const std::string repoUrl = JsonLookupString(*jsonOpt, pkgName);
         if (repoUrl.empty()) {
-            std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
+            std::print(
+                stderr, "error: package '{}' not found in registry\n", pkgName);
             return 1;
         }
         const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
@@ -341,18 +362,22 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions& 
             ++updated;
         }
         else {
-            if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+            if (!opts.quiet)
+                std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
             if (!GitClone(repoUrl, pkgDir, false)) {
                 std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                 return 1;
             }
-            if (!opts.quiet) std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+            if (!opts.quiet)
+                std::print(
+                    "    Installed {} at {}\n", pkgName, pkgDir.string());
             ++installed;
         }
 
         // Enqueue registry deps declared by this package
         if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
-            for (const auto& dep : depManifest->EffectiveDependencies(updateTarget)) {
+            for (const auto& dep :
+                 depManifest->EffectiveDependencies(updateTarget)) {
                 const std::string depPackageName = DependencyPackageName(dep);
                 if (dep.path.empty() && !queued.count(depPackageName)) {
                     queue.push_back(depPackageName);
@@ -361,14 +386,18 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions& 
             }
         }
     }
-    if (!opts.quiet) std::print("     Summary: {} updated, {} newly installed\n", updated, installed);
+    if (!opts.quiet)
+        std::print("     Summary: {} updated, {} newly installed\n",
+                   updated,
+                   installed);
     return 0;
 }
 
 
 // TODO: Make this look in the registry instead of installed packages
 // TODO: Extend Package manifest metadata support
-int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunInfo(std::span<const std::string_view> args,
+                 const GlobalOptions& opts) {
     (void)opts;
     std::string_view packageName;
 
@@ -403,18 +432,21 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions& op
     const auto manifestPath = packageDir / "Rux.toml";
 
     if (!std::filesystem::exists(manifestPath)) {
-        std::print(stderr, "error: package '{}' is not installed\n", packageName);
+        std::print(
+            stderr, "error: package '{}' is not installed\n", packageName);
         return 1;
     }
 
     auto manifest = Manifest::Load(manifestPath);
 
     if (!manifest) {
-        std::print(stderr, "error: failed to parse '{}'\n", manifestPath.string());
+        std::print(
+            stderr, "error: failed to parse '{}'\n", manifestPath.string());
         return 1;
     }
 
-    // not using nlohmann/json.hpp to keep compiler as small and fast as possible
+    // not using nlohmann/json.hpp to keep compiler as small and fast as
+    // possible
     if (jsonOutput) {
         std::print("{}\n", "{");
         std::print("  \"name\": \"{}\",\n", manifest->package.name);
@@ -431,7 +463,8 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions& op
                 std::print(", \"path\": \"{}\"", dep.path);
             }
             else {
-                std::print(", \"version\": \"{}\"", dep.version.empty() ? "*" : dep.version);
+                std::print(", \"version\": \"{}\"",
+                           dep.version.empty() ? "*" : dep.version);
             }
 
             // Only add a comma if this isn't the last element in the vector
@@ -461,7 +494,9 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions& op
                 if (!dep.path.empty())
                     std::print("  - {} (path: {})\n", dep.name, dep.path);
                 else
-                    std::print("  - {} @ {}\n", dep.name, dep.version.empty() ? "*" : dep.version);
+                    std::print("  - {} @ {}\n",
+                               dep.name,
+                               dep.version.empty() ? "*" : dep.version);
             }
         }
     }

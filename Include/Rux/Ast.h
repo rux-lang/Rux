@@ -14,7 +14,7 @@ namespace Rux {
     // Calling convention
     enum class CallingConvention {
         Default, // platform default (System V AMD64 ABI)
-        Win64, // Microsoft x64 calling convention
+        Win64,   // Microsoft x64 calling convention
     };
 
     // Forward declarations
@@ -54,7 +54,8 @@ namespace Rux {
         ~SliceTypeExpr() override;
 
         TypeExprPtr element;
-        ExprPtr size; // null for unsized slices (T[]), non-null for fixed-size arrays (T[N])
+        ExprPtr size; // null for unsized slices (T[]), non-null for fixed-size
+                      // arrays (T[N])
     };
 
     // *uint8
@@ -113,7 +114,7 @@ namespace Rux {
         };
 
         std::vector<std::string> path; // ["Event", "Click"]
-        std::vector<PatternPtr> args; // bound positions
+        std::vector<PatternPtr> args;  // bound positions
         std::vector<NamedArg> namedArgs;
     };
 
@@ -396,9 +397,12 @@ namespace Rux {
     struct Decl {
         SourceLocation location;
         bool isPublic = false;
-        std::string targetOs; // empty = unconditional; "Windows", "Linux" = platform-conditional
-        std::string warnMessage; // non-empty = emit this warning at each call site
-        std::string errorMessage; // non-empty = emit this error at each call site
+        std::string targetOs; // empty = unconditional; "Windows", "Linux" =
+                              // platform-conditional
+        std::string
+            warnMessage; // non-empty = emit this warning at each call site
+        std::string
+            errorMessage; // non-empty = emit this error at each call site
         virtual ~Decl() = default;
     };
 

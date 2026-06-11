@@ -34,10 +34,13 @@ namespace Rux::Platform {
 
     inline constexpr DataModel HostDataModel = []() noexcept {
         if constexpr (RUX_OS_WINDOWS) {
-            return (RUX_ARCH_X64 || RUX_ARCH_ARM64) ? DataModel::LLP64 : DataModel::ILP32;
+            return (RUX_ARCH_X64 || RUX_ARCH_ARM64) ? DataModel::LLP64
+                                                    : DataModel::ILP32;
         }
         else {
-            return (RUX_ARCH_X64 || RUX_ARCH_ARM64 || RUX_ARCH_RISCV64) ? DataModel::LP64 : DataModel::ILP32;
+            return (RUX_ARCH_X64 || RUX_ARCH_ARM64 || RUX_ARCH_RISCV64)
+                ? DataModel::LP64
+                : DataModel::ILP32;
         }
     }();
 
@@ -50,7 +53,8 @@ namespace Rux::Platform {
         return Compiler::Unknown;
     }();
 
-    inline constexpr BuildMode HostBuildMode = RUX_BUILD_RELEASE ? BuildMode::Release : BuildMode::Debug;
+    inline constexpr BuildMode HostBuildMode =
+        RUX_BUILD_RELEASE ? BuildMode::Release : BuildMode::Debug;
 
     inline constexpr Endian HostEndianness = []() noexcept {
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -72,7 +76,8 @@ namespace Rux::Platform {
         return f;
     }();
 
-    inline constexpr ABIInfo HostABIDetails = GetABIInfo(HostOS, HostArch, HostDataModel);
+    inline constexpr ABIInfo HostABIDetails =
+        GetABIInfo(HostOS, HostArch, HostDataModel);
     inline constexpr ABI HostABI = HostABIDetails.abi;
     inline constexpr CallingConv HostCC = HostABIDetails.cc;
 } // namespace Rux::Platform

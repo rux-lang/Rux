@@ -36,23 +36,23 @@
  */
 
 #if RUX_OS_WINDOWS
-    #ifndef WIN32_LEAN_AND_MEAN
-        #define WIN32_LEAN_AND_MEAN
-    #endif
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
 
-    #ifndef NOMINMAX
-        #define NOMINMAX
-    #endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 
-    #include <windows.h>
+#  include <windows.h>
 #endif
 
 #if RUX_OS_WINDOWS
-    #include <psapi.h>
+#  include <psapi.h>
 #else
-    #include <sys/resource.h>
-    #include <sys/wait.h>
-    #include <unistd.h>
+#  include <sys/resource.h>
+#  include <sys/wait.h>
+#  include <unistd.h>
 #endif
 
 #include "Rux/SourceLoader.h"
@@ -61,7 +61,8 @@ using namespace Rux;
 using namespace Platform;
 using namespace Misc;
 
-int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunBuild(std::span<const std::string_view> args,
+                  const GlobalOptions& opts) {
     const auto t0 = std::chrono::steady_clock::now();
     bool isRelease = false;
     bool isDebug = false;
@@ -143,7 +144,8 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
     auto manifest = LoadManifest(*manifestPath);
     if (!manifest) return 1;
 
-    std::string targetName = target.empty() ? HostTargetTriple() : std::string(target);
+    std::string targetName =
+        target.empty() ? HostTargetTriple() : std::string(target);
     if (!IsSupportedTargetTriple(targetName)) {
         std::print(stderr,
                    "error: unsupported target '{}'; supported targets are "
@@ -157,8 +159,11 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
         // Target selection is currently used for source/dependency choice.
         // Linking foreign executable formats is kept explicit until the
         // backends support it end-to-end.
-        std::print(
-            stderr, "error: cross-target build from '{}' to '{}' is not supported yet\n", hostTarget, targetName);
+        std::print(stderr,
+                   "error: cross-target build from '{}' to '{}' is not "
+                   "supported yet\n",
+                   hostTarget,
+                   targetName);
         return 1;
     }
 
@@ -198,15 +203,24 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
 
         for (const auto& diag : lexResult.diagnostics) {
             const auto& loc = diag.location;
-            const char* sev = diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
-            std::print(stderr, "{}:{}:{}: {}: {}\n", file.path.string(), loc.line, loc.column, sev, diag.message);
+            const char* sev = diag.severity == LexerDiagnostic::Severity::Error
+                ? "error"
+                : "warning";
+            std::print(stderr,
+                       "{}:{}:{}: {}: {}\n",
+                       file.path.string(),
+                       loc.line,
+                       loc.column,
+                       sev,
+                       diag.message);
         }
         if (lexResult.HasErrors()) lexErrors = true;
 
         if (dumpTokens) {
             auto tempDir = manifestPath->parent_path() / "Temp" / "Tokens";
             std::filesystem::create_directories(tempDir);
-            auto rel = std::filesystem::relative(file.path, manifestPath->parent_path() / "Src");
+            auto rel = std::filesystem::relative(
+                file.path, manifestPath->parent_path() / "Src");
             auto tokPath = tempDir / rel;
             tokPath.replace_extension(".tokens");
             Lexer::DumpTokens(lexResult, tokPath);
@@ -223,7 +237,8 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
     parseResults.reserve(loadResult->files.size());
 
     const auto localParsingStart = std::chrono::steady_clock::now();
-    for (std::size_t fileIndex = 0; fileIndex < loadResult->files.size(); ++fileIndex) {
+    for (std::size_t fileIndex = 0; fileIndex < loadResult->files.size();
+         ++fileIndex) {
         const auto& file = loadResult->files[fileIndex];
         if (opts.verbose) std::print("    Parsing {}\n", file.path.string());
 
@@ -235,8 +250,16 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
 
         for (const auto& diag : parseResult.diagnostics) {
             const auto& loc = diag.location;
-            const char* sev = diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
-            std::print(stderr, "{}:{}:{}: {}: {}\n", file.path.string(), loc.line, loc.column, sev, diag.message);
+            const char* sev = diag.severity == ParserDiagnostic::Severity::Error
+                ? "error"
+                : "warning";
+            std::print(stderr,
+                       "{}:{}:{}: {}: {}\n",
+                       file.path.string(),
+                       loc.line,
+                       loc.column,
+                       sev,
+                       diag.message);
         }
         if (parseResult.HasErrors()) {
             parseErrors = true;
@@ -247,7 +270,8 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
         if (dumpAst) {
             auto tempDir = manifestPath->parent_path() / "Temp" / "Ast";
             std::filesystem::create_directories(tempDir);
-            auto rel = std::filesystem::relative(file.path, manifestPath->parent_path() / "Src");
+            auto rel = std::filesystem::relative(
+                file.path, manifestPath->parent_path() / "Src");
             auto astPath = (tempDir / rel).replace_extension(".ast");
             Parser::DumpAst(parseResult, astPath);
         }
@@ -260,7 +284,8 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
 
     std::vector<ParseResult> depParseResults;
     std::vector<std::string> loadedPackages; // parallel: package name per entry
-    std::vector<std::string> loadedModuleNames; // parallel: source name per entry
+    std::vector<std::string>
+        loadedModuleNames; // parallel: source name per entry
     {
         struct PendingPackage {
             std::string name;
@@ -271,9 +296,10 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
         std::vector<PendingPackage> pendingPackages;
         std::unordered_set<std::string> queuedPackageNames;
 
-        auto enqueueDependency = [&](const std::string& pkgName,
-                                     const Manifest& ownerManifest,
-                                     const std::filesystem::path& ownerRoot) -> bool {
+        auto enqueueDependency =
+            [&](const std::string& pkgName,
+                const Manifest& ownerManifest,
+                const std::filesystem::path& ownerRoot) -> bool {
             if (queuedPackageNames.count(pkgName)) return true;
 
             // Resolve imports through the target view of the owning
@@ -287,7 +313,10 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
                 }
 
             if (!dep) {
-                std::print(stderr, "error: package '{}' is not listed in [Dependencies]\n", pkgName);
+                std::print(
+                    stderr,
+                    "error: package '{}' is not listed in [Dependencies]\n",
+                    pkgName);
                 return false;
             }
             std::filesystem::path depRoot;
@@ -295,7 +324,8 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
                 depRoot = RegistryPackagesDir() / DependencyPackageName(*dep);
                 if (!std::filesystem::exists(depRoot)) {
                     std::print(stderr,
-                               "error: package '{}' is not installed — run 'rux install'\n",
+                               "error: package '{}' is not installed — run "
+                               "'rux install'\n",
                                DependencyPackageName(*dep));
                     return false;
                 }
@@ -305,14 +335,19 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
             }
             auto depManifest = Manifest::Load(depRoot / "Rux.toml");
             if (!depManifest) {
-                std::print(stderr, "error: dependency package '{}' was not found at '{}'\n", pkgName, depRoot.string());
+                std::print(
+                    stderr,
+                    "error: dependency package '{}' was not found at '{}'\n",
+                    pkgName,
+                    depRoot.string());
                 return false;
             }
 
             queuedPackageNames.insert(pkgName);
             // Keep the import name as the package namespace loaded into
             // Sema, even when the files came from another package name.
-            pendingPackages.push_back({dep->name, depRoot, std::move(*depManifest)});
+            pendingPackages.push_back(
+                {dep->name, depRoot, std::move(*depManifest)});
             return true;
         };
 
@@ -336,16 +371,25 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
             }
             for (const auto& pkgName : imports) {
                 if (pkgName == manifest->package.name) continue;
-                if (!enqueueDependency(pkgName, *manifest, manifestPath->parent_path())) return 1;
+                if (!enqueueDependency(
+                        pkgName, *manifest, manifestPath->parent_path()))
+                    return 1;
             }
         }
 
-        for (std::size_t pendingIndex = 0; pendingIndex < pendingPackages.size(); ++pendingIndex) {
-            const std::filesystem::path pendingRoot = pendingPackages[pendingIndex].root;
-            const Manifest pendingManifest = pendingPackages[pendingIndex].manifest;
+        for (std::size_t pendingIndex = 0;
+             pendingIndex < pendingPackages.size();
+             ++pendingIndex) {
+            const std::filesystem::path pendingRoot =
+                pendingPackages[pendingIndex].root;
+            const Manifest pendingManifest =
+                pendingPackages[pendingIndex].manifest;
             const std::string packageName = pendingPackages[pendingIndex].name;
 
-            if (opts.verbose) std::print("  Loading package {} from {}\n", packageName, pendingRoot.string());
+            if (opts.verbose)
+                std::print("  Loading package {} from {}\n",
+                           packageName,
+                           pendingRoot.string());
 
             auto depLoadResult = SourceLoader::Load(pendingRoot);
             if (!depLoadResult) {
@@ -372,7 +416,10 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
                 stats.lexing += ElapsedMs(depLexingStart, depLexingEnd);
                 stats.dependencyTokens += CountTokens(depLex);
                 for (const auto& diag : depLex.diagnostics) {
-                    const char* sev = diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
+                    const char* sev =
+                        diag.severity == LexerDiagnostic::Severity::Error
+                        ? "error"
+                        : "warning";
                     std::print(stderr,
                                "{}:{}:{}: {}: {}\n",
                                depFile.path.string(),
@@ -384,11 +431,15 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
                 if (depLex.HasErrors()) return 1;
 
                 const auto depParsingStart = std::chrono::steady_clock::now();
-                Parser depParser(std::move(depLex.tokens), depFile.path.string());
+                Parser depParser(std::move(depLex.tokens),
+                                 depFile.path.string());
                 auto depParse = depParser.Parse();
                 stats.parsing += ElapsedMs(depParsingStart);
                 for (const auto& diag : depParse.diagnostics) {
-                    const char* sev = diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
+                    const char* sev =
+                        diag.severity == ParserDiagnostic::Severity::Error
+                        ? "error"
+                        : "warning";
                     std::print(stderr,
                                "{}:{}:{}: {}: {}\n",
                                depFile.path.string(),
@@ -410,8 +461,11 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
                 }
             }
             for (const auto& pkgName : imports) {
-                if (pkgName == pendingManifest.package.name || pkgName == packageName) continue;
-                if (!enqueueDependency(pkgName, pendingManifest, pendingRoot)) return 1;
+                if (pkgName == pendingManifest.package.name ||
+                    pkgName == packageName)
+                    continue;
+                if (!enqueueDependency(pkgName, pendingManifest, pendingRoot))
+                    return 1;
             }
 
             for (auto& depParse : packageParseResults) {
@@ -439,18 +493,29 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
             const std::string& pkgName = loadedPackages[i];
             auto [it, inserted] = pkgIdx.emplace(pkgName, depPackages.size());
             if (inserted) depPackages.push_back({pkgName, {}});
-            depPackages[it->second].modules.push_back({loadedModuleNames[i], &depParseResults[i].module});
+            depPackages[it->second].modules.push_back(
+                {loadedModuleNames[i], &depParseResults[i].module});
         }
     }
 
-    Sema sema(
-        std::move(userModules), std::move(depPackages), manifest->package.name, std::string(TargetOsName(targetName)));
+    Sema sema(std::move(userModules),
+              std::move(depPackages),
+              manifest->package.name,
+              std::string(TargetOsName(targetName)));
     auto semaResult = sema.Analyze();
 
     for (const auto& diag : semaResult.diagnostics) {
         const auto& loc = diag.location;
-        const char* sev = diag.severity == SemaDiagnostic::Severity::Error ? "error" : "warning";
-        std::print(stderr, "{}:{}:{}: {}: {}\n", diag.sourceName, loc.line, loc.column, sev, diag.message);
+        const char* sev = diag.severity == SemaDiagnostic::Severity::Error
+            ? "error"
+            : "warning";
+        std::print(stderr,
+                   "{}:{}:{}: {}: {}\n",
+                   diag.sourceName,
+                   loc.line,
+                   loc.column,
+                   sev,
+                   diag.message);
     }
     if (dumpSema) {
         auto semaDir = manifestPath->parent_path() / "Temp" / "Sema";
@@ -485,7 +550,8 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
     // LIR
 
     const auto lirStart = std::chrono::steady_clock::now();
-    if (opts.verbose) std::print("  Emitting LIR for {}\n", manifest->package.name);
+    if (opts.verbose)
+        std::print("  Emitting LIR for {}\n", manifest->package.name);
 
     Lir lir(std::move(hirPackage));
     auto lirPackage = lir.Generate();
@@ -501,7 +567,8 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
 
     const auto codegenStart = std::chrono::steady_clock::now();
     if (dumpAsm) {
-        if (opts.verbose) std::print("  Emitting assembly for {}\n", manifest->package.name);
+        if (opts.verbose)
+            std::print("  Emitting assembly for {}\n", manifest->package.name);
         auto asmDir = manifestPath->parent_path() / "Temp" / "Asm";
         std::filesystem::create_directories(asmDir);
         Asm::Emit(lirPackage, asmDir / "out.asm");
@@ -509,7 +576,8 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
 
     // RCU object generation
 
-    if (opts.verbose) std::print("  Emitting RCU objects for {}\n", manifest->package.name);
+    if (opts.verbose)
+        std::print("  Emitting RCU objects for {}\n", manifest->package.name);
 
     Rcu rcu(lirPackage, std::string(manifest->package.name));
     auto rcuFiles = rcu.Generate();
@@ -521,8 +589,9 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
         std::filesystem::create_directories(dumpDir);
 
         for (const auto& rcuFile : rcuFiles) {
-            std::filesystem::path stem = rcuFile.sourcePath.empty() ? std::filesystem::path("out")
-                                                                    : std::filesystem::path(rcuFile.sourcePath).stem();
+            std::filesystem::path stem = rcuFile.sourcePath.empty()
+                ? std::filesystem::path("out")
+                : std::filesystem::path(rcuFile.sourcePath).stem();
             Rcu::Emit(rcuFile, objDir / (stem.string() + ".rcu"));
             Rcu::Dump(rcuFile, dumpDir / (stem.string() + ".rcu.txt"));
         }
@@ -536,14 +605,18 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
 
     const auto root = manifestPath->parent_path();
     const auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
-    const bool buildDll = (manifest->package.type == "Dll" || manifest->package.type == "dll");
+    const bool buildDll =
+        (manifest->package.type == "Dll" || manifest->package.type == "dll");
     std::string outputName = manifest->package.name;
     if constexpr (HostOS == OS::Windows) {
         outputName += buildDll ? ".dll" : ".exe";
     }
     const auto exePath = binDir / outputName;
 
-    Linker linker(std::move(rcuFiles), std::string(manifest->package.name), {root}, buildDll);
+    Linker linker(std::move(rcuFiles),
+                  std::string(manifest->package.name),
+                  {root},
+                  buildDll);
     if (!linker.Link(exePath)) {
         for (const auto& err : linker.Errors())
             std::print(stderr, "error: {}\n", err.message);
@@ -572,7 +645,8 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions& o
     return 0;
 }
 
-int Cli::RunClean(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunClean(std::span<const std::string_view> args,
+                  const GlobalOptions& opts) {
     bool tempOnly = false;
     for (auto& arg : args) {
         if (arg == "--temp") {
@@ -593,14 +667,18 @@ int Cli::RunClean(std::span<const std::string_view> args, const GlobalOptions& o
     const auto root = manifestPath->parent_path();
     const auto outputDir = manifest->build.output.empty()
         ? root / "Bin"
-        : (std::filesystem::path(manifest->build.output).is_relative() ? root / manifest->build.output
-                                                                       : std::filesystem::path(manifest->build.output));
+        : (std::filesystem::path(manifest->build.output).is_relative()
+               ? root / manifest->build.output
+               : std::filesystem::path(manifest->build.output));
     auto removeDir = [&](const std::filesystem::path& dir) -> bool {
         std::error_code ec;
         if (!std::filesystem::exists(dir)) return true;
         std::filesystem::remove_all(dir, ec);
         if (ec) {
-            std::print(stderr, "error: failed to remove '{}': {}\n", dir.string(), ec.message());
+            std::print(stderr,
+                       "error: failed to remove '{}': {}\n",
+                       dir.string(),
+                       ec.message());
             return false;
         }
         if (!opts.quiet) std::print("     Removed {}\n", dir.string());
@@ -612,7 +690,8 @@ int Cli::RunClean(std::span<const std::string_view> args, const GlobalOptions& o
     return ok ? 0 : 1;
 }
 
-int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunRun(std::span<const std::string_view> args,
+                const GlobalOptions& opts) {
     bool isRelease = false;
     std::vector<std::string_view> runArgs;
     bool passThroughMode = false;
@@ -653,7 +732,8 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions& opt
     std::string_view profileName = isRelease ? "Release" : "Debug";
     auto root = manifestPath->parent_path();
     auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
-    const bool runDll = (manifest->package.type == "Dll" || manifest->package.type == "dll");
+    const bool runDll =
+        (manifest->package.type == "Dll" || manifest->package.type == "dll");
     if (runDll) {
         std::print(stderr, "error: cannot run a DLL package directly\n");
         return 1;
@@ -666,62 +746,76 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions& opt
 
     auto exePath = binDir / exeName;
     if (!std::filesystem::exists(exePath)) {
-        std::print(stderr, "error: executable not found: '{}'\n", exePath.string());
+        std::print(
+            stderr, "error: executable not found: '{}'\n", exePath.string());
         return 1;
     }
-    if (opts.verbose && !opts.quiet) std::print("     Running `{}`\n", exePath.string());
-    #if RUX_OS_WINDOWS
-        std::string cmdLine = "\"" + exePath.string() + "\"";
-        for (const auto& a : runArgs) {
-            cmdLine += " \"";
-            cmdLine += std::string(a);
-            cmdLine += '"';
-        }
-        STARTUPINFOA si{};
-        PROCESS_INFORMATION pi{};
-        si.cb = sizeof(si);
-        si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-        si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-        si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-        si.dwFlags = STARTF_USESTDHANDLES;
-        if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi)) {
-            std::print(stderr, "error: failed to launch '{}' (code {})\n", exePath.string(), GetLastError());
-            return 1;
-        }
-        WaitForSingleObject(pi.hProcess, INFINITE);
-        DWORD exitCode = 0;
-        GetExitCodeProcess(pi.hProcess, &exitCode);
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
-        return static_cast<int>(exitCode);
-    #else
-        std::vector<std::string> argStrings;
-        argStrings.push_back(exePath.string());
-        for (const auto& a : runArgs) {
-            argStrings.emplace_back(a);
-        }
+    if (opts.verbose && !opts.quiet)
+        std::print("     Running `{}`\n", exePath.string());
+#if RUX_OS_WINDOWS
+    std::string cmdLine = "\"" + exePath.string() + "\"";
+    for (const auto& a : runArgs) {
+        cmdLine += " \"";
+        cmdLine += std::string(a);
+        cmdLine += '"';
+    }
+    STARTUPINFOA si{};
+    PROCESS_INFORMATION pi{};
+    si.cb = sizeof(si);
+    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    if (!CreateProcessA(nullptr,
+                        cmdLine.data(),
+                        nullptr,
+                        nullptr,
+                        TRUE,
+                        0,
+                        nullptr,
+                        nullptr,
+                        &si,
+                        &pi)) {
+        std::print(stderr,
+                   "error: failed to launch '{}' (code {})\n",
+                   exePath.string(),
+                   GetLastError());
+        return 1;
+    }
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exitCode = 0;
+    GetExitCodeProcess(pi.hProcess, &exitCode);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return static_cast<int>(exitCode);
+#else
+    std::vector<std::string> argStrings;
+    argStrings.push_back(exePath.string());
+    for (const auto& a : runArgs) {
+        argStrings.emplace_back(a);
+    }
 
-        std::vector<char*> argv;
-        for (auto& s : argStrings) {
-            argv.push_back(s.data());
-        }
+    std::vector<char*> argv;
+    for (auto& s : argStrings) {
+        argv.push_back(s.data());
+    }
 
-        argv.push_back(nullptr);
+    argv.push_back(nullptr);
 
-        pid_t pid = fork();
-        if (pid < 0) {
-            std::print(stderr, "error: fork failed\n");
-            return 1;
-        }
+    pid_t pid = fork();
+    if (pid < 0) {
+        std::print(stderr, "error: fork failed\n");
+        return 1;
+    }
 
-        if (pid == 0) {
-            execv(exePath.c_str(), argv.data());
-            std::print(stderr, "error: failed to launch '{}'\n", exePath.string());
-            _exit(127);
-        }
+    if (pid == 0) {
+        execv(exePath.c_str(), argv.data());
+        std::print(stderr, "error: failed to launch '{}'\n", exePath.string());
+        _exit(127);
+    }
 
-        int status = 0;
-        waitpid(pid, &status, 0);
-        return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
-    #endif
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+#endif
 }

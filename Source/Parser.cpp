@@ -21,7 +21,9 @@ namespace Rux {
         , sourceName(std::move(sourceName)) {
     }
 
-    std::optional<ParseResult> Parser::FromLexResult(const LexerResult& lex, const std::string& sourceName) {
+    std::optional<ParseResult>
+    Parser::FromLexResult(const LexerResult& lex,
+                          const std::string& sourceName) {
         if (lex.HasErrors()) return std::nullopt;
         Parser p(lex.tokens, sourceName);
         return p.Parse();
@@ -58,7 +60,8 @@ namespace Rux {
         return Peek().kind == kind;
     }
 
-    bool Parser::CheckAny(const std::initializer_list<TokenKind> kinds) const noexcept {
+    bool Parser::CheckAny(
+        const std::initializer_list<TokenKind> kinds) const noexcept {
         for (const auto k : kinds)
             if (Check(k)) return true;
         return false;
@@ -70,7 +73,8 @@ namespace Rux {
         return true;
     }
 
-    const Token& Parser::Expect(const TokenKind kind, const std::string_view message) {
+    const Token& Parser::Expect(const TokenKind kind,
+                                const std::string_view message) {
         if (Check(kind)) return Advance();
         EmitError(CurrentLocation(), std::string(message));
         return Peek(); // return without advancing
@@ -95,7 +99,8 @@ namespace Rux {
         int angleDepth = 0;
         for (std::size_t ahead = 0;; ++ahead) {
             const TokenKind kind = Peek(ahead).kind;
-            if (kind == TokenKind::EndOfFile || kind == TokenKind::LeftBrace || kind == TokenKind::Semicolon)
+            if (kind == TokenKind::EndOfFile || kind == TokenKind::LeftBrace ||
+                kind == TokenKind::Semicolon)
                 return false;
 
             if (kind == TokenKind::Less) {
@@ -105,7 +110,8 @@ namespace Rux {
 
             if (kind == TokenKind::Greater) {
                 --angleDepth;
-                if (angleDepth == 0) return Peek(ahead + 1).kind == TokenKind::LeftBrace;
+                if (angleDepth == 0)
+                    return Peek(ahead + 1).kind == TokenKind::LeftBrace;
                 if (angleDepth < 0) return false;
             }
         }
@@ -144,15 +150,18 @@ namespace Rux {
 
     // Diagnostics
     void Parser::EmitError(const SourceLocation loc, std::string message) {
-        diagnostics.push_back(ParserDiagnostic{ParserDiagnostic::Severity::Error, loc, std::move(message)});
+        diagnostics.push_back(ParserDiagnostic{
+            ParserDiagnostic::Severity::Error, loc, std::move(message)});
     }
 
     void Parser::EmitWarning(const SourceLocation loc, std::string message) {
-        diagnostics.push_back(ParserDiagnostic{ParserDiagnostic::Severity::Warning, loc, std::move(message)});
+        diagnostics.push_back(ParserDiagnostic{
+            ParserDiagnostic::Severity::Warning, loc, std::move(message)});
     }
 
     void Parser::Synchronize() {
-        // Skip until we reach a token that likely starts a new declaration or statement.
+        // Skip until we reach a token that likely starts a new declaration or
+        // statement.
         while (!IsAtEnd()) {
             const TokenKind k = Peek().kind;
 
@@ -163,13 +172,18 @@ namespace Rux {
             }
             if (k == TokenKind::RightBrace) return;
 
-            if (k == TokenKind::FuncKeyword || k == TokenKind::StructKeyword || k == TokenKind::EnumKeyword ||
-                k == TokenKind::UnionKeyword || k == TokenKind::InterfaceKeyword || k == TokenKind::ExtendKeyword ||
-                k == TokenKind::ModuleKeyword || k == TokenKind::ImportKeyword || k == TokenKind::ConstKeyword ||
-                k == TokenKind::TypeKeyword || k == TokenKind::ExternKeyword || k == TokenKind::PubKeyword ||
-                k == TokenKind::LetKeyword || k == TokenKind::VarKeyword || k == TokenKind::IfKeyword ||
-                k == TokenKind::WhileKeyword || k == TokenKind::DoKeyword || k == TokenKind::LoopKeyword ||
-                k == TokenKind::ForKeyword || k == TokenKind::ReturnKeyword || k == TokenKind::MatchKeyword)
+            if (k == TokenKind::FuncKeyword || k == TokenKind::StructKeyword ||
+                k == TokenKind::EnumKeyword || k == TokenKind::UnionKeyword ||
+                k == TokenKind::InterfaceKeyword ||
+                k == TokenKind::ExtendKeyword ||
+                k == TokenKind::ModuleKeyword ||
+                k == TokenKind::ImportKeyword || k == TokenKind::ConstKeyword ||
+                k == TokenKind::TypeKeyword || k == TokenKind::ExternKeyword ||
+                k == TokenKind::PubKeyword || k == TokenKind::LetKeyword ||
+                k == TokenKind::VarKeyword || k == TokenKind::IfKeyword ||
+                k == TokenKind::WhileKeyword || k == TokenKind::DoKeyword ||
+                k == TokenKind::LoopKeyword || k == TokenKind::ForKeyword ||
+                k == TokenKind::ReturnKeyword || k == TokenKind::MatchKeyword)
                 return;
 
             Advance();
@@ -226,8 +240,8 @@ namespace Rux {
         return out;
     }
 
-    // Parses zero or more @[AttrName(...)] attributes that precede a declaration.
-    // Unknown attribute names are a compilation error.
+    // Parses zero or more @[AttrName(...)] attributes that precede a
+    // declaration. Unknown attribute names are a compilation error.
     Parser::ParsedAttrs Parser::ParseAttrs() {
         ParsedAttrs attrs;
         while (Check(TokenKind::At)) {
@@ -249,28 +263,40 @@ namespace Rux {
                     if (variant == "Win64")
                         attrs.callConv = CallingConvention::Win64;
                     else
-                        EmitWarning(CurrentLocation(), std::format("unknown calling convention '.{}'", variant));
+                        EmitWarning(
+                            CurrentLocation(),
+                            std::format("unknown calling convention '.{}'",
+                                        variant));
                 }
-                else if (attrName == "Target" && Check(TokenKind::StringLiteral)) {
+                else if (attrName == "Target" &&
+                         Check(TokenKind::StringLiteral)) {
                     // @[Target("Windows")] — positional OS string
                     const Token tok = Advance();
                     std::string os = DecodeStringLiteralText(tok.text);
-                    if (os == "MacOS" || os == "Macos" || os == "macos") os = "macOS";
-                    if (os != "BSD" && os != "Illumos" && os != "Linux" && os != "macOS" && os != "Windows")
-                        EmitError(
-                            tok.location,
-                            std::format(
-                                "unsupported target '{}'; valid targets are: BSD, Illumos, Linux, macOS, Windows", os));
+                    if (os == "MacOS" || os == "Macos" || os == "macos")
+                        os = "macOS";
+                    if (os != "BSD" && os != "Illumos" && os != "Linux" &&
+                        os != "macOS" && os != "Windows")
+                        EmitError(tok.location,
+                                  std::format("unsupported target '{}'; valid "
+                                              "targets are: BSD, "
+                                              "Illumos, Linux, macOS, Windows",
+                                              os));
                     else
                         attrs.targetOs = std::move(os);
                 }
-                else if (attrName == "Warn" && Check(TokenKind::StringLiteral)) {
-                    // @[Warn("message")] — emit a compiler warning at each call site
+                else if (attrName == "Warn" &&
+                         Check(TokenKind::StringLiteral)) {
+                    // @[Warn("message")] — emit a compiler warning at each call
+                    // site
                     attrs.warnMessage = DecodeStringLiteralText(Advance().text);
                 }
-                else if (attrName == "Error" && Check(TokenKind::StringLiteral)) {
-                    // @[Error("message")] — emit a compiler error at each call site
-                    attrs.errorMessage = DecodeStringLiteralText(Advance().text);
+                else if (attrName == "Error" &&
+                         Check(TokenKind::StringLiteral)) {
+                    // @[Error("message")] — emit a compiler error at each call
+                    // site
+                    attrs.errorMessage =
+                        DecodeStringLiteralText(Advance().text);
                 }
                 else if (attrName == "Import") {
                     // @[Import(lib: "...")] — DLL import library
@@ -282,22 +308,26 @@ namespace Rux {
                         std::string key = Advance().text;
                         if (!Match(TokenKind::Colon)) continue;
                         if (key == "lib" && Check(TokenKind::StringLiteral))
-                            attrs.importLib = DecodeStringLiteralText(Advance().text);
+                            attrs.importLib =
+                                DecodeStringLiteralText(Advance().text);
                         else
                             Advance(); // skip unknown value
                         if (!Match(TokenKind::Comma)) break;
                     }
                 }
                 else {
-                    EmitError(attrLoc, std::format("unknown attribute '{}'", attrName));
+                    EmitError(attrLoc,
+                              std::format("unknown attribute '{}'", attrName));
                     while (!Check(TokenKind::RightParen) && !IsAtEnd())
                         Advance();
                 }
 
-                Expect(TokenKind::RightParen, "expected ')' to close attribute");
+                Expect(TokenKind::RightParen,
+                       "expected ')' to close attribute");
             }
             else {
-                EmitError(attrLoc, std::format("unknown attribute '{}'", attrName));
+                EmitError(attrLoc,
+                          std::format("unknown attribute '{}'", attrName));
             }
 
             Expect(TokenKind::RightBracket, "expected ']' to close attribute");
@@ -317,31 +347,46 @@ namespace Rux {
         auto withTarget = [&](DeclPtr decl) -> DeclPtr {
             if (decl) {
                 if (decl->targetOs.empty()) decl->targetOs = attrs.targetOs;
-                if (decl->warnMessage.empty()) decl->warnMessage = attrs.warnMessage;
-                if (decl->errorMessage.empty()) decl->errorMessage = attrs.errorMessage;
+                if (decl->warnMessage.empty())
+                    decl->warnMessage = attrs.warnMessage;
+                if (decl->errorMessage.empty())
+                    decl->errorMessage = attrs.errorMessage;
             }
             return decl;
         };
 
         // asm func
-        if (Check(TokenKind::Ident) && Peek().text == "asm" && Peek(1).Is(TokenKind::FuncKeyword)) {
+        if (Check(TokenKind::Ident) && Peek().text == "asm" &&
+            Peek(1).Is(TokenKind::FuncKeyword)) {
             Advance(); // consume 'asm'
             return withTarget(ParseFuncDecl(isPublic, true, attrs.callConv));
         }
 
-        if (Check(TokenKind::FuncKeyword)) return withTarget(ParseFuncDecl(isPublic, false, attrs.callConv));
-        if (Check(TokenKind::StructKeyword)) return withTarget(ParseStructDecl(isPublic));
-        if (Check(TokenKind::EnumKeyword)) return withTarget(ParseEnumDecl(isPublic));
-        if (Check(TokenKind::UnionKeyword)) return withTarget(ParseUnionDecl(isPublic));
-        if (Check(TokenKind::InterfaceKeyword)) return withTarget(ParseInterfaceDecl(isPublic));
+        if (Check(TokenKind::FuncKeyword))
+            return withTarget(ParseFuncDecl(isPublic, false, attrs.callConv));
+        if (Check(TokenKind::StructKeyword))
+            return withTarget(ParseStructDecl(isPublic));
+        if (Check(TokenKind::EnumKeyword))
+            return withTarget(ParseEnumDecl(isPublic));
+        if (Check(TokenKind::UnionKeyword))
+            return withTarget(ParseUnionDecl(isPublic));
+        if (Check(TokenKind::InterfaceKeyword))
+            return withTarget(ParseInterfaceDecl(isPublic));
         if (Check(TokenKind::ExtendKeyword)) return withTarget(ParseImplDecl());
-        if (Check(TokenKind::ModuleKeyword)) return withTarget(ParseModuleDecl(isPublic));
-        if (Check(TokenKind::ImportKeyword)) return ParseUseDecl(std::move(attrs));
-        if (Check(TokenKind::ConstKeyword)) return withTarget(ParseConstDecl(isPublic));
-        if (Check(TokenKind::TypeKeyword)) return withTarget(ParseTypeAliasDecl(isPublic));
-        if (Check(TokenKind::ExternKeyword)) return withTarget(ParseExternDecl(isPublic, attrs));
+        if (Check(TokenKind::ModuleKeyword))
+            return withTarget(ParseModuleDecl(isPublic));
+        if (Check(TokenKind::ImportKeyword))
+            return ParseUseDecl(std::move(attrs));
+        if (Check(TokenKind::ConstKeyword))
+            return withTarget(ParseConstDecl(isPublic));
+        if (Check(TokenKind::TypeKeyword))
+            return withTarget(ParseTypeAliasDecl(isPublic));
+        if (Check(TokenKind::ExternKeyword))
+            return withTarget(ParseExternDecl(isPublic, attrs));
 
-        EmitError(loc, std::format("unexpected token '{}', expected a declaration", Peek().text));
+        EmitError(loc,
+                  std::format("unexpected token '{}', expected a declaration",
+                              Peek().text));
         return nullptr;
     }
 
@@ -394,7 +439,8 @@ namespace Rux {
         Expect(TokenKind::Colon, "expected ':'");
         p.type = ParseType();
         if (allowVariadic && Match(TokenKind::DotDotDot)) p.isVariadic = true;
-        if (!p.isVariadic && Match(TokenKind::Assign)) p.defaultValue = ParseExpr();
+        if (!p.isVariadic && Match(TokenKind::Assign))
+            p.defaultValue = ParseExpr();
         return p;
     }
 
@@ -408,7 +454,8 @@ namespace Rux {
     }
 
     // func
-    std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(bool isPublic, bool isAsm, CallingConvention callConv) {
+    std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(
+        bool isPublic, bool isAsm, CallingConvention callConv) {
         const auto loc = CurrentLocation();
         Expect(TokenKind::FuncKeyword, "expected 'func'");
 
@@ -420,7 +467,8 @@ namespace Rux {
         if (Peek().IsOperator())
             decl->name = Advance().text;
         else
-            decl->name = Expect(TokenKind::Ident, "expected function name").text;
+            decl->name =
+                Expect(TokenKind::Ident, "expected function name").text;
 
         if (Check(TokenKind::Less)) decl->typeParams = ParseTypeParams();
 
@@ -482,7 +530,8 @@ namespace Rux {
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             EnumDecl::Variant variant;
             variant.location = CurrentLocation();
-            variant.name = Expect(TokenKind::Ident, "expected variant name").text;
+            variant.name =
+                Expect(TokenKind::Ident, "expected variant name").text;
 
             if (Match(TokenKind::LeftParen)) {
                 while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
@@ -495,10 +544,13 @@ namespace Rux {
                 while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                     EnumDecl::Variant::NamedField field;
                     field.location = CurrentLocation();
-                    field.name = Expect(TokenKind::Ident, "expected variant field name").text;
+                    field.name =
+                        Expect(TokenKind::Ident, "expected variant field name")
+                            .text;
                     Expect(TokenKind::Colon, "expected ':'");
                     field.type = ParseType();
-                    Expect(TokenKind::Semicolon, "expected ';' after variant field");
+                    Expect(TokenKind::Semicolon,
+                           "expected ';' after variant field");
                     variant.namedFields.push_back(std::move(field));
                 }
                 Expect(TokenKind::RightBrace, "expected '}'");
@@ -507,14 +559,18 @@ namespace Rux {
             if (Match(TokenKind::Assign)) {
                 std::string value;
                 if (Match(TokenKind::Minus)) value = "-";
-                value += Expect(TokenKind::IntLiteral, "expected integer enum discriminant").text;
+                value += Expect(TokenKind::IntLiteral,
+                                "expected integer enum discriminant")
+                             .text;
                 variant.discriminant = std::move(value);
             }
 
             decl->variants.push_back(std::move(variant));
             if (Match(TokenKind::Comma)) {
                 if (Check(TokenKind::RightBrace))
-                    EmitError(Previous().location, "trailing comma is not allowed in enum declarations");
+                    EmitError(
+                        Previous().location,
+                        "trailing comma is not allowed in enum declarations");
             }
             else {
                 break;
@@ -561,11 +617,13 @@ namespace Rux {
         Expect(TokenKind::LeftBrace, "expected '{'");
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             if (!Check(TokenKind::FuncKeyword)) {
-                EmitError(CurrentLocation(), "expected 'func' in interface body");
+                EmitError(CurrentLocation(),
+                          "expected 'func' in interface body");
                 Recover();
                 continue;
             }
-            if (auto method = ParseFuncDecl(false, false)) decl->methods.push_back(std::move(method));
+            if (auto method = ParseFuncDecl(false, false))
+                decl->methods.push_back(std::move(method));
         }
         Expect(TokenKind::RightBrace, "expected '}'");
         return decl;
@@ -579,15 +637,20 @@ namespace Rux {
         auto decl = std::make_unique<ImplDecl>();
         decl->location = loc;
 
-        // extend TypeName  or  extend TypeName : InterfaceName  or  extend InterfaceName for TypeName
-        const std::string firstName = Expect(TokenKind::Ident, "expected type name").text;
+        // extend TypeName  or  extend TypeName : InterfaceName  or  extend
+        // InterfaceName for TypeName
+        const std::string firstName =
+            Expect(TokenKind::Ident, "expected type name").text;
         if (Match(TokenKind::Colon)) {
             decl->typeName = firstName;
-            decl->interfaceName = Expect(TokenKind::Ident, "expected interface name after ':'").text;
+            decl->interfaceName =
+                Expect(TokenKind::Ident, "expected interface name after ':'")
+                    .text;
         }
         else if (Match(TokenKind::ForKeyword)) {
             decl->interfaceName = firstName;
-            decl->typeName = Expect(TokenKind::Ident, "expected type name after 'for'").text;
+            decl->typeName =
+                Expect(TokenKind::Ident, "expected type name after 'for'").text;
         }
         else {
             decl->typeName = firstName;
@@ -601,7 +664,8 @@ namespace Rux {
                 Recover();
                 continue;
             }
-            if (auto method = ParseFuncDecl(pub, false)) decl->methods.push_back(std::move(method));
+            if (auto method = ParseFuncDecl(pub, false))
+                decl->methods.push_back(std::move(method));
         }
         Expect(TokenKind::RightBrace, "expected '}'");
         return decl;
@@ -615,7 +679,8 @@ namespace Rux {
         std::vector<std::string> path;
         path.push_back(Expect(TokenKind::Ident, "expected module name").text);
         while (Match(TokenKind::ColonColon))
-            path.push_back(Expect(TokenKind::Ident, "expected module name").text);
+            path.push_back(
+                Expect(TokenKind::Ident, "expected module name").text);
 
         Expect(TokenKind::LeftBrace, "expected '{'");
         std::vector<DeclPtr> items;
@@ -652,7 +717,8 @@ namespace Rux {
         decl->targetOs = std::move(attrs.targetOs);
 
         // Parse path segments separated by '.' or '::'
-        decl->path.push_back(Expect(TokenKind::Ident, "expected module path").text);
+        decl->path.push_back(
+            Expect(TokenKind::Ident, "expected module path").text);
 
         while (!IsAtEnd()) {
             if (Match(TokenKind::Dot)) {
@@ -661,7 +727,8 @@ namespace Rux {
                     decl->kind = UseDecl::Kind::Glob;
                     break;
                 }
-                decl->path.push_back(Expect(TokenKind::Ident, "expected identifier").text);
+                decl->path.push_back(
+                    Expect(TokenKind::Ident, "expected identifier").text);
             }
             else if (Match(TokenKind::ColonColon)) {
                 if (Check(TokenKind::LeftBrace)) {
@@ -669,7 +736,8 @@ namespace Rux {
                     Advance(); // consume '{'
                     decl->kind = UseDecl::Kind::Multi;
                     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
-                        decl->names.push_back(Expect(TokenKind::Ident, "expected name").text);
+                        decl->names.push_back(
+                            Expect(TokenKind::Ident, "expected name").text);
                         if (!Match(TokenKind::Comma)) break;
                     }
                     Expect(TokenKind::RightBrace, "expected '}'");
@@ -680,7 +748,8 @@ namespace Rux {
                     decl->kind = UseDecl::Kind::Glob;
                     break;
                 }
-                decl->path.push_back(Expect(TokenKind::Ident, "expected identifier").text);
+                decl->path.push_back(
+                    Expect(TokenKind::Ident, "expected identifier").text);
             }
             else {
                 break;
@@ -741,8 +810,10 @@ namespace Rux {
             block->callConv = attrs.callConv;
             while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                 if (Check(TokenKind::ExternKeyword)) {
-                    EmitError(CurrentLocation(), "'extern' is not allowed inside an extern block");
-                    while (!IsAtEnd() && !Check(TokenKind::Semicolon) && !Check(TokenKind::RightBrace))
+                    EmitError(CurrentLocation(),
+                              "'extern' is not allowed inside an extern block");
+                    while (!IsAtEnd() && !Check(TokenKind::Semicolon) &&
+                           !Check(TokenKind::RightBrace))
                         Advance();
                     Match(TokenKind::Semicolon);
                     continue;
@@ -754,7 +825,8 @@ namespace Rux {
                     fd->isPublic = isPublic;
                     fd->dll = attrs.importLib;
                     fd->callConv = attrs.callConv;
-                    fd->name = Expect(TokenKind::Ident, "expected function name").text;
+                    fd->name =
+                        Expect(TokenKind::Ident, "expected function name").text;
                     Expect(TokenKind::LeftParen, "expected '('");
                     while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                         if (Check(TokenKind::DotDotDot)) {
@@ -781,7 +853,9 @@ namespace Rux {
                     block->items.push_back(std::move(vd));
                 }
                 else {
-                    EmitError(CurrentLocation(), "expected 'func' or variable declaration in extern block");
+                    EmitError(CurrentLocation(),
+                              "expected 'func' or variable declaration in "
+                              "extern block");
                     Recover();
                 }
             }
@@ -798,7 +872,8 @@ namespace Rux {
             decl->isPublic = isPublic;
             decl->dll = std::move(attrs.importLib);
             decl->callConv = attrs.callConv;
-            decl->name = Expect(TokenKind::Ident, "expected function name").text;
+            decl->name =
+                Expect(TokenKind::Ident, "expected function name").text;
 
             Expect(TokenKind::LeftParen, "expected '('");
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
@@ -837,7 +912,8 @@ namespace Rux {
 
         // Pointer: *T  or  *const T
         if (Match(TokenKind::Star)) {
-            Match(TokenKind::ConstKeyword); // consume optional 'const' qualifier
+            Match(
+                TokenKind::ConstKeyword); // consume optional 'const' qualifier
             auto p = std::make_unique<PointerTypeExpr>();
             p->location = loc;
             p->pointee = ParseType();
@@ -892,7 +968,8 @@ namespace Rux {
                 p->location = loc;
                 p->segments.push_back(first);
                 while (Match(TokenKind::ColonColon)) {
-                    p->segments.push_back(Expect(TokenKind::Ident, "expected type name").text);
+                    p->segments.push_back(
+                        Expect(TokenKind::Ident, "expected type name").text);
                 }
                 return p;
             }
@@ -930,16 +1007,19 @@ namespace Rux {
     StmtPtr Parser::ParseStmt() {
         const auto loc = CurrentLocation();
 
-        if (Check(TokenKind::LetKeyword) || Check(TokenKind::VarKeyword)) return ParseLetStmt();
+        if (Check(TokenKind::LetKeyword) || Check(TokenKind::VarKeyword))
+            return ParseLetStmt();
         if (Check(TokenKind::IfKeyword)) return ParseIfStmt();
         // Optional loop label: `ident ':' loop-keyword`
         std::string loopLabel;
         if (Check(TokenKind::Ident) && Peek(1).kind == TokenKind::Colon) {
             const TokenKind ahead = Peek(2).kind;
-            if (ahead == TokenKind::WhileKeyword || ahead == TokenKind::DoKeyword || ahead == TokenKind::LoopKeyword ||
+            if (ahead == TokenKind::WhileKeyword ||
+                ahead == TokenKind::DoKeyword ||
+                ahead == TokenKind::LoopKeyword ||
                 ahead == TokenKind::ForKeyword) {
                 loopLabel = Advance().text; // consume label name
-                Advance(); // consume ':'
+                Advance();                  // consume ':'
             }
         }
         if (Check(TokenKind::WhileKeyword)) {
@@ -1033,7 +1113,9 @@ namespace Rux {
         }
         else {
             s->pattern = ParsePattern();
-            if (!s->pattern) EmitError(CurrentLocation(), "expected variable name or destructuring pattern");
+            if (!s->pattern)
+                EmitError(CurrentLocation(),
+                          "expected variable name or destructuring pattern");
         }
 
         if (Match(TokenKind::Colon)) s->type = ParseType();
@@ -1059,7 +1141,8 @@ namespace Rux {
         structInitAllowed = true;
         s->thenBlock = ParseBlock();
 
-        while (Check(TokenKind::ElseKeyword) && Peek(1).Is(TokenKind::IfKeyword)) {
+        while (Check(TokenKind::ElseKeyword) &&
+               Peek(1).Is(TokenKind::IfKeyword)) {
             IfStmt::ElseIf elif;
             elif.location = CurrentLocation();
             Advance(); // consume 'else'
@@ -1160,7 +1243,8 @@ namespace Rux {
             s->arms.push_back(std::move(arm));
             if (Match(TokenKind::Comma)) {
                 if (Check(TokenKind::RightBrace))
-                    EmitError(Previous().location, "trailing comma is not allowed in match blocks");
+                    EmitError(Previous().location,
+                              "trailing comma is not allowed in match blocks");
             }
             else {
                 break;
@@ -1227,13 +1311,16 @@ namespace Rux {
         auto left = ParseTernary();
         if (!left) return nullptr;
 
-        if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
+        if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) ||
+            Check(TokenKind::DotDotEqual)) {
             // Leave bare `expr...` for ParseArgList to handle as a spread
             if (Peek().kind == TokenKind::DotDotDot) {
                 const TokenKind next = Peek(1).kind;
-                if (next == TokenKind::RightParen || next == TokenKind::Comma) return left;
+                if (next == TokenKind::RightParen || next == TokenKind::Comma)
+                    return left;
             }
-            const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
+            const bool incl = Peek().kind == TokenKind::DotDotDot ||
+                Peek().kind == TokenKind::DotDotEqual;
             const auto loc = CurrentLocation();
             Advance();
             auto right = ParseTernary();
@@ -1364,7 +1451,10 @@ namespace Rux {
 
     ExprPtr Parser::ParseComparison() {
         auto left = ParseShift();
-        while (CheckAny({TokenKind::Less, TokenKind::LessEqual, TokenKind::Greater, TokenKind::GreaterEqual})) {
+        while (CheckAny({TokenKind::Less,
+                         TokenKind::LessEqual,
+                         TokenKind::Greater,
+                         TokenKind::GreaterEqual})) {
             const auto loc = CurrentLocation();
             const auto op = Advance().kind;
             auto right = ParseShift();
@@ -1437,7 +1527,8 @@ namespace Rux {
 
     ExprPtr Parser::ParseMul() {
         auto left = ParseExp();
-        while (CheckAny({TokenKind::Star, TokenKind::Slash, TokenKind::Percent})) {
+        while (
+            CheckAny({TokenKind::Star, TokenKind::Slash, TokenKind::Percent})) {
             const auto loc = CurrentLocation();
             const auto op = Advance().kind;
             auto right = ParseExp();
@@ -1506,9 +1597,12 @@ namespace Rux {
                 if (Check(TokenKind::IntLiteral))
                     name = Advance().text;
                 else
-                    name = Expect(TokenKind::Ident, "expected field name or tuple index").text;
+                    name = Expect(TokenKind::Ident,
+                                  "expected field name or tuple index")
+                               .text;
 
-                if (Check(TokenKind::LeftParen) && !name.empty() && !std::isdigit(name[0])) {
+                if (Check(TokenKind::LeftParen) && !name.empty() &&
+                    !std::isdigit(name[0])) {
                     // Method call: expr.method(args)
                     auto args = ParseArgList();
                     // Desugar to CallExpr with FieldExpr callee
@@ -1533,17 +1627,19 @@ namespace Rux {
             }
             // Qualified path: expr::member
             if (Match(TokenKind::ColonColon)) {
-                const std::string seg = Expect(TokenKind::Ident, "expected identifier").text;
+                const std::string seg =
+                    Expect(TokenKind::Ident, "expected identifier").text;
                 // Build or extend a PathExpr
                 if (auto* path = dynamic_cast<PathExpr*>(left.get())) {
                     path->segments.push_back(seg);
                 }
                 else {
-                    // Wrap existing expression in a path — treat the left side as a segment
-                    // This handles IDENT::IDENT::... chains
+                    // Wrap existing expression in a path — treat the left side
+                    // as a segment This handles IDENT::IDENT::... chains
                     auto p = std::make_unique<PathExpr>();
                     p->location = loc;
-                    if (auto* ident = dynamic_cast<IdentExpr*>(left.get())) p->segments.push_back(ident->name);
+                    if (auto* ident = dynamic_cast<IdentExpr*>(left.get()))
+                        p->segments.push_back(ident->name);
                     p->segments.push_back(seg);
                     left = std::move(p);
                 }
@@ -1551,7 +1647,8 @@ namespace Rux {
             }
             // Qualified initializer: Enum::Variant { field: value, ... }
             if (structInitAllowed && Check(TokenKind::LeftBrace)) {
-                if (const auto* path = dynamic_cast<const PathExpr*>(left.get())) {
+                if (const auto* path =
+                        dynamic_cast<const PathExpr*>(left.get())) {
                     auto e = std::make_unique<StructInitExpr>();
                     e->location = loc;
                     for (std::size_t i = 0; i < path->segments.size(); ++i) {
@@ -1562,7 +1659,9 @@ namespace Rux {
                     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                         StructInitExpr::Field field;
                         field.location = CurrentLocation();
-                        field.name = Expect(TokenKind::Ident, "expected field name").text;
+                        field.name =
+                            Expect(TokenKind::Ident, "expected field name")
+                                .text;
                         Expect(TokenKind::Colon, "expected ':'");
                         field.value = ParseExpr();
                         e->fields.push_back(std::move(field));
@@ -1639,7 +1738,9 @@ namespace Rux {
                 e->arms.push_back(std::move(arm));
                 if (Match(TokenKind::Comma)) {
                     if (Check(TokenKind::RightBrace))
-                        EmitError(Previous().location, "trailing comma is not allowed in match blocks");
+                        EmitError(
+                            Previous().location,
+                            "trailing comma is not allowed in match blocks");
                 }
                 else {
                     break;
@@ -1650,8 +1751,9 @@ namespace Rux {
         }
 
         // Literals
-        if (Check(TokenKind::IntLiteral) || Check(TokenKind::FloatLiteral) || Check(TokenKind::StringLiteral) ||
-            Check(TokenKind::CharLiteral) || Check(TokenKind::BoolLiteral)) {
+        if (Check(TokenKind::IntLiteral) || Check(TokenKind::FloatLiteral) ||
+            Check(TokenKind::StringLiteral) || Check(TokenKind::CharLiteral) ||
+            Check(TokenKind::BoolLiteral)) {
             auto e = std::make_unique<LiteralExpr>();
             e->location = loc;
             e->token = Advance();
@@ -1680,7 +1782,8 @@ namespace Rux {
             Expect(TokenKind::RightParen, "expected ')' after sizeof type");
             return e;
         }
-        // Compile-time intrinsics: #line, #column, #file, #function, #date, #time
+        // Compile-time intrinsics: #line, #column, #file, #function, #date,
+        // #time
         {
             using K = IntrinsicExpr::Kind;
             static constexpr std::pair<TokenKind, K> intrinsics[] = {
@@ -1747,7 +1850,8 @@ namespace Rux {
                 while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                     StructInitExpr::Field field;
                     field.location = CurrentLocation();
-                    field.name = Expect(TokenKind::Ident, "expected field name").text;
+                    field.name =
+                        Expect(TokenKind::Ident, "expected field name").text;
                     Expect(TokenKind::Colon, "expected ':'");
                     field.value = ParseExpr();
                     e->fields.push_back(std::move(field));
@@ -1761,7 +1865,9 @@ namespace Rux {
             e->name = name;
             return e;
         }
-        EmitError(loc, std::format("unexpected token '{}' in expression", Peek().text));
+        EmitError(
+            loc,
+            std::format("unexpected token '{}' in expression", Peek().text));
         return nullptr;
     }
 
@@ -1803,8 +1909,10 @@ namespace Rux {
         }
 
         // Range pattern: lo..hi or lo...hi or lo..=hi
-        if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
-            const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
+        if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) ||
+            Check(TokenKind::DotDotEqual)) {
+            const bool incl = Peek().kind == TokenKind::DotDotDot ||
+                Peek().kind == TokenKind::DotDotEqual;
             const auto loc = CurrentLocation();
             Advance();
             auto hi = ParsePrimaryPattern();
@@ -1831,8 +1939,9 @@ namespace Rux {
         }
 
         // Literals
-        if (Check(TokenKind::IntLiteral) || Check(TokenKind::FloatLiteral) || Check(TokenKind::StringLiteral) ||
-            Check(TokenKind::CharLiteral) || Check(TokenKind::BoolLiteral) || Check(TokenKind::NullKeyword)) {
+        if (Check(TokenKind::IntLiteral) || Check(TokenKind::FloatLiteral) ||
+            Check(TokenKind::StringLiteral) || Check(TokenKind::CharLiteral) ||
+            Check(TokenKind::BoolLiteral) || Check(TokenKind::NullKeyword)) {
             auto p = std::make_unique<LiteralPattern>();
             p->location = loc;
             p->value = Advance();
@@ -1862,7 +1971,8 @@ namespace Rux {
             return p;
         }
 
-        // Identifier-started patterns: ident, EnumName::Variant(args), TypeName { fields }
+        // Identifier-started patterns: ident, EnumName::Variant(args), TypeName
+        // { fields }
         if (Check(TokenKind::Ident)) {
             const std::string name = Advance().text;
 
@@ -1870,7 +1980,8 @@ namespace Rux {
             if (Check(TokenKind::ColonColon) && Peek(1).Is(TokenKind::Ident)) {
                 std::vector<std::string> path = {name};
                 while (Match(TokenKind::ColonColon)) {
-                    path.push_back(Expect(TokenKind::Ident, "expected variant name").text);
+                    path.push_back(
+                        Expect(TokenKind::Ident, "expected variant name").text);
                 }
                 auto p = std::make_unique<EnumPattern>();
                 p->location = loc;
@@ -1886,7 +1997,9 @@ namespace Rux {
                     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                         EnumPattern::NamedArg arg;
                         arg.location = CurrentLocation();
-                        arg.name = Expect(TokenKind::Ident, "expected variant field name").text;
+                        arg.name = Expect(TokenKind::Ident,
+                                          "expected variant field name")
+                                       .text;
                         if (Match(TokenKind::Colon)) {
                             arg.pattern = ParsePattern();
                         }
@@ -1913,7 +2026,8 @@ namespace Rux {
                 while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                     StructPattern::Field f;
                     f.location = CurrentLocation();
-                    f.name = Expect(TokenKind::Ident, "expected field name").text;
+                    f.name =
+                        Expect(TokenKind::Ident, "expected field name").text;
                     Expect(TokenKind::Colon, "expected ':'");
                     f.pattern = ParsePattern();
                     p->fields.push_back(std::move(f));
@@ -1930,7 +2044,8 @@ namespace Rux {
             return p;
         }
 
-        EmitError(loc, std::format("expected a pattern, got '{}'", Peek().text));
+        EmitError(loc,
+                  std::format("expected a pattern, got '{}'", Peek().text));
         return nullptr;
     }
 
@@ -1984,10 +2099,12 @@ namespace Rux {
                 }
                 if (const auto* a = dynamic_cast<const SliceTypeExpr*>(t)) {
                     std::string s = TypeStr(a->element.get()) + "[";
-                    if (a->size) s += "N"; // size is an Expr, not easily stringified
+                    if (a->size)
+                        s += "N"; // size is an Expr, not easily stringified
                     return s + "]";
                 }
-                if (const auto* ptr = dynamic_cast<const PointerTypeExpr*>(t)) return "*" + TypeStr(ptr->pointee.get());
+                if (const auto* ptr = dynamic_cast<const PointerTypeExpr*>(t))
+                    return "*" + TypeStr(ptr->pointee.get());
                 if (const auto* tup = dynamic_cast<const TupleTypeExpr*>(t)) {
                     std::string s = "(";
                     for (std::size_t i = 0; i < tup->elements.size(); ++i) {
@@ -2076,27 +2193,35 @@ namespace Rux {
             void PrintDecl(const Decl& decl) {
                 if (const auto* fn = dynamic_cast<const FuncDecl*>(&decl))
                     PrintFuncDecl(*fn);
-                else if (const auto* st = dynamic_cast<const StructDecl*>(&decl))
+                else if (const auto* st =
+                             dynamic_cast<const StructDecl*>(&decl))
                     PrintStructDecl(*st);
                 else if (const auto* en = dynamic_cast<const EnumDecl*>(&decl))
                     PrintEnumDecl(*en);
                 else if (const auto* un = dynamic_cast<const UnionDecl*>(&decl))
                     PrintUnionDecl(*un);
-                else if (const auto* iface = dynamic_cast<const InterfaceDecl*>(&decl))
+                else if (const auto* iface =
+                             dynamic_cast<const InterfaceDecl*>(&decl))
                     PrintInterfaceDecl(*iface);
-                else if (const auto* impl = dynamic_cast<const ImplDecl*>(&decl))
+                else if (const auto* impl =
+                             dynamic_cast<const ImplDecl*>(&decl))
                     PrintImplDecl(*impl);
-                else if (const auto* mod = dynamic_cast<const ModuleDecl*>(&decl))
+                else if (const auto* mod =
+                             dynamic_cast<const ModuleDecl*>(&decl))
                     PrintModuleDecl(*mod);
                 else if (const auto* use = dynamic_cast<const UseDecl*>(&decl))
                     PrintUseDecl(*use);
-                else if (const auto* cnst = dynamic_cast<const ConstDecl*>(&decl))
+                else if (const auto* cnst =
+                             dynamic_cast<const ConstDecl*>(&decl))
                     PrintConstDecl(*cnst);
-                else if (const auto* alias = dynamic_cast<const TypeAliasDecl*>(&decl))
+                else if (const auto* alias =
+                             dynamic_cast<const TypeAliasDecl*>(&decl))
                     PrintTypeAliasDecl(*alias);
-                else if (const auto* extFn = dynamic_cast<const ExternFuncDecl*>(&decl))
+                else if (const auto* extFn =
+                             dynamic_cast<const ExternFuncDecl*>(&decl))
                     PrintExternFuncDecl(*extFn);
-                else if (const auto* extVar = dynamic_cast<const ExternVarDecl*>(&decl))
+                else if (const auto* extVar =
+                             dynamic_cast<const ExternVarDecl*>(&decl))
                     PrintExternVarDecl(*extVar);
             }
 
@@ -2153,7 +2278,8 @@ namespace Rux {
                 for (const auto& f : s.fields) {
                     Pad();
                     if (f.isPublic) out << "pub ";
-                    out << "Field '" << f.name << "' : " << TypeStr(f.type.get()) << '\n';
+                    out << "Field '" << f.name
+                        << "' : " << TypeStr(f.type.get()) << '\n';
                 }
                 --indent;
             }
@@ -2180,7 +2306,8 @@ namespace Rux {
                         out << " { ";
                         for (std::size_t i = 0; i < v.namedFields.size(); ++i) {
                             if (i) out << " ";
-                            out << v.namedFields[i].name << ": " << TypeStr(v.namedFields[i].type.get()) << ";";
+                            out << v.namedFields[i].name << ": "
+                                << TypeStr(v.namedFields[i].type.get()) << ";";
                         }
                         out << " }";
                     }
@@ -2197,7 +2324,8 @@ namespace Rux {
                 ++indent;
                 for (const auto& f : u.fields) {
                     Pad();
-                    out << "Field '" << f.name << "' : " << TypeStr(f.type.get()) << '\n';
+                    out << "Field '" << f.name
+                        << "' : " << TypeStr(f.type.get()) << '\n';
                 }
                 --indent;
             }
@@ -2235,7 +2363,8 @@ namespace Rux {
 
             void PrintUseDecl(const UseDecl& u) const {
                 Pad();
-                if (!u.targetOs.empty()) out << "@[Target(\"" << u.targetOs << "\")]\n";
+                if (!u.targetOs.empty())
+                    out << "@[Target(\"" << u.targetOs << "\")]\n";
                 Pad();
                 out << "ImportDecl '";
                 for (std::size_t i = 0; i < u.path.size(); ++i) {
@@ -2275,7 +2404,8 @@ namespace Rux {
             void PrintTypeAliasDecl(const TypeAliasDecl& t) const {
                 Pad();
                 if (t.isPublic) out << "pub ";
-                out << "TypeAliasDecl '" << t.name << "' = " << TypeStr(t.type.get()) << '\n';
+                out << "TypeAliasDecl '" << t.name
+                    << "' = " << TypeStr(t.type.get()) << '\n';
             }
 
             void PrintExternFuncDecl(const ExternFuncDecl& f) const {
@@ -2292,7 +2422,8 @@ namespace Rux {
                 out << "ExternFuncDecl '" << f.name << "' (";
                 for (std::size_t i = 0; i < f.params.size(); ++i) {
                     if (i) out << ", ";
-                    out << f.params[i].name << ": " << TypeStr(f.params[i].type.get());
+                    out << f.params[i].name << ": "
+                        << TypeStr(f.params[i].type.get());
                 }
                 if (f.isVariadic) out << (f.params.empty() ? "..." : ", ...");
                 out << ')';
@@ -2303,13 +2434,15 @@ namespace Rux {
             void PrintExternVarDecl(const ExternVarDecl& v) const {
                 Pad();
                 if (v.isPublic) out << "pub ";
-                out << "ExternVarDecl '" << v.name << "' : " << TypeStr(v.type.get()) << '\n';
+                out << "ExternVarDecl '" << v.name
+                    << "' : " << TypeStr(v.type.get()) << '\n';
             }
 
             // Block
             void PrintBlock(const Block& block) {
                 Pad();
-                out << "Block [" << block.stmts.size() << " stmt" << (block.stmts.size() == 1 ? "" : "s") << "]\n";
+                out << "Block [" << block.stmts.size() << " stmt"
+                    << (block.stmts.size() == 1 ? "" : "s") << "]\n";
                 ++indent;
                 for (const auto& stmt : block.stmts)
                     if (stmt) PrintStmt(*stmt);
@@ -2320,15 +2453,20 @@ namespace Rux {
             void PrintStmt(const Stmt& stmt) {
                 if (const auto* let = dynamic_cast<const LetStmt*>(&stmt))
                     PrintLetStmt(*let);
-                else if (const auto* ifStmt = dynamic_cast<const IfStmt*>(&stmt))
+                else if (const auto* ifStmt =
+                             dynamic_cast<const IfStmt*>(&stmt))
                     PrintIfStmt(*ifStmt);
-                else if (const auto* whileStmt = dynamic_cast<const WhileStmt*>(&stmt))
+                else if (const auto* whileStmt =
+                             dynamic_cast<const WhileStmt*>(&stmt))
                     PrintWhileStmt(*whileStmt);
-                else if (const auto* forStmt = dynamic_cast<const ForStmt*>(&stmt))
+                else if (const auto* forStmt =
+                             dynamic_cast<const ForStmt*>(&stmt))
                     PrintForStmt(*forStmt);
-                else if (const auto* matchStmt = dynamic_cast<const MatchStmt*>(&stmt))
+                else if (const auto* matchStmt =
+                             dynamic_cast<const MatchStmt*>(&stmt))
                     PrintMatchStmt(*matchStmt);
-                else if (const auto* ret = dynamic_cast<const ReturnStmt*>(&stmt))
+                else if (const auto* ret =
+                             dynamic_cast<const ReturnStmt*>(&stmt))
                     PrintReturnStmt(*ret);
                 else if (dynamic_cast<const BreakStmt*>(&stmt)) {
                     Pad();
@@ -2338,14 +2476,16 @@ namespace Rux {
                     Pad();
                     out << "ContinueStmt\n";
                 }
-                else if (const auto* exprStmt = dynamic_cast<const ExprStmt*>(&stmt)) {
+                else if (const auto* exprStmt =
+                             dynamic_cast<const ExprStmt*>(&stmt)) {
                     Pad();
                     out << "ExprStmt\n";
                     ++indent;
                     if (exprStmt->expr) PrintExpr(*exprStmt->expr);
                     --indent;
                 }
-                else if (const auto* declStmt = dynamic_cast<const DeclStmt*>(&stmt)) {
+                else if (const auto* declStmt =
+                             dynamic_cast<const DeclStmt*>(&stmt)) {
                     if (declStmt->decl) PrintDecl(*declStmt->decl);
                 }
             }
@@ -2460,44 +2600,60 @@ namespace Rux {
 
             // Expressions
             void PrintExpr(const Expr& expr) {
-                if (const auto* litExpr = dynamic_cast<const LiteralExpr*>(&expr))
+                if (const auto* litExpr =
+                        dynamic_cast<const LiteralExpr*>(&expr))
                     PrintLiteralExpr(*litExpr);
-                else if (const auto* identExpr = dynamic_cast<const IdentExpr*>(&expr)) {
+                else if (const auto* identExpr =
+                             dynamic_cast<const IdentExpr*>(&expr)) {
                     Pad();
                     out << "IdentExpr '" << identExpr->name << "'\n";
                 }
-                else if (const auto* selExpr = dynamic_cast<const SelfExpr*>(&expr)) {
+                else if (const auto* selExpr =
+                             dynamic_cast<const SelfExpr*>(&expr)) {
                     (void)selExpr;
                     Pad();
                     out << "SelfExpr\n";
                 }
-                else if (const auto* pathExpr = dynamic_cast<const PathExpr*>(&expr)) {
+                else if (const auto* pathExpr =
+                             dynamic_cast<const PathExpr*>(&expr)) {
                     Pad();
                     out << "PathExpr '";
-                    for (std::size_t i = 0; i < pathExpr->segments.size(); ++i) {
+                    for (std::size_t i = 0; i < pathExpr->segments.size();
+                         ++i) {
                         if (i) out << "::";
                         out << pathExpr->segments[i];
                     }
                     out << "'\n";
                 }
-                else if (const auto* sizeOfExpr = dynamic_cast<const SizeOfExpr*>(&expr)) {
+                else if (const auto* sizeOfExpr =
+                             dynamic_cast<const SizeOfExpr*>(&expr)) {
                     Pad();
-                    out << "SizeOfExpr " << TypeStr(sizeOfExpr->type.get()) << '\n';
+                    out << "SizeOfExpr " << TypeStr(sizeOfExpr->type.get())
+                        << '\n';
                 }
-                else if (const auto* intr = dynamic_cast<const IntrinsicExpr*>(&expr)) {
-                    static constexpr const char* names[] = {
-                        "#line", "#column", "#file", "#function", "#date", "#time", "#module"};
+                else if (const auto* intr =
+                             dynamic_cast<const IntrinsicExpr*>(&expr)) {
+                    static constexpr const char* names[] = {"#line",
+                                                            "#column",
+                                                            "#file",
+                                                            "#function",
+                                                            "#date",
+                                                            "#time",
+                                                            "#module"};
                     Pad();
-                    out << "IntrinsicExpr " << names[static_cast<int>(intr->kind)] << '\n';
+                    out << "IntrinsicExpr "
+                        << names[static_cast<int>(intr->kind)] << '\n';
                 }
-                else if (const auto* unaryExpr = dynamic_cast<const UnaryExpr*>(&expr)) {
+                else if (const auto* unaryExpr =
+                             dynamic_cast<const UnaryExpr*>(&expr)) {
                     Pad();
                     out << "UnaryExpr " << OpStr(unaryExpr->op) << '\n';
                     ++indent;
                     if (unaryExpr->operand) PrintExpr(*unaryExpr->operand);
                     --indent;
                 }
-                else if (const auto* binaryExpr = dynamic_cast<const BinaryExpr*>(&expr)) {
+                else if (const auto* binaryExpr =
+                             dynamic_cast<const BinaryExpr*>(&expr)) {
                     Pad();
                     out << "BinaryExpr " << OpStr(binaryExpr->op) << '\n';
                     ++indent;
@@ -2505,7 +2661,8 @@ namespace Rux {
                     if (binaryExpr->right) PrintExpr(*binaryExpr->right);
                     --indent;
                 }
-                else if (const auto* assignExpr = dynamic_cast<const AssignExpr*>(&expr)) {
+                else if (const auto* assignExpr =
+                             dynamic_cast<const AssignExpr*>(&expr)) {
                     Pad();
                     out << "AssignExpr " << OpStr(assignExpr->op) << '\n';
                     ++indent;
@@ -2513,7 +2670,8 @@ namespace Rux {
                     if (assignExpr->value) PrintExpr(*assignExpr->value);
                     --indent;
                 }
-                else if (const auto* tern = dynamic_cast<const TernaryExpr*>(&expr)) {
+                else if (const auto* tern =
+                             dynamic_cast<const TernaryExpr*>(&expr)) {
                     Pad();
                     out << "TernaryExpr\n";
                     ++indent;
@@ -2534,15 +2692,18 @@ namespace Rux {
                     --indent;
                     --indent;
                 }
-                else if (const auto* rng = dynamic_cast<const RangeExpr*>(&expr)) {
+                else if (const auto* rng =
+                             dynamic_cast<const RangeExpr*>(&expr)) {
                     Pad();
-                    out << "RangeExpr " << (rng->inclusive ? "..." : "..") << '\n';
+                    out << "RangeExpr " << (rng->inclusive ? "..." : "..")
+                        << '\n';
                     ++indent;
                     if (rng->lo) PrintExpr(*rng->lo);
                     if (rng->hi) PrintExpr(*rng->hi);
                     --indent;
                 }
-                else if (const auto* call = dynamic_cast<const CallExpr*>(&expr)) {
+                else if (const auto* call =
+                             dynamic_cast<const CallExpr*>(&expr)) {
                     Pad();
                     out << "CallExpr\n";
                     ++indent;
@@ -2561,7 +2722,8 @@ namespace Rux {
                     }
                     --indent;
                 }
-                else if (const auto* index = dynamic_cast<const IndexExpr*>(&expr)) {
+                else if (const auto* index =
+                             dynamic_cast<const IndexExpr*>(&expr)) {
                     Pad();
                     out << "IndexExpr\n";
                     ++indent;
@@ -2569,19 +2731,23 @@ namespace Rux {
                     if (index->index) PrintExpr(*index->index);
                     --indent;
                 }
-                else if (const auto* fieldExpr = dynamic_cast<const FieldExpr*>(&expr)) {
+                else if (const auto* fieldExpr =
+                             dynamic_cast<const FieldExpr*>(&expr)) {
                     Pad();
                     out << "FieldExpr '." << fieldExpr->field << "'\n";
                     ++indent;
                     if (fieldExpr->object) PrintExpr(*fieldExpr->object);
                     --indent;
                 }
-                else if (const auto* structInitExpr = dynamic_cast<const StructInitExpr*>(&expr)) {
+                else if (const auto* structInitExpr =
+                             dynamic_cast<const StructInitExpr*>(&expr)) {
                     Pad();
                     out << "StructInitExpr '" << structInitExpr->typeName;
                     if (!structInitExpr->typeArgs.empty()) {
                         out << "<";
-                        for (std::size_t i = 0; i < structInitExpr->typeArgs.size(); ++i) {
+                        for (std::size_t i = 0;
+                             i < structInitExpr->typeArgs.size();
+                             ++i) {
                             if (i) out << ", ";
                             out << TypeStr(structInitExpr->typeArgs[i].get());
                         }
@@ -2598,7 +2764,8 @@ namespace Rux {
                     }
                     --indent;
                 }
-                else if (const auto* sliceExpr = dynamic_cast<const SliceExpr*>(&expr)) {
+                else if (const auto* sliceExpr =
+                             dynamic_cast<const SliceExpr*>(&expr)) {
                     Pad();
                     out << "SliceExpr [" << sliceExpr->elements.size() << "]\n";
                     ++indent;
@@ -2606,24 +2773,29 @@ namespace Rux {
                         if (e) PrintExpr(*e);
                     --indent;
                 }
-                else if (const auto* castExpr = dynamic_cast<const CastExpr*>(&expr)) {
+                else if (const auto* castExpr =
+                             dynamic_cast<const CastExpr*>(&expr)) {
                     Pad();
-                    out << "CastExpr as " << TypeStr(castExpr->type.get()) << '\n';
+                    out << "CastExpr as " << TypeStr(castExpr->type.get())
+                        << '\n';
                     ++indent;
                     if (castExpr->operand) PrintExpr(*castExpr->operand);
                     --indent;
                 }
-                else if (const auto* isExpr = dynamic_cast<const IsExpr*>(&expr)) {
+                else if (const auto* isExpr =
+                             dynamic_cast<const IsExpr*>(&expr)) {
                     Pad();
                     out << "IsExpr is " << TypeStr(isExpr->type.get()) << '\n';
                     ++indent;
                     if (isExpr->operand) PrintExpr(*isExpr->operand);
                     --indent;
                 }
-                else if (const auto* blockExpr = dynamic_cast<const BlockExpr*>(&expr)) {
+                else if (const auto* blockExpr =
+                             dynamic_cast<const BlockExpr*>(&expr)) {
                     if (blockExpr->block) PrintBlock(*blockExpr->block);
                 }
-                else if (const auto* matchExpr = dynamic_cast<const MatchExpr*>(&expr)) {
+                else if (const auto* matchExpr =
+                             dynamic_cast<const MatchExpr*>(&expr)) {
                     Pad();
                     out << "MatchExpr\n";
                     ++indent;
@@ -2675,23 +2847,28 @@ namespace Rux {
                     Pad();
                     out << "WildcardPattern\n";
                 }
-                else if (const auto* litPat = dynamic_cast<const LiteralPattern*>(&pat)) {
+                else if (const auto* litPat =
+                             dynamic_cast<const LiteralPattern*>(&pat)) {
                     Pad();
                     out << "LiteralPattern '" << litPat->value.text << "'\n";
                 }
-                else if (const auto* idPat = dynamic_cast<const IdentPattern*>(&pat)) {
+                else if (const auto* idPat =
+                             dynamic_cast<const IdentPattern*>(&pat)) {
                     Pad();
                     out << "IdentPattern '" << idPat->name << "'\n";
                 }
-                else if (const auto* rngPat = dynamic_cast<const RangePattern*>(&pat)) {
+                else if (const auto* rngPat =
+                             dynamic_cast<const RangePattern*>(&pat)) {
                     Pad();
-                    out << "RangePattern " << (rngPat->inclusive ? "..." : "..") << '\n';
+                    out << "RangePattern " << (rngPat->inclusive ? "..." : "..")
+                        << '\n';
                     ++indent;
                     if (rngPat->lo) PrintPattern(*rngPat->lo);
                     if (rngPat->hi) PrintPattern(*rngPat->hi);
                     --indent;
                 }
-                else if (const auto* enumPat = dynamic_cast<const EnumPattern*>(&pat)) {
+                else if (const auto* enumPat =
+                             dynamic_cast<const EnumPattern*>(&pat)) {
                     Pad();
                     out << "EnumPattern '";
                     for (std::size_t i = 0; i < enumPat->path.size(); ++i) {
@@ -2699,8 +2876,10 @@ namespace Rux {
                         out << enumPat->path[i];
                     }
                     out << "'";
-                    if (!enumPat->args.empty()) out << " [" << enumPat->args.size() << " bindings]";
-                    if (!enumPat->namedArgs.empty()) out << " [" << enumPat->namedArgs.size() << " fields]";
+                    if (!enumPat->args.empty())
+                        out << " [" << enumPat->args.size() << " bindings]";
+                    if (!enumPat->namedArgs.empty())
+                        out << " [" << enumPat->namedArgs.size() << " fields]";
                     out << '\n';
                     if (!enumPat->args.empty() || !enumPat->namedArgs.empty()) {
                         ++indent;
@@ -2716,7 +2895,8 @@ namespace Rux {
                         --indent;
                     }
                 }
-                else if (const auto* structPat = dynamic_cast<const StructPattern*>(&pat)) {
+                else if (const auto* structPat =
+                             dynamic_cast<const StructPattern*>(&pat)) {
                     Pad();
                     out << "StructPattern '" << structPat->typeName << "'\n";
                     ++indent;
@@ -2729,15 +2909,18 @@ namespace Rux {
                     }
                     --indent;
                 }
-                else if (const auto* tuplePat = dynamic_cast<const TuplePattern*>(&pat)) {
+                else if (const auto* tuplePat =
+                             dynamic_cast<const TuplePattern*>(&pat)) {
                     Pad();
-                    out << "TuplePattern [" << tuplePat->elements.size() << "]\n";
+                    out << "TuplePattern [" << tuplePat->elements.size()
+                        << "]\n";
                     ++indent;
                     for (const auto& e : tuplePat->elements)
                         if (e) PrintPattern(*e);
                     --indent;
                 }
-                else if (const auto* guardedPat = dynamic_cast<const GuardedPattern*>(&pat)) {
+                else if (const auto* guardedPat =
+                             dynamic_cast<const GuardedPattern*>(&pat)) {
                     Pad();
                     out << "GuardedPattern\n";
                     ++indent;
@@ -2753,7 +2936,8 @@ namespace Rux {
         };
     } // namespace
 
-    bool Parser::DumpAst(const ParseResult& result, const std::filesystem::path& path) {
+    bool Parser::DumpAst(const ParseResult& result,
+                         const std::filesystem::path& path) {
         std::ofstream f(path);
         if (!f) return false;
         AstPrinter printer(f);
@@ -2764,7 +2948,9 @@ namespace Rux {
                 f << std::format("{:>4}:{:<4}  {}  {}\n",
                                  d.location.line,
                                  d.location.column,
-                                 d.severity == ParserDiagnostic::Severity::Error ? "error  " : "warning",
+                                 d.severity == ParserDiagnostic::Severity::Error
+                                     ? "error  "
+                                     : "warning",
                                  d.message);
             }
         }
