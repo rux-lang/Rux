@@ -20,7 +20,7 @@ BraceWrapping:
   SplitEmptyNamespace: false
 BreakBeforeBraces: Custom
 BreakConstructorInitializers: BeforeComma
-ColumnLimit: 120
+ColumnLimit: 80
 Cpp11BracedListStyle: true
 IncludeBlocks: Regroup
 IncludeCategories:
