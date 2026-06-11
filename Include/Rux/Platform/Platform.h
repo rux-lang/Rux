@@ -7,7 +7,8 @@
 
 namespace Rux::Platform {
 
-    // Retrieves the CPU features, cache line size, and core counts of the executing machine.
+    // Retrieves the CPU features, cache line size, and core counts of the
+    // executing machine.
     [[nodiscard]] RuntimeCpuInfo GetRuntimeCpuInfo() noexcept;
 
     // Retrieves the available and total RAM of the host machine.
