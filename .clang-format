@@ -21,7 +21,6 @@ BraceWrapping:
 BreakBeforeBraces: Custom
 BreakConstructorInitializers: BeforeComma
 BreakTemplateDeclarations: Yes
-CompactNamespaces: true
 EnumTrailingComma: Insert
 IncludeBlocks: Regroup
 IncludeCategories:
