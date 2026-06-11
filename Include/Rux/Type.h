@@ -256,7 +256,7 @@ namespace Rux {
 
         [[nodiscard]] bool IsBool() const noexcept {
             return kind == Kind::Bool8 || kind == Kind::Bool16 ||
-                kind == Kind::Bool32;
+                   kind == Kind::Bool32;
         }
 
         [[nodiscard]] bool IsNumeric() const noexcept;

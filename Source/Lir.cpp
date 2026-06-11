@@ -401,20 +401,20 @@ namespace Rux {
 
         [[nodiscard]] bool IsInterfaceType(const TypeRef& t) const {
             return t.kind == TypeRef::Kind::Named &&
-                interfacesByName.contains(t.name);
+                   interfacesByName.contains(t.name);
         }
 
         static bool IsSliceType(const TypeRef& type) {
             return type.kind == TypeRef::Kind::Slice ||
-                (type.kind == TypeRef::Kind::Named &&
-                 type.name.starts_with("Slice<"));
+                   (type.kind == TypeRef::Kind::Named &&
+                    type.name.starts_with("Slice<"));
         }
 
         static bool IsStringSliceLiteral(const HirLiteralExpr& e) {
             return e.type.kind == TypeRef::Kind::Named &&
-                (e.type.name == "Slice<char8>" ||
-                 e.type.name == "Slice<char16>" ||
-                 e.type.name == "Slice<char32>");
+                   (e.type.name == "Slice<char8>" ||
+                    e.type.name == "Slice<char16>" ||
+                    e.type.name == "Slice<char32>");
         }
 
         static TypeRef StringSliceElementType(const HirLiteralExpr& e) {
@@ -506,7 +506,7 @@ namespace Rux {
                     if (ifaceIt != interfacesByName.end()) {
                         LirVtable vt;
                         vt.label = "__vtable__" + impl.typeName + "__" +
-                            *impl.interfaceName;
+                                 *impl.interfaceName;
                         for (const auto& m : ifaceIt->second->methods)
                             vt.methods.push_back(impl.typeName + "::" + m.name);
                         lm.vtables.push_back(std::move(vt));
@@ -523,7 +523,7 @@ namespace Rux {
             if (auto* v = dynamic_cast<const HirVarExpr*>(&e)) return v->name;
             if (auto* b = dynamic_cast<const HirBinaryExpr*>(&e))
                 return PrintConstExpr(*b->left) + " op " +
-                    PrintConstExpr(*b->right);
+                       PrintConstExpr(*b->right);
             return "<const>";
         }
 
@@ -741,8 +741,8 @@ namespace Rux {
                 const std::uint32_t elifThen =
                     NewBlock(std::format("if.elif.then{}", i));
                 const std::uint32_t nextFall = (i + 1 < s.elseIfs.size())
-                    ? elifCondBlocks[i + 1]
-                    : elseBlock;
+                                                 ? elifCondBlocks[i + 1]
+                                                 : elseBlock;
                 Branch(elifCond, elifThen, nextFall);
                 SetBlock(elifThen);
                 LowerBlock(s.elseIfs[i].block);
@@ -826,8 +826,8 @@ namespace Rux {
             const bool isRange = s.iterable->type.IsRange();
             const TypeRef elemType =
                 (isRange && !s.iterable->type.inner.empty())
-                ? s.iterable->type.inner[0]
-                : s.varType;
+                    ? s.iterable->type.inner[0]
+                    : s.varType;
 
             LirReg slot = EmitAlloca(s.varType);
             locals[s.variable] = slot;
@@ -993,9 +993,9 @@ namespace Rux {
                 const bool isLast = (i + 1 == s.arms.size());
                 std::uint32_t bodyBlock =
                     NewBlock(std::format("match.arm{}", i));
-                std::uint32_t nextBlock = isLast
-                    ? mergeBlock
-                    : NewBlock(std::format("match.next{}", i));
+                std::uint32_t nextBlock =
+                    isLast ? mergeBlock
+                           : NewBlock(std::format("match.next{}", i));
                 LirReg matched = LowerPattern(
                     *arm.pattern, subjectVal, s.subject->type, subjectPayload);
                 Branch(matched, bodyBlock, nextBlock);
@@ -1249,8 +1249,8 @@ namespace Rux {
             }
             if (auto* e = dynamic_cast<const HirFieldExpr*>(&expr)) {
                 LirReg base = e->object->type.kind == TypeRef::Kind::Pointer
-                    ? LowerExpr(*e->object)
-                    : LowerLValue(*e->object);
+                                ? LowerExpr(*e->object)
+                                : LowerLValue(*e->object);
                 LirReg ptr = EmitFieldPtr(base, e->field, e->type);
                 return EmitLoad(ptr, e->type);
             }
@@ -1659,9 +1659,10 @@ namespace Rux {
                 const bool isLast = (i + 1 == e.arms.size());
                 const std::uint32_t bodyBlock =
                     NewBlock(std::format("match.expr.store.arm{}", i));
-                const std::uint32_t nextBlock = isLast
-                    ? mergeBlock
-                    : NewBlock(std::format("match.expr.store.next{}", i));
+                const std::uint32_t nextBlock =
+                    isLast
+                        ? mergeBlock
+                        : NewBlock(std::format("match.expr.store.next{}", i));
                 const LirReg matched = LowerPattern(
                     *arm.pattern, subjectVal, e.subject->type, subjectPayload);
                 Branch(matched, bodyBlock, nextBlock);
@@ -1965,8 +1966,8 @@ namespace Rux {
             }
             if (auto* e = dynamic_cast<const HirFieldExpr*>(&expr)) {
                 LirReg base = e->object->type.kind == TypeRef::Kind::Pointer
-                    ? LowerExpr(*e->object)
-                    : LowerLValue(*e->object);
+                                ? LowerExpr(*e->object)
+                                : LowerLValue(*e->object);
                 return EmitFieldPtr(base, e->field, e->type);
             }
 

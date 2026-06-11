@@ -170,14 +170,14 @@ namespace Rux::Misc {
             return FormatDecimal(tokensPerSecond / 1'000.0, 1) + " K tok/s";
         return FormatNumber(
                    static_cast<std::uintmax_t>(std::llround(tokensPerSecond))) +
-            " tok/s";
+               " tok/s";
     }
 
     inline std::string FormatSize(std::uintmax_t bytes) {
         const double kb = static_cast<double>(bytes) / 1024.0;
         if (kb < 1024.0)
             return FormatNumber(static_cast<std::uintmax_t>(std::llround(kb))) +
-                " KB";
+                   " KB";
 
         const double mb = kb / 1024.0;
         return FormatDecimal(mb, 2) + " MB";
@@ -254,7 +254,7 @@ namespace Rux::Misc {
     // specific import that should have been pruned; skip it gracefully.
     inline bool IsPlatformPackageName(const std::string_view name) {
         return name == "Windows" || name == "Linux" || name == "macOS" ||
-            name == "BSD" || name == "Illumos";
+               name == "BSD" || name == "Illumos";
     }
 
     inline bool PlatformPackageMatchesTarget(const std::string_view name,
@@ -306,7 +306,7 @@ namespace Rux::Misc {
             constexpr std::uintmax_t unitMultiplier =
                 (HostOS == OS::MacOS) ? 1ULL : 1024ULL;
             return static_cast<std::uintmax_t>(usage.ru_maxrss) *
-                unitMultiplier;
+                   unitMultiplier;
         }
 #endif
         return 0;
@@ -328,8 +328,9 @@ namespace Rux::Misc {
         const double compileSpeed =
             seconds > 0.0 ? static_cast<double>(totalLines) / seconds : 0.0;
         const double throughput = seconds > 0.0
-            ? static_cast<double>(totalSourceSize) / 1024.0 / 1024.0 / seconds
-            : 0.0;
+                                    ? static_cast<double>(totalSourceSize) /
+                                          1024.0 / 1024.0 / seconds
+                                    : 0.0;
 
         std::print("Rux Compiler {}\n"
                    "Target: {}\n"
@@ -403,9 +404,10 @@ namespace Rux::Misc {
         const std::size_t totalLines = stats.localLines + stats.dependencyLines;
         const std::size_t totalTokens =
             stats.localTokens + stats.dependencyTokens;
-        const double compileSpeed = stats.totalSeconds > 0.0
-            ? static_cast<double>(totalLines) / stats.totalSeconds
-            : 0.0;
+        const double compileSpeed =
+            stats.totalSeconds > 0.0
+                ? static_cast<double>(totalLines) / stats.totalSeconds
+                : 0.0;
 
         std::print("Built `{}` [{}] in {} ms\n",
                    profileName,
@@ -443,9 +445,10 @@ namespace Rux::Misc {
     ResolveBuildOutputDir(const std::filesystem::path& root,
                           const Manifest& manifest,
                           std::string_view profileName) {
-        std::filesystem::path output = manifest.build.output.empty()
-            ? std::filesystem::path("Bin")
-            : std::filesystem::path(manifest.build.output);
+        std::filesystem::path output =
+            manifest.build.output.empty()
+                ? std::filesystem::path("Bin")
+                : std::filesystem::path(manifest.build.output);
         if (output.is_relative()) output = root / output;
         return (output / std::string(profileName)).lexically_normal();
     }
@@ -458,7 +461,7 @@ namespace Rux::Misc {
 #else
         const char* home = getenv("HOME");
         return std::filesystem::path(home ? home : "/tmp") / ".rux" /
-            "packages";
+               "packages";
 #endif
     }
 } // namespace Rux::Misc
@@ -582,18 +585,16 @@ namespace Rux {
         std::size_t pos = 0;
         while ((pos = json.find(needle, pos)) != std::string_view::npos) {
             std::size_t i = pos + needle.size();
-            while (i < json.size() &&
-                   (json[i] == ' ' || json[i] == '\t' || json[i] == '\r' ||
-                    json[i] == '\n'))
+            while (i < json.size() && (json[i] == ' ' || json[i] == '\t' ||
+                                       json[i] == '\r' || json[i] == '\n'))
                 ++i;
             if (i >= json.size() || json[i] != ':') {
                 pos = i;
                 continue;
             }
             ++i;
-            while (i < json.size() &&
-                   (json[i] == ' ' || json[i] == '\t' || json[i] == '\r' ||
-                    json[i] == '\n'))
+            while (i < json.size() && (json[i] == ' ' || json[i] == '\t' ||
+                                       json[i] == '\r' || json[i] == '\n'))
                 ++i;
             if (i >= json.size() || json[i] != '"') {
                 pos = i;
@@ -612,9 +613,10 @@ namespace Rux {
     ResolveBuildOutputDir(const std::filesystem::path& root,
                           const Manifest& manifest,
                           std::string_view profileName) {
-        std::filesystem::path output = manifest.build.output.empty()
-            ? std::filesystem::path("bin")
-            : std::filesystem::path(manifest.build.output);
+        std::filesystem::path output =
+            manifest.build.output.empty()
+                ? std::filesystem::path("bin")
+                : std::filesystem::path(manifest.build.output);
         if (output.is_relative()) output = root / output;
         return (output / std::string(profileName)).lexically_normal();
     }
@@ -627,12 +629,12 @@ namespace Rux {
         std::wstring cmd{};
         if (!devBranch) {
             cmd = L"git clone " + std::wstring(repoUrl.begin(), repoUrl.end()) +
-                L" \"" + dest.wstring() + L"\"";
+                  L" \"" + dest.wstring() + L"\"";
         }
         else {
             cmd = L"git clone --branch dev " +
-                std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" +
-                dest.wstring() + L"\"";
+                  std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" +
+                  dest.wstring() + L"\"";
         }
         STARTUPINFOW si{};
         si.cb = sizeof(si);
@@ -655,9 +657,10 @@ namespace Rux {
         CloseHandle(pi.hThread);
         return exitCode == 0;
 #else
-        const std::string cmd = devBranch
-            ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
-            : "git clone " + repoUrl + " \"" + dest.string() + "\"";
+        const std::string cmd =
+            devBranch
+                ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
+                : "git clone " + repoUrl + " \"" + dest.string() + "\"";
         return std::system(cmd.c_str()) == 0;
 #endif
     }

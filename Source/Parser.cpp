@@ -1320,7 +1320,7 @@ namespace Rux {
                     return left;
             }
             const bool incl = Peek().kind == TokenKind::DotDotDot ||
-                Peek().kind == TokenKind::DotDotEqual;
+                              Peek().kind == TokenKind::DotDotEqual;
             const auto loc = CurrentLocation();
             Advance();
             auto right = ParseTernary();
@@ -1912,7 +1912,7 @@ namespace Rux {
         if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) ||
             Check(TokenKind::DotDotEqual)) {
             const bool incl = Peek().kind == TokenKind::DotDotDot ||
-                Peek().kind == TokenKind::DotDotEqual;
+                              Peek().kind == TokenKind::DotDotEqual;
             const auto loc = CurrentLocation();
             Advance();
             auto hi = ParsePrimaryPattern();

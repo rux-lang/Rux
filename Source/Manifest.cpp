@@ -13,8 +13,8 @@ namespace Rux {
     static constexpr std::string_view Trim(const std::string_view s) noexcept {
         const auto start = s.find_first_not_of(whitespace);
         return (start == std::string_view::npos)
-            ? ""
-            : s.substr(start, s.find_last_not_of(whitespace) - start + 1);
+                 ? ""
+                 : s.substr(start, s.find_last_not_of(whitespace) - start + 1);
     }
 
     static constexpr std::string_view Unquote(std::string_view s) noexcept {

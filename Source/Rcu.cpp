@@ -67,7 +67,7 @@ namespace Rux {
 
         bool IsFloat(const TypeRef& t) {
             return t.kind == TypeRef::Kind::Float32 ||
-                t.kind == TypeRef::Kind::Float64;
+                   t.kind == TypeRef::Kind::Float64;
         }
 
         std::string_view NumericLiteralSuffix(std::string_view text) {
@@ -1451,7 +1451,7 @@ namespace Rux {
             [[nodiscard]] bool
             IsPointerToWin64ByRefAggregate(const TypeRef& t) const {
                 return t.kind == TypeRef::Kind::Pointer && !t.inner.empty() &&
-                    IsWin64ByRefAggregate(t.inner[0]);
+                       IsWin64ByRefAggregate(t.inner[0]);
             }
 
             static int Win64CallFrameSize(const std::size_t argCount) {
@@ -1842,8 +1842,8 @@ namespace Rux {
                 const TypeRef& inner = pt.inner[0];
                 if (inner.kind == TypeRef::Kind::Range) {
                     const TypeRef& elemType = inner.inner.empty()
-                        ? TypeRef::MakeInt64()
-                        : inner.inner[0];
+                                                ? TypeRef::MakeInt64()
+                                                : inner.inner[0];
                     int elemSize = SizeOf(elemType);
                     if (fieldName == "lo") return 0;
                     if (fieldName == "hi") return elemSize;
@@ -1927,8 +1927,8 @@ namespace Rux {
                         IsWin64AddressParam(p.type) ? 8 : SizeOfRuntime(p.type);
                     AllocSlot(p.reg, sz > 0 ? sz : 8);
                     regTypes[p.reg] = IsWin64AddressParam(p.type)
-                        ? TypeRef::MakePointer(p.type)
-                        : p.type;
+                                        ? TypeRef::MakePointer(p.type)
+                                        : p.type;
                 }
                 for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
                     for (const auto& instr : func.blocks[bi].instrs) {
@@ -1950,8 +1950,8 @@ namespace Rux {
                                 }
                                 const TypeRef& elemType =
                                     instr.type.inner.empty()
-                                    ? instr.type
-                                    : instr.type.inner[0];
+                                        ? instr.type
+                                        : instr.type.inner[0];
                                 int elemSize = SizeOfRuntime(elemType);
                                 dsz = count * (elemSize > 0 ? elemSize : 8);
                             }
@@ -2046,8 +2046,8 @@ namespace Rux {
                     int idx = startIdx;
                     for (LirReg arg : args) {
                         TypeRef at = regTypes.contains(arg)
-                            ? regTypes.at(arg)
-                            : TypeRef::MakeInt64();
+                                       ? regTypes.at(arg)
+                                       : TypeRef::MakeInt64();
                         int32_t d = Disp(arg);
                         if (idx >= 4) {
                             const int32_t stackArgOff = 32 + (idx - 4) * 8;
@@ -2094,8 +2094,8 @@ namespace Rux {
                     int intIdx = 0, fltIdx = 0;
                     for (LirReg arg : args) {
                         TypeRef at = regTypes.contains(arg)
-                            ? regTypes.at(arg)
-                            : TypeRef::MakeInt64();
+                                       ? regTypes.at(arg)
+                                       : TypeRef::MakeInt64();
                         int32_t d = Disp(arg);
                         if (IsFloat(at)) {
                             if (fltIdx < 8) {
@@ -2534,8 +2534,8 @@ namespace Rux {
                 case LirOpcode::CmpGt:
                 case LirOpcode::CmpGe: {
                     const TypeRef& lhsT = regTypes.contains(instr.srcs[0])
-                        ? regTypes.at(instr.srcs[0])
-                        : instr.type;
+                                            ? regTypes.at(instr.srcs[0])
+                                            : instr.type;
                     LoadA(instr.srcs[0], lhsT);
                     LoadB(instr.srcs[1], lhsT);
                     if (IsFloat(lhsT)) {
@@ -2619,8 +2619,8 @@ namespace Rux {
                 case LirOpcode::Cast: {
                     const TypeRef& dstT = instr.type;
                     TypeRef srcT = regTypes.contains(instr.srcs[0])
-                        ? regTypes.at(instr.srcs[0])
-                        : dstT;
+                                     ? regTypes.at(instr.srcs[0])
+                                     : dstT;
                     LoadA(instr.srcs[0], srcT);
                     bool srcFl = IsFloat(srcT), dstFl = IsFloat(dstT);
                     if (srcFl && !dstFl) {
@@ -2648,14 +2648,14 @@ namespace Rux {
                 }
                 case LirOpcode::Call: {
                     bool win64Call = EffectiveConv(instr.callConv) ==
-                        CallingConvention::Win64;
+                                     CallingConvention::Win64;
                     const bool hiddenReturn = win64Call &&
-                        instr.dst != LirNoReg &&
-                        IsWin64ByRefAggregate(instr.type);
-                    const int callFrameSize = win64Call
-                        ? Win64CallFrameSize(instr.srcs.size() +
-                                             (hiddenReturn ? 1 : 0))
-                        : 0;
+                                              instr.dst != LirNoReg &&
+                                              IsWin64ByRefAggregate(instr.type);
+                    const int callFrameSize =
+                        win64Call ? Win64CallFrameSize(instr.srcs.size() +
+                                                       (hiddenReturn ? 1 : 0))
+                                  : 0;
                     if (win64Call) enc.SubRspImm32(callFrameSize);
                     if (hiddenReturn) {
                         enc.LeaArgStackWin64(0, Disp(instr.dst));
@@ -2686,14 +2686,14 @@ namespace Rux {
                     std::vector<LirReg> args(instr.srcs.begin() + 1,
                                              instr.srcs.end());
                     bool win64Call = EffectiveConv(instr.callConv) ==
-                        CallingConvention::Win64;
+                                     CallingConvention::Win64;
                     const bool hiddenReturn = win64Call &&
-                        instr.dst != LirNoReg &&
-                        IsWin64ByRefAggregate(instr.type);
-                    const int callFrameSize = win64Call
-                        ? Win64CallFrameSize(args.size() +
-                                             (hiddenReturn ? 1 : 0))
-                        : 0;
+                                              instr.dst != LirNoReg &&
+                                              IsWin64ByRefAggregate(instr.type);
+                    const int callFrameSize =
+                        win64Call ? Win64CallFrameSize(args.size() +
+                                                       (hiddenReturn ? 1 : 0))
+                                  : 0;
                     if (win64Call) enc.SubRspImm32(callFrameSize);
                     if (hiddenReturn) {
                         enc.LeaArgStackWin64(0, Disp(instr.dst));
@@ -2740,8 +2740,8 @@ namespace Rux {
                     LirReg idx = instr.srcs[1];
                     int elemSz = (instr.type.kind == TypeRef::Kind::Pointer &&
                                   !instr.type.inner.empty())
-                        ? SizeOfRuntime(instr.type.inner[0])
-                        : 8;
+                                   ? SizeOfRuntime(instr.type.inner[0])
+                                   : 8;
                     if (elemSz < 1) elemSz = 1;
                     enc.MovRaxLoad(Disp(base));
                     LoadB(idx, regTypes.at(idx));
@@ -2775,8 +2775,8 @@ namespace Rux {
                     // garbage
                     {
                         const TypeRef condT = regTypes.contains(term.cond)
-                            ? regTypes.at(term.cond)
-                            : TypeRef::MakeBool();
+                                                ? regTypes.at(term.cond)
+                                                : TypeRef::MakeBool();
                         const int condSz = SizeOf(condT);
                         if (condSz <= 1)
                             enc.MovzxRaxByte(Disp(term.cond));
@@ -3450,8 +3450,8 @@ namespace Rux {
                         break;
                     default:;
                     }
-                    const char* visStr = s.visibility == RcuSymVis::Global
-                        ? "GLOBAL"
+                    const char* visStr =
+                        s.visibility == RcuSymVis::Global ? "GLOBAL"
                         : s.visibility == RcuSymVis::Weak ? "WEAK"
                                                           : "LOCAL";
 
@@ -3493,8 +3493,8 @@ namespace Rux {
                                 rt = "REL_32";
                             std::string symName =
                                 r.symbolIndex < f.symbols.size()
-                                ? f.symbols[r.symbolIndex].name
-                                : "?";
+                                    ? f.symbols[r.symbolIndex].name
+                                    : "?";
                             out << std::format("  [{:3}]  off=0x{:04X}  "
                                                "sym[{}]={}  {}  addend={}\n",
                                                i,

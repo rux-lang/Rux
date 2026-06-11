@@ -262,7 +262,7 @@ namespace Rux {
 
     bool Token::IsOperator() const noexcept {
         return kind >= TokenKind::Plus &&
-            kind <= TokenKind::GreaterGreaterAssign;
+               kind <= TokenKind::GreaterGreaterAssign;
     }
 
     std::string Token::Describe() const {

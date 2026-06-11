@@ -274,8 +274,8 @@ void HandleErrors(
     for (const auto& diag : semaResult.diagnostics) {
         const auto& loc = diag.location;
         const char* sev = diag.severity == SemaDiagnostic::Severity::Error
-            ? "error"
-            : "warning";
+                            ? "error"
+                            : "warning";
         EmitDiag(diag.sourceName,
                  static_cast<int>(loc.line),
                  static_cast<int>(loc.column),
@@ -342,8 +342,8 @@ int HandlePendingIndex(
             for (const auto& diag : depLex.diagnostics) {
                 const char* sev =
                     diag.severity == LexerDiagnostic::Severity::Error
-                    ? "error"
-                    : "warning";
+                        ? "error"
+                        : "warning";
                 EmitDiag(depFile.path.string(),
                          static_cast<int>(diag.location.line),
                          static_cast<int>(diag.location.column),
@@ -363,8 +363,8 @@ int HandlePendingIndex(
             for (const auto& diag : depParse.diagnostics) {
                 const char* sev =
                     diag.severity == ParserDiagnostic::Severity::Error
-                    ? "error"
-                    : "warning";
+                        ? "error"
+                        : "warning";
                 EmitDiag(depFile.path.string(),
                          static_cast<int>(diag.location.line),
                          static_cast<int>(diag.location.column),
@@ -571,8 +571,8 @@ int Cli::RunCheck(std::span<const std::string_view> args,
         for (const auto& diag : lexResult.diagnostics) {
             const auto& loc = diag.location;
             const char* sev = diag.severity == LexerDiagnostic::Severity::Error
-                ? "error"
-                : "warning";
+                                ? "error"
+                                : "warning";
             EmitDiag(file.path.string(),
                      static_cast<int>(loc.line),
                      static_cast<int>(loc.column),
@@ -605,8 +605,8 @@ int Cli::RunCheck(std::span<const std::string_view> args,
         for (const auto& diag : parseResult.diagnostics) {
             const auto& loc = diag.location;
             const char* sev = diag.severity == ParserDiagnostic::Severity::Error
-                ? "error"
-                : "warning";
+                                ? "error"
+                                : "warning";
             EmitDiag(file.path.string(),
                      static_cast<int>(loc.line),
                      static_cast<int>(loc.column),

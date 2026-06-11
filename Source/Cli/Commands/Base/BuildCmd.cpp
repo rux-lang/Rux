@@ -204,8 +204,8 @@ int Cli::RunBuild(std::span<const std::string_view> args,
         for (const auto& diag : lexResult.diagnostics) {
             const auto& loc = diag.location;
             const char* sev = diag.severity == LexerDiagnostic::Severity::Error
-                ? "error"
-                : "warning";
+                                ? "error"
+                                : "warning";
             std::print(stderr,
                        "{}:{}:{}: {}: {}\n",
                        file.path.string(),
@@ -251,8 +251,8 @@ int Cli::RunBuild(std::span<const std::string_view> args,
         for (const auto& diag : parseResult.diagnostics) {
             const auto& loc = diag.location;
             const char* sev = diag.severity == ParserDiagnostic::Severity::Error
-                ? "error"
-                : "warning";
+                                ? "error"
+                                : "warning";
             std::print(stderr,
                        "{}:{}:{}: {}: {}\n",
                        file.path.string(),
@@ -418,8 +418,8 @@ int Cli::RunBuild(std::span<const std::string_view> args,
                 for (const auto& diag : depLex.diagnostics) {
                     const char* sev =
                         diag.severity == LexerDiagnostic::Severity::Error
-                        ? "error"
-                        : "warning";
+                            ? "error"
+                            : "warning";
                     std::print(stderr,
                                "{}:{}:{}: {}: {}\n",
                                depFile.path.string(),
@@ -438,8 +438,8 @@ int Cli::RunBuild(std::span<const std::string_view> args,
                 for (const auto& diag : depParse.diagnostics) {
                     const char* sev =
                         diag.severity == ParserDiagnostic::Severity::Error
-                        ? "error"
-                        : "warning";
+                            ? "error"
+                            : "warning";
                     std::print(stderr,
                                "{}:{}:{}: {}: {}\n",
                                depFile.path.string(),
@@ -507,8 +507,8 @@ int Cli::RunBuild(std::span<const std::string_view> args,
     for (const auto& diag : semaResult.diagnostics) {
         const auto& loc = diag.location;
         const char* sev = diag.severity == SemaDiagnostic::Severity::Error
-            ? "error"
-            : "warning";
+                            ? "error"
+                            : "warning";
         std::print(stderr,
                    "{}:{}:{}: {}: {}\n",
                    diag.sourceName,
@@ -589,9 +589,10 @@ int Cli::RunBuild(std::span<const std::string_view> args,
         std::filesystem::create_directories(dumpDir);
 
         for (const auto& rcuFile : rcuFiles) {
-            std::filesystem::path stem = rcuFile.sourcePath.empty()
-                ? std::filesystem::path("out")
-                : std::filesystem::path(rcuFile.sourcePath).stem();
+            std::filesystem::path stem =
+                rcuFile.sourcePath.empty()
+                    ? std::filesystem::path("out")
+                    : std::filesystem::path(rcuFile.sourcePath).stem();
             Rcu::Emit(rcuFile, objDir / (stem.string() + ".rcu"));
             Rcu::Dump(rcuFile, dumpDir / (stem.string() + ".rcu.txt"));
         }
@@ -665,11 +666,12 @@ int Cli::RunClean(std::span<const std::string_view> args,
     auto manifest = LoadManifest(*manifestPath);
     if (!manifest) return 1;
     const auto root = manifestPath->parent_path();
-    const auto outputDir = manifest->build.output.empty()
-        ? root / "Bin"
-        : (std::filesystem::path(manifest->build.output).is_relative()
-               ? root / manifest->build.output
-               : std::filesystem::path(manifest->build.output));
+    const auto outputDir =
+        manifest->build.output.empty()
+            ? root / "Bin"
+            : (std::filesystem::path(manifest->build.output).is_relative()
+                   ? root / manifest->build.output
+                   : std::filesystem::path(manifest->build.output));
     auto removeDir = [&](const std::filesystem::path& dir) -> bool {
         std::error_code ec;
         if (!std::filesystem::exists(dir)) return true;

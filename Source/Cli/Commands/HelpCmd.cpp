@@ -703,8 +703,8 @@ namespace Rux {
                     const bool hasBadOptions = std::ranges::any_of(
                         cmd.options, [](const OptionDoc& opt) -> bool {
                             return opt.flags.empty() || opt.desc.empty() ||
-                                opt.flags.starts_with(' ') ||
-                                opt.flags.ends_with(' ');
+                                   opt.flags.starts_with(' ') ||
+                                   opt.flags.ends_with(' ');
                         });
                     if (hasBadOptions) {
                         return false;
@@ -713,7 +713,7 @@ namespace Rux {
                     const bool hasBadUsage = std::ranges::any_of(
                         cmd.usage, [](const std::string_view usage) -> bool {
                             return usage.starts_with(' ') ||
-                                usage.ends_with(' ');
+                                   usage.ends_with(' ');
                         });
                     return !hasBadUsage;
                 });

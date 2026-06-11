@@ -62,7 +62,7 @@ namespace Rux {
 
         bool IsFloat(const TypeRef& t) {
             return t.kind == TypeRef::Kind::Float32 ||
-                t.kind == TypeRef::Kind::Float64;
+                   t.kind == TypeRef::Kind::Float64;
         }
 
         int AlignUp(int v, int a) {
@@ -530,8 +530,8 @@ namespace Rux {
                             if (!instr.strArg.empty()) {
                                 int count = std::stoi(instr.strArg);
                                 const TypeRef& et = instr.type.inner.empty()
-                                    ? instr.type
-                                    : instr.type.inner[0];
+                                                      ? instr.type
+                                                      : instr.type.inner[0];
                                 int elemSz = SizeOfRuntime(et);
                                 dataSz = count * (elemSz > 0 ? elemSz : 8);
                             }
@@ -706,8 +706,8 @@ namespace Rux {
                     else if (t.kind == TypeRef::Kind::Bool) {
                         std::string v =
                             (instr.strArg == "true" || instr.strArg == "1")
-                            ? "1"
-                            : "0";
+                                ? "1"
+                                : "0";
                         TI(std::format("{:<8}rax, {}", "mov", v));
                     }
                     else {
@@ -1034,8 +1034,8 @@ namespace Rux {
                 case LirOpcode::CmpGt:
                 case LirOpcode::CmpGe: {
                     const TypeRef& lhsT = regTypes.contains(instr.srcs[0])
-                        ? regTypes.at(instr.srcs[0])
-                        : instr.type;
+                                            ? regTypes.at(instr.srcs[0])
+                                            : instr.type;
                     LoadA(instr.srcs[0], lhsT);
                     LoadB(instr.srcs[1], lhsT);
                     if (IsFloat(lhsT)) {
@@ -1187,8 +1187,8 @@ namespace Rux {
                     LirReg idx = instr.srcs[1];
                     int elemSz = (instr.type.kind == TypeRef::Kind::Pointer &&
                                   !instr.type.inner.empty())
-                        ? SizeOfRuntime(instr.type.inner[0])
-                        : 8;
+                                   ? SizeOfRuntime(instr.type.inner[0])
+                                   : 8;
                     if (elemSz < 1) elemSz = 1;
 
                     TI(std::format(
@@ -1317,9 +1317,10 @@ namespace Rux {
                         }
                     }
                 }
-                const int stackBytes = win64
-                    ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
-                    : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
+                const int stackBytes =
+                    win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8,
+                                         16)
+                          : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
                 if (stackBytes > 0) {
                     TI(std::format("sub     rsp, {}", stackBytes));
                     StoreStackArgs(stackArgs, win64);
@@ -1344,9 +1345,10 @@ namespace Rux {
                 const std::vector<LirReg> stackArgs =
                     EmitCallArgs(args, callConv);
                 const bool win64 = callConv == CallingConvention::Win64;
-                const int stackBytes = win64
-                    ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
-                    : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
+                const int stackBytes =
+                    win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8,
+                                         16)
+                          : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
                 if (stackBytes > 0) {
                     TI(std::format("sub     rsp, {}", stackBytes));
                     StoreStackArgs(stackArgs, win64);
@@ -1366,8 +1368,8 @@ namespace Rux {
                                 bool win64) {
                 for (std::size_t i = 0; i < stackArgs.size(); ++i) {
                     TypeRef at = regTypes.contains(stackArgs[i])
-                        ? regTypes.at(stackArgs[i])
-                        : TypeRef::MakeInt64();
+                                   ? regTypes.at(stackArgs[i])
+                                   : TypeRef::MakeInt64();
                     const int sz = std::max(SizeOf(at), 1);
                     if (sz == 8) {
                         TI(std::format("{:<8}rax, {} [rbp - {}]",
@@ -1454,8 +1456,8 @@ namespace Rux {
                     // Load condition — use the actual size to avoid reading
                     // stack garbage
                     TypeRef condT = regTypes.contains(term.cond)
-                        ? regTypes.at(term.cond)
-                        : TypeRef::MakeBool();
+                                      ? regTypes.at(term.cond)
+                                      : TypeRef::MakeBool();
                     int condSz = SizeOf(condT);
                     if (condSz <= 1)
                         TI(std::format("{:<8}rax, byte [rbp - {}]",
@@ -1517,8 +1519,8 @@ namespace Rux {
 
                 case LirTermKind::Switch: {
                     TypeRef condT = regTypes.contains(term.cond)
-                        ? regTypes.at(term.cond)
-                        : TypeRef::MakeInt64();
+                                      ? regTypes.at(term.cond)
+                                      : TypeRef::MakeInt64();
                     TI(std::format("{:<8}rax, qword [rbp - {}]",
                                    "mov",
                                    slotMap.at(term.cond)));

@@ -153,9 +153,9 @@ namespace Rux {
     static bool ReadU32At(const Buf& b, size_t off, uint32_t& out) {
         if (off + 4 > b.size()) return false;
         out = static_cast<uint32_t>(b[off]) |
-            (static_cast<uint32_t>(b[off + 1]) << 8) |
-            (static_cast<uint32_t>(b[off + 2]) << 16) |
-            (static_cast<uint32_t>(b[off + 3]) << 24);
+              (static_cast<uint32_t>(b[off + 1]) << 8) |
+              (static_cast<uint32_t>(b[off + 2]) << 16) |
+              (static_cast<uint32_t>(b[off + 3]) << 24);
         return true;
     }
 
@@ -276,8 +276,8 @@ namespace Rux {
         const std::filesystem::path dllPath(dll);
         if (dllPath.is_absolute())
             return FileExists(dllPath)
-                ? std::optional<std::filesystem::path>(dllPath)
-                : std::nullopt;
+                     ? std::optional<std::filesystem::path>(dllPath)
+                     : std::nullopt;
 
         // Candidate file names to probe in each search location. Imports are
         // commonly declared without an extension (e.g. @[Import(lib:
@@ -609,9 +609,9 @@ namespace Rux {
             dataFileSize = AlignUp(dataVirtSize, kFileAlign);
             dataFileOff = rdataFileOff + rdataFileSize;
         }
-        const uint32_t sizeOfImage = !mergedData.empty()
-            ? dataRva + AlignUp(dataVirtSize, kSecAlign)
-            : rdataRva + AlignUp(rdataVirtSize, kSecAlign);
+        const uint32_t sizeOfImage =
+            !mergedData.empty() ? dataRva + AlignUp(dataVirtSize, kSecAlign)
+                                : rdataRva + AlignUp(rdataVirtSize, kSecAlign);
 
         // 6. Patch .rdata import table with real RVAs
         for (size_t g = 0; g < importDllNames.size(); ++g) {
@@ -661,7 +661,7 @@ namespace Rux {
                 uint64_t va = 0;
                 if (sym.sectionIdx == RCU_TEXT_IDX)
                     va = kImageBase + textRva + preambleSize + lay.textOff +
-                        sym.value;
+                         sym.value;
                 else if (sym.sectionIdx == RCU_RODATA_IDX)
                     va = kImageBase + rdataRva + lay.rodataOff + sym.value;
                 else if (sym.sectionIdx == RCU_DATA_IDX)
@@ -709,7 +709,8 @@ namespace Rux {
                 // No DllMain: replace `E8 00 00 00 00` with `B8 01 00 00 00`
                 // (mov eax, 1)
                 textBuf[kCallMainDisp - 1] =
-                    0xB8; // change opcode from E8 (call) to B8 (mov eax, imm32)
+                    0xB8; // change opcode from E8 (call) to B8 (mov eax,
+                          // imm32)
                 Patch32(textBuf, kCallMainDisp, 1); // imm = 1 (TRUE)
             }
         }
@@ -791,10 +792,10 @@ namespace Rux {
                         // Unnamed or purely local — compute from section index
                         if (sym.sectionIdx == RCU_TEXT_IDX)
                             targetVA = kImageBase + textRva + preambleSize +
-                                lay.textOff + sym.value;
+                                       lay.textOff + sym.value;
                         else if (sym.sectionIdx == RCU_RODATA_IDX)
                             targetVA = kImageBase + rdataRva + lay.rodataOff +
-                                sym.value;
+                                       sym.value;
                         else if (sym.sectionIdx == RCU_DATA_IDX)
                             targetVA =
                                 kImageBase + dataRva + lay.dataOff + sym.value;
@@ -1270,12 +1271,21 @@ namespace Rux {
              {
                  0x89,
                  0xCF, // mov edi, ecx  (fd)
-                 0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
-                 0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
+                 0x48,
+                 0x89,
+                 0xD6, // mov rsi, rdx  (buf)
+                 0x4C,
+                 0x89,
+                 0xC2, // mov rdx, r8   (count)
 #  if RUX_IS_BSD || RUX_IS_SUNOS
-                 0xB8, 0x03, 0x00, 0x00, 0x00, // mov eax, 3 (SYS_read)
+                 0xB8,
+                 0x03,
+                 0x00,
+                 0x00,
+                 0x00, // mov eax, 3 (SYS_read)
 #  else
-                 0x31, 0xC0, // xor eax, eax (SYS_read = 0)
+                 0x31,
+                 0xC0, // xor eax, eax (SYS_read = 0)
 #  endif
                  0x4D,
                  0x89,
@@ -1287,12 +1297,22 @@ namespace Rux {
                  0xC0, // test eax, eax
                  0x78,
                  0x11, // js +17 (error)
-                 0x4D, 0x89, 0xC1, // mov r9, r8  (restore output pointer)
-                 0x4D, 0x85, 0xC9, // test r9, r9
+                 0x4D,
+                 0x89,
+                 0xC1, // mov r9, r8  (restore output pointer)
+                 0x4D,
+                 0x85,
+                 0xC9, // test r9, r9
                  0x74,
                  0x03, // jz +3 (skip if null)
-                 0x41, 0x89, 0x01, // mov [r9], eax  (*bytesRead = result)
-                 0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
+                 0x41,
+                 0x89,
+                 0x01, // mov [r9], eax  (*bytesRead = result)
+                 0xB8,
+                 0x01,
+                 0x00,
+                 0x00,
+                 0x00, // mov eax, 1 (TRUE)
                  0xC3, // ret
                  0x31,
                  0xC0, // xor eax, eax (FALSE)
@@ -1305,12 +1325,24 @@ namespace Rux {
              {
                  0x89,
                  0xCF, // mov edi, ecx  (fd)
-                 0x48, 0x89, 0xD6, // mov rsi, rdx  (buf)
-                 0x4C, 0x89, 0xC2, // mov rdx, r8   (count)
+                 0x48,
+                 0x89,
+                 0xD6, // mov rsi, rdx  (buf)
+                 0x4C,
+                 0x89,
+                 0xC2, // mov rdx, r8   (count)
 #  if RUX_IS_BSD || RUX_IS_SUNOS
-                 0xB8, 0x04, 0x00, 0x00, 0x00, // mov eax, 4 (SYS_write)
+                 0xB8,
+                 0x04,
+                 0x00,
+                 0x00,
+                 0x00, // mov eax, 4 (SYS_write)
 #  else
-                 0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (SYS_write)
+                 0xB8,
+                 0x01,
+                 0x00,
+                 0x00,
+                 0x00, // mov eax, 1 (SYS_write)
 #  endif
                  0x4D,
                  0x89,
@@ -1322,12 +1354,22 @@ namespace Rux {
                  0xC0, // test eax, eax
                  0x78,
                  0x11, // js +17 (error)
-                 0x4D, 0x89, 0xC1, // mov r9, r8  (restore output pointer)
-                 0x4D, 0x85, 0xC9, // test r9, r9
+                 0x4D,
+                 0x89,
+                 0xC1, // mov r9, r8  (restore output pointer)
+                 0x4D,
+                 0x85,
+                 0xC9, // test r9, r9
                  0x74,
                  0x03, // jz +3 (skip if null)
-                 0x41, 0x89, 0x01, // mov [r9], eax  (*bytesWritten = result)
-                 0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
+                 0x41,
+                 0x89,
+                 0x01, // mov [r9], eax  (*bytesWritten = result)
+                 0xB8,
+                 0x01,
+                 0x00,
+                 0x00,
+                 0x00, // mov eax, 1 (TRUE)
                  0xC3, // ret
                  0x31,
                  0xC0, // xor eax, eax (FALSE)
@@ -2057,11 +2099,21 @@ namespace Rux {
                  0x00,
                  0x00, // mov r10d, 0x1002
                        // (MAP_PRIVATE|MAP_ANON)
-                 0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, // mov r8, -1 (fd)
+                 0x49,
+                 0xC7,
+                 0xC0,
+                 0xFF,
+                 0xFF,
+                 0xFF,
+                 0xFF, // mov r8, -1 (fd)
                  0x45,
                  0x31,
                  0xC9, // xor r9d, r9d (offset 0)
-                 0xB8, 0xC5, 0x00, 0x00, 0x02, // mov eax, 0x20000C5 (SYS_mmap)
+                 0xB8,
+                 0xC5,
+                 0x00,
+                 0x00,
+                 0x02, // mov eax, 0x20000C5 (SYS_mmap)
                  0x0F,
                  0x05, // syscall
                  0xC3  // ret
@@ -2078,18 +2130,32 @@ namespace Rux {
                        // 4th Win64 stack arg)
                  0x31,
                  0xFF, // xor edi, edi
-                 0xBA, 0x03, 0x00, 0x00, 0x00, // mov edx, 3
+                 0xBA,
+                 0x03,
+                 0x00,
+                 0x00,
+                 0x00, // mov edx, 3
                  0x41,
                  0xBA,
                  0x02,
                  0x10,
                  0x00,
                  0x00, // mov r10d, 0x1002
-                 0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, // mov r8, -1
+                 0x49,
+                 0xC7,
+                 0xC0,
+                 0xFF,
+                 0xFF,
+                 0xFF,
+                 0xFF, // mov r8, -1
                  0x45,
                  0x31,
                  0xC9, // xor r9d, r9d
-                 0xB8, 0xC5, 0x00, 0x00, 0x02, // mov eax, 0x20000C5 (SYS_mmap)
+                 0xB8,
+                 0xC5,
+                 0x00,
+                 0x00,
+                 0x02, // mov eax, 0x20000C5 (SYS_mmap)
                  0x0F,
                  0x05, // syscall
                  0xC3  // ret
@@ -2326,11 +2392,11 @@ namespace Rux {
         constexpr uint32_t kThreadCmd =
             184; // LC_UNIXTHREAD with x86_THREAD_STATE64 (count 42)
         constexpr uint32_t kNCmds = 5;
-        const uint32_t sizeOfCmds = kSegCmd + // __PAGEZERO
-            (kSegCmd + 2 * kSect) +           // __TEXT
-            (kSegCmd + 1 * kSect) +           // __DATA
-            kSegCmd +                         // __LINKEDIT
-            kThreadCmd;
+        const uint32_t sizeOfCmds = kSegCmd +               // __PAGEZERO
+                                    (kSegCmd + 2 * kSect) + // __TEXT
+                                    (kSegCmd + 1 * kSect) + // __DATA
+                                    kSegCmd +               // __LINKEDIT
+                                    kThreadCmd;
         const uint64_t headerSize = 32 + sizeOfCmds;
 
         // 6. File/VA layout. Invariant: every segment's VA == kBase + its file
@@ -2667,7 +2733,7 @@ namespace Rux {
         // including x86-64 ones run under Rosetta 2; on Intel this is harmless
         // but still valid.
         const std::string signCmd = "codesign --force --sign - \"" +
-            outputPath.string() + "\" 2>/dev/null";
+                                    outputPath.string() + "\" 2>/dev/null";
         if (std::system(signCmd.c_str()) != 0) {
             Error("ad-hoc codesign failed (need Xcode command line tools); "
                   "binary will not run on "

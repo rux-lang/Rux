@@ -39,8 +39,8 @@ namespace Rux::Platform {
         }
         else {
             return (RUX_ARCH_X64 || RUX_ARCH_ARM64 || RUX_ARCH_RISCV64)
-                ? DataModel::LP64
-                : DataModel::ILP32;
+                     ? DataModel::LP64
+                     : DataModel::ILP32;
         }
     }();
 
