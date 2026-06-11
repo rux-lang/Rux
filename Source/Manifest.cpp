@@ -139,6 +139,16 @@ namespace Rux {
                     m.package.version = value;
                 else if (key == "Type")
                     m.package.type = value;
+                else if (key == "Description")
+                    m.package.description = value;
+                else if (key == "Authors")
+                    m.package.authors = value;
+                else if (key == "License")
+                    m.package.license = value;
+                else if (key == "Repository")
+                    m.package.repository = value;
+                else if (key == "Homepage")
+                    m.package.homepage = value;
             }
             else if (section == "Build") {
                 if (key == "Output") m.build.output = value;
@@ -163,8 +173,19 @@ namespace Rux {
         file << "[Package]\n"
              << "Name    = \"" << package.name << "\"\n"
              << "Version = \"" << package.version << "\"\n"
-             << "Type    = \"" << package.type << "\"\n"
-             << "\n[Build]\n"
+             << "Type    = \"" << package.type << "\"\n";
+        if (!package.description.empty())
+            file << "Description = \"" << package.description << "\"\n";
+        if (!package.authors.empty())
+            file << "Authors = \"" << package.authors << "\"\n";
+        if (!package.license.empty())
+            file << "License = \"" << package.license << "\"\n";
+        if (!package.repository.empty())
+            file << "Repository = \"" << package.repository << "\"\n";
+        if (!package.homepage.empty())
+            file << "Homepage = \"" << package.homepage << "\"\n";
+
+        file << "\n[Build]\n"
              << "Output  = \"" << build.output << "\"\n";
 
         if (!dependencies.empty()) {
