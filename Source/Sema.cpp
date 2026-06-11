@@ -1309,7 +1309,19 @@ namespace Rux {
             if (methodIt == typeIt->second.end()) return nullptr;
             const auto& overloads = methodIt->second;
             if (overloads.empty()) return nullptr;
-            if (overloads.size() == 1 || argTypes.empty()) return overloads[0];
+            // Best-effort scrape for property access (missing args).
+            if (argTypes.empty()) return overloads[0];
+            if (overloads.size() == 1) {
+                // Single overload: validate arity and assignability before returning.
+                const auto* decl = overloads[0];
+                std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *decl);
+                if (paramTypes.size() != argTypes.size()) return nullptr;
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    if (argTypes[i].IsUnknown() || paramTypes[i].IsUnknown()) continue;
+                    if (!argTypes[i].IsAssignableTo(paramTypes[i])) return nullptr;
+                }
+                return decl;
+            }
             for (const auto* decl : overloads) {
                 std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *decl);
                 if (paramTypes.size() != argTypes.size()) continue;
@@ -1323,7 +1335,7 @@ namespace Rux {
                 }
                 if (match) return decl;
             }
-            return overloads[0];
+            return nullptr;
         }
 
         TypeRef ResolveMethodReturnType(const TypeRef& receiverType, const FuncDecl& method) {
@@ -1383,7 +1395,27 @@ namespace Rux {
 
         const FuncDecl* LookupFunctionOverload(const Symbol& sym, const std::vector<TypeRef>& argTypes) {
             if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) return nullptr;
-            if (sym.funcOverloads.size() == 1) return sym.funcOverloads[0];
+            if (sym.funcOverloads.size() == 1) {
+                // Single overload: still validate arity and assignability so that
+                // Bar(wrongType) against a lone Bar(int32) returns null and lets
+                // the caller emit a proper diagnostic.
+                const auto* decl = sym.funcOverloads[0];
+                TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+                if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) return decl;
+                const std::size_t paramCount = funcType.inner.size() - 1;
+                const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
+                std::size_t requiredCount = 0;
+                for (const auto& p : decl->params)
+                    if (!p.isVariadic && !p.defaultValue) ++requiredCount;
+                const bool arityOk = isVariadic ? argTypes.size() >= requiredCount
+                                                : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
+                if (!arityOk) return nullptr;
+                for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
+                    if (argTypes[i].IsUnknown() || funcType.inner[i].IsUnknown()) continue;
+                    if (!argTypes[i].IsAssignableTo(funcType.inner[i])) return nullptr;
+                }
+                return decl;
+            }
             for (const bool allowVariadic : {false, true}) {
                 for (const bool exactOnly : {true, false}) {
                     for (const auto* decl : sym.funcOverloads) {
@@ -2561,7 +2593,18 @@ namespace Rux {
                     if (Symbol* sym = currentScope->Lookup(ident->name);
                         sym && sym->kind == Symbol::Kind::Func && !sym->funcOverloads.empty()) {
                         const FuncDecl* decl = LookupFunctionOverload(*sym, argTypes);
-                        if (!decl) return TypeRef::MakeUnknown();
+                        if (!decl) {
+                            std::string argList;
+                            for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                                if (i > 0) argList += ", ";
+                                argList += argTypes[i].ToString();
+                            }
+                            EmitError(e->location,
+                                      std::format("no matching overload for '{}' with argument types ({})",
+                                                  ident->name,
+                                                  argList));
+                            return TypeRef::MakeUnknown();
+                        }
                         if (!decl->warnMessage.empty()) EmitWarning(e->location, decl->warnMessage);
                         if (!decl->errorMessage.empty()) EmitError(e->location, decl->errorMessage);
                         TypeRef funcType = FunctionType(*decl);
