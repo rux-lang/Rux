@@ -29,7 +29,13 @@ namespace Rux {
 
     // Internal: Symbol & Scope
     struct HirSymbol {
-        enum class Kind { Var, Func, Type, Const, Interface };
+        enum class Kind {
+            Var,
+            Func,
+            Type,
+            Const,
+            Interface,
+        };
 
         Kind kind = Kind::Var;
         std::string name;

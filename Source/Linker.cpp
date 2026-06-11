@@ -32,7 +32,7 @@
 namespace Rux {
 #if RUX_OS_WINDOWS
     // PE32+ layout constants
-    [[maybe_unused]] static constexpr uint64_t kImageBase = 0x140000000ULL;
+    [[maybe_unused]] static constexpr uint64_t kImageBase = 0x1'4000'0000ULL;
     [[maybe_unused]] static constexpr uint32_t kSecAlign =
         0x1000; // 4 KB section alignment
     [[maybe_unused]] static constexpr uint32_t kFileAlign =
@@ -50,11 +50,11 @@ namespace Rux {
 
     // IMAGE_SCN_ characteristics
     [[maybe_unused]] static constexpr uint32_t kScnText =
-        0x60000020u; // CNT_CODE | MEM_EXECUTE | MEM_READ
+        0x6000'0020u; // CNT_CODE | MEM_EXECUTE | MEM_READ
     [[maybe_unused]] static constexpr uint32_t kScnRData =
-        0x40000040u; // CNT_INITIALIZED_DATA | MEM_READ
+        0x4000'0040u; // CNT_INITIALIZED_DATA | MEM_READ
     [[maybe_unused]] static constexpr uint32_t kScnData =
-        0xC0000040u; // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
+        0xC000'0040u; // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
 
     // DllCharacteristics: NX_COMPAT | TERMINAL_SERVER_AWARE.
     // The linker currently does not emit a .reloc table, so do not opt into
@@ -579,6 +579,7 @@ namespace Rux {
         struct ObjLayout {
             uint32_t textOff, rodataOff, dataOff;
         };
+
         std::vector<ObjLayout> layouts(objects.size());
         Buf mergedText, mergedRodata, mergedData;
 
@@ -708,9 +709,9 @@ namespace Rux {
             const size_t descPos = importDirPos + g * 20;
             Patch32(rdataBuf,
                     descPos + 0,
-                    rdataRva + intOff[g]);               // OriginalFirstThunk
-            Patch32(rdataBuf, descPos + 4, 0);           // TimeDateStamp
-            Patch32(rdataBuf, descPos + 8, 0xFFFFFFFFu); // ForwarderChain
+                    rdataRva + intOff[g]);                // OriginalFirstThunk
+            Patch32(rdataBuf, descPos + 4, 0);            // TimeDateStamp
+            Patch32(rdataBuf, descPos + 8, 0xFFFF'FFFFu); // ForwarderChain
             Patch32(rdataBuf, descPos + 12, rdataRva + dllNameOff[g]); // Name
             Patch32(rdataBuf,
                     descPos + 16,
@@ -1198,7 +1199,7 @@ namespace Rux {
               0x89,
               0xCF,
               0xB8,
-              (RUX_IS_BSD || RUX_IS_SUNOS ? 0x01 : 0x3C),
+              RUX_IS_BSD || RUX_IS_SUNOS ? 0x01 : 0x3C,
               0x00,
               0x00,
               0x00,
@@ -1818,6 +1819,7 @@ namespace Rux {
         struct ObjLayout {
             uint32_t textOff, rodataOff, dataOff;
         };
+
         std::vector<ObjLayout> layouts(objects.size());
         Buf mergedText, mergedRodata, mergedData;
 
@@ -2437,7 +2439,7 @@ namespace Rux {
     // Rosetta 2).
     bool Linker::LinkMachO64(const std::filesystem::path& outputPath) {
         static constexpr uint64_t kBase =
-            0x100000000ULL; // __TEXT base (after 4 GiB __PAGEZERO)
+            0x1'0000'0000ULL; // __TEXT base (after 4 GiB __PAGEZERO)
         static constexpr uint64_t kPage = 0x1000;
 
         const auto alignUp64 = [](const uint64_t v, const uint64_t a) {
@@ -2519,6 +2521,7 @@ namespace Rux {
         struct ObjLayout {
             uint32_t textOff, rodataOff, dataOff;
         };
+
         std::vector<ObjLayout> layouts(objects.size());
         Buf mergedText, mergedRodata, mergedData;
         for (size_t i = 0; i < objects.size(); ++i) {
@@ -2775,7 +2778,7 @@ namespace Rux {
         WriteU32(lc, 0); // nreloc
         WriteU32(
             lc,
-            0x80000400); // S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS
+            0x8000'0400); // S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS
         WriteU32(lc, 0);
         WriteU32(lc, 0);
         WriteU32(lc, 0);
@@ -2879,14 +2882,14 @@ namespace Rux {
         };
 
         Buf hdr;
-        WriteU32(hdr, 0xFEEDFACF); // MH_MAGIC_64
-        WriteU32(hdr, 0x01000007); // CPU_TYPE_X86_64
-        WriteU32(hdr, 0x00000003); // CPU_SUBTYPE_X86_64_ALL
-        WriteU32(hdr, 2);          // MH_EXECUTE
+        WriteU32(hdr, 0xFEED'FACF); // MH_MAGIC_64
+        WriteU32(hdr, 0x0100'0007); // CPU_TYPE_X86_64
+        WriteU32(hdr, 0x0000'0003); // CPU_SUBTYPE_X86_64_ALL
+        WriteU32(hdr, 2);           // MH_EXECUTE
         WriteU32(hdr, kNCmds);
         WriteU32(hdr, sizeOfCmds);
-        WriteU32(hdr, 0x00000001); // MH_NOUNDEFS
-        WriteU32(hdr, 0);          // reserved
+        WriteU32(hdr, 0x0000'0001); // MH_NOUNDEFS
+        WriteU32(hdr, 0);           // reserved
         wBuf(hdr);
         wBuf(lc);
         padToOffset(textOff);

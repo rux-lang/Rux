@@ -96,7 +96,6 @@ namespace Rux {
             constexpr auto CliName = "rux"sv;
         } // namespace Layout
 
-
         std::size_t GetTerminalWidth() {
 #if RUX_OS_WINDOWS
             CONSOLE_SCREEN_BUFFER_INFO csbi;

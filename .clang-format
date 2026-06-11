@@ -20,8 +20,9 @@ BraceWrapping:
   SplitEmptyNamespace: false
 BreakBeforeBraces: Custom
 BreakConstructorInitializers: BeforeComma
-ColumnLimit: 80
-Cpp11BracedListStyle: true
+BreakTemplateDeclarations: Yes
+CompactNamespaces: true
+EnumTrailingComma: Insert
 IncludeBlocks: Regroup
 IncludeCategories:
   - Regex: ^"Rux/
@@ -37,17 +38,26 @@ IndentPPDirectives: AfterHash
 IndentWidth: 4
 InsertBraces: true
 InsertNewlineAtEOF: true
+IntegerLiteralSeparator:
+  Binary: 4
+  BinaryMinDigits: 4
+  Decimal: 3
+  DecimalMinDigits: 7
+  Hex: 4
+  HexMinDigits: 8
+KeepEmptyLines:
+  AtStartOfBlock: false
 MaxEmptyLinesToKeep: 2
 NamespaceIndentation: All
 PPIndentWidth: 2
 PackConstructorInitializers: Never
 PointerAlignment: Left
 QualifierAlignment: Left
-ReferenceAlignment: Left
-SpaceInEmptyBlock: false
+RemoveParentheses: ReturnStatement
+RemoveSemicolon: true
+SeparateDefinitionBlocks: Always
 TabWidth: 4
 KeepEmptyLinesAtTheStartOfBlocks: false
-BreakTemplateDeclarations: Yes
 SpaceInEmptyParentheses: false
 SpacesInConditionalStatement: false
 SpacesInCStyleCastParentheses: false

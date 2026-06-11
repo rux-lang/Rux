@@ -2295,7 +2295,7 @@ namespace Rux {
                             instr.strArg.empty() ? "0" : instr.strArg;
                         const std::uint64_t bits =
                             ParseIntegerLiteralBits(sv).value_or(0);
-                        if (bits <= 0x7FFFFFFF) {
+                        if (bits <= 0x7FFF'FFFF) {
                             enc.MovEaxImm32(static_cast<int32_t>(bits));
                         }
                         else {
@@ -3358,7 +3358,7 @@ namespace Rux {
             for (uint32_t i = 0; i < 256; ++i) {
                 uint32_t c = i;
                 for (int k = 0; k < 8; ++k) {
-                    c = (c & 1) ? (0x82F63B78u ^ (c >> 1)) : (c >> 1);
+                    c = (c & 1) ? (0x82F6'3B78u ^ (c >> 1)) : (c >> 1);
                 }
                 Crc32cTable[i] = c;
             }
@@ -3367,11 +3367,11 @@ namespace Rux {
 
         uint32_t Crc32c(const std::vector<uint8_t>& data) {
             InitCrc32c();
-            uint32_t crc = 0xFFFFFFFFu;
+            uint32_t crc = 0xFFFF'FFFFu;
             for (uint8_t b : data) {
                 crc = Crc32cTable[(crc ^ b) & 0xFF] ^ (crc >> 8);
             }
-            return crc ^ 0xFFFFFFFFu;
+            return crc ^ 0xFFFF'FFFFu;
         }
 
         // Binary writer

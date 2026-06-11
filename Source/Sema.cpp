@@ -346,7 +346,14 @@ namespace Rux {
     class Scope; // forward declaration — Scope is defined below
 
     struct Symbol {
-        enum class Kind { Var, Func, Type, Const, Module, Interface };
+        enum class Kind {
+            Var,
+            Func,
+            Type,
+            Const,
+            Module,
+            Interface,
+        };
 
         Kind kind = Kind::Var;
         std::string name;
@@ -1582,7 +1589,6 @@ namespace Rux {
             return std::nullopt;
         }
 
-
         TypeRef ResolveType(const TypeExpr& expr) {
             // Helper to resolve enums from the global declaration table
             auto ResolveEnumType = [&](const std::string& name) -> TypeRef {
@@ -1704,7 +1710,6 @@ namespace Rux {
 
             return TypeRef::MakeUnknown();
         }
-
 
         TypeRef ResolveTypeWithSubstitution(
             const TypeExpr& expr,

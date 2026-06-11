@@ -452,7 +452,6 @@ int Cli::RunUpdate(std::span<const std::string_view> args,
     return 0;
 }
 
-
 // TODO: Make this look in the registry instead of installed packages
 // TODO: Extend Package manifest metadata support
 int Cli::RunInfo(std::span<const std::string_view> args,

@@ -49,7 +49,6 @@ using namespace Rux;
 using namespace Platform;
 using namespace Misc;
 
-
 int Cli::RunAdd(std::span<const std::string_view> args,
                 const GlobalOptions& opts) {
     std::string_view spec;

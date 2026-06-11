@@ -11,7 +11,10 @@
 
 namespace Rux {
     struct SemaDiagnostic {
-        enum class Severity { Warning, Error };
+        enum class Severity {
+            Warning,
+            Error,
+        };
 
         Severity severity = Severity::Error;
         std::string sourceName; // source file path for multi-file diagnostics
@@ -21,7 +24,14 @@ namespace Rux {
 
     // A globally-scoped symbol collected during the first analysis pass.
     struct SemaSymbol {
-        enum class Kind { Var, Func, Type, Const, Module, Interface };
+        enum class Kind {
+            Var,
+            Func,
+            Type,
+            Const,
+            Module,
+            Interface,
+        };
 
         Kind kind = Kind::Var;
         std::string name;

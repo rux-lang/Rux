@@ -78,7 +78,12 @@ namespace Rux {
     };
 
     // Terminators
-    enum class LirTermKind { Jump, Branch, Return, Switch };
+    enum class LirTermKind {
+        Jump,
+        Branch,
+        Return,
+        Switch,
+    };
 
     struct LirSwitchCase {
         std::string value;

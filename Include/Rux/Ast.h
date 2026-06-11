@@ -174,7 +174,15 @@ namespace Rux {
 
     // #line, #column, #file, #function, #date, #time, #module
     struct IntrinsicExpr : Expr {
-        enum class Kind { Line, Column, File, Function, Date, Time, Module };
+        enum class Kind {
+            Line,
+            Column,
+            File,
+            Function,
+            Date,
+            Time,
+            Module,
+        };
 
         Kind kind;
     };
@@ -500,7 +508,11 @@ namespace Rux {
     struct UseDecl : Decl {
         std::vector<std::string> path;
 
-        enum class Kind { Single, Glob, Multi } kind = Kind::Single;
+        enum class Kind {
+            Single,
+            Glob,
+            Multi,
+        } kind = Kind::Single;
 
         std::vector<std::string> names; // for Multi
     };

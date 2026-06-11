@@ -59,7 +59,6 @@ using namespace Rux;
 using namespace Platform;
 using namespace Misc;
 
-
 struct JsonDiagnostic {
     std::string file;
     int line = 0;
@@ -150,7 +149,7 @@ auto JsonEscape(std::string_view s) -> std::string {
         }
     }
     return out;
-};
+}
 
 auto enqueueDependency(
     DependencyQueue& queue,
@@ -224,7 +223,7 @@ auto enqueueDependency(
     queue.pendingPackages.push_back(
         {targetDep->name, depRoot, std::move(*depManifest)});
     return true;
-};
+}
 
 int HandleJsonOutput(bool hadErrors,
                      const std::vector<JsonDiagnostic>& jsonDiags) {

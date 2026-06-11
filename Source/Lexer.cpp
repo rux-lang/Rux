@@ -20,7 +20,6 @@ namespace Rux {
         return false;
     }
 
-
     Lexer::Lexer(std::string source, std::string sourceName)
         : source(std::move(source))
         , sourceName(std::move(sourceName)) {

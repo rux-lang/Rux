@@ -106,6 +106,7 @@ namespace Rux {
             fs::path path;
             std::string_view content;
         };
+
         const FileTask tasks[] = {
             {root / "Src" / (isBin ? "Main.rux" : "Lib.rux"), srcContent},
             {root / ".gitignore", "# Rux build outputs\nBin/\nTemp/\n"}};

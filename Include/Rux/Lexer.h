@@ -12,7 +12,10 @@
 
 namespace Rux {
     struct LexerDiagnostic {
-        enum class Severity { Warning, Error };
+        enum class Severity {
+            Warning,
+            Error,
+        };
 
         Severity severity = Severity::Error;
         SourceLocation location;

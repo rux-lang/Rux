@@ -7,7 +7,11 @@
 #include <string_view>
 
 namespace Rux {
-    enum class ColorMode { Auto, On, Off };
+    enum class ColorMode {
+        Auto,
+        On,
+        Off,
+    };
 
     struct GlobalOptions {
         ColorMode color = ColorMode::Auto;
