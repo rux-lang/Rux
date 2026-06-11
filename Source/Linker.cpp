@@ -1830,6 +1830,24 @@ namespace Rux {
                  0x0F, 0x05, // syscall
                  0xC3 // ret
              }},
+            // Munmap(addr, length) -> munmap(addr, length). macOS SYS_munmap = 0x2000049.
+            {"Munmap",
+             {
+                 0x48,
+                 0x89,
+                 0xCF, // mov rdi, rcx (addr)
+                 0x48,
+                 0x89,
+                 0xD6, // mov rsi, rdx (length)
+                 0xB8,
+                 0x49,
+                 0x00,
+                 0x00,
+                 0x02, // mov eax, 0x2000049 (SYS_munmap)
+                 0x0F,
+                 0x05, // syscall
+                 0xC3 // ret
+             }},
             {"RtlCopyMemory", {0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88, 0x01, 0x48, 0xFF,
                                0xC2, 0x48, 0xFF, 0xC1, 0x49, 0xFF, 0xC8, 0x75, 0xF1, 0xC3}},
             {"RtlFillMemory",
