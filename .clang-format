@@ -46,7 +46,7 @@ ReferenceAlignment: Left
 SpaceInEmptyBlock: false
 TabWidth: 4
 KeepEmptyLinesAtTheStartOfBlocks: false
-AlwaysBreakTemplateDeclarations: true
+BreakTemplateDeclarations: Yes
 SpaceInEmptyParentheses: false
 SpacesInConditionalStatement: false
 SpacesInCStyleCastParentheses: false
