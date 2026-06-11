@@ -1873,17 +1873,19 @@ namespace Rux {
             return;
         }
         default: {
-            // Unary (one src) or binary (two srcs)
+            // Unary (one src), binary (two srcs), or zero-operand/global addr (zero srcs)
             std::string_view opName = OpcodeStr(i.op);
             if (i.srcs.size() == 1)
                 out << std::format("{} = {} {} {}\n", RegStr(i.dst), opName, i.type.ToString(), RegStr(i.srcs[0]));
-            else
+            else if (i.srcs.size() >= 2)
                 out << std::format("{} = {} {} {}, {}\n",
                                    RegStr(i.dst),
                                    opName,
                                    i.type.ToString(),
                                    RegStr(i.srcs[0]),
                                    RegStr(i.srcs[1]));
+            else
+                out << std::format("{} = {} {} {}\n", RegStr(i.dst), opName, i.type.ToString(), i.strArg);
             return;
         }
         }
