@@ -87,8 +87,65 @@ int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions& opt
     if (!manifestPath) return 1;
     auto root = manifestPath->parent_path();
     if (manifestOnly) {
-        if (!opts.quiet) std::print("  Formatting {}\n", manifestPath->string());
-        // TODO: TOML formatter
+        auto manifest = Manifest::Load(*manifestPath);
+        if (!manifest) {
+            std::print(stderr, "error: failed to parse manifest file '{}'\n", manifestPath->string());
+            return 1;
+        }
+
+        // Get formatted content by saving to a temp file and reading it
+        auto tempPath = manifestPath->parent_path() / "Rux.toml.fmt.tmp";
+        if (!manifest->Save(tempPath)) {
+            std::print(stderr, "error: failed to serialize formatted manifest\n");
+            return 1;
+        }
+
+        std::string formattedContent;
+        {
+            std::ifstream tempFile(tempPath, std::ios::binary);
+            if (tempFile) {
+                formattedContent.assign((std::istreambuf_iterator<char>(tempFile)),
+                                        std::istreambuf_iterator<char>());
+            }
+        }
+        std::error_code ec;
+        std::filesystem::remove(tempPath, ec);
+
+        std::string originalContent;
+        {
+            std::ifstream inFile(*manifestPath, std::ios::binary);
+            if (inFile) {
+                originalContent.assign((std::istreambuf_iterator<char>(inFile)),
+                                       std::istreambuf_iterator<char>());
+            }
+        }
+
+        if (check) {
+            if (originalContent != formattedContent) {
+                if (!opts.quiet) {
+                    std::print(stderr, "error: manifest '{}' is not formatted\n", manifestPath->string());
+                }
+                return 1;
+            }
+            if (!opts.quiet) {
+                std::print("  Manifest is already formatted: {}\n", manifestPath->string());
+            }
+            return 0;
+        }
+
+        if (originalContent != formattedContent) {
+            if (!opts.quiet) {
+                std::print("  Formatting {}\n", manifestPath->string());
+            }
+            if (!manifest->Save(*manifestPath)) {
+                std::print(stderr, "error: failed to write manifest file '{}'\n", manifestPath->string());
+                return 1;
+            }
+        } else {
+            if (!opts.quiet) {
+                std::print("  Manifest is already formatted: {}\n", manifestPath->string());
+            }
+        }
         return 0;
     }
     auto sourceDir = root / "Source";
