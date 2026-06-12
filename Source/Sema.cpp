@@ -1811,7 +1811,8 @@ namespace Rux {
                     if (argTypes[i].IsUnknown() || paramTypes[i].IsUnknown()) {
                         continue;
                     }
-                    if (!argTypes[i].IsAssignableTo(paramTypes[i])) {
+                    if (!argTypes[i].IsAssignableTo(paramTypes[i]) &&
+                        !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
                         return nullptr;
                     }
                 }
@@ -1827,7 +1828,8 @@ namespace Rux {
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
                     if (!argTypes[i].IsUnknown() &&
                         !paramTypes[i].IsUnknown() &&
-                        !argTypes[i].IsAssignableTo(paramTypes[i])) {
+                        !argTypes[i].IsAssignableTo(paramTypes[i]) &&
+                        !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
                         match = false;
                         break;
                     }
@@ -1958,7 +1960,8 @@ namespace Rux {
                         funcType.inner[i].IsUnknown()) {
                         continue;
                     }
-                    if (!argTypes[i].IsAssignableTo(funcType.inner[i])) {
+                    if (!argTypes[i].IsAssignableTo(funcType.inner[i]) &&
+                        !(argTypes[i].IsInteger() && funcType.inner[i].IsInteger())) {
                         return nullptr;
                     }
                 }
