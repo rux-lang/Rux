@@ -1225,7 +1225,8 @@ namespace Rux {
                     if (argTypes[i].IsUnknown() || ft.inner[i].IsUnknown()) {
                         continue;
                     }
-                    if (!argTypes[i].IsAssignableTo(ft.inner[i])) {
+                    if (!argTypes[i].IsAssignableTo(ft.inner[i]) &&
+                        !(argTypes[i].IsInteger() && ft.inner[i].IsInteger())) {
                         return nullptr;
                     }
                 }
@@ -1270,7 +1271,8 @@ namespace Rux {
                             }
                             if (exactOnly
                                     ? !(argTypes[i] == paramType)
-                                    : !argTypes[i].IsAssignableTo(paramType)) {
+                                    : !(argTypes[i].IsAssignableTo(paramType) ||
+                                        (argTypes[i].IsInteger() && paramType.IsInteger()))) {
                                 match = false;
                                 break;
                             }
@@ -1397,7 +1399,8 @@ namespace Rux {
                     if (argTypes[i].IsUnknown() || paramType.IsUnknown()) {
                         continue;
                     }
-                    if (!argTypes[i].IsAssignableTo(paramType)) {
+                    if (!argTypes[i].IsAssignableTo(paramType) &&
+                        !(argTypes[i].IsInteger() && paramType.IsInteger())) {
                         return nullptr;
                     }
                 }
@@ -1415,7 +1418,8 @@ namespace Rux {
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
                     const TypeRef& paramType = ft.inner[i + 1];
                     if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
-                        !argTypes[i].IsAssignableTo(paramType)) {
+                        !argTypes[i].IsAssignableTo(paramType) &&
+                        !(argTypes[i].IsInteger() && paramType.IsInteger())) {
                         match = false;
                         break;
                     }
