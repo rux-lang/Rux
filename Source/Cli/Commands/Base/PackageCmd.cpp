@@ -1,38 +1,24 @@
-#include "Rux/Cli/Cli.h"
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
 
-#include "Rux/Asm.h"
-#include "Rux/Ast.h"
+#include "Rux/Cli/Cli.h"
 #include "Rux/Cli/CliInternals.h"
 #include "Rux/Hir.h"
-#include "Rux/Lexer.h"
-#include "Rux/Linker.h"
-#include "Rux/Lir.h"
 #include "Rux/Manifest.h"
 #include "Rux/Package.h"
-#include "Rux/Parser.h"
 #include "Rux/Platform/Defines.h"
 #include "Rux/Platform/Host.h"
-#include "Rux/Rcu.h"
-#include "Rux/Sema.h"
 #include "Rux/Version.h"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
-#include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <format>
-#include <iomanip>
 #include <print>
-#include <sstream>
 #include <string>
 #include <string_view>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
 
 /*
  * This is separate from the other ifdef because otherwise clang-format attempts
@@ -40,41 +26,38 @@
  */
 
 #if RUX_OS_WINDOWS
-    #ifndef WIN32_LEAN_AND_MEAN
-        #define WIN32_LEAN_AND_MEAN
-    #endif
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
 
-    #ifndef NOMINMAX
-        #define NOMINMAX
-    #endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 
-    #include <windows.h>
+#  include <windows.h>
 #endif
 
 #if RUX_OS_WINDOWS
-    #include <psapi.h>
-    #include <winhttp.h>
+#  include <psapi.h>
 #else
-    #include <fcntl.h>
-    #include <sys/resource.h>
-    #include <sys/wait.h>
-    #include <unistd.h>
+#  include <fcntl.h>
+#  include <sys/resource.h>
+#  include <sys/wait.h>
+#  include <unistd.h>
 #endif
-
-#include "Rux/SourceLoader.h"
 
 using namespace Rux;
 using namespace Platform;
 using namespace Misc;
 
-
-int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunAdd(std::span<const std::string_view> args,
+                const GlobalOptions& opts) {
     std::string_view spec;
     std::string_view pathArg;
     for (std::size_t i = 0; i < args.size(); ++i) {
         std::string_view arg = args[i];
         if (arg == "-h" || arg == "--help") {
-            PrintHelpAdd();
+            PrintHelpFor("add");
             return 0;
         }
         if (arg == "--path") {
@@ -94,31 +77,42 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions& opt
     }
     if (spec.empty()) {
         std::print(stderr, "error: missing package name\n\n");
-        PrintHelpAdd();
+        PrintHelpFor("add");
         return 1;
     }
     auto manifestPath = RequireManifest();
-    if (!manifestPath) return 1;
+    if (!manifestPath) {
+        return 1;
+    }
     auto manifest = LoadManifest(*manifestPath);
-    if (!manifest) return 1;
+    if (!manifest) {
+        return 1;
+    }
     auto [pkgName, pkgVersion] = ParsePackageSpec(spec);
 
     if (!pathArg.empty()) {
-        const bool changed = manifest->AddPathDependency(pkgName, std::string(pathArg));
+        const bool changed =
+            manifest->AddPathDependency(pkgName, std::string(pathArg));
         if (!manifest->Save(*manifestPath)) {
-            std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
+            std::print(stderr,
+                       "error: failed to write '{}'\n",
+                       manifestPath->string());
             return 1;
         }
         if (!opts.quiet) {
-            if (changed)
+            if (changed) {
                 std::print("Added {} @ path '{}'\n", pkgName, pathArg);
-            else
+            }
+            else {
                 std::print("Up-to-date {} @ path '{}'\n", pkgName, pathArg);
+            }
         }
         return 0;
     }
 
-    if (!opts.quiet) std::print("     Fetching registry...\n");
+    if (!opts.quiet) {
+        std::print("     Fetching registry...\n");
+    }
 
     const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
     if (!jsonOpt) {
@@ -127,30 +121,35 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions& opt
     }
 
     if (JsonLookupString(*jsonOpt, pkgName).empty()) {
-        std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
+        std::print(
+            stderr, "error: package '{}' not found in registry\n", pkgName);
         return 1;
     }
 
     const bool changed = manifest->AddDependency(pkgName, pkgVersion);
     if (!manifest->Save(*manifestPath)) {
-        std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
+        std::print(
+            stderr, "error: failed to write '{}'\n", manifestPath->string());
         return 1;
     }
     if (!opts.quiet) {
         const std::string ver = pkgVersion.empty() ? "latest" : pkgVersion;
-        if (changed)
+        if (changed) {
             std::print("Added {} @ {}\n", pkgName, ver);
-        else
+        }
+        else {
             std::print("Up-to-date {} @ {}\n", pkgName, ver);
+        }
     }
     return 0;
 }
 
-int Cli::RunRemove(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunRemove(std::span<const std::string_view> args,
+                   const GlobalOptions& opts) {
     std::string_view name;
     for (auto arg : args) {
         if (arg == "-h" || arg == "--help") {
-            PrintHelpRemove();
+            PrintHelpFor("remove");
             return 0;
         }
         if (!arg.starts_with('-') && name.empty()) {
@@ -162,27 +161,36 @@ int Cli::RunRemove(std::span<const std::string_view> args, const GlobalOptions& 
     }
     if (name.empty()) {
         std::print(stderr, "error: missing package name\n\n");
-        PrintHelpRemove();
+        PrintHelpFor("remove");
         return 1;
     }
     auto manifestPath = RequireManifest();
-    if (!manifestPath) return 1;
+    if (!manifestPath) {
+        return 1;
+    }
     auto manifest = LoadManifest(*manifestPath);
-    if (!manifest) return 1;
+    if (!manifest) {
+        return 1;
+    }
     std::string pkgName(name);
     if (!manifest->RemoveDependency(pkgName)) {
-        std::print(stderr, "error: package '{}' is not a dependency\n", pkgName);
+        std::print(
+            stderr, "error: package '{}' is not a dependency\n", pkgName);
         return 1;
     }
     if (!manifest->Save(*manifestPath)) {
-        std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
+        std::print(
+            stderr, "error: failed to write '{}'\n", manifestPath->string());
         return 1;
     }
-    if (!opts.quiet) std::print("     Removed {}\n", pkgName);
+    if (!opts.quiet) {
+        std::print("     Removed {}\n", pkgName);
+    }
     return 0;
 }
 
-int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunTest(std::span<const std::string_view> args,
+                 const GlobalOptions& opts) {
     bool isRelease = false;
     for (auto& arg : args) {
         if (arg == "--release") {
@@ -190,13 +198,12 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions& op
             continue;
         }
         if (arg == "-h" || arg == "--help") {
-            PrintHelpTest();
+            PrintHelpFor("test");
             return 0;
         }
         PrintUnknownOption(arg, "test");
         return 1;
     }
-
     auto manifestPath = Manifest::Find();
     std::filesystem::path projectRoot;
     std::filesystem::path testsDir;
@@ -384,7 +391,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions& op
     return failed == 0 ? 0 : 1;
 }
 
-int Cli::RunInit(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunInit(std::span<const std::string_view> args,
+                 const GlobalOptions& opts) {
     bool bin = false;
     bool lib = false;
     for (auto& arg : args) {
@@ -397,18 +405,26 @@ int Cli::RunInit(std::span<const std::string_view> args, const GlobalOptions& op
             continue;
         }
         if (arg == "-h" || arg == "--help") {
-            PrintHelpInit();
+            PrintHelpFor("init");
             return 0;
         }
         PrintUnknownOption(arg, "init");
         return 1;
     }
-    const auto type = (lib && !bin) ? PackageType::SharedLibrary : PackageType::Executable;
+    const auto type =
+        (lib && !bin) ? PackageType::SharedLibrary : PackageType::Executable;
     const auto root = std::filesystem::current_path();
     auto name = root.filename().string();
-    if (!opts.quiet)
-        std::print("  Initializing {} package '{}'\n", type == PackageType::Executable ? "binary" : "library", name);
-    if (!ScaffoldPackage(root, name, type, /*initMode=*/true)) return 1;
-    if (!opts.quiet) std::print("   Initialized package '{}'\n", name);
+    if (!opts.quiet) {
+        std::print("  Initializing {} package '{}'\n",
+                   type == PackageType::Executable ? "binary" : "library",
+                   name);
+    }
+    if (!ScaffoldPackage(root, name, type, /*initMode=*/true)) {
+        return 1;
+    }
+    if (!opts.quiet) {
+        std::print("   Initialized package '{}'\n", name);
+    }
     return 0;
 }

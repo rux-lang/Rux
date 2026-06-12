@@ -5,7 +5,6 @@
 //
 // Returns 0 when every value matches; otherwise the 1-based index of the first
 // failing check, so a non-zero exit pinpoints the broken case.
-// Tests/run_numeric_suffix_test.sh asserts the exit code.
 
 func Main() -> int {
     if 0xFFu != 255 { return 1; }

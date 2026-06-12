@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #include "Rux/Platform/Platform.h"
 
 #include "Rux/Platform/Host.h"
@@ -83,11 +86,21 @@ namespace Rux::Platform {
             __cpuid(1, r[0], r[1], r[2], r[3]);
 #  endif
 
-            if (r[3] & (1 << 26)) f |= CpuFeature::SSE2;
-            if (r[2] & (1 << 0)) f |= CpuFeature::SSE3;
-            if (r[2] & (1 << 9)) f |= CpuFeature::SSSE3;
-            if (r[2] & (1 << 19)) f |= CpuFeature::SSE41;
-            if (r[2] & (1 << 20)) f |= CpuFeature::SSE42;
+            if (r[3] & (1 << 26)) {
+                f |= CpuFeature::SSE2;
+            }
+            if (r[2] & (1 << 0)) {
+                f |= CpuFeature::SSE3;
+            }
+            if (r[2] & (1 << 9)) {
+                f |= CpuFeature::SSSE3;
+            }
+            if (r[2] & (1 << 19)) {
+                f |= CpuFeature::SSE41;
+            }
+            if (r[2] & (1 << 20)) {
+                f |= CpuFeature::SSE42;
+            }
 
             // AVX requires OS support
             const bool avx_hw = r[2] & (1 << 28);
@@ -105,17 +118,26 @@ namespace Rux::Platform {
             __cpuid_count(7, 0, r[0], r[1], r[2], r[3]);
 #  endif
 
-            if (r[1] & (1 << 5)) f |= CpuFeature::AVX2;
+            if (r[1] & (1 << 5)) {
+                f |= CpuFeature::AVX2;
+            }
 
-            // NOTE: simplified AVX-512 detection (still OS-dependent in real systems)
-            if (r[1] & (1 << 16)) f |= CpuFeature::AVX512;
+            // NOTE: simplified AVX-512 detection (still OS-dependent in real
+            // systems)
+            if (r[1] & (1 << 16)) {
+                f |= CpuFeature::AVX512;
+            }
 
 #elif RUX_ARCH_ARM64 || RUX_ARCH_ARM32
 
 #  if RUX_OS_LINUX
             unsigned long hw = getauxval(AT_HWCAP);
-            if (hw & HWCAP_ASIMD) f |= CpuFeature::NEON;
-            if (hw & HWCAP_SVE) f |= CpuFeature::SVE;
+            if (hw & HWCAP_ASIMD) {
+                f |= CpuFeature::NEON;
+            }
+            if (hw & HWCAP_SVE) {
+                f |= CpuFeature::SVE;
+            }
 #  elif RUX_OS_MACOS
             f |= CpuFeature::NEON;
 #  else
@@ -126,7 +148,9 @@ namespace Rux::Platform {
 
 #  if RUX_OS_LINUX
             unsigned long hw = getauxval(AT_HWCAP);
-            if (hw & (1 << ('V' - 'A'))) f |= CpuFeature::RVV;
+            if (hw & (1 << ('V' - 'A'))) {
+                f |= CpuFeature::RVV;
+            }
 #  else
             f = HostCpuFeatures;
 #  endif
@@ -141,7 +165,8 @@ namespace Rux::Platform {
         [[nodiscard]] RuntimeCpuInfo DetectRuntimeCpuInfo() noexcept {
             RuntimeCpuInfo info{};
 
-            info.logical_cores = (std::max)(1u, std::thread::hardware_concurrency());
+            info.logical_cores =
+                (std::max)(1u, std::thread::hardware_concurrency());
 
             info.features = DetectCpuFeaturesImpl();
 
@@ -153,19 +178,26 @@ namespace Rux::Platform {
             std::vector<uint8_t> buffer(len);
 
             if (len > 0 &&
-                GetLogicalProcessorInformation(reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(buffer.data()),
-                                               &len)) {
-                auto* entries = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(buffer.data());
+                GetLogicalProcessorInformation(
+                    reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(
+                        buffer.data()),
+                    &len)) {
+                auto* entries =
+                    reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(
+                        buffer.data());
 
-                size_t count = len / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+                size_t count =
+                    len / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
 
                 for (size_t i = 0; i < count; ++i) {
                     const auto& e = entries[i];
 
-                    if (e.Relationship == RelationProcessorCore)
+                    if (e.Relationship == RelationProcessorCore) {
                         ++info.physical_cores;
+                    }
 
-                    else if (e.Relationship == RelationCache && e.Cache.Level == 1 && e.Cache.Type == CacheData) {
+                    else if (e.Relationship == RelationCache &&
+                             e.Cache.Level == 1 && e.Cache.Type == CacheData) {
                         info.cache_line_size = e.Cache.LineSize;
                     }
                 }
@@ -187,10 +219,12 @@ namespace Rux::Platform {
 #elif RUX_OS_MACOS || (RUX_IS_BSD && !RUX_OS_OPENBSD)
 
             size_t s = sizeof(info.physical_cores);
-            sysctlbyname("hw.physicalcpu", &info.physical_cores, &s, nullptr, 0);
+            sysctlbyname(
+                "hw.physicalcpu", &info.physical_cores, &s, nullptr, 0);
 
             s = sizeof(info.cache_line_size);
-            sysctlbyname("hw.cachelinesize", &info.cache_line_size, &s, nullptr, 0);
+            sysctlbyname(
+                "hw.cachelinesize", &info.cache_line_size, &s, nullptr, 0);
 
 #elif RUX_OS_OPENBSD
 
@@ -206,9 +240,13 @@ namespace Rux::Platform {
 
 #endif
 
-            if (!info.cache_line_size) info.cache_line_size = CacheLineSize;
+            if (!info.cache_line_size) {
+                info.cache_line_size = CacheLineSize;
+            }
 
-            if (!info.physical_cores) info.physical_cores = info.logical_cores;
+            if (!info.physical_cores) {
+                info.physical_cores = info.logical_cores;
+            }
 
             return info;
         }
@@ -254,7 +292,8 @@ namespace Rux::Platform {
             long psize = sysconf(_SC_PAGESIZE);
             if (pages > 0 && psize > 0) {
                 info.total_bytes = uint64_t(pages) * uint64_t(psize);
-                info.available_bytes = uint64_t(avpages > 0 ? avpages : pages) * uint64_t(psize);
+                info.available_bytes =
+                    uint64_t(avpages > 0 ? avpages : pages) * uint64_t(psize);
             }
         }
 
@@ -268,9 +307,12 @@ namespace Rux::Platform {
         vm_statistics64 vm{};
         mach_msg_type_number_t c = HOST_VM_INFO64_COUNT;
 
-        if (host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t)&vm, &c) == KERN_SUCCESS) {
+        if (host_statistics64(
+                mach_host_self(), HOST_VM_INFO64, (host_info64_t)&vm, &c) ==
+            KERN_SUCCESS) {
             auto page = sysconf(_SC_PAGESIZE);
-            info.available_bytes = uint64_t(vm.free_count + vm.inactive_count) * page;
+            info.available_bytes =
+                uint64_t(vm.free_count + vm.inactive_count) * page;
         }
         else {
             info.available_bytes = info.total_bytes;

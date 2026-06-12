@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include "Rux/Ast.h"
@@ -160,16 +163,19 @@ namespace Rux {
         std::vector<HirExprPtr> args;
     };
 
-    // Wrap a concrete value into an interface fat pointer {data_ptr, vtable_ptr}
+    // Wrap a concrete value into an interface fat pointer {data_ptr,
+    // vtable_ptr}
     struct HirCoerceToInterfaceExpr : HirExpr {
         HirExprPtr value;
         std::string vtableLabel;
     };
 
-    // Call a method through an interface fat pointer (dynamic dispatch via vtable)
+    // Call a method through an interface fat pointer (dynamic dispatch via
+    // vtable)
     struct HirInterfaceCallExpr : HirExpr {
-        HirExprPtr fatPtrExpr; // expression that yields the fat-pointer address (8 bytes)
-        int methodIdx = 0; // index of the method in the vtable
+        HirExprPtr fatPtrExpr; // expression that yields the fat-pointer address
+                               // (8 bytes)
+        int methodIdx = 0;     // index of the method in the vtable
         std::vector<HirExprPtr> args;
     };
 
@@ -328,7 +334,8 @@ namespace Rux {
         std::string label;
     };
 
-    // local declaration inside a block (func, const, type alias declared locally)
+    // local declaration inside a block (func, const, type alias declared
+    // locally)
     struct HirLocalDecl : HirStmt {
         std::string description;
         bool hasConstant = false;
@@ -488,7 +495,8 @@ namespace Rux {
         [[nodiscard]] HirPackage Generate();
 
         // Write a human-readable dump of the HIR package to `path`.
-        static bool Dump(const HirPackage& package, const std::filesystem::path& path);
+        static bool Dump(const HirPackage& package,
+                         const std::filesystem::path& path);
 
     private:
         std::vector<const Module*> modules_;

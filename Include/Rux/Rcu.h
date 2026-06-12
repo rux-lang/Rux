@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include "Rux/Lir.h"
@@ -113,10 +116,12 @@ namespace Rux {
         [[nodiscard]] std::vector<RcuFile> Generate() const;
 
         // Write a binary RCU file. Returns false on I/O error.
-        static bool Emit(const RcuFile& file, const std::filesystem::path& path);
+        static bool Emit(const RcuFile& file,
+                         const std::filesystem::path& path);
 
         // Write a human-readable text dump. Returns false on I/O error.
-        static bool Dump(const RcuFile& file, const std::filesystem::path& path);
+        static bool Dump(const RcuFile& file,
+                         const std::filesystem::path& path);
 
     private:
         LirPackage lir;
