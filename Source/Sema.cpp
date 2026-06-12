@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #include "Rux/Sema.h"
 
 #include "Rux/Platform/Host.h"
@@ -72,44 +75,96 @@ namespace Rux {
     }
 
     bool TypeRef::IsAssignableTo(const TypeRef& other) const noexcept {
-        if (IsUnknown() || other.IsUnknown()) return true;
-        if (*this == other) return true;
-        // float32 widens implicitly to float64 / float (safe, no precision loss in range)
-        if (kind == Kind::Float32 && other.kind == Kind::Float64) return true;
+        if (IsUnknown() || other.IsUnknown()) {
+            return true;
+        }
+        if (*this == other) {
+            return true;
+        }
+        // float32 widens implicitly to float64 / float (safe, no precision loss
+        // in range)
+        if (kind == Kind::Float32 && other.kind == Kind::Float64) {
+            return true;
+        }
         // char widens implicitly: char8 → char16, char8/char16 → char32
-        if (kind == Kind::Char8 && (other.kind == Kind::Char16 || other.kind == Kind::Char32)) return true;
-        if (kind == Kind::Char16 && other.kind == Kind::Char32) return true;
-        // int/uint interoperate with their fixed-width platform equivalents (x64: 64-bit)
-        if (kind == Kind::Int64 && other.kind == Kind::Int) return true;
-        if (kind == Kind::Int && other.kind == Kind::Int64) return true;
-        if (kind == Kind::UInt64 && other.kind == Kind::UInt) return true;
-        if (kind == Kind::UInt && other.kind == Kind::UInt64) return true;
+        if (kind == Kind::Char8 &&
+            (other.kind == Kind::Char16 || other.kind == Kind::Char32)) {
+            return true;
+        }
+        if (kind == Kind::Char16 && other.kind == Kind::Char32) {
+            return true;
+        }
+        // int/uint interoperate with their fixed-width platform equivalents
+        // (x64: 64-bit)
+        if (kind == Kind::Int64 && other.kind == Kind::Int) {
+            return true;
+        }
+        if (kind == Kind::Int && other.kind == Kind::Int64) {
+            return true;
+        }
+        if (kind == Kind::UInt64 && other.kind == Kind::UInt) {
+            return true;
+        }
+        if (kind == Kind::UInt && other.kind == Kind::UInt64) {
+            return true;
+        }
         // smaller fixed-width integers widen implicitly to int/uint
-        if (other.kind == Kind::Int && (kind == Kind::Int8 || kind == Kind::Int16 || kind == Kind::Int32)) return true;
-        if (other.kind == Kind::UInt && (kind == Kind::UInt8 || kind == Kind::UInt16 || kind == Kind::UInt32))
+        if (other.kind == Kind::Int &&
+            (kind == Kind::Int8 || kind == Kind::Int16 ||
+             kind == Kind::Int32)) {
             return true;
+        }
+        if (other.kind == Kind::UInt &&
+            (kind == Kind::UInt8 || kind == Kind::UInt16 ||
+             kind == Kind::UInt32)) {
+            return true;
+        }
         // smaller fixed-width signed integers widen to larger signed integers
-        if (other.kind == Kind::Int64 && (kind == Kind::Int8 || kind == Kind::Int16 || kind == Kind::Int32))
+        if (other.kind == Kind::Int64 &&
+            (kind == Kind::Int8 || kind == Kind::Int16 ||
+             kind == Kind::Int32)) {
             return true;
-        if (other.kind == Kind::Int32 && (kind == Kind::Int8 || kind == Kind::Int16)) return true;
-        if (other.kind == Kind::Int16 && kind == Kind::Int8) return true;
-        // smaller fixed-width unsigned integers widen to larger unsigned integers
-        if (other.kind == Kind::UInt64 && (kind == Kind::UInt8 || kind == Kind::UInt16 || kind == Kind::UInt32))
+        }
+        if (other.kind == Kind::Int32 &&
+            (kind == Kind::Int8 || kind == Kind::Int16)) {
             return true;
-        if (other.kind == Kind::UInt32 && (kind == Kind::UInt8 || kind == Kind::UInt16)) return true;
-        if (other.kind == Kind::UInt16 && kind == Kind::UInt8) return true;
+        }
+        if (other.kind == Kind::Int16 && kind == Kind::Int8) {
+            return true;
+        }
+        // smaller fixed-width unsigned integers widen to larger unsigned
+        // integers
+        if (other.kind == Kind::UInt64 &&
+            (kind == Kind::UInt8 || kind == Kind::UInt16 ||
+             kind == Kind::UInt32)) {
+            return true;
+        }
+        if (other.kind == Kind::UInt32 &&
+            (kind == Kind::UInt8 || kind == Kind::UInt16)) {
+            return true;
+        }
+        if (other.kind == Kind::UInt16 && kind == Kind::UInt8) {
+            return true;
+        }
         // Numeric types must match exactly unless an explicit cast is used.
-        if (IsNumeric() && other.IsNumeric()) return false;
+        if (IsNumeric() && other.IsNumeric()) {
+            return false;
+        }
         // Bool types are mutually assignable across widths
-        if (IsBool() && other.IsBool()) return true;
-        // Any pointer is implicitly assignable to *opaque (like void* in C)
-        if (kind == Kind::Pointer && other.kind == Kind::Pointer && !other.inner.empty() && other.inner[0].IsOpaque())
+        if (IsBool() && other.IsBool()) {
             return true;
+        }
+        // Any pointer is implicitly assignable to *opaque (like void* in C)
+        if (kind == Kind::Pointer && other.kind == Kind::Pointer &&
+            !other.inner.empty() && other.inner[0].IsOpaque()) {
+            return true;
+        }
         return false;
     }
 
     std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
-        auto alignUp = [](const std::uint64_t value, const std::uint64_t align) {
+        auto alignUp = [](const std::uint64_t value,
+                          const std::uint64_t align) {
             return (value + align - 1) & ~(align - 1);
         };
 
@@ -147,9 +202,13 @@ namespace Rux {
         case Kind::Slice:
             return 16;
         case Kind::Range: {
-            if (inner.empty()) return std::nullopt;
+            if (inner.empty()) {
+                return std::nullopt;
+            }
             const auto elemSize = inner[0].SizeInBytes();
-            if (!elemSize || *elemSize == 0) return std::nullopt;
+            if (!elemSize || *elemSize == 0) {
+                return std::nullopt;
+            }
             return alignUp(2 * *elemSize + 1, *elemSize);
         }
         case Kind::Tuple: {
@@ -157,17 +216,26 @@ namespace Rux {
             std::uint64_t maxAlign = 1;
             for (const auto& elem : inner) {
                 const auto elemSize = elem.SizeInBytes();
-                if (!elemSize) return std::nullopt;
-                const std::uint64_t al = *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8)) : 1;
-                if (al > 1) offset = alignUp(offset, al);
+                if (!elemSize) {
+                    return std::nullopt;
+                }
+                const std::uint64_t al =
+                    *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8)) : 1;
+                if (al > 1) {
+                    offset = alignUp(offset, al);
+                }
                 offset += *elemSize > 0 ? *elemSize : 8;
                 maxAlign = std::max(maxAlign, al);
             }
             return alignUp(offset, maxAlign);
         }
         case Kind::Named:
-            if (!inner.empty()) return inner[0].SizeInBytes();
-            if (name.starts_with("Slice<")) return 16;
+            if (!inner.empty()) {
+                return inner[0].SizeInBytes();
+            }
+            if (name.starts_with("Slice<")) {
+                return 16;
+            }
             return std::nullopt;
         }
         return std::nullopt;
@@ -230,7 +298,9 @@ namespace Rux {
         case Kind::Tuple: {
             std::string s = "(";
             for (std::size_t i = 0; i < inner.size(); ++i) {
-                if (i) s += ", ";
+                if (i) {
+                    s += ", ";
+                }
                 s += inner[i].ToString();
             }
             return s + ")";
@@ -238,7 +308,9 @@ namespace Rux {
         case Kind::Func: {
             std::string s = "func(";
             for (std::size_t i = 0; i + 1 < inner.size(); ++i) {
-                if (i) s += ", ";
+                if (i) {
+                    s += ", ";
+                }
                 s += inner[i].ToString();
             }
             s += ") -> ";
@@ -250,24 +322,38 @@ namespace Rux {
     }
 
     bool TypeRef::operator==(const TypeRef& o) const noexcept {
-        if (kind != o.kind || name != o.name || inner.size() != o.inner.size()) return false;
-        for (std::size_t i = 0; i < inner.size(); ++i)
-            if (inner[i] != o.inner[i]) return false;
+        if (kind != o.kind || name != o.name ||
+            inner.size() != o.inner.size()) {
+            return false;
+        }
+        for (std::size_t i = 0; i < inner.size(); ++i) {
+            if (inner[i] != o.inner[i]) {
+                return false;
+            }
+        }
         return true;
     }
 
     // SemaResult
 
     bool SemaResult::HasErrors() const noexcept {
-        return std::ranges::any_of(
-            diagnostics, [](const SemaDiagnostic& d) { return d.severity == SemaDiagnostic::Severity::Error; });
+        return std::ranges::any_of(diagnostics, [](const SemaDiagnostic& d) {
+            return d.severity == SemaDiagnostic::Severity::Error;
+        });
     }
 
     // Internal: Symbol & Scope
     class Scope; // forward declaration — Scope is defined below
 
     struct Symbol {
-        enum class Kind { Var, Func, Type, Const, Module, Interface };
+        enum class Kind {
+            Var,
+            Func,
+            Type,
+            Const,
+            Module,
+            Interface,
+        };
 
         Kind kind = Kind::Var;
         std::string name;
@@ -276,7 +362,8 @@ namespace Rux {
         bool isMut = false;
         std::vector<const FuncDecl*> funcOverloads;
         std::vector<std::string> interfaceMethods; // for Interface kind
-        Scope* moduleScope = nullptr; // for Module kind: the imported module's scope
+        Scope* moduleScope =
+            nullptr; // for Module kind: the imported module's scope
     };
 
     class Scope {
@@ -286,21 +373,30 @@ namespace Rux {
         }
 
         // Returns false and emits a diagnostic if the name is already defined.
-        bool Define(Symbol sym, std::vector<SemaDiagnostic>& diags, const std::string& sourceName) {
+        bool Define(Symbol sym,
+                    std::vector<SemaDiagnostic>& diags,
+                    const std::string& sourceName) {
             if (auto it = table.find(sym.name); it != table.end()) {
-                if (it->second.kind == Symbol::Kind::Func && sym.kind == Symbol::Kind::Func) {
+                if (it->second.kind == Symbol::Kind::Func &&
+                    sym.kind == Symbol::Kind::Func) {
                     it->second.funcOverloads.insert(
-                        it->second.funcOverloads.end(), sym.funcOverloads.begin(), sym.funcOverloads.end());
-                    if (it->second.type.IsUnknown() && !sym.type.IsUnknown()) it->second.type = std::move(sym.type);
+                        it->second.funcOverloads.end(),
+                        sym.funcOverloads.begin(),
+                        sym.funcOverloads.end());
+                    if (it->second.type.IsUnknown() && !sym.type.IsUnknown()) {
+                        it->second.type = std::move(sym.type);
+                    }
                     return true;
                 }
-                diags.push_back({SemaDiagnostic::Severity::Error,
-                                 sourceName,
-                                 sym.location,
-                                 std::format("'{}' is already defined (first defined at {}:{})",
-                                             sym.name,
-                                             it->second.location.line,
-                                             it->second.location.column)});
+                diags.push_back(
+                    {SemaDiagnostic::Severity::Error,
+                     sourceName,
+                     sym.location,
+                     std::format(
+                         "'{}' is already defined (first defined at {}:{})",
+                         sym.name,
+                         it->second.location.line,
+                         it->second.location.column)});
                 return false;
             }
             table.emplace(sym.name, std::move(sym));
@@ -309,8 +405,12 @@ namespace Rux {
 
         Symbol* Lookup(const std::string& name) {
             auto it = table.find(name);
-            if (it != table.end()) return &it->second;
-            if (parent) return parent->Lookup(name);
+            if (it != table.end()) {
+                return &it->second;
+            }
+            if (parent) {
+                return parent->Lookup(name);
+            }
             return nullptr;
         }
 
@@ -323,7 +423,8 @@ namespace Rux {
             return parent;
         }
 
-        [[nodiscard]] const std::unordered_map<std::string, Symbol>& Table() const {
+        [[nodiscard]] const std::unordered_map<std::string, Symbol>&
+        Table() const {
             return table;
         }
 
@@ -352,41 +453,58 @@ namespace Rux {
 
         void Run() {
             RegisterBuiltins();
-            // Collect dependency package symbols into package-level scopes. Logical
-            // module declarations inside any source file populate nested module scopes.
+            // Collect dependency package symbols into package-level scopes.
+            // Logical module declarations inside any source file populate
+            // nested module scopes.
             for (auto& pkg : deps) {
                 auto rootScope = std::make_unique<Scope>(&globalScope);
                 Scope* rootScopePtr = rootScope.get();
                 for (auto& entry : pkg.modules) {
                     currentFile = entry.module->name;
-                    for (const auto& decl : entry.module->items)
+                    for (const auto& decl : entry.module->items) {
                         CollectDecl(*decl, *rootScope, &pkg.name, "");
+                    }
                 }
                 packageModuleScopes[pkg.name][""] = rootScopePtr;
                 packageRootScopes.push_back(std::move(rootScope));
             }
-            for (auto& pkg : deps)
-                for (auto& entry : pkg.modules)
-                    ApplyModuleImportsInScope(*entry.module, *packageModuleScopes[pkg.name][""]);
+            for (auto& pkg : deps) {
+                for (auto& entry : pkg.modules) {
+                    ApplyModuleImportsInScope(
+                        *entry.module, *packageModuleScopes[pkg.name][""]);
+                }
+            }
             // Resolve dep function signatures in their per-module scopes.
-            for (auto& pkg : deps)
-                for (auto& entry : pkg.modules)
-                    ResolveModuleSignaturesInScope(*entry.module, *packageModuleScopes[pkg.name][""]);
-            for (auto& pkg : deps)
-                for (auto& entry : pkg.modules)
-                    CheckModuleInScope(*entry.module, *packageModuleScopes[pkg.name][""]);
-            // User modules go into globalScope as before. When a package imports
-            // itself by name, expose the global/module scopes through the same
-            // package import table used for dependencies.
-            if (!packageName.empty()) packageModuleScopes[packageName][""] = &globalScope;
-            for (auto* mod : modules)
+            for (auto& pkg : deps) {
+                for (auto& entry : pkg.modules) {
+                    ResolveModuleSignaturesInScope(
+                        *entry.module, *packageModuleScopes[pkg.name][""]);
+                }
+            }
+            for (auto& pkg : deps) {
+                for (auto& entry : pkg.modules) {
+                    CheckModuleInScope(*entry.module,
+                                       *packageModuleScopes[pkg.name][""]);
+                }
+            }
+            // User modules go into globalScope as before. When a package
+            // imports itself by name, expose the global/module scopes through
+            // the same package import table used for dependencies.
+            if (!packageName.empty()) {
+                packageModuleScopes[packageName][""] = &globalScope;
+            }
+            for (auto* mod : modules) {
                 CollectModule(*mod);
-            for (auto* mod : modules)
+            }
+            for (auto* mod : modules) {
                 ApplyModuleImports(*mod);
-            for (auto* mod : modules)
+            }
+            for (auto* mod : modules) {
                 ResolveModuleSignatures(*mod);
-            for (auto* mod : modules)
+            }
+            for (auto* mod : modules) {
                 CheckModule(*mod);
+            }
         }
 
     private:
@@ -400,7 +518,8 @@ namespace Rux {
         Scope* currentScope;
         // packageModuleScopes[pkgName][modulePath] = logical module scope.
         // The empty modulePath is the package root.
-        std::unordered_map<std::string, std::unordered_map<std::string, Scope*>> packageModuleScopes;
+        std::unordered_map<std::string, std::unordered_map<std::string, Scope*>>
+            packageModuleScopes;
         std::vector<std::unique_ptr<Scope>> packageRootScopes;
         std::vector<std::unique_ptr<Scope>> ownedScopes;
         std::string currentFile;
@@ -413,17 +532,27 @@ namespace Rux {
         std::unordered_map<std::string, const StructDecl*> structDecls;
         std::unordered_map<std::string, const EnumDecl*> enumDecls;
         std::unordered_map<std::string, const InterfaceDecl*> interfaceDecls;
-        std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl*>>> methodsByType;
-        std::unordered_map<std::string, std::unordered_set<std::string>> typeImplementsInterfaces;
+        std::unordered_map<
+            std::string,
+            std::unordered_map<std::string, std::vector<const FuncDecl*>>>
+            methodsByType;
+        std::unordered_map<std::string, std::unordered_set<std::string>>
+            typeImplementsInterfaces;
 
         // Diagnostics
 
         void EmitError(SourceLocation loc, std::string msg) const {
-            diags.push_back({SemaDiagnostic::Severity::Error, currentFile, loc, std::move(msg)});
+            diags.push_back({SemaDiagnostic::Severity::Error,
+                             currentFile,
+                             loc,
+                             std::move(msg)});
         }
 
         void EmitWarning(SourceLocation loc, std::string msg) const {
-            diags.push_back({SemaDiagnostic::Severity::Warning, currentFile, loc, std::move(msg)});
+            diags.push_back({SemaDiagnostic::Severity::Warning,
+                             currentFile,
+                             loc,
+                             std::move(msg)});
         }
 
         // Scope management
@@ -433,7 +562,8 @@ namespace Rux {
         }
 
         void PopScope() {
-            assert(currentScope->Parent() != nullptr && "cannot pop global scope");
+            assert(currentScope->Parent() != nullptr &&
+                   "cannot pop global scope");
             currentScope = currentScope->Parent();
         }
 
@@ -449,9 +579,12 @@ namespace Rux {
 
             std::vector<TypeRef> paramTypes;
             for (const auto& param : params) {
-                if (!param.isVariadic) paramTypes.push_back(ResolveType(*param.type));
+                if (!param.isVariadic) {
+                    paramTypes.push_back(ResolveType(*param.type));
+                }
             }
-            TypeRef ret = returnType ? ResolveType(*returnType->get()) : TypeRef::MakeOpaque();
+            TypeRef ret = returnType ? ResolveType(*returnType->get())
+                                     : TypeRef::MakeOpaque();
 
             currentTypeParams = savedTypeParams;
             return TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
@@ -493,34 +626,45 @@ namespace Rux {
         // First pass: collect global declaration names
         void CollectModule(const Module& mod) {
             currentFile = mod.name;
-            const std::string* selfPackageName = packageName.empty() ? nullptr : &packageName;
-            for (const auto& decl : mod.items)
+            const std::string* selfPackageName =
+                packageName.empty() ? nullptr : &packageName;
+            for (const auto& decl : mod.items) {
                 CollectDecl(*decl, globalScope, selfPackageName, "");
+            }
         }
 
         void ResolveModuleSignatures(const Module& mod) {
             currentFile = mod.name;
-            for (const auto& decl : mod.items)
+            for (const auto& decl : mod.items) {
                 ResolveDeclSignature(*decl);
+            }
         }
 
         void ResolveDeclSignature(const Decl& decl) {
-            if (!DeclMatchesTarget(decl)) return;
+            if (!DeclMatchesTarget(decl)) {
+                return;
+            }
             if (auto* d = dynamic_cast<const FuncDecl*>(&decl)) {
-                if (Symbol* sym = globalScope.Lookup(d->name))
-                    sym->type = MakeFuncType(d->params, d->returnType, d->typeParams);
+                if (Symbol* sym = globalScope.Lookup(d->name)) {
+                    sym->type =
+                        MakeFuncType(d->params, d->returnType, d->typeParams);
+                }
             }
             else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl)) {
-                if (Symbol* sym = globalScope.Lookup(d->name)) sym->type = MakeFuncType(d->params, d->returnType);
+                if (Symbol* sym = globalScope.Lookup(d->name)) {
+                    sym->type = MakeFuncType(d->params, d->returnType);
+                }
             }
             else if (auto* d = dynamic_cast<const ExternBlockDecl*>(&decl)) {
-                for (const auto& item : d->items)
+                for (const auto& item : d->items) {
                     ResolveDeclSignature(*item);
+                }
             }
             else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl)) {
                 Scope& moduleScope = ModuleScopeFor(d->name, globalScope);
-                for (const auto& item : d->items)
+                for (const auto& item : d->items) {
                     ResolveDeclSignatureInScope(*item, moduleScope);
+                }
             }
         }
 
@@ -528,35 +672,45 @@ namespace Rux {
             Scope* savedScope = currentScope;
             currentScope = &scope;
             currentFile = mod.name;
-            for (const auto& decl : mod.items)
+            for (const auto& decl : mod.items) {
                 ResolveDeclSignatureInScope(*decl, scope);
+            }
             currentScope = savedScope;
         }
 
         void ResolveDeclSignatureInScope(const Decl& decl, Scope& scope) {
-            if (!DeclMatchesTarget(decl)) return;
+            if (!DeclMatchesTarget(decl)) {
+                return;
+            }
             if (auto* d = dynamic_cast<const FuncDecl*>(&decl)) {
-                if (Symbol* sym = scope.Lookup(d->name))
-                    sym->type = MakeFuncType(d->params, d->returnType, d->typeParams);
+                if (Symbol* sym = scope.Lookup(d->name)) {
+                    sym->type =
+                        MakeFuncType(d->params, d->returnType, d->typeParams);
+                }
             }
             else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl)) {
-                if (Symbol* sym = scope.Lookup(d->name)) sym->type = MakeFuncType(d->params, d->returnType);
+                if (Symbol* sym = scope.Lookup(d->name)) {
+                    sym->type = MakeFuncType(d->params, d->returnType);
+                }
             }
             else if (auto* d = dynamic_cast<const ExternBlockDecl*>(&decl)) {
-                for (const auto& item : d->items)
+                for (const auto& item : d->items) {
                     ResolveDeclSignatureInScope(*item, scope);
+                }
             }
             else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl)) {
                 Scope& moduleScope = ModuleScopeFor(d->name, scope);
-                for (const auto& item : d->items)
+                for (const auto& item : d->items) {
                     ResolveDeclSignatureInScope(*item, moduleScope);
+                }
             }
         }
 
         void ApplyModuleImports(const Module& mod) {
             currentFile = mod.name;
-            for (const auto& decl : mod.items)
+            for (const auto& decl : mod.items) {
                 ApplyDeclImports(*decl);
+            }
         }
 
         void ApplyModuleImportsInScope(const Module& mod, Scope& scope) {
@@ -567,27 +721,35 @@ namespace Rux {
         }
 
         void ApplyDeclImports(const Decl& decl) {
-            if (!DeclMatchesTarget(decl)) return;
+            if (!DeclMatchesTarget(decl)) {
+                return;
+            }
             if (auto* d = dynamic_cast<const UseDecl*>(&decl)) {
                 CheckUseDecl(*d);
             }
             else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl)) {
                 Scope* savedScope = currentScope;
                 currentScope = &ModuleScopeFor(d->name, *currentScope);
-                for (const auto& item : d->items)
+                for (const auto& item : d->items) {
                     ApplyDeclImports(*item);
+                }
                 currentScope = savedScope;
             }
         }
 
-        static std::string JoinModulePath(const std::string& prefix, const std::string& name) {
-            if (prefix.empty()) return name;
+        static std::string JoinModulePath(const std::string& prefix,
+                                          const std::string& name) {
+            if (prefix.empty()) {
+                return name;
+            }
             return prefix + "::" + name;
         }
 
         Scope& ModuleScopeFor(const std::string& name, Scope& parent) {
-            if (Symbol* sym = parent.Lookup(name); sym && sym->kind == Symbol::Kind::Module && sym->moduleScope)
+            if (Symbol* sym = parent.Lookup(name);
+                sym && sym->kind == Symbol::Kind::Module && sym->moduleScope) {
                 return *sym->moduleScope;
+            }
             return parent;
         }
 
@@ -595,7 +757,9 @@ namespace Rux {
                          Scope& scope,
                          const std::string* packageName = nullptr,
                          const std::string& modulePath = "") {
-            if (!DeclMatchesTarget(decl)) return;
+            if (!DeclMatchesTarget(decl)) {
+                return;
+            }
             // Records the symbol in `scope` and, for top-level (global) scope,
             // also appends a SemaSymbol to `symbols_` for the dump.
             bool isGlobal = (&scope == &globalScope);
@@ -611,7 +775,12 @@ namespace Rux {
                 sym.location = decl.location;
                 sym.isMut = isMut;
                 if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                    symbols.push_back({pubKind, name, currentFile, decl.location, std::move(resolvedType), isMut});
+                    symbols.push_back({pubKind,
+                                       name,
+                                       currentFile,
+                                       decl.location,
+                                       std::move(resolvedType),
+                                       isMut});
                 }
             };
 
@@ -622,43 +791,67 @@ namespace Rux {
                 sym.location = d->location;
                 sym.funcOverloads.push_back(d);
                 if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                    symbols.push_back({SemaSymbol::Kind::Func, d->name, currentFile, d->location, {}, false});
+                    symbols.push_back({SemaSymbol::Kind::Func,
+                                       d->name,
+                                       currentFile,
+                                       d->location,
+                                       {},
+                                       false});
                 }
             }
             else if (auto* d = dynamic_cast<const StructDecl*>(&decl)) {
                 structDecls[d->name] = d;
-                simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "struct");
+                simple(Symbol::Kind::Type,
+                       d->name,
+                       SemaSymbol::Kind::Type,
+                       "struct");
             }
             else if (auto* d = dynamic_cast<const EnumDecl*>(&decl)) {
                 enumDecls[d->name] = d;
-                simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "enum");
+                simple(Symbol::Kind::Type,
+                       d->name,
+                       SemaSymbol::Kind::Type,
+                       "enum");
             }
-            else if (auto* d = dynamic_cast<const UnionDecl*>(&decl))
-                simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "union");
+            else if (auto* d = dynamic_cast<const UnionDecl*>(&decl)) {
+                simple(Symbol::Kind::Type,
+                       d->name,
+                       SemaSymbol::Kind::Type,
+                       "union");
+            }
             else if (auto* d = dynamic_cast<const InterfaceDecl*>(&decl)) {
                 interfaceDecls[d->name] = d;
                 Symbol sym;
                 sym.kind = Symbol::Kind::Interface;
                 sym.name = d->name;
                 sym.location = d->location;
-                for (auto& m : d->methods)
+                for (auto& m : d->methods) {
                     sym.interfaceMethods.push_back(m->name);
-                if (scope.Define(sym, diags, currentFile) && isGlobal)
-                    symbols.push_back({SemaSymbol::Kind::Interface, d->name, currentFile, d->location, "interface"});
+                }
+                if (scope.Define(sym, diags, currentFile) && isGlobal) {
+                    symbols.push_back({SemaSymbol::Kind::Interface,
+                                       d->name,
+                                       currentFile,
+                                       d->location,
+                                       "interface"});
+                }
             }
             else if (auto* d = dynamic_cast<const ConstDecl*>(&decl)) {
                 Symbol sym;
                 sym.kind = Symbol::Kind::Const;
                 sym.name = d->name;
                 sym.location = d->location;
-                if (d->type) sym.type = ResolveType(*d->type->get());
+                if (d->type) {
+                    sym.type = ResolveType(*d->type->get());
+                }
                 if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                    symbols.push_back({SemaSymbol::Kind::Const,
-                                       d->name,
-                                       currentFile,
-                                       d->location,
-                                       sym.type.IsUnknown() ? "" : sym.type.ToString(),
-                                       false});
+                    symbols.push_back(
+                        {SemaSymbol::Kind::Const,
+                         d->name,
+                         currentFile,
+                         d->location,
+                         sym.type.IsUnknown() ? "" : sym.type.ToString(),
+                         false});
                 }
             }
             else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl)) {
@@ -668,33 +861,46 @@ namespace Rux {
                 sym.location = d->location;
                 sym.type = ResolveType(*d->type);
                 if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                    symbols.push_back({SemaSymbol::Kind::Type,
-                                       d->name,
-                                       currentFile,
-                                       d->location,
-                                       sym.type.IsUnknown() ? "" : sym.type.ToString(),
-                                       false});
+                    symbols.push_back(
+                        {SemaSymbol::Kind::Type,
+                         d->name,
+                         currentFile,
+                         d->location,
+                         sym.type.IsUnknown() ? "" : sym.type.ToString(),
+                         false});
                 }
             }
-            else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl))
-                simple(Symbol::Kind::Func, d->name, SemaSymbol::Kind::Func, "extern");
+            else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl)) {
+                simple(Symbol::Kind::Func,
+                       d->name,
+                       SemaSymbol::Kind::Func,
+                       "extern");
+            }
             else if (auto* d = dynamic_cast<const ExternVarDecl*>(&decl)) {
                 Symbol sym;
                 sym.kind = Symbol::Kind::Var;
                 sym.name = d->name;
                 sym.location = d->location;
                 sym.isMut = true;
-                if (scope.Define(sym, diags, currentFile) && isGlobal)
-                    symbols.push_back({SemaSymbol::Kind::Var, d->name, currentFile, d->location, "extern", true});
+                if (scope.Define(sym, diags, currentFile) && isGlobal) {
+                    symbols.push_back({SemaSymbol::Kind::Var,
+                                       d->name,
+                                       currentFile,
+                                       d->location,
+                                       "extern",
+                                       true});
+                }
             }
             else if (auto* d = dynamic_cast<const ExternBlockDecl*>(&decl)) {
-                for (auto& item : d->items)
+                for (auto& item : d->items) {
                     CollectDecl(*item, scope, packageName, modulePath);
+                }
             }
             else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl)) {
                 Scope* moduleScopePtr = nullptr;
                 if (Symbol* existing = scope.Lookup(d->name);
-                    existing && existing->kind == Symbol::Kind::Module && existing->moduleScope) {
+                    existing && existing->kind == Symbol::Kind::Module &&
+                    existing->moduleScope) {
                     moduleScopePtr = existing->moduleScope;
                 }
                 else {
@@ -708,19 +914,34 @@ namespace Rux {
                     sym.location = decl.location;
                     sym.moduleScope = moduleScopePtr;
                     if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                        symbols.push_back({SemaSymbol::Kind::Module, d->name, currentFile, decl.location, {}, false});
+                        symbols.push_back({SemaSymbol::Kind::Module,
+                                           d->name,
+                                           currentFile,
+                                           decl.location,
+                                           {},
+                                           false});
                     }
                 }
 
-                const std::string childPath = JoinModulePath(modulePath, d->name);
-                if (packageName) packageModuleScopes[*packageName][childPath] = moduleScopePtr;
-                for (auto& item : d->items)
+                const std::string childPath =
+                    JoinModulePath(modulePath, d->name);
+                if (packageName) {
+                    packageModuleScopes[*packageName][childPath] =
+                        moduleScopePtr;
+                }
+                for (auto& item : d->items) {
                     CollectDecl(*item, *moduleScopePtr, packageName, childPath);
+                }
             }
             else if (auto* d = dynamic_cast<const ImplDecl*>(&decl)) {
-                for (const auto& method : d->methods)
-                    methodsByType[d->typeName][method->name].push_back(method.get());
-                if (d->interfaceName) typeImplementsInterfaces[d->typeName].insert(*d->interfaceName);
+                for (const auto& method : d->methods) {
+                    methodsByType[d->typeName][method->name].push_back(
+                        method.get());
+                }
+                if (d->interfaceName) {
+                    typeImplementsInterfaces[d->typeName].insert(
+                        *d->interfaceName);
+                }
             }
             // Import declarations don't add names in the first pass.
         }
@@ -731,7 +952,9 @@ namespace Rux {
             if (!type.typeArgs.empty()) {
                 name += "<";
                 for (std::size_t i = 0; i < type.typeArgs.size(); ++i) {
-                    if (i) name += ", ";
+                    if (i) {
+                        name += ", ";
+                    }
                     name += ResolveType(*type.typeArgs[i]).ToString();
                 }
                 name += ">";
@@ -744,7 +967,9 @@ namespace Rux {
             if (!expr.typeArgs.empty()) {
                 name += "<";
                 for (std::size_t i = 0; i < expr.typeArgs.size(); ++i) {
-                    if (i) name += ", ";
+                    if (i) {
+                        name += ", ";
+                    }
                     name += ResolveType(*expr.typeArgs[i]).ToString();
                 }
                 name += ">";
@@ -755,15 +980,21 @@ namespace Rux {
         std::pair<const EnumDecl*, const EnumDecl::Variant*>
         LookupEnumVariantInitializer(const std::string& typeName) const {
             const std::size_t sep = typeName.find("::");
-            if (sep == std::string::npos || typeName.find("::", sep + 2) != std::string::npos)
+            if (sep == std::string::npos ||
+                typeName.find("::", sep + 2) != std::string::npos) {
                 return {nullptr, nullptr};
+            }
 
             const std::string enumName = typeName.substr(0, sep);
             const std::string variantName = typeName.substr(sep + 2);
             const auto enumIt = enumDecls.find(enumName);
-            if (enumIt == enumDecls.end()) return {nullptr, nullptr};
+            if (enumIt == enumDecls.end()) {
+                return {nullptr, nullptr};
+            }
             for (const auto& variant : enumIt->second->variants) {
-                if (variant.name == variantName) return {enumIt->second, &variant};
+                if (variant.name == variantName) {
+                    return {enumIt->second, &variant};
+                }
             }
             return {enumIt->second, nullptr};
         }
@@ -777,61 +1008,116 @@ namespace Rux {
             return pos == std::string::npos ? name : name.substr(0, pos);
         }
 
-        static std::uint64_t AlignUp(const std::uint64_t value, const std::uint64_t align) {
+        static std::uint64_t AlignUp(const std::uint64_t value,
+                                     const std::uint64_t align) {
             return (value + align - 1) & ~(align - 1);
         }
 
         static TypeRef StringLiteralElementType(const Token& tok) {
-            if (tok.text.starts_with("c16\"")) return TypeRef::MakeChar16();
-            if (tok.text.starts_with("c32\"")) return TypeRef::MakeChar32();
+            if (tok.text.starts_with("c16\"")) {
+                return TypeRef::MakeChar16();
+            }
+            if (tok.text.starts_with("c32\"")) {
+                return TypeRef::MakeChar32();
+            }
             return TypeRef::MakeChar8();
         }
 
         static TypeRef StringLiteralType(const Token& tok) {
-            return TypeRef::MakeNamed(SliceTypeName(StringLiteralElementType(tok)));
+            return TypeRef::MakeNamed(
+                SliceTypeName(StringLiteralElementType(tok)));
         }
 
         static TypeRef CharLiteralType(const Token& tok) {
-            if (tok.text.starts_with("c8'")) return TypeRef::MakeChar8();
-            if (tok.text.starts_with("c16'")) return TypeRef::MakeChar16();
-            if (tok.text.starts_with("c32'")) return TypeRef::MakeChar32();
+            if (tok.text.starts_with("c8'")) {
+                return TypeRef::MakeChar8();
+            }
+            if (tok.text.starts_with("c16'")) {
+                return TypeRef::MakeChar16();
+            }
+            if (tok.text.starts_with("c32'")) {
+                return TypeRef::MakeChar32();
+            }
             return TypeRef::MakeChar();
         }
 
         static std::string NumericLiteralSuffix(std::string_view text) {
-            static constexpr std::string_view suffixes[] = {
-                "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "i", "u"};
+            static constexpr std::string_view suffixes[] = {"i8",
+                                                            "i16",
+                                                            "i32",
+                                                            "i64",
+                                                            "u8",
+                                                            "u16",
+                                                            "u32",
+                                                            "u64",
+                                                            "f32",
+                                                            "f64",
+                                                            "i",
+                                                            "u"};
             for (auto suffix : suffixes) {
-                if (text.size() > suffix.size() && text.substr(text.size() - suffix.size()) == suffix)
+                if (text.size() > suffix.size() &&
+                    text.substr(text.size() - suffix.size()) == suffix) {
                     return std::string(suffix);
+                }
             }
             return {};
         }
 
         static TypeRef SuffixedLiteralType(const Token& tok) {
             const std::string suffix = NumericLiteralSuffix(tok.text);
-            if (suffix == "i8") return TypeRef::MakeInt8();
-            if (suffix == "i16") return TypeRef::MakeInt16();
-            if (suffix == "i32") return TypeRef::MakeInt32();
-            if (suffix == "i64") return TypeRef::MakeInt64();
-            if (suffix == "i") return TypeRef::MakeInt();
-            if (suffix == "u8") return TypeRef::MakeUInt8();
-            if (suffix == "u16") return TypeRef::MakeUInt16();
-            if (suffix == "u32") return TypeRef::MakeUInt32();
-            if (suffix == "u64") return TypeRef::MakeUInt64();
-            if (suffix == "u") return TypeRef::MakeUInt();
-            if (suffix == "f32") return TypeRef::MakeFloat32();
-            if (suffix == "f64") return TypeRef::MakeFloat64();
-            return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
+            if (suffix == "i8") {
+                return TypeRef::MakeInt8();
+            }
+            if (suffix == "i16") {
+                return TypeRef::MakeInt16();
+            }
+            if (suffix == "i32") {
+                return TypeRef::MakeInt32();
+            }
+            if (suffix == "i64") {
+                return TypeRef::MakeInt64();
+            }
+            if (suffix == "i") {
+                return TypeRef::MakeInt();
+            }
+            if (suffix == "u8") {
+                return TypeRef::MakeUInt8();
+            }
+            if (suffix == "u16") {
+                return TypeRef::MakeUInt16();
+            }
+            if (suffix == "u32") {
+                return TypeRef::MakeUInt32();
+            }
+            if (suffix == "u64") {
+                return TypeRef::MakeUInt64();
+            }
+            if (suffix == "u") {
+                return TypeRef::MakeUInt();
+            }
+            if (suffix == "f32") {
+                return TypeRef::MakeFloat32();
+            }
+            if (suffix == "f64") {
+                return TypeRef::MakeFloat64();
+            }
+            return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64()
+                                                       : TypeRef::MakeInt();
         }
 
-        static std::optional<std::uint64_t> ParseUnsuffixedIntegerLiteral(const Token& tok) {
-            if (tok.kind != TokenKind::IntLiteral || !NumericLiteralSuffix(tok.text).empty()) return std::nullopt;
+        static std::optional<std::uint64_t>
+        ParseUnsuffixedIntegerLiteral(const Token& tok) {
+            if (tok.kind != TokenKind::IntLiteral ||
+                !NumericLiteralSuffix(tok.text).empty()) {
+                return std::nullopt;
+            }
 
             std::string text;
             text.reserve(tok.text.size());
             for (const char c : tok.text) {
-                if (c != '_') text.push_back(c);
+                if (c != '_') {
+                    text.push_back(c);
+                }
             }
 
             int base = 10;
@@ -857,17 +1143,22 @@ namespace Rux {
                     break;
                 }
             }
-            if (digits.empty()) return std::nullopt;
+            if (digits.empty()) {
+                return std::nullopt;
+            }
 
             std::uint64_t value = 0;
             const auto* first = digits.data();
             const auto* last = first + digits.size();
             const auto [ptr, ec] = std::from_chars(first, last, value, base);
-            if (ec != std::errc{} || ptr != last) return std::nullopt;
+            if (ec != std::errc{} || ptr != last) {
+                return std::nullopt;
+            }
             return value;
         }
 
-        static std::optional<std::uint64_t> UnsignedIntegerMax(const TypeRef& type) {
+        static std::optional<std::uint64_t>
+        UnsignedIntegerMax(const TypeRef& type) {
             switch (type.kind) {
             case TypeRef::Kind::UInt8:
                 return std::numeric_limits<std::uint8_t>::max();
@@ -883,48 +1174,71 @@ namespace Rux {
             }
         }
 
-        static std::optional<std::pair<std::int64_t, std::int64_t>> SignedIntegerRange(const TypeRef& type) {
+        static std::optional<std::pair<std::int64_t, std::int64_t>>
+        SignedIntegerRange(const TypeRef& type) {
             switch (type.kind) {
             case TypeRef::Kind::Int8:
-                return std::pair{static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::min()),
-                                 static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::max())};
+                return std::pair{static_cast<std::int64_t>(
+                                     std::numeric_limits<std::int8_t>::min()),
+                                 static_cast<std::int64_t>(
+                                     std::numeric_limits<std::int8_t>::max())};
             case TypeRef::Kind::Int16:
-                return std::pair{static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::min()),
-                                 static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::max())};
+                return std::pair{static_cast<std::int64_t>(
+                                     std::numeric_limits<std::int16_t>::min()),
+                                 static_cast<std::int64_t>(
+                                     std::numeric_limits<std::int16_t>::max())};
             case TypeRef::Kind::Int32:
-                return std::pair{static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
-                                 static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())};
+                return std::pair{static_cast<std::int64_t>(
+                                     std::numeric_limits<std::int32_t>::min()),
+                                 static_cast<std::int64_t>(
+                                     std::numeric_limits<std::int32_t>::max())};
             case TypeRef::Kind::Int64:
             case TypeRef::Kind::Int:
-                return std::pair{std::numeric_limits<std::int64_t>::min(), std::numeric_limits<std::int64_t>::max()};
+                return std::pair{std::numeric_limits<std::int64_t>::min(),
+                                 std::numeric_limits<std::int64_t>::max()};
             default:
                 return std::nullopt;
             }
         }
 
-        static bool UnsuffixedIntegerLiteralFits(const Expr& expr, const TypeRef& target) {
+        static bool UnsuffixedIntegerLiteralFits(const Expr& expr,
+                                                 const TypeRef& target) {
             bool negative = false;
-            const LiteralExpr* literal = dynamic_cast<const LiteralExpr*>(&expr);
+            const LiteralExpr* literal =
+                dynamic_cast<const LiteralExpr*>(&expr);
             if (!literal) {
-                if (const auto* unary = dynamic_cast<const UnaryExpr*>(&expr); unary && unary->op == TokenKind::Minus)
-                    literal = dynamic_cast<const LiteralExpr*>(unary->operand.get());
-                if (!literal) return false;
+                if (const auto* unary = dynamic_cast<const UnaryExpr*>(&expr);
+                    unary && unary->op == TokenKind::Minus) {
+                    literal =
+                        dynamic_cast<const LiteralExpr*>(unary->operand.get());
+                }
+                if (!literal) {
+                    return false;
+                }
                 negative = true;
             }
 
             const auto value = ParseUnsuffixedIntegerLiteral(literal->token);
-            if (!value) return false;
+            if (!value) {
+                return false;
+            }
 
             if (negative) {
                 const auto range = SignedIntegerRange(target);
-                if (!range) return false;
-                const auto minMagnitude = static_cast<std::uint64_t>(-(range->first + 1)) + 1;
+                if (!range) {
+                    return false;
+                }
+                const auto minMagnitude =
+                    static_cast<std::uint64_t>(-(range->first + 1)) + 1;
                 return *value <= minMagnitude;
             }
 
-            if (const auto max = UnsignedIntegerMax(target)) return *value <= *max;
-            if (const auto range = SignedIntegerRange(target))
+            if (const auto max = UnsignedIntegerMax(target)) {
+                return *value <= *max;
+            }
+            if (const auto range = SignedIntegerRange(target)) {
                 return *value <= static_cast<std::uint64_t>(range->second);
+            }
             return false;
         }
 
@@ -934,73 +1248,109 @@ namespace Rux {
         }
 
         static bool IsUnsuffixedIntegerLiteral(const Expr& expr) {
-            const LiteralExpr* literal = dynamic_cast<const LiteralExpr*>(&expr);
+            const LiteralExpr* literal =
+                dynamic_cast<const LiteralExpr*>(&expr);
             if (!literal) {
                 const auto* unary = dynamic_cast<const UnaryExpr*>(&expr);
-                if (!unary || unary->op != TokenKind::Minus) return false;
-                literal = dynamic_cast<const LiteralExpr*>(unary->operand.get());
+                if (!unary || unary->op != TokenKind::Minus) {
+                    return false;
+                }
+                literal =
+                    dynamic_cast<const LiteralExpr*>(unary->operand.get());
             }
             return literal && literal->token.kind == TokenKind::IntLiteral &&
-                NumericLiteralSuffix(literal->token.text).empty();
+                   NumericLiteralSuffix(literal->token.text).empty();
         }
 
-        static bool IsIntegerLiteralOutOfRangeFor(const Expr& expr, const TypeRef& targetType) {
+        static bool IsIntegerLiteralOutOfRangeFor(const Expr& expr,
+                                                  const TypeRef& targetType) {
             return targetType.IsInteger() && IsUnsuffixedIntegerLiteral(expr) &&
-                !UnsuffixedIntegerLiteralFits(expr, targetType);
+                   !UnsuffixedIntegerLiteralFits(expr, targetType);
         }
 
-        // Picks the diagnostic for a rejected assignment/conversion. An unsuffixed
-        // integer literal that does not fit the target gets a dedicated "out of
-        // range" message; everything else uses `fallback`. Keeps the wording
-        // consistent across let, return, assignment, const, and field positions.
-        static std::string AssignmentErrorMessage(const Expr& expr, const TypeRef& targetType, std::string fallback) {
-            if (IsIntegerLiteralOutOfRangeFor(expr, targetType))
-                return std::format("integer literal is out of range for type '{}'", targetType.ToString());
+        // Picks the diagnostic for a rejected assignment/conversion. An
+        // unsuffixed integer literal that does not fit the target gets a
+        // dedicated "out of range" message; everything else uses `fallback`.
+        // Keeps the wording consistent across let, return, assignment, const,
+        // and field positions.
+        static std::string AssignmentErrorMessage(const Expr& expr,
+                                                  const TypeRef& targetType,
+                                                  std::string fallback) {
+            if (IsIntegerLiteralOutOfRangeFor(expr, targetType)) {
+                return std::format(
+                    "integer literal is out of range for type '{}'",
+                    targetType.ToString());
+            }
             return fallback;
         }
 
-        bool TypeImplementsInterface(const TypeRef& exprType, const TypeRef& targetType) const {
-            if (targetType.kind != TypeRef::Kind::Named) return false;
+        bool TypeImplementsInterface(const TypeRef& exprType,
+                                     const TypeRef& targetType) const {
+            if (targetType.kind != TypeRef::Kind::Named) {
+                return false;
+            }
             Symbol* sym = currentScope->Lookup(targetType.name);
-            if (!sym || sym->kind != Symbol::Kind::Interface) return false;
+            if (!sym || sym->kind != Symbol::Kind::Interface) {
+                return false;
+            }
             // An empty interface is trivially satisfied by every type.
-            if (sym->interfaceMethods.empty()) return true;
+            if (sym->interfaceMethods.empty()) {
+                return true;
+            }
             auto implements = [&](const TypeRef& type) {
                 const std::string typeName = type.ToString();
                 auto it = typeImplementsInterfaces.find(typeName);
-                return it != typeImplementsInterfaces.end() && it->second.count(targetType.name);
+                return it != typeImplementsInterfaces.end() &&
+                       it->second.count(targetType.name);
             };
-            if (implements(exprType)) return true;
-            if (exprType.kind == TypeRef::Kind::Int) return implements(TypeRef::MakeInt64());
-            if (exprType.kind == TypeRef::Kind::Int64) return implements(TypeRef::MakeInt());
-            if (exprType.kind == TypeRef::Kind::UInt) return implements(TypeRef::MakeUInt64());
-            if (exprType.kind == TypeRef::Kind::UInt64) return implements(TypeRef::MakeUInt());
+            if (implements(exprType)) {
+                return true;
+            }
+            if (exprType.kind == TypeRef::Kind::Int) {
+                return implements(TypeRef::MakeInt64());
+            }
+            if (exprType.kind == TypeRef::Kind::Int64) {
+                return implements(TypeRef::MakeInt());
+            }
+            if (exprType.kind == TypeRef::Kind::UInt) {
+                return implements(TypeRef::MakeUInt64());
+            }
+            if (exprType.kind == TypeRef::Kind::UInt64) {
+                return implements(TypeRef::MakeUInt());
+            }
             return false;
         }
 
         // Folds a compile-time-constant integer expression (unsuffixed integer
-        // literals combined with the integer operators) to its int64 value, using
-        // the same two's-complement wrapping the generated code produces at run
-        // time, so the folded value always matches what the program computes.
-        // Returns nullopt when the expression is not such a constant, so callers
-        // fall back to ordinary type checking. Division/modulo by zero and the
-        // INT64_MIN / -1 overflow are left unfolded and keep their runtime
-        // behavior; '**' is not folded (it lowers to a runtime helper call).
+        // literals combined with the integer operators) to its int64 value,
+        // using the same two's-complement wrapping the generated code produces
+        // at run time, so the folded value always matches what the program
+        // computes. Returns nullopt when the expression is not such a constant,
+        // so callers fall back to ordinary type checking. Division/modulo by
+        // zero and the INT64_MIN / -1 overflow are left unfolded and keep their
+        // runtime behavior; '**' is not folded (it lowers to a runtime helper
+        // call).
         static std::optional<std::int64_t> EvalConstInt(const Expr& expr) {
             using I = std::int64_t;
             using U = std::uint64_t;
 
             if (const auto* lit = dynamic_cast<const LiteralExpr*>(&expr)) {
-                if (lit->token.kind != TokenKind::IntLiteral || !NumericLiteralSuffix(lit->token.text).empty())
+                if (lit->token.kind != TokenKind::IntLiteral ||
+                    !NumericLiteralSuffix(lit->token.text).empty()) {
                     return std::nullopt;
+                }
                 const auto v = ParseUnsuffixedIntegerLiteral(lit->token);
-                if (!v || *v > static_cast<U>(std::numeric_limits<I>::max())) return std::nullopt;
+                if (!v || *v > static_cast<U>(std::numeric_limits<I>::max())) {
+                    return std::nullopt;
+                }
                 return static_cast<I>(*v);
             }
 
             if (const auto* un = dynamic_cast<const UnaryExpr*>(&expr)) {
                 const auto v = EvalConstInt(*un->operand);
-                if (!v) return std::nullopt;
+                if (!v) {
+                    return std::nullopt;
+                }
                 switch (un->op) {
                 case TokenKind::Plus:
                     return *v;
@@ -1016,7 +1366,9 @@ namespace Rux {
             if (const auto* bin = dynamic_cast<const BinaryExpr*>(&expr)) {
                 const auto l = EvalConstInt(*bin->left);
                 const auto r = EvalConstInt(*bin->right);
-                if (!l || !r) return std::nullopt;
+                if (!l || !r) {
+                    return std::nullopt;
+                }
                 const U lu = static_cast<U>(*l);
                 const U ru = static_cast<U>(*r);
                 switch (bin->op) {
@@ -1027,10 +1379,16 @@ namespace Rux {
                 case TokenKind::Star:
                     return static_cast<I>(lu * ru);
                 case TokenKind::Slash:
-                    if (*r == 0 || (*l == std::numeric_limits<I>::min() && *r == -1)) return std::nullopt;
+                    if (*r == 0 ||
+                        (*l == std::numeric_limits<I>::min() && *r == -1)) {
+                        return std::nullopt;
+                    }
                     return *l / *r;
                 case TokenKind::Percent:
-                    if (*r == 0 || (*l == std::numeric_limits<I>::min() && *r == -1)) return std::nullopt;
+                    if (*r == 0 ||
+                        (*l == std::numeric_limits<I>::min() && *r == -1)) {
+                        return std::nullopt;
+                    }
                     return *l % *r;
                 case TokenKind::Amp:
                     return *l & *r;
@@ -1039,10 +1397,14 @@ namespace Rux {
                 case TokenKind::Caret:
                     return *l ^ *r;
                 case TokenKind::LessLess:
-                    if (*r < 0 || *r >= 64) return std::nullopt;
+                    if (*r < 0 || *r >= 64) {
+                        return std::nullopt;
+                    }
                     return static_cast<I>(lu << static_cast<U>(*r));
                 case TokenKind::GreaterGreater:
-                    if (*r < 0 || *r >= 64) return std::nullopt;
+                    if (*r < 0 || *r >= 64) {
+                        return std::nullopt;
+                    }
                     return *l >> *r;
                 default:
                     return std::nullopt;
@@ -1052,32 +1414,48 @@ namespace Rux {
             return std::nullopt;
         }
 
-        static bool ConstantFitsTarget(std::int64_t value, const TypeRef& target) {
-            if (const auto max = UnsignedIntegerMax(target))
+        static bool ConstantFitsTarget(std::int64_t value,
+                                       const TypeRef& target) {
+            if (const auto max = UnsignedIntegerMax(target)) {
                 return value >= 0 && static_cast<std::uint64_t>(value) <= *max;
-            if (const auto range = SignedIntegerRange(target)) return value >= range->first && value <= range->second;
+            }
+            if (const auto range = SignedIntegerRange(target)) {
+                return value >= range->first && value <= range->second;
+            }
             return false;
         }
 
-        bool CanAssignExprTo(const Expr& expr, const TypeRef& exprType, const TypeRef& targetType) const {
-            if (targetType.IsInteger() && IsUnsuffixedIntegerLiteral(expr))
+        bool CanAssignExprTo(const Expr& expr,
+                             const TypeRef& exprType,
+                             const TypeRef& targetType) const {
+            if (targetType.IsInteger() && IsUnsuffixedIntegerLiteral(expr)) {
                 return UnsuffixedIntegerLiteralFits(expr, targetType);
+            }
 
-            // A constant integer expression (e.g. 10 + 2 * (5 - 3)) coerces to any
-            // integer type it fits in, the same way a bare literal does.
-            if (targetType.IsInteger())
-                if (const auto folded = EvalConstInt(expr); folded && ConstantFitsTarget(*folded, targetType))
+            // A constant integer expression (e.g. 10 + 2 * (5 - 3)) coerces to
+            // any integer type it fits in, the same way a bare literal does.
+            if (targetType.IsInteger()) {
+                if (const auto folded = EvalConstInt(expr);
+                    folded && ConstantFitsTarget(*folded, targetType)) {
                     return true;
+                }
+            }
 
             return exprType.IsAssignableTo(targetType) ||
-                (IsNullLiteral(expr) && targetType.kind == TypeRef::Kind::Pointer) ||
-                UnsuffixedIntegerLiteralFits(expr, targetType) || TypeImplementsInterface(exprType, targetType);
+                   (IsNullLiteral(expr) &&
+                    targetType.kind == TypeRef::Kind::Pointer) ||
+                   UnsuffixedIntegerLiteralFits(expr, targetType) ||
+                   TypeImplementsInterface(exprType, targetType);
         }
 
         static std::string NamedBaseTypeName(const TypeRef& type) {
             const TypeRef* named = &type;
-            if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty()) named = &type.inner[0];
-            if (named->kind == TypeRef::Kind::Named) return BaseTypeName(named->name);
+            if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty()) {
+                named = &type.inner[0];
+            }
+            if (named->kind == TypeRef::Kind::Named) {
+                return BaseTypeName(named->name);
+            }
             switch (named->kind) {
             case TypeRef::Kind::Bool8:
             case TypeRef::Kind::Bool16:
@@ -1104,60 +1482,120 @@ namespace Rux {
             }
         }
 
-        std::unordered_map<std::string, TypeRef> StructTypeSubstitutions(const StructDecl& decl,
-                                                                         const std::vector<TypeExprPtr>& typeArgs) {
+        std::unordered_map<std::string, TypeRef>
+        StructTypeSubstitutions(const StructDecl& decl,
+                                const std::vector<TypeExprPtr>& typeArgs) {
             std::unordered_map<std::string, TypeRef> substitutions;
-            const std::size_t count = std::min(decl.typeParams.size(), typeArgs.size());
-            for (std::size_t i = 0; i < count; ++i)
-                substitutions.emplace(decl.typeParams[i], ResolveType(*typeArgs[i]));
+            const std::size_t count =
+                std::min(decl.typeParams.size(), typeArgs.size());
+            for (std::size_t i = 0; i < count; ++i) {
+                substitutions.emplace(decl.typeParams[i],
+                                      ResolveType(*typeArgs[i]));
+            }
             return substitutions;
         }
 
-        static std::optional<TypeRef> BuiltinTypeFromName(const std::string& name) {
-            if (name == "opaque") return TypeRef::MakeOpaque();
-            if (name == "bool" || name == "bool8") return TypeRef::MakeBool8();
-            if (name == "bool16") return TypeRef::MakeBool16();
-            if (name == "bool32") return TypeRef::MakeBool32();
-            if (name == "char" || name == "char32") return TypeRef::MakeChar32();
-            if (name == "char8") return TypeRef::MakeChar8();
-            if (name == "char16") return TypeRef::MakeChar16();
-            if (name == "int8") return TypeRef::MakeInt8();
-            if (name == "int16") return TypeRef::MakeInt16();
-            if (name == "int32") return TypeRef::MakeInt32();
-            if (name == "int64") return TypeRef::MakeInt64();
-            if (name == "int") return TypeRef::MakeInt();
-            if (name == "uint8") return TypeRef::MakeUInt8();
-            if (name == "uint16") return TypeRef::MakeUInt16();
-            if (name == "uint32") return TypeRef::MakeUInt32();
-            if (name == "uint64") return TypeRef::MakeUInt64();
-            if (name == "uint") return TypeRef::MakeUInt();
-            if (name == "float32") return TypeRef::MakeFloat32();
-            if (name == "float64") return TypeRef::MakeFloat64();
-            if (name == "float") return TypeRef::MakeFloat();
+        static std::optional<TypeRef>
+        BuiltinTypeFromName(const std::string& name) {
+            if (name == "opaque") {
+                return TypeRef::MakeOpaque();
+            }
+            if (name == "bool" || name == "bool8") {
+                return TypeRef::MakeBool8();
+            }
+            if (name == "bool16") {
+                return TypeRef::MakeBool16();
+            }
+            if (name == "bool32") {
+                return TypeRef::MakeBool32();
+            }
+            if (name == "char" || name == "char32") {
+                return TypeRef::MakeChar32();
+            }
+            if (name == "char8") {
+                return TypeRef::MakeChar8();
+            }
+            if (name == "char16") {
+                return TypeRef::MakeChar16();
+            }
+            if (name == "int8") {
+                return TypeRef::MakeInt8();
+            }
+            if (name == "int16") {
+                return TypeRef::MakeInt16();
+            }
+            if (name == "int32") {
+                return TypeRef::MakeInt32();
+            }
+            if (name == "int64") {
+                return TypeRef::MakeInt64();
+            }
+            if (name == "int") {
+                return TypeRef::MakeInt();
+            }
+            if (name == "uint8") {
+                return TypeRef::MakeUInt8();
+            }
+            if (name == "uint16") {
+                return TypeRef::MakeUInt16();
+            }
+            if (name == "uint32") {
+                return TypeRef::MakeUInt32();
+            }
+            if (name == "uint64") {
+                return TypeRef::MakeUInt64();
+            }
+            if (name == "uint") {
+                return TypeRef::MakeUInt();
+            }
+            if (name == "float32") {
+                return TypeRef::MakeFloat32();
+            }
+            if (name == "float64") {
+                return TypeRef::MakeFloat64();
+            }
+            if (name == "float") {
+                return TypeRef::MakeFloat();
+            }
             return std::nullopt;
         }
 
         static std::optional<TypeRef> SliceElementType(const TypeRef& type) {
-            if (type.kind == TypeRef::Kind::Slice && !type.inner.empty()) return type.inner[0];
-            if (type.kind != TypeRef::Kind::Named) return std::nullopt;
+            if (type.kind == TypeRef::Kind::Slice && !type.inner.empty()) {
+                return type.inner[0];
+            }
+            if (type.kind != TypeRef::Kind::Named) {
+                return std::nullopt;
+            }
             constexpr std::string_view prefix = "Slice<";
-            if (!type.name.starts_with(prefix) || type.name.back() != '>') return std::nullopt;
-            std::string elemName = type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
-            if (auto builtin = BuiltinTypeFromName(elemName)) return *builtin;
+            if (!type.name.starts_with(prefix) || type.name.back() != '>') {
+                return std::nullopt;
+            }
+            std::string elemName = type.name.substr(
+                prefix.size(), type.name.size() - prefix.size() - 1);
+            if (auto builtin = BuiltinTypeFromName(elemName)) {
+                return *builtin;
+            }
             return TypeRef::MakeNamed(elemName);
         }
 
         static std::optional<TypeRef> IndexElementType(const TypeRef& type) {
-            if (auto elemType = SliceElementType(type)) return elemType;
-            if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty()) return type.inner[0];
+            if (auto elemType = SliceElementType(type)) {
+                return elemType;
+            }
+            if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty()) {
+                return type.inner[0];
+            }
             return std::nullopt;
         }
-
 
         TypeRef ResolveType(const TypeExpr& expr) {
             // Helper to resolve enums from the global declaration table
             auto ResolveEnumType = [&](const std::string& name) -> TypeRef {
-                if (const auto it = enumDecls.find(name); it != enumDecls.end()) return EnumType(*it->second);
+                if (const auto it = enumDecls.find(name);
+                    it != enumDecls.end()) {
+                    return EnumType(*it->second);
+                }
                 return TypeRef::MakeUnknown();
             };
 
@@ -1166,7 +1604,9 @@ namespace Rux {
                     if (tp == t->name) {
                         if (!t->typeArgs.empty()) {
                             EmitError(expr.location,
-                                      std::format("Type parameter '{}' cannot take type arguments", t->name));
+                                      std::format("Type parameter '{}' cannot "
+                                                  "take type arguments",
+                                                  t->name));
                             return TypeRef::MakeUnknown();
                         }
                         return TypeRef::MakeTypeParam(t->name);
@@ -1177,15 +1617,23 @@ namespace Rux {
                 bool hasUnknownArgs = false;
                 for (const auto& argExpr : t->typeArgs) {
                     TypeRef argType = ResolveType(*argExpr);
-                    if (argType.IsUnknown()) hasUnknownArgs = true;
+                    if (argType.IsUnknown()) {
+                        hasUnknownArgs = true;
+                    }
                     resolvedArgs.push_back(argType);
                 }
 
-                if (hasUnknownArgs) return TypeRef::MakeUnknown();
-                Symbol* sym = currentScope ? currentScope->Lookup(t->name) : nullptr;
-                if (sym && (sym->kind == Symbol::Kind::Type || sym->kind == Symbol::Kind::Interface)) {
+                if (hasUnknownArgs) {
+                    return TypeRef::MakeUnknown();
+                }
+                Symbol* sym =
+                    currentScope ? currentScope->Lookup(t->name) : nullptr;
+                if (sym && (sym->kind == Symbol::Kind::Type ||
+                            sym->kind == Symbol::Kind::Interface)) {
                     // Return base type if no generic arguments are provided
-                    if (t->typeArgs.empty() && !sym->type.IsUnknown()) return sym->type;
+                    if (t->typeArgs.empty() && !sym->type.IsUnknown()) {
+                        return sym->type;
+                    }
 
                     return TypeRef::MakeNamed(GenericTypeName(*t));
                 }
@@ -1193,7 +1641,10 @@ namespace Rux {
                 TypeRef enumType = ResolveEnumType(t->name);
                 if (!enumType.IsUnknown()) {
                     if (!t->typeArgs.empty()) {
-                        EmitError(expr.location, std::format("Enum '{}' cannot take type arguments", t->name));
+                        EmitError(
+                            expr.location,
+                            std::format("Enum '{}' cannot take type arguments",
+                                        t->name));
                         return TypeRef::MakeUnknown();
                     }
                     return enumType;
@@ -1203,7 +1654,8 @@ namespace Rux {
                     return TypeRef::MakeNamed(GenericTypeName(*t));
                 }
 
-                EmitError(expr.location, std::format("unknown type '{}'", t->name));
+                EmitError(expr.location,
+                          std::format("unknown type '{}'", t->name));
                 return TypeRef::MakeUnknown();
             }
 
@@ -1222,13 +1674,17 @@ namespace Rux {
 
             if (const auto* t = dynamic_cast<const PointerTypeExpr*>(&expr)) {
                 TypeRef pointeeType = ResolveType(*t->pointee);
-                if (pointeeType.IsUnknown()) return TypeRef::MakeUnknown();
+                if (pointeeType.IsUnknown()) {
+                    return TypeRef::MakeUnknown();
+                }
                 return TypeRef::MakePointer(pointeeType);
             }
 
             if (const auto* t = dynamic_cast<const SliceTypeExpr*>(&expr)) {
                 TypeRef elemType = ResolveType(*t->element);
-                if (elemType.IsUnknown()) return TypeRef::MakeUnknown();
+                if (elemType.IsUnknown()) {
+                    return TypeRef::MakeUnknown();
+                }
                 return TypeRef::MakeNamed(SliceTypeName(elemType));
             }
 
@@ -1238,7 +1694,9 @@ namespace Rux {
 
                 for (const auto& e : t->elements) {
                     TypeRef elem = ResolveType(*e);
-                    if (elem.IsUnknown()) return TypeRef::MakeUnknown();
+                    if (elem.IsUnknown()) {
+                        return TypeRef::MakeUnknown();
+                    }
                     elems.push_back(elem);
                 }
 
@@ -1246,166 +1704,317 @@ namespace Rux {
             }
 
             if (dynamic_cast<const SelfTypeExpr*>(&expr)) {
-                return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
+                return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self")
+                                                   : currentSelfType;
             }
 
             return TypeRef::MakeUnknown();
         }
 
-
-        TypeRef ResolveTypeWithSubstitution(const TypeExpr& expr,
-                                            const std::unordered_map<std::string, TypeRef>& substitutions) {
+        TypeRef ResolveTypeWithSubstitution(
+            const TypeExpr& expr,
+            const std::unordered_map<std::string, TypeRef>& substitutions) {
             if (auto* t = dynamic_cast<const NamedTypeExpr*>(&expr)) {
                 if (t->typeArgs.empty()) {
-                    if (auto it = substitutions.find(t->name); it != substitutions.end()) return it->second;
+                    if (auto it = substitutions.find(t->name);
+                        it != substitutions.end()) {
+                        return it->second;
+                    }
                     return ResolveType(expr);
                 }
 
                 TypeRef named = TypeRef::MakeNamed(t->name);
                 named.name += "<";
                 for (std::size_t i = 0; i < t->typeArgs.size(); ++i) {
-                    if (i) named.name += ", ";
-                    named.name += ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions).ToString();
+                    if (i) {
+                        named.name += ", ";
+                    }
+                    named.name += ResolveTypeWithSubstitution(*t->typeArgs[i],
+                                                              substitutions)
+                                      .ToString();
                 }
                 named.name += ">";
                 return named;
             }
-            if (auto* t = dynamic_cast<const PointerTypeExpr*>(&expr))
-                return TypeRef::MakePointer(ResolveTypeWithSubstitution(*t->pointee, substitutions));
-            if (auto* t = dynamic_cast<const SliceTypeExpr*>(&expr))
-                return TypeRef::MakeNamed(SliceTypeName(ResolveTypeWithSubstitution(*t->element, substitutions)));
+            if (auto* t = dynamic_cast<const PointerTypeExpr*>(&expr)) {
+                return TypeRef::MakePointer(
+                    ResolveTypeWithSubstitution(*t->pointee, substitutions));
+            }
+            if (auto* t = dynamic_cast<const SliceTypeExpr*>(&expr)) {
+                return TypeRef::MakeNamed(SliceTypeName(
+                    ResolveTypeWithSubstitution(*t->element, substitutions)));
+            }
             if (auto* t = dynamic_cast<const TupleTypeExpr*>(&expr)) {
                 std::vector<TypeRef> elems;
-                for (auto& elem : t->elements)
-                    elems.push_back(ResolveTypeWithSubstitution(*elem, substitutions));
+                for (auto& elem : t->elements) {
+                    elems.push_back(
+                        ResolveTypeWithSubstitution(*elem, substitutions));
+                }
                 return TypeRef::MakeTuple(std::move(elems));
             }
             return ResolveType(expr);
         }
 
-        TypeRef StructFieldType(const TypeRef& objectType, const std::string& fieldName) {
+        TypeRef StructFieldType(const TypeRef& objectType,
+                                const std::string& fieldName) {
             const std::string typeName = NamedBaseTypeName(objectType);
-            if (typeName.empty()) return TypeRef::MakeUnknown();
+            if (typeName.empty()) {
+                return TypeRef::MakeUnknown();
+            }
             const auto structIt = structDecls.find(typeName);
-            if (structIt == structDecls.end()) return TypeRef::MakeUnknown();
+            if (structIt == structDecls.end()) {
+                return TypeRef::MakeUnknown();
+            }
 
             for (const auto& field : structIt->second->fields) {
-                if (field.name == fieldName) return ResolveType(*field.type);
+                if (field.name == fieldName) {
+                    return ResolveType(*field.type);
+                }
             }
             return TypeRef::MakeUnknown();
         }
 
-        [[nodiscard]] const FuncDecl* LookupMethod(const TypeRef& receiverType,
-                                                   const std::string& methodName,
-                                                   const std::vector<TypeRef>& argTypes = {}) {
+        [[nodiscard]] const FuncDecl*
+        LookupMethod(const TypeRef& receiverType,
+                     const std::string& methodName,
+                     const std::vector<TypeRef>& argTypes = {}) {
             const std::string typeName = NamedBaseTypeName(receiverType);
-            if (typeName.empty()) return nullptr;
+            if (typeName.empty()) {
+                return nullptr;
+            }
             const auto typeIt = methodsByType.find(typeName);
-            if (typeIt == methodsByType.end()) return nullptr;
+            if (typeIt == methodsByType.end()) {
+                return nullptr;
+            }
             const auto methodIt = typeIt->second.find(methodName);
-            if (methodIt == typeIt->second.end()) return nullptr;
+            if (methodIt == typeIt->second.end()) {
+                return nullptr;
+            }
             const auto& overloads = methodIt->second;
-            if (overloads.empty()) return nullptr;
-            if (overloads.size() == 1 || argTypes.empty()) return overloads[0];
+            if (overloads.empty()) {
+                return nullptr;
+            }
+            // Best-effort scrape for property access (missing args).
+            if (argTypes.empty()) {
+                return overloads[0];
+            }
+            if (overloads.size() == 1) {
+                // Single overload: validate arity and assignability before
+                // returning.
+                const auto* decl = overloads[0];
+                std::vector<TypeRef> paramTypes =
+                    ResolveMethodParamTypes(receiverType, *decl);
+                if (paramTypes.size() != argTypes.size()) {
+                    return nullptr;
+                }
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    if (argTypes[i].IsUnknown() || paramTypes[i].IsUnknown()) {
+                        continue;
+                    }
+                    if (!argTypes[i].IsAssignableTo(paramTypes[i]) &&
+                        !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
+                        return nullptr;
+                    }
+                }
+                return decl;
+            }
             for (const auto* decl : overloads) {
-                std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *decl);
-                if (paramTypes.size() != argTypes.size()) continue;
+                std::vector<TypeRef> paramTypes =
+                    ResolveMethodParamTypes(receiverType, *decl);
+                if (paramTypes.size() != argTypes.size()) {
+                    continue;
+                }
                 bool match = true;
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    if (!argTypes[i].IsUnknown() && !paramTypes[i].IsUnknown() &&
-                        !argTypes[i].IsAssignableTo(paramTypes[i])) {
+                    if (!argTypes[i].IsUnknown() &&
+                        !paramTypes[i].IsUnknown() &&
+                        !argTypes[i].IsAssignableTo(paramTypes[i]) &&
+                        !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
                         match = false;
                         break;
                     }
                 }
-                if (match) return decl;
+                if (match) {
+                    return decl;
+                }
             }
-            return overloads[0];
+            return nullptr;
         }
 
-        TypeRef ResolveMethodReturnType(const TypeRef& receiverType, const FuncDecl& method) {
+        TypeRef ResolveMethodReturnType(const TypeRef& receiverType,
+                                        const FuncDecl& method) {
             TypeRef savedSelfType = currentSelfType;
-            currentSelfType =
-                receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
-            TypeRef ret = method.returnType ? ResolveType(*method.returnType->get()) : TypeRef::MakeOpaque();
+            currentSelfType = receiverType.kind == TypeRef::Kind::Pointer
+                                ? receiverType
+                                : TypeRef::MakePointer(receiverType);
+            TypeRef ret = method.returnType
+                            ? ResolveType(*method.returnType->get())
+                            : TypeRef::MakeOpaque();
             currentSelfType = savedSelfType;
             return ret;
         }
 
-        std::vector<TypeRef> ResolveMethodParamTypes(const TypeRef& receiverType, const FuncDecl& method) {
+        std::vector<TypeRef>
+        ResolveMethodParamTypes(const TypeRef& receiverType,
+                                const FuncDecl& method) {
             TypeRef savedSelfType = currentSelfType;
-            currentSelfType =
-                receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
+            currentSelfType = receiverType.kind == TypeRef::Kind::Pointer
+                                ? receiverType
+                                : TypeRef::MakePointer(receiverType);
             std::vector<TypeRef> params;
             for (const auto& param : method.params) {
-                if (param.isVariadic || param.name == "self") continue;
+                if (param.isVariadic || param.name == "self") {
+                    continue;
+                }
                 params.push_back(ResolveType(*param.type));
             }
             currentSelfType = savedSelfType;
             return params;
         }
 
-        TypeRef AssociatedFunctionType(const TypeRef& receiverType, const FuncDecl& method) {
+        TypeRef AssociatedFunctionType(const TypeRef& receiverType,
+                                       const FuncDecl& method) {
             TypeRef savedSelfType = currentSelfType;
-            currentSelfType =
-                receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
-            TypeRef type = MakeFuncType(method.params, method.returnType, method.typeParams);
+            currentSelfType = receiverType.kind == TypeRef::Kind::Pointer
+                                ? receiverType
+                                : TypeRef::MakePointer(receiverType);
+            TypeRef type = MakeFuncType(
+                method.params, method.returnType, method.typeParams);
             currentSelfType = savedSelfType;
             return type;
         }
 
-        [[nodiscard]] const FuncDecl* LookupInterfaceMethod(const TypeRef& receiverType,
-                                                            const std::string& methodName) const {
+        [[nodiscard]] const FuncDecl*
+        LookupInterfaceMethod(const TypeRef& receiverType,
+                              const std::string& methodName) const {
             const std::string ifaceName = NamedBaseTypeName(receiverType);
-            if (ifaceName.empty()) return nullptr;
+            if (ifaceName.empty()) {
+                return nullptr;
+            }
             const auto ifaceIt = interfaceDecls.find(ifaceName);
-            if (ifaceIt == interfaceDecls.end()) return nullptr;
-            for (const auto& method : ifaceIt->second->methods)
-                if (method->name == methodName) return method.get();
+            if (ifaceIt == interfaceDecls.end()) {
+                return nullptr;
+            }
+            for (const auto& method : ifaceIt->second->methods) {
+                if (method->name == methodName) {
+                    return method.get();
+                }
+            }
             return nullptr;
         }
 
         TypeRef ResolveInterfaceMethodReturnType(const FuncDecl& method) {
-            return method.returnType ? ResolveType(*method.returnType->get()) : TypeRef::MakeOpaque();
+            return method.returnType ? ResolveType(*method.returnType->get())
+                                     : TypeRef::MakeOpaque();
         }
 
-        std::vector<TypeRef> ResolveInterfaceMethodParamTypes(const FuncDecl& method) {
+        std::vector<TypeRef>
+        ResolveInterfaceMethodParamTypes(const FuncDecl& method) {
             std::vector<TypeRef> params;
             for (const auto& param : method.params) {
-                if (param.isVariadic) continue;
+                if (param.isVariadic) {
+                    continue;
+                }
                 params.push_back(ResolveType(*param.type));
             }
             return params;
         }
 
-        const FuncDecl* LookupFunctionOverload(const Symbol& sym, const std::vector<TypeRef>& argTypes) {
-            if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) return nullptr;
-            if (sym.funcOverloads.size() == 1) return sym.funcOverloads[0];
+        const FuncDecl*
+        LookupFunctionOverload(const Symbol& sym,
+                               const std::vector<TypeRef>& argTypes) {
+            if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) {
+                return nullptr;
+            }
+            if (sym.funcOverloads.size() == 1) {
+                // Single overload: still validate arity and assignability so
+                // that Bar(wrongType) against a lone Bar(int32) returns null
+                // and lets the caller emit a proper diagnostic.
+                const auto* decl = sym.funcOverloads[0];
+                TypeRef funcType = MakeFuncType(
+                    decl->params, decl->returnType, decl->typeParams);
+                if (funcType.kind != TypeRef::Kind::Func ||
+                    funcType.inner.empty()) {
+                    return decl;
+                }
+                const std::size_t paramCount = funcType.inner.size() - 1;
+                const bool isVariadic =
+                    !decl->params.empty() && decl->params.back().isVariadic;
+                std::size_t requiredCount = 0;
+                for (const auto& p : decl->params) {
+                    if (!p.isVariadic && !p.defaultValue) {
+                        ++requiredCount;
+                    }
+                }
+                const bool arityOk = isVariadic
+                                       ? argTypes.size() >= requiredCount
+                                       : (argTypes.size() >= requiredCount &&
+                                          argTypes.size() <= paramCount);
+                if (!arityOk) {
+                    return nullptr;
+                }
+                for (std::size_t i = 0;
+                     i < std::min(argTypes.size(), paramCount);
+                     ++i) {
+                    if (argTypes[i].IsUnknown() ||
+                        funcType.inner[i].IsUnknown()) {
+                        continue;
+                    }
+                    if (!argTypes[i].IsAssignableTo(funcType.inner[i]) &&
+                        !(argTypes[i].IsInteger() && funcType.inner[i].IsInteger())) {
+                        return nullptr;
+                    }
+                }
+                return decl;
+            }
             for (const bool allowVariadic : {false, true}) {
                 for (const bool exactOnly : {true, false}) {
                     for (const auto* decl : sym.funcOverloads) {
-                        TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
-                        if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) continue;
-                        const std::size_t paramCount = funcType.inner.size() - 1;
-                        const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-                        if (isVariadic != allowVariadic) continue;
+                        TypeRef funcType = MakeFuncType(
+                            decl->params, decl->returnType, decl->typeParams);
+                        if (funcType.kind != TypeRef::Kind::Func ||
+                            funcType.inner.empty()) {
+                            continue;
+                        }
+                        const std::size_t paramCount =
+                            funcType.inner.size() - 1;
+                        const bool isVariadic = !decl->params.empty() &&
+                                                decl->params.back().isVariadic;
+                        if (isVariadic != allowVariadic) {
+                            continue;
+                        }
                         std::size_t requiredCount = 0;
-                        for (const auto& p : decl->params)
-                            if (!p.isVariadic && !p.defaultValue) ++requiredCount;
-                        const bool arityOk = isVariadic
-                            ? argTypes.size() >= requiredCount
-                            : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
-                        if (!arityOk) continue;
+                        for (const auto& p : decl->params) {
+                            if (!p.isVariadic && !p.defaultValue) {
+                                ++requiredCount;
+                            }
+                        }
+                        const bool arityOk =
+                            isVariadic ? argTypes.size() >= requiredCount
+                                       : (argTypes.size() >= requiredCount &&
+                                          argTypes.size() <= paramCount);
+                        if (!arityOk) {
+                            continue;
+                        }
                         bool match = true;
-                        for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
+                        for (std::size_t i = 0;
+                             i < std::min(argTypes.size(), paramCount);
+                             ++i) {
                             const TypeRef& paramType = funcType.inner[i];
-                            if (argTypes[i].IsUnknown() || paramType.IsUnknown()) continue;
-                            if (exactOnly ? !(argTypes[i] == paramType) : !argTypes[i].IsAssignableTo(paramType)) {
+                            if (argTypes[i].IsUnknown() ||
+                                paramType.IsUnknown()) {
+                                continue;
+                            }
+                            if (exactOnly
+                                    ? !(argTypes[i] == paramType)
+                                    : !argTypes[i].IsAssignableTo(paramType)) {
                                 match = false;
                                 break;
                             }
                         }
-                        if (match) return decl;
+                        if (match) {
+                            return decl;
+                        }
                     }
                 }
             }
@@ -1416,40 +2025,66 @@ namespace Rux {
             return MakeFuncType(decl.params, decl.returnType, decl.typeParams);
         }
 
-        std::optional<std::uint64_t> SizeOfTypeRef(const TypeRef& type,
-                                                   const std::unordered_map<std::string, TypeRef>& substitutions = {}) {
+        std::optional<std::uint64_t>
+        SizeOfTypeRef(const TypeRef& type,
+                      const std::unordered_map<std::string, TypeRef>&
+                          substitutions = {}) {
             if (type.kind == TypeRef::Kind::Named) {
-                if (type.name.starts_with("Slice<")) return 16;
-                if (auto it = substitutions.find(type.name); it != substitutions.end())
+                if (type.name.starts_with("Slice<")) {
+                    return 16;
+                }
+                if (auto it = substitutions.find(type.name);
+                    it != substitutions.end()) {
                     return SizeOfTypeRef(it->second, substitutions);
+                }
                 const std::string baseName = BaseTypeName(type.name);
-                if (const auto enumIt = enumDecls.find(baseName); enumIt != enumDecls.end())
+                if (const auto enumIt = enumDecls.find(baseName);
+                    enumIt != enumDecls.end()) {
                     return SizeOfEnum(*enumIt->second, substitutions);
-                // Interface fat pointers are {data: *opaque, vtable: *opaque} = 16 bytes
+                }
+                // Interface fat pointers are {data: *opaque, vtable: *opaque} =
+                // 16 bytes
                 if (Symbol* sym = currentScope->Lookup(baseName); sym) {
-                    if (sym->kind == Symbol::Kind::Interface) return 16;
-                    if (sym->kind == Symbol::Kind::Type && !sym->type.IsUnknown())
+                    if (sym->kind == Symbol::Kind::Interface) {
+                        return 16;
+                    }
+                    if (sym->kind == Symbol::Kind::Type &&
+                        !sym->type.IsUnknown()) {
                         return SizeOfTypeRef(sym->type, substitutions);
+                    }
                 }
                 return SizeOfStruct(baseName, substitutions);
             }
 
             if (type.kind == TypeRef::Kind::Range) {
-                if (type.inner.empty()) return std::nullopt;
-                const auto elemSize = SizeOfTypeRef(type.inner[0], substitutions);
-                if (!elemSize || *elemSize == 0) return std::nullopt;
+                if (type.inner.empty()) {
+                    return std::nullopt;
+                }
+                const auto elemSize =
+                    SizeOfTypeRef(type.inner[0], substitutions);
+                if (!elemSize || *elemSize == 0) {
+                    return std::nullopt;
+                }
                 return AlignUp(2 * *elemSize + 1, *elemSize);
             }
 
             if (type.kind == TypeRef::Kind::Tuple) {
-                auto alignUp = [](std::uint64_t v, std::uint64_t a) { return (v + a - 1) & ~(a - 1); };
+                auto alignUp = [](std::uint64_t v, std::uint64_t a) {
+                    return (v + a - 1) & ~(a - 1);
+                };
                 std::uint64_t offset = 0;
                 std::uint64_t maxAlign = 1;
                 for (const auto& elem : type.inner) {
                     const auto elemSize = SizeOfTypeRef(elem, substitutions);
-                    if (!elemSize) return std::nullopt;
-                    const std::uint64_t al = *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8)) : 1;
-                    if (al > 1) offset = alignUp(offset, al);
+                    if (!elemSize) {
+                        return std::nullopt;
+                    }
+                    const std::uint64_t al =
+                        *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8))
+                                      : 1;
+                    if (al > 1) {
+                        offset = alignUp(offset, al);
+                    }
                     offset += *elemSize > 0 ? *elemSize : 8;
                     maxAlign = std::max(maxAlign, al);
                 }
@@ -1459,37 +2094,58 @@ namespace Rux {
             return type.SizeInBytes();
         }
 
-        std::optional<std::uint64_t> SizeOfEnum(const EnumDecl& decl,
-                                                const std::unordered_map<std::string, TypeRef>& substitutions = {}) {
-            const auto tagSize = SizeOfTypeRef(EnumBaseType(decl), substitutions);
-            if (!tagSize) return std::nullopt;
+        std::optional<std::uint64_t>
+        SizeOfEnum(const EnumDecl& decl,
+                   const std::unordered_map<std::string, TypeRef>&
+                       substitutions = {}) {
+            const auto tagSize =
+                SizeOfTypeRef(EnumBaseType(decl), substitutions);
+            if (!tagSize) {
+                return std::nullopt;
+            }
 
             bool hasPayload = false;
             std::uint64_t maxPayloadSize = 0;
             std::uint64_t maxPayloadAlign = 1;
 
-            auto fieldLayout = [&](const auto& fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
+            auto fieldLayout = [&](const auto& fields)
+                -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
                 std::uint64_t offset = 0;
                 std::uint64_t maxAlign = 1;
                 for (const auto& field : fields) {
-                    const auto fieldSize = SizeOfTypeExprWithSubstitution(*field, substitutions);
-                    if (!fieldSize) return std::nullopt;
-                    const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
-                    if (align > 1) offset = AlignUp(offset, align);
+                    const auto fieldSize =
+                        SizeOfTypeExprWithSubstitution(*field, substitutions);
+                    if (!fieldSize) {
+                        return std::nullopt;
+                    }
+                    const std::uint64_t align =
+                        *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8)
+                                       : 1;
+                    if (align > 1) {
+                        offset = AlignUp(offset, align);
+                    }
                     offset += *fieldSize > 0 ? *fieldSize : 8;
                     maxAlign = std::max(maxAlign, align);
                 }
                 return std::pair{AlignUp(offset, maxAlign), maxAlign};
             };
 
-            auto namedFieldLayout = [&](const auto& fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
+            auto namedFieldLayout = [&](const auto& fields)
+                -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
                 std::uint64_t offset = 0;
                 std::uint64_t maxAlign = 1;
                 for (const auto& field : fields) {
-                    const auto fieldSize = SizeOfTypeExprWithSubstitution(*field.type, substitutions);
-                    if (!fieldSize) return std::nullopt;
-                    const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
-                    if (align > 1) offset = AlignUp(offset, align);
+                    const auto fieldSize = SizeOfTypeExprWithSubstitution(
+                        *field.type, substitutions);
+                    if (!fieldSize) {
+                        return std::nullopt;
+                    }
+                    const std::uint64_t align =
+                        *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8)
+                                       : 1;
+                    if (align > 1) {
+                        offset = AlignUp(offset, align);
+                    }
                     offset += *fieldSize > 0 ? *fieldSize : 8;
                     maxAlign = std::max(maxAlign, align);
                 }
@@ -1497,28 +2153,39 @@ namespace Rux {
             };
 
             for (const auto& variant : decl.variants) {
-                if (variant.fields.empty() && variant.namedFields.empty()) continue;
+                if (variant.fields.empty() && variant.namedFields.empty()) {
+                    continue;
+                }
 
                 hasPayload = true;
-                auto payload =
-                    !variant.fields.empty() ? fieldLayout(variant.fields) : namedFieldLayout(variant.namedFields);
-                if (!payload) return std::nullopt;
+                auto payload = !variant.fields.empty()
+                                 ? fieldLayout(variant.fields)
+                                 : namedFieldLayout(variant.namedFields);
+                if (!payload) {
+                    return std::nullopt;
+                }
                 maxPayloadSize = std::max(maxPayloadSize, payload->first);
                 maxPayloadAlign = std::max(maxPayloadAlign, payload->second);
             }
 
-            if (!hasPayload) return tagSize;
+            if (!hasPayload) {
+                return tagSize;
+            }
 
-            const std::uint64_t tagAlign = *tagSize > 0 ? std::min<std::uint64_t>(*tagSize, 8) : 1;
+            const std::uint64_t tagAlign =
+                *tagSize > 0 ? std::min<std::uint64_t>(*tagSize, 8) : 1;
             const std::uint64_t align = std::max(tagAlign, maxPayloadAlign);
             std::uint64_t offset = *tagSize;
-            if (maxPayloadAlign > 1) offset = AlignUp(offset, maxPayloadAlign);
+            if (maxPayloadAlign > 1) {
+                offset = AlignUp(offset, maxPayloadAlign);
+            }
             offset += maxPayloadSize;
             return AlignUp(offset, align);
         }
 
         TypeRef EnumBaseType(const EnumDecl& decl) {
-            return decl.baseType ? ResolveType(*decl.baseType) : TypeRef::MakeInt();
+            return decl.baseType ? ResolveType(*decl.baseType)
+                                 : TypeRef::MakeInt();
         }
 
         TypeRef EnumType(const EnumDecl& decl) {
@@ -1527,39 +2194,58 @@ namespace Rux {
             return type;
         }
 
-        std::optional<std::uint64_t> SizeOfStruct(const std::string& name,
-                                                  const std::unordered_map<std::string, TypeRef>& substitutions = {}) {
+        std::optional<std::uint64_t>
+        SizeOfStruct(const std::string& name,
+                     const std::unordered_map<std::string, TypeRef>&
+                         substitutions = {}) {
             const auto structIt = structDecls.find(name);
-            if (structIt == structDecls.end()) return std::nullopt;
+            if (structIt == structDecls.end()) {
+                return std::nullopt;
+            }
 
             std::uint64_t offset = 0;
             std::uint64_t maxAlign = 1;
             for (const auto& field : structIt->second->fields) {
-                const auto fieldSize = SizeOfTypeExprWithSubstitution(*field.type, substitutions);
-                if (!fieldSize) return std::nullopt;
-                const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
-                if (align > 1) offset = AlignUp(offset, align);
+                const auto fieldSize =
+                    SizeOfTypeExprWithSubstitution(*field.type, substitutions);
+                if (!fieldSize) {
+                    return std::nullopt;
+                }
+                const std::uint64_t align =
+                    *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
+                if (align > 1) {
+                    offset = AlignUp(offset, align);
+                }
                 offset += *fieldSize > 0 ? *fieldSize : 8;
                 maxAlign = std::max(maxAlign, align);
             }
             return AlignUp(offset, maxAlign);
         }
 
-        std::optional<std::uint64_t>
-        SizeOfTypeExprWithSubstitution(const TypeExpr& expr,
-                                       const std::unordered_map<std::string, TypeRef>& substitutions = {}) {
+        std::optional<std::uint64_t> SizeOfTypeExprWithSubstitution(
+            const TypeExpr& expr,
+            const std::unordered_map<std::string, TypeRef>& substitutions =
+                {}) {
             if (auto* t = dynamic_cast<const NamedTypeExpr*>(&expr)) {
                 const auto structIt = structDecls.find(t->name);
                 if (structIt != structDecls.end()) {
-                    std::unordered_map<std::string, TypeRef> fieldSubstitutions = substitutions;
+                    std::unordered_map<std::string, TypeRef>
+                        fieldSubstitutions = substitutions;
                     const auto& params = structIt->second->typeParams;
-                    for (std::size_t i = 0; i < params.size() && i < t->typeArgs.size(); ++i)
-                        fieldSubstitutions[params[i]] = ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions);
+                    for (std::size_t i = 0;
+                         i < params.size() && i < t->typeArgs.size();
+                         ++i) {
+                        fieldSubstitutions[params[i]] =
+                            ResolveTypeWithSubstitution(*t->typeArgs[i],
+                                                        substitutions);
+                    }
                     return SizeOfStruct(t->name, fieldSubstitutions);
                 }
             }
 
-            return SizeOfTypeRef(ResolveTypeWithSubstitution(expr, substitutions), substitutions);
+            return SizeOfTypeRef(
+                ResolveTypeWithSubstitution(expr, substitutions),
+                substitutions);
         }
 
         std::optional<std::uint64_t> SizeOfTypeExpr(const TypeExpr& expr) {
@@ -1569,8 +2255,9 @@ namespace Rux {
         // Second pass: check declarations
         void CheckModule(const Module& mod) {
             currentFile = mod.name;
-            for (const auto& decl : mod.items)
+            for (const auto& decl : mod.items) {
                 CheckDecl(*decl);
+            }
         }
 
         void CheckModuleInScope(const Module& mod, Scope& scope) {
@@ -1581,49 +2268,72 @@ namespace Rux {
         }
 
         void CheckDecl(const Decl& decl) {
-            if (!DeclMatchesTarget(decl)) return;
-            if (auto* d = dynamic_cast<const FuncDecl*>(&decl))
-                CheckFuncDecl(*d);
-            else if (auto* d = dynamic_cast<const StructDecl*>(&decl))
-                CheckStructDecl(*d);
-            else if (auto* d = dynamic_cast<const EnumDecl*>(&decl))
-                CheckEnumDecl(*d);
-            else if (auto* d = dynamic_cast<const UnionDecl*>(&decl))
-                CheckUnionDecl(*d);
-            else if (auto* d = dynamic_cast<const InterfaceDecl*>(&decl))
-                CheckInterfaceDecl(*d);
-            else if (auto* d = dynamic_cast<const ImplDecl*>(&decl))
-                CheckImplDecl(*d);
-            else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl))
-                CheckModuleDecl(*d);
-            else if (auto* d = dynamic_cast<const ConstDecl*>(&decl))
-                CheckConstDecl(*d);
-            else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl))
-                ResolveType(*d->type); // triggers unknown-type errors
-            else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl)) {
-                if (d->dll.empty())
-                    EmitError(
-                        d->location,
-                        std::format("extern function '{}' must specify a source DLL via @[Import(lib: \"dll.dll\")]",
-                                    d->name));
-                if (d->returnType) ResolveType(*d->returnType->get());
-                for (auto& p : d->params)
-                    if (!p.isVariadic) ResolveType(*p.type);
+            if (!DeclMatchesTarget(decl)) {
+                return;
             }
-            else if (auto* d = dynamic_cast<const ExternVarDecl*>(&decl))
+            if (auto* d = dynamic_cast<const FuncDecl*>(&decl)) {
+                CheckFuncDecl(*d);
+            }
+            else if (auto* d = dynamic_cast<const StructDecl*>(&decl)) {
+                CheckStructDecl(*d);
+            }
+            else if (auto* d = dynamic_cast<const EnumDecl*>(&decl)) {
+                CheckEnumDecl(*d);
+            }
+            else if (auto* d = dynamic_cast<const UnionDecl*>(&decl)) {
+                CheckUnionDecl(*d);
+            }
+            else if (auto* d = dynamic_cast<const InterfaceDecl*>(&decl)) {
+                CheckInterfaceDecl(*d);
+            }
+            else if (auto* d = dynamic_cast<const ImplDecl*>(&decl)) {
+                CheckImplDecl(*d);
+            }
+            else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl)) {
+                CheckModuleDecl(*d);
+            }
+            else if (auto* d = dynamic_cast<const ConstDecl*>(&decl)) {
+                CheckConstDecl(*d);
+            }
+            else if (auto* d = dynamic_cast<const TypeAliasDecl*>(&decl)) {
+                ResolveType(*d->type); // triggers unknown-type errors
+            }
+            else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl)) {
+                if (d->dll.empty()) {
+                    EmitError(d->location,
+                              std::format("extern function '{}' must specify a "
+                                          "source DLL via "
+                                          "@[Import(lib: \"dll.dll\")]",
+                                          d->name));
+                }
+                if (d->returnType) {
+                    ResolveType(*d->returnType->get());
+                }
+                for (auto& p : d->params) {
+                    if (!p.isVariadic) {
+                        ResolveType(*p.type);
+                    }
+                }
+            }
+            else if (auto* d = dynamic_cast<const ExternVarDecl*>(&decl)) {
                 ResolveType(*d->type);
-            else if (auto* d = dynamic_cast<const ExternBlockDecl*>(&decl))
-                for (auto& item : d->items)
+            }
+            else if (auto* d = dynamic_cast<const ExternBlockDecl*>(&decl)) {
+                for (auto& item : d->items) {
                     CheckDecl(*item);
-            else if (auto* d = dynamic_cast<const UseDecl*>(&decl))
+                }
+            }
+            else if (auto* d = dynamic_cast<const UseDecl*>(&decl)) {
                 CheckUseDecl(*d);
+            }
         }
 
         void CheckFuncDecl(const FuncDecl& d, bool isMethod = false) {
             auto savedTypeParams = currentTypeParams;
             currentTypeParams = d.typeParams;
 
-            TypeRef retType = d.returnType ? ResolveType(*d.returnType->get()) : TypeRef::MakeOpaque();
+            TypeRef retType = d.returnType ? ResolveType(*d.returnType->get())
+                                           : TypeRef::MakeOpaque();
 
             auto savedRet = currentReturnType;
             currentReturnType = retType;
@@ -1642,14 +2352,18 @@ namespace Rux {
                 Symbol self;
                 self.kind = Symbol::Kind::Var;
                 self.name = "self";
-                self.type = currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
+                self.type = currentSelfType.IsUnknown()
+                              ? TypeRef::MakeNamed("self")
+                              : currentSelfType;
                 self.isMut = true;
                 Define(self);
             }
 
             bool seenDefault = false;
             for (const auto& param : d.params) {
-                if (param.name == "self") continue;
+                if (param.name == "self") {
+                    continue;
+                }
                 if (param.isVariadic) {
                     seenDefault = false; // variadic ends fixed params; reset
                 }
@@ -1657,17 +2371,18 @@ namespace Rux {
                     seenDefault = true;
                 }
                 else if (seenDefault) {
-                    EmitError(
-                        param.location,
-                        std::format(
-                            "parameter '{}' without a default value cannot follow a parameter with a default value",
-                            param.name));
+                    EmitError(param.location,
+                              std::format("parameter '{}' without a default "
+                                          "value cannot follow a "
+                                          "parameter with a default value",
+                                          param.name));
                 }
                 Symbol sym;
                 sym.kind = Symbol::Kind::Var;
                 sym.name = param.name;
                 sym.location = param.location;
-                sym.type = param.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
+                sym.type = param.isVariadic ? TypeRef::MakeNamed(SliceTypeName(
+                                                  ResolveType(*param.type)))
                                             : ResolveType(*param.type);
                 sym.isMut = false;
                 Define(sym);
@@ -1675,21 +2390,28 @@ namespace Rux {
                     TypeRef paramType = ResolveType(*param.type);
                     TypeRef defaultType = CheckExpr(**param.defaultValue);
                     if (!defaultType.IsUnknown() && !paramType.IsUnknown() &&
-                        !CanAssignExprTo(**param.defaultValue, defaultType, paramType))
-                        EmitError(param.location,
-                                  AssignmentErrorMessage(
-                                      **param.defaultValue,
-                                      paramType,
-                                      std::format("default value type '{}' does not match parameter type '{}'",
-                                                  defaultType.ToString(),
-                                                  paramType.ToString())));
+                        !CanAssignExprTo(
+                            **param.defaultValue, defaultType, paramType)) {
+                        EmitError(
+                            param.location,
+                            AssignmentErrorMessage(
+                                **param.defaultValue,
+                                paramType,
+                                std::format("default value type '{}' does not "
+                                            "match parameter type '{}'",
+                                            defaultType.ToString(),
+                                            paramType.ToString())));
+                    }
                 }
             }
 
-            if (!d.body)
-                EmitError(d.location, std::format("function '{}' has no body", d.name));
-            else
+            if (!d.body) {
+                EmitError(d.location,
+                          std::format("function '{}' has no body", d.name));
+            }
+            else {
                 CheckBlock(*d.body);
+            }
 
             PopScope();
             currentReturnType = savedRet;
@@ -1711,8 +2433,12 @@ namespace Rux {
 
             std::unordered_set<std::string> seen;
             for (const auto& field : d.fields) {
-                if (!seen.insert(field.name).second)
-                    EmitError(field.location, std::format("duplicate field '{}' in struct '{}'", field.name, d.name));
+                if (!seen.insert(field.name).second) {
+                    EmitError(field.location,
+                              std::format("duplicate field '{}' in struct '{}'",
+                                          field.name,
+                                          d.name));
+                }
                 ResolveType(*field.type);
             }
 
@@ -1723,168 +2449,244 @@ namespace Rux {
         void CheckStructInitExpr(const StructInitExpr& e) {
             auto structIt = structDecls.find(e.typeName);
             if (structIt == structDecls.end()) {
-                if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(e.typeName); enumDecl) {
+                if (const auto [enumDecl, variant] =
+                        LookupEnumVariantInitializer(e.typeName);
+                    enumDecl) {
                     if (!variant) {
-                        EmitError(e.location, std::format("unknown enum variant '{}' in initializer", e.typeName));
-                        for (const auto& f : e.fields)
+                        EmitError(
+                            e.location,
+                            std::format(
+                                "unknown enum variant '{}' in initializer",
+                                e.typeName));
+                        for (const auto& f : e.fields) {
                             CheckExpr(*f.value);
+                        }
                         return;
                     }
                     if (variant->namedFields.empty()) {
-                        EmitError(e.location, std::format("enum variant '{}' has no named fields", e.typeName));
-                        for (const auto& f : e.fields)
+                        EmitError(
+                            e.location,
+                            std::format("enum variant '{}' has no named fields",
+                                        e.typeName));
+                        for (const auto& f : e.fields) {
                             CheckExpr(*f.value);
+                        }
                         return;
                     }
 
-                    std::unordered_map<std::string, const EnumDecl::Variant::NamedField*> fieldMap;
-                    for (const auto& field : variant->namedFields)
+                    std::unordered_map<std::string,
+                                       const EnumDecl::Variant::NamedField*>
+                        fieldMap;
+                    for (const auto& field : variant->namedFields) {
                         fieldMap.emplace(field.name, &field);
+                    }
 
                     std::unordered_set<std::string> initialized;
                     for (const auto& f : e.fields) {
                         TypeRef valueType = CheckExpr(*f.value);
                         if (!initialized.insert(f.name).second) {
                             EmitError(f.location,
-                                      std::format("duplicate field '{}' in initializer for '{}'", f.name, e.typeName));
+                                      std::format("duplicate field '{}' in "
+                                                  "initializer for '{}'",
+                                                  f.name,
+                                                  e.typeName));
                             continue;
                         }
 
                         auto fieldIt = fieldMap.find(f.name);
                         if (fieldIt == fieldMap.end()) {
                             EmitError(f.location,
-                                      std::format("unknown field '{}' in initializer for '{}'", f.name, e.typeName));
+                                      std::format("unknown field '{}' in "
+                                                  "initializer for '{}'",
+                                                  f.name,
+                                                  e.typeName));
                             continue;
                         }
 
                         TypeRef fieldType = ResolveType(*fieldIt->second->type);
                         if (!valueType.IsUnknown() && !fieldType.IsUnknown() &&
-                            !CanAssignExprTo(*f.value, valueType, fieldType))
-                            EmitError(
-                                f.location,
-                                AssignmentErrorMessage(*f.value,
-                                                       fieldType,
-                                                       std::format("cannot assign '{}' to field '{}' of type '{}'",
-                                                                   valueType.ToString(),
-                                                                   f.name,
-                                                                   fieldType.ToString())));
+                            !CanAssignExprTo(*f.value, valueType, fieldType)) {
+                            EmitError(f.location,
+                                      AssignmentErrorMessage(
+                                          *f.value,
+                                          fieldType,
+                                          std::format("cannot assign '{}' to "
+                                                      "field '{}' of type '{}'",
+                                                      valueType.ToString(),
+                                                      f.name,
+                                                      fieldType.ToString())));
+                        }
                     }
 
                     for (const auto& field : variant->namedFields) {
-                        if (!initialized.contains(field.name))
-                            EmitError(
-                                e.location,
-                                std::format("missing field '{}' in initializer for '{}'", field.name, e.typeName));
+                        if (!initialized.contains(field.name)) {
+                            EmitError(e.location,
+                                      std::format("missing field '{}' in "
+                                                  "initializer for '{}'",
+                                                  field.name,
+                                                  e.typeName));
+                        }
                     }
                     return;
                 }
 
-                EmitError(e.location, std::format("unknown type '{}' in struct initializer", e.typeName));
-                for (const auto& f : e.fields)
+                EmitError(e.location,
+                          std::format("unknown type '{}' in struct initializer",
+                                      e.typeName));
+                for (const auto& f : e.fields) {
                     CheckExpr(*f.value);
+                }
                 return;
             }
 
             const StructDecl& decl = *structIt->second;
             if (e.typeArgs.size() != decl.typeParams.size()) {
                 EmitError(e.location,
-                          std::format("struct '{}' expects {} type argument(s), got {}",
-                                      e.typeName,
-                                      decl.typeParams.size(),
-                                      e.typeArgs.size()));
+                          std::format(
+                              "struct '{}' expects {} type argument(s), got {}",
+                              e.typeName,
+                              decl.typeParams.size(),
+                              e.typeArgs.size()));
             }
 
-            const auto substitutions = StructTypeSubstitutions(decl, e.typeArgs);
+            const auto substitutions =
+                StructTypeSubstitutions(decl, e.typeArgs);
             std::unordered_map<std::string, const StructDecl::Field*> fieldMap;
-            for (const auto& field : decl.fields)
+            for (const auto& field : decl.fields) {
                 fieldMap.emplace(field.name, &field);
+            }
 
             std::unordered_set<std::string> initialized;
             for (const auto& f : e.fields) {
                 TypeRef valueType = CheckExpr(*f.value);
                 if (!initialized.insert(f.name).second) {
-                    EmitError(f.location,
-                              std::format("duplicate field '{}' in initializer for '{}'", f.name, e.typeName));
+                    EmitError(
+                        f.location,
+                        std::format(
+                            "duplicate field '{}' in initializer for '{}'",
+                            f.name,
+                            e.typeName));
                     continue;
                 }
 
                 auto fieldIt = fieldMap.find(f.name);
                 if (fieldIt == fieldMap.end()) {
                     EmitError(f.location,
-                              std::format("unknown field '{}' in initializer for '{}'", f.name, e.typeName));
+                              std::format(
+                                  "unknown field '{}' in initializer for '{}'",
+                                  f.name,
+                                  e.typeName));
                     continue;
                 }
 
-                TypeRef fieldType = ResolveTypeWithSubstitution(*fieldIt->second->type, substitutions);
+                TypeRef fieldType = ResolveTypeWithSubstitution(
+                    *fieldIt->second->type, substitutions);
                 if (!valueType.IsUnknown() && !fieldType.IsUnknown() &&
-                    !CanAssignExprTo(*f.value, valueType, fieldType))
-                    EmitError(f.location,
-                              AssignmentErrorMessage(*f.value,
-                                                     fieldType,
-                                                     std::format("cannot assign '{}' to field '{}' of type '{}'",
-                                                                 valueType.ToString(),
-                                                                 f.name,
-                                                                 fieldType.ToString())));
+                    !CanAssignExprTo(*f.value, valueType, fieldType)) {
+                    EmitError(
+                        f.location,
+                        AssignmentErrorMessage(
+                            *f.value,
+                            fieldType,
+                            std::format(
+                                "cannot assign '{}' to field '{}' of type '{}'",
+                                valueType.ToString(),
+                                f.name,
+                                fieldType.ToString())));
+                }
             }
 
             for (const auto& field : decl.fields) {
-                if (!initialized.contains(field.name))
+                if (!initialized.contains(field.name)) {
                     EmitError(e.location,
-                              std::format("missing field '{}' in initializer for '{}'", field.name, e.typeName));
+                              std::format(
+                                  "missing field '{}' in initializer for '{}'",
+                                  field.name,
+                                  e.typeName));
+                }
             }
         }
 
         void CheckEnumDecl(const EnumDecl& d) {
             const TypeRef baseType = EnumBaseType(d);
-            if (!baseType.IsUnknown() && !baseType.IsInteger())
-                EmitError(d.location, std::format("enum '{}' base type must be an integer type", d.name));
+            if (!baseType.IsUnknown() && !baseType.IsInteger()) {
+                EmitError(
+                    d.location,
+                    std::format("enum '{}' base type must be an integer type",
+                                d.name));
+            }
             std::unordered_set<std::string> seen;
             for (const auto& variant : d.variants) {
-                if (!seen.insert(variant.name).second)
+                if (!seen.insert(variant.name).second) {
                     EmitError(variant.location,
-                              std::format("duplicate variant '{}' in enum '{}'", variant.name, d.name));
-                if (variant.discriminant && (!variant.fields.empty() || !variant.namedFields.empty()))
+                              std::format("duplicate variant '{}' in enum '{}'",
+                                          variant.name,
+                                          d.name));
+                }
+                if (variant.discriminant &&
+                    (!variant.fields.empty() || !variant.namedFields.empty())) {
                     EmitError(variant.location,
-                              std::format("enum variant '{}::{}' cannot have both fields and a discriminant",
+                              std::format("enum variant '{}::{}' cannot have "
+                                          "both fields and a discriminant",
                                           d.name,
                                           variant.name));
-                for (const auto& f : variant.fields)
+                }
+                for (const auto& f : variant.fields) {
                     ResolveType(*f);
+                }
                 std::unordered_set<std::string> namedFields;
                 for (const auto& f : variant.namedFields) {
-                    if (!namedFields.insert(f.name).second)
+                    if (!namedFields.insert(f.name).second) {
                         EmitError(
                             f.location,
-                            std::format("duplicate field '{}' in enum variant '{}::{}'", f.name, d.name, variant.name));
+                            std::format(
+                                "duplicate field '{}' in enum variant '{}::{}'",
+                                f.name,
+                                d.name,
+                                variant.name));
+                    }
                     ResolveType(*f.type);
                 }
             }
         }
 
-        const EnumDecl::Variant* LookupEnumVariant(const std::string& enumName, const std::string& variantName) const {
+        const EnumDecl::Variant*
+        LookupEnumVariant(const std::string& enumName,
+                          const std::string& variantName) const {
             const auto enumIt = enumDecls.find(enumName);
-            if (enumIt == enumDecls.end()) return nullptr;
+            if (enumIt == enumDecls.end()) {
+                return nullptr;
+            }
             for (const auto& variant : enumIt->second->variants) {
-                if (variant.name == variantName) return &variant;
+                if (variant.name == variantName) {
+                    return &variant;
+                }
             }
             return nullptr;
         }
 
-        TypeRef EnumVariantConstructorType(const EnumDecl& decl, const EnumDecl::Variant& variant) {
+        TypeRef EnumVariantConstructorType(const EnumDecl& decl,
+                                           const EnumDecl::Variant& variant) {
             std::vector<TypeRef> params;
             params.reserve(variant.fields.size() + variant.namedFields.size());
-            for (const auto& field : variant.fields)
+            for (const auto& field : variant.fields) {
                 params.push_back(ResolveType(*field));
-            for (const auto& field : variant.namedFields)
+            }
+            for (const auto& field : variant.namedFields) {
                 params.push_back(ResolveType(*field.type));
+            }
             return TypeRef::MakeFunc(std::move(params), EnumType(decl));
         }
 
         void CheckUnionDecl(const UnionDecl& d) {
             std::unordered_set<std::string> seen;
             for (const auto& field : d.fields) {
-                if (!seen.insert(field.name).second)
-                    EmitError(field.location, std::format("duplicate field '{}' in union '{}'", field.name, d.name));
+                if (!seen.insert(field.name).second) {
+                    EmitError(field.location,
+                              std::format("duplicate field '{}' in union '{}'",
+                                          field.name,
+                                          d.name));
+                }
                 ResolveType(*field.type);
             }
         }
@@ -1892,35 +2694,52 @@ namespace Rux {
         void CheckInterfaceDecl(const InterfaceDecl& d) {
             std::unordered_set<std::string> seen;
             for (const auto& method : d.methods) {
-                if (!seen.insert(method->name).second)
-                    EmitError(method->location,
-                              std::format("duplicate method '{}' in interface '{}'", method->name, d.name));
-                if (method->returnType) ResolveType(**method->returnType);
-                for (const auto& p : method->params)
-                    if (!p.isVariadic) ResolveType(*p.type);
+                if (!seen.insert(method->name).second) {
+                    EmitError(
+                        method->location,
+                        std::format("duplicate method '{}' in interface '{}'",
+                                    method->name,
+                                    d.name));
+                }
+                if (method->returnType) {
+                    ResolveType(**method->returnType);
+                }
+                for (const auto& p : method->params) {
+                    if (!p.isVariadic) {
+                        ResolveType(*p.type);
+                    }
+                }
             }
         }
 
         void CheckImplDecl(const ImplDecl& d) {
-            if (!currentScope->Lookup(d.typeName))
-                EmitError(d.location, std::format("extend for unknown type '{}'", d.typeName));
+            if (!currentScope->Lookup(d.typeName)) {
+                EmitError(
+                    d.location,
+                    std::format("extend for unknown type '{}'", d.typeName));
+            }
 
             if (d.interfaceName) {
                 Symbol* ifaceSym = currentScope->Lookup(*d.interfaceName);
                 if (!ifaceSym || ifaceSym->kind != Symbol::Kind::Interface) {
-                    EmitError(d.location, std::format("'{}' is not a known interface", *d.interfaceName));
+                    EmitError(d.location,
+                              std::format("'{}' is not a known interface",
+                                          *d.interfaceName));
                 }
                 else {
                     std::unordered_set<std::string> implNames;
-                    for (const auto& m : d.methods)
+                    for (const auto& m : d.methods) {
                         implNames.insert(m->name);
+                    }
                     for (const auto& required : ifaceSym->interfaceMethods) {
-                        if (!implNames.count(required))
+                        if (!implNames.count(required)) {
                             EmitError(d.location,
-                                      std::format("extend of '{}' for '{}' is missing method '{}'",
+                                      std::format("extend of '{}' for '{}' is "
+                                                  "missing method '{}'",
                                                   *d.interfaceName,
                                                   d.typeName,
                                                   required));
+                        }
                     }
                 }
             }
@@ -1929,13 +2748,17 @@ namespace Rux {
             TypeRef savedSelfType = currentSelfType;
             inImpl = true;
             TypeRef selfBase;
-            if (Symbol* sym = currentScope->Lookup(d.typeName); sym && !sym->type.IsUnknown())
+            if (Symbol* sym = currentScope->Lookup(d.typeName);
+                sym && !sym->type.IsUnknown()) {
                 selfBase = sym->type;
-            else
+            }
+            else {
                 selfBase = TypeRef::MakeNamed(d.typeName);
+            }
             currentSelfType = TypeRef::MakePointer(selfBase);
-            for (const auto& m : d.methods)
+            for (const auto& m : d.methods) {
                 CheckFuncDecl(*m, /*isMethod=*/true);
+            }
             currentSelfType = savedSelfType;
             inImpl = savedInImpl;
         }
@@ -1943,39 +2766,54 @@ namespace Rux {
         void CheckModuleDecl(const ModuleDecl& d) {
             Scope* savedScope = currentScope;
             currentScope = &ModuleScopeFor(d.name, *currentScope);
-            for (const auto& item : d.items)
+            for (const auto& item : d.items) {
                 CheckDecl(*item);
+            }
             currentScope = savedScope;
         }
 
         void CheckConstDecl(const ConstDecl& d) {
             TypeRef valueType = CheckExpr(*d.value);
-            TypeRef constType = d.type ? ResolveType(*d.type->get()) : valueType;
+            TypeRef constType =
+                d.type ? ResolveType(*d.type->get()) : valueType;
             if (d.type && !valueType.IsUnknown() && !constType.IsUnknown() &&
-                !CanAssignExprTo(*d.value, valueType, constType))
+                !CanAssignExprTo(*d.value, valueType, constType)) {
                 EmitError(d.value->location,
-                          AssignmentErrorMessage(*d.value,
-                                                 constType,
-                                                 std::format("cannot assign '{}' to constant of type '{}'",
-                                                             valueType.ToString(),
-                                                             constType.ToString())));
-            if (Symbol* sym = currentScope->Lookup(d.name)) sym->type = constType;
+                          AssignmentErrorMessage(
+                              *d.value,
+                              constType,
+                              std::format(
+                                  "cannot assign '{}' to constant of type '{}'",
+                                  valueType.ToString(),
+                                  constType.ToString())));
+            }
+            if (Symbol* sym = currentScope->Lookup(d.name)) {
+                sym->type = constType;
+            }
         }
 
         static std::string
-        JoinPathSegments(const std::vector<std::string>& path, std::size_t first, std::size_t lastExclusive) {
+        JoinPathSegments(const std::vector<std::string>& path,
+                         std::size_t first,
+                         std::size_t lastExclusive) {
             std::string result;
             for (std::size_t i = first; i < lastExclusive; ++i) {
-                if (!result.empty()) result += "::";
+                if (!result.empty()) {
+                    result += "::";
+                }
                 result += path[i];
             }
             return result;
         }
 
         static std::string ModulePathForImport(const UseDecl& d) {
-            if (d.path.size() <= 1) return "";
+            if (d.path.size() <= 1) {
+                return "";
+            }
             if (d.kind == UseDecl::Kind::Single) {
-                if (d.path.size() <= 2) return "";
+                if (d.path.size() <= 2) {
+                    return "";
+                }
                 return JoinPathSegments(d.path, 1, d.path.size() - 1);
             }
             return JoinPathSegments(d.path, 1, d.path.size());
@@ -1983,7 +2821,9 @@ namespace Rux {
 
         static std::string LogicalModulePathForImport(const UseDecl& d) {
             if (d.kind == UseDecl::Kind::Single) {
-                if (d.path.size() <= 1) return "";
+                if (d.path.size() <= 1) {
+                    return "";
+                }
                 return JoinPathSegments(d.path, 0, d.path.size() - 1);
             }
             return JoinPathSegments(d.path, 0, d.path.size());
@@ -1994,31 +2834,49 @@ namespace Rux {
             std::string displayName;
         };
 
-        static std::string ImportScopeDisplayName(const std::string& pkgName, const std::string& modulePath) {
-            if (modulePath.empty()) return std::format("package '{}'", pkgName);
+        static std::string
+        ImportScopeDisplayName(const std::string& pkgName,
+                               const std::string& modulePath) {
+            if (modulePath.empty()) {
+                return std::format("package '{}'", pkgName);
+            }
             return std::format("module '{}'", modulePath);
         }
 
-        ImportScope ResolveImportScope(const UseDecl& d, const std::string& pkgName, const std::string& modulePath) {
+        ImportScope ResolveImportScope(const UseDecl& d,
+                                       const std::string& pkgName,
+                                       const std::string& modulePath) {
             const std::string logicalModulePath = LogicalModulePathForImport(d);
-            if (auto pkgIt = packageModuleScopes.find(pkgName); pkgIt != packageModuleScopes.end()) {
-                if (auto modIt = pkgIt->second.find(modulePath); modIt != pkgIt->second.end()) {
+            if (auto pkgIt = packageModuleScopes.find(pkgName);
+                pkgIt != packageModuleScopes.end()) {
+                if (auto modIt = pkgIt->second.find(modulePath);
+                    modIt != pkgIt->second.end()) {
                     if (modulePath.empty() && !logicalModulePath.empty()) {
-                        if (auto logicalIt = pkgIt->second.find(logicalModulePath); logicalIt != pkgIt->second.end()) {
-                            return {&logicalIt->second->Table(), ImportScopeDisplayName(pkgName, logicalModulePath)};
+                        if (auto logicalIt =
+                                pkgIt->second.find(logicalModulePath);
+                            logicalIt != pkgIt->second.end()) {
+                            return {&logicalIt->second->Table(),
+                                    ImportScopeDisplayName(pkgName,
+                                                           logicalModulePath)};
                         }
                     }
-                    return {&modIt->second->Table(), ImportScopeDisplayName(pkgName, modulePath)};
+                    return {&modIt->second->Table(),
+                            ImportScopeDisplayName(pkgName, modulePath)};
                 }
             }
 
             Scope* matchedScope = nullptr;
             std::string matchedPackage;
-            for (const auto& [candidatePackage, modules] : packageModuleScopes) {
+            for (const auto& [candidatePackage, modules] :
+                 packageModuleScopes) {
                 auto modIt = modules.find(logicalModulePath);
-                if (modIt == modules.end()) continue;
+                if (modIt == modules.end()) {
+                    continue;
+                }
                 if (matchedScope && matchedScope != modIt->second) {
-                    EmitError(d.location, std::format("ambiguous module '{}'", logicalModulePath));
+                    EmitError(d.location,
+                              std::format("ambiguous module '{}'",
+                                          logicalModulePath));
                     return {};
                 }
                 matchedScope = modIt->second;
@@ -2026,23 +2884,38 @@ namespace Rux {
             }
 
             if (matchedScope) {
-                return {&matchedScope->Table(), ImportScopeDisplayName(matchedPackage, logicalModulePath)};
+                return {
+                    &matchedScope->Table(),
+                    ImportScopeDisplayName(matchedPackage, logicalModulePath)};
             }
 
-            if (!packageModuleScopes.contains(pkgName))
-                EmitError(d.location, std::format("unknown package or module '{}'", pkgName));
-            else
-                EmitError(d.location, std::format("module '{}' not found in package '{}'", modulePath, pkgName));
+            if (!packageModuleScopes.contains(pkgName)) {
+                EmitError(
+                    d.location,
+                    std::format("unknown package or module '{}'", pkgName));
+            }
+            else {
+                EmitError(d.location,
+                          std::format("module '{}' not found in package '{}'",
+                                      modulePath,
+                                      pkgName));
+            }
             return {};
         }
 
-        void PromoteFromPackage(const UseDecl& d, const std::string& pkgName, const std::string& name) {
+        void PromoteFromPackage(const UseDecl& d,
+                                const std::string& pkgName,
+                                const std::string& name) {
             const std::string modulePath = ModulePathForImport(d);
             ImportScope scope = ResolveImportScope(d, pkgName, modulePath);
-            if (!scope.table) return;
+            if (!scope.table) {
+                return;
+            }
             auto sym_it = scope.table->find(name);
             if (sym_it == scope.table->end()) {
-                EmitError(d.location, std::format("'{}' not found in {}", name, scope.displayName));
+                EmitError(d.location,
+                          std::format(
+                              "'{}' not found in {}", name, scope.displayName));
                 return;
             }
             DefineImportedSymbol(sym_it->second);
@@ -2051,7 +2924,8 @@ namespace Rux {
 
         void DefineImportedSymbol(const Symbol& sym) {
             if (Symbol* existing = currentScope->LookupLocal(sym.name)) {
-                if (existing->kind == sym.kind && existing->location.line == sym.location.line &&
+                if (existing->kind == sym.kind &&
+                    existing->location.line == sym.location.line &&
                     existing->location.column == sym.location.column) {
                     *existing = sym;
                     return;
@@ -2060,40 +2934,59 @@ namespace Rux {
             currentScope->Define(sym, diags, currentFile);
         }
 
-        void ImportSignatureDependencies(const Symbol& sym,
-                                         const std::unordered_map<std::string, Symbol>& sourceTable) {
-            if (sym.kind != Symbol::Kind::Func) return;
+        void ImportSignatureDependencies(
+            const Symbol& sym,
+            const std::unordered_map<std::string, Symbol>& sourceTable) {
+            if (sym.kind != Symbol::Kind::Func) {
+                return;
+            }
 
             auto importNamedType = [&](const std::string& name) {
-                if (currentScope->Lookup(name)) return;
+                if (currentScope->Lookup(name)) {
+                    return;
+                }
                 auto depIt = sourceTable.find(name);
-                if (depIt == sourceTable.end()) return;
-                if (depIt->second.kind == Symbol::Kind::Type || depIt->second.kind == Symbol::Kind::Interface)
+                if (depIt == sourceTable.end()) {
+                    return;
+                }
+                if (depIt->second.kind == Symbol::Kind::Type ||
+                    depIt->second.kind == Symbol::Kind::Interface) {
                     DefineImportedSymbol(depIt->second);
+                }
             };
 
-            auto visitType = [&](this auto&& self, const TypeExpr& type) -> void {
-                if (const auto* named = dynamic_cast<const NamedTypeExpr*>(&type)) {
+            auto visitType = [&](this auto&& self,
+                                 const TypeExpr& type) -> void {
+                if (const auto* named =
+                        dynamic_cast<const NamedTypeExpr*>(&type)) {
                     importNamedType(named->name);
-                    for (const auto& arg : named->typeArgs)
+                    for (const auto& arg : named->typeArgs) {
                         self(*arg);
+                    }
                 }
-                else if (const auto* ptr = dynamic_cast<const PointerTypeExpr*>(&type)) {
+                else if (const auto* ptr =
+                             dynamic_cast<const PointerTypeExpr*>(&type)) {
                     self(*ptr->pointee);
                 }
-                else if (const auto* slice = dynamic_cast<const SliceTypeExpr*>(&type)) {
+                else if (const auto* slice =
+                             dynamic_cast<const SliceTypeExpr*>(&type)) {
                     self(*slice->element);
                 }
-                else if (const auto* tuple = dynamic_cast<const TupleTypeExpr*>(&type)) {
-                    for (const auto& elem : tuple->elements)
+                else if (const auto* tuple =
+                             dynamic_cast<const TupleTypeExpr*>(&type)) {
+                    for (const auto& elem : tuple->elements) {
                         self(*elem);
+                    }
                 }
             };
 
             for (const auto* overload : sym.funcOverloads) {
-                for (const auto& param : overload->params)
+                for (const auto& param : overload->params) {
                     visitType(*param.type);
-                if (overload->returnType) visitType(**overload->returnType);
+                }
+                if (overload->returnType) {
+                    visitType(**overload->returnType);
+                }
             }
         }
 
@@ -2110,7 +3003,9 @@ namespace Rux {
         }
 
         void CheckUseDecl(const UseDecl& d) {
-            if (!DeclMatchesTarget(d)) return;
+            if (!DeclMatchesTarget(d)) {
+                return;
+            }
             if (d.path.empty()) {
                 EmitError(d.location, "empty import path");
                 return;
@@ -2120,12 +3015,15 @@ namespace Rux {
             if (d.kind == UseDecl::Kind::Single) {
                 if (d.path.size() < 2) {
                     EmitError(d.location,
-                              std::format(
-                                  "import '{}' must name at least one item (e.g. import {}::Name)", pkgName, pkgName));
+                              std::format("import '{}' must name at least one "
+                                          "item (e.g. import {}::Name)",
+                                          pkgName,
+                                          pkgName));
                     return;
                 }
                 const std::string& name = d.path.back();
-                // If path.size()==2 and name matches a logical module, create a module alias.
+                // If path.size()==2 and name matches a logical module, create a
+                // module alias.
                 if (d.path.size() == 2) {
                     auto pkgIt = packageModuleScopes.find(pkgName);
                     if (pkgIt != packageModuleScopes.end()) {
@@ -2144,24 +3042,30 @@ namespace Rux {
                 PromoteFromPackage(d, pkgName, name);
             }
             else if (d.kind == UseDecl::Kind::Multi) {
-                for (const auto& name : d.names)
+                for (const auto& name : d.names) {
                     PromoteFromPackage(d, pkgName, name);
+                }
             }
-            else // Glob: promote all from the specific module (or all modules if Pkg::*)
+            else // Glob: promote all from the specific module (or all modules
+                 // if Pkg::*)
             {
                 const std::string modulePath = ModulePathForImport(d);
                 ImportScope scope = ResolveImportScope(d, pkgName, modulePath);
-                if (!scope.table) return;
-                for (const auto& [name, sym] : *scope.table)
+                if (!scope.table) {
+                    return;
+                }
+                for (const auto& [name, sym] : *scope.table) {
                     DefineImportedSymbol(sym);
+                }
             }
         }
 
         // Block & statements
         void CheckBlock(const Block& block) {
             PushScope();
-            for (const auto& stmt : block.stmts)
+            for (const auto& stmt : block.stmts) {
                 CheckStmt(*stmt);
+            }
             PopScope();
         }
 
@@ -2170,25 +3074,45 @@ namespace Rux {
                 CheckExpr(*s->expr);
             }
             else if (auto* s = dynamic_cast<const LetStmt*>(&stmt)) {
-                TypeRef initType = s->init ? CheckExpr(*s->init) : TypeRef::MakeUnknown();
-                TypeRef declType = s->type ? ResolveType(*s->type->get()) : initType;
+                TypeRef initType =
+                    s->init ? CheckExpr(*s->init) : TypeRef::MakeUnknown();
+                TypeRef declType =
+                    s->type ? ResolveType(*s->type->get()) : initType;
 
-                if (!s->init && !s->type) EmitError(s->location, "uninitialized variable requires an explicit type");
+                if (!s->init && !s->type) {
+                    EmitError(
+                        s->location,
+                        "uninitialized variable requires an explicit type");
+                }
 
-                if (!s->init && !s->isMut) EmitError(s->location, "immutable variable requires an initializer");
+                if (!s->init && !s->isMut) {
+                    EmitError(s->location,
+                              "immutable variable requires an initializer");
+                }
 
-                if (!s->init && s->pattern) EmitError(s->location, "destructuring declaration requires an initializer");
+                if (!s->init && s->pattern) {
+                    EmitError(
+                        s->location,
+                        "destructuring declaration requires an initializer");
+                }
 
-                if (!s->type && declType.IsUnknown() && !s->pattern)
-                    EmitWarning(s->location, std::format("cannot infer type of '{}'", s->name));
+                if (!s->type && declType.IsUnknown() && !s->pattern) {
+                    EmitWarning(
+                        s->location,
+                        std::format("cannot infer type of '{}'", s->name));
+                }
 
-                if (s->init && s->type && !initType.IsUnknown() && !declType.IsUnknown() &&
-                    !CanAssignExprTo(*s->init, initType, declType))
+                if (s->init && s->type && !initType.IsUnknown() &&
+                    !declType.IsUnknown() &&
+                    !CanAssignExprTo(*s->init, initType, declType)) {
                     EmitError(s->location,
                               AssignmentErrorMessage(
                                   *s->init,
                                   declType,
-                                  std::format("cannot assign '{}' to '{}'", initType.ToString(), declType.ToString())));
+                                  std::format("cannot assign '{}' to '{}'",
+                                              initType.ToString(),
+                                              declType.ToString())));
+                }
 
                 if (s->pattern) {
                     CheckLetPattern(*s->pattern, declType, s->isMut);
@@ -2210,30 +3134,44 @@ namespace Rux {
                     CheckExpr(*elif.condition);
                     CheckBlock(*elif.block);
                 }
-                if (s->elseBlock) CheckBlock(*s->elseBlock);
+                if (s->elseBlock) {
+                    CheckBlock(*s->elseBlock);
+                }
             }
             else if (auto* s = dynamic_cast<const WhileStmt*>(&stmt)) {
-                if (!s->label.empty()) activeLabels.insert(s->label);
+                if (!s->label.empty()) {
+                    activeLabels.insert(s->label);
+                }
                 CheckExpr(*s->condition);
                 ++loopDepth;
                 CheckBlock(*s->body);
                 --loopDepth;
-                if (!s->label.empty()) activeLabels.erase(s->label);
+                if (!s->label.empty()) {
+                    activeLabels.erase(s->label);
+                }
             }
             else if (auto* s = dynamic_cast<const DoWhileStmt*>(&stmt)) {
-                if (!s->label.empty()) activeLabels.insert(s->label);
+                if (!s->label.empty()) {
+                    activeLabels.insert(s->label);
+                }
                 ++loopDepth;
                 CheckBlock(*s->body);
                 --loopDepth;
                 CheckExpr(*s->condition);
-                if (!s->label.empty()) activeLabels.erase(s->label);
+                if (!s->label.empty()) {
+                    activeLabels.erase(s->label);
+                }
             }
             else if (auto* s = dynamic_cast<const LoopStmt*>(&stmt)) {
-                if (!s->label.empty()) activeLabels.insert(s->label);
+                if (!s->label.empty()) {
+                    activeLabels.insert(s->label);
+                }
                 ++loopDepth;
                 CheckBlock(*s->body);
                 --loopDepth;
-                if (!s->label.empty()) activeLabels.erase(s->label);
+                if (!s->label.empty()) {
+                    activeLabels.erase(s->label);
+                }
             }
             else if (auto* s = dynamic_cast<const ForStmt*>(&stmt)) {
                 TypeRef iterType = CheckExpr(*s->iterable);
@@ -2242,19 +3180,26 @@ namespace Rux {
                 var.kind = Symbol::Kind::Var;
                 var.name = s->variable;
                 var.location = s->location;
-                if (iterType.IsRange() && !iterType.inner.empty())
+                if (iterType.IsRange() && !iterType.inner.empty()) {
                     var.type = iterType.inner[0];
-                else if (auto elemType = SliceElementType(iterType))
+                }
+                else if (auto elemType = SliceElementType(iterType)) {
                     var.type = *elemType;
-                else
+                }
+                else {
                     var.type = TypeRef::MakeUnknown();
+                }
                 var.isMut = false;
                 Define(var);
-                if (!s->label.empty()) activeLabels.insert(s->label);
+                if (!s->label.empty()) {
+                    activeLabels.insert(s->label);
+                }
                 ++loopDepth;
                 CheckBlock(*s->body); // CheckBlock pushes its own nested scope
                 --loopDepth;
-                if (!s->label.empty()) activeLabels.erase(s->label);
+                if (!s->label.empty()) {
+                    activeLabels.erase(s->label);
+                }
                 PopScope();
             }
             else if (auto* s = dynamic_cast<const MatchStmt*>(&stmt)) {
@@ -2268,32 +3213,46 @@ namespace Rux {
             }
             else if (auto* s = dynamic_cast<const ReturnStmt*>(&stmt)) {
                 if (s->value) {
-                    if (TypeRef valType = CheckExpr(**s->value); !valType.IsUnknown() &&
-                        !currentReturnType.IsUnknown() && !currentReturnType.IsOpaque() &&
-                        !CanAssignExprTo(**s->value, valType, currentReturnType))
+                    if (TypeRef valType = CheckExpr(**s->value);
+                        !valType.IsUnknown() &&
+                        !currentReturnType.IsUnknown() &&
+                        !currentReturnType.IsOpaque() &&
+                        !CanAssignExprTo(
+                            **s->value, valType, currentReturnType)) {
                         EmitError(s->location,
-                                  AssignmentErrorMessage(**s->value,
-                                                         currentReturnType,
-                                                         std::format("return type mismatch: expected '{}', found '{}'",
-                                                                     currentReturnType.ToString(),
-                                                                     valType.ToString())));
+                                  AssignmentErrorMessage(
+                                      **s->value,
+                                      currentReturnType,
+                                      std::format("return type mismatch: "
+                                                  "expected '{}', found '{}'",
+                                                  currentReturnType.ToString(),
+                                                  valType.ToString())));
+                    }
                 }
-                else if (!currentReturnType.IsOpaque() && !currentReturnType.IsUnknown()) {
+                else if (!currentReturnType.IsOpaque() &&
+                         !currentReturnType.IsUnknown()) {
                     EmitError(s->location,
-                              std::format("missing return value; expected '{}'", currentReturnType.ToString()));
+                              std::format("missing return value; expected '{}'",
+                                          currentReturnType.ToString()));
                 }
             }
             else if (auto* s = dynamic_cast<const BreakStmt*>(&stmt)) {
-                if (loopDepth == 0)
+                if (loopDepth == 0) {
                     EmitError(stmt.location, "'break' outside of a loop");
-                else if (!s->label.empty() && !activeLabels.count(s->label))
-                    EmitError(stmt.location, std::format("unknown loop label '{}'", s->label));
+                }
+                else if (!s->label.empty() && !activeLabels.count(s->label)) {
+                    EmitError(stmt.location,
+                              std::format("unknown loop label '{}'", s->label));
+                }
             }
             else if (auto* s = dynamic_cast<const ContinueStmt*>(&stmt)) {
-                if (loopDepth == 0)
+                if (loopDepth == 0) {
                     EmitError(stmt.location, "'continue' outside of a loop");
-                else if (!s->label.empty() && !activeLabels.count(s->label))
-                    EmitError(stmt.location, std::format("unknown loop label '{}'", s->label));
+                }
+                else if (!s->label.empty() && !activeLabels.count(s->label)) {
+                    EmitError(stmt.location,
+                              std::format("unknown loop label '{}'", s->label));
+                }
             }
             else if (auto* s = dynamic_cast<const DeclStmt*>(&stmt)) {
                 CollectDecl(*s->decl, *currentScope);
@@ -2301,7 +3260,8 @@ namespace Rux {
             }
         }
 
-        void CheckLetPattern(const Pattern& pat, const TypeRef& type, bool isMut) {
+        void
+        CheckLetPattern(const Pattern& pat, const TypeRef& type, bool isMut) {
             if (auto* p = dynamic_cast<const IdentPattern*>(&pat)) {
                 Symbol sym;
                 sym.kind = Symbol::Kind::Var;
@@ -2314,26 +3274,36 @@ namespace Rux {
             else if (dynamic_cast<const WildcardPattern*>(&pat)) {}
             else if (auto* p = dynamic_cast<const TuplePattern*>(&pat)) {
                 if (type.kind != TypeRef::Kind::Tuple) {
-                    if (!type.IsUnknown())
-                        EmitError(p->location, std::format("cannot destructure non-tuple type '{}'", type.ToString()));
-                    for (const auto& elem : p->elements)
+                    if (!type.IsUnknown()) {
+                        EmitError(p->location,
+                                  std::format(
+                                      "cannot destructure non-tuple type '{}'",
+                                      type.ToString()));
+                    }
+                    for (const auto& elem : p->elements) {
                         CheckLetPattern(*elem, TypeRef::MakeUnknown(), isMut);
+                    }
                     return;
                 }
 
                 if (p->elements.size() != type.inner.size()) {
                     EmitError(p->location,
-                              std::format("tuple pattern has {} elements but type '{}' has {}",
+                              std::format("tuple pattern has {} elements but "
+                                          "type '{}' has {}",
                                           p->elements.size(),
                                           type.ToString(),
                                           type.inner.size()));
                 }
 
-                const std::size_t n = std::min(p->elements.size(), type.inner.size());
-                for (std::size_t i = 0; i < n; ++i)
+                const std::size_t n =
+                    std::min(p->elements.size(), type.inner.size());
+                for (std::size_t i = 0; i < n; ++i) {
                     CheckLetPattern(*p->elements[i], type.inner[i], isMut);
-                for (std::size_t i = n; i < p->elements.size(); ++i)
-                    CheckLetPattern(*p->elements[i], TypeRef::MakeUnknown(), isMut);
+                }
+                for (std::size_t i = n; i < p->elements.size(); ++i) {
+                    CheckLetPattern(
+                        *p->elements[i], TypeRef::MakeUnknown(), isMut);
+                }
             }
             else {
                 EmitError(pat.location, "unsupported pattern in let binding");
@@ -2360,24 +3330,37 @@ namespace Rux {
                 CheckPattern(*p->hi);
             }
             else if (auto* p = dynamic_cast<const TuplePattern*>(&pat)) {
-                for (const auto& e : p->elements)
+                for (const auto& e : p->elements) {
                     CheckPattern(*e);
+                }
             }
             else if (auto* p = dynamic_cast<const StructPattern*>(&pat)) {
-                if (!currentScope->Lookup(p->typeName))
-                    EmitError(p->location, std::format("unknown type '{}' in struct pattern", p->typeName));
-                for (const auto& f : p->fields)
+                if (!currentScope->Lookup(p->typeName)) {
+                    EmitError(p->location,
+                              std::format("unknown type '{}' in struct pattern",
+                                          p->typeName));
+                }
+                for (const auto& f : p->fields) {
                     CheckPattern(*f.pattern);
+                }
             }
             else if (auto* p = dynamic_cast<const EnumPattern*>(&pat)) {
-                if (!p->path.empty() && !currentScope->Lookup(p->path[0]))
-                    EmitError(p->location, std::format("unknown name '{}' in enum pattern", p->path[0]));
+                if (!p->path.empty() && !currentScope->Lookup(p->path[0])) {
+                    EmitError(p->location,
+                              std::format("unknown name '{}' in enum pattern",
+                                          p->path[0]));
+                }
                 const EnumDecl::Variant* variant =
-                    p->path.size() >= 2 ? LookupEnumVariant(p->path[0], p->path[1]) : nullptr;
+                    p->path.size() >= 2
+                        ? LookupEnumVariant(p->path[0], p->path[1])
+                        : nullptr;
                 std::unordered_set<std::string> named;
                 for (const auto& arg : p->namedArgs) {
                     if (!named.insert(arg.name).second) {
-                        EmitError(arg.location, std::format("duplicate field '{}' in enum pattern", arg.name));
+                        EmitError(
+                            arg.location,
+                            std::format("duplicate field '{}' in enum pattern",
+                                        arg.name));
                         continue;
                     }
 
@@ -2391,22 +3374,39 @@ namespace Rux {
                         }
                     }
 
-                    if (field)
-                        CheckLetPattern(*arg.pattern, ResolveType(*field->type), false);
+                    if (field) {
+                        CheckLetPattern(
+                            *arg.pattern, ResolveType(*field->type), false);
+                    }
                     else {
-                        if (variant)
-                            EmitError(arg.location, std::format("unknown field '{}' in enum pattern", arg.name));
+                        if (variant) {
+                            EmitError(arg.location,
+                                      std::format(
+                                          "unknown field '{}' in enum pattern",
+                                          arg.name));
+                        }
                         CheckPattern(*arg.pattern);
                     }
                 }
                 for (std::size_t i = 0; i < p->args.size(); ++i) {
-                    if (variant && i < variant->fields.size())
-                        CheckLetPattern(*p->args[i], ResolveType(*variant->fields[i]), false);
-                    else if (variant && i - variant->fields.size() < variant->namedFields.size())
+                    if (variant && i < variant->fields.size()) {
+                        CheckLetPattern(*p->args[i],
+                                        ResolveType(*variant->fields[i]),
+                                        false);
+                    }
+                    else if (variant && i - variant->fields.size() <
+                                            variant->namedFields.size()) {
                         CheckLetPattern(
-                            *p->args[i], ResolveType(*variant->namedFields[i - variant->fields.size()].type), false);
-                    else
+                            *p->args[i],
+                            ResolveType(
+                                *variant
+                                     ->namedFields[i - variant->fields.size()]
+                                     .type),
+                            false);
+                    }
+                    else {
                         CheckPattern(*p->args[i]);
+                    }
                 }
             }
             // WildcardPattern, LiteralPattern: nothing to resolve
@@ -2414,52 +3414,82 @@ namespace Rux {
 
         // Expressions
         TypeRef CheckExpr(const Expr& expr) {
-            if (auto* e = dynamic_cast<const LiteralExpr*>(&expr)) return LiteralType(e->token);
+            if (auto* e = dynamic_cast<const LiteralExpr*>(&expr)) {
+                return LiteralType(e->token);
+            }
 
             if (auto* e = dynamic_cast<const IdentExpr*>(&expr)) {
                 Symbol* sym = currentScope->Lookup(e->name);
-                if (sym) return sym->type;
-                EmitError(e->location, std::format("undefined name '{}'", e->name));
+                if (sym) {
+                    return sym->type;
+                }
+                EmitError(e->location,
+                          std::format("undefined name '{}'", e->name));
                 return TypeRef::MakeUnknown();
             }
 
             if (dynamic_cast<const SelfExpr*>(&expr)) {
-                if (!inImpl) EmitError(expr.location, "'self' used outside of an extend block");
-                return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
+                if (!inImpl) {
+                    EmitError(expr.location,
+                              "'self' used outside of an extend block");
+                }
+                return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self")
+                                                   : currentSelfType;
             }
 
             if (auto* e = dynamic_cast<const PathExpr*>(&expr)) {
-                if (e->segments.empty()) return TypeRef::MakeUnknown();
+                if (e->segments.empty()) {
+                    return TypeRef::MakeUnknown();
+                }
                 Symbol* first = currentScope->Lookup(e->segments[0]);
                 if (!first) {
-                    EmitError(e->location, std::format("undefined name '{}'", e->segments[0]));
+                    EmitError(
+                        e->location,
+                        std::format("undefined name '{}'", e->segments[0]));
                     return TypeRef::MakeUnknown();
                 }
                 if (e->segments.size() >= 2 &&
-                    (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
+                    (first->kind == Symbol::Kind::Type ||
+                     first->kind == Symbol::Kind::Interface)) {
                     if (first->kind == Symbol::Kind::Type) {
                         const std::string& variantName = e->segments[1];
-                        if (const EnumDecl::Variant* variant = LookupEnumVariant(first->name, variantName)) {
+                        if (const EnumDecl::Variant* variant =
+                                LookupEnumVariant(first->name, variantName)) {
                             if (e->segments.size() > 2) {
-                                EmitError(e->location,
-                                          std::format("'{}' is an enum variant, not a module", variantName));
+                                EmitError(
+                                    e->location,
+                                    std::format(
+                                        "'{}' is an enum variant, not a module",
+                                        variantName));
                                 return TypeRef::MakeUnknown();
                             }
-                            if (!variant->fields.empty() || !variant->namedFields.empty())
-                                return EnumVariantConstructorType(*enumDecls.at(first->name), *variant);
+                            if (!variant->fields.empty() ||
+                                !variant->namedFields.empty()) {
+                                return EnumVariantConstructorType(
+                                    *enumDecls.at(first->name), *variant);
+                            }
                             return EnumType(*enumDecls.at(first->name));
                         }
                     }
-                    TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
+                    TypeRef receiverType = first->type.IsUnknown()
+                                             ? TypeRef::MakeNamed(first->name)
+                                             : first->type;
                     const std::string& methodName = e->segments[1];
-                    const FuncDecl* method = LookupMethod(receiverType, methodName);
+                    const FuncDecl* method =
+                        LookupMethod(receiverType, methodName);
                     if (!method) {
                         EmitError(e->location,
-                                  std::format("'{}' not found in extend for type '{}'", methodName, first->name));
+                                  std::format(
+                                      "'{}' not found in extend for type '{}'",
+                                      methodName,
+                                      first->name));
                         return TypeRef::MakeUnknown();
                     }
                     if (e->segments.size() > 2) {
-                        EmitError(e->location, std::format("'{}' is a function, not a module", methodName));
+                        EmitError(
+                            e->location,
+                            std::format("'{}' is a function, not a module",
+                                        methodName));
                         return TypeRef::MakeUnknown();
                     }
                     return AssociatedFunctionType(receiverType, *method);
@@ -2467,12 +3497,17 @@ namespace Rux {
                 Symbol* current = first;
                 Scope* moduleScope = nullptr;
                 for (std::size_t i = 1; i < e->segments.size(); ++i) {
-                    if (current->kind != Symbol::Kind::Module || !current->moduleScope) return current->type;
+                    if (current->kind != Symbol::Kind::Module ||
+                        !current->moduleScope) {
+                        return current->type;
+                    }
                     moduleScope = current->moduleScope;
                     Symbol* item = moduleScope->Lookup(e->segments[i]);
                     if (!item) {
                         EmitError(e->location,
-                                  std::format("'{}' not found in module '{}'", e->segments[i], e->segments[i - 1]));
+                                  std::format("'{}' not found in module '{}'",
+                                              e->segments[i],
+                                              e->segments[i - 1]));
                         return TypeRef::MakeUnknown();
                     }
                     current = item;
@@ -2482,20 +3517,28 @@ namespace Rux {
 
             if (auto* e = dynamic_cast<const SizeOfExpr*>(&expr)) {
                 TypeRef t = ResolveType(*e->type);
-                if (!t.IsUnknown() && !SizeOfTypeExpr(*e->type))
-                    EmitError(e->location, std::format("cannot determine size of type '{}'", t.ToString()));
+                if (!t.IsUnknown() && !SizeOfTypeExpr(*e->type)) {
+                    EmitError(e->location,
+                              std::format("cannot determine size of type '{}'",
+                                          t.ToString()));
+                }
                 return TypeRef::MakeUInt64();
             }
 
             if (dynamic_cast<const IntrinsicExpr*>(&expr)) {
                 const auto* e = static_cast<const IntrinsicExpr*>(&expr);
                 using K = IntrinsicExpr::Kind;
-                if (e->kind == K::Line || e->kind == K::Column) return TypeRef::MakeUInt();
+                if (e->kind == K::Line || e->kind == K::Column) {
+                    return TypeRef::MakeUInt();
+                }
                 return TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
             }
 
             if (auto* e = dynamic_cast<const UnaryExpr*>(&expr)) {
-                if (e->op == TokenKind::PlusPlus || e->op == TokenKind::MinusMinus) CheckMutability(*e->operand);
+                if (e->op == TokenKind::PlusPlus ||
+                    e->op == TokenKind::MinusMinus) {
+                    CheckMutability(*e->operand);
+                }
                 TypeRef t = CheckExpr(*e->operand);
                 return CheckUnary(e->op, t, e->location);
             }
@@ -2503,189 +3546,308 @@ namespace Rux {
             if (auto* e = dynamic_cast<const PostfixExpr*>(&expr)) {
                 CheckMutability(*e->operand);
                 TypeRef t = CheckExpr(*e->operand);
-                if (!t.IsUnknown() && !t.IsNumeric())
-                    EmitError(e->location,
-                              std::format("'{}' applied to non-numeric type '{}'",
-                                          e->op == TokenKind::PlusPlus ? "++" : "--",
-                                          t.ToString()));
+                if (!t.IsUnknown() && !t.IsNumeric()) {
+                    EmitError(
+                        e->location,
+                        std::format("'{}' applied to non-numeric type '{}'",
+                                    e->op == TokenKind::PlusPlus ? "++" : "--",
+                                    t.ToString()));
+                }
                 return t;
             }
 
             if (auto* e = dynamic_cast<const BinaryExpr*>(&expr)) {
                 TypeRef l = CheckExpr(*e->left);
                 TypeRef r = CheckExpr(*e->right);
-                return CheckBinary(e->op, l, r, *e->left, *e->right, e->location);
+                return CheckBinary(
+                    e->op, l, r, *e->left, *e->right, e->location);
             }
 
             if (auto* e = dynamic_cast<const AssignExpr*>(&expr)) {
                 CheckMutability(*e->target);
                 TypeRef tgt = CheckExpr(*e->target);
                 TypeRef val = CheckExpr(*e->value);
-                if (!tgt.IsUnknown() && !val.IsUnknown() && !CanAssignExprTo(*e->value, val, tgt))
-                    EmitError(
-                        e->location,
-                        AssignmentErrorMessage(
-                            *e->value, tgt, std::format("cannot assign '{}' to '{}'", val.ToString(), tgt.ToString())));
+                if (!tgt.IsUnknown() && !val.IsUnknown() &&
+                    !CanAssignExprTo(*e->value, val, tgt)) {
+                    EmitError(e->location,
+                              AssignmentErrorMessage(
+                                  *e->value,
+                                  tgt,
+                                  std::format("cannot assign '{}' to '{}'",
+                                              val.ToString(),
+                                              tgt.ToString())));
+                }
                 return TypeRef::MakeOpaque();
             }
 
             if (auto* e = dynamic_cast<const TernaryExpr*>(&expr)) {
                 TypeRef cond = CheckExpr(*e->condition);
-                if (!cond.IsUnknown() && !cond.IsBool())
-                    EmitError(e->condition->location, "ternary condition must be 'bool'");
+                if (!cond.IsUnknown() && !cond.IsBool()) {
+                    EmitError(e->condition->location,
+                              "ternary condition must be 'bool'");
+                }
                 TypeRef thenT = CheckExpr(*e->thenExpr);
                 TypeRef elseT = CheckExpr(*e->elseExpr);
                 return thenT.IsUnknown() ? elseT : thenT;
             }
 
             if (auto* e = dynamic_cast<const RangeExpr*>(&expr)) {
-                TypeRef loType = e->lo ? CheckExpr(*e->lo) : TypeRef::MakeUnknown();
-                TypeRef hiType = e->hi ? CheckExpr(*e->hi) : TypeRef::MakeUnknown();
-                if (!loType.IsUnknown() && !hiType.IsUnknown() && !loType.IsNumeric() && !hiType.IsNumeric())
+                TypeRef loType =
+                    e->lo ? CheckExpr(*e->lo) : TypeRef::MakeUnknown();
+                TypeRef hiType =
+                    e->hi ? CheckExpr(*e->hi) : TypeRef::MakeUnknown();
+                if (!loType.IsUnknown() && !hiType.IsUnknown() &&
+                    !loType.IsNumeric() && !hiType.IsNumeric()) {
                     EmitError(e->location, "range operands must be numeric");
+                }
                 TypeRef elemType = loType.IsUnknown() ? hiType : loType;
-                if (elemType.IsUnknown()) elemType = TypeRef::MakeInt64();
+                if (elemType.IsUnknown()) {
+                    elemType = TypeRef::MakeInt64();
+                }
                 return TypeRef::MakeRange(elemType);
             }
 
             if (auto* e = dynamic_cast<const CallExpr*>(&expr)) {
-                if (auto* ident = dynamic_cast<const IdentExpr*>(e->callee.get())) {
+                if (auto* ident =
+                        dynamic_cast<const IdentExpr*>(e->callee.get())) {
                     std::vector<TypeRef> argTypes;
                     argTypes.reserve(e->args.size());
-                    for (const auto& arg : e->args)
+                    for (const auto& arg : e->args) {
                         argTypes.push_back(CheckExpr(*arg));
+                    }
 
                     if (Symbol* sym = currentScope->Lookup(ident->name);
-                        sym && sym->kind == Symbol::Kind::Func && !sym->funcOverloads.empty()) {
-                        const FuncDecl* decl = LookupFunctionOverload(*sym, argTypes);
-                        if (!decl) return TypeRef::MakeUnknown();
-                        if (!decl->warnMessage.empty()) EmitWarning(e->location, decl->warnMessage);
-                        if (!decl->errorMessage.empty()) EmitError(e->location, decl->errorMessage);
+                        sym && sym->kind == Symbol::Kind::Func &&
+                        !sym->funcOverloads.empty()) {
+                        const FuncDecl* decl =
+                            LookupFunctionOverload(*sym, argTypes);
+                        if (!decl) {
+                            std::string argList;
+                            for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                                if (i > 0) {
+                                    argList += ", ";
+                                }
+                                argList += argTypes[i].ToString();
+                            }
+                            EmitError(
+                                e->location,
+                                std::format("no matching overload for '{}' "
+                                            "with argument types ({})",
+                                            ident->name,
+                                            argList));
+                            return TypeRef::MakeUnknown();
+                        }
+                        if (!decl->warnMessage.empty()) {
+                            EmitWarning(e->location, decl->warnMessage);
+                        }
+                        if (!decl->errorMessage.empty()) {
+                            EmitError(e->location, decl->errorMessage);
+                        }
                         TypeRef funcType = FunctionType(*decl);
-                        const std::size_t paramCount = funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()
-                            ? funcType.inner.size() - 1
-                            : 0;
-                        const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
+                        const std::size_t paramCount =
+                            funcType.kind == TypeRef::Kind::Func &&
+                                    !funcType.inner.empty()
+                                ? funcType.inner.size() - 1
+                                : 0;
+                        const bool isVariadic = !decl->params.empty() &&
+                                                decl->params.back().isVariadic;
                         std::size_t requiredCount = 0;
-                        for (const auto& p : decl->params)
-                            if (!p.isVariadic && !p.defaultValue) ++requiredCount;
-                        const bool arityOk = isVariadic
-                            ? argTypes.size() >= requiredCount
-                            : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
+                        for (const auto& p : decl->params) {
+                            if (!p.isVariadic && !p.defaultValue) {
+                                ++requiredCount;
+                            }
+                        }
+                        const bool arityOk =
+                            isVariadic ? argTypes.size() >= requiredCount
+                                       : (argTypes.size() >= requiredCount &&
+                                          argTypes.size() <= paramCount);
                         if (!arityOk) {
                             EmitError(
                                 e->location,
-                                std::format("function expects {} argument(s), got {}", paramCount, argTypes.size()));
+                                std::format(
+                                    "function expects {} argument(s), got {}",
+                                    paramCount,
+                                    argTypes.size()));
                         }
                         else {
-                            for (std::size_t i = 0; i < argTypes.size() && i < paramCount; ++i) {
+                            for (std::size_t i = 0;
+                                 i < argTypes.size() && i < paramCount;
+                                 ++i) {
                                 const TypeRef& paramType = funcType.inner[i];
-                                if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
-                                    !CanAssignExprTo(*e->args[i], argTypes[i], paramType))
-                                    EmitError(e->args[i]->location,
-                                              std::format("cannot pass '{}' to parameter of type '{}'",
-                                                          argTypes[i].ToString(),
-                                                          paramType.ToString()));
+                                if (!argTypes[i].IsUnknown() &&
+                                    !paramType.IsUnknown() &&
+                                    !CanAssignExprTo(
+                                        *e->args[i], argTypes[i], paramType)) {
+                                    EmitError(
+                                        e->args[i]->location,
+                                        std::format("cannot pass '{}' to "
+                                                    "parameter of type '{}'",
+                                                    argTypes[i].ToString(),
+                                                    paramType.ToString()));
+                                }
                             }
                             if (isVariadic) {
-                                const TypeRef varElemType = ResolveType(*decl->params.back().type);
-                                const TypeRef sliceType = TypeRef::MakeNamed(SliceTypeName(varElemType));
+                                const TypeRef varElemType =
+                                    ResolveType(*decl->params.back().type);
+                                const TypeRef sliceType = TypeRef::MakeNamed(
+                                    SliceTypeName(varElemType));
                                 const bool isSingleSpread =
                                     (argTypes.size() == paramCount + 1 &&
-                                     dynamic_cast<const SpreadExpr*>(e->args[paramCount].get()));
+                                     dynamic_cast<const SpreadExpr*>(
+                                         e->args[paramCount].get()));
                                 if (isSingleSpread) {
-                                    if (!argTypes[paramCount].IsUnknown() && !sliceType.IsUnknown() &&
-                                        argTypes[paramCount] != sliceType)
-                                        EmitError(e->args[paramCount]->location,
-                                                  std::format("cannot spread '{}' to variadic parameter of type '{}'",
-                                                              argTypes[paramCount].ToString(),
-                                                              varElemType.ToString()));
+                                    if (!argTypes[paramCount].IsUnknown() &&
+                                        !sliceType.IsUnknown() &&
+                                        argTypes[paramCount] != sliceType) {
+                                        EmitError(
+                                            e->args[paramCount]->location,
+                                            std::format(
+                                                "cannot spread '{}' to "
+                                                "variadic "
+                                                "parameter of type '{}'",
+                                                argTypes[paramCount].ToString(),
+                                                varElemType.ToString()));
+                                    }
                                 }
                                 else {
-                                    for (std::size_t i = paramCount; i < argTypes.size(); ++i) {
-                                        if (dynamic_cast<const SpreadExpr*>(e->args[i].get()))
+                                    for (std::size_t i = paramCount;
+                                         i < argTypes.size();
+                                         ++i) {
+                                        if (dynamic_cast<const SpreadExpr*>(
+                                                e->args[i].get())) {
                                             EmitError(e->args[i]->location,
-                                                      "spread argument must be the only variadic argument");
-                                        else if (!argTypes[i].IsUnknown() && !varElemType.IsUnknown() &&
-                                                 !CanAssignExprTo(*e->args[i], argTypes[i], varElemType))
-                                            EmitError(e->args[i]->location,
-                                                      std::format("cannot pass '{}' to variadic parameter of type '{}'",
-                                                                  argTypes[i].ToString(),
-                                                                  varElemType.ToString()));
+                                                      "spread argument must be "
+                                                      "the only variadic "
+                                                      "argument");
+                                        }
+                                        else if (!argTypes[i].IsUnknown() &&
+                                                 !varElemType.IsUnknown() &&
+                                                 !CanAssignExprTo(
+                                                     *e->args[i],
+                                                     argTypes[i],
+                                                     varElemType)) {
+                                            EmitError(
+                                                e->args[i]->location,
+                                                std::format(
+                                                    "cannot pass '{}' to "
+                                                    "variadic "
+                                                    "parameter of type '{}'",
+                                                    argTypes[i].ToString(),
+                                                    varElemType.ToString()));
+                                        }
                                     }
                                 }
                             }
                         }
-                        return funcType.inner.empty() ? TypeRef::MakeUnknown() : funcType.inner.back();
+                        return funcType.inner.empty() ? TypeRef::MakeUnknown()
+                                                      : funcType.inner.back();
                     }
                 }
 
-                if (auto* field = dynamic_cast<const FieldExpr*>(e->callee.get())) {
+                if (auto* field =
+                        dynamic_cast<const FieldExpr*>(e->callee.get())) {
                     TypeRef receiverType = CheckExpr(*field->object);
                     std::vector<TypeRef> argTypes;
                     argTypes.reserve(e->args.size());
-                    for (const auto& arg : e->args)
+                    for (const auto& arg : e->args) {
                         argTypes.push_back(CheckExpr(*arg));
-                    if (const FuncDecl* method = LookupMethod(receiverType, field->field, argTypes)) {
-                        if (!method->warnMessage.empty()) EmitWarning(e->location, method->warnMessage);
-                        if (!method->errorMessage.empty()) EmitError(e->location, method->errorMessage);
-                        std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
+                    }
+                    if (const FuncDecl* method = LookupMethod(
+                            receiverType, field->field, argTypes)) {
+                        if (!method->warnMessage.empty()) {
+                            EmitWarning(e->location, method->warnMessage);
+                        }
+                        if (!method->errorMessage.empty()) {
+                            EmitError(e->location, method->errorMessage);
+                        }
+                        std::vector<TypeRef> paramTypes =
+                            ResolveMethodParamTypes(receiverType, *method);
 
                         if (argTypes.size() != paramTypes.size()) {
-                            EmitError(e->location,
-                                      std::format("function expects {} argument(s), got {}",
-                                                  paramTypes.size(),
-                                                  argTypes.size()));
+                            EmitError(
+                                e->location,
+                                std::format(
+                                    "function expects {} argument(s), got {}",
+                                    paramTypes.size(),
+                                    argTypes.size()));
                         }
                         else {
                             for (std::size_t i = 0; i < argTypes.size(); ++i) {
                                 const TypeRef& argType = argTypes[i];
                                 const TypeRef& paramType = paramTypes[i];
-                                if (!argType.IsUnknown() && !paramType.IsUnknown() &&
-                                    !CanAssignExprTo(*e->args[i], argType, paramType))
-                                    EmitError(e->args[i]->location,
-                                              std::format("cannot pass '{}' to parameter of type '{}'",
-                                                          argType.ToString(),
-                                                          paramType.ToString()));
+                                if (!argType.IsUnknown() &&
+                                    !paramType.IsUnknown() &&
+                                    !CanAssignExprTo(
+                                        *e->args[i], argType, paramType)) {
+                                    EmitError(
+                                        e->args[i]->location,
+                                        std::format("cannot pass '{}' to "
+                                                    "parameter of type '{}'",
+                                                    argType.ToString(),
+                                                    paramType.ToString()));
+                                }
                             }
                         }
 
                         return ResolveMethodReturnType(receiverType, *method);
                     }
 
-                    if (const FuncDecl* method = LookupInterfaceMethod(receiverType, field->field)) {
-                        std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(*method);
-                        const bool isVariadic = !method->params.empty() && method->params.back().isVariadic;
+                    if (const FuncDecl* method =
+                            LookupInterfaceMethod(receiverType, field->field)) {
+                        std::vector<TypeRef> paramTypes =
+                            ResolveInterfaceMethodParamTypes(*method);
+                        const bool isVariadic =
+                            !method->params.empty() &&
+                            method->params.back().isVariadic;
                         const bool arityOk =
-                            isVariadic ? argTypes.size() >= paramTypes.size() : argTypes.size() == paramTypes.size();
+                            isVariadic ? argTypes.size() >= paramTypes.size()
+                                       : argTypes.size() == paramTypes.size();
 
                         if (!arityOk) {
-                            EmitError(e->location,
-                                      std::format("function expects {} argument(s), got {}",
-                                                  paramTypes.size(),
-                                                  argTypes.size()));
+                            EmitError(
+                                e->location,
+                                std::format(
+                                    "function expects {} argument(s), got {}",
+                                    paramTypes.size(),
+                                    argTypes.size()));
                         }
                         else {
-                            for (std::size_t i = 0; i < paramTypes.size(); ++i) {
+                            for (std::size_t i = 0; i < paramTypes.size();
+                                 ++i) {
                                 const TypeRef& argType = argTypes[i];
                                 const TypeRef& paramType = paramTypes[i];
-                                if (!argType.IsUnknown() && !paramType.IsUnknown() &&
-                                    !CanAssignExprTo(*e->args[i], argType, paramType))
-                                    EmitError(e->args[i]->location,
-                                              std::format("cannot pass '{}' to parameter of type '{}'",
-                                                          argType.ToString(),
-                                                          paramType.ToString()));
+                                if (!argType.IsUnknown() &&
+                                    !paramType.IsUnknown() &&
+                                    !CanAssignExprTo(
+                                        *e->args[i], argType, paramType)) {
+                                    EmitError(
+                                        e->args[i]->location,
+                                        std::format("cannot pass '{}' to "
+                                                    "parameter of type '{}'",
+                                                    argType.ToString(),
+                                                    paramType.ToString()));
+                                }
                             }
 
                             if (isVariadic) {
-                                const TypeRef varElemType = ResolveType(*method->params.back().type);
-                                for (std::size_t i = paramTypes.size(); i < argTypes.size(); ++i) {
-                                    if (!argTypes[i].IsUnknown() && !varElemType.IsUnknown() &&
-                                        !CanAssignExprTo(*e->args[i], argTypes[i], varElemType))
-                                        EmitError(e->args[i]->location,
-                                                  std::format("cannot pass '{}' to variadic parameter of type '{}'",
-                                                              argTypes[i].ToString(),
-                                                              varElemType.ToString()));
+                                const TypeRef varElemType =
+                                    ResolveType(*method->params.back().type);
+                                for (std::size_t i = paramTypes.size();
+                                     i < argTypes.size();
+                                     ++i) {
+                                    if (!argTypes[i].IsUnknown() &&
+                                        !varElemType.IsUnknown() &&
+                                        !CanAssignExprTo(*e->args[i],
+                                                         argTypes[i],
+                                                         varElemType)) {
+                                        EmitError(
+                                            e->args[i]->location,
+                                            std::format(
+                                                "cannot pass '{}' to variadic "
+                                                "parameter of type '{}'",
+                                                argTypes[i].ToString(),
+                                                varElemType.ToString()));
+                                    }
                                 }
                             }
                         }
@@ -2694,38 +3856,57 @@ namespace Rux {
                     }
                 }
 
-                if (auto* path = dynamic_cast<const PathExpr*>(e->callee.get())) {
+                if (auto* path =
+                        dynamic_cast<const PathExpr*>(e->callee.get())) {
                     if (path->segments.size() == 2) {
                         Symbol* first = currentScope->Lookup(path->segments[0]);
-                        if (first && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
+                        if (first && (first->kind == Symbol::Kind::Type ||
+                                      first->kind == Symbol::Kind::Interface)) {
                             TypeRef receiverType =
-                                first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
+                                first->type.IsUnknown()
+                                    ? TypeRef::MakeNamed(first->name)
+                                    : first->type;
                             const std::string& methodName = path->segments[1];
                             std::vector<TypeRef> argTypes;
                             argTypes.reserve(e->args.size());
-                            for (const auto& arg : e->args)
+                            for (const auto& arg : e->args) {
                                 argTypes.push_back(CheckExpr(*arg));
-                            if (const FuncDecl* method = LookupMethod(receiverType, methodName, argTypes)) {
-                                std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
+                            }
+                            if (const FuncDecl* method = LookupMethod(
+                                    receiverType, methodName, argTypes)) {
+                                std::vector<TypeRef> paramTypes =
+                                    ResolveMethodParamTypes(receiverType,
+                                                            *method);
                                 if (argTypes.size() != paramTypes.size()) {
                                     EmitError(e->location,
-                                              std::format("function expects {} argument(s), got {}",
+                                              std::format("function expects {} "
+                                                          "argument(s), got {}",
                                                           paramTypes.size(),
                                                           argTypes.size()));
                                 }
                                 else {
-                                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                                    for (std::size_t i = 0; i < argTypes.size();
+                                         ++i) {
                                         const TypeRef& argType = argTypes[i];
-                                        const TypeRef& paramType = paramTypes[i];
-                                        if (!argType.IsUnknown() && !paramType.IsUnknown() &&
-                                            !CanAssignExprTo(*e->args[i], argType, paramType))
-                                            EmitError(e->args[i]->location,
-                                                      std::format("cannot pass '{}' to parameter of type '{}'",
-                                                                  argType.ToString(),
-                                                                  paramType.ToString()));
+                                        const TypeRef& paramType =
+                                            paramTypes[i];
+                                        if (!argType.IsUnknown() &&
+                                            !paramType.IsUnknown() &&
+                                            !CanAssignExprTo(*e->args[i],
+                                                             argType,
+                                                             paramType)) {
+                                            EmitError(
+                                                e->args[i]->location,
+                                                std::format(
+                                                    "cannot pass '{}' to "
+                                                    "parameter of type '{}'",
+                                                    argType.ToString(),
+                                                    paramType.ToString()));
+                                        }
                                     }
                                 }
-                                return ResolveMethodReturnType(receiverType, *method);
+                                return ResolveMethodReturnType(receiverType,
+                                                               *method);
                             }
                         }
                     }
@@ -2734,25 +3915,34 @@ namespace Rux {
                 TypeRef calleeType = CheckExpr(*e->callee);
                 std::vector<TypeRef> argTypes;
                 argTypes.reserve(e->args.size());
-                for (const auto& arg : e->args)
+                for (const auto& arg : e->args) {
                     argTypes.push_back(CheckExpr(*arg));
+                }
 
-                if (calleeType.kind == TypeRef::Kind::Func && !calleeType.inner.empty()) {
+                if (calleeType.kind == TypeRef::Kind::Func &&
+                    !calleeType.inner.empty()) {
                     const std::size_t paramCount = calleeType.inner.size() - 1;
                     if (argTypes.size() != paramCount) {
                         EmitError(e->location,
-                                  std::format("function expects {} argument(s), got {}", paramCount, argTypes.size()));
+                                  std::format(
+                                      "function expects {} argument(s), got {}",
+                                      paramCount,
+                                      argTypes.size()));
                     }
                     else {
                         for (std::size_t i = 0; i < argTypes.size(); ++i) {
                             const TypeRef& argType = argTypes[i];
                             const TypeRef& paramType = calleeType.inner[i];
-                            if (!argType.IsUnknown() && !paramType.IsUnknown() &&
-                                !CanAssignExprTo(*e->args[i], argType, paramType))
+                            if (!argType.IsUnknown() &&
+                                !paramType.IsUnknown() &&
+                                !CanAssignExprTo(
+                                    *e->args[i], argType, paramType)) {
                                 EmitError(e->args[i]->location,
-                                          std::format("cannot pass '{}' to parameter of type '{}'",
+                                          std::format("cannot pass '{}' to "
+                                                      "parameter of type '{}'",
                                                       argType.ToString(),
                                                       paramType.ToString()));
+                            }
                         }
                     }
                     return calleeType.inner.back();
@@ -2763,66 +3953,112 @@ namespace Rux {
             if (auto* e = dynamic_cast<const IndexExpr*>(&expr)) {
                 TypeRef obj = CheckExpr(*e->object);
                 CheckExpr(*e->index);
-                if (auto elemType = IndexElementType(obj)) return *elemType;
+                if (auto elemType = IndexElementType(obj)) {
+                    return *elemType;
+                }
                 return TypeRef::MakeUnknown();
             }
 
             if (auto* e = dynamic_cast<const FieldExpr*>(&expr)) {
                 TypeRef obj = CheckExpr(*e->object);
                 if (auto elemType = SliceElementType(obj)) {
-                    if (e->field == "data") return TypeRef::MakePointer(*elemType);
-                    if (e->field == "length") return TypeRef::MakeUInt64();
-                    EmitError(e->location, std::format("unknown field '{}' on type '{}'", e->field, obj.ToString()));
+                    if (e->field == "data") {
+                        return TypeRef::MakePointer(*elemType);
+                    }
+                    if (e->field == "length") {
+                        return TypeRef::MakeUInt64();
+                    }
+                    EmitError(e->location,
+                              std::format("unknown field '{}' on type '{}'",
+                                          e->field,
+                                          obj.ToString()));
                     return TypeRef::MakeUnknown();
                 }
                 if (obj.IsRange()) {
-                    TypeRef elemType = obj.inner.empty() ? TypeRef::MakeInt64() : obj.inner[0];
-                    if (e->field == "lo" || e->field == "hi") return elemType;
-                    if (e->field == "inclusive") return TypeRef::MakeBool();
-                    EmitError(e->location, std::format("unknown field '{}' on type '{}'", e->field, obj.ToString()));
+                    TypeRef elemType =
+                        obj.inner.empty() ? TypeRef::MakeInt64() : obj.inner[0];
+                    if (e->field == "lo" || e->field == "hi") {
+                        return elemType;
+                    }
+                    if (e->field == "inclusive") {
+                        return TypeRef::MakeBool();
+                    }
+                    EmitError(e->location,
+                              std::format("unknown field '{}' on type '{}'",
+                                          e->field,
+                                          obj.ToString()));
                     return TypeRef::MakeUnknown();
                 }
                 if (obj.kind == TypeRef::Kind::Tuple) {
                     try {
                         const std::size_t idx = std::stoul(e->field);
-                        if (idx < obj.inner.size()) return obj.inner[idx];
+                        if (idx < obj.inner.size()) {
+                            return obj.inner[idx];
+                        }
                     }
                     catch (...) {
                     }
                     EmitError(e->location,
-                              std::format("tuple index '{}' out of range for type '{}'", e->field, obj.ToString()));
+                              std::format(
+                                  "tuple index '{}' out of range for type '{}'",
+                                  e->field,
+                                  obj.ToString()));
                     return TypeRef::MakeUnknown();
                 }
 
-                // Interface fat-pointer fields: data → *opaque, vtable → *opaque
-                if (const std::string ifaceName = NamedBaseTypeName(obj); !ifaceName.empty() &&
-                    currentScope->Lookup(ifaceName) &&
-                    currentScope->Lookup(ifaceName)->kind == Symbol::Kind::Interface) {
-                    const TypeRef ptrOpaque = TypeRef::MakePointer(TypeRef::MakeOpaque());
-                    if (e->field == "data" || e->field == "vtable") return ptrOpaque;
-                    EmitError(e->location,
-                              std::format("unknown field '{}' on interface type '{}'", e->field, obj.ToString()));
+                // Interface fat-pointer fields: data → *opaque, vtable →
+                // *opaque
+                if (const std::string ifaceName = NamedBaseTypeName(obj);
+                    !ifaceName.empty() && currentScope->Lookup(ifaceName) &&
+                    currentScope->Lookup(ifaceName)->kind ==
+                        Symbol::Kind::Interface) {
+                    const TypeRef ptrOpaque =
+                        TypeRef::MakePointer(TypeRef::MakeOpaque());
+                    if (e->field == "data" || e->field == "vtable") {
+                        return ptrOpaque;
+                    }
+                    EmitError(
+                        e->location,
+                        std::format("unknown field '{}' on interface type '{}'",
+                                    e->field,
+                                    obj.ToString()));
                     return TypeRef::MakeUnknown();
                 }
 
                 const std::string structName = NamedBaseTypeName(obj);
                 if (!structName.empty() && structDecls.contains(structName)) {
-                    if (TypeRef fieldType = StructFieldType(obj, e->field); !fieldType.IsUnknown()) return fieldType;
-                    EmitError(e->location, std::format("unknown field '{}' on type '{}'", e->field, obj.ToString()));
+                    if (TypeRef fieldType = StructFieldType(obj, e->field);
+                        !fieldType.IsUnknown()) {
+                        return fieldType;
+                    }
+                    EmitError(e->location,
+                              std::format("unknown field '{}' on type '{}'",
+                                          e->field,
+                                          obj.ToString()));
                     return TypeRef::MakeUnknown();
                 }
 
-                if (TypeRef fieldType = StructFieldType(obj, e->field); !fieldType.IsUnknown()) return fieldType;
-                if (!obj.IsUnknown()) {
-                    EmitError(e->location, std::format("type '{}' has no field '{}'", obj.ToString(), e->field));
+                if (TypeRef fieldType = StructFieldType(obj, e->field);
+                    !fieldType.IsUnknown()) {
+                    return fieldType;
                 }
-                return TypeRef::MakeUnknown(); // field type lookup needs full type info
+                if (!obj.IsUnknown()) {
+                    EmitError(e->location,
+                              std::format("type '{}' has no field '{}'",
+                                          obj.ToString(),
+                                          e->field));
+                }
+                return TypeRef::MakeUnknown(); // field type lookup needs full
+                                               // type info
             }
 
             if (auto* e = dynamic_cast<const StructInitExpr*>(&expr)) {
                 CheckStructInitExpr(*e);
-                if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(e->typeName); enumDecl && variant)
+                if (const auto [enumDecl, variant] =
+                        LookupEnumVariantInitializer(e->typeName);
+                    enumDecl && variant) {
                     return EnumType(*enumDecl);
+                }
                 return TypeRef::MakeNamed(GenericStructInitName(*e));
             }
 
@@ -2830,15 +4066,18 @@ namespace Rux {
                 TypeRef elemType = TypeRef::MakeUnknown();
                 for (const auto& el : e->elements) {
                     TypeRef t = CheckExpr(*el);
-                    if (elemType.IsUnknown()) elemType = t;
+                    if (elemType.IsUnknown()) {
+                        elemType = t;
+                    }
                 }
                 return TypeRef::MakeNamed(SliceTypeName(elemType));
             }
 
             if (auto* e = dynamic_cast<const TupleExpr*>(&expr)) {
                 std::vector<TypeRef> elemTypes;
-                for (const auto& el : e->elements)
+                for (const auto& el : e->elements) {
                     elemTypes.push_back(CheckExpr(*el));
+                }
                 return TypeRef::MakeTuple(std::move(elemTypes));
             }
 
@@ -2853,8 +4092,12 @@ namespace Rux {
                 const std::string ifaceName = NamedBaseTypeName(operandType);
                 if (!ifaceName.empty()) {
                     Symbol* sym = currentScope->Lookup(ifaceName);
-                    if (sym && sym->kind == Symbol::Kind::Interface)
-                        EmitError(e->location, "runtime type checking with 'is' on interface types is not yet implemented");
+                    if (sym && sym->kind == Symbol::Kind::Interface) {
+                        EmitError(e->location,
+                                  "runtime type checking with 'is' on "
+                                  "interface types is not yet "
+                                  "implemented");
+                    }
                 }
                 return TypeRef::MakeBool();
             }
@@ -2871,14 +4114,16 @@ namespace Rux {
                     if (resultType.IsUnknown()) {
                         resultType = armType;
                     }
-                    else if (!armType.IsUnknown() && !CanAssignExprTo(*arm.body, armType, resultType)) {
-                        EmitError(
-                            arm.location,
-                            AssignmentErrorMessage(*arm.body,
-                                                   resultType,
-                                                   std::format("match arm type mismatch: expected '{}', found '{}'",
-                                                               resultType.ToString(),
-                                                               armType.ToString())));
+                    else if (!armType.IsUnknown() &&
+                             !CanAssignExprTo(*arm.body, armType, resultType)) {
+                        EmitError(arm.location,
+                                  AssignmentErrorMessage(
+                                      *arm.body,
+                                      resultType,
+                                      std::format("match arm type mismatch: "
+                                                  "expected '{}', found '{}'",
+                                                  resultType.ToString(),
+                                                  armType.ToString())));
                     }
                 }
                 return resultType;
@@ -2889,7 +4134,9 @@ namespace Rux {
                 return TypeRef::MakeUnknown();
             }
 
-            if (auto* e = dynamic_cast<const SpreadExpr*>(&expr)) return CheckExpr(*e->operand);
+            if (auto* e = dynamic_cast<const SpreadExpr*>(&expr)) {
+                return CheckExpr(*e->operand);
+            }
 
             return TypeRef::MakeUnknown();
         }
@@ -2911,32 +4158,52 @@ namespace Rux {
         }
 
         TypeRef CheckUnary(TokenKind op, const TypeRef& t, SourceLocation loc) {
-            if (t.IsUnknown()) return TypeRef::MakeUnknown();
+            if (t.IsUnknown()) {
+                return TypeRef::MakeUnknown();
+            }
             switch (op) {
             case TokenKind::Bang:
-                if (!t.IsBool()) EmitError(loc, std::format("'!' applied to non-bool type '{}'", t.ToString()));
+                if (!t.IsBool()) {
+                    EmitError(loc,
+                              std::format("'!' applied to non-bool type '{}'",
+                                          t.ToString()));
+                }
                 return TypeRef::MakeBool();
             case TokenKind::Minus:
-                if (!t.IsNumeric())
-                    EmitError(loc, std::format("unary '-' applied to non-numeric type '{}'", t.ToString()));
+                if (!t.IsNumeric()) {
+                    EmitError(loc,
+                              std::format(
+                                  "unary '-' applied to non-numeric type '{}'",
+                                  t.ToString()));
+                }
                 return t;
             case TokenKind::Tilde:
-                if (!t.IsInteger() && !t.IsBool())
-                    EmitError(loc, std::format("'~' applied to non-integer type '{}'", t.ToString()));
+                if (!t.IsInteger() && !t.IsBool()) {
+                    EmitError(
+                        loc,
+                        std::format("'~' applied to non-integer type '{}'",
+                                    t.ToString()));
+                }
                 return t;
             case TokenKind::Star:
-                if (t.kind != TypeRef::Kind::Pointer)
-                    EmitError(loc, std::format("'*' (dereference) applied to non-pointer type '{}'", t.ToString()));
+                if (t.kind != TypeRef::Kind::Pointer) {
+                    EmitError(loc,
+                              std::format("'*' (dereference) applied to "
+                                          "non-pointer type '{}'",
+                                          t.ToString()));
+                }
                 return t.inner.empty() ? TypeRef::MakeUnknown() : t.inner[0];
             case TokenKind::Amp:
                 return TypeRef::MakePointer(t);
             case TokenKind::PlusPlus:
             case TokenKind::MinusMinus:
-                if (!t.IsNumeric())
-                    EmitError(loc,
-                              std::format("'{}' applied to non-numeric type '{}'",
-                                          op == TokenKind::PlusPlus ? "++" : "--",
-                                          t.ToString()));
+                if (!t.IsNumeric()) {
+                    EmitError(
+                        loc,
+                        std::format("'{}' applied to non-numeric type '{}'",
+                                    op == TokenKind::PlusPlus ? "++" : "--",
+                                    t.ToString()));
+                }
                 return t;
             default:
                 return TypeRef::MakeUnknown();
@@ -2995,72 +4262,106 @@ namespace Rux {
                             const Expr& leftExpr,
                             const Expr& rightExpr,
                             SourceLocation loc) {
-            if (l.IsUnknown() || r.IsUnknown()) return TypeRef::MakeUnknown();
+            if (l.IsUnknown() || r.IsUnknown()) {
+                return TypeRef::MakeUnknown();
+            }
 
             const std::string_view opName = BinaryOperatorName(op);
             if (!opName.empty()) {
-                if (const FuncDecl* method = LookupMethod(l, std::string(opName), {r})) {
-                    std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(l, *method);
+                if (const FuncDecl* method =
+                        LookupMethod(l, std::string(opName), {r})) {
+                    std::vector<TypeRef> paramTypes =
+                        ResolveMethodParamTypes(l, *method);
                     TypeRef ret = ResolveMethodReturnType(l, *method);
                     if (paramTypes.size() != 1) {
-                        EmitError(loc,
-                                  std::format("operator '{}' expects 1 argument, got {}", opName, paramTypes.size()));
+                        EmitError(
+                            loc,
+                            std::format(
+                                "operator '{}' expects 1 argument, got {}",
+                                opName,
+                                paramTypes.size()));
                     }
-                    else if (!paramTypes[0].IsUnknown() && !CanAssignExprTo(rightExpr, r, paramTypes[0])) {
-                        EmitError(rightExpr.location,
-                                  std::format("cannot pass '{}' to parameter of type '{}'",
-                                              r.ToString(),
-                                              paramTypes[0].ToString()));
+                    else if (!paramTypes[0].IsUnknown() &&
+                             !CanAssignExprTo(rightExpr, r, paramTypes[0])) {
+                        EmitError(
+                            rightExpr.location,
+                            std::format(
+                                "cannot pass '{}' to parameter of type '{}'",
+                                r.ToString(),
+                                paramTypes[0].ToString()));
                     }
                     return ret;
                 }
             }
 
             auto isNumericOrChar = [](const TypeRef& t) {
-                return t.IsNumeric() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
-                    t.kind == TypeRef::Kind::Char32;
+                return t.IsNumeric() || t.kind == TypeRef::Kind::Char8 ||
+                       t.kind == TypeRef::Kind::Char16 ||
+                       t.kind == TypeRef::Kind::Char32;
             };
             auto isIntegerOrChar = [](const TypeRef& t) {
-                return t.IsInteger() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
-                    t.kind == TypeRef::Kind::Char32;
+                return t.IsInteger() || t.kind == TypeRef::Kind::Char8 ||
+                       t.kind == TypeRef::Kind::Char16 ||
+                       t.kind == TypeRef::Kind::Char32;
             };
             auto isChar = [](TypeRef::Kind k) {
-                return k == TypeRef::Kind::Char8 || k == TypeRef::Kind::Char16 || k == TypeRef::Kind::Char32;
+                return k == TypeRef::Kind::Char8 ||
+                       k == TypeRef::Kind::Char16 || k == TypeRef::Kind::Char32;
             };
-            auto getCompatibleType = [&](const Expr& left,
-                                         const TypeRef& lt,
-                                         const Expr& right,
-                                         const TypeRef& rt) -> std::optional<TypeRef> {
-                if ((lt.IsInteger() && isChar(rt.kind)) || (rt.IsInteger() && isChar(lt.kind)))
+            auto getCompatibleType =
+                [&](const Expr& left,
+                    const TypeRef& lt,
+                    const Expr& right,
+                    const TypeRef& rt) -> std::optional<TypeRef> {
+                if ((lt.IsInteger() && isChar(rt.kind)) ||
+                    (rt.IsInteger() && isChar(lt.kind))) {
                     return lt.IsInteger() ? lt : rt;
-                if (isChar(lt.kind) && isChar(rt.kind))
+                }
+                if (isChar(lt.kind) && isChar(rt.kind)) {
                     return lt;
-                if (lt.IsInteger() && rt.IsInteger())
+                }
+                if (lt.IsInteger() && rt.IsInteger()) {
                     return lt;
-                if (CanAssignExprTo(right, rt, lt))
+                }
+                if (CanAssignExprTo(right, rt, lt)) {
                     return lt;
-                if (CanAssignExprTo(left, lt, rt))
+                }
+                if (CanAssignExprTo(left, lt, rt)) {
                     return rt;
+                }
                 return std::nullopt;
             };
 
             using TK = TokenKind;
             switch (op) {
             case TK::Plus: {
-                if (l.kind == TypeRef::Kind::Pointer && isIntegerOrChar(r)) return l;
-                if (isIntegerOrChar(l) && r.kind == TypeRef::Kind::Pointer) return r;
+                if (l.kind == TypeRef::Kind::Pointer && isIntegerOrChar(r)) {
+                    return l;
+                }
+                if (isIntegerOrChar(l) && r.kind == TypeRef::Kind::Pointer) {
+                    return r;
+                }
                 if (!isNumericOrChar(l)) {
-                    EmitError(loc, std::format("'+' applied to non-numeric type '{}'", l.ToString()));
+                    EmitError(
+                        loc,
+                        std::format("'+' applied to non-numeric type '{}'",
+                                    l.ToString()));
                 }
                 else if (!isNumericOrChar(r)) {
-                    EmitError(loc, std::format("'+' right operand must be numeric, got '{}'", r.ToString()));
+                    EmitError(loc,
+                              std::format(
+                                  "'+' right operand must be numeric, got '{}'",
+                                  r.ToString()));
                 }
                 else {
                     auto res = getCompatibleType(leftExpr, l, rightExpr, r);
                     if (!res.has_value()) {
                         EmitError(
                             loc,
-                            std::format("mismatched types in addition: '{}' and '{}'", l.ToString(), r.ToString()));
+                            std::format(
+                                "mismatched types in addition: '{}' and '{}'",
+                                l.ToString(),
+                                r.ToString()));
                     }
                     else {
                         return *res;
@@ -3070,19 +4371,29 @@ namespace Rux {
             }
 
             case TK::Minus: {
-                if (l.kind == TypeRef::Kind::Pointer && isIntegerOrChar(r)) return l;
+                if (l.kind == TypeRef::Kind::Pointer && isIntegerOrChar(r)) {
+                    return l;
+                }
                 if (!isNumericOrChar(l)) {
-                    EmitError(loc, std::format("'-' applied to non-numeric type '{}'", l.ToString()));
+                    EmitError(
+                        loc,
+                        std::format("'-' applied to non-numeric type '{}'",
+                                    l.ToString()));
                 }
                 else if (!isNumericOrChar(r)) {
-                    EmitError(loc, std::format("'-' right operand must be numeric, got '{}'", r.ToString()));
+                    EmitError(loc,
+                              std::format(
+                                  "'-' right operand must be numeric, got '{}'",
+                                  r.ToString()));
                 }
                 else {
                     auto res = getCompatibleType(leftExpr, l, rightExpr, r);
                     if (!res.has_value()) {
-                        EmitError(
-                            loc,
-                            std::format("mismatched types in subtraction: '{}' and '{}'", l.ToString(), r.ToString()));
+                        EmitError(loc,
+                                  std::format("mismatched types in "
+                                              "subtraction: '{}' and '{}'",
+                                              l.ToString(),
+                                              r.ToString()));
                     }
                     else {
                         return *res;
@@ -3095,18 +4406,31 @@ namespace Rux {
             case TK::Slash:
             case TK::Percent:
             case TK::StarStar: {
-                std::string opStr = op == TK::Star ? "*" : op == TK::Slash ? "/" : op == TK::Percent ? "%" : "**";
+                std::string opStr = op == TK::Star    ? "*"
+                                  : op == TK::Slash   ? "/"
+                                  : op == TK::Percent ? "%"
+                                                      : "**";
                 if (!isNumericOrChar(l)) {
-                    EmitError(loc, std::format("'{}' applied to non-numeric type '{}'", opStr, l.ToString()));
+                    EmitError(
+                        loc,
+                        std::format("'{}' applied to non-numeric type '{}'",
+                                    opStr,
+                                    l.ToString()));
                 }
                 else if (!isNumericOrChar(r)) {
-                    EmitError(loc, std::format("'{}' right operand must be numeric, got '{}'", opStr, r.ToString()));
+                    EmitError(
+                        loc,
+                        std::format(
+                            "'{}' right operand must be numeric, got '{}'",
+                            opStr,
+                            r.ToString()));
                 }
                 else {
                     auto res = getCompatibleType(leftExpr, l, rightExpr, r);
                     if (!res.has_value()) {
                         EmitError(loc,
-                                  std::format("mismatched types in binary operation: '{}' and '{}'",
+                                  std::format("mismatched types in binary "
+                                              "operation: '{}' and '{}'",
                                               l.ToString(),
                                               r.ToString()));
                     }
@@ -3123,21 +4447,30 @@ namespace Rux {
             case TK::LessLess:
             case TK::GreaterGreater: {
                 auto isBitwiseOperand = [](const TypeRef& t) {
-                    return t.IsInteger() || t.IsBool() || t.kind == TypeRef::Kind::Char8 ||
-                        t.kind == TypeRef::Kind::Char16 || t.kind == TypeRef::Kind::Char32;
+                    return t.IsInteger() || t.IsBool() ||
+                           t.kind == TypeRef::Kind::Char8 ||
+                           t.kind == TypeRef::Kind::Char16 ||
+                           t.kind == TypeRef::Kind::Char32;
                 };
                 if (!isBitwiseOperand(l)) {
-                    EmitError(loc, std::format("bitwise operator applied to non-integer type '{}'", l.ToString()));
+                    EmitError(
+                        loc,
+                        std::format(
+                            "bitwise operator applied to non-integer type '{}'",
+                            l.ToString()));
                 }
                 else if (!isBitwiseOperand(r)) {
                     EmitError(loc,
-                              std::format("bitwise operator right operand must be integer, got '{}'", r.ToString()));
+                              std::format("bitwise operator right operand must "
+                                          "be integer, got '{}'",
+                                          r.ToString()));
                 }
                 else {
                     auto res = getCompatibleType(leftExpr, l, rightExpr, r);
                     if (!res.has_value()) {
                         EmitError(loc,
-                                  std::format("mismatched types in bitwise operation: '{}' and '{}'",
+                                  std::format("mismatched types in bitwise "
+                                              "operation: '{}' and '{}'",
                                               l.ToString(),
                                               r.ToString()));
                     }
@@ -3150,14 +4483,18 @@ namespace Rux {
 
             case TK::AmpAmp:
             case TK::PipePipe:
-                if (!l.IsBool())
+                if (!l.IsBool()) {
                     EmitError(loc,
-                              std::format(
-                                  "'{}' applied to non-bool type '{}'", op == TK::AmpAmp ? "&&" : "||", l.ToString()));
-                if (!r.IsBool())
+                              std::format("'{}' applied to non-bool type '{}'",
+                                          op == TK::AmpAmp ? "&&" : "||",
+                                          l.ToString()));
+                }
+                if (!r.IsBool()) {
                     EmitError(loc,
-                              std::format(
-                                  "'{}' applied to non-bool type '{}'", op == TK::AmpAmp ? "&&" : "||", r.ToString()));
+                              std::format("'{}' applied to non-bool type '{}'",
+                                          op == TK::AmpAmp ? "&&" : "||",
+                                          r.ToString()));
+                }
                 return TypeRef::MakeBool();
 
             case TK::Equal:
@@ -3168,15 +4505,21 @@ namespace Rux {
             case TK::GreaterEqual: {
                 bool compat = false;
                 if ((op == TK::Equal || op == TK::BangEqual) &&
-                    ((l.IsBool() && r.IsInteger()) || (l.IsInteger() && r.IsBool()))) {
+                    ((l.IsBool() && r.IsInteger()) ||
+                     (l.IsInteger() && r.IsBool()))) {
                     compat = true;
                 }
-                else if (getCompatibleType(leftExpr, l, rightExpr, r).has_value()) {
+                else if (getCompatibleType(leftExpr, l, rightExpr, r)
+                             .has_value()) {
                     compat = true;
                 }
                 if (!compat) {
-                    EmitError(loc,
-                              std::format("cannot compare mismatched types '{}' and '{}'", l.ToString(), r.ToString()));
+                    EmitError(
+                        loc,
+                        std::format(
+                            "cannot compare mismatched types '{}' and '{}'",
+                            l.ToString(),
+                            r.ToString()));
                 }
                 return TypeRef::MakeBool();
             }
@@ -3190,13 +4533,20 @@ namespace Rux {
         void CheckMutability(const Expr& target) {
             if (auto* e = dynamic_cast<const IdentExpr*>(&target)) {
                 Symbol* sym = currentScope->Lookup(e->name);
-                if (!sym) return;
+                if (!sym) {
+                    return;
+                }
                 if (sym->kind == Symbol::Kind::Const) {
-                    EmitError(target.location, std::format("cannot assign to constant '{}'", e->name));
+                    EmitError(
+                        target.location,
+                        std::format("cannot assign to constant '{}'", e->name));
                     return;
                 }
                 if (sym->kind == Symbol::Kind::Var && !sym->isMut) {
-                    EmitError(target.location, std::format("cannot assign to immutable variable '{}'", e->name));
+                    EmitError(
+                        target.location,
+                        std::format("cannot assign to immutable variable '{}'",
+                                    e->name));
                 }
             }
         }
@@ -3219,11 +4569,15 @@ namespace Rux {
         return SemaResult{std::move(diags), std::move(symbols)};
     }
 
-    bool Sema::DumpResult(const SemaResult& result, const std::filesystem::path& path) {
+    bool Sema::DumpResult(const SemaResult& result,
+                          const std::filesystem::path& path) {
         std::ofstream out(path);
-        if (!out) return false;
+        if (!out) {
+            return false;
+        }
 
-        static constexpr auto kindName = [](SemaSymbol::Kind k) -> std::string_view {
+        static constexpr auto kindName =
+            [](SemaSymbol::Kind k) -> std::string_view {
             switch (k) {
             case SemaSymbol::Kind::Var:
                 return "var";
@@ -3254,8 +4608,11 @@ namespace Rux {
             for (const auto& sym : result.symbols) {
                 std::string tag = std::format("{:<10}", kindName(sym.kind));
                 std::string qname = sym.name;
-                if (sym.isMut) qname += " (var)";
-                std::string typeStr = sym.resolvedType.empty() ? "" : "  " + sym.resolvedType;
+                if (sym.isMut) {
+                    qname += " (var)";
+                }
+                std::string typeStr =
+                    sym.resolvedType.empty() ? "" : "  " + sym.resolvedType;
                 out << std::format("{}  {:<28}{}  [{}:{}:{}]\n",
                                    tag,
                                    qname,
@@ -3269,7 +4626,8 @@ namespace Rux {
         out << '\n';
 
         // Diagnostics
-        out << std::format("Diagnostics ({} total)\n", result.diagnostics.size());
+        out << std::format("Diagnostics ({} total)\n",
+                           result.diagnostics.size());
         out << std::string(40, '-') << '\n';
 
         if (result.diagnostics.empty()) {
@@ -3277,9 +4635,16 @@ namespace Rux {
         }
         else {
             for (const auto& diag : result.diagnostics) {
-                const char* sev = diag.severity == SemaDiagnostic::Severity::Error ? "error" : "warning";
-                out << std::format(
-                    "{}:{}:{}: {}: {}\n", diag.sourceName, diag.location.line, diag.location.column, sev, diag.message);
+                const char* sev =
+                    diag.severity == SemaDiagnostic::Severity::Error
+                        ? "error"
+                        : "warning";
+                out << std::format("{}:{}:{}: {}: {}\n",
+                                   diag.sourceName,
+                                   diag.location.line,
+                                   diag.location.column,
+                                   sev,
+                                   diag.message);
             }
         }
 

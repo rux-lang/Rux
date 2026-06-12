@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #include "Rux/Token.h"
 
 #include <unordered_map>
@@ -40,7 +43,9 @@ namespace Rux {
             {"true", TokenKind::BoolLiteral},
             {"false", TokenKind::BoolLiteral},
         };
-        if (const auto it = kTable.find(text); it != kTable.end()) return it->second;
+        if (const auto it = kTable.find(text); it != kTable.end()) {
+            return it->second;
+        }
         return TokenKind::Ident;
     }
 
@@ -257,12 +262,15 @@ namespace Rux {
     }
 
     bool Token::IsOperator() const noexcept {
-        return kind >= TokenKind::Plus && kind <= TokenKind::GreaterGreaterAssign;
+        return kind >= TokenKind::Plus &&
+               kind <= TokenKind::GreaterGreaterAssign;
     }
 
     std::string Token::Describe() const {
         std::string d(TokenKindName(kind));
-        if (kind == TokenKind::Ident || IsLiteral()) d += " `" + text + "`";
+        if (kind == TokenKind::Ident || IsLiteral()) {
+            d += " `" + text + "`";
+        }
         return d;
     }
 } // namespace Rux

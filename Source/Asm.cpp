@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #include "Rux/Asm.h"
 
 #include <cstring>
@@ -32,29 +35,39 @@ namespace Rux {
             case TypeRef::Kind::Opaque:
                 return 0;
             case TypeRef::Kind::Tuple: {
-                const auto alignUp = [](int v, int a) { return (v + a - 1) & ~(a - 1); };
+                const auto alignUp = [](int v, int a) {
+                    return (v + a - 1) & ~(a - 1);
+                };
                 int offset = 0;
                 int maxAlign = 1;
                 for (const auto& elem : t.inner) {
                     const int sz = SizeOf(elem);
                     const int al = sz > 0 ? std::min(sz, 8) : 1;
-                    if (al > 1) offset = alignUp(offset, al);
+                    if (al > 1) {
+                        offset = alignUp(offset, al);
+                    }
                     offset += sz > 0 ? sz : 8;
                     maxAlign = std::max(maxAlign, al);
                 }
                 return alignUp(offset, maxAlign);
             }
             case TypeRef::Kind::Named:
-                if (!t.inner.empty()) return SizeOf(t.inner[0]);
-                if (t.name == "Slice" || t.name.starts_with("Slice<")) return 16;
+                if (!t.inner.empty()) {
+                    return SizeOf(t.inner[0]);
+                }
+                if (t.name == "Slice" || t.name.starts_with("Slice<")) {
+                    return 16;
+                }
                 return 8;
             default:
-                return 8; // int, uint, int64, uint64, float64, pointer, str, named, …
+                return 8; // int, uint, int64, uint64, float64, pointer, str,
+                          // named, …
             }
         }
 
         bool IsFloat(const TypeRef& t) {
-            return t.kind == TypeRef::Kind::Float32 || t.kind == TypeRef::Kind::Float64;
+            return t.kind == TypeRef::Kind::Float32 ||
+                   t.kind == TypeRef::Kind::Float64;
         }
 
         int AlignUp(int v, int a) {
@@ -117,11 +130,14 @@ namespace Rux {
         }
 
         // System V AMD64 integer argument registers (in order)
-        constexpr std::string_view kIntArgRegs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+        constexpr std::string_view kIntArgRegs[] = {
+            "rdi", "rsi", "rdx", "rcx", "r8", "r9"};
         // Microsoft x64 integer argument registers (in order)
-        constexpr std::string_view kWin64IntArgRegs[] = {"rcx", "rdx", "r8", "r9"};
+        constexpr std::string_view kWin64IntArgRegs[] = {
+            "rcx", "rdx", "r8", "r9"};
         // System V AMD64 float argument registers (in order)
-        constexpr std::string_view kFltArgRegs[] = {"xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7"};
+        constexpr std::string_view kFltArgRegs[] = {
+            "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7"};
 
         // Struct field layout
         struct FieldLayout {
@@ -143,7 +159,8 @@ namespace Rux {
             return pos == std::string::npos ? name : name.substr(0, pos);
         }
 
-        StructLayout ComputeLayout(const LirStructDecl& s, const LayoutMap& known) {
+        StructLayout ComputeLayout(const LirStructDecl& s,
+                                   const LayoutMap& known) {
             StructLayout result;
             int offset = 0;
             int maxAlign = 1;
@@ -156,12 +173,15 @@ namespace Rux {
                         sz = it->second.totalSize;
                         al = it->second.alignment;
                     }
-                    else if (baseName == "Slice" || baseName.starts_with("Slice<")) {
+                    else if (baseName == "Slice" ||
+                             baseName.starts_with("Slice<")) {
                         sz = 16;
                         al = 8;
                     }
                 }
-                if (al > 1) offset = AlignUp(offset, al);
+                if (al > 1) {
+                    offset = AlignUp(offset, al);
+                }
                 result.fields.push_back({f.name, offset, sz});
                 offset += sz;
                 maxAlign = std::max(maxAlign, al);
@@ -184,9 +204,9 @@ namespace Rux {
             const LirPackage& pkg;
 
             // Separate output streams assembled at the end
-            std::ostringstream text; // .text section
-            std::ostringstream data; // .data section (writable globals)
-            std::ostringstream rodata; // .rodata section (string/fp constants)
+            std::ostringstream text;    // .text section
+            std::ostringstream data;    // .data section (writable globals)
+            std::ostringstream rodata;  // .rodata section (string/fp constants)
             std::ostringstream externs; // extern declarations
             std::ostringstream globals; // global declarations
 
@@ -208,14 +228,20 @@ namespace Rux {
             };
 
             std::string curFunc;
-            std::unordered_map<LirReg, int32_t> slotMap; // vreg → rbp offset (positive, address = rbp - offset)
-            std::unordered_map<LirReg, int32_t> allocaData; // alloca vreg → data region rbp offset
-            std::unordered_map<LirReg, TypeRef> regTypes; // vreg → value type (pointer for alloca)
+            std::unordered_map<LirReg, int32_t>
+                slotMap; // vreg → rbp offset (positive, address = rbp - offset)
+            std::unordered_map<LirReg, int32_t>
+                allocaData; // alloca vreg → data region rbp offset
+            std::unordered_map<LirReg, TypeRef>
+                regTypes; // vreg → value type (pointer for alloca)
             int32_t nextOff = 0;
             int32_t frameSize = 0;
 
             // phiMoves_[fromBlock][toBlock] = list of (dst, src, type)
-            std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::vector<PhiMove>>> phiMoves;
+            std::unordered_map<
+                uint32_t,
+                std::unordered_map<uint32_t, std::vector<PhiMove>>>
+                phiMoves;
 
             std::unordered_set<std::string> declaredExterns;
 
@@ -245,37 +271,47 @@ namespace Rux {
 
             // Constant interning
             std::string InternStr(const std::string& val) {
-                if (const auto it = strLabels.find(val); it != strLabels.end()) return it->second;
+                if (const auto it = strLabels.find(val);
+                    it != strLabels.end()) {
+                    return it->second;
+                }
                 std::string lbl = std::format("__str{}", constIdx++);
                 strLabels[val] = lbl;
                 // Emit as NUL-terminated bytes in .rodata
                 rodata << lbl << ":\n    db    ";
-                for (const unsigned char c : val)
+                for (const unsigned char c : val) {
                     rodata << static_cast<int>(c) << ", ";
+                }
                 rodata << "0\n";
                 return lbl;
             }
 
             std::string InternF32(const std::string& val) {
                 auto it = f32Labels.find(val);
-                if (it != f32Labels.end()) return it->second;
+                if (it != f32Labels.end()) {
+                    return it->second;
+                }
                 std::string lbl = std::format("__f32_{}", constIdx++);
                 f32Labels[val] = lbl;
                 std::uint32_t bits;
                 if (val.starts_with("0x")) {
-                    bits = static_cast<std::uint32_t>(std::stoull(val, nullptr, 16));
+                    bits = static_cast<std::uint32_t>(
+                        std::stoull(val, nullptr, 16));
                 }
                 else {
                     float fv = std::stof(val);
                     std::memcpy(&bits, &fv, sizeof(bits));
                 }
-                rodata << lbl << ":\n    dd    0x" << std::hex << bits << std::dec << "\n";
+                rodata << lbl << ":\n    dd    0x" << std::hex << bits
+                       << std::dec << "\n";
                 return lbl;
             }
 
             std::string InternF64(const std::string& val) {
                 auto it = f64Labels.find(val);
-                if (it != f64Labels.end()) return it->second;
+                if (it != f64Labels.end()) {
+                    return it->second;
+                }
                 std::string lbl = std::format("__f64_{}", constIdx++);
                 f64Labels[val] = lbl;
                 std::uint64_t bits;
@@ -286,24 +322,28 @@ namespace Rux {
                     double dv = std::stod(val);
                     std::memcpy(&bits, &dv, sizeof(bits));
                 }
-                rodata << lbl << ":\n    dq    0x" << std::hex << bits << std::dec << "\n";
+                rodata << lbl << ":\n    dq    0x" << std::hex << bits
+                       << std::dec << "\n";
                 return lbl;
             }
 
             void NeedExtern(const std::string& name) {
-                if (declaredExterns.insert(name).second) externs << "extern " << name << "\n";
+                if (declaredExterns.insert(name).second) {
+                    externs << "extern " << name << "\n";
+                }
             }
 
-            // Integer exponentiation helper: rax = rdi ** rsi (signed exponent).
-            // Emitted once when the unit uses the integer ** operator so the
-            // output is self-contained (no libm/CRT dependency). Mirrors the
-            // machine-code helper synthesized by the RCU backend.
+            // Integer exponentiation helper: rax = rdi ** rsi (signed
+            // exponent). Emitted once when the unit uses the integer **
+            // operator so the output is self-contained (no libm/CRT
+            // dependency). Mirrors the machine-code helper synthesized by the
+            // RCU backend.
             void EmitIntPowHelper() {
                 TB();
                 TL("__rux_ipow");
-                TI("test    rsi, rsi"); // exponent
+                TI("test    rsi, rsi");  // exponent
                 TI("js      .negative"); // negative exponent yields 0
-                TI("mov     eax, 1"); // result = 1
+                TI("mov     eax, 1");    // result = 1
                 TL(".loop");
                 TI("test    rsi, rsi");
                 TI("jz      .done"); // exponent == 0
@@ -312,7 +352,7 @@ namespace Rux {
                 TI("imul    rax, rdi"); // result *= base
                 TL(".square");
                 TI("imul    rdi, rdi"); // base *= base
-                TI("sar     rsi, 1"); // exponent >>= 1
+                TI("sar     rsi, 1");   // exponent >>= 1
                 TI("jmp     .loop");
                 TL(".negative");
                 TI("xor     eax, eax");
@@ -328,16 +368,25 @@ namespace Rux {
             [[nodiscard]] int SizeOfRuntime(const TypeRef& t) const {
                 if (t.kind == TypeRef::Kind::Named) {
                     const std::string base = BaseTypeName(t.name);
-                    if (interfaceNames.contains(base)) return 16; // {data: *opaque, vtable: *opaque}
-                    if (base == "Slice") return 16;
-                    if (const auto it = layouts.find(base); it != layouts.end()) return it->second.totalSize;
+                    if (interfaceNames.contains(base)) {
+                        return 16; // {data: *opaque, vtable: *opaque}
+                    }
+                    if (base == "Slice") {
+                        return 16;
+                    }
+                    if (const auto it = layouts.find(base);
+                        it != layouts.end()) {
+                        return it->second.totalSize;
+                    }
                 }
                 return SizeOf(t);
             }
 
             // Stack slot allocation
             int32_t AllocSlot(LirReg reg, int bytes) {
-                if (auto it = slotMap.find(reg); it != slotMap.end()) return it->second;
+                if (auto it = slotMap.find(reg); it != slotMap.end()) {
+                    return it->second;
+                }
                 int al = (bytes > 0) ? std::min(bytes, 8) : 1;
                 nextOff = AlignUp(nextOff, al);
                 nextOff += (bytes > 0 ? bytes : 8);
@@ -362,22 +411,35 @@ namespace Rux {
                 int off = slotMap.at(reg);
                 if (runtimeSz == 16) {
                     TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", off));
-                    TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", off - 8));
+                    TI(std::format(
+                        "{:<8}rdx, qword [rbp - {}]", "mov", off - 8));
                 }
                 else if (IsFloat(t)) {
-                    TI(std::format("{:<8}xmm0, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
+                    TI(std::format("{:<8}xmm0, {} [rbp - {}]",
+                                   sz == 4 ? "movss" : "movsd",
+                                   PtrSize(sz),
+                                   off));
                 }
                 else if (sz == 8 || sz == 0) {
                     TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", off));
                 }
                 else if (t.IsSigned()) {
-                    TI(std::format("{:<8}rax, {} [rbp - {}]", sz == 4 ? "movsxd" : "movsx", PtrSize(sz), off));
+                    TI(std::format("{:<8}rax, {} [rbp - {}]",
+                                   sz == 4 ? "movsxd" : "movsx",
+                                   PtrSize(sz),
+                                   off));
                 }
                 else {
-                    if (sz == 4)
-                        TI(std::format("{:<8}eax, dword [rbp - {}]", "mov", off));
-                    else
-                        TI(std::format("{:<8}rax, {} [rbp - {}]", "movzx", PtrSize(sz), off));
+                    if (sz == 4) {
+                        TI(std::format(
+                            "{:<8}eax, dword [rbp - {}]", "mov", off));
+                    }
+                    else {
+                        TI(std::format("{:<8}rax, {} [rbp - {}]",
+                                       "movzx",
+                                       PtrSize(sz),
+                                       off));
+                    }
                 }
             }
 
@@ -386,19 +448,31 @@ namespace Rux {
                 int sz = SizeOf(t);
                 int off = slotMap.at(reg);
                 if (IsFloat(t)) {
-                    TI(std::format("{:<8}xmm1, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
+                    TI(std::format("{:<8}xmm1, {} [rbp - {}]",
+                                   sz == 4 ? "movss" : "movsd",
+                                   PtrSize(sz),
+                                   off));
                 }
                 else if (sz == 8 || sz == 0) {
                     TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", off));
                 }
                 else if (t.IsSigned()) {
-                    TI(std::format("{:<8}r10, {} [rbp - {}]", sz == 4 ? "movsxd" : "movsx", PtrSize(sz), off));
+                    TI(std::format("{:<8}r10, {} [rbp - {}]",
+                                   sz == 4 ? "movsxd" : "movsx",
+                                   PtrSize(sz),
+                                   off));
                 }
                 else {
-                    if (sz == 4)
-                        TI(std::format("{:<8}r10d, dword [rbp - {}]", "mov", off));
-                    else
-                        TI(std::format("{:<8}r10, {} [rbp - {}]", "movzx", PtrSize(sz), off));
+                    if (sz == 4) {
+                        TI(std::format(
+                            "{:<8}r10d, dword [rbp - {}]", "mov", off));
+                    }
+                    else {
+                        TI(std::format("{:<8}r10, {} [rbp - {}]",
+                                       "movzx",
+                                       PtrSize(sz),
+                                       off));
+                    }
                 }
             }
 
@@ -409,31 +483,48 @@ namespace Rux {
                 int off = slotMap.at(dst);
                 if (runtimeSz == 16) {
                     TI(std::format("{:<8}qword [rbp - {}], rax", "mov", off));
-                    TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", off - 8));
+                    TI(std::format(
+                        "{:<8}qword [rbp - {}], rdx", "mov", off - 8));
                 }
                 else if (IsFloat(t)) {
-                    TI(std::format("{:<8}{} [rbp - {}], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
+                    TI(std::format("{:<8}{} [rbp - {}], xmm0",
+                                   sz == 4 ? "movss" : "movsd",
+                                   PtrSize(sz),
+                                   off));
                 }
                 else {
                     int store_sz = (sz > 0) ? sz : 8;
-                    TI(std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(store_sz), off, GprA(store_sz)));
+                    TI(std::format("{:<8}{} [rbp - {}], {}",
+                                   "mov",
+                                   PtrSize(store_sz),
+                                   off,
+                                   GprA(store_sz)));
                 }
             }
 
             // Block labels
-            [[nodiscard]] std::string BlockLabel(uint32_t idx, const std::string& label) const {
-                if (idx == 0) return curFunc;
+            [[nodiscard]] std::string
+            BlockLabel(uint32_t idx, const std::string& label) const {
+                if (idx == 0) {
+                    return curFunc;
+                }
                 return "." + curFunc + "_" + label;
             }
 
             // Phi move emission
             void EmitPhiMoves(uint32_t fromBlock, uint32_t toBlock) {
                 auto it1 = phiMoves.find(fromBlock);
-                if (it1 == phiMoves.end()) return;
+                if (it1 == phiMoves.end()) {
+                    return;
+                }
                 auto it2 = it1->second.find(toBlock);
-                if (it2 == it1->second.end()) return;
+                if (it2 == it1->second.end()) {
+                    return;
+                }
                 for (const auto& m : it2->second) {
-                    if (!slotMap.contains(m.src)) continue;
+                    if (!slotMap.contains(m.src)) {
+                        continue;
+                    }
                     LoadA(m.src, m.type);
                     StoreA(m.dst, m.type);
                 }
@@ -450,7 +541,8 @@ namespace Rux {
 
                 // Parameters
                 for (const auto& p : func.params) {
-                    AllocSlot(p.reg, 8); // always 8 bytes — value enters via ABI reg
+                    AllocSlot(p.reg,
+                              8); // always 8 bytes — value enters via ABI reg
                     regTypes[p.reg] = p.type;
                 }
 
@@ -459,25 +551,33 @@ namespace Rux {
                     const auto& block = func.blocks[bi];
                     for (const auto& instr : block.instrs) {
                         if (instr.op == LirOpcode::Phi) {
-                            for (const auto& [src, pred] : instr.phiPreds)
-                                phiMoves[pred][bi].push_back({instr.dst, src, instr.type});
+                            for (const auto& [src, pred] : instr.phiPreds) {
+                                phiMoves[pred][bi].push_back(
+                                    {instr.dst, src, instr.type});
+                            }
                         }
-                        if (instr.dst == LirNoReg) continue;
+                        if (instr.dst == LirNoReg) {
+                            continue;
+                        }
 
                         if (instr.op == LirOpcode::Alloca) {
                             AllocSlot(instr.dst, 8); // pointer slot
                             int dataSz;
                             if (!instr.strArg.empty()) {
                                 int count = std::stoi(instr.strArg);
-                                const TypeRef& et = instr.type.inner.empty() ? instr.type : instr.type.inner[0];
+                                const TypeRef& et = instr.type.inner.empty()
+                                                      ? instr.type
+                                                      : instr.type.inner[0];
                                 int elemSz = SizeOfRuntime(et);
                                 dataSz = count * (elemSz > 0 ? elemSz : 8);
                             }
                             else {
                                 dataSz = SizeOfRuntime(instr.type);
                             }
-                            allocaData[instr.dst] = AllocRegion(dataSz > 0 ? dataSz : 8);
-                            regTypes[instr.dst] = TypeRef::MakePointer(instr.type);
+                            allocaData[instr.dst] =
+                                AllocRegion(dataSz > 0 ? dataSz : 8);
+                            regTypes[instr.dst] =
+                                TypeRef::MakePointer(instr.type);
                         }
                         else {
                             int sz = SizeOfRuntime(instr.type);
@@ -488,16 +588,21 @@ namespace Rux {
                 }
 
                 frameSize = AlignUp(nextOff, 16);
-                if (frameSize == 0) frameSize = 16; // always reserve at least one slot for alignment
+                if (frameSize == 0) {
+                    // always reserve at least one slot for alignment
+                    frameSize = 16;
+                }
             }
 
             // Module / function generation
             void BuildLayouts() {
                 for (const auto& mod : pkg.modules) {
-                    for (const auto& name : mod.interfaceNames)
+                    for (const auto& name : mod.interfaceNames) {
                         interfaceNames.insert(name);
-                    for (const auto& s : mod.structs)
+                    }
+                    for (const auto& s : mod.structs) {
                         layouts[s.name] = ComputeLayout(s, layouts);
+                    }
                 }
             }
 
@@ -511,22 +616,26 @@ namespace Rux {
 
                 // Module-level constants in .rodata
                 for (const auto& c : mod.consts) {
-                    std::string vis = c.isPublic ? "global " + c.name + "\n" : "";
+                    std::string vis =
+                        c.isPublic ? "global " + c.name + "\n" : "";
                     data << vis;
-                    data << c.name << ":  ; " << c.type.ToString() << " = " << c.value << "\n";
+                    data << c.name << ":  ; " << c.type.ToString() << " = "
+                         << c.value << "\n";
                     data << "    ; (constant — initialized at link time)\n";
                 }
 
                 // Vtables
                 for (const auto& vt : mod.vtables) {
                     rodata << vt.label << ":\n";
-                    for (const auto& m : vt.methods)
+                    for (const auto& m : vt.methods) {
                         rodata << "    dq " << m << "\n";
+                    }
                 }
 
                 // Functions
-                for (const auto& func : mod.funcs)
+                for (const auto& func : mod.funcs) {
                     GenFunc(func);
+                }
             }
 
             void GenFunc(const LirFunc& func) {
@@ -539,7 +648,9 @@ namespace Rux {
                 PrepassFunc(func);
 
                 // Global / visibility declaration
-                if (func.isPublic) globals << "global " << func.name << "\n";
+                if (func.isPublic) {
+                    globals << "global " << func.name << "\n";
+                }
 
                 TB();
                 TC(std::format("── {} ─", func.name));
@@ -548,7 +659,9 @@ namespace Rux {
                 // Prologue
                 TI("push    rbp");
                 TI("mov     rbp, rsp");
-                if (frameSize > 0) TI(std::format("sub     rsp, {}", frameSize));
+                if (frameSize > 0) {
+                    TI(std::format("sub     rsp, {}", frameSize));
+                }
 
                 // Spill integer parameter ABI registers to their stack slots
                 int intArgIdx = 0, fltArgIdx = 0;
@@ -564,7 +677,8 @@ namespace Rux {
                                            kFltArgRegs[fltArgIdx]));
                             fltArgIdx++;
                         }
-                        // Remaining float params arrive on the stack (System V): skip for now
+                        // Remaining float params arrive on the stack (System
+                        // V): skip for now
                     }
                     else {
                         if (intArgIdx < 6) {
@@ -580,13 +694,15 @@ namespace Rux {
                 }
 
                 // Basic blocks
-                for (uint32_t bi = 0; bi < func.blocks.size(); bi++)
+                for (uint32_t bi = 0; bi < func.blocks.size(); bi++) {
                     GenBlock(bi, func.blocks[bi], func);
+                }
 
                 TB();
             }
 
-            void GenBlock(uint32_t idx, const LirBlock& block, const LirFunc& func) {
+            void
+            GenBlock(uint32_t idx, const LirBlock& block, const LirFunc& func) {
                 // Emit label for every block after entry
                 std::string lbl = BlockLabel(idx, block.label);
                 if (idx != 0) {
@@ -594,20 +710,25 @@ namespace Rux {
                     TL(lbl);
                 }
 
-                for (const auto& instr : block.instrs)
+                for (const auto& instr : block.instrs) {
                     GenInstr(instr, func);
+                }
 
-                if (block.term)
+                if (block.term) {
                     GenTerminator(idx, *block.term, func);
-                else
+                }
+                else {
                     TI("nop    ; missing terminator");
+                }
             }
 
             // Instruction generation
             void GenInstr(const LirInstr& instr, const LirFunc& /*func*/) {
                 switch (instr.op) {
                 case LirOpcode::Const: {
-                    if (instr.dst == LirNoReg) break;
+                    if (instr.dst == LirNoReg) {
+                        break;
+                    }
                     const TypeRef& t = instr.type;
                     int sz = SizeOf(t);
                     if (t.kind == TypeRef::Kind::Str) {
@@ -616,23 +737,35 @@ namespace Rux {
                     }
                     else if (t.kind == TypeRef::Kind::Float32) {
                         std::string lbl = InternF32(instr.strArg);
-                        TI(std::format("{:<8}xmm0, dword [rel {}]", "movss", lbl));
-                        TI(std::format("{:<8}dword [rbp - {}], xmm0", "movss", slotMap.at(instr.dst)));
+                        TI(std::format(
+                            "{:<8}xmm0, dword [rel {}]", "movss", lbl));
+                        TI(std::format("{:<8}dword [rbp - {}], xmm0",
+                                       "movss",
+                                       slotMap.at(instr.dst)));
                         break;
                     }
                     else if (t.kind == TypeRef::Kind::Float64) {
                         std::string lbl = InternF64(instr.strArg);
-                        TI(std::format("{:<8}xmm0, qword [rel {}]", "movsd", lbl));
-                        TI(std::format("{:<8}qword [rbp - {}], xmm0", "movsd", slotMap.at(instr.dst)));
+                        TI(std::format(
+                            "{:<8}xmm0, qword [rel {}]", "movsd", lbl));
+                        TI(std::format("{:<8}qword [rbp - {}], xmm0",
+                                       "movsd",
+                                       slotMap.at(instr.dst)));
                         break;
                     }
                     else if (t.kind == TypeRef::Kind::Bool) {
-                        std::string v = (instr.strArg == "true" || instr.strArg == "1") ? "1" : "0";
+                        std::string v =
+                            (instr.strArg == "true" || instr.strArg == "1")
+                                ? "1"
+                                : "0";
                         TI(std::format("{:<8}rax, {}", "mov", v));
                     }
                     else {
                         // Integer / char: the literal is the numeric value
-                        TI(std::format("{:<8}rax, {}", "mov", instr.strArg.empty() ? "0" : instr.strArg));
+                        TI(std::format("{:<8}rax, {}",
+                                       "mov",
+                                       instr.strArg.empty() ? "0"
+                                                            : instr.strArg));
                     }
                     StoreA(instr.dst, sz > 0 ? t : TypeRef::MakeInt64());
                     break;
@@ -641,7 +774,9 @@ namespace Rux {
                 case LirOpcode::Alloca: {
                     int32_t dataOff = allocaData.at(instr.dst);
                     TI(std::format("{:<8}rax, [rbp - {}]", "lea", dataOff));
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+                    TI(std::format("{:<8}qword [rbp - {}], rax",
+                                   "mov",
+                                   slotMap.at(instr.dst)));
                     break;
                 }
 
@@ -651,21 +786,30 @@ namespace Rux {
                     int runtimeSz = SizeOfRuntime(t);
                     if (!instr.strArg.empty()) {
                         // Named global / constant
-                        TI(std::format("{:<8}rax, [rel {}]", "mov", instr.strArg));
+                        TI(std::format(
+                            "{:<8}rax, [rel {}]", "mov", instr.strArg));
                     }
                     else {
                         // Load through pointer in srcs[0]
                         LirReg ptr = instr.srcs[0];
-                        TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(ptr)));
+                        TI(std::format("{:<8}r10, qword [rbp - {}]",
+                                       "mov",
+                                       slotMap.at(ptr)));
                         if (runtimeSz == 16) {
                             TI(std::format("{:<8}rax, qword [r10]", "mov"));
-                            TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+                            TI(std::format("{:<8}qword [rbp - {}], rax",
+                                           "mov",
+                                           slotMap.at(instr.dst)));
                             TI(std::format("{:<8}rax, qword [r10 + 8]", "mov"));
-                            TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst) - 8));
+                            TI(std::format("{:<8}qword [rbp - {}], rax",
+                                           "mov",
+                                           slotMap.at(instr.dst) - 8));
                             break;
                         }
                         if (IsFloat(t)) {
-                            TI(std::format("{:<8}xmm0, {} [r10]", sz == 4 ? "movss" : "movsd", PtrSize(sz)));
+                            TI(std::format("{:<8}xmm0, {} [r10]",
+                                           sz == 4 ? "movss" : "movsd",
+                                           PtrSize(sz)));
                             TI(std::format("{:<8}{} [rbp - {}], xmm0",
                                            sz == 4 ? "movss" : "movsd",
                                            PtrSize(sz),
@@ -676,13 +820,19 @@ namespace Rux {
                             TI(std::format("{:<8}rax, qword [r10]", "mov"));
                         }
                         else if (t.IsSigned()) {
-                            TI(std::format("{:<8}rax, {} [r10]", sz == 4 ? "movsxd" : "movsx", PtrSize(sz)));
+                            TI(std::format("{:<8}rax, {} [r10]",
+                                           sz == 4 ? "movsxd" : "movsx",
+                                           PtrSize(sz)));
                         }
                         else {
-                            if (sz == 4)
+                            if (sz == 4) {
                                 TI(std::format("{:<8}eax, dword [r10]", "mov"));
-                            else
-                                TI(std::format("{:<8}rax, {} [r10]", "movzx", PtrSize(sz)));
+                            }
+                            else {
+                                TI(std::format("{:<8}rax, {} [r10]",
+                                               "movzx",
+                                               PtrSize(sz)));
+                            }
                         }
                     }
                     StoreA(instr.dst, sz > 0 ? t : TypeRef::MakeInt64());
@@ -697,24 +847,39 @@ namespace Rux {
                     int runtimeSz = SizeOfRuntime(t);
 
                     // Load pointer
-                    TI(std::format("{:<8}r11, qword [rbp - {}]", "mov", slotMap.at(ptr)));
+                    TI(std::format(
+                        "{:<8}r11, qword [rbp - {}]", "mov", slotMap.at(ptr)));
 
                     if (runtimeSz == 16) {
-                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(val)));
+                        TI(std::format("{:<8}rax, qword [rbp - {}]",
+                                       "mov",
+                                       slotMap.at(val)));
                         TI(std::format("{:<8}qword [r11], rax", "mov"));
-                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(val) - 8));
+                        TI(std::format("{:<8}rax, qword [rbp - {}]",
+                                       "mov",
+                                       slotMap.at(val) - 8));
                         TI(std::format("{:<8}qword [r11 + 8], rax", "mov"));
                     }
                     else if (IsFloat(t)) {
-                        TI(std::format(
-                            "{:<8}xmm0, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), slotMap.at(val)));
-                        TI(std::format("{:<8}{} [r11], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz)));
+                        TI(std::format("{:<8}xmm0, {} [rbp - {}]",
+                                       sz == 4 ? "movss" : "movsd",
+                                       PtrSize(sz),
+                                       slotMap.at(val)));
+                        TI(std::format("{:<8}{} [r11], xmm0",
+                                       sz == 4 ? "movss" : "movsd",
+                                       PtrSize(sz)));
                     }
                     else {
                         int store_sz = (sz > 0) ? sz : 8;
-                        TI(std::format(
-                            "{:<8}{}, {} [rbp - {}]", "mov", GprA(store_sz), PtrSize(store_sz), slotMap.at(val)));
-                        TI(std::format("{:<8}{} [r11], {}", "mov", PtrSize(store_sz), GprA(store_sz)));
+                        TI(std::format("{:<8}{}, {} [rbp - {}]",
+                                       "mov",
+                                       GprA(store_sz),
+                                       PtrSize(store_sz),
+                                       slotMap.at(val)));
+                        TI(std::format("{:<8}{} [r11], {}",
+                                       "mov",
+                                       PtrSize(store_sz),
+                                       GprA(store_sz)));
                     }
                     break;
                 }
@@ -779,7 +944,9 @@ namespace Rux {
                     if (IsFloat(t)) {
                         LoadA(instr.srcs[0], t);
                         LoadB(instr.srcs[1], t);
-                        TI(t.kind == TypeRef::Kind::Float32 ? "mulss   xmm0, xmm1" : "mulsd   xmm0, xmm1");
+                        TI(t.kind == TypeRef::Kind::Float32
+                               ? "mulss   xmm0, xmm1"
+                               : "mulsd   xmm0, xmm1");
                         StoreA(instr.dst, t);
                     }
                     else {
@@ -797,13 +964,16 @@ namespace Rux {
                     if (IsFloat(t)) {
                         LoadA(instr.srcs[0], t);
                         LoadB(instr.srcs[1], t);
-                        TI(t.kind == TypeRef::Kind::Float32 ? "divss   xmm0, xmm1" : "divsd   xmm0, xmm1");
+                        TI(t.kind == TypeRef::Kind::Float32
+                               ? "divss   xmm0, xmm1"
+                               : "divsd   xmm0, xmm1");
                         StoreA(instr.dst, t);
                     }
                     else {
                         LoadA(instr.srcs[0], t);
                         LoadB(instr.srcs[1], t);
-                        // idiv uses rdx:rax; result in rax (quotient) or rdx (remainder)
+                        // idiv uses rdx:rax; result in rax (quotient) or rdx
+                        // (remainder)
                         if (t.IsSigned()) {
                             TI("cqo"); // sign-extend rax → rdx:rax
                             TI("idiv    r10");
@@ -812,14 +982,17 @@ namespace Rux {
                             TI("xor     rdx, rdx"); // zero-extend rax
                             TI("div     r10");
                         }
-                        if (instr.op == LirOpcode::Mod) TI("mov     rax, rdx"); // remainder is in rdx
+                        if (instr.op == LirOpcode::Mod) {
+                            TI("mov     rax, rdx"); // remainder is in rdx
+                        }
                         StoreA(instr.dst, t);
                     }
                     break;
                 }
 
                 case LirOpcode::Pow: {
-                    // Integer ** calls the in-unit __rux_ipow helper; float ** calls libm pow.
+                    // Integer ** calls the in-unit __rux_ipow helper; float **
+                    // calls libm pow.
                     const TypeRef& t = instr.type;
                     if (IsFloat(t)) {
                         NeedExtern("pow");
@@ -846,14 +1019,20 @@ namespace Rux {
                     const TypeRef& t = instr.type;
                     LoadA(instr.srcs[0], t);
                     // Shift count must be in cl
-                    TI(std::format("{:<8}r11, qword [rbp - {}]", "mov", slotMap.at(instr.srcs[1])));
+                    TI(std::format("{:<8}r11, qword [rbp - {}]",
+                                   "mov",
+                                   slotMap.at(instr.srcs[1])));
                     TI("mov     rcx, r11");
-                    if (bool isShr = (instr.op == LirOpcode::Shr); isShr && t.IsSigned())
+                    if (bool isShr = (instr.op == LirOpcode::Shr);
+                        isShr && t.IsSigned()) {
                         TI("sar     rax, cl");
-                    else if (isShr)
+                    }
+                    else if (isShr) {
                         TI("shr     rax, cl");
-                    else
+                    }
+                    else {
                         TI("shl     rax, cl");
+                    }
                     StoreA(instr.dst, t);
                     break;
                 }
@@ -865,12 +1044,14 @@ namespace Rux {
                         // Negate by XOR with sign bit
                         if (t.kind == TypeRef::Kind::Float32) {
                             std::string lbl = InternF32("0x80000000");
-                            TI(std::format("movss   xmm1, dword [rel {}]", lbl));
+                            TI(std::format("movss   xmm1, dword [rel {}]",
+                                           lbl));
                             TI("xorps   xmm0, xmm1");
                         }
                         else {
                             std::string lbl = InternF64("0x8000000000000000");
-                            TI(std::format("movsd   xmm1, qword [rel {}]", lbl));
+                            TI(std::format("movsd   xmm1, qword [rel {}]",
+                                           lbl));
                             TI("xorpd   xmm0, xmm1");
                         }
                         StoreA(instr.dst, t);
@@ -908,11 +1089,15 @@ namespace Rux {
                 case LirOpcode::CmpLe:
                 case LirOpcode::CmpGt:
                 case LirOpcode::CmpGe: {
-                    const TypeRef& lhsT = regTypes.contains(instr.srcs[0]) ? regTypes.at(instr.srcs[0]) : instr.type;
+                    const TypeRef& lhsT = regTypes.contains(instr.srcs[0])
+                                            ? regTypes.at(instr.srcs[0])
+                                            : instr.type;
                     LoadA(instr.srcs[0], lhsT);
                     LoadB(instr.srcs[1], lhsT);
                     if (IsFloat(lhsT)) {
-                        TI(lhsT.kind == TypeRef::Kind::Float32 ? "ucomiss xmm0, xmm1" : "ucomisd xmm0, xmm1");
+                        TI(lhsT.kind == TypeRef::Kind::Float32
+                               ? "ucomiss xmm0, xmm1"
+                               : "ucomisd xmm0, xmm1");
                         std::string_view set;
                         switch (instr.op) {
                         case LirOpcode::CmpEq:
@@ -970,12 +1155,14 @@ namespace Rux {
                 case LirOpcode::Cast: {
                     const TypeRef& dst_t = instr.type;
                     TypeRef src_t;
-                    // strArg holds the source type string; try to reconstruct enough info
-                    // by looking up the register type
-                    if (regTypes.contains(instr.srcs[0]))
+                    // strArg holds the source type string; try to reconstruct
+                    // enough info by looking up the register type
+                    if (regTypes.contains(instr.srcs[0])) {
                         src_t = regTypes.at(instr.srcs[0]);
-                    else
+                    }
+                    else {
                         src_t = dst_t;
+                    }
 
                     bool srcFloat = IsFloat(src_t);
                     bool dstFloat = IsFloat(dst_t);
@@ -984,89 +1171,117 @@ namespace Rux {
 
                     if (!srcFloat && !dstFloat) {
                         // int → int: sign/zero extend is already done by LoadA;
-                        // for narrowing, the lower bits in rax are already correct.
-                        // Nothing extra needed for most cases.
+                        // for narrowing, the lower bits in rax are already
+                        // correct. Nothing extra needed for most cases.
                     }
                     else if (srcFloat && !dstFloat) {
                         // float → int
                         bool f32src = (src_t.kind == TypeRef::Kind::Float32);
-                        if (bool signed_ = dst_t.IsSigned(); signed_)
-                            TI(f32src ? "cvttss2si rax, xmm0" : "cvttsd2si rax, xmm0");
+                        if (bool signed_ = dst_t.IsSigned(); signed_) {
+                            TI(f32src ? "cvttss2si rax, xmm0"
+                                      : "cvttsd2si rax, xmm0");
+                        }
                         else {
-                            // Unsigned: no direct instruction; use signed then re-interpret
-                            TI(f32src ? "cvttss2si rax, xmm0" : "cvttsd2si rax, xmm0");
+                            // Unsigned: no direct instruction; use signed then
+                            // re-interpret
+                            TI(f32src ? "cvttss2si rax, xmm0"
+                                      : "cvttsd2si rax, xmm0");
                         }
                     }
                     else if (!srcFloat && dstFloat) {
                         // int → float
                         bool f32dst = (dst_t.kind == TypeRef::Kind::Float32);
-                        TI(f32dst ? "cvtsi2ss  xmm0, rax" : "cvtsi2sd  xmm0, rax");
+                        TI(f32dst ? "cvtsi2ss  xmm0, rax"
+                                  : "cvtsi2sd  xmm0, rax");
                     }
                     else {
                         // float → float
                         bool f32src = (src_t.kind == TypeRef::Kind::Float32);
                         bool f32dst = (dst_t.kind == TypeRef::Kind::Float32);
-                        if (f32src && !f32dst)
+                        if (f32src && !f32dst) {
                             TI("cvtss2sd  xmm0, xmm0");
-                        else if (!f32src && f32dst)
+                        }
+                        else if (!f32src && f32dst) {
                             TI("cvtsd2ss  xmm0, xmm0");
+                        }
                     }
                     StoreA(instr.dst, dst_t);
                     break;
                 }
 
                 case LirOpcode::Call: {
-                    EmitCall(instr.strArg, instr.srcs, instr.dst, instr.type, instr.callConv);
+                    EmitCall(instr.strArg,
+                             instr.srcs,
+                             instr.dst,
+                             instr.type,
+                             instr.callConv);
                     break;
                 }
 
                 case LirOpcode::CallIndirect: {
                     // strArg empty; srcs[0] = callee, srcs[1..] = args
-                    EmitCallIndirect(instr.srcs, instr.dst, instr.type, instr.callConv);
+                    EmitCallIndirect(
+                        instr.srcs, instr.dst, instr.type, instr.callConv);
                     break;
                 }
 
                 case LirOpcode::FieldPtr: {
                     LirReg base = instr.srcs[0];
                     // Load base pointer
-                    TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(base)));
+                    TI(std::format(
+                        "{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(base)));
 
                     // Compute field offset using struct layout
                     int fieldOff = ResolveFieldOffset(base, instr.strArg);
-                    if (fieldOff != 0) TI(std::format("{:<8}rax, [rax + {}]", "lea", fieldOff));
+                    if (fieldOff != 0) {
+                        TI(std::format(
+                            "{:<8}rax, [rax + {}]", "lea", fieldOff));
+                    }
                     // else pointer is already at the field start
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+                    TI(std::format("{:<8}qword [rbp - {}], rax",
+                                   "mov",
+                                   slotMap.at(instr.dst)));
                     break;
                 }
 
                 case LirOpcode::IndexPtr: {
                     LirReg base = instr.srcs[0];
                     LirReg idx = instr.srcs[1];
-                    int elemSz = (instr.type.kind == TypeRef::Kind::Pointer && !instr.type.inner.empty())
-                        ? SizeOfRuntime(instr.type.inner[0])
-                        : 8;
-                    if (elemSz < 1) elemSz = 1;
+                    int elemSz = (instr.type.kind == TypeRef::Kind::Pointer &&
+                                  !instr.type.inner.empty())
+                                   ? SizeOfRuntime(instr.type.inner[0])
+                                   : 8;
+                    if (elemSz < 1) {
+                        elemSz = 1;
+                    }
 
-                    TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(base)));
+                    TI(std::format(
+                        "{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(base)));
                     LoadB(idx, regTypes.at(idx));
                     TI(std::format("{:<8}r11, r10, {}", "imul", elemSz));
                     TI("add     rax, r11");
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+                    TI(std::format("{:<8}qword [rbp - {}], rax",
+                                   "mov",
+                                   slotMap.at(instr.dst)));
                     break;
                 }
 
                 case LirOpcode::Phi:
-                    // Phi moves are emitted by predecessors before their terminators.
-                    // The phi dst slot is already allocated; nothing to emit here.
+                    // Phi moves are emitted by predecessors before their
+                    // terminators. The phi dst slot is already allocated;
+                    // nothing to emit here.
                     break;
 
                 case LirOpcode::GlobalAddr:
                     TI(std::format("{:<8}rax, [rel {}]", "lea", instr.strArg));
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+                    TI(std::format("{:<8}qword [rbp - {}], rax",
+                                   "mov",
+                                   slotMap.at(instr.dst)));
                     break;
 
                 default:
-                    TC(std::format("TODO: opcode {}", static_cast<int>(instr.op)));
+                    TC(std::format("TODO: opcode {}",
+                                   static_cast<int>(instr.op)));
                     break;
                 }
             }
@@ -1074,9 +1289,14 @@ namespace Rux {
             // Field offset resolution via regTypes_ + layouts_
             int ResolveFieldOffset(LirReg base, const std::string& fieldName) {
                 auto typeIt = regTypes.find(base);
-                if (typeIt == regTypes.end()) return 0;
+                if (typeIt == regTypes.end()) {
+                    return 0;
+                }
                 const TypeRef& ptrType = typeIt->second;
-                if (ptrType.kind != TypeRef::Kind::Pointer || ptrType.inner.empty()) return 0;
+                if (ptrType.kind != TypeRef::Kind::Pointer ||
+                    ptrType.inner.empty()) {
+                    return 0;
+                }
                 const TypeRef& inner = ptrType.inner[0];
                 if (inner.kind == TypeRef::Kind::Tuple) {
                     std::size_t idx = 0;
@@ -1086,35 +1306,58 @@ namespace Rux {
                     catch (...) {
                         return 0;
                     }
-                    if (idx >= inner.inner.size()) return 0;
+                    if (idx >= inner.inner.size()) {
+                        return 0;
+                    }
                     int offset = 0;
-                    for (std::size_t i = 0; i < idx && i < inner.inner.size(); ++i) {
+                    for (std::size_t i = 0; i < idx && i < inner.inner.size();
+                         ++i) {
                         const int sz = SizeOf(inner.inner[i]);
                         const int al = sz > 0 ? std::min(sz, 8) : 1;
-                        if (al > 1) offset = AlignUp(offset, al);
+                        if (al > 1) {
+                            offset = AlignUp(offset, al);
+                        }
                         offset += sz > 0 ? sz : 8;
                     }
                     const int fieldSize = SizeOf(inner.inner[idx]);
-                    const int fieldAlign = fieldSize > 0 ? std::min(fieldSize, 8) : 1;
-                    if (fieldAlign > 1) offset = AlignUp(offset, fieldAlign);
+                    const int fieldAlign =
+                        fieldSize > 0 ? std::min(fieldSize, 8) : 1;
+                    if (fieldAlign > 1) {
+                        offset = AlignUp(offset, fieldAlign);
+                    }
                     return offset;
                 }
-                if (inner.kind != TypeRef::Kind::Named) return 0;
+                if (inner.kind != TypeRef::Kind::Named) {
+                    return 0;
+                }
                 const std::string baseName = BaseTypeName(inner.name);
                 if (interfaceNames.count(baseName)) {
-                    if (fieldName == "data") return 0;
-                    if (fieldName == "vtable") return 8;
+                    if (fieldName == "data") {
+                        return 0;
+                    }
+                    if (fieldName == "vtable") {
+                        return 8;
+                    }
                     return 0;
                 }
                 if (baseName == "Slice") {
-                    if (fieldName == "data") return 0;
-                    if (fieldName == "length") return 8;
+                    if (fieldName == "data") {
+                        return 0;
+                    }
+                    if (fieldName == "length") {
+                        return 8;
+                    }
                     return 0;
                 }
                 auto layIt = layouts.find(baseName);
-                if (layIt == layouts.end()) return 0;
-                for (const auto& f : layIt->second.fields)
-                    if (f.name == fieldName) return f.offset;
+                if (layIt == layouts.end()) {
+                    return 0;
+                }
+                for (const auto& f : layIt->second.fields) {
+                    if (f.name == fieldName) {
+                        return f.offset;
+                    }
+                }
                 return 0;
             }
 
@@ -1131,7 +1374,8 @@ namespace Rux {
                 // Set up arguments into ABI registers
                 int intIdx = 0, fltIdx = 0;
                 for (LirReg arg : args) {
-                    TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+                    TypeRef at = regTypes.contains(arg) ? regTypes.at(arg)
+                                                        : TypeRef::MakeInt64();
                     if (IsFloat(at)) {
                         if (fltIdx < 8) {
                             int sz = SizeOf(at);
@@ -1149,8 +1393,11 @@ namespace Rux {
                     else {
                         if (intIdx < maxIntRegs) {
                             int sz = std::max(SizeOf(at), 1);
-                            TI(std::format(
-                                "{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
+                            TI(std::format("{:<8}{}, {} [rbp - {}]",
+                                           "mov",
+                                           intRegs[intIdx],
+                                           PtrSize(sz),
+                                           slotMap.at(arg)));
                             intIdx++;
                         }
                         else {
@@ -1158,67 +1405,100 @@ namespace Rux {
                         }
                     }
                 }
-                const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
-                                             : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
+                const int stackBytes =
+                    win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8,
+                                         16)
+                          : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
                 if (stackBytes > 0) {
                     TI(std::format("sub     rsp, {}", stackBytes));
                     StoreStackArgs(stackArgs, win64);
                 }
-                // Stack is already 16-byte aligned: prologue sub rsp,frameSize ensures
-                // rsp ≡ 8 (mod 16) which the ABI requires before a call instruction.
+                // Stack is already 16-byte aligned: prologue sub rsp,frameSize
+                // ensures rsp ≡ 8 (mod 16) which the ABI requires before a call
+                // instruction.
                 TI(std::format("{:<8}{}", "call", callee));
-                if (stackBytes > 0) TI(std::format("add     rsp, {}", stackBytes));
-                if (dst != LirNoReg && !retType.IsOpaque()) StoreA(dst, retType);
+                if (stackBytes > 0) {
+                    TI(std::format("add     rsp, {}", stackBytes));
+                }
+                if (dst != LirNoReg && !retType.IsOpaque()) {
+                    StoreA(dst, retType);
+                }
             }
 
             void EmitCallIndirect(const std::vector<LirReg>& srcs,
                                   LirReg dst,
                                   const TypeRef& retType,
                                   CallingConvention callConv) {
-                if (srcs.empty()) return;
+                if (srcs.empty()) {
+                    return;
+                }
                 LirReg callee = srcs[0];
                 std::vector<LirReg> args(srcs.begin() + 1, srcs.end());
-                const std::vector<LirReg> stackArgs = EmitCallArgs(args, callConv);
+                const std::vector<LirReg> stackArgs =
+                    EmitCallArgs(args, callConv);
                 const bool win64 = callConv == CallingConvention::Win64;
-                const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
-                                             : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
+                const int stackBytes =
+                    win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8,
+                                         16)
+                          : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
                 if (stackBytes > 0) {
                     TI(std::format("sub     rsp, {}", stackBytes));
                     StoreStackArgs(stackArgs, win64);
                 }
-                // Load the callee after preparing args because arg setup uses r10.
-                TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(callee)));
+                // Load the callee after preparing args because arg setup uses
+                // r10.
+                TI(std::format(
+                    "{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(callee)));
                 TI("call    r10");
-                if (stackBytes > 0) TI(std::format("add     rsp, {}", stackBytes));
-                if (dst != LirNoReg && !retType.IsOpaque()) StoreA(dst, retType);
-            }
-
-            void StoreStackArgs(const std::vector<LirReg>& stackArgs, bool win64) {
-                for (std::size_t i = 0; i < stackArgs.size(); ++i) {
-                    TypeRef at = regTypes.contains(stackArgs[i]) ? regTypes.at(stackArgs[i]) : TypeRef::MakeInt64();
-                    const int sz = std::max(SizeOf(at), 1);
-                    if (sz == 8) {
-                        TI(std::format("{:<8}rax, {} [rbp - {}]", "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
-                    }
-                    else if (sz == 4) {
-                        TI(std::format("{:<8}eax, {} [rbp - {}]", "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
-                    }
-                    else {
-                        TI(std::format("{:<8}rax, {} [rbp - {}]", "movzx", PtrSize(sz), slotMap.at(stackArgs[i])));
-                    }
-                    const int offset = win64 ? (32 + i * 8) : (i * 8);
-                    TI(std::format("{:<8}qword [rsp + {}], rax", "mov", offset));
+                if (stackBytes > 0) {
+                    TI(std::format("add     rsp, {}", stackBytes));
+                }
+                if (dst != LirNoReg && !retType.IsOpaque()) {
+                    StoreA(dst, retType);
                 }
             }
 
-            std::vector<LirReg> EmitCallArgs(const std::vector<LirReg>& args, CallingConvention callConv) {
+            void StoreStackArgs(const std::vector<LirReg>& stackArgs,
+                                bool win64) {
+                for (std::size_t i = 0; i < stackArgs.size(); ++i) {
+                    TypeRef at = regTypes.contains(stackArgs[i])
+                                   ? regTypes.at(stackArgs[i])
+                                   : TypeRef::MakeInt64();
+                    const int sz = std::max(SizeOf(at), 1);
+                    if (sz == 8) {
+                        TI(std::format("{:<8}rax, {} [rbp - {}]",
+                                       "mov",
+                                       PtrSize(sz),
+                                       slotMap.at(stackArgs[i])));
+                    }
+                    else if (sz == 4) {
+                        TI(std::format("{:<8}eax, {} [rbp - {}]",
+                                       "mov",
+                                       PtrSize(sz),
+                                       slotMap.at(stackArgs[i])));
+                    }
+                    else {
+                        TI(std::format("{:<8}rax, {} [rbp - {}]",
+                                       "movzx",
+                                       PtrSize(sz),
+                                       slotMap.at(stackArgs[i])));
+                    }
+                    const int offset = win64 ? (32 + i * 8) : (i * 8);
+                    TI(std::format(
+                        "{:<8}qword [rsp + {}], rax", "mov", offset));
+                }
+            }
+
+            std::vector<LirReg> EmitCallArgs(const std::vector<LirReg>& args,
+                                             CallingConvention callConv) {
                 const bool win64 = callConv == CallingConvention::Win64;
                 const auto* intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
                 const int maxIntRegs = win64 ? 4 : 6;
                 std::vector<LirReg> stackArgs;
                 int intIdx = 0, fltIdx = 0;
                 for (LirReg arg : args) {
-                    TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+                    TypeRef at = regTypes.contains(arg) ? regTypes.at(arg)
+                                                        : TypeRef::MakeInt64();
                     if (IsFloat(at)) {
                         if (fltIdx < 8) {
                             const int sz = SizeOf(at);
@@ -1236,8 +1516,11 @@ namespace Rux {
                     else {
                         if (intIdx < maxIntRegs) {
                             const int sz = std::max(SizeOf(at), 1);
-                            TI(std::format(
-                                "{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
+                            TI(std::format("{:<8}{}, {} [rbp - {}]",
+                                           "mov",
+                                           intRegs[intIdx],
+                                           PtrSize(sz),
+                                           slotMap.at(arg)));
                             intIdx++;
                         }
                         else {
@@ -1249,30 +1532,53 @@ namespace Rux {
             }
 
             // Terminator generation
-            void GenTerminator(uint32_t blockIdx, const LirTerminator& term, const LirFunc& func) {
+            void GenTerminator(uint32_t blockIdx,
+                               const LirTerminator& term,
+                               const LirFunc& func) {
                 switch (term.kind) {
                 case LirTermKind::Jump: {
                     EmitPhiMoves(blockIdx, term.trueTarget);
-                    TI(std::format("{:<8}{}", "jmp", BlockLabel(term.trueTarget, func.blocks[term.trueTarget].label)));
+                    TI(std::format(
+                        "{:<8}{}",
+                        "jmp",
+                        BlockLabel(term.trueTarget,
+                                   func.blocks[term.trueTarget].label)));
                     break;
                 }
 
                 case LirTermKind::Branch: {
-                    // Load condition — use the actual size to avoid reading stack garbage
-                    TypeRef condT = regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeBool();
+                    // Load condition — use the actual size to avoid reading
+                    // stack garbage
+                    TypeRef condT = regTypes.contains(term.cond)
+                                      ? regTypes.at(term.cond)
+                                      : TypeRef::MakeBool();
                     int condSz = SizeOf(condT);
-                    if (condSz <= 1)
-                        TI(std::format("{:<8}rax, byte [rbp - {}]", "movzx", slotMap.at(term.cond)));
-                    else if (condSz == 2)
-                        TI(std::format("{:<8}rax, word [rbp - {}]", "movzx", slotMap.at(term.cond)));
-                    else if (condSz == 4)
-                        TI(std::format("{:<8}eax, dword [rbp - {}]", "mov", slotMap.at(term.cond)));
-                    else
-                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(term.cond)));
+                    if (condSz <= 1) {
+                        TI(std::format("{:<8}rax, byte [rbp - {}]",
+                                       "movzx",
+                                       slotMap.at(term.cond)));
+                    }
+                    else if (condSz == 2) {
+                        TI(std::format("{:<8}rax, word [rbp - {}]",
+                                       "movzx",
+                                       slotMap.at(term.cond)));
+                    }
+                    else if (condSz == 4) {
+                        TI(std::format("{:<8}eax, dword [rbp - {}]",
+                                       "mov",
+                                       slotMap.at(term.cond)));
+                    }
+                    else {
+                        TI(std::format("{:<8}rax, qword [rbp - {}]",
+                                       "mov",
+                                       slotMap.at(term.cond)));
+                    }
                     TI("test    rax, rax");
 
-                    std::string trueLabel = BlockLabel(term.trueTarget, func.blocks[term.trueTarget].label);
-                    std::string falseLabel = BlockLabel(term.falseTarget, func.blocks[term.falseTarget].label);
+                    std::string trueLabel = BlockLabel(
+                        term.trueTarget, func.blocks[term.trueTarget].label);
+                    std::string falseLabel = BlockLabel(
+                        term.falseTarget, func.blocks[term.falseTarget].label);
 
                     // Check whether either branch needs phi moves
                     bool truePhi = HasPhiMoves(blockIdx, term.trueTarget);
@@ -1283,9 +1589,12 @@ namespace Rux {
                         TI(std::format("{:<8}{}", "jmp", trueLabel));
                     }
                     else {
-                        // Use intermediate labels so each path has room for phi moves
-                        std::string trampTrue = std::format(".{}_br{}_t", curFunc, blockIdx);
-                        std::string trampFalse = std::format(".{}_br{}_f", curFunc, blockIdx);
+                        // Use intermediate labels so each path has room for phi
+                        // moves
+                        std::string trampTrue =
+                            std::format(".{}_br{}_t", curFunc, blockIdx);
+                        std::string trampFalse =
+                            std::format(".{}_br{}_f", curFunc, blockIdx);
                         TI(std::format("{:<8}{}", "jz", trampFalse));
                         TL(trampTrue);
                         EmitPhiMoves(blockIdx, term.trueTarget);
@@ -1307,16 +1616,24 @@ namespace Rux {
                 }
 
                 case LirTermKind::Switch: {
-                    TypeRef condT = regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeInt64();
-                    TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(term.cond)));
+                    TypeRef condT = regTypes.contains(term.cond)
+                                      ? regTypes.at(term.cond)
+                                      : TypeRef::MakeInt64();
+                    TI(std::format("{:<8}rax, qword [rbp - {}]",
+                                   "mov",
+                                   slotMap.at(term.cond)));
                     for (const auto& c : term.cases) {
                         TI(std::format("{:<8}rax, {}", "cmp", c.value));
-                        std::string lbl = BlockLabel(c.target, func.blocks[c.target].label);
+                        std::string lbl =
+                            BlockLabel(c.target, func.blocks[c.target].label);
                         TI(std::format("{:<8}{}", "je", lbl));
                     }
                     EmitPhiMoves(blockIdx, term.defaultTarget);
                     TI(std::format(
-                        "{:<8}{}", "jmp", BlockLabel(term.defaultTarget, func.blocks[term.defaultTarget].label)));
+                        "{:<8}{}",
+                        "jmp",
+                        BlockLabel(term.defaultTarget,
+                                   func.blocks[term.defaultTarget].label)));
                     break;
                 }
                 }
@@ -1324,7 +1641,9 @@ namespace Rux {
 
             [[nodiscard]] bool HasPhiMoves(uint32_t from, uint32_t to) const {
                 auto it = phiMoves.find(from);
-                if (it == phiMoves.end()) return false;
+                if (it == phiMoves.end()) {
+                    return false;
+                }
                 return it->second.contains(to);
             }
 
@@ -1337,13 +1656,17 @@ namespace Rux {
         // AsmGen::Generate
         std::string AsmGen::Generate() {
             BuildLayouts();
-            for (const auto& mod : pkg.modules)
+            for (const auto& mod : pkg.modules) {
                 GenModule(mod);
-            if (usesIpow) EmitIntPowHelper();
+            }
+            if (usesIpow) {
+                EmitIntPowHelper();
+            }
             std::ostringstream out;
             out << "; Generated by Rux Compiler\n";
             out << "; Target:  x86-64  (System V AMD64 ABI, NASM syntax)\n";
-            out << "; Calling: rdi/rsi/rdx/rcx/r8/r9 (int args), xmm0-7 (float args)\n";
+            out << "; Calling: rdi/rsi/rdx/rcx/r8/r9 (int args), xmm0-7 (float "
+                   "args)\n";
             out << "; Scratch: r10, r11 (caller-saved)\n";
             out << "\n";
             out << "bits 64\n\n";
@@ -1376,11 +1699,14 @@ namespace Rux {
         return gen.Generate();
     }
 
-    bool Asm::Emit(const LirPackage& package, const std::filesystem::path& path) {
+    bool Asm::Emit(const LirPackage& package,
+                   const std::filesystem::path& path) {
         AsmGen gen(package);
         std::string text = gen.Generate();
         std::ofstream f(path, std::ios::out | std::ios::trunc);
-        if (!f) return false;
+        if (!f) {
+            return false;
+        }
         f << text;
         return f.good();
     }

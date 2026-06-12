@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include <filesystem>
@@ -18,7 +21,8 @@ namespace Rux {
         std::string name;
         std::string package; // registry/package name; empty means same as name
         std::string version; // empty = "latest"
-        std::string path; // for path-based deps: { Path = "..." }, empty if version-based
+        std::string path;    // for path-based deps: { Path = "..." }, empty if
+                             // version-based
     };
 
     /**
@@ -30,7 +34,8 @@ namespace Rux {
         /// Semantic version (default: 0.1.0)
         std::string version = "0.1.0";
 
-        /// Package type: "bin", "sharedlib", or "dll" (Windows PE32+ shared library)
+        /// Package type: "bin", "sharedlib", or "dll" (Windows PE32+ shared
+        /// library)
         std::string type = "bin";
     };
 
@@ -75,7 +80,8 @@ namespace Rux {
          * @brief Add or update a path-based dependency.
          * @return false if already exists with same path
          */
-        bool AddPathDependency(const std::string& name, const std::string& path);
+        bool AddPathDependency(const std::string& name,
+                               const std::string& path);
 
         /**
          * @brief Remove a dependency by name.
@@ -88,7 +94,8 @@ namespace Rux {
          * @param target Target name
          * @return Merged dependency list
          */
-        [[nodiscard]] std::vector<Dependency> EffectiveDependencies(const std::string& target) const;
+        [[nodiscard]] std::vector<Dependency>
+        EffectiveDependencies(const std::string& target) const;
 
         /**
          * @brief Find a Rux.toml by walking up directories.
@@ -96,7 +103,8 @@ namespace Rux {
          * @return Path if found, otherwise std::nullopt
          */
         static std::optional<std::filesystem::path>
-        Find(const std::filesystem::path& start = std::filesystem::current_path());
+        Find(const std::filesystem::path& start =
+                 std::filesystem::current_path());
     };
 
     /**

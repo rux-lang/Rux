@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include "Rux/Token.h"
@@ -9,7 +12,10 @@
 
 namespace Rux {
     struct LexerDiagnostic {
-        enum class Severity { Warning, Error };
+        enum class Severity {
+            Warning,
+            Error,
+        };
 
         Severity severity = Severity::Error;
         SourceLocation location;
@@ -30,14 +36,16 @@ namespace Rux {
 
         // Convenience: read file from disk and lex it.
         // Returns std::nullopt if the file cannot be read.
-        [[nodiscard]] static std::optional<LexerResult> FromFile(const std::filesystem::path& path);
+        [[nodiscard]] static std::optional<LexerResult>
+        FromFile(const std::filesystem::path& path);
 
         // Run the full lexer pass and return all tokens + diagnostics.
         [[nodiscard]] LexerResult Tokenize();
 
         // Dump a token list to a file for debugging.
         // Path defaults to sourceName + ".tokens" if not specified.
-        static bool DumpTokens(const LexerResult& result, const std::filesystem::path& path = {});
+        static bool DumpTokens(const LexerResult& result,
+                               const std::filesystem::path& path = {});
 
     private:
         // Source buffer
@@ -70,14 +78,18 @@ namespace Rux {
 
         // Whitespace / comments
         void SkipWhitespace();
-        void SkipLineComment(); // // …
+        void SkipLineComment();  // // …
         void SkipBlockComment(); // /* … */  (supports nesting)
 
         // Scanners for each token family
         Token ScanIdent(SourceLocation start);
         Token ScanNumber(SourceLocation start); // int and float
-        Token ScanString(SourceLocation start, std::size_t prefixLen = 0); // "…" / c8"…" / c16"…" / c32"…"
-        Token ScanChar(SourceLocation start, std::size_t prefixLen = 0); // '…' / c8'…' / c16'…' / c32'…'
+        Token
+        ScanString(SourceLocation start,
+                   std::size_t prefixLen = 0); // "…" / c8"…" / c16"…" / c32"…"
+        Token
+        ScanChar(SourceLocation start,
+                 std::size_t prefixLen = 0);    // '…' / c8'…' / c16'…' / c32'…'
         Token ScanSymbol(SourceLocation start); // operators & punctuation
         Token ScanUnknown(SourceLocation start); // fallback for bad chars
 
@@ -88,7 +100,9 @@ namespace Rux {
         std::string ScanEscapeSequence(); // inside string / char
 
         // Emit helpers
-        [[nodiscard]] Token MakeToken(TokenKind kind, SourceLocation start, std::size_t tokenStart) const;
+        [[nodiscard]] Token MakeToken(TokenKind kind,
+                                      SourceLocation start,
+                                      std::size_t tokenStart) const;
         void EmitError(SourceLocation loc, std::string message);
         void EmitWarning(SourceLocation loc, std::string message);
     };

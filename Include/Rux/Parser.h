@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include "Rux/Ast.h"
@@ -9,7 +12,10 @@
 
 namespace Rux {
     struct ParserDiagnostic {
-        enum class Severity { Warning, Error };
+        enum class Severity {
+            Warning,
+            Error,
+        };
 
         Severity severity = Severity::Error;
         SourceLocation location;
@@ -24,29 +30,34 @@ namespace Rux {
 
     class Parser {
     public:
-        explicit Parser(std::vector<Token> tokens, std::string sourceName = "<input>");
+        explicit Parser(std::vector<Token> tokens,
+                        std::string sourceName = "<input>");
 
         // Convenience: lex and parse in one step.
-        [[nodiscard]] static std::optional<ParseResult> FromLexResult(const LexerResult& lex,
-                                                                      const std::string& sourceName = "<input>");
+        [[nodiscard]] static std::optional<ParseResult>
+        FromLexResult(const LexerResult& lex,
+                      const std::string& sourceName = "<input>");
         [[nodiscard]] ParseResult Parse();
 
         // Dump the parsed AST to a file for debugging.
         // Path defaults to sourceName + ".ast" if not specified.
-        static bool DumpAst(const ParseResult& result, const std::filesystem::path& path = {});
+        static bool DumpAst(const ParseResult& result,
+                            const std::filesystem::path& path = {});
 
     private:
         std::vector<Token> tokens;
         std::string sourceName;
         std::size_t pos = 0;
         std::vector<ParserDiagnostic> diagnostics;
-        bool structInitAllowed = true; // disabled inside if/while/for/match conditions
+        bool structInitAllowed =
+            true; // disabled inside if/while/for/match conditions
 
         // Token helpers
         [[nodiscard]] const Token& Peek(std::size_t ahead = 0) const noexcept;
         const Token& Advance() noexcept;
         [[nodiscard]] bool Check(TokenKind kind) const noexcept;
-        [[nodiscard]] bool CheckAny(std::initializer_list<TokenKind> kinds) const noexcept;
+        [[nodiscard]] bool
+        CheckAny(std::initializer_list<TokenKind> kinds) const noexcept;
         bool Match(TokenKind kind) noexcept;
         const Token& Expect(TokenKind kind, std::string_view message);
         [[nodiscard]] bool IsAtEnd() const noexcept;
@@ -59,7 +70,8 @@ namespace Rux {
         void EmitError(SourceLocation loc, std::string message);
         void EmitWarning(SourceLocation loc, std::string message);
 
-        // Skip tokens until a safe recovery point (statement/declaration boundary).
+        // Skip tokens until a safe recovery point (statement/declaration
+        // boundary).
         void Synchronize();
         void Recover();
 
@@ -81,7 +93,9 @@ namespace Rux {
 
         // Declarations
         std::unique_ptr<FuncDecl>
-        ParseFuncDecl(bool isPublic, bool isAsm, CallingConvention callConv = CallingConvention::Default);
+        ParseFuncDecl(bool isPublic,
+                      bool isAsm,
+                      CallingConvention callConv = CallingConvention::Default);
         std::unique_ptr<StructDecl> ParseStructDecl(bool isPublic);
         std::unique_ptr<EnumDecl> ParseEnumDecl(bool isPublic);
         std::unique_ptr<UnionDecl> ParseUnionDecl(bool isPublic);
@@ -96,7 +110,7 @@ namespace Rux {
         Param ParseParam(bool allowVariadic = false);
         std::vector<Param> ParseParamList(bool allowVariadic = false);
         std::vector<std::string> ParseTypeParams(); // <T, U, ...>
-        std::vector<TypeExprPtr> ParseTypeArgs(); // <int32, T[], ...>
+        std::vector<TypeExprPtr> ParseTypeArgs();   // <int32, T[], ...>
 
         // Type expressions
         TypeExprPtr ParseType();
