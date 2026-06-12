@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include <cstdint>
@@ -7,133 +10,134 @@
 namespace Rux {
     enum class TokenKind : std::uint8_t {
         // Literals
-        IntLiteral, // 42  0xFF  0b1010  0o77
-        FloatLiteral, // 3.14  1.0e-9
+        IntLiteral,    // 42  0xFF  0b1010  0o77
+        FloatLiteral,  // 3.14  1.0e-9
         StringLiteral, // "hello"  c8"hello"  c16"hello"  c32"hello"
-        CharLiteral, // 'A'
-        BoolLiteral, // true  false
+        CharLiteral,   // 'A'
+        BoolLiteral,   // true  false
 
         // Identifiers & keywords
         Ident, // foo  Bar  _x
 
         // Control flow
-        IfKeyword, // if
-        ElseKeyword, // else
-        WhileKeyword, // while
-        DoKeyword, // do
-        LoopKeyword, // loop
-        ForKeyword, // for
-        InKeyword, // in
-        BreakKeyword, // break
+        IfKeyword,       // if
+        ElseKeyword,     // else
+        WhileKeyword,    // while
+        DoKeyword,       // do
+        LoopKeyword,     // loop
+        ForKeyword,      // for
+        InKeyword,       // in
+        BreakKeyword,    // break
         ContinueKeyword, // continue
-        ReturnKeyword, // return
-        MatchKeyword, // match
+        ReturnKeyword,   // return
+        MatchKeyword,    // match
 
         // Declarations
-        FuncKeyword, // func
-        LetKeyword, // let
-        VarKeyword, // var
-        ConstKeyword, // const
-        TypeKeyword, // type
-        StructKeyword, // struct
-        EnumKeyword, // enum
-        UnionKeyword, // union
+        FuncKeyword,      // func
+        LetKeyword,       // let
+        VarKeyword,       // var
+        ConstKeyword,     // const
+        TypeKeyword,      // type
+        StructKeyword,    // struct
+        EnumKeyword,      // enum
+        UnionKeyword,     // union
         InterfaceKeyword, // interface
-        ExtendKeyword, // extend
-        ModuleKeyword, // module
-        ImportKeyword, // import
-        PubKeyword, // pub
-        ExternKeyword, // extern
+        ExtendKeyword,    // extend
+        ModuleKeyword,    // module
+        ImportKeyword,    // import
+        PubKeyword,       // pub
+        ExternKeyword,    // extern
 
         // Other keywords
-        AsKeyword, // as
-        IsKeyword, // is
-        NullKeyword, // null
-        SelfKeyword, // self
+        AsKeyword,    // as
+        IsKeyword,    // is
+        NullKeyword,  // null
+        SelfKeyword,  // self
         SuperKeyword, // super
 
         // Punctuation
-        LeftParen, // (
-        RightParen, // )
-        LeftBrace, // {
-        RightBrace, // }
-        LeftBracket, // [
+        LeftParen,    // (
+        RightParen,   // )
+        LeftBrace,    // {
+        RightBrace,   // }
+        LeftBracket,  // [
         RightBracket, // ]
-        Comma, // ,
-        Semicolon, // ;
-        Colon, // :
-        ColonColon, // ::
-        Dot, // .
-        DotDot, // ..
-        DotDotDot, // ...
-        DotDotEqual, // ..=
-        Arrow, // ->
-        FatArrow, // =>
-        At, // @
-        Hash, // #
-        Question, // ?
+        Comma,        // ,
+        Semicolon,    // ;
+        Colon,        // :
+        ColonColon,   // ::
+        Dot,          // .
+        DotDot,       // ..
+        DotDotDot,    // ...
+        DotDotEqual,  // ..=
+        Arrow,        // ->
+        FatArrow,     // =>
+        At,           // @
+        Hash,         // #
+        Question,     // ?
 
         // Arithmetic operators
-        Plus, // +
-        Minus, // -
-        Star, // *
-        Slash, // /
-        Percent, // %
-        StarStar, // **
-        PlusPlus, // ++
+        Plus,       // +
+        Minus,      // -
+        Star,       // *
+        Slash,      // /
+        Percent,    // %
+        StarStar,   // **
+        PlusPlus,   // ++
         MinusMinus, // --
 
         // Bitwise operators
-        Amp, // &
-        Pipe, // |
-        Caret, // ^
-        Tilde, // ~
-        LessLess, // <<
+        Amp,            // &
+        Pipe,           // |
+        Caret,          // ^
+        Tilde,          // ~
+        LessLess,       // <<
         GreaterGreater, // >>
 
         // Logical operators
-        AmpAmp, // &&
+        AmpAmp,   // &&
         PipePipe, // ||
-        Bang, // !
+        Bang,     // !
 
         // Comparison operators
-        Equal, // ==
-        BangEqual, // !=
-        Less, // <
-        LessEqual, // <=
-        Greater, // >
+        Equal,        // ==
+        BangEqual,    // !=
+        Less,         // <
+        LessEqual,    // <=
+        Greater,      // >
         GreaterEqual, // >=
 
         // Assignment operators
-        Assign, // =
-        PlusAssign, // +=
-        MinusAssign, // -=
-        StarAssign, // *=
-        SlashAssign, // /=
-        PercentAssign, // %=
-        AmpAssign, // &=
-        PipeAssign, // |=
-        CaretAssign, // ^=
-        LessLessAssign, // <<=
+        Assign,               // =
+        PlusAssign,           // +=
+        MinusAssign,          // -=
+        StarAssign,           // *=
+        SlashAssign,          // /=
+        PercentAssign,        // %=
+        AmpAssign,            // &=
+        PipeAssign,           // |=
+        CaretAssign,          // ^=
+        LessLessAssign,       // <<=
         GreaterGreaterAssign, // >>=
 
-        // Compile-time intrinsics (#line, #column, #file, #function, #date, #time, #module)
-        HashLine, // #line
-        HashColumn, // #column
-        HashFile, // #file
+        // Compile-time intrinsics (#line, #column, #file, #function, #date,
+        // #time, #module)
+        HashLine,     // #line
+        HashColumn,   // #column
+        HashFile,     // #file
         HashFunction, // #function
-        HashDate, // #date
-        HashTime, // #time
-        HashModule, // #module
+        HashDate,     // #date
+        HashTime,     // #time
+        HashModule,   // #module
 
         // Special
-        NewLine, // significant newline (if the grammar uses them)
+        NewLine,   // significant newline (if the grammar uses them)
         EndOfFile, // end of file
-        Unknown, // unrecognized character — carry it for better errors
+        Unknown,   // unrecognized character — carry it for better errors
     };
 
     struct SourceLocation {
-        std::uint32_t line = 1; // 1-based
+        std::uint32_t line = 1;   // 1-based
         std::uint32_t column = 1; // 1-based (UTF-8 byte offset in line)
         std::uint32_t offset = 0; // byte offset from start of file
     };
@@ -160,7 +164,8 @@ namespace Rux {
         [[nodiscard]] std::string Describe() const;
     };
 
-    // Map a keyword string to its TokenKind; returns TokenKind::Ident if not a keyword.
+    // Map a keyword string to its TokenKind; returns TokenKind::Ident if not a
+    // keyword.
     [[nodiscard]] TokenKind KeywordKind(std::string_view text) noexcept;
 
     // Name of a TokenKind suitable for error messages.
