@@ -10,8 +10,8 @@ rux_register_error(4  "float addition failed")
 rux_register_error(5  "float subtraction failed")
 rux_register_error(6  "float multiplication failed")
 rux_register_error(7  "float division failed")
-rux_register_error(8  "float remainder failed")
-rux_register_error(9  "float exponentiation failed")
+rux_register_error(8  "float exponentiation failed") # TODO: implement this
+rux_register_error(9  "float remainder failed")
 
 rux_register_error(10  "unary minus failed")
 

@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include "Rux/Lir.h"
@@ -11,7 +14,8 @@ namespace Rux {
     //   - Sections use NASM keywords (.text / .data / .rodata)
     //   - Intel syntax, System V AMD64 ABI calling convention
     //   - All virtual registers are spilled to the stack (naive allocation)
-    //   - Parameters arrive in rdi/rsi/rdx/rcx/r8/r9 (integer) or xmm0-7 (float)
+    //   - Parameters arrive in rdi/rsi/rdx/rcx/r8/r9 (integer) or xmm0-7
+    //   (float)
     //   - r10/r11 are used as caller-saved scratch registers
     class Asm {
     public:
@@ -21,7 +25,8 @@ namespace Rux {
         [[nodiscard]] std::string Generate() const;
 
         // Write the assembly text to `path`. Returns false on I/O error.
-        static bool Emit(const LirPackage& package, const std::filesystem::path& path);
+        static bool Emit(const LirPackage& package,
+                         const std::filesystem::path& path);
 
     private:
         LirPackage lir;

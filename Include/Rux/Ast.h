@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include "Rux/Token.h"
@@ -11,7 +14,7 @@ namespace Rux {
     // Calling convention
     enum class CallingConvention {
         Default, // platform default (System V AMD64 ABI)
-        Win64, // Microsoft x64 calling convention
+        Win64,   // Microsoft x64 calling convention
     };
 
     // Forward declarations
@@ -51,7 +54,8 @@ namespace Rux {
         ~SliceTypeExpr() override;
 
         TypeExprPtr element;
-        ExprPtr size; // null for unsized slices (T[]), non-null for fixed-size arrays (T[N])
+        ExprPtr size; // null for unsized slices (T[]), non-null for fixed-size
+                      // arrays (T[N])
     };
 
     // *uint8
@@ -110,7 +114,7 @@ namespace Rux {
         };
 
         std::vector<std::string> path; // ["Event", "Click"]
-        std::vector<PatternPtr> args; // bound positions
+        std::vector<PatternPtr> args;  // bound positions
         std::vector<NamedArg> namedArgs;
     };
 
@@ -170,7 +174,15 @@ namespace Rux {
 
     // #line, #column, #file, #function, #date, #time, #module
     struct IntrinsicExpr : Expr {
-        enum class Kind { Line, Column, File, Function, Date, Time, Module };
+        enum class Kind {
+            Line,
+            Column,
+            File,
+            Function,
+            Date,
+            Time,
+            Module,
+        };
 
         Kind kind;
     };
@@ -393,9 +405,12 @@ namespace Rux {
     struct Decl {
         SourceLocation location;
         bool isPublic = false;
-        std::string targetOs; // empty = unconditional; "Windows", "Linux" = platform-conditional
-        std::string warnMessage; // non-empty = emit this warning at each call site
-        std::string errorMessage; // non-empty = emit this error at each call site
+        std::string targetOs; // empty = unconditional; "Windows", "Linux" =
+                              // platform-conditional
+        std::string
+            warnMessage; // non-empty = emit this warning at each call site
+        std::string
+            errorMessage; // non-empty = emit this error at each call site
         virtual ~Decl() = default;
     };
 
@@ -493,7 +508,11 @@ namespace Rux {
     struct UseDecl : Decl {
         std::vector<std::string> path;
 
-        enum class Kind { Single, Glob, Multi } kind = Kind::Single;
+        enum class Kind {
+            Single,
+            Glob,
+            Multi,
+        } kind = Kind::Single;
 
         std::vector<std::string> names; // for Multi
     };
