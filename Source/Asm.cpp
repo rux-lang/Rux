@@ -138,6 +138,11 @@ namespace Rux {
         // System V AMD64 float argument registers (in order)
         constexpr std::string_view kFltArgRegs[] = {
             "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7"};
+#ifdef _WIN32
+        constexpr bool kDefaultCallIsWin64 = true;
+#else
+        constexpr bool kDefaultCallIsWin64 = false;
+#endif
 
         // Struct field layout
         struct FieldLayout {
@@ -994,21 +999,32 @@ namespace Rux {
                     // Integer ** calls the in-unit __rux_ipow helper; float **
                     // calls libm pow.
                     const TypeRef& t = instr.type;
+                    const int shadowSpace = kDefaultCallIsWin64 ? 32 : 0;
+                    if (shadowSpace > 0) {
+                        TI(std::format("sub     rsp, {}", shadowSpace));
+                    }
                     if (IsFloat(t)) {
                         NeedExtern("pow");
                         LoadA(instr.srcs[0], t);
                         LoadB(instr.srcs[1], t);
-                        TI("movsd   xmm0, xmm0");
-                        TI("movsd   xmm1, xmm1");
                         TI("call    pow");
                     }
                     else {
                         usesIpow = true;
                         LoadA(instr.srcs[0], t);
                         LoadB(instr.srcs[1], t);
-                        TI("mov     rdi, rax");
-                        TI("mov     rsi, r10");
+                        if (kDefaultCallIsWin64) {
+                            TI("mov     rcx, rax");
+                            TI("mov     rdx, r10");
+                        }
+                        else {
+                            TI("mov     rdi, rax");
+                            TI("mov     rsi, r10");
+                        }
                         TI("call    __rux_ipow");
+                    }
+                    if (shadowSpace > 0) {
+                        TI(std::format("add     rsp, {}", shadowSpace));
                     }
                     StoreA(instr.dst, t);
                     break;

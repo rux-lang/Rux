@@ -2593,26 +2593,31 @@ namespace Rux {
                 }
                 case LirOpcode::Pow: {
                     const TypeRef& t = instr.type;
+                    const bool win64Call =
+                        EffectiveConv(CallingConvention::Default) ==
+                        CallingConvention::Win64;
+                    const int callFrameSize =
+                        win64Call ? Win64CallFrameSize(instr.srcs.size()) : 0;
+                    if (win64Call) {
+                        enc.SubRspImm32(callFrameSize);
+                    }
                     if (IsFloat(t)) {
                         uint32_t sym =
                             GetOrAddExtern("pow", RcuSymKind::ExternFunc);
-                        LoadA(instr.srcs[0], t);
-                        LoadB(instr.srcs[1], t);
-                        enc.MovssXmmNLoad(0, Disp(instr.srcs[0]));
-                        enc.MovssXmmNLoad(1, Disp(instr.srcs[1]));
+                        EmitCallArgs(instr.srcs, CallingConvention::Default);
                         uint32_t ro;
                         enc.Call(ro);
                         AddTextReloc(ro, sym);
                     }
                     else {
                         uint32_t sym = EnsureIntPowHelper();
-                        LoadA(instr.srcs[0], t);
-                        LoadB(instr.srcs[1], t);
-                        enc.MovArgLoad(0, Disp(instr.srcs[0]));
-                        enc.MovArgLoad(1, Disp(instr.srcs[1]));
+                        EmitCallArgs(instr.srcs, CallingConvention::Default);
                         uint32_t ro;
                         enc.Call(ro);
                         AddTextReloc(ro, sym);
+                    }
+                    if (win64Call) {
+                        enc.AddRspImm32(callFrameSize);
                     }
                     StoreA(instr.dst, t);
                     break;
