@@ -11,6 +11,68 @@
 #include <sstream>
 
 namespace Rux {
+    static std::optional<std::uint32_t>
+    DecodeUtf8CodePoint(std::string_view text) {
+        if (text.empty()) {
+            return std::nullopt;
+        }
+
+        const auto continuation =
+            [&](std::size_t index) -> std::optional<std::uint32_t> {
+            if (index >= text.size()) {
+                return std::nullopt;
+            }
+            const auto byte = static_cast<unsigned char>(text[index]);
+            if ((byte & 0xC0) != 0x80) {
+                return std::nullopt;
+            }
+            return static_cast<std::uint32_t>(byte & 0x3F);
+        };
+
+        const auto b0 = static_cast<unsigned char>(text[0]);
+        std::uint32_t codePoint = 0;
+        std::size_t width = 0;
+        std::uint32_t minValue = 0;
+        if (b0 <= 0x7F) {
+            codePoint = b0;
+            width = 1;
+            minValue = 0;
+        }
+        else if ((b0 & 0xE0) == 0xC0) {
+            codePoint = b0 & 0x1F;
+            width = 2;
+            minValue = 0x80;
+        }
+        else if ((b0 & 0xF0) == 0xE0) {
+            codePoint = b0 & 0x0F;
+            width = 3;
+            minValue = 0x800;
+        }
+        else if ((b0 & 0xF8) == 0xF0) {
+            codePoint = b0 & 0x07;
+            width = 4;
+            minValue = 0x10000;
+        }
+        else {
+            return std::nullopt;
+        }
+
+        if (text.size() != width) {
+            return std::nullopt;
+        }
+        for (std::size_t i = 1; i < width; ++i) {
+            const auto byte = continuation(i);
+            if (!byte) {
+                return std::nullopt;
+            }
+            codePoint = (codePoint << 6) | *byte;
+        }
+        if (codePoint < minValue || codePoint > 0x10FFFF) {
+            return std::nullopt;
+        }
+        return codePoint;
+    }
+
     bool LexerResult::HasErrors() const noexcept {
         for (const auto& d : diagnostics) {
             if (d.severity == LexerDiagnostic::Severity::Error) {
@@ -82,6 +144,76 @@ namespace Rux {
             }
         }
         return f.good();
+    }
+
+    std::optional<std::uint32_t>
+    Lexer::DecodeCharLiteralCodePoint(std::string_view text) {
+        const std::size_t quote = text.find('\'');
+        if (quote == std::string::npos || text.size() < quote + 3) {
+            return std::nullopt;
+        }
+
+        std::string_view body(text);
+        body.remove_prefix(quote + 1);
+        body.remove_suffix(1);
+        if (body.empty()) {
+            return std::nullopt;
+        }
+
+        if (body[0] == '\\') {
+            if (body == "\\n") {
+                return static_cast<std::uint32_t>('\n');
+            }
+            if (body == "\\t") {
+                return static_cast<std::uint32_t>('\t');
+            }
+            if (body == "\\r") {
+                return static_cast<std::uint32_t>('\r');
+            }
+            if (body == "\\0") {
+                return static_cast<std::uint32_t>('\0');
+            }
+            if (body == "\\\\") {
+                return static_cast<std::uint32_t>('\\');
+            }
+            if (body == "\\'") {
+                return static_cast<std::uint32_t>('\'');
+            }
+            if (body == "\\\"") {
+                return static_cast<std::uint32_t>('\"');
+            }
+            if (body.starts_with("\\u{") && body.ends_with("}")) {
+                const std::string_view digits = body.substr(3, body.size() - 4);
+                if (digits.empty() || digits.size() > 8) {
+                    return std::nullopt;
+                }
+                std::uint32_t codePoint = 0;
+                for (const char digit : digits) {
+                    codePoint <<= 4;
+                    if (digit >= '0' && digit <= '9') {
+                        codePoint |= static_cast<std::uint32_t>(digit - '0');
+                    }
+                    else if (digit >= 'a' && digit <= 'f') {
+                        codePoint |=
+                            static_cast<std::uint32_t>(digit - 'a' + 10);
+                    }
+                    else if (digit >= 'A' && digit <= 'F') {
+                        codePoint |=
+                            static_cast<std::uint32_t>(digit - 'A' + 10);
+                    }
+                    else {
+                        return std::nullopt;
+                    }
+                }
+                if (codePoint > 0x10FFFF) {
+                    return std::nullopt;
+                }
+                return codePoint;
+            }
+            return std::nullopt;
+        }
+
+        return DecodeUtf8CodePoint(body);
     }
 
     void Lexer::ScanAll() {

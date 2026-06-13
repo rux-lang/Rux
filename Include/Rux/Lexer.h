@@ -47,6 +47,9 @@ namespace Rux {
         static bool DumpTokens(const LexerResult& result,
                                const std::filesystem::path& path = {});
 
+        [[nodiscard]] static std::optional<std::uint32_t>
+        DecodeCharLiteralCodePoint(std::string_view text);
+
     private:
         // Source buffer
         std::string source;
