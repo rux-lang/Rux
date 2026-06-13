@@ -3,6 +3,7 @@
 
 #include "Rux/Sema.h"
 
+#include "Rux/Lexer.h"
 #include "Rux/Platform/Host.h"
 #include "Rux/Type.h"
 
@@ -1157,6 +1158,62 @@ namespace Rux {
             return value;
         }
 
+        static std::optional<std::uint64_t> ParseIntegerLiteralValue(
+            const Token& tok) {
+            if (tok.kind != TokenKind::IntLiteral) {
+                return std::nullopt;
+            }
+
+            std::string text;
+            text.reserve(tok.text.size());
+            for (const char c : tok.text) {
+                if (c != '_') {
+                    text.push_back(c);
+                }
+            }
+
+            const std::string suffix = NumericLiteralSuffix(text);
+            if (!suffix.empty()) {
+                text.resize(text.size() - suffix.size());
+            }
+
+            int base = 10;
+            std::string_view digits(text);
+            if (digits.size() > 2 && digits[0] == '0') {
+                switch (digits[1]) {
+                case 'x':
+                case 'X':
+                    base = 16;
+                    digits.remove_prefix(2);
+                    break;
+                case 'b':
+                case 'B':
+                    base = 2;
+                    digits.remove_prefix(2);
+                    break;
+                case 'o':
+                case 'O':
+                    base = 8;
+                    digits.remove_prefix(2);
+                    break;
+                default:
+                    break;
+                }
+            }
+            if (digits.empty()) {
+                return std::nullopt;
+            }
+
+            std::uint64_t value = 0;
+            const auto* first = digits.data();
+            const auto* last = first + digits.size();
+            const auto [ptr, ec] = std::from_chars(first, last, value, base);
+            if (ec != std::errc{} || ptr != last) {
+                return std::nullopt;
+            }
+            return value;
+        }
+
         static std::optional<std::uint64_t>
         UnsignedIntegerMax(const TypeRef& type) {
             switch (type.kind) {
@@ -1423,6 +1480,62 @@ namespace Rux {
                 return value >= range->first && value <= range->second;
             }
             return false;
+        }
+
+        static std::optional<std::uint32_t> CharTypeMaxCodePoint(
+            const TypeRef& type) {
+            switch (type.kind) {
+            case TypeRef::Kind::Char8:
+                return 0xFF;
+            case TypeRef::Kind::Char16:
+                return 0xFFFF;
+            case TypeRef::Kind::Char32:
+                return 0x10FFFF;
+            default:
+                return std::nullopt;
+            }
+        }
+
+        static bool IsCharType(const TypeRef& type) noexcept {
+            switch (type.kind) {
+            case TypeRef::Kind::Char8:
+            case TypeRef::Kind::Char16:
+            case TypeRef::Kind::Char32:
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        static bool IsSurrogateCodePoint(const std::uint64_t value) noexcept {
+            return value >= 0xD800 && value <= 0xDFFF;
+        }
+
+        static std::optional<std::uint64_t> EvalConstCharCastValue(
+            const Expr& expr) {
+            if (const auto* literal = dynamic_cast<const LiteralExpr*>(&expr)) {
+                if (literal->token.kind == TokenKind::CharLiteral) {
+                    if (const auto codePoint =
+                            Lexer::DecodeCharLiteralCodePoint(
+                                literal->token.text)) {
+                        return static_cast<std::uint64_t>(*codePoint);
+                    }
+                }
+                if (literal->token.kind == TokenKind::IntLiteral) {
+                    if (const auto value =
+                            ParseIntegerLiteralValue(literal->token)) {
+                        return *value;
+                    }
+                }
+            }
+
+            if (const auto value = EvalConstInt(expr)) {
+                if (*value >= 0) {
+                    return static_cast<std::uint64_t>(*value);
+                }
+            }
+
+            return std::nullopt;
         }
 
         bool CanAssignExprTo(const Expr& expr,
@@ -4082,8 +4195,39 @@ namespace Rux {
             }
 
             if (auto* e = dynamic_cast<const CastExpr*>(&expr)) {
-                CheckExpr(*e->operand);
-                return ResolveType(*e->type);
+                TypeRef operandType = CheckExpr(*e->operand);
+                TypeRef targetType = ResolveType(*e->type);
+                if (const auto maxCodePoint = CharTypeMaxCodePoint(targetType);
+                    maxCodePoint &&
+                    (operandType.IsInteger() || IsCharType(operandType))) {
+                    if (const auto value = EvalConstInt(*e->operand);
+                        value && *value < 0) {
+                        EmitError(
+                            e->location,
+                            std::format(
+                                "constant value is out of range for type '{}'",
+                                targetType.ToString()));
+                    }
+                    else if (const auto value =
+                                 EvalConstCharCastValue(*e->operand)) {
+                        if (*value > *maxCodePoint) {
+                            EmitError(
+                                e->location,
+                                std::format(
+                                    "constant value is out of range for type '{}'",
+                                    targetType.ToString()));
+                        }
+                        else if (IsSurrogateCodePoint(*value)) {
+                            EmitError(
+                                e->location,
+                                std::format(
+                                    "surrogate code point U+{:04X} cannot be converted to '{}'",
+                                    *value,
+                                    targetType.ToString()));
+                        }
+                    }
+                }
+                return targetType;
             }
 
             if (auto* e = dynamic_cast<const IsExpr*>(&expr)) {
