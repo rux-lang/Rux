@@ -1100,11 +1100,9 @@ namespace Rux {
                 for (std::size_t i = 0; i < content.size(); ++i) {
                     if (content[i] == '<' || content[i] == '(') {
                         depth++;
-                    }
-                    else if (content[i] == '>' || content[i] == ')') {
+                    } else if (content[i] == '>' || content[i] == ')') {
                         depth--;
-                    }
-                    else if (content[i] == ',' && depth == 0) {
+                    } else if (content[i] == ',' && depth == 0) {
                         elems.push_back(ParseTypeRefFromString(
                             content.substr(start, i - start)));
                         start = i + 1;
@@ -1139,11 +1137,9 @@ namespace Rux {
             for (std::size_t i = 0; i < content.size(); ++i) {
                 if (content[i] == '<' || content[i] == '(') {
                     depth++;
-                }
-                else if (content[i] == '>' || content[i] == ')') {
+                } else if (content[i] == '>' || content[i] == ')') {
                     depth--;
-                }
-                else if (content[i] == ',' && depth == 0) {
+                } else if (content[i] == ',' && depth == 0) {
                     args.push_back(ParseTypeRefFromString(
                         content.substr(start, i - start)));
                     start = i + 1;
@@ -1914,8 +1910,7 @@ namespace Rux {
             }
 
             std::unordered_map<std::string, TypeRef> substitutions;
-            std::vector<TypeRef> typeArgs =
-                ParseTypeArgsFromTypeName(objectType.name);
+            std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(objectType.name);
             const auto& params = structIt->second->typeParams;
             const std::size_t count = std::min(params.size(), typeArgs.size());
             for (std::size_t i = 0; i < count; ++i) {
@@ -1971,7 +1966,8 @@ namespace Rux {
                     if (argTypes[i].IsUnknown() || paramTypes[i].IsUnknown()) {
                         continue;
                     }
-                    if (!argTypes[i].IsAssignableTo(paramTypes[i])) {
+                    if (!argTypes[i].IsAssignableTo(paramTypes[i]) &&
+                        !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
                         return nullptr;
                     }
                 }
@@ -1987,7 +1983,8 @@ namespace Rux {
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
                     if (!argTypes[i].IsUnknown() &&
                         !paramTypes[i].IsUnknown() &&
-                        !argTypes[i].IsAssignableTo(paramTypes[i])) {
+                        !argTypes[i].IsAssignableTo(paramTypes[i]) &&
+                        !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
                         match = false;
                         break;
                     }
@@ -2118,7 +2115,8 @@ namespace Rux {
                         funcType.inner[i].IsUnknown()) {
                         continue;
                     }
-                    if (!argTypes[i].IsAssignableTo(funcType.inner[i])) {
+                    if (!argTypes[i].IsAssignableTo(funcType.inner[i]) &&
+                        !(argTypes[i].IsInteger() && funcType.inner[i].IsInteger())) {
                         return nullptr;
                     }
                 }
@@ -2195,31 +2193,27 @@ namespace Rux {
                     return SizeOfTypeRef(it->second, substitutions);
                 }
                 const std::string baseName = BaseTypeName(type.name);
-
-                std::unordered_map<std::string, TypeRef> localSubs =
-                    substitutions;
+                std::unordered_map<std::string, TypeRef> localSubs = substitutions;
                 const auto structIt = structDecls.find(baseName);
                 if (structIt != structDecls.end()) {
-                    std::vector<TypeRef> typeArgs =
-                        ParseTypeArgsFromTypeName(type.name);
+                    std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(type.name);
                     const auto& params = structIt->second->typeParams;
-                    const std::size_t count =
-                        std::min(params.size(), typeArgs.size());
+                    const std::size_t count = std::min(params.size(), typeArgs.size());
                     for (std::size_t i = 0; i < count; ++i) {
                         localSubs[params[i]] = typeArgs[i];
                     }
                 }
 
-                if (const auto enumIt = enumDecls.find(baseName);
-                    enumIt != enumDecls.end()) {
+                if (const auto enumIt = enumDecls.find(baseName); enumIt != enumDecls.end()) {
                     return SizeOfEnum(*enumIt->second, localSubs);
                 }
+                // Interface fat pointers are {data: *opaque, vtable: *opaque} =
+                // 16 bytes
                 if (Symbol* sym = currentScope->Lookup(baseName); sym) {
                     if (sym->kind == Symbol::Kind::Interface) {
                         return 16;
                     }
-                    if (sym->kind == Symbol::Kind::Type &&
-                        !sym->type.IsUnknown()) {
+                    if (sym->kind == Symbol::Kind::Type && !sym->type.IsUnknown()) {
                         return SizeOfTypeRef(sym->type, localSubs);
                     }
                 }
@@ -2471,10 +2465,10 @@ namespace Rux {
             else if (auto* d = dynamic_cast<const ExternFuncDecl*>(&decl)) {
                 if (d->dll.empty()) {
                     EmitError(d->location,
-                              std::format(
-                                  "extern function '{}' must specify a source "
-                                  "DLL via @[Import(lib: \"dll.dll\")]",
-                                  d->name));
+                              std::format("extern function '{}' must specify a "
+                                          "source DLL via "
+                                          "@[Import(lib: \"dll.dll\")]",
+                                          d->name));
                 }
                 if (d->returnType) {
                     ResolveType(*d->returnType->get());
@@ -2541,12 +2535,11 @@ namespace Rux {
                     seenDefault = true;
                 }
                 else if (seenDefault) {
-                    EmitError(
-                        param.location,
-                        std::format(
-                            "parameter '{}' without a default value cannot "
-                            "follow a parameter with a default value",
-                            param.name));
+                    EmitError(param.location,
+                              std::format("parameter '{}' without a default "
+                                          "value cannot follow a "
+                                          "parameter with a default value",
+                                          param.name));
                 }
                 Symbol sym;
                 sym.kind = Symbol::Kind::Var;
@@ -3874,8 +3867,8 @@ namespace Rux {
                                             e->args[paramCount]->location,
                                             std::format(
                                                 "cannot spread '{}' to "
-                                                "variadic parameter of type "
-                                                "'{}'",
+                                                "variadic "
+                                                "parameter of type '{}'",
                                                 argTypes[paramCount].ToString(),
                                                 varElemType.ToString()));
                                     }
@@ -3886,10 +3879,10 @@ namespace Rux {
                                          ++i) {
                                         if (dynamic_cast<const SpreadExpr*>(
                                                 e->args[i].get())) {
-                                            EmitError(
-                                                e->args[i]->location,
-                                                "spread argument must be the "
-                                                "only variadic argument");
+                                            EmitError(e->args[i]->location,
+                                                      "spread argument must be "
+                                                      "the only variadic "
+                                                      "argument");
                                         }
                                         else if (!argTypes[i].IsUnknown() &&
                                                  !varElemType.IsUnknown() &&
@@ -3901,8 +3894,8 @@ namespace Rux {
                                                 e->args[i]->location,
                                                 std::format(
                                                     "cannot pass '{}' to "
-                                                    "variadic parameter of "
-                                                    "type '{}'",
+                                                    "variadic "
+                                                    "parameter of type '{}'",
                                                     argTypes[i].ToString(),
                                                     varElemType.ToString()));
                                         }
@@ -4266,7 +4259,8 @@ namespace Rux {
                     if (sym && sym->kind == Symbol::Kind::Interface) {
                         EmitError(e->location,
                                   "runtime type checking with 'is' on "
-                                  "interface types is not yet implemented");
+                                  "interface types is not yet "
+                                  "implemented");
                     }
                 }
                 return TypeRef::MakeBool();

@@ -50,7 +50,8 @@ using namespace Rux;
 using namespace Platform;
 using namespace Misc;
 
-int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunInstall(std::span<const std::string_view> args,
+                    const GlobalOptions& opts) {
     std::string_view packageSpec;
     bool packageFromDev = false;
 
@@ -79,7 +80,9 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions&
     if (!packageSpec.empty()) {
         auto [pkgName, pkgVersion] = ParsePackageSpec(packageSpec);
 
-        if (!opts.quiet) std::print("     Fetching registry...\n");
+        if (!opts.quiet) {
+            std::print("     Fetching registry...\n");
+        }
 
         const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
         if (!jsonOpt) {
@@ -89,7 +92,8 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions&
 
         const std::string repoUrl = JsonLookupString(*jsonOpt, pkgName);
         if (repoUrl.empty()) {
-            std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
+            std::print(
+                stderr, "error: package '{}' not found in registry\n", pkgName);
             return 1;
         }
 
@@ -98,26 +102,37 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions&
         create_directories(pkgDir.parent_path(), ec);
 
         if (!exists(pkgDir)) {
-            if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+            if (!opts.quiet) {
+                std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+            }
 
             if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                 std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                 return 1;
             }
 
-            if (!opts.quiet) std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+            if (!opts.quiet) {
+                std::print(
+                    "    Installed {} at {}\n", pkgName, pkgDir.string());
+            }
         }
         else {
-            if (!opts.quiet) std::print("   Up-to-date {}\n", pkgName);
+            if (!opts.quiet) {
+                std::print("   Up-to-date {}\n", pkgName);
+            }
         }
     }
 
     // Install dependencies from current project
     const auto manifestPath = RequireManifest();
-    if (!manifestPath) return 1;
+    if (!manifestPath) {
+        return 1;
+    }
 
     auto manifest = LoadManifest(*manifestPath);
-    if (!manifest) return 1;
+    if (!manifest) {
+        return 1;
+    }
 
     std::vector<std::string> queue;
     std::unordered_set<std::string> queued;
@@ -133,12 +148,16 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions&
     }
 
     if (queue.empty()) {
-        if (!opts.quiet) std::print("  No registry dependencies to install.\n");
+        if (!opts.quiet) {
+            std::print("  No registry dependencies to install.\n");
+        }
 
         return 0;
     }
 
-    if (!opts.quiet) std::print("     Fetching registry...\n");
+    if (!opts.quiet) {
+        std::print("     Fetching registry...\n");
+    }
 
     const auto jsonOptInstall = FetchUrl(std::string(kRegistryUrl));
     if (!jsonOptInstall) {
@@ -154,7 +173,8 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions&
 
         const std::string repoUrl = JsonLookupString(*jsonOptInstall, pkgName);
         if (repoUrl.empty()) {
-            std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
+            std::print(
+                stderr, "error: package '{}' not found in registry\n", pkgName);
             return 1;
         }
 
@@ -164,26 +184,35 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions&
         create_directories(pkgDir.parent_path(), ec);
 
         if (exists(pkgDir)) {
-            if (!opts.quiet) std::print("   Up-to-date {}\n", pkgName);
+            if (!opts.quiet) {
+                std::print("   Up-to-date {}\n", pkgName);
+            }
 
             ++upToDate;
         }
         else {
-            if (!opts.quiet) std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+            if (!opts.quiet) {
+                std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+            }
 
             if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
                 std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                 return 1;
             }
 
-            if (!opts.quiet) std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
+            if (!opts.quiet) {
+                std::print(
+                    "    Installed {} at {}\n", pkgName, pkgDir.string());
+            }
 
             ++installed;
         }
 
         if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
-            for (const auto& dep : depManifest->EffectiveDependencies(installTarget)) {
-                if (const std::string depPackageName = DependencyPackageName(dep);
+            for (const auto& dep :
+                 depManifest->EffectiveDependencies(installTarget)) {
+                if (const std::string depPackageName =
+                        DependencyPackageName(dep);
                     dep.path.empty() && !queued.contains(depPackageName)) {
                     queue.push_back(depPackageName);
                     queued.insert(depPackageName);
@@ -192,12 +221,17 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions&
         }
     }
 
-    if (!opts.quiet) std::print("     Summary: {} installed, {} already up-to-date\n", installed, upToDate);
+    if (!opts.quiet) {
+        std::print("     Summary: {} installed, {} already up-to-date\n",
+                   installed,
+                   upToDate);
+    }
 
     return 0;
 }
 
-int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOptions& opts) {
+int Cli::RunUninstall(std::span<const std::string_view> args,
+                      const GlobalOptions& opts) {
     std::string_view packageName;
     for (auto arg : args) {
         if (arg == "-h" || arg == "--help") {
@@ -213,32 +247,49 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
     }
 
     if (!packageName.empty()) {
-        const std::filesystem::path pkgDir = RegistryPackagesDir() / std::string(packageName);
+        const std::filesystem::path pkgDir =
+            RegistryPackagesDir() / std::string(packageName);
         if (!std::filesystem::exists(pkgDir)) {
-            std::print(stderr, "error: package '{}' is not installed\n", packageName);
+            std::print(
+                stderr, "error: package '{}' is not installed\n", packageName);
             return 1;
         }
         std::error_code ec;
         std::filesystem::remove_all(pkgDir, ec);
         if (ec) {
-            std::print(stderr, "error: failed to remove '{}': {}\n", pkgDir.string(), ec.message());
+            std::print(stderr,
+                       "error: failed to remove '{}': {}\n",
+                       pkgDir.string(),
+                       ec.message());
             return 1;
         }
-        if (!opts.quiet) std::print("   Uninstalled {}\n", packageName);
+        if (!opts.quiet) {
+            std::print("   Uninstalled {}\n", packageName);
+        }
         return 0;
     }
 
     const auto manifestPath = RequireManifest();
-    if (!manifestPath) return 1;
+    if (!manifestPath) {
+        return 1;
+    }
     auto manifest = LoadManifest(*manifestPath);
-    if (!manifest) return 1;
+    if (!manifest) {
+        return 1;
+    }
 
     std::vector<std::string> toRemove;
-    for (const auto& dep : manifest->EffectiveDependencies(HostTargetTriple()))
-        if (dep.path.empty()) toRemove.push_back(DependencyPackageName(dep));
+    for (const auto& dep :
+         manifest->EffectiveDependencies(HostTargetTriple())) {
+        if (dep.path.empty()) {
+            toRemove.push_back(DependencyPackageName(dep));
+        }
+    }
 
     if (toRemove.empty()) {
-        if (!opts.quiet) std::print("  No registry dependencies to uninstall.\n");
+        if (!opts.quiet) {
+            std::print("  No registry dependencies to uninstall.\n");
+        }
         return 0;
     }
 
@@ -247,19 +298,30 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
     for (const auto& pkgName : toRemove) {
         const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
         if (!std::filesystem::exists(pkgDir)) {
-            if (!opts.quiet) std::print("  Not installed {}\n", pkgName);
+            if (!opts.quiet) {
+                std::print("  Not installed {}\n", pkgName);
+            }
             ++notFound;
             continue;
         }
         std::error_code ec;
         std::filesystem::remove_all(pkgDir, ec);
         if (ec) {
-            std::print(stderr, "error: failed to remove '{}': {}\n", pkgDir.string(), ec.message());
+            std::print(stderr,
+                       "error: failed to remove '{}': {}\n",
+                       pkgDir.string(),
+                       ec.message());
             return 1;
         }
-        if (!opts.quiet) std::print("   Uninstalled {}\n", pkgName);
+        if (!opts.quiet) {
+            std::print("   Uninstalled {}\n", pkgName);
+        }
         ++removed;
     }
-    if (!opts.quiet) std::print("     Summary: {} uninstalled, {} not installed\n", removed, notFound);
+    if (!opts.quiet) {
+        std::print("     Summary: {} uninstalled, {} not installed\n",
+                   removed,
+                   notFound);
+    }
     return 0;
 }

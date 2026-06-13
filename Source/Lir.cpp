@@ -2320,8 +2320,7 @@ namespace Rux {
             return;
         }
         default: {
-            // Unary (one src), binary (two srcs), or zero-operand/global addr
-            // (zero srcs)
+            // Unary (one src), binary (two srcs), or zero-operand/global addr (zero srcs)
             std::string_view opName = OpcodeStr(i.op);
             if (i.srcs.size() == 1) {
                 out << std::format("{} = {} {} {}\n",
@@ -2329,16 +2328,14 @@ namespace Rux {
                                    opName,
                                    i.type.ToString(),
                                    RegStr(i.srcs[0]));
-            }
-            else if (i.srcs.size() >= 2) {
+            } else if (i.srcs.size() >= 2) {
                 out << std::format("{} = {} {} {}, {}\n",
                                    RegStr(i.dst),
                                    opName,
                                    i.type.ToString(),
                                    RegStr(i.srcs[0]),
                                    RegStr(i.srcs[1]));
-            }
-            else {
+            } else {
                 out << std::format("{} = {} {} {}\n",
                                    RegStr(i.dst),
                                    opName,

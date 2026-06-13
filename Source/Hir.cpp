@@ -530,11 +530,9 @@ namespace Rux {
                 for (std::size_t i = 0; i < content.size(); ++i) {
                     if (content[i] == '<' || content[i] == '(') {
                         depth++;
-                    }
-                    else if (content[i] == '>' || content[i] == ')') {
+                    } else if (content[i] == '>' || content[i] == ')') {
                         depth--;
-                    }
-                    else if (content[i] == ',' && depth == 0) {
+                    } else if (content[i] == ',' && depth == 0) {
                         elems.push_back(ParseTypeRefFromString(
                             content.substr(start, i - start)));
                         start = i + 1;
@@ -569,11 +567,9 @@ namespace Rux {
             for (std::size_t i = 0; i < content.size(); ++i) {
                 if (content[i] == '<' || content[i] == '(') {
                     depth++;
-                }
-                else if (content[i] == '>' || content[i] == ')') {
+                } else if (content[i] == '>' || content[i] == ')') {
                     depth--;
-                }
-                else if (content[i] == ',' && depth == 0) {
+                } else if (content[i] == ',' && depth == 0) {
                     args.push_back(ParseTypeRefFromString(
                         content.substr(start, i - start)));
                     start = i + 1;
@@ -1241,8 +1237,7 @@ namespace Rux {
             }
 
             std::unordered_map<std::string, TypeRef> substitutions;
-            std::vector<TypeRef> typeArgs =
-                ParseTypeArgsFromTypeName(objectType.name);
+            std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(objectType.name);
             const auto& params = structIt->second->typeParams;
             const std::size_t count = std::min(params.size(), typeArgs.size());
             for (std::size_t i = 0; i < count; ++i) {
@@ -1385,7 +1380,8 @@ namespace Rux {
                     if (argTypes[i].IsUnknown() || ft.inner[i].IsUnknown()) {
                         continue;
                     }
-                    if (!argTypes[i].IsAssignableTo(ft.inner[i])) {
+                    if (!argTypes[i].IsAssignableTo(ft.inner[i]) &&
+                        !(argTypes[i].IsInteger() && ft.inner[i].IsInteger())) {
                         return nullptr;
                     }
                 }
@@ -1430,7 +1426,8 @@ namespace Rux {
                             }
                             if (exactOnly
                                     ? !(argTypes[i] == paramType)
-                                    : !argTypes[i].IsAssignableTo(paramType)) {
+                                    : !(argTypes[i].IsAssignableTo(paramType) ||
+                                        (argTypes[i].IsInteger() && paramType.IsInteger()))) {
                                 match = false;
                                 break;
                             }
@@ -1557,7 +1554,8 @@ namespace Rux {
                     if (argTypes[i].IsUnknown() || paramType.IsUnknown()) {
                         continue;
                     }
-                    if (!argTypes[i].IsAssignableTo(paramType)) {
+                    if (!argTypes[i].IsAssignableTo(paramType) &&
+                        !(argTypes[i].IsInteger() && paramType.IsInteger())) {
                         return nullptr;
                     }
                 }
@@ -1575,7 +1573,8 @@ namespace Rux {
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
                     const TypeRef& paramType = ft.inner[i + 1];
                     if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
-                        !argTypes[i].IsAssignableTo(paramType)) {
+                        !argTypes[i].IsAssignableTo(paramType) &&
+                        !(argTypes[i].IsInteger() && paramType.IsInteger())) {
                         match = false;
                         break;
                     }
@@ -1686,7 +1685,6 @@ namespace Rux {
                     return SizeOfTypeRef(it->second, substitutions);
                 }
                 const std::string baseName = BaseTypeName(type.name);
-
                 std::unordered_map<std::string, TypeRef> localSubs =
                     substitutions;
                 const auto structIt = structDecls.find(baseName);
