@@ -1,0 +1,30 @@
+// Regression test for the phi parallel-copy swap bug.
+//
+// A loop that swaps two accumulators generates phi nodes of the form
+//   a_next = phi(a_init, b_cur)
+//   b_next = phi(b_init, t_cur)
+// where the live-in of each phi is also another phi's live-out — the
+// classic A←B / B←A cycle.  Sequential phi emission corrupts both values;
+// the parallel-copy resolver must break the cycle correctly.
+
+func FibLoop(n: int) -> int {
+    var a: int = 0;
+    var b: int = 1;
+    var i: int = 0;
+    while i < n {
+        let t: int = a + b;
+        a = b;
+        b = t;
+        i = i + 1;
+    }
+    return a;
+}
+
+func Main() -> int {
+    if FibLoop(0) != 0  { return 1; }
+    if FibLoop(1) != 1  { return 2; }
+    if FibLoop(5) != 5  { return 3; }
+    if FibLoop(10) != 55 { return 4; }
+    if FibLoop(15) != 610 { return 5; }
+    return 0;
+}
