@@ -438,6 +438,149 @@ namespace Rux {
             return pos == std::string::npos ? name : name.substr(0, pos);
         }
 
+        static TypeRef ParseTypeRefFromString(std::string str) {
+            auto trim = [](std::string& s) {
+                s.erase(0, s.find_first_not_of(" \t\r\n"));
+                s.erase(s.find_last_not_of(" \t\r\n") + 1);
+            };
+            trim(str);
+            if (str.empty()) {
+                return TypeRef::MakeUnknown();
+            }
+
+            if (str == "?") {
+                return TypeRef::MakeUnknown();
+            }
+            if (str == "opaque") {
+                return TypeRef::MakeOpaque();
+            }
+            if (str == "bool8" || str == "bool") {
+                return TypeRef::MakeBool8();
+            }
+            if (str == "bool16") {
+                return TypeRef::MakeBool16();
+            }
+            if (str == "bool32") {
+                return TypeRef::MakeBool32();
+            }
+            if (str == "char8") {
+                return TypeRef::MakeChar8();
+            }
+            if (str == "char16") {
+                return TypeRef::MakeChar16();
+            }
+            if (str == "char32" || str == "char") {
+                return TypeRef::MakeChar32();
+            }
+            if (str == "String") {
+                return TypeRef::MakeStr();
+            }
+            if (str == "int8") {
+                return TypeRef::MakeInt8();
+            }
+            if (str == "int16") {
+                return TypeRef::MakeInt16();
+            }
+            if (str == "int32") {
+                return TypeRef::MakeInt32();
+            }
+            if (str == "int64") {
+                return TypeRef::MakeInt64();
+            }
+            if (str == "int") {
+                return TypeRef::MakeInt();
+            }
+            if (str == "uint8") {
+                return TypeRef::MakeUInt8();
+            }
+            if (str == "uint16") {
+                return TypeRef::MakeUInt16();
+            }
+            if (str == "uint32") {
+                return TypeRef::MakeUInt32();
+            }
+            if (str == "uint64") {
+                return TypeRef::MakeUInt64();
+            }
+            if (str == "uint") {
+                return TypeRef::MakeUInt();
+            }
+            if (str == "float32") {
+                return TypeRef::MakeFloat32();
+            }
+            if (str == "float64" || str == "float") {
+                return TypeRef::MakeFloat64();
+            }
+
+            if (str[0] == '*') {
+                return TypeRef::MakePointer(
+                    ParseTypeRefFromString(str.substr(1)));
+            }
+
+            if (str.size() >= 2 && str.compare(str.size() - 2, 2, "[]") == 0) {
+                return TypeRef::MakeSlice(
+                    ParseTypeRefFromString(str.substr(0, str.size() - 2)));
+            }
+
+            if (str[0] == '(' && str.back() == ')') {
+                std::vector<TypeRef> elems;
+                std::string content = str.substr(1, str.size() - 2);
+                std::size_t start = 0;
+                int depth = 0;
+                for (std::size_t i = 0; i < content.size(); ++i) {
+                    if (content[i] == '<' || content[i] == '(') {
+                        depth++;
+                    } else if (content[i] == '>' || content[i] == ')') {
+                        depth--;
+                    } else if (content[i] == ',' && depth == 0) {
+                        elems.push_back(ParseTypeRefFromString(
+                            content.substr(start, i - start)));
+                        start = i + 1;
+                    }
+                }
+                if (start < content.size()) {
+                    elems.push_back(
+                        ParseTypeRefFromString(content.substr(start)));
+                }
+                return TypeRef::MakeTuple(elems);
+            }
+
+            if (str.rfind("Range<", 0) == 0 && str.back() == '>') {
+                return TypeRef::MakeRange(
+                    ParseTypeRefFromString(str.substr(6, str.size() - 7)));
+            }
+
+            return TypeRef::MakeNamed(str);
+        }
+
+        static std::vector<TypeRef>
+        ParseTypeArgsFromTypeName(const std::string& typeName) {
+            std::vector<TypeRef> args;
+            const std::size_t pos = typeName.find('<');
+            if (pos == std::string::npos || typeName.back() != '>') {
+                return args;
+            }
+            std::string content =
+                typeName.substr(pos + 1, typeName.size() - pos - 2);
+            std::size_t start = 0;
+            int depth = 0;
+            for (std::size_t i = 0; i < content.size(); ++i) {
+                if (content[i] == '<' || content[i] == '(') {
+                    depth++;
+                } else if (content[i] == '>' || content[i] == ')') {
+                    depth--;
+                } else if (content[i] == ',' && depth == 0) {
+                    args.push_back(ParseTypeRefFromString(
+                        content.substr(start, i - start)));
+                    start = i + 1;
+                }
+            }
+            if (start < content.size()) {
+                args.push_back(ParseTypeRefFromString(content.substr(start)));
+            }
+            return args;
+        }
+
         static std::uint64_t AlignUp(const std::uint64_t value,
                                      const std::uint64_t align) {
             return (value + align - 1) & ~(align - 1);
@@ -1093,8 +1236,20 @@ namespace Rux {
                 return TypeRef::MakeUnknown();
             }
 
+            std::unordered_map<std::string, TypeRef> substitutions;
+            std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(objectType.name);
+            const auto& params = structIt->second->typeParams;
+            const std::size_t count = std::min(params.size(), typeArgs.size());
+            for (std::size_t i = 0; i < count; ++i) {
+                substitutions.emplace(params[i], typeArgs[i]);
+            }
+
             for (const auto& field : structIt->second->fields) {
                 if (field.name == fieldName) {
+                    if (!substitutions.empty()) {
+                        return ResolveTypeWithSubstitution(*field.type,
+                                                           substitutions);
+                    }
                     return ResolveType(*field.type);
                 }
             }
@@ -1530,14 +1685,28 @@ namespace Rux {
                     return SizeOfTypeRef(it->second, substitutions);
                 }
                 const std::string baseName = BaseTypeName(type.name);
+                std::unordered_map<std::string, TypeRef> localSubs =
+                    substitutions;
+                const auto structIt = structDecls.find(baseName);
+                if (structIt != structDecls.end()) {
+                    std::vector<TypeRef> typeArgs =
+                        ParseTypeArgsFromTypeName(type.name);
+                    const auto& params = structIt->second->typeParams;
+                    const std::size_t count =
+                        std::min(params.size(), typeArgs.size());
+                    for (std::size_t i = 0; i < count; ++i) {
+                        localSubs[params[i]] = typeArgs[i];
+                    }
+                }
+
                 if (const auto enumIt = enumDecls.find(baseName);
                     enumIt != enumDecls.end()) {
-                    return SizeOfEnum(*enumIt->second, substitutions);
+                    return SizeOfEnum(*enumIt->second, localSubs);
                 }
                 if (interfaceDecls.contains(baseName)) {
                     return 16;
                 }
-                return SizeOfStruct(baseName, substitutions);
+                return SizeOfStruct(baseName, localSubs);
             }
 
             if (type.kind == TypeRef::Kind::Range) {
