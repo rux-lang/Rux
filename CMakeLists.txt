@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.31)
-project(Rux VERSION 0.3.0 LANGUAGES CXX)
+project(Rux VERSION 0.3.1 LANGUAGES CXX)
+
+include(CTest)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -7,16 +9,16 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if (MSVC)
     # Bypasses CMake feature tracking limits by directly enforcing MSVC's latest flag
     add_compile_options(/std:c++latest)
-else()
+else ()
     set(CMAKE_CXX_STANDARD 26)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
-endif()
+endif ()
 
 # Target libc++ specifically for Clang on Linux to support C++26 features like <print>
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT APPLE AND UNIX)
     add_compile_options(-stdlib=libc++)
     add_link_options(-stdlib=libc++)
-endif()
+endif ()
 
 string(TIMESTAMP RUX_BUILD_DATE "%Y-%m-%d")
 string(TIMESTAMP RUX_BUILD_TIME "%H:%M:%S")
@@ -30,7 +32,13 @@ configure_file(
 add_executable(rux
         Source/Main.cpp
         Source/Platform.cpp
-        Source/Cli.cpp
+        Source/Cli/Cli.cpp
+        Source/Cli/Commands/HelpCmd.cpp
+        Source/Cli/Commands/Base/BuildCmd.cpp
+        Source/Cli/Commands/Base/CheckCmd.cpp
+        Source/Cli/Commands/Base/InstallCmd.cpp
+        Source/Cli/Commands/Base/PackageCmd.cpp
+        Source/Cli/Commands/Base/UtilityCmd.cpp
         Source/Manifest.cpp
         Source/Package.cpp
         Source/Token.cpp
@@ -43,28 +51,12 @@ add_executable(rux
         Source/Asm.cpp
         Source/Rcu.cpp
         Source/Linker.cpp
-        Include/Rux/Platform/ABI.h
-        Include/Rux/Platform/Defines.h
-        Include/Rux/Platform/Host.h
-        Include/Rux/Platform/Platform.h
-        Include/Rux/Platform/Target.h
-        Include/Rux/Platform/Types.h
-        Include/Rux/Cli.h
-        Include/Rux/Manifest.h
-        Include/Rux/Package.h
-        Include/Rux/Token.h
-        Include/Rux/Lexer.h
-        Include/Rux/SourceLoader.h
-        Include/Rux/Ast.h
-        Include/Rux/Parser.h
-        Include/Rux/Type.h
-        Include/Rux/Sema.h
-        Include/Rux/Hir.h
-        Include/Rux/Lir.h
-        Include/Rux/Asm.h
-        Include/Rux/Rcu.h
-        Include/Rux/Linker.h
 )
+
+# GCC/MinGW: link experimental libstdc++ extensions (needed for <print> support in some builds)
+if (MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_libraries(rux PRIVATE stdc++exp)
+endif ()
 
 target_include_directories(rux PRIVATE
         Include
@@ -81,3 +73,7 @@ set_property(TARGET rux
 
 include(GNUInstallDirs)
 install(TARGETS rux RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+if (BUILD_TESTING)
+    add_subdirectory(Tests)
+endif ()

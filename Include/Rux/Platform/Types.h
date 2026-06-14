@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include <cstdint>
@@ -19,22 +22,64 @@ namespace Rux::Platform {
         NetBSD,
         DragonFlyBSD,
         Solaris,
-        Illumos
+        Illumos,
     };
 
-    enum class Arch : std::uint8_t { Unknown, X86_32, X86_64, ARM32, ARM64, RISCV32, RISCV64 };
-    enum class DataModel : std::uint8_t { Unknown, ILP32, LP64, LLP64 };
-    enum class ABI : std::uint8_t { Unknown, SystemV, WindowsX86, WindowsX64, AAPCS, AAPCS64, RISCV_ILP32, RISCV_LP64 };
-    enum class CallingConv : std::uint8_t { Default, C, SysV, Win64, StdCall, AAPCS, AAPCS64, RISCV };
-    enum class Compiler : std::uint8_t { Unknown, MSVC, Clang, GCC };
-    enum class BuildMode : std::uint8_t { Debug, Release };
-    enum class Endian : std::uint8_t { Little, Big };
-
+    enum class Arch : std::uint8_t {
+        Unknown,
+        X86_32,
+        X86_64,
+        ARM32,
+        ARM64,
+        RISCV32,
+        RISCV64,
+    };
+    enum class DataModel : std::uint8_t {
+        Unknown,
+        ILP32,
+        LP64,
+        LLP64,
+    };
+    enum class ABI : std::uint8_t {
+        Unknown,
+        SystemV,
+        WindowsX86,
+        WindowsX64,
+        AAPCS,
+        AAPCS64,
+        RISCV_ILP32,
+        RISCV_LP64,
+    };
+    enum class CallingConv : std::uint8_t {
+        Default,
+        C,
+        SysV,
+        Win64,
+        StdCall,
+        AAPCS,
+        AAPCS64,
+        RISCV,
+    };
+    enum class Compiler : std::uint8_t {
+        Unknown,
+        MSVC,
+        Clang,
+        GCC,
+    };
+    enum class BuildMode : std::uint8_t {
+        Debug,
+        Release,
+    };
+    enum class Endian : std::uint8_t {
+        Little,
+        Big,
+    };
 
     struct CpuFeatures {
         std::uint64_t mask{0};
 
         constexpr CpuFeatures() = default;
+
         constexpr explicit CpuFeatures(std::uint64_t m)
             : mask(m) {
         }
@@ -46,9 +91,11 @@ namespace Rux::Platform {
         constexpr CpuFeatures operator|(CpuFeatures other) const noexcept {
             return CpuFeatures(mask | other.mask);
         }
+
         constexpr CpuFeatures operator&(CpuFeatures other) const noexcept {
             return CpuFeatures(mask & other.mask);
         }
+
         constexpr CpuFeatures& operator|=(CpuFeatures other) noexcept {
             mask |= other.mask;
             return *this;

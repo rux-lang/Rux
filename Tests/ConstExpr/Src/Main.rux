@@ -1,0 +1,27 @@
+// Verifies that constant integer EXPRESSIONS (not just bare literals) coerce to
+// a sized integer type when their folded value fits, e.g. the documented
+// `10 + 2 * (5 - 3)` as int32. Before the fix only a bare literal coerced, so a
+// literal arithmetic expression assigned to a sized int was rejected with
+// "cannot assign 'int' to 'int32'".
+
+func Main() -> int {
+    let a: int32 = 10 + 2 * (5 - 3);
+    if a != 14 { return 1; }
+
+    let b: int8 = 100 + 27;
+    if b != 127 { return 2; }
+
+    let c: uint8 = 200 + 55;
+    if c != 255 { return 3; }
+
+    let d: int16 = 1 << 10;
+    if d != 1024 { return 4; }
+
+    let e: uint8 = 0xF0 | 0x0F;
+    if e != 255 { return 5; }
+
+    let f: int32 = (3 + 4) * (10 - 2);
+    if f != 56 { return 6; }
+
+    return 0;
+}

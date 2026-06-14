@@ -1,3 +1,6 @@
+// Copyright (c) Rux contributors.
+// SPDX-License-Identifier: MIT
+
 #include "Rux/Lexer.h"
 
 #include <cassert>
@@ -8,20 +11,84 @@
 #include <sstream>
 
 namespace Rux {
+    static std::optional<std::uint32_t>
+    DecodeUtf8CodePoint(std::string_view text) {
+        if (text.empty()) {
+            return std::nullopt;
+        }
+
+        const auto continuation =
+            [&](std::size_t index) -> std::optional<std::uint32_t> {
+            if (index >= text.size()) {
+                return std::nullopt;
+            }
+            const auto byte = static_cast<unsigned char>(text[index]);
+            if ((byte & 0xC0) != 0x80) {
+                return std::nullopt;
+            }
+            return static_cast<std::uint32_t>(byte & 0x3F);
+        };
+
+        const auto b0 = static_cast<unsigned char>(text[0]);
+        std::uint32_t codePoint = 0;
+        std::size_t width = 0;
+        std::uint32_t minValue = 0;
+        if (b0 <= 0x7F) {
+            codePoint = b0;
+            width = 1;
+            minValue = 0;
+        }
+        else if ((b0 & 0xE0) == 0xC0) {
+            codePoint = b0 & 0x1F;
+            width = 2;
+            minValue = 0x80;
+        }
+        else if ((b0 & 0xF0) == 0xE0) {
+            codePoint = b0 & 0x0F;
+            width = 3;
+            minValue = 0x800;
+        }
+        else if ((b0 & 0xF8) == 0xF0) {
+            codePoint = b0 & 0x07;
+            width = 4;
+            minValue = 0x10000;
+        }
+        else {
+            return std::nullopt;
+        }
+
+        if (text.size() != width) {
+            return std::nullopt;
+        }
+        for (std::size_t i = 1; i < width; ++i) {
+            const auto byte = continuation(i);
+            if (!byte) {
+                return std::nullopt;
+            }
+            codePoint = (codePoint << 6) | *byte;
+        }
+        if (codePoint < minValue || codePoint > 0x10FFFF) {
+            return std::nullopt;
+        }
+        return codePoint;
+    }
+
     bool LexerResult::HasErrors() const noexcept {
         for (const auto& d : diagnostics) {
-            if (d.severity == LexerDiagnostic::Severity::Error) return true;
+            if (d.severity == LexerDiagnostic::Severity::Error) {
+                return true;
+            }
         }
         return false;
     }
-
 
     Lexer::Lexer(std::string source, std::string sourceName)
         : source(std::move(source))
         , sourceName(std::move(sourceName)) {
     }
 
-    std::optional<LexerResult> Lexer::FromFile(const std::filesystem::path& path) {
+    std::optional<LexerResult>
+    Lexer::FromFile(const std::filesystem::path& path) {
         std::ifstream f(path, std::ios::binary);
         if (!f) {
             std::print(stderr, "error: cannot open '{}'\n", path.string());
@@ -49,9 +116,12 @@ namespace Rux {
         return LexerResult{std::move(tokens), std::move(diagnostics)};
     }
 
-    bool Lexer::DumpTokens(const LexerResult& result, const std::filesystem::path& path) {
+    bool Lexer::DumpTokens(const LexerResult& result,
+                           const std::filesystem::path& path) {
         std::ofstream f(path);
-        if (!f) return false;
+        if (!f) {
+            return false;
+        }
         for (const auto& tok : result.tokens) {
             std::print(f,
                        "{:>4}:{:<4}  {:<16}  {}\n",
@@ -67,20 +137,96 @@ namespace Rux {
                            "{:>4}:{:<4}  {}  {}\n",
                            d.location.line,
                            d.location.column,
-                           d.severity == LexerDiagnostic::Severity::Error ? "error  " : "warning",
+                           d.severity == LexerDiagnostic::Severity::Error
+                               ? "error  "
+                               : "warning",
                            d.message);
             }
         }
         return f.good();
     }
 
+    std::optional<std::uint32_t>
+    Lexer::DecodeCharLiteralCodePoint(std::string_view text) {
+        const std::size_t quote = text.find('\'');
+        if (quote == std::string::npos || text.size() < quote + 3) {
+            return std::nullopt;
+        }
+
+        std::string_view body(text);
+        body.remove_prefix(quote + 1);
+        body.remove_suffix(1);
+        if (body.empty()) {
+            return std::nullopt;
+        }
+
+        if (body[0] == '\\') {
+            if (body == "\\n") {
+                return static_cast<std::uint32_t>('\n');
+            }
+            if (body == "\\t") {
+                return static_cast<std::uint32_t>('\t');
+            }
+            if (body == "\\r") {
+                return static_cast<std::uint32_t>('\r');
+            }
+            if (body == "\\0") {
+                return static_cast<std::uint32_t>('\0');
+            }
+            if (body == "\\\\") {
+                return static_cast<std::uint32_t>('\\');
+            }
+            if (body == "\\'") {
+                return static_cast<std::uint32_t>('\'');
+            }
+            if (body == "\\\"") {
+                return static_cast<std::uint32_t>('\"');
+            }
+            if (body.starts_with("\\u{") && body.ends_with("}")) {
+                const std::string_view digits = body.substr(3, body.size() - 4);
+                if (digits.empty() || digits.size() > 8) {
+                    return std::nullopt;
+                }
+                std::uint32_t codePoint = 0;
+                for (const char digit : digits) {
+                    codePoint <<= 4;
+                    if (digit >= '0' && digit <= '9') {
+                        codePoint |= static_cast<std::uint32_t>(digit - '0');
+                    }
+                    else if (digit >= 'a' && digit <= 'f') {
+                        codePoint |=
+                            static_cast<std::uint32_t>(digit - 'a' + 10);
+                    }
+                    else if (digit >= 'A' && digit <= 'F') {
+                        codePoint |=
+                            static_cast<std::uint32_t>(digit - 'A' + 10);
+                    }
+                    else {
+                        return std::nullopt;
+                    }
+                }
+                if (codePoint > 0x10FFFF) {
+                    return std::nullopt;
+                }
+                return codePoint;
+            }
+            return std::nullopt;
+        }
+
+        return DecodeUtf8CodePoint(body);
+    }
+
     void Lexer::ScanAll() {
         while (!IsAtEnd()) {
             SkipWhitespace();
-            if (IsAtEnd()) break;
+            if (IsAtEnd()) {
+                break;
+            }
 
-            if (Token tok = NextToken(); tok.kind != TokenKind::Unknown || !tok.text.empty())
+            if (Token tok = NextToken();
+                tok.kind != TokenKind::Unknown || !tok.text.empty()) {
                 tokens.push_back(std::move(tok));
+            }
         }
     }
 
@@ -90,21 +236,41 @@ namespace Rux {
         const char c = Peek();
         // Prefixed string literals
         if (c == 'c') {
-            if (Peek(1) == '8' && Peek(2) == '"') return ScanString(start, 2);
-            if (Peek(1) == '8' && Peek(2) == '\'') return ScanChar(start, 2);
-            if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '"') return ScanString(start, 3);
-            if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '\'') return ScanChar(start, 3);
-            if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '"') return ScanString(start, 3);
-            if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '\'') return ScanChar(start, 3);
+            if (Peek(1) == '8' && Peek(2) == '"') {
+                return ScanString(start, 2);
+            }
+            if (Peek(1) == '8' && Peek(2) == '\'') {
+                return ScanChar(start, 2);
+            }
+            if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '"') {
+                return ScanString(start, 3);
+            }
+            if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '\'') {
+                return ScanChar(start, 3);
+            }
+            if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '"') {
+                return ScanString(start, 3);
+            }
+            if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '\'') {
+                return ScanChar(start, 3);
+            }
         }
         // Identifiers / keywords
-        if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') return ScanIdent(start);
+        if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
+            return ScanIdent(start);
+        }
         // Numeric literals
-        if (std::isdigit(static_cast<unsigned char>(c))) return ScanNumber(start);
+        if (std::isdigit(static_cast<unsigned char>(c))) {
+            return ScanNumber(start);
+        }
         // String literals
-        if (c == '"') return ScanString(start);
+        if (c == '"') {
+            return ScanString(start);
+        }
         // Char literals
-        if (c == '\'') return ScanChar(start);
+        if (c == '\'') {
+            return ScanChar(start);
+        }
         // Operators, punctuation, and everything else
         return ScanSymbol(start);
     }
@@ -132,7 +298,9 @@ namespace Rux {
     }
 
     void Lexer::AdvanceUtf8CodePoint() noexcept {
-        if (IsAtEnd()) return;
+        if (IsAtEnd()) {
+            return;
+        }
 
         const auto lead = static_cast<unsigned char>(Peek());
         std::size_t byteCount = 1;
@@ -149,22 +317,31 @@ namespace Rux {
             byteCount = 4;
         }
 
-        for (std::size_t i = 0; i < byteCount && !IsAtEnd(); ++i)
+        for (std::size_t i = 0; i < byteCount && !IsAtEnd(); ++i) {
             Advance();
+        }
     }
 
     bool Lexer::Match(char expected) noexcept {
-        if (IsAtEnd() || source[pos] != expected) return false;
+        if (IsAtEnd() || source[pos] != expected) {
+            return false;
+        }
         Advance();
         return true;
     }
 
     bool Lexer::MatchStr(std::string_view s) noexcept {
-        if (pos + s.size() > source.size()) return false;
-        for (std::size_t i = 0; i < s.size(); ++i)
-            if (source[pos + i] != s[i]) return false;
-        for (std::size_t i = 0; i < s.size(); ++i)
+        if (pos + s.size() > source.size()) {
+            return false;
+        }
+        for (std::size_t i = 0; i < s.size(); ++i) {
+            if (source[pos + i] != s[i]) {
+                return false;
+            }
+        }
+        for (std::size_t i = 0; i < s.size(); ++i) {
             Advance();
+        }
         return true;
     }
 
@@ -181,7 +358,8 @@ namespace Rux {
                 Advance();
                 continue;
             }
-            // Newlines – skip (emit Newline token here if your grammar needs them)
+            // Newlines – skip (emit Newline token here if your grammar needs
+            // them)
             if (c == '\n') {
                 Advance();
                 continue;
@@ -201,9 +379,12 @@ namespace Rux {
     }
 
     void Lexer::SkipLineComment() {
-        while (!IsAtEnd() && Peek() != '\n')
+        while (!IsAtEnd() && Peek() != '\n') {
             Advance();
-        if (!IsAtEnd()) Advance(); // consume the newline so the line counter advances
+        }
+        if (!IsAtEnd()) {
+            Advance(); // consume the newline so the line counter advances
+        }
     }
 
     void Lexer::SkipBlockComment() {
@@ -226,14 +407,18 @@ namespace Rux {
                 Advance();
             }
         }
-        if (depth > 0) EmitError(CurrentLocation(), "unterminated block comment");
+        if (depth > 0) {
+            EmitError(CurrentLocation(), "unterminated block comment");
+        }
     }
 
     Token Lexer::ScanIdent(SourceLocation start) {
         const std::size_t tokenStart = pos;
         while (!IsAtEnd()) {
             const char c = Peek();
-            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') break;
+            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+                break;
+            }
             Advance();
         }
         std::string text = source.substr(tokenStart, pos - tokenStart);
@@ -263,12 +448,16 @@ namespace Rux {
             }
         }
         // Decimal integer digits
-        while (!IsAtEnd() && std::isdigit(static_cast<unsigned char>(Peek())))
+        while (!IsAtEnd() && std::isdigit(static_cast<unsigned char>(Peek()))) {
             Advance();
+        }
         // Check for floating-point  .  or  e/E
-        const bool hasDot = Peek() == '.' && std::isdigit(static_cast<unsigned char>(Peek(1)));
+        const bool hasDot =
+            Peek() == '.' && std::isdigit(static_cast<unsigned char>(Peek(1)));
         const bool hasExp = (Peek() == 'e' || Peek() == 'E');
-        if (hasDot || hasExp) return ScanFloatSuffix(start, tokenStart);
+        if (hasDot || hasExp) {
+            return ScanFloatSuffix(start, tokenStart);
+        }
         ConsumeNumberSuffix();
         return MakeToken(TokenKind::IntLiteral, start, tokenStart);
     }
@@ -276,36 +465,51 @@ namespace Rux {
     Token Lexer::ScanIntLiteral(SourceLocation start, std::size_t tokenStart) {
         // Detect base from prefix (set in ScanNumber before calling this).
         // 0x/0X -> 16, 0b/0B -> 2, 0o/0O -> 8, else 10.
-        const std::string_view text(source.data() + tokenStart, pos - tokenStart);
+        const std::string_view text(source.data() + tokenStart,
+                                    pos - tokenStart);
         int base = 10;
         if (text.size() >= 2 && text[0] == '0') {
             const char prefix = text[1];
-            if (prefix == 'x' || prefix == 'X')
+            if (prefix == 'x' || prefix == 'X') {
                 base = 16;
-            else if (prefix == 'b' || prefix == 'B')
+            }
+            else if (prefix == 'b' || prefix == 'B') {
                 base = 2;
-            else if (prefix == 'o' || prefix == 'O')
+            }
+            else if (prefix == 'o' || prefix == 'O') {
                 base = 8;
+            }
         }
 
-        // Consume the valid base digits (and '_' separators), stopping at the first
-        // character that is not a digit for this base so a type suffix (e.g. 0xFFu)
-        // can follow, exactly like the decimal literal path in ScanNumber.
+        // Consume the valid base digits (and '_' separators), stopping at the
+        // first character that is not a digit for this base so a type suffix
+        // (e.g. 0xFFu) can follow, exactly like the decimal literal path in
+        // ScanNumber.
         std::size_t digitCount = 0;
         while (!IsAtEnd()) {
             const char c = Peek();
             bool valid = false;
-            if (c >= '0' && c <= '9')
+            if (c >= '0' && c <= '9') {
                 valid = c - '0' < base;
-            else if (base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+            }
+            else if (base == 16 &&
+                     ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
                 valid = true;
-            else if (c == '_')
+            }
+            else if (c == '_') {
                 valid = true;
-            if (!valid) break;
-            if (c != '_') ++digitCount;
+            }
+            if (!valid) {
+                break;
+            }
+            if (c != '_') {
+                ++digitCount;
+            }
             Advance();
         }
-        if (digitCount == 0) EmitError(start, "expected digits after base prefix");
+        if (digitCount == 0) {
+            EmitError(start, "expected digits after base prefix");
+        }
         ConsumeNumberSuffix();
         return MakeToken(TokenKind::IntLiteral, start, tokenStart);
     }
@@ -314,19 +518,25 @@ namespace Rux {
         // Fractional part
         if (Peek() == '.') {
             Advance(); // consume  .
-            while (!IsAtEnd() && std::isdigit(static_cast<unsigned char>(Peek())))
+            while (!IsAtEnd() &&
+                   std::isdigit(static_cast<unsigned char>(Peek()))) {
                 Advance();
+            }
         }
         // Exponent part  e[+-]digits
         if (Peek() == 'e' || Peek() == 'E') {
             Advance();
-            if (Peek() == '+' || Peek() == '-') Advance();
+            if (Peek() == '+' || Peek() == '-') {
+                Advance();
+            }
             if (!std::isdigit(static_cast<unsigned char>(Peek()))) {
                 EmitError(start, "expected digits after exponent");
             }
             else {
-                while (!IsAtEnd() && std::isdigit(static_cast<unsigned char>(Peek())))
+                while (!IsAtEnd() &&
+                       std::isdigit(static_cast<unsigned char>(Peek()))) {
                     Advance();
+                }
             }
         }
         ConsumeNumberSuffix();
@@ -334,17 +544,23 @@ namespace Rux {
     }
 
     void Lexer::ConsumeNumberSuffix() {
-        if (!std::isalpha(static_cast<unsigned char>(Peek()))) return;
+        if (!std::isalpha(static_cast<unsigned char>(Peek()))) {
+            return;
+        }
         while (!IsAtEnd()) {
-            if (const char c = Peek(); !std::isalnum(static_cast<unsigned char>(c)) && c != '_') break;
+            if (const char c = Peek();
+                !std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+                break;
+            }
             Advance();
         }
     }
 
     Token Lexer::ScanString(SourceLocation start, std::size_t prefixLen) {
         const std::size_t tokenStart = pos;
-        for (std::size_t i = 0; i < prefixLen; ++i)
+        for (std::size_t i = 0; i < prefixLen; ++i) {
             Advance();
+        }
         Advance(); // consume opening  "
         std::string value;
         while (!IsAtEnd() && Peek() != '"') {
@@ -360,20 +576,25 @@ namespace Rux {
             }
         }
 
-        if (IsAtEnd())
+        if (IsAtEnd()) {
             EmitError(start, "unterminated string literal");
-        else
+        }
+        else {
             Advance(); // consume closing  "
+        }
 
         // token text preserves the original source spelling (including quotes)
-        return Token{TokenKind::StringLiteral, source.substr(tokenStart, pos - tokenStart), start};
+        return Token{TokenKind::StringLiteral,
+                     source.substr(tokenStart, pos - tokenStart),
+                     start};
     }
 
     // ScanChar
     Token Lexer::ScanChar(SourceLocation start, std::size_t prefixLen) {
         const std::size_t tokenStart = pos;
-        for (std::size_t i = 0; i < prefixLen; ++i)
+        for (std::size_t i = 0; i < prefixLen; ++i) {
             Advance();
+        }
         Advance(); // consume opening  '
         if (IsAtEnd() || Peek() == '\'') {
             EmitError(start, "empty character literal");
@@ -384,8 +605,12 @@ namespace Rux {
         else {
             AdvanceUtf8CodePoint();
         }
-        if (!Match('\'')) EmitError(start, "unterminated character literal");
-        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
+        if (!Match('\'')) {
+            EmitError(start, "unterminated character literal");
+        }
+        return Token{TokenKind::CharLiteral,
+                     source.substr(tokenStart, pos - tokenStart),
+                     start};
     }
 
     // ScanEscapeSequence (shared by string and char scanners)
@@ -424,19 +649,26 @@ namespace Rux {
             while (!IsAtEnd() && Peek() != '}') {
                 const char h = Advance();
                 int val = -1;
-                if (h >= '0' && h <= '9')
+                if (h >= '0' && h <= '9') {
                     val = h - '0';
-                else if (h >= 'a' && h <= 'f')
+                }
+                else if (h >= 'a' && h <= 'f') {
                     val = h - 'a' + 10;
-                else if (h >= 'A' && h <= 'F')
+                }
+                else if (h >= 'A' && h <= 'F') {
                     val = h - 'A' + 10;
+                }
                 else {
-                    EmitError(loc, std::string("invalid hex digit '") + h + "' in Unicode escape");
+                    EmitError(loc,
+                              std::string("invalid hex digit '") + h +
+                                  "' in Unicode escape");
                     return {};
                 }
                 // Limit to 8 hex digits (32-bit codepoint max)
                 if (digits >= 8) {
-                    EmitError(loc, "Unicode codepoint value too large (max 8 hex digits)");
+                    EmitError(
+                        loc,
+                        "Unicode codepoint value too large (max 8 hex digits)");
                     return {};
                 }
                 codepoint = (codepoint << 4) | val;
@@ -447,7 +679,8 @@ namespace Rux {
                 return {};
             }
             if (codepoint > 0x10FFFF) {
-                EmitError(loc, "Unicode codepoint value out of range (max 0x10FFFF)");
+                EmitError(
+                    loc, "Unicode codepoint value out of range (max 0x10FFFF)");
                 return {};
             }
             // Encode as UTF-8
@@ -473,7 +706,8 @@ namespace Rux {
             return result;
         }
         default:
-            EmitError(loc, std::string("unknown escape sequence '\\") + c + "'");
+            EmitError(loc,
+                      std::string("unknown escape sequence '\\") + c + "'");
             return {};
         }
     }
@@ -502,22 +736,44 @@ namespace Rux {
         case '@':
             return MakeToken(TokenKind::At, start, tokenStart);
         case '#': {
-            auto isIdentChar = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+            auto isIdentChar = [](char c) {
+                return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+            };
             auto tryMatch = [&](std::string_view kw) -> bool {
-                for (std::size_t i = 0; i < kw.size(); ++i)
-                    if (Peek(i) != kw[i]) return false;
-                if (isIdentChar(Peek(kw.size()))) return false;
-                for (std::size_t i = 0; i < kw.size(); ++i)
+                for (std::size_t i = 0; i < kw.size(); ++i) {
+                    if (Peek(i) != kw[i]) {
+                        return false;
+                    }
+                }
+                if (isIdentChar(Peek(kw.size()))) {
+                    return false;
+                }
+                for (std::size_t i = 0; i < kw.size(); ++i) {
                     Advance();
+                }
                 return true;
             };
-            if (tryMatch("line")) return MakeToken(TokenKind::HashLine, start, tokenStart);
-            if (tryMatch("column")) return MakeToken(TokenKind::HashColumn, start, tokenStart);
-            if (tryMatch("file")) return MakeToken(TokenKind::HashFile, start, tokenStart);
-            if (tryMatch("function")) return MakeToken(TokenKind::HashFunction, start, tokenStart);
-            if (tryMatch("date")) return MakeToken(TokenKind::HashDate, start, tokenStart);
-            if (tryMatch("time")) return MakeToken(TokenKind::HashTime, start, tokenStart);
-            if (tryMatch("module")) return MakeToken(TokenKind::HashModule, start, tokenStart);
+            if (tryMatch("line")) {
+                return MakeToken(TokenKind::HashLine, start, tokenStart);
+            }
+            if (tryMatch("column")) {
+                return MakeToken(TokenKind::HashColumn, start, tokenStart);
+            }
+            if (tryMatch("file")) {
+                return MakeToken(TokenKind::HashFile, start, tokenStart);
+            }
+            if (tryMatch("function")) {
+                return MakeToken(TokenKind::HashFunction, start, tokenStart);
+            }
+            if (tryMatch("date")) {
+                return MakeToken(TokenKind::HashDate, start, tokenStart);
+            }
+            if (tryMatch("time")) {
+                return MakeToken(TokenKind::HashTime, start, tokenStart);
+            }
+            if (tryMatch("module")) {
+                return MakeToken(TokenKind::HashModule, start, tokenStart);
+            }
             return MakeToken(TokenKind::Hash, start, tokenStart);
         }
         case '?':
@@ -526,81 +782,136 @@ namespace Rux {
             return MakeToken(TokenKind::Tilde, start, tokenStart);
         // :  or  ::
         case ':':
-            return MakeToken(Match(':') ? TokenKind::ColonColon : TokenKind::Colon, start, tokenStart);
+            return MakeToken(Match(':') ? TokenKind::ColonColon
+                                        : TokenKind::Colon,
+                             start,
+                             tokenStart);
         // .  or  ..  or  ...  or  ..=
         case '.':
             if (Match('.')) {
-                if (Match('.')) return MakeToken(TokenKind::DotDotDot, start, tokenStart);
-                if (Match('=')) return MakeToken(TokenKind::DotDotEqual, start, tokenStart);
+                if (Match('.')) {
+                    return MakeToken(TokenKind::DotDotDot, start, tokenStart);
+                }
+                if (Match('=')) {
+                    return MakeToken(TokenKind::DotDotEqual, start, tokenStart);
+                }
                 return MakeToken(TokenKind::DotDot, start, tokenStart);
             }
             return MakeToken(TokenKind::Dot, start, tokenStart);
 
         // +  or  ++  or  +=
         case '+':
-            if (Match('+')) return MakeToken(TokenKind::PlusPlus, start, tokenStart);
-            return MakeToken(Match('=') ? TokenKind::PlusAssign : TokenKind::Plus, start, tokenStart);
+            if (Match('+')) {
+                return MakeToken(TokenKind::PlusPlus, start, tokenStart);
+            }
+            return MakeToken(Match('=') ? TokenKind::PlusAssign
+                                        : TokenKind::Plus,
+                             start,
+                             tokenStart);
 
         // -  or  --  or  -=  or  ->
         case '-':
-            if (Match('-')) return MakeToken(TokenKind::MinusMinus, start, tokenStart);
-            if (Match('>')) return MakeToken(TokenKind::Arrow, start, tokenStart);
-            if (Match('=')) return MakeToken(TokenKind::MinusAssign, start, tokenStart);
+            if (Match('-')) {
+                return MakeToken(TokenKind::MinusMinus, start, tokenStart);
+            }
+            if (Match('>')) {
+                return MakeToken(TokenKind::Arrow, start, tokenStart);
+            }
+            if (Match('=')) {
+                return MakeToken(TokenKind::MinusAssign, start, tokenStart);
+            }
             return MakeToken(TokenKind::Minus, start, tokenStart);
 
         // *  or  *=  or  **
         case '*':
-            if (Match('=')) return MakeToken(TokenKind::StarAssign, start, tokenStart);
+            if (Match('=')) {
+                return MakeToken(TokenKind::StarAssign, start, tokenStart);
+            }
             return MakeToken(TokenKind::Star, start, tokenStart);
 
         // /  or  /=   (comments already consumed in SkipWhitespace)
         case '/':
-            return MakeToken(Match('=') ? TokenKind::SlashAssign : TokenKind::Slash, start, tokenStart);
+            return MakeToken(Match('=') ? TokenKind::SlashAssign
+                                        : TokenKind::Slash,
+                             start,
+                             tokenStart);
 
         // %  or  %=
         case '%':
-            return MakeToken(Match('=') ? TokenKind::PercentAssign : TokenKind::Percent, start, tokenStart);
+            return MakeToken(Match('=') ? TokenKind::PercentAssign
+                                        : TokenKind::Percent,
+                             start,
+                             tokenStart);
 
         // &  or  &=  or  &&
         case '&':
-            if (Match('&')) return MakeToken(TokenKind::AmpAmp, start, tokenStart);
-            if (Match('=')) return MakeToken(TokenKind::AmpAssign, start, tokenStart);
+            if (Match('&')) {
+                return MakeToken(TokenKind::AmpAmp, start, tokenStart);
+            }
+            if (Match('=')) {
+                return MakeToken(TokenKind::AmpAssign, start, tokenStart);
+            }
             return MakeToken(TokenKind::Amp, start, tokenStart);
 
         // |  or  |=  or  ||
         case '|':
-            if (Match('|')) return MakeToken(TokenKind::PipePipe, start, tokenStart);
-            if (Match('=')) return MakeToken(TokenKind::PipeAssign, start, tokenStart);
+            if (Match('|')) {
+                return MakeToken(TokenKind::PipePipe, start, tokenStart);
+            }
+            if (Match('=')) {
+                return MakeToken(TokenKind::PipeAssign, start, tokenStart);
+            }
             return MakeToken(TokenKind::Pipe, start, tokenStart);
 
         // ^  or  ^=
         case '^':
-            return MakeToken(Match('=') ? TokenKind::CaretAssign : TokenKind::Caret, start, tokenStart);
+            return MakeToken(Match('=') ? TokenKind::CaretAssign
+                                        : TokenKind::Caret,
+                             start,
+                             tokenStart);
 
         // !  or  !=
         case '!':
-            return MakeToken(Match('=') ? TokenKind::BangEqual : TokenKind::Bang, start, tokenStart);
+            return MakeToken(Match('=') ? TokenKind::BangEqual
+                                        : TokenKind::Bang,
+                             start,
+                             tokenStart);
 
         // =  or  ==  or  =>
         case '=':
-            if (Match('=')) return MakeToken(TokenKind::Equal, start, tokenStart);
-            if (Match('>')) return MakeToken(TokenKind::FatArrow, start, tokenStart);
+            if (Match('=')) {
+                return MakeToken(TokenKind::Equal, start, tokenStart);
+            }
+            if (Match('>')) {
+                return MakeToken(TokenKind::FatArrow, start, tokenStart);
+            }
             return MakeToken(TokenKind::Assign, start, tokenStart);
 
         // <  or  <=  or  <<=  or  <<
         case '<':
             if (Match('<')) {
-                return MakeToken(Match('=') ? TokenKind::LessLessAssign : TokenKind::LessLess, start, tokenStart);
+                return MakeToken(Match('=') ? TokenKind::LessLessAssign
+                                            : TokenKind::LessLess,
+                                 start,
+                                 tokenStart);
             }
-            return MakeToken(Match('=') ? TokenKind::LessEqual : TokenKind::Less, start, tokenStart);
+            return MakeToken(Match('=') ? TokenKind::LessEqual
+                                        : TokenKind::Less,
+                             start,
+                             tokenStart);
 
         // >  or  >=  or  >>=  or  >>
         case '>':
             if (Match('>')) {
-                return MakeToken(
-                    Match('=') ? TokenKind::GreaterGreaterAssign : TokenKind::GreaterGreater, start, tokenStart);
+                return MakeToken(Match('=') ? TokenKind::GreaterGreaterAssign
+                                            : TokenKind::GreaterGreater,
+                                 start,
+                                 tokenStart);
             }
-            return MakeToken(Match('=') ? TokenKind::GreaterEqual : TokenKind::Greater, start, tokenStart);
+            return MakeToken(Match('=') ? TokenKind::GreaterEqual
+                                        : TokenKind::Greater,
+                             start,
+                             tokenStart);
 
         default:
             return ScanUnknown(start);
@@ -608,20 +919,27 @@ namespace Rux {
     }
 
     Token Lexer::ScanUnknown(const SourceLocation start) {
-        const std::size_t tokenStart = pos - 1; // already advanced past the char
-        EmitError(start, std::string("unexpected character '") + source[tokenStart] + "'");
+        const std::size_t tokenStart =
+            pos - 1; // already advanced past the char
+        EmitError(start,
+                  std::string("unexpected character '") + source[tokenStart] +
+                      "'");
         return Token{TokenKind::Unknown, source.substr(tokenStart, 1), start};
     }
 
-    Token Lexer::MakeToken(const TokenKind kind, const SourceLocation start, const std::size_t tokenStart) const {
+    Token Lexer::MakeToken(const TokenKind kind,
+                           const SourceLocation start,
+                           const std::size_t tokenStart) const {
         return Token{kind, source.substr(tokenStart, pos - tokenStart), start};
     }
 
     void Lexer::EmitError(const SourceLocation loc, std::string message) {
-        diagnostics.push_back(LexerDiagnostic{LexerDiagnostic::Severity::Error, loc, std::move(message)});
+        diagnostics.push_back(LexerDiagnostic{
+            LexerDiagnostic::Severity::Error, loc, std::move(message)});
     }
 
     void Lexer::EmitWarning(const SourceLocation loc, std::string message) {
-        diagnostics.push_back(LexerDiagnostic{LexerDiagnostic::Severity::Warning, loc, std::move(message)});
+        diagnostics.push_back(LexerDiagnostic{
+            LexerDiagnostic::Severity::Warning, loc, std::move(message)});
     }
 } // namespace Rux
