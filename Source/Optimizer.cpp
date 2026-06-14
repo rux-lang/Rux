@@ -195,7 +195,7 @@ namespace Rux {
                 return true;
             case TokenKind::PipePipe:
                 expr = MakeBoolLiteral(lhs || rhs, bin->type);
-                return true;            
+                return true;
             default:
                 return false;
             }
