@@ -63,7 +63,12 @@ namespace Rux {
         if (auto* bin = dynamic_cast<HirBinaryExpr*>(expr.get())) {
             OptimizeExpr(bin->left);
             OptimizeExpr(bin->right);
-            FoldBinary(expr);
+            
+            if (FoldBinary(expr)) {
+                return;
+            }
+
+            SimplifyBinary(expr);
         }
         else if (auto* unary = dynamic_cast<HirUnaryExpr*>(expr.get())) {
             OptimizeExpr(unary->operand);
@@ -90,7 +95,6 @@ namespace Rux {
     }
 
     bool Optimizer::GetBoolLiteral(const HirExpr* expr) {
-        std::print("Called GetBoolLiteral");
         const auto* lit = dynamic_cast<const HirLiteralExpr*>(expr);
         if (!lit) {
             return false;
@@ -191,7 +195,7 @@ namespace Rux {
                 return true;
             case TokenKind::PipePipe:
                 expr = MakeBoolLiteral(lhs || rhs, bin->type);
-                return true;
+                return true;            
             default:
                 return false;
             }
@@ -218,7 +222,7 @@ namespace Rux {
                 return true;
             case TokenKind::Tilde:
                 expr = MakeIntegerLiteral(~value, unary->type);
-                return true;
+                return true;    
             default:
                 return false;
             }
@@ -234,6 +238,88 @@ namespace Rux {
             default:
                 return false;
             }
+        }
+
+        return false;
+    }
+
+    bool Optimizer::SimplifyBinary(HirExprPtr& expr) {
+        auto* bin = dynamic_cast<HirBinaryExpr*>(expr.get());
+        if (!bin) {
+            return false;
+        }
+
+        switch (bin->op) {
+        case TokenKind::Plus:
+            if (IsIntegerLiteral(bin->left.get()) &&
+                GetIntegerLiteral(bin->left.get()) == 0) {
+                expr = std::move(bin->right);
+                return true;
+            }
+
+            if (IsIntegerLiteral(bin->right.get()) &&
+                GetIntegerLiteral(bin->right.get()) == 0) {
+                expr = std::move(bin->left);
+                return true;
+            }
+            break;
+
+        case TokenKind::Minus:
+            if (IsIntegerLiteral(bin->right.get()) &&
+                GetIntegerLiteral(bin->right.get()) == 0) {
+                expr = std::move(bin->left);
+                return true;
+            }
+            break;
+
+        case TokenKind::Star:
+            if (IsIntegerLiteral(bin->left.get())) {
+                const auto value = GetIntegerLiteral(bin->left.get());
+
+                if (value == 0) {
+                    expr = MakeIntegerLiteral(0, bin->type);
+                    return true;
+                }
+
+                if (value == 1) {
+                    expr = std::move(bin->right);
+                    return true;
+                }
+            }
+
+            if (IsIntegerLiteral(bin->right.get())) {
+                const auto value = GetIntegerLiteral(bin->right.get());
+
+                if (value == 0) {
+                    expr = MakeIntegerLiteral(0, bin->type);
+                    return true;
+                }
+
+                if (value == 1) {
+                    expr = std::move(bin->left);
+                    return true;
+                }
+            }
+            break;
+
+        case TokenKind::Slash:
+            if (IsIntegerLiteral(bin->right.get()) &&
+                GetIntegerLiteral(bin->right.get()) == 1) {
+                expr = std::move(bin->left);
+                return true;
+            }
+            break;
+            
+        case TokenKind::Percent:
+            if (IsIntegerLiteral(bin->right.get()) &&
+                GetIntegerLiteral(bin->right.get()) == 1) {
+                expr = MakeIntegerLiteral(0, bin->type);
+                return true;
+            }
+            break;
+
+        default:
+            break;
         }
 
         return false;
