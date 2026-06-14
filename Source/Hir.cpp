@@ -1045,7 +1045,14 @@ namespace Rux {
                     GenericTypeName(*t)); // best-effort for unresolved names
             }
             if (auto* t = dynamic_cast<const PathTypeExpr*>(&expr)) {
-                return TypeRef::MakeNamed(t->segments.back());
+                std::string fullPath;
+                for (std::size_t i = 0; i < t->segments.size(); ++i) {
+                    if (i > 0) {
+                        fullPath += "::";
+                    }
+                    fullPath += t->segments[i];
+                }
+                return TypeRef::MakeNamed(fullPath);
             }
             if (auto* t = dynamic_cast<const PointerTypeExpr*>(&expr)) {
                 return TypeRef::MakePointer(ResolveType(*t->pointee));
@@ -1221,16 +1228,14 @@ namespace Rux {
         }
 
         static std::string MangleSymbolComponent(std::string_view text) {
-            std::string out;
-            for (const char c : text) {
-                if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
-                    out += c;
-                }
-                else {
-                    out += '_';
-                }
+            static constexpr char kHex[] = "0123456789abcdef";
+            std::string out = "t";
+            out.reserve(1 + text.size() * 2);
+            for (const unsigned char c : text) {
+                out += kHex[c >> 4];
+                out += kHex[c & 0x0f];
             }
-            return out.empty() ? "_" : out;
+            return out;
         }
 
         static std::string MethodOwnerSymbolName(

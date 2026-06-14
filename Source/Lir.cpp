@@ -518,17 +518,14 @@ namespace Rux {
                 lm.funcs.push_back(LowerFunc(f));
             }
             auto mangleSymbolComponent = [](std::string_view text) {
-                std::string out;
-                for (const char c : text) {
-                    if (std::isalnum(static_cast<unsigned char>(c)) ||
-                        c == '_') {
-                        out += c;
-                    }
-                    else {
-                        out += '_';
-                    }
+                static constexpr char kHex[] = "0123456789abcdef";
+                std::string out = "t";
+                out.reserve(1 + text.size() * 2);
+                for (const unsigned char c : text) {
+                    out += kHex[c >> 4];
+                    out += kHex[c & 0x0f];
                 }
-                return out.empty() ? std::string("_") : out;
+                return out;
             };
             auto methodOwnerSymbolName = [&](const std::string& typeName) {
                 return mangleSymbolComponent(typeName);
