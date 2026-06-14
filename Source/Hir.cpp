@@ -177,6 +177,9 @@ namespace Rux {
             for (auto* mod : modules) {
                 CollectModule(*mod);
             }
+            for (auto* mod : modules) {
+                IndexModuleImpls(*mod);
+            }
             HirPackage pkg;
             for (auto* mod : modules) {
                 pkg.modules.push_back(LowerModule(*mod));
@@ -272,6 +275,13 @@ namespace Rux {
             }
         }
 
+        void IndexModuleImpls(const Module& mod) {
+            currentFile = mod.name;
+            for (const auto& decl : mod.items) {
+                IndexDeclImpls(*decl);
+            }
+        }
+
         TypeRef MakeFuncType(const std::vector<Param>& params,
                              const std::optional<TypeExprPtr>& returnType,
                              const std::vector<std::string>& typeParams = {}) {
@@ -364,14 +374,29 @@ namespace Rux {
                     CollectDecl(*item);
                 }
             }
-            else if (auto* d = dynamic_cast<const ImplDecl*>(&decl)) {
+        }
+
+        void IndexDeclImpls(const Decl& decl) {
+            if (auto* d = dynamic_cast<const ImplDecl*>(&decl)) {
+                const std::string typeName =
+                    ResolveType(*d->targetType).ToString();
                 for (const auto& method : d->methods) {
-                    methodsByType[d->typeName][method->name].push_back(
+                    methodsByType[typeName][method->name].push_back(
                         method.get());
                 }
                 if (d->interfaceName) {
-                    typeInterfaceVtables[d->typeName][*d->interfaceName] =
-                        "__vtable__" + d->typeName + "__" + *d->interfaceName;
+                    typeInterfaceVtables[typeName][*d->interfaceName] =
+                        VtableLabelFor(typeName, *d->interfaceName);
+                }
+            }
+            else if (auto* d = dynamic_cast<const ExternBlockDecl*>(&decl)) {
+                for (const auto& item : d->items) {
+                    IndexDeclImpls(*item);
+                }
+            }
+            else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl)) {
+                for (const auto& item : d->items) {
+                    IndexDeclImpls(*item);
                 }
             }
         }
@@ -815,6 +840,35 @@ namespace Rux {
             }
         }
 
+        static std::string ExactReceiverTypeName(const TypeRef& type) {
+            const TypeRef* receiver = &type;
+            if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty()) {
+                receiver = &type.inner[0];
+            }
+            if (receiver->kind == TypeRef::Kind::Named) {
+                return receiver->name;
+            }
+            if (receiver->kind != TypeRef::Kind::Unknown) {
+                return receiver->ToString();
+            }
+            return {};
+        }
+
+        static std::vector<std::string> ReceiverTypeLookupKeys(
+            const TypeRef& receiverType) {
+            std::vector<std::string> keys;
+            if (const std::string exact = ExactReceiverTypeName(receiverType);
+                !exact.empty()) {
+                keys.push_back(exact);
+            }
+            if (const std::string base = NamedBaseTypeName(receiverType);
+                !base.empty() &&
+                std::ranges::find(keys, base) == keys.end()) {
+                keys.push_back(base);
+            }
+            return keys;
+        }
+
         std::unordered_map<std::string, TypeRef>
         StructTypeSubstitutions(const StructDecl& decl,
                                 const std::vector<TypeExprPtr>& typeArgs) {
@@ -1166,6 +1220,30 @@ namespace Rux {
             return out.empty() ? "_" : out;
         }
 
+        static std::string MangleSymbolComponent(std::string_view text) {
+            std::string out;
+            for (const char c : text) {
+                if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
+                    out += c;
+                }
+                else {
+                    out += '_';
+                }
+            }
+            return out.empty() ? "_" : out;
+        }
+
+        static std::string MethodOwnerSymbolName(
+            const std::string& semanticTypeName) {
+            return MangleSymbolComponent(semanticTypeName);
+        }
+
+        static std::string VtableLabelFor(const std::string& typeName,
+                                          const std::string& interfaceName) {
+            return "__vtable__" + MethodOwnerSymbolName(typeName) + "__" +
+                   MangleSymbolComponent(interfaceName);
+        }
+
         std::string FunctionCalleeName(const std::string& name,
                                        const FuncDecl& decl) {
             if (!FunctionIsOverloaded(name)) {
@@ -1345,12 +1423,13 @@ namespace Rux {
                                const std::string& methodName,
                                const TypeRef& receiverType,
                                const FuncDecl& decl) {
+            const std::string ownerSymbol = MethodOwnerSymbolName(typeName);
             if (!MethodIsOverloaded(typeName, methodName)) {
-                return typeName + "::" + methodName;
+                return ownerSymbol + "::" + methodName;
             }
             TypeRef ft = MethodType(receiverType, decl);
             // ft.inner = [selfType, param1, ..., retType]
-            std::string name = typeName + "::" + methodName + "__";
+            std::string name = ownerSymbol + "::" + methodName + "__";
             for (std::size_t i = 1; i + 1 < ft.inner.size(); ++i) {
                 if (i > 1) {
                     name += "_";
@@ -1360,75 +1439,82 @@ namespace Rux {
             return name;
         }
 
-        const FuncDecl*
+        struct MethodLookupResult {
+            std::string ownerTypeName;
+            const FuncDecl* decl = nullptr;
+        };
+
+        std::optional<MethodLookupResult>
         LookupMethod(const TypeRef& receiverType,
                      const std::string& methodName,
                      const std::vector<TypeRef>& argTypes = {}) {
-            const std::string typeName = NamedBaseTypeName(receiverType);
-            if (typeName.empty()) {
-                return nullptr;
-            }
-            const auto typeIt = methodsByType.find(typeName);
-            if (typeIt == methodsByType.end()) {
-                return nullptr;
-            }
-            const auto methodIt = typeIt->second.find(methodName);
-            if (methodIt == typeIt->second.end()) {
-                return nullptr;
-            }
-            const auto& overloads = methodIt->second;
-            if (overloads.empty()) {
-                return nullptr;
-            }
-            // Best-effort scrape for property access (missing args).
-            if (argTypes.empty()) {
-                return overloads[0];
-            }
-            if (overloads.size() == 1) {
-                // Single candidate: strictly enforce arity/types to prevent
-                // silent AST corruption.
-                const auto* decl = overloads[0];
-                TypeRef ft = MethodType(receiverType, *decl);
-                const std::size_t paramCount =
-                    ft.inner.size() >= 2 ? ft.inner.size() - 2 : 0;
-                if (paramCount != argTypes.size()) {
-                    return nullptr;
-                }
-                for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    const TypeRef& paramType = ft.inner[i + 1];
-                    if (argTypes[i].IsUnknown() || paramType.IsUnknown()) {
-                        continue;
-                    }
-                    if (!argTypes[i].IsAssignableTo(paramType) &&
-                        !(argTypes[i].IsInteger() && paramType.IsInteger())) {
-                        return nullptr;
-                    }
-                }
-                return decl;
-            }
-            for (const auto* decl : overloads) {
-                TypeRef ft = MethodType(receiverType, *decl);
-                // ft.inner = [selfType, param1, ..., retType]
-                const std::size_t paramCount =
-                    ft.inner.size() >= 2 ? ft.inner.size() - 2 : 0;
-                if (paramCount != argTypes.size()) {
+            for (const auto& typeName : ReceiverTypeLookupKeys(receiverType)) {
+                const auto typeIt = methodsByType.find(typeName);
+                if (typeIt == methodsByType.end()) {
                     continue;
                 }
-                bool match = true;
-                for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    const TypeRef& paramType = ft.inner[i + 1];
-                    if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
-                        !argTypes[i].IsAssignableTo(paramType) &&
-                        !(argTypes[i].IsInteger() && paramType.IsInteger())) {
-                        match = false;
-                        break;
+                const auto methodIt = typeIt->second.find(methodName);
+                if (methodIt == typeIt->second.end()) {
+                    continue;
+                }
+                const auto& overloads = methodIt->second;
+                if (overloads.empty()) {
+                    continue;
+                }
+                if (argTypes.empty()) {
+                    return MethodLookupResult{typeName, overloads[0]};
+                }
+                if (overloads.size() == 1) {
+                    const auto* decl = overloads[0];
+                    TypeRef ft = MethodType(receiverType, *decl);
+                    const std::size_t paramCount =
+                        ft.inner.size() >= 2 ? ft.inner.size() - 2 : 0;
+                    if (paramCount != argTypes.size()) {
+                        continue;
+                    }
+                    bool match = true;
+                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                        const TypeRef& paramType = ft.inner[i + 1];
+                        if (argTypes[i].IsUnknown() || paramType.IsUnknown()) {
+                            continue;
+                        }
+                        if (!argTypes[i].IsAssignableTo(paramType) &&
+                            !(argTypes[i].IsInteger() &&
+                              paramType.IsInteger())) {
+                            match = false;
+                            break;
+                        }
+                    }
+                    if (match) {
+                        return MethodLookupResult{typeName, decl};
+                    }
+                    continue;
+                }
+                for (const auto* decl : overloads) {
+                    TypeRef ft = MethodType(receiverType, *decl);
+                    const std::size_t paramCount =
+                        ft.inner.size() >= 2 ? ft.inner.size() - 2 : 0;
+                    if (paramCount != argTypes.size()) {
+                        continue;
+                    }
+                    bool match = true;
+                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                        const TypeRef& paramType = ft.inner[i + 1];
+                        if (!argTypes[i].IsUnknown() &&
+                            !paramType.IsUnknown() &&
+                            !argTypes[i].IsAssignableTo(paramType) &&
+                            !(argTypes[i].IsInteger() &&
+                              paramType.IsInteger())) {
+                            match = false;
+                            break;
+                        }
+                    }
+                    if (match) {
+                        return MethodLookupResult{typeName, decl};
                     }
                 }
-                if (match) {
-                    return decl;
-                }
             }
-            return nullptr;
+            return std::nullopt;
         }
 
         int InterfaceMethodIndex(const std::string& ifaceName,
@@ -2243,27 +2329,21 @@ namespace Rux {
             bool savedInImpl = inImpl;
             TypeRef savedSelfType = currentSelfType;
             inImpl = true;
-            TypeRef selfBase;
-            if (HirSymbol* sym = currentScope->Lookup(d.typeName);
-                sym && !sym->type.IsUnknown()) {
-                selfBase = sym->type;
-            }
-            else {
-                selfBase = TypeRef::MakeNamed(d.typeName);
-            }
+            TypeRef selfBase = ResolveType(*d.targetType);
             currentSelfType = TypeRef::MakePointer(selfBase);
 
             HirImplBlock hib;
-            hib.typeName = d.typeName;
+            hib.typeName = selfBase.ToString();
             hib.interfaceName = d.interfaceName;
             hib.location = d.location;
             for (const auto& m : d.methods) {
                 HirFunc hf = LowerFunc(*m, /*isMethod=*/true);
-                if (MethodIsOverloaded(d.typeName, m->name)) {
-                    TypeRef selfType =
-                        TypeRef::MakePointer(TypeRef::MakeNamed(d.typeName));
-                    hf.name = CalleeName(d.typeName, m->name, selfType, *m)
-                                  .substr(d.typeName.size() + 2);
+                if (MethodIsOverloaded(hib.typeName, m->name)) {
+                    TypeRef selfType = TypeRef::MakePointer(selfBase);
+                    const std::string fullName =
+                        CalleeName(hib.typeName, m->name, selfType, *m);
+                    hf.name = fullName.substr(
+                        MethodOwnerSymbolName(hib.typeName).size() + 2);
                 }
                 hib.methods.push_back(std::move(hf));
             }
@@ -2556,14 +2636,18 @@ namespace Rux {
                     auto coerce = std::make_unique<HirCoerceToInterfaceExpr>();
                     coerce->location = expr.location;
                     coerce->type = targetType;
+                    const auto ifaceIt = interfaceDecls.find(targetType.name);
                     // Only reference a vtable when there are methods to
                     // dispatch. Empty interfaces have nothing to dispatch, so
                     // no vtable is generated.
-                    const auto ifaceIt = interfaceDecls.find(targetType.name);
-                    if (ifaceIt != interfaceDecls.end() &&
-                        !ifaceIt->second->methods.empty()) {
-                        coerce->vtableLabel =
-                            "__vtable__" + typeName + "__" + targetType.name;
+                    if (auto typeIt = typeInterfaceVtables.find(typeName);
+                        typeIt != typeInterfaceVtables.end()) {
+                        auto ifaceLabelIt = typeIt->second.find(targetType.name);
+                        if (ifaceLabelIt != typeIt->second.end() &&
+                            ifaceIt != interfaceDecls.end() &&
+                            !ifaceIt->second->methods.empty()) {
+                            coerce->vtableLabel = ifaceLabelIt->second;
+                        }
                     }
                     coerce->value = std::move(lowered);
                     return coerce;
@@ -2689,16 +2773,16 @@ namespace Rux {
                             first->type.IsUnknown()
                                 ? TypeRef::MakeNamed(first->name)
                                 : first->type;
-                        if (const FuncDecl* method =
+                        if (auto method =
                                 LookupMethod(receiverType, e->segments[1])) {
                             auto he = std::make_unique<HirVarExpr>();
                             he->location = e->location;
-                            he->name = CalleeName(e->segments[0],
+                            he->name = CalleeName(method->ownerTypeName,
                                                   e->segments[1],
                                                   receiverType,
-                                                  *method);
-                            he->type =
-                                AssociatedFunctionType(receiverType, *method);
+                                                  *method->decl);
+                            he->type = AssociatedFunctionType(receiverType,
+                                                              *method->decl);
                             return he;
                         }
                     }
@@ -2799,10 +2883,8 @@ namespace Rux {
                 HirExprPtr left = LowerExpr(*e->left);
                 HirExprPtr right = LowerExpr(*e->right);
                 const std::string opName = std::string(OpStr(e->op));
-                if (const FuncDecl* method =
+                if (auto method =
                         LookupMethod(left->type, opName, {right->type})) {
-                    const std::string receiverBase =
-                        NamedBaseTypeName(left->type);
                     HirExprPtr selfArg;
                     if (left->type.kind == TypeRef::Kind::Pointer) {
                         selfArg = std::move(left);
@@ -2818,9 +2900,11 @@ namespace Rux {
 
                     auto callee = std::make_unique<HirVarExpr>();
                     callee->location = e->location;
-                    callee->name = CalleeName(
-                        receiverBase, opName, selfArg->type, *method);
-                    callee->type = MethodType(selfArg->type, *method);
+                    callee->name = CalleeName(method->ownerTypeName,
+                                              opName,
+                                              selfArg->type,
+                                              *method->decl);
+                    callee->type = MethodType(selfArg->type, *method->decl);
 
                     auto call = std::make_unique<HirCallExpr>();
                     call->location = e->location;
@@ -2959,16 +3043,16 @@ namespace Rux {
                             argTypes.push_back(lowered->type);
                             args.push_back(std::move(lowered));
                         }
-                        if (const FuncDecl* method = LookupMethod(
+                        if (auto method = LookupMethod(
                                 receiverType, path->segments[1], argTypes)) {
-                            TypeRef funcType =
-                                AssociatedFunctionType(receiverType, *method);
+                            TypeRef funcType = AssociatedFunctionType(
+                                receiverType, *method->decl);
                             auto callee = std::make_unique<HirVarExpr>();
                             callee->location = path->location;
-                            callee->name = CalleeName(path->segments[0],
+                            callee->name = CalleeName(method->ownerTypeName,
                                                       path->segments[1],
                                                       receiverType,
-                                                      *method);
+                                                      *method->decl);
                             callee->type = funcType;
                             auto he = std::make_unique<HirCallExpr>();
                             he->location = e->location;
@@ -3209,8 +3293,9 @@ namespace Rux {
                             argTypes.push_back(preArgs.back()->type);
                         }
                     }
-                    if (const FuncDecl* method = LookupMethod(
-                            receiver->type, field->field, argTypes)) {
+                    if (auto method = LookupMethod(receiver->type,
+                                                   field->field,
+                                                   argTypes)) {
                         HirExprPtr selfArg;
                         if (receiver->type.kind == TypeRef::Kind::Pointer) {
                             selfArg = std::move(receiver);
@@ -3225,9 +3310,11 @@ namespace Rux {
                         }
                         auto callee = std::make_unique<HirVarExpr>();
                         callee->location = field->location;
-                        callee->name = CalleeName(
-                            receiverBase, field->field, selfArg->type, *method);
-                        callee->type = MethodType(selfArg->type, *method);
+                        callee->name = CalleeName(method->ownerTypeName,
+                                                  field->field,
+                                                  selfArg->type,
+                                                  *method->decl);
+                        callee->type = MethodType(selfArg->type, *method->decl);
                         he->callee = std::move(callee);
                         he->args.push_back(std::move(selfArg));
                         if (!preArgs.empty()) {

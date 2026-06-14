@@ -741,23 +741,22 @@ namespace Rux {
         auto decl = std::make_unique<ImplDecl>();
         decl->location = loc;
 
-        // extend TypeName  or  extend TypeName : InterfaceName  or  extend
-        // InterfaceName for TypeName
-        const std::string firstName =
-            Expect(TokenKind::Ident, "expected type name").text;
-        if (Match(TokenKind::Colon)) {
-            decl->typeName = firstName;
+        // extend Type  or  extend Type : InterfaceName  or  extend
+        // InterfaceName for Type
+        if (Check(TokenKind::Ident) && Peek(1).kind == TokenKind::ForKeyword) {
             decl->interfaceName =
-                Expect(TokenKind::Ident, "expected interface name after ':'")
-                    .text;
-        }
-        else if (Match(TokenKind::ForKeyword)) {
-            decl->interfaceName = firstName;
-            decl->typeName =
-                Expect(TokenKind::Ident, "expected type name after 'for'").text;
+                Expect(TokenKind::Ident, "expected interface name").text;
+            Expect(TokenKind::ForKeyword, "expected 'for'");
+            decl->targetType = ParseType();
         }
         else {
-            decl->typeName = firstName;
+            decl->targetType = ParseType();
+            if (Match(TokenKind::Colon)) {
+                decl->interfaceName =
+                    Expect(TokenKind::Ident,
+                           "expected interface name after ':'")
+                        .text;
+            }
         }
 
         Expect(TokenKind::LeftBrace, "expected '{'");
@@ -2599,7 +2598,7 @@ namespace Rux {
                 if (impl.interfaceName) {
                     out << *impl.interfaceName << " for ";
                 }
-                out << impl.typeName << '\n';
+                out << TypeStr(impl.targetType.get()) << '\n';
                 ++indent;
                 for (const auto& m : impl.methods) {
                     if (m) {

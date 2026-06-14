@@ -484,6 +484,12 @@ namespace Rux {
             }
             for (auto& pkg : deps) {
                 for (auto& entry : pkg.modules) {
+                    IndexModuleImplsInScope(*entry.module,
+                                            *packageModuleScopes[pkg.name][""]);
+                }
+            }
+            for (auto& pkg : deps) {
+                for (auto& entry : pkg.modules) {
                     CheckModuleInScope(*entry.module,
                                        *packageModuleScopes[pkg.name][""]);
                 }
@@ -502,6 +508,9 @@ namespace Rux {
             }
             for (auto* mod : modules) {
                 ResolveModuleSignatures(*mod);
+            }
+            for (auto* mod : modules) {
+                IndexModuleImpls(*mod);
             }
             for (auto* mod : modules) {
                 CheckModule(*mod);
@@ -632,6 +641,16 @@ namespace Rux {
             for (const auto& decl : mod.items) {
                 CollectDecl(*decl, globalScope, selfPackageName, "");
             }
+        }
+
+        void IndexModuleImpls(const Module& mod) {
+            currentFile = mod.name;
+            Scope* savedScope = currentScope;
+            currentScope = &globalScope;
+            for (const auto& decl : mod.items) {
+                IndexDeclImpls(*decl);
+            }
+            currentScope = savedScope;
         }
 
         void ResolveModuleSignatures(const Module& mod) {
@@ -934,17 +953,48 @@ namespace Rux {
                     CollectDecl(*item, *moduleScopePtr, packageName, childPath);
                 }
             }
-            else if (auto* d = dynamic_cast<const ImplDecl*>(&decl)) {
+            // Import declarations don't add names in the first pass.
+        }
+
+        void IndexModuleImplsInScope(const Module& mod, Scope& scope) {
+            Scope* savedScope = currentScope;
+            currentScope = &scope;
+            currentFile = mod.name;
+            for (const auto& decl : mod.items) {
+                IndexDeclImpls(*decl);
+            }
+            currentScope = savedScope;
+        }
+
+        void IndexDeclImpls(const Decl& decl) {
+            if (!DeclMatchesTarget(decl)) {
+                return;
+            }
+            if (auto* d = dynamic_cast<const ImplDecl*>(&decl)) {
+                const std::string typeName =
+                    ResolveType(*d->targetType).ToString();
                 for (const auto& method : d->methods) {
-                    methodsByType[d->typeName][method->name].push_back(
+                    methodsByType[typeName][method->name].push_back(
                         method.get());
                 }
                 if (d->interfaceName) {
-                    typeImplementsInterfaces[d->typeName].insert(
+                    typeImplementsInterfaces[typeName].insert(
                         *d->interfaceName);
                 }
             }
-            // Import declarations don't add names in the first pass.
+            else if (auto* d = dynamic_cast<const ExternBlockDecl*>(&decl)) {
+                for (const auto& item : d->items) {
+                    IndexDeclImpls(*item);
+                }
+            }
+            else if (auto* d = dynamic_cast<const ModuleDecl*>(&decl)) {
+                Scope* savedScope = currentScope;
+                currentScope = &ModuleScopeFor(d->name, *currentScope);
+                for (const auto& item : d->items) {
+                    IndexDeclImpls(*item);
+                }
+                currentScope = savedScope;
+            }
         }
 
         // Type resolution
@@ -1595,6 +1645,35 @@ namespace Rux {
             }
         }
 
+        static std::string ExactReceiverTypeName(const TypeRef& type) {
+            const TypeRef* receiver = &type;
+            if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty()) {
+                receiver = &type.inner[0];
+            }
+            if (receiver->kind == TypeRef::Kind::Named) {
+                return receiver->name;
+            }
+            if (receiver->kind != TypeRef::Kind::Unknown) {
+                return receiver->ToString();
+            }
+            return {};
+        }
+
+        static std::vector<std::string> ReceiverTypeLookupKeys(
+            const TypeRef& receiverType) {
+            std::vector<std::string> keys;
+            if (const std::string exact = ExactReceiverTypeName(receiverType);
+                !exact.empty()) {
+                keys.push_back(exact);
+            }
+            if (const std::string base = NamedBaseTypeName(receiverType);
+                !base.empty() &&
+                std::ranges::find(keys, base) == keys.end()) {
+                keys.push_back(base);
+            }
+            return keys;
+        }
+
         std::unordered_map<std::string, TypeRef>
         StructTypeSubstitutions(const StructDecl& decl,
                                 const std::vector<TypeExprPtr>& typeArgs) {
@@ -1891,64 +1970,67 @@ namespace Rux {
         LookupMethod(const TypeRef& receiverType,
                      const std::string& methodName,
                      const std::vector<TypeRef>& argTypes = {}) {
-            const std::string typeName = NamedBaseTypeName(receiverType);
-            if (typeName.empty()) {
-                return nullptr;
-            }
-            const auto typeIt = methodsByType.find(typeName);
-            if (typeIt == methodsByType.end()) {
-                return nullptr;
-            }
-            const auto methodIt = typeIt->second.find(methodName);
-            if (methodIt == typeIt->second.end()) {
-                return nullptr;
-            }
-            const auto& overloads = methodIt->second;
-            if (overloads.empty()) {
-                return nullptr;
-            }
-            // Best-effort scrape for property access (missing args).
-            if (argTypes.empty()) {
-                return overloads[0];
-            }
-            if (overloads.size() == 1) {
-                // Single overload: validate arity and assignability before
-                // returning.
-                const auto* decl = overloads[0];
-                std::vector<TypeRef> paramTypes =
-                    ResolveMethodParamTypes(receiverType, *decl);
-                if (paramTypes.size() != argTypes.size()) {
-                    return nullptr;
-                }
-                for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    if (argTypes[i].IsUnknown() || paramTypes[i].IsUnknown()) {
-                        continue;
-                    }
-                    if (!argTypes[i].IsAssignableTo(paramTypes[i]) &&
-                        !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
-                        return nullptr;
-                    }
-                }
-                return decl;
-            }
-            for (const auto* decl : overloads) {
-                std::vector<TypeRef> paramTypes =
-                    ResolveMethodParamTypes(receiverType, *decl);
-                if (paramTypes.size() != argTypes.size()) {
+            for (const auto& typeName : ReceiverTypeLookupKeys(receiverType)) {
+                const auto typeIt = methodsByType.find(typeName);
+                if (typeIt == methodsByType.end()) {
                     continue;
                 }
-                bool match = true;
-                for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    if (!argTypes[i].IsUnknown() &&
-                        !paramTypes[i].IsUnknown() &&
-                        !argTypes[i].IsAssignableTo(paramTypes[i]) &&
-                        !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
-                        match = false;
-                        break;
-                    }
+                const auto methodIt = typeIt->second.find(methodName);
+                if (methodIt == typeIt->second.end()) {
+                    continue;
                 }
-                if (match) {
-                    return decl;
+                const auto& overloads = methodIt->second;
+                if (overloads.empty()) {
+                    continue;
+                }
+                if (argTypes.empty()) {
+                    return overloads[0];
+                }
+                if (overloads.size() == 1) {
+                    const auto* decl = overloads[0];
+                    std::vector<TypeRef> paramTypes =
+                        ResolveMethodParamTypes(receiverType, *decl);
+                    if (paramTypes.size() != argTypes.size()) {
+                        continue;
+                    }
+                    bool match = true;
+                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                        if (argTypes[i].IsUnknown() ||
+                            paramTypes[i].IsUnknown()) {
+                            continue;
+                        }
+                        if (!argTypes[i].IsAssignableTo(paramTypes[i]) &&
+                            !(argTypes[i].IsInteger() &&
+                              paramTypes[i].IsInteger())) {
+                            match = false;
+                            break;
+                        }
+                    }
+                    if (match) {
+                        return decl;
+                    }
+                    continue;
+                }
+                for (const auto* decl : overloads) {
+                    std::vector<TypeRef> paramTypes =
+                        ResolveMethodParamTypes(receiverType, *decl);
+                    if (paramTypes.size() != argTypes.size()) {
+                        continue;
+                    }
+                    bool match = true;
+                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                        if (!argTypes[i].IsUnknown() &&
+                            !paramTypes[i].IsUnknown() &&
+                            !argTypes[i].IsAssignableTo(paramTypes[i]) &&
+                            !(argTypes[i].IsInteger() &&
+                              paramTypes[i].IsInteger())) {
+                            match = false;
+                            break;
+                        }
+                    }
+                    if (match) {
+                        return decl;
+                    }
                 }
             }
             return nullptr;
@@ -2826,10 +2908,9 @@ namespace Rux {
         }
 
         void CheckImplDecl(const ImplDecl& d) {
-            if (!currentScope->Lookup(d.typeName)) {
-                EmitError(
-                    d.location,
-                    std::format("extend for unknown type '{}'", d.typeName));
+            TypeRef selfBase = ResolveType(*d.targetType);
+            if (selfBase.IsUnknown()) {
+                return;
             }
 
             if (d.interfaceName) {
@@ -2850,7 +2931,7 @@ namespace Rux {
                                       std::format("extend of '{}' for '{}' is "
                                                   "missing method '{}'",
                                                   *d.interfaceName,
-                                                  d.typeName,
+                                                  selfBase.ToString(),
                                                   required));
                         }
                     }
@@ -2860,14 +2941,6 @@ namespace Rux {
             bool savedInImpl = inImpl;
             TypeRef savedSelfType = currentSelfType;
             inImpl = true;
-            TypeRef selfBase;
-            if (Symbol* sym = currentScope->Lookup(d.typeName);
-                sym && !sym->type.IsUnknown()) {
-                selfBase = sym->type;
-            }
-            else {
-                selfBase = TypeRef::MakeNamed(d.typeName);
-            }
             currentSelfType = TypeRef::MakePointer(selfBase);
             for (const auto& m : d.methods) {
                 CheckFuncDecl(*m, /*isMethod=*/true);
