@@ -32,8 +32,11 @@ namespace Rux {
         static HirExprPtr MakeBoolLiteral(bool value, const TypeRef& type);
 
         static bool IsBoolLiteral(const HirExpr* expr);
-        
+
         static bool GetBoolLiteral(const HirExpr* expr);
+
+        static bool SimplifyBinary(HirExprPtr& expr);
+        
     };
 
 }
