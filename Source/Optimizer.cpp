@@ -1,6 +1,8 @@
 #include "Rux/Optimizer.h"
 
+#include <charconv>
 #include <memory>
+#include <optional>
 #include <string>
 #include <print>
 
@@ -86,12 +88,18 @@ namespace Rux {
         return lit && lit->type.IsBool();
     }
 
-    std::int64_t Optimizer::GetIntegerLiteral(const HirExpr* expr) {
+    std::optional<std::int64_t> Optimizer::GetIntegerLiteral(const HirExpr* expr) {
         const auto* lit = dynamic_cast<const HirLiteralExpr*>(expr);
         if (!lit) {
-            return 0;
+            return std::nullopt;
         }
-        return std::stoll(lit->value);
+        std::int64_t result;
+        auto [ptr, ec] = std::from_chars(
+            lit->value.data(), lit->value.data() + lit->value.size(), result);
+        if (ec == std::errc()) {
+            return result;
+        }
+        return std::nullopt;
     }
 
     bool Optimizer::GetBoolLiteral(const HirExpr* expr) {
@@ -130,8 +138,14 @@ namespace Rux {
 
         // Integer folding
         if (leftIsInt && rightIsInt) {
-            const auto lhs = GetIntegerLiteral(bin->left.get());
-            const auto rhs = GetIntegerLiteral(bin->right.get());
+            const auto lhsOpt = GetIntegerLiteral(bin->left.get());
+            const auto rhsOpt = GetIntegerLiteral(bin->right.get());
+            if (!lhsOpt || !rhsOpt) {
+                return false;
+            }
+
+            const auto lhs = *lhsOpt;
+            const auto rhs = *rhsOpt;
 
             switch (bin->op) {
             case TokenKind::Plus:
@@ -211,7 +225,12 @@ namespace Rux {
         }
 
         if (IsIntegerLiteral(unary->operand.get())) {
-            const auto value = GetIntegerLiteral(unary->operand.get());
+            const auto valueOpt = GetIntegerLiteral(unary->operand.get());
+            if (!valueOpt) {
+                return false;
+            }
+
+            const auto value = *valueOpt;
 
             switch (unary->op) {
             case TokenKind::Minus:
@@ -250,73 +269,81 @@ namespace Rux {
         }
 
         switch (bin->op) {
-        case TokenKind::Plus:
-            if (IsIntegerLiteral(bin->left.get()) &&
-                GetIntegerLiteral(bin->left.get()) == 0) {
+        case TokenKind::Plus: {
+            const auto leftOpt = IsIntegerLiteral(bin->left.get())
+                ? GetIntegerLiteral(bin->left.get()) : std::nullopt;
+            if (leftOpt && *leftOpt == 0) {
                 expr = std::move(bin->right);
                 return true;
             }
 
-            if (IsIntegerLiteral(bin->right.get()) &&
-                GetIntegerLiteral(bin->right.get()) == 0) {
+            const auto rightOpt = IsIntegerLiteral(bin->right.get())
+                ? GetIntegerLiteral(bin->right.get()) : std::nullopt;
+            if (rightOpt && *rightOpt == 0) {
                 expr = std::move(bin->left);
                 return true;
             }
             break;
+        }
 
-        case TokenKind::Minus:
-            if (IsIntegerLiteral(bin->right.get()) &&
-                GetIntegerLiteral(bin->right.get()) == 0) {
+        case TokenKind::Minus: {
+            const auto opt = IsIntegerLiteral(bin->right.get())
+                ? GetIntegerLiteral(bin->right.get()) : std::nullopt;
+            if (opt && *opt == 0) {
                 expr = std::move(bin->left);
                 return true;
             }
             break;
+        }
 
-        case TokenKind::Star:
-            if (IsIntegerLiteral(bin->left.get())) {
-                const auto value = GetIntegerLiteral(bin->left.get());
+        case TokenKind::Star: {
+            auto getVal = [](const HirExpr* e) -> std::optional<std::int64_t> {
+                return IsIntegerLiteral(e) ? GetIntegerLiteral(e) : std::nullopt;
+            };
 
-                if (value == 0) {
+            if (const auto v = getVal(bin->left.get())) {
+                if (*v == 0) {
                     expr = MakeIntegerLiteral(0, bin->type);
                     return true;
                 }
-
-                if (value == 1) {
+                if (*v == 1) {
                     expr = std::move(bin->right);
                     return true;
                 }
             }
 
-            if (IsIntegerLiteral(bin->right.get())) {
-                const auto value = GetIntegerLiteral(bin->right.get());
-
-                if (value == 0) {
+            if (const auto v = getVal(bin->right.get())) {
+                if (*v == 0) {
                     expr = MakeIntegerLiteral(0, bin->type);
                     return true;
                 }
-
-                if (value == 1) {
+                if (*v == 1) {
                     expr = std::move(bin->left);
                     return true;
                 }
             }
             break;
+        }
 
-        case TokenKind::Slash:
-            if (IsIntegerLiteral(bin->right.get()) &&
-                GetIntegerLiteral(bin->right.get()) == 1) {
+        case TokenKind::Slash: {
+            const auto opt = IsIntegerLiteral(bin->right.get())
+                ? GetIntegerLiteral(bin->right.get()) : std::nullopt;
+            if (opt && *opt == 1) {
                 expr = std::move(bin->left);
                 return true;
             }
             break;
+        }
             
-        case TokenKind::Percent:
-            if (IsIntegerLiteral(bin->right.get()) &&
-                GetIntegerLiteral(bin->right.get()) == 1) {
+        case TokenKind::Percent: {
+            const auto opt = IsIntegerLiteral(bin->right.get())
+                ? GetIntegerLiteral(bin->right.get()) : std::nullopt;
+            if (opt && *opt == 1) {
                 expr = MakeIntegerLiteral(0, bin->type);
                 return true;
             }
             break;
+        }
 
         default:
             break;

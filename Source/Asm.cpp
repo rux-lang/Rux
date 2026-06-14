@@ -346,18 +346,18 @@ namespace Rux {
             void EmitIntPowHelper() {
                 TB();
                 TL("__rux_ipow");
-                TI("test    rsi, rsi");  // exponent
+                TI("test    rdx, rdx");  // exponent
                 TI("js      .negative"); // negative exponent yields 0
                 TI("mov     eax, 1");    // result = 1
                 TL(".loop");
-                TI("test    rsi, rsi");
+                TI("test    rdx, rdx");
                 TI("jz      .done"); // exponent == 0
-                TI("test    rsi, 1");
+                TI("test    rdx, 1");
                 TI("jz      .square");
-                TI("imul    rax, rdi"); // result *= base
+                TI("imul    rax, rcx"); // result *= base
                 TL(".square");
-                TI("imul    rdi, rdi"); // base *= base
-                TI("sar     rsi, 1");   // exponent >>= 1
+                TI("imul    rcx, rcx"); // base *= base
+                TI("sar     rdx, 1");   // exponent >>= 1
                 TI("jmp     .loop");
                 TL(".negative");
                 TI("xor     eax, eax");
@@ -1013,14 +1013,8 @@ namespace Rux {
                         usesIpow = true;
                         LoadA(instr.srcs[0], t);
                         LoadB(instr.srcs[1], t);
-                        if (kDefaultCallIsWin64) {
-                            TI("mov     rcx, rax");
-                            TI("mov     rdx, r10");
-                        }
-                        else {
-                            TI("mov     rdi, rax");
-                            TI("mov     rsi, r10");
-                        }
+                        TI("mov     rcx, rax");
+                        TI("mov     rdx, r10");
                         TI("call    __rux_ipow");
                     }
                     if (shadowSpace > 0) {

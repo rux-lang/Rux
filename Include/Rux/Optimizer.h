@@ -2,6 +2,8 @@
 
 #include "Rux/Hir.h"
 
+#include <optional>
+
 namespace Rux {
 
     class Optimizer {
@@ -25,7 +27,7 @@ namespace Rux {
 
         static bool IsIntegerLiteral(const HirExpr* expr);
 
-        static std::int64_t GetIntegerLiteral(const HirExpr* expr);
+        static std::optional<std::int64_t> GetIntegerLiteral(const HirExpr* expr);
 
         static HirExprPtr MakeIntegerLiteral(std::int64_t value, const TypeRef& type);
 
