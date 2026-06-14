@@ -4675,20 +4675,7 @@ namespace Rux {
 
         // Check that an assignment target is mutable.
         void CheckMutability(const Expr& target) {
-            const Expr* root = &target;
-            while (true) {
-                if (auto* e = dynamic_cast<const IndexExpr*>(root)) {
-                    root = e->object.get();
-                    continue;
-                }
-                if (auto* e = dynamic_cast<const FieldExpr*>(root)) {
-                    root = e->object.get();
-                    continue;
-                }
-                break;
-            }
-
-            if (auto* e = dynamic_cast<const IdentExpr*>(root)) {
+            if (auto* e = dynamic_cast<const IdentExpr*>(&target)) {
                 Symbol* sym = currentScope->Lookup(e->name);
                 if (!sym) {
                     return;
