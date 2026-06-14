@@ -9,6 +9,63 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.1] - 2026-06-14
+
+Adds more correctness fixes, broader literal and constant-expression support, improved overload resolution, expanded platform/runtime support, better test coverage, and cleaner CLI/build tooling.
+
+### Added
+
+#### Language
+
+- **Constant integer expression coercion** — compile-time folded integer expressions now coerce to sized integer targets when the value fits
+- **Typed non-decimal integer suffixes** — `0xFFu`, `0b1010u`, `0o17i`, and underscore separators in non-decimal literals
+- **Constant character cast validation** — compile-time validation for `as char8`, `as char16`, and `as char32`
+- **Boolean bitwise operators** — `&`, `|`, `^`, and `~` on `bool` types
+- **Attribute handling improvements** — `@[Target(...)]` import filtering by platform, plus warning and error attribute support (`@[Warn(...)]`, `@[Error(...)]`)
+
+#### Runtime / Linker
+
+- **macOS `munmap` thunk** — adds `munmap` support to the Mach-O linker so `Std::Memory::Free` can release mmap-backed allocations
+- **Floating-point remainder support** — adds FP `%` handling
+- **Floating-point comparison fixes** — correct FP comparison behavior
+
+#### Tooling / Tests
+
+- **CTest-based test suite** — CMake/CTest migration for cross-platform test execution
+- **Expanded regression coverage** — recursion, integer, boolean, floating point, tuples, numeric suffixes, constant expressions, and bool bitwise ops
+- **Improved CLI help generation** — generated help text with wrapping and consistency checks
+
+### Fixed
+
+#### Semantics / Type Checking
+
+- **Overload resolution** now hard-errors on unresolved overloads instead of silently falling back
+- **Bare integer literals** now work in single-overload resolution
+- **Binary expression operands** are now type-checked on both sides
+- **`is` folding** now produces a compile-time boolean instead of emitting a fake call
+- **Tuple size / field offset layout** is now aligned consistently across backends
+- **Pointer arithmetic** now scales by element size
+- **Slice-of-slice assignment** no longer corrupts the slice length field
+- **Import resolution** for `import Std::Io` / module-qualified calls is fixed
+- **Compatibility checks** for mixed character and integer types are relaxed where appropriate
+- **Platform-conditional imports** under `@[Target(...)]` are filtered correctly during dependency collection
+
+#### Language Diagnostics
+
+- **Constant casts** now reject out-of-range character values and Unicode surrogate code points
+- **Out-of-range integer literals** now produce clearer diagnostics outside `let` bindings
+- **Unsigned/sized integer literal handling** is now consistent across decimal, hex, binary, and octal forms
+
+#### Platform / Build
+
+- **Windows CMake linking** issues are fixed
+- **GCC/MinGW** terminal-link workaround is added
+- **Install/uninstall** now work outside project directories
+- **Help command handling** is cleaner, more robust, and terminal-width aware
+- **SysV stack argument passing** is restored in codegen
+- **Type dependency resolution** and wildcard target handling are fixed
+- **OpenBSD test cases** are removed where they no longer apply
+
 ## [0.3.0] - 2026-06-01
 
 Adds broad multi-platform host support, a revamped platform abstraction layer, new language features, a macOS linker backend, Windows DLL output, and many bug fixes.
