@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Rux/Lir.h"
+#include "Rux/Optimizer.h"
 
 #include <format>
 #include <fstream>
@@ -2189,7 +2190,10 @@ namespace Rux {
         : hir(std::move(package)) {
     }
 
-    LirPackage Lir::Generate() const {
+    LirPackage Lir::Generate() {
+
+        Optimizer::Run(hir);
+
         LirLowering lowering;
         return lowering.Run(hir);
     }
