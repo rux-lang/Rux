@@ -95,9 +95,7 @@ namespace Rux {
         if (!lit) {
             return false;
         }
-        std::print("{}", lit->value);
-        // return lit->value == "true";
-        return false;
+        return lit->value == "true";
     }
 
     HirExprPtr Optimizer::MakeIntegerLiteral(std::int64_t value,
