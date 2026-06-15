@@ -4,7 +4,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <print>
 
 namespace Rux {
     void Optimizer::Run(HirPackage& package) {
@@ -30,6 +29,7 @@ namespace Rux {
     }
 
     void Optimizer::OptimizeFunc(HirFunc& func) {
+        constants.clear();
         if (func.body) {
             OptimizeBlock(*func.body);
         }
@@ -48,6 +48,33 @@ namespace Rux {
         else if (auto* s = dynamic_cast<HirLetStmt*>(stmt.get())) {
             if (s->init) {
                 OptimizeExpr(s->init);
+
+                // only track immutable bindings, mutable tracking is not supported (yet)
+                if (!s->isMut) {
+
+                    bool sExists = false;
+
+                    if (IsIntegerLiteral(s->init.get())) {
+                        sExists = true;
+                    }
+
+                    if (IsIntegerLiteral(s->init.get())) {
+                        constants[s->name] = ConstantValue{
+                            false,
+                            GetIntegerLiteral(s->init.get()).value(),
+                            false,
+                            s->init->type
+                        };
+                    }
+                    else if (IsBoolLiteral(s->init.get())) {
+                        constants[s->name] = {
+                            true,
+                            0,
+                            GetBoolLiteral(s->init.get()),
+                            s->init->type
+                        };
+                    }
+                }
             }
         }
         else if (auto* s = dynamic_cast<HirReturnStmt*>(stmt.get())) {
@@ -58,8 +85,28 @@ namespace Rux {
     }
 
     void Optimizer::OptimizeExpr(HirExprPtr& expr) {
-        if (!expr) {
-            return;
+        if (!expr) return;
+
+        if (auto* var = dynamic_cast<HirVarExpr*>(expr.get())) {
+            auto it = constants.find(var->name);
+
+            if (it != constants.end()) {
+                const auto& value = it->second;
+
+                if (value.isBool) {
+                    expr = MakeBoolLiteral(
+                        value.boolValue,
+                        value.type
+                    );
+                } else {
+                    expr = MakeIntegerLiteral(
+                        value.intValue,
+                        value.type
+                    );
+                }
+
+                return;
+            }
         }
 
         if (auto* bin = dynamic_cast<HirBinaryExpr*>(expr.get())) {
@@ -211,7 +258,7 @@ namespace Rux {
                 expr = MakeBoolLiteral(lhs || rhs, bin->type);
                 return true;
             default:
-                return false;
+                return false;   
             }
         }
 
@@ -220,8 +267,19 @@ namespace Rux {
 
     bool Optimizer::FoldUnary(HirExprPtr& expr) {
         auto* unary = dynamic_cast<HirUnaryExpr*>(expr.get());
-        if (!unary) {
-            return false;
+
+        if (!unary) return false;
+
+        if (unary->op == TokenKind::Bang)
+        {
+            if (auto* inner = dynamic_cast<HirUnaryExpr*>(unary->operand.get()))
+            {
+                if (inner->op == TokenKind::Bang)
+                {
+                    expr = std::move(inner->operand);
+                    return true;
+                }
+            }
         }
 
         if (IsIntegerLiteral(unary->operand.get())) {
@@ -241,7 +299,7 @@ namespace Rux {
                 return true;
             case TokenKind::Tilde:
                 expr = MakeIntegerLiteral(~value, unary->type);
-                return true;    
+                return true; 
             default:
                 return false;
             }
