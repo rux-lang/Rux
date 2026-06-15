@@ -973,13 +973,14 @@ namespace Rux {
             if (auto* d = dynamic_cast<const ImplDecl*>(&decl)) {
                 const std::string typeName =
                     ResolveType(*d->targetType).ToString();
-                for (const auto& method : d->methods) {
-                    methodsByType[typeName][method->name].push_back(
-                        method.get());
-                }
-                if (d->interfaceName) {
-                    typeImplementsInterfaces[typeName].insert(
-                        *d->interfaceName);
+                for (const auto& key : ImplTypeLookupKeys(typeName)) {
+                    for (const auto& method : d->methods) {
+                        methodsByType[key][method->name].push_back(
+                            method.get());
+                    }
+                    if (d->interfaceName) {
+                        typeImplementsInterfaces[key].insert(*d->interfaceName);
+                    }
                 }
             }
             else if (auto* d = dynamic_cast<const ExternBlockDecl*>(&decl)) {
@@ -1055,8 +1056,26 @@ namespace Rux {
         }
 
         static std::string BaseTypeName(const std::string& name) {
-            const std::size_t pos = name.find('<');
-            return pos == std::string::npos ? name : name.substr(0, pos);
+            const std::size_t genericPos = name.find('<');
+            const std::string stem =
+                genericPos == std::string::npos ? name : name.substr(0, genericPos);
+            if (const std::size_t pathPos = stem.rfind("::");
+                pathPos != std::string::npos) {
+                return stem.substr(pathPos + 2);
+            }
+            return stem;
+        }
+
+        static std::vector<std::string> ImplTypeLookupKeys(
+            const std::string& typeName) {
+            std::vector<std::string> keys;
+            keys.push_back(typeName);
+            if (const std::string base = BaseTypeName(typeName);
+                !base.empty() &&
+                std::ranges::find(keys, base) == keys.end()) {
+                keys.push_back(base);
+            }
+            return keys;
         }
 
         static std::uint64_t AlignUp(const std::uint64_t value,
