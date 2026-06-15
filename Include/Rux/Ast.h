@@ -491,9 +491,9 @@ namespace Rux {
         std::vector<std::unique_ptr<FuncDecl>> methods;
     };
 
-    // extend TypeName [for InterfaceName] { func ... }
+    // extend Type [for InterfaceName] { func ... }
     struct ImplDecl : Decl {
-        std::string typeName;
+        TypeExprPtr targetType;
         std::optional<std::string> interfaceName;
         std::vector<std::unique_ptr<FuncDecl>> methods;
     };

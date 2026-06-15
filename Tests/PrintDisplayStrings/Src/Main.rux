@@ -1,0 +1,42 @@
+// Regression test for issue #122.
+// Verifies that interface-constrained calls accept:
+//   1. string literals,
+//   2. string variables, and
+//   3. values returned from target-specific functions with char8[] returns.
+// This exercises the same string -> Slice<char8> -> interface coercion path that
+// Print(..., args: Display...) uses, without relying on external Std packages.
+
+interface Display {
+    func Render(self) -> int;
+}
+
+extend char8[] : Display {
+    func Render(self) -> int {
+        return 7;
+    }
+}
+
+@[Target("macOS")]
+func GetPlatform() -> char8[] {
+    return "macOS";
+}
+
+@[Target("Linux")]
+func GetPlatform() -> char8[] {
+    return "Linux";
+}
+
+@[Target("Windows")]
+func GetPlatform() -> char8[] {
+    return "Windows";
+}
+
+func Consume(values: Display...) -> int {
+    return 0;
+}
+
+func Main() -> int {
+    let message = "variable";
+    Consume("literal", message, GetPlatform());
+    return 0;
+}

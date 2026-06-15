@@ -518,19 +518,39 @@ namespace Rux {
             for (const auto& f : mod.funcs) {
                 lm.funcs.push_back(LowerFunc(f));
             }
+            auto mangleSymbolComponent = [](std::string_view text) {
+                static constexpr char kHex[] = "0123456789abcdef";
+                std::string out = "t";
+                out.reserve(1 + text.size() * 2);
+                for (const unsigned char c : text) {
+                    out += kHex[c >> 4];
+                    out += kHex[c & 0x0f];
+                }
+                return out;
+            };
+            auto methodOwnerSymbolName = [&](const std::string& typeName) {
+                return mangleSymbolComponent(typeName);
+            };
+            auto vtableLabelFor = [&](const std::string& typeName,
+                                     const std::string& interfaceName) {
+                return "__vtable__" + methodOwnerSymbolName(typeName) + "__" +
+                       mangleSymbolComponent(interfaceName);
+            };
             for (const auto& impl : mod.impls) {
+                const std::string ownerSymbol =
+                    methodOwnerSymbolName(impl.typeName);
                 for (const auto& m : impl.methods) {
-                    std::string mangledName = impl.typeName + "::" + m.name;
+                    std::string mangledName = ownerSymbol + "::" + m.name;
                     lm.funcs.push_back(LowerFunc(m, mangledName));
                 }
                 if (impl.interfaceName) {
                     auto ifaceIt = interfacesByName.find(*impl.interfaceName);
                     if (ifaceIt != interfacesByName.end()) {
                         LirVtable vt;
-                        vt.label = "__vtable__" + impl.typeName + "__" +
-                                 *impl.interfaceName;
+                        vt.label =
+                            vtableLabelFor(impl.typeName, *impl.interfaceName);
                         for (const auto& m : ifaceIt->second->methods) {
-                            vt.methods.push_back(impl.typeName + "::" + m.name);
+                            vt.methods.push_back(ownerSymbol + "::" + m.name);
                         }
                         lm.vtables.push_back(std::move(vt));
                     }

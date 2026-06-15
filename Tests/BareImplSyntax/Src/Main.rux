@@ -1,0 +1,19 @@
+interface Marker {
+    func Mark(self) -> int;
+}
+
+struct Box {
+    value: int32;
+}
+
+extend Box : Marker {
+    func Mark(self) -> int {
+        return 0;
+    }
+}
+
+func Main() -> int {
+    let box = Box { value: 1 };
+    box.Mark();
+    return 0;
+}

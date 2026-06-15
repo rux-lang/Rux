@@ -1,0 +1,7 @@
+[Package]
+Name    = "bare_impl_syntax"
+Version = "0.1.0"
+Type    = "bin"
+
+[Build]
+Output = "Bin"
