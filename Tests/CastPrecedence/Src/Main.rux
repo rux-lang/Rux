@@ -1,0 +1,24 @@
+// Verifies that unary prefix operators bind tighter than the `as` / `is` cast,
+// so `*p as int` parses as `(*p) as int`, not `*(p as int)`. Before the fix the
+// dereference case failed to compile with "'*' applied to non-pointer type", and
+// the same applied to -, ~, !, & in front of a cast.
+//
+// Returns 0 when every value is right; otherwise the 1-based index of the first
+// failing check, so a non-zero exit pinpoints the broken case.
+// Tests/run_cast_precedence_test.sh asserts the exit code.
+
+func Main() -> int {
+    var x: int32 = 42;
+    let p = &x;
+    if *p as int != 42 { return 1; } // (*p) as int
+
+    *p = 100;
+    if *p as int != 100 { return 2; }
+
+    let n: uint8 = 0;
+    if ~n as int != 255 { return 3; } // (~n) as int
+
+    if 5 as int8 + 1 as int8 != 6 { return 4; }
+
+    return 0;
+}

@@ -1629,8 +1629,11 @@ namespace Rux {
         return left;
     }
 
+    // `as` / `is` bind looser than the unary prefix operators, so a prefix
+    // applies before the cast: `*p as int` parses as `(*p) as int`, not
+    // `*(p as int)`. Hence ParseCast sits above ParseUnary in the ladder.
     ExprPtr Parser::ParseCast() {
-        auto left = ParsePostfix();
+        auto left = ParseUnary();
         while (CheckAny({TokenKind::AsKeyword, TokenKind::IsKeyword})) {
             const auto loc = CurrentLocation();
             if (Match(TokenKind::AsKeyword)) {
@@ -1705,7 +1708,7 @@ namespace Rux {
 
     // ** is right-associative (exponentiation)
     ExprPtr Parser::ParseExp() {
-        auto left = ParseUnary();
+        auto left = ParseCast();
 
         if (Check(TokenKind::Star) && Peek(1).kind == TokenKind::Star) {
             const auto loc = CurrentLocation();
@@ -1744,7 +1747,7 @@ namespace Rux {
             e->operand = std::move(operand);
             return e;
         }
-        return ParseCast();
+        return ParsePostfix();
     }
 
     ExprPtr Parser::ParsePostfix() {

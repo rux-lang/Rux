@@ -1,0 +1,7 @@
+[Package]
+Name    = "cast_precedence_test"
+Version = "0.1.0"
+Type    = "bin"
+
+[Build]
+Output = "Bin"
