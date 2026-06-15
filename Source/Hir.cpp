@@ -2962,7 +2962,7 @@ namespace Rux {
 #elif RUX_OS_LINUX
                     os = "Linux";
 #elif RUX_OS_MACOS
-                    os = "macOs";                                        
+                    os = "macOS";                                        
 #endif     
                     he->value = os;
                     break;   

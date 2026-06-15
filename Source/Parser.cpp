@@ -2973,9 +2973,9 @@ namespace Rux {
                                                             "#function",
                                                             "#date",
                                                             "#time",
-                                                            "#module"
-                                                                "#ruxVersion"
-                                                                "#os"};
+                                                            "#module",
+                                                            "#ruxVersion",
+                                                            "#os"};
                     Pad();
                     out << "IntrinsicExpr "
                         << names[static_cast<int>(intr->kind)] << '\n';
