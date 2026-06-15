@@ -37,6 +37,12 @@ namespace Rux {
         /// Package type: "bin", "sharedlib", or "dll" (Windows PE32+ shared
         /// library)
         std::string type = "bin";
+
+        std::string description;
+        std::string authors;
+        std::string license;
+        std::string repository;
+        std::string homepage;
     };
 
     /**
