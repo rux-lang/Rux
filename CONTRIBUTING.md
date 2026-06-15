@@ -39,11 +39,73 @@ Use short imperative sentences: `Fix parser crash on empty block`, not `Fixed th
 
 Follow the conventions already present in the codebase. Consistency matters more than personal preference.
 
+## Testing
+
+### Running the test suite
+
+From the root of any Rux project that has a `Tests/` directory, run:
+
+```sh
+rux test
+```
+
+`rux test` automatically discovers every subdirectory of `Tests/` that contains a `Rux.toml` with `Type = "bin"`, builds it, executes it, and reports a per-package PASS/FAIL line followed by an overall summary:
+
+```
+     Testing MyProject v0.1.0
+      Running test package: BoolBitwise
+    PASS: BoolBitwise
+      Running test package: Pow
+    PASS: Pow
+ok: 2 passed, 0 failed, 2 total
+```
+
+Pass `--release` to test against the optimised build and `--verbose` to see
+the path of each binary being executed.
+
+### Test package layout
+
+Each test package lives under `Tests/<Name>/` and must contain:
+
+```
+Tests/
+  MyFeature/
+    Rux.toml        # [Package] Type = "bin"
+    Src/
+      Main.rux      # returns 0 on success, non-zero on failure
+```
+
+The binary's exit code is the sole signal: **0 = PASS, anything else = FAIL**.
+This lets test packages assert arbitrary conditions without any test framework:
+
+```rux
+func Main() -> int {
+    // returning a non-zero value here will fail the test
+    if 2 ** 10 != 1024 { return 1; }
+    return 0;
+}
+```
+
+### Shell-based integration tests
+
+For tests that require stdin/stdout matching or multi-binary orchestration,
+shell scripts are provided in `Tests/`. Each script is self-contained and
+accepts a path to the `rux` binary as its first argument (or via `$RUX`):
+
+```sh
+RUX=./build/rux Tests/run_io_test.sh
+RUX=./build/rux Tests/run_bool_bitwise_test.sh
+```
+
+These scripts serve as regression guards and are run in CI. When adding a new
+language feature, add a matching test package **and** a shell script if the
+feature requires output comparison.
+
 ## Reporting Bugs
 
 Include:
 
-- Rux version / commit hash
+- Rux version / commit hash (`rux version`)
 - Minimal reproducer (source file or snippet)
 - Expected vs. actual behavior
 
