@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Rux/Hir.h"
+#include <unordered_map>
 
 #include <optional>
 
@@ -9,6 +10,7 @@ namespace Rux {
     class Optimizer {
     public:
         static void Run(HirPackage& package);
+
 
     private:
         static void OptimizeModule(HirModule& module);
@@ -38,7 +40,15 @@ namespace Rux {
         static bool GetBoolLiteral(const HirExpr* expr);
 
         static bool SimplifyBinary(HirExprPtr& expr);
-        
+
+        struct ConstantValue {
+            bool isBool = false;
+            std::int64_t intValue = 0;
+            bool boolValue = false;
+            TypeRef type;
+        };
+
+        static inline std::unordered_map<std::string, ConstantValue> constants;        
     };
 
 }
