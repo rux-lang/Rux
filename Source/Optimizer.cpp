@@ -4,7 +4,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <print>
 
 namespace Rux {
     void Optimizer::Run(HirPackage& package) {
@@ -52,10 +51,17 @@ namespace Rux {
 
                 // only track immutable bindings, mutable tracking is not supported (yet)
                 if (!s->isMut) {
+
+                    bool sExists = false;
+
                     if (IsIntegerLiteral(s->init.get())) {
-                        constants[s->name] = {
+                        sExists = true;
+                    }
+
+                    if (IsIntegerLiteral(s->init.get())) {
+                        constants[s->name] = ConstantValue{
                             false,
-                            GetIntegerLiteral(s->init.get()),
+                            GetIntegerLiteral(s->init.get()).value(),
                             false,
                             s->init->type
                         };

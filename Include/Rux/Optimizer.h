@@ -2,7 +2,7 @@
 
 #include "Rux/Hir.h"
 #include <unordered_map>
-
+#include <cstdint>
 #include <optional>
 
 namespace Rux {
