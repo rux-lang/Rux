@@ -182,6 +182,8 @@ namespace Rux {
             Date,
             Time,
             Module,
+            RuxVersion,
+            Os,
         };
 
         Kind kind;

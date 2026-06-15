@@ -774,6 +774,12 @@ namespace Rux {
             if (tryMatch("module")) {
                 return MakeToken(TokenKind::HashModule, start, tokenStart);
             }
+            if (tryMatch("ruxVersion")) {
+                return MakeToken(TokenKind::hashRuxVersion, start, tokenStart);
+            }
+            if (tryMatch("os")) {
+                return MakeToken(TokenKind::hashOs, start, tokenStart);
+            }
             return MakeToken(TokenKind::Hash, start, tokenStart);
         }
         case '?':

@@ -1953,7 +1953,7 @@ namespace Rux {
             Expect(TokenKind::RightParen, "expected ')' after sizeof type");
             return e;
         }
-        // Compile-time intrinsics: #line, #column, #file, #function, #date,
+        // Compile-time intrinsics: #line, #column, #file, #function, #date, #ruxVersion
         // #time
         {
             using K = IntrinsicExpr::Kind;
@@ -1965,6 +1965,8 @@ namespace Rux {
                 {TokenKind::HashDate, K::Date},
                 {TokenKind::HashTime, K::Time},
                 {TokenKind::HashModule, K::Module},
+                {TokenKind::hashRuxVersion, K::RuxVersion},
+                {TokenKind::hashOs, K::Os},
             };
             for (auto [tok, kind] : intrinsics) {
                 if (Match(tok)) {
@@ -2971,7 +2973,9 @@ namespace Rux {
                                                             "#function",
                                                             "#date",
                                                             "#time",
-                                                            "#module"};
+                                                            "#module"
+                                                                "#ruxVersion"
+                                                                "#os"};
                     Pad();
                     out << "IntrinsicExpr "
                         << names[static_cast<int>(intr->kind)] << '\n';
