@@ -4,6 +4,7 @@
 #include "Rux/Hir.h"
 
 #include "Rux/Platform/Defines.h"
+#include "Rux/Version.h"
 
 #include <algorithm>
 #include <cassert>
@@ -2743,7 +2744,7 @@ namespace Rux {
 
         // Like LowerExprAs but, for intrinsic defaults, evaluates at
         // callSiteLoc rather than at the declaration site (call-site builtins:
-        // #line, #column, #file, etc.).
+        // #line, #column, #file, #ruxVersion etc.).
         HirExprPtr LowerDefaultArg(const Expr& defaultExpr,
                                    const TypeRef& targetType,
                                    const SourceLocation& callSiteLoc) {
@@ -2940,11 +2941,32 @@ namespace Rux {
                     he->value = buf;
                     break;
                 }
-                case K::Module:
+                case K::Module: {
                     he->type =
                         TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
                     he->value = currentModulePath;
                     break;
+                }    
+                case K::RuxVersion: {
+                    he->type = 
+                        TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                    he->value = RUX_VERSION;
+                    break;
+                }
+                case K::Os: {
+                    he->type = 
+                        TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));  
+                    std::string os;
+#if RUX_OS_WINDOWS
+                    os = "Windows";
+#elif RUX_OS_LINUX
+                    os = "Linux";
+#elif RUX_OS_MACOS
+                    os = "macOS";                                        
+#endif     
+                    he->value = os;
+                    break;   
+                }                             
                 }
                 return he;
             }

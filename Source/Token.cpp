@@ -243,6 +243,10 @@ namespace Rux {
             return "#time";
         case TokenKind::HashModule:
             return "#module";
+        case TokenKind::hashRuxVersion:
+            return "#ruxVersion";
+        case TokenKind::hashOs:
+            return "#os";    
         case TokenKind::NewLine:
             return "NewLine";
         case TokenKind::EndOfFile:

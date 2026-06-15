@@ -121,14 +121,16 @@ namespace Rux {
         GreaterGreaterAssign, // >>=
 
         // Compile-time intrinsics (#line, #column, #file, #function, #date,
-        // #time, #module)
+        // #time, #module, #ruxVersion, #os)
         HashLine,     // #line
-        HashColumn,   // #column
-        HashFile,     // #file
-        HashFunction, // #function
-        HashDate,     // #date
-        HashTime,     // #time
-        HashModule,   // #module
+        HashColumn,    // #column
+        HashFile,      // #file
+        HashFunction,  // #function
+        HashDate,      // #date
+        HashTime,      // #time
+        HashModule,    // #module
+        hashRuxVersion,// #ruxVersion 
+        hashOs,
 
         // Special
         NewLine,   // significant newline (if the grammar uses them)
