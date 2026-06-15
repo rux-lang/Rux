@@ -92,10 +92,65 @@ int Cli::RunFmt(std::span<const std::string_view> args,
     }
     auto root = manifestPath->parent_path();
     if (manifestOnly) {
-        if (!opts.quiet) {
-            std::print("  Formatting {}\n", manifestPath->string());
+        auto manifest = Manifest::Load(*manifestPath);
+        if (!manifest) {
+            std::print(stderr, "error: failed to parse manifest file '{}'\n", manifestPath->string());
+            return 1;
         }
-        // TODO: TOML formatter
+
+        // Get formatted content by saving to a temp file and reading it
+        auto tempPath = manifestPath->parent_path() / "Rux.toml.fmt.tmp";
+        if (!manifest->Save(tempPath)) {
+            std::print(stderr, "error: failed to serialize formatted manifest\n");
+            return 1;
+        }
+
+        std::string formattedContent;
+        {
+            std::ifstream tempFile(tempPath, std::ios::binary);
+            if (tempFile) {
+                formattedContent.assign((std::istreambuf_iterator<char>(tempFile)),
+                                        std::istreambuf_iterator<char>());
+            }
+        }
+        std::error_code ec;
+        std::filesystem::remove(tempPath, ec);
+
+        std::string originalContent;
+        {
+            std::ifstream inFile(*manifestPath, std::ios::binary);
+            if (inFile) {
+                originalContent.assign((std::istreambuf_iterator<char>(inFile)),
+                                       std::istreambuf_iterator<char>());
+            }
+        }
+
+        if (check) {
+            if (originalContent != formattedContent) {
+                if (!opts.quiet) {
+                    std::print(stderr, "error: manifest '{}' is not formatted\n", manifestPath->string());
+                }
+                return 1;
+            }
+            if (!opts.quiet) {
+                std::print("  Manifest is already formatted: {}\n", manifestPath->string());
+            }
+            return 0;
+        }
+
+        if (originalContent != formattedContent) {
+            if (!opts.quiet) {
+                std::print("  Formatting {}\n", manifestPath->string());
+            }
+            if (!manifest->Save(*manifestPath)) {
+                std::print(stderr, "error: failed to write manifest file '{}'\n", manifestPath->string());
+                return 1;
+            }
+        } else {
+            if (!opts.quiet) {
+                std::print("  Manifest is already formatted: {}\n", manifestPath->string());
+            }
+        }
         return 0;
     }
     auto sourceDir = root / "Source";
@@ -481,18 +536,24 @@ int Cli::RunInfo(std::span<const std::string_view> args,
         return 1;
     }
 
+    std::filesystem::path manifestPath;
     if (packageName.empty()) {
-        std::print(stderr, "error: missing package name\n");
-        return 1;
+        auto localManifestOpt = Manifest::Find(std::filesystem::current_path());
+        if (!localManifestOpt) {
+            std::print(stderr, "error: missing package name, and no Rux.toml found in current directory\n");
+            return 1;
+        }
+        manifestPath = *localManifestOpt;
     }
+    else {
+        const auto packageDir = RegistryPackagesDir() / std::string(packageName);
+        manifestPath = packageDir / "Rux.toml";
 
-    const auto packageDir = RegistryPackagesDir() / std::string(packageName);
-    const auto manifestPath = packageDir / "Rux.toml";
-
-    if (!std::filesystem::exists(manifestPath)) {
-        std::print(
-            stderr, "error: package '{}' is not installed\n", packageName);
-        return 1;
+        if (!std::filesystem::exists(manifestPath)) {
+            std::print(
+                stderr, "error: package '{}' is not installed\n", packageName);
+            return 1;
+        }
     }
 
     auto manifest = Manifest::Load(manifestPath);
@@ -510,6 +571,17 @@ int Cli::RunInfo(std::span<const std::string_view> args,
         std::print("  \"name\": \"{}\",\n", manifest->package.name);
         std::print("  \"version\": \"{}\",\n", manifest->package.version);
         std::print("  \"type\": \"{}\",\n", manifest->package.type);
+        if (!manifest->package.description.empty())
+            std::print("  \"description\": \"{}\",\n", manifest->package.description);
+        if (!manifest->package.authors.empty())
+            std::print("  \"authors\": \"{}\",\n", manifest->package.authors);
+        if (!manifest->package.license.empty())
+            std::print("  \"license\": \"{}\",\n", manifest->package.license);
+        if (!manifest->package.repository.empty())
+            std::print("  \"repository\": \"{}\",\n", manifest->package.repository);
+        if (!manifest->package.homepage.empty())
+            std::print("  \"homepage\": \"{}\",\n", manifest->package.homepage);
+
         std::print("  \"dependencies\": [\n");
 
         for (size_t i = 0; i < manifest->dependencies.size(); ++i) {
@@ -538,12 +610,22 @@ int Cli::RunInfo(std::span<const std::string_view> args,
         std::print("{}\n", "}");
     }
     else {
-        std::print("Name:     {}\n"
-                   "Version:  {}\n"
-                   "Type:     {}\n",
+        std::print("Name:        {}\n"
+                   "Version:     {}\n"
+                   "Type:        {}\n",
                    manifest->package.name,
                    manifest->package.version,
                    manifest->package.type);
+        if (!manifest->package.description.empty())
+            std::print("Description: {}\n", manifest->package.description);
+        if (!manifest->package.authors.empty())
+            std::print("Authors:     {}\n", manifest->package.authors);
+        if (!manifest->package.license.empty())
+            std::print("License:     {}\n", manifest->package.license);
+        if (!manifest->package.repository.empty())
+            std::print("Repository:  {}\n", manifest->package.repository);
+        if (!manifest->package.homepage.empty())
+            std::print("Homepage:    {}\n", manifest->package.homepage);
 
         if (!manifest->dependencies.empty()) {
             std::print("\nDependencies:\n");

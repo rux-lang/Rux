@@ -218,7 +218,7 @@ namespace Rux {
     class Lir {
     public:
         explicit Lir(HirPackage package);
-        [[nodiscard]] LirPackage Generate() const;
+        [[nodiscard]] LirPackage Generate();
 
         // Write a human-readable dump of the LIR package to `path`.
         static bool Dump(const LirPackage& package,

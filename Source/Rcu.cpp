@@ -1553,18 +1553,18 @@ namespace Rux {
                 symbols[ipowSym].value = enc.Size();
                 // clang-format off
                 static constexpr std::uint8_t kThunk[] = {
-                    0x48, 0x85, 0xF6,                         // test rsi, rsi    ; exponent
+                    0x48, 0x85, 0xD2,                         // test rdx, rdx    ; exponent
                     0x78, 0x20,                               // js   .negative   ; exp < 0 -> 0
                     0xB8, 0x01, 0x00, 0x00, 0x00,             // mov  eax, 1      ; result = 1
                     // .loop:
-                    0x48, 0x85, 0xF6,                         // test rsi, rsi
+                    0x48, 0x85, 0xD2,                         // test rdx, rdx
                     0x74, 0x18,                               // jz   .done       ; exp == 0
-                    0x48, 0xF7, 0xC6, 0x01, 0x00, 0x00, 0x00, // test rsi, 1
+                    0x48, 0xF7, 0xC2, 0x01, 0x00, 0x00, 0x00, // test rdx, 1
                     0x74, 0x04,                               // jz   .square
-                    0x48, 0x0F, 0xAF, 0xC7,                   // imul rax, rdi    ; result *= base
+                    0x48, 0x0F, 0xAF, 0xC1,                   // imul rax, rcx    ; result *= base
                     // .square:
-                    0x48, 0x0F, 0xAF, 0xFF,                   // imul rdi, rdi    ; base *= base
-                    0x48, 0xD1, 0xFE,                         // sar  rsi, 1      ; exp >>= 1
+                    0x48, 0x0F, 0xAF, 0xC9,                   // imul rcx, rcx    ; base *= base
+                    0x48, 0xD1, 0xFA,                         // sar  rdx, 1      ; exp >>= 1
                     0xEB, 0xE5,                               // jmp  .loop
                     // .negative:
                     0x31, 0xC0,                               // xor  eax, eax    ; result = 0
