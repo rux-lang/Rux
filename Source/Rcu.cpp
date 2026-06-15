@@ -5,6 +5,7 @@
 
 #include "Rux/Version.h"
 
+#include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <cstring>
@@ -282,6 +283,23 @@ namespace Rux {
                 Byte(0xC4);
                 Dword(static_cast<uint32_t>(n));
             }
+
+            // Compact sub/add rsp for small (≤127 byte) adjustments.
+            void SubRspImm8(int8_t n) const { Byte(0x48); Byte(0x83); Byte(0xEC); Byte(static_cast<uint8_t>(n)); }
+            void AddRspImm8(int8_t n) const { Byte(0x48); Byte(0x83); Byte(0xC4); Byte(static_cast<uint8_t>(n)); }
+
+            // push / pop RAX and RDX — used by the phi parallel-copy cycle breaker.
+            // rbp-relative slot addresses remain valid while rsp is temporarily changed.
+            void PushRax() const { Byte(0x50); }
+            void PopRax()  const { Byte(0x58); }
+            void PushRdx() const { Byte(0x52); }
+            void PopRdx()  const { Byte(0x5A); }
+
+            // Save/restore xmm0 to/from [rsp] (after sub rsp,8 / before add rsp,8).
+            void MovssXmm0StoreRspNoDisp() const { Byte(0xF3); Byte(0x0F); Byte(0x11); Byte(0x04); Byte(0x24); }
+            void MovsdXmm0StoreRspNoDisp() const { Byte(0xF2); Byte(0x0F); Byte(0x11); Byte(0x04); Byte(0x24); }
+            void MovssXmm0LoadRspNoDisp()  const { Byte(0xF3); Byte(0x0F); Byte(0x10); Byte(0x04); Byte(0x24); }
+            void MovsdXmm0LoadRspNoDisp()  const { Byte(0xF2); Byte(0x0F); Byte(0x10); Byte(0x04); Byte(0x24); }
 
             void Leave() const {
                 Byte(0xC9);
@@ -2123,7 +2141,12 @@ namespace Rux {
                 }
             }
 
-            // Phi move emission
+            // Phi move emission — parallel copy resolution.
+            //
+            // See Asm.cpp EmitPhiMoves for the full algorithm description.
+            // Phase 1: emit copies whose dst is not another pending copy's src.
+            // Phase 2: break cycles by temporarily pushing the cycle-start value
+            //          onto the machine stack using PushRax / SubRspImm8+store.
             bool HasPhiMoves(const uint32_t from, uint32_t to) const {
                 auto it = phiMoves.find(from);
                 if (it == phiMoves.end()) {
@@ -2141,12 +2164,110 @@ namespace Rux {
                 if (it2 == it1->second.end()) {
                     return;
                 }
+
+                struct PCopy {
+                    LirReg src, dst;
+                    TypeRef type;
+                };
+                std::vector<PCopy> pending;
                 for (const auto& m : it2->second) {
-                    if (!slotMap.contains(m.src)) {
+                    if (m.src == m.dst) {
                         continue;
                     }
-                    LoadA(m.src, m.type);
-                    StoreA(m.dst, m.type);
+                    if (!slotMap.contains(m.src) || !slotMap.contains(m.dst)) {
+                        continue;
+                    }
+                    pending.push_back({m.src, m.dst, m.type});
+                }
+                if (pending.empty()) {
+                    return;
+                }
+
+                // ── Phase 1 ───────────────────────────────────────────────────
+                bool progress = true;
+                while (progress) {
+                    progress = false;
+                    for (std::size_t i = 0; i < pending.size();) {
+                        const LirReg dst = pending[i].dst;
+                        bool needed = false;
+                        for (std::size_t j = 0; j < pending.size(); ++j) {
+                            if (j != i && pending[j].src == dst) {
+                                needed = true;
+                                break;
+                            }
+                        }
+                        if (!needed) {
+                            LoadA(pending[i].src, pending[i].type);
+                            StoreA(pending[i].dst, pending[i].type);
+                            pending.erase(pending.begin() + static_cast<std::ptrdiff_t>(i));
+                            progress = true;
+                        }
+                        else {
+                            ++i;
+                        }
+                    }
+                }
+
+                // ── Phase 2: cycle-breaking ───────────────────────────────────
+                while (!pending.empty()) {
+                    PCopy start = pending.front();
+                    pending.erase(pending.begin());
+
+                    const int rtSz = SizeOfRuntime(start.type);
+                    const bool f32 = (start.type.kind == TypeRef::Kind::Float32);
+                    const bool isF = IsFloat(start.type);
+                    const bool wide = (rtSz == 16);
+
+                    LoadA(start.src, start.type);
+                    if (wide) {
+                        enc.PushRdx(); // high qword first
+                        enc.PushRax(); // low  qword
+                    }
+                    else if (isF) {
+                        enc.SubRspImm8(8);
+                        if (f32) {
+                            enc.MovssXmm0StoreRspNoDisp();
+                        }
+                        else {
+                            enc.MovsdXmm0StoreRspNoDisp();
+                        }
+                    }
+                    else {
+                        enc.PushRax();
+                    }
+
+                    LirReg cur = start.dst;
+                    while (cur != start.src) {
+                        auto it = std::find_if(pending.begin(),
+                                               pending.end(),
+                                               [&](const PCopy& c) { return c.src == cur; });
+                        if (it == pending.end()) {
+                            break;
+                        }
+                        PCopy link = *it;
+                        pending.erase(it);
+                        LoadA(link.src, link.type);
+                        StoreA(link.dst, link.type);
+                        cur = link.dst;
+                    }
+
+                    if (wide) {
+                        enc.PopRax();
+                        enc.PopRdx();
+                    }
+                    else if (isF) {
+                        if (f32) {
+                            enc.MovssXmm0LoadRspNoDisp();
+                        }
+                        else {
+                            enc.MovsdXmm0LoadRspNoDisp();
+                        }
+                        enc.AddRspImm8(8);
+                    }
+                    else {
+                        enc.PopRax();
+                    }
+                    StoreA(start.dst, start.type);
                 }
             }
 

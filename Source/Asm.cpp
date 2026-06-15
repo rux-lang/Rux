@@ -3,6 +3,7 @@
 
 #include "Rux/Asm.h"
 
+#include <algorithm>
 #include <cstring>
 #include <format>
 #include <fstream>
@@ -516,7 +517,21 @@ namespace Rux {
                 return "." + curFunc + "_" + label;
             }
 
-            // Phi move emission
+            // Phi move emission — parallel copy resolution.
+            //
+            // A naive sequential loop (load src → store dst for each phi) silently
+            // produces wrong values whenever two phis form a swap cycle, e.g.
+            //   a = phi(b)  and  b = phi(a)
+            // because the first write overwrites the source of the second.
+            //
+            // The algorithm below resolves the set of copies in two phases:
+            //   Phase 1 — emit copies whose dst is not any other copy's src
+            //             (topological order; safe to do sequentially).
+            //   Phase 2 — every remaining copy is in a cycle.  Break each cycle
+            //             by saving the cycle-start src onto the machine stack
+            //             (push / sub+store), walking the rest of the cycle with
+            //             normal copies, then restoring the saved value into the
+            //             cycle-start dst (pop / load+add).
             void EmitPhiMoves(uint32_t fromBlock, uint32_t toBlock) {
                 auto it1 = phiMoves.find(fromBlock);
                 if (it1 == phiMoves.end()) {
@@ -526,12 +541,100 @@ namespace Rux {
                 if (it2 == it1->second.end()) {
                     return;
                 }
+
+                struct PCopy {
+                    LirReg src, dst;
+                    TypeRef type;
+                };
+                std::vector<PCopy> pending;
                 for (const auto& m : it2->second) {
-                    if (!slotMap.contains(m.src)) {
+                    if (m.src == m.dst) {
                         continue;
                     }
-                    LoadA(m.src, m.type);
-                    StoreA(m.dst, m.type);
+                    if (!slotMap.contains(m.src) || !slotMap.contains(m.dst)) {
+                        continue;
+                    }
+                    pending.push_back({m.src, m.dst, m.type});
+                }
+                if (pending.empty()) {
+                    return;
+                }
+
+                // ── Phase 1 ───────────────────────────────────────────────────
+                bool progress = true;
+                while (progress) {
+                    progress = false;
+                    for (std::size_t i = 0; i < pending.size();) {
+                        const LirReg dst = pending[i].dst;
+                        bool needed = false;
+                        for (std::size_t j = 0; j < pending.size(); ++j) {
+                            if (j != i && pending[j].src == dst) {
+                                needed = true;
+                                break;
+                            }
+                        }
+                        if (!needed) {
+                            LoadA(pending[i].src, pending[i].type);
+                            StoreA(pending[i].dst, pending[i].type);
+                            pending.erase(pending.begin() + static_cast<std::ptrdiff_t>(i));
+                            progress = true;
+                        } else {
+                            ++i;
+                        }
+                    }
+                }
+
+                // ── Phase 2: cycle-breaking ───────────────────────────────────
+                while (!pending.empty()) {
+                    PCopy start = pending.front();
+                    pending.erase(pending.begin());
+
+                    const int  rtSz = SizeOfRuntime(start.type);
+                    const bool f32  = (start.type.kind == TypeRef::Kind::Float32);
+                    const bool isF  = IsFloat(start.type);
+                    const bool wide = (rtSz == 16);
+
+                    // Save the cycle-start src onto the machine stack.
+                    // rbp-relative slot addresses are unaffected by rsp changes.
+                    LoadA(start.src, start.type);
+                    if (wide) {
+                        TI("push    rdx");   // high qword first → pops last
+                        TI("push    rax");   // low  qword
+                    } else if (isF) {
+                        TI("sub     rsp, 8");
+                        TI(f32 ? "movss   dword [rsp], xmm0"
+                               : "movsd   qword [rsp], xmm0");
+                    } else {
+                        TI("push    rax");
+                    }
+
+                    // Walk the remaining cycle links; each src is still intact.
+                    LirReg cur = start.dst;
+                    while (cur != start.src) {
+                        auto it = std::find_if(pending.begin(), pending.end(),
+                                               [&](const PCopy& c){ return c.src == cur; });
+                        if (it == pending.end()) {
+                            break;   // malformed — bail safely
+                        }
+                        PCopy link = *it;
+                        pending.erase(it);
+                        LoadA(link.src, link.type);
+                        StoreA(link.dst, link.type);
+                        cur = link.dst;
+                    }
+
+                    // Restore the saved value into the cycle-start dst.
+                    if (wide) {
+                        TI("pop     rax");
+                        TI("pop     rdx");
+                    } else if (isF) {
+                        TI(f32 ? "movss   xmm0, dword [rsp]"
+                               : "movsd   xmm0, qword [rsp]");
+                        TI("add     rsp, 8");
+                    } else {
+                        TI("pop     rax");
+                    }
+                    StoreA(start.dst, start.type);
                 }
             }
 
