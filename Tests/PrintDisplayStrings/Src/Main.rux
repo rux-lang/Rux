@@ -31,6 +31,16 @@ func GetPlatform() -> char8[] {
     return "Windows";
 }
 
+@[Target("BSD")]
+func GetPlatform() -> char8[] {
+    return "BSD";
+}
+
+@[Target("Illumos")]
+func GetPlatform() -> char8[] {
+    return "Illumos";
+}
+
 func Consume(values: Display...) -> int {
     return 0;
 }
