@@ -2826,6 +2826,60 @@ namespace Rux {
                     break;
                 }
                 case LirOpcode::Call: {
+                    // Built-in: FloatBits64 — reinterpret float64 bits as uint64
+                    if (instr.strArg == "FloatBits64" &&
+                        instr.srcs.size() == 1) {
+                        enc.MovsdXmm0Load(Disp(instr.srcs[0]));
+                        enc.Byte(0x66);
+                        enc.Byte(0x48);
+                        enc.Byte(0x0F);
+                        enc.Byte(0x7E);
+                        enc.Byte(0xC0); // movq rax, xmm0
+                        if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
+                            StoreReturnValue(instr.dst, instr.type);
+                        }
+                        break;
+                    }
+                    // Built-in: FloatFromBits64 — reinterpret uint64 bits as float64
+                    if (instr.strArg == "FloatFromBits64" &&
+                        instr.srcs.size() == 1) {
+                        enc.MovRaxLoad(Disp(instr.srcs[0]));
+                        enc.Byte(0x66);
+                        enc.Byte(0x48);
+                        enc.Byte(0x0F);
+                        enc.Byte(0x6E);
+                        enc.Byte(0xC0); // movq xmm0, rax
+                        if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
+                            StoreReturnValue(instr.dst, instr.type);
+                        }
+                        break;
+                    }
+                    // Built-in: FloatBits32 — reinterpret float32 bits as uint32
+                    if (instr.strArg == "FloatBits32" &&
+                        instr.srcs.size() == 1) {
+                        enc.MovssXmm0Load(Disp(instr.srcs[0]));
+                        enc.Byte(0x66);
+                        enc.Byte(0x0F);
+                        enc.Byte(0x7E);
+                        enc.Byte(0xC0); // movd eax, xmm0
+                        if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
+                            StoreReturnValue(instr.dst, instr.type);
+                        }
+                        break;
+                    }
+                    // Built-in: FloatFromBits32 — reinterpret uint32 bits as float32
+                    if (instr.strArg == "FloatFromBits32" &&
+                        instr.srcs.size() == 1) {
+                        enc.MovRaxLoad(Disp(instr.srcs[0]));
+                        enc.Byte(0x66);
+                        enc.Byte(0x0F);
+                        enc.Byte(0x6E);
+                        enc.Byte(0xC0); // movd xmm0, eax
+                        if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
+                            StoreReturnValue(instr.dst, instr.type);
+                        }
+                        break;
+                    }
                     bool win64Call = EffectiveConv(instr.callConv) ==
                                      CallingConvention::Win64;
                     const bool hiddenReturn = win64Call &&
