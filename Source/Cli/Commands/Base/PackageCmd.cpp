@@ -26,32 +26,31 @@
  */
 
 #if RUX_OS_WINDOWS
-#  ifndef WIN32_LEAN_AND_MEAN
-#    define WIN32_LEAN_AND_MEAN
-#  endif
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
 
-#  ifndef NOMINMAX
-#    define NOMINMAX
-#  endif
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
 
-#  include <windows.h>
+    #include <windows.h>
 #endif
 
 #if RUX_OS_WINDOWS
-#  include <psapi.h>
+    #include <psapi.h>
 #else
-#  include <fcntl.h>
-#  include <sys/resource.h>
-#  include <sys/wait.h>
-#  include <unistd.h>
+    #include <fcntl.h>
+    #include <sys/resource.h>
+    #include <sys/wait.h>
+    #include <unistd.h>
 #endif
 
 using namespace Rux;
 using namespace Platform;
 using namespace Misc;
 
-int Cli::RunAdd(std::span<const std::string_view> args,
-                const GlobalOptions& opts) {
+int Cli::RunAdd(std::span<std::string_view const> args, GlobalOptions const &opts) {
     std::string_view spec;
     std::string_view pathArg;
     for (std::size_t i = 0; i < args.size(); ++i) {
@@ -91,12 +90,9 @@ int Cli::RunAdd(std::span<const std::string_view> args,
     auto [pkgName, pkgVersion] = ParsePackageSpec(spec);
 
     if (!pathArg.empty()) {
-        const bool changed =
-            manifest->AddPathDependency(pkgName, std::string(pathArg));
+        bool const changed = manifest->AddPathDependency(pkgName, std::string(pathArg));
         if (!manifest->Save(*manifestPath)) {
-            std::print(stderr,
-                       "error: failed to write '{}'\n",
-                       manifestPath->string());
+            std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
             return 1;
         }
         if (!opts.quiet) {
@@ -114,26 +110,24 @@ int Cli::RunAdd(std::span<const std::string_view> args,
         std::print("     Fetching registry...\n");
     }
 
-    const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
+    auto const jsonOpt = FetchUrl(std::string(kRegistryUrl));
     if (!jsonOpt) {
         std::print(stderr, "error: failed to fetch package registry\n");
         return 1;
     }
 
     if (JsonLookupString(*jsonOpt, pkgName).empty()) {
-        std::print(
-            stderr, "error: package '{}' not found in registry\n", pkgName);
+        std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
         return 1;
     }
 
-    const bool changed = manifest->AddDependency(pkgName, pkgVersion);
+    bool const changed = manifest->AddDependency(pkgName, pkgVersion);
     if (!manifest->Save(*manifestPath)) {
-        std::print(
-            stderr, "error: failed to write '{}'\n", manifestPath->string());
+        std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
         return 1;
     }
     if (!opts.quiet) {
-        const std::string ver = pkgVersion.empty() ? "latest" : pkgVersion;
+        std::string const ver = pkgVersion.empty() ? "latest" : pkgVersion;
         if (changed) {
             std::print("Added {} @ {}\n", pkgName, ver);
         }
@@ -144,8 +138,7 @@ int Cli::RunAdd(std::span<const std::string_view> args,
     return 0;
 }
 
-int Cli::RunRemove(std::span<const std::string_view> args,
-                   const GlobalOptions& opts) {
+int Cli::RunRemove(std::span<std::string_view const> args, GlobalOptions const &opts) {
     std::string_view name;
     for (auto arg : args) {
         if (arg == "-h" || arg == "--help") {
@@ -174,13 +167,11 @@ int Cli::RunRemove(std::span<const std::string_view> args,
     }
     std::string pkgName(name);
     if (!manifest->RemoveDependency(pkgName)) {
-        std::print(
-            stderr, "error: package '{}' is not a dependency\n", pkgName);
+        std::print(stderr, "error: package '{}' is not a dependency\n", pkgName);
         return 1;
     }
     if (!manifest->Save(*manifestPath)) {
-        std::print(
-            stderr, "error: failed to write '{}'\n", manifestPath->string());
+        std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
         return 1;
     }
     if (!opts.quiet) {
@@ -189,10 +180,9 @@ int Cli::RunRemove(std::span<const std::string_view> args,
     return 0;
 }
 
-int Cli::RunTest(std::span<const std::string_view> args,
-                 const GlobalOptions& opts) {
+int Cli::RunTest(std::span<std::string_view const> args, GlobalOptions const &opts) {
     bool isRelease = false;
-    for (auto& arg : args) {
+    for (auto &arg : args) {
         if (arg == "--release") {
             isRelease = true;
             continue;
@@ -210,12 +200,16 @@ int Cli::RunTest(std::span<const std::string_view> args,
 
     if (manifestPath) {
         auto manifest = LoadManifest(*manifestPath);
-        if (!manifest) return 1;
-        if (!opts.quiet)
+        if (!manifest) {
+            return 1;
+        }
+        if (!opts.quiet) {
             std::print("     Testing {} v{}\n", manifest->package.name, manifest->package.version);
+        }
         projectRoot = manifestPath->parent_path();
         testsDir = projectRoot / "Tests";
-    } else {
+    }
+    else {
         projectRoot = std::filesystem::current_path();
         testsDir = projectRoot / "Tests";
         std::error_code ec;
@@ -223,11 +217,12 @@ int Cli::RunTest(std::span<const std::string_view> args,
             RequireManifest(); // Prints standard "Rux.toml not found" error
             return 1;
         }
-        if (!opts.quiet)
+        if (!opts.quiet) {
             std::print("     Running workspace tests\n");
+        }
     }
 
-    const std::string_view profileName = isRelease ? "Release" : "Debug";
+    std::string_view const profileName = isRelease ? "Release" : "Debug";
 
     // Collect test package directories: any subdirectory of Tests/ that
     // contains a Rux.toml with Type = "bin".
@@ -235,32 +230,44 @@ int Cli::RunTest(std::span<const std::string_view> args,
     {
         std::error_code ec;
         if (!std::filesystem::exists(testsDir, ec)) {
-            if (!opts.quiet) std::print("  No Tests/ directory found — nothing to run.\n");
+            if (!opts.quiet) {
+                std::print("  No Tests/ directory found — nothing to run.\n");
+            }
             return 0;
         }
-        for (const auto& entry : std::filesystem::directory_iterator(testsDir, ec)) {
-            if (!entry.is_directory()) continue;
-            const auto toml = entry.path() / "Rux.toml";
-            if (!std::filesystem::exists(toml)) continue;
+        for (auto const &entry : std::filesystem::directory_iterator(testsDir, ec)) {
+            if (!entry.is_directory()) {
+                continue;
+            }
+            auto const toml = entry.path() / "Rux.toml";
+            if (!std::filesystem::exists(toml)) {
+                continue;
+            }
             auto pkgManifest = Manifest::Load(toml);
-            if (!pkgManifest) continue;
+            if (!pkgManifest) {
+                continue;
+            }
             // Only run binary packages (not DLLs / shared libraries).
-            const auto& type = pkgManifest->package.type;
-            if (type != "bin" && type != "Bin") continue;
+            auto const &type = pkgManifest->package.type;
+            if (type != "bin" && type != "Bin") {
+                continue;
+            }
             testPackages.push_back(entry.path());
         }
         std::sort(testPackages.begin(), testPackages.end());
     }
 
     if (testPackages.empty()) {
-        if (!opts.quiet) std::print("  No test packages found in Tests/.\n");
+        if (!opts.quiet) {
+            std::print("  No test packages found in Tests/.\n");
+        }
         return 0;
     }
 
     // Helper: run rux build inside a package directory, then execute the
     // resulting binary. Returns the process exit code, or -1 on build/launch
     // failure.
-    auto runOne = [&](const std::filesystem::path& pkgDir) -> int {
+    auto runOne = [&](std::filesystem::path const &pkgDir) -> int {
         // Load the package manifest to derive the executable name and output path.
         auto pkgManifest = Manifest::Load(pkgDir / "Rux.toml");
         if (!pkgManifest) {
@@ -270,62 +277,63 @@ int Cli::RunTest(std::span<const std::string_view> args,
 
         // Build: temporarily change the working directory into the package root
         // so that RequireManifest() and source paths resolve correctly.
-        const auto savedCwd = std::filesystem::current_path();
+        auto const savedCwd = std::filesystem::current_path();
         std::error_code ec;
         std::filesystem::current_path(pkgDir, ec);
         if (ec) {
-            std::print(stderr, "error: cannot chdir into '{}': {}\n", pkgDir.string(), ec.message());
+            std::print(stderr, "error: cannot chdir into '{}': {}\n", pkgDir.string(),
+                       ec.message());
             return -1;
         }
 
         GlobalOptions buildOpts = opts;
         buildOpts.quiet = true; // suppress per-file build output for tests
         std::vector<std::string_view> buildArgs;
-        if (isRelease) buildArgs.emplace_back("--release");
+        if (isRelease) {
+            buildArgs.emplace_back("--release");
+        }
         buildArgs.emplace_back("--quiet");
 
-        const int buildRc = RunBuild(buildArgs, buildOpts);
+        int const buildRc = RunBuild(buildArgs, buildOpts);
         std::filesystem::current_path(savedCwd, ec); // always restore CWD
 
         if (buildRc != 0) {
-            std::print(stderr, "error: build failed for test package '{}'\n", pkgDir.filename().string());
+            std::print(stderr, "error: build failed for test package '{}'\n",
+                       pkgDir.filename().string());
             return -1;
         }
 
         // Locate the built executable.
-        const auto binDir = ResolveBuildOutputDir(pkgDir, *pkgManifest, profileName);
+        auto const binDir = ResolveBuildOutputDir(pkgDir, *pkgManifest, profileName);
         std::string exeName = pkgManifest->package.name;
 #if RUX_OS_WINDOWS
         exeName += ".exe";
 #endif
-        const auto exePath = binDir / exeName;
+        auto const exePath = binDir / exeName;
 
         if (!std::filesystem::exists(exePath)) {
-            std::print(stderr,
-                       "error: built executable not found at '{}'\n",
-                       exePath.string());
+            std::print(stderr, "error: built executable not found at '{}'\n", exePath.string());
             return -1;
         }
 
-        if (opts.verbose)
-            std::print("     Running `{}`\n", exePath.string());
+        if (opts.verbose) std::print("     Running `{}`\n", exePath.string());
 
         // Execute the test binary and capture its exit code.
 #if RUX_OS_WINDOWS
-        HANDLE hNul = CreateFileA("NUL", GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        HANDLE hNul = CreateFileA("NUL", GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                                  FILE_ATTRIBUTE_NORMAL, nullptr);
         std::string cmdLine = "\"" + exePath.string() + "\"";
         STARTUPINFOA si{};
         PROCESS_INFORMATION pi{};
         si.cb = sizeof(si);
-        si.hStdInput  = hNul != INVALID_HANDLE_VALUE ? hNul : GetStdHandle(STD_INPUT_HANDLE);
+        si.hStdInput = hNul != INVALID_HANDLE_VALUE ? hNul : GetStdHandle(STD_INPUT_HANDLE);
         si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-        si.hStdError  = GetStdHandle(STD_ERROR_HANDLE);
-        si.dwFlags    = STARTF_USESTDHANDLES;
-        if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0,
-                            nullptr, nullptr, &si, &pi)) {
-            std::print(stderr,
-                       "error: failed to launch '{}' (code {})\n",
-                       exePath.string(), GetLastError());
+        si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+        si.dwFlags = STARTF_USESTDHANDLES;
+        if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr,
+                            &si, &pi)) {
+            std::print(stderr, "error: failed to launch '{}' (code {})\n", exePath.string(),
+                       GetLastError());
             if (hNul != INVALID_HANDLE_VALUE) CloseHandle(hNul);
             return -1;
         }
@@ -337,9 +345,9 @@ int Cli::RunTest(std::span<const std::string_view> args,
         if (hNul != INVALID_HANDLE_VALUE) CloseHandle(hNul);
         return static_cast<int>(exitCode);
 #else
-        const std::string exeStr = exePath.string();
-        const char* argv[] = {exeStr.c_str(), nullptr};
-        const pid_t pid = fork();
+        std::string const exeStr = exePath.string();
+        char const *argv[] = {exeStr.c_str(), nullptr};
+        pid_t const pid = fork();
         if (pid < 0) {
             std::print(stderr, "error: fork failed\n");
             return -1;
@@ -350,7 +358,7 @@ int Cli::RunTest(std::span<const std::string_view> args,
                 dup2(fd, 0);
                 close(fd);
             }
-            execv(exeStr.c_str(), const_cast<char* const*>(argv));
+            execv(exeStr.c_str(), const_cast<char *const *>(argv));
             std::print(stderr, "error: failed to launch '{}'\n", exeStr);
             _exit(127);
         }
@@ -364,38 +372,39 @@ int Cli::RunTest(std::span<const std::string_view> args,
     int passed = 0;
     int failed = 0;
 
-    for (const auto& pkgDir : testPackages) {
-        const std::string label = pkgDir.filename().string();
-        if (!opts.quiet) std::print("      Running test package: {}\n", label);
+    for (auto const &pkgDir : testPackages) {
+        std::string const label = pkgDir.filename().string();
+        if (!opts.quiet) {
+            std::print("      Running test package: {}\n", label);
+        }
 
-        const int rc = runOne(pkgDir);
+        int const rc = runOne(pkgDir);
         if (rc == 0) {
             ++passed;
-            if (!opts.quiet) std::print("    PASS: {}\n", label);
-        } else {
+            if (!opts.quiet) {
+                std::print("    PASS: {}\n", label);
+            }
+        }
+        else {
             ++failed;
-            std::print(stderr,
-                       "    FAIL: {} (exit {})\n",
-                       label,
+            std::print(stderr, "    FAIL: {} (exit {})\n", label,
                        rc == -1 ? std::string("build/launch error") : std::to_string(rc));
         }
     }
 
     // Summary line.
-    const int total = passed + failed;
+    int const total = passed + failed;
     if (!opts.quiet || failed > 0) {
-        std::print("{}: {} passed, {} failed, {} total\n",
-                   failed == 0 ? "ok" : "FAILED",
-                   passed, failed, total);
+        std::print("{}: {} passed, {} failed, {} total\n", failed == 0 ? "ok" : "FAILED", passed,
+                   failed, total);
     }
     return failed == 0 ? 0 : 1;
 }
 
-int Cli::RunInit(std::span<const std::string_view> args,
-                 const GlobalOptions& opts) {
+int Cli::RunInit(std::span<std::string_view const> args, GlobalOptions const &opts) {
     bool bin = false;
     bool lib = false;
-    for (auto& arg : args) {
+    for (auto &arg : args) {
         if (arg == "--bin") {
             bin = true;
             continue;
@@ -411,14 +420,12 @@ int Cli::RunInit(std::span<const std::string_view> args,
         PrintUnknownOption(arg, "init");
         return 1;
     }
-    const auto type =
-        (lib && !bin) ? PackageType::SharedLibrary : PackageType::Executable;
-    const auto root = std::filesystem::current_path();
+    auto const type = (lib && !bin) ? PackageType::SharedLibrary : PackageType::Executable;
+    auto const root = std::filesystem::current_path();
     auto name = root.filename().string();
     if (!opts.quiet) {
         std::print("  Initializing {} package '{}'\n",
-                   type == PackageType::Executable ? "binary" : "library",
-                   name);
+                   type == PackageType::Executable ? "binary" : "library", name);
     }
     if (!ScaffoldPackage(root, name, type, /*initMode=*/true)) {
         return 1;

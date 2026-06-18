@@ -1,5 +1,5 @@
 # Rux project — C++ code style
-# Requires clang-format 18+ for c++26 Standard support
+# Requires clang-format 18+ for C++26 support
 BasedOnStyle: LLVM
 AccessModifierOffset: -4
 AlignConsecutiveDeclarations:
@@ -8,8 +8,9 @@ AlignOperands: AlignAfterOperator
 AllowShortBlocksOnASingleLine: Empty
 AllowShortFunctionsOnASingleLine: None
 AllowShortIfStatementsOnASingleLine: WithoutElse
-BinPackArguments: false
-BinPackParameters: false
+AllowShortLambdasOnASingleLine: All
+BinPackArguments: true
+BinPackParameters: true
 BraceWrapping:
   AfterControlStatement: false
   BeforeCatch: true
@@ -21,20 +22,20 @@ BraceWrapping:
 BreakBeforeBraces: Custom
 BreakConstructorInitializers: BeforeComma
 BreakTemplateDeclarations: Yes
+ColumnLimit: 100
 EnumTrailingComma: Insert
 IncludeBlocks: Regroup
 IncludeCategories:
-  - Regex: ^"Rux/
+  - Regex: '^"Rux/'
     Priority: 1
     SortPriority: 1
-  - Regex: ^<
+  - Regex: '^<'
     Priority: 2
     SortPriority: 2
-  - Regex: .*
+  - Regex: '.*'
     Priority: 3
     SortPriority: 3
-IndentPPDirectives: AfterHash
-IndentWidth: 4
+IndentPPDirectives: BeforeHash
 InsertBraces: true
 InsertNewlineAtEOF: true
 IntegerLiteralSeparator:
@@ -47,12 +48,16 @@ IntegerLiteralSeparator:
 KeepEmptyLines:
   AtStartOfBlock: false
 MaxEmptyLinesToKeep: 2
-NamespaceIndentation: All
-PPIndentWidth: 2
+NamespaceIndentation: None
+PPIndentWidth: 4
 PackConstructorInitializers: Never
-PointerAlignment: Left
-QualifierAlignment: Left
+PointerAlignment: Right
+QualifierAlignment: Right
 RemoveParentheses: ReturnStatement
 RemoveSemicolon: true
 SeparateDefinitionBlocks: Always
+SortIncludes:
+  Enabled: true
+  IgnoreCase: false
+IndentWidth: 4
 TabWidth: 4
