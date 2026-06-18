@@ -28,30 +28,30 @@
  */
 
 #if RUX_OS_WINDOWS
-#  ifndef WIN32_LEAN_AND_MEAN
-#    define WIN32_LEAN_AND_MEAN
-#  endif
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
 
-#  ifndef NOMINMAX
-#    define NOMINMAX
-#  endif
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
 
-#  include <windows.h>
+    #include <windows.h>
 #endif
 
 #if RUX_OS_WINDOWS
-#  include <psapi.h>
+    #include <psapi.h>
 #else
-#  include <sys/resource.h>
-#  include <sys/wait.h>
-#  include <unistd.h>
+    #include <sys/resource.h>
+    #include <sys/wait.h>
+    #include <unistd.h>
 #endif
 
 using namespace Rux;
 using namespace Platform;
 using namespace Misc;
 
-int Cli::RunHelp(std::span<const std::string_view> args, const GlobalOptions&) {
+int Cli::RunHelp(std::span<std::string_view const> args, GlobalOptions const &) {
     if (!args.empty()) {
         PrintHelpFor(args.front());
     }
@@ -61,16 +61,15 @@ int Cli::RunHelp(std::span<const std::string_view> args, const GlobalOptions&) {
     return 0;
 }
 
-int Cli::RunVersion(const GlobalOptions&) {
+int Cli::RunVersion(GlobalOptions const &) {
     PrintVersion();
     return 0;
 }
 
-int Cli::RunFmt(std::span<const std::string_view> args,
-                const GlobalOptions& opts) {
+int Cli::RunFmt(std::span<std::string_view const> args, GlobalOptions const &opts) {
     bool check = false;
     bool manifestOnly = false;
-    for (auto& arg : args) {
+    for (auto &arg : args) {
         if (arg == "--check") {
             check = true;
             continue;
@@ -94,7 +93,8 @@ int Cli::RunFmt(std::span<const std::string_view> args,
     if (manifestOnly) {
         auto manifest = Manifest::Load(*manifestPath);
         if (!manifest) {
-            std::print(stderr, "error: failed to parse manifest file '{}'\n", manifestPath->string());
+            std::print(stderr, "error: failed to parse manifest file '{}'\n",
+                       manifestPath->string());
             return 1;
         }
 
@@ -109,7 +109,7 @@ int Cli::RunFmt(std::span<const std::string_view> args,
         {
             std::ifstream tempFile(tempPath, std::ios::binary);
             if (tempFile) {
-                formattedContent.assign((std::istreambuf_iterator<char>(tempFile)),
+                formattedContent.assign(std::istreambuf_iterator<char>(tempFile),
                                         std::istreambuf_iterator<char>());
             }
         }
@@ -120,7 +120,7 @@ int Cli::RunFmt(std::span<const std::string_view> args,
         {
             std::ifstream inFile(*manifestPath, std::ios::binary);
             if (inFile) {
-                originalContent.assign((std::istreambuf_iterator<char>(inFile)),
+                originalContent.assign(std::istreambuf_iterator<char>(inFile),
                                        std::istreambuf_iterator<char>());
             }
         }
@@ -128,7 +128,8 @@ int Cli::RunFmt(std::span<const std::string_view> args,
         if (check) {
             if (originalContent != formattedContent) {
                 if (!opts.quiet) {
-                    std::print(stderr, "error: manifest '{}' is not formatted\n", manifestPath->string());
+                    std::print(stderr, "error: manifest '{}' is not formatted\n",
+                               manifestPath->string());
                 }
                 return 1;
             }
@@ -143,10 +144,12 @@ int Cli::RunFmt(std::span<const std::string_view> args,
                 std::print("  Formatting {}\n", manifestPath->string());
             }
             if (!manifest->Save(*manifestPath)) {
-                std::print(stderr, "error: failed to write manifest file '{}'\n", manifestPath->string());
+                std::print(stderr, "error: failed to write manifest file '{}'\n",
+                           manifestPath->string());
                 return 1;
             }
-        } else {
+        }
+        else {
             if (!opts.quiet) {
                 std::print("  Manifest is already formatted: {}\n", manifestPath->string());
             }
@@ -161,8 +164,7 @@ int Cli::RunFmt(std::span<const std::string_view> args,
         return 0;
     }
     int fileCount = 0;
-    for (const auto& entry :
-         std::filesystem::recursive_directory_iterator(sourceDir)) {
+    for (auto const &entry : std::filesystem::recursive_directory_iterator(sourceDir)) {
         if (!entry.is_regular_file()) {
             continue;
         }
@@ -186,10 +188,9 @@ int Cli::RunFmt(std::span<const std::string_view> args,
     return 0;
 }
 
-int Cli::RunDoc(std::span<const std::string_view> args,
-                const GlobalOptions& opts) {
+int Cli::RunDoc(std::span<std::string_view const> args, GlobalOptions const &opts) {
     bool openAfter = false;
-    for (auto& arg : args) {
+    for (auto &arg : args) {
         if (arg == "--open") {
             openAfter = true;
             continue;
@@ -201,7 +202,7 @@ int Cli::RunDoc(std::span<const std::string_view> args,
         PrintUnknownOption(arg, "doc");
         return 1;
     }
-    const auto manifestPath = RequireManifest();
+    auto const manifestPath = RequireManifest();
     if (!manifestPath) {
         return 1;
     }
@@ -210,8 +211,7 @@ int Cli::RunDoc(std::span<const std::string_view> args,
         return 1;
     }
     if (!opts.quiet) {
-        std::print("  Generating documentation for {} v{}\n",
-                   manifest->package.name,
+        std::print("  Generating documentation for {} v{}\n", manifest->package.name,
                    manifest->package.version);
     }
 
@@ -224,8 +224,7 @@ int Cli::RunDoc(std::span<const std::string_view> args,
     return 0;
 }
 
-int Cli::RunList(std::span<const std::string_view> args,
-                 const GlobalOptions& opts) {
+int Cli::RunList(std::span<std::string_view const> args, GlobalOptions const &opts) {
     bool global = false;
     for (auto arg : args) {
         if (arg == "--global") {
@@ -241,12 +240,11 @@ int Cli::RunList(std::span<const std::string_view> args,
     }
 
     if (global) {
-        const auto cacheDir = RegistryPackagesDir();
+        auto const cacheDir = RegistryPackagesDir();
         std::vector<std::string> packages;
         std::error_code ec;
         if (std::filesystem::exists(cacheDir, ec)) {
-            for (const auto& entry :
-                 std::filesystem::directory_iterator(cacheDir, ec)) {
+            for (auto const &entry : std::filesystem::directory_iterator(cacheDir, ec)) {
                 if (entry.is_directory()) {
                     packages.push_back(entry.path().filename().string());
                 }
@@ -259,17 +257,15 @@ int Cli::RunList(std::span<const std::string_view> args,
             }
             return 0;
         }
-        std::print("Global cache ({} package{} at {}):\n",
-                   packages.size(),
-                   packages.size() == 1 ? "" : "s",
-                   cacheDir.string());
-        for (const auto& pkg : packages) {
+        std::print("Global cache ({} package{} at {}):\n", packages.size(),
+                   packages.size() == 1 ? "" : "s", cacheDir.string());
+        for (auto const &pkg : packages) {
             std::print("  {}\n", pkg);
         }
         return 0;
     }
 
-    const auto manifestPath = RequireManifest();
+    auto const manifestPath = RequireManifest();
     if (!manifestPath) {
         return 1;
     }
@@ -286,21 +282,19 @@ int Cli::RunList(std::span<const std::string_view> args,
     }
 
     std::print("Dependencies ({}):\n", manifest->dependencies.size());
-    for (const auto& dep : manifest->dependencies) {
+    for (auto const &dep : manifest->dependencies) {
         if (!dep.path.empty()) {
             std::print("  {} (path: {})\n", dep.name, dep.path);
         }
         else {
-            const std::string ver =
-                dep.version.empty() ? "latest" : dep.version;
+            std::string const ver = dep.version.empty() ? "latest" : dep.version;
             std::print("  {} @ {}\n", dep.name, ver);
         }
     }
     return 0;
 }
 
-int Cli::RunNew(const std::span<const std::string_view> args,
-                const GlobalOptions& opts) {
+int Cli::RunNew(std::span<std::string_view const> const args, GlobalOptions const &opts) {
     std::string_view name;
     bool bin = false;
     bool lib = false;
@@ -335,8 +329,7 @@ int Cli::RunNew(const std::span<const std::string_view> args,
         PrintHelpFor("new");
         return 1;
     }
-    const auto type =
-        (lib && !bin) ? PackageType::SharedLibrary : PackageType::Executable;
+    auto const type = (lib && !bin) ? PackageType::SharedLibrary : PackageType::Executable;
     std::filesystem::path root;
     if (!customPath.empty()) {
         root = std::filesystem::path(customPath) / name;
@@ -346,23 +339,20 @@ int Cli::RunNew(const std::span<const std::string_view> args,
     }
     if (!opts.quiet) {
         std::print("Creating {} package '{}'\n",
-                   type == PackageType::Executable ? "binary" : "library",
-                   std::string(name));
+                   type == PackageType::Executable ? "binary" : "library", std::string(name));
     }
     if (!ScaffoldPackage(root, std::string(name), type, /*initMode=*/false)) {
         return 1;
     }
     if (!opts.quiet) {
-        std::print(
-            "Created package '{}' at {}\n", std::string(name), root.string());
+        std::print("Created package '{}' at {}\n", std::string(name), root.string());
     }
     return 0;
 }
 
-int Cli::RunUpdate(std::span<const std::string_view> args,
-                   const GlobalOptions& opts) {
+int Cli::RunUpdate(std::span<std::string_view const> args, GlobalOptions const &opts) {
     bool global = false;
-    for (auto& arg : args) {
+    for (auto &arg : args) {
         if (arg == "--global") {
             global = true;
             continue;
@@ -376,12 +366,11 @@ int Cli::RunUpdate(std::span<const std::string_view> args,
     }
 
     if (global) {
-        const auto cacheDir = RegistryPackagesDir();
+        auto const cacheDir = RegistryPackagesDir();
         std::vector<std::filesystem::path> pkgDirs;
         std::error_code ec;
         if (std::filesystem::exists(cacheDir, ec)) {
-            for (const auto& entry :
-                 std::filesystem::directory_iterator(cacheDir, ec)) {
+            for (auto const &entry : std::filesystem::directory_iterator(cacheDir, ec)) {
                 if (entry.is_directory()) {
                     pkgDirs.push_back(entry.path());
                 }
@@ -394,8 +383,8 @@ int Cli::RunUpdate(std::span<const std::string_view> args,
             return 0;
         }
         int updated = 0;
-        for (const auto& pkgDir : pkgDirs) {
-            const std::string pkgName = pkgDir.filename().string();
+        for (auto const &pkgDir : pkgDirs) {
+            std::string const pkgName = pkgDir.filename().string();
             if (!opts.quiet) {
                 std::print("    Updating {}...\n", pkgName);
             }
@@ -411,7 +400,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args,
         return 0;
     }
 
-    const auto manifestPath = RequireManifest();
+    auto const manifestPath = RequireManifest();
     if (!manifestPath) {
         return 1;
     }
@@ -422,9 +411,9 @@ int Cli::RunUpdate(std::span<const std::string_view> args,
 
     std::vector<std::string> queue;
     std::unordered_set<std::string> queued;
-    const std::string updateTarget = HostTargetTriple();
-    for (const auto& dep : manifest->EffectiveDependencies(updateTarget)) {
-        const std::string packageName = DependencyPackageName(dep);
+    std::string const updateTarget = HostTargetTriple();
+    for (auto const &dep : manifest->EffectiveDependencies(updateTarget)) {
+        std::string const packageName = DependencyPackageName(dep);
         if (dep.path.empty() && !queued.count(packageName)) {
             queue.push_back(packageName);
             queued.insert(packageName);
@@ -442,7 +431,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args,
         std::print("     Fetching registry...\n");
     }
 
-    const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
+    auto const jsonOpt = FetchUrl(std::string(kRegistryUrl));
     if (!jsonOpt) {
         std::print(stderr, "error: failed to fetch package registry\n");
         return 1;
@@ -451,14 +440,13 @@ int Cli::RunUpdate(std::span<const std::string_view> args,
     int updated = 0;
     int installed = 0;
     for (std::size_t i = 0; i < queue.size(); ++i) {
-        const std::string& pkgName = queue[i];
-        const std::string repoUrl = JsonLookupString(*jsonOpt, pkgName);
+        std::string const &pkgName = queue[i];
+        std::string const repoUrl = JsonLookupString(*jsonOpt, pkgName);
         if (repoUrl.empty()) {
-            std::print(
-                stderr, "error: package '{}' not found in registry\n", pkgName);
+            std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
             return 1;
         }
-        const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
+        std::filesystem::path const pkgDir = RegistryPackagesDir() / pkgName;
         std::error_code ec;
         std::filesystem::create_directories(pkgDir.parent_path(), ec);
 
@@ -481,17 +469,15 @@ int Cli::RunUpdate(std::span<const std::string_view> args,
                 return 1;
             }
             if (!opts.quiet) {
-                std::print(
-                    "    Installed {} at {}\n", pkgName, pkgDir.string());
+                std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
             }
             ++installed;
         }
 
         // Enqueue registry deps declared by this package
-        if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
-            for (const auto& dep :
-                 depManifest->EffectiveDependencies(updateTarget)) {
-                const std::string depPackageName = DependencyPackageName(dep);
+        if (auto const depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
+            for (auto const &dep : depManifest->EffectiveDependencies(updateTarget)) {
+                std::string const depPackageName = DependencyPackageName(dep);
                 if (dep.path.empty() && !queued.count(depPackageName)) {
                     queue.push_back(depPackageName);
                     queued.insert(depPackageName);
@@ -500,17 +486,14 @@ int Cli::RunUpdate(std::span<const std::string_view> args,
         }
     }
     if (!opts.quiet) {
-        std::print("     Summary: {} updated, {} newly installed\n",
-                   updated,
-                   installed);
+        std::print("     Summary: {} updated, {} newly installed\n", updated, installed);
     }
     return 0;
 }
 
 // TODO: Make this look in the registry instead of installed packages
 // TODO: Extend Package manifest metadata support
-int Cli::RunInfo(std::span<const std::string_view> args,
-                 const GlobalOptions& opts) {
+int Cli::RunInfo(std::span<std::string_view const> args, GlobalOptions const &opts) {
     (void)opts;
     std::string_view packageName;
 
@@ -540,18 +523,18 @@ int Cli::RunInfo(std::span<const std::string_view> args,
     if (packageName.empty()) {
         auto localManifestOpt = Manifest::Find(std::filesystem::current_path());
         if (!localManifestOpt) {
-            std::print(stderr, "error: missing package name, and no Rux.toml found in current directory\n");
+            std::print(stderr,
+                       "error: missing package name, and no Rux.toml found in current directory\n");
             return 1;
         }
         manifestPath = *localManifestOpt;
     }
     else {
-        const auto packageDir = RegistryPackagesDir() / std::string(packageName);
+        auto const packageDir = RegistryPackagesDir() / std::string(packageName);
         manifestPath = packageDir / "Rux.toml";
 
         if (!std::filesystem::exists(manifestPath)) {
-            std::print(
-                stderr, "error: package '{}' is not installed\n", packageName);
+            std::print(stderr, "error: package '{}' is not installed\n", packageName);
             return 1;
         }
     }
@@ -559,8 +542,7 @@ int Cli::RunInfo(std::span<const std::string_view> args,
     auto manifest = Manifest::Load(manifestPath);
 
     if (!manifest) {
-        std::print(
-            stderr, "error: failed to parse '{}'\n", manifestPath.string());
+        std::print(stderr, "error: failed to parse '{}'\n", manifestPath.string());
         return 1;
     }
 
@@ -571,21 +553,26 @@ int Cli::RunInfo(std::span<const std::string_view> args,
         std::print("  \"name\": \"{}\",\n", manifest->package.name);
         std::print("  \"version\": \"{}\",\n", manifest->package.version);
         std::print("  \"type\": \"{}\",\n", manifest->package.type);
-        if (!manifest->package.description.empty())
+        if (!manifest->package.description.empty()) {
             std::print("  \"description\": \"{}\",\n", manifest->package.description);
-        if (!manifest->package.authors.empty())
+        }
+        if (!manifest->package.authors.empty()) {
             std::print("  \"authors\": \"{}\",\n", manifest->package.authors);
-        if (!manifest->package.license.empty())
+        }
+        if (!manifest->package.license.empty()) {
             std::print("  \"license\": \"{}\",\n", manifest->package.license);
-        if (!manifest->package.repository.empty())
+        }
+        if (!manifest->package.repository.empty()) {
             std::print("  \"repository\": \"{}\",\n", manifest->package.repository);
-        if (!manifest->package.homepage.empty())
+        }
+        if (!manifest->package.homepage.empty()) {
             std::print("  \"homepage\": \"{}\",\n", manifest->package.homepage);
+        }
 
         std::print("  \"dependencies\": [\n");
 
         for (size_t i = 0; i < manifest->dependencies.size(); ++i) {
-            const auto& dep = manifest->dependencies[i];
+            auto const &dep = manifest->dependencies[i];
             std::print("    {}", "{");
             std::print("\"name\": \"{}\"", dep.name);
 
@@ -593,8 +580,7 @@ int Cli::RunInfo(std::span<const std::string_view> args,
                 std::print(", \"path\": \"{}\"", dep.path);
             }
             else {
-                std::print(", \"version\": \"{}\"",
-                           dep.version.empty() ? "*" : dep.version);
+                std::print(", \"version\": \"{}\"", dep.version.empty() ? "*" : dep.version);
             }
 
             // Only add a comma if this isn't the last element in the vector
@@ -613,31 +599,32 @@ int Cli::RunInfo(std::span<const std::string_view> args,
         std::print("Name:        {}\n"
                    "Version:     {}\n"
                    "Type:        {}\n",
-                   manifest->package.name,
-                   manifest->package.version,
-                   manifest->package.type);
-        if (!manifest->package.description.empty())
+                   manifest->package.name, manifest->package.version, manifest->package.type);
+        if (!manifest->package.description.empty()) {
             std::print("Description: {}\n", manifest->package.description);
-        if (!manifest->package.authors.empty())
+        }
+        if (!manifest->package.authors.empty()) {
             std::print("Authors:     {}\n", manifest->package.authors);
-        if (!manifest->package.license.empty())
+        }
+        if (!manifest->package.license.empty()) {
             std::print("License:     {}\n", manifest->package.license);
-        if (!manifest->package.repository.empty())
+        }
+        if (!manifest->package.repository.empty()) {
             std::print("Repository:  {}\n", manifest->package.repository);
-        if (!manifest->package.homepage.empty())
+        }
+        if (!manifest->package.homepage.empty()) {
             std::print("Homepage:    {}\n", manifest->package.homepage);
+        }
 
         if (!manifest->dependencies.empty()) {
             std::print("\nDependencies:\n");
 
-            for (const auto& dep : manifest->dependencies) {
+            for (auto const &dep : manifest->dependencies) {
                 if (!dep.path.empty()) {
                     std::print("  - {} (path: {})\n", dep.name, dep.path);
                 }
                 else {
-                    std::print("  - {} @ {}\n",
-                               dep.name,
-                               dep.version.empty() ? "*" : dep.version);
+                    std::print("  - {} @ {}\n", dep.name, dep.version.empty() ? "*" : dep.version);
                 }
             }
         }
