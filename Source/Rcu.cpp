@@ -21,7 +21,7 @@
 namespace Rux {
 namespace {
 // Type utilities (mirrored from Asm.cpp)
-int SizeOf(TypeRef const &t) {
+int SizeOf(const TypeRef &t) {
     switch (t.kind) {
     case TypeRef::Kind::Bool8: // Bool == Bool8
     case TypeRef::Kind::Char8: // Char8
@@ -42,14 +42,14 @@ int SizeOf(TypeRef const &t) {
     case TypeRef::Kind::Opaque:
         return 0;
     case TypeRef::Kind::Tuple: {
-        auto const alignUp = [](int v, int a) {
+        const auto alignUp = [](int v, int a) {
             return (v + a - 1) & ~(a - 1);
         };
         int offset = 0;
         int maxAlign = 1;
-        for (auto const &elem : t.inner) {
-            int const sz = SizeOf(elem);
-            int const al = sz > 0 ? std::min(sz, 8) : 1;
+        for (const auto &elem : t.inner) {
+            const int sz = SizeOf(elem);
+            const int al = sz > 0 ? std::min(sz, 8) : 1;
             if (al > 1) {
                 offset = alignUp(offset, al);
             }
@@ -69,24 +69,38 @@ int SizeOf(TypeRef const &t) {
     }
 }
 
-bool IsFloat(TypeRef const &t) {
-    return t.kind == TypeRef::Kind::Float32 || t.kind == TypeRef::Kind::Float64;
+bool IsFloat(const TypeRef &t) {
+    return t.kind == TypeRef::Kind::Float32 ||
+           t.kind == TypeRef::Kind::Float64;
 }
 
 std::string_view NumericLiteralSuffix(std::string_view text) {
     static constexpr std::string_view suffixes[] = {
-        "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "i", "u",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "u8",
+        "u16",
+        "u32",
+        "u64",
+        "f32",
+        "f64",
+        "i",
+        "u",
     };
-    for (auto const suffix : suffixes) {
-        if (text.size() > suffix.size() && text.substr(text.size() - suffix.size()) == suffix) {
+    for (const auto suffix : suffixes) {
+        if (text.size() > suffix.size() &&
+            text.substr(text.size() - suffix.size()) == suffix) {
             return suffix;
         }
     }
     return {};
 }
 
-std::optional<std::uint64_t> ParseIntegerLiteralBits(std::string_view text) {
-    std::string_view const suffix = NumericLiteralSuffix(text);
+std::optional<std::uint64_t>
+ParseIntegerLiteralBits(std::string_view text) {
+    const std::string_view suffix = NumericLiteralSuffix(text);
     if (!suffix.empty()) {
         text.remove_suffix(suffix.size());
     }
@@ -99,7 +113,7 @@ std::optional<std::uint64_t> ParseIntegerLiteralBits(std::string_view text) {
 
     std::string cleaned;
     cleaned.reserve(text.size());
-    for (char const c : text) {
+    for (const char c : text) {
         if (c != '_') {
             cleaned.push_back(c);
         }
@@ -133,9 +147,9 @@ std::optional<std::uint64_t> ParseIntegerLiteralBits(std::string_view text) {
     }
 
     std::uint64_t value = 0;
-    auto const *first = digits.data();
-    auto const *last = first + digits.size();
-    auto const [ptr, ec] = std::from_chars(first, last, value, base);
+    const auto *first = digits.data();
+    const auto *last = first + digits.size();
+    const auto [ptr, ec] = std::from_chars(first, last, value, base);
     if (ec != std::errc{} || ptr != last) {
         return std::nullopt;
     }
@@ -144,7 +158,9 @@ std::optional<std::uint64_t> ParseIntegerLiteralBits(std::string_view text) {
     }
 
     constexpr std::uint64_t maxNegativeMagnitude =
-        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) + 1;
+        static_cast<std::uint64_t>(
+            std::numeric_limits<std::int64_t>::max()) +
+        1;
     if (value > maxNegativeMagnitude) {
         return std::nullopt;
     }
@@ -162,7 +178,7 @@ public:
         data_.push_back('\0');
     }
 
-    uint32_t Intern(std::string const &s) {
+    uint32_t Intern(const std::string &s) {
         if (s.empty()) {
             return 0;
         }
@@ -170,7 +186,7 @@ public:
         if (it != map_.end()) {
             return it->second;
         }
-        auto const off = static_cast<uint32_t>(data_.size());
+        const auto off = static_cast<uint32_t>(data_.size());
         map_[s] = off;
         data_.insert(data_.end(), s.begin(), s.end());
         data_.push_back('\0');
@@ -181,11 +197,11 @@ public:
         return static_cast<uint32_t>(data_.size());
     }
 
-    [[nodiscard]] char const *Data() const {
+    [[nodiscard]] const char *Data() const {
         return data_.data();
     }
 
-    [[nodiscard]] std::string Get(uint32_t const off) const {
+    [[nodiscard]] std::string Get(const uint32_t off) const {
         if (off >= data_.size()) {
             return {};
         }
@@ -276,21 +292,21 @@ public:
     }
 
     // RAX ↔ [RBP + disp32]
-    void MovRaxLoad(int32_t const d) const {
+    void MovRaxLoad(const int32_t d) const {
         Byte(0x48);
         Byte(0x8B);
         Byte(0x85);
         Dword(u(d));
     }
 
-    void MovRaxStore(int32_t const d) const {
+    void MovRaxStore(const int32_t d) const {
         Byte(0x48);
         Byte(0x89);
         Byte(0x85);
         Dword(u(d));
     }
 
-    void MovRaxStoreRsp(int32_t const d) const {
+    void MovRaxStoreRsp(const int32_t d) const {
         Byte(0x48);
         Byte(0x89);
         Byte(0x84);
@@ -298,19 +314,19 @@ public:
         Dword(u(d));
     }
 
-    void MovEaxLoad(int32_t const d) const {
+    void MovEaxLoad(const int32_t d) const {
         Byte(0x8B);
         Byte(0x85);
         Dword(u(d));
     }
 
-    void MovEaxStore(int32_t const d) const {
+    void MovEaxStore(const int32_t d) const {
         Byte(0x89);
         Byte(0x85);
         Dword(u(d));
     }
 
-    void MovzxRaxWord(int32_t const d) const {
+    void MovzxRaxWord(const int32_t d) const {
         Byte(0x48);
         Byte(0x0F);
         Byte(0xB7);
@@ -318,7 +334,7 @@ public:
         Dword(u(d));
     }
 
-    void MovzxRaxByte(int32_t const d) const {
+    void MovzxRaxByte(const int32_t d) const {
         Byte(0x48);
         Byte(0x0F);
         Byte(0xB6);
@@ -326,14 +342,14 @@ public:
         Dword(u(d));
     }
 
-    void MovsxdRaxDword(int32_t const d) const {
+    void MovsxdRaxDword(const int32_t d) const {
         Byte(0x48);
         Byte(0x63);
         Byte(0x85);
         Dword(u(d));
     }
 
-    void MovsxRaxWord(int32_t const d) const {
+    void MovsxRaxWord(const int32_t d) const {
         Byte(0x48);
         Byte(0x0F);
         Byte(0xBF);
@@ -341,7 +357,7 @@ public:
         Dword(u(d));
     }
 
-    void MovsxRaxByte(int32_t const d) const {
+    void MovsxRaxByte(const int32_t d) const {
         Byte(0x48);
         Byte(0x0F);
         Byte(0xBE);
@@ -349,35 +365,35 @@ public:
         Dword(u(d));
     }
 
-    void MovAxStore(int32_t const d) const {
+    void MovAxStore(const int32_t d) const {
         Byte(0x66);
         Byte(0x89);
         Byte(0x85);
         Dword(u(d));
     }
 
-    void MovAlStore(int32_t const d) const {
+    void MovAlStore(const int32_t d) const {
         Byte(0x88);
         Byte(0x85);
         Dword(u(d));
     }
 
     // R10 ↔ [RBP + disp32]
-    void MovR10Load(int32_t const d) const {
+    void MovR10Load(const int32_t d) const {
         Byte(0x4C);
         Byte(0x8B);
         Byte(0x95);
         Dword(u(d));
     }
 
-    void MovR10Store(int32_t const d) const {
+    void MovR10Store(const int32_t d) const {
         Byte(0x4C);
         Byte(0x89);
         Byte(0x95);
         Dword(u(d));
     }
 
-    void MovzxR10Word(int32_t const d) const {
+    void MovzxR10Word(const int32_t d) const {
         Byte(0x4C);
         Byte(0x0F);
         Byte(0xB7);
@@ -385,7 +401,7 @@ public:
         Dword(u(d));
     }
 
-    void MovzxR10Byte(int32_t const d) const {
+    void MovzxR10Byte(const int32_t d) const {
         Byte(0x4C);
         Byte(0x0F);
         Byte(0xB6);
@@ -393,14 +409,14 @@ public:
         Dword(u(d));
     }
 
-    void MovsxdR10Dword(int32_t const d) const {
+    void MovsxdR10Dword(const int32_t d) const {
         Byte(0x4C);
         Byte(0x63);
         Byte(0x95);
         Dword(u(d));
     }
 
-    void MovsxR10Word(int32_t const d) const {
+    void MovsxR10Word(const int32_t d) const {
         Byte(0x4C);
         Byte(0x0F);
         Byte(0xBF);
@@ -408,7 +424,7 @@ public:
         Dword(u(d));
     }
 
-    void MovsxR10Byte(int32_t const d) const {
+    void MovsxR10Byte(const int32_t d) const {
         Byte(0x4C);
         Byte(0x0F);
         Byte(0xBE);
@@ -416,7 +432,7 @@ public:
         Dword(u(d));
     }
 
-    void MovR10dLoad(int32_t const d) const {
+    void MovR10dLoad(const int32_t d) const {
         Byte(0x44);
         Byte(0x8B);
         Byte(0x95);
@@ -424,14 +440,14 @@ public:
     }
 
     // R11 ↔ [RBP + disp32]
-    void MovR11Load(int32_t const d) const {
+    void MovR11Load(const int32_t d) const {
         Byte(0x4C);
         Byte(0x8B);
         Byte(0x9D);
         Dword(u(d));
     }
 
-    void MovR11Store(int32_t const d) const {
+    void MovR11Store(const int32_t d) const {
         Byte(0x4C);
         Byte(0x89);
         Byte(0x9D);
@@ -439,7 +455,7 @@ public:
     }
 
     // RCX ↔ stack (for shift count)
-    void MovRcxLoad(int32_t const d) const {
+    void MovRcxLoad(const int32_t d) const {
         Byte(0x48);
         Byte(0x8B);
         Byte(0x8D);
@@ -448,18 +464,22 @@ public:
 
     // ABI arg regs ↔ [RBP + disp32]
     // argIdx: 0=RDI,1=RSI,2=RDX,3=RCX,4=R8,5=R9
-    void MovArgLoad(int const idx, int32_t d) const {
-        static uint8_t const rex[] = {0x48, 0x48, 0x48, 0x48, 0x4C, 0x4C};
-        static uint8_t const modrm[] = {0xBD, 0xB5, 0x95, 0x8D, 0x85, 0x8D};
+    void MovArgLoad(const int idx, int32_t d) const {
+        static const uint8_t rex[] = {
+            0x48, 0x48, 0x48, 0x48, 0x4C, 0x4C};
+        static const uint8_t modrm[] = {
+            0xBD, 0xB5, 0x95, 0x8D, 0x85, 0x8D};
         Byte(rex[idx]);
         Byte(0x8B);
         Byte(modrm[idx]);
         Dword(u(d));
     }
 
-    void MovArgStore(int const idx, int32_t d) const {
-        static uint8_t const rex[] = {0x48, 0x48, 0x48, 0x48, 0x4C, 0x4C};
-        static uint8_t const modrm[] = {0xBD, 0xB5, 0x95, 0x8D, 0x85, 0x8D};
+    void MovArgStore(const int idx, int32_t d) const {
+        static const uint8_t rex[] = {
+            0x48, 0x48, 0x48, 0x48, 0x4C, 0x4C};
+        static const uint8_t modrm[] = {
+            0xBD, 0xB5, 0x95, 0x8D, 0x85, 0x8D};
         Byte(rex[idx]);
         Byte(0x89);
         Byte(modrm[idx]);
@@ -468,7 +488,7 @@ public:
 
     // Win64 ABI arg regs ↔ [RBP + disp32]
     // argIdx: 0=RCX,1=RDX,2=R8,3=R9
-    void MovArgLoadWin64(int const idx, int32_t const d) const {
+    void MovArgLoadWin64(const int idx, const int32_t d) const {
         static constexpr uint8_t rex[] = {0x48, 0x48, 0x4C, 0x4C};
         static constexpr uint8_t modrm[] = {0x8D, 0x95, 0x85, 0x8D};
         if (idx >= 4) {
@@ -480,7 +500,7 @@ public:
         Dword(u(d));
     }
 
-    void MovArgStoreWin64(int const idx, int32_t const d) const {
+    void MovArgStoreWin64(const int idx, const int32_t d) const {
         static constexpr uint8_t rex[] = {0x48, 0x48, 0x4C, 0x4C};
         static constexpr uint8_t modrm[] = {0x8D, 0x95, 0x85, 0x8D};
         if (idx >= 4) {
@@ -492,7 +512,7 @@ public:
         Dword(u(d));
     }
 
-    void MovRaxArgWin64(int const idx) const {
+    void MovRaxArgWin64(const int idx) const {
         switch (idx) {
         case 0:
             Byte(0x48);
@@ -519,7 +539,7 @@ public:
         }
     }
 
-    void MovArgWin64Rax(int const idx) const {
+    void MovArgWin64Rax(const int idx) const {
         switch (idx) {
         case 0:
             Byte(0x48);
@@ -546,7 +566,7 @@ public:
         }
     }
 
-    void LeaArgStackWin64(int const idx, int32_t const d) const {
+    void LeaArgStackWin64(const int idx, const int32_t d) const {
         static constexpr uint8_t rex[] = {0x48, 0x48, 0x4C, 0x4C};
         static constexpr uint8_t modrm[] = {0x8D, 0x95, 0x85, 0x8D};
         if (idx >= 4) {
@@ -558,7 +578,7 @@ public:
         Dword(u(d));
     }
 
-    void MovR10ArgWin64(int const idx) const {
+    void MovR10ArgWin64(const int idx) const {
         switch (idx) {
         case 0:
             Byte(0x49);
@@ -618,7 +638,7 @@ public:
         Dword(u(d));
     }
 
-    void MovssXmm0StoreRsp(int32_t const d) const {
+    void MovssXmm0StoreRsp(const int32_t d) const {
         Byte(0xF3);
         Byte(0x0F);
         Byte(0x11);
@@ -627,7 +647,7 @@ public:
         Dword(u(d));
     }
 
-    void MovsdXmm0StoreRsp(int32_t const d) const {
+    void MovsdXmm0StoreRsp(const int32_t d) const {
         Byte(0xF2);
         Byte(0x0F);
         Byte(0x11);
@@ -1310,12 +1330,12 @@ public:
 private:
     std::vector<uint8_t> &out_;
 
-    static uint32_t u(int32_t const v) {
+    static uint32_t u(const int32_t v) {
         return static_cast<uint32_t>(v);
     }
 };
 
-CallingConvention EffectiveConv(CallingConvention const c) {
+CallingConvention EffectiveConv(const CallingConvention c) {
     if (c != CallingConvention::Default) {
         return c;
     }
@@ -1330,8 +1350,11 @@ struct JumpPatch {
 
 class RcuCodeGen {
 public:
-    explicit RcuCodeGen(LirModule const &mod, std::vector<LirStructDecl> const &structDecls,
-                        std::vector<std::string> const &packageInterfaceNames, std::string pkgName)
+    explicit RcuCodeGen(
+        const LirModule &mod,
+        const std::vector<LirStructDecl> &structDecls,
+        const std::vector<std::string> &packageInterfaceNames,
+        std::string pkgName)
         : mod(mod)
           , structDecls(structDecls)
           , packageInterfaceNames(packageInterfaceNames)
@@ -1342,9 +1365,9 @@ public:
     RcuFile Generate();
 
 private:
-    LirModule const &mod;
-    std::vector<LirStructDecl> const &structDecls;
-    std::vector<std::string> const &packageInterfaceNames;
+    const LirModule &mod;
+    const std::vector<LirStructDecl> &structDecls;
+    const std::vector<std::string> &packageInterfaceNames;
     std::string pkgName;
 
     // Section data buffers
@@ -1407,7 +1430,10 @@ private:
     std::unordered_map<LirReg, int32_t> slotMap;
     std::unordered_map<LirReg, int32_t> allocaData;
     std::unordered_map<LirReg, TypeRef> regTypes;
-    std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::vector<PhiMove> > > phiMoves;
+    std::unordered_map<
+        uint32_t,
+        std::unordered_map<uint32_t, std::vector<PhiMove> > >
+    phiMoves;
     int32_t nextOff = 0;
     int32_t frameSize = 0;
     int32_t hiddenReturnOff = 0;
@@ -1416,23 +1442,25 @@ private:
     std::vector<JumpPatch> jumpPatches;
 
     // Helpers
-    [[nodiscard]] int32_t Disp(LirReg const r) const {
+    [[nodiscard]] int32_t Disp(const LirReg r) const {
         return -static_cast<int32_t>(slotMap.at(r));
     }
 
-    static std::string BaseTypeName(std::string const &name) {
-        std::size_t const pos = name.find('<');
+    static std::string BaseTypeName(const std::string &name) {
+        const std::size_t pos = name.find('<');
         return pos == std::string::npos ? name : name.substr(0, pos);
     }
 
-    [[nodiscard]] int SizeOfRuntime(TypeRef const &t) const {
+    [[nodiscard]] int SizeOfRuntime(const TypeRef &t) const {
         if (t.kind == TypeRef::Kind::Range) {
-            TypeRef const &elemType = t.inner.empty() ? TypeRef::MakeInt64() : t.inner[0];
+            const TypeRef &elemType =
+                t.inner.empty() ? TypeRef::MakeInt64() : t.inner[0];
             int elemSize = SizeOf(elemType);
-            return AlignUp(2 * elemSize + 1, elemSize > 0 ? elemSize : 1);
+            return AlignUp(2 * elemSize + 1,
+                           elemSize > 0 ? elemSize : 1);
         }
         if (t.kind == TypeRef::Kind::Named) {
-            std::string const base = BaseTypeName(t.name);
+            const std::string base = BaseTypeName(t.name);
             if (interfaceNames.count(base)) {
                 return 16;
             }
@@ -1447,25 +1475,26 @@ private:
         return SizeOf(t);
     }
 
-    [[nodiscard]] bool IsWin64ByRefAggregate(TypeRef const &t) const {
+    [[nodiscard]] bool IsWin64ByRefAggregate(const TypeRef &t) const {
         return SizeOfRuntime(t) == 16;
     }
 
-    [[nodiscard]] bool IsWin64AddressParam(TypeRef const &t) const {
+    [[nodiscard]] bool IsWin64AddressParam(const TypeRef &t) const {
         if (t.kind != TypeRef::Kind::Named) {
             return false;
         }
-        std::string const base = BaseTypeName(t.name);
+        const std::string base = BaseTypeName(t.name);
         return base == "Slice" || interfaceNames.count(base) > 0;
     }
 
-    [[nodiscard]] bool IsPointerToWin64ByRefAggregate(TypeRef const &t) const {
+    [[nodiscard]] bool
+    IsPointerToWin64ByRefAggregate(const TypeRef &t) const {
         return t.kind == TypeRef::Kind::Pointer && !t.inner.empty() &&
                IsWin64ByRefAggregate(t.inner[0]);
     }
 
-    static int Win64CallFrameSize(std::size_t const argCount) {
-        std::size_t const stackArgs = argCount > 4 ? argCount - 4 : 0;
+    static int Win64CallFrameSize(const std::size_t argCount) {
+        const std::size_t stackArgs = argCount > 4 ? argCount - 4 : 0;
         return AlignUp(static_cast<int>(32 + stackArgs * 8), 16);
     }
 
@@ -1475,7 +1504,9 @@ private:
         return idx;
     }
 
-    uint32_t GetOrAddExtern(std::string const &name, uint8_t kind, std::string const &dll = {}) {
+    uint32_t GetOrAddExtern(const std::string &name,
+                            uint8_t kind,
+                            const std::string &dll = {}) {
         auto it = externSyms.find(name);
         if (it != externSyms.end()) {
             return it->second;
@@ -1500,7 +1531,8 @@ private:
             RcuSymbol s;
             s.name = "__rux_ipow";
             s.sectionIdx = RCU_TEXT_IDX;
-            s.value = 0; // patched to the real offset in EmitIntPowHelper
+            s.value =
+                0; // patched to the real offset in EmitIntPowHelper
             s.kind = RcuSymKind::Func;
             s.visibility = RcuSymVis::Local;
             ipowSym = AddSymbol(s);
@@ -1519,7 +1551,7 @@ private:
             return;
         }
         symbols[ipowSym].value = enc.Size();
-        // clang-format off
+                // clang-format off
                 static constexpr std::uint8_t kThunk[] = {
                     0x48, 0x85, 0xD2,                         // test rdx, rdx    ; exponent
                     0x78, 0x20,                               // js   .negative   ; exp < 0 -> 0
@@ -1540,13 +1572,13 @@ private:
                     0xC3,                                     // ret
                 };
         // clang-format on
-        for (std::uint8_t const b : kThunk) {
+        for (const std::uint8_t b : kThunk) {
             enc.Byte(b);
         }
     }
 
     void PredeclareFunctions() {
-        for (auto const &func : mod.funcs) {
+        for (const auto &func : mod.funcs) {
             if (func.isExtern || funcSyms.contains(func.name)) {
                 continue;
             }
@@ -1555,7 +1587,8 @@ private:
             sym.sectionIdx = RCU_TEXT_IDX;
             sym.value = 0;
             sym.kind = RcuSymKind::Func;
-            sym.visibility = func.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
+            sym.visibility =
+                func.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
             sym.typeName = func.returnType.ToString();
             funcSyms[func.name] = AddSymbol(sym);
         }
@@ -1570,7 +1603,7 @@ private:
         return static_cast<uint32_t>(rodataData.size());
     }
 
-    uint32_t InternStr(std::string const &val) {
+    uint32_t InternStr(const std::string &val) {
         auto it = strSyms.find(val);
         if (it != strSyms.end()) {
             return it->second;
@@ -1593,7 +1626,7 @@ private:
         return idx;
     }
 
-    uint32_t InternF32(std::string const &val) {
+    uint32_t InternF32(const std::string &val) {
         auto it = f32Syms.find(val);
         if (it != f32Syms.end()) {
             return it->second;
@@ -1619,7 +1652,7 @@ private:
         return idx;
     }
 
-    uint32_t InternF64(std::string const &val) {
+    uint32_t InternF64(const std::string &val) {
         auto it = f64Syms.find(val);
         if (it != f64Syms.end()) {
             return it->second;
@@ -1687,28 +1720,36 @@ private:
         return f64SignMaskSym;
     }
 
-    void AddTextReloc(uint32_t sectionOff, uint32_t symIdx, int32_t addend = 0) {
-        textRelocs.push_back({sectionOff, symIdx, RcuRelType::Rel32, addend});
+    void AddTextReloc(uint32_t sectionOff,
+                      uint32_t symIdx,
+                      int32_t addend = 0) {
+        textRelocs.push_back(
+            {sectionOff, symIdx, RcuRelType::Rel32, addend});
     }
 
-    void AddRodataReloc(uint32_t sectionOff, uint32_t symIdx, uint16_t type, int32_t addend = 0) {
+    void AddRodataReloc(uint32_t sectionOff,
+                        uint32_t symIdx,
+                        uint16_t type,
+                        int32_t addend = 0) {
         rodataRelocs.push_back({sectionOff, symIdx, type, addend});
     }
 
     void PatchJumps() {
-        for (auto const &p : jumpPatches) {
-            auto target = static_cast<int32_t>(blockOffsets[p.targetBlock]);
-            int32_t rel32 = target - static_cast<int32_t>(p.patchOff + 4);
+        for (const auto &p : jumpPatches) {
+            auto target =
+                static_cast<int32_t>(blockOffsets[p.targetBlock]);
+            int32_t rel32 =
+                target - static_cast<int32_t>(p.patchOff + 4);
             enc.Patch32(p.patchOff, rel32);
         }
         jumpPatches.clear();
     }
 
     // Load A (rax / xmm0) and B (r10 / xmm1)
-    void LoadA(LirReg const reg, TypeRef const &t) const {
-        int const sz = SizeOf(t);
-        int const runtimeSz = SizeOfRuntime(t);
-        int32_t const d = Disp(reg);
+    void LoadA(const LirReg reg, const TypeRef &t) const {
+        const int sz = SizeOf(t);
+        const int runtimeSz = SizeOfRuntime(t);
+        const int32_t d = Disp(reg);
         if (runtimeSz == 16) {
             enc.MovRaxLoad(d);
             enc.MovR10Load(d + 8);
@@ -1751,7 +1792,7 @@ private:
         }
     }
 
-    void LoadB(LirReg reg, TypeRef const &t) const {
+    void LoadB(LirReg reg, const TypeRef &t) const {
         int sz = SizeOf(t);
         int32_t d = Disp(reg);
         if (IsFloat(t)) {
@@ -1789,7 +1830,7 @@ private:
         }
     }
 
-    void StoreA(LirReg dst, TypeRef const &t) const {
+    void StoreA(LirReg dst, const TypeRef &t) const {
         int sz = SizeOf(t);
         int runtimeSz = SizeOfRuntime(t);
         int32_t d = Disp(dst);
@@ -1798,7 +1839,8 @@ private:
             enc.Byte(0x48);
             enc.Byte(0x89);
             enc.Byte(0x95);
-            enc.Dword(static_cast<uint32_t>(d + 8)); // mov [rbp+disp+8], rdx
+            enc.Dword(
+                static_cast<uint32_t>(d + 8)); // mov [rbp+disp+8], rdx
         }
         else if (IsFloat(t)) {
             if (t.kind == TypeRef::Kind::Float32) {
@@ -1825,7 +1867,7 @@ private:
         }
     }
 
-    void LoadReturnValue(LirReg const reg, TypeRef const &t) const {
+    void LoadReturnValue(const LirReg reg, const TypeRef &t) const {
         if (SizeOfRuntime(t) == 16) {
             enc.MovRaxLoad(Disp(reg));
             enc.MovR10Load(Disp(reg) + 8);
@@ -1837,19 +1879,21 @@ private:
         LoadA(reg, t);
     }
 
-    void StoreReturnValue(LirReg const dst, TypeRef const &t) const {
+    void StoreReturnValue(const LirReg dst, const TypeRef &t) const {
         if (SizeOfRuntime(t) == 16) {
             enc.MovRaxStore(Disp(dst));
             enc.Byte(0x48);
             enc.Byte(0x89);
             enc.Byte(0x95);
-            enc.Dword(static_cast<uint32_t>(Disp(dst) + 8)); // mov [rbp+disp], rdx
+            enc.Dword(static_cast<uint32_t>(Disp(dst) +
+                                            8)); // mov [rbp+disp], rdx
             return;
         }
         StoreA(dst, t);
     }
 
-    void StoreHiddenReturnValue(LirReg const src, TypeRef const &t) const {
+    void StoreHiddenReturnValue(const LirReg src,
+                                const TypeRef &t) const {
         if (hiddenReturnOff == 0 || SizeOfRuntime(t) != 16) {
             LoadReturnValue(src, t);
             return;
@@ -1870,18 +1914,20 @@ private:
     }
 
     // Struct field lookup
-    int FieldOffset(LirReg base, std::string const &fieldName) {
+    int FieldOffset(LirReg base, const std::string &fieldName) {
         auto typeIt = regTypes.find(base);
         if (typeIt == regTypes.end()) {
             return 0;
         }
-        TypeRef const &pt = typeIt->second;
+        const TypeRef &pt = typeIt->second;
         if (pt.kind != TypeRef::Kind::Pointer || pt.inner.empty()) {
             return 0;
         }
-        TypeRef const &inner = pt.inner[0];
+        const TypeRef &inner = pt.inner[0];
         if (inner.kind == TypeRef::Kind::Range) {
-            TypeRef const &elemType = inner.inner.empty() ? TypeRef::MakeInt64() : inner.inner[0];
+            const TypeRef &elemType = inner.inner.empty()
+                                          ? TypeRef::MakeInt64()
+                                          : inner.inner[0];
             int elemSize = SizeOf(elemType);
             if (fieldName == "lo") {
                 return 0;
@@ -1906,16 +1952,18 @@ private:
             if (idx >= inner.inner.size()) {
                 return 0;
             }
-            for (std::size_t i = 0; i < idx && i < inner.inner.size(); ++i) {
-                int const sz = SizeOf(inner.inner[i]);
-                int const al = sz > 0 ? std::min(sz, 8) : 1;
+            for (std::size_t i = 0; i < idx && i < inner.inner.size();
+                 ++i) {
+                const int sz = SizeOf(inner.inner[i]);
+                const int al = sz > 0 ? std::min(sz, 8) : 1;
                 if (al > 1) {
                     offset = AlignUp(offset, al);
                 }
                 offset += sz > 0 ? sz : 8;
             }
-            int const fieldSize = SizeOf(inner.inner[idx]);
-            int const fieldAlign = fieldSize > 0 ? std::min(fieldSize, 8) : 1;
+            const int fieldSize = SizeOf(inner.inner[idx]);
+            const int fieldAlign =
+                fieldSize > 0 ? std::min(fieldSize, 8) : 1;
             if (fieldAlign > 1) {
                 offset = AlignUp(offset, fieldAlign);
             }
@@ -1924,7 +1972,7 @@ private:
         if (inner.kind != TypeRef::Kind::Named) {
             return 0;
         }
-        std::string const baseName = BaseTypeName(inner.name);
+        const std::string baseName = BaseTypeName(inner.name);
         if (interfaceNames.count(baseName)) {
             if (fieldName == "data") {
                 return 0;
@@ -1947,7 +1995,7 @@ private:
         if (layIt == layouts.end()) {
             return 0;
         }
-        for (auto const &field : layIt->second.fields) {
+        for (const auto &field : layIt->second.fields) {
             if (field.name == fieldName) {
                 return field.offset;
             }
@@ -1974,7 +2022,7 @@ private:
         return nextOff;
     }
 
-    void PrepassFunc(LirFunc const &func) {
+    void PrepassFunc(const LirFunc &func) {
         nextOff = 0;
         frameSize = 0;
         hiddenReturnOff = 0;
@@ -1986,16 +2034,20 @@ private:
             IsWin64ByRefAggregate(func.returnType)) {
             hiddenReturnOff = AllocRegion(8);
         }
-        for (auto const &p : func.params) {
-            int sz = IsWin64AddressParam(p.type) ? 8 : SizeOfRuntime(p.type);
+        for (const auto &p : func.params) {
+            int sz =
+                IsWin64AddressParam(p.type) ? 8 : SizeOfRuntime(p.type);
             AllocSlot(p.reg, sz > 0 ? sz : 8);
-            regTypes[p.reg] = IsWin64AddressParam(p.type) ? TypeRef::MakePointer(p.type) : p.type;
+            regTypes[p.reg] = IsWin64AddressParam(p.type)
+                                  ? TypeRef::MakePointer(p.type)
+                                  : p.type;
         }
         for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
-            for (auto const &instr : func.blocks[bi].instrs) {
+            for (const auto &instr : func.blocks[bi].instrs) {
                 if (instr.op == LirOpcode::Phi) {
-                    for (auto const &[src, pred] : instr.phiPreds) {
-                        phiMoves[pred][bi].push_back({instr.dst, src, instr.type});
+                    for (const auto &[src, pred] : instr.phiPreds) {
+                        phiMoves[pred][bi].push_back(
+                            {instr.dst, src, instr.type});
                     }
                 }
                 if (instr.dst == LirNoReg) {
@@ -2011,16 +2063,20 @@ private:
                         }
                         catch (...) {
                         }
-                        TypeRef const &elemType =
-                            instr.type.inner.empty() ? instr.type : instr.type.inner[0];
+                        const TypeRef &elemType =
+                            instr.type.inner.empty()
+                                ? instr.type
+                                : instr.type.inner[0];
                         int elemSize = SizeOfRuntime(elemType);
                         dsz = count * (elemSize > 0 ? elemSize : 8);
                     }
                     else {
                         dsz = SizeOfRuntime(instr.type);
                     }
-                    allocaData[instr.dst] = AllocRegion(dsz > 0 ? dsz : 8);
-                    regTypes[instr.dst] = TypeRef::MakePointer(instr.type);
+                    allocaData[instr.dst] =
+                        AllocRegion(dsz > 0 ? dsz : 8);
+                    regTypes[instr.dst] =
+                        TypeRef::MakePointer(instr.type);
                 }
                 else {
                     int sz = SizeOfRuntime(instr.type);
@@ -2038,13 +2094,13 @@ private:
 
     // Build struct layouts
     void BuildLayouts() {
-        for (auto const &name : packageInterfaceNames) {
+        for (const auto &name : packageInterfaceNames) {
             interfaceNames.insert(name);
         }
-        for (auto const &s : structDecls) {
+        for (const auto &s : structDecls) {
             StructLayout layout;
             int offset = 0, maxAlign = 1;
-            for (auto const &f : s.fields) {
+            for (const auto &f : s.fields) {
                 int sz = SizeOfRuntime(f.type);
                 int al = sz > 0 ? std::min(sz, 8) : 1;
                 if (f.type.kind == TypeRef::Kind::Named) {
@@ -2068,7 +2124,7 @@ private:
     }
 
     // Phi move emission
-    bool HasPhiMoves(uint32_t const from, uint32_t to) const {
+    bool HasPhiMoves(const uint32_t from, uint32_t to) const {
         auto it = phiMoves.find(from);
         if (it == phiMoves.end()) {
             return false;
@@ -2076,7 +2132,7 @@ private:
         return it->second.contains(to);
     }
 
-    void EmitPhiMoves(uint32_t const from, uint32_t to) {
+    void EmitPhiMoves(const uint32_t from, uint32_t to) {
         auto it1 = phiMoves.find(from);
         if (it1 == phiMoves.end()) {
             return;
@@ -2085,7 +2141,7 @@ private:
         if (it2 == it1->second.end()) {
             return;
         }
-        for (auto const &m : it2->second) {
+        for (const auto &m : it2->second) {
             if (!slotMap.contains(m.src)) {
                 continue;
             }
@@ -2110,17 +2166,21 @@ private:
     }
 
     // Call argument setup
-    void EmitCallArgs(std::vector<LirReg> const &args,
-                      CallingConvention conv = CallingConvention::Default, int startIdx = 0) const {
+    void
+    EmitCallArgs(const std::vector<LirReg> &args,
+                 CallingConvention conv = CallingConvention::Default,
+                 int startIdx = 0) const {
         if (EffectiveConv(conv) == CallingConvention::Win64) {
             // Unified index: rcx/xmm0=0, rdx/xmm1=1, r8/xmm2=2,
             // r9/xmm3=3
             int idx = startIdx;
             for (LirReg arg : args) {
-                TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+                TypeRef at = regTypes.contains(arg)
+                                 ? regTypes.at(arg)
+                                 : TypeRef::MakeInt64();
                 int32_t d = Disp(arg);
                 if (idx >= 4) {
-                    int32_t const stackArgOff = 32 + (idx - 4) * 8;
+                    const int32_t stackArgOff = 32 + (idx - 4) * 8;
                     if (IsFloat(at)) {
                         LoadA(arg, at);
                         if (SizeOf(at) == 4) {
@@ -2167,7 +2227,9 @@ private:
         else {
             int intIdx = 0, fltIdx = 0;
             for (LirReg arg : args) {
-                TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+                TypeRef at = regTypes.contains(arg)
+                                 ? regTypes.at(arg)
+                                 : TypeRef::MakeInt64();
                 int32_t d = Disp(arg);
                 if (IsFloat(at)) {
                     if (fltIdx < 8) {
@@ -2192,13 +2254,13 @@ private:
     }
 
     // Instruction code generation
-    void GenInstr(LirInstr const &instr) {
+    void GenInstr(const LirInstr &instr) {
         switch (instr.op) {
         case LirOpcode::Const: {
             if (instr.dst == LirNoReg) {
                 break;
             }
-            TypeRef const &t = instr.type;
+            const TypeRef &t = instr.type;
             int sz = SizeOf(t);
             if (t.kind == TypeRef::Kind::Str) {
                 uint32_t symIdx = InternStr(instr.strArg);
@@ -2222,12 +2284,17 @@ private:
                 enc.MovsdXmm0Store(Disp(instr.dst));
             }
             else if (t.IsBool()) {
-                enc.MovEaxImm32((instr.strArg == "true" || instr.strArg == "1") ? 1 : 0);
+                enc.MovEaxImm32(
+                    (instr.strArg == "true" || instr.strArg == "1")
+                        ? 1
+                        : 0);
                 StoreA(instr.dst, t);
             }
             else {
-                std::string const &sv = instr.strArg.empty() ? "0" : instr.strArg;
-                std::uint64_t const bits = ParseIntegerLiteralBits(sv).value_or(0);
+                const std::string &sv =
+                    instr.strArg.empty() ? "0" : instr.strArg;
+                const std::uint64_t bits =
+                    ParseIntegerLiteralBits(sv).value_or(0);
                 if (bits <= 0x7FFF'FFFF) {
                     enc.MovEaxImm32(static_cast<int32_t>(bits));
                 }
@@ -2245,12 +2312,13 @@ private:
             break;
         }
         case LirOpcode::Load: {
-            TypeRef const &t = instr.type;
+            const TypeRef &t = instr.type;
             int sz = SizeOf(t);
             int runtimeSz = SizeOfRuntime(t);
             if (!instr.strArg.empty()) {
                 // Named global — load via RIP-relative
-                uint32_t symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternData);
+                uint32_t symIdx = GetOrAddExtern(
+                    instr.strArg, RcuSymKind::ExternData);
                 uint32_t relocOff;
                 enc.MovRaxRip(relocOff);
                 AddTextReloc(relocOff, symIdx);
@@ -2342,7 +2410,7 @@ private:
         case LirOpcode::Store: {
             LirReg val = instr.srcs[0];
             LirReg ptr = instr.srcs[1];
-            TypeRef const &t = instr.type;
+            const TypeRef &t = instr.type;
             int sz = SizeOf(t);
             int runtimeSz = SizeOfRuntime(t);
             enc.MovR11Load(Disp(ptr));
@@ -2377,7 +2445,7 @@ private:
                 }
             }
             else {
-                int const ss = (sz > 0) ? sz : 8;
+                const int ss = (sz > 0) ? sz : 8;
                 LoadA(val, t);
                 // mov [r11], rax/eax/ax/al
                 if (ss == 8) {
@@ -2409,11 +2477,11 @@ private:
         case LirOpcode::And:
         case LirOpcode::Or:
         case LirOpcode::Xor: {
-            TypeRef const &t = instr.type;
+            const TypeRef &t = instr.type;
             if (IsFloat(t)) {
                 LoadA(instr.srcs[0], t);
                 LoadB(instr.srcs[1], t);
-                bool const f32 = (t.kind == TypeRef::Kind::Float32);
+                const bool f32 = (t.kind == TypeRef::Kind::Float32);
                 if (instr.op == LirOpcode::Add) {
                     if (f32) {
                         enc.AddssXmm01();
@@ -2463,7 +2531,7 @@ private:
             break;
         }
         case LirOpcode::Mul: {
-            TypeRef const &t = instr.type;
+            const TypeRef &t = instr.type;
             if (IsFloat(t)) {
                 LoadA(instr.srcs[0], t);
                 LoadB(instr.srcs[1], t);
@@ -2484,7 +2552,7 @@ private:
         }
         case LirOpcode::Div:
         case LirOpcode::Mod: {
-            if (TypeRef const &t = instr.type; IsFloat(t)) {
+            if (const TypeRef &t = instr.type; IsFloat(t)) {
                 LoadA(instr.srcs[0], t);
                 LoadB(instr.srcs[1], t);
                 if (instr.op == LirOpcode::Div) {
@@ -2525,15 +2593,18 @@ private:
             break;
         }
         case LirOpcode::Pow: {
-            TypeRef const &t = instr.type;
-            bool const win64Call =
-                EffectiveConv(CallingConvention::Default) == CallingConvention::Win64;
-            int const callFrameSize = win64Call ? Win64CallFrameSize(instr.srcs.size()) : 0;
+            const TypeRef &t = instr.type;
+            const bool win64Call =
+                EffectiveConv(CallingConvention::Default) ==
+                CallingConvention::Win64;
+            const int callFrameSize =
+                win64Call ? Win64CallFrameSize(instr.srcs.size()) : 0;
             if (win64Call) {
                 enc.SubRspImm32(callFrameSize);
             }
             if (IsFloat(t)) {
-                uint32_t sym = GetOrAddExtern("pow", RcuSymKind::ExternFunc);
+                uint32_t sym =
+                    GetOrAddExtern("pow", RcuSymKind::ExternFunc);
                 EmitCallArgs(instr.srcs, CallingConvention::Default);
                 uint32_t ro;
                 enc.Call(ro);
@@ -2554,7 +2625,7 @@ private:
         }
         case LirOpcode::Shl:
         case LirOpcode::Shr: {
-            TypeRef const &t = instr.type;
+            const TypeRef &t = instr.type;
             LoadA(instr.srcs[0], t);
             enc.MovR11Load(Disp(instr.srcs[1]));
             enc.MovRcxR11();
@@ -2573,11 +2644,12 @@ private:
         }
 
         case LirOpcode::Neg: {
-            TypeRef const &t = instr.type;
+            const TypeRef &t = instr.type;
             if (IsFloat(t)) {
                 LoadA(instr.srcs[0], t);
-                bool const f32 = (t.kind == TypeRef::Kind::Float32);
-                uint32_t const maskSym = f32 ? InternF32SignMask() : InternF64SignMask();
+                const bool f32 = (t.kind == TypeRef::Kind::Float32);
+                const uint32_t maskSym =
+                    f32 ? InternF32SignMask() : InternF64SignMask();
                 uint32_t ro;
                 if (f32) {
                     enc.MovssXmm1Rip(ro);
@@ -2633,8 +2705,9 @@ private:
         case LirOpcode::CmpLe:
         case LirOpcode::CmpGt:
         case LirOpcode::CmpGe: {
-            TypeRef const &lhsT =
-                regTypes.contains(instr.srcs[0]) ? regTypes.at(instr.srcs[0]) : instr.type;
+            const TypeRef &lhsT = regTypes.contains(instr.srcs[0])
+                                      ? regTypes.at(instr.srcs[0])
+                                      : instr.type;
             LoadA(instr.srcs[0], lhsT);
             LoadB(instr.srcs[1], lhsT);
             if (IsFloat(lhsT)) {
@@ -2680,103 +2753,14 @@ private:
                     enc.SetnpDl();
                     enc.AndAlDl();
                     break;
-                }
-            case LirOpcode::Call: {
-                // Built-in: FloatBits64 — reinterpret float64 bits as uint64
-                if (instr.strArg == "FloatBits64" &&
-                    instr.srcs.size() == 1) {
-                    enc.MovsdXmm0Load(Disp(instr.srcs[0]));
-                    enc.Byte(0x66);
-                    enc.Byte(0x48);
-                    enc.Byte(0x0F);
-                    enc.Byte(0x7E);
-                    enc.Byte(0xC0); // movq rax, xmm0
-                    if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
-                        StoreReturnValue(instr.dst, instr.type);
-                    }
+
+                case LirOpcode::CmpGe:
+                    // ordered && !CF
+                    enc.SetaeAl();
+                    enc.SetnpDl();
+                    enc.AndAlDl();
                     break;
                 }
-                // Built-in: FloatFromBits64 — reinterpret uint64 bits as float64
-                if (instr.strArg == "FloatFromBits64" &&
-                    instr.srcs.size() == 1) {
-                    enc.MovRaxLoad(Disp(instr.srcs[0]));
-                    enc.Byte(0x66);
-                    enc.Byte(0x48);
-                    enc.Byte(0x0F);
-                    enc.Byte(0x6E);
-                    enc.Byte(0xC0); // movq xmm0, rax
-                    if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
-                        StoreReturnValue(instr.dst, instr.type);
-                    }
-                    break;
-                }
-                // Built-in: FloatBits32 — reinterpret float32 bits as uint32
-                if (instr.strArg == "FloatBits32" &&
-                    instr.srcs.size() == 1) {
-                    enc.MovssXmm0Load(Disp(instr.srcs[0]));
-                    enc.Byte(0x66);
-                    enc.Byte(0x0F);
-                    enc.Byte(0x7E);
-                    enc.Byte(0xC0); // movd eax, xmm0
-                    if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
-                        StoreReturnValue(instr.dst, instr.type);
-                    }
-                    break;
-                }
-                // Built-in: FloatFromBits32 — reinterpret uint32 bits as float32
-                if (instr.strArg == "FloatFromBits32" &&
-                    instr.srcs.size() == 1) {
-                    enc.MovRaxLoad(Disp(instr.srcs[0]));
-                    enc.Byte(0x66);
-                    enc.Byte(0x0F);
-                    enc.Byte(0x6E);
-                    enc.Byte(0xC0); // movd xmm0, eax
-                    if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
-                        StoreReturnValue(instr.dst, instr.type);
-                    }
-                    break;
-                }
-                bool win64Call = EffectiveConv(instr.callConv) ==
-                                 CallingConvention::Win64;
-                const bool hiddenReturn = win64Call &&
-                                          instr.dst != LirNoReg &&
-                                          IsWin64ByRefAggregate(instr.type);
-                const int callFrameSize =
-                    win64Call
-                        ? Win64CallFrameSize(instr.srcs.size() +
-                                             (hiddenReturn ? 1 : 0))
-                        : 0;
-                if (win64Call) {
-                    enc.SubRspImm32(callFrameSize);
-                }
-                if (hiddenReturn) {
-                    enc.LeaArgStackWin64(0, Disp(instr.dst));
-                    EmitCallArgs(instr.srcs, instr.callConv, 1);
-                }
-                else {
-                    EmitCallArgs(instr.srcs, instr.callConv);
-                }
-                uint32_t symIdx;
-                if (const auto it = funcSyms.find(instr.strArg);
-                    it != funcSyms.end()) {
-                    symIdx = it->second;
-                }
-                else {
-                    symIdx = GetOrAddExtern(instr.strArg,
-                                            RcuSymKind::ExternFunc);
-                }
-                uint32_t ro;
-                enc.Call(ro);
-                AddTextReloc(ro, symIdx);
-                if (win64Call) {
-                    enc.AddRspImm32(callFrameSize);
-                }
-                if (instr.dst != LirNoReg && !instr.type.IsOpaque() &&
-                    !hiddenReturn) {
-                    StoreReturnValue(instr.dst, instr.type);
-                }
-                break;
-            }
             }
             else {
                 enc.CmpRaxR10();
@@ -2807,8 +2791,10 @@ private:
             break;
         }
         case LirOpcode::Cast: {
-            TypeRef const &dstT = instr.type;
-            TypeRef srcT = regTypes.contains(instr.srcs[0]) ? regTypes.at(instr.srcs[0]) : dstT;
+            const TypeRef &dstT = instr.type;
+            TypeRef srcT = regTypes.contains(instr.srcs[0])
+                               ? regTypes.at(instr.srcs[0])
+                               : dstT;
             LoadA(instr.srcs[0], srcT);
             bool srcFl = IsFloat(srcT), dstFl = IsFloat(dstT);
             if (srcFl && !dstFl) {
@@ -2828,7 +2814,8 @@ private:
                 }
             }
             else if (srcFl && dstFl) {
-                if (srcT.kind == TypeRef::Kind::Float32 && dstT.kind == TypeRef::Kind::Float64) {
+                if (srcT.kind == TypeRef::Kind::Float32 &&
+                    dstT.kind == TypeRef::Kind::Float64) {
                     enc.CvtsssdXmm0();
                 }
                 else if (srcT.kind == TypeRef::Kind::Float64 &&
@@ -2840,11 +2827,70 @@ private:
             break;
         }
         case LirOpcode::Call: {
-            bool win64Call = EffectiveConv(instr.callConv) == CallingConvention::Win64;
-            bool const hiddenReturn =
-                win64Call && instr.dst != LirNoReg && IsWin64ByRefAggregate(instr.type);
-            int const callFrameSize =
-                win64Call ? Win64CallFrameSize(instr.srcs.size() + (hiddenReturn ? 1 : 0)) : 0;
+            // Built-in: FloatBits64 — reinterpret float64 bits as uint64
+            if (instr.strArg == "FloatBits64" &&
+                instr.srcs.size() == 1) {
+                enc.MovsdXmm0Load(Disp(instr.srcs[0]));
+                enc.Byte(0x66);
+                enc.Byte(0x48);
+                enc.Byte(0x0F);
+                enc.Byte(0x7E);
+                enc.Byte(0xC0); // movq rax, xmm0
+                if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
+                    StoreReturnValue(instr.dst, instr.type);
+                }
+                break;
+            }
+            // Built-in: FloatFromBits64 — reinterpret uint64 bits as float64
+            if (instr.strArg == "FloatFromBits64" &&
+                instr.srcs.size() == 1) {
+                enc.MovRaxLoad(Disp(instr.srcs[0]));
+                enc.Byte(0x66);
+                enc.Byte(0x48);
+                enc.Byte(0x0F);
+                enc.Byte(0x6E);
+                enc.Byte(0xC0); // movq xmm0, rax
+                if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
+                    StoreReturnValue(instr.dst, instr.type);
+                }
+                break;
+            }
+            // Built-in: FloatBits32 — reinterpret float32 bits as uint32
+            if (instr.strArg == "FloatBits32" &&
+                instr.srcs.size() == 1) {
+                enc.MovssXmm0Load(Disp(instr.srcs[0]));
+                enc.Byte(0x66);
+                enc.Byte(0x0F);
+                enc.Byte(0x7E);
+                enc.Byte(0xC0); // movd eax, xmm0
+                if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
+                    StoreReturnValue(instr.dst, instr.type);
+                }
+                break;
+            }
+            // Built-in: FloatFromBits32 — reinterpret uint32 bits as float32
+            if (instr.strArg == "FloatFromBits32" &&
+                instr.srcs.size() == 1) {
+                enc.MovRaxLoad(Disp(instr.srcs[0]));
+                enc.Byte(0x66);
+                enc.Byte(0x0F);
+                enc.Byte(0x6E);
+                enc.Byte(0xC0); // movd xmm0, eax
+                if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
+                    StoreReturnValue(instr.dst, instr.type);
+                }
+                break;
+            }
+            bool win64Call = EffectiveConv(instr.callConv) ==
+                             CallingConvention::Win64;
+            const bool hiddenReturn = win64Call &&
+                                      instr.dst != LirNoReg &&
+                                      IsWin64ByRefAggregate(instr.type);
+            const int callFrameSize =
+                win64Call
+                    ? Win64CallFrameSize(instr.srcs.size() +
+                                         (hiddenReturn ? 1 : 0))
+                    : 0;
             if (win64Call) {
                 enc.SubRspImm32(callFrameSize);
             }
@@ -2856,11 +2902,13 @@ private:
                 EmitCallArgs(instr.srcs, instr.callConv);
             }
             uint32_t symIdx;
-            if (auto const it = funcSyms.find(instr.strArg); it != funcSyms.end()) {
+            if (const auto it = funcSyms.find(instr.strArg);
+                it != funcSyms.end()) {
                 symIdx = it->second;
             }
             else {
-                symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternFunc);
+                symIdx = GetOrAddExtern(instr.strArg,
+                                        RcuSymKind::ExternFunc);
             }
             uint32_t ro;
             enc.Call(ro);
@@ -2868,7 +2916,8 @@ private:
             if (win64Call) {
                 enc.AddRspImm32(callFrameSize);
             }
-            if (instr.dst != LirNoReg && !instr.type.IsOpaque() && !hiddenReturn) {
+            if (instr.dst != LirNoReg && !instr.type.IsOpaque() &&
+                !hiddenReturn) {
                 StoreReturnValue(instr.dst, instr.type);
             }
             break;
@@ -2878,12 +2927,18 @@ private:
                 break;
             }
             LirReg callee = instr.srcs[0];
-            std::vector<LirReg> args(instr.srcs.begin() + 1, instr.srcs.end());
-            bool win64Call = EffectiveConv(instr.callConv) == CallingConvention::Win64;
-            bool const hiddenReturn =
-                win64Call && instr.dst != LirNoReg && IsWin64ByRefAggregate(instr.type);
-            int const callFrameSize =
-                win64Call ? Win64CallFrameSize(args.size() + (hiddenReturn ? 1 : 0)) : 0;
+            std::vector<LirReg> args(instr.srcs.begin() + 1,
+                                     instr.srcs.end());
+            bool win64Call = EffectiveConv(instr.callConv) ==
+                             CallingConvention::Win64;
+            const bool hiddenReturn = win64Call &&
+                                      instr.dst != LirNoReg &&
+                                      IsWin64ByRefAggregate(instr.type);
+            const int callFrameSize =
+                win64Call
+                    ? Win64CallFrameSize(args.size() +
+                                         (hiddenReturn ? 1 : 0))
+                    : 0;
             if (win64Call) {
                 enc.SubRspImm32(callFrameSize);
             }
@@ -2899,21 +2954,25 @@ private:
             if (win64Call) {
                 enc.AddRspImm32(callFrameSize);
             }
-            if (instr.dst != LirNoReg && !instr.type.IsOpaque() && !hiddenReturn) {
+            if (instr.dst != LirNoReg && !instr.type.IsOpaque() &&
+                !hiddenReturn) {
                 StoreReturnValue(instr.dst, instr.type);
             }
             break;
         }
         case LirOpcode::GlobalAddr: {
             uint32_t symIdx;
-            if (auto const dataIt = dataSyms.find(instr.strArg); dataIt != dataSyms.end()) {
+            if (const auto dataIt = dataSyms.find(instr.strArg);
+                dataIt != dataSyms.end()) {
                 symIdx = dataIt->second;
             }
-            else if (auto const funcIt = funcSyms.find(instr.strArg); funcIt != funcSyms.end()) {
+            else if (const auto funcIt = funcSyms.find(instr.strArg);
+                funcIt != funcSyms.end()) {
                 symIdx = funcIt->second;
             }
             else {
-                symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternData);
+                symIdx = GetOrAddExtern(instr.strArg,
+                                        RcuSymKind::ExternData);
             }
             uint32_t relocOff;
             enc.LeaRaxRip(relocOff);
@@ -2934,7 +2993,8 @@ private:
         case LirOpcode::IndexPtr: {
             LirReg base = instr.srcs[0];
             LirReg idx = instr.srcs[1];
-            int elemSz = (instr.type.kind == TypeRef::Kind::Pointer && !instr.type.inner.empty())
+            int elemSz = (instr.type.kind == TypeRef::Kind::Pointer &&
+                          !instr.type.inner.empty())
                              ? SizeOfRuntime(instr.type.inner[0])
                              : 8;
             if (elemSz < 1) {
@@ -2955,7 +3015,9 @@ private:
     }
 
     // Terminator
-    void GenTerm(uint32_t blockIdx, LirTerminator const &term, LirFunc const &func) {
+    void GenTerm(uint32_t blockIdx,
+                 const LirTerminator &term,
+                 const LirFunc &func) {
         (void)func;
         switch (term.kind) {
         case LirTermKind::Jump: {
@@ -2969,9 +3031,10 @@ private:
             // Load condition with correct width to avoid reading stack
             // garbage
             {
-                TypeRef const condT =
-                    regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeBool();
-                int const condSz = SizeOf(condT);
+                const TypeRef condT = regTypes.contains(term.cond)
+                                          ? regTypes.at(term.cond)
+                                          : TypeRef::MakeBool();
+                const int condSz = SizeOf(condT);
                 if (condSz <= 1) {
                     enc.MovzxRaxByte(Disp(term.cond));
                 }
@@ -2986,8 +3049,9 @@ private:
                 }
             }
             enc.TestRaxRax();
-            bool const truePhi = HasPhiMoves(blockIdx, term.trueTarget);
-            if (bool const falsePhi = HasPhiMoves(blockIdx, term.falseTarget);
+            const bool truePhi = HasPhiMoves(blockIdx, term.trueTarget);
+            if (const bool falsePhi =
+                    HasPhiMoves(blockIdx, term.falseTarget);
                 !truePhi && !falsePhi) {
                 uint32_t po;
                 enc.Jz(po);
@@ -3006,7 +3070,8 @@ private:
                 jumpPatches.push_back({jmpTrue, term.trueTarget});
                 // patch jz to here (false trampoline)
                 auto here = static_cast<int32_t>(enc.Size());
-                enc.Patch32(jzOff, here - static_cast<int32_t>(jzOff + 4));
+                enc.Patch32(jzOff,
+                            here - static_cast<int32_t>(jzOff + 4));
                 EmitPhiMoves(blockIdx, term.falseTarget);
                 uint32_t jmpFalse;
                 enc.Jmp(jmpFalse);
@@ -3016,7 +3081,8 @@ private:
         }
         case LirTermKind::Return: {
             if (term.retVal && *term.retVal != LirNoReg) {
-                if (hiddenReturnOff != 0 && IsWin64ByRefAggregate(term.retType)) {
+                if (hiddenReturnOff != 0 &&
+                    IsWin64ByRefAggregate(term.retType)) {
                     StoreHiddenReturnValue(*term.retVal, term.retType);
                 }
                 else {
@@ -3029,8 +3095,9 @@ private:
         }
         case LirTermKind::Switch: {
             enc.MovRaxLoad(Disp(term.cond));
-            for (auto const &c : term.cases) {
-                std::uint64_t const bits = ParseIntegerLiteralBits(c.value).value_or(0);
+            for (const auto &c : term.cases) {
+                const std::uint64_t bits =
+                    ParseIntegerLiteralBits(c.value).value_or(0);
                 enc.CmpRaxImm32(static_cast<int32_t>(bits));
                 uint32_t po;
                 enc.Je(po);
@@ -3046,7 +3113,7 @@ private:
     }
 
     // Function generation
-    void GenFunc(LirFunc const &func) {
+    void GenFunc(const LirFunc &func) {
         if (func.isExtern) {
             GetOrAddExtern(func.name, RcuSymKind::ExternFunc, func.dll);
             return;
@@ -3060,9 +3127,11 @@ private:
         sym.sectionIdx = RCU_TEXT_IDX;
         sym.value = funcStart;
         sym.kind = RcuSymKind::Func;
-        sym.visibility = func.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
+        sym.visibility =
+            func.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
         sym.typeName = func.returnType.ToString();
-        if (auto const it = funcSyms.find(func.name); it != funcSyms.end()) {
+        if (const auto it = funcSyms.find(func.name);
+            it != funcSyms.end()) {
             symbols[it->second] = std::move(sym);
         }
         else {
@@ -3073,13 +3142,14 @@ private:
         enc.MovRbpRsp();
         EmitStackAlloc(frameSize);
         // Spill ABI param registers to stack slots
-        bool win64Func = EffectiveConv(func.callConv) == CallingConvention::Win64;
+        bool win64Func =
+            EffectiveConv(func.callConv) == CallingConvention::Win64;
         int intIdx = 0, fltIdx = 0, win64Idx = 0;
         if (win64Func && hiddenReturnOff != 0) {
             enc.MovArgStoreWin64(0, -hiddenReturnOff);
             win64Idx = 1;
         }
-        for (auto const &p : func.params) {
+        for (const auto &p : func.params) {
             int sz = SizeOf(p.type);
             int32_t d = Disp(p.reg);
             if (win64Func) {
@@ -3087,7 +3157,7 @@ private:
                 // above return address + saved rbp + 32-byte home
                 // space.
                 if (win64Idx >= 4) {
-                    int32_t const stackArgOff = 48 + (win64Idx - 4) * 8;
+                    const int32_t stackArgOff = 48 + (win64Idx - 4) * 8;
                     if (IsWin64AddressParam(p.type)) {
                         enc.MovRaxLoad(stackArgOff);
                         enc.MovRaxStore(d);
@@ -3142,7 +3212,8 @@ private:
                     enc.Byte(sz == 4 ? 0xF3 : 0xF2);
                     enc.Byte(0x0F);
                     enc.Byte(0x11);
-                    enc.Byte(static_cast<uint8_t>(0x80 | (win64Idx << 3) | 5));
+                    enc.Byte(static_cast<uint8_t>(0x80 |
+                                                  (win64Idx << 3) | 5));
                     enc.Dword(static_cast<uint32_t>(d));
                 }
                 else {
@@ -3158,7 +3229,8 @@ private:
                         enc.Byte(sz == 4 ? 0xF3 : 0xF2);
                         enc.Byte(0x0F);
                         enc.Byte(0x11);
-                        enc.Byte(static_cast<uint8_t>(0x80 | (fltIdx << 3) | 5));
+                        enc.Byte(static_cast<uint8_t>(
+                            0x80 | (fltIdx << 3) | 5));
                         enc.Dword(static_cast<uint32_t>(d));
                         ++fltIdx;
                     }
@@ -3175,8 +3247,8 @@ private:
         blockOffsets.assign(func.blocks.size(), 0);
         for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
             blockOffsets[bi] = enc.Size();
-            auto const &block = func.blocks[bi];
-            for (auto const &instr : block.instrs) {
+            const auto &block = func.blocks[bi];
+            for (const auto &instr : block.instrs) {
                 GenInstr(instr);
             }
             if (block.term) {
@@ -3186,7 +3258,8 @@ private:
         PatchJumps();
         // Update symbol size
         for (auto &s : symbols) {
-            if (s.name == func.name && s.sectionIdx == RCU_TEXT_IDX && s.value == funcStart) {
+            if (s.name == func.name && s.sectionIdx == RCU_TEXT_IDX &&
+                s.value == funcStart) {
                 s.size = enc.Size() - funcStart;
                 break;
             }
@@ -3195,7 +3268,7 @@ private:
 
     // Module generation
     void EmitVtables() {
-        for (auto const &vt : mod.vtables) {
+        for (const auto &vt : mod.vtables) {
             AlignRodata(8);
 
             RcuSymbol sym;
@@ -3205,21 +3278,24 @@ private:
             sym.size = static_cast<uint32_t>(vt.methods.size() * 8);
             sym.kind = RcuSymKind::Const;
             sym.visibility = RcuSymVis::Global;
-            uint32_t const vtSym = AddSymbol(std::move(sym));
+            const uint32_t vtSym = AddSymbol(std::move(sym));
             dataSyms[vt.label] = vtSym;
 
-            for (auto const &method : vt.methods) {
-                uint32_t const slotOff = static_cast<uint32_t>(rodataData.size());
+            for (const auto &method : vt.methods) {
+                const uint32_t slotOff =
+                    static_cast<uint32_t>(rodataData.size());
                 for (int i = 0; i < 8; ++i) {
                     rodataData.push_back(0);
                 }
 
                 uint32_t methodSym;
-                if (auto const it = funcSyms.find(method); it != funcSyms.end()) {
+                if (const auto it = funcSyms.find(method);
+                    it != funcSyms.end()) {
                     methodSym = it->second;
                 }
                 else {
-                    methodSym = GetOrAddExtern(method, RcuSymKind::ExternFunc);
+                    methodSym =
+                        GetOrAddExtern(method, RcuSymKind::ExternFunc);
                 }
                 AddRodataReloc(slotOff, methodSym, RcuRelType::Abs64);
             }
@@ -3230,17 +3306,18 @@ private:
         BuildLayouts();
         PredeclareFunctions();
         // Extern vars
-        for (auto const &ev : mod.externVars) {
+        for (const auto &ev : mod.externVars) {
             GetOrAddExtern(ev.name, RcuSymKind::ExternData);
         }
         // Module constants → .data symbols
-        for (auto const &c : mod.consts) {
+        for (const auto &c : mod.consts) {
             RcuSymbol s;
             s.name = c.name;
             s.sectionIdx = RCU_DATA_IDX;
             s.value = static_cast<uint32_t>(dataData.size());
             s.kind = RcuSymKind::Const;
-            s.visibility = c.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
+            s.visibility =
+                c.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
             s.typeName = c.type.ToString();
             // Emit 8 placeholder bytes in .data
             for (int i = 0; i < 8; ++i) {
@@ -3251,7 +3328,7 @@ private:
         }
         EmitVtables();
         // Functions
-        for (auto const &func : mod.funcs) {
+        for (const auto &func : mod.funcs) {
             GenFunc(func);
         }
         // Runtime helpers referenced by the generated code, emitted
@@ -3266,15 +3343,16 @@ RcuFile RcuCodeGen::Generate() {
     RcuFile file;
     file.sourcePath = mod.name;
     file.packageName = pkgName;
-    file.buildTimestamp =
-        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now().time_since_epoch())
-            .count());
+    file.buildTimestamp = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+        .count());
     // Parse rux version from RUX_VERSION string "M.m.p"
     {
         std::string ver = RUX_VERSION;
         unsigned M = 0, mi = 0, p = 0;
-        auto parseNum = [](char const *s, unsigned &out) -> char const * {
+        auto parseNum = [](const char *s,
+                           unsigned &out) -> const char * {
             while (*s && (*s < '0' || *s > '9')) {
                 ++s;
             }
@@ -3284,8 +3362,8 @@ RcuFile RcuCodeGen::Generate() {
             }
             return s;
         };
-        char const *c1 = parseNum(ver.c_str(), M);
-        char const *c2 = parseNum(c1, mi);
+        const char *c1 = parseNum(ver.c_str(), M);
+        const char *c2 = parseNum(c1, mi);
         parseNum(c2, p);
         file.ruxVersion = (M << 16) | (mi << 8) | p;
     }
@@ -3295,7 +3373,8 @@ RcuFile RcuCodeGen::Generate() {
         RcuSection text;
         text.name = ".text";
         text.type = RcuSecType::Text;
-        text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+        text.flags =
+            RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
         text.alignment = 16;
         text.data = std::move(textData);
         text.relocs = std::move(textRelocs);
@@ -3315,7 +3394,8 @@ RcuFile RcuCodeGen::Generate() {
         RcuSection data;
         data.name = ".data";
         data.type = RcuSecType::Data;
-        data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+        data.flags =
+            RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
         data.alignment = 8;
         data.data = std::move(dataData);
         file.sections.push_back(std::move(data));
@@ -3347,7 +3427,7 @@ void InitCrc32c() {
     Crc32cReady = true;
 }
 
-uint32_t Crc32c(std::vector<uint8_t> const &data) {
+uint32_t Crc32c(const std::vector<uint8_t> &data) {
     InitCrc32c();
     uint32_t crc = 0xFFFF'FFFFu;
     for (uint8_t b : data) {
@@ -3359,16 +3439,16 @@ uint32_t Crc32c(std::vector<uint8_t> const &data) {
 // Binary writer
 class RcuWriter {
 public:
-    static std::vector<uint8_t> Serialize(RcuFile const &f) {
+    static std::vector<uint8_t> Serialize(const RcuFile &f) {
         RcuWriter w(f);
         return w.Build();
     }
 
 private:
-    RcuFile const &f_;
+    const RcuFile &f_;
     RcuStringTable st_;
 
-    explicit RcuWriter(RcuFile const &f)
+    explicit RcuWriter(const RcuFile &f)
         : f_(f) {
     }
 
@@ -3376,11 +3456,11 @@ private:
     void InternStrings() {
         st_.Intern(f_.sourcePath);
         st_.Intern(f_.packageName);
-        for (auto const &s : f_.symbols) {
+        for (const auto &s : f_.symbols) {
             st_.Intern(s.name);
             st_.Intern(s.typeName);
         }
-        for (auto const &sec : f_.sections) {
+        for (const auto &sec : f_.sections) {
             st_.Intern(sec.name);
         }
     }
@@ -3412,7 +3492,8 @@ private:
         }
     }
 
-    static void Patch32At(std::vector<uint8_t> &buf, uint32_t off, uint32_t v) {
+    static void
+    Patch32At(std::vector<uint8_t> &buf, uint32_t off, uint32_t v) {
         buf[off] = v & 0xFF;
         buf[off + 1] = (v >> 8) & 0xFF;
         buf[off + 2] = (v >> 16) & 0xFF;
@@ -3466,10 +3547,12 @@ private:
         std::vector<uint32_t> secRelocOffPatches(secCount);
         std::vector<uint32_t> secRawOffPatches(secCount);
         for (uint16_t i = 0; i < secCount; ++i) {
-            auto const &sec = f_.sections[i];
+            const auto &sec = f_.sections[i];
             // name[8]
             char name8[8] = {};
-            for (int j = 0; j < 7 && j < static_cast<int>(sec.name.size()); ++j) {
+            for (int j = 0;
+                 j < 7 && j < static_cast<int>(sec.name.size());
+                 ++j) {
                 name8[j] = sec.name[j];
             }
             for (char c : name8) {
@@ -3481,7 +3564,8 @@ private:
             AppendU32(out, 0); // raw_offset placeholder
             AppendU32(out, static_cast<uint32_t>(sec.data.size()));
             AppendU32(out,
-                      static_cast<uint32_t>(std::max(sec.data.size(), static_cast<size_t>(1))));
+                      static_cast<uint32_t>(std::max(
+                          sec.data.size(), static_cast<size_t>(1))));
             // virtual_size
             AppendU16(out, sec.alignment);
             AppendU16(out, static_cast<uint16_t>(sec.relocs.size()));
@@ -3490,28 +3574,35 @@ private:
             AppendU32(out, 0); // reserved
         }
         // Symbol Table (symCount × 20 bytes)
-        for (auto const &sym : f_.symbols) {
+        for (const auto &sym : f_.symbols) {
             AppendU32(out, st_.Intern(sym.name));
             AppendU32(out, sym.value);
             AppendU32(out, sym.size);
             AppendU16(out, sym.sectionIdx);
             AppendU8(out, sym.kind);
             AppendU8(out, sym.visibility);
-            AppendU32(out, sym.typeName.empty() ? 0 : st_.Intern(sym.typeName));
+            AppendU32(out,
+                      sym.typeName.empty()
+                          ? 0
+                          : st_.Intern(sym.typeName));
         }
         // Section Data + Relocations
         for (uint16_t i = 0; i < secCount; ++i) {
-            auto const &sec = f_.sections[i];
+            const auto &sec = f_.sections[i];
             // Align to section alignment
             AlignTo(out, sec.alignment);
-            Patch32At(out, secRawOffPatches[i], static_cast<uint32_t>(out.size()));
+            Patch32At(out,
+                      secRawOffPatches[i],
+                      static_cast<uint32_t>(out.size()));
             // Raw data
             out.insert(out.end(), sec.data.begin(), sec.data.end());
             // Relocations (4-byte aligned)
             if (!sec.relocs.empty()) {
                 AlignTo(out, 4);
-                Patch32At(out, secRelocOffPatches[i], static_cast<uint32_t>(out.size()));
-                for (auto const &r : sec.relocs) {
+                Patch32At(out,
+                          secRelocOffPatches[i],
+                          static_cast<uint32_t>(out.size()));
+                for (const auto &r : sec.relocs) {
                     AppendU32(out, r.sectionOffset);
                     AppendU32(out, r.symbolIndex);
                     AppendU16(out, r.type);
@@ -3523,7 +3614,7 @@ private:
         // String Table
         Patch32At(out, stOffPatch, static_cast<uint32_t>(out.size()));
         Patch32At(out, stSizePatch, st_.Size());
-        char const *stData = st_.Data();
+        const char *stData = st_.Data();
         for (uint32_t i = 0; i < st_.Size(); ++i) {
             out.push_back(static_cast<uint8_t>(stData[i]));
         }
@@ -3531,7 +3622,8 @@ private:
         // Rux Metadata (64 bytes, 8-byte aligned)
         if (f_.hasMetadata) {
             AlignTo(out, 8);
-            Patch32At(out, metaOffPatch, static_cast<uint32_t>(out.size()));
+            Patch32At(
+                out, metaOffPatch, static_cast<uint32_t>(out.size()));
             // magic
             out.push_back(0x4D);
             out.push_back(0x45);
@@ -3561,24 +3653,30 @@ private:
 // Text dumper
 class RcuDumper {
 public:
-    static std::string Dump(RcuFile const &f) {
+    static std::string Dump(const RcuFile &f) {
         std::ostringstream out;
         out << "; RCU  Rux Compiled Unit  v1.0\n";
         out << "; Architecture: x86-64 (Windows x64)\n";
         out << std::format("; Source:        {}\n",
-                           f.sourcePath.empty() ? "<unknown>" : f.sourcePath);
+                           f.sourcePath.empty()
+                               ? "<unknown>"
+                               : f.sourcePath);
         out << std::format("; Package:       {}\n",
-                           f.packageName.empty() ? "<unknown>" : f.packageName);
+                           f.packageName.empty()
+                               ? "<unknown>"
+                               : f.packageName);
         if (f.ruxVersion) {
-            out << std::format("; Rux version:   {}.{}.{}\n", f.ruxVersion >> 16,
-                               (f.ruxVersion >> 8) & 0xFF, f.ruxVersion & 0xFF);
+            out << std::format("; Rux version:   {}.{}.{}\n",
+                               f.ruxVersion >> 16,
+                               (f.ruxVersion >> 8) & 0xFF,
+                               f.ruxVersion & 0xFF);
         }
         out << '\n';
 
         // Sections
         out << std::format("Sections: {}\n", f.sections.size());
         for (size_t i = 0; i < f.sections.size(); ++i) {
-            auto const &s = f.sections[i];
+            const auto &s = f.sections[i];
             std::string flags;
             if (s.flags & RcuSecFlag::Alloc) {
                 flags += 'A';
@@ -3603,14 +3701,19 @@ public:
             }
             out << std::format("  [{:2}]  {:<10}  flags:{:<5}  "
                                "align:{:<4}  data:{}B  relocs:{}\n",
-                               i, s.name, flags, s.alignment, s.data.size(), s.relocs.size());
+                               i,
+                               s.name,
+                               flags,
+                               s.alignment,
+                               s.data.size(),
+                               s.relocs.size());
         }
         out << '\n';
 
         // Symbols
         out << std::format("Symbols: {}\n", f.symbols.size());
         for (size_t i = 0; i < f.symbols.size(); ++i) {
-            auto const &s = f.symbols[i];
+            const auto &s = f.symbols[i];
             std::string secStr;
             if (s.sectionIdx == RCU_SEC_EXTERNAL) {
                 secStr = "extern";
@@ -3619,10 +3722,13 @@ public:
                 secStr = "abs";
             }
             else if (s.sectionIdx < f.sections.size()) {
-                secStr = std::format("{}+0x{:04X}", f.sections[s.sectionIdx].name, s.value);
+                secStr = std::format("{}+0x{:04X}",
+                                     f.sections[s.sectionIdx].name,
+                                     s.value);
             }
             else {
-                secStr = std::format("sec{}+0x{:04X}", s.sectionIdx, s.value);
+                secStr = std::format(
+                    "sec{}+0x{:04X}", s.sectionIdx, s.value);
             }
 
             auto kindStr = "?";
@@ -3650,14 +3756,21 @@ public:
                 break;
             default: ;
             }
-            char const *visStr = s.visibility == RcuSymVis::Global
-                                     ? "GLOBAL"
-                                     : s.visibility == RcuSymVis::Weak
-                                     ? "WEAK"
-                                     : "LOCAL";
+            const char *visStr =
+                s.visibility == RcuSymVis::Global
+                    ? "GLOBAL"
+                    : s.visibility == RcuSymVis::Weak
+                    ? "WEAK"
+                    : "LOCAL";
 
-            out << std::format("  [{:3}]  {:<24}  {:>20}  size={:<6}  {:<8}  {:<6}", i, s.name,
-                               secStr, s.size, kindStr, visStr);
+            out << std::format(
+                "  [{:3}]  {:<24}  {:>20}  size={:<6}  {:<8}  {:<6}",
+                i,
+                s.name,
+                secStr,
+                s.size,
+                kindStr,
+                visStr);
             if (!s.typeName.empty()) {
                 out << std::format("  \"{}\"", s.typeName);
             }
@@ -3667,7 +3780,7 @@ public:
 
         // Relocations
         bool anyReloc = false;
-        for (auto const &sec : f.sections) {
+        for (const auto &sec : f.sections) {
             if (!sec.relocs.empty()) {
                 anyReloc = true;
                 break;
@@ -3676,14 +3789,14 @@ public:
 
         if (anyReloc) {
             for (size_t si = 0; si < f.sections.size(); ++si) {
-                auto const &sec = f.sections[si];
+                const auto &sec = f.sections[si];
                 if (sec.relocs.empty()) {
                     continue;
                 }
                 out << std::format("Relocations ({}):\n", sec.name);
                 for (size_t i = 0; i < sec.relocs.size(); ++i) {
-                    auto const &r = sec.relocs[i];
-                    char const *rt = "?";
+                    const auto &r = sec.relocs[i];
+                    const char *rt = "?";
                     if (r.type == RcuRelType::Abs64) {
                         rt = "ABS_64";
                     }
@@ -3694,21 +3807,29 @@ public:
                         rt = "REL_32";
                     }
                     std::string symName =
-                        r.symbolIndex < f.symbols.size() ? f.symbols[r.symbolIndex].name : "?";
+                        r.symbolIndex < f.symbols.size()
+                            ? f.symbols[r.symbolIndex].name
+                            : "?";
                     out << std::format("  [{:3}]  off=0x{:04X}  "
                                        "sym[{}]={}  {}  addend={}\n",
-                                       i, r.sectionOffset, r.symbolIndex, symName, rt, r.addend);
+                                       i,
+                                       r.sectionOffset,
+                                       r.symbolIndex,
+                                       symName,
+                                       rt,
+                                       r.addend);
                 }
                 out << '\n';
             }
         }
 
         // Hex dumps
-        for (auto const &sec : f.sections) {
+        for (const auto &sec : f.sections) {
             if (sec.data.empty()) {
                 continue;
             }
-            out << std::format("{} ({} bytes):\n", sec.name, sec.data.size());
+            out << std::format(
+                "{} ({} bytes):\n", sec.name, sec.data.size());
             for (size_t i = 0; i < sec.data.size(); i += 16) {
                 out << std::format("  {:04X}  ", i);
                 for (size_t j = 0; j < 16; ++j) {
@@ -3723,9 +3844,12 @@ public:
                     }
                 }
                 out << " |";
-                for (size_t j = 0; j < 16 && i + j < sec.data.size(); ++j) {
+                for (size_t j = 0; j < 16 && i + j < sec.data.size();
+                     ++j) {
                     unsigned char c = sec.data[i + j];
-                    out << (c >= 32 && c < 127 ? static_cast<char>(c) : '.');
+                    out << (c >= 32 && c < 127
+                                ? static_cast<char>(c)
+                                : '.');
                 }
                 out << "|\n";
             }
@@ -3748,34 +3872,34 @@ std::vector<RcuFile> Rcu::Generate() const {
     result.reserve(lir.modules.size());
     std::vector<LirStructDecl> structDecls;
     std::vector<std::string> interfaceNames;
-    for (auto const &mod : lir.modules) {
-        for (auto const &s : mod.structs) {
+    for (const auto &mod : lir.modules) {
+        for (const auto &s : mod.structs) {
             structDecls.push_back(s);
         }
-        for (auto const &name : mod.interfaceNames) {
+        for (const auto &name : mod.interfaceNames) {
             interfaceNames.push_back(name);
         }
     }
-    for (auto const &mod : lir.modules) {
+    for (const auto &mod : lir.modules) {
         RcuCodeGen gen(mod, structDecls, interfaceNames, packageName);
         result.push_back(gen.Generate());
     }
     return result;
 }
 
-bool Rcu::Emit(RcuFile const &file, std::filesystem::path const &path) {
+bool Rcu::Emit(const RcuFile &file, const std::filesystem::path &path) {
     auto bytes = RcuWriter::Serialize(file);
     std::ofstream f(path, std::ios::binary | std::ios::trunc);
     if (!f) {
         return false;
     }
-    f.write(reinterpret_cast<char const *>(bytes.data()),
+    f.write(reinterpret_cast<const char *>(bytes.data()),
             static_cast<std::streamsize>(bytes.size()));
     return f.good();
 }
 
-bool Rcu::Dump(RcuFile const &file, std::filesystem::path const &path) {
-    std::string const text = RcuDumper::Dump(file);
+bool Rcu::Dump(const RcuFile &file, const std::filesystem::path &path) {
+    const std::string text = RcuDumper::Dump(file);
     std::ofstream f(path, std::ios::out | std::ios::trunc);
     if (!f) {
         return false;
