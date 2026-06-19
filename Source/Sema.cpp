@@ -3087,7 +3087,13 @@ private:
                 if (!s->label.empty()) {
                     activeLabels.insert(s->label);
                 }
-                CheckExpr(*s->condition);
+                
+                // FIX: Capture and validate the condition type
+                TypeRef cond = CheckExpr(*s->condition);
+                if (!cond.IsUnknown() && !cond.IsBool()) {
+                    EmitError(s->condition->location, "while condition must be 'bool'");
+                }
+            
                 ++loopDepth;
                 CheckBlock(*s->body);
                 --loopDepth;
@@ -3096,14 +3102,20 @@ private:
                 }
             }
 
-        else if (auto *s = dynamic_cast<DoWhileStmt const *>(&stmt)) {
+        else if (auto const *s = dynamic_cast<DoWhileStmt const *>(&stmt)) {
             if (!s->label.empty()) {
                 activeLabels.insert(s->label);
             }
+            
             ++loopDepth;
             CheckBlock(*s->body);
             --loopDepth;
-            CheckExpr(*s->condition);
+
+            TypeRef cond = CheckExpr(*s->condition);
+            if (!cond.IsUnknown() && !cond.IsBool()) {
+                EmitError(s->condition->location, "do-while condition must be 'bool'");
+            }
+        
             if (!s->label.empty()) {
                 activeLabels.erase(s->label);
             }
