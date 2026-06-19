@@ -3241,16 +3241,25 @@ namespace Rux {
                 Define(sym);
             }
             else if (auto* s = dynamic_cast<const IfStmt*>(&stmt)) {
-                CheckExpr(*s->condition);
+                TypeRef cond = CheckExpr(*s->condition);
+                if (!cond.IsUnknown() && !cond.IsBool()) {
+                    EmitError(s->condition->location,
+                              "if condition must be 'bool'");
+                }
                 CheckBlock(*s->thenBlock);
                 for (const auto& elif : s->elseIfs) {
-                    CheckExpr(*elif.condition);
+                    TypeRef elifCond = CheckExpr(*elif.condition);
+                    if (!elifCond.IsUnknown() && !elifCond.IsBool()) {
+                        EmitError(elif.condition->location,
+                                  "if condition must be 'bool'");
+                    }
                     CheckBlock(*elif.block);
                 }
                 if (s->elseBlock) {
                     CheckBlock(*s->elseBlock);
                 }
             }
+
             else if (auto* s = dynamic_cast<const WhileStmt*>(&stmt)) {
                 if (!s->label.empty()) {
                     activeLabels.insert(s->label);
