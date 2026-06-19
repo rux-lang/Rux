@@ -3,6 +3,6 @@
 
 #include "Rux/Cli/Cli.h"
 
-int main(const int argc, char* argv[]) {
+int main(int const argc, char *argv[]) {
     return Rux::Cli(argc, argv).Run();
 }

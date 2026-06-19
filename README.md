@@ -58,6 +58,16 @@ Here’s how you can get involved:
 - A C++26-capable compiler (e.g. Clang 19+, GCC 14+, MSVC 2022+)
 - A build tool supported by CMake, such as Ninja, Make, or MSBuild
 
+### Linux Prerequisites
+
+When **building with Clang** on Linux, install the appropriate packages for your distribution:
+
+- Arch Linux : `sudo pacman -S libc++ libc++abi`
+- Debian : `sudo apt install libc++-dev libc++abi-dev`
+- Fedora : `sudo dnf install libcxx-devel libcxxabi-devel`
+
+> **Note:** Building with GCC requires no additional packages.
+
 ### Clone
 
 ```sh

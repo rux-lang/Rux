@@ -11,102 +11,97 @@
 #include <vector>
 
 namespace Rux {
-    struct LexerDiagnostic {
-        enum class Severity {
-            Warning,
-            Error,
-        };
-
-        Severity severity = Severity::Error;
-        SourceLocation location;
-        std::string message;
+struct LexerDiagnostic {
+    enum class Severity {
+        Warning,
+        Error,
     };
 
-    struct LexerResult {
-        std::vector<Token> tokens;
-        std::vector<LexerDiagnostic> diagnostics;
-        [[nodiscard]] bool HasErrors() const noexcept;
-    };
+    Severity severity = Severity::Error;
+    SourceLocation location;
+    std::string message;
+};
 
-    class Lexer {
-    public:
-        // Construct from in-memory source text.
-        // `sourceName` is used only for diagnostic messages (e.g. file path).
-        explicit Lexer(std::string source, std::string sourceName = "<input>");
+struct LexerResult {
+    std::vector<Token> tokens;
+    std::vector<LexerDiagnostic> diagnostics;
+    [[nodiscard]] bool HasErrors() const noexcept;
+};
 
-        // Convenience: read file from disk and lex it.
-        // Returns std::nullopt if the file cannot be read.
-        [[nodiscard]] static std::optional<LexerResult>
-        FromFile(const std::filesystem::path& path);
+class Lexer {
+public:
+    // Construct from in-memory source text.
+    // `sourceName` is used only for diagnostic messages (e.g. file path).
+    explicit Lexer(std::string source, std::string sourceName = "<input>");
 
-        // Run the full lexer pass and return all tokens + diagnostics.
-        [[nodiscard]] LexerResult Tokenize();
+    // Convenience: read file from disk and lex it.
+    // Returns std::nullopt if the file cannot be read.
+    [[nodiscard]] static std::optional<LexerResult> FromFile(std::filesystem::path const &path);
 
-        // Dump a token list to a file for debugging.
-        // Path defaults to sourceName + ".tokens" if not specified.
-        static bool DumpTokens(const LexerResult& result,
-                               const std::filesystem::path& path = {});
+    // Run the full lexer pass and return all tokens + diagnostics.
+    [[nodiscard]] LexerResult Tokenize();
 
-        [[nodiscard]] static std::optional<std::uint32_t>
-        DecodeCharLiteralCodePoint(std::string_view text);
+    // Dump a token list to a file for debugging.
+    // Path defaults to sourceName + ".tokens" if not specified.
+    static bool DumpTokens(LexerResult const &result, std::filesystem::path const &path = {});
 
-    private:
-        // Source buffer
-        std::string source;
-        std::string sourceName;
+    [[nodiscard]] static std::optional<std::uint32_t>
+    DecodeCharLiteralCodePoint(std::string_view text);
 
-        // Cursor state
-        std::size_t pos = 0; // current byte position
-        std::uint32_t line = 1;
-        std::uint32_t col = 1;
+private:
+    // Source buffer
+    std::string source;
+    std::string sourceName;
 
-        // Output accumulators
-        std::vector<Token> tokens;
-        std::vector<LexerDiagnostic> diagnostics;
+    // Cursor state
+    std::size_t pos = 0; // current byte position
+    std::uint32_t line = 1;
+    std::uint32_t col = 1;
 
-        // Core scanning loop
-        void ScanAll();
-        Token NextToken();
+    // Output accumulators
+    std::vector<Token> tokens;
+    std::vector<LexerDiagnostic> diagnostics;
 
-        // Character helpers
-        [[nodiscard]] bool IsAtEnd() const noexcept;
-        [[nodiscard]] char Peek(std::size_t ahead = 0) const noexcept;
-        char Advance() noexcept;
-        void AdvanceUtf8CodePoint() noexcept;
-        bool Match(char expected) noexcept;
-        bool MatchStr(std::string_view s) noexcept;
+    // Core scanning loop
+    void ScanAll();
+    Token NextToken();
 
-        // Location tracking
-        [[nodiscard]] SourceLocation CurrentLocation() const noexcept;
+    // Character helpers
+    [[nodiscard]] bool IsAtEnd() const noexcept;
+    [[nodiscard]] char Peek(std::size_t ahead = 0) const noexcept;
+    char Advance() noexcept;
+    void AdvanceUtf8CodePoint() noexcept;
+    bool Match(char expected) noexcept;
+    bool MatchStr(std::string_view s) noexcept;
 
-        // Whitespace / comments
-        void SkipWhitespace();
-        void SkipLineComment();  // // …
-        void SkipBlockComment(); // /* … */  (supports nesting)
+    // Location tracking
+    [[nodiscard]] SourceLocation CurrentLocation() const noexcept;
 
-        // Scanners for each token family
-        Token ScanIdent(SourceLocation start);
-        Token ScanNumber(SourceLocation start); // int and float
-        Token
-        ScanString(SourceLocation start,
-                   std::size_t prefixLen = 0); // "…" / c8"…" / c16"…" / c32"…"
-        Token
-        ScanChar(SourceLocation start,
-                 std::size_t prefixLen = 0);    // '…' / c8'…' / c16'…' / c32'…'
-        Token ScanSymbol(SourceLocation start); // operators & punctuation
-        Token ScanUnknown(SourceLocation start); // fallback for bad chars
+    // Whitespace / comments
+    void SkipWhitespace();
+    void SkipLineComment();  // // …
+    void SkipBlockComment(); // /* … */  (supports nesting)
 
-        // Literal helpers
-        Token ScanIntLiteral(SourceLocation start, std::size_t tokenStart);
-        Token ScanFloatSuffix(SourceLocation start, std::size_t tokenStart);
-        void ConsumeNumberSuffix();
-        std::string ScanEscapeSequence(); // inside string / char
+    // Scanners for each token family
+    Token ScanIdent(SourceLocation start);
+    Token ScanNumber(SourceLocation start); // int and float
+    Token ScanString(SourceLocation start,
+                     std::size_t prefixLen = 0); // "…" / c8"…" / c16"…" / c32"…"
+    Token ScanChar(SourceLocation start,
+                   std::size_t prefixLen = 0); // '…' / c8'…' / c16'…' / c32'…'
+    Token ScanSymbol(SourceLocation start);    // operators & punctuation
+    Token ScanUnknown(SourceLocation start);   // fallback for bad chars
 
-        // Emit helpers
-        [[nodiscard]] Token MakeToken(TokenKind kind,
-                                      SourceLocation start,
-                                      std::size_t tokenStart) const;
-        void EmitError(SourceLocation loc, std::string message);
-        void EmitWarning(SourceLocation loc, std::string message);
-    };
+    // Literal helpers
+    Token ScanIntLiteral(SourceLocation start, std::size_t tokenStart);
+    Token ScanFloatSuffix(SourceLocation start, std::size_t tokenStart);
+    void ConsumeNumberSuffix();
+    std::string ScanEscapeSequence(); // inside string / char
+
+    // Emit helpers
+    [[nodiscard]] Token MakeToken(TokenKind kind, SourceLocation start,
+                                  std::size_t tokenStart) const;
+    void EmitError(SourceLocation loc, std::string message);
+    void EmitWarning(SourceLocation loc, std::string message);
+};
 } // namespace Rux

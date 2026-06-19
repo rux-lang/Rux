@@ -36,23 +36,23 @@
  */
 
 #if RUX_OS_WINDOWS
-#  ifndef WIN32_LEAN_AND_MEAN
-#    define WIN32_LEAN_AND_MEAN
-#  endif
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
 
-#  ifndef NOMINMAX
-#    define NOMINMAX
-#  endif
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
 
-#  include <windows.h>
+    #include <windows.h>
 #endif
 
 #if RUX_OS_WINDOWS
-#  include <psapi.h>
+    #include <psapi.h>
 #else
-#  include <sys/resource.h>
-#  include <sys/wait.h>
-#  include <unistd.h>
+    #include <sys/resource.h>
+    #include <sys/wait.h>
+    #include <unistd.h>
 #endif
 
 #include "Rux/SourceLoader.h"
@@ -61,9 +61,8 @@ using namespace Rux;
 using namespace Platform;
 using namespace Misc;
 
-int Cli::RunBuild(std::span<const std::string_view> args,
-                  const GlobalOptions& opts) {
-    const auto t0 = std::chrono::steady_clock::now();
+int Cli::RunBuild(std::span<std::string_view const> args, GlobalOptions const &opts) {
+    auto const t0 = std::chrono::steady_clock::now();
     bool isRelease = false;
     bool isDebug = false;
     std::string_view profile;
@@ -152,8 +151,7 @@ int Cli::RunBuild(std::span<const std::string_view> args,
         return 1;
     }
 
-    std::string targetName =
-        target.empty() ? HostTargetTriple() : std::string(target);
+    std::string targetName = target.empty() ? HostTargetTriple() : std::string(target);
     if (!IsSupportedTargetTriple(targetName)) {
         std::print(stderr,
                    "error: unsupported target '{}'; supported targets are "
@@ -162,7 +160,7 @@ int Cli::RunBuild(std::span<const std::string_view> args,
                    targetName);
         return 1;
     }
-    const std::string hostTarget = HostTargetTriple();
+    std::string const hostTarget = HostTargetTriple();
     if (hostTarget != "unknown" && targetName != hostTarget) {
         // Target selection is currently used for source/dependency choice.
         // Linking foreign executable formats is kept explicit until the
@@ -170,8 +168,7 @@ int Cli::RunBuild(std::span<const std::string_view> args,
         std::print(stderr,
                    "error: cross-target build from '{}' to '{}' is not "
                    "supported yet\n",
-                   hostTarget,
-                   targetName);
+                   hostTarget, targetName);
         return 1;
     }
 
@@ -181,9 +178,7 @@ int Cli::RunBuild(std::span<const std::string_view> args,
     }
 
     if (!opts.quiet && !showStats) {
-        std::print("Compiling {} v{} [{}]\n",
-                   manifest->package.name,
-                   manifest->package.version,
+        std::print("Compiling {} v{} [{}]\n", manifest->package.name, manifest->package.version,
                    manifestPath->parent_path().string());
     }
 
@@ -195,20 +190,20 @@ int Cli::RunBuild(std::span<const std::string_view> args,
     }
 
     stats.localFiles = loadResult->files.size();
-    for (const auto& file : loadResult->files) {
+    for (auto const &file : loadResult->files) {
         stats.localLines += CountLines(file.source);
         stats.localSourceSize += file.source.size();
     }
 
-    for (const auto& err : loadResult->errors) {
+    for (auto const &err : loadResult->errors) {
         std::print(stderr, "{}", err);
     }
 
     bool lexErrors = false;
     std::vector<LexerResult> lexResults;
     lexResults.reserve(loadResult->files.size());
-    const auto localLexingStart = std::chrono::steady_clock::now();
-    for (const auto& file : loadResult->files) {
+    auto const localLexingStart = std::chrono::steady_clock::now();
+    for (auto const &file : loadResult->files) {
         if (opts.verbose) {
             std::print("     Lexing {}\n", file.path.string());
         }
@@ -217,17 +212,11 @@ int Cli::RunBuild(std::span<const std::string_view> args,
         auto lexResult = lexer.Tokenize();
         stats.localTokens += CountTokens(lexResult);
 
-        for (const auto& diag : lexResult.diagnostics) {
-            const auto& loc = diag.location;
-            const char* sev = diag.severity == LexerDiagnostic::Severity::Error
-                                ? "error"
-                                : "warning";
-            std::print(stderr,
-                       "{}:{}:{}: {}: {}\n",
-                       file.path.string(),
-                       loc.line,
-                       loc.column,
-                       sev,
+        for (auto const &diag : lexResult.diagnostics) {
+            auto const &loc = diag.location;
+            char const *sev =
+                diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
+            std::print(stderr, "{}:{}:{}: {}: {}\n", file.path.string(), loc.line, loc.column, sev,
                        diag.message);
         }
         if (lexResult.HasErrors()) {
@@ -237,15 +226,14 @@ int Cli::RunBuild(std::span<const std::string_view> args,
         if (dumpTokens) {
             auto tempDir = manifestPath->parent_path() / "Temp" / "Tokens";
             std::filesystem::create_directories(tempDir);
-            auto rel = std::filesystem::relative(
-                file.path, manifestPath->parent_path() / "Src");
+            auto rel = std::filesystem::relative(file.path, manifestPath->parent_path() / "Src");
             auto tokPath = tempDir / rel;
             tokPath.replace_extension(".tokens");
             Lexer::DumpTokens(lexResult, tokPath);
         }
         lexResults.push_back(std::move(lexResult));
     }
-    const auto localLexingEnd = std::chrono::steady_clock::now();
+    auto const localLexingEnd = std::chrono::steady_clock::now();
     stats.lexing += ElapsedMs(localLexingStart, localLexingEnd);
     if (lexErrors) {
         return 1;
@@ -256,15 +244,14 @@ int Cli::RunBuild(std::span<const std::string_view> args,
     std::vector<ParseResult> parseResults;
     parseResults.reserve(loadResult->files.size());
 
-    const auto localParsingStart = std::chrono::steady_clock::now();
-    for (std::size_t fileIndex = 0; fileIndex < loadResult->files.size();
-         ++fileIndex) {
-        const auto& file = loadResult->files[fileIndex];
+    auto const localParsingStart = std::chrono::steady_clock::now();
+    for (std::size_t fileIndex = 0; fileIndex < loadResult->files.size(); ++fileIndex) {
+        auto const &file = loadResult->files[fileIndex];
         if (opts.verbose) {
             std::print("    Parsing {}\n", file.path.string());
         }
 
-        auto& lexResult = lexResults[fileIndex];
+        auto &lexResult = lexResults[fileIndex];
         if (lexResult.HasErrors()) {
             continue;
         }
@@ -272,17 +259,11 @@ int Cli::RunBuild(std::span<const std::string_view> args,
         Parser parser(std::move(lexResult.tokens), file.path.string());
         auto parseResult = parser.Parse();
 
-        for (const auto& diag : parseResult.diagnostics) {
-            const auto& loc = diag.location;
-            const char* sev = diag.severity == ParserDiagnostic::Severity::Error
-                                ? "error"
-                                : "warning";
-            std::print(stderr,
-                       "{}:{}:{}: {}: {}\n",
-                       file.path.string(),
-                       loc.line,
-                       loc.column,
-                       sev,
+        for (auto const &diag : parseResult.diagnostics) {
+            auto const &loc = diag.location;
+            char const *sev =
+                diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
+            std::print(stderr, "{}:{}:{}: {}: {}\n", file.path.string(), loc.line, loc.column, sev,
                        diag.message);
         }
         if (parseResult.HasErrors()) {
@@ -294,8 +275,7 @@ int Cli::RunBuild(std::span<const std::string_view> args,
         if (dumpAst) {
             auto tempDir = manifestPath->parent_path() / "Temp" / "Ast";
             std::filesystem::create_directories(tempDir);
-            auto rel = std::filesystem::relative(
-                file.path, manifestPath->parent_path() / "Src");
+            auto rel = std::filesystem::relative(file.path, manifestPath->parent_path() / "Src");
             auto astPath = (tempDir / rel).replace_extension(".ast");
             Parser::DumpAst(parseResult, astPath);
         }
@@ -309,9 +289,8 @@ int Cli::RunBuild(std::span<const std::string_view> args,
     // Load dependency packages referenced by import declarations
 
     std::vector<ParseResult> depParseResults;
-    std::vector<std::string> loadedPackages; // parallel: package name per entry
-    std::vector<std::string>
-        loadedModuleNames; // parallel: source name per entry
+    std::vector<std::string> loadedPackages;    // parallel: package name per entry
+    std::vector<std::string> loadedModuleNames; // parallel: source name per entry
     {
         struct PendingPackage {
             std::string name;
@@ -322,19 +301,17 @@ int Cli::RunBuild(std::span<const std::string_view> args,
         std::vector<PendingPackage> pendingPackages;
         std::unordered_set<std::string> queuedPackageNames;
 
-        auto enqueueDependency =
-            [&](const std::string& pkgName,
-                const Manifest& ownerManifest,
-                const std::filesystem::path& ownerRoot) -> bool {
+        auto enqueueDependency = [&](std::string const &pkgName, Manifest const &ownerManifest,
+                                     std::filesystem::path const &ownerRoot) -> bool {
             if (queuedPackageNames.count(pkgName)) {
                 return true;
             }
 
             // Resolve imports through the target view of the owning
             // manifest. This is what maps Platform to Linux on linux-x64.
-            const auto deps = ownerManifest.EffectiveDependencies(targetName);
-            const Dependency* dep = nullptr;
-            for (const auto& d : deps) {
+            auto const deps = ownerManifest.EffectiveDependencies(targetName);
+            Dependency const *dep = nullptr;
+            for (auto const &d : deps) {
                 if (d.name == pkgName) {
                     dep = &d;
                     break;
@@ -342,10 +319,8 @@ int Cli::RunBuild(std::span<const std::string_view> args,
             }
 
             if (!dep) {
-                std::print(
-                    stderr,
-                    "error: package '{}' is not listed in [Dependencies]\n",
-                    pkgName);
+                std::print(stderr, "error: package '{}' is not listed in [Dependencies]\n",
+                           pkgName);
                 return false;
             }
             std::filesystem::path depRoot;
@@ -364,25 +339,21 @@ int Cli::RunBuild(std::span<const std::string_view> args,
             }
             auto depManifest = Manifest::Load(depRoot / "Rux.toml");
             if (!depManifest) {
-                std::print(
-                    stderr,
-                    "error: dependency package '{}' was not found at '{}'\n",
-                    pkgName,
-                    depRoot.string());
+                std::print(stderr, "error: dependency package '{}' was not found at '{}'\n",
+                           pkgName, depRoot.string());
                 return false;
             }
 
             queuedPackageNames.insert(pkgName);
             // Keep the import name as the package namespace loaded into
             // Sema, even when the files came from another package name.
-            pendingPackages.push_back(
-                {dep->name, depRoot, std::move(*depManifest)});
+            pendingPackages.push_back({dep->name, depRoot, std::move(*depManifest)});
             return true;
         };
 
         std::vector<std::string> imports;
-        auto collectImports = [&](this auto&& self, const Decl& decl) -> void {
-            if (const auto* ud = dynamic_cast<const UseDecl*>(&decl)) {
+        auto collectImports = [&](this auto &&self, Decl const &decl) -> void {
+            if (auto const *ud = dynamic_cast<UseDecl const *>(&decl)) {
                 if (!DeclMatchesTarget(*ud, targetName)) {
                     return;
                 }
@@ -391,8 +362,8 @@ int Cli::RunBuild(std::span<const std::string_view> args,
                 }
                 return;
             }
-            if (const auto* mod = dynamic_cast<const ModuleDecl*>(&decl)) {
-                for (const auto& item : mod->items) {
+            if (auto const *mod = dynamic_cast<ModuleDecl const *>(&decl)) {
+                for (auto const &item : mod->items) {
                     if (item) {
                         self(*item);
                     }
@@ -400,37 +371,30 @@ int Cli::RunBuild(std::span<const std::string_view> args,
             }
         };
 
-        for (const auto& pr : parseResults) {
+        for (auto const &pr : parseResults) {
             imports.clear();
-            for (const auto& decl : pr.module.items) {
+            for (auto const &decl : pr.module.items) {
                 if (decl) {
                     collectImports(*decl);
                 }
             }
-            for (const auto& pkgName : imports) {
+            for (auto const &pkgName : imports) {
                 if (pkgName == manifest->package.name) {
                     continue;
                 }
-                if (!enqueueDependency(
-                        pkgName, *manifest, manifestPath->parent_path())) {
+                if (!enqueueDependency(pkgName, *manifest, manifestPath->parent_path())) {
                     return 1;
                 }
             }
         }
 
-        for (std::size_t pendingIndex = 0;
-             pendingIndex < pendingPackages.size();
-             ++pendingIndex) {
-            const std::filesystem::path pendingRoot =
-                pendingPackages[pendingIndex].root;
-            const Manifest pendingManifest =
-                pendingPackages[pendingIndex].manifest;
-            const std::string packageName = pendingPackages[pendingIndex].name;
+        for (std::size_t pendingIndex = 0; pendingIndex < pendingPackages.size(); ++pendingIndex) {
+            std::filesystem::path const pendingRoot = pendingPackages[pendingIndex].root;
+            Manifest const pendingManifest = pendingPackages[pendingIndex].manifest;
+            std::string const packageName = pendingPackages[pendingIndex].name;
 
             if (opts.verbose) {
-                std::print("  Loading package {} from {}\n",
-                           packageName,
-                           pendingRoot.string());
+                std::print("  Loading package {} from {}\n", packageName, pendingRoot.string());
             }
 
             auto depLoadResult = SourceLoader::Load(pendingRoot);
@@ -438,12 +402,12 @@ int Cli::RunBuild(std::span<const std::string_view> args,
                 return 1;
             }
             stats.dependencyFiles += depLoadResult->files.size();
-            for (const auto& depFile : depLoadResult->files) {
+            for (auto const &depFile : depLoadResult->files) {
                 stats.dependencyLines += Rux::Misc::CountLines(depFile.source);
                 stats.dependencySourceSize += depFile.source.size();
             }
 
-            for (const auto& error : depLoadResult->errors) {
+            for (auto const &error : depLoadResult->errors) {
                 std::print(stderr, "{}", error);
             }
             if (!depLoadResult->errors.empty()) {
@@ -453,47 +417,32 @@ int Cli::RunBuild(std::span<const std::string_view> args,
             std::vector<ParseResult> packageParseResults;
             packageParseResults.reserve(depLoadResult->files.size());
 
-            for (const auto& depFile : depLoadResult->files) {
-                const auto depLexingStart = std::chrono::steady_clock::now();
+            for (auto const &depFile : depLoadResult->files) {
+                auto const depLexingStart = std::chrono::steady_clock::now();
                 Lexer depLexer(depFile.source, depFile.path.string());
                 auto depLex = depLexer.Tokenize();
-                const auto depLexingEnd = std::chrono::steady_clock::now();
+                auto const depLexingEnd = std::chrono::steady_clock::now();
                 stats.lexing += ElapsedMs(depLexingStart, depLexingEnd);
                 stats.dependencyTokens += CountTokens(depLex);
-                for (const auto& diag : depLex.diagnostics) {
-                    const char* sev =
-                        diag.severity == LexerDiagnostic::Severity::Error
-                            ? "error"
-                            : "warning";
-                    std::print(stderr,
-                               "{}:{}:{}: {}: {}\n",
-                               depFile.path.string(),
-                               diag.location.line,
-                               diag.location.column,
-                               sev,
-                               diag.message);
+                for (auto const &diag : depLex.diagnostics) {
+                    char const *sev =
+                        diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
+                    std::print(stderr, "{}:{}:{}: {}: {}\n", depFile.path.string(),
+                               diag.location.line, diag.location.column, sev, diag.message);
                 }
                 if (depLex.HasErrors()) {
                     return 1;
                 }
 
-                const auto depParsingStart = std::chrono::steady_clock::now();
-                Parser depParser(std::move(depLex.tokens),
-                                 depFile.path.string());
+                auto const depParsingStart = std::chrono::steady_clock::now();
+                Parser depParser(std::move(depLex.tokens), depFile.path.string());
                 auto depParse = depParser.Parse();
                 stats.parsing += ElapsedMs(depParsingStart);
-                for (const auto& diag : depParse.diagnostics) {
-                    const char* sev =
-                        diag.severity == ParserDiagnostic::Severity::Error
-                            ? "error"
-                            : "warning";
-                    std::print(stderr,
-                               "{}:{}:{}: {}: {}\n",
-                               depFile.path.string(),
-                               diag.location.line,
-                               diag.location.column,
-                               sev,
-                               diag.message);
+                for (auto const &diag : depParse.diagnostics) {
+                    char const *sev =
+                        diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
+                    std::print(stderr, "{}:{}:{}: {}: {}\n", depFile.path.string(),
+                               diag.location.line, diag.location.column, sev, diag.message);
                 }
                 if (depParse.HasErrors()) {
                     return 1;
@@ -504,16 +453,15 @@ int Cli::RunBuild(std::span<const std::string_view> args,
             }
 
             imports.clear();
-            for (const auto& pr : packageParseResults) {
-                for (const auto& decl : pr.module.items) {
+            for (auto const &pr : packageParseResults) {
+                for (auto const &decl : pr.module.items) {
                     if (decl) {
                         collectImports(*decl);
                     }
                 }
             }
-            for (const auto& pkgName : imports) {
-                if (pkgName == pendingManifest.package.name ||
-                    pkgName == packageName) {
+            for (auto const &pkgName : imports) {
+                if (pkgName == pendingManifest.package.name || pkgName == packageName) {
                     continue;
                 }
                 if (!enqueueDependency(pkgName, pendingManifest, pendingRoot)) {
@@ -521,7 +469,7 @@ int Cli::RunBuild(std::span<const std::string_view> args,
                 }
             }
 
-            for (auto& depParse : packageParseResults) {
+            for (auto &depParse : packageParseResults) {
                 loadedModuleNames.push_back(depParse.module.name);
                 depParseResults.push_back(std::move(depParse));
                 loadedPackages.push_back(packageName);
@@ -530,14 +478,14 @@ int Cli::RunBuild(std::span<const std::string_view> args,
     }
     // Semantic analysis
 
-    const auto semanticStart = std::chrono::steady_clock::now();
+    auto const semanticStart = std::chrono::steady_clock::now();
     if (opts.verbose) {
         std::print("  Analyzing {}\n", manifest->package.name);
     }
 
-    std::vector<const Module*> userModules;
+    std::vector<Module const *> userModules;
     userModules.reserve(parseResults.size());
-    for (const auto& pr : parseResults) {
+    for (auto const &pr : parseResults) {
         userModules.push_back(&pr.module);
     }
 
@@ -546,7 +494,7 @@ int Cli::RunBuild(std::span<const std::string_view> args,
     {
         std::unordered_map<std::string, std::size_t> pkgIdx;
         for (std::size_t i = 0; i < depParseResults.size(); ++i) {
-            const std::string& pkgName = loadedPackages[i];
+            std::string const &pkgName = loadedPackages[i];
             auto [it, inserted] = pkgIdx.emplace(pkgName, depPackages.size());
             if (inserted) {
                 depPackages.push_back({pkgName, {}});
@@ -556,23 +504,14 @@ int Cli::RunBuild(std::span<const std::string_view> args,
         }
     }
 
-    Sema sema(std::move(userModules),
-              std::move(depPackages),
-              manifest->package.name,
+    Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name,
               std::string(TargetOsName(targetName)));
     auto semaResult = sema.Analyze();
 
-    for (const auto& diag : semaResult.diagnostics) {
-        const auto& loc = diag.location;
-        const char* sev = diag.severity == SemaDiagnostic::Severity::Error
-                            ? "error"
-                            : "warning";
-        std::print(stderr,
-                   "{}:{}:{}: {}: {}\n",
-                   diag.sourceName,
-                   loc.line,
-                   loc.column,
-                   sev,
+    for (auto const &diag : semaResult.diagnostics) {
+        auto const &loc = diag.location;
+        char const *sev = diag.severity == SemaDiagnostic::Severity::Error ? "error" : "warning";
+        std::print(stderr, "{}:{}:{}: {}: {}\n", diag.sourceName, loc.line, loc.column, sev,
                    diag.message);
     }
     if (dumpSema) {
@@ -587,17 +526,17 @@ int Cli::RunBuild(std::span<const std::string_view> args,
 
     // HIR
 
-    const auto hirStart = std::chrono::steady_clock::now();
+    auto const hirStart = std::chrono::steady_clock::now();
     if (opts.verbose) {
         std::print("  Lowering {}\n", manifest->package.name);
     }
 
-    std::vector<const Module*> hirModules;
+    std::vector<Module const *> hirModules;
     hirModules.reserve(depParseResults.size() + parseResults.size());
-    for (const auto& pr : depParseResults) {
+    for (auto const &pr : depParseResults) {
         hirModules.push_back(&pr.module);
     }
-    for (const auto& pr : parseResults) {
+    for (auto const &pr : parseResults) {
         hirModules.push_back(&pr.module);
     }
 
@@ -613,7 +552,7 @@ int Cli::RunBuild(std::span<const std::string_view> args,
 
     // LIR
 
-    const auto lirStart = std::chrono::steady_clock::now();
+    auto const lirStart = std::chrono::steady_clock::now();
     if (opts.verbose) {
         std::print("  Emitting LIR for {}\n", manifest->package.name);
     }
@@ -630,7 +569,7 @@ int Cli::RunBuild(std::span<const std::string_view> args,
 
     // Assembly dump (optional)
 
-    const auto codegenStart = std::chrono::steady_clock::now();
+    auto const codegenStart = std::chrono::steady_clock::now();
     if (dumpAsm) {
         if (opts.verbose) {
             std::print("  Emitting assembly for {}\n", manifest->package.name);
@@ -655,11 +594,10 @@ int Cli::RunBuild(std::span<const std::string_view> args,
         std::filesystem::create_directories(objDir);
         std::filesystem::create_directories(dumpDir);
 
-        for (const auto& rcuFile : rcuFiles) {
-            std::filesystem::path stem =
-                rcuFile.sourcePath.empty()
-                    ? std::filesystem::path("out")
-                    : std::filesystem::path(rcuFile.sourcePath).stem();
+        for (auto const &rcuFile : rcuFiles) {
+            std::filesystem::path stem = rcuFile.sourcePath.empty()
+                                           ? std::filesystem::path("out")
+                                           : std::filesystem::path(rcuFile.sourcePath).stem();
             Rcu::Emit(rcuFile, objDir / (stem.string() + ".rcu"));
             Rcu::Dump(rcuFile, dumpDir / (stem.string() + ".rcu.txt"));
         }
@@ -668,27 +606,23 @@ int Cli::RunBuild(std::span<const std::string_view> args,
 
     // Link
 
-    const auto linkingStart = std::chrono::steady_clock::now();
+    auto const linkingStart = std::chrono::steady_clock::now();
     if (opts.verbose) {
         std::print("   Linking {}\n", manifest->package.name);
     }
 
-    const auto root = manifestPath->parent_path();
-    const auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
-    const bool buildDll =
-        (manifest->package.type == "Dll" || manifest->package.type == "dll");
+    auto const root = manifestPath->parent_path();
+    auto const binDir = ResolveBuildOutputDir(root, *manifest, profileName);
+    bool const buildDll = (manifest->package.type == "Dll" || manifest->package.type == "dll");
     std::string outputName = manifest->package.name;
     if constexpr (HostOS == OS::Windows) {
         outputName += buildDll ? ".dll" : ".exe";
     }
-    const auto exePath = binDir / outputName;
+    auto const exePath = binDir / outputName;
 
-    Linker linker(std::move(rcuFiles),
-                  std::string(manifest->package.name),
-                  {root},
-                  buildDll);
+    Linker linker(std::move(rcuFiles), std::string(manifest->package.name), {root}, buildDll);
     if (!linker.Link(exePath)) {
-        for (const auto& err : linker.Errors()) {
+        for (auto const &err : linker.Errors()) {
             std::print(stderr, "error: {}\n", err.message);
         }
         return 1;
@@ -697,7 +631,7 @@ int Cli::RunBuild(std::span<const std::string_view> args,
 
     // Done
 
-    const auto buildEnd = std::chrono::steady_clock::now();
+    auto const buildEnd = std::chrono::steady_clock::now();
     stats.total = ElapsedMs(t0, buildEnd);
     stats.totalSeconds = ElapsedSeconds(t0, buildEnd);
     std::error_code sizeError;
@@ -718,10 +652,9 @@ int Cli::RunBuild(std::span<const std::string_view> args,
     return 0;
 }
 
-int Cli::RunClean(std::span<const std::string_view> args,
-                  const GlobalOptions& opts) {
+int Cli::RunClean(std::span<std::string_view const> args, GlobalOptions const &opts) {
     bool tempOnly = false;
-    for (auto& arg : args) {
+    for (auto &arg : args) {
         if (arg == "--temp") {
             tempOnly = true;
             continue;
@@ -733,7 +666,7 @@ int Cli::RunClean(std::span<const std::string_view> args,
         PrintUnknownOption(arg, "clean");
         return 1;
     }
-    const auto manifestPath = RequireManifest();
+    auto const manifestPath = RequireManifest();
     if (!manifestPath) {
         return 1;
     }
@@ -741,24 +674,20 @@ int Cli::RunClean(std::span<const std::string_view> args,
     if (!manifest) {
         return 1;
     }
-    const auto root = manifestPath->parent_path();
-    const auto outputDir =
-        manifest->build.output.empty()
-            ? root / "Bin"
-            : (std::filesystem::path(manifest->build.output).is_relative()
-                   ? root / manifest->build.output
-                   : std::filesystem::path(manifest->build.output));
-    auto removeDir = [&](const std::filesystem::path& dir) -> bool {
+    auto const root = manifestPath->parent_path();
+    auto const outputDir = manifest->build.output.empty()
+                             ? root / "Bin"
+                             : (std::filesystem::path(manifest->build.output).is_relative()
+                                    ? root / manifest->build.output
+                                    : std::filesystem::path(manifest->build.output));
+    auto removeDir = [&](std::filesystem::path const &dir) -> bool {
         std::error_code ec;
         if (!std::filesystem::exists(dir)) {
             return true;
         }
         std::filesystem::remove_all(dir, ec);
         if (ec) {
-            std::print(stderr,
-                       "error: failed to remove '{}': {}\n",
-                       dir.string(),
-                       ec.message());
+            std::print(stderr, "error: failed to remove '{}': {}\n", dir.string(), ec.message());
             return false;
         }
         if (!opts.quiet) {
@@ -774,8 +703,7 @@ int Cli::RunClean(std::span<const std::string_view> args,
     return ok ? 0 : 1;
 }
 
-int Cli::RunRun(std::span<const std::string_view> args,
-                const GlobalOptions& opts) {
+int Cli::RunRun(std::span<std::string_view const> args, GlobalOptions const &opts) {
     bool isRelease = false;
     std::vector<std::string_view> runArgs;
     bool passThroughMode = false;
@@ -830,8 +758,7 @@ int Cli::RunRun(std::span<const std::string_view> args,
     std::string_view profileName = isRelease ? "Release" : "Debug";
     auto root = manifestPath->parent_path();
     auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
-    const bool runDll =
-        (manifest->package.type == "Dll" || manifest->package.type == "dll");
+    bool const runDll = (manifest->package.type == "Dll" || manifest->package.type == "dll");
     if (runDll) {
         std::print(stderr, "error: cannot run a DLL package directly\n");
         return 1;
@@ -844,8 +771,7 @@ int Cli::RunRun(std::span<const std::string_view> args,
 
     auto exePath = binDir / exeName;
     if (!std::filesystem::exists(exePath)) {
-        std::print(
-            stderr, "error: executable not found: '{}'\n", exePath.string());
+        std::print(stderr, "error: executable not found: '{}'\n", exePath.string());
         return 1;
     }
     if (opts.verbose && !opts.quiet) {
@@ -853,7 +779,7 @@ int Cli::RunRun(std::span<const std::string_view> args,
     }
 #if RUX_OS_WINDOWS
     std::string cmdLine = "\"" + exePath.string() + "\"";
-    for (const auto& a : runArgs) {
+    for (auto const &a : runArgs) {
         cmdLine += " \"";
         cmdLine += std::string(a);
         cmdLine += '"';
@@ -865,19 +791,9 @@ int Cli::RunRun(std::span<const std::string_view> args,
     si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
     si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
     si.dwFlags = STARTF_USESTDHANDLES;
-    if (!CreateProcessA(nullptr,
-                        cmdLine.data(),
-                        nullptr,
-                        nullptr,
-                        TRUE,
-                        0,
-                        nullptr,
-                        nullptr,
-                        &si,
+    if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si,
                         &pi)) {
-        std::print(stderr,
-                   "error: failed to launch '{}' (code {})\n",
-                   exePath.string(),
+        std::print(stderr, "error: failed to launch '{}' (code {})\n", exePath.string(),
                    GetLastError());
         return 1;
     }
@@ -890,12 +806,12 @@ int Cli::RunRun(std::span<const std::string_view> args,
 #else
     std::vector<std::string> argStrings;
     argStrings.push_back(exePath.string());
-    for (const auto& a : runArgs) {
+    for (auto const &a : runArgs) {
         argStrings.emplace_back(a);
     }
 
-    std::vector<char*> argv;
-    for (auto& s : argStrings) {
+    std::vector<char *> argv;
+    for (auto &s : argStrings) {
         argv.push_back(s.data());
     }
 

@@ -51,6 +51,7 @@ add_executable(rux
         Source/Asm.cpp
         Source/Rcu.cpp
         Source/Linker.cpp
+        Source/Optimizer.cpp
 )
 
 # GCC/MinGW: link experimental libstdc++ extensions (needed for <print> support in some builds)
