@@ -3056,45 +3056,66 @@ private:
                 return;
             }
 
-            Symbol sym;
-            sym.kind = Symbol::Kind::Var;
-            sym.name = s->name;
-            sym.location = s->location;
-            sym.type = declType;
-            sym.isMut = s->isMut;
-            Define(sym);
-        }
-        else if (auto *s = dynamic_cast<IfStmt const *>(&stmt)) {
-            CheckExpr(*s->condition);
-            CheckBlock(*s->thenBlock);
-            for (auto const &elif : s->elseIfs) {
-                CheckExpr(*elif.condition);
-                CheckBlock(*elif.block);
+                Symbol sym;
+                sym.kind = Symbol::Kind::Var;
+                sym.name = s->name;
+                sym.location = s->location;
+                sym.type = declType;
+                sym.isMut = s->isMut;
+                Define(sym);
             }
-            if (s->elseBlock) {
-                CheckBlock(*s->elseBlock);
+            else if (auto const *s = dynamic_cast<IfStmt const *>(&stmt)) {
+                TypeRef cond = CheckExpr(*s->condition);
+                if (!cond.IsUnknown() && !cond.IsBool()) {
+                    EmitError(s->condition->location,
+                              "if condition must be 'bool'");
+                }
+                CheckBlock(*s->thenBlock);
+                for (auto const &elif : s->elseIfs) {
+                    TypeRef elifCond = CheckExpr(*elif.condition);
+                    if (!elifCond.IsUnknown() && !elifCond.IsBool()) {
+                        EmitError(elif.condition->location,
+                                  "if condition must be 'bool'");
+                    }
+                    CheckBlock(*elif.block);
+                }
+                if (s->elseBlock) {
+                    CheckBlock(*s->elseBlock);
+                }
             }
-        }
-        else if (auto *s = dynamic_cast<WhileStmt const *>(&stmt)) {
+            else if (auto const *s = dynamic_cast<WhileStmt const *>(&stmt)) {
+                if (!s->label.empty()) {
+                    activeLabels.insert(s->label);
+                }
+                
+                // FIX: Capture and validate the condition type
+                TypeRef cond = CheckExpr(*s->condition);
+                if (!cond.IsUnknown() && !cond.IsBool()) {
+                    EmitError(s->condition->location, "while condition must be 'bool'");
+                }
+            
+                ++loopDepth;
+                CheckBlock(*s->body);
+                --loopDepth;
+                if (!s->label.empty()) {
+                    activeLabels.erase(s->label);
+                }
+            }
+
+        else if (auto const *s = dynamic_cast<DoWhileStmt const *>(&stmt)) {
             if (!s->label.empty()) {
                 activeLabels.insert(s->label);
             }
-            CheckExpr(*s->condition);
+            
             ++loopDepth;
             CheckBlock(*s->body);
             --loopDepth;
-            if (!s->label.empty()) {
-                activeLabels.erase(s->label);
+
+            TypeRef cond = CheckExpr(*s->condition);
+            if (!cond.IsUnknown() && !cond.IsBool()) {
+                EmitError(s->condition->location, "do-while condition must be 'bool'");
             }
-        }
-        else if (auto *s = dynamic_cast<DoWhileStmt const *>(&stmt)) {
-            if (!s->label.empty()) {
-                activeLabels.insert(s->label);
-            }
-            ++loopDepth;
-            CheckBlock(*s->body);
-            --loopDepth;
-            CheckExpr(*s->condition);
+        
             if (!s->label.empty()) {
                 activeLabels.erase(s->label);
             }
