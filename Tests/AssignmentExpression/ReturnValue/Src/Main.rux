@@ -1,0 +1,4 @@
+func Main() -> int {
+    var x = 0;
+    return x = 1;
+}

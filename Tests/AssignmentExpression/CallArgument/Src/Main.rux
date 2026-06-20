@@ -1,0 +1,8 @@
+func Use(value: int) -> int {
+    return value;
+}
+
+func Main() -> int {
+    var x = 0;
+    return Use(x = 1);
+}

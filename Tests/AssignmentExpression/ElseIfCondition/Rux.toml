@@ -1,0 +1,7 @@
+[Package]
+Name    = "assignment_expr_else_if_condition"
+Version = "0.1.0"
+Type    = "bin"
+
+[Build]
+Output = "Bin"
