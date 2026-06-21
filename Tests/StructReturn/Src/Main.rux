@@ -1,0 +1,48 @@
+// Regression test for #149: structs larger than 16 bytes returned by value
+// (System V / Win64 memory class) must come back intact, not truncated.
+
+struct Big {
+    a: int64;
+    b: int64;
+    c: int64;
+}   // 24 bytes -> returned via a hidden pointer
+
+extend Big {
+    func New() -> Big {
+        return Big { a: 1i64, b: 2i64, c: 3i64 };
+    }
+
+    func WithArgs(x: int64, y: int64, z: int64) -> Big {
+        // Real args must shift past the hidden return pointer.
+        return Big { a: x, b: y, c: z };
+    }
+}
+
+struct Small {
+    a: int64;
+    b: int64;
+}   // 16 bytes -> register pair (regression guard)
+
+extend Small {
+    func New() -> Small {
+        return Small { a: 4i64, b: 5i64 };
+    }
+}
+
+func Main() -> int {
+    let b = Big::New();
+    if b.a != 1i64 { return 1; }
+    if b.b != 2i64 { return 2; }
+    if b.c != 3i64 { return 3; }
+
+    let w = Big::WithArgs(10i64, 20i64, 30i64);
+    if w.a != 10i64 { return 4; }
+    if w.b != 20i64 { return 5; }
+    if w.c != 30i64 { return 6; }
+
+    let s = Small::New();
+    if s.a != 4i64 { return 7; }
+    if s.b != 5i64 { return 8; }
+
+    return 0;
+}
