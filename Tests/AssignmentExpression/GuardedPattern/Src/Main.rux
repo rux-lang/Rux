@@ -1,0 +1,7 @@
+func Main() -> int {
+    var x = 0;
+    return match x {
+        _ if (x = 1) => 1,
+        _ => 0
+    };
+}
