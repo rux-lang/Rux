@@ -1449,6 +1449,13 @@ private:
         return SizeOfRuntime(t) == 16;
     }
 
+    // Win64 returns aggregates larger than one register (>8 bytes) via a hidden
+    // pointer argument, not in rax. This covers the 16-byte case above plus
+    // larger structs (e.g. 24-byte) that would otherwise be truncated to rax.
+    [[nodiscard]] bool IsWin64MemReturn(TypeRef const &t) const {
+        return SizeOfRuntime(t) > 8;
+    }
+
     [[nodiscard]] bool IsWin64AddressParam(TypeRef const &t) const {
         if (t.kind != TypeRef::Kind::Named) {
             return false;
@@ -1847,24 +1854,110 @@ private:
         StoreA(dst, t);
     }
 
+    // Emit `mov [r11 + off], <reg>` where reg is the rax-family register for
+    // `size` (8/4/2/1) bytes.
+    void StoreRaxFamilyToR11(int off, int size) const {
+        if (size == 2) {
+            enc.Byte(0x66); // operand-size prefix (word)
+        }
+        // REX: qword needs REX.W+B (0x49); 4/2/1 need REX.B (0x41) for r11 base.
+        enc.Byte(size == 8 ? 0x49 : 0x41);
+        enc.Byte(size == 1 ? 0x88 : 0x89); // 0x88 = mov r/m8, r8; else mov r/m, r
+        // ModRM: reg field = rax/eax/ax/al = 000; r/m = r11 (011 with REX.B).
+        if (off == 0) {
+            enc.Byte(0x03); // mod=00 -> [r11]
+        }
+        else if (off >= -128 && off <= 127) {
+            enc.Byte(0x43); // mod=01 -> [r11 + disp8]
+            enc.Byte(static_cast<uint8_t>(off));
+        }
+        else {
+            enc.Byte(0x83); // mod=10 -> [r11 + disp32]
+            enc.Dword(static_cast<uint32_t>(off));
+        }
+    }
+
+    // Copy `bytes` from the rbp-relative slot at displacement `srcDisp` to the
+    // buffer pointed to by r11. Used to write a memory-class return value into
+    // the caller's hidden return buffer.
+    void CopyToR11(int srcDisp, int bytes) const {
+        int off = 0;
+        while (bytes - off >= 8) {
+            enc.MovRaxLoad(srcDisp + off);
+            StoreRaxFamilyToR11(off, 8);
+            off += 8;
+        }
+        if (bytes - off >= 4) {
+            enc.MovEaxLoad(srcDisp + off);
+            StoreRaxFamilyToR11(off, 4);
+            off += 4;
+        }
+        if (bytes - off >= 2) {
+            enc.MovzxRaxWord(srcDisp + off);
+            StoreRaxFamilyToR11(off, 2);
+            off += 2;
+        }
+        if (bytes - off >= 1) {
+            enc.MovzxRaxByte(srcDisp + off);
+            StoreRaxFamilyToR11(off, 1);
+        }
+    }
+
+    // Emit `mov <reg>, [r10 + off]` into the rax-family register for `size`.
+    void LoadRaxFamilyFromR10(int off, int size) const {
+        if (size == 2) {
+            enc.Byte(0x66); // operand-size prefix (word)
+        }
+        enc.Byte(size == 8 ? 0x49 : 0x41); // REX.W+B (qword) / REX.B
+        enc.Byte(size == 1 ? 0x8A : 0x8B); // mov r8, r/m8 / mov r, r/m
+        if (off == 0) {
+            enc.Byte(0x02); // mod=00 -> [r10]
+        }
+        else if (off >= -128 && off <= 127) {
+            enc.Byte(0x42); // mod=01 -> [r10 + disp8]
+            enc.Byte(static_cast<uint8_t>(off));
+        }
+        else {
+            enc.Byte(0x82); // mod=10 -> [r10 + disp32]
+            enc.Dword(static_cast<uint32_t>(off));
+        }
+    }
+
+    // Copy `bytes` from the buffer pointed to by r10 into the rbp-relative slot
+    // at displacement `dstDisp`.
+    void CopyFromR10ToSlot(int dstDisp, int bytes) const {
+        int off = 0;
+        while (bytes - off >= 8) {
+            LoadRaxFamilyFromR10(off, 8);
+            enc.MovRaxStore(dstDisp + off);
+            off += 8;
+        }
+        if (bytes - off >= 4) {
+            LoadRaxFamilyFromR10(off, 4);
+            enc.MovEaxStore(dstDisp + off);
+            off += 4;
+        }
+        if (bytes - off >= 2) {
+            LoadRaxFamilyFromR10(off, 2);
+            enc.MovAxStore(dstDisp + off);
+            off += 2;
+        }
+        if (bytes - off >= 1) {
+            LoadRaxFamilyFromR10(off, 1);
+            enc.MovAlStore(dstDisp + off);
+        }
+    }
+
     void StoreHiddenReturnValue(LirReg const src, TypeRef const &t) const {
-        if (hiddenReturnOff == 0 || SizeOfRuntime(t) != 16) {
+        if (hiddenReturnOff == 0 || SizeOfRuntime(t) <= 8) {
             LoadReturnValue(src, t);
             return;
         }
-        enc.MovR11Load(-hiddenReturnOff);
-        enc.MovRaxLoad(Disp(src));
-        enc.Byte(0x49);
-        enc.Byte(0x89);
-        enc.Byte(0x03); // mov [r11], rax
-        enc.MovRaxLoad(Disp(src) + 8);
-        enc.Byte(0x49);
-        enc.Byte(0x89);
-        enc.Byte(0x43);
-        enc.Byte(0x08); // mov [r11 + 8], rax
+        enc.MovR11Load(-hiddenReturnOff); // r11 = hidden return buffer pointer
+        CopyToR11(Disp(src), SizeOfRuntime(t));
         enc.Byte(0x4C);
         enc.Byte(0x89);
-        enc.Byte(0xD8); // mov rax, r11
+        enc.Byte(0xD8); // mov rax, r11 (return the buffer pointer)
     }
 
     // Struct field lookup
@@ -1981,7 +2074,7 @@ private:
         regTypes.clear();
         phiMoves.clear();
         if (EffectiveConv(func.callConv) == CallingConvention::Win64 &&
-            IsWin64ByRefAggregate(func.returnType)) {
+            IsWin64MemReturn(func.returnType)) {
             hiddenReturnOff = AllocRegion(8);
         }
         for (auto const &p : func.params) {
@@ -2256,6 +2349,12 @@ private:
             else {
                 LirReg ptr = instr.srcs[0];
                 enc.MovR10Load(Disp(ptr));
+                if (runtimeSz > 16) {
+                    // Aggregate larger than the register pair: copy the whole
+                    // value from [r10] into the dst slot.
+                    CopyFromR10ToSlot(Disp(instr.dst), runtimeSz);
+                    break;
+                }
                 if (runtimeSz == 16) {
                     enc.Byte(0x49);
                     enc.Byte(0x8B);
@@ -2344,6 +2443,12 @@ private:
             int sz = SizeOf(t);
             int runtimeSz = SizeOfRuntime(t);
             enc.MovR11Load(Disp(ptr));
+            if (runtimeSz > 16) {
+                // Aggregate larger than the register pair: copy the whole value
+                // from the val slot into [r11].
+                CopyToR11(Disp(val), runtimeSz);
+                break;
+            }
             if (runtimeSz == 16) {
                 enc.MovRaxLoad(Disp(val));
                 enc.Byte(0x49);
@@ -2801,7 +2906,7 @@ private:
             }
             bool win64Call = EffectiveConv(instr.callConv) == CallingConvention::Win64;
             bool const hiddenReturn =
-                win64Call && instr.dst != LirNoReg && IsWin64ByRefAggregate(instr.type);
+                win64Call && instr.dst != LirNoReg && IsWin64MemReturn(instr.type);
             int const callFrameSize =
                 win64Call ? Win64CallFrameSize(instr.srcs.size() + (hiddenReturn ? 1 : 0)) : 0;
             if (win64Call) {
@@ -2840,7 +2945,7 @@ private:
             std::vector<LirReg> args(instr.srcs.begin() + 1, instr.srcs.end());
             bool win64Call = EffectiveConv(instr.callConv) == CallingConvention::Win64;
             bool const hiddenReturn =
-                win64Call && instr.dst != LirNoReg && IsWin64ByRefAggregate(instr.type);
+                win64Call && instr.dst != LirNoReg && IsWin64MemReturn(instr.type);
             int const callFrameSize =
                 win64Call ? Win64CallFrameSize(args.size() + (hiddenReturn ? 1 : 0)) : 0;
             if (win64Call) {
@@ -2975,7 +3080,7 @@ private:
         }
         case LirTermKind::Return: {
             if (term.retVal && *term.retVal != LirNoReg) {
-                if (hiddenReturnOff != 0 && IsWin64ByRefAggregate(term.retType)) {
+                if (hiddenReturnOff != 0 && IsWin64MemReturn(term.retType)) {
                     StoreHiddenReturnValue(*term.retVal, term.retType);
                 }
                 else {
