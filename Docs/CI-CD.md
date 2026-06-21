@@ -10,16 +10,16 @@ delivery (publishing binaries) is covered separately in the
 Each supported platform has its own workflow under
 [`.github/workflows/`](../.github/workflows/):
 
-| Workflow        | Platform            |
-|-----------------|---------------------|
-| `ubuntu.yml`    | Ubuntu 24.04        |
-| `windows.yml`   | Windows Server 2025 |
-| `macos.yml`     | macOS 26            |
-| `freebsd.yml`   | FreeBSD 14.2        |
-| `dragonfly.yml` | DragonFly BSD 6.4   |
-| `netbsd.yml`    | NetBSD 10.1         |
-| `openbsd.yml`   | OpenBSD 7.6         |
-| `omnios.yml`    | OmniOS r151052      |
+| Workflow        | Platform            | Runner            | Toolchain install         |
+|-----------------|---------------------|-------------------|---------------------------|
+| `ubuntu.yml`    | Ubuntu 24.04        | GitHub-hosted     | `apt.llvm.org` → Clang 22 |
+| `windows.yml`   | Windows Server 2025 | GitHub-hosted     | Runner's bundled Clang    |
+| `macos.yml`     | macOS 26            | GitHub-hosted     | Homebrew `llvm@22`        |
+| `freebsd.yml`   | FreeBSD 14.2        | QEMU VM on Ubuntu | `pkg llvm22`              |
+| `dragonfly.yml` | DragonFly BSD 6.4   | QEMU VM on Ubuntu | `pkg llvm`                |
+| `netbsd.yml`    | NetBSD 10.1         | QEMU VM on Ubuntu | `pkgin clang`             |
+| `openbsd.yml`   | OpenBSD 7.6         | QEMU VM on Ubuntu | `pkg_add llvm%22`         |
+| `omnios.yml`    | OmniOS r151052      | QEMU VM on Ubuntu | `pkg install clang` (IPS) |
 
 Their status is shown by the badges at the top of the [README](../README.md).
 
@@ -39,8 +39,9 @@ keeps running.
 
 ## What each run does
 
-Using `ubuntu.yml` as the reference shape (other OSes differ only in how the
-toolchain is installed):
+Every workflow is two jobs — **Build**, then **Test** (`needs: build`). Splitting
+them means the binary is compiled once, uploaded as an artifact, then downloaded
+by the test job. Using `ubuntu.yml` as the reference shape:
 
 1. **Build job**
     - Check out the repo.
@@ -56,15 +57,42 @@ toolchain is installed):
     - `./build/rux install Std` (test packages depend on Std).
     - `./build/rux test --release` from the repo root (workspace mode discovers `Tests/`).
 
-> _TODO: note any platform-specific quirks (e.g. Windows initializes the Visual
-> Studio dev environment before configuring; macOS installs LLVM from Homebrew
-> because Apple Clang lacks full C++26 support)._
+### Platform-specific quirks
+
+The native-runner workflows differ only in how the compiler is obtained; the
+emulated ones differ in *where the whole job runs*:
+
+- **Ubuntu** — installs Clang 22 from `apt.llvm.org` and builds with
+  `clang++-22`.
+- **Windows** — uses the runner's bundled Clang. Before configuring, it locates
+  Visual Studio with `vswhere` and initializes the VS dev environment
+  (`Launch-VsDevShell.ps1`) so Clang can find the Windows SDK, CRT headers, and
+  import libraries.
+- **macOS** — Apple Clang lags upstream and lacks full C++26 support, so the
+  workflow installs LLVM `llvm@22` from Homebrew and points
+  `CMAKE_CXX_COMPILER` at the Homebrew `clang++`.
+- **FreeBSD, DragonFly, NetBSD, OpenBSD, OmniOS** — GitHub has no native runner
+  for these, so each job boots its own OS image in a QEMU VM (via the
+  `vmactions/*-vm` actions) on an Ubuntu host. Because Build and Test are
+  separate jobs, each boots a *fresh* VM and installs the toolchain again — and
+  the Test VM additionally installs the Clang runtime libraries the prebuilt
+  binary links against. The compiler binary name varies by packaging: versioned
+  (`clang++22` on FreeBSD) where the OS ships versioned LLVM packages, plain
+  `clang++` elsewhere.
 
 ## Required checks
 
-> _TODO: list which of these workflows are *required* to pass before a PR can
-> merge, as configured in branch protection (see
-> [Branch Architecture](Branches.md))._
+The following must pass before a PR can merge (configured in branch protection —
+see [Branch Architecture](Branches.md)):
+
+- **`ubuntu.yml`** (Ubuntu 24.04)
+- **`windows.yml`** (Windows Server 2025)
+
+The remaining workflows — `macos.yml` and the BSD/illumos family
+(`freebsd`, `dragonfly`, `netbsd`, `openbsd`, `omnios`) — run on every push and
+PR and report status, but are **informational**: they broaden platform coverage
+without blocking merges, since the emulated VMs are slower and occasionally
+flaky. A red informational check is still worth investigating before merging.
 
 ## Reproducing CI locally
 
@@ -72,5 +100,12 @@ The CI build is the same `cmake` + `rux test` flow documented in the
 [Development Workflow](Workflow.md). To match CI exactly, build
 `Release` and run `rux test --release`.
 
-> _TODO: document caching, runner images, or self-hosted runners if any are
-> introduced._
+## Infrastructure notes
+
+- **Runner images** — Ubuntu, Windows, and macOS use GitHub-hosted runners
+  (`ubuntu-24.04`, `windows-2025`, `macos-26`). The BSD/illumos workflows run on
+  `ubuntu-24.04` hosts and boot their target OS in a QEMU VM via the
+  `vmactions/*-vm` actions. There are **no self-hosted runners**.
+- **Caching** — none is configured today; each run installs its toolchain and
+  builds from scratch. If build times become a problem, the natural next step is
+  caching the CMake/Ninja build directory or the per-OS package installs.

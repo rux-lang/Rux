@@ -20,33 +20,54 @@ Contributors branch off `dev` for each unit of work and open a PR back into
 ```sh
 git checkout dev
 git pull
-git checkout -b my-feature
+git checkout -b feat/my-feature
 ```
 
-> _TODO: define a branch naming convention if you want one, e.g.
-> `feat/…`, `fix/…`, `docs/…`._
+### Naming convention
+
+Topic branches **should** use a `type/short-description` prefix so the branch's
+intent is clear at a glance. This is a recommendation, not a hard gate — but
+following it keeps the branch list readable:
+
+| Prefix      | Use for                                              |
+| ----------- | --------------------------------------------------- |
+| `feat/`     | New features or language capabilities               |
+| `fix/`      | Bug fixes                                            |
+| `docs/`     | Documentation-only changes                          |
+| `refactor/` | Internal restructuring with no behavior change      |
+| `chore/`    | Build, CI, tooling, and housekeeping                |
+
+Use a short, hyphenated description after the prefix, e.g. `fix/lookup-overload`
+or `feat/expand-rux-info`.
 
 ## How changes flow
 
 ```
-topic branch ──PR──► dev ──(release)──► main ──tag vX.Y.Z──► Release Pipeline
+topic branch ──PR──► dev ──(merge to main)──► main ──tag vX.Y.Z──► Release Pipeline
 ```
 
 1. Work happens on topic branches and merges into `dev`.
-2. When `dev` is ready to ship, its state is promoted to `main`.
+2. When `dev` is ready to ship, it is promoted to `main` (see below).
 3. A version tag on `main` triggers the [Release Pipeline](Release.md).
 
-> _TODO: document exactly how `dev` is promoted to `main` (fast-forward, merge
-> commit, or release PR) and who is allowed to do it._
+### Promoting `dev` to `main`
+
+At release time, `dev` is merged into `main` with a **merge commit** (not a
+fast-forward), so each release sits on a clear merge boundary in `main`'s
+history. Only the **repository owner** promotes `dev` to `main` and pushes the
+version tag that cuts the release. See the
+[Release Pipeline](Release.md) for the full release checklist.
 
 ## Branch protection
 
-> _TODO: record the actual GitHub branch protection settings, e.g.:_
->
-> - _Required passing status checks before merge (which workflows)_
-> - _Required reviews / approvals_
-> - _Whether `main` is push-restricted to maintainers_
-> - _Linear history / no force-push rules_
+Both `main` and `dev` are protected. Merging into either requires:
+
+- **Passing CI status checks** — the Linux and Windows build/test jobs must be
+  green before a PR can merge (see [CI/CD Flow](CI-CD.md)).
+- **At least one approving review** before merge.
+
+`main` additionally only receives changes through the owner-driven promotion
+described above — ordinary contributions never target it directly.
 
 ## Tags
 

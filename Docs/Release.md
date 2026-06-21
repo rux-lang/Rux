@@ -20,8 +20,7 @@ permission to create the release.
 
 ```
 verify-version ──► linux  ──┐
-                  windows ──┤──► release (publish)
-                    macos ──┘
+                  windows ──┴──► release (publish)
 ```
 
 ### 1. `verify-version` (fail fast)
@@ -33,26 +32,24 @@ tag can never produce a release.
 > **Always bump `VERSION` in `CMakeLists.txt` before tagging, and tag the exact
 > same version.**
 
-### 2. Build jobs (`linux`, `windows`, `macos`)
+### 2. Build jobs (`linux`, `windows`)
 
 Each `needs: verify-version`, then builds Release **and runs the test suite** —
 a broken build or failing test blocks the release. Each uploads its binary as an
 artifact:
 
-| Job       | Runner       | Artifact    |
-|-----------|--------------|-------------|
-| `linux`   | ubuntu-24.04 | `rux`       |
-| `windows` | windows-2025 | `rux.exe`   |
-| `macos`   | macos-26     | `rux-macos` |
+| Job       | Runner       | Artifact  |
+|-----------|--------------|-----------|
+| `linux`   | ubuntu-24.04 | `rux`     |
+| `windows` | windows-2025 | `rux.exe` |
 
 ### 3. `release` (publish)
 
-`needs: [ linux, windows, macos ]`:
+`needs: [ linux, windows ]`:
 
 1. Download all build artifacts.
 2. Package them:
     - `rux-linux.tar.gz` (preserves the executable bit)
-    - `rux-macos.tar.gz` (staged back to plain `rux`)
     - `rux-windows.zip`
 3. Create a **draft** GitHub Release with auto-generated release notes and the
    archives attached.

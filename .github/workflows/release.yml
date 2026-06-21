@@ -122,56 +122,9 @@ jobs:
           path: build/rux.exe
           if-no-files-found: error
 
-  macos:
-    name: macOS
-    needs: verify-version
-    runs-on: macos-26
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      # macOS ships Apple Clang, which lags upstream and lacks full C++26
-      # support, so install LLVM Clang 22 from Homebrew to match Linux.
-      - name: Install Clang 22
-        run: |
-          brew install llvm@22
-          echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
-
-      - name: Install CMake and Ninja
-        uses: lukka/get-cmake@v4.3.3
-        with:
-          cmakeVersion: "4.2.0"
-          ninjaVersion: latest
-
-      - name: Configure and build
-        run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@22)/bin/clang++"
-          cmake --build build --config Release
-
-      - name: Test
-        run: |
-          ./build/rux install Std
-          ./build/rux test --release
-
-      # Rename so the merged artifact basename is unique and the packaging
-      # step can tell it apart from the Linux `rux`.
-      - name: Stage binary
-        run: |
-          mkdir -p dist
-          cp build/rux dist/rux-macos
-
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: rux-macos
-          path: dist/rux-macos
-          if-no-files-found: error
-
   release:
     name: Publish release
-    needs: [ linux, windows ] # macos disabled
+    needs: [ linux, windows ]
     runs-on: ubuntu-24.04
     steps:
       # Collect every artifact uploaded by the build jobs in this run.
@@ -181,17 +134,14 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # Archive each binary: .tar.gz on Linux/macOS preserves the executable
-      # bit, .zip on Windows is the conventional, download-friendly format.
-      # Stage the macOS binary as plain `rux` so its archive matches Linux's.
+      # Archive each binary: .tar.gz on Linux preserves the executable bit,
+      # .zip on Windows is the conventional, download-friendly format.
       - name: Package assets
         run: |
-          mkdir -p out stage
-          chmod +x dist/rux dist/rux-macos
+          mkdir -p out
+          chmod +x dist/rux
           tar -czf "out/rux-linux.tar.gz" -C dist rux
           zip -j   "out/rux-windows.zip"     dist/rux.exe
-          cp dist/rux-macos stage/rux
-          tar -czf "out/rux-macos.tar.gz" -C stage rux
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3

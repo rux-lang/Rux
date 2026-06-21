@@ -8,8 +8,14 @@ come from and where it goes, see [Branch Architecture](Branches.md).
 Install the toolchain (Clang 22.1+, CMake 4.3+, Ninja 1.13+, Git 2.54+) per your
 OS — see [Building from Source](../README.md#building-from-source).
 
-> _TODO: note any extra tooling contributors need beyond the README list
-> (e.g. `clang-format`, `clang-tidy`, a specific debugger, editor setup)._
+Beyond that build toolchain you need **`clang-format`** (ships with LLVM/Clang)
+to format your changes — CI and reviewers expect formatted diffs. No other tool
+is required:
+
+- **`clang-tidy`** is *not* used; there is no `.clang-tidy` in the repo.
+- **Editor / IDE** setup is optional. CMake writes a `compile_commands.json`
+  into the build directory, so `clangd` (and any editor that speaks LSP) gets
+  full navigation and diagnostics with no extra configuration.
 
 ## 2. Get the source and configure
 
@@ -18,6 +24,10 @@ git clone https://github.com/rux-lang/Rux.git
 cd Rux
 cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++   # adjust compiler name per OS
 ```
+
+With no `-DCMAKE_BUILD_TYPE`, the project defaults to a **Release** build (set in
+`CMakeLists.txt`). See [Debug vs. Release](#debug-vs-release-builds) below for
+when to pick the other.
 
 ## 3. The inner loop
 
@@ -34,22 +44,62 @@ cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++   # adjust compiler na
 5. **Test** (see below).
 6. **Format** touched files: `clang-format -i <files>`.
 
-> _TODO: document Debug vs. Release builds and when to use each
-> (`-DCMAKE_BUILD_TYPE=Debug`), plus any sanitizer presets._
+### Debug vs. Release builds
+
+- **Release** (default) — optimized; this is what CI builds and tests, and what
+  ships. Use it for normal development and before pushing.
+- **Debug** — configure a *separate* build directory with
+  `-DCMAKE_BUILD_TYPE=Debug` (e.g. `cmake -S . -B build-debug -G Ninja
+  -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug`). Unoptimized with debug
+  info, so breakpoints and stepping in a debugger (lldb/gdb) behave predictably.
+
+There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan/
+UBSan, pass the flags yourself on a throwaway build dir, e.g.
+`-DCMAKE_CXX_FLAGS="-fsanitize=address,undefined"`.
 
 ## 4. Repository layout
 
-| Path             | Purpose                                   |
-|------------------|-------------------------------------------|
-| `Source/`        | Compiler implementation (`.cpp`)          |
-| `Include/`       | Public/internal headers (`.h`)            |
-| `Tests/`         | Test packages, one per subdirectory       |
-| `Bin/`           | _TODO: describe_                          |
-| `CMakeLists.txt` | Build configuration and project `VERSION` |
+| Path             | Purpose                                                       |
+|------------------|---------------------------------------------------------------|
+| `Source/`        | Compiler implementation (`.cpp`)                              |
+| `Include/Rux/`   | Headers (`.h`), all under the `Rux` namespace                 |
+| `Tests/`         | Test packages, one per subdirectory                           |
+| `Bin/`           | Default output dir for compiled Rux packages; **git-ignored** |
+| `CMakeLists.txt` | Build configuration and project `VERSION`                     |
 
-> _TODO: expand into the compiler's internal stages (lexer → parser → … →
-> codegen) and which directory owns each, so newcomers know where to make a
-> change._
+`Bin/` is where `rux` drops the binaries it produces — test packages set
+`[Build] Output = "../Bin"` in their manifest, so `rux test`/`rux build` write
+here. It's listed in `.gitignore`; nothing under it is tracked. (You may also see
+local CMake build trees here if you point `-B` at it, but the canonical compiler
+build dir is `build/`.)
+
+### Compiler pipeline
+
+A source file flows through these stages, front to back. Each stage owns a small
+set of files, so this is the map for "where do I make this change?":
+
+| Stage             | File(s)                  | Role                                                     |
+|-------------------|--------------------------|----------------------------------------------------------|
+| Source loading    | `SourceLoader.cpp`       | Locate and read source files                             |
+| Lexing            | `Token.cpp`, `Lexer.cpp` | Source text → token stream                               |
+| Parsing           | `Parser.cpp` (`Ast.h`)   | Tokens → AST (Pratt / precedence-climbing expressions)   |
+| Semantic analysis | `Sema.cpp` (`Type.h`)    | Name resolution, type checking, diagnostics              |
+| HIR lowering      | `Hir.cpp`                | AST → high-level IR                                      |
+| LIR lowering      | `Lir.cpp`                | HIR → low-level IR                                       |
+| Optimization      | `Optimizer.cpp`          | Optimize the LIR                                         |
+| Codegen           | `Asm.cpp`                | LIR → x86-64 assembly (Intel syntax, System V AMD64 ABI) |
+| Object emission   | `Rcu.cpp`                | Emit the native object file in Rux's RCU format          |
+| Linking           | `Linker.cpp`             | Link objects into the final executable                   |
+
+Supporting layers around the pipeline:
+
+- **CLI & driver** — `Main.cpp`, `Cli.cpp`, the `*Cmd.cpp` files
+  (`BuildCmd`, `CheckCmd`, `InstallCmd`, `PackageCmd`, `HelpCmd`, `UtilityCmd`),
+  plus `BuildReport.cpp`, `BuildTarget.cpp`, `Terminal.cpp`, `Process.cpp`.
+- **Packages & manifests** — `Package.cpp`, `Manifest.cpp` (parse `Rux.toml`,
+  resolve dependencies).
+- **Platform layer** — `Host.cpp` (`Platform.h`, `WinApi.h`) isolates OS
+  differences.
 
 ## 5. Testing
 
@@ -98,14 +148,38 @@ Formatting is enforced by [`.clang-format`](../.clang-format) (LLVM base,
 clang-format -i $(git ls-files '*.cpp' '*.h')
 ```
 
-> _TODO: capture naming conventions, header/include ordering, error-handling
-> patterns, and anything `clang-format` can't enforce._
+`clang-format` handles layout; the conventions it can't enforce, observed
+throughout the codebase:
+
+- **Naming**
+    - Files, types (`struct`/`class`/`enum`), and free/member functions are
+      `PascalCase` — `Parser`, `ParseResult`, `EmitError()`.
+    - Member variables, parameters, and locals are `camelCase` — `tokens`,
+      `sourceName`, `structInitAllowed`.
+    - Enumerators and namespaced constants are `PascalCase` — `Severity::Error`,
+      `RcuSecType::Text`.
+    - Everything lives in the `Rux` namespace (no namespace indentation; closing
+      `} // namespace Rux` comment is auto-emitted).
+- **Headers** — every header opens with `#pragma once`. Includes are grouped and
+  sorted by `clang-format`: project `"Rux/…"` headers first, then `<system>`
+  headers. Mark non-void accessors `[[nodiscard]]` and use `noexcept` where it
+  holds, as the existing headers do.
+- **Error handling** — the compiler does **not** throw for ordinary failures.
+  Fallible operations return a result struct carrying a `diagnostics` vector
+  (with a `HasErrors()` query) or a `std::optional` / `bool`. Diagnostics are
+  *accumulated* with severity + `SourceLocation` (see `EmitError`/`EmitWarning`)
+  so the compiler can report many problems in one run and recover at statement
+  boundaries rather than aborting on the first error.
+
+Otherwise, match the surrounding code — consistency beats personal preference.
 
 ## 7. Commits
 
 - One logical change per commit; keep history readable.
 - Write messages as short imperative sentences:
   `Fix parser crash on empty block`, not `Fixed the parser`.
-
-> _TODO: state whether commits are squashed on merge, and any required
-> trailers (e.g. `Fixes #42`)._
+- Commits are **not squashed** on merge — PRs land on `dev` via a merge commit
+  (see [Pull Request Lifecycle](PullRequest.md)), so the individual commits you
+  push are what end up in history. Keep them atomic and self-contained.
+- Link the issue a change closes with `Fixes #42` in the PR description (or a
+  commit message). No other trailers are required.

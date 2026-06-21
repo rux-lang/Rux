@@ -18,8 +18,10 @@ into `dev`.
 - Reference the relevant issue in the description (e.g. `Fixes #42`).
 - Describe **what** changed and **why**, not just how.
 
-> _TODO: link a PR template under `.github/` if/when one exists, and list any
-> required checklist items._
+There is no pull-request template in `.github/` today, so there's no enforced
+checklist — write the description by hand and cover the points above. The
+contributor expectations live in [`CONTRIBUTING.md`](../CONTRIBUTING.md); a PR
+that satisfies the **Before you open a PR** list above is in good shape.
 
 ## 2. Automated checks
 
@@ -27,25 +29,36 @@ Opening or updating a PR triggers the full per-OS CI matrix — every supported
 platform builds and runs the test suite. See [CI/CD Flow](CI-CD.md) for the
 exact workflows and platforms.
 
-All required checks must be green before a PR is eligible to merge.
+Not every workflow blocks merging. The **required** checks are:
 
-> _TODO: confirm which checks are *required* vs. informational in branch
-> protection._
+- **Ubuntu** (`ubuntu.yml`)
+- **Windows** (`windows.yml`)
+
+The macOS and BSD/illumos workflows run too and are worth watching, but they are
+**informational** — they won't block the merge button. Both required checks must
+be green before a PR is eligible to merge.
 
 ## 3. Review
 
-> _TODO: document the review expectations, e.g.:_
-> - _How many approvals are required_
-> - _Who reviews (maintainers / CODEOWNERS)_
-> - _Expected turnaround and how to nudge a stalled review_
-> - _How to handle review feedback (push fixups, re-request review)_
+- **At least one approving review** is required before a PR can merge.
+- **Any maintainer** can review, approve, and merge — there is no `CODEOWNERS`
+  file routing specific paths to specific people.
+- Anyone is welcome to review and comment; only a maintainer's approval counts
+  toward the requirement.
+- Address feedback by pushing follow-up commits and re-requesting review, rather
+  than force-pushing over the discussion (see [Etiquette](#etiquette)). If a
+  review stalls, a polite nudge on the PR or in
+  [Discord](https://discord.com/invite/uvSHjtZSVG) is fine.
 
 ## 4. Merge
 
-> _TODO: document the merge strategy and who performs the merge, e.g.:_
-> - _Squash / merge commit / rebase_
-> - _Whether the branch is deleted after merge_
-> - _Any "do not merge" labels or gates_
+- **Strategy: merge commit.** A maintainer merges the PR into `dev` with a merge
+  commit, preserving the branch's commits — the same style used when `dev` is
+  later promoted to `main`.
+- **Who merges:** any maintainer, once the required checks are green and the PR
+  has its approving review.
+- **After merge the head branch is deleted** automatically; you can safely
+  delete your local copy too (`git branch -d <branch>`).
 
 ## 5. After merge
 
@@ -58,6 +71,8 @@ All required checks must be green before a PR is eligible to merge.
 - Keep PRs small and reviewable.
 - Respond to review comments rather than silently force-pushing over them.
 - Rebase on the latest `dev` if your PR falls behind.
-
-> _TODO: any project-specific norms (e.g. draft PRs for early feedback,
-> conventions for stacked PRs)._
+- For work-in-progress, open a **draft PR** to get early CI signal and feedback
+  before requesting a formal review; mark it ready when it's done.
+- Avoid long stacks of interdependent PRs — prefer one focused, self-contained
+  change. If a change genuinely must be split, land the base PR first and note
+  the dependency in the follow-up's description.
