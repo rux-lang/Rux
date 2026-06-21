@@ -171,7 +171,7 @@ jobs:
 
   release:
     name: Publish release
-    needs: [ linux, windows, macos ]
+    needs: [ linux, windows ] # macos disabled
     runs-on: ubuntu-24.04
     steps:
       # Collect every artifact uploaded by the build jobs in this run.
