@@ -1,8 +1,5 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
+#include "Rux/Cli.h"
 
-#include "Rux/Cli/Cli.h"
-
-int main(int const argc, char *argv[]) {
+int main(const int argc, char *argv[]) {
     return Rux::Cli(argc, argv).Run();
 }

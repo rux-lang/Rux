@@ -1,0 +1,19 @@
+import Std::Assert;
+
+func Main() -> int {
+    var a = 100;
+    var b = 200;
+    if a > b {
+        a += 10;
+        b += 10;
+    } else if a == b {
+        a += 1;
+        b += 1;
+    } else {
+        a -= 2;
+        b -= 2;
+    }
+    Assert(a == 98, "unexpected value of a");
+    Assert(b == 198, "unexpected value of b");
+    return 0;
+}

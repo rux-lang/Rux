@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #pragma once
 
 #include "Rux/Ast.h"
@@ -54,7 +51,7 @@ struct DepPackage {
 
     struct ModuleEntry {
         std::string moduleName; // source identifier for diagnostics/bookkeeping
-        Module const *module;
+        const Module *module;
     };
 
     std::vector<ModuleEntry> modules;
@@ -66,15 +63,15 @@ struct DepPackage {
 // package work.
 class Sema {
 public:
-    explicit Sema(std::vector<Module const *> userModules, std::vector<DepPackage> deps = {},
+    explicit Sema(std::vector<const Module *> userModules, std::vector<DepPackage> deps = {},
                   std::string packageName = {}, std::string targetOs = {});
     [[nodiscard]] SemaResult Analyze();
 
     // Write a human-readable dump of the sema result to `path`.
-    static bool DumpResult(SemaResult const &result, std::filesystem::path const &path);
+    static bool DumpResult(const SemaResult &result, const std::filesystem::path &path);
 
 private:
-    std::vector<Module const *> modules;
+    std::vector<const Module *> modules;
     std::vector<DepPackage> deps;
     std::string packageName;
     std::string targetOs;

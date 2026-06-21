@@ -1,0 +1,21 @@
+import Std::{ String, Assert };
+
+func Main() -> int {
+    var str1 = String::From("One");
+    var str2 = String::From("Two");
+    var str = str1 + " join " + str2;
+    let expected = "One join Two";
+    Assert(str.data[0] == expected[0], "Expected concatenated string to match");
+    Assert(str.data[1] == expected[1], "Expected concatenated string to match");
+    Assert(str.data[2] == expected[2], "Expected concatenated string to match");
+    Assert(str.data[3] == expected[3], "Expected concatenated string to match");
+    Assert(str.data[4] == expected[4], "Expected concatenated string to match");
+    Assert(str.data[5] == expected[5], "Expected concatenated string to match");
+    Assert(str.data[6] == expected[6], "Expected concatenated string to match");
+    Assert(str.data[7] == expected[7], "Expected concatenated string to match");
+    Assert(str.data[8] == expected[8], "Expected concatenated string to match");
+    Assert(str.data[9] == expected[9], "Expected concatenated string to match");
+    Assert(str.data[10] == expected[10], "Expected concatenated string to match");
+    Assert(str.data[11] == expected[11], "Expected concatenated string to match");
+    return 0;
+}

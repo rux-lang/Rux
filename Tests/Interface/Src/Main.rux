@@ -1,0 +1,30 @@
+/*
+    Compiler correctness test
+    Copyright © 2026 Rux Contributors
+    Licensed under the MIT License
+*/
+import Std::Assert;
+
+interface Figure {
+    func Area() -> int;
+}
+
+struct Square {
+    size: int;
+}
+
+extend Square : Figure {
+    func Area(self) -> int {
+        return self.size * self.size;
+    }
+}
+
+func Main() -> int {
+    var square = Square { size: 5 };
+    var area = square.Area();
+    Assert(area == 25, "Expected area of the square to be 25");
+
+    var fig : Figure = square;
+    Assert(fig.Area() == 25, "Expected area of the figure to be 25");
+    return 0;
+}

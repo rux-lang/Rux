@@ -1,0 +1,81 @@
+import Std::Assert;
+
+func Main() -> int {
+    let a: uint64 = 1000000000;
+    let b: uint64 = 3000;
+
+    Assert(a + b == 1000003000, "uint64 addition");
+    Assert(a - b == 999997000, "uint64 subtraction");
+    Assert(a * b == 3000000000000, "uint64 multiplication");
+    Assert(a / b == 333333, "uint64 division truncates");
+    Assert(a % b == 1000, "uint64 modulo");
+
+    let min: uint64 = 0;
+    let max: uint64 = 0xFFFFFFFFFFFFFFFF;
+    Assert(min == 0, "uint64 min is 0");
+    Assert(max == 0xFFFFFFFFFFFFFFFF, "uint64 max is 0xFFFFFFFFFFFFFFFF");
+
+    let wrap_add: uint64 = (max + 1) as uint64;
+    Assert(wrap_add == 0, "uint64 addition wraps at 2^64");
+
+    let wrap_sub: uint64 = (0 - 1) as uint64;
+    Assert(wrap_sub == 0xFFFFFFFFFFFFFFFF, "uint64 subtraction wraps below 0");
+
+    Assert(1000 as uint64 == 1000 as uint64, "uint64 equality");
+    Assert(1000 as uint64 != 1001 as uint64, "uint64 inequality");
+    Assert(999 as uint64 < 1000 as uint64, "uint64 less-than");
+    Assert(1000 as uint64 <= 1000 as uint64, "uint64 less-than-or-equal");
+    Assert(1000 as uint64 > 999 as uint64, "uint64 greater-than");
+    Assert(1000 as uint64 >= 1000 as uint64, "uint64 greater-than-or-equal");
+
+    Assert((0x00FF00FF00FF00FF as uint64 & 0x0F0F0F0F0F0F0F0F as uint64) == 0x000F000F000F000F, "uint64 bitwise AND");
+    Assert((0x00FF00FF00FF00FF as uint64 | 0x0F0F0F0F0F0F0F0F as uint64) == 0x0FFF0FFF0FFF0FFF, "uint64 bitwise OR");
+    Assert((0x00FF00FF00FF00FF as uint64 ^ 0x0F0F0F0F0F0F0F0F as uint64) == 0x0FF00FF00FF00FF0, "uint64 bitwise XOR");
+    Assert((~0x00000000000000FF as uint64) == 0xFFFFFFFFFFFFFF00, "uint64 bitwise NOT");
+
+    Assert((1 as uint64 << 32) == 0x0000000100000000, "uint64 left shift");
+    Assert((0x8000000000000000 as uint64 >> 56) == 0x80, "uint64 right shift is logical");
+    Assert((1 as uint64 << 63) == 0x8000000000000000, "uint64 left shift to MSB");
+
+    let high: uint64 = 0xFFFFFFFFFFFFFF80;
+    let as_i64: int64 = high as int64;
+    Assert(as_i64 == -128, "uint64 0xFFFFFFFFFFFFFF80 reinterprets as int64 -128");
+
+    let narrow: uint32 = max as uint32;
+    Assert(narrow == 0xFFFFFFFF, "uint64 to uint32 truncates to low dword");
+
+    var x: uint64 = 5;
+    x = x + 1;
+    Assert(x == 6, "uint64 var mutation via addition");
+    x += 10;
+    Assert(x == 16, "uint64 compound += operator");
+    x -= 6;
+    Assert(x == 10, "uint64 compound -= operator");
+    x *= 2;
+    Assert(x == 20, "uint64 compound *= operator");
+    x /= 4;
+    Assert(x == 5, "uint64 compound /= operator");
+    x %= 3;
+    Assert(x == 2, "uint64 compound %= operator");
+
+    let small: uint64 = 42;
+    let big: uint = small;
+    Assert(big == 42, "uint64 is assignable to uint");
+
+    // Note: Rux doesn't currently support uint64 literals with a suffix, but if it did, these would be the tests:
+    // let lit1 = 1000000000u64;
+    // let lit2 = 18446744073709551615u64;
+    // Assert(lit1 == 1000000000, "uint64 literal with u64 suffix");
+    // Assert(lit2 == 0xFFFFFFFFFFFFFFFF, "uint64 literal with u64 suffix");
+
+    let hex: uint64 = 0xFFFFFFFFFFFFFFFF;
+    Assert(hex == max, "uint64 hex literal parity");
+
+    let flag: uint64 = 0;
+    Assert(flag == 0, "uint64 zero is falsy-equivalent when compared");
+    Assert(!(flag != 0), "uint64 zero not-nonzero");
+
+    let nz = 1u64;
+    Assert(nz != 0, "uint64 nonzero value");
+    return 0;
+}

@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #pragma once
 
 #include <cstdint>
@@ -150,7 +147,7 @@ struct Token {
     SourceLocation location;
 
     // Convenience predicates
-    [[nodiscard]] bool Is(TokenKind const k) const noexcept {
+    [[nodiscard]] bool Is(const TokenKind k) const noexcept {
         return kind == k;
     }
 

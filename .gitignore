@@ -1,5 +1,41 @@
-.idea/
+# Build output
 Bin/
-Temp/
+bin/
+Build/
 build/
+cmake-build-*/
+out/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+CMakeUserPresets.json
 compile_commands.json
+_deps/
+
+# Compiler / linker artifacts
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+
+# IDE / editor
+.idea/
+.vscode/
+.vs/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

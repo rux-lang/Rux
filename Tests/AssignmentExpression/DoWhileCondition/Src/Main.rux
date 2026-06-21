@@ -1,7 +1,0 @@
-func Main() -> int {
-    var x = 0;
-    do {
-        x = 2;
-    } while (x = 1);
-    return 0;
-}

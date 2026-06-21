@@ -1,0 +1,13 @@
+import Std::Io::{ Print, PrintLine };
+import Std::Display;
+
+func Add(a: float, b: float) -> float {
+    return a + b;
+}
+
+func Main() -> int {
+    Print("Hello, Rux!\n");
+    PrintLine("{} + {} = {}", 10, 20, 10 + 20);
+    PrintLine("{} + {} = {}", 1.5, 2.4, Add(1.5, 2.4));
+    return 0;
+}

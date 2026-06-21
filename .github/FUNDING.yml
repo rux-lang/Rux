@@ -1,0 +1,4 @@
+# Adds a "Sponsor" button to the repository, linking to these funding sources.
+open_collective: ruxlang
+patreon: ruxlang
+custom: ["https://rux-lang.dev/support"]

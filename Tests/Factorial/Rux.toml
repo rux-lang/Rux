@@ -1,7 +1,10 @@
 [Package]
-Name    = "factorial_test"
+Name = "Factorial"
 Version = "0.1.0"
-Type    = "bin"
+Description = "Test for Rux compiler"
+
+[Dependencies]
+Std = "*"
 
 [Build]
-Output = "Bin"
+Output = "../Bin"

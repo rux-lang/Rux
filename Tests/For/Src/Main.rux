@@ -1,0 +1,14 @@
+import Std::Assert;
+
+// struct Range<T> {
+//     lo: T;
+//     hi: T;
+//     inclusive: bool8;
+// }
+
+func Main() -> int {
+    for i in 0..=10 {
+        Assert(i < 11, "loop index out of bounds");
+    }
+    return 0;
+}

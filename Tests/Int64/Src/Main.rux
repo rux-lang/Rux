@@ -1,0 +1,85 @@
+import Std::Assert;
+
+func Main() -> int {
+    let a: int64 = 1000000000;
+    let b: int64 = 3000;
+
+    Assert(a + b == 1000003000, "int64 addition");
+    Assert(a - b == 999997000, "int64 subtraction");
+    Assert(a * b == 3000000000000, "int64 multiplication");
+    Assert(a / b == 333333, "int64 division truncates");
+    Assert(a % b == 1000, "int64 modulo");
+
+    let neg: int64 = -1000000000;
+    Assert(neg / b == -333333, "int64 signed division truncates toward zero");
+    Assert(neg % b == -1000, "int64 signed modulo keeps dividend sign");
+
+    let min: int64 = -9223372036854775808;
+    let max: int64 = 9223372036854775807;
+    Assert(min == -9223372036854775808, "int64 min is -9223372036854775808");
+    Assert(max == 9223372036854775807, "int64 max is 9223372036854775807");
+
+    let wrap_add: int64 = (max + 1) as int64;
+    Assert(wrap_add == -9223372036854775808, "int64 addition wraps at 9223372036854775808");
+
+    let wrap_sub: int64 = (min - 1) as int64;
+    Assert(wrap_sub == 9223372036854775807, "int64 subtraction wraps below min");
+
+    Assert(1000 as int64 == 1000 as int64, "int64 equality");
+    Assert(1000 as int64 != 1001 as int64, "int64 inequality");
+    Assert(-1 as int64 < 1 as int64, "int64 less-than across sign");
+    Assert(-1000 as int64 <= -1000 as int64, "int64 less-than-or-equal");
+    Assert(1000 as int64 > -1000 as int64, "int64 greater-than across sign");
+    Assert(1000 as int64 >= 1000 as int64, "int64 greater-than-or-equal");
+
+    Assert((0x00FF00FF00FF00FF as int64 & 0x0F0F0F0F0F0F0F0F as int64) == 0x000F000F000F000F, "int64 bitwise AND");
+    Assert((0x00FF00FF00FF00FF as int64 | 0x0F0F0F0F0F0F0F0F as int64) == 0x0FFF0FFF0FFF0FFF, "int64 bitwise OR");
+    Assert((0x00FF00FF00FF00FF as int64 ^ 0x0F0F0F0F0F0F0F0F as int64) == 0x0FF00FF00FF00FF0, "int64 bitwise XOR");
+    Assert((~0x00000000000000FF as int64) == -256, "int64 bitwise NOT");
+
+    Assert((1 as int64 << 32) == 0x0000000100000000, "int64 left shift");
+    Assert((0x4000000000000000 as int64 >> 56) == 0x40, "int64 positive right shift");
+    Assert((-9223372036854775808 as int64 >> 56) == -128, "int64 right shift sign-extends");
+    Assert((1 as int64 << 63) == -9223372036854775808, "int64 left shift to sign bit");
+
+    let low: int64 = -128;
+    let as_u64: uint64 = low as uint64;
+    Assert(as_u64 == 0xFFFFFFFFFFFFFF80, "int64 -128 reinterprets as uint64");
+
+    let narrow: int32 = max as int32;
+    Assert(narrow == -1, "int64 max truncates to int32 -1");
+
+    var x: int64 = 5;
+    x = x + 1;
+    Assert(x == 6, "int64 var mutation via addition");
+    x += 10;
+    Assert(x == 16, "int64 compound += operator");
+    x -= 6;
+    Assert(x == 10, "int64 compound -= operator");
+    x *= 2;
+    Assert(x == 20, "int64 compound *= operator");
+    x /= 4;
+    Assert(x == 5, "int64 compound /= operator");
+    x %= 3;
+    Assert(x == 2, "int64 compound %= operator");
+
+    let small: int64 = -42;
+    let big: int = small;
+    Assert(big == -42, "int64 is assignable to int");
+
+    let lit1 = 1000000000i64;
+    let lit2 = -9223372036854775808i64;
+    Assert(lit1 == 1000000000, "int64 literal with i64 suffix");
+    Assert(lit2 == -9223372036854775808, "int64 literal with i64 suffix");
+
+    let hex: int64 = 0x7FFFFFFFFFFFFFFF;
+    Assert(hex == max, "int64 hex literal parity");
+
+    let flag: int64 = 0;
+    Assert(flag == 0, "int64 zero is falsy-equivalent when compared");
+    Assert(!(flag != 0), "int64 zero not-nonzero");
+
+    let nz = -1i64;
+    Assert(nz != 0, "int64 nonzero value");
+    return 0;
+}

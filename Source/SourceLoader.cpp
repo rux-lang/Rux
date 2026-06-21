@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #include "Rux/SourceLoader.h"
 
 #include <algorithm>
@@ -9,8 +6,8 @@
 #include <sstream>
 
 namespace Rux {
-std::optional<SourceLoadResult> SourceLoader::Load(std::filesystem::path const &manifestDir) {
-    auto const srcDir = manifestDir / "Src";
+std::optional<SourceLoadResult> SourceLoader::Load(const std::filesystem::path &manifestDir) {
+    const auto srcDir = manifestDir / "Src";
     if (!std::filesystem::exists(srcDir)) {
         std::print(stderr, "error: source directory '{}' does not exist\n", srcDir.string());
         return std::nullopt;
@@ -19,16 +16,15 @@ std::optional<SourceLoadResult> SourceLoader::Load(std::filesystem::path const &
         std::print(stderr, "error: '{}' is not a directory\n", srcDir.string());
         return std::nullopt;
     }
-    auto const paths = CollectSourcePaths(srcDir);
+    const auto paths = CollectSourcePaths(srcDir);
     if (paths.empty()) {
         std::print(stderr, "warning: no *.rux files found under '{}'\n", srcDir.string());
     }
     SourceLoadResult result;
-    for (auto const &path : paths) {
+    for (const auto &path : paths) {
         auto file = LoadFile(path);
         if (!file) {
-            result.errors.push_back(
-                std::format("error: cannot read source file '{}'\n", path.string()));
+            result.errors.push_back(std::format("error: cannot read source file '{}'\n", path.string()));
             continue;
         }
         result.files.push_back(std::move(*file));
@@ -36,7 +32,7 @@ std::optional<SourceLoadResult> SourceLoader::Load(std::filesystem::path const &
     return result;
 }
 
-std::optional<SourceFile> SourceLoader::LoadFile(std::filesystem::path const &path) {
+std::optional<SourceFile> SourceLoader::LoadFile(const std::filesystem::path &path) {
     std::ifstream stream(path);
     if (!stream) {
         return std::nullopt;
@@ -54,10 +50,9 @@ std::optional<SourceFile> SourceLoader::LoadFile(std::filesystem::path const &pa
     };
 }
 
-std::vector<std::filesystem::path>
-SourceLoader::CollectSourcePaths(std::filesystem::path const &srcDir) {
+std::vector<std::filesystem::path> SourceLoader::CollectSourcePaths(const std::filesystem::path &srcDir) {
     std::vector<std::filesystem::path> paths;
-    for (auto const &entry : std::filesystem::recursive_directory_iterator(srcDir)) {
+    for (const auto &entry : std::filesystem::recursive_directory_iterator(srcDir)) {
         if (!entry.is_regular_file()) {
             continue;
         }

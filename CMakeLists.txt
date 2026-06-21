@@ -1,80 +1,67 @@
-cmake_minimum_required(VERSION 3.31)
+cmake_minimum_required(VERSION 4.2)
 project(Rux VERSION 0.3.1 LANGUAGES CXX)
 
-include(CTest)
+set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# Handle C++26 cleanly across all toolchains
-if (MSVC)
-    # Bypasses CMake feature tracking limits by directly enforcing MSVC's latest flag
-    add_compile_options(/std:c++latest)
-else ()
-    set(CMAKE_CXX_STANDARD 26)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-endif ()
-
-# Target libc++ specifically for Clang on Linux to support C++26 features like <print>
-if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT APPLE AND UNIX)
-    add_compile_options(-stdlib=libc++)
-    add_link_options(-stdlib=libc++)
+if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif ()
 
 string(TIMESTAMP RUX_BUILD_DATE "%Y-%m-%d")
 string(TIMESTAMP RUX_BUILD_TIME "%H:%M:%S")
 
 configure_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/Include/Rux/Version.h.in
-        ${CMAKE_CURRENT_BINARY_DIR}/generated/Rux/Version.h
-        @ONLY
+    ${CMAKE_CURRENT_SOURCE_DIR}/Include/Rux/Version.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/Rux/Version.h
+    @ONLY
 )
 
 add_executable(rux
-        Source/Main.cpp
-        Source/Platform.cpp
-        Source/Cli/Cli.cpp
-        Source/Cli/Commands/HelpCmd.cpp
-        Source/Cli/Commands/Base/BuildCmd.cpp
-        Source/Cli/Commands/Base/CheckCmd.cpp
-        Source/Cli/Commands/Base/InstallCmd.cpp
-        Source/Cli/Commands/Base/PackageCmd.cpp
-        Source/Cli/Commands/Base/UtilityCmd.cpp
-        Source/Manifest.cpp
-        Source/Package.cpp
-        Source/Token.cpp
-        Source/Lexer.cpp
-        Source/SourceLoader.cpp
-        Source/Parser.cpp
-        Source/Sema.cpp
-        Source/Hir.cpp
-        Source/Lir.cpp
-        Source/Asm.cpp
-        Source/Rcu.cpp
-        Source/Linker.cpp
-        Source/Optimizer.cpp
-)
+    Source/Main.cpp
 
-# GCC/MinGW: link experimental libstdc++ extensions (needed for <print> support in some builds)
-if (MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_link_libraries(rux PRIVATE stdc++exp)
-endif ()
+    # Platform layer
+    Source/Host.cpp
+
+    # Command-line interface
+    Source/Cli.cpp
+    Source/Terminal.cpp
+    Source/BuildReport.cpp
+    Source/BuildTarget.cpp
+    Source/Process.cpp
+    Source/HelpCmd.cpp
+    Source/BuildCmd.cpp
+    Source/CheckCmd.cpp
+    Source/InstallCmd.cpp
+    Source/PackageCmd.cpp
+    Source/UtilityCmd.cpp
+
+    # Package / manifest handling
+    Source/Manifest.cpp
+    Source/Package.cpp
+
+    # Compiler pipeline
+    Source/Token.cpp
+    Source/Lexer.cpp
+    Source/SourceLoader.cpp
+    Source/Parser.cpp
+    Source/Sema.cpp
+    Source/Hir.cpp
+    Source/Lir.cpp
+    Source/Optimizer.cpp
+    Source/Asm.cpp
+    Source/Rcu.cpp
+    Source/Linker.cpp
+)
 
 target_include_directories(rux PRIVATE
-        Include
-        ${CMAKE_CURRENT_BINARY_DIR}/generated
+    Include
+    ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
-if (WIN32)
-    target_link_libraries(rux PRIVATE Psapi Winhttp)
-endif ()
-
-set_property(TARGET rux
-        PROPERTY MSVC_RUNTIME_LIBRARY "$<IF:$<CONFIG:Release>,MultiThreaded,MultiThreadedDebugDLL>"
-)
-
-include(GNUInstallDirs)
-install(TARGETS rux RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-
-if (BUILD_TESTING)
-    add_subdirectory(Tests)
+if (MSVC OR (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+    set_property(TARGET rux PROPERTY
+        MSVC_RUNTIME_LIBRARY
+        "$<IF:$<CONFIG:Release>,MultiThreaded,MultiThreaded$<$<CONFIG:Debug>:Debug>DLL>")
 endif ()

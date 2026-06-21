@@ -1,0 +1,123 @@
+import Std::Assert;
+
+func Main() -> int {
+    // Basic arithmetic
+    let a: uint8 = 10;
+    let b: uint8 = 3;
+
+    Assert(a + b == 13, "uint8 addition");
+    Assert(a - b == 7, "uint8 subtraction");
+    Assert(a * b == 30, "uint8 multiplication");
+    Assert(a / b == 3, "uint8 division truncates");
+    Assert(a % b == 1, "uint8 modulo");
+
+    // Boundary values
+    let min: uint8 = 0;
+    let max: uint8 = 255;
+
+    Assert(min == 0, "uint8 min is 0");
+    Assert(max == 255, "uint8 max is 255");
+
+    // Wrapping / overflow behaviour
+    let wrap_add: uint8 = (255 + 1) as uint8;
+    Assert(wrap_add == 0, "uint8 addition wraps at 256");
+
+    let wrap_sub: uint8 = (0 - 1) as uint8;
+    Assert(wrap_sub == 255, "uint8 subtraction wraps below 0");
+
+    // Comparisons
+    Assert(10 as uint8 == 10 as uint8, "uint8 equality");
+    Assert(10 as uint8 != 11 as uint8, "uint8 inequality");
+    Assert(5 as uint8 < 10 as uint8, "uint8 less-than");
+    Assert(10 as uint8 <= 10 as uint8, "uint8 less-than-or-equal (equal case)");
+    Assert(9 as uint8 <= 10 as uint8, "uint8 less-than-or-equal (less case)");
+    Assert(10 as uint8 >  5  as uint8, "uint8 greater-than");
+    Assert(10 as uint8 >= 10 as uint8, "uint8 greater-than-or-equal (equal case)");
+    Assert(10 as uint8 >= 9  as uint8, "uint8 greater-than-or-equal (greater case)");
+
+    // Bitwise operations
+    Assert((0b1010 as uint8 & 0b1100 as uint8) == 0b1000, "uint8 bitwise AND");
+    Assert((0b1010 as uint8 | 0b0101 as uint8) == 0b1111, "uint8 bitwise OR");
+    Assert((0b1010 as uint8 ^ 0b1100 as uint8) == 0b0110, "uint8 bitwise XOR");
+    Assert((~0b00001111 as uint8) == 0b11110000, "uint8 bitwise NOT");
+
+    // Shifts
+    Assert((1 as uint8 << 4) == 16, "uint8 left shift");
+    Assert((128 as uint8 >> 3) == 16, "uint8 right shift (logical, no sign extension)");
+    Assert((0xFF as uint8 >> 7) == 1, "uint8 right shift MSB");
+    Assert((1 as uint8 << 7)    == 128, "uint8 left shift to MSB");
+
+    // Shift does not sign-extend
+    Assert((0x80 as uint8 >> 1) == 0x40, "uint8 right shift is logical not arithmetic");
+
+    // Casting to wider types
+    let u: uint8  = 200;
+    let w16: uint16 = u as uint16;
+    let w32: uint32 = u as uint32;
+    let w64: uint64 = u as uint64;
+
+    Assert(w16 == 200, "uint8 zero-extends to uint16");
+    Assert(w32 == 200, "uint8 zero-extends to uint32");
+    Assert(w64 == 200, "uint8 zero-extends to uint64");
+
+    // Casting to signed (same width)
+    let high: uint8 = 200;
+    let as_i8: int8 = high as int8;
+    Assert(as_i8 == -56, "uint8 200 reinterprets as int8 -56");
+
+    let low: uint8 = 127;
+    let ok_i8: int8 = low as int8;
+    Assert(ok_i8 == 127, "uint8 127 reinterprets as int8 127 (fits)");
+
+    // Casting from wider unsigned (truncation)
+    let wide: uint16 = 0x01FF;
+    let narrow: uint8 = wide as uint8;
+    Assert(narrow == 0xFF, "uint16 → uint8 truncates to low byte");
+
+    // Assignment and mutation
+    var x: uint8 = 5;
+    x = x + 1;
+    Assert(x == 6, "uint8 var mutation via addition");
+
+    x += 10;
+    Assert(x == 16, "uint8 compound += operator");
+
+    x -= 6;
+    Assert(x == 10, "uint8 compound -= operator");
+
+    x *= 2;
+    Assert(x == 20, "uint8 compound *= operator");
+
+    x /= 4;
+    Assert(x == 5, "uint8 compound /= operator");
+
+    x %= 3;
+    Assert(x == 2, "uint8 compound %= operator");
+
+    // Implicit widening to uint
+    let small: uint8 = 42;
+    let big: uint = small; // should widen silently
+    Assert(big == 42, "uint8 widens implicitly to uint");
+
+    // Literals with suffixes
+    let val1 = 100u8;
+    let val2 = 255u8;
+    Assert(val1 == 100, "uint8 literal with u8 suffix"); 
+    Assert(val2 == 255, "uint8 literal with u8 suffix");
+
+    // Hex and binary literals
+    let hex: uint8 = 0xFF;
+    let bin: uint8 = 0b11111111;
+    Assert(hex == 255, "uint8 hex literal 0xFF == 255");
+    Assert(bin == 255, "uint8 binary literal 0b11111111 == 255");
+    Assert(hex == bin, "uint8 hex and binary literal parity");
+
+    // Use in conditions
+    let flag: uint8 = 0;
+    Assert(flag == 0, "uint8 zero is falsy-equivalent when compared");
+    Assert(!(flag != 0), "uint8 zero not-nonzero");
+
+    let nz = 1u8;
+    Assert(nz != 0, "uint8 nonzero value");
+    return 0;
+}

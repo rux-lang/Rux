@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #pragma once
 
 #include "Rux/Ast.h"
@@ -491,14 +488,14 @@ struct HirPackage {
 // Input modules must have passed semantic analysis without errors.
 class Hir {
 public:
-    explicit Hir(std::vector<Module const *> modules);
+    explicit Hir(std::vector<const Module *> modules);
     [[nodiscard]] HirPackage Generate();
 
     // Write a human-readable dump of the HIR package to `path`.
-    static bool Dump(HirPackage const &package, std::filesystem::path const &path);
+    static bool Dump(const HirPackage &package, const std::filesystem::path &path);
 
 private:
-    std::vector<Module const *> modules_;
+    std::vector<const Module *> modules_;
 };
 
 inline HirGuardedPattern::~HirGuardedPattern() = default;

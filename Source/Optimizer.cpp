@@ -58,8 +58,8 @@ void Optimizer::OptimizeStmt(HirStmtPtr &stmt) {
                 }
 
                 if (IsIntegerLiteral(s->init.get())) {
-                    constants[s->name] = ConstantValue{
-                        false, GetIntegerLiteral(s->init.get()).value(), false, s->init->type};
+                    constants[s->name] =
+                        ConstantValue{false, GetIntegerLiteral(s->init.get()).value(), false, s->init->type};
                 }
                 else if (IsBoolLiteral(s->init.get())) {
                     constants[s->name] = {true, 0, GetBoolLiteral(s->init.get()), s->init->type};
@@ -83,7 +83,7 @@ void Optimizer::OptimizeExpr(HirExprPtr &expr) {
         auto it = constants.find(var->name);
 
         if (it != constants.end()) {
-            auto const &value = it->second;
+            const auto &value = it->second;
 
             if (value.isBool) {
                 expr = MakeBoolLiteral(value.boolValue, value.type);
@@ -112,46 +112,45 @@ void Optimizer::OptimizeExpr(HirExprPtr &expr) {
     }
 }
 
-bool Optimizer::IsIntegerLiteral(HirExpr const *expr) {
-    auto const *lit = dynamic_cast<HirLiteralExpr const *>(expr);
+bool Optimizer::IsIntegerLiteral(const HirExpr *expr) {
+    const auto *lit = dynamic_cast<const HirLiteralExpr *>(expr);
     return lit && lit->type.IsInteger();
 }
 
-bool Optimizer::IsBoolLiteral(HirExpr const *expr) {
-    auto const *lit = dynamic_cast<HirLiteralExpr const *>(expr);
+bool Optimizer::IsBoolLiteral(const HirExpr *expr) {
+    const auto *lit = dynamic_cast<const HirLiteralExpr *>(expr);
     return lit && lit->type.IsBool();
 }
 
-std::optional<std::int64_t> Optimizer::GetIntegerLiteral(HirExpr const *expr) {
-    auto const *lit = dynamic_cast<HirLiteralExpr const *>(expr);
+std::optional<std::int64_t> Optimizer::GetIntegerLiteral(const HirExpr *expr) {
+    const auto *lit = dynamic_cast<const HirLiteralExpr *>(expr);
     if (!lit) {
         return std::nullopt;
     }
     std::int64_t result;
-    auto [ptr, ec] =
-        std::from_chars(lit->value.data(), lit->value.data() + lit->value.size(), result);
+    auto [ptr, ec] = std::from_chars(lit->value.data(), lit->value.data() + lit->value.size(), result);
     if (ec == std::errc()) {
         return result;
     }
     return std::nullopt;
 }
 
-bool Optimizer::GetBoolLiteral(HirExpr const *expr) {
-    auto const *lit = dynamic_cast<HirLiteralExpr const *>(expr);
+bool Optimizer::GetBoolLiteral(const HirExpr *expr) {
+    const auto *lit = dynamic_cast<const HirLiteralExpr *>(expr);
     if (!lit) {
         return false;
     }
     return lit->value == "true";
 }
 
-HirExprPtr Optimizer::MakeIntegerLiteral(std::int64_t value, TypeRef const &type) {
+HirExprPtr Optimizer::MakeIntegerLiteral(std::int64_t value, const TypeRef &type) {
     auto lit = std::make_unique<HirLiteralExpr>();
     lit->type = type;
     lit->value = std::to_string(value);
     return lit;
 }
 
-HirExprPtr Optimizer::MakeBoolLiteral(bool value, TypeRef const &type) {
+HirExprPtr Optimizer::MakeBoolLiteral(bool value, const TypeRef &type) {
     auto lit = std::make_unique<HirLiteralExpr>();
     lit->type = type;
     lit->value = value ? "true" : "false";
@@ -164,21 +163,21 @@ bool Optimizer::FoldBinary(HirExprPtr &expr) {
         return false;
     }
 
-    bool const leftIsInt = IsIntegerLiteral(bin->left.get());
-    bool const rightIsInt = IsIntegerLiteral(bin->right.get());
-    bool const leftIsBool = IsBoolLiteral(bin->left.get());
-    bool const rightIsBool = IsBoolLiteral(bin->right.get());
+    const bool leftIsInt = IsIntegerLiteral(bin->left.get());
+    const bool rightIsInt = IsIntegerLiteral(bin->right.get());
+    const bool leftIsBool = IsBoolLiteral(bin->left.get());
+    const bool rightIsBool = IsBoolLiteral(bin->right.get());
 
     // Integer folding
     if (leftIsInt && rightIsInt) {
-        auto const lhsOpt = GetIntegerLiteral(bin->left.get());
-        auto const rhsOpt = GetIntegerLiteral(bin->right.get());
+        const auto lhsOpt = GetIntegerLiteral(bin->left.get());
+        const auto rhsOpt = GetIntegerLiteral(bin->right.get());
         if (!lhsOpt || !rhsOpt) {
             return false;
         }
 
-        auto const lhs = *lhsOpt;
-        auto const rhs = *rhsOpt;
+        const auto lhs = *lhsOpt;
+        const auto rhs = *rhsOpt;
 
         switch (bin->op) {
         case TokenKind::Plus:
@@ -227,8 +226,8 @@ bool Optimizer::FoldBinary(HirExprPtr &expr) {
 
     // Bool folding
     if (leftIsBool && rightIsBool) {
-        bool const lhs = GetBoolLiteral(bin->left.get());
-        bool const rhs = GetBoolLiteral(bin->right.get());
+        const bool lhs = GetBoolLiteral(bin->left.get());
+        const bool rhs = GetBoolLiteral(bin->right.get());
 
         switch (bin->op) {
         case TokenKind::Equal:
@@ -268,12 +267,12 @@ bool Optimizer::FoldUnary(HirExprPtr &expr) {
     }
 
     if (IsIntegerLiteral(unary->operand.get())) {
-        auto const valueOpt = GetIntegerLiteral(unary->operand.get());
+        const auto valueOpt = GetIntegerLiteral(unary->operand.get());
         if (!valueOpt) {
             return false;
         }
 
-        auto const value = *valueOpt;
+        const auto value = *valueOpt;
 
         switch (unary->op) {
         case TokenKind::Minus:
@@ -291,7 +290,7 @@ bool Optimizer::FoldUnary(HirExprPtr &expr) {
     }
 
     if (IsBoolLiteral(unary->operand.get())) {
-        bool const value = GetBoolLiteral(unary->operand.get());
+        const bool value = GetBoolLiteral(unary->operand.get());
 
         switch (unary->op) {
         case TokenKind::Bang:
@@ -313,15 +312,13 @@ bool Optimizer::SimplifyBinary(HirExprPtr &expr) {
 
     switch (bin->op) {
     case TokenKind::Plus: {
-        auto const leftOpt =
-            IsIntegerLiteral(bin->left.get()) ? GetIntegerLiteral(bin->left.get()) : std::nullopt;
+        const auto leftOpt = IsIntegerLiteral(bin->left.get()) ? GetIntegerLiteral(bin->left.get()) : std::nullopt;
         if (leftOpt && *leftOpt == 0) {
             expr = std::move(bin->right);
             return true;
         }
 
-        auto const rightOpt =
-            IsIntegerLiteral(bin->right.get()) ? GetIntegerLiteral(bin->right.get()) : std::nullopt;
+        const auto rightOpt = IsIntegerLiteral(bin->right.get()) ? GetIntegerLiteral(bin->right.get()) : std::nullopt;
         if (rightOpt && *rightOpt == 0) {
             expr = std::move(bin->left);
             return true;
@@ -330,8 +327,7 @@ bool Optimizer::SimplifyBinary(HirExprPtr &expr) {
     }
 
     case TokenKind::Minus: {
-        auto const opt =
-            IsIntegerLiteral(bin->right.get()) ? GetIntegerLiteral(bin->right.get()) : std::nullopt;
+        const auto opt = IsIntegerLiteral(bin->right.get()) ? GetIntegerLiteral(bin->right.get()) : std::nullopt;
         if (opt && *opt == 0) {
             expr = std::move(bin->left);
             return true;
@@ -340,11 +336,11 @@ bool Optimizer::SimplifyBinary(HirExprPtr &expr) {
     }
 
     case TokenKind::Star: {
-        auto getVal = [](HirExpr const *e) -> std::optional<std::int64_t> {
+        auto getVal = [](const HirExpr *e) -> std::optional<std::int64_t> {
             return IsIntegerLiteral(e) ? GetIntegerLiteral(e) : std::nullopt;
         };
 
-        if (auto const v = getVal(bin->left.get())) {
+        if (const auto v = getVal(bin->left.get())) {
             if (*v == 0) {
                 expr = MakeIntegerLiteral(0, bin->type);
                 return true;
@@ -355,7 +351,7 @@ bool Optimizer::SimplifyBinary(HirExprPtr &expr) {
             }
         }
 
-        if (auto const v = getVal(bin->right.get())) {
+        if (const auto v = getVal(bin->right.get())) {
             if (*v == 0) {
                 expr = MakeIntegerLiteral(0, bin->type);
                 return true;
@@ -369,8 +365,7 @@ bool Optimizer::SimplifyBinary(HirExprPtr &expr) {
     }
 
     case TokenKind::Slash: {
-        auto const opt =
-            IsIntegerLiteral(bin->right.get()) ? GetIntegerLiteral(bin->right.get()) : std::nullopt;
+        const auto opt = IsIntegerLiteral(bin->right.get()) ? GetIntegerLiteral(bin->right.get()) : std::nullopt;
         if (opt && *opt == 1) {
             expr = std::move(bin->left);
             return true;
@@ -379,8 +374,7 @@ bool Optimizer::SimplifyBinary(HirExprPtr &expr) {
     }
 
     case TokenKind::Percent: {
-        auto const opt =
-            IsIntegerLiteral(bin->right.get()) ? GetIntegerLiteral(bin->right.get()) : std::nullopt;
+        const auto opt = IsIntegerLiteral(bin->right.get()) ? GetIntegerLiteral(bin->right.get()) : std::nullopt;
         if (opt && *opt == 1) {
             expr = MakeIntegerLiteral(0, bin->type);
             return true;

@@ -1,0 +1,59 @@
+func TestBool() {
+    var val: bool = true;
+    val = false;
+    val = 10 > 5;
+    val = 10 < 5;
+}
+
+func TestBool8() {
+    var val: bool8 = true;
+    val = false;
+    val = 10 > 5;
+    val = 10 < 5;
+}
+
+func TestBool16() {
+    var val: bool16 = true;
+    val = false;
+    val = 10 > 5;
+    val = 10 < 5;
+}
+
+func TestBool32() {
+    var val: bool32 = true;
+    val = false;
+    val = 10 > 5;
+    val = 10 < 5;
+}
+
+
+func Main() -> int {
+    let valA = 10 > 5;
+    let valB = 10 < 5;
+    let valC = 10 == 10;
+    let valD = 10 != 5;
+    let valE = 10 >= 5;
+    let valF = 10 <= 5;
+    let valG = 10 > 5 && 5 > 3;
+    let valH = 10 > 5 || 5 < 3;
+    let valI = !(10 > 5);
+    let valJ = (10 > 5) && (5 < 3) || (10 == 10);
+    let valK = (10 > 5) && (5 < 3) || (10 == 10) && !(5 > 3);
+    let valL = (10 > 5) && (5 < 3) || (10 == 10) && !(5 > 3) || (10 != 5);
+    if !valG {
+        return 1;
+    }
+    if !valH {
+        return 1;
+    }
+    if !valJ {
+        return 1;
+    }
+    if valK {
+        return 1;
+    }
+    if !valL {
+        return 1;
+    }
+    return 0;
+}

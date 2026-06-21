@@ -1,0 +1,11 @@
+union Bits {
+    asInt:   int32,
+    asFloat: float32,
+    asBytes: uint8[4]
+}
+
+// type Word = Bits;
+
+func Main() -> int {
+    return 0;
+}

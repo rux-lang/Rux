@@ -1,7 +1,0 @@
-[Package]
-Name    = "integer_types_test"
-Version = "0.1.0"
-Type    = "bin"
-
-[Build]
-Output = "Bin"

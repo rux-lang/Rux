@@ -1,7 +1,0 @@
-[Package]
-Name    = "assignment_expr_return_value"
-Version = "0.1.0"
-Type    = "bin"
-
-[Build]
-Output = "Bin"

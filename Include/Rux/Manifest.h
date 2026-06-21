@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #pragma once
 
 #include <filesystem>
@@ -67,39 +64,39 @@ struct Manifest {
      * @param path Path to Rux.toml
      * @return Parsed manifest or std::nullopt on failure
      */
-    static std::optional<Manifest> Load(std::filesystem::path const &path);
+    static std::optional<Manifest> Load(const std::filesystem::path &path);
 
     /**
      * @brief Save manifest to disk.
      * @param path Output file path
      * @return true on success, false on failure
      */
-    [[nodiscard]] bool Save(std::filesystem::path const &path) const;
+    [[nodiscard]] bool Save(const std::filesystem::path &path) const;
 
     /**
      * @brief Add or update a registry dependency.
      * @return false if already exists with same version
      */
-    bool AddDependency(std::string const &name, std::string const &version);
+    bool AddDependency(const std::string &name, const std::string &version);
 
     /**
      * @brief Add or update a path-based dependency.
      * @return false if already exists with same path
      */
-    bool AddPathDependency(std::string const &name, std::string const &path);
+    bool AddPathDependency(const std::string &name, const std::string &path);
 
     /**
      * @brief Remove a dependency by name.
      * @return false if not found
      */
-    bool RemoveDependency(std::string const &name);
+    bool RemoveDependency(const std::string &name);
 
     /**
      * @brief Get combined global and target-specific dependencies.
      * @param target Target name
      * @return Merged dependency list
      */
-    [[nodiscard]] std::vector<Dependency> EffectiveDependencies(std::string const &target) const;
+    [[nodiscard]] std::vector<Dependency> EffectiveDependencies(const std::string &target) const;
 
     /**
      * @brief Find a Rux.toml by walking up directories.
@@ -107,7 +104,7 @@ struct Manifest {
      * @return Path if found, otherwise std::nullopt
      */
     static std::optional<std::filesystem::path>
-    Find(std::filesystem::path const &start = std::filesystem::current_path());
+    Find(const std::filesystem::path &start = std::filesystem::current_path());
 };
 
 /**

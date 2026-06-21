@@ -1,15 +1,12 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #include "Rux/Token.h"
 
 #include <unordered_map>
 
 namespace Rux {
-TokenKind KeywordKind(std::string_view const text) noexcept {
+TokenKind KeywordKind(const std::string_view text) noexcept {
     // Static table built once; string_view keys are fine because the
     // string literals they point to have static storage duration.
-    static std::unordered_map<std::string_view, TokenKind> const kTable = {
+    static const std::unordered_map<std::string_view, TokenKind> kTable = {
         {"if", TokenKind::IfKeyword},
         {"else", TokenKind::ElseKeyword},
         {"while", TokenKind::WhileKeyword},
@@ -43,13 +40,13 @@ TokenKind KeywordKind(std::string_view const text) noexcept {
         {"true", TokenKind::BoolLiteral},
         {"false", TokenKind::BoolLiteral},
     };
-    if (auto const it = kTable.find(text); it != kTable.end()) {
+    if (const auto it = kTable.find(text); it != kTable.end()) {
         return it->second;
     }
     return TokenKind::Ident;
 }
 
-std::string_view TokenKindName(TokenKind const kind) noexcept {
+std::string_view TokenKindName(const TokenKind kind) noexcept {
     switch (kind) {
     case TokenKind::IntLiteral:
         return "IntLiteral";

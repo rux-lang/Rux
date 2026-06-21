@@ -1,0 +1,29 @@
+import Std::Assert;
+
+struct Point {
+    x: char8;
+    y: float64;
+    z: uint16;
+}
+
+func Main() -> int {
+    Assert(sizeof(int8) == 1, "Expected size of int8 to be 1 byte");
+    Assert(sizeof(int16) == 2, "Expected size of int16 to be 2 bytes");
+    Assert(sizeof(int32) == 4, "Expected size of int32 to be 4 bytes");
+    Assert(sizeof(int64) == 8, "Expected size of int64 to be 8 bytes");
+
+    Assert(sizeof(uint8) == 1, "Expected size of uint8 to be 1 byte");
+    Assert(sizeof(uint16) == 2, "Expected size of uint16 to be 2 bytes");
+    Assert(sizeof(uint32) == 4, "Expected size of uint32 to be 4 bytes");
+    Assert(sizeof(uint64) == 8, "Expected size of uint64 to be 8 bytes");
+
+    Assert(sizeof(char8) == 1, "Expected size of char8 to be 1 byte");
+    Assert(sizeof(char16) == 2, "Expected size of char16 to be 2 bytes");
+    Assert(sizeof(char32) == 4, "Expected size of char32 to be 4 bytes");
+
+    Assert(sizeof(float32) == 4, "Expected size of float32 to be 4 bytes");
+    Assert(sizeof(float64) == 8, "Expected size of float64 to be 8 bytes");
+
+    Assert(sizeof(Point) == 24, "Expected size of Point to be 24 bytes");
+    return 0;
+}

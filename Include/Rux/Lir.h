@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #pragma once
 
 #include "Rux/Hir.h"
@@ -59,8 +56,7 @@ enum class LirOpcode {
     // SSA join
     Phi, // %dst = phi <type> [%val, bb], ...
     // Global address
-    GlobalAddr, // %dst = globaladdr <name> — address of a named global
-                // symbol
+    GlobalAddr, // %dst = globaladdr <name> — address of a named global symbol
 };
 
 // LIR Instruction
@@ -69,8 +65,7 @@ struct LirInstr {
     TypeRef type;          // result type (or value type for Store)
     LirOpcode op = LirOpcode::Const;
     std::vector<LirReg> srcs; // source registers
-    std::string strArg;       // literal (Const), name (Load/Call), field
-                              // (FieldPtr), from-type (Cast)
+    std::string strArg;       // literal (Const), name (Load/Call), field (FieldPtr), from-type (Cast)
     std::vector<std::pair<LirReg, std::uint32_t>> phiPreds;  // Phi: (reg, block_index)
     CallingConvention callConv = CallingConvention::Default; // for Call instructions
 };
@@ -217,7 +212,7 @@ public:
     [[nodiscard]] LirPackage Generate();
 
     // Write a human-readable dump of the LIR package to `path`.
-    static bool Dump(LirPackage const &package, std::filesystem::path const &path);
+    static bool Dump(const LirPackage &package, const std::filesystem::path &path);
 
 private:
     HirPackage hir;

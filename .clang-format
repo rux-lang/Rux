@@ -1,18 +1,22 @@
-# Rux project — C++ code style
-# Requires clang-format 18+ for C++26 support
+# Rux C++ style — LLVM base, 4-space indent, east const, 120 columns.
+# Targets the latest Clang/clang-format (see .github/workflows/ci.yml).
+Language: Cpp
 BasedOnStyle: LLVM
+
 AccessModifierOffset: -4
-AlignConsecutiveDeclarations:
-  PadOperators: true
 AlignOperands: AlignAfterOperator
 AllowShortBlocksOnASingleLine: Empty
+# Keep each case body on its own line below the label.
+AllowShortCaseLabelsOnASingleLine: false
+# Keep enums expanded one-enumerator-per-line, matching the existing style.
+AllowShortEnumsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: None
-AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortIfStatementsOnASingleLine: Never
 AllowShortLambdasOnASingleLine: All
 BinPackArguments: true
-BinPackParameters: true
+BinPackParameters: BinPack
 BraceWrapping:
-  AfterControlStatement: false
+  AfterControlStatement: Never
   BeforeCatch: true
   BeforeElse: true
   BeforeWhile: true
@@ -22,42 +26,41 @@ BraceWrapping:
 BreakBeforeBraces: Custom
 BreakConstructorInitializers: BeforeComma
 BreakTemplateDeclarations: Yes
-ColumnLimit: 100
-EnumTrailingComma: Insert
+ColumnLimit: 120
+ContinuationIndentWidth: 4
+DerivePointerAlignment: false
+# Emit/normalize closing-namespace comments (} // namespace Rux::Misc).
+FixNamespaceComments: true
 IncludeBlocks: Regroup
 IncludeCategories:
   - Regex: '^"Rux/'
     Priority: 1
-    SortPriority: 1
   - Regex: '^<'
     Priority: 2
-    SortPriority: 2
   - Regex: '.*'
     Priority: 3
-    SortPriority: 3
 IndentPPDirectives: BeforeHash
-InsertBraces: true
+IndentWidth: 4
 InsertNewlineAtEOF: true
-IntegerLiteralSeparator:
-  Binary: 4
-  BinaryMinDigits: 4
-  Decimal: 3
-  DecimalMinDigits: 7
-  Hex: 4
-  HexMinDigits: 8
 KeepEmptyLines:
+  AtEndOfFile: false
   AtStartOfBlock: false
-MaxEmptyLinesToKeep: 2
+  AtStartOfFile: false
+MaxEmptyLinesToKeep: 1
 NamespaceIndentation: None
-PPIndentWidth: 4
 PackConstructorInitializers: Never
 PointerAlignment: Right
-QualifierAlignment: Right
-RemoveParentheses: ReturnStatement
-RemoveSemicolon: true
+PPIndentWidth: 4
+QualifierAlignment: Left
+ReferenceAlignment: Right
 SeparateDefinitionBlocks: Always
 SortIncludes:
   Enabled: true
   IgnoreCase: false
-IndentWidth: 4
+# Normalize `//comment` to `// comment` (a single leading space).
+SpacesInLineCommentPrefix:
+  Minimum: 1
+  Maximum: 1
+Standard: Latest
 TabWidth: 4
+UseTab: Never

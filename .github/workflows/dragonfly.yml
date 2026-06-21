@@ -1,30 +1,79 @@
-name: DragonFly BSD
+name: DragonFly BSD 6.4
 
 on:
   push:
-    branches: [main, dev]
+    branches: [ main, dev ]
   pull_request:
-    branches: [main, dev]
+    branches: [ main, dev ]
 
+# Allow cancelling superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# GitHub has no native DragonFly BSD runner, so each job runs a DragonFly VM
+# (via QEMU) on an Ubuntu host. Build and Test are separate jobs: the Build
+# VM compiles rux and the binary is synced back to the host and uploaded as
+# an artifact; the Test VM downloads it and runs the suite. Each job boots
+# its own VM, so the toolchain is installed in both (the Test VM also needs
+# the Clang runtime libraries the binary links against).
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    name: DragonFly BSD x86-64
-
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v7
 
-      - name: Build and test in DragonFly BSD VM
+      - name: Build in DragonFly BSD VM
         uses: vmactions/dragonflybsd-vm@v1
         with:
+          release: "6.4.0"
           usesh: true
-          copyback: false
+          # Installs the toolchain via pkg (DragonFly's dports binary
+          # packages). llvm provides an unversioned clang++, so we use that.
           prepare: |
-            uname -a
-            pkg install -y cmake llvm gcc14
-
+            pkg install -y llvm cmake ninja
           run: |
-            export LD_LIBRARY_PATH="/usr/local/lib/gcc14:/usr/local/lib"
-            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++14
-            cmake --build build --parallel 4
-            ctest --test-dir build -C Release --output-on-failure
+            set -e
+            cmake -S . -B build -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_CXX_COMPILER=clang++
+            cmake --build build --config Release
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-dragonfly
+          path: build/rux
+          if-no-files-found: error
+
+  test:
+    name: Test
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-dragonfly
+          path: build
+
+      - name: Test in DragonFly BSD VM
+        uses: vmactions/dragonflybsd-vm@v1
+        with:
+          release: "6.4.0"
+          usesh: true
+          # Installs the Clang runtime libraries the prebuilt binary needs.
+          prepare: |
+            pkg install -y llvm
+          # The test packages depend on Std, so install it first, then run
+          # the suite in workspace mode from the repo root.
+          run: |
+            set -e
+            chmod +x build/rux
+            ./build/rux install Std
+            ./build/rux test --release

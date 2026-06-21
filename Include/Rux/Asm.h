@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #pragma once
 
 #include "Rux/Lir.h"
@@ -25,7 +22,7 @@ public:
     [[nodiscard]] std::string Generate() const;
 
     // Write the assembly text to `path`. Returns false on I/O error.
-    static bool Emit(LirPackage const &package, std::filesystem::path const &path);
+    static bool Emit(const LirPackage &package, const std::filesystem::path &path);
 
 private:
     LirPackage lir;

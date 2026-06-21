@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #pragma once
 
 #include <filesystem>
@@ -27,16 +24,14 @@ public:
     // manifestDir  - the directory that contains Rux.toml
     // Returns nullopt if the Src/ directory does not exist or cannot be
     // opened.
-    [[nodiscard]] static std::optional<SourceLoadResult>
-    Load(std::filesystem::path const &manifestDir);
+    [[nodiscard]] static std::optional<SourceLoadResult> Load(const std::filesystem::path &manifestDir);
 
     // Load a single *.rux file by explicit path.
     // Returns nullopt if the file cannot be opened.
-    [[nodiscard]] static std::optional<SourceFile> LoadFile(std::filesystem::path const &path);
+    [[nodiscard]] static std::optional<SourceFile> LoadFile(const std::filesystem::path &path);
 
 private:
     // Collect all *.rux paths under a directory tree (recursive).
-    static std::vector<std::filesystem::path>
-    CollectSourcePaths(std::filesystem::path const &srcDir);
+    static std::vector<std::filesystem::path> CollectSourcePaths(const std::filesystem::path &srcDir);
 };
 } // namespace Rux

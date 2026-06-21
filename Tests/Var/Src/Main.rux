@@ -1,0 +1,6 @@
+func Main() -> int {
+    var value = 10;
+    value++;
+    value = 20;
+    return 0;
+}

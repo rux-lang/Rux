@@ -1,4 +1,4 @@
-name: Windows
+name: Windows Server 2025
 
 on:
   push:
@@ -6,33 +6,69 @@ on:
   pull_request:
     branches: [ main, dev ]
 
+# Allow cancelling superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-test:
-    # windows-latest is x86-64, so Rux's PE32+ backend emits executables that
-    # run natively here. The I/O thunks resolve against the real GetStdHandle /
-    # WriteFile / ReadFile imports.
-    runs-on: windows-latest
-
+  build:
+    name: Build
+    runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v7
 
-      # CMakeLists requires CMake >= 3.31; pull a known-recent CMake + Ninja
-      # rather than relying on whatever ships on the runner image.
       - name: Install CMake and Ninja
-        uses: lukka/get-cmake@latest
+        uses: lukka/get-cmake@v4.3.3
+        with:
+          cmakeVersion: "4.2.0"
+          ninjaVersion: latest
 
-      # Load the MSVC developer environment so CMake can use cl/link directly
-      # without needing to discover a full Visual Studio installation.
-      - name: Set up MSVC
-        uses: ilammy/msvc-dev-cmd@v1
+      # Initialize the bundled Visual Studio environment so Clang can find
+      # the Windows SDK, CRT headers, and import libraries.
+      - name: Configure and build
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -property installationPath
+          if (-not $vsPath) {
+              throw "Visual Studio installation not found"
+          }
 
-      # Build with Ninja against MSVC. This avoids the Visual Studio generator
-      # discovery path that can fail on some Windows runner images.
-      - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
+          $devShell = Join-Path $vsPath "Common7\Tools\Launch-VsDevShell.ps1"
+          & $devShell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
 
-      - name: Build
-        run: cmake --build build --parallel 4
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_CXX_COMPILER=clang++
+          cmake --build build --config Release
 
-      - name: Run Rux Test Suite
-        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-windows-x64.exe
+          path: build/rux.exe
+          if-no-files-found: error
+
+  test:
+    name: Test
+    needs: build
+    runs-on: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-windows-x64.exe
+          path: build
+
+      # The test packages depend on the Std package, so install it first.
+      - name: Install Std
+        run: ./build/rux.exe install Std
+
+      # Workspace mode: run from the repo root so `rux test` discovers Tests/.
+      - name: Test
+        run: ./build/rux.exe test --release

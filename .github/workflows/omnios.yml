@@ -1,0 +1,80 @@
+name: OmniOS r151052
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+# Allow cancelling superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# GitHub has no native illumos runner, so each job runs an OmniOS VM (an
+# illumos distribution, via QEMU) on an Ubuntu host. Build and Test are
+# separate jobs: the Build VM compiles rux and the binary is synced back to
+# the host and uploaded as an artifact; the Test VM downloads it and runs the
+# suite. Each job boots its own VM, so the toolchain is installed in both (the
+# Test VM also needs the Clang runtime libraries the binary links against).
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build in OmniOS VM
+        uses: vmactions/omnios-vm@v1
+        with:
+          release: "r151052"
+          usesh: true
+          # Installs the toolchain via IPS from the OmniOS extra (ooce) repo.
+          # The clang package is unversioned in FMRI terms here, so we use
+          # plain clang++.
+          prepare: |
+            pkg install clang cmake ninja
+          run: |
+            set -e
+            cmake -S . -B build -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_CXX_COMPILER=clang++
+            cmake --build build --config Release
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-omnios
+          path: build/rux
+          if-no-files-found: error
+
+  test:
+    name: Test
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-omnios
+          path: build
+
+      - name: Test in OmniOS VM
+        uses: vmactions/omnios-vm@v1
+        with:
+          release: "r151052"
+          usesh: true
+          # Installs the Clang runtime libraries the prebuilt binary needs.
+          prepare: |
+            pkg install clang
+          # The test packages depend on Std, so install it first, then run
+          # the suite in workspace mode from the repo root.
+          run: |
+            set -e
+            chmod +x build/rux
+            ./build/rux install Std
+            ./build/rux test --release

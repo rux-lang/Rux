@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #pragma once
 
 #include "Rux/Token.h"
@@ -36,17 +33,16 @@ public:
 
     // Convenience: read file from disk and lex it.
     // Returns std::nullopt if the file cannot be read.
-    [[nodiscard]] static std::optional<LexerResult> FromFile(std::filesystem::path const &path);
+    [[nodiscard]] static std::optional<LexerResult> FromFile(const std::filesystem::path &path);
 
     // Run the full lexer pass and return all tokens + diagnostics.
     [[nodiscard]] LexerResult Tokenize();
 
     // Dump a token list to a file for debugging.
     // Path defaults to sourceName + ".tokens" if not specified.
-    static bool DumpTokens(LexerResult const &result, std::filesystem::path const &path = {});
+    static bool DumpTokens(const LexerResult &result, const std::filesystem::path &path = {});
 
-    [[nodiscard]] static std::optional<std::uint32_t>
-    DecodeCharLiteralCodePoint(std::string_view text);
+    [[nodiscard]] static std::optional<std::uint32_t> DecodeCharLiteralCodePoint(std::string_view text);
 
 private:
     // Source buffer
@@ -99,8 +95,7 @@ private:
     std::string ScanEscapeSequence(); // inside string / char
 
     // Emit helpers
-    [[nodiscard]] Token MakeToken(TokenKind kind, SourceLocation start,
-                                  std::size_t tokenStart) const;
+    [[nodiscard]] Token MakeToken(TokenKind kind, SourceLocation start, std::size_t tokenStart) const;
     void EmitError(SourceLocation loc, std::string message);
     void EmitWarning(SourceLocation loc, std::string message);
 };

@@ -1,0 +1,35 @@
+import Std::{ Assert, Format };
+
+func Main() -> int {
+    let str = Format("Integer: {}, Float: {}\n", 255, 3.141592653589793);
+    Assert(str.data[0] == 'I', "Expected 'I'");
+    Assert(str.data[1] == 'n', "Expected 'n'");
+    Assert(str.data[2] == 't', "Expected 't'");
+    Assert(str.data[3] == 'e', "Expected 'e'");
+    Assert(str.data[4] == 'g', "Expected 'g'");
+    Assert(str.data[5] == 'e', "Expected 'e'");
+    Assert(str.data[6] == 'r', "Expected 'r'");
+    Assert(str.data[7] == ':', "Expected ':'");
+    Assert(str.data[8] == ' ', "Expected space");
+    Assert(str.data[9] == '2', "Expected '2'");
+    Assert(str.data[10] == '5', "Expected '5'");
+    Assert(str.data[11] == '5', "Expected '5'");
+    Assert(str.data[12] == ',', "Expected ','");
+    Assert(str.data[13] == ' ', "Expected space");
+    Assert(str.data[14] == 'F', "Expected 'F'");
+    Assert(str.data[15] == 'l', "Expected 'l'");
+    Assert(str.data[16] == 'o', "Expected 'o'");
+    Assert(str.data[17] == 'a', "Expected 'a'");
+    Assert(str.data[18] == 't', "Expected 't'");
+    Assert(str.data[19] == ':', "Expected ':'");
+    Assert(str.data[20] == ' ', "Expected space");
+    Assert(str.data[21] == '3', "Expected '3'");
+    Assert(str.data[22] == '.', "Expected '.'");
+    Assert(str.data[23] == '1', "Expected '1'");
+    Assert(str.data[24] == '4', "Expected '4'");
+    Assert(str.data[25] == '1', "Expected '1'");
+    Assert(str.data[26] == '5', "Expected '5'");
+    Assert(str.data[27] == '9', "Expected '9'");
+    Assert(str.data[28] == '2', "Expected '2'");
+    return 0;
+}

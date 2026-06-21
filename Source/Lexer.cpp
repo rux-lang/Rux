@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #include "Rux/Lexer.h"
 
 #include <cassert>
@@ -16,18 +13,18 @@ static std::optional<std::uint32_t> DecodeUtf8CodePoint(std::string_view text) {
         return std::nullopt;
     }
 
-    auto const continuation = [&](std::size_t index) -> std::optional<std::uint32_t> {
+    const auto continuation = [&](std::size_t index) -> std::optional<std::uint32_t> {
         if (index >= text.size()) {
             return std::nullopt;
         }
-        auto const byte = static_cast<unsigned char>(text[index]);
+        const auto byte = static_cast<unsigned char>(text[index]);
         if ((byte & 0xC0) != 0x80) {
             return std::nullopt;
         }
         return static_cast<std::uint32_t>(byte & 0x3F);
     };
 
-    auto const b0 = static_cast<unsigned char>(text[0]);
+    const auto b0 = static_cast<unsigned char>(text[0]);
     std::uint32_t codePoint = 0;
     std::size_t width = 0;
     std::uint32_t minValue = 0;
@@ -59,7 +56,7 @@ static std::optional<std::uint32_t> DecodeUtf8CodePoint(std::string_view text) {
         return std::nullopt;
     }
     for (std::size_t i = 1; i < width; ++i) {
-        auto const byte = continuation(i);
+        const auto byte = continuation(i);
         if (!byte) {
             return std::nullopt;
         }
@@ -72,7 +69,7 @@ static std::optional<std::uint32_t> DecodeUtf8CodePoint(std::string_view text) {
 }
 
 bool LexerResult::HasErrors() const noexcept {
-    for (auto const &d : diagnostics) {
+    for (const auto &d : diagnostics) {
         if (d.severity == LexerDiagnostic::Severity::Error) {
             return true;
         }
@@ -85,7 +82,7 @@ Lexer::Lexer(std::string source, std::string sourceName)
     , sourceName(std::move(sourceName)) {
 }
 
-std::optional<LexerResult> Lexer::FromFile(std::filesystem::path const &path) {
+std::optional<LexerResult> Lexer::FromFile(const std::filesystem::path &path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) {
         std::print(stderr, "error: cannot open '{}'\n", path.string());
@@ -113,28 +110,27 @@ LexerResult Lexer::Tokenize() {
     return LexerResult{std::move(tokens), std::move(diagnostics)};
 }
 
-bool Lexer::DumpTokens(LexerResult const &result, std::filesystem::path const &path) {
+bool Lexer::DumpTokens(const LexerResult &result, const std::filesystem::path &path) {
     std::ofstream f(path);
     if (!f) {
         return false;
     }
-    for (auto const &tok : result.tokens) {
+    for (const auto &tok : result.tokens) {
         std::print(f, "{:>4}:{:<4}  {:<16}  {}\n", tok.location.line, tok.location.column,
                    std::string(TokenKindName(tok.kind)), tok.text);
     }
     if (!result.diagnostics.empty()) {
         std::print(f, "\n--- diagnostics ---\n");
-        for (auto const &d : result.diagnostics) {
+        for (const auto &d : result.diagnostics) {
             std::print(f, "{:>4}:{:<4}  {}  {}\n", d.location.line, d.location.column,
-                       d.severity == LexerDiagnostic::Severity::Error ? "error  " : "warning",
-                       d.message);
+                       d.severity == LexerDiagnostic::Severity::Error ? "error  " : "warning", d.message);
         }
     }
     return f.good();
 }
 
 std::optional<std::uint32_t> Lexer::DecodeCharLiteralCodePoint(std::string_view text) {
-    std::size_t const quote = text.find('\'');
+    const std::size_t quote = text.find('\'');
     if (quote == std::string::npos || text.size() < quote + 3) {
         return std::nullopt;
     }
@@ -169,12 +165,12 @@ std::optional<std::uint32_t> Lexer::DecodeCharLiteralCodePoint(std::string_view 
             return static_cast<std::uint32_t>('\"');
         }
         if (body.starts_with("\\u{") && body.ends_with("}")) {
-            std::string_view const digits = body.substr(3, body.size() - 4);
+            const std::string_view digits = body.substr(3, body.size() - 4);
             if (digits.empty() || digits.size() > 8) {
                 return std::nullopt;
             }
             std::uint32_t codePoint = 0;
-            for (char const digit : digits) {
+            for (const char digit : digits) {
                 codePoint <<= 4;
                 if (digit >= '0' && digit <= '9') {
                     codePoint |= static_cast<std::uint32_t>(digit - '0');
@@ -215,8 +211,8 @@ void Lexer::ScanAll() {
 
 // NextToken – dispatch on the current character
 Token Lexer::NextToken() {
-    SourceLocation const start = CurrentLocation();
-    char const c = Peek();
+    const SourceLocation start = CurrentLocation();
+    const char c = Peek();
     // Prefixed string literals
     if (c == 'c') {
         if (Peek(1) == '8' && Peek(2) == '"') {
@@ -264,12 +260,12 @@ bool Lexer::IsAtEnd() const noexcept {
 }
 
 char Lexer::Peek(std::size_t ahead) const noexcept {
-    std::size_t const idx = pos + ahead;
+    const std::size_t idx = pos + ahead;
     return (idx < source.size()) ? source[idx] : '\0';
 }
 
 char Lexer::Advance() noexcept {
-    char const c = source[pos++];
+    const char c = source[pos++];
     if (c == '\n') {
         ++line;
         col = 1;
@@ -285,7 +281,7 @@ void Lexer::AdvanceUtf8CodePoint() noexcept {
         return;
     }
 
-    auto const lead = static_cast<unsigned char>(Peek());
+    const auto lead = static_cast<unsigned char>(Peek());
     std::size_t byteCount = 1;
     if ((lead & 0x80u) == 0) {
         byteCount = 1;
@@ -335,7 +331,7 @@ SourceLocation Lexer::CurrentLocation() const noexcept {
 // Whitespace / comments
 void Lexer::SkipWhitespace() {
     while (!IsAtEnd()) {
-        char const c = Peek();
+        const char c = Peek();
         // Inline whitespace
         if (c == ' ' || c == '\t' || c == '\r') {
             Advance();
@@ -396,24 +392,24 @@ void Lexer::SkipBlockComment() {
 }
 
 Token Lexer::ScanIdent(SourceLocation start) {
-    std::size_t const tokenStart = pos;
+    const std::size_t tokenStart = pos;
     while (!IsAtEnd()) {
-        char const c = Peek();
+        const char c = Peek();
         if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
             break;
         }
         Advance();
     }
     std::string text = source.substr(tokenStart, pos - tokenStart);
-    TokenKind const kind = KeywordKind(text);
+    const TokenKind kind = KeywordKind(text);
     return Token{kind, std::move(text), start};
 }
 
 Token Lexer::ScanNumber(SourceLocation start) {
-    std::size_t const tokenStart = pos;
+    const std::size_t tokenStart = pos;
     // Detect base prefix: 0x  0b  0o
     if (Peek() == '0') {
-        char const next = Peek(1);
+        const char next = Peek(1);
         if (next == 'x' || next == 'X') {
             Advance();
             Advance(); // consume  0x
@@ -435,8 +431,8 @@ Token Lexer::ScanNumber(SourceLocation start) {
         Advance();
     }
     // Check for floating-point  .  or  e/E
-    bool const hasDot = Peek() == '.' && std::isdigit(static_cast<unsigned char>(Peek(1)));
-    bool const hasExp = (Peek() == 'e' || Peek() == 'E');
+    const bool hasDot = Peek() == '.' && std::isdigit(static_cast<unsigned char>(Peek(1)));
+    const bool hasExp = (Peek() == 'e' || Peek() == 'E');
     if (hasDot || hasExp) {
         return ScanFloatSuffix(start, tokenStart);
     }
@@ -447,10 +443,10 @@ Token Lexer::ScanNumber(SourceLocation start) {
 Token Lexer::ScanIntLiteral(SourceLocation start, std::size_t tokenStart) {
     // Detect base from prefix (set in ScanNumber before calling this).
     // 0x/0X -> 16, 0b/0B -> 2, 0o/0O -> 8, else 10.
-    std::string_view const text(source.data() + tokenStart, pos - tokenStart);
+    const std::string_view text(source.data() + tokenStart, pos - tokenStart);
     int base = 10;
     if (text.size() >= 2 && text[0] == '0') {
-        char const prefix = text[1];
+        const char prefix = text[1];
         if (prefix == 'x' || prefix == 'X') {
             base = 16;
         }
@@ -468,7 +464,7 @@ Token Lexer::ScanIntLiteral(SourceLocation start, std::size_t tokenStart) {
     // ScanNumber.
     std::size_t digitCount = 0;
     while (!IsAtEnd()) {
-        char const c = Peek();
+        const char c = Peek();
         bool valid = false;
         if (c >= '0' && c <= '9') {
             valid = c - '0' < base;
@@ -526,7 +522,7 @@ void Lexer::ConsumeNumberSuffix() {
         return;
     }
     while (!IsAtEnd()) {
-        if (char const c = Peek(); !std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+        if (const char c = Peek(); !std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
             break;
         }
         Advance();
@@ -534,7 +530,7 @@ void Lexer::ConsumeNumberSuffix() {
 }
 
 Token Lexer::ScanString(SourceLocation start, std::size_t prefixLen) {
-    std::size_t const tokenStart = pos;
+    const std::size_t tokenStart = pos;
     for (std::size_t i = 0; i < prefixLen; ++i) {
         Advance();
     }
@@ -566,7 +562,7 @@ Token Lexer::ScanString(SourceLocation start, std::size_t prefixLen) {
 
 // ScanChar
 Token Lexer::ScanChar(SourceLocation start, std::size_t prefixLen) {
-    std::size_t const tokenStart = pos;
+    const std::size_t tokenStart = pos;
     for (std::size_t i = 0; i < prefixLen; ++i) {
         Advance();
     }
@@ -589,13 +585,13 @@ Token Lexer::ScanChar(SourceLocation start, std::size_t prefixLen) {
 // ScanEscapeSequence (shared by string and char scanners)
 std::string Lexer::ScanEscapeSequence() {
     assert(Peek() == '\\');
-    SourceLocation const loc = CurrentLocation();
+    const SourceLocation loc = CurrentLocation();
     Advance(); // consume backslash
     if (IsAtEnd()) {
         EmitError(loc, "unexpected end of file in escape sequence");
         return {};
     }
-    char const c = Advance();
+    const char c = Advance();
     switch (c) {
     case 'n':
         return "\n";
@@ -620,7 +616,7 @@ std::string Lexer::ScanEscapeSequence() {
         unsigned int codepoint = 0;
         int digits = 0;
         while (!IsAtEnd() && Peek() != '}') {
-            char const h = Advance();
+            const char h = Advance();
             int val = -1;
             if (h >= '0' && h <= '9') {
                 val = h - '0';
@@ -680,8 +676,8 @@ std::string Lexer::ScanEscapeSequence() {
 }
 
 // ScanSymbol  –  operators and punctuation
-Token Lexer::ScanSymbol(SourceLocation const start) {
-    std::size_t const tokenStart = pos;
+Token Lexer::ScanSymbol(const SourceLocation start) {
+    const std::size_t tokenStart = pos;
     switch (Advance()) {
     // Single-character unambiguous tokens
     case '(':
@@ -703,9 +699,7 @@ Token Lexer::ScanSymbol(SourceLocation const start) {
     case '@':
         return MakeToken(TokenKind::At, start, tokenStart);
     case '#': {
-        auto isIdentChar = [](char c) {
-            return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
-        };
+        auto isIdentChar = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
         auto tryMatch = [&](std::string_view kw) -> bool {
             for (std::size_t i = 0; i < kw.size(); ++i) {
                 if (Peek(i) != kw[i]) {
@@ -802,8 +796,7 @@ Token Lexer::ScanSymbol(SourceLocation const start) {
 
     // %  or  %=
     case '%':
-        return MakeToken(Match('=') ? TokenKind::PercentAssign : TokenKind::Percent, start,
-                         tokenStart);
+        return MakeToken(Match('=') ? TokenKind::PercentAssign : TokenKind::Percent, start, tokenStart);
 
     // &  or  &=  or  &&
     case '&':
@@ -846,44 +839,38 @@ Token Lexer::ScanSymbol(SourceLocation const start) {
     // <  or  <=  or  <<=  or  <<
     case '<':
         if (Match('<')) {
-            return MakeToken(Match('=') ? TokenKind::LessLessAssign : TokenKind::LessLess, start,
-                             tokenStart);
+            return MakeToken(Match('=') ? TokenKind::LessLessAssign : TokenKind::LessLess, start, tokenStart);
         }
         return MakeToken(Match('=') ? TokenKind::LessEqual : TokenKind::Less, start, tokenStart);
 
     // >  or  >=  or  >>=  or  >>
     case '>':
         if (Match('>')) {
-            return MakeToken(Match('=') ? TokenKind::GreaterGreaterAssign
-                                        : TokenKind::GreaterGreater,
-                             start, tokenStart);
+            return MakeToken(Match('=') ? TokenKind::GreaterGreaterAssign : TokenKind::GreaterGreater, start,
+                             tokenStart);
         }
-        return MakeToken(Match('=') ? TokenKind::GreaterEqual : TokenKind::Greater, start,
-                         tokenStart);
+        return MakeToken(Match('=') ? TokenKind::GreaterEqual : TokenKind::Greater, start, tokenStart);
 
     default:
         return ScanUnknown(start);
     }
 }
 
-Token Lexer::ScanUnknown(SourceLocation const start) {
-    std::size_t const tokenStart = pos - 1; // already advanced past the char
+Token Lexer::ScanUnknown(const SourceLocation start) {
+    const std::size_t tokenStart = pos - 1; // already advanced past the char
     EmitError(start, std::string("unexpected character '") + source[tokenStart] + "'");
     return Token{TokenKind::Unknown, source.substr(tokenStart, 1), start};
 }
 
-Token Lexer::MakeToken(TokenKind const kind, SourceLocation const start,
-                       std::size_t const tokenStart) const {
+Token Lexer::MakeToken(const TokenKind kind, const SourceLocation start, const std::size_t tokenStart) const {
     return Token{kind, source.substr(tokenStart, pos - tokenStart), start};
 }
 
-void Lexer::EmitError(SourceLocation const loc, std::string message) {
-    diagnostics.push_back(
-        LexerDiagnostic{LexerDiagnostic::Severity::Error, loc, std::move(message)});
+void Lexer::EmitError(const SourceLocation loc, std::string message) {
+    diagnostics.push_back(LexerDiagnostic{LexerDiagnostic::Severity::Error, loc, std::move(message)});
 }
 
-void Lexer::EmitWarning(SourceLocation const loc, std::string message) {
-    diagnostics.push_back(
-        LexerDiagnostic{LexerDiagnostic::Severity::Warning, loc, std::move(message)});
+void Lexer::EmitWarning(const SourceLocation loc, std::string message) {
+    diagnostics.push_back(LexerDiagnostic{LexerDiagnostic::Severity::Warning, loc, std::move(message)});
 }
 } // namespace Rux

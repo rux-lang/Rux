@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #pragma once
 
 #include "Rux/Rcu.h"
@@ -25,9 +22,9 @@ public:
     // Produce the EXE or DLL at outputPath. Creates parent directories as
     // needed. Returns false if any errors occurred; call Errors() for
     // details.
-    [[nodiscard]] bool Link(std::filesystem::path const &outputPath);
+    [[nodiscard]] bool Link(const std::filesystem::path &outputPath);
 
-    [[nodiscard]] std::vector<LinkerError> const &Errors() const {
+    [[nodiscard]] const std::vector<LinkerError> &Errors() const {
         return errors;
     }
 
@@ -39,12 +36,11 @@ private:
     bool isDll = false;
 
     void Error(std::string msg);
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) ||                          \
-    defined(__DragonFly__) || defined(__NetBSD__) || defined(__illumos__) ||                       \
-    (defined(__sun) && defined(__SVR4))
-    [[nodiscard]] bool LinkElf64(std::filesystem::path const &outputPath);
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) ||                    \
+    defined(__NetBSD__) || defined(__illumos__) || (defined(__sun) && defined(__SVR4))
+    [[nodiscard]] bool LinkElf64(const std::filesystem::path &outputPath);
 #elif defined(__APPLE__)
-    [[nodiscard]] bool LinkMachO64(std::filesystem::path const &outputPath);
+    [[nodiscard]] bool LinkMachO64(const std::filesystem::path &outputPath);
 #endif
 };
 } // namespace Rux

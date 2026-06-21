@@ -12,7 +12,6 @@ class Optimizer {
 public:
     static void Run(HirPackage &package);
 
-
 private:
     static void OptimizeModule(HirModule &module);
 
@@ -28,17 +27,17 @@ private:
 
     static bool FoldUnary(HirExprPtr &expr);
 
-    static bool IsIntegerLiteral(HirExpr const *expr);
+    static bool IsIntegerLiteral(const HirExpr *expr);
 
-    static std::optional<std::int64_t> GetIntegerLiteral(HirExpr const *expr);
+    static std::optional<std::int64_t> GetIntegerLiteral(const HirExpr *expr);
 
-    static HirExprPtr MakeIntegerLiteral(std::int64_t value, TypeRef const &type);
+    static HirExprPtr MakeIntegerLiteral(std::int64_t value, const TypeRef &type);
 
-    static HirExprPtr MakeBoolLiteral(bool value, TypeRef const &type);
+    static HirExprPtr MakeBoolLiteral(bool value, const TypeRef &type);
 
-    static bool IsBoolLiteral(HirExpr const *expr);
+    static bool IsBoolLiteral(const HirExpr *expr);
 
-    static bool GetBoolLiteral(HirExpr const *expr);
+    static bool GetBoolLiteral(const HirExpr *expr);
 
     static bool SimplifyBinary(HirExprPtr &expr);
 

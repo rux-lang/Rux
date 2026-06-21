@@ -1,38 +1,73 @@
-name: macOS
+name: macOS 26
 
 on:
   push:
-    branches: [main, dev]
+    branches: [ main, dev ]
   pull_request:
-    branches: [main, dev]
+    branches: [ main, dev ]
+
+# Allow cancelling superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    # macos-14 is Apple Silicon (arm64). Rux emits x86-64 Mach-O executables,
-    # so the produced test binaries run through Rosetta 2 (installed below).
-    # (Intel macos-13 runners are scarce/being retired and queue indefinitely,
-    # so we don't gate CI on them; the Rosetta path exercises the same output.)
-    runs-on: macos-14
-
+  build:
+    name: Build
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v7
 
-      # Rux's C++26 sources need a recent Clang; Apple's bundled clang is too old.
-      - name: Install toolchain
-        run: brew install llvm cmake ninja
-
-      - name: Install Rosetta 2
-        run: softwareupdate --install-rosetta --agree-to-license
-
-      - name: Configure
+      # macOS ships Apple Clang, which lags upstream and lacks full C++26
+      # support, so install LLVM Clang 22 from Homebrew to match Linux.
+      - name: Install Clang 22
         run: |
-          CLANGXX="$(brew --prefix llvm)/bin/clang++"
+          brew install llvm@22
+          echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@v4.3.3
+        with:
+          cmakeVersion: "4.2.0"
+          ninjaVersion: latest
+
+      - name: Configure and build
+        run: |
           cmake -S . -B build -G Ninja \
-            -DCMAKE_CXX_COMPILER="$CLANGXX" \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@22)/bin/clang++"
+          cmake --build build --config Release
 
-      - name: Build
-        run: cmake --build build --parallel 4
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-macos-arm64
+          path: build/rux
+          if-no-files-found: error
 
-      - name: Run Rux Test Suite
-        run: ctest --test-dir build -C Release --output-on-failure
+  test:
+    name: Test
+    needs: build
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-macos-arm64
+          path: build
+
+      # Restore the executable bit (artifacts don't preserve permissions).
+      - name: Make binary executable
+        run: chmod +x build/rux
+
+      # The test packages depend on the Std package, so install it first.
+      - name: Install Std
+        run: ./build/rux install Std
+
+      # Workspace mode: run from the repo root so `rux test` discovers Tests/.
+      - name: Test
+        run: ./build/rux test --release

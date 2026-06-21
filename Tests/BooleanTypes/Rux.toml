@@ -1,7 +1,0 @@
-[Package]
-Name    = "boolean_types_test"
-Version = "0.1.0"
-Type    = "bin"
-
-[Build]
-Output = "Bin"

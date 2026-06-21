@@ -1,0 +1,10 @@
+[Package]
+Name = "If"
+Version = "0.1.0"
+Description = "Test for Rux compiler"
+
+[Dependencies]
+Std = "*"
+
+[Build]
+Output = "../Bin"

@@ -1,7 +1,0 @@
-[Package]
-Name    = "assignment_expr_nested_grouping"
-Version = "0.1.0"
-Type    = "bin"
-
-[Build]
-Output = "Bin"

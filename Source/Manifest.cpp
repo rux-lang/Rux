@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #include "Rux/Manifest.h"
 
 #include <algorithm>
@@ -10,11 +7,9 @@
 namespace Rux {
 static constexpr std::string_view whitespace = " \t\r\n";
 
-static constexpr std::string_view Trim(std::string_view const s) noexcept {
-    auto const start = s.find_first_not_of(whitespace);
-    return (start == std::string_view::npos)
-             ? ""
-             : s.substr(start, s.find_last_not_of(whitespace) - start + 1);
+static constexpr std::string_view Trim(const std::string_view s) noexcept {
+    const auto start = s.find_first_not_of(whitespace);
+    return (start == std::string_view::npos) ? "" : s.substr(start, s.find_last_not_of(whitespace) - start + 1);
 }
 
 static constexpr std::string_view Unquote(std::string_view s) noexcept {
@@ -28,24 +23,24 @@ static constexpr std::string_view Unquote(std::string_view s) noexcept {
 // Parse a string value out of an inline table like { Path =
 // "../../Packages/Std" }.
 static std::string ParseInlineTableString(std::string_view val, std::string_view keyName) {
-    auto const open = val.find('{');
-    auto const close = val.rfind('}');
+    const auto open = val.find('{');
+    const auto close = val.rfind('}');
     if (open == std::string_view::npos || close == std::string_view::npos || close <= open) {
         return {};
     }
     std::string_view inner = val.substr(open + 1, close - open - 1);
-    auto const keyPos = inner.find(keyName);
+    const auto keyPos = inner.find(keyName);
     if (keyPos == std::string_view::npos) {
         return {};
     }
-    auto const eqPos = inner.find('=', keyPos + keyName.size());
+    const auto eqPos = inner.find('=', keyPos + keyName.size());
     if (eqPos == std::string_view::npos) {
         return {};
     }
     std::size_t valueEnd = eqPos + 1;
     bool inString = false;
     while (valueEnd < inner.size()) {
-        char const c = inner[valueEnd];
+        const char c = inner[valueEnd];
         if (c == '"') {
             inString = !inString;
         }
@@ -54,14 +49,14 @@ static std::string ParseInlineTableString(std::string_view val, std::string_view
         }
         ++valueEnd;
     }
-    auto const rawVal = Trim(inner.substr(eqPos + 1, valueEnd - eqPos - 1));
+    const auto rawVal = Trim(inner.substr(eqPos + 1, valueEnd - eqPos - 1));
     if (rawVal.size() >= 2 && rawVal.front() == '"' && rawVal.back() == '"') {
         return std::string(rawVal.substr(1, rawVal.size() - 2));
     }
     return std::string(rawVal);
 }
 
-static Dependency ParseDependency(std::string key, std::string const &value) {
+static Dependency ParseDependency(std::string key, const std::string &value) {
     Dependency dep;
     dep.name = std::move(key);
     if (!value.empty() && value.front() == '{') {
@@ -75,7 +70,7 @@ static Dependency ParseDependency(std::string key, std::string const &value) {
     return dep;
 }
 
-static std::optional<std::string> TargetNameFromDependenciesSection(std::string const &section) {
+static std::optional<std::string> TargetNameFromDependenciesSection(const std::string &section) {
     // [Target.OS.Dependencies] — legacy format
     {
         constexpr std::string_view prefix = "Target.";
@@ -84,8 +79,8 @@ static std::optional<std::string> TargetNameFromDependenciesSection(std::string 
             if (section.size() <= prefix.size() + suffix.size()) {
                 return std::nullopt;
             }
-            auto const begin = prefix.size();
-            auto const len = section.size() - prefix.size() - suffix.size();
+            const auto begin = prefix.size();
+            const auto len = section.size() - prefix.size() - suffix.size();
             if (len > 0) {
                 return section.substr(begin, len);
             }
@@ -95,7 +90,7 @@ static std::optional<std::string> TargetNameFromDependenciesSection(std::string 
     {
         constexpr std::string_view prefix = "Dependencies.Target.";
         if (section.starts_with(prefix)) {
-            auto const os = section.substr(prefix.size());
+            const auto os = section.substr(prefix.size());
             if (!os.empty()) {
                 return std::string(os);
             }
@@ -106,7 +101,7 @@ static std::optional<std::string> TargetNameFromDependenciesSection(std::string 
 
 // Canonicalize OS names from Rux.toml section keys (e.g. "MacOS" →
 // "macOS").
-static std::string CanonicalOsName(std::string const &name) {
+static std::string CanonicalOsName(const std::string &name) {
     if (name == "MacOS" || name == "Macos" || name == "macos") {
         return "macOS";
     }
@@ -115,7 +110,7 @@ static std::string CanonicalOsName(std::string const &name) {
 
 // Extract the OS name from a target triple (e.g. "windows-x64" →
 // "Windows").
-static std::string OsFromTriple(std::string const &triple) {
+static std::string OsFromTriple(const std::string &triple) {
     if (triple.starts_with("windows")) {
         return "Windows";
     }
@@ -125,8 +120,8 @@ static std::string OsFromTriple(std::string const &triple) {
     if (triple.starts_with("macos") || triple.starts_with("darwin")) {
         return "macOS";
     }
-    if (triple.starts_with("freebsd") || triple.starts_with("openbsd") ||
-        triple.starts_with("netbsd") || triple.starts_with("dragonfly")) {
+    if (triple.starts_with("freebsd") || triple.starts_with("openbsd") || triple.starts_with("netbsd") ||
+        triple.starts_with("dragonfly")) {
         return "BSD";
     }
     if (triple.starts_with("illumos")) {
@@ -136,13 +131,13 @@ static std::string OsFromTriple(std::string const &triple) {
 }
 
 std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec) {
-    if (auto const at = spec.find('@'); at != std::string_view::npos) {
+    if (const auto at = spec.find('@'); at != std::string_view::npos) {
         return {std::string(Trim(spec.substr(0, at))), std::string(Trim(spec.substr(at + 1)))};
     }
     return {std::string(Trim(spec)), {}};
 }
 
-std::optional<Manifest> Manifest::Load(std::filesystem::path const &path) {
+std::optional<Manifest> Manifest::Load(const std::filesystem::path &path) {
     std::ifstream file(path);
     if (!file) {
         return std::nullopt;
@@ -160,19 +155,19 @@ std::optional<Manifest> Manifest::Load(std::filesystem::path const &path) {
         }
 
         if (trimmed.starts_with('[')) {
-            if (auto const close = trimmed.find(']'); close != std::string_view::npos) {
+            if (const auto close = trimmed.find(']'); close != std::string_view::npos) {
                 section = Trim(trimmed.substr(1, close - 1));
             }
             continue;
         }
 
-        auto const eq = trimmed.find('=');
+        const auto eq = trimmed.find('=');
         if (eq == std::string_view::npos) {
             continue;
         }
 
-        auto const key = Trim(trimmed.substr(0, eq));
-        auto const value = Unquote(Trim(trimmed.substr(eq + 1)));
+        const auto key = Trim(trimmed.substr(0, eq));
+        const auto value = Unquote(Trim(trimmed.substr(eq + 1)));
 
         if (section == "Package") {
             if (key == "Name") {
@@ -208,7 +203,7 @@ std::optional<Manifest> Manifest::Load(std::filesystem::path const &path) {
         else if (section == "Dependencies") {
             m.dependencies.push_back(ParseDependency(std::string(key), std::string(value)));
         }
-        else if (auto const target = TargetNameFromDependenciesSection(section)) {
+        else if (const auto target = TargetNameFromDependenciesSection(section)) {
             m.targetDependencies[CanonicalOsName(*target)].push_back(
                 ParseDependency(std::string(key), std::string(value)));
         }
@@ -220,7 +215,7 @@ std::optional<Manifest> Manifest::Load(std::filesystem::path const &path) {
     return m;
 }
 
-bool Manifest::Save(std::filesystem::path const &path) const {
+bool Manifest::Save(const std::filesystem::path &path) const {
     std::ofstream file(path);
     if (!file) {
         return false;
@@ -251,8 +246,8 @@ bool Manifest::Save(std::filesystem::path const &path) const {
 
     if (!dependencies.empty()) {
         file << "\n[Dependencies]\n";
-        for (auto const &dep : dependencies) {
-            bool const hasPackageAlias = !dep.package.empty() && dep.package != dep.name;
+        for (const auto &dep : dependencies) {
+            const bool hasPackageAlias = !dep.package.empty() && dep.package != dep.name;
             if (!dep.path.empty() || hasPackageAlias) {
                 file << dep.name << " = { ";
                 bool wrote = false;
@@ -274,13 +269,13 @@ bool Manifest::Save(std::filesystem::path const &path) const {
             }
         }
     }
-    for (auto const &[target, deps] : targetDependencies) {
+    for (const auto &[target, deps] : targetDependencies) {
         if (deps.empty()) {
             continue;
         }
         file << "\n[Target." << target << ".Dependencies]\n";
-        for (auto const &dep : deps) {
-            bool const hasPackageAlias = !dep.package.empty() && dep.package != dep.name;
+        for (const auto &dep : deps) {
+            const bool hasPackageAlias = !dep.package.empty() && dep.package != dep.name;
             if (!dep.path.empty() || hasPackageAlias) {
                 file << dep.name << " = { ";
                 bool wrote = false;
@@ -305,9 +300,8 @@ bool Manifest::Save(std::filesystem::path const &path) const {
     return file.good();
 }
 
-bool Manifest::AddDependency(std::string const &name, std::string const &version) {
-    if (auto const it = std::ranges::find(dependencies, name, &Dependency::name);
-        it != dependencies.end()) {
+bool Manifest::AddDependency(const std::string &name, const std::string &version) {
+    if (const auto it = std::ranges::find(dependencies, name, &Dependency::name); it != dependencies.end()) {
         if (it->version == version) {
             return false;
         }
@@ -319,9 +313,8 @@ bool Manifest::AddDependency(std::string const &name, std::string const &version
     return true;
 }
 
-bool Manifest::AddPathDependency(std::string const &name, std::string const &path) {
-    if (auto const it = std::ranges::find(dependencies, name, &Dependency::name);
-        it != dependencies.end()) {
+bool Manifest::AddPathDependency(const std::string &name, const std::string &path) {
+    if (const auto it = std::ranges::find(dependencies, name, &Dependency::name); it != dependencies.end()) {
         if (it->path == path) {
             return false;
         }
@@ -333,17 +326,17 @@ bool Manifest::AddPathDependency(std::string const &name, std::string const &pat
     return true;
 }
 
-std::vector<Dependency> Manifest::EffectiveDependencies(std::string const &target) const {
+std::vector<Dependency> Manifest::EffectiveDependencies(const std::string &target) const {
     std::vector<Dependency> result = dependencies;
 
-    auto mergeFrom = [&](std::string const &key) {
+    auto mergeFrom = [&](const std::string &key) {
         auto it = targetDependencies.find(key);
         if (it == targetDependencies.end()) {
             return;
         }
-        for (auto const &targetDep : it->second) {
-            auto existing = std::ranges::find_if(
-                result, [&](Dependency const &dep) { return dep.name == targetDep.name; });
+        for (const auto &targetDep : it->second) {
+            auto existing =
+                std::ranges::find_if(result, [&](const Dependency &dep) { return dep.name == targetDep.name; });
             if (existing == result.end()) {
                 result.push_back(targetDep);
             }
@@ -355,7 +348,7 @@ std::vector<Dependency> Manifest::EffectiveDependencies(std::string const &targe
 
     mergeFrom("*");    // wildcard dependencies
     mergeFrom(target); // exact key (e.g. "windows-x64" or "Windows")
-    std::string const osName = OsFromTriple(target);
+    const std::string osName = OsFromTriple(target);
     if (!osName.empty() && osName != target) {
         mergeFrom(osName); // OS-name key (e.g. "Windows" when target is
                            // "windows-x64")
@@ -364,11 +357,11 @@ std::vector<Dependency> Manifest::EffectiveDependencies(std::string const &targe
     return result;
 }
 
-bool Manifest::RemoveDependency(std::string const &name) {
-    return std::erase_if(dependencies, [&](Dependency const &d) { return d.name == name; }) > 0;
+bool Manifest::RemoveDependency(const std::string &name) {
+    return std::erase_if(dependencies, [&](const Dependency &d) { return d.name == name; }) > 0;
 }
 
-std::optional<std::filesystem::path> Manifest::Find(std::filesystem::path const &start) {
+std::optional<std::filesystem::path> Manifest::Find(const std::filesystem::path &start) {
     auto dir = std::filesystem::absolute(start);
 
     while (true) {

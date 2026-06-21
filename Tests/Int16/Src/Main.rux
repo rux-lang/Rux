@@ -1,0 +1,95 @@
+import Std::Assert;
+
+func Main() -> int {
+    let a: int16 = 1000;
+    let b: int16 = 30;
+
+    Assert(a + b == 1030, "int16 addition");
+    Assert(a - b == 970, "int16 subtraction");
+    Assert(a * b == 30000, "int16 multiplication");
+    Assert(a / b == 33, "int16 division truncates");
+    Assert(a % b == 10, "int16 modulo");
+
+    let neg: int16 = -1000;
+    Assert(neg / b == -33, "int16 signed division truncates toward zero");
+    Assert(neg % b == -10, "int16 signed modulo keeps dividend sign");
+
+    let min: int16 = -32768;
+    let max: int16 = 32767;
+    Assert(min == -32768, "int16 min is -32768");
+    Assert(max == 32767, "int16 max is 32767");
+
+    let wrap_add: int16 = (max + 1) as int16;
+    Assert(wrap_add == -32768, "int16 addition wraps at 32768");
+
+    let wrap_sub: int16 = (min - 1) as int16;
+    Assert(wrap_sub == 32767, "int16 subtraction wraps below -32768");
+
+    Assert(1000 as int16 == 1000 as int16, "int16 equality");
+    Assert(1000 as int16 != 1001 as int16, "int16 inequality");
+    Assert(-1 as int16 < 1 as int16, "int16 less-than across sign");
+    Assert(-1000 as int16 <= -1000 as int16, "int16 less-than-or-equal");
+    Assert(1000 as int16 > -1000 as int16, "int16 greater-than across sign");
+    Assert(1000 as int16 >= 1000 as int16, "int16 greater-than-or-equal");
+
+    Assert((0x00F0 as int16 & 0x0F0F as int16) == 0x0000, "int16 bitwise AND");
+    Assert((0x00F0 as int16 | 0x0F0F as int16) == 0x0FFF, "int16 bitwise OR");
+    Assert((0x00F0 as int16 ^ 0x0F0F as int16) == 0x0FFF, "int16 bitwise XOR");
+    Assert((~0x00FF as int16) == -256, "int16 bitwise NOT");
+
+    Assert((1 as int16 << 8) == 256, "int16 left shift");
+    Assert((0x4000 as int16 >> 8) == 0x40, "int16 positive right shift");
+    Assert((-32768 as int16 >> 8) == -128, "int16 right shift sign-extends");
+    Assert((1 as int16 << 15) == -32768, "int16 left shift to sign bit");
+
+    let i: int16 = -12345;
+    let w32: int32 = i as int32;
+    let w64: int64 = i as int64;
+    Assert(w32 == -12345, "int16 sign-extends to int32");
+    Assert(w64 == -12345, "int16 sign-extends to int64");
+
+    let low: int16 = -128;
+    let as_u16: uint16 = low as uint16;
+    Assert(as_u16 == 65408, "int16 -128 reinterprets as uint16 65408");
+
+    let wide: int32 = 0x0000FFFF;
+    let narrow: int16 = wide as int16;
+    Assert(narrow == -1, "int32 0xFFFF truncates to int16 -1");
+
+    var x: int16 = 5;
+    x = x + 1;
+    Assert(x == 6, "int16 var mutation via addition");
+    x += 10;
+    Assert(x == 16, "int16 compound += operator");
+    x -= 6;
+    Assert(x == 10, "int16 compound -= operator");
+    x *= 2;
+    Assert(x == 20, "int16 compound *= operator");
+    x /= 4;
+    Assert(x == 5, "int16 compound /= operator");
+    x %= 3;
+    Assert(x == 2, "int16 compound %= operator");
+
+    let small: int16 = -42;
+    let big: int = small;
+    Assert(big == -42, "int16 widens implicitly to int");
+
+    let lit1 = 1000i16;
+    let lit2 = -32768i16;
+    Assert(lit1 == 1000, "int16 literal with i16 suffix");
+    Assert(lit2 == -32768, "int16 literal with i16 suffix");
+
+    let hex: int16 = 0x7FFF;
+    let bin: int16 = 0b0111111111111111;
+    Assert(hex == 32767, "int16 hex literal 0x7FFF == 32767");
+    Assert(bin == 32767, "int16 binary literal == 32767");
+    Assert(hex == bin, "int16 hex and binary literal parity");
+
+    let flag: int16 = 0;
+    Assert(flag == 0, "int16 zero is falsy-equivalent when compared");
+    Assert(!(flag != 0), "int16 zero not-nonzero");
+
+    let nz = -1i16;
+    Assert(nz != 0, "int16 nonzero value");
+    return 0;
+}

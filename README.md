@@ -6,27 +6,30 @@
 
 # Rux Programming Language
 
-[![GitHub stars][GitHubStarBadge]][GitHubUrl]
-[![GitHub followers][GitHubFollowerBadge]][GitHubUrl]
-[![GitHub forks][GitHubForkBadge]][GitHubUrl]
-[![Discussion][DiscussionBadge]][DiscussionUrl]
-[![Discord][DiscordBadge]][DiscordUrl]
-[![Reddit][RedditBadge]][RedditUrl]
-[![YouTube][YouTubeBadge]][YouTubeUrl]
-[![X][XBadge]][XUrl]
-[![Bluesky][BlueskyBadge]][BlueskyUrl]
-[![Mastodon][MastodonBadge]][MastodonUrl]
-[![Telegram][TelegramBadge]][TelegramUrl]
-[![License][LicenseBadge]][LicenseUrl]
+[![DragonFly BSD 6.4](https://github.com/rux-lang/Rux/actions/workflows/dragonfly.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/dragonfly.yml)
+[![FreeBSD 14.2](https://github.com/rux-lang/Rux/actions/workflows/freebsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/freebsd.yml)
+[![OmniOS r151052](https://github.com/rux-lang/Rux/actions/workflows/omnios.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/omnios.yml)
+[![macOS 26](https://github.com/rux-lang/Rux/actions/workflows/macos.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/macos.yml)
+[![NetBSD 10.1](https://github.com/rux-lang/Rux/actions/workflows/netbsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/netbsd.yml)
+[![OpenBSD 7.6](https://github.com/rux-lang/Rux/actions/workflows/openbsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/openbsd.yml)
+[![Ubuntu 24.04](https://github.com/rux-lang/Rux/actions/workflows/ubuntu.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/ubuntu.yml)
+[![Windows Server 2025](https://github.com/rux-lang/Rux/actions/workflows/windows.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/windows.yml)
+[![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
+[![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](https://github.com/rux-lang/Rux/blob/main/LICENSE)
 
-[![DragonFly BSD](https://github.com/rux-lang/Rux/actions/workflows/dragonfly.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/dragonfly.yml)
-[![FreeBSD](https://github.com/rux-lang/Rux/actions/workflows/freebsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/freebsd.yml)
-[![Illumos](https://github.com/rux-lang/Rux/actions/workflows/illumos.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/illumos.yml)
-[![Linux](https://github.com/rux-lang/Rux/actions/workflows/linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/linux.yml)
-[![macOS](https://github.com/rux-lang/Rux/actions/workflows/macos.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/macos.yml)
-[![NetBSD](https://github.com/rux-lang/Rux/actions/workflows/netbsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/netbsd.yml)
-[![OpenBSD](https://github.com/rux-lang/Rux/actions/workflows/openbsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/openbsd.yml)
-[![Windows](https://github.com/rux-lang/Rux/actions/workflows/windows.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/windows.yml)
+[![GitHub stars](https://img.shields.io/github/stars/rux-lang/Rux?style=flat&logo=github&label=Stars&logoColor=white&color=blue)](https://github.com/rux-lang)
+[![GitHub followers](https://img.shields.io/github/followers/rux-lang?style=flat&logo=github&label=Followers&logoColor=white&color=blue)](https://github.com/rux-lang)
+[![GitHub forks](https://img.shields.io/github/forks/rux-lang/Rux?style=flat&logo=github&logoColor=white&label=Forks&color=blue)](https://github.com/rux-lang)
+[![Discussion](https://img.shields.io/badge/13-gray?style=flat&logo=github&logoColor=white&label=Discussions&color=blue)](https://github.com/rux-lang/Rux/discussions)
+[![Discord](https://img.shields.io/discord/1321469752811585576?style=flat&logo=discord&logoColor=white&label=Discord&color=blue)](https://discord.com/invite/uvSHjtZSVG)
+[![Reddit](https://img.shields.io/reddit/subreddit-subscribers/ruxlang?style=flat&logo=reddit&logoColor=white&label=Reddit&color=blue)](https://www.reddit.com/r/ruxlang)
+[![YouTube](https://img.shields.io/youtube/channel/subscribers/UCNqQ7NIA5pBl3ZO--nOyvDA?style=flat&logo=youtube&logoColor=white&label=YouTube&color=blue)](https://www.youtube.com/@ruxlang)
+[![X](https://img.shields.io/badge/76-gray?logo=x&style=flat&logoColor=white&label=Twitter&color=blue)](https://x.com/ruxlang)
+[![Bluesky](https://img.shields.io/bluesky/followers/rux-lang.dev?style=flat&logo=Bluesky&logoColor=white&label=Bluesky&color=blue)](https://bsky.app/profile/rux-lang.dev)
+[![Mastodon](https://img.shields.io/mastodon/follow/113727153489087809?domain=mastodon.social&style=flat&logo=mastodon&logoColor=white&label=Mastodon&color=blue)](https://mastodon.social/@ruxlang)
+[![Telegram](https://img.shields.io/badge/73-gray?style=flat&logo=telegram&logoColor=white&label=Telegram&color=blue)](https://t.me/ruxlang)
+
+---
 
 Rux is a fast, compiled, strongly typed, multi-paradigm programming language.
 
@@ -36,170 +39,208 @@ Currently, under development.
 
 ## Documentation
 
-- [Language Reference](https://rux-lang.dev/docs)
-- [Library API Reference](https://rux-lang.dev/api)
+- [Get Started](https://rux-lang.dev/start)
+- [Rux Reference](https://rux-lang.dev/docs)
+- [API Reference](https://rux-lang.dev/api)
 - [CLI Reference](https://rux-lang.dev/cli)
-- [Tutorials](https://rux-lang.dev/tutorials)
 
-## Community
+## Building from Source
 
-Here’s how you can get involved:
-
-- Join the conversation on [GitHub Discussions](https://github.com/rux-lang/rux/discussions), [Discord](https://discord.com/invite/uvSHjtZSVG), or [Reddit](https://www.reddit.com/r/ruxlang)
-- Subscribe on [YouTube](https://www.youtube.com/@ruxlang), [X](https://x.com/ruxlang), [Bluesky](https://bsky.app/profile/rux-lang.dev), [Mastodon](https://mastodon.social/@ruxlang), [Telegram](https://t.me/ruxlang) to get early updates, dev logs, and sneak peeks
-- Contribute ideas — from grammar tweaks to mascot variants, we’re open to playful and technical input alike
-- Discuss architecture — compiler design, type systems, and extensibility are all on the table
-
-## Building
+Rux is written in modern **C++26**, so it needs an up-to-date toolchain. If
+you are new to building C/C++ projects, just follow the steps for your
+operating system top to bottom — every command can be copied and pasted.
 
 ### Prerequisites
 
-- [CMake](https://cmake.org/) 4.2 or later
-- A C++26-capable compiler (e.g. Clang 19+, GCC 14+, MSVC 2022+)
-- A build tool supported by CMake, such as Ninja, Make, or MSBuild
+You need the following tools, all in a recent version:
 
-### Linux Prerequisites
+| Tool                              | Version | Description                 |
+|-----------------------------------|---------|-----------------------------|
+| [Clang](https://clang.llvm.org/)  | 22.1+   | The C++26 compiler          |
+| [CMake](https://cmake.org/)       | 4.3+    | Generates the build files   |
+| [Ninja](https://ninja-build.org/) | 1.13+   | Runs the actual build, fast |
+| [Git](https://git-scm.com/)       | 2.54+   | Downloads the source code   |
 
-When **building with Clang** on Linux, install the appropriate packages for your distribution:
+> **Note**
+> GCC and MSVC will be supported later — please build with Clang.
 
-- Arch Linux : `sudo pacman -S libc++ libc++abi`
-- Debian : `sudo apt install libc++-dev libc++abi-dev`
-- Fedora : `sudo dnf install libcxx-devel libcxxabi-devel`
-
-> **Note:** Building with GCC requires no additional packages.
-
-### Clone
+### 1. Get the source
 
 ```sh
 git clone https://github.com/rux-lang/Rux.git
 cd Rux
 ```
 
-### Build with Clang
+### 2. Install the toolchain and configure
 
-Use this configuration when `clang++` is available on your `PATH`.
+Expand the section for your operating system. Each one installs the tools and
+then runs CMake to prepare a `build` directory.
+
+<details>
+<summary><b>DragonFly BSD</b></summary>
 
 ```sh
-cmake -S . -B build/clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
-cmake --build build/clang --config Release
+sudo pkg install -y llvm cmake ninja git
+
+cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
 ```
 
-If you use Ninja explicitly:
+</details>
+
+<details>
+<summary><b>FreeBSD</b></summary>
 
 ```sh
-cmake -S . -B build/clang -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
-cmake --build build/clang
+sudo pkg install -y llvm22 cmake ninja git
+
+cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++22
 ```
 
-On Windows, Clang can also be used through `clang-cl` from a Visual Studio Developer PowerShell:
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
+
+Apple's built-in Clang lags behind and lacks full C++26 support, so install
+the latest LLVM with [Homebrew](https://brew.sh/):
 
 ```sh
-cmake -S . -B build/clang-cl -G "Visual Studio 17 2022" -T ClangCL
-cmake --build build/clang-cl --config Release
+brew install llvm cmake ninja git
+
+cmake -S . -B build -G Ninja \
+  -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++"
 ```
 
-### Build with MSVC
+</details>
 
-Run these commands from a Visual Studio Developer PowerShell or Developer Command Prompt:
+<details>
+<summary><b>NetBSD</b></summary>
 
 ```sh
-cmake -S . -B build/msvc -G "Visual Studio 17 2022" -A x64
-cmake --build build/msvc --config Release
+sudo pkgin -y install clang cmake ninja-build git
+
+cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
 ```
 
-Alternatively, with Ninja and the MSVC compiler environment already loaded:
+</details>
+
+<details>
+<summary><b>OmniOS</b></summary>
 
 ```sh
-cmake -S . -B build/msvc-ninja -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
-cmake --build build/msvc-ninja
+pfexec pkg install clang cmake ninja git
+
+cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
 ```
 
-### Generic CMake Build
+</details>
 
-If your preferred compiler is already the default for your environment:
+<details>
+<summary><b>OpenBSD</b></summary>
 
 ```sh
-cmake -B build -DCMAKE_BUILD_TYPE=Release
+doas pkg_add llvm%22 cmake ninja git
+
+cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
+```
+
+</details>
+
+<details>
+<summary><b>Ubuntu / Debian</b></summary>
+
+```sh
+# Clang (latest) from the official LLVM apt repository
+wget https://apt.llvm.org/llvm.sh
+chmod +x llvm.sh
+sudo ./llvm.sh 22                 # installs clang++-22
+
+# CMake (latest) and Ninja
+sudo snap install cmake --classic
+sudo apt install -y ninja-build git
+
+cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++-22
+```
+
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+1. Install **Visual Studio 2026** (the free Community edition is fine) with the
+   **"Desktop development with C++"** workload. This provides the Windows SDK
+   and C runtime that Clang links against.
+2. Install the latest Clang, CMake, and Ninja with
+   [Scoop](https://scoop.sh/). If you don't have Scoop yet, install it from a
+   regular (non-admin) PowerShell:
+
+   ```powershell
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
+   ```
+
+   Then install the tools (all from Scoop's main bucket):
+
+   ```powershell
+   scoop install llvm cmake ninja
+   ```
+
+3. Open the **"x64 Native Tools Command Prompt for VS 2026"** from the Start
+   menu. This sets up the Windows SDK and C runtime environment that Clang
+   needs to compile and link.
+
+   Prefer your own terminal? Any PowerShell window works too — just initialize
+   the build environment once per session first:
+
+   ```powershell
+   $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+   & "$vs\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64
+   ```
+
+4. Configure the build:
+
+   ```powershell
+   cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
+   ```
+
+</details>
+
+> **Tip**
+> Depending on how Clang is packaged, the compiler may be named `clang++` or
+> carry a version suffix such as `clang++-22` or `clang++22`. Use whichever
+> name your system installed in the `-DCMAKE_CXX_COMPILER=` argument above.
+
+### 3. Compile
+
+```sh
 cmake --build build --config Release
 ```
 
-The `rux` binary will be placed under the selected build directory. Single-configuration generators usually emit it directly in that directory, while Visual Studio/MSVC multi-configuration builds emit it under `Release/`.
+The compiled `rux` binary is written to the `build` directory
+(`build/rux`, or `build\rux.exe` on Windows).
 
-To install it onto your system:
+### 4. Verify
+
+Run the binary to confirm it works:
 
 ```sh
-cmake --install build --prefix /usr/local
+./build/rux help          # on Windows: .\build\rux.exe help
 ```
 
-### NixOS
+To use `rux` from anywhere, copy it to a directory on your `PATH` (for
+example `/usr/local/bin` on Unix-like systems), or add the `build` directory
+to your `PATH`.
 
-Once the Rux flake is available in your repository (or any public Git host), you can easily add it as a dependency in your own Nix configuration or project.
+## Community
 
-#### In a NixOS Flake
-
-Add the Rux input to your `flake.nix`:
-
-```nix
-{
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    rux.url = "github:rux-lang/Rux";
-    # Optionally pin a specific branch or tag:
-    # rux.url = "github:rux-lang/Rux/main";
-  };
-
-  outputs = { self, nixpkgs, rux }: {
-    nixosConfigurations.my-machine = nixpkgs.lib.nixosSystem {
-      system = "x86_64-linux";
-      modules = [
-        ({ pkgs, ... }: {
-          environment.systemPackages = [
-            rux.packages.${pkgs.system}.default
-          ];
-        })
-      ];
-    };
-  };
-}
-```
-
-### macOS notes
-
-On macOS, `rux` produces statically linked, ad-hoc code-signed Mach-O
-executables. Generated programs are currently **x86-64 only** — on Apple
-Silicon they run through Rosetta 2 (the `rux` compiler itself builds and runs
-natively on arm64). A Homebrew formula for distributing `rux` lives under
-[`packaging/homebrew/`](packaging/homebrew/).
+Here’s how you can get [involved](https://rux-lang.dev/community).
 
 ## Contributing
 
 The Rux repository is hosted at [rux-lang/Rux](https://github.com/rux-lang/Rux) on GitHub.
 
-Read the [Contributing guide](CONTRIBUTING.md) to get started.
+Read the [Contributing guide](.github/CONTRIBUTING.md) to get started.
 
 ## License
 
 [MIT](LICENSE)
-
-[GitHubStarBadge]: https://img.shields.io/github/stars/rux-lang/Rux?style=flat&logo=github&label=Stars&logoColor=white&color=blue
-[GitHubFollowerBadge]: https://img.shields.io/github/followers/rux-lang?style=flat&logo=github&label=Followers&logoColor=white&color=blue
-[GitHubForkBadge]: https://img.shields.io/github/forks/rux-lang/Rux?style=flat&logo=github&logoColor=white&label=Forks&color=blue
-[DiscussionBadge]: https://img.shields.io/badge/Discussions-gray?logo=github
-[DiscordBadge]: https://img.shields.io/discord/1321469752811585576?style=flat&logo=discord&logoColor=white&label=Discord&color=blue
-[RedditBadge]: https://img.shields.io/reddit/subreddit-subscribers/ruxlang?style=flat&logo=reddit&logoColor=white&label=Reddit&color=blue
-[YouTubeBadge]: https://img.shields.io/youtube/channel/subscribers/UCNqQ7NIA5pBl3ZO--nOyvDA?style=flat&logo=youtube&logoColor=white&label=YouTube&color=blue
-[BlueskyBadge]: https://img.shields.io/bluesky/followers/rux-lang.dev?style=flat&logo=Bluesky&logoColor=white&label=Bluesky&color=blue
-[MastodonBadge]: https://img.shields.io/mastodon/follow/113727153489087809?domain=mastodon.social&style=flat&logo=mastodon&logoColor=white&label=Mastodon&color=blue
-[XBadge]: https://img.shields.io/badge/60-gray?logo=x&style=flat&logoColor=white&label=Twitter&color=blue
-[TelegramBadge]: https://img.shields.io/badge/56-gray?style=flat&logo=telegram&logoColor=white&label=Telegram&color=blue
-[LicenseBadge]: https://img.shields.io/github/license/rux-lang/Rux?style=flat
-[GitHubUrl]: https://github.com/rux-lang
-[DiscussionUrl]: https://github.com/rux-lang/Rux/discussions
-[DiscordUrl]: https://discord.com/invite/uvSHjtZSVG
-[RedditUrl]: https://www.reddit.com/r/ruxlang
-[YouTubeUrl]: https://www.youtube.com/@ruxlang
-[XUrl]: https://x.com/ruxlang
-[BlueskyUrl]: https://bsky.app/profile/rux-lang.dev
-[MastodonUrl]: https://mastodon.social/@ruxlang
-[TelegramUrl]: https://t.me/ruxlang
-[LicenseUrl]: https://github.com/rux-lang/Rux/blob/main/LICENSE

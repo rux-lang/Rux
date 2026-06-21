@@ -1,0 +1,90 @@
+import Std::Assert;
+
+func Main() -> int {
+    let a: uint16 = 1000;
+    let b: uint16 = 30;
+
+    Assert(a + b == 1030, "uint16 addition");
+    Assert(a - b == 970, "uint16 subtraction");
+    Assert(a * b == 30000, "uint16 multiplication");
+    Assert(a / b == 33, "uint16 division truncates");
+    Assert(a % b == 10, "uint16 modulo");
+
+    let min: uint16 = 0;
+    let max: uint16 = 65535;
+    Assert(min == 0, "uint16 min is 0");
+    Assert(max == 65535, "uint16 max is 65535");
+
+    let wrap_add: uint16 = (max + 1) as uint16;
+    Assert(wrap_add == 0, "uint16 addition wraps at 65536");
+
+    let wrap_sub: uint16 = (0 - 1) as uint16;
+    Assert(wrap_sub == 65535, "uint16 subtraction wraps below 0");
+
+    Assert(1000 as uint16 == 1000 as uint16, "uint16 equality");
+    Assert(1000 as uint16 != 1001 as uint16, "uint16 inequality");
+    Assert(999 as uint16 < 1000 as uint16, "uint16 less-than");
+    Assert(1000 as uint16 <= 1000 as uint16, "uint16 less-than-or-equal");
+    Assert(1000 as uint16 > 999 as uint16, "uint16 greater-than");
+    Assert(1000 as uint16 >= 1000 as uint16, "uint16 greater-than-or-equal");
+
+    Assert((0x00F0 as uint16 & 0x0F0F as uint16) == 0x0000, "uint16 bitwise AND");
+    Assert((0x00F0 as uint16 | 0x0F0F as uint16) == 0x0FFF, "uint16 bitwise OR");
+    Assert((0x00F0 as uint16 ^ 0x0F0F as uint16) == 0x0FFF, "uint16 bitwise XOR");
+    Assert((~0x00FF as uint16) == 0xFF00, "uint16 bitwise NOT");
+
+    Assert((1 as uint16 << 8) == 256, "uint16 left shift");
+    Assert((0x8000 as uint16 >> 8) == 0x80, "uint16 right shift is logical");
+    Assert((1 as uint16 << 15) == 0x8000, "uint16 left shift to MSB");
+
+    let u: uint16 = 50000;
+    let w32: uint32 = u as uint32;
+    let w64: uint64 = u as uint64;
+    Assert(w32 == 50000, "uint16 zero-extends to uint32");
+    Assert(w64 == 50000, "uint16 zero-extends to uint64");
+
+    let high: uint16 = 0xFF80;
+    let as_i16: int16 = high as int16;
+    Assert(as_i16 == -128, "uint16 0xFF80 reinterprets as int16 -128");
+
+    let wide: uint32 = 0x0001FFFF;
+    let narrow: uint16 = wide as uint16;
+    Assert(narrow == 0xFFFF, "uint32 to uint16 truncates to low word");
+
+    var x: uint16 = 5;
+    x = x + 1;
+    Assert(x == 6, "uint16 var mutation via addition");
+    x += 10;
+    Assert(x == 16, "uint16 compound += operator");
+    x -= 6;
+    Assert(x == 10, "uint16 compound -= operator");
+    x *= 2;
+    Assert(x == 20, "uint16 compound *= operator");
+    x /= 4;
+    Assert(x == 5, "uint16 compound /= operator");
+    x %= 3;
+    Assert(x == 2, "uint16 compound %= operator");
+
+    let small: uint16 = 42;
+    let big: uint = small;
+    Assert(big == 42, "uint16 widens implicitly to uint");
+
+    let lit1 = 1000u16;
+    let lit2 = 65535u16;
+    Assert(lit1 == 1000, "uint16 literal with u16 suffix");
+    Assert(lit2 == 65535, "uint16 literal with u16 suffix");
+
+    let hex: uint16 = 0xFFFF;
+    let bin: uint16 = 0b1111111111111111;
+    Assert(hex == 65535, "uint16 hex literal 0xFFFF == 65535");
+    Assert(bin == 65535, "uint16 binary literal == 65535");
+    Assert(hex == bin, "uint16 hex and binary literal parity");
+
+    let flag: uint16 = 0;
+    Assert(flag == 0, "uint16 zero is falsy-equivalent when compared");
+    Assert(!(flag != 0), "uint16 zero not-nonzero");
+
+    let nz = 1u16;
+    Assert(nz != 0, "uint16 nonzero value");
+    return 0;
+}

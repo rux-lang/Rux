@@ -1,0 +1,8 @@
+import Std::Assert;
+
+func Main() -> int {
+    let a = 10;
+    let b = 20;
+    Assert(a + b == 30, "integer addition");
+    return 0;
+}

@@ -1,119 +1,77 @@
 # Contributing to Rux
 
-Thank you for your interest in contributing to the Rux programming language!
+Thanks for your interest in contributing to the Rux programming language! This
+page is the entry point. It covers the essentials; the deeper process docs live
+in [`Docs/`](Docs/).
 
 ## Ways to Contribute
 
 - Report bugs via [GitHub Issues](https://github.com/rux-lang/Rux/issues)
 - Propose language features in [GitHub Discussions](https://github.com/rux-lang/Rux/discussions)
 - Submit pull requests for bug fixes or approved features
-- Improve documentation
+- Improve [documentation](https://github.com/rux-lang/Web)
+- [Donate](https://rux-lang.dev/support) to support the project
 
-## Getting Started
+## Quick Start
 
-1. Fork the repository at <https://github.com/rux-lang/Rux/fork>
-2. Clone your fork and create a feature branch:
+1. Build the compiler and run the tests by following
+   [Building from Source](README.md#building-from-source) in the README.
+2. [Fork](https://github.com/rux-lang/Rux/fork) the repo and branch off `dev`:
    ```sh
+   git checkout dev
    git checkout -b my-feature
    ```
-3. Make your changes, then commit:
-   ```sh
-   git commit -am "Short description of change"
-   ```
-4. Push your branch and open a Pull Request against `dev`.
+3. Make your change, add a test, and run the suite (`./build/rux test`).
+4. Format touched files with `clang-format -i <files>`.
+5. Push your branch and open a Pull Request **against `dev`**.
 
-> [!Note]
-> All contributions should target the `dev` branch. Changes are reviewed and tested there before being merged into `main` for releases.
+## Process Documentation
 
-## Pull Request Guidelines
+For anything beyond the quick start, see the detailed guides:
 
-- Keep PRs focused — one logical change per PR.
-- Reference the relevant issue (e.g., `Fixes #42`) in the PR description.
-- Ensure existing tests pass before submitting.
-- Add tests for any new behavior.
-
-## Commit Messages
-
-Use short imperative sentences: `Fix parser crash on empty block`, not `Fixed the parser`.
+| Guide                                         | What it covers                                                |
+| --------------------------------------------- | ------------------------------------------------------------- |
+| [Development Workflow](Docs/Workflow.md)      | Day-to-day loop: build, change, test, format, commit          |
+| [Branch Architecture](Docs/Branches.md)       | What `main` and `dev` are for, naming, protection rules       |
+| [Pull Request Lifecycle](Docs/PullRequest.md) | From opening a PR to merge: review, CI gates, etiquette       |
+| [CI/CD Flow](Docs/CI-CD.md)                   | The per-OS build/test workflows that run on every push and PR |
+| [Release Pipeline](Docs/Release.md)           | How a tag becomes a published, multi-platform release         |
 
 ## Code Style
 
-Follow the conventions already present in the codebase. Consistency matters more than personal preference.
-
-## Testing
-
-### Running the test suite
-
-From the root of any Rux project that has a `Tests/` directory, run:
+Formatting is enforced by [`.clang-format`](.clang-format) (LLVM base, 4-space
+indent, west const, 120-column limit). Format the files you changed before
+committing:
 
 ```sh
-rux test
+clang-format -i <files>
 ```
 
-`rux test` automatically discovers every subdirectory of `Tests/` that contains a `Rux.toml` with `Type = "bin"`, builds it, executes it, and reports a per-package PASS/FAIL line followed by an overall summary:
-
-```
-     Testing MyProject v0.1.0
-      Running test package: BoolBitwise
-    PASS: BoolBitwise
-      Running test package: Pow
-    PASS: Pow
-ok: 2 passed, 0 failed, 2 total
-```
-
-Pass `--release` to test against the optimised build and `--verbose` to see
-the path of each binary being executed.
-
-### Test package layout
-
-Each test package lives under `Tests/<Name>/` and must contain:
-
-```
-Tests/
-  MyFeature/
-    Rux.toml        # [Package] Type = "bin"
-    Src/
-      Main.rux      # returns 0 on success, non-zero on failure
-```
-
-The binary's exit code is the sole signal: **0 = PASS, anything else = FAIL**.
-This lets test packages assert arbitrary conditions without any test framework:
-
-```rux
-func Main() -> int {
-    // returning a non-zero value here will fail the test
-    if 2 ** 10 != 1024 { return 1; }
-    return 0;
-}
-```
-
-### Shell-based integration tests
-
-For tests that require stdin/stdout matching or multi-binary orchestration,
-shell scripts are provided in `Tests/`. Each script is self-contained and
-accepts a path to the `rux` binary as its first argument (or via `$RUX`):
+Or format every source file at once:
 
 ```sh
-RUX=./build/rux Tests/run_io_test.sh
-RUX=./build/rux Tests/run_bool_bitwise_test.sh
+clang-format -i $(git ls-files '*.cpp' '*.h')
 ```
 
-These scripts serve as regression guards and are run in CI. When adding a new
-language feature, add a matching test package **and** a shell script if the
-feature requires output comparison.
+Otherwise, match the conventions already in the codebase — consistency matters
+more than personal preference.
 
 ## Reporting Bugs
 
 Include:
 
 - Rux version / commit hash (`rux version`)
-- Minimal reproducer (source file or snippet)
+- A minimal reproducer (source file or snippet)
 - Expected vs. actual behavior
 
 ## Community
 
-Join the discussion on [Discord](https://discord.com/invite/uvSHjtZSVG) or [GitHub Discussions](https://github.com/rux-lang/Rux/discussions) if you have questions before diving in.
+Have questions before diving in? Join us on
+[Discord](https://discord.com/invite/uvSHjtZSVG) or
+[GitHub Discussions](https://github.com/rux-lang/Rux/discussions). Please also
+read our [Code of Conduct](.github/CODE_OF_CONDUCT.md).
 
 ## License
 
-By contributing you agree that your work will be licensed under the [MIT License](LICENSE).
+By contributing you agree that your work will be licensed under the
+[MIT License](LICENSE).

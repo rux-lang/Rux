@@ -1,0 +1,10 @@
+import Std::Assert;
+
+func Main() -> int {
+    var str: char8[] = "Hello, world!";
+    Assert(str[0] == 'H', "Expected first character to be 'H'");
+    Assert(str[7] == 'w', "Expected eighth character to be 'w'");
+    Assert(str.data != null, "Expected non-null data pointer");
+    Assert(str.length == 13, "Expected length of 13");
+    return 0;
+}

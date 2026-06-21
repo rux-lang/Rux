@@ -1,10 +1,7 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #include "Rux/Sema.h"
 
 #include "Rux/Lexer.h"
-#include "Rux/Platform/Host.h"
+#include "Rux/Target.h"
 #include "Rux/Type.h"
 
 #include <algorithm>
@@ -75,7 +72,7 @@ bool TypeRef::IsSigned() const noexcept {
     }
 }
 
-bool TypeRef::IsAssignableTo(TypeRef const &other) const noexcept {
+bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
     if (IsUnknown() || other.IsUnknown()) {
         return true;
     }
@@ -109,17 +106,14 @@ bool TypeRef::IsAssignableTo(TypeRef const &other) const noexcept {
         return true;
     }
     // smaller fixed-width integers widen implicitly to int/uint
-    if (other.kind == Kind::Int &&
-        (kind == Kind::Int8 || kind == Kind::Int16 || kind == Kind::Int32)) {
+    if (other.kind == Kind::Int && (kind == Kind::Int8 || kind == Kind::Int16 || kind == Kind::Int32)) {
         return true;
     }
-    if (other.kind == Kind::UInt &&
-        (kind == Kind::UInt8 || kind == Kind::UInt16 || kind == Kind::UInt32)) {
+    if (other.kind == Kind::UInt && (kind == Kind::UInt8 || kind == Kind::UInt16 || kind == Kind::UInt32)) {
         return true;
     }
     // smaller fixed-width signed integers widen to larger signed integers
-    if (other.kind == Kind::Int64 &&
-        (kind == Kind::Int8 || kind == Kind::Int16 || kind == Kind::Int32)) {
+    if (other.kind == Kind::Int64 && (kind == Kind::Int8 || kind == Kind::Int16 || kind == Kind::Int32)) {
         return true;
     }
     if (other.kind == Kind::Int32 && (kind == Kind::Int8 || kind == Kind::Int16)) {
@@ -130,8 +124,7 @@ bool TypeRef::IsAssignableTo(TypeRef const &other) const noexcept {
     }
     // smaller fixed-width unsigned integers widen to larger unsigned
     // integers
-    if (other.kind == Kind::UInt64 &&
-        (kind == Kind::UInt8 || kind == Kind::UInt16 || kind == Kind::UInt32)) {
+    if (other.kind == Kind::UInt64 && (kind == Kind::UInt8 || kind == Kind::UInt16 || kind == Kind::UInt32)) {
         return true;
     }
     if (other.kind == Kind::UInt32 && (kind == Kind::UInt8 || kind == Kind::UInt16)) {
@@ -149,15 +142,14 @@ bool TypeRef::IsAssignableTo(TypeRef const &other) const noexcept {
         return true;
     }
     // Any pointer is implicitly assignable to *opaque (like void* in C)
-    if (kind == Kind::Pointer && other.kind == Kind::Pointer && !other.inner.empty() &&
-        other.inner[0].IsOpaque()) {
+    if (kind == Kind::Pointer && other.kind == Kind::Pointer && !other.inner.empty() && other.inner[0].IsOpaque()) {
         return true;
     }
     return false;
 }
 
 std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
-    auto alignUp = [](std::uint64_t const value, std::uint64_t const align) {
+    auto alignUp = [](const std::uint64_t value, const std::uint64_t align) {
         return (value + align - 1) & ~(align - 1);
     };
 
@@ -198,7 +190,7 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
         if (inner.empty()) {
             return std::nullopt;
         }
-        auto const elemSize = inner[0].SizeInBytes();
+        const auto elemSize = inner[0].SizeInBytes();
         if (!elemSize || *elemSize == 0) {
             return std::nullopt;
         }
@@ -207,12 +199,12 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
     case Kind::Tuple: {
         std::uint64_t offset = 0;
         std::uint64_t maxAlign = 1;
-        for (auto const &elem : inner) {
-            auto const elemSize = elem.SizeInBytes();
+        for (const auto &elem : inner) {
+            const auto elemSize = elem.SizeInBytes();
             if (!elemSize) {
                 return std::nullopt;
             }
-            std::uint64_t const al = *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8)) : 1;
+            const std::uint64_t al = *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8)) : 1;
             if (al > 1) {
                 offset = alignUp(offset, al);
             }
@@ -313,7 +305,7 @@ std::string TypeRef::ToString() const {
     return "?";
 }
 
-bool TypeRef::operator==(TypeRef const &o) const noexcept {
+bool TypeRef::operator==(const TypeRef &o) const noexcept {
     if (kind != o.kind || name != o.name || inner.size() != o.inner.size()) {
         return false;
     }
@@ -328,9 +320,8 @@ bool TypeRef::operator==(TypeRef const &o) const noexcept {
 // SemaResult
 
 bool SemaResult::HasErrors() const noexcept {
-    return std::ranges::any_of(diagnostics, [](SemaDiagnostic const &d) {
-        return d.severity == SemaDiagnostic::Severity::Error;
-    });
+    return std::ranges::any_of(diagnostics,
+                               [](const SemaDiagnostic &d) { return d.severity == SemaDiagnostic::Severity::Error; });
 }
 
 // Internal: Symbol & Scope
@@ -351,7 +342,7 @@ struct Symbol {
     SourceLocation location;
     TypeRef type;
     bool isMut = false;
-    std::vector<FuncDecl const *> funcOverloads;
+    std::vector<const FuncDecl *> funcOverloads;
     std::vector<std::string> interfaceMethods; // for Interface kind
     Scope *moduleScope = nullptr;              // for Module kind: the imported module's scope
 };
@@ -363,27 +354,26 @@ public:
     }
 
     // Returns false and emits a diagnostic if the name is already defined.
-    bool Define(Symbol sym, std::vector<SemaDiagnostic> &diags, std::string const &sourceName) {
+    bool Define(Symbol sym, std::vector<SemaDiagnostic> &diags, const std::string &sourceName) {
         if (auto it = table.find(sym.name); it != table.end()) {
             if (it->second.kind == Symbol::Kind::Func && sym.kind == Symbol::Kind::Func) {
-                it->second.funcOverloads.insert(it->second.funcOverloads.end(),
-                                                sym.funcOverloads.begin(), sym.funcOverloads.end());
+                it->second.funcOverloads.insert(it->second.funcOverloads.end(), sym.funcOverloads.begin(),
+                                                sym.funcOverloads.end());
                 if (it->second.type.IsUnknown() && !sym.type.IsUnknown()) {
                     it->second.type = std::move(sym.type);
                 }
                 return true;
             }
-            diags.push_back(
-                {SemaDiagnostic::Severity::Error, sourceName, sym.location,
-                 std::format("'{}' is already defined (first defined at {}:{})", sym.name,
-                             it->second.location.line, it->second.location.column)});
+            diags.push_back({SemaDiagnostic::Severity::Error, sourceName, sym.location,
+                             std::format("'{}' is already defined (first defined at {}:{})", sym.name,
+                                         it->second.location.line, it->second.location.column)});
             return false;
         }
         table.emplace(sym.name, std::move(sym));
         return true;
     }
 
-    Symbol *Lookup(std::string const &name) {
+    Symbol *Lookup(const std::string &name) {
         auto it = table.find(name);
         if (it != table.end()) {
             return &it->second;
@@ -394,7 +384,7 @@ public:
         return nullptr;
     }
 
-    Symbol *LookupLocal(std::string const &name) {
+    Symbol *LookupLocal(const std::string &name) {
         auto it = table.find(name);
         return it == table.end() ? nullptr : &it->second;
     }
@@ -403,7 +393,7 @@ public:
         return parent;
     }
 
-    [[nodiscard]] std::unordered_map<std::string, Symbol> const &Table() const {
+    [[nodiscard]] const std::unordered_map<std::string, Symbol> &Table() const {
         return table;
     }
 
@@ -415,9 +405,8 @@ private:
 // Internal: Analyzer
 class Analyzer {
 public:
-    Analyzer(std::vector<Module const *> &modules, std::vector<DepPackage> &deps,
-             std::string const &packageName, std::vector<SemaDiagnostic> &diags,
-             std::vector<SemaSymbol> &symbols, std::string const &targetOs)
+    Analyzer(std::vector<const Module *> &modules, std::vector<DepPackage> &deps, const std::string &packageName,
+             std::vector<SemaDiagnostic> &diags, std::vector<SemaSymbol> &symbols, const std::string &targetOs)
         : modules(modules)
         , deps(deps)
         , packageName(packageName)
@@ -437,7 +426,7 @@ public:
             Scope *rootScopePtr = rootScope.get();
             for (auto &entry : pkg.modules) {
                 currentFile = entry.module->name;
-                for (auto const &decl : entry.module->items) {
+                for (const auto &decl : entry.module->items) {
                     CollectDecl(*decl, *rootScope, &pkg.name, "");
                 }
             }
@@ -481,12 +470,12 @@ public:
     }
 
 private:
-    std::vector<Module const *> &modules;
+    std::vector<const Module *> &modules;
     std::vector<DepPackage> &deps;
-    std::string const &packageName;
+    const std::string &packageName;
     std::vector<SemaDiagnostic> &diags;
     std::vector<SemaSymbol> &symbols;
-    std::string const &targetOs;
+    const std::string &targetOs;
     Scope globalScope{nullptr};
     Scope *currentScope;
     // packageModuleScopes[pkgName][modulePath] = logical module scope.
@@ -501,11 +490,10 @@ private:
     bool inImpl = false;
     TypeRef currentSelfType = TypeRef::MakeUnknown();
     std::vector<std::string> currentTypeParams;
-    std::unordered_map<std::string, StructDecl const *> structDecls;
-    std::unordered_map<std::string, EnumDecl const *> enumDecls;
-    std::unordered_map<std::string, InterfaceDecl const *> interfaceDecls;
-    std::unordered_map<std::string, std::unordered_map<std::string, std::vector<FuncDecl const *>>>
-        methodsByType;
+    std::unordered_map<std::string, const StructDecl *> structDecls;
+    std::unordered_map<std::string, const EnumDecl *> enumDecls;
+    std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methodsByType;
     std::unordered_map<std::string, std::unordered_set<std::string>> typeImplementsInterfaces;
 
     // Diagnostics
@@ -533,14 +521,13 @@ private:
         return currentScope->Define(std::move(sym), diags, currentFile);
     }
 
-    TypeRef MakeFuncType(std::vector<Param> const &params,
-                         std::optional<TypeExprPtr> const &returnType,
-                         std::vector<std::string> const &typeParams = {}) {
+    TypeRef MakeFuncType(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
+                         const std::vector<std::string> &typeParams = {}) {
         auto savedTypeParams = currentTypeParams;
         currentTypeParams = typeParams;
 
         std::vector<TypeRef> paramTypes;
-        for (auto const &param : params) {
+        for (const auto &param : params) {
             if (!param.isVariadic) {
                 paramTypes.push_back(ResolveType(*param.type));
             }
@@ -553,7 +540,7 @@ private:
 
     // Builtins
     void RegisterBuiltins() {
-        auto add = [&](char const *name, TypeRef t) {
+        auto add = [&](const char *name, TypeRef t) {
             Symbol sym;
             sym.kind = Symbol::Kind::Type;
             sym.name = name;
@@ -585,133 +572,132 @@ private:
     }
 
     // First pass: collect global declaration names
-    void CollectModule(Module const &mod) {
+    void CollectModule(const Module &mod) {
         currentFile = mod.name;
-        std::string const *selfPackageName = packageName.empty() ? nullptr : &packageName;
-        for (auto const &decl : mod.items) {
+        const std::string *selfPackageName = packageName.empty() ? nullptr : &packageName;
+        for (const auto &decl : mod.items) {
             CollectDecl(*decl, globalScope, selfPackageName, "");
         }
     }
 
-    void ResolveModuleSignatures(Module const &mod) {
+    void ResolveModuleSignatures(const Module &mod) {
         currentFile = mod.name;
-        for (auto const &decl : mod.items) {
+        for (const auto &decl : mod.items) {
             ResolveDeclSignature(*decl);
         }
     }
 
-    void ResolveDeclSignature(Decl const &decl) {
+    void ResolveDeclSignature(const Decl &decl) {
         if (!DeclMatchesTarget(decl)) {
             return;
         }
-        if (auto *d = dynamic_cast<FuncDecl const *>(&decl)) {
+        if (auto *d = dynamic_cast<const FuncDecl *>(&decl)) {
             if (Symbol *sym = globalScope.Lookup(d->name)) {
                 sym->type = MakeFuncType(d->params, d->returnType, d->typeParams);
             }
         }
-        else if (auto *d = dynamic_cast<ExternFuncDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ExternFuncDecl *>(&decl)) {
             if (Symbol *sym = globalScope.Lookup(d->name)) {
                 sym->type = MakeFuncType(d->params, d->returnType);
             }
         }
-        else if (auto *d = dynamic_cast<ExternBlockDecl const *>(&decl)) {
-            for (auto const &item : d->items) {
+        else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+            for (const auto &item : d->items) {
                 ResolveDeclSignature(*item);
             }
         }
-        else if (auto *d = dynamic_cast<ModuleDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
             Scope &moduleScope = ModuleScopeFor(d->name, globalScope);
-            for (auto const &item : d->items) {
+            for (const auto &item : d->items) {
                 ResolveDeclSignatureInScope(*item, moduleScope);
             }
         }
     }
 
-    void ResolveModuleSignaturesInScope(Module const &mod, Scope &scope) {
+    void ResolveModuleSignaturesInScope(const Module &mod, Scope &scope) {
         Scope *savedScope = currentScope;
         currentScope = &scope;
         currentFile = mod.name;
-        for (auto const &decl : mod.items) {
+        for (const auto &decl : mod.items) {
             ResolveDeclSignatureInScope(*decl, scope);
         }
         currentScope = savedScope;
     }
 
-    void ResolveDeclSignatureInScope(Decl const &decl, Scope &scope) {
+    void ResolveDeclSignatureInScope(const Decl &decl, Scope &scope) {
         if (!DeclMatchesTarget(decl)) {
             return;
         }
-        if (auto *d = dynamic_cast<FuncDecl const *>(&decl)) {
+        if (auto *d = dynamic_cast<const FuncDecl *>(&decl)) {
             if (Symbol *sym = scope.Lookup(d->name)) {
                 sym->type = MakeFuncType(d->params, d->returnType, d->typeParams);
             }
         }
-        else if (auto *d = dynamic_cast<ExternFuncDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ExternFuncDecl *>(&decl)) {
             if (Symbol *sym = scope.Lookup(d->name)) {
                 sym->type = MakeFuncType(d->params, d->returnType);
             }
         }
-        else if (auto *d = dynamic_cast<ExternBlockDecl const *>(&decl)) {
-            for (auto const &item : d->items) {
+        else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+            for (const auto &item : d->items) {
                 ResolveDeclSignatureInScope(*item, scope);
             }
         }
-        else if (auto *d = dynamic_cast<ModuleDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
             Scope &moduleScope = ModuleScopeFor(d->name, scope);
-            for (auto const &item : d->items) {
+            for (const auto &item : d->items) {
                 ResolveDeclSignatureInScope(*item, moduleScope);
             }
         }
     }
 
-    void ApplyModuleImports(Module const &mod) {
+    void ApplyModuleImports(const Module &mod) {
         currentFile = mod.name;
-        for (auto const &decl : mod.items) {
+        for (const auto &decl : mod.items) {
             ApplyDeclImports(*decl);
         }
     }
 
-    void ApplyModuleImportsInScope(Module const &mod, Scope &scope) {
+    void ApplyModuleImportsInScope(const Module &mod, Scope &scope) {
         Scope *savedScope = currentScope;
         currentScope = &scope;
         ApplyModuleImports(mod);
         currentScope = savedScope;
     }
 
-    void ApplyDeclImports(Decl const &decl) {
+    void ApplyDeclImports(const Decl &decl) {
         if (!DeclMatchesTarget(decl)) {
             return;
         }
-        if (auto *d = dynamic_cast<UseDecl const *>(&decl)) {
+        if (auto *d = dynamic_cast<const UseDecl *>(&decl)) {
             CheckUseDecl(*d);
         }
-        else if (auto *d = dynamic_cast<ModuleDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
             Scope *savedScope = currentScope;
             currentScope = &ModuleScopeFor(d->name, *currentScope);
-            for (auto const &item : d->items) {
+            for (const auto &item : d->items) {
                 ApplyDeclImports(*item);
             }
             currentScope = savedScope;
         }
     }
 
-    static std::string JoinModulePath(std::string const &prefix, std::string const &name) {
+    static std::string JoinModulePath(const std::string &prefix, const std::string &name) {
         if (prefix.empty()) {
             return name;
         }
         return prefix + "::" + name;
     }
 
-    Scope &ModuleScopeFor(std::string const &name, Scope &parent) {
-        if (Symbol *sym = parent.Lookup(name);
-            sym && sym->kind == Symbol::Kind::Module && sym->moduleScope) {
+    Scope &ModuleScopeFor(const std::string &name, Scope &parent) {
+        if (Symbol *sym = parent.Lookup(name); sym && sym->kind == Symbol::Kind::Module && sym->moduleScope) {
             return *sym->moduleScope;
         }
         return parent;
     }
 
-    void CollectDecl(Decl const &decl, Scope &scope, std::string const *packageName = nullptr,
-                     std::string const &modulePath = "") {
+    void CollectDecl(const Decl &decl, Scope &scope, const std::string *packageName = nullptr,
+                     const std::string &modulePath = "") {
         if (!DeclMatchesTarget(decl)) {
             return;
         }
@@ -719,7 +705,7 @@ private:
         // also appends a SemaSymbol to `symbols_` for the dump.
         bool isGlobal = (&scope == &globalScope);
 
-        auto simple = [&](Symbol::Kind kind, std::string const &name, SemaSymbol::Kind pubKind,
+        auto simple = [&](Symbol::Kind kind, const std::string &name, SemaSymbol::Kind pubKind,
                           std::string resolvedType = {}, bool isMut = false) {
             Symbol sym;
             sym.kind = kind;
@@ -727,34 +713,32 @@ private:
             sym.location = decl.location;
             sym.isMut = isMut;
             if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back(
-                    {pubKind, name, currentFile, decl.location, std::move(resolvedType), isMut});
+                symbols.push_back({pubKind, name, currentFile, decl.location, std::move(resolvedType), isMut});
             }
         };
 
-        if (auto *d = dynamic_cast<FuncDecl const *>(&decl)) {
+        if (auto *d = dynamic_cast<const FuncDecl *>(&decl)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Func;
             sym.name = d->name;
             sym.location = d->location;
             sym.funcOverloads.push_back(d);
             if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back(
-                    {SemaSymbol::Kind::Func, d->name, currentFile, d->location, {}, false});
+                symbols.push_back({SemaSymbol::Kind::Func, d->name, currentFile, d->location, {}, false});
             }
         }
-        else if (auto *d = dynamic_cast<StructDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const StructDecl *>(&decl)) {
             structDecls[d->name] = d;
             simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "struct");
         }
-        else if (auto *d = dynamic_cast<EnumDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const EnumDecl *>(&decl)) {
             enumDecls[d->name] = d;
             simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "enum");
         }
-        else if (auto *d = dynamic_cast<UnionDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const UnionDecl *>(&decl)) {
             simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "union");
         }
-        else if (auto *d = dynamic_cast<InterfaceDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const InterfaceDecl *>(&decl)) {
             interfaceDecls[d->name] = d;
             Symbol sym;
             sym.kind = Symbol::Kind::Interface;
@@ -764,11 +748,10 @@ private:
                 sym.interfaceMethods.push_back(m->name);
             }
             if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back(
-                    {SemaSymbol::Kind::Interface, d->name, currentFile, d->location, "interface"});
+                symbols.push_back({SemaSymbol::Kind::Interface, d->name, currentFile, d->location, "interface"});
             }
         }
-        else if (auto *d = dynamic_cast<ConstDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ConstDecl *>(&decl)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Const;
             sym.name = d->name;
@@ -781,7 +764,7 @@ private:
                                    sym.type.IsUnknown() ? "" : sym.type.ToString(), false});
             }
         }
-        else if (auto *d = dynamic_cast<TypeAliasDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const TypeAliasDecl *>(&decl)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Type;
             sym.name = d->name;
@@ -792,26 +775,25 @@ private:
                                    sym.type.IsUnknown() ? "" : sym.type.ToString(), false});
             }
         }
-        else if (auto *d = dynamic_cast<ExternFuncDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ExternFuncDecl *>(&decl)) {
             simple(Symbol::Kind::Func, d->name, SemaSymbol::Kind::Func, "extern");
         }
-        else if (auto *d = dynamic_cast<ExternVarDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ExternVarDecl *>(&decl)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Var;
             sym.name = d->name;
             sym.location = d->location;
             sym.isMut = true;
             if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back(
-                    {SemaSymbol::Kind::Var, d->name, currentFile, d->location, "extern", true});
+                symbols.push_back({SemaSymbol::Kind::Var, d->name, currentFile, d->location, "extern", true});
             }
         }
-        else if (auto *d = dynamic_cast<ExternBlockDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
             for (auto &item : d->items) {
                 CollectDecl(*item, scope, packageName, modulePath);
             }
         }
-        else if (auto *d = dynamic_cast<ModuleDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
             Scope *moduleScopePtr = nullptr;
             if (Symbol *existing = scope.Lookup(d->name);
                 existing && existing->kind == Symbol::Kind::Module && existing->moduleScope) {
@@ -828,12 +810,11 @@ private:
                 sym.location = decl.location;
                 sym.moduleScope = moduleScopePtr;
                 if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                    symbols.push_back(
-                        {SemaSymbol::Kind::Module, d->name, currentFile, decl.location, {}, false});
+                    symbols.push_back({SemaSymbol::Kind::Module, d->name, currentFile, decl.location, {}, false});
                 }
             }
 
-            std::string const childPath = JoinModulePath(modulePath, d->name);
+            const std::string childPath = JoinModulePath(modulePath, d->name);
             if (packageName) {
                 packageModuleScopes[*packageName][childPath] = moduleScopePtr;
             }
@@ -841,8 +822,8 @@ private:
                 CollectDecl(*item, *moduleScopePtr, packageName, childPath);
             }
         }
-        else if (auto *d = dynamic_cast<ImplDecl const *>(&decl)) {
-            for (auto const &method : d->methods) {
+        else if (auto *d = dynamic_cast<const ImplDecl *>(&decl)) {
+            for (const auto &method : d->methods) {
                 methodsByType[d->typeName][method->name].push_back(method.get());
             }
             if (d->interfaceName) {
@@ -853,7 +834,7 @@ private:
     }
 
     // Type resolution
-    std::string GenericTypeName(NamedTypeExpr const &type) {
+    std::string GenericTypeName(const NamedTypeExpr &type) {
         std::string name = type.name;
         if (!type.typeArgs.empty()) {
             name += "<";
@@ -868,7 +849,7 @@ private:
         return name;
     }
 
-    std::string GenericStructInitName(StructInitExpr const &expr) {
+    std::string GenericStructInitName(const StructInitExpr &expr) {
         std::string name = expr.typeName;
         if (!expr.typeArgs.empty()) {
             name += "<";
@@ -883,20 +864,20 @@ private:
         return name;
     }
 
-    std::pair<EnumDecl const *, EnumDecl::Variant const *>
-    LookupEnumVariantInitializer(std::string const &typeName) const {
-        std::size_t const sep = typeName.find("::");
+    std::pair<const EnumDecl *, const EnumDecl::Variant *>
+    LookupEnumVariantInitializer(const std::string &typeName) const {
+        const std::size_t sep = typeName.find("::");
         if (sep == std::string::npos || typeName.find("::", sep + 2) != std::string::npos) {
             return {nullptr, nullptr};
         }
 
-        std::string const enumName = typeName.substr(0, sep);
-        std::string const variantName = typeName.substr(sep + 2);
-        auto const enumIt = enumDecls.find(enumName);
+        const std::string enumName = typeName.substr(0, sep);
+        const std::string variantName = typeName.substr(sep + 2);
+        const auto enumIt = enumDecls.find(enumName);
         if (enumIt == enumDecls.end()) {
             return {nullptr, nullptr};
         }
-        for (auto const &variant : enumIt->second->variants) {
+        for (const auto &variant : enumIt->second->variants) {
             if (variant.name == variantName) {
                 return {enumIt->second, &variant};
             }
@@ -904,12 +885,12 @@ private:
         return {enumIt->second, nullptr};
     }
 
-    static std::string SliceTypeName(TypeRef const &elemType) {
+    static std::string SliceTypeName(const TypeRef &elemType) {
         return "Slice<" + elemType.ToString() + ">";
     }
 
-    static std::string BaseTypeName(std::string const &name) {
-        std::size_t const pos = name.find('<');
+    static std::string BaseTypeName(const std::string &name) {
+        const std::size_t pos = name.find('<');
         return pos == std::string::npos ? name : name.substr(0, pos);
     }
 
@@ -1025,9 +1006,9 @@ private:
         return TypeRef::MakeNamed(str);
     }
 
-    static std::vector<TypeRef> ParseTypeArgsFromTypeName(std::string const &typeName) {
+    static std::vector<TypeRef> ParseTypeArgsFromTypeName(const std::string &typeName) {
         std::vector<TypeRef> args;
-        std::size_t const pos = typeName.find('<');
+        const std::size_t pos = typeName.find('<');
         if (pos == std::string::npos || typeName.back() != '>') {
             return args;
         }
@@ -1052,11 +1033,11 @@ private:
         return args;
     }
 
-    static std::uint64_t AlignUp(std::uint64_t const value, std::uint64_t const align) {
+    static std::uint64_t AlignUp(const std::uint64_t value, const std::uint64_t align) {
         return (value + align - 1) & ~(align - 1);
     }
 
-    static TypeRef StringLiteralElementType(Token const &tok) {
+    static TypeRef StringLiteralElementType(const Token &tok) {
         if (tok.text.starts_with("c16\"")) {
             return TypeRef::MakeChar16();
         }
@@ -1066,11 +1047,11 @@ private:
         return TypeRef::MakeChar8();
     }
 
-    static TypeRef StringLiteralType(Token const &tok) {
+    static TypeRef StringLiteralType(const Token &tok) {
         return TypeRef::MakeNamed(SliceTypeName(StringLiteralElementType(tok)));
     }
 
-    static TypeRef CharLiteralType(Token const &tok) {
+    static TypeRef CharLiteralType(const Token &tok) {
         if (tok.text.starts_with("c8'")) {
             return TypeRef::MakeChar8();
         }
@@ -1094,8 +1075,8 @@ private:
         return {};
     }
 
-    static TypeRef SuffixedLiteralType(Token const &tok) {
-        std::string const suffix = NumericLiteralSuffix(tok.text);
+    static TypeRef SuffixedLiteralType(const Token &tok) {
+        const std::string suffix = NumericLiteralSuffix(tok.text);
         if (suffix == "i8") {
             return TypeRef::MakeInt8();
         }
@@ -1135,14 +1116,14 @@ private:
         return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
     }
 
-    static std::optional<std::uint64_t> ParseUnsuffixedIntegerLiteral(Token const &tok) {
+    static std::optional<std::uint64_t> ParseUnsuffixedIntegerLiteral(const Token &tok) {
         if (tok.kind != TokenKind::IntLiteral || !NumericLiteralSuffix(tok.text).empty()) {
             return std::nullopt;
         }
 
         std::string text;
         text.reserve(tok.text.size());
-        for (char const c : tok.text) {
+        for (const char c : tok.text) {
             if (c != '_') {
                 text.push_back(c);
             }
@@ -1176,29 +1157,29 @@ private:
         }
 
         std::uint64_t value = 0;
-        auto const *first = digits.data();
-        auto const *last = first + digits.size();
-        auto const [ptr, ec] = std::from_chars(first, last, value, base);
+        const auto *first = digits.data();
+        const auto *last = first + digits.size();
+        const auto [ptr, ec] = std::from_chars(first, last, value, base);
         if (ec != std::errc{} || ptr != last) {
             return std::nullopt;
         }
         return value;
     }
 
-    static std::optional<std::uint64_t> ParseIntegerLiteralValue(Token const &tok) {
+    static std::optional<std::uint64_t> ParseIntegerLiteralValue(const Token &tok) {
         if (tok.kind != TokenKind::IntLiteral) {
             return std::nullopt;
         }
 
         std::string text;
         text.reserve(tok.text.size());
-        for (char const c : tok.text) {
+        for (const char c : tok.text) {
             if (c != '_') {
                 text.push_back(c);
             }
         }
 
-        std::string const suffix = NumericLiteralSuffix(text);
+        const std::string suffix = NumericLiteralSuffix(text);
         if (!suffix.empty()) {
             text.resize(text.size() - suffix.size());
         }
@@ -1231,16 +1212,16 @@ private:
         }
 
         std::uint64_t value = 0;
-        auto const *first = digits.data();
-        auto const *last = first + digits.size();
-        auto const [ptr, ec] = std::from_chars(first, last, value, base);
+        const auto *first = digits.data();
+        const auto *last = first + digits.size();
+        const auto [ptr, ec] = std::from_chars(first, last, value, base);
         if (ec != std::errc{} || ptr != last) {
             return std::nullopt;
         }
         return value;
     }
 
-    static std::optional<std::uint64_t> UnsignedIntegerMax(TypeRef const &type) {
+    static std::optional<std::uint64_t> UnsignedIntegerMax(const TypeRef &type) {
         switch (type.kind) {
         case TypeRef::Kind::UInt8:
             return std::numeric_limits<std::uint8_t>::max();
@@ -1256,8 +1237,7 @@ private:
         }
     }
 
-    static std::optional<std::pair<std::int64_t, std::int64_t>>
-    SignedIntegerRange(TypeRef const &type) {
+    static std::optional<std::pair<std::int64_t, std::int64_t>> SignedIntegerRange(const TypeRef &type) {
         switch (type.kind) {
         case TypeRef::Kind::Int8:
             return std::pair{static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::min()),
@@ -1270,20 +1250,18 @@ private:
                              static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())};
         case TypeRef::Kind::Int64:
         case TypeRef::Kind::Int:
-            return std::pair{std::numeric_limits<std::int64_t>::min(),
-                             std::numeric_limits<std::int64_t>::max()};
+            return std::pair{std::numeric_limits<std::int64_t>::min(), std::numeric_limits<std::int64_t>::max()};
         default:
             return std::nullopt;
         }
     }
 
-    static bool UnsuffixedIntegerLiteralFits(Expr const &expr, TypeRef const &target) {
+    static bool UnsuffixedIntegerLiteralFits(const Expr &expr, const TypeRef &target) {
         bool negative = false;
-        LiteralExpr const *literal = dynamic_cast<LiteralExpr const *>(&expr);
+        const LiteralExpr *literal = dynamic_cast<const LiteralExpr *>(&expr);
         if (!literal) {
-            if (auto const *unary = dynamic_cast<UnaryExpr const *>(&expr);
-                unary && unary->op == TokenKind::Minus) {
-                literal = dynamic_cast<LiteralExpr const *>(unary->operand.get());
+            if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expr); unary && unary->op == TokenKind::Minus) {
+                literal = dynamic_cast<const LiteralExpr *>(unary->operand.get());
             }
             if (!literal) {
                 return false;
@@ -1291,48 +1269,48 @@ private:
             negative = true;
         }
 
-        auto const value = ParseUnsuffixedIntegerLiteral(literal->token);
+        const auto value = ParseUnsuffixedIntegerLiteral(literal->token);
         if (!value) {
             return false;
         }
 
         if (negative) {
-            auto const range = SignedIntegerRange(target);
+            const auto range = SignedIntegerRange(target);
             if (!range) {
                 return false;
             }
-            auto const minMagnitude = static_cast<std::uint64_t>(-(range->first + 1)) + 1;
+            const auto minMagnitude = static_cast<std::uint64_t>(-(range->first + 1)) + 1;
             return *value <= minMagnitude;
         }
 
-        if (auto const max = UnsignedIntegerMax(target)) {
+        if (const auto max = UnsignedIntegerMax(target)) {
             return *value <= *max;
         }
-        if (auto const range = SignedIntegerRange(target)) {
+        if (const auto range = SignedIntegerRange(target)) {
             return *value <= static_cast<std::uint64_t>(range->second);
         }
         return false;
     }
 
-    static bool IsNullLiteral(Expr const &expr) {
-        auto const *literal = dynamic_cast<LiteralExpr const *>(&expr);
+    static bool IsNullLiteral(const Expr &expr) {
+        const auto *literal = dynamic_cast<const LiteralExpr *>(&expr);
         return literal && literal->token.kind == TokenKind::NullKeyword;
     }
 
-    static bool IsUnsuffixedIntegerLiteral(Expr const &expr) {
-        LiteralExpr const *literal = dynamic_cast<LiteralExpr const *>(&expr);
+    static bool IsUnsuffixedIntegerLiteral(const Expr &expr) {
+        const LiteralExpr *literal = dynamic_cast<const LiteralExpr *>(&expr);
         if (!literal) {
-            auto const *unary = dynamic_cast<UnaryExpr const *>(&expr);
+            const auto *unary = dynamic_cast<const UnaryExpr *>(&expr);
             if (!unary || unary->op != TokenKind::Minus) {
                 return false;
             }
-            literal = dynamic_cast<LiteralExpr const *>(unary->operand.get());
+            literal = dynamic_cast<const LiteralExpr *>(unary->operand.get());
         }
         return literal && literal->token.kind == TokenKind::IntLiteral &&
                NumericLiteralSuffix(literal->token.text).empty();
     }
 
-    static bool IsIntegerLiteralOutOfRangeFor(Expr const &expr, TypeRef const &targetType) {
+    static bool IsIntegerLiteralOutOfRangeFor(const Expr &expr, const TypeRef &targetType) {
         return targetType.IsInteger() && IsUnsuffixedIntegerLiteral(expr) &&
                !UnsuffixedIntegerLiteralFits(expr, targetType);
     }
@@ -1342,16 +1320,14 @@ private:
     // dedicated "out of range" message; everything else uses `fallback`.
     // Keeps the wording consistent across let, return, assignment, const,
     // and field positions.
-    static std::string AssignmentErrorMessage(Expr const &expr, TypeRef const &targetType,
-                                              std::string fallback) {
+    static std::string AssignmentErrorMessage(const Expr &expr, const TypeRef &targetType, std::string fallback) {
         if (IsIntegerLiteralOutOfRangeFor(expr, targetType)) {
-            return std::format("integer literal is out of range for type '{}'",
-                               targetType.ToString());
+            return std::format("integer literal is out of range for type '{}'", targetType.ToString());
         }
         return fallback;
     }
 
-    bool TypeImplementsInterface(TypeRef const &exprType, TypeRef const &targetType) const {
+    bool TypeImplementsInterface(const TypeRef &exprType, const TypeRef &targetType) const {
         if (targetType.kind != TypeRef::Kind::Named) {
             return false;
         }
@@ -1363,8 +1339,8 @@ private:
         if (sym->interfaceMethods.empty()) {
             return true;
         }
-        auto implements = [&](TypeRef const &type) {
-            std::string const typeName = type.ToString();
+        auto implements = [&](const TypeRef &type) {
+            const std::string typeName = type.ToString();
             auto it = typeImplementsInterfaces.find(typeName);
             return it != typeImplementsInterfaces.end() && it->second.count(targetType.name);
         };
@@ -1395,24 +1371,23 @@ private:
     // zero and the INT64_MIN / -1 overflow are left unfolded and keep their
     // runtime behavior; '**' is not folded (it lowers to a runtime helper
     // call).
-    static std::optional<std::int64_t> EvalConstInt(Expr const &expr) {
+    static std::optional<std::int64_t> EvalConstInt(const Expr &expr) {
         using I = std::int64_t;
         using U = std::uint64_t;
 
-        if (auto const *lit = dynamic_cast<LiteralExpr const *>(&expr)) {
-            if (lit->token.kind != TokenKind::IntLiteral ||
-                !NumericLiteralSuffix(lit->token.text).empty()) {
+        if (const auto *lit = dynamic_cast<const LiteralExpr *>(&expr)) {
+            if (lit->token.kind != TokenKind::IntLiteral || !NumericLiteralSuffix(lit->token.text).empty()) {
                 return std::nullopt;
             }
-            auto const v = ParseUnsuffixedIntegerLiteral(lit->token);
+            const auto v = ParseUnsuffixedIntegerLiteral(lit->token);
             if (!v || *v > static_cast<U>(std::numeric_limits<I>::max())) {
                 return std::nullopt;
             }
             return static_cast<I>(*v);
         }
 
-        if (auto const *un = dynamic_cast<UnaryExpr const *>(&expr)) {
-            auto const v = EvalConstInt(*un->operand);
+        if (const auto *un = dynamic_cast<const UnaryExpr *>(&expr)) {
+            const auto v = EvalConstInt(*un->operand);
             if (!v) {
                 return std::nullopt;
             }
@@ -1428,14 +1403,14 @@ private:
             }
         }
 
-        if (auto const *bin = dynamic_cast<BinaryExpr const *>(&expr)) {
-            auto const l = EvalConstInt(*bin->left);
-            auto const r = EvalConstInt(*bin->right);
+        if (const auto *bin = dynamic_cast<const BinaryExpr *>(&expr)) {
+            const auto l = EvalConstInt(*bin->left);
+            const auto r = EvalConstInt(*bin->right);
             if (!l || !r) {
                 return std::nullopt;
             }
-            U const lu = static_cast<U>(*l);
-            U const ru = static_cast<U>(*r);
+            const U lu = static_cast<U>(*l);
+            const U ru = static_cast<U>(*r);
             switch (bin->op) {
             case TokenKind::Plus:
                 return static_cast<I>(lu + ru);
@@ -1477,17 +1452,17 @@ private:
         return std::nullopt;
     }
 
-    static bool ConstantFitsTarget(std::int64_t value, TypeRef const &target) {
-        if (auto const max = UnsignedIntegerMax(target)) {
+    static bool ConstantFitsTarget(std::int64_t value, const TypeRef &target) {
+        if (const auto max = UnsignedIntegerMax(target)) {
             return value >= 0 && static_cast<std::uint64_t>(value) <= *max;
         }
-        if (auto const range = SignedIntegerRange(target)) {
+        if (const auto range = SignedIntegerRange(target)) {
             return value >= range->first && value <= range->second;
         }
         return false;
     }
 
-    static std::optional<std::uint32_t> CharTypeMaxCodePoint(TypeRef const &type) {
+    static std::optional<std::uint32_t> CharTypeMaxCodePoint(const TypeRef &type) {
         switch (type.kind) {
         case TypeRef::Kind::Char8:
             return 0xFF;
@@ -1500,7 +1475,7 @@ private:
         }
     }
 
-    static bool IsCharType(TypeRef const &type) noexcept {
+    static bool IsCharType(const TypeRef &type) noexcept {
         switch (type.kind) {
         case TypeRef::Kind::Char8:
         case TypeRef::Kind::Char16:
@@ -1511,25 +1486,25 @@ private:
         }
     }
 
-    static bool IsSurrogateCodePoint(std::uint64_t const value) noexcept {
+    static bool IsSurrogateCodePoint(const std::uint64_t value) noexcept {
         return value >= 0xD800 && value <= 0xDFFF;
     }
 
-    static std::optional<std::uint64_t> EvalConstCharCastValue(Expr const &expr) {
-        if (auto const *literal = dynamic_cast<LiteralExpr const *>(&expr)) {
+    static std::optional<std::uint64_t> EvalConstCharCastValue(const Expr &expr) {
+        if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr)) {
             if (literal->token.kind == TokenKind::CharLiteral) {
-                if (auto const codePoint = Lexer::DecodeCharLiteralCodePoint(literal->token.text)) {
+                if (const auto codePoint = Lexer::DecodeCharLiteralCodePoint(literal->token.text)) {
                     return static_cast<std::uint64_t>(*codePoint);
                 }
             }
             if (literal->token.kind == TokenKind::IntLiteral) {
-                if (auto const value = ParseIntegerLiteralValue(literal->token)) {
+                if (const auto value = ParseIntegerLiteralValue(literal->token)) {
                     return *value;
                 }
             }
         }
 
-        if (auto const value = EvalConstInt(expr)) {
+        if (const auto value = EvalConstInt(expr)) {
             if (*value >= 0) {
                 return static_cast<std::uint64_t>(*value);
             }
@@ -1538,8 +1513,7 @@ private:
         return std::nullopt;
     }
 
-    bool CanAssignExprTo(Expr const &expr, TypeRef const &exprType,
-                         TypeRef const &targetType) const {
+    bool CanAssignExprTo(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) const {
         if (targetType.IsInteger() && IsUnsuffixedIntegerLiteral(expr)) {
             return UnsuffixedIntegerLiteralFits(expr, targetType);
         }
@@ -1547,20 +1521,18 @@ private:
         // A constant integer expression (e.g. 10 + 2 * (5 - 3)) coerces to
         // any integer type it fits in, the same way a bare literal does.
         if (targetType.IsInteger()) {
-            if (auto const folded = EvalConstInt(expr);
-                folded && ConstantFitsTarget(*folded, targetType)) {
+            if (const auto folded = EvalConstInt(expr); folded && ConstantFitsTarget(*folded, targetType)) {
                 return true;
             }
         }
 
         return exprType.IsAssignableTo(targetType) ||
                (IsNullLiteral(expr) && targetType.kind == TypeRef::Kind::Pointer) ||
-               UnsuffixedIntegerLiteralFits(expr, targetType) ||
-               TypeImplementsInterface(exprType, targetType);
+               UnsuffixedIntegerLiteralFits(expr, targetType) || TypeImplementsInterface(exprType, targetType);
     }
 
-    static std::string NamedBaseTypeName(TypeRef const &type) {
-        TypeRef const *named = &type;
+    static std::string NamedBaseTypeName(const TypeRef &type) {
+        const TypeRef *named = &type;
         if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty()) {
             named = &type.inner[0];
         }
@@ -1593,17 +1565,17 @@ private:
         }
     }
 
-    std::unordered_map<std::string, TypeRef>
-    StructTypeSubstitutions(StructDecl const &decl, std::vector<TypeExprPtr> const &typeArgs) {
+    std::unordered_map<std::string, TypeRef> StructTypeSubstitutions(const StructDecl &decl,
+                                                                     const std::vector<TypeExprPtr> &typeArgs) {
         std::unordered_map<std::string, TypeRef> substitutions;
-        std::size_t const count = std::min(decl.typeParams.size(), typeArgs.size());
+        const std::size_t count = std::min(decl.typeParams.size(), typeArgs.size());
         for (std::size_t i = 0; i < count; ++i) {
             substitutions.emplace(decl.typeParams[i], ResolveType(*typeArgs[i]));
         }
         return substitutions;
     }
 
-    static std::optional<TypeRef> BuiltinTypeFromName(std::string const &name) {
+    static std::optional<TypeRef> BuiltinTypeFromName(const std::string &name) {
         if (name == "opaque") {
             return TypeRef::MakeOpaque();
         }
@@ -1667,7 +1639,7 @@ private:
         return std::nullopt;
     }
 
-    static std::optional<TypeRef> SliceElementType(TypeRef const &type) {
+    static std::optional<TypeRef> SliceElementType(const TypeRef &type) {
         if (type.kind == TypeRef::Kind::Slice && !type.inner.empty()) {
             return type.inner[0];
         }
@@ -1678,15 +1650,14 @@ private:
         if (!type.name.starts_with(prefix) || type.name.back() != '>') {
             return std::nullopt;
         }
-        std::string elemName =
-            type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
+        std::string elemName = type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
         if (auto builtin = BuiltinTypeFromName(elemName)) {
             return *builtin;
         }
         return TypeRef::MakeNamed(elemName);
     }
 
-    static std::optional<TypeRef> IndexElementType(TypeRef const &type) {
+    static std::optional<TypeRef> IndexElementType(const TypeRef &type) {
         if (auto elemType = SliceElementType(type)) {
             return elemType;
         }
@@ -1696,17 +1667,17 @@ private:
         return std::nullopt;
     }
 
-    TypeRef ResolveType(TypeExpr const &expr) {
+    TypeRef ResolveType(const TypeExpr &expr) {
         // Helper to resolve enums from the global declaration table
-        auto ResolveEnumType = [&](std::string const &name) -> TypeRef {
-            if (auto const it = enumDecls.find(name); it != enumDecls.end()) {
+        auto ResolveEnumType = [&](const std::string &name) -> TypeRef {
+            if (const auto it = enumDecls.find(name); it != enumDecls.end()) {
                 return EnumType(*it->second);
             }
             return TypeRef::MakeUnknown();
         };
 
-        if (auto const *t = dynamic_cast<NamedTypeExpr const *>(&expr)) {
-            for (auto const &tp : currentTypeParams) {
+        if (const auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
+            for (const auto &tp : currentTypeParams) {
                 if (tp == t->name) {
                     if (!t->typeArgs.empty()) {
                         EmitError(expr.location, std::format("Type parameter '{}' cannot "
@@ -1720,7 +1691,7 @@ private:
 
             std::vector<TypeRef> resolvedArgs;
             bool hasUnknownArgs = false;
-            for (auto const &argExpr : t->typeArgs) {
+            for (const auto &argExpr : t->typeArgs) {
                 TypeRef argType = ResolveType(*argExpr);
                 if (argType.IsUnknown()) {
                     hasUnknownArgs = true;
@@ -1744,8 +1715,7 @@ private:
             TypeRef enumType = ResolveEnumType(t->name);
             if (!enumType.IsUnknown()) {
                 if (!t->typeArgs.empty()) {
-                    EmitError(expr.location,
-                              std::format("Enum '{}' cannot take type arguments", t->name));
+                    EmitError(expr.location, std::format("Enum '{}' cannot take type arguments", t->name));
                     return TypeRef::MakeUnknown();
                 }
                 return enumType;
@@ -1759,7 +1729,7 @@ private:
             return TypeRef::MakeUnknown();
         }
 
-        if (auto const *t = dynamic_cast<PathTypeExpr const *>(&expr)) {
+        if (const auto *t = dynamic_cast<const PathTypeExpr *>(&expr)) {
             if (t->segments.empty()) {
                 EmitError(expr.location, "empty type path");
                 return TypeRef::MakeUnknown();
@@ -1772,7 +1742,7 @@ private:
             return TypeRef::MakeNamed(fullPath);
         }
 
-        if (auto const *t = dynamic_cast<PointerTypeExpr const *>(&expr)) {
+        if (const auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
             TypeRef pointeeType = ResolveType(*t->pointee);
             if (pointeeType.IsUnknown()) {
                 return TypeRef::MakeUnknown();
@@ -1780,7 +1750,7 @@ private:
             return TypeRef::MakePointer(pointeeType);
         }
 
-        if (auto const *t = dynamic_cast<SliceTypeExpr const *>(&expr)) {
+        if (const auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
             TypeRef elemType = ResolveType(*t->element);
             if (elemType.IsUnknown()) {
                 return TypeRef::MakeUnknown();
@@ -1788,11 +1758,11 @@ private:
             return TypeRef::MakeNamed(SliceTypeName(elemType));
         }
 
-        if (auto const *t = dynamic_cast<TupleTypeExpr const *>(&expr)) {
+        if (const auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
             std::vector<TypeRef> elems;
             elems.reserve(t->elements.size());
 
-            for (auto const &e : t->elements) {
+            for (const auto &e : t->elements) {
                 TypeRef elem = ResolveType(*e);
                 if (elem.IsUnknown()) {
                     return TypeRef::MakeUnknown();
@@ -1803,17 +1773,16 @@ private:
             return TypeRef::MakeTuple(std::move(elems));
         }
 
-        if (dynamic_cast<SelfTypeExpr const *>(&expr)) {
+        if (dynamic_cast<const SelfTypeExpr *>(&expr)) {
             return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
         }
 
         return TypeRef::MakeUnknown();
     }
 
-    TypeRef
-    ResolveTypeWithSubstitution(TypeExpr const &expr,
-                                std::unordered_map<std::string, TypeRef> const &substitutions) {
-        if (auto *t = dynamic_cast<NamedTypeExpr const *>(&expr)) {
+    TypeRef ResolveTypeWithSubstitution(const TypeExpr &expr,
+                                        const std::unordered_map<std::string, TypeRef> &substitutions) {
+        if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
             if (t->typeArgs.empty()) {
                 if (auto it = substitutions.find(t->name); it != substitutions.end()) {
                     return it->second;
@@ -1827,20 +1796,18 @@ private:
                 if (i) {
                     named.name += ", ";
                 }
-                named.name +=
-                    ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions).ToString();
+                named.name += ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions).ToString();
             }
             named.name += ">";
             return named;
         }
-        if (auto *t = dynamic_cast<PointerTypeExpr const *>(&expr)) {
+        if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
             return TypeRef::MakePointer(ResolveTypeWithSubstitution(*t->pointee, substitutions));
         }
-        if (auto *t = dynamic_cast<SliceTypeExpr const *>(&expr)) {
-            return TypeRef::MakeNamed(
-                SliceTypeName(ResolveTypeWithSubstitution(*t->element, substitutions)));
+        if (auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
+            return TypeRef::MakeNamed(SliceTypeName(ResolveTypeWithSubstitution(*t->element, substitutions)));
         }
-        if (auto *t = dynamic_cast<TupleTypeExpr const *>(&expr)) {
+        if (auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
             std::vector<TypeRef> elems;
             for (auto &elem : t->elements) {
                 elems.push_back(ResolveTypeWithSubstitution(*elem, substitutions));
@@ -1850,25 +1817,25 @@ private:
         return ResolveType(expr);
     }
 
-    TypeRef StructFieldType(TypeRef const &objectType, std::string const &fieldName) {
-        std::string const typeName = NamedBaseTypeName(objectType);
+    TypeRef StructFieldType(const TypeRef &objectType, const std::string &fieldName) {
+        const std::string typeName = NamedBaseTypeName(objectType);
         if (typeName.empty()) {
             return TypeRef::MakeUnknown();
         }
-        auto const structIt = structDecls.find(typeName);
+        const auto structIt = structDecls.find(typeName);
         if (structIt == structDecls.end()) {
             return TypeRef::MakeUnknown();
         }
 
         std::unordered_map<std::string, TypeRef> substitutions;
         std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(objectType.name);
-        auto const &params = structIt->second->typeParams;
-        std::size_t const count = std::min(params.size(), typeArgs.size());
+        const auto &params = structIt->second->typeParams;
+        const std::size_t count = std::min(params.size(), typeArgs.size());
         for (std::size_t i = 0; i < count; ++i) {
             substitutions.emplace(params[i], typeArgs[i]);
         }
 
-        for (auto const &field : structIt->second->fields) {
+        for (const auto &field : structIt->second->fields) {
             if (field.name == fieldName) {
                 if (!substitutions.empty()) {
                     return ResolveTypeWithSubstitution(*field.type, substitutions);
@@ -1879,22 +1846,21 @@ private:
         return TypeRef::MakeUnknown();
     }
 
-    [[nodiscard]] FuncDecl const *LookupMethod(TypeRef const &receiverType,
-                                               std::string const &methodName,
-                                               std::vector<TypeRef> const &argTypes = {}) {
-        std::string const typeName = NamedBaseTypeName(receiverType);
+    [[nodiscard]] const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
+                                               const std::vector<TypeRef> &argTypes = {}) {
+        const std::string typeName = NamedBaseTypeName(receiverType);
         if (typeName.empty()) {
             return nullptr;
         }
-        auto const typeIt = methodsByType.find(typeName);
+        const auto typeIt = methodsByType.find(typeName);
         if (typeIt == methodsByType.end()) {
             return nullptr;
         }
-        auto const methodIt = typeIt->second.find(methodName);
+        const auto methodIt = typeIt->second.find(methodName);
         if (methodIt == typeIt->second.end()) {
             return nullptr;
         }
-        auto const &overloads = methodIt->second;
+        const auto &overloads = methodIt->second;
         if (overloads.empty()) {
             return nullptr;
         }
@@ -1905,7 +1871,7 @@ private:
         if (overloads.size() == 1) {
             // Single overload: validate arity and assignability before
             // returning.
-            auto const *decl = overloads[0];
+            const auto *decl = overloads[0];
             std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *decl);
             if (paramTypes.size() != argTypes.size()) {
                 return nullptr;
@@ -1921,7 +1887,7 @@ private:
             }
             return decl;
         }
-        for (auto const *decl : overloads) {
+        for (const auto *decl : overloads) {
             std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *decl);
             if (paramTypes.size() != argTypes.size()) {
                 continue;
@@ -1942,25 +1908,21 @@ private:
         return nullptr;
     }
 
-    TypeRef ResolveMethodReturnType(TypeRef const &receiverType, FuncDecl const &method) {
+    TypeRef ResolveMethodReturnType(const TypeRef &receiverType, const FuncDecl &method) {
         TypeRef savedSelfType = currentSelfType;
-        currentSelfType = receiverType.kind == TypeRef::Kind::Pointer
-                            ? receiverType
-                            : TypeRef::MakePointer(receiverType);
-        TypeRef ret =
-            method.returnType ? ResolveType(*method.returnType->get()) : TypeRef::MakeOpaque();
+        currentSelfType =
+            receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
+        TypeRef ret = method.returnType ? ResolveType(*method.returnType->get()) : TypeRef::MakeOpaque();
         currentSelfType = savedSelfType;
         return ret;
     }
 
-    std::vector<TypeRef> ResolveMethodParamTypes(TypeRef const &receiverType,
-                                                 FuncDecl const &method) {
+    std::vector<TypeRef> ResolveMethodParamTypes(const TypeRef &receiverType, const FuncDecl &method) {
         TypeRef savedSelfType = currentSelfType;
-        currentSelfType = receiverType.kind == TypeRef::Kind::Pointer
-                            ? receiverType
-                            : TypeRef::MakePointer(receiverType);
+        currentSelfType =
+            receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
         std::vector<TypeRef> params;
-        for (auto const &param : method.params) {
+        for (const auto &param : method.params) {
             if (param.isVariadic || param.name == "self") {
                 continue;
             }
@@ -1970,27 +1932,26 @@ private:
         return params;
     }
 
-    TypeRef AssociatedFunctionType(TypeRef const &receiverType, FuncDecl const &method) {
+    TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) {
         TypeRef savedSelfType = currentSelfType;
-        currentSelfType = receiverType.kind == TypeRef::Kind::Pointer
-                            ? receiverType
-                            : TypeRef::MakePointer(receiverType);
+        currentSelfType =
+            receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
         TypeRef type = MakeFuncType(method.params, method.returnType, method.typeParams);
         currentSelfType = savedSelfType;
         return type;
     }
 
-    [[nodiscard]] FuncDecl const *LookupInterfaceMethod(TypeRef const &receiverType,
-                                                        std::string const &methodName) const {
-        std::string const ifaceName = NamedBaseTypeName(receiverType);
+    [[nodiscard]] const FuncDecl *LookupInterfaceMethod(const TypeRef &receiverType,
+                                                        const std::string &methodName) const {
+        const std::string ifaceName = NamedBaseTypeName(receiverType);
         if (ifaceName.empty()) {
             return nullptr;
         }
-        auto const ifaceIt = interfaceDecls.find(ifaceName);
+        const auto ifaceIt = interfaceDecls.find(ifaceName);
         if (ifaceIt == interfaceDecls.end()) {
             return nullptr;
         }
-        for (auto const &method : ifaceIt->second->methods) {
+        for (const auto &method : ifaceIt->second->methods) {
             if (method->name == methodName) {
                 return method.get();
             }
@@ -1998,13 +1959,13 @@ private:
         return nullptr;
     }
 
-    TypeRef ResolveInterfaceMethodReturnType(FuncDecl const &method) {
+    TypeRef ResolveInterfaceMethodReturnType(const FuncDecl &method) {
         return method.returnType ? ResolveType(*method.returnType->get()) : TypeRef::MakeOpaque();
     }
 
-    std::vector<TypeRef> ResolveInterfaceMethodParamTypes(FuncDecl const &method) {
+    std::vector<TypeRef> ResolveInterfaceMethodParamTypes(const FuncDecl &method) {
         std::vector<TypeRef> params;
-        for (auto const &param : method.params) {
+        for (const auto &param : method.params) {
             if (param.isVariadic) {
                 continue;
             }
@@ -2013,8 +1974,7 @@ private:
         return params;
     }
 
-    FuncDecl const *LookupFunctionOverload(Symbol const &sym,
-                                           std::vector<TypeRef> const &argTypes) {
+    const FuncDecl *LookupFunctionOverload(const Symbol &sym, const std::vector<TypeRef> &argTypes) {
         if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) {
             return nullptr;
         }
@@ -2022,22 +1982,21 @@ private:
             // Single overload: still validate arity and assignability so
             // that Bar(wrongType) against a lone Bar(int32) returns null
             // and lets the caller emit a proper diagnostic.
-            auto const *decl = sym.funcOverloads[0];
+            const auto *decl = sym.funcOverloads[0];
             TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
             if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) {
                 return decl;
             }
-            std::size_t const paramCount = funcType.inner.size() - 1;
-            bool const isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
+            const std::size_t paramCount = funcType.inner.size() - 1;
+            const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
             std::size_t requiredCount = 0;
-            for (auto const &p : decl->params) {
+            for (const auto &p : decl->params) {
                 if (!p.isVariadic && !p.defaultValue) {
                     ++requiredCount;
                 }
             }
-            bool const arityOk =
-                isVariadic ? argTypes.size() >= requiredCount
-                           : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
+            const bool arityOk = isVariadic ? argTypes.size() >= requiredCount
+                                            : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
             if (!arityOk) {
                 return nullptr;
             }
@@ -2052,39 +2011,37 @@ private:
             }
             return decl;
         }
-        for (bool const allowVariadic : {false, true}) {
-            for (bool const exactOnly : {true, false}) {
-                for (auto const *decl : sym.funcOverloads) {
-                    TypeRef funcType =
-                        MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+        for (const bool allowVariadic : {false, true}) {
+            for (const bool exactOnly : {true, false}) {
+                for (const auto *decl : sym.funcOverloads) {
+                    TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
                     if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) {
                         continue;
                     }
-                    std::size_t const paramCount = funcType.inner.size() - 1;
-                    bool const isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
+                    const std::size_t paramCount = funcType.inner.size() - 1;
+                    const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
                     if (isVariadic != allowVariadic) {
                         continue;
                     }
                     std::size_t requiredCount = 0;
-                    for (auto const &p : decl->params) {
+                    for (const auto &p : decl->params) {
                         if (!p.isVariadic && !p.defaultValue) {
                             ++requiredCount;
                         }
                     }
-                    bool const arityOk = isVariadic ? argTypes.size() >= requiredCount
-                                                    : (argTypes.size() >= requiredCount &&
-                                                       argTypes.size() <= paramCount);
+                    const bool arityOk = isVariadic
+                                           ? argTypes.size() >= requiredCount
+                                           : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
                     if (!arityOk) {
                         continue;
                     }
                     bool match = true;
                     for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
-                        TypeRef const &paramType = funcType.inner[i];
+                        const TypeRef &paramType = funcType.inner[i];
                         if (argTypes[i].IsUnknown() || paramType.IsUnknown()) {
                             continue;
                         }
-                        if (exactOnly ? !(argTypes[i] == paramType)
-                                      : !argTypes[i].IsAssignableTo(paramType)) {
+                        if (exactOnly ? !(argTypes[i] == paramType) : !argTypes[i].IsAssignableTo(paramType)) {
                             match = false;
                             break;
                         }
@@ -2098,13 +2055,12 @@ private:
         return nullptr;
     }
 
-    TypeRef FunctionType(FuncDecl const &decl) {
+    TypeRef FunctionType(const FuncDecl &decl) {
         return MakeFuncType(decl.params, decl.returnType, decl.typeParams);
     }
 
-    std::optional<std::uint64_t>
-    SizeOfTypeRef(TypeRef const &type,
-                  std::unordered_map<std::string, TypeRef> const &substitutions = {}) {
+    std::optional<std::uint64_t> SizeOfTypeRef(const TypeRef &type,
+                                               const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
         if (type.kind == TypeRef::Kind::Named) {
             if (type.name.starts_with("Slice<")) {
                 return 16;
@@ -2112,19 +2068,19 @@ private:
             if (auto it = substitutions.find(type.name); it != substitutions.end()) {
                 return SizeOfTypeRef(it->second, substitutions);
             }
-            std::string const baseName = BaseTypeName(type.name);
+            const std::string baseName = BaseTypeName(type.name);
             std::unordered_map<std::string, TypeRef> localSubs = substitutions;
-            auto const structIt = structDecls.find(baseName);
+            const auto structIt = structDecls.find(baseName);
             if (structIt != structDecls.end()) {
                 std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(type.name);
-                auto const &params = structIt->second->typeParams;
-                std::size_t const count = std::min(params.size(), typeArgs.size());
+                const auto &params = structIt->second->typeParams;
+                const std::size_t count = std::min(params.size(), typeArgs.size());
                 for (std::size_t i = 0; i < count; ++i) {
                     localSubs[params[i]] = typeArgs[i];
                 }
             }
 
-            if (auto const enumIt = enumDecls.find(baseName); enumIt != enumDecls.end()) {
+            if (const auto enumIt = enumDecls.find(baseName); enumIt != enumDecls.end()) {
                 return SizeOfEnum(*enumIt->second, localSubs);
             }
             // Interface fat pointers are {data: *opaque, vtable: *opaque} =
@@ -2144,7 +2100,7 @@ private:
             if (type.inner.empty()) {
                 return std::nullopt;
             }
-            auto const elemSize = SizeOfTypeRef(type.inner[0], substitutions);
+            const auto elemSize = SizeOfTypeRef(type.inner[0], substitutions);
             if (!elemSize || *elemSize == 0) {
                 return std::nullopt;
             }
@@ -2155,12 +2111,12 @@ private:
             auto alignUp = [](std::uint64_t v, std::uint64_t a) { return (v + a - 1) & ~(a - 1); };
             std::uint64_t offset = 0;
             std::uint64_t maxAlign = 1;
-            for (auto const &elem : type.inner) {
-                auto const elemSize = SizeOfTypeRef(elem, substitutions);
+            for (const auto &elem : type.inner) {
+                const auto elemSize = SizeOfTypeRef(elem, substitutions);
                 if (!elemSize) {
                     return std::nullopt;
                 }
-                std::uint64_t const al = *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8)) : 1;
+                const std::uint64_t al = *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8)) : 1;
                 if (al > 1) {
                     offset = alignUp(offset, al);
                 }
@@ -2173,10 +2129,9 @@ private:
         return type.SizeInBytes();
     }
 
-    std::optional<std::uint64_t>
-    SizeOfEnum(EnumDecl const &decl,
-               std::unordered_map<std::string, TypeRef> const &substitutions = {}) {
-        auto const tagSize = SizeOfTypeRef(EnumBaseType(decl), substitutions);
+    std::optional<std::uint64_t> SizeOfEnum(const EnumDecl &decl,
+                                            const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
+        const auto tagSize = SizeOfTypeRef(EnumBaseType(decl), substitutions);
         if (!tagSize) {
             return std::nullopt;
         }
@@ -2185,17 +2140,15 @@ private:
         std::uint64_t maxPayloadSize = 0;
         std::uint64_t maxPayloadAlign = 1;
 
-        auto fieldLayout =
-            [&](auto const &fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
+        auto fieldLayout = [&](const auto &fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
             std::uint64_t offset = 0;
             std::uint64_t maxAlign = 1;
-            for (auto const &field : fields) {
-                auto const fieldSize = SizeOfTypeExprWithSubstitution(*field, substitutions);
+            for (const auto &field : fields) {
+                const auto fieldSize = SizeOfTypeExprWithSubstitution(*field, substitutions);
                 if (!fieldSize) {
                     return std::nullopt;
                 }
-                std::uint64_t const align =
-                    *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
+                const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
                 if (align > 1) {
                     offset = AlignUp(offset, align);
                 }
@@ -2205,17 +2158,15 @@ private:
             return std::pair{AlignUp(offset, maxAlign), maxAlign};
         };
 
-        auto namedFieldLayout =
-            [&](auto const &fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
+        auto namedFieldLayout = [&](const auto &fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
             std::uint64_t offset = 0;
             std::uint64_t maxAlign = 1;
-            for (auto const &field : fields) {
-                auto const fieldSize = SizeOfTypeExprWithSubstitution(*field.type, substitutions);
+            for (const auto &field : fields) {
+                const auto fieldSize = SizeOfTypeExprWithSubstitution(*field.type, substitutions);
                 if (!fieldSize) {
                     return std::nullopt;
                 }
-                std::uint64_t const align =
-                    *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
+                const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
                 if (align > 1) {
                     offset = AlignUp(offset, align);
                 }
@@ -2225,14 +2176,14 @@ private:
             return std::pair{AlignUp(offset, maxAlign), maxAlign};
         };
 
-        for (auto const &variant : decl.variants) {
+        for (const auto &variant : decl.variants) {
             if (variant.fields.empty() && variant.namedFields.empty()) {
                 continue;
             }
 
             hasPayload = true;
-            auto payload = !variant.fields.empty() ? fieldLayout(variant.fields)
-                                                   : namedFieldLayout(variant.namedFields);
+            auto payload =
+                !variant.fields.empty() ? fieldLayout(variant.fields) : namedFieldLayout(variant.namedFields);
             if (!payload) {
                 return std::nullopt;
             }
@@ -2244,8 +2195,8 @@ private:
             return tagSize;
         }
 
-        std::uint64_t const tagAlign = *tagSize > 0 ? std::min<std::uint64_t>(*tagSize, 8) : 1;
-        std::uint64_t const align = std::max(tagAlign, maxPayloadAlign);
+        const std::uint64_t tagAlign = *tagSize > 0 ? std::min<std::uint64_t>(*tagSize, 8) : 1;
+        const std::uint64_t align = std::max(tagAlign, maxPayloadAlign);
         std::uint64_t offset = *tagSize;
         if (maxPayloadAlign > 1) {
             offset = AlignUp(offset, maxPayloadAlign);
@@ -2254,32 +2205,31 @@ private:
         return AlignUp(offset, align);
     }
 
-    TypeRef EnumBaseType(EnumDecl const &decl) {
+    TypeRef EnumBaseType(const EnumDecl &decl) {
         return decl.baseType ? ResolveType(*decl.baseType) : TypeRef::MakeInt();
     }
 
-    TypeRef EnumType(EnumDecl const &decl) {
+    TypeRef EnumType(const EnumDecl &decl) {
         TypeRef type = TypeRef::MakeNamed(decl.name);
         type.inner.push_back(EnumBaseType(decl));
         return type;
     }
 
-    std::optional<std::uint64_t>
-    SizeOfStruct(std::string const &name,
-                 std::unordered_map<std::string, TypeRef> const &substitutions = {}) {
-        auto const structIt = structDecls.find(name);
+    std::optional<std::uint64_t> SizeOfStruct(const std::string &name,
+                                              const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
+        const auto structIt = structDecls.find(name);
         if (structIt == structDecls.end()) {
             return std::nullopt;
         }
 
         std::uint64_t offset = 0;
         std::uint64_t maxAlign = 1;
-        for (auto const &field : structIt->second->fields) {
-            auto const fieldSize = SizeOfTypeExprWithSubstitution(*field.type, substitutions);
+        for (const auto &field : structIt->second->fields) {
+            const auto fieldSize = SizeOfTypeExprWithSubstitution(*field.type, substitutions);
             if (!fieldSize) {
                 return std::nullopt;
             }
-            std::uint64_t const align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
+            const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
             if (align > 1) {
                 offset = AlignUp(offset, align);
             }
@@ -2289,16 +2239,16 @@ private:
         return AlignUp(offset, maxAlign);
     }
 
-    std::optional<std::uint64_t> SizeOfTypeExprWithSubstitution(
-        TypeExpr const &expr, std::unordered_map<std::string, TypeRef> const &substitutions = {}) {
-        if (auto *t = dynamic_cast<NamedTypeExpr const *>(&expr)) {
-            auto const structIt = structDecls.find(t->name);
+    std::optional<std::uint64_t>
+    SizeOfTypeExprWithSubstitution(const TypeExpr &expr,
+                                   const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
+        if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
+            const auto structIt = structDecls.find(t->name);
             if (structIt != structDecls.end()) {
                 std::unordered_map<std::string, TypeRef> fieldSubstitutions = substitutions;
-                auto const &params = structIt->second->typeParams;
+                const auto &params = structIt->second->typeParams;
                 for (std::size_t i = 0; i < params.size() && i < t->typeArgs.size(); ++i) {
-                    fieldSubstitutions[params[i]] =
-                        ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions);
+                    fieldSubstitutions[params[i]] = ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions);
                 }
                 return SizeOfStruct(t->name, fieldSubstitutions);
             }
@@ -2307,57 +2257,57 @@ private:
         return SizeOfTypeRef(ResolveTypeWithSubstitution(expr, substitutions), substitutions);
     }
 
-    std::optional<std::uint64_t> SizeOfTypeExpr(TypeExpr const &expr) {
+    std::optional<std::uint64_t> SizeOfTypeExpr(const TypeExpr &expr) {
         return SizeOfTypeExprWithSubstitution(expr);
     }
 
     // Second pass: check declarations
-    void CheckModule(Module const &mod) {
+    void CheckModule(const Module &mod) {
         currentFile = mod.name;
-        for (auto const &decl : mod.items) {
+        for (const auto &decl : mod.items) {
             CheckDecl(*decl);
         }
     }
 
-    void CheckModuleInScope(Module const &mod, Scope &scope) {
+    void CheckModuleInScope(const Module &mod, Scope &scope) {
         Scope *savedScope = currentScope;
         currentScope = &scope;
         CheckModule(mod);
         currentScope = savedScope;
     }
 
-    void CheckDecl(Decl const &decl) {
+    void CheckDecl(const Decl &decl) {
         if (!DeclMatchesTarget(decl)) {
             return;
         }
-        if (auto *d = dynamic_cast<FuncDecl const *>(&decl)) {
+        if (auto *d = dynamic_cast<const FuncDecl *>(&decl)) {
             CheckFuncDecl(*d);
         }
-        else if (auto *d = dynamic_cast<StructDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const StructDecl *>(&decl)) {
             CheckStructDecl(*d);
         }
-        else if (auto *d = dynamic_cast<EnumDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const EnumDecl *>(&decl)) {
             CheckEnumDecl(*d);
         }
-        else if (auto *d = dynamic_cast<UnionDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const UnionDecl *>(&decl)) {
             CheckUnionDecl(*d);
         }
-        else if (auto *d = dynamic_cast<InterfaceDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const InterfaceDecl *>(&decl)) {
             CheckInterfaceDecl(*d);
         }
-        else if (auto *d = dynamic_cast<ImplDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ImplDecl *>(&decl)) {
             CheckImplDecl(*d);
         }
-        else if (auto *d = dynamic_cast<ModuleDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
             CheckModuleDecl(*d);
         }
-        else if (auto *d = dynamic_cast<ConstDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ConstDecl *>(&decl)) {
             CheckConstDecl(*d);
         }
-        else if (auto *d = dynamic_cast<TypeAliasDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const TypeAliasDecl *>(&decl)) {
             ResolveType(*d->type); // triggers unknown-type errors
         }
-        else if (auto *d = dynamic_cast<ExternFuncDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ExternFuncDecl *>(&decl)) {
             if (d->dll.empty()) {
                 EmitError(d->location, std::format("extern function '{}' must specify a "
                                                    "source DLL via "
@@ -2373,20 +2323,20 @@ private:
                 }
             }
         }
-        else if (auto *d = dynamic_cast<ExternVarDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ExternVarDecl *>(&decl)) {
             ResolveType(*d->type);
         }
-        else if (auto *d = dynamic_cast<ExternBlockDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
             for (auto &item : d->items) {
                 CheckDecl(*item);
             }
         }
-        else if (auto *d = dynamic_cast<UseDecl const *>(&decl)) {
+        else if (auto *d = dynamic_cast<const UseDecl *>(&decl)) {
             CheckUseDecl(*d);
         }
     }
 
-    void CheckFuncDecl(FuncDecl const &d, bool isMethod = false) {
+    void CheckFuncDecl(const FuncDecl &d, bool isMethod = false) {
         auto savedTypeParams = currentTypeParams;
         currentTypeParams = d.typeParams;
 
@@ -2397,7 +2347,7 @@ private:
 
         PushScope();
 
-        for (auto const &tp : d.typeParams) {
+        for (const auto &tp : d.typeParams) {
             Symbol sym;
             sym.kind = Symbol::Kind::Type;
             sym.name = tp;
@@ -2415,7 +2365,7 @@ private:
         }
 
         bool seenDefault = false;
-        for (auto const &param : d.params) {
+        for (const auto &param : d.params) {
             if (param.name == "self") {
                 continue;
             }
@@ -2435,9 +2385,8 @@ private:
             sym.kind = Symbol::Kind::Var;
             sym.name = param.name;
             sym.location = param.location;
-            sym.type = param.isVariadic
-                         ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
-                         : ResolveType(*param.type);
+            sym.type = param.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
+                                        : ResolveType(*param.type);
             sym.isMut = false;
             Define(sym);
             if (param.defaultValue) {
@@ -2449,8 +2398,7 @@ private:
                               AssignmentErrorMessage(**param.defaultValue, paramType,
                                                      std::format("default value type '{}' does not "
                                                                  "match parameter type '{}'",
-                                                                 defaultType.ToString(),
-                                                                 paramType.ToString())));
+                                                                 defaultType.ToString(), paramType.ToString())));
                 }
             }
         }
@@ -2467,12 +2415,12 @@ private:
         currentTypeParams = savedTypeParams;
     }
 
-    void CheckStructDecl(StructDecl const &d) {
+    void CheckStructDecl(const StructDecl &d) {
         auto savedTypeParams = currentTypeParams;
         currentTypeParams = d.typeParams;
 
         PushScope();
-        for (auto const &tp : d.typeParams) {
+        for (const auto &tp : d.typeParams) {
             Symbol sym;
             sym.kind = Symbol::Kind::Type;
             sym.name = tp;
@@ -2481,10 +2429,9 @@ private:
         }
 
         std::unordered_set<std::string> seen;
-        for (auto const &field : d.fields) {
+        for (const auto &field : d.fields) {
             if (!seen.insert(field.name).second) {
-                EmitError(field.location,
-                          std::format("duplicate field '{}' in struct '{}'", field.name, d.name));
+                EmitError(field.location, std::format("duplicate field '{}' in struct '{}'", field.name, d.name));
             }
             ResolveType(*field.type);
         }
@@ -2493,35 +2440,32 @@ private:
         currentTypeParams = savedTypeParams;
     }
 
-    void CheckStructInitExpr(StructInitExpr const &e) {
+    void CheckStructInitExpr(const StructInitExpr &e) {
         auto structIt = structDecls.find(e.typeName);
         if (structIt == structDecls.end()) {
-            if (auto const [enumDecl, variant] = LookupEnumVariantInitializer(e.typeName);
-                enumDecl) {
+            if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(e.typeName); enumDecl) {
                 if (!variant) {
-                    EmitError(e.location,
-                              std::format("unknown enum variant '{}' in initializer", e.typeName));
-                    for (auto const &f : e.fields) {
+                    EmitError(e.location, std::format("unknown enum variant '{}' in initializer", e.typeName));
+                    for (const auto &f : e.fields) {
                         CheckExpr(*f.value);
                     }
                     return;
                 }
                 if (variant->namedFields.empty()) {
-                    EmitError(e.location,
-                              std::format("enum variant '{}' has no named fields", e.typeName));
-                    for (auto const &f : e.fields) {
+                    EmitError(e.location, std::format("enum variant '{}' has no named fields", e.typeName));
+                    for (const auto &f : e.fields) {
                         CheckExpr(*f.value);
                     }
                     return;
                 }
 
-                std::unordered_map<std::string, EnumDecl::Variant::NamedField const *> fieldMap;
-                for (auto const &field : variant->namedFields) {
+                std::unordered_map<std::string, const EnumDecl::Variant::NamedField *> fieldMap;
+                for (const auto &field : variant->namedFields) {
                     fieldMap.emplace(field.name, &field);
                 }
 
                 std::unordered_set<std::string> initialized;
-                for (auto const &f : e.fields) {
+                for (const auto &f : e.fields) {
                     TypeRef valueType = CheckExpr(*f.value);
                     if (!initialized.insert(f.name).second) {
                         EmitError(f.location, std::format("duplicate field '{}' in "
@@ -2541,16 +2485,15 @@ private:
                     TypeRef fieldType = ResolveType(*fieldIt->second->type);
                     if (!valueType.IsUnknown() && !fieldType.IsUnknown() &&
                         !CanAssignExprTo(*f.value, valueType, fieldType)) {
-                        EmitError(f.location,
-                                  AssignmentErrorMessage(*f.value, fieldType,
-                                                         std::format("cannot assign '{}' to "
-                                                                     "field '{}' of type '{}'",
-                                                                     valueType.ToString(), f.name,
-                                                                     fieldType.ToString())));
+                        EmitError(f.location, AssignmentErrorMessage(*f.value, fieldType,
+                                                                     std::format("cannot assign '{}' to "
+                                                                                 "field '{}' of type '{}'",
+                                                                                 valueType.ToString(), f.name,
+                                                                                 fieldType.ToString())));
                     }
                 }
 
-                for (auto const &field : variant->namedFields) {
+                for (const auto &field : variant->namedFields) {
                     if (!initialized.contains(field.name)) {
                         EmitError(e.location, std::format("missing field '{}' in "
                                                           "initializer for '{}'",
@@ -2560,101 +2503,91 @@ private:
                 return;
             }
 
-            EmitError(e.location,
-                      std::format("unknown type '{}' in struct initializer", e.typeName));
-            for (auto const &f : e.fields) {
+            EmitError(e.location, std::format("unknown type '{}' in struct initializer", e.typeName));
+            for (const auto &f : e.fields) {
                 CheckExpr(*f.value);
             }
             return;
         }
 
-        StructDecl const &decl = *structIt->second;
+        const StructDecl &decl = *structIt->second;
         if (e.typeArgs.size() != decl.typeParams.size()) {
-            EmitError(e.location,
-                      std::format("struct '{}' expects {} type argument(s), got {}", e.typeName,
-                                  decl.typeParams.size(), e.typeArgs.size()));
+            EmitError(e.location, std::format("struct '{}' expects {} type argument(s), got {}", e.typeName,
+                                              decl.typeParams.size(), e.typeArgs.size()));
         }
 
-        auto const substitutions = StructTypeSubstitutions(decl, e.typeArgs);
-        std::unordered_map<std::string, StructDecl::Field const *> fieldMap;
-        for (auto const &field : decl.fields) {
+        const auto substitutions = StructTypeSubstitutions(decl, e.typeArgs);
+        std::unordered_map<std::string, const StructDecl::Field *> fieldMap;
+        for (const auto &field : decl.fields) {
             fieldMap.emplace(field.name, &field);
         }
 
         std::unordered_set<std::string> initialized;
-        for (auto const &f : e.fields) {
+        for (const auto &f : e.fields) {
             TypeRef valueType = CheckExpr(*f.value);
             if (!initialized.insert(f.name).second) {
-                EmitError(f.location, std::format("duplicate field '{}' in initializer for '{}'",
-                                                  f.name, e.typeName));
+                EmitError(f.location, std::format("duplicate field '{}' in initializer for '{}'", f.name, e.typeName));
                 continue;
             }
 
             auto fieldIt = fieldMap.find(f.name);
             if (fieldIt == fieldMap.end()) {
-                EmitError(f.location, std::format("unknown field '{}' in initializer for '{}'",
-                                                  f.name, e.typeName));
+                EmitError(f.location, std::format("unknown field '{}' in initializer for '{}'", f.name, e.typeName));
                 continue;
             }
 
             TypeRef fieldType = ResolveTypeWithSubstitution(*fieldIt->second->type, substitutions);
-            if (!valueType.IsUnknown() && !fieldType.IsUnknown() &&
-                !CanAssignExprTo(*f.value, valueType, fieldType)) {
+            if (!valueType.IsUnknown() && !fieldType.IsUnknown() && !CanAssignExprTo(*f.value, valueType, fieldType)) {
                 EmitError(f.location,
-                          AssignmentErrorMessage(
-                              *f.value, fieldType,
-                              std::format("cannot assign '{}' to field '{}' of type '{}'",
-                                          valueType.ToString(), f.name, fieldType.ToString())));
+                          AssignmentErrorMessage(*f.value, fieldType,
+                                                 std::format("cannot assign '{}' to field '{}' of type '{}'",
+                                                             valueType.ToString(), f.name, fieldType.ToString())));
             }
         }
 
-        for (auto const &field : decl.fields) {
+        for (const auto &field : decl.fields) {
             if (!initialized.contains(field.name)) {
-                EmitError(e.location, std::format("missing field '{}' in initializer for '{}'",
-                                                  field.name, e.typeName));
+                EmitError(e.location,
+                          std::format("missing field '{}' in initializer for '{}'", field.name, e.typeName));
             }
         }
     }
 
-    void CheckEnumDecl(EnumDecl const &d) {
-        TypeRef const baseType = EnumBaseType(d);
+    void CheckEnumDecl(const EnumDecl &d) {
+        const TypeRef baseType = EnumBaseType(d);
         if (!baseType.IsUnknown() && !baseType.IsInteger()) {
-            EmitError(d.location,
-                      std::format("enum '{}' base type must be an integer type", d.name));
+            EmitError(d.location, std::format("enum '{}' base type must be an integer type", d.name));
         }
         std::unordered_set<std::string> seen;
-        for (auto const &variant : d.variants) {
+        for (const auto &variant : d.variants) {
             if (!seen.insert(variant.name).second) {
-                EmitError(variant.location,
-                          std::format("duplicate variant '{}' in enum '{}'", variant.name, d.name));
+                EmitError(variant.location, std::format("duplicate variant '{}' in enum '{}'", variant.name, d.name));
             }
             if (variant.discriminant && (!variant.fields.empty() || !variant.namedFields.empty())) {
                 EmitError(variant.location, std::format("enum variant '{}::{}' cannot have "
                                                         "both fields and a discriminant",
                                                         d.name, variant.name));
             }
-            for (auto const &f : variant.fields) {
+            for (const auto &f : variant.fields) {
                 ResolveType(*f);
             }
             std::unordered_set<std::string> namedFields;
-            for (auto const &f : variant.namedFields) {
+            for (const auto &f : variant.namedFields) {
                 if (!namedFields.insert(f.name).second) {
-                    EmitError(f.location,
-                              std::format("duplicate field '{}' in enum variant '{}::{}'", f.name,
-                                          d.name, variant.name));
+                    EmitError(f.location, std::format("duplicate field '{}' in enum variant '{}::{}'", f.name, d.name,
+                                                      variant.name));
                 }
                 ResolveType(*f.type);
             }
         }
     }
 
-    EnumDecl::Variant const *LookupEnumVariant(std::string const &enumName,
-                                               std::string const &variantName) const {
-        auto const enumIt = enumDecls.find(enumName);
+    const EnumDecl::Variant *LookupEnumVariant(const std::string &enumName, const std::string &variantName) const {
+        const auto enumIt = enumDecls.find(enumName);
         if (enumIt == enumDecls.end()) {
             return nullptr;
         }
-        for (auto const &variant : enumIt->second->variants) {
+        for (const auto &variant : enumIt->second->variants) {
             if (variant.name == variantName) {
                 return &variant;
             }
@@ -2662,40 +2595,39 @@ private:
         return nullptr;
     }
 
-    TypeRef EnumVariantConstructorType(EnumDecl const &decl, EnumDecl::Variant const &variant) {
+    TypeRef EnumVariantConstructorType(const EnumDecl &decl, const EnumDecl::Variant &variant) {
         std::vector<TypeRef> params;
         params.reserve(variant.fields.size() + variant.namedFields.size());
-        for (auto const &field : variant.fields) {
+        for (const auto &field : variant.fields) {
             params.push_back(ResolveType(*field));
         }
-        for (auto const &field : variant.namedFields) {
+        for (const auto &field : variant.namedFields) {
             params.push_back(ResolveType(*field.type));
         }
         return TypeRef::MakeFunc(std::move(params), EnumType(decl));
     }
 
-    void CheckUnionDecl(UnionDecl const &d) {
+    void CheckUnionDecl(const UnionDecl &d) {
         std::unordered_set<std::string> seen;
-        for (auto const &field : d.fields) {
+        for (const auto &field : d.fields) {
             if (!seen.insert(field.name).second) {
-                EmitError(field.location,
-                          std::format("duplicate field '{}' in union '{}'", field.name, d.name));
+                EmitError(field.location, std::format("duplicate field '{}' in union '{}'", field.name, d.name));
             }
             ResolveType(*field.type);
         }
     }
 
-    void CheckInterfaceDecl(InterfaceDecl const &d) {
+    void CheckInterfaceDecl(const InterfaceDecl &d) {
         std::unordered_set<std::string> seen;
-        for (auto const &method : d.methods) {
+        for (const auto &method : d.methods) {
             if (!seen.insert(method->name).second) {
-                EmitError(method->location, std::format("duplicate method '{}' in interface '{}'",
-                                                        method->name, d.name));
+                EmitError(method->location,
+                          std::format("duplicate method '{}' in interface '{}'", method->name, d.name));
             }
             if (method->returnType) {
                 ResolveType(**method->returnType);
             }
-            for (auto const &p : method->params) {
+            for (const auto &p : method->params) {
                 if (!p.isVariadic) {
                     ResolveType(*p.type);
                 }
@@ -2703,7 +2635,7 @@ private:
         }
     }
 
-    void CheckImplDecl(ImplDecl const &d) {
+    void CheckImplDecl(const ImplDecl &d) {
         if (!currentScope->Lookup(d.typeName)) {
             EmitError(d.location, std::format("extend for unknown type '{}'", d.typeName));
         }
@@ -2711,15 +2643,14 @@ private:
         if (d.interfaceName) {
             Symbol *ifaceSym = currentScope->Lookup(*d.interfaceName);
             if (!ifaceSym || ifaceSym->kind != Symbol::Kind::Interface) {
-                EmitError(d.location,
-                          std::format("'{}' is not a known interface", *d.interfaceName));
+                EmitError(d.location, std::format("'{}' is not a known interface", *d.interfaceName));
             }
             else {
                 std::unordered_set<std::string> implNames;
-                for (auto const &m : d.methods) {
+                for (const auto &m : d.methods) {
                     implNames.insert(m->name);
                 }
-                for (auto const &required : ifaceSym->interfaceMethods) {
+                for (const auto &required : ifaceSym->interfaceMethods) {
                     if (!implNames.count(required)) {
                         EmitError(d.location, std::format("extend of '{}' for '{}' is "
                                                           "missing method '{}'",
@@ -2740,39 +2671,38 @@ private:
             selfBase = TypeRef::MakeNamed(d.typeName);
         }
         currentSelfType = TypeRef::MakePointer(selfBase);
-        for (auto const &m : d.methods) {
+        for (const auto &m : d.methods) {
             CheckFuncDecl(*m, /*isMethod=*/true);
         }
         currentSelfType = savedSelfType;
         inImpl = savedInImpl;
     }
 
-    void CheckModuleDecl(ModuleDecl const &d) {
+    void CheckModuleDecl(const ModuleDecl &d) {
         Scope *savedScope = currentScope;
         currentScope = &ModuleScopeFor(d.name, *currentScope);
-        for (auto const &item : d.items) {
+        for (const auto &item : d.items) {
             CheckDecl(*item);
         }
         currentScope = savedScope;
     }
 
-    void CheckConstDecl(ConstDecl const &d) {
+    void CheckConstDecl(const ConstDecl &d) {
         TypeRef valueType = CheckExpr(*d.value);
         TypeRef constType = d.type ? ResolveType(*d.type->get()) : valueType;
         if (d.type && !valueType.IsUnknown() && !constType.IsUnknown() &&
             !CanAssignExprTo(*d.value, valueType, constType)) {
-            EmitError(
-                d.value->location,
-                AssignmentErrorMessage(*d.value, constType,
-                                       std::format("cannot assign '{}' to constant of type '{}'",
-                                                   valueType.ToString(), constType.ToString())));
+            EmitError(d.value->location,
+                      AssignmentErrorMessage(*d.value, constType,
+                                             std::format("cannot assign '{}' to constant of type '{}'",
+                                                         valueType.ToString(), constType.ToString())));
         }
         if (Symbol *sym = currentScope->Lookup(d.name)) {
             sym->type = constType;
         }
     }
 
-    static std::string JoinPathSegments(std::vector<std::string> const &path, std::size_t first,
+    static std::string JoinPathSegments(const std::vector<std::string> &path, std::size_t first,
                                         std::size_t lastExclusive) {
         std::string result;
         for (std::size_t i = first; i < lastExclusive; ++i) {
@@ -2784,7 +2714,7 @@ private:
         return result;
     }
 
-    static std::string ModulePathForImport(UseDecl const &d) {
+    static std::string ModulePathForImport(const UseDecl &d) {
         if (d.path.size() <= 1) {
             return "";
         }
@@ -2797,7 +2727,7 @@ private:
         return JoinPathSegments(d.path, 1, d.path.size());
     }
 
-    static std::string LogicalModulePathForImport(UseDecl const &d) {
+    static std::string LogicalModulePathForImport(const UseDecl &d) {
         if (d.kind == UseDecl::Kind::Single) {
             if (d.path.size() <= 1) {
                 return "";
@@ -2808,28 +2738,24 @@ private:
     }
 
     struct ImportScope {
-        std::unordered_map<std::string, Symbol> const *table = nullptr;
+        const std::unordered_map<std::string, Symbol> *table = nullptr;
         std::string displayName;
     };
 
-    static std::string ImportScopeDisplayName(std::string const &pkgName,
-                                              std::string const &modulePath) {
+    static std::string ImportScopeDisplayName(const std::string &pkgName, const std::string &modulePath) {
         if (modulePath.empty()) {
             return std::format("package '{}'", pkgName);
         }
         return std::format("module '{}'", modulePath);
     }
 
-    ImportScope ResolveImportScope(UseDecl const &d, std::string const &pkgName,
-                                   std::string const &modulePath) {
-        std::string const logicalModulePath = LogicalModulePathForImport(d);
+    ImportScope ResolveImportScope(const UseDecl &d, const std::string &pkgName, const std::string &modulePath) {
+        const std::string logicalModulePath = LogicalModulePathForImport(d);
         if (auto pkgIt = packageModuleScopes.find(pkgName); pkgIt != packageModuleScopes.end()) {
             if (auto modIt = pkgIt->second.find(modulePath); modIt != pkgIt->second.end()) {
                 if (modulePath.empty() && !logicalModulePath.empty()) {
-                    if (auto logicalIt = pkgIt->second.find(logicalModulePath);
-                        logicalIt != pkgIt->second.end()) {
-                        return {&logicalIt->second->Table(),
-                                ImportScopeDisplayName(pkgName, logicalModulePath)};
+                    if (auto logicalIt = pkgIt->second.find(logicalModulePath); logicalIt != pkgIt->second.end()) {
+                        return {&logicalIt->second->Table(), ImportScopeDisplayName(pkgName, logicalModulePath)};
                     }
                 }
                 return {&modIt->second->Table(), ImportScopeDisplayName(pkgName, modulePath)};
@@ -2838,7 +2764,7 @@ private:
 
         Scope *matchedScope = nullptr;
         std::string matchedPackage;
-        for (auto const &[candidatePackage, modules] : packageModuleScopes) {
+        for (const auto &[candidatePackage, modules] : packageModuleScopes) {
             auto modIt = modules.find(logicalModulePath);
             if (modIt == modules.end()) {
                 continue;
@@ -2852,22 +2778,20 @@ private:
         }
 
         if (matchedScope) {
-            return {&matchedScope->Table(),
-                    ImportScopeDisplayName(matchedPackage, logicalModulePath)};
+            return {&matchedScope->Table(), ImportScopeDisplayName(matchedPackage, logicalModulePath)};
         }
 
         if (!packageModuleScopes.contains(pkgName)) {
             EmitError(d.location, std::format("unknown package or module '{}'", pkgName));
         }
         else {
-            EmitError(d.location,
-                      std::format("module '{}' not found in package '{}'", modulePath, pkgName));
+            EmitError(d.location, std::format("module '{}' not found in package '{}'", modulePath, pkgName));
         }
         return {};
     }
 
-    void PromoteFromPackage(UseDecl const &d, std::string const &pkgName, std::string const &name) {
-        std::string const modulePath = ModulePathForImport(d);
+    void PromoteFromPackage(const UseDecl &d, const std::string &pkgName, const std::string &name) {
+        const std::string modulePath = ModulePathForImport(d);
         ImportScope scope = ResolveImportScope(d, pkgName, modulePath);
         if (!scope.table) {
             return;
@@ -2881,7 +2805,7 @@ private:
         ImportSignatureDependencies(sym_it->second, *scope.table);
     }
 
-    void DefineImportedSymbol(Symbol const &sym) {
+    void DefineImportedSymbol(const Symbol &sym) {
         if (Symbol *existing = currentScope->LookupLocal(sym.name)) {
             if (existing->kind == sym.kind && existing->location.line == sym.location.line &&
                 existing->location.column == sym.location.column) {
@@ -2892,13 +2816,12 @@ private:
         currentScope->Define(sym, diags, currentFile);
     }
 
-    void ImportSignatureDependencies(Symbol const &sym,
-                                     std::unordered_map<std::string, Symbol> const &sourceTable) {
+    void ImportSignatureDependencies(const Symbol &sym, const std::unordered_map<std::string, Symbol> &sourceTable) {
         if (sym.kind != Symbol::Kind::Func) {
             return;
         }
 
-        auto importNamedType = [&](std::string const &name) {
+        auto importNamedType = [&](const std::string &name) {
             if (currentScope->Lookup(name)) {
                 return;
             }
@@ -2906,34 +2829,33 @@ private:
             if (depIt == sourceTable.end()) {
                 return;
             }
-            if (depIt->second.kind == Symbol::Kind::Type ||
-                depIt->second.kind == Symbol::Kind::Interface) {
+            if (depIt->second.kind == Symbol::Kind::Type || depIt->second.kind == Symbol::Kind::Interface) {
                 DefineImportedSymbol(depIt->second);
             }
         };
 
-        auto visitType = [&](this auto &&self, TypeExpr const &type) -> void {
-            if (auto const *named = dynamic_cast<NamedTypeExpr const *>(&type)) {
+        auto visitType = [&](this auto &&self, const TypeExpr &type) -> void {
+            if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&type)) {
                 importNamedType(named->name);
-                for (auto const &arg : named->typeArgs) {
+                for (const auto &arg : named->typeArgs) {
                     self(*arg);
                 }
             }
-            else if (auto const *ptr = dynamic_cast<PointerTypeExpr const *>(&type)) {
+            else if (const auto *ptr = dynamic_cast<const PointerTypeExpr *>(&type)) {
                 self(*ptr->pointee);
             }
-            else if (auto const *slice = dynamic_cast<SliceTypeExpr const *>(&type)) {
+            else if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&type)) {
                 self(*slice->element);
             }
-            else if (auto const *tuple = dynamic_cast<TupleTypeExpr const *>(&type)) {
-                for (auto const &elem : tuple->elements) {
+            else if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&type)) {
+                for (const auto &elem : tuple->elements) {
                     self(*elem);
                 }
             }
         };
 
-        for (auto const *overload : sym.funcOverloads) {
-            for (auto const &param : overload->params) {
+        for (const auto *overload : sym.funcOverloads) {
+            for (const auto &param : overload->params) {
                 visitType(*param.type);
             }
             if (overload->returnType) {
@@ -2950,11 +2872,11 @@ private:
         return targetOs.empty() ? HostOs() : std::string_view(targetOs);
     }
 
-    [[nodiscard]] bool DeclMatchesTarget(Decl const &d) const {
+    [[nodiscard]] bool DeclMatchesTarget(const Decl &d) const {
         return d.targetOs.empty() || d.targetOs == EffectiveOs();
     }
 
-    void CheckUseDecl(UseDecl const &d) {
+    void CheckUseDecl(const UseDecl &d) {
         if (!DeclMatchesTarget(d)) {
             return;
         }
@@ -2962,7 +2884,7 @@ private:
             EmitError(d.location, "empty import path");
             return;
         }
-        std::string const &pkgName = d.path[0];
+        const std::string &pkgName = d.path[0];
 
         if (d.kind == UseDecl::Kind::Single) {
             if (d.path.size() < 2) {
@@ -2971,7 +2893,7 @@ private:
                                                   pkgName, pkgName));
                 return;
             }
-            std::string const &name = d.path.back();
+            const std::string &name = d.path.back();
             // If path.size()==2 and name matches a logical module, create a
             // module alias.
             if (d.path.size() == 2) {
@@ -2992,38 +2914,38 @@ private:
             PromoteFromPackage(d, pkgName, name);
         }
         else if (d.kind == UseDecl::Kind::Multi) {
-            for (auto const &name : d.names) {
+            for (const auto &name : d.names) {
                 PromoteFromPackage(d, pkgName, name);
             }
         }
         else // Glob: promote all from the specific module (or all modules
              // if Pkg::*)
         {
-            std::string const modulePath = ModulePathForImport(d);
+            const std::string modulePath = ModulePathForImport(d);
             ImportScope scope = ResolveImportScope(d, pkgName, modulePath);
             if (!scope.table) {
                 return;
             }
-            for (auto const &[name, sym] : *scope.table) {
+            for (const auto &[name, sym] : *scope.table) {
                 DefineImportedSymbol(sym);
             }
         }
     }
 
     // Block & statements
-    void CheckBlock(Block const &block) {
+    void CheckBlock(const Block &block) {
         PushScope();
-        for (auto const &stmt : block.stmts) {
+        for (const auto &stmt : block.stmts) {
             CheckStmt(*stmt);
         }
         PopScope();
     }
 
-    void CheckStmt(Stmt const &stmt) {
-        if (auto *s = dynamic_cast<ExprStmt const *>(&stmt)) {
+    void CheckStmt(const Stmt &stmt) {
+        if (auto *s = dynamic_cast<const ExprStmt *>(&stmt)) {
             CheckExpr(*s->expr);
         }
-        else if (auto *s = dynamic_cast<LetStmt const *>(&stmt)) {
+        else if (auto *s = dynamic_cast<const LetStmt *>(&stmt)) {
             TypeRef initType = s->init ? CheckExpr(*s->init) : TypeRef::MakeUnknown();
             TypeRef declType = s->type ? ResolveType(*s->type->get()) : initType;
 
@@ -3045,10 +2967,9 @@ private:
 
             if (s->init && s->type && !initType.IsUnknown() && !declType.IsUnknown() &&
                 !CanAssignExprTo(*s->init, initType, declType)) {
-                EmitError(s->location, AssignmentErrorMessage(
-                                           *s->init, declType,
-                                           std::format("cannot assign '{}' to '{}'",
-                                                       initType.ToString(), declType.ToString())));
+                EmitError(s->location, AssignmentErrorMessage(*s->init, declType,
+                                                              std::format("cannot assign '{}' to '{}'",
+                                                                          initType.ToString(), declType.ToString())));
             }
 
             if (s->pattern) {
@@ -3056,57 +2977,55 @@ private:
                 return;
             }
 
-                Symbol sym;
-                sym.kind = Symbol::Kind::Var;
-                sym.name = s->name;
-                sym.location = s->location;
-                sym.type = declType;
-                sym.isMut = s->isMut;
-                Define(sym);
+            Symbol sym;
+            sym.kind = Symbol::Kind::Var;
+            sym.name = s->name;
+            sym.location = s->location;
+            sym.type = declType;
+            sym.isMut = s->isMut;
+            Define(sym);
+        }
+        else if (const auto *s = dynamic_cast<const IfStmt *>(&stmt)) {
+            TypeRef cond = CheckExpr(*s->condition);
+            if (!cond.IsUnknown() && !cond.IsBool()) {
+                EmitError(s->condition->location, "if condition must be 'bool'");
             }
-            else if (auto const *s = dynamic_cast<IfStmt const *>(&stmt)) {
-                TypeRef cond = CheckExpr(*s->condition);
-                if (!cond.IsUnknown() && !cond.IsBool()) {
-                    EmitError(s->condition->location,
-                              "if condition must be 'bool'");
+            CheckBlock(*s->thenBlock);
+            for (const auto &elif : s->elseIfs) {
+                TypeRef elifCond = CheckExpr(*elif.condition);
+                if (!elifCond.IsUnknown() && !elifCond.IsBool()) {
+                    EmitError(elif.condition->location, "if condition must be 'bool'");
                 }
-                CheckBlock(*s->thenBlock);
-                for (auto const &elif : s->elseIfs) {
-                    TypeRef elifCond = CheckExpr(*elif.condition);
-                    if (!elifCond.IsUnknown() && !elifCond.IsBool()) {
-                        EmitError(elif.condition->location,
-                                  "if condition must be 'bool'");
-                    }
-                    CheckBlock(*elif.block);
-                }
-                if (s->elseBlock) {
-                    CheckBlock(*s->elseBlock);
-                }
+                CheckBlock(*elif.block);
             }
-            else if (auto const *s = dynamic_cast<WhileStmt const *>(&stmt)) {
-                if (!s->label.empty()) {
-                    activeLabels.insert(s->label);
-                }
-                
-                // FIX: Capture and validate the condition type
-                TypeRef cond = CheckExpr(*s->condition);
-                if (!cond.IsUnknown() && !cond.IsBool()) {
-                    EmitError(s->condition->location, "while condition must be 'bool'");
-                }
-            
-                ++loopDepth;
-                CheckBlock(*s->body);
-                --loopDepth;
-                if (!s->label.empty()) {
-                    activeLabels.erase(s->label);
-                }
+            if (s->elseBlock) {
+                CheckBlock(*s->elseBlock);
             }
-
-        else if (auto const *s = dynamic_cast<DoWhileStmt const *>(&stmt)) {
+        }
+        else if (const auto *s = dynamic_cast<const WhileStmt *>(&stmt)) {
             if (!s->label.empty()) {
                 activeLabels.insert(s->label);
             }
-            
+
+            // FIX: Capture and validate the condition type
+            TypeRef cond = CheckExpr(*s->condition);
+            if (!cond.IsUnknown() && !cond.IsBool()) {
+                EmitError(s->condition->location, "while condition must be 'bool'");
+            }
+
+            ++loopDepth;
+            CheckBlock(*s->body);
+            --loopDepth;
+            if (!s->label.empty()) {
+                activeLabels.erase(s->label);
+            }
+        }
+
+        else if (const auto *s = dynamic_cast<const DoWhileStmt *>(&stmt)) {
+            if (!s->label.empty()) {
+                activeLabels.insert(s->label);
+            }
+
             ++loopDepth;
             CheckBlock(*s->body);
             --loopDepth;
@@ -3115,12 +3034,12 @@ private:
             if (!cond.IsUnknown() && !cond.IsBool()) {
                 EmitError(s->condition->location, "do-while condition must be 'bool'");
             }
-        
+
             if (!s->label.empty()) {
                 activeLabels.erase(s->label);
             }
         }
-        else if (auto *s = dynamic_cast<LoopStmt const *>(&stmt)) {
+        else if (auto *s = dynamic_cast<const LoopStmt *>(&stmt)) {
             if (!s->label.empty()) {
                 activeLabels.insert(s->label);
             }
@@ -3131,7 +3050,7 @@ private:
                 activeLabels.erase(s->label);
             }
         }
-        else if (auto *s = dynamic_cast<ForStmt const *>(&stmt)) {
+        else if (auto *s = dynamic_cast<const ForStmt *>(&stmt)) {
             TypeRef iterType = CheckExpr(*s->iterable);
             PushScope(); // scope for the loop variable
             Symbol var;
@@ -3160,35 +3079,33 @@ private:
             }
             PopScope();
         }
-        else if (auto *s = dynamic_cast<MatchStmt const *>(&stmt)) {
+        else if (auto *s = dynamic_cast<const MatchStmt *>(&stmt)) {
             CheckExpr(*s->subject);
-            for (auto const &arm : s->arms) {
+            for (const auto &arm : s->arms) {
                 PushScope(); // each arm has its own binding scope
                 CheckPattern(*arm.pattern);
                 CheckExpr(*arm.body);
                 PopScope();
             }
         }
-        else if (auto *s = dynamic_cast<ReturnStmt const *>(&stmt)) {
+        else if (auto *s = dynamic_cast<const ReturnStmt *>(&stmt)) {
             if (s->value) {
-                if (TypeRef valType = CheckExpr(**s->value);
-                    !valType.IsUnknown() && !currentReturnType.IsUnknown() &&
-                    !currentReturnType.IsOpaque() &&
-                    !CanAssignExprTo(**s->value, valType, currentReturnType)) {
+                if (TypeRef valType = CheckExpr(**s->value); !valType.IsUnknown() && !currentReturnType.IsUnknown() &&
+                                                             !currentReturnType.IsOpaque() &&
+                                                             !CanAssignExprTo(**s->value, valType, currentReturnType)) {
                     EmitError(s->location,
                               AssignmentErrorMessage(**s->value, currentReturnType,
                                                      std::format("return type mismatch: "
                                                                  "expected '{}', found '{}'",
-                                                                 currentReturnType.ToString(),
-                                                                 valType.ToString())));
+                                                                 currentReturnType.ToString(), valType.ToString())));
                 }
             }
             else if (!currentReturnType.IsOpaque() && !currentReturnType.IsUnknown()) {
-                EmitError(s->location, std::format("missing return value; expected '{}'",
-                                                   currentReturnType.ToString()));
+                EmitError(s->location,
+                          std::format("missing return value; expected '{}'", currentReturnType.ToString()));
             }
         }
-        else if (auto *s = dynamic_cast<BreakStmt const *>(&stmt)) {
+        else if (auto *s = dynamic_cast<const BreakStmt *>(&stmt)) {
             if (loopDepth == 0) {
                 EmitError(stmt.location, "'break' outside of a loop");
             }
@@ -3196,7 +3113,7 @@ private:
                 EmitError(stmt.location, std::format("unknown loop label '{}'", s->label));
             }
         }
-        else if (auto *s = dynamic_cast<ContinueStmt const *>(&stmt)) {
+        else if (auto *s = dynamic_cast<const ContinueStmt *>(&stmt)) {
             if (loopDepth == 0) {
                 EmitError(stmt.location, "'continue' outside of a loop");
             }
@@ -3204,14 +3121,14 @@ private:
                 EmitError(stmt.location, std::format("unknown loop label '{}'", s->label));
             }
         }
-        else if (auto *s = dynamic_cast<DeclStmt const *>(&stmt)) {
+        else if (auto *s = dynamic_cast<const DeclStmt *>(&stmt)) {
             CollectDecl(*s->decl, *currentScope);
             CheckDecl(*s->decl);
         }
     }
 
-    void CheckLetPattern(Pattern const &pat, TypeRef const &type, bool isMut) {
-        if (auto *p = dynamic_cast<IdentPattern const *>(&pat)) {
+    void CheckLetPattern(const Pattern &pat, const TypeRef &type, bool isMut) {
+        if (auto *p = dynamic_cast<const IdentPattern *>(&pat)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Var;
             sym.name = p->name;
@@ -3220,27 +3137,25 @@ private:
             sym.isMut = isMut;
             Define(sym);
         }
-        else if (dynamic_cast<WildcardPattern const *>(&pat)) {}
-        else if (auto *p = dynamic_cast<TuplePattern const *>(&pat)) {
+        else if (dynamic_cast<const WildcardPattern *>(&pat)) {}
+        else if (auto *p = dynamic_cast<const TuplePattern *>(&pat)) {
             if (type.kind != TypeRef::Kind::Tuple) {
                 if (!type.IsUnknown()) {
-                    EmitError(p->location, std::format("cannot destructure non-tuple type '{}'",
-                                                       type.ToString()));
+                    EmitError(p->location, std::format("cannot destructure non-tuple type '{}'", type.ToString()));
                 }
-                for (auto const &elem : p->elements) {
+                for (const auto &elem : p->elements) {
                     CheckLetPattern(*elem, TypeRef::MakeUnknown(), isMut);
                 }
                 return;
             }
 
             if (p->elements.size() != type.inner.size()) {
-                EmitError(p->location,
-                          std::format("tuple pattern has {} elements but "
-                                      "type '{}' has {}",
-                                      p->elements.size(), type.ToString(), type.inner.size()));
+                EmitError(p->location, std::format("tuple pattern has {} elements but "
+                                                   "type '{}' has {}",
+                                                   p->elements.size(), type.ToString(), type.inner.size()));
             }
 
-            std::size_t const n = std::min(p->elements.size(), type.inner.size());
+            const std::size_t n = std::min(p->elements.size(), type.inner.size());
             for (std::size_t i = 0; i < n; ++i) {
                 CheckLetPattern(*p->elements[i], type.inner[i], isMut);
             }
@@ -3254,8 +3169,8 @@ private:
         }
     }
 
-    void CheckPattern(Pattern const &pat) {
-        if (auto *p = dynamic_cast<IdentPattern const *>(&pat)) {
+    void CheckPattern(const Pattern &pat) {
+        if (auto *p = dynamic_cast<const IdentPattern *>(&pat)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Var;
             sym.name = p->name;
@@ -3264,46 +3179,43 @@ private:
             sym.isMut = false;
             Define(sym);
         }
-        else if (auto *p = dynamic_cast<GuardedPattern const *>(&pat)) {
+        else if (auto *p = dynamic_cast<const GuardedPattern *>(&pat)) {
             CheckPattern(*p->inner);
             CheckExpr(*p->guard);
         }
-        else if (auto *p = dynamic_cast<RangePattern const *>(&pat)) {
+        else if (auto *p = dynamic_cast<const RangePattern *>(&pat)) {
             CheckPattern(*p->lo);
             CheckPattern(*p->hi);
         }
-        else if (auto *p = dynamic_cast<TuplePattern const *>(&pat)) {
-            for (auto const &e : p->elements) {
+        else if (auto *p = dynamic_cast<const TuplePattern *>(&pat)) {
+            for (const auto &e : p->elements) {
                 CheckPattern(*e);
             }
         }
-        else if (auto *p = dynamic_cast<StructPattern const *>(&pat)) {
+        else if (auto *p = dynamic_cast<const StructPattern *>(&pat)) {
             if (!currentScope->Lookup(p->typeName)) {
-                EmitError(p->location,
-                          std::format("unknown type '{}' in struct pattern", p->typeName));
+                EmitError(p->location, std::format("unknown type '{}' in struct pattern", p->typeName));
             }
-            for (auto const &f : p->fields) {
+            for (const auto &f : p->fields) {
                 CheckPattern(*f.pattern);
             }
         }
-        else if (auto *p = dynamic_cast<EnumPattern const *>(&pat)) {
+        else if (auto *p = dynamic_cast<const EnumPattern *>(&pat)) {
             if (!p->path.empty() && !currentScope->Lookup(p->path[0])) {
-                EmitError(p->location,
-                          std::format("unknown name '{}' in enum pattern", p->path[0]));
+                EmitError(p->location, std::format("unknown name '{}' in enum pattern", p->path[0]));
             }
-            EnumDecl::Variant const *variant =
+            const EnumDecl::Variant *variant =
                 p->path.size() >= 2 ? LookupEnumVariant(p->path[0], p->path[1]) : nullptr;
             std::unordered_set<std::string> named;
-            for (auto const &arg : p->namedArgs) {
+            for (const auto &arg : p->namedArgs) {
                 if (!named.insert(arg.name).second) {
-                    EmitError(arg.location,
-                              std::format("duplicate field '{}' in enum pattern", arg.name));
+                    EmitError(arg.location, std::format("duplicate field '{}' in enum pattern", arg.name));
                     continue;
                 }
 
-                EnumDecl::Variant::NamedField const *field = nullptr;
+                const EnumDecl::Variant::NamedField *field = nullptr;
                 if (variant) {
-                    for (auto const &candidate : variant->namedFields) {
+                    for (const auto &candidate : variant->namedFields) {
                         if (candidate.name == arg.name) {
                             field = &candidate;
                             break;
@@ -3316,8 +3228,7 @@ private:
                 }
                 else {
                     if (variant) {
-                        EmitError(arg.location,
-                                  std::format("unknown field '{}' in enum pattern", arg.name));
+                        EmitError(arg.location, std::format("unknown field '{}' in enum pattern", arg.name));
                     }
                     CheckPattern(*arg.pattern);
                 }
@@ -3327,9 +3238,8 @@ private:
                     CheckLetPattern(*p->args[i], ResolveType(*variant->fields[i]), false);
                 }
                 else if (variant && i - variant->fields.size() < variant->namedFields.size()) {
-                    CheckLetPattern(
-                        *p->args[i],
-                        ResolveType(*variant->namedFields[i - variant->fields.size()].type), false);
+                    CheckLetPattern(*p->args[i], ResolveType(*variant->namedFields[i - variant->fields.size()].type),
+                                    false);
                 }
                 else {
                     CheckPattern(*p->args[i]);
@@ -3340,12 +3250,12 @@ private:
     }
 
     // Expressions
-    TypeRef CheckExpr(Expr const &expr) {
-        if (auto *e = dynamic_cast<LiteralExpr const *>(&expr)) {
+    TypeRef CheckExpr(const Expr &expr) {
+        if (auto *e = dynamic_cast<const LiteralExpr *>(&expr)) {
             return LiteralType(e->token);
         }
 
-        if (auto *e = dynamic_cast<IdentExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const IdentExpr *>(&expr)) {
             Symbol *sym = currentScope->Lookup(e->name);
             if (sym) {
                 return sym->type;
@@ -3354,14 +3264,14 @@ private:
             return TypeRef::MakeUnknown();
         }
 
-        if (dynamic_cast<SelfExpr const *>(&expr)) {
+        if (dynamic_cast<const SelfExpr *>(&expr)) {
             if (!inImpl) {
                 EmitError(expr.location, "'self' used outside of an extend block");
             }
             return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
         }
 
-        if (auto *e = dynamic_cast<PathExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const PathExpr *>(&expr)) {
             if (e->segments.empty()) {
                 return TypeRef::MakeUnknown();
             }
@@ -3373,13 +3283,10 @@ private:
             if (e->segments.size() >= 2 &&
                 (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
                 if (first->kind == Symbol::Kind::Type) {
-                    std::string const &variantName = e->segments[1];
-                    if (EnumDecl::Variant const *variant =
-                            LookupEnumVariant(first->name, variantName)) {
+                    const std::string &variantName = e->segments[1];
+                    if (const EnumDecl::Variant *variant = LookupEnumVariant(first->name, variantName)) {
                         if (e->segments.size() > 2) {
-                            EmitError(
-                                e->location,
-                                std::format("'{}' is an enum variant, not a module", variantName));
+                            EmitError(e->location, std::format("'{}' is an enum variant, not a module", variantName));
                             return TypeRef::MakeUnknown();
                         }
                         if (!variant->fields.empty() || !variant->namedFields.empty()) {
@@ -3388,18 +3295,16 @@ private:
                         return EnumType(*enumDecls.at(first->name));
                     }
                 }
-                TypeRef receiverType =
-                    first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
-                std::string const &methodName = e->segments[1];
-                FuncDecl const *method = LookupMethod(receiverType, methodName);
+                TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
+                const std::string &methodName = e->segments[1];
+                const FuncDecl *method = LookupMethod(receiverType, methodName);
                 if (!method) {
-                    EmitError(e->location, std::format("'{}' not found in extend for type '{}'",
-                                                       methodName, first->name));
+                    EmitError(e->location,
+                              std::format("'{}' not found in extend for type '{}'", methodName, first->name));
                     return TypeRef::MakeUnknown();
                 }
                 if (e->segments.size() > 2) {
-                    EmitError(e->location,
-                              std::format("'{}' is a function, not a module", methodName));
+                    EmitError(e->location, std::format("'{}' is a function, not a module", methodName));
                     return TypeRef::MakeUnknown();
                 }
                 return AssociatedFunctionType(receiverType, *method);
@@ -3413,8 +3318,8 @@ private:
                 moduleScope = current->moduleScope;
                 Symbol *item = moduleScope->Lookup(e->segments[i]);
                 if (!item) {
-                    EmitError(e->location, std::format("'{}' not found in module '{}'",
-                                                       e->segments[i], e->segments[i - 1]));
+                    EmitError(e->location,
+                              std::format("'{}' not found in module '{}'", e->segments[i], e->segments[i - 1]));
                     return TypeRef::MakeUnknown();
                 }
                 current = item;
@@ -3422,17 +3327,16 @@ private:
             return current->type;
         }
 
-        if (auto *e = dynamic_cast<SizeOfExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const SizeOfExpr *>(&expr)) {
             TypeRef t = ResolveType(*e->type);
             if (!t.IsUnknown() && !SizeOfTypeExpr(*e->type)) {
-                EmitError(e->location,
-                          std::format("cannot determine size of type '{}'", t.ToString()));
+                EmitError(e->location, std::format("cannot determine size of type '{}'", t.ToString()));
             }
             return TypeRef::MakeUInt64();
         }
 
-        if (dynamic_cast<IntrinsicExpr const *>(&expr)) {
-            auto const *e = static_cast<IntrinsicExpr const *>(&expr);
+        if (dynamic_cast<const IntrinsicExpr *>(&expr)) {
+            const auto *e = static_cast<const IntrinsicExpr *>(&expr);
             using K = IntrinsicExpr::Kind;
             if (e->kind == K::Line || e->kind == K::Column) {
                 return TypeRef::MakeUInt();
@@ -3440,7 +3344,7 @@ private:
             return TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
         }
 
-        if (auto *e = dynamic_cast<UnaryExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const UnaryExpr *>(&expr)) {
             if (e->op == TokenKind::PlusPlus || e->op == TokenKind::MinusMinus) {
                 CheckMutability(*e->operand);
             }
@@ -3448,37 +3352,35 @@ private:
             return CheckUnary(e->op, t, e->location);
         }
 
-        if (auto *e = dynamic_cast<PostfixExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const PostfixExpr *>(&expr)) {
             CheckMutability(*e->operand);
             TypeRef t = CheckExpr(*e->operand);
             if (!t.IsUnknown() && !t.IsNumeric()) {
-                EmitError(e->location,
-                          std::format("'{}' applied to non-numeric type '{}'",
-                                      e->op == TokenKind::PlusPlus ? "++" : "--", t.ToString()));
+                EmitError(e->location, std::format("'{}' applied to non-numeric type '{}'",
+                                                   e->op == TokenKind::PlusPlus ? "++" : "--", t.ToString()));
             }
             return t;
         }
 
-        if (auto *e = dynamic_cast<BinaryExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const BinaryExpr *>(&expr)) {
             TypeRef l = CheckExpr(*e->left);
             TypeRef r = CheckExpr(*e->right);
             return CheckBinary(e->op, l, r, *e->left, *e->right, e->location);
         }
 
-        if (auto *e = dynamic_cast<AssignExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const AssignExpr *>(&expr)) {
             CheckMutability(*e->target);
             TypeRef tgt = CheckExpr(*e->target);
             TypeRef val = CheckExpr(*e->value);
             if (!tgt.IsUnknown() && !val.IsUnknown() && !CanAssignExprTo(*e->value, val, tgt)) {
-                EmitError(e->location,
-                          AssignmentErrorMessage(*e->value, tgt,
-                                                 std::format("cannot assign '{}' to '{}'",
-                                                             val.ToString(), tgt.ToString())));
+                EmitError(e->location, AssignmentErrorMessage(
+                                           *e->value, tgt,
+                                           std::format("cannot assign '{}' to '{}'", val.ToString(), tgt.ToString())));
             }
             return TypeRef::MakeOpaque();
         }
 
-        if (auto *e = dynamic_cast<TernaryExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const TernaryExpr *>(&expr)) {
             TypeRef cond = CheckExpr(*e->condition);
             if (!cond.IsUnknown() && !cond.IsBool()) {
                 EmitError(e->condition->location, "ternary condition must be 'bool'");
@@ -3488,11 +3390,10 @@ private:
             return thenT.IsUnknown() ? elseT : thenT;
         }
 
-        if (auto *e = dynamic_cast<RangeExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const RangeExpr *>(&expr)) {
             TypeRef loType = e->lo ? CheckExpr(*e->lo) : TypeRef::MakeUnknown();
             TypeRef hiType = e->hi ? CheckExpr(*e->hi) : TypeRef::MakeUnknown();
-            if (!loType.IsUnknown() && !hiType.IsUnknown() && !loType.IsNumeric() &&
-                !hiType.IsNumeric()) {
+            if (!loType.IsUnknown() && !hiType.IsUnknown() && !loType.IsNumeric() && !hiType.IsNumeric()) {
                 EmitError(e->location, "range operands must be numeric");
             }
             TypeRef elemType = loType.IsUnknown() ? hiType : loType;
@@ -3502,17 +3403,17 @@ private:
             return TypeRef::MakeRange(elemType);
         }
 
-        if (auto *e = dynamic_cast<CallExpr const *>(&expr)) {
-            if (auto *ident = dynamic_cast<IdentExpr const *>(e->callee.get())) {
+        if (auto *e = dynamic_cast<const CallExpr *>(&expr)) {
+            if (auto *ident = dynamic_cast<const IdentExpr *>(e->callee.get())) {
                 std::vector<TypeRef> argTypes;
                 argTypes.reserve(e->args.size());
-                for (auto const &arg : e->args) {
+                for (const auto &arg : e->args) {
                     argTypes.push_back(CheckExpr(*arg));
                 }
 
                 if (Symbol *sym = currentScope->Lookup(ident->name);
                     sym && sym->kind == Symbol::Kind::Func && !sym->funcOverloads.empty()) {
-                    FuncDecl const *decl = LookupFunctionOverload(*sym, argTypes);
+                    const FuncDecl *decl = LookupFunctionOverload(*sym, argTypes);
                     if (!decl) {
                         std::string argList;
                         for (std::size_t i = 0; i < argTypes.size(); ++i) {
@@ -3533,44 +3434,38 @@ private:
                         EmitError(e->location, decl->errorMessage);
                     }
                     TypeRef funcType = FunctionType(*decl);
-                    std::size_t const paramCount =
-                        funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()
-                            ? funcType.inner.size() - 1
-                            : 0;
-                    bool const isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
+                    const std::size_t paramCount =
+                        funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty() ? funcType.inner.size() - 1 : 0;
+                    const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
                     std::size_t requiredCount = 0;
-                    for (auto const &p : decl->params) {
+                    for (const auto &p : decl->params) {
                         if (!p.isVariadic && !p.defaultValue) {
                             ++requiredCount;
                         }
                     }
-                    bool const arityOk = isVariadic ? argTypes.size() >= requiredCount
-                                                    : (argTypes.size() >= requiredCount &&
-                                                       argTypes.size() <= paramCount);
+                    const bool arityOk = isVariadic
+                                           ? argTypes.size() >= requiredCount
+                                           : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
                     if (!arityOk) {
                         EmitError(e->location,
-                                  std::format("function expects {} argument(s), got {}", paramCount,
-                                              argTypes.size()));
+                                  std::format("function expects {} argument(s), got {}", paramCount, argTypes.size()));
                     }
                     else {
                         for (std::size_t i = 0; i < argTypes.size() && i < paramCount; ++i) {
-                            TypeRef const &paramType = funcType.inner[i];
+                            const TypeRef &paramType = funcType.inner[i];
                             if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
                                 !CanAssignExprTo(*e->args[i], argTypes[i], paramType)) {
                                 EmitError(e->args[i]->location,
                                           std::format("cannot pass '{}' to "
                                                       "parameter of type '{}'",
-                                                      argTypes[i].ToString(),
-                                                      paramType.ToString()));
+                                                      argTypes[i].ToString(), paramType.ToString()));
                             }
                         }
                         if (isVariadic) {
-                            TypeRef const varElemType = ResolveType(*decl->params.back().type);
-                            TypeRef const sliceType =
-                                TypeRef::MakeNamed(SliceTypeName(varElemType));
-                            bool const isSingleSpread =
-                                (argTypes.size() == paramCount + 1 &&
-                                 dynamic_cast<SpreadExpr const *>(e->args[paramCount].get()));
+                            const TypeRef varElemType = ResolveType(*decl->params.back().type);
+                            const TypeRef sliceType = TypeRef::MakeNamed(SliceTypeName(varElemType));
+                            const bool isSingleSpread = (argTypes.size() == paramCount + 1 &&
+                                                         dynamic_cast<const SpreadExpr *>(e->args[paramCount].get()));
                             if (isSingleSpread) {
                                 if (!argTypes[paramCount].IsUnknown() && !sliceType.IsUnknown() &&
                                     argTypes[paramCount] != sliceType) {
@@ -3578,26 +3473,23 @@ private:
                                               std::format("cannot spread '{}' to "
                                                           "variadic "
                                                           "parameter of type '{}'",
-                                                          argTypes[paramCount].ToString(),
-                                                          varElemType.ToString()));
+                                                          argTypes[paramCount].ToString(), varElemType.ToString()));
                                 }
                             }
                             else {
                                 for (std::size_t i = paramCount; i < argTypes.size(); ++i) {
-                                    if (dynamic_cast<SpreadExpr const *>(e->args[i].get())) {
+                                    if (dynamic_cast<const SpreadExpr *>(e->args[i].get())) {
                                         EmitError(e->args[i]->location, "spread argument must be "
                                                                         "the only variadic "
                                                                         "argument");
                                     }
                                     else if (!argTypes[i].IsUnknown() && !varElemType.IsUnknown() &&
-                                             !CanAssignExprTo(*e->args[i], argTypes[i],
-                                                              varElemType)) {
+                                             !CanAssignExprTo(*e->args[i], argTypes[i], varElemType)) {
                                         EmitError(e->args[i]->location,
                                                   std::format("cannot pass '{}' to "
                                                               "variadic "
                                                               "parameter of type '{}'",
-                                                              argTypes[i].ToString(),
-                                                              varElemType.ToString()));
+                                                              argTypes[i].ToString(), varElemType.ToString()));
                                     }
                                 }
                             }
@@ -3607,38 +3499,35 @@ private:
                 }
             }
 
-            if (auto *field = dynamic_cast<FieldExpr const *>(e->callee.get())) {
+            if (auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {
                 TypeRef receiverType = CheckExpr(*field->object);
                 std::vector<TypeRef> argTypes;
                 argTypes.reserve(e->args.size());
-                for (auto const &arg : e->args) {
+                for (const auto &arg : e->args) {
                     argTypes.push_back(CheckExpr(*arg));
                 }
-                if (FuncDecl const *method = LookupMethod(receiverType, field->field, argTypes)) {
+                if (const FuncDecl *method = LookupMethod(receiverType, field->field, argTypes)) {
                     if (!method->warnMessage.empty()) {
                         EmitWarning(e->location, method->warnMessage);
                     }
                     if (!method->errorMessage.empty()) {
                         EmitError(e->location, method->errorMessage);
                     }
-                    std::vector<TypeRef> paramTypes =
-                        ResolveMethodParamTypes(receiverType, *method);
+                    std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
 
                     if (argTypes.size() != paramTypes.size()) {
-                        EmitError(e->location,
-                                  std::format("function expects {} argument(s), got {}",
-                                              paramTypes.size(), argTypes.size()));
+                        EmitError(e->location, std::format("function expects {} argument(s), got {}", paramTypes.size(),
+                                                           argTypes.size()));
                     }
                     else {
                         for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                            TypeRef const &argType = argTypes[i];
-                            TypeRef const &paramType = paramTypes[i];
+                            const TypeRef &argType = argTypes[i];
+                            const TypeRef &paramType = paramTypes[i];
                             if (!argType.IsUnknown() && !paramType.IsUnknown() &&
                                 !CanAssignExprTo(*e->args[i], argType, paramType)) {
-                                EmitError(e->args[i]->location,
-                                          std::format("cannot pass '{}' to "
-                                                      "parameter of type '{}'",
-                                                      argType.ToString(), paramType.ToString()));
+                                EmitError(e->args[i]->location, std::format("cannot pass '{}' to "
+                                                                            "parameter of type '{}'",
+                                                                            argType.ToString(), paramType.ToString()));
                             }
                         }
                     }
@@ -3646,41 +3535,37 @@ private:
                     return ResolveMethodReturnType(receiverType, *method);
                 }
 
-                if (FuncDecl const *method = LookupInterfaceMethod(receiverType, field->field)) {
+                if (const FuncDecl *method = LookupInterfaceMethod(receiverType, field->field)) {
                     std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(*method);
-                    bool const isVariadic =
-                        !method->params.empty() && method->params.back().isVariadic;
-                    bool const arityOk = isVariadic ? argTypes.size() >= paramTypes.size()
-                                                    : argTypes.size() == paramTypes.size();
+                    const bool isVariadic = !method->params.empty() && method->params.back().isVariadic;
+                    const bool arityOk =
+                        isVariadic ? argTypes.size() >= paramTypes.size() : argTypes.size() == paramTypes.size();
 
                     if (!arityOk) {
-                        EmitError(e->location,
-                                  std::format("function expects {} argument(s), got {}",
-                                              paramTypes.size(), argTypes.size()));
+                        EmitError(e->location, std::format("function expects {} argument(s), got {}", paramTypes.size(),
+                                                           argTypes.size()));
                     }
                     else {
                         for (std::size_t i = 0; i < paramTypes.size(); ++i) {
-                            TypeRef const &argType = argTypes[i];
-                            TypeRef const &paramType = paramTypes[i];
+                            const TypeRef &argType = argTypes[i];
+                            const TypeRef &paramType = paramTypes[i];
                             if (!argType.IsUnknown() && !paramType.IsUnknown() &&
                                 !CanAssignExprTo(*e->args[i], argType, paramType)) {
-                                EmitError(e->args[i]->location,
-                                          std::format("cannot pass '{}' to "
-                                                      "parameter of type '{}'",
-                                                      argType.ToString(), paramType.ToString()));
+                                EmitError(e->args[i]->location, std::format("cannot pass '{}' to "
+                                                                            "parameter of type '{}'",
+                                                                            argType.ToString(), paramType.ToString()));
                             }
                         }
 
                         if (isVariadic) {
-                            TypeRef const varElemType = ResolveType(*method->params.back().type);
+                            const TypeRef varElemType = ResolveType(*method->params.back().type);
                             for (std::size_t i = paramTypes.size(); i < argTypes.size(); ++i) {
                                 if (!argTypes[i].IsUnknown() && !varElemType.IsUnknown() &&
                                     !CanAssignExprTo(*e->args[i], argTypes[i], varElemType)) {
                                     EmitError(e->args[i]->location,
                                               std::format("cannot pass '{}' to variadic "
                                                           "parameter of type '{}'",
-                                                          argTypes[i].ToString(),
-                                                          varElemType.ToString()));
+                                                          argTypes[i].ToString(), varElemType.ToString()));
                                 }
                             }
                         }
@@ -3690,40 +3575,34 @@ private:
                 }
             }
 
-            if (auto *path = dynamic_cast<PathExpr const *>(e->callee.get())) {
+            if (auto *path = dynamic_cast<const PathExpr *>(e->callee.get())) {
                 if (path->segments.size() == 2) {
                     Symbol *first = currentScope->Lookup(path->segments[0]);
-                    if (first && (first->kind == Symbol::Kind::Type ||
-                                  first->kind == Symbol::Kind::Interface)) {
-                        TypeRef receiverType =
-                            first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
-                        std::string const &methodName = path->segments[1];
+                    if (first && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
+                        TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
+                        const std::string &methodName = path->segments[1];
                         std::vector<TypeRef> argTypes;
                         argTypes.reserve(e->args.size());
-                        for (auto const &arg : e->args) {
+                        for (const auto &arg : e->args) {
                             argTypes.push_back(CheckExpr(*arg));
                         }
-                        if (FuncDecl const *method =
-                                LookupMethod(receiverType, methodName, argTypes)) {
-                            std::vector<TypeRef> paramTypes =
-                                ResolveMethodParamTypes(receiverType, *method);
+                        if (const FuncDecl *method = LookupMethod(receiverType, methodName, argTypes)) {
+                            std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
                             if (argTypes.size() != paramTypes.size()) {
-                                EmitError(e->location,
-                                          std::format("function expects {} "
-                                                      "argument(s), got {}",
-                                                      paramTypes.size(), argTypes.size()));
+                                EmitError(e->location, std::format("function expects {} "
+                                                                   "argument(s), got {}",
+                                                                   paramTypes.size(), argTypes.size()));
                             }
                             else {
                                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                                    TypeRef const &argType = argTypes[i];
-                                    TypeRef const &paramType = paramTypes[i];
+                                    const TypeRef &argType = argTypes[i];
+                                    const TypeRef &paramType = paramTypes[i];
                                     if (!argType.IsUnknown() && !paramType.IsUnknown() &&
                                         !CanAssignExprTo(*e->args[i], argType, paramType)) {
                                         EmitError(e->args[i]->location,
                                                   std::format("cannot pass '{}' to "
                                                               "parameter of type '{}'",
-                                                              argType.ToString(),
-                                                              paramType.ToString()));
+                                                              argType.ToString(), paramType.ToString()));
                                     }
                                 }
                             }
@@ -3736,26 +3615,25 @@ private:
             TypeRef calleeType = CheckExpr(*e->callee);
             std::vector<TypeRef> argTypes;
             argTypes.reserve(e->args.size());
-            for (auto const &arg : e->args) {
+            for (const auto &arg : e->args) {
                 argTypes.push_back(CheckExpr(*arg));
             }
 
             if (calleeType.kind == TypeRef::Kind::Func && !calleeType.inner.empty()) {
-                std::size_t const paramCount = calleeType.inner.size() - 1;
+                const std::size_t paramCount = calleeType.inner.size() - 1;
                 if (argTypes.size() != paramCount) {
-                    EmitError(e->location, std::format("function expects {} argument(s), got {}",
-                                                       paramCount, argTypes.size()));
+                    EmitError(e->location,
+                              std::format("function expects {} argument(s), got {}", paramCount, argTypes.size()));
                 }
                 else {
                     for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                        TypeRef const &argType = argTypes[i];
-                        TypeRef const &paramType = calleeType.inner[i];
+                        const TypeRef &argType = argTypes[i];
+                        const TypeRef &paramType = calleeType.inner[i];
                         if (!argType.IsUnknown() && !paramType.IsUnknown() &&
                             !CanAssignExprTo(*e->args[i], argType, paramType)) {
-                            EmitError(e->args[i]->location,
-                                      std::format("cannot pass '{}' to "
-                                                  "parameter of type '{}'",
-                                                  argType.ToString(), paramType.ToString()));
+                            EmitError(e->args[i]->location, std::format("cannot pass '{}' to "
+                                                                        "parameter of type '{}'",
+                                                                        argType.ToString(), paramType.ToString()));
                         }
                     }
                 }
@@ -3764,7 +3642,7 @@ private:
             return TypeRef::MakeUnknown();
         }
 
-        if (auto *e = dynamic_cast<IndexExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const IndexExpr *>(&expr)) {
             TypeRef obj = CheckExpr(*e->object);
             CheckExpr(*e->index);
             if (auto elemType = IndexElementType(obj)) {
@@ -3773,7 +3651,7 @@ private:
             return TypeRef::MakeUnknown();
         }
 
-        if (auto *e = dynamic_cast<FieldExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const FieldExpr *>(&expr)) {
             TypeRef obj = CheckExpr(*e->object);
             if (auto elemType = SliceElementType(obj)) {
                 if (e->field == "data") {
@@ -3782,8 +3660,7 @@ private:
                 if (e->field == "length") {
                     return TypeRef::MakeUInt64();
                 }
-                EmitError(e->location,
-                          std::format("unknown field '{}' on type '{}'", e->field, obj.ToString()));
+                EmitError(e->location, std::format("unknown field '{}' on type '{}'", e->field, obj.ToString()));
                 return TypeRef::MakeUnknown();
             }
             if (obj.IsRange()) {
@@ -3794,45 +3671,43 @@ private:
                 if (e->field == "inclusive") {
                     return TypeRef::MakeBool();
                 }
-                EmitError(e->location,
-                          std::format("unknown field '{}' on type '{}'", e->field, obj.ToString()));
+                EmitError(e->location, std::format("unknown field '{}' on type '{}'", e->field, obj.ToString()));
                 return TypeRef::MakeUnknown();
             }
             if (obj.kind == TypeRef::Kind::Tuple) {
                 try {
-                    std::size_t const idx = std::stoul(e->field);
+                    const std::size_t idx = std::stoul(e->field);
                     if (idx < obj.inner.size()) {
                         return obj.inner[idx];
                     }
                 }
                 catch (...) {
                 }
-                EmitError(e->location, std::format("tuple index '{}' out of range for type '{}'",
-                                                   e->field, obj.ToString()));
+                EmitError(e->location,
+                          std::format("tuple index '{}' out of range for type '{}'", e->field, obj.ToString()));
                 return TypeRef::MakeUnknown();
             }
 
             // Interface fat-pointer fields: data → *opaque, vtable →
             // *opaque
-            if (std::string const ifaceName = NamedBaseTypeName(obj);
+            if (const std::string ifaceName = NamedBaseTypeName(obj);
                 !ifaceName.empty() && currentScope->Lookup(ifaceName) &&
                 currentScope->Lookup(ifaceName)->kind == Symbol::Kind::Interface) {
-                TypeRef const ptrOpaque = TypeRef::MakePointer(TypeRef::MakeOpaque());
+                const TypeRef ptrOpaque = TypeRef::MakePointer(TypeRef::MakeOpaque());
                 if (e->field == "data" || e->field == "vtable") {
                     return ptrOpaque;
                 }
-                EmitError(e->location, std::format("unknown field '{}' on interface type '{}'",
-                                                   e->field, obj.ToString()));
+                EmitError(e->location,
+                          std::format("unknown field '{}' on interface type '{}'", e->field, obj.ToString()));
                 return TypeRef::MakeUnknown();
             }
 
-            std::string const structName = NamedBaseTypeName(obj);
+            const std::string structName = NamedBaseTypeName(obj);
             if (!structName.empty() && structDecls.contains(structName)) {
                 if (TypeRef fieldType = StructFieldType(obj, e->field); !fieldType.IsUnknown()) {
                     return fieldType;
                 }
-                EmitError(e->location,
-                          std::format("unknown field '{}' on type '{}'", e->field, obj.ToString()));
+                EmitError(e->location, std::format("unknown field '{}' on type '{}'", e->field, obj.ToString()));
                 return TypeRef::MakeUnknown();
             }
 
@@ -3840,25 +3715,23 @@ private:
                 return fieldType;
             }
             if (!obj.IsUnknown()) {
-                EmitError(e->location,
-                          std::format("type '{}' has no field '{}'", obj.ToString(), e->field));
+                EmitError(e->location, std::format("type '{}' has no field '{}'", obj.ToString(), e->field));
             }
             return TypeRef::MakeUnknown(); // field type lookup needs full
                                            // type info
         }
 
-        if (auto *e = dynamic_cast<StructInitExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const StructInitExpr *>(&expr)) {
             CheckStructInitExpr(*e);
-            if (auto const [enumDecl, variant] = LookupEnumVariantInitializer(e->typeName);
-                enumDecl && variant) {
+            if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(e->typeName); enumDecl && variant) {
                 return EnumType(*enumDecl);
             }
             return TypeRef::MakeNamed(GenericStructInitName(*e));
         }
 
-        if (auto *e = dynamic_cast<SliceExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const SliceExpr *>(&expr)) {
             TypeRef elemType = TypeRef::MakeUnknown();
-            for (auto const &el : e->elements) {
+            for (const auto &el : e->elements) {
                 TypeRef t = CheckExpr(*el);
                 if (elemType.IsUnknown()) {
                     elemType = t;
@@ -3867,45 +3740,41 @@ private:
             return TypeRef::MakeNamed(SliceTypeName(elemType));
         }
 
-        if (auto *e = dynamic_cast<TupleExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const TupleExpr *>(&expr)) {
             std::vector<TypeRef> elemTypes;
-            for (auto const &el : e->elements) {
+            for (const auto &el : e->elements) {
                 elemTypes.push_back(CheckExpr(*el));
             }
             return TypeRef::MakeTuple(std::move(elemTypes));
         }
 
-        if (auto *e = dynamic_cast<CastExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const CastExpr *>(&expr)) {
             TypeRef operandType = CheckExpr(*e->operand);
             TypeRef targetType = ResolveType(*e->type);
-            if (auto const maxCodePoint = CharTypeMaxCodePoint(targetType);
+            if (const auto maxCodePoint = CharTypeMaxCodePoint(targetType);
                 maxCodePoint && (operandType.IsInteger() || IsCharType(operandType))) {
-                if (auto const value = EvalConstInt(*e->operand); value && *value < 0) {
+                if (const auto value = EvalConstInt(*e->operand); value && *value < 0) {
                     EmitError(e->location,
-                              std::format("constant value is out of range for type '{}'",
-                                          targetType.ToString()));
+                              std::format("constant value is out of range for type '{}'", targetType.ToString()));
                 }
-                else if (auto const value = EvalConstCharCastValue(*e->operand)) {
+                else if (const auto value = EvalConstCharCastValue(*e->operand)) {
                     if (*value > *maxCodePoint) {
                         EmitError(e->location,
-                                  std::format("constant value is out of range for type '{}'",
-                                              targetType.ToString()));
+                                  std::format("constant value is out of range for type '{}'", targetType.ToString()));
                     }
                     else if (IsSurrogateCodePoint(*value)) {
-                        EmitError(
-                            e->location,
-                            std::format("surrogate code point U+{:04X} cannot be converted to '{}'",
-                                        *value, targetType.ToString()));
+                        EmitError(e->location, std::format("surrogate code point U+{:04X} cannot be converted to '{}'",
+                                                           *value, targetType.ToString()));
                     }
                 }
             }
             return targetType;
         }
 
-        if (auto *e = dynamic_cast<IsExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const IsExpr *>(&expr)) {
             TypeRef operandType = CheckExpr(*e->operand);
             ResolveType(*e->type);
-            std::string const ifaceName = NamedBaseTypeName(operandType);
+            const std::string ifaceName = NamedBaseTypeName(operandType);
             if (!ifaceName.empty()) {
                 Symbol *sym = currentScope->Lookup(ifaceName);
                 if (sym && sym->kind == Symbol::Kind::Interface) {
@@ -3917,10 +3786,10 @@ private:
             return TypeRef::MakeBool();
         }
 
-        if (auto *e = dynamic_cast<MatchExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const MatchExpr *>(&expr)) {
             CheckExpr(*e->subject);
             TypeRef resultType = TypeRef::MakeUnknown();
-            for (auto const &arm : e->arms) {
+            for (const auto &arm : e->arms) {
                 PushScope();
                 CheckPattern(*arm.pattern);
                 TypeRef armType = CheckExpr(*arm.body);
@@ -3934,26 +3803,25 @@ private:
                               AssignmentErrorMessage(*arm.body, resultType,
                                                      std::format("match arm type mismatch: "
                                                                  "expected '{}', found '{}'",
-                                                                 resultType.ToString(),
-                                                                 armType.ToString())));
+                                                                 resultType.ToString(), armType.ToString())));
                 }
             }
             return resultType;
         }
 
-        if (auto *e = dynamic_cast<BlockExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const BlockExpr *>(&expr)) {
             CheckBlock(*e->block);
             return TypeRef::MakeUnknown();
         }
 
-        if (auto *e = dynamic_cast<SpreadExpr const *>(&expr)) {
+        if (auto *e = dynamic_cast<const SpreadExpr *>(&expr)) {
             return CheckExpr(*e->operand);
         }
 
         return TypeRef::MakeUnknown();
     }
 
-    static TypeRef LiteralType(Token const &tok) {
+    static TypeRef LiteralType(const Token &tok) {
         switch (tok.kind) {
         case TokenKind::IntLiteral:
         case TokenKind::FloatLiteral:
@@ -3969,7 +3837,7 @@ private:
         }
     }
 
-    TypeRef CheckUnary(TokenKind op, TypeRef const &t, SourceLocation loc) {
+    TypeRef CheckUnary(TokenKind op, const TypeRef &t, SourceLocation loc) {
         if (t.IsUnknown()) {
             return TypeRef::MakeUnknown();
         }
@@ -3981,8 +3849,7 @@ private:
             return TypeRef::MakeBool();
         case TokenKind::Minus:
             if (!t.IsNumeric()) {
-                EmitError(loc,
-                          std::format("unary '-' applied to non-numeric type '{}'", t.ToString()));
+                EmitError(loc, std::format("unary '-' applied to non-numeric type '{}'", t.ToString()));
             }
             return t;
         case TokenKind::Tilde:
@@ -4057,45 +3924,41 @@ private:
         }
     }
 
-    TypeRef CheckBinary(TokenKind op, TypeRef const &l, TypeRef const &r, Expr const &leftExpr,
-                        Expr const &rightExpr, SourceLocation loc) {
+    TypeRef CheckBinary(TokenKind op, const TypeRef &l, const TypeRef &r, const Expr &leftExpr, const Expr &rightExpr,
+                        SourceLocation loc) {
         if (l.IsUnknown() || r.IsUnknown()) {
             return TypeRef::MakeUnknown();
         }
 
-        std::string_view const opName = BinaryOperatorName(op);
+        const std::string_view opName = BinaryOperatorName(op);
         if (!opName.empty()) {
-            if (FuncDecl const *method = LookupMethod(l, std::string(opName), {r})) {
+            if (const FuncDecl *method = LookupMethod(l, std::string(opName), {r})) {
                 std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(l, *method);
                 TypeRef ret = ResolveMethodReturnType(l, *method);
                 if (paramTypes.size() != 1) {
-                    EmitError(loc, std::format("operator '{}' expects 1 argument, got {}", opName,
-                                               paramTypes.size()));
+                    EmitError(loc, std::format("operator '{}' expects 1 argument, got {}", opName, paramTypes.size()));
                 }
-                else if (!paramTypes[0].IsUnknown() &&
-                         !CanAssignExprTo(rightExpr, r, paramTypes[0])) {
-                    EmitError(rightExpr.location,
-                              std::format("cannot pass '{}' to parameter of type '{}'",
-                                          r.ToString(), paramTypes[0].ToString()));
+                else if (!paramTypes[0].IsUnknown() && !CanAssignExprTo(rightExpr, r, paramTypes[0])) {
+                    EmitError(rightExpr.location, std::format("cannot pass '{}' to parameter of type '{}'",
+                                                              r.ToString(), paramTypes[0].ToString()));
                 }
                 return ret;
             }
         }
 
-        auto isNumericOrChar = [](TypeRef const &t) {
-            return t.IsNumeric() || t.kind == TypeRef::Kind::Char8 ||
-                   t.kind == TypeRef::Kind::Char16 || t.kind == TypeRef::Kind::Char32;
+        auto isNumericOrChar = [](const TypeRef &t) {
+            return t.IsNumeric() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
+                   t.kind == TypeRef::Kind::Char32;
         };
-        auto isIntegerOrChar = [](TypeRef const &t) {
-            return t.IsInteger() || t.kind == TypeRef::Kind::Char8 ||
-                   t.kind == TypeRef::Kind::Char16 || t.kind == TypeRef::Kind::Char32;
+        auto isIntegerOrChar = [](const TypeRef &t) {
+            return t.IsInteger() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
+                   t.kind == TypeRef::Kind::Char32;
         };
         auto isChar = [](TypeRef::Kind k) {
-            return k == TypeRef::Kind::Char8 || k == TypeRef::Kind::Char16 ||
-                   k == TypeRef::Kind::Char32;
+            return k == TypeRef::Kind::Char8 || k == TypeRef::Kind::Char16 || k == TypeRef::Kind::Char32;
         };
-        auto getCompatibleType = [&](Expr const &left, TypeRef const &lt, Expr const &right,
-                                     TypeRef const &rt) -> std::optional<TypeRef> {
+        auto getCompatibleType = [&](const Expr &left, const TypeRef &lt, const Expr &right,
+                                     const TypeRef &rt) -> std::optional<TypeRef> {
             if ((lt.IsInteger() && isChar(rt.kind)) || (rt.IsInteger() && isChar(lt.kind))) {
                 return lt.IsInteger() ? lt : rt;
             }
@@ -4127,14 +3990,13 @@ private:
                 EmitError(loc, std::format("'+' applied to non-numeric type '{}'", l.ToString()));
             }
             else if (!isNumericOrChar(r)) {
-                EmitError(loc,
-                          std::format("'+' right operand must be numeric, got '{}'", r.ToString()));
+                EmitError(loc, std::format("'+' right operand must be numeric, got '{}'", r.ToString()));
             }
             else {
                 auto res = getCompatibleType(leftExpr, l, rightExpr, r);
                 if (!res.has_value()) {
-                    EmitError(loc, std::format("mismatched types in addition: '{}' and '{}'",
-                                               l.ToString(), r.ToString()));
+                    EmitError(loc,
+                              std::format("mismatched types in addition: '{}' and '{}'", l.ToString(), r.ToString()));
                 }
                 else {
                     return *res;
@@ -4151,8 +4013,7 @@ private:
                 EmitError(loc, std::format("'-' applied to non-numeric type '{}'", l.ToString()));
             }
             else if (!isNumericOrChar(r)) {
-                EmitError(loc,
-                          std::format("'-' right operand must be numeric, got '{}'", r.ToString()));
+                EmitError(loc, std::format("'-' right operand must be numeric, got '{}'", r.ToString()));
             }
             else {
                 auto res = getCompatibleType(leftExpr, l, rightExpr, r);
@@ -4172,17 +4033,12 @@ private:
         case TK::Slash:
         case TK::Percent:
         case TK::StarStar: {
-            std::string opStr = op == TK::Star    ? "*"
-                              : op == TK::Slash   ? "/"
-                              : op == TK::Percent ? "%"
-                                                  : "**";
+            std::string opStr = op == TK::Star ? "*" : op == TK::Slash ? "/" : op == TK::Percent ? "%" : "**";
             if (!isNumericOrChar(l)) {
-                EmitError(
-                    loc, std::format("'{}' applied to non-numeric type '{}'", opStr, l.ToString()));
+                EmitError(loc, std::format("'{}' applied to non-numeric type '{}'", opStr, l.ToString()));
             }
             else if (!isNumericOrChar(r)) {
-                EmitError(loc, std::format("'{}' right operand must be numeric, got '{}'", opStr,
-                                           r.ToString()));
+                EmitError(loc, std::format("'{}' right operand must be numeric, got '{}'", opStr, r.ToString()));
             }
             else {
                 auto res = getCompatibleType(leftExpr, l, rightExpr, r);
@@ -4203,13 +4059,12 @@ private:
         case TK::Caret:
         case TK::LessLess:
         case TK::GreaterGreater: {
-            auto isBitwiseOperand = [](TypeRef const &t) {
+            auto isBitwiseOperand = [](const TypeRef &t) {
                 return t.IsInteger() || t.IsBool() || t.kind == TypeRef::Kind::Char8 ||
                        t.kind == TypeRef::Kind::Char16 || t.kind == TypeRef::Kind::Char32;
             };
             if (!isBitwiseOperand(l)) {
-                EmitError(loc, std::format("bitwise operator applied to non-integer type '{}'",
-                                           l.ToString()));
+                EmitError(loc, std::format("bitwise operator applied to non-integer type '{}'", l.ToString()));
             }
             else if (!isBitwiseOperand(r)) {
                 EmitError(loc, std::format("bitwise operator right operand must "
@@ -4233,12 +4088,12 @@ private:
         case TK::AmpAmp:
         case TK::PipePipe:
             if (!l.IsBool()) {
-                EmitError(loc, std::format("'{}' applied to non-bool type '{}'",
-                                           op == TK::AmpAmp ? "&&" : "||", l.ToString()));
+                EmitError(loc, std::format("'{}' applied to non-bool type '{}'", op == TK::AmpAmp ? "&&" : "||",
+                                           l.ToString()));
             }
             if (!r.IsBool()) {
-                EmitError(loc, std::format("'{}' applied to non-bool type '{}'",
-                                           op == TK::AmpAmp ? "&&" : "||", r.ToString()));
+                EmitError(loc, std::format("'{}' applied to non-bool type '{}'", op == TK::AmpAmp ? "&&" : "||",
+                                           r.ToString()));
             }
             return TypeRef::MakeBool();
 
@@ -4257,8 +4112,8 @@ private:
                 compat = true;
             }
             if (!compat) {
-                EmitError(loc, std::format("cannot compare mismatched types '{}' and '{}'",
-                                           l.ToString(), r.ToString()));
+                EmitError(loc,
+                          std::format("cannot compare mismatched types '{}' and '{}'", l.ToString(), r.ToString()));
             }
             return TypeRef::MakeBool();
         }
@@ -4269,8 +4124,8 @@ private:
     }
 
     // Check that an assignment target is mutable.
-    void CheckMutability(Expr const &target) {
-        if (auto *e = dynamic_cast<IdentExpr const *>(&target)) {
+    void CheckMutability(const Expr &target) {
+        if (auto *e = dynamic_cast<const IdentExpr *>(&target)) {
             Symbol *sym = currentScope->Lookup(e->name);
             if (!sym) {
                 return;
@@ -4280,16 +4135,15 @@ private:
                 return;
             }
             if (sym->kind == Symbol::Kind::Var && !sym->isMut) {
-                EmitError(target.location,
-                          std::format("cannot assign to immutable variable '{}'", e->name));
+                EmitError(target.location, std::format("cannot assign to immutable variable '{}'", e->name));
             }
         }
     }
 };
 
 // Sema public API
-Sema::Sema(std::vector<Module const *> userModules, std::vector<DepPackage> deps,
-           std::string packageName, std::string targetOs)
+Sema::Sema(std::vector<const Module *> userModules, std::vector<DepPackage> deps, std::string packageName,
+           std::string targetOs)
     : modules(std::move(userModules))
     , deps(std::move(deps))
     , packageName(std::move(packageName))
@@ -4302,7 +4156,7 @@ SemaResult Sema::Analyze() {
     return SemaResult{std::move(diags), std::move(symbols)};
 }
 
-bool Sema::DumpResult(SemaResult const &result, std::filesystem::path const &path) {
+bool Sema::DumpResult(const SemaResult &result, const std::filesystem::path &path) {
     std::ofstream out(path);
     if (!out) {
         return false;
@@ -4336,15 +4190,15 @@ bool Sema::DumpResult(SemaResult const &result, std::filesystem::path const &pat
         out << "(none)\n";
     }
     else {
-        for (auto const &sym : result.symbols) {
+        for (const auto &sym : result.symbols) {
             std::string tag = std::format("{:<10}", kindName(sym.kind));
             std::string qname = sym.name;
             if (sym.isMut) {
                 qname += " (var)";
             }
             std::string typeStr = sym.resolvedType.empty() ? "" : "  " + sym.resolvedType;
-            out << std::format("{}  {:<28}{}  [{}:{}:{}]\n", tag, qname, typeStr, sym.sourceName,
-                               sym.location.line, sym.location.column);
+            out << std::format("{}  {:<28}{}  [{}:{}:{}]\n", tag, qname, typeStr, sym.sourceName, sym.location.line,
+                               sym.location.column);
         }
     }
 
@@ -4358,11 +4212,10 @@ bool Sema::DumpResult(SemaResult const &result, std::filesystem::path const &pat
         out << "(none)\n";
     }
     else {
-        for (auto const &diag : result.diagnostics) {
-            char const *sev =
-                diag.severity == SemaDiagnostic::Severity::Error ? "error" : "warning";
-            out << std::format("{}:{}:{}: {}: {}\n", diag.sourceName, diag.location.line,
-                               diag.location.column, sev, diag.message);
+        for (const auto &diag : result.diagnostics) {
+            const char *sev = diag.severity == SemaDiagnostic::Severity::Error ? "error" : "warning";
+            out << std::format("{}:{}:{}: {}: {}\n", diag.sourceName, diag.location.line, diag.location.column, sev,
+                               diag.message);
         }
     }
 

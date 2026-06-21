@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #pragma once
 
 #include <filesystem>
@@ -30,6 +27,6 @@ enum class PackageType {
  *
  * @return true on success, false on failure
  */
-bool ScaffoldPackage(std::filesystem::path const &root, std::string const &name, PackageType type,
+bool ScaffoldPackage(const std::filesystem::path &root, const std::string &name, PackageType type,
                      bool initMode = false);
 } // namespace Rux

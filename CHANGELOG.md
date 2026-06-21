@@ -9,7 +9,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.3.1] - 2026-06-14
+## [0.3.1] - 2026-06-21
 
 Adds more correctness fixes, broader literal and constant-expression support, improved overload resolution, expanded platform/runtime support, better test coverage, and cleaner CLI/build tooling.
 
@@ -34,6 +34,13 @@ Adds more correctness fixes, broader literal and constant-expression support, im
 - **CTest-based test suite** — CMake/CTest migration for cross-platform test execution
 - **Expanded regression coverage** — recursion, integer, boolean, floating point, tuples, numeric suffixes, constant expressions, and bool bitwise ops
 - **Improved CLI help generation** — generated help text with wrapping and consistency checks
+
+#### Build / Infrastructure
+
+- **Per-OS CI workflows** — dedicated GitHub Actions workflows for macOS 26, FreeBSD, OpenBSD, NetBSD, DragonFly BSD, and OmniOS (illumos), in addition to the existing Ubuntu and Windows runners
+- **macOS release binaries** — the release workflow now builds, tests, and publishes a macOS artifact alongside Linux and Windows
+- **Build instructions** — beginner-friendly, per-platform build-from-source guide in the README for all supported operating systems
+- **Funding / sponsorship** — `FUNDING.yml` adds a Sponsor button (Open Collective and donate page)
 
 ### Fixed
 
@@ -202,8 +209,7 @@ func Main() -> int32 {
 
 ### Compiler pipeline
 
-- **Lexer** — tokenizes `.rux` source files; reports diagnostics with file, line, and column; supports token stream
-  dump (`--dump-tokens`)
+- **Lexer** — tokenizes `.rux` source files; reports diagnostics with file, line, and column; supports token stream dump (`--dump-tokens`)
 - **Parser** — produces an AST from the token stream; supports AST dump (`--dump-ast`)
 - **Semantic analysis** — type checking and name resolution; supports analysis dump (`--dump-sema`)
 - **HIR** — high-level intermediate representation lowered from the AST

@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #pragma once
 
 #include <cstdint>
@@ -270,13 +267,13 @@ struct TypeRef {
 
     // True when this type can be assigned to `other` (lenient: Unknown is
     // compatible with anything).
-    [[nodiscard]] bool IsAssignableTo(TypeRef const &other) const noexcept;
+    [[nodiscard]] bool IsAssignableTo(const TypeRef &other) const noexcept;
     [[nodiscard]] std::optional<std::uint64_t> SizeInBytes() const noexcept;
     [[nodiscard]] std::string ToString() const;
 
-    bool operator==(TypeRef const &other) const noexcept;
+    bool operator==(const TypeRef &other) const noexcept;
 
-    bool operator!=(TypeRef const &other) const noexcept {
+    bool operator!=(const TypeRef &other) const noexcept {
         return !(*this == other);
     }
 };

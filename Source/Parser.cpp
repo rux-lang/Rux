@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #include "Rux/Parser.h"
 
 #include <cassert>
@@ -10,7 +7,7 @@
 namespace Rux {
 // ParseResult
 bool ParseResult::HasErrors() const noexcept {
-    for (auto const &d : diagnostics) {
+    for (const auto &d : diagnostics) {
         if (d.severity == ParserDiagnostic::Severity::Error) {
             return true;
         }
@@ -24,8 +21,7 @@ Parser::Parser(std::vector<Token> tokens, std::string sourceName)
     , sourceName(std::move(sourceName)) {
 }
 
-std::optional<ParseResult> Parser::FromLexResult(LexerResult const &lex,
-                                                 std::string const &sourceName) {
+std::optional<ParseResult> Parser::FromLexResult(const LexerResult &lex, const std::string &sourceName) {
     if (lex.HasErrors()) {
         return std::nullopt;
     }
@@ -51,27 +47,27 @@ ParseResult Parser::Parse() {
 }
 
 // Token helpers
-Token const &Parser::Peek(std::size_t const ahead) const noexcept {
-    std::size_t const idx = pos + ahead;
+const Token &Parser::Peek(const std::size_t ahead) const noexcept {
+    const std::size_t idx = pos + ahead;
     if (idx < tokens.size()) {
         return tokens[idx];
     }
     return tokens.back(); // EOF sentinel
 }
 
-Token const &Parser::Advance() noexcept {
+const Token &Parser::Advance() noexcept {
     if (!IsAtEnd()) {
         ++pos;
     }
     return tokens[pos - 1];
 }
 
-bool Parser::Check(TokenKind const kind) const noexcept {
+bool Parser::Check(const TokenKind kind) const noexcept {
     return Peek().kind == kind;
 }
 
-bool Parser::CheckAny(std::initializer_list<TokenKind> const kinds) const noexcept {
-    for (auto const k : kinds) {
+bool Parser::CheckAny(const std::initializer_list<TokenKind> kinds) const noexcept {
+    for (const auto k : kinds) {
         if (Check(k)) {
             return true;
         }
@@ -79,7 +75,7 @@ bool Parser::CheckAny(std::initializer_list<TokenKind> const kinds) const noexce
     return false;
 }
 
-bool Parser::Match(TokenKind const kind) noexcept {
+bool Parser::Match(const TokenKind kind) noexcept {
     if (!Check(kind)) {
         return false;
     }
@@ -87,7 +83,7 @@ bool Parser::Match(TokenKind const kind) noexcept {
     return true;
 }
 
-Token const &Parser::Expect(TokenKind const kind, std::string_view const message) {
+const Token &Parser::Expect(const TokenKind kind, const std::string_view message) {
     if (Check(kind)) {
         return Advance();
     }
@@ -99,7 +95,7 @@ bool Parser::IsAtEnd() const noexcept {
     return Peek().kind == TokenKind::EndOfFile;
 }
 
-Token const &Parser::Previous() const noexcept {
+const Token &Parser::Previous() const noexcept {
     assert(pos > 0);
     return tokens[pos - 1];
 }
@@ -115,9 +111,8 @@ bool Parser::IsGenericStructInitAhead() const noexcept {
 
     int angleDepth = 0;
     for (std::size_t ahead = 0;; ++ahead) {
-        TokenKind const kind = Peek(ahead).kind;
-        if (kind == TokenKind::EndOfFile || kind == TokenKind::LeftBrace ||
-            kind == TokenKind::Semicolon) {
+        const TokenKind kind = Peek(ahead).kind;
+        if (kind == TokenKind::EndOfFile || kind == TokenKind::LeftBrace || kind == TokenKind::Semicolon) {
             return false;
         }
 
@@ -176,21 +171,19 @@ bool Parser::IsTypeArgListAhead() const noexcept {
 }
 
 // Diagnostics
-void Parser::EmitError(SourceLocation const loc, std::string message) {
-    diagnostics.push_back(
-        ParserDiagnostic{ParserDiagnostic::Severity::Error, loc, std::move(message)});
+void Parser::EmitError(const SourceLocation loc, std::string message) {
+    diagnostics.push_back(ParserDiagnostic{ParserDiagnostic::Severity::Error, loc, std::move(message)});
 }
 
-void Parser::EmitWarning(SourceLocation const loc, std::string message) {
-    diagnostics.push_back(
-        ParserDiagnostic{ParserDiagnostic::Severity::Warning, loc, std::move(message)});
+void Parser::EmitWarning(const SourceLocation loc, std::string message) {
+    diagnostics.push_back(ParserDiagnostic{ParserDiagnostic::Severity::Warning, loc, std::move(message)});
 }
 
 void Parser::Synchronize() {
     // Skip until we reach a token that likely starts a new declaration or
     // statement.
     while (!IsAtEnd()) {
-        TokenKind const k = Peek().kind;
+        const TokenKind k = Peek().kind;
 
         // These tokens can safely begin a new item.
         if (k == TokenKind::Semicolon) {
@@ -201,16 +194,13 @@ void Parser::Synchronize() {
             return;
         }
 
-        if (k == TokenKind::FuncKeyword || k == TokenKind::StructKeyword ||
-            k == TokenKind::EnumKeyword || k == TokenKind::UnionKeyword ||
-            k == TokenKind::InterfaceKeyword || k == TokenKind::ExtendKeyword ||
-            k == TokenKind::ModuleKeyword || k == TokenKind::ImportKeyword ||
-            k == TokenKind::ConstKeyword || k == TokenKind::TypeKeyword ||
-            k == TokenKind::ExternKeyword || k == TokenKind::PubKeyword ||
+        if (k == TokenKind::FuncKeyword || k == TokenKind::StructKeyword || k == TokenKind::EnumKeyword ||
+            k == TokenKind::UnionKeyword || k == TokenKind::InterfaceKeyword || k == TokenKind::ExtendKeyword ||
+            k == TokenKind::ModuleKeyword || k == TokenKind::ImportKeyword || k == TokenKind::ConstKeyword ||
+            k == TokenKind::TypeKeyword || k == TokenKind::ExternKeyword || k == TokenKind::PubKeyword ||
             k == TokenKind::LetKeyword || k == TokenKind::VarKeyword || k == TokenKind::IfKeyword ||
-            k == TokenKind::WhileKeyword || k == TokenKind::DoKeyword ||
-            k == TokenKind::LoopKeyword || k == TokenKind::ForKeyword ||
-            k == TokenKind::ReturnKeyword || k == TokenKind::MatchKeyword) {
+            k == TokenKind::WhileKeyword || k == TokenKind::DoKeyword || k == TokenKind::LoopKeyword ||
+            k == TokenKind::ForKeyword || k == TokenKind::ReturnKeyword || k == TokenKind::MatchKeyword) {
             return;
         }
 
@@ -219,7 +209,7 @@ void Parser::Synchronize() {
 }
 
 void Parser::Recover() {
-    std::size_t const before = pos;
+    const std::size_t before = pos;
     Synchronize();
     if (pos == before && !IsAtEnd()) {
         Advance();
@@ -227,9 +217,9 @@ void Parser::Recover() {
 }
 
 // Attribute parsing
-static std::string DecodeStringLiteralText(std::string const &text) {
+static std::string DecodeStringLiteralText(const std::string &text) {
     std::string out;
-    std::size_t const quote = text.find('"');
+    const std::size_t quote = text.find('"');
     if (quote == std::string::npos) {
         return out;
     }
@@ -282,7 +272,7 @@ Parser::ParsedAttrs Parser::ParseAttrs() {
         Advance(); // consume '@'
         Expect(TokenKind::LeftBracket, "expected '[' after '@'");
 
-        SourceLocation const attrLoc = CurrentLocation();
+        const SourceLocation attrLoc = CurrentLocation();
         std::string attrName;
         if (Check(TokenKind::Ident)) {
             attrName = Advance().text;
@@ -302,19 +292,17 @@ Parser::ParsedAttrs Parser::ParseAttrs() {
                     attrs.callConv = CallingConvention::Win64;
                 }
                 else {
-                    EmitWarning(CurrentLocation(),
-                                std::format("unknown calling convention '.{}'", variant));
+                    EmitWarning(CurrentLocation(), std::format("unknown calling convention '.{}'", variant));
                 }
             }
             else if (attrName == "Target" && Check(TokenKind::StringLiteral)) {
                 // @[Target("Windows")] — positional OS string
-                Token const tok = Advance();
+                const Token tok = Advance();
                 std::string os = DecodeStringLiteralText(tok.text);
                 if (os == "MacOS" || os == "Macos" || os == "macos") {
                     os = "macOS";
                 }
-                if (os != "BSD" && os != "Illumos" && os != "Linux" && os != "macOS" &&
-                    os != "Windows") {
+                if (os != "BSD" && os != "Illumos" && os != "Linux" && os != "macOS" && os != "Windows") {
                     EmitError(tok.location, std::format("unsupported target '{}'; valid "
                                                         "targets are: BSD, "
                                                         "Illumos, Linux, macOS, Windows",
@@ -376,7 +364,7 @@ Parser::ParsedAttrs Parser::ParseAttrs() {
 
 // Top-level declarations
 DeclPtr Parser::ParseDecl() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
 
     ParsedAttrs attrs = ParseAttrs();
 
@@ -517,9 +505,8 @@ std::vector<Param> Parser::ParseParamList(bool allowVariadic) {
 }
 
 // func
-std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(bool isPublic, bool isAsm,
-                                                CallingConvention callConv) {
-    auto const loc = CurrentLocation();
+std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(bool isPublic, bool isAsm, CallingConvention callConv) {
+    const auto loc = CurrentLocation();
     Expect(TokenKind::FuncKeyword, "expected 'func'");
 
     auto decl = std::make_unique<FuncDecl>();
@@ -558,7 +545,7 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(bool isPublic, bool isAsm,
 
 // struct
 std::unique_ptr<StructDecl> Parser::ParseStructDecl(bool isPublic) {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::StructKeyword, "expected 'struct'");
 
     auto decl = std::make_unique<StructDecl>();
@@ -590,8 +577,8 @@ std::unique_ptr<StructDecl> Parser::ParseStructDecl(bool isPublic) {
 }
 
 // enum
-std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(bool const isPublic) {
-    auto const loc = CurrentLocation();
+std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
+    const auto loc = CurrentLocation();
     Expect(TokenKind::EnumKeyword, "expected 'enum'");
 
     auto decl = std::make_unique<EnumDecl>();
@@ -642,8 +629,7 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(bool const isPublic) {
         decl->variants.push_back(std::move(variant));
         if (Match(TokenKind::Comma)) {
             if (Check(TokenKind::RightBrace)) {
-                EmitError(Previous().location,
-                          "trailing comma is not allowed in enum declarations");
+                EmitError(Previous().location, "trailing comma is not allowed in enum declarations");
             }
         }
         else {
@@ -656,7 +642,7 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(bool const isPublic) {
 
 // union
 std::unique_ptr<UnionDecl> Parser::ParseUnionDecl(bool isPublic) {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::UnionKeyword, "expected 'union'");
 
     auto decl = std::make_unique<UnionDecl>();
@@ -682,7 +668,7 @@ std::unique_ptr<UnionDecl> Parser::ParseUnionDecl(bool isPublic) {
 
 // interface
 std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::InterfaceKeyword, "expected 'interface'");
 
     auto decl = std::make_unique<InterfaceDecl>();
@@ -707,7 +693,7 @@ std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
 
 // extend
 std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::ExtendKeyword, "expected 'extend'");
 
     auto decl = std::make_unique<ImplDecl>();
@@ -715,7 +701,7 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
 
     // extend TypeName  or  extend TypeName : InterfaceName  or  extend
     // InterfaceName for TypeName
-    std::string const firstName = Expect(TokenKind::Ident, "expected type name").text;
+    const std::string firstName = Expect(TokenKind::Ident, "expected type name").text;
     if (Match(TokenKind::Colon)) {
         decl->typeName = firstName;
         decl->interfaceName = Expect(TokenKind::Ident, "expected interface name after ':'").text;
@@ -746,7 +732,7 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
 
 // module
 std::unique_ptr<ModuleDecl> Parser::ParseModuleDecl(bool isPublic) {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::ModuleKeyword, "expected 'module'");
 
     std::vector<std::string> path;
@@ -786,7 +772,7 @@ std::unique_ptr<ModuleDecl> Parser::ParseModuleDecl(bool isPublic) {
 
 // import
 std::unique_ptr<UseDecl> Parser::ParseUseDecl(ParsedAttrs attrs) {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::ImportKeyword, "expected 'import'");
 
     auto decl = std::make_unique<UseDecl>();
@@ -837,7 +823,7 @@ std::unique_ptr<UseDecl> Parser::ParseUseDecl(ParsedAttrs attrs) {
 
 // const
 std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic) {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::ConstKeyword, "expected 'const'");
 
     auto decl = std::make_unique<ConstDecl>();
@@ -858,7 +844,7 @@ std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic) {
 
 // type alias
 std::unique_ptr<TypeAliasDecl> Parser::ParseTypeAliasDecl(bool isPublic) {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::TypeKeyword, "expected 'type'");
 
     auto decl = std::make_unique<TypeAliasDecl>();
@@ -875,7 +861,7 @@ std::unique_ptr<TypeAliasDecl> Parser::ParseTypeAliasDecl(bool isPublic) {
 
 // extern
 DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs attrs) {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::ExternKeyword, "expected 'extern'");
 
     if (Check(TokenKind::LeftBrace)) {
@@ -888,8 +874,7 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs attrs) {
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             if (Check(TokenKind::ExternKeyword)) {
                 EmitError(CurrentLocation(), "'extern' is not allowed inside an extern block");
-                while (!IsAtEnd() && !Check(TokenKind::Semicolon) &&
-                       !Check(TokenKind::RightBrace)) {
+                while (!IsAtEnd() && !Check(TokenKind::Semicolon) && !Check(TokenKind::RightBrace)) {
                     Advance();
                 }
                 Match(TokenKind::Semicolon);
@@ -990,7 +975,7 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs attrs) {
 
 // Type expressions
 TypeExprPtr Parser::ParseType() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
 
     // Pointer: *T  or  *const T
     if (Match(TokenKind::Star)) {
@@ -1038,7 +1023,7 @@ TypeExprPtr Parser::ParseType() {
 }
 
 TypeExprPtr Parser::ParseBaseType() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
 
     if (Match(TokenKind::SelfKeyword)) {
         auto t = std::make_unique<SelfTypeExpr>();
@@ -1047,7 +1032,7 @@ TypeExprPtr Parser::ParseBaseType() {
     }
 
     if (Check(TokenKind::Ident)) {
-        std::string const first = Advance().text;
+        const std::string first = Advance().text;
 
         // Check for path type: A::B::C
         if (Check(TokenKind::ColonColon)) {
@@ -1075,7 +1060,7 @@ TypeExprPtr Parser::ParseBaseType() {
 
 // Block and statements
 std::unique_ptr<Block> Parser::ParseBlock() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::LeftBrace, "expected '{'");
 
     auto block = std::make_unique<Block>();
@@ -1095,7 +1080,7 @@ std::unique_ptr<Block> Parser::ParseBlock() {
 }
 
 StmtPtr Parser::ParseStmt() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
 
     if (Check(TokenKind::LetKeyword) || Check(TokenKind::VarKeyword)) {
         return ParseLetStmt();
@@ -1106,9 +1091,9 @@ StmtPtr Parser::ParseStmt() {
     // Optional loop label: `ident ':' loop-keyword`
     std::string loopLabel;
     if (Check(TokenKind::Ident) && Peek(1).kind == TokenKind::Colon) {
-        TokenKind const ahead = Peek(2).kind;
-        if (ahead == TokenKind::WhileKeyword || ahead == TokenKind::DoKeyword ||
-            ahead == TokenKind::LoopKeyword || ahead == TokenKind::ForKeyword) {
+        const TokenKind ahead = Peek(2).kind;
+        if (ahead == TokenKind::WhileKeyword || ahead == TokenKind::DoKeyword || ahead == TokenKind::LoopKeyword ||
+            ahead == TokenKind::ForKeyword) {
             loopLabel = Advance().text; // consume label name
             Advance();                  // consume ':'
         }
@@ -1167,10 +1152,10 @@ StmtPtr Parser::ParseStmt() {
     }
 
     // Allow nested declarations inside blocks
-    if (CheckAny({TokenKind::PubKeyword, TokenKind::FuncKeyword, TokenKind::StructKeyword,
-                  TokenKind::EnumKeyword, TokenKind::UnionKeyword, TokenKind::InterfaceKeyword,
-                  TokenKind::ExtendKeyword, TokenKind::ModuleKeyword, TokenKind::ConstKeyword,
-                  TokenKind::TypeKeyword, TokenKind::ExternKeyword})) {
+    if (CheckAny({TokenKind::PubKeyword, TokenKind::FuncKeyword, TokenKind::StructKeyword, TokenKind::EnumKeyword,
+                  TokenKind::UnionKeyword, TokenKind::InterfaceKeyword, TokenKind::ExtendKeyword,
+                  TokenKind::ModuleKeyword, TokenKind::ConstKeyword, TokenKind::TypeKeyword,
+                  TokenKind::ExternKeyword})) {
         auto ds = std::make_unique<DeclStmt>();
         ds->location = loc;
         ds->decl = ParseDecl();
@@ -1190,7 +1175,7 @@ StmtPtr Parser::ParseStmt() {
 }
 
 std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
 
     auto s = std::make_unique<LetStmt>();
     s->location = loc;
@@ -1227,7 +1212,7 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
 }
 
 std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::IfKeyword, "expected 'if'");
 
     auto s = std::make_unique<IfStmt>();
@@ -1257,7 +1242,7 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
 }
 
 std::unique_ptr<WhileStmt> Parser::ParseWhileStmt() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::WhileKeyword, "expected 'while'");
 
     auto s = std::make_unique<WhileStmt>();
@@ -1270,7 +1255,7 @@ std::unique_ptr<WhileStmt> Parser::ParseWhileStmt() {
 }
 
 std::unique_ptr<DoWhileStmt> Parser::ParseDoWhileStmt() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::DoKeyword, "expected 'do'");
 
     auto s = std::make_unique<DoWhileStmt>();
@@ -1285,7 +1270,7 @@ std::unique_ptr<DoWhileStmt> Parser::ParseDoWhileStmt() {
 }
 
 std::unique_ptr<LoopStmt> Parser::ParseLoopStmt() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::LoopKeyword, "expected 'loop'");
 
     auto s = std::make_unique<LoopStmt>();
@@ -1295,7 +1280,7 @@ std::unique_ptr<LoopStmt> Parser::ParseLoopStmt() {
 }
 
 std::unique_ptr<ForStmt> Parser::ParseForStmt() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::ForKeyword, "expected 'for'");
 
     auto s = std::make_unique<ForStmt>();
@@ -1310,7 +1295,7 @@ std::unique_ptr<ForStmt> Parser::ParseForStmt() {
 }
 
 std::unique_ptr<MatchStmt> Parser::ParseMatchStmt() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::MatchKeyword, "expected 'match'");
 
     auto s = std::make_unique<MatchStmt>();
@@ -1352,7 +1337,7 @@ std::unique_ptr<MatchStmt> Parser::ParseMatchStmt() {
 }
 
 std::unique_ptr<ReturnStmt> Parser::ParseReturnStmt() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     Expect(TokenKind::ReturnKeyword, "expected 'return'");
 
     auto s = std::make_unique<ReturnStmt>();
@@ -1387,7 +1372,7 @@ ExprPtr Parser::ParseAssign() {
 
     for (auto op : kAssignOps) {
         if (Check(op)) {
-            auto const loc = CurrentLocation();
+            const auto loc = CurrentLocation();
             Advance();
             auto right = ParseAssign(); // right-associative
             auto e = std::make_unique<AssignExpr>();
@@ -1410,14 +1395,13 @@ ExprPtr Parser::ParseRange() {
     if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
         // Leave bare `expr...` for ParseArgList to handle as a spread
         if (Peek().kind == TokenKind::DotDotDot) {
-            TokenKind const next = Peek(1).kind;
+            const TokenKind next = Peek(1).kind;
             if (next == TokenKind::RightParen || next == TokenKind::Comma) {
                 return left;
             }
         }
-        bool const incl =
-            Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
-        auto const loc = CurrentLocation();
+        const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
+        const auto loc = CurrentLocation();
         Advance();
         auto right = ParseTernary();
         auto e = std::make_unique<RangeExpr>();
@@ -1437,7 +1421,7 @@ ExprPtr Parser::ParseTernary() {
     }
 
     if (Match(TokenKind::Question)) {
-        auto const loc = Previous().location;
+        const auto loc = Previous().location;
         auto thenExpr = ParseOr();
         Expect(TokenKind::Colon, "expected ':' in ternary");
         auto elseExpr = ParseTernary(); // right-associative
@@ -1454,8 +1438,8 @@ ExprPtr Parser::ParseTernary() {
 ExprPtr Parser::ParseOr() {
     auto left = ParseAnd();
     while (Check(TokenKind::PipePipe)) {
-        auto const loc = CurrentLocation();
-        auto const op = Advance().kind;
+        const auto loc = CurrentLocation();
+        const auto op = Advance().kind;
         auto right = ParseAnd();
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
@@ -1470,8 +1454,8 @@ ExprPtr Parser::ParseOr() {
 ExprPtr Parser::ParseAnd() {
     auto left = ParseBitOr();
     while (Check(TokenKind::AmpAmp)) {
-        auto const loc = CurrentLocation();
-        auto const op = Advance().kind;
+        const auto loc = CurrentLocation();
+        const auto op = Advance().kind;
         auto right = ParseBitOr();
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
@@ -1486,8 +1470,8 @@ ExprPtr Parser::ParseAnd() {
 ExprPtr Parser::ParseBitOr() {
     auto left = ParseBitXor();
     while (Check(TokenKind::Pipe)) {
-        auto const loc = CurrentLocation();
-        auto const op = Advance().kind;
+        const auto loc = CurrentLocation();
+        const auto op = Advance().kind;
         auto right = ParseBitXor();
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
@@ -1502,8 +1486,8 @@ ExprPtr Parser::ParseBitOr() {
 ExprPtr Parser::ParseBitXor() {
     auto left = ParseBitAnd();
     while (Check(TokenKind::Caret)) {
-        auto const loc = CurrentLocation();
-        auto const op = Advance().kind;
+        const auto loc = CurrentLocation();
+        const auto op = Advance().kind;
         auto right = ParseBitAnd();
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
@@ -1518,8 +1502,8 @@ ExprPtr Parser::ParseBitXor() {
 ExprPtr Parser::ParseBitAnd() {
     auto left = ParseEquality();
     while (Check(TokenKind::Amp)) {
-        auto const loc = CurrentLocation();
-        auto const op = Advance().kind;
+        const auto loc = CurrentLocation();
+        const auto op = Advance().kind;
         auto right = ParseEquality();
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
@@ -1534,8 +1518,8 @@ ExprPtr Parser::ParseBitAnd() {
 ExprPtr Parser::ParseEquality() {
     auto left = ParseComparison();
     while (CheckAny({TokenKind::Equal, TokenKind::BangEqual})) {
-        auto const loc = CurrentLocation();
-        auto const op = Advance().kind;
+        const auto loc = CurrentLocation();
+        const auto op = Advance().kind;
         auto right = ParseComparison();
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
@@ -1549,10 +1533,9 @@ ExprPtr Parser::ParseEquality() {
 
 ExprPtr Parser::ParseComparison() {
     auto left = ParseShift();
-    while (CheckAny(
-        {TokenKind::Less, TokenKind::LessEqual, TokenKind::Greater, TokenKind::GreaterEqual})) {
-        auto const loc = CurrentLocation();
-        auto const op = Advance().kind;
+    while (CheckAny({TokenKind::Less, TokenKind::LessEqual, TokenKind::Greater, TokenKind::GreaterEqual})) {
+        const auto loc = CurrentLocation();
+        const auto op = Advance().kind;
         auto right = ParseShift();
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
@@ -1567,7 +1550,7 @@ ExprPtr Parser::ParseComparison() {
 ExprPtr Parser::ParseCast() {
     auto left = ParsePostfix();
     while (CheckAny({TokenKind::AsKeyword, TokenKind::IsKeyword})) {
-        auto const loc = CurrentLocation();
+        const auto loc = CurrentLocation();
         if (Match(TokenKind::AsKeyword)) {
             auto type = ParseType();
             auto e = std::make_unique<CastExpr>();
@@ -1592,8 +1575,8 @@ ExprPtr Parser::ParseCast() {
 ExprPtr Parser::ParseShift() {
     auto left = ParseAdd();
     while (CheckAny({TokenKind::LessLess, TokenKind::GreaterGreater})) {
-        auto const loc = CurrentLocation();
-        auto const op = Advance().kind;
+        const auto loc = CurrentLocation();
+        const auto op = Advance().kind;
         auto right = ParseAdd();
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
@@ -1608,8 +1591,8 @@ ExprPtr Parser::ParseShift() {
 ExprPtr Parser::ParseAdd() {
     auto left = ParseMul();
     while (CheckAny({TokenKind::Plus, TokenKind::Minus})) {
-        auto const loc = CurrentLocation();
-        auto const op = Advance().kind;
+        const auto loc = CurrentLocation();
+        const auto op = Advance().kind;
         auto right = ParseMul();
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
@@ -1624,8 +1607,8 @@ ExprPtr Parser::ParseAdd() {
 ExprPtr Parser::ParseMul() {
     auto left = ParseExp();
     while (CheckAny({TokenKind::Star, TokenKind::Slash, TokenKind::Percent})) {
-        auto const loc = CurrentLocation();
-        auto const op = Advance().kind;
+        const auto loc = CurrentLocation();
+        const auto op = Advance().kind;
         auto right = ParseExp();
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
@@ -1642,7 +1625,7 @@ ExprPtr Parser::ParseExp() {
     auto left = ParseUnary();
 
     if (Check(TokenKind::Star) && Peek(1).kind == TokenKind::Star) {
-        auto const loc = CurrentLocation();
+        const auto loc = CurrentLocation();
 
         Advance(); // first *
         Advance(); // second *
@@ -1662,10 +1645,10 @@ ExprPtr Parser::ParseExp() {
 }
 
 ExprPtr Parser::ParseUnary() {
-    if (CheckAny({TokenKind::Bang, TokenKind::Minus, TokenKind::Tilde, TokenKind::Star,
-                  TokenKind::Amp, TokenKind::PlusPlus, TokenKind::MinusMinus})) {
-        auto const loc = CurrentLocation();
-        auto const op = Advance().kind;
+    if (CheckAny({TokenKind::Bang, TokenKind::Minus, TokenKind::Tilde, TokenKind::Star, TokenKind::Amp,
+                  TokenKind::PlusPlus, TokenKind::MinusMinus})) {
+        const auto loc = CurrentLocation();
+        const auto op = Advance().kind;
         auto operand = ParseUnary();
         auto e = std::make_unique<UnaryExpr>();
         e->location = loc;
@@ -1682,7 +1665,7 @@ ExprPtr Parser::ParsePostfix() {
         return nullptr;
     }
     while (true) {
-        auto const loc = CurrentLocation();
+        const auto loc = CurrentLocation();
         // Method/field/tuple-index: expr.field  expr.method(args)  expr.0
         if (Match(TokenKind::Dot)) {
             std::string name;
@@ -1718,7 +1701,7 @@ ExprPtr Parser::ParsePostfix() {
         }
         // Qualified path: expr::member
         if (Match(TokenKind::ColonColon)) {
-            std::string const seg = Expect(TokenKind::Ident, "expected identifier").text;
+            const std::string seg = Expect(TokenKind::Ident, "expected identifier").text;
             // Build or extend a PathExpr
             if (auto *path = dynamic_cast<PathExpr *>(left.get())) {
                 path->segments.push_back(seg);
@@ -1738,7 +1721,7 @@ ExprPtr Parser::ParsePostfix() {
         }
         // Qualified initializer: Enum::Variant { field: value, ... }
         if (structInitAllowed && Check(TokenKind::LeftBrace)) {
-            if (auto const *path = dynamic_cast<PathExpr const *>(left.get())) {
+            if (const auto *path = dynamic_cast<const PathExpr *>(left.get())) {
                 auto e = std::make_unique<StructInitExpr>();
                 e->location = loc;
                 for (std::size_t i = 0; i < path->segments.size(); ++i) {
@@ -1787,7 +1770,7 @@ ExprPtr Parser::ParsePostfix() {
         }
         // Post-increment / post-decrement: expr++ or expr--
         if (Check(TokenKind::PlusPlus) || Check(TokenKind::MinusMinus)) {
-            TokenKind const op = Advance().kind;
+            const TokenKind op = Advance().kind;
             auto e = std::make_unique<PostfixExpr>();
             e->location = loc;
             e->op = op;
@@ -1802,7 +1785,7 @@ ExprPtr Parser::ParsePostfix() {
 }
 
 ExprPtr Parser::ParsePrimary() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
     if (Match(TokenKind::MatchKeyword)) {
         auto e = std::make_unique<MatchExpr>();
         e->location = loc;
@@ -1842,9 +1825,8 @@ ExprPtr Parser::ParsePrimary() {
     }
 
     // Literals
-    if (Check(TokenKind::IntLiteral) || Check(TokenKind::FloatLiteral) ||
-        Check(TokenKind::StringLiteral) || Check(TokenKind::CharLiteral) ||
-        Check(TokenKind::BoolLiteral)) {
+    if (Check(TokenKind::IntLiteral) || Check(TokenKind::FloatLiteral) || Check(TokenKind::StringLiteral) ||
+        Check(TokenKind::CharLiteral) || Check(TokenKind::BoolLiteral)) {
         auto e = std::make_unique<LiteralExpr>();
         e->location = loc;
         e->token = Advance();
@@ -1927,7 +1909,7 @@ ExprPtr Parser::ParsePrimary() {
     }
     // Identifier, possible struct init, or path expression
     if (Check(TokenKind::Ident)) {
-        std::string const name = Advance().text;
+        const std::string name = Advance().text;
         std::vector<TypeExprPtr> typeArgs;
         if (IsGenericStructInitAhead()) {
             typeArgs = ParseTypeArgs();
@@ -1969,7 +1951,7 @@ std::vector<ExprPtr> Parser::ParseArgList() {
     while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
         auto e = ParseExpr();
         if (Match(TokenKind::DotDotDot)) {
-            auto const loc = e->location;
+            const auto loc = e->location;
             auto spread = std::make_unique<SpreadExpr>();
             spread->location = loc;
             spread->operand = std::move(e);
@@ -1995,7 +1977,7 @@ PatternPtr Parser::ParsePattern() {
 
     // Guard: pattern if condition
     if (Match(TokenKind::IfKeyword)) {
-        auto const loc = Previous().location;
+        const auto loc = Previous().location;
         auto guard = ParseExpr();
         auto p = std::make_unique<GuardedPattern>();
         p->location = loc;
@@ -2006,9 +1988,8 @@ PatternPtr Parser::ParsePattern() {
 
     // Range pattern: lo..hi or lo...hi or lo..=hi
     if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
-        bool const incl =
-            Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
-        auto const loc = CurrentLocation();
+        const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
+        const auto loc = CurrentLocation();
         Advance();
         auto hi = ParsePrimaryPattern();
         auto p = std::make_unique<RangePattern>();
@@ -2023,7 +2004,7 @@ PatternPtr Parser::ParsePattern() {
 }
 
 PatternPtr Parser::ParsePrimaryPattern() {
-    auto const loc = CurrentLocation();
+    const auto loc = CurrentLocation();
 
     // Wildcard: _
     if (Check(TokenKind::Ident) && Peek().text == "_") {
@@ -2034,9 +2015,8 @@ PatternPtr Parser::ParsePrimaryPattern() {
     }
 
     // Literals
-    if (Check(TokenKind::IntLiteral) || Check(TokenKind::FloatLiteral) ||
-        Check(TokenKind::StringLiteral) || Check(TokenKind::CharLiteral) ||
-        Check(TokenKind::BoolLiteral) || Check(TokenKind::NullKeyword)) {
+    if (Check(TokenKind::IntLiteral) || Check(TokenKind::FloatLiteral) || Check(TokenKind::StringLiteral) ||
+        Check(TokenKind::CharLiteral) || Check(TokenKind::BoolLiteral) || Check(TokenKind::NullKeyword)) {
         auto p = std::make_unique<LiteralPattern>();
         p->location = loc;
         p->value = Advance();
@@ -2071,7 +2051,7 @@ PatternPtr Parser::ParsePrimaryPattern() {
     // Identifier-started patterns: ident, EnumName::Variant(args), TypeName
     // { fields }
     if (Check(TokenKind::Ident)) {
-        std::string const name = Advance().text;
+        const std::string name = Advance().text;
 
         // Enum pattern: Event::Click(x, y)
         if (Check(TokenKind::ColonColon) && Peek(1).Is(TokenKind::Ident)) {
@@ -2155,10 +2135,10 @@ public:
         : out(out) {
     }
 
-    void Print(Module const &mod) {
+    void Print(const Module &mod) {
         out << "Module \"" << mod.name << "\"\n";
         ++indent;
-        for (auto const &item : mod.items) {
+        for (const auto &item : mod.items) {
             if (item) {
                 PrintDecl(*item);
             }
@@ -2177,11 +2157,11 @@ private:
         }
     }
 
-    static std::string TypeStr(TypeExpr const *t) {
+    static std::string TypeStr(const TypeExpr *t) {
         if (!t) {
             return "<null>";
         }
-        if (auto const *n = dynamic_cast<NamedTypeExpr const *>(t)) {
+        if (const auto *n = dynamic_cast<const NamedTypeExpr *>(t)) {
             std::string s = n->name;
             if (!n->typeArgs.empty()) {
                 s += "<";
@@ -2195,7 +2175,7 @@ private:
             }
             return s;
         }
-        if (auto const *p = dynamic_cast<PathTypeExpr const *>(t)) {
+        if (const auto *p = dynamic_cast<const PathTypeExpr *>(t)) {
             std::string s;
             for (std::size_t i = 0; i < p->segments.size(); ++i) {
                 if (i) {
@@ -2205,17 +2185,17 @@ private:
             }
             return s;
         }
-        if (auto const *a = dynamic_cast<SliceTypeExpr const *>(t)) {
+        if (const auto *a = dynamic_cast<const SliceTypeExpr *>(t)) {
             std::string s = TypeStr(a->element.get()) + "[";
             if (a->size) {
                 s += "N"; // size is an Expr, not easily stringified
             }
             return s + "]";
         }
-        if (auto const *ptr = dynamic_cast<PointerTypeExpr const *>(t)) {
+        if (const auto *ptr = dynamic_cast<const PointerTypeExpr *>(t)) {
             return "*" + TypeStr(ptr->pointee.get());
         }
-        if (auto const *tup = dynamic_cast<TupleTypeExpr const *>(t)) {
+        if (const auto *tup = dynamic_cast<const TupleTypeExpr *>(t)) {
             std::string s = "(";
             for (std::size_t i = 0; i < tup->elements.size(); ++i) {
                 if (i) {
@@ -2225,13 +2205,13 @@ private:
             }
             return s + ")";
         }
-        if (dynamic_cast<SelfTypeExpr const *>(t)) {
+        if (dynamic_cast<const SelfTypeExpr *>(t)) {
             return "self";
         }
         return "<type>";
     }
 
-    static std::string_view OpStr(TokenKind const op) noexcept {
+    static std::string_view OpStr(const TokenKind op) noexcept {
         switch (op) {
         case TokenKind::Plus:
             return "+";
@@ -2304,46 +2284,46 @@ private:
 
     // Declarations
 
-    void PrintDecl(Decl const &decl) {
-        if (auto const *fn = dynamic_cast<FuncDecl const *>(&decl)) {
+    void PrintDecl(const Decl &decl) {
+        if (const auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             PrintFuncDecl(*fn);
         }
-        else if (auto const *st = dynamic_cast<StructDecl const *>(&decl)) {
+        else if (const auto *st = dynamic_cast<const StructDecl *>(&decl)) {
             PrintStructDecl(*st);
         }
-        else if (auto const *en = dynamic_cast<EnumDecl const *>(&decl)) {
+        else if (const auto *en = dynamic_cast<const EnumDecl *>(&decl)) {
             PrintEnumDecl(*en);
         }
-        else if (auto const *un = dynamic_cast<UnionDecl const *>(&decl)) {
+        else if (const auto *un = dynamic_cast<const UnionDecl *>(&decl)) {
             PrintUnionDecl(*un);
         }
-        else if (auto const *iface = dynamic_cast<InterfaceDecl const *>(&decl)) {
+        else if (const auto *iface = dynamic_cast<const InterfaceDecl *>(&decl)) {
             PrintInterfaceDecl(*iface);
         }
-        else if (auto const *impl = dynamic_cast<ImplDecl const *>(&decl)) {
+        else if (const auto *impl = dynamic_cast<const ImplDecl *>(&decl)) {
             PrintImplDecl(*impl);
         }
-        else if (auto const *mod = dynamic_cast<ModuleDecl const *>(&decl)) {
+        else if (const auto *mod = dynamic_cast<const ModuleDecl *>(&decl)) {
             PrintModuleDecl(*mod);
         }
-        else if (auto const *use = dynamic_cast<UseDecl const *>(&decl)) {
+        else if (const auto *use = dynamic_cast<const UseDecl *>(&decl)) {
             PrintUseDecl(*use);
         }
-        else if (auto const *cnst = dynamic_cast<ConstDecl const *>(&decl)) {
+        else if (const auto *cnst = dynamic_cast<const ConstDecl *>(&decl)) {
             PrintConstDecl(*cnst);
         }
-        else if (auto const *alias = dynamic_cast<TypeAliasDecl const *>(&decl)) {
+        else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
             PrintTypeAliasDecl(*alias);
         }
-        else if (auto const *extFn = dynamic_cast<ExternFuncDecl const *>(&decl)) {
+        else if (const auto *extFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
             PrintExternFuncDecl(*extFn);
         }
-        else if (auto const *extVar = dynamic_cast<ExternVarDecl const *>(&decl)) {
+        else if (const auto *extVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
             PrintExternVarDecl(*extVar);
         }
     }
 
-    void PrintFuncDecl(FuncDecl const &f) {
+    void PrintFuncDecl(const FuncDecl &f) {
         Pad();
         if (f.isPublic) {
             out << "pub ";
@@ -2369,7 +2349,7 @@ private:
             if (i) {
                 out << ", ";
             }
-            auto const &p = f.params[i];
+            const auto &p = f.params[i];
             if (p.isVariadic) {
                 out << "...";
                 continue;
@@ -2389,7 +2369,7 @@ private:
         }
     }
 
-    void PrintStructDecl(StructDecl const &s) {
+    void PrintStructDecl(const StructDecl &s) {
         Pad();
         if (s.isPublic) {
             out << "pub ";
@@ -2407,7 +2387,7 @@ private:
         }
         out << '\n';
         ++indent;
-        for (auto const &f : s.fields) {
+        for (const auto &f : s.fields) {
             Pad();
             if (f.isPublic) {
                 out << "pub ";
@@ -2417,7 +2397,7 @@ private:
         --indent;
     }
 
-    void PrintEnumDecl(EnumDecl const &e) {
+    void PrintEnumDecl(const EnumDecl &e) {
         Pad();
         if (e.isPublic) {
             out << "pub ";
@@ -2428,7 +2408,7 @@ private:
         }
         out << '\n';
         ++indent;
-        for (auto const &v : e.variants) {
+        for (const auto &v : e.variants) {
             Pad();
             out << "Variant '" << v.name << "'";
             if (!v.fields.empty()) {
@@ -2447,8 +2427,7 @@ private:
                     if (i) {
                         out << " ";
                     }
-                    out << v.namedFields[i].name << ": " << TypeStr(v.namedFields[i].type.get())
-                        << ";";
+                    out << v.namedFields[i].name << ": " << TypeStr(v.namedFields[i].type.get()) << ";";
                 }
                 out << " }";
             }
@@ -2460,28 +2439,28 @@ private:
         --indent;
     }
 
-    void PrintUnionDecl(UnionDecl const &u) {
+    void PrintUnionDecl(const UnionDecl &u) {
         Pad();
         if (u.isPublic) {
             out << "pub ";
         }
         out << "UnionDecl '" << u.name << "'\n";
         ++indent;
-        for (auto const &f : u.fields) {
+        for (const auto &f : u.fields) {
             Pad();
             out << "Field '" << f.name << "' : " << TypeStr(f.type.get()) << '\n';
         }
         --indent;
     }
 
-    void PrintInterfaceDecl(InterfaceDecl const &iface) {
+    void PrintInterfaceDecl(const InterfaceDecl &iface) {
         Pad();
         if (iface.isPublic) {
             out << "pub ";
         }
         out << "InterfaceDecl '" << iface.name << "'\n";
         ++indent;
-        for (auto const &m : iface.methods) {
+        for (const auto &m : iface.methods) {
             if (m) {
                 PrintFuncDecl(*m);
             }
@@ -2489,7 +2468,7 @@ private:
         --indent;
     }
 
-    void PrintImplDecl(ImplDecl const &impl) {
+    void PrintImplDecl(const ImplDecl &impl) {
         Pad();
         out << "ImplDecl ";
         if (impl.interfaceName) {
@@ -2497,7 +2476,7 @@ private:
         }
         out << impl.typeName << '\n';
         ++indent;
-        for (auto const &m : impl.methods) {
+        for (const auto &m : impl.methods) {
             if (m) {
                 PrintFuncDecl(*m);
             }
@@ -2505,14 +2484,14 @@ private:
         --indent;
     }
 
-    void PrintModuleDecl(ModuleDecl const &mod) {
+    void PrintModuleDecl(const ModuleDecl &mod) {
         Pad();
         if (mod.isPublic) {
             out << "pub ";
         }
         out << "ModuleDecl '" << mod.name << "'\n";
         ++indent;
-        for (auto const &item : mod.items) {
+        for (const auto &item : mod.items) {
             if (item) {
                 PrintDecl(*item);
             }
@@ -2520,7 +2499,7 @@ private:
         --indent;
     }
 
-    void PrintUseDecl(UseDecl const &u) const {
+    void PrintUseDecl(const UseDecl &u) const {
         Pad();
         if (!u.targetOs.empty()) {
             out << "@[Target(\"" << u.targetOs << "\")]\n";
@@ -2554,7 +2533,7 @@ private:
         out << "'\n";
     }
 
-    void PrintConstDecl(ConstDecl const &c) {
+    void PrintConstDecl(const ConstDecl &c) {
         Pad();
         if (c.isPublic) {
             out << "pub ";
@@ -2571,7 +2550,7 @@ private:
         --indent;
     }
 
-    void PrintTypeAliasDecl(TypeAliasDecl const &t) const {
+    void PrintTypeAliasDecl(const TypeAliasDecl &t) const {
         Pad();
         if (t.isPublic) {
             out << "pub ";
@@ -2579,7 +2558,7 @@ private:
         out << "TypeAliasDecl '" << t.name << "' = " << TypeStr(t.type.get()) << '\n';
     }
 
-    void PrintExternFuncDecl(ExternFuncDecl const &f) const {
+    void PrintExternFuncDecl(const ExternFuncDecl &f) const {
         if (!f.dll.empty()) {
             Pad();
             out << "@[Import(lib: \"" << f.dll << "\")]\n";
@@ -2609,7 +2588,7 @@ private:
         out << '\n';
     }
 
-    void PrintExternVarDecl(ExternVarDecl const &v) const {
+    void PrintExternVarDecl(const ExternVarDecl &v) const {
         Pad();
         if (v.isPublic) {
             out << "pub ";
@@ -2618,12 +2597,11 @@ private:
     }
 
     // Block
-    void PrintBlock(Block const &block) {
+    void PrintBlock(const Block &block) {
         Pad();
-        out << "Block [" << block.stmts.size() << " stmt" << (block.stmts.size() == 1 ? "" : "s")
-            << "]\n";
+        out << "Block [" << block.stmts.size() << " stmt" << (block.stmts.size() == 1 ? "" : "s") << "]\n";
         ++indent;
-        for (auto const &stmt : block.stmts) {
+        for (const auto &stmt : block.stmts) {
             if (stmt) {
                 PrintStmt(*stmt);
             }
@@ -2632,34 +2610,34 @@ private:
     }
 
     // Statements
-    void PrintStmt(Stmt const &stmt) {
-        if (auto const *let = dynamic_cast<LetStmt const *>(&stmt)) {
+    void PrintStmt(const Stmt &stmt) {
+        if (const auto *let = dynamic_cast<const LetStmt *>(&stmt)) {
             PrintLetStmt(*let);
         }
-        else if (auto const *ifStmt = dynamic_cast<IfStmt const *>(&stmt)) {
+        else if (const auto *ifStmt = dynamic_cast<const IfStmt *>(&stmt)) {
             PrintIfStmt(*ifStmt);
         }
-        else if (auto const *whileStmt = dynamic_cast<WhileStmt const *>(&stmt)) {
+        else if (const auto *whileStmt = dynamic_cast<const WhileStmt *>(&stmt)) {
             PrintWhileStmt(*whileStmt);
         }
-        else if (auto const *forStmt = dynamic_cast<ForStmt const *>(&stmt)) {
+        else if (const auto *forStmt = dynamic_cast<const ForStmt *>(&stmt)) {
             PrintForStmt(*forStmt);
         }
-        else if (auto const *matchStmt = dynamic_cast<MatchStmt const *>(&stmt)) {
+        else if (const auto *matchStmt = dynamic_cast<const MatchStmt *>(&stmt)) {
             PrintMatchStmt(*matchStmt);
         }
-        else if (auto const *ret = dynamic_cast<ReturnStmt const *>(&stmt)) {
+        else if (const auto *ret = dynamic_cast<const ReturnStmt *>(&stmt)) {
             PrintReturnStmt(*ret);
         }
-        else if (dynamic_cast<BreakStmt const *>(&stmt)) {
+        else if (dynamic_cast<const BreakStmt *>(&stmt)) {
             Pad();
             out << "BreakStmt\n";
         }
-        else if (dynamic_cast<ContinueStmt const *>(&stmt)) {
+        else if (dynamic_cast<const ContinueStmt *>(&stmt)) {
             Pad();
             out << "ContinueStmt\n";
         }
-        else if (auto const *exprStmt = dynamic_cast<ExprStmt const *>(&stmt)) {
+        else if (const auto *exprStmt = dynamic_cast<const ExprStmt *>(&stmt)) {
             Pad();
             out << "ExprStmt\n";
             ++indent;
@@ -2668,14 +2646,14 @@ private:
             }
             --indent;
         }
-        else if (auto const *declStmt = dynamic_cast<DeclStmt const *>(&stmt)) {
+        else if (const auto *declStmt = dynamic_cast<const DeclStmt *>(&stmt)) {
             if (declStmt->decl) {
                 PrintDecl(*declStmt->decl);
             }
         }
     }
 
-    void PrintLetStmt(LetStmt const &s) {
+    void PrintLetStmt(const LetStmt &s) {
         Pad();
         out << "LetStmt '";
         if (s.pattern) {
@@ -2699,7 +2677,7 @@ private:
         --indent;
     }
 
-    void PrintIfStmt(IfStmt const &s) {
+    void PrintIfStmt(const IfStmt &s) {
         Pad();
         out << "IfStmt\n";
         ++indent;
@@ -2720,7 +2698,7 @@ private:
         }
         --indent;
 
-        for (auto const &elif : s.elseIfs) {
+        for (const auto &elif : s.elseIfs) {
             Pad();
             out << "ElseIf\n";
             ++indent;
@@ -2747,7 +2725,7 @@ private:
         --indent;
     }
 
-    void PrintWhileStmt(WhileStmt const &s) {
+    void PrintWhileStmt(const WhileStmt &s) {
         Pad();
         out << "WhileStmt\n";
         ++indent;
@@ -2764,7 +2742,7 @@ private:
         --indent;
     }
 
-    void PrintForStmt(ForStmt const &s) {
+    void PrintForStmt(const ForStmt &s) {
         Pad();
         out << "ForStmt '" << s.variable << "' in\n";
         ++indent;
@@ -2777,7 +2755,7 @@ private:
         --indent;
     }
 
-    void PrintMatchStmt(MatchStmt const &s) {
+    void PrintMatchStmt(const MatchStmt &s) {
         Pad();
         out << "MatchStmt\n";
         ++indent;
@@ -2788,7 +2766,7 @@ private:
             PrintExpr(*s.subject);
         }
         --indent;
-        for (auto const &arm : s.arms) {
+        for (const auto &arm : s.arms) {
             Pad();
             out << "Arm\n";
             ++indent;
@@ -2803,7 +2781,7 @@ private:
         --indent;
     }
 
-    void PrintReturnStmt(ReturnStmt const &s) {
+    void PrintReturnStmt(const ReturnStmt &s) {
         Pad();
         out << "ReturnStmt\n";
         if (s.value) {
@@ -2814,20 +2792,20 @@ private:
     }
 
     // Expressions
-    void PrintExpr(Expr const &expr) {
-        if (auto const *litExpr = dynamic_cast<LiteralExpr const *>(&expr)) {
+    void PrintExpr(const Expr &expr) {
+        if (const auto *litExpr = dynamic_cast<const LiteralExpr *>(&expr)) {
             PrintLiteralExpr(*litExpr);
         }
-        else if (auto const *identExpr = dynamic_cast<IdentExpr const *>(&expr)) {
+        else if (const auto *identExpr = dynamic_cast<const IdentExpr *>(&expr)) {
             Pad();
             out << "IdentExpr '" << identExpr->name << "'\n";
         }
-        else if (auto const *selExpr = dynamic_cast<SelfExpr const *>(&expr)) {
+        else if (const auto *selExpr = dynamic_cast<const SelfExpr *>(&expr)) {
             (void)selExpr;
             Pad();
             out << "SelfExpr\n";
         }
-        else if (auto const *pathExpr = dynamic_cast<PathExpr const *>(&expr)) {
+        else if (const auto *pathExpr = dynamic_cast<const PathExpr *>(&expr)) {
             Pad();
             out << "PathExpr '";
             for (std::size_t i = 0; i < pathExpr->segments.size(); ++i) {
@@ -2838,18 +2816,17 @@ private:
             }
             out << "'\n";
         }
-        else if (auto const *sizeOfExpr = dynamic_cast<SizeOfExpr const *>(&expr)) {
+        else if (const auto *sizeOfExpr = dynamic_cast<const SizeOfExpr *>(&expr)) {
             Pad();
             out << "SizeOfExpr " << TypeStr(sizeOfExpr->type.get()) << '\n';
         }
-        else if (auto const *intr = dynamic_cast<IntrinsicExpr const *>(&expr)) {
-            static constexpr char const *names[] = {"#line",     "#column",     "#file",
-                                                    "#function", "#date",       "#time",
-                                                    "#module",   "#ruxVersion", "#os"};
+        else if (const auto *intr = dynamic_cast<const IntrinsicExpr *>(&expr)) {
+            static constexpr const char *names[] = {"#line", "#column", "#file",       "#function", "#date",
+                                                    "#time", "#module", "#ruxVersion", "#os"};
             Pad();
             out << "IntrinsicExpr " << names[static_cast<int>(intr->kind)] << '\n';
         }
-        else if (auto const *unaryExpr = dynamic_cast<UnaryExpr const *>(&expr)) {
+        else if (const auto *unaryExpr = dynamic_cast<const UnaryExpr *>(&expr)) {
             Pad();
             out << "UnaryExpr " << OpStr(unaryExpr->op) << '\n';
             ++indent;
@@ -2858,7 +2835,7 @@ private:
             }
             --indent;
         }
-        else if (auto const *binaryExpr = dynamic_cast<BinaryExpr const *>(&expr)) {
+        else if (const auto *binaryExpr = dynamic_cast<const BinaryExpr *>(&expr)) {
             Pad();
             out << "BinaryExpr " << OpStr(binaryExpr->op) << '\n';
             ++indent;
@@ -2870,7 +2847,7 @@ private:
             }
             --indent;
         }
-        else if (auto const *assignExpr = dynamic_cast<AssignExpr const *>(&expr)) {
+        else if (const auto *assignExpr = dynamic_cast<const AssignExpr *>(&expr)) {
             Pad();
             out << "AssignExpr " << OpStr(assignExpr->op) << '\n';
             ++indent;
@@ -2882,7 +2859,7 @@ private:
             }
             --indent;
         }
-        else if (auto const *tern = dynamic_cast<TernaryExpr const *>(&expr)) {
+        else if (const auto *tern = dynamic_cast<const TernaryExpr *>(&expr)) {
             Pad();
             out << "TernaryExpr\n";
             ++indent;
@@ -2909,7 +2886,7 @@ private:
             --indent;
             --indent;
         }
-        else if (auto const *rng = dynamic_cast<RangeExpr const *>(&expr)) {
+        else if (const auto *rng = dynamic_cast<const RangeExpr *>(&expr)) {
             Pad();
             out << "RangeExpr " << (rng->inclusive ? "..." : "..") << '\n';
             ++indent;
@@ -2921,7 +2898,7 @@ private:
             }
             --indent;
         }
-        else if (auto const *call = dynamic_cast<CallExpr const *>(&expr)) {
+        else if (const auto *call = dynamic_cast<const CallExpr *>(&expr)) {
             Pad();
             out << "CallExpr\n";
             ++indent;
@@ -2936,7 +2913,7 @@ private:
                 Pad();
                 out << "Args [" << call->args.size() << "]\n";
                 ++indent;
-                for (auto const &a : call->args) {
+                for (const auto &a : call->args) {
                     if (a) {
                         PrintExpr(*a);
                     }
@@ -2945,7 +2922,7 @@ private:
             }
             --indent;
         }
-        else if (auto const *index = dynamic_cast<IndexExpr const *>(&expr)) {
+        else if (const auto *index = dynamic_cast<const IndexExpr *>(&expr)) {
             Pad();
             out << "IndexExpr\n";
             ++indent;
@@ -2957,7 +2934,7 @@ private:
             }
             --indent;
         }
-        else if (auto const *fieldExpr = dynamic_cast<FieldExpr const *>(&expr)) {
+        else if (const auto *fieldExpr = dynamic_cast<const FieldExpr *>(&expr)) {
             Pad();
             out << "FieldExpr '." << fieldExpr->field << "'\n";
             ++indent;
@@ -2966,7 +2943,7 @@ private:
             }
             --indent;
         }
-        else if (auto const *structInitExpr = dynamic_cast<StructInitExpr const *>(&expr)) {
+        else if (const auto *structInitExpr = dynamic_cast<const StructInitExpr *>(&expr)) {
             Pad();
             out << "StructInitExpr '" << structInitExpr->typeName;
             if (!structInitExpr->typeArgs.empty()) {
@@ -2981,7 +2958,7 @@ private:
             }
             out << "'\n";
             ++indent;
-            for (auto const &f : structInitExpr->fields) {
+            for (const auto &f : structInitExpr->fields) {
                 Pad();
                 out << "." << f.name << " =\n";
                 ++indent;
@@ -2992,18 +2969,18 @@ private:
             }
             --indent;
         }
-        else if (auto const *sliceExpr = dynamic_cast<SliceExpr const *>(&expr)) {
+        else if (const auto *sliceExpr = dynamic_cast<const SliceExpr *>(&expr)) {
             Pad();
             out << "SliceExpr [" << sliceExpr->elements.size() << "]\n";
             ++indent;
-            for (auto const &e : sliceExpr->elements) {
+            for (const auto &e : sliceExpr->elements) {
                 if (e) {
                     PrintExpr(*e);
                 }
             }
             --indent;
         }
-        else if (auto const *castExpr = dynamic_cast<CastExpr const *>(&expr)) {
+        else if (const auto *castExpr = dynamic_cast<const CastExpr *>(&expr)) {
             Pad();
             out << "CastExpr as " << TypeStr(castExpr->type.get()) << '\n';
             ++indent;
@@ -3012,7 +2989,7 @@ private:
             }
             --indent;
         }
-        else if (auto const *isExpr = dynamic_cast<IsExpr const *>(&expr)) {
+        else if (const auto *isExpr = dynamic_cast<const IsExpr *>(&expr)) {
             Pad();
             out << "IsExpr is " << TypeStr(isExpr->type.get()) << '\n';
             ++indent;
@@ -3021,19 +2998,19 @@ private:
             }
             --indent;
         }
-        else if (auto const *blockExpr = dynamic_cast<BlockExpr const *>(&expr)) {
+        else if (const auto *blockExpr = dynamic_cast<const BlockExpr *>(&expr)) {
             if (blockExpr->block) {
                 PrintBlock(*blockExpr->block);
             }
         }
-        else if (auto const *matchExpr = dynamic_cast<MatchExpr const *>(&expr)) {
+        else if (const auto *matchExpr = dynamic_cast<const MatchExpr *>(&expr)) {
             Pad();
             out << "MatchExpr\n";
             ++indent;
             if (matchExpr->subject) {
                 PrintExpr(*matchExpr->subject);
             }
-            for (auto const &arm : matchExpr->arms) {
+            for (const auto &arm : matchExpr->arms) {
                 Pad();
                 out << "Arm\n";
                 ++indent;
@@ -3047,7 +3024,7 @@ private:
         }
     }
 
-    void PrintLiteralExpr(LiteralExpr const &e) const {
+    void PrintLiteralExpr(const LiteralExpr &e) const {
         Pad();
         out << "LiteralExpr (";
         switch (e.token.kind) {
@@ -3077,20 +3054,20 @@ private:
     }
 
     // Patterns
-    void PrintPattern(Pattern const &pat) {
-        if (dynamic_cast<WildcardPattern const *>(&pat)) {
+    void PrintPattern(const Pattern &pat) {
+        if (dynamic_cast<const WildcardPattern *>(&pat)) {
             Pad();
             out << "WildcardPattern\n";
         }
-        else if (auto const *litPat = dynamic_cast<LiteralPattern const *>(&pat)) {
+        else if (const auto *litPat = dynamic_cast<const LiteralPattern *>(&pat)) {
             Pad();
             out << "LiteralPattern '" << litPat->value.text << "'\n";
         }
-        else if (auto const *idPat = dynamic_cast<IdentPattern const *>(&pat)) {
+        else if (const auto *idPat = dynamic_cast<const IdentPattern *>(&pat)) {
             Pad();
             out << "IdentPattern '" << idPat->name << "'\n";
         }
-        else if (auto const *rngPat = dynamic_cast<RangePattern const *>(&pat)) {
+        else if (const auto *rngPat = dynamic_cast<const RangePattern *>(&pat)) {
             Pad();
             out << "RangePattern " << (rngPat->inclusive ? "..." : "..") << '\n';
             ++indent;
@@ -3102,7 +3079,7 @@ private:
             }
             --indent;
         }
-        else if (auto const *enumPat = dynamic_cast<EnumPattern const *>(&pat)) {
+        else if (const auto *enumPat = dynamic_cast<const EnumPattern *>(&pat)) {
             Pad();
             out << "EnumPattern '";
             for (std::size_t i = 0; i < enumPat->path.size(); ++i) {
@@ -3121,12 +3098,12 @@ private:
             out << '\n';
             if (!enumPat->args.empty() || !enumPat->namedArgs.empty()) {
                 ++indent;
-                for (auto const &a : enumPat->args) {
+                for (const auto &a : enumPat->args) {
                     if (a) {
                         PrintPattern(*a);
                     }
                 }
-                for (auto const &a : enumPat->namedArgs) {
+                for (const auto &a : enumPat->namedArgs) {
                     Pad();
                     out << "." << a.name << ":\n";
                     ++indent;
@@ -3138,11 +3115,11 @@ private:
                 --indent;
             }
         }
-        else if (auto const *structPat = dynamic_cast<StructPattern const *>(&pat)) {
+        else if (const auto *structPat = dynamic_cast<const StructPattern *>(&pat)) {
             Pad();
             out << "StructPattern '" << structPat->typeName << "'\n";
             ++indent;
-            for (auto const &f : structPat->fields) {
+            for (const auto &f : structPat->fields) {
                 Pad();
                 out << "." << f.name << ":\n";
                 ++indent;
@@ -3153,18 +3130,18 @@ private:
             }
             --indent;
         }
-        else if (auto const *tuplePat = dynamic_cast<TuplePattern const *>(&pat)) {
+        else if (const auto *tuplePat = dynamic_cast<const TuplePattern *>(&pat)) {
             Pad();
             out << "TuplePattern [" << tuplePat->elements.size() << "]\n";
             ++indent;
-            for (auto const &e : tuplePat->elements) {
+            for (const auto &e : tuplePat->elements) {
                 if (e) {
                     PrintPattern(*e);
                 }
             }
             --indent;
         }
-        else if (auto const *guardedPat = dynamic_cast<GuardedPattern const *>(&pat)) {
+        else if (const auto *guardedPat = dynamic_cast<const GuardedPattern *>(&pat)) {
             Pad();
             out << "GuardedPattern\n";
             ++indent;
@@ -3184,7 +3161,7 @@ private:
 };
 } // namespace
 
-bool Parser::DumpAst(ParseResult const &result, std::filesystem::path const &path) {
+bool Parser::DumpAst(const ParseResult &result, const std::filesystem::path &path) {
     std::ofstream f(path);
     if (!f) {
         return false;
@@ -3193,10 +3170,9 @@ bool Parser::DumpAst(ParseResult const &result, std::filesystem::path const &pat
     printer.Print(result.module);
     if (!result.diagnostics.empty()) {
         f << "\n--- diagnostics ---\n";
-        for (auto const &d : result.diagnostics) {
-            f << std::format(
-                "{:>4}:{:<4}  {}  {}\n", d.location.line, d.location.column,
-                d.severity == ParserDiagnostic::Severity::Error ? "error  " : "warning", d.message);
+        for (const auto &d : result.diagnostics) {
+            f << std::format("{:>4}:{:<4}  {}  {}\n", d.location.line, d.location.column,
+                             d.severity == ParserDiagnostic::Severity::Error ? "error  " : "warning", d.message);
         }
     }
     return f.good();

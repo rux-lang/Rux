@@ -1,7 +1,10 @@
 [Package]
-Name    = "tuple_test"
+Name = "Tuple"
 Version = "0.1.0"
-Type    = "bin"
+Description = "Test for Rux compiler"
+
+[Dependencies]
+Std = "*"
 
 [Build]
-Output = "Bin"
+Output = "../Bin"

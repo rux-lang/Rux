@@ -1,5 +1,0 @@
-func Main() -> int {
-    var x = 0;
-    let y = x = 1;
-    return y;
-}

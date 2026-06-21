@@ -1,6 +1,0 @@
-// Minimal DLL smoke test: exports a public function for PE export directory validation.
-// DllMain is optional; the linker emits a default TRUE return when it is absent.
-
-pub func Add(a: int, b: int) -> int {
-    return a + b;
-}

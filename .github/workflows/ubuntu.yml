@@ -1,0 +1,72 @@
+name: Ubuntu 24.04
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+# Allow cancelling superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Clang 22
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSLo /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 22
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@v4.3.3
+        with:
+          cmakeVersion: "4.2.0"
+          ninjaVersion: latest
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=clang++-22
+          cmake --build build --config Release
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-linux-x64
+          path: build/rux
+          if-no-files-found: error
+
+  test:
+    name: Test
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-linux-x64
+          path: build
+
+      # Restore the executable bit (artifacts don't preserve permissions).
+      - name: Make binary executable
+        run: chmod +x build/rux
+
+      # The test packages depend on the Std package, so install it first.
+      - name: Install Std
+        run: ./build/rux install Std
+
+      # Workspace mode: run from the repo root so `rux test` discovers Tests/.
+      - name: Test
+        run: ./build/rux test --release

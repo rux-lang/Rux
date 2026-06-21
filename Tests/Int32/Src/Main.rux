@@ -1,0 +1,93 @@
+import Std::Assert;
+
+func Main() -> int {
+    let a: int32 = 100000;
+    let b: int32 = 300;
+
+    Assert(a + b == 100300, "int32 addition");
+    Assert(a - b == 99700, "int32 subtraction");
+    Assert(a * b == 30000000, "int32 multiplication");
+    Assert(a / b == 333, "int32 division truncates");
+    Assert(a % b == 100, "int32 modulo");
+
+    let neg: int32 = -100000;
+    Assert(neg / b == -333, "int32 signed division truncates toward zero");
+    Assert(neg % b == -100, "int32 signed modulo keeps dividend sign");
+
+    let min: int32 = -2147483648;
+    let max: int32 = 2147483647;
+    Assert(min == -2147483648, "int32 min is -2147483648");
+    Assert(max == 2147483647, "int32 max is 2147483647");
+
+    let wrap_add: int32 = (max + 1) as int32;
+    Assert(wrap_add == -2147483648, "int32 addition wraps at 2147483648");
+
+    let wrap_sub: int32 = (min - 1) as int32;
+    Assert(wrap_sub == 2147483647, "int32 subtraction wraps below -2147483648");
+
+    Assert(1000 as int32 == 1000 as int32, "int32 equality");
+    Assert(1000 as int32 != 1001 as int32, "int32 inequality");
+    Assert(-1 as int32 < 1 as int32, "int32 less-than across sign");
+    Assert(-1000 as int32 <= -1000 as int32, "int32 less-than-or-equal");
+    Assert(1000 as int32 > -1000 as int32, "int32 greater-than across sign");
+    Assert(1000 as int32 >= 1000 as int32, "int32 greater-than-or-equal");
+
+    Assert((0x00FF00FF as int32 & 0x0F0F0F0F as int32) == 0x000F000F, "int32 bitwise AND");
+    Assert((0x00FF00FF as int32 | 0x0F0F0F0F as int32) == 0x0FFF0FFF, "int32 bitwise OR");
+    Assert((0x00FF00FF as int32 ^ 0x0F0F0F0F as int32) == 0x0FF00FF0, "int32 bitwise XOR");
+    Assert((~0x000000FF as int32) == -256, "int32 bitwise NOT");
+
+    Assert((1 as int32 << 16) == 65536, "int32 left shift");
+    Assert((0x40000000 as int32 >> 24) == 0x40, "int32 positive right shift");
+    Assert((-2147483648 as int32 >> 24) == -128, "int32 right shift sign-extends");
+    Assert((1 as int32 << 31) == -2147483648, "int32 left shift to sign bit");
+
+    let i: int32 = -123456789;
+    let w64: int64 = i as int64;
+    Assert(w64 == -123456789, "int32 sign-extends to int64");
+
+    let low: int32 = -128;
+    let as_u32: uint32 = low as uint32;
+    Assert(as_u32 == 0xFFFFFF80, "int32 -128 reinterprets as uint32 0xFFFFFF80");
+
+    let wide: int64 = 0x00000000FFFFFFFF;
+    let narrow: int32 = wide as int32;
+    Assert(narrow == -1, "int64 0xFFFFFFFF truncates to int32 -1");
+
+    var x: int32 = 5;
+    x = x + 1;
+    Assert(x == 6, "int32 var mutation via addition");
+    x += 10;
+    Assert(x == 16, "int32 compound += operator");
+    x -= 6;
+    Assert(x == 10, "int32 compound -= operator");
+    x *= 2;
+    Assert(x == 20, "int32 compound *= operator");
+    x /= 4;
+    Assert(x == 5, "int32 compound /= operator");
+    x %= 3;
+    Assert(x == 2, "int32 compound %= operator");
+
+    let small: int32 = -42;
+    let big: int = small;
+    Assert(big == -42, "int32 widens implicitly to int");
+
+    let lit1 = 100000i32;
+    let lit2 = -2147483648i32;
+    Assert(lit1 == 100000, "int32 literal with i32 suffix");
+    Assert(lit2 == -2147483648, "int32 literal with i32 suffix");
+
+    let hex: int32 = 0x7FFFFFFF;
+    let bin: int32 = 0b01111111111111111111111111111111;
+    Assert(hex == 2147483647, "int32 hex literal 0x7FFFFFFF");
+    Assert(bin == 2147483647, "int32 binary literal parity value");
+    Assert(hex == bin, "int32 hex and binary literal parity");
+
+    let flag: int32 = 0;
+    Assert(flag == 0, "int32 zero is falsy-equivalent when compared");
+    Assert(!(flag != 0), "int32 zero not-nonzero");
+
+    let nz = -1i32;
+    Assert(nz != 0, "int32 nonzero value");
+    return 0;
+}

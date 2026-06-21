@@ -1,9 +1,6 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #include "Rux/Linker.h"
 
-#include "Rux/Platform/Defines.h"
+#include "Rux/Platform.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -46,12 +43,9 @@ namespace Rux {
 [[maybe_unused]] static constexpr uint16_t kCharacteristicsDll = 0x2022u;
 
 // IMAGE_SCN_ characteristics
-[[maybe_unused]] static constexpr uint32_t kScnText =
-    0x6000'0020u; // CNT_CODE | MEM_EXECUTE | MEM_READ
-[[maybe_unused]] static constexpr uint32_t kScnRData =
-    0x4000'0040u; // CNT_INITIALIZED_DATA | MEM_READ
-[[maybe_unused]] static constexpr uint32_t kScnData =
-    0xC000'0040u; // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
+[[maybe_unused]] static constexpr uint32_t kScnText = 0x6000'0020u;  // CNT_CODE | MEM_EXECUTE | MEM_READ
+[[maybe_unused]] static constexpr uint32_t kScnRData = 0x4000'0040u; // CNT_INITIALIZED_DATA | MEM_READ
+[[maybe_unused]] static constexpr uint32_t kScnData = 0xC000'0040u;  // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
 
 // DllCharacteristics: NX_COMPAT | TERMINAL_SERVER_AWARE.
 // The linker currently does not emit a .reloc table, so do not opt into
@@ -89,14 +83,14 @@ using Buf = std::vector<uint8_t>;
     b.insert(b.end(), n, 0);
 }
 
-[[maybe_unused]] static void WriteCStr(Buf &b, char const *s) {
+[[maybe_unused]] static void WriteCStr(Buf &b, const char *s) {
     while (*s) {
         b.push_back(*s++);
     }
     b.push_back(0);
 }
 
-[[maybe_unused]] static void WriteName8(Buf &b, char const *s) {
+[[maybe_unused]] static void WriteName8(Buf &b, const char *s) {
     size_t len = std::strlen(s);
     for (size_t i = 0; i < 8; ++i) {
         b.push_back(i < len ? static_cast<uint8_t>(s[i]) : 0);
@@ -126,18 +120,18 @@ static void Patch64(Buf &b, size_t off, uint64_t v) {
     }
 }
 
-static bool FileExists(std::filesystem::path const &path) {
+static bool FileExists(const std::filesystem::path &path) {
     std::error_code ec;
     return std::filesystem::is_regular_file(path, ec);
 }
 
 #if RUX_OS_WINDOWS
-static std::optional<Buf> ReadFileBytes(std::filesystem::path const &path) {
+static std::optional<Buf> ReadFileBytes(const std::filesystem::path &path) {
     std::ifstream in(path, std::ios::binary | std::ios::ate);
     if (!in) {
         return std::nullopt;
     }
-    auto const size = in.tellg();
+    const auto size = in.tellg();
     if (size < 0) {
         return std::nullopt;
     }
@@ -152,7 +146,7 @@ static std::optional<Buf> ReadFileBytes(std::filesystem::path const &path) {
     return data;
 }
 
-static bool ReadU16At(Buf const &b, size_t off, uint16_t &out) {
+static bool ReadU16At(const Buf &b, size_t off, uint16_t &out) {
     if (off + 2 > b.size()) {
         return false;
     }
@@ -160,7 +154,7 @@ static bool ReadU16At(Buf const &b, size_t off, uint16_t &out) {
     return true;
 }
 
-static bool ReadU32At(Buf const &b, size_t off, uint32_t &out) {
+static bool ReadU32At(const Buf &b, size_t off, uint32_t &out) {
     if (off + 4 > b.size()) {
         return false;
     }
@@ -169,19 +163,18 @@ static bool ReadU32At(Buf const &b, size_t off, uint32_t &out) {
     return true;
 }
 
-static std::optional<size_t> PeRvaToOffset(Buf const &pe, uint32_t rva, size_t sectionTable,
-                                           uint16_t sectionCount) {
+static std::optional<size_t> PeRvaToOffset(const Buf &pe, uint32_t rva, size_t sectionTable, uint16_t sectionCount) {
     for (uint16_t i = 0; i < sectionCount; ++i) {
-        size_t const sec = sectionTable + static_cast<size_t>(i) * 40;
+        const size_t sec = sectionTable + static_cast<size_t>(i) * 40;
         uint32_t virtualSize = 0, virtualAddress = 0, rawSize = 0, rawPtr = 0;
         if (!ReadU32At(pe, sec + 8, virtualSize) || !ReadU32At(pe, sec + 12, virtualAddress) ||
             !ReadU32At(pe, sec + 16, rawSize) || !ReadU32At(pe, sec + 20, rawPtr)) {
             return std::nullopt;
         }
 
-        uint32_t const span = std::max(virtualSize, rawSize);
+        const uint32_t span = std::max(virtualSize, rawSize);
         if (rva >= virtualAddress && rva < virtualAddress + span) {
-            size_t const off = static_cast<size_t>(rawPtr) + (rva - virtualAddress);
+            const size_t off = static_cast<size_t>(rawPtr) + (rva - virtualAddress);
             if (off < pe.size()) {
                 return off;
             }
@@ -191,7 +184,7 @@ static std::optional<size_t> PeRvaToOffset(Buf const &pe, uint32_t rva, size_t s
     return std::nullopt;
 }
 
-static bool ReadPeCString(Buf const &pe, size_t off, std::string &out) {
+static bool ReadPeCString(const Buf &pe, size_t off, std::string &out) {
     if (off >= pe.size()) {
         return false;
     }
@@ -203,18 +196,18 @@ static bool ReadPeCString(Buf const &pe, size_t off, std::string &out) {
 }
 
 [[maybe_unused]] static std::optional<std::unordered_set<std::string>>
-ReadDllExports(std::filesystem::path const &path) {
+ReadDllExports(const std::filesystem::path &path) {
     auto peData = ReadFileBytes(path);
     if (!peData) {
         return std::nullopt;
     }
-    Buf const &pe = *peData;
+    const Buf &pe = *peData;
 
     uint32_t peOff32 = 0;
     if (pe.size() < 0x40 || !ReadU32At(pe, 0x3C, peOff32)) {
         return std::nullopt;
     }
-    size_t const peOff = peOff32;
+    const size_t peOff = peOff32;
     if (peOff + 24 > pe.size() || pe[peOff] != 'P' || pe[peOff + 1] != 'E' || pe[peOff + 2] != 0 ||
         pe[peOff + 3] != 0) {
         return std::nullopt;
@@ -226,8 +219,8 @@ ReadDllExports(std::filesystem::path const &path) {
         return std::nullopt;
     }
 
-    size_t const optionalOff = peOff + 24;
-    size_t const dataDirOff = magic == 0x020B ? optionalOff + 112 : optionalOff + 96;
+    const size_t optionalOff = peOff + 24;
+    const size_t dataDirOff = magic == 0x020B ? optionalOff + 112 : optionalOff + 96;
     uint32_t exportRva = 0, exportSize = 0;
     if (dataDirOff + 8 > optionalOff + optionalSize || !ReadU32At(pe, dataDirOff, exportRva) ||
         !ReadU32At(pe, dataDirOff + 4, exportSize)) {
@@ -239,7 +232,7 @@ ReadDllExports(std::filesystem::path const &path) {
         return exports;
     }
 
-    size_t const sectionTable = optionalOff + optionalSize;
+    const size_t sectionTable = optionalOff + optionalSize;
     auto exportOff = PeRvaToOffset(pe, exportRva, sectionTable, sectionCount);
     if (!exportOff || *exportOff + 40 > pe.size()) {
         return std::nullopt;
@@ -287,15 +280,15 @@ static std::string GetPathEnv() {
     std::unique_ptr<char, decltype(&std::free)> owned(value, &std::free);
     return std::string(value, size > 0 ? size - 1 : 0);
 #else
-    char const *value = std::getenv("PATH");
+    const char *value = std::getenv("PATH");
     return value ? std::string(value) : std::string();
 #endif
 }
 
 [[maybe_unused]] static std::optional<std::filesystem::path>
-FindDllFile(std::string const &dll, std::vector<std::filesystem::path> const &searchDirs,
-            std::filesystem::path const &outputDir) {
-    std::filesystem::path const dllPath(dll);
+FindDllFile(const std::string &dll, const std::vector<std::filesystem::path> &searchDirs,
+            const std::filesystem::path &outputDir) {
+    const std::filesystem::path dllPath(dll);
     if (dllPath.is_absolute()) {
         return FileExists(dllPath) ? std::optional<std::filesystem::path>(dllPath) : std::nullopt;
     }
@@ -309,12 +302,11 @@ FindDllFile(std::string const &dll, std::vector<std::filesystem::path> const &se
         candidates.emplace_back(dll + ".dll");
     }
 
-    auto const probe =
-        [&](std::filesystem::path const &dir) -> std::optional<std::filesystem::path> {
+    const auto probe = [&](const std::filesystem::path &dir) -> std::optional<std::filesystem::path> {
         if (dir.empty()) {
             return std::nullopt;
         }
-        for (auto const &name : candidates) {
+        for (const auto &name : candidates) {
             if (FileExists(dir / name)) {
                 return dir / name;
             }
@@ -326,7 +318,7 @@ FindDllFile(std::string const &dll, std::vector<std::filesystem::path> const &se
         return hit;
     }
 
-    for (auto const &dir : searchDirs) {
+    for (const auto &dir : searchDirs) {
         if (auto hit = probe(dir)) {
             return hit;
         }
@@ -352,7 +344,7 @@ FindDllFile(std::string const &dll, std::vector<std::filesystem::path> const &se
     }
 #endif
 
-    std::string const pathEnv = GetPathEnv();
+    const std::string pathEnv = GetPathEnv();
     if (pathEnv.empty()) {
         return std::nullopt;
     }
@@ -380,7 +372,7 @@ void Linker::Error(std::string msg) {
     errors.push_back({std::move(msg)});
 }
 
-bool Linker::Link(std::filesystem::path const &outputPath) {
+bool Linker::Link(const std::filesystem::path &outputPath) {
 #if RUX_IS_ELF_OS
     return LinkElf64(outputPath);
 #elif RUX_OS_MACOS
@@ -400,8 +392,8 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     // declarations. This handles the case where a call site and its
     // declaration are in different translation units — the declaration
     // carries the DLL name.
-    for (auto const &obj : objects) {
-        for (auto const &sym : obj.symbols) {
+    for (const auto &obj : objects) {
+        for (const auto &sym : obj.symbols) {
             if (sym.kind == RcuSymKind::ExternFunc && !sym.typeName.empty()) {
                 importDll[sym.name] = sym.typeName;
                 explicitImportDlls.insert(sym.typeName);
@@ -415,10 +407,9 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     // callee is defined in another RcuFile — those must NOT be treated as
     // OS DLL imports.
     std::unordered_set<std::string> definedSymbols;
-    for (auto const &obj : objects) {
-        for (auto const &sym : obj.symbols) {
-            if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData &&
-                !sym.name.empty()) {
+    for (const auto &obj : objects) {
+        for (const auto &sym : obj.symbols) {
+            if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData && !sym.name.empty()) {
                 definedSymbols.insert(sym.name);
             }
         }
@@ -429,13 +420,13 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     // fall back to KERNEL32.DLL so existing behaviour is preserved. Skip
     // symbols that are defined locally (cross-module references, not DLL
     // imports).
-    for (auto const &obj : objects) {
-        for (auto const &sec : obj.sections) {
-            for (auto const &reloc : sec.relocs) {
+    for (const auto &obj : objects) {
+        for (const auto &sec : obj.sections) {
+            for (const auto &reloc : sec.relocs) {
                 if (reloc.symbolIndex >= obj.symbols.size()) {
                     continue;
                 }
-                auto const &sym = obj.symbols[reloc.symbolIndex];
+                const auto &sym = obj.symbols[reloc.symbolIndex];
                 if (sym.kind == RcuSymKind::ExternFunc && !definedSymbols.count(sym.name)) {
                     importDll.try_emplace(sym.name, "KERNEL32.DLL");
                 }
@@ -446,7 +437,7 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     // Sorted for determinism
     std::vector<std::string> importNames;
     importNames.reserve(importDll.size());
-    for (auto const &[n, _] : importDll) {
+    for (const auto &[n, _] : importDll) {
         importNames.push_back(n);
     }
     std::sort(importNames.begin(), importNames.end());
@@ -455,10 +446,10 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     for (size_t i = 0; i < importNames.size(); ++i) {
         importIdx[importNames[i]] = i;
     }
-    size_t const numImports = importNames.size();
+    const size_t numImports = importNames.size();
 
-    auto const outputDir = outputPath.parent_path();
-    for (auto const &dll : explicitImportDlls) {
+    const auto outputDir = outputPath.parent_path();
+    for (const auto &dll : explicitImportDlls) {
         auto dllPath = FindDllFile(dll, importSearchDirs, outputDir);
         if (!dllPath) {
             Error("import DLL '" + dll + "' was not found");
@@ -471,7 +462,7 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
             continue;
         }
 
-        for (auto const &func : explicitImportFuncsByDll[dll]) {
+        for (const auto &func : explicitImportFuncsByDll[dll]) {
             if (!exports->contains(func)) {
                 Error("import function '" + func + "' was not found in DLL '" + dll + "'");
             }
@@ -502,7 +493,7 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
         // that just returns TRUE — standard DLL behaviour when no
         // initialisation needed.
         textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x28}); // sub rsp, 0x28
-        size_t const kCallDllMainDisp = textPre.size() + 1;
+        const size_t kCallDllMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call DllMain
         // If DllMain returned 0 (init failed), still propagate it;
         // otherwise keep eax. For simplicity we trust DllMain's return
@@ -520,12 +511,12 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
         //   int3                ; CC
         textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x28});
     }
-    size_t const kCallMainDisp = isDll ? 5 : textPre.size() + 1; // offset of 4-byte disp field
+    const size_t kCallMainDisp = isDll ? 5 : textPre.size() + 1; // offset of 4-byte disp field
     if (!isDll) {
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00});
         textPre.insert(textPre.end(), {0x89, 0xC1});
     }
-    size_t const kCallExitDisp = textPre.size() + 1;
+    const size_t kCallExitDisp = textPre.size() + 1;
     if (!isDll) {
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00});
         textPre.push_back(0xCC);
@@ -538,7 +529,7 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
         textPre.insert(textPre.end(), {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00});
     }
 
-    uint32_t const preambleSize = static_cast<uint32_t>(textPre.size());
+    const uint32_t preambleSize = static_cast<uint32_t>(textPre.size());
 
     // 3. Merge RCU sections
 
@@ -550,11 +541,10 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     Buf mergedText, mergedRodata, mergedData;
 
     for (size_t i = 0; i < objects.size(); ++i) {
-        auto const &obj = objects[i];
-        layouts[i] = {static_cast<uint32_t>(mergedText.size()),
-                      static_cast<uint32_t>(mergedRodata.size()),
+        const auto &obj = objects[i];
+        layouts[i] = {static_cast<uint32_t>(mergedText.size()), static_cast<uint32_t>(mergedRodata.size()),
                       static_cast<uint32_t>(mergedData.size())};
-        for (auto const &sec : obj.sections) {
+        for (const auto &sec : obj.sections) {
             if (sec.type == RcuSecType::Text) {
                 mergedText.insert(mergedText.end(), sec.data.begin(), sec.data.end());
             }
@@ -583,8 +573,8 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     for (size_t i = 0; i < numImports; ++i) {
         importsByDll[importDll[importNames[i]]].push_back(i);
     }
-    uint32_t const importDirOff = static_cast<uint32_t>(rdataBuf.size());
-    size_t const importDirPos = rdataBuf.size();
+    const uint32_t importDirOff = static_cast<uint32_t>(rdataBuf.size());
+    const size_t importDirPos = rdataBuf.size();
     WriteZeros(rdataBuf, (importsByDll.size() + 1) * 20);
     std::vector<std::string> importDllNames;
     std::vector<std::vector<size_t>> importDllMembers;
@@ -601,7 +591,7 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
         intPos[g] = rdataBuf.size();
         WriteZeros(rdataBuf, (importDllMembers[g].size() + 1) * 8);
     }
-    uint32_t const iatOff = static_cast<uint32_t>(rdataBuf.size());
+    const uint32_t iatOff = static_cast<uint32_t>(rdataBuf.size());
     std::vector<uint32_t> iatGroupOff(importDllNames.size());
     std::vector<size_t> iatPos(importDllNames.size());
     std::vector<uint32_t> iatEntryOff(numImports);
@@ -613,7 +603,7 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
         }
         WriteZeros(rdataBuf, (importDllMembers[g].size() + 1) * 8);
     }
-    uint32_t const iatSize = static_cast<uint32_t>(rdataBuf.size()) - iatOff;
+    const uint32_t iatSize = static_cast<uint32_t>(rdataBuf.size()) - iatOff;
     std::vector<uint32_t> dllNameOff(importDllNames.size());
     for (size_t g = 0; g < importDllNames.size(); ++g) {
         dllNameOff[g] = static_cast<uint32_t>(rdataBuf.size());
@@ -632,17 +622,17 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     }
 
     // 5. Compute section layout (RVAs and file offsets)
-    uint32_t const numSections = mergedData.empty() ? 2u : 3u;
-    uint32_t const rawHdrBytes = 64 + 4 + 20 + 240 + numSections * 40;
-    uint32_t const sizeOfHeaders = AlignUp(rawHdrBytes, kFileAlign);
-    uint32_t const textRva = AlignUp(sizeOfHeaders, kSecAlign);
-    uint32_t const textVirtSize = preambleSize + static_cast<uint32_t>(mergedText.size());
-    uint32_t const textFileSize = AlignUp(textVirtSize, kFileAlign);
-    uint32_t const textFileOff = sizeOfHeaders;
-    uint32_t const rdataRva = textRva + AlignUp(textVirtSize, kSecAlign);
-    uint32_t const rdataVirtSize = static_cast<uint32_t>(rdataBuf.size());
-    uint32_t const rdataFileSize = AlignUp(rdataVirtSize, kFileAlign);
-    uint32_t const rdataFileOff = textFileOff + textFileSize;
+    const uint32_t numSections = mergedData.empty() ? 2u : 3u;
+    const uint32_t rawHdrBytes = 64 + 4 + 20 + 240 + numSections * 40;
+    const uint32_t sizeOfHeaders = AlignUp(rawHdrBytes, kFileAlign);
+    const uint32_t textRva = AlignUp(sizeOfHeaders, kSecAlign);
+    const uint32_t textVirtSize = preambleSize + static_cast<uint32_t>(mergedText.size());
+    const uint32_t textFileSize = AlignUp(textVirtSize, kFileAlign);
+    const uint32_t textFileOff = sizeOfHeaders;
+    const uint32_t rdataRva = textRva + AlignUp(textVirtSize, kSecAlign);
+    const uint32_t rdataVirtSize = static_cast<uint32_t>(rdataBuf.size());
+    const uint32_t rdataFileSize = AlignUp(rdataVirtSize, kFileAlign);
+    const uint32_t rdataFileOff = textFileOff + textFileSize;
     uint32_t dataRva = 0, dataVirtSize = 0, dataFileSize = 0, dataFileOff = 0;
     if (!mergedData.empty()) {
         dataRva = rdataRva + AlignUp(rdataVirtSize, kSecAlign);
@@ -650,19 +640,19 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
         dataFileSize = AlignUp(dataVirtSize, kFileAlign);
         dataFileOff = rdataFileOff + rdataFileSize;
     }
-    uint32_t const sizeOfImage = !mergedData.empty() ? dataRva + AlignUp(dataVirtSize, kSecAlign)
-                                                     : rdataRva + AlignUp(rdataVirtSize, kSecAlign);
+    const uint32_t sizeOfImage =
+        !mergedData.empty() ? dataRva + AlignUp(dataVirtSize, kSecAlign) : rdataRva + AlignUp(rdataVirtSize, kSecAlign);
 
     // 6. Patch .rdata import table with real RVAs
     for (size_t g = 0; g < importDllNames.size(); ++g) {
         for (size_t j = 0; j < importDllMembers[g].size(); ++j) {
-            size_t const importIndex = importDllMembers[g][j];
-            uint64_t const hnRva = rdataRva + hintNameOff[importIndex];
+            const size_t importIndex = importDllMembers[g][j];
+            const uint64_t hnRva = rdataRva + hintNameOff[importIndex];
             Patch64(rdataBuf, intPos[g] + j * 8, hnRva); // INT entry
             Patch64(rdataBuf, iatPos[g] + j * 8, hnRva); // IAT entry (pre-bind)
         }
         // Patch IMAGE_IMPORT_DESCRIPTOR
-        size_t const descPos = importDirPos + g * 20;
+        const size_t descPos = importDirPos + g * 20;
         Patch32(rdataBuf, descPos + 0,
                 rdataRva + intOff[g]);                             // OriginalFirstThunk
         Patch32(rdataBuf, descPos + 4, 0);                         // TimeDateStamp
@@ -686,17 +676,16 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     // intentionally not added here: generated labels such as __f64_0 are
     // reused per object and must resolve relative to their owning object.
     for (size_t i = 0; i < objects.size(); ++i) {
-        auto const &obj = objects[i];
-        auto const &lay = layouts[i];
-        for (auto const &sym : obj.symbols) {
+        const auto &obj = objects[i];
+        const auto &lay = layouts[i];
+        for (const auto &sym : obj.symbols) {
             if (sym.name.empty()) {
                 continue;
             }
             if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
                 continue; // already handled via thunks
             }
-            if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func &&
-                sym.name != "Main") {
+            if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func && sym.name != "Main") {
                 continue;
             }
             uint64_t va = 0;
@@ -776,9 +765,9 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     // 9. Patch user code relocations
 
     for (size_t i = 0; i < objects.size(); ++i) {
-        auto const &obj = objects[i];
-        auto const &lay = layouts[i];
-        for (auto const &sec : obj.sections) {
+        const auto &obj = objects[i];
+        const auto &lay = layouts[i];
+        for (const auto &sec : obj.sections) {
             Buf *buf = nullptr;
             uint32_t baseInBuf = 0;
             uint64_t secBaseVA = 0;
@@ -801,11 +790,11 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
                 continue;
             }
 
-            for (auto const &reloc : sec.relocs) {
+            for (const auto &reloc : sec.relocs) {
                 if (reloc.symbolIndex >= obj.symbols.size()) {
                     continue;
                 }
-                auto const &sym = obj.symbols[reloc.symbolIndex];
+                const auto &sym = obj.symbols[reloc.symbolIndex];
 
                 // Resolve target VA
                 uint64_t targetVA = 0;
@@ -818,8 +807,7 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
                     }
                     targetVA = it->second;
                 }
-                else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() &&
-                         symMap.count(sym.name)) {
+                else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() && symMap.count(sym.name)) {
                     // Named exported symbol, including cross-module
                     // references.
                     targetVA = symMap[sym.name];
@@ -839,8 +827,8 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
                         continue;
                     }
                 }
-                size_t const patchAt = baseInBuf + reloc.sectionOffset;
-                uint64_t const siteVA = secBaseVA + reloc.sectionOffset;
+                const size_t patchAt = baseInBuf + reloc.sectionOffset;
+                const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
                 if (reloc.type == RcuRelType::Rel32) {
                     if (patchAt + 4 > buf->size()) {
                         continue;
@@ -873,10 +861,10 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     // Collect exported function names (non-extern, non-local, Func kind).
     std::vector<std::string> exportNames;
     if (isDll) {
-        for (auto const &obj : objects) {
-            for (auto const &sym : obj.symbols) {
-                if (sym.kind == RcuSymKind::Func && sym.visibility != RcuSymVis::Local &&
-                    !sym.name.empty() && sym.name != "DllMain" && symMap.count(sym.name)) {
+        for (const auto &obj : objects) {
+            for (const auto &sym : obj.symbols) {
+                if (sym.kind == RcuSymKind::Func && sym.visibility != RcuSymVis::Local && !sym.name.empty() &&
+                    sym.name != "DllMain" && symMap.count(sym.name)) {
                     exportNames.push_back(sym.name);
                 }
             }
@@ -890,38 +878,38 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     uint32_t exportDirSize = 0;
     if (isDll && !exportNames.empty()) {
         exportDirOff = static_cast<uint32_t>(rdataBuf.size());
-        uint32_t const numExports = static_cast<uint32_t>(exportNames.size());
+        const uint32_t numExports = static_cast<uint32_t>(exportNames.size());
 
         // Reserve IMAGE_EXPORT_DIRECTORY (40 bytes)
-        size_t const expDirPos = rdataBuf.size();
+        const size_t expDirPos = rdataBuf.size();
         WriteZeros(rdataBuf, 40);
 
         // AddressOfFunctions array (RVAs)
-        uint32_t const funcArrayOff = static_cast<uint32_t>(rdataBuf.size());
+        const uint32_t funcArrayOff = static_cast<uint32_t>(rdataBuf.size());
         for (uint32_t i = 0; i < numExports; ++i) {
             WriteU32(rdataBuf, 0); // patched below
         }
 
         // AddressOfNames array (RVAs to name strings)
-        uint32_t const nameArrayOff = static_cast<uint32_t>(rdataBuf.size());
+        const uint32_t nameArrayOff = static_cast<uint32_t>(rdataBuf.size());
         for (uint32_t i = 0; i < numExports; ++i) {
             WriteU32(rdataBuf, 0); // patched below
         }
 
         // AddressOfNameOrdinals array
-        uint32_t const ordArrayOff = static_cast<uint32_t>(rdataBuf.size());
+        const uint32_t ordArrayOff = static_cast<uint32_t>(rdataBuf.size());
         for (uint32_t i = 0; i < numExports; ++i) {
             WriteU16(rdataBuf, static_cast<uint16_t>(i));
         }
 
         // DLL name string
-        uint32_t const dllNameStrOff = static_cast<uint32_t>(rdataBuf.size());
+        const uint32_t dllNameStrOff = static_cast<uint32_t>(rdataBuf.size());
         WriteCStr(rdataBuf, (packageName + ".dll").c_str());
         PadTo(rdataBuf, 2);
 
         // Function name strings + patch name/func arrays
         for (uint32_t i = 0; i < numExports; ++i) {
-            uint32_t const nameStrOff = static_cast<uint32_t>(rdataBuf.size());
+            const uint32_t nameStrOff = static_cast<uint32_t>(rdataBuf.size());
             WriteCStr(rdataBuf, exportNames[i].c_str());
             PadTo(rdataBuf, 2);
             // Patch name array entry
@@ -959,25 +947,23 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
         Error("cannot open output file: " + outputPath.string());
         return false;
     }
-    auto const writeRaw = [&](void const *d, size_t n) {
-        out.write(static_cast<char const *>(d), n);
-    };
-    auto const wU16 = [&](uint16_t v) { writeRaw(&v, 2); };
-    auto const wU32 = [&](uint32_t v) { writeRaw(&v, 4); };
-    auto const wU64 = [&](uint64_t v) { writeRaw(&v, 8); };
-    [[maybe_unused]] auto const wU8 = [&](uint8_t v) { writeRaw(&v, 1); };
-    auto const wBuf = [&](Buf const &b) { writeRaw(b.data(), b.size()); };
-    auto const padTo = [&](uint32_t align) {
+    const auto writeRaw = [&](const void *d, size_t n) { out.write(static_cast<const char *>(d), n); };
+    const auto wU16 = [&](uint16_t v) { writeRaw(&v, 2); };
+    const auto wU32 = [&](uint32_t v) { writeRaw(&v, 4); };
+    const auto wU64 = [&](uint64_t v) { writeRaw(&v, 8); };
+    [[maybe_unused]] const auto wU8 = [&](uint8_t v) { writeRaw(&v, 1); };
+    const auto wBuf = [&](const Buf &b) { writeRaw(b.data(), b.size()); };
+    const auto padTo = [&](uint32_t align) {
         auto pos = static_cast<uint32_t>(out.tellp());
         uint32_t pad = AlignUp(pos, align) - pos;
         static constexpr uint8_t Z[kFileAlign] = {};
         writeRaw(Z, pad);
     };
-    auto const wDir = [&](uint32_t rva, uint32_t sz) {
+    const auto wDir = [&](uint32_t rva, uint32_t sz) {
         wU32(rva);
         wU32(sz);
     };
-    auto const wSec8 = [&](char const *s) {
+    const auto wSec8 = [&](const char *s) {
         char buf8[8] = {};
         size_t len = std::strlen(s);
         for (size_t k = 0; k < 8 && k < len; ++k) {
@@ -987,12 +973,11 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     };
 
     // DOS header (e_lfanew = 0x40 so PE signature follows immediately)
-    static uint8_t const kDosHdr[64] = {
-        0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF,
-        0xFF, 0x00, 0x00, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00,
+    static const uint8_t kDosHdr[64] = {
+        0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00,
+        0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00,
     };
     writeRaw(kDosHdr, 64);
 
@@ -1041,8 +1026,7 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
     wU32(16);          // NumberOfRvaAndSizes
     // DataDirectory[16]
     // [0] Export — filled for DLLs, empty for EXEs
-    wDir(isDll && exportDirSize > 0 ? rdataRva + exportDirOff : 0,
-         isDll && exportDirSize > 0 ? exportDirSize : 0);
+    wDir(isDll && exportDirSize > 0 ? rdataRva + exportDirOff : 0, isDll && exportDirSize > 0 ? exportDirSize : 0);
     wDir(rdataRva + importDirOff,
          static_cast<uint32_t>((importDllNames.size() + 1) * 20)); // [1]  Import
     wDir(0, 0);
@@ -1106,13 +1090,11 @@ bool Linker::Link(std::filesystem::path const &outputPath) {
 #endif
 }
 
-
 #if RUX_IS_ELF_OS
-static std::optional<Buf> LinuxCompatThunk(std::string const &name) {
-    static std::unordered_map<std::string, Buf> const thunks = {
+static std::optional<Buf> LinuxCompatThunk(const std::string &name) {
+    static const std::unordered_map<std::string, Buf> thunks = {
         {"ExitProcess",
-         {0x48, 0x89, 0xCF, 0xB8, RUX_IS_BSD || RUX_IS_SUNOS ? 0x01 : 0x3C, 0x00, 0x00, 0x00, 0x0F,
-          0x05}},
+         {0x48, 0x89, 0xCF, 0xB8, RUX_IS_BSD || RUX_IS_SUNOS ? 0x01 : 0x3C, 0x00, 0x00, 0x00, 0x0F, 0x05}},
         {"GetStdHandle",
          {
              0x81, 0xF9, 0xF6, 0xFF, 0xFF,
@@ -1152,28 +1134,27 @@ static std::optional<Buf> LinuxCompatThunk(std::string const &name) {
                        0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
     #endif
                        0x05, 0xC3}},
-        {"HeapReAlloc",
-         {0x48, 0x8B, 0x74, 0x24, 0x28, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
+        {"HeapReAlloc", {0x48, 0x8B, 0x74, 0x24, 0x28, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
     #if RUX_IS_BSD
-          0x02, 0x10, 0x00, 0x00,
+                         0x02, 0x10, 0x00, 0x00,
     #elif RUX_IS_SUNOS
-          0x02, 0x01, 0x00, 0x00,
+                         0x02, 0x01, 0x00, 0x00,
     #else
-          0x22, 0x00, 0x00, 0x00,
+                         0x22, 0x00, 0x00, 0x00,
     #endif
-          0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
+                         0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
     #if RUX_OS_FREEBSD
-          0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+                         0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
     #elif RUX_OS_OPENBSD
-          0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
+                         0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
     #elif RUX_OS_DRAGONFLY || RUX_OS_NETBSD
-          0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
+                         0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
     #elif RUX_IS_SUNOS
-          0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
+                         0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
     #else
-          0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
+                         0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
     #endif
-          0x05, 0xC3}},
+                         0x05, 0xC3}},
         {"RtlCopyMemory", {0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88, 0x01, 0x48, 0xFF,
                            0xC2, 0x48, 0xFF, 0xC1, 0x49, 0xFF, 0xC8, 0x75, 0xF1, 0xC3}},
         {"RtlCompareMemory",
@@ -1243,25 +1224,22 @@ static std::optional<Buf> LinuxCompatThunk(std::string const &name) {
              0xDA, // jmp loop
          }},
         {"RtlFillMemory",
-         {0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88, 0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75,
-          0xF5, 0xC3}},
+         {0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88, 0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
         {"RtlZeroMemory", {0x45, 0x31, 0xC0, 0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88,
                            0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
-        {"MultiByteToWideChar",
-         {0x4C, 0x89, 0xC8, 0x4C, 0x8B, 0x54, 0x24, 0x28, 0x4D, 0x85, 0xD2, 0x74, 0x19,
-          0x4D, 0x85, 0xC9, 0x7E, 0x14, 0x45, 0x0F, 0xB6, 0x18, 0x66, 0x45, 0x89, 0x1A,
-          0x49, 0xFF, 0xC0, 0x49, 0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
-        {"WriteConsoleW",
-         {0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x08, 0x49, 0x89, 0xD4, 0x4D, 0x89,
-          0xC5, 0x4D, 0x85, 0xED, 0x74, 0x24, 0x41, 0x8A, 0x04, 0x24, 0x88, 0x04, 0x24,
+        {"MultiByteToWideChar", {0x4C, 0x89, 0xC8, 0x4C, 0x8B, 0x54, 0x24, 0x28, 0x4D, 0x85, 0xD2, 0x74, 0x19,
+                                 0x4D, 0x85, 0xC9, 0x7E, 0x14, 0x45, 0x0F, 0xB6, 0x18, 0x66, 0x45, 0x89, 0x1A,
+                                 0x49, 0xFF, 0xC0, 0x49, 0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
+        {"WriteConsoleW", {0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x08, 0x49, 0x89, 0xD4, 0x4D, 0x89,
+                           0xC5, 0x4D, 0x85, 0xED, 0x74, 0x24, 0x41, 0x8A, 0x04, 0x24, 0x88, 0x04, 0x24,
     #if RUX_IS_BSD || RUX_IS_SUNOS
-          0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
+                           0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
     #else
-          0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
+                           0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
     #endif
-          0x01, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE6, 0xBA, 0x01, 0x00, 0x00, 0x00, 0x0F,
-          0x05, 0x49, 0x83, 0xC4, 0x02, 0x49, 0xFF, 0xCD, 0xEB, 0xD7, 0x48, 0x83, 0xC4,
-          0x08, 0x41, 0x5D, 0x41, 0x5C, 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
+                           0x01, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE6, 0xBA, 0x01, 0x00, 0x00, 0x00, 0x0F,
+                           0x05, 0x49, 0x83, 0xC4, 0x02, 0x49, 0xFF, 0xCD, 0xEB, 0xD7, 0x48, 0x83, 0xC4,
+                           0x08, 0x41, 0x5D, 0x41, 0x5C, 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
         {"ReadFile",
          {
              0x89,
@@ -1523,50 +1501,46 @@ static std::optional<Buf> LinuxCompatThunk(std::string const &name) {
     #endif
     };
 
-    auto const it = thunks.find(name);
+    const auto it = thunks.find(name);
     if (it == thunks.end()) {
         return std::nullopt;
     }
     return it->second;
 }
 
-bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
+bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     static constexpr uint64_t kBase = 0x400000;
     static constexpr uint64_t kPage = 0x1000;
     static constexpr uint32_t kPfX = 0x1;
     static constexpr uint32_t kPfW = 0x2;
     static constexpr uint32_t kPfR = 0x4;
 
-    auto const alignUp64 = [](uint64_t const v, uint64_t const a) {
-        return (v + a - 1) & ~(a - 1);
-    };
+    const auto alignUp64 = [](const uint64_t v, const uint64_t a) { return (v + a - 1) & ~(a - 1); };
 
     std::unordered_set<std::string> definedSymbols;
     std::unordered_set<std::string> linuxCompatExterns;
-    for (auto const &obj : objects) {
-        for (auto const &sym : obj.symbols) {
-            if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData &&
-                !sym.name.empty()) {
+    for (const auto &obj : objects) {
+        for (const auto &sym : obj.symbols) {
+            if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData && !sym.name.empty()) {
                 definedSymbols.insert(sym.name);
             }
         }
     }
 
-    for (auto const &obj : objects) {
-        for (auto const &sec : obj.sections) {
-            for (auto const &reloc : sec.relocs) {
+    for (const auto &obj : objects) {
+        for (const auto &sec : obj.sections) {
+            for (const auto &reloc : sec.relocs) {
                 if (reloc.symbolIndex >= obj.symbols.size()) {
                     continue;
                 }
-                auto const &sym = obj.symbols[reloc.symbolIndex];
+                const auto &sym = obj.symbols[reloc.symbolIndex];
                 if ((sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) &&
                     !definedSymbols.contains(sym.name)) {
                     if (LinuxCompatThunk(sym.name)) {
                         linuxCompatExterns.insert(sym.name);
                     }
                     else {
-                        Error("external symbol '" + sym.name +
-                              "' is not supported by the ELF linker yet");
+                        Error("external symbol '" + sym.name + "' is not supported by the ELF linker yet");
                     }
                 }
             }
@@ -1578,9 +1552,8 @@ bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
 
     Buf textPre;
     textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
-    textPre.insert(textPre.end(),
-                   {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
-    size_t const kCallMainDisp = textPre.size() + 1;
+    textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
+    const size_t kCallMainDisp = textPre.size() + 1;
     textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
     textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x08});       // add rsp, 8 (undo sub)
     textPre.insert(textPre.end(), {0x89, 0xC7});                   // mov edi, eax
@@ -1594,7 +1567,7 @@ bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
     std::unordered_map<std::string, uint32_t> linuxCompatThunkOff;
     std::vector<std::string> linuxCompatNames(linuxCompatExterns.begin(), linuxCompatExterns.end());
     std::sort(linuxCompatNames.begin(), linuxCompatNames.end());
-    for (auto const &name : linuxCompatNames) {
+    for (const auto &name : linuxCompatNames) {
         auto thunk = LinuxCompatThunk(name);
         if (!thunk) {
             continue;
@@ -1602,7 +1575,7 @@ bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
         linuxCompatThunkOff[name] = static_cast<uint32_t>(textPre.size());
         textPre.insert(textPre.end(), thunk->begin(), thunk->end());
     }
-    uint32_t const preambleSize = static_cast<uint32_t>(textPre.size());
+    const uint32_t preambleSize = static_cast<uint32_t>(textPre.size());
 
     struct ObjLayout {
         uint32_t textOff, rodataOff, dataOff;
@@ -1613,24 +1586,22 @@ bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
 
     #if RUX_OS_NETBSD
     // Prepend NetBSD ELF Note
-    mergedRodata.insert(mergedRodata.end(),
-                        {
-                            0x07, 0x00, 0x00, 0x00,                 // Name size (7)
-                            0x04, 0x00, 0x00, 0x00,                 // Desc size (4)
-                            0x01, 0x00, 0x00, 0x00,                 // Type (1 = OS version)
-                            'N',  'e',  't',  'B',  'S', 'D', 0, 0, // Name (NetBSD\0\0)
-                            0x00, 0xCA, 0x9A, 0x3B                  // Desc (1000000000)
-                        });
+    mergedRodata.insert(mergedRodata.end(), {
+                                                0x07, 0x00, 0x00, 0x00,                 // Name size (7)
+                                                0x04, 0x00, 0x00, 0x00,                 // Desc size (4)
+                                                0x01, 0x00, 0x00, 0x00,                 // Type (1 = OS version)
+                                                'N',  'e',  't',  'B',  'S', 'D', 0, 0, // Name (NetBSD\0\0)
+                                                0x00, 0xCA, 0x9A, 0x3B                  // Desc (1000000000)
+                                            });
     #elif defined(__OpenBSD__)
     // Prepend OpenBSD ELF Note (required for execve to accept the binary)
-    mergedRodata.insert(mergedRodata.end(),
-                        {
-                            0x08, 0x00, 0x00, 0x00, // Name size (7 + null, padded to 8)
-                            0x04, 0x00, 0x00, 0x00, // Desc size (4)
-                            0x01, 0x00, 0x00, 0x00, // Type (NT_OPENBSD_IDENT)
-                            'O',  'p',  'e',  'n',  'B', 'S', 'D', 0, // Name (OpenBSD\0)
-                            0x00, 0x00, 0x00, 0x00                    // Desc (0 = any version)
-                        });
+    mergedRodata.insert(mergedRodata.end(), {
+                                                0x08, 0x00, 0x00, 0x00, // Name size (7 + null, padded to 8)
+                                                0x04, 0x00, 0x00, 0x00, // Desc size (4)
+                                                0x01, 0x00, 0x00, 0x00, // Type (NT_OPENBSD_IDENT)
+                                                'O',  'p',  'e',  'n',  'B', 'S', 'D', 0, // Name (OpenBSD\0)
+                                                0x00, 0x00, 0x00, 0x00                    // Desc (0 = any version)
+                                            });
     #elif defined(__DragonFly__)
     // Prepend DragonFly ELF Note (required for execve to accept the binary)
     mergedRodata.insert(mergedRodata.end(),
@@ -1638,18 +1609,16 @@ bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
                             0x0A, 0x00, 0x00, 0x00, // Name size (9 + null, padded to 12)
                             0x04, 0x00, 0x00, 0x00, // Desc size (4)
                             0x01, 0x00, 0x00, 0x00, // Type
-                            'D',  'r',  'a',  'g',  'o', 'n',
-                            'F',  'l',  'y',  0,    0,   0, // Name (DragonFly\0\0\0)
-                            0x00, 0x00, 0x00, 0x00          // Desc
+                            'D',  'r',  'a',  'g',  'o', 'n', 'F', 'l', 'y', 0, 0, 0, // Name (DragonFly\0\0\0)
+                            0x00, 0x00, 0x00, 0x00                                    // Desc
                         });
     #endif
 
     for (size_t i = 0; i < objects.size(); ++i) {
-        auto const &obj = objects[i];
-        layouts[i] = {static_cast<uint32_t>(mergedText.size()),
-                      static_cast<uint32_t>(mergedRodata.size()),
+        const auto &obj = objects[i];
+        layouts[i] = {static_cast<uint32_t>(mergedText.size()), static_cast<uint32_t>(mergedRodata.size()),
                       static_cast<uint32_t>(mergedData.size())};
-        for (auto const &sec : obj.sections) {
+        for (const auto &sec : obj.sections) {
             if (sec.type == RcuSecType::Text) {
                 mergedText.insert(mergedText.end(), sec.data.begin(), sec.data.end());
             }
@@ -1666,37 +1635,36 @@ bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
     textBuf.insert(textBuf.end(), textPre.begin(), textPre.end());
     textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
 
-    uint16_t const phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0)
+    const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0)
     #if RUX_OS_NETBSD || RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
                                                  + 1 // PT_NOTE
     #endif
 
     );
-    uint64_t const phoff = 64;
-    uint64_t const textOff = alignUp64(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
-    uint64_t const textVA = kBase + textOff;
-    uint64_t const rdataOff = alignUp64(textOff + textBuf.size(), kPage);
-    uint64_t const rdataVA = kBase + rdataOff;
-    uint64_t const dataOff = alignUp64(rdataOff + mergedRodata.size(), kPage);
-    uint64_t const dataVA = kBase + dataOff;
+    const uint64_t phoff = 64;
+    const uint64_t textOff = alignUp64(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
+    const uint64_t textVA = kBase + textOff;
+    const uint64_t rdataOff = alignUp64(textOff + textBuf.size(), kPage);
+    const uint64_t rdataVA = kBase + rdataOff;
+    const uint64_t dataOff = alignUp64(rdataOff + mergedRodata.size(), kPage);
+    const uint64_t dataVA = kBase + dataOff;
 
     std::unordered_map<std::string, uint64_t> symMap;
-    for (auto const &[name, off] : linuxCompatThunkOff) {
+    for (const auto &[name, off] : linuxCompatThunkOff) {
         symMap[name] = textVA + off;
     }
 
     for (size_t i = 0; i < objects.size(); ++i) {
-        auto const &obj = objects[i];
-        auto const &lay = layouts[i];
-        for (auto const &sym : obj.symbols) {
+        const auto &obj = objects[i];
+        const auto &lay = layouts[i];
+        for (const auto &sym : obj.symbols) {
             if (sym.name.empty()) {
                 continue;
             }
             if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
                 continue;
             }
-            if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func &&
-                sym.name != "Main") {
+            if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func && sym.name != "Main") {
                 continue;
             }
 
@@ -1723,14 +1691,14 @@ bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
             Error("undefined symbol 'Main' — no entry point found");
             return false;
         }
-        uint64_t const nextInst = textVA + kCallMainDisp + 4;
+        const uint64_t nextInst = textVA + kCallMainDisp + 4;
         Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(it->second - nextInst));
     }
 
     for (size_t i = 0; i < objects.size(); ++i) {
-        auto const &obj = objects[i];
-        auto const &lay = layouts[i];
-        for (auto const &sec : obj.sections) {
+        const auto &obj = objects[i];
+        const auto &lay = layouts[i];
+        for (const auto &sec : obj.sections) {
             Buf *buf = nullptr;
             uint32_t baseInBuf = 0;
             uint64_t secBaseVA = 0;
@@ -1753,11 +1721,11 @@ bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
                 continue;
             }
 
-            for (auto const &reloc : sec.relocs) {
+            for (const auto &reloc : sec.relocs) {
                 if (reloc.symbolIndex >= obj.symbols.size()) {
                     continue;
                 }
-                auto const &sym = obj.symbols[reloc.symbolIndex];
+                const auto &sym = obj.symbols[reloc.symbolIndex];
                 uint64_t targetVA = 0;
                 if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
                     auto it = symMap.find(sym.name);
@@ -1767,8 +1735,7 @@ bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
                     }
                     targetVA = it->second;
                 }
-                else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() &&
-                         symMap.contains(sym.name)) {
+                else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() && symMap.contains(sym.name)) {
                     targetVA = symMap[sym.name];
                 }
                 else if (sym.sectionIdx == RCU_TEXT_IDX) {
@@ -1784,14 +1751,13 @@ bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
                     continue;
                 }
 
-                size_t const patchAt = baseInBuf + reloc.sectionOffset;
-                uint64_t const siteVA = secBaseVA + reloc.sectionOffset;
+                const size_t patchAt = baseInBuf + reloc.sectionOffset;
+                const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
                 if (reloc.type == RcuRelType::Rel32) {
                     if (patchAt + 4 > buf->size()) {
                         continue;
                     }
-                    int32_t const disp =
-                        static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
+                    const int32_t disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
                     Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
                 }
                 else if (reloc.type == RcuRelType::Abs64) {
@@ -1820,27 +1786,26 @@ bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
         return false;
     }
 
-    auto const writeRaw = [&](void const *d, size_t n) {
-        out.write(static_cast<char const *>(d), static_cast<std::streamsize>(n));
+    const auto writeRaw = [&](const void *d, size_t n) {
+        out.write(static_cast<const char *>(d), static_cast<std::streamsize>(n));
     };
-    [[maybe_unused]] auto const wU8 = [&](uint8_t v) { writeRaw(&v, 1); };
-    auto const wU16 = [&](uint16_t v) { writeRaw(&v, 2); };
-    auto const wU32 = [&](uint32_t v) { writeRaw(&v, 4); };
-    auto const wU64 = [&](uint64_t v) { writeRaw(&v, 8); };
-    auto const wBuf = [&](Buf const &b) {
+    [[maybe_unused]] const auto wU8 = [&](uint8_t v) { writeRaw(&v, 1); };
+    const auto wU16 = [&](uint16_t v) { writeRaw(&v, 2); };
+    const auto wU32 = [&](uint32_t v) { writeRaw(&v, 4); };
+    const auto wU64 = [&](uint64_t v) { writeRaw(&v, 8); };
+    const auto wBuf = [&](const Buf &b) {
         if (!b.empty()) {
             writeRaw(b.data(), b.size());
         }
     };
-    auto const padToOffset = [&](uint64_t offset) {
+    const auto padToOffset = [&](uint64_t offset) {
         static constexpr uint8_t zeros[4096] = {};
         while (static_cast<uint64_t>(out.tellp()) < offset) {
-            uint64_t const remaining = offset - static_cast<uint64_t>(out.tellp());
+            const uint64_t remaining = offset - static_cast<uint64_t>(out.tellp());
             writeRaw(zeros, static_cast<size_t>(std::min<uint64_t>(remaining, sizeof(zeros))));
         }
     };
-    auto const writePhdr = [&](uint32_t flags, uint64_t off, uint64_t vaddr, uint64_t fileSize,
-                               uint64_t memSize) {
+    const auto writePhdr = [&](uint32_t flags, uint64_t off, uint64_t vaddr, uint64_t fileSize, uint64_t memSize) {
         wU32(1); // PT_LOAD
         wU32(flags);
         wU64(off);
@@ -1916,8 +1881,7 @@ bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
 
     std::error_code ec;
     std::filesystem::permissions(outputPath,
-                                 std::filesystem::perms::owner_exec |
-                                     std::filesystem::perms::group_exec |
+                                 std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec |
                                      std::filesystem::perms::others_exec,
                                  std::filesystem::perm_options::add, ec);
     if (ec) {
@@ -1936,8 +1900,8 @@ bool Linker::LinkElf64(std::filesystem::path const &outputPath) {
 // the shuffle is identical to the Linux thunks; only the syscall numbers
 // differ. The pure-computation thunks are byte-identical to their Linux
 // counterparts.
-static std::optional<Buf> MacCompatThunk(std::string const &name) {
-    static std::unordered_map<std::string, Buf> const thunks = {
+static std::optional<Buf> MacCompatThunk(const std::string &name) {
+    static const std::unordered_map<std::string, Buf> thunks = {
         {"ExitProcess",
          {
              0x48, 0x89,
@@ -2029,14 +1993,12 @@ static std::optional<Buf> MacCompatThunk(std::string const &name) {
         {"RtlCopyMemory", {0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88, 0x01, 0x48, 0xFF,
                            0xC2, 0x48, 0xFF, 0xC1, 0x49, 0xFF, 0xC8, 0x75, 0xF1, 0xC3}},
         {"RtlFillMemory",
-         {0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88, 0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75,
-          0xF5, 0xC3}},
+         {0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88, 0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
         {"RtlZeroMemory", {0x45, 0x31, 0xC0, 0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88,
                            0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
-        {"MultiByteToWideChar",
-         {0x4C, 0x89, 0xC8, 0x4C, 0x8B, 0x54, 0x24, 0x28, 0x4D, 0x85, 0xD2, 0x74, 0x19,
-          0x4D, 0x85, 0xC9, 0x7E, 0x14, 0x45, 0x0F, 0xB6, 0x18, 0x66, 0x45, 0x89, 0x1A,
-          0x49, 0xFF, 0xC0, 0x49, 0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
+        {"MultiByteToWideChar", {0x4C, 0x89, 0xC8, 0x4C, 0x8B, 0x54, 0x24, 0x28, 0x4D, 0x85, 0xD2, 0x74, 0x19,
+                                 0x4D, 0x85, 0xC9, 0x7E, 0x14, 0x45, 0x0F, 0xB6, 0x18, 0x66, 0x45, 0x89, 0x1A,
+                                 0x49, 0xFF, 0xC0, 0x49, 0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
         // WriteConsoleW(handle, buf, count, ...) -> per WCHAR, write(1,
         // lowByte, 1).
         {"WriteConsoleW",
@@ -2104,7 +2066,7 @@ static std::optional<Buf> MacCompatThunk(std::string const &name) {
          }},
     };
 
-    auto const it = thunks.find(name);
+    const auto it = thunks.find(name);
     if (it == thunks.end()) {
         return std::nullopt;
     }
@@ -2117,33 +2079,30 @@ static std::optional<Buf> MacCompatThunk(std::string const &name) {
 // LinkElf64). The result is ad-hoc code-signed because Apple Silicon
 // refuses to run any unsigned binary (including x86-64 ones translated by
 // Rosetta 2).
-bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
+bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     static constexpr uint64_t kBase = 0x1'0000'0000ULL; // __TEXT base (after 4 GiB __PAGEZERO)
     static constexpr uint64_t kPage = 0x1000;
 
-    auto const alignUp64 = [](uint64_t const v, uint64_t const a) {
-        return (v + a - 1) & ~(a - 1);
-    };
+    const auto alignUp64 = [](const uint64_t v, const uint64_t a) { return (v + a - 1) & ~(a - 1); };
 
     // 1. Resolve externs: each must be satisfiable by a compat thunk.
     std::unordered_set<std::string> definedSymbols;
-    for (auto const &obj : objects) {
-        for (auto const &sym : obj.symbols) {
-            if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData &&
-                !sym.name.empty()) {
+    for (const auto &obj : objects) {
+        for (const auto &sym : obj.symbols) {
+            if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData && !sym.name.empty()) {
                 definedSymbols.insert(sym.name);
             }
         }
     }
 
     std::unordered_set<std::string> macCompatExterns;
-    for (auto const &obj : objects) {
-        for (auto const &sec : obj.sections) {
-            for (auto const &reloc : sec.relocs) {
+    for (const auto &obj : objects) {
+        for (const auto &sec : obj.sections) {
+            for (const auto &reloc : sec.relocs) {
                 if (reloc.symbolIndex >= obj.symbols.size()) {
                     continue;
                 }
-                auto const &sym = obj.symbols[reloc.symbolIndex];
+                const auto &sym = obj.symbols[reloc.symbolIndex];
                 if ((sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) &&
                     !definedSymbols.contains(sym.name)) {
                     if (MacCompatThunk(sym.name)) {
@@ -2165,9 +2124,8 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
     // 2. Entry preamble: call Main; exit(eax).
     Buf textPre;
     textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
-    textPre.insert(textPre.end(),
-                   {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
-    size_t const kCallMainDisp = textPre.size() + 1;
+    textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
+    const size_t kCallMainDisp = textPre.size() + 1;
     textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
     textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x08});       // add rsp, 8 (undo sub)
     textPre.insert(textPre.end(), {0x89, 0xC7});                   // mov edi, eax (exit code)
@@ -2178,7 +2136,7 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
     std::unordered_map<std::string, uint32_t> macCompatThunkOff;
     std::vector<std::string> macCompatNames(macCompatExterns.begin(), macCompatExterns.end());
     std::sort(macCompatNames.begin(), macCompatNames.end());
-    for (auto const &name : macCompatNames) {
+    for (const auto &name : macCompatNames) {
         auto thunk = MacCompatThunk(name);
         if (!thunk) {
             continue;
@@ -2186,7 +2144,7 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
         macCompatThunkOff[name] = static_cast<uint32_t>(textPre.size());
         textPre.insert(textPre.end(), thunk->begin(), thunk->end());
     }
-    uint32_t const preambleSize = static_cast<uint32_t>(textPre.size());
+    const uint32_t preambleSize = static_cast<uint32_t>(textPre.size());
 
     // 4. Merge per-object sections.
     struct ObjLayout {
@@ -2196,11 +2154,10 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
     std::vector<ObjLayout> layouts(objects.size());
     Buf mergedText, mergedRodata, mergedData;
     for (size_t i = 0; i < objects.size(); ++i) {
-        auto const &obj = objects[i];
-        layouts[i] = {static_cast<uint32_t>(mergedText.size()),
-                      static_cast<uint32_t>(mergedRodata.size()),
+        const auto &obj = objects[i];
+        layouts[i] = {static_cast<uint32_t>(mergedText.size()), static_cast<uint32_t>(mergedRodata.size()),
                       static_cast<uint32_t>(mergedData.size())};
-        for (auto const &sec : obj.sections) {
+        for (const auto &sec : obj.sections) {
             if (sec.type == RcuSecType::Text) {
                 mergedText.insert(mergedText.end(), sec.data.begin(), sec.data.end());
             }
@@ -2224,12 +2181,12 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
     constexpr uint32_t kSect = 80;       // section_64
     constexpr uint32_t kThreadCmd = 184; // LC_UNIXTHREAD with x86_THREAD_STATE64 (count 42)
     constexpr uint32_t kNCmds = 5;
-    uint32_t const sizeOfCmds = kSegCmd +               // __PAGEZERO
+    const uint32_t sizeOfCmds = kSegCmd +               // __PAGEZERO
                                 (kSegCmd + 2 * kSect) + // __TEXT
                                 (kSegCmd + 1 * kSect) + // __DATA
                                 kSegCmd +               // __LINKEDIT
                                 kThreadCmd;
-    uint64_t const headerSize = 32 + sizeOfCmds;
+    const uint64_t headerSize = 32 + sizeOfCmds;
 
     // 6. File/VA layout. Invariant: every segment's VA == kBase + its file
     // offset,
@@ -2238,38 +2195,37 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
     //    16-byte LC_CODE_SIGNATURE there, and without room it would
     //    overwrite __text.
     static constexpr uint64_t kCodeSigLcSlack = 32;
-    uint64_t const textOff = alignUp64(headerSize + kCodeSigLcSlack, 16);
-    uint64_t const textVA = kBase + textOff;
-    uint64_t const rodataOff = alignUp64(textOff + textBuf.size(), 16);
-    uint64_t const rodataVA = kBase + rodataOff;
-    uint64_t const textSegFileEnd = rodataOff + mergedRodata.size();
-    uint64_t const textSegVMSize = alignUp64(textSegFileEnd, kPage);
+    const uint64_t textOff = alignUp64(headerSize + kCodeSigLcSlack, 16);
+    const uint64_t textVA = kBase + textOff;
+    const uint64_t rodataOff = alignUp64(textOff + textBuf.size(), 16);
+    const uint64_t rodataVA = kBase + rodataOff;
+    const uint64_t textSegFileEnd = rodataOff + mergedRodata.size();
+    const uint64_t textSegVMSize = alignUp64(textSegFileEnd, kPage);
 
-    uint64_t const dataOff = alignUp64(textSegFileEnd, kPage);
-    uint64_t const dataVA = kBase + dataOff;
-    uint64_t const dataVMSize = alignUp64(std::max<uint64_t>(mergedData.size(), 1), kPage);
+    const uint64_t dataOff = alignUp64(textSegFileEnd, kPage);
+    const uint64_t dataVA = kBase + dataOff;
+    const uint64_t dataVMSize = alignUp64(std::max<uint64_t>(mergedData.size(), 1), kPage);
 
-    uint64_t const linkeditOff = dataOff + dataVMSize;
-    uint64_t const linkeditVA = kBase + linkeditOff;
+    const uint64_t linkeditOff = dataOff + dataVMSize;
+    const uint64_t linkeditVA = kBase + linkeditOff;
 
     // 7. Symbol VAs (thunks + defined symbols).
     std::unordered_map<std::string, uint64_t> symMap;
-    for (auto const &[name, off] : macCompatThunkOff) {
+    for (const auto &[name, off] : macCompatThunkOff) {
         symMap[name] = textVA + off;
     }
 
     for (size_t i = 0; i < objects.size(); ++i) {
-        auto const &obj = objects[i];
-        auto const &lay = layouts[i];
-        for (auto const &sym : obj.symbols) {
+        const auto &obj = objects[i];
+        const auto &lay = layouts[i];
+        for (const auto &sym : obj.symbols) {
             if (sym.name.empty()) {
                 continue;
             }
             if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
                 continue;
             }
-            if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func &&
-                sym.name != "Main") {
+            if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func && sym.name != "Main") {
                 continue;
             }
 
@@ -2296,15 +2252,15 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
             Error("undefined symbol 'Main' — no entry point found");
             return false;
         }
-        uint64_t const nextInst = textVA + kCallMainDisp + 4;
+        const uint64_t nextInst = textVA + kCallMainDisp + 4;
         Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(it->second - nextInst));
     }
 
     // 8. Apply relocations (identical logic to LinkElf64, Mach-O VAs).
     for (size_t i = 0; i < objects.size(); ++i) {
-        auto const &obj = objects[i];
-        auto const &lay = layouts[i];
-        for (auto const &sec : obj.sections) {
+        const auto &obj = objects[i];
+        const auto &lay = layouts[i];
+        for (const auto &sec : obj.sections) {
             Buf *buf = nullptr;
             uint32_t baseInBuf = 0;
             uint64_t secBaseVA = 0;
@@ -2327,11 +2283,11 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
                 continue;
             }
 
-            for (auto const &reloc : sec.relocs) {
+            for (const auto &reloc : sec.relocs) {
                 if (reloc.symbolIndex >= obj.symbols.size()) {
                     continue;
                 }
-                auto const &sym = obj.symbols[reloc.symbolIndex];
+                const auto &sym = obj.symbols[reloc.symbolIndex];
                 uint64_t targetVA = 0;
                 if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
                     auto it = symMap.find(sym.name);
@@ -2341,8 +2297,7 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
                     }
                     targetVA = it->second;
                 }
-                else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() &&
-                         symMap.contains(sym.name)) {
+                else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() && symMap.contains(sym.name)) {
                     targetVA = symMap[sym.name];
                 }
                 else if (sym.sectionIdx == RCU_TEXT_IDX) {
@@ -2358,14 +2313,13 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
                     continue;
                 }
 
-                size_t const patchAt = baseInBuf + reloc.sectionOffset;
-                uint64_t const siteVA = secBaseVA + reloc.sectionOffset;
+                const size_t patchAt = baseInBuf + reloc.sectionOffset;
+                const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
                 if (reloc.type == RcuRelType::Rel32) {
                     if (patchAt + 4 > buf->size()) {
                         continue;
                     }
-                    int32_t const disp =
-                        static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
+                    const int32_t disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
                     Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
                 }
                 else if (reloc.type == RcuRelType::Abs64) {
@@ -2388,7 +2342,7 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
     }
 
     // 9. Build the load commands.
-    auto const wSegName = [](Buf &b, char const *s) {
+    const auto wSegName = [](Buf &b, const char *s) {
         char n[16] = {};
         std::strncpy(n, s, sizeof(n));
         for (size_t i = 0; i < sizeof(n); ++i) {
@@ -2422,7 +2376,7 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
     WriteU32(lc, 0x05);           // initprot R|X
     WriteU32(lc, 2);              // nsects
     WriteU32(lc, 0);              // flags
-    //   section __text
+    // section __text
     wSegName(lc, "__text");
     wSegName(lc, "__TEXT");
     WriteU64(lc, textVA);
@@ -2436,7 +2390,7 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
     WriteU32(lc, 0);
     WriteU32(lc, 0);
     WriteU32(lc, 0);
-    //   section __const (rodata)
+    // section __const (rodata)
     wSegName(lc, "__const");
     wSegName(lc, "__TEXT");
     WriteU64(lc, rodataVA);
@@ -2462,7 +2416,7 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
     WriteU32(lc, 0x03); // initprot R|W
     WriteU32(lc, 1);    // nsects
     WriteU32(lc, 0);
-    //   section __data
+    // section __data
     wSegName(lc, "__data");
     wSegName(lc, "__DATA");
     WriteU64(lc, dataVA);
@@ -2514,18 +2468,18 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
         return false;
     }
 
-    auto const writeRaw = [&](void const *d, size_t n) {
-        out.write(static_cast<char const *>(d), static_cast<std::streamsize>(n));
+    const auto writeRaw = [&](const void *d, size_t n) {
+        out.write(static_cast<const char *>(d), static_cast<std::streamsize>(n));
     };
-    auto const wBuf = [&](Buf const &b) {
+    const auto wBuf = [&](const Buf &b) {
         if (!b.empty()) {
             writeRaw(b.data(), b.size());
         }
     };
-    auto const padToOffset = [&](uint64_t offset) {
+    const auto padToOffset = [&](uint64_t offset) {
         static constexpr uint8_t zeros[4096] = {};
         while (static_cast<uint64_t>(out.tellp()) < offset) {
-            uint64_t const remaining = offset - static_cast<uint64_t>(out.tellp());
+            const uint64_t remaining = offset - static_cast<uint64_t>(out.tellp());
             writeRaw(zeros, static_cast<size_t>(std::min<uint64_t>(remaining, sizeof(zeros))));
         }
     };
@@ -2557,8 +2511,7 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
 
     std::error_code ec;
     std::filesystem::permissions(outputPath,
-                                 std::filesystem::perms::owner_exec |
-                                     std::filesystem::perms::group_exec |
+                                 std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec |
                                      std::filesystem::perms::others_exec,
                                  std::filesystem::perm_options::add, ec);
     if (ec) {
@@ -2569,8 +2522,7 @@ bool Linker::LinkMachO64(std::filesystem::path const &outputPath) {
     // Ad-hoc sign in place. Apple Silicon SIGKILLs unsigned binaries,
     // including x86-64 ones run under Rosetta 2; on Intel this is harmless
     // but still valid.
-    std::string const signCmd =
-        "codesign --force --sign - \"" + outputPath.string() + "\" 2>/dev/null";
+    const std::string signCmd = "codesign --force --sign - \"" + outputPath.string() + "\" 2>/dev/null";
     if (std::system(signCmd.c_str()) != 0) {
         Error("ad-hoc codesign failed (need Xcode command line tools); "
               "binary will not run on "

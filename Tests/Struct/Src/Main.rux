@@ -1,0 +1,23 @@
+import Std::Assert;
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+func Main() -> int {
+    var p: Point = Point { x: 10, y: 20 };
+    Assert(p.x == 10, "Expected p.x to be 10");
+    Assert(p.y == 20, "Expected p.y to be 20");
+
+    var ptr: *Point = &p;
+    Assert(ptr != null, "Expected ptr to not be null");
+
+    ptr.x = 30;
+    Assert(ptr.x == 30, "Expected x to be 30");
+    Assert(ptr.y == 20, "Expected y to be 20");
+
+    Assert(sizeof(Point) > 0, "Expected size of Point to be greater than 0");
+    Assert(sizeof(Point) == sizeof(int) * 2, "Expected size of Point to be equal to size of two integers");
+    return 0;
+}

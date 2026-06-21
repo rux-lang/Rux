@@ -1,0 +1,47 @@
+// func Pi() -> float64 {
+//     return 3.14159265359;
+// }
+
+// func AddInt(a: float32, b: float32) -> float32 {
+//     return a + b;
+// }
+
+// func AddFloat(a: float32, b: float32) -> float32 {
+//     return a + b;
+// }
+
+// func Min(a: float32, b: float32) -> float32 {
+//     if (a < b) {
+//         return a;
+//     } else {
+//         return b;
+//     }
+// }
+
+//func Max<T>(a: T, b: T) -> T {
+//    if (a > b) {
+//        return a;
+//    } else {
+//        return b;
+//    }
+//}
+
+// func Nothing() {
+//     // Empty function
+// }
+
+// func Two() -> int32 {
+//     return 2;
+// }
+
+// func Add(a: int32, b: int32) -> int32 {
+//     return a + b;
+// }
+
+
+func Main() -> int {
+    // var console: *opaque = GetStdHandle(-11); // STD_OUTPUT_HANDLE
+    // WriteConsoleA(console, "Hello, World!", 13, null, null);
+    return 0;
+}
+

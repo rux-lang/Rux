@@ -1,0 +1,4 @@
+func Main() -> int {
+    let value = 1 + 2 * (3 + 4) - 10 / 2;
+    return value - 10;
+}

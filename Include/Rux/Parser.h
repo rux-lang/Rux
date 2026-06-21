@@ -1,6 +1,3 @@
-// Copyright (c) Rux contributors.
-// SPDX-License-Identifier: MIT
-
 #pragma once
 
 #include "Rux/Ast.h"
@@ -33,13 +30,13 @@ public:
     explicit Parser(std::vector<Token> tokens, std::string sourceName = "<input>");
 
     // Convenience: lex and parse in one step.
-    [[nodiscard]] static std::optional<ParseResult>
-    FromLexResult(LexerResult const &lex, std::string const &sourceName = "<input>");
+    [[nodiscard]] static std::optional<ParseResult> FromLexResult(const LexerResult &lex,
+                                                                  const std::string &sourceName = "<input>");
     [[nodiscard]] ParseResult Parse();
 
     // Dump the parsed AST to a file for debugging.
     // Path defaults to sourceName + ".ast" if not specified.
-    static bool DumpAst(ParseResult const &result, std::filesystem::path const &path = {});
+    static bool DumpAst(const ParseResult &result, const std::filesystem::path &path = {});
 
 private:
     std::vector<Token> tokens;
@@ -49,14 +46,14 @@ private:
     bool structInitAllowed = true; // disabled inside if/while/for/match conditions
 
     // Token helpers
-    [[nodiscard]] Token const &Peek(std::size_t ahead = 0) const noexcept;
-    Token const &Advance() noexcept;
+    [[nodiscard]] const Token &Peek(std::size_t ahead = 0) const noexcept;
+    const Token &Advance() noexcept;
     [[nodiscard]] bool Check(TokenKind kind) const noexcept;
     [[nodiscard]] bool CheckAny(std::initializer_list<TokenKind> kinds) const noexcept;
     bool Match(TokenKind kind) noexcept;
-    Token const &Expect(TokenKind kind, std::string_view message);
+    const Token &Expect(TokenKind kind, std::string_view message);
     [[nodiscard]] bool IsAtEnd() const noexcept;
-    [[nodiscard]] Token const &Previous() const noexcept;
+    [[nodiscard]] const Token &Previous() const noexcept;
     [[nodiscard]] SourceLocation CurrentLocation() const noexcept;
     [[nodiscard]] bool IsGenericStructInitAhead() const noexcept;
     [[nodiscard]] bool IsTypeArgListAhead() const noexcept;
@@ -87,9 +84,8 @@ private:
     DeclPtr ParseExternDecl(bool isPublic, ParsedAttrs attrs);
 
     // Declarations
-    std::unique_ptr<FuncDecl>
-    ParseFuncDecl(bool isPublic, bool isAsm,
-                  CallingConvention callConv = CallingConvention::Default);
+    std::unique_ptr<FuncDecl> ParseFuncDecl(bool isPublic, bool isAsm,
+                                            CallingConvention callConv = CallingConvention::Default);
     std::unique_ptr<StructDecl> ParseStructDecl(bool isPublic);
     std::unique_ptr<EnumDecl> ParseEnumDecl(bool isPublic);
     std::unique_ptr<UnionDecl> ParseUnionDecl(bool isPublic);

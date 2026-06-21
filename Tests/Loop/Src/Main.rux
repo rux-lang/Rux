@@ -1,0 +1,14 @@
+import Std::Assert;
+
+func Main() -> int {
+    var i = 0;
+    var sum = 0;
+    loop {        
+        ++i;
+        if i > 100 { break; }
+        sum += i;
+    }
+    Assert(i == 101, "Expected i to be 101 after loop");
+    Assert(sum == 5050, "Expected sum to be 5050 after loop");
+    return 0;
+}
