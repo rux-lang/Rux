@@ -32,14 +32,14 @@ when to pick the other.
 ## 3. The inner loop
 
 1. **Branch** off `dev` (see [Branch Architecture](Branches.md)).
-2. **Edit** sources under `Source/` and `Include/`.
+2. **Edit** sources under `Compiler/Source/` and `Compiler/Include/`.
 3. **Build** the incremental build:
    ```sh
    cmake --build build --config Release
    ```
 4. **Run / debug** the compiler you just built:
    ```sh
-   ./build/rux help        # Windows: .\build\rux.exe help
+   ./Bin/Release/rux help        # Windows: .\Bin\Release\rux.exe help
    ```
 5. **Test** (see below).
 6. **Format** touched files: `clang-format -i <files>`.
@@ -59,19 +59,21 @@ UBSan, pass the flags yourself on a throwaway build dir, e.g.
 
 ## 4. Repository layout
 
-| Path             | Purpose                                                       |
-|------------------|---------------------------------------------------------------|
-| `Source/`        | Compiler implementation (`.cpp`)                              |
-| `Include/Rux/`   | Headers (`.h`), all under the `Rux` namespace                 |
-| `Tests/`         | Test packages, one per subdirectory                           |
-| `Bin/`           | Default output dir for compiled Rux packages; **git-ignored** |
-| `CMakeLists.txt` | Build configuration and project `VERSION`                     |
+| Path                    | Purpose                                                       |
+|-------------------------|---------------------------------------------------------------|
+| `Compiler/Source/`      | Compiler implementation (`.cpp`)                              |
+| `Compiler/Include/Rux/` | Headers (`.h`), all under the `Rux` namespace                 |
+| `Compiler/CMakeLists.txt` | The `rux` build target (sources, includes, output dir)      |
+| `Tests/`                | Test packages, one per subdirectory                           |
+| `Installers/`           | Platform installer projects (e.g. `Installers/Windows` MSI)   |
+| `Bin/`                  | Output for the compiler (`Bin/<Config>/`) and compiled Rux packages; **git-ignored** |
+| `CMakeLists.txt`        | Top-level build entry: project `VERSION` + `add_subdirectory(Compiler)` |
 
 `Bin/` is where `rux` drops the binaries it produces — test packages set
 `[Build] Output = "../Bin"` in their manifest, so `rux test`/`rux build` write
-here. It's listed in `.gitignore`; nothing under it is tracked. (You may also see
-local CMake build trees here if you point `-B` at it, but the canonical compiler
-build dir is `build/`.)
+here. The Rux compiler itself also builds here, to `Bin/<Config>/` (e.g.
+`Bin/Release/rux`); the CMake intermediates stay in the `build/` directory you
+pass to `-B`. `Bin/` is listed in `.gitignore`; nothing under it is tracked.
 
 ### Compiler pipeline
 
@@ -106,8 +108,8 @@ Supporting layers around the pipeline:
 Run the full suite from the repo root:
 
 ```sh
-./build/rux install Std     # test packages depend on Std
-./build/rux test            # add --release to test the optimized build, --verbose for paths
+./Bin/Release/rux install Std     # test packages depend on Std
+./Bin/Release/rux test            # add --release to test the optimized build, --verbose for paths
 ```
 
 `rux test` discovers every subdirectory of `Tests/`, builds and runs each

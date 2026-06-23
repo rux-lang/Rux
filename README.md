@@ -6,14 +6,11 @@
 
 # Rux Programming Language
 
-[![DragonFly BSD 6.4](https://github.com/rux-lang/Rux/actions/workflows/dragonfly.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/dragonfly.yml)
-[![FreeBSD 14.2](https://github.com/rux-lang/Rux/actions/workflows/freebsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/freebsd.yml)
-[![OmniOS r151052](https://github.com/rux-lang/Rux/actions/workflows/omnios.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/omnios.yml)
-[![macOS 26](https://github.com/rux-lang/Rux/actions/workflows/macos.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/macos.yml)
-[![NetBSD 10.1](https://github.com/rux-lang/Rux/actions/workflows/netbsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/netbsd.yml)
-[![OpenBSD 7.6](https://github.com/rux-lang/Rux/actions/workflows/openbsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/openbsd.yml)
-[![Ubuntu 24.04](https://github.com/rux-lang/Rux/actions/workflows/ubuntu.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/ubuntu.yml)
-[![Windows Server 2025](https://github.com/rux-lang/Rux/actions/workflows/windows.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/windows.yml)
+[![BSD](https://github.com/rux-lang/Rux/actions/workflows/bsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/bsd.yml)
+[![Illumos](https://github.com/rux-lang/Rux/actions/workflows/illumos.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/illumos.yml)
+[![Linux](https://github.com/rux-lang/Rux/actions/workflows/linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/linux.yml)
+[![macOS](https://github.com/rux-lang/Rux/actions/workflows/macos.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/macos.yml)
+[![Windows](https://github.com/rux-lang/Rux/actions/workflows/windows.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/windows.yml)
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](https://github.com/rux-lang/Rux/blob/main/LICENSE)
 
@@ -56,10 +53,10 @@ You need the following tools, all in a recent version:
 
 | Tool                              | Version | Description                 |
 |-----------------------------------|---------|-----------------------------|
-| [Clang](https://clang.llvm.org/)  | 22.1+   | The C++26 compiler          |
-| [CMake](https://cmake.org/)       | 4.3+    | Generates the build files   |
+| [Clang](https://clang.llvm.org/)  | 21.1+   | The C++26 compiler          |
+| [CMake](https://cmake.org/)       | 4.2+    | Generates the build files   |
 | [Ninja](https://ninja-build.org/) | 1.13+   | Runs the actual build, fast |
-| [Git](https://git-scm.com/)       | 2.54+   | Downloads the source code   |
+| [Git](https://git-scm.com/)       | 2.52+   | Downloads the source code   |
 
 > **Note**
 > GCC and MSVC will be supported later — please build with Clang.
@@ -216,20 +213,20 @@ cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++-22
 cmake --build build --config Release
 ```
 
-The compiled `rux` binary is written to the `build` directory
-(`build/rux`, or `build\rux.exe` on Windows).
+The compiled `rux` binary is written to the `Bin/Release` directory
+(`Bin/Release/rux`, or `Bin\Release\rux.exe` on Windows).
 
 ### 4. Verify
 
 Run the binary to confirm it works:
 
 ```sh
-./build/rux help          # on Windows: .\build\rux.exe help
+./Bin/Release/rux help          # on Windows: .\Bin\Release\rux.exe help
 ```
 
 To use `rux` from anywhere, copy it to a directory on your `PATH` (for
-example `/usr/local/bin` on Unix-like systems), or add the `build` directory
-to your `PATH`.
+example `/usr/local/bin` on Unix-like systems), or add the `Bin/Release`
+directory to your `PATH`.
 
 ## Community
 

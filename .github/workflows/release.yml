@@ -1,7 +1,7 @@
 name: Release
 
 # Cut a release by pushing a version tag, e.g.:
-#   git tag v0.3.1 && git push origin v0.3.1
+#   git tag v0.3.0 && git push origin v0.3.0
 on:
   push:
     tags: [ 'v*' ]
@@ -67,14 +67,14 @@ jobs:
 
       - name: Test
         run: |
-          ./build/rux install Std
-          ./build/rux test --release
+          ./Bin/Release/rux install Std
+          ./Bin/Release/rux test --release
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
           name: rux-linux
-          path: build/rux
+          path: Bin/Release/rux
           if-no-files-found: error
 
   windows:
@@ -112,14 +112,26 @@ jobs:
 
       - name: Test
         run: |
-          ./build/rux.exe install Std
-          ./build/rux.exe test --release
+          ./Bin/Release/rux.exe install Std
+          ./Bin/Release/rux.exe test --release
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
           name: rux-windows
-          path: build/rux.exe
+          path: Bin/Release/rux.exe
+          if-no-files-found: error
+
+      # Package the freshly built binary into a per-user MSI installer.
+      - name: Build MSI installer
+        shell: pwsh
+        run: ./Installers/Windows/Build.ps1 -RuxExe Bin/Release/rux.exe
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-windows-msi
+          path: Installers/Windows/out/rux-windows.msi
           if-no-files-found: error
 
   release:
@@ -142,6 +154,7 @@ jobs:
           chmod +x dist/rux
           tar -czf "out/rux-linux.tar.gz" -C dist rux
           zip -j   "out/rux-windows.zip"     dist/rux.exe
+          cp dist/rux-windows.msi out/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3

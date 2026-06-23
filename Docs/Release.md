@@ -9,8 +9,8 @@ and is independent of the per-push CI in [CI/CD Flow](CI-CD.md).
 A release is cut by pushing a `v*` tag:
 
 ```sh
-git tag v0.3.1
-git push origin v0.3.1
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 The workflow runs on `push: tags: [ 'v*' ]` and needs `contents: write`

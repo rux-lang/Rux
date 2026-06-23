@@ -1,5 +1,5 @@
 # Rux C++ style — LLVM base, 4-space indent, east const, 120 columns.
-# Targets the latest Clang/clang-format (see .github/workflows/ci.yml).
+# Targets the latest Clang/clang-format (Clang 22+, matching the CI workflows).
 Language: Cpp
 BasedOnStyle: LLVM
 

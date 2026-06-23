@@ -1,4 +1,4 @@
-name: OmniOS r151052
+name: Illumos
 
 on:
   push:
@@ -46,7 +46,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: rux-omnios
-          path: build/rux
+          path: Bin/Release/rux
           if-no-files-found: error
 
   test:
@@ -61,7 +61,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: rux-omnios
-          path: build
+          path: Bin/Release
 
       - name: Test in OmniOS VM
         uses: vmactions/omnios-vm@v1
@@ -75,6 +75,6 @@ jobs:
           # the suite in workspace mode from the repo root.
           run: |
             set -e
-            chmod +x build/rux
-            ./build/rux install Std
-            ./build/rux test --release
+            chmod +x Bin/Release/rux
+            ./Bin/Release/rux install Std
+            ./Bin/Release/rux test --release
