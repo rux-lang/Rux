@@ -1667,6 +1667,28 @@ private:
         return std::nullopt;
     }
 
+    Symbol *FindUniquePackageType(const std::string &name) const {
+        auto sameSymbol = [](const Symbol &lhs, const Symbol &rhs) {
+            return lhs.kind == rhs.kind && lhs.name == rhs.name && lhs.location.line == rhs.location.line &&
+                   lhs.location.column == rhs.location.column;
+        };
+
+        Symbol *matched = nullptr;
+        for (const auto &[_, modules] : packageModuleScopes) {
+            for (const auto &[__, scope] : modules) {
+                auto *sym = const_cast<Scope *>(scope)->LookupLocal(name);
+                if (!sym || (sym->kind != Symbol::Kind::Type && sym->kind != Symbol::Kind::Interface)) {
+                    continue;
+                }
+                if (matched && !sameSymbol(*matched, *sym)) {
+                    return nullptr;
+                }
+                matched = sym;
+            }
+        }
+        return matched;
+    }
+
     TypeRef ResolveType(const TypeExpr &expr) {
         // Helper to resolve enums from the global declaration table
         auto ResolveEnumType = [&](const std::string &name) -> TypeRef {
@@ -1710,6 +1732,15 @@ private:
                 }
 
                 return TypeRef::MakeNamed(GenericTypeName(*t));
+            }
+            if (!sym) {
+                sym = FindUniquePackageType(t->name);
+                if (sym && (sym->kind == Symbol::Kind::Type || sym->kind == Symbol::Kind::Interface)) {
+                    if (t->typeArgs.empty() && !sym->type.IsUnknown()) {
+                        return sym->type;
+                    }
+                    return TypeRef::MakeNamed(GenericTypeName(*t));
+                }
             }
 
             TypeRef enumType = ResolveEnumType(t->name);
@@ -2821,16 +2852,43 @@ private:
             return;
         }
 
+        auto findPackageType = [&](const std::string &name) -> const Symbol * {
+            auto sameSymbol = [](const Symbol &lhs, const Symbol &rhs) {
+                return lhs.kind == rhs.kind && lhs.name == rhs.name && lhs.location.line == rhs.location.line &&
+                       lhs.location.column == rhs.location.column;
+            };
+
+            const Symbol *matched = nullptr;
+            for (const auto &[_, modules] : packageModuleScopes) {
+                for (const auto &[__, scope] : modules) {
+                    const auto &table = scope->Table();
+                    auto it = table.find(name);
+                    if (it == table.end()) {
+                        continue;
+                    }
+                    if (it->second.kind != Symbol::Kind::Type && it->second.kind != Symbol::Kind::Interface) {
+                        continue;
+                    }
+                    if (matched && !sameSymbol(*matched, it->second)) {
+                        return nullptr;
+                    }
+                    matched = &it->second;
+                }
+            }
+            return matched;
+        };
+
         auto importNamedType = [&](const std::string &name) {
             if (currentScope->Lookup(name)) {
                 return;
             }
             auto depIt = sourceTable.find(name);
-            if (depIt == sourceTable.end()) {
+            const Symbol *dep = depIt == sourceTable.end() ? findPackageType(name) : &depIt->second;
+            if (!dep) {
                 return;
             }
-            if (depIt->second.kind == Symbol::Kind::Type || depIt->second.kind == Symbol::Kind::Interface) {
-                DefineImportedSymbol(depIt->second);
+            if (dep->kind == Symbol::Kind::Type || dep->kind == Symbol::Kind::Interface) {
+                DefineImportedSymbol(*dep);
             }
         };
 

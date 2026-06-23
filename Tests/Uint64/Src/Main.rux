@@ -12,8 +12,10 @@ func Main() -> int {
 
     let min: uint64 = 0;
     let max: uint64 = 0xFFFFFFFFFFFFFFFF;
+    let decimal_max: uint64 = 18446744073709551615;
     Assert(min == 0, "uint64 min is 0");
     Assert(max == 0xFFFFFFFFFFFFFFFF, "uint64 max is 0xFFFFFFFFFFFFFFFF");
+    Assert(decimal_max == max, "uint64 decimal max is 18446744073709551615");
 
     let wrap_add: uint64 = (max + 1) as uint64;
     Assert(wrap_add == 0, "uint64 addition wraps at 2^64");
