@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  WiX v6 authoring for the per-user Rux MSI installer.
+
+  Build it with the WiX .NET tool (see Build.ps1), e.g.:
+    wix build Rux.wxs -arch x64 -ext WixToolset.UI.wixext `
+      -d Version=0.3.0 -d RuxExe=..\..\Bin\Release\rux.exe -o rux-windows.msi
+
+  Overridable preprocessor variables (passed via -d Name=Value):
+    Version  - product version           (default 0.3.0)
+    RuxExe   - path to the built rux.exe  (default ..\..\Bin\Release\rux.exe,
+               i.e. the repo's Bin/Release output relative to this file)
+-->
+
+<?ifndef Version ?>
+  <?define Version = "0.3.0" ?>
+<?endif?>
+
+<?ifndef RuxExe ?>
+  <?define RuxExe = "..\..\Bin\Release\rux.exe" ?>
+<?endif?>
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package
+      Name="Rux"
+      Manufacturer="Rux Language"
+      Version="$(Version)"
+      UpgradeCode="7B3D9E14-2C6F-4A85-9F1B-0E5A8C2D4671"
+      Scope="perUser"
+      Compressed="yes">
+
+    <!-- Allow clean in-place upgrades; block downgrades with a clear message. -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Rux is already installed." />
+
+    <!-- Embed everything into a single self-contained .msi (no external .cab). -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Add/Remove Programs metadata. -->
+    <Property Id="ARPURLINFOABOUT" Value="https://rux-lang.dev" />
+    <Property Id="ARPHELPLINK" Value="https://rux-lang.dev/docs" />
+
+    <!-- Per-user install tree: %LocalAppData%\Programs\Rux -->
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Rux" />
+      </Directory>
+    </StandardDirectory>
+
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="RuxExe">
+        <File Id="RuxExeFile" Name="rux.exe" Source="$(RuxExe)" KeyPath="yes" />
+      </Component>
+
+      <Component Id="LicenseFile">
+        <File Id="LicenseFile" Name="LICENSE" Source="..\..\LICENSE" KeyPath="yes" />
+      </Component>
+
+      <Component Id="ReadmeFile">
+        <File Id="ReadmeFile" Name="Readme.txt" Source="Readme.txt" KeyPath="yes" />
+      </Component>
+
+      <!--
+        Add the install directory to the *user* PATH so `rux` works from any
+        terminal. The HKCU registry value gives this per-user component a valid
+        key path (an Environment row cannot itself serve as the key path).
+      -->
+      <Component Id="PathEntry" Guid="A4F1C8E2-5B3D-4E96-8C27-1D0F6A9B3E54">
+        <RegistryValue Root="HKCU" Key="Software\Rux"
+                       Name="InstallDir" Type="string" Value="[INSTALLFOLDER]"
+                       KeyPath="yes" />
+        <Environment Id="UpdatePath" Name="PATH" Value="[INSTALLFOLDER]"
+                     Action="set" Part="last" System="no" Permanent="no" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="Rux Compiler" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+
+    <!-- Wizard UI with EULA + choose-install-location pages. -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+  </Package>
+</Wix>

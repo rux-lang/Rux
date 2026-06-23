@@ -7,7 +7,7 @@ into `dev`.
 
 - Your branch is based on `dev` and targets `dev` (see
   [Branch Architecture](Branches.md)).
-- The build passes locally and the suite is green (`./build/rux test`).
+- The build passes locally and the suite is green (`./Bin/Release/rux test`).
 - Touched files are `clang-format`-clean.
 - New behavior has a matching test package under `Tests/`.
 

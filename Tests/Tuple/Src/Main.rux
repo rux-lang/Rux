@@ -7,23 +7,31 @@ func divide(a: int, b: int) -> (int, bool) {
     return (a / b, true);
 }
 
-func Main() -> int
-{
+func makePair() -> (int, float) {
+    return (1, 3.1415);
+}
+
+func Main() -> int {
     let pair: (int, float) = (1, 3.1415);
+    Assert(sizeof((int, float)) == 16, "Expected size of pair to be 16 bytes");
     Assert(pair.0 == 1, "Expected pair.0 to be 1");
     Assert(pair.1 - 3.1415 < 0.001, "Expected pair.1 to be 3.1415");
 
-    let (x, y) = pair; // Destructuring assignment
+    let (x, y) = pair;
     Assert(x == 1, "Expected x to be 1");
     Assert(y - 3.1415 < 0.001, "Expected y to be 3.1415");
 
-    Assert(sizeof((int, float)) == 16, "Expected size of pair to be 16 bytes");
+    let returned = makePair();
+    Assert(returned.0 == 1, "Expected returned.0 to be 1");
+    Assert(returned.1 - 3.1415 < 0.001, "Expected returned.1 to be 3.1415");
 
-    let (result, ok) = divide(10, 0);
-    if ok {
-        Assert(false, "Expected division by zero to fail");
-    } else {
-        Assert(true, "Expected division by zero to fail");
-    }
+    let (quotient, ok) = divide(10, 2);
+    Assert(ok, "Expected division by non-zero to succeed");
+    Assert(quotient == 5, "Expected 10 / 2 to be 5");
+
+    let (failedQuotient, failedOk) = divide(10, 0);
+    Assert(!failedOk, "Expected division by zero to fail");
+    Assert(failedQuotient == 0, "Expected failed division quotient to be 0");
+
     return 0;
 }

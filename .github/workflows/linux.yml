@@ -1,4 +1,4 @@
-name: Ubuntu 24.04
+name: Linux
 
 on:
   push:
@@ -42,7 +42,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: rux-linux-x64
-          path: build/rux
+          path: Bin/Release/rux
           if-no-files-found: error
 
   test:
@@ -57,16 +57,16 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: rux-linux-x64
-          path: build
+          path: Bin/Release
 
       # Restore the executable bit (artifacts don't preserve permissions).
       - name: Make binary executable
-        run: chmod +x build/rux
+        run: chmod +x Bin/Release/rux
 
       # The test packages depend on the Std package, so install it first.
       - name: Install Std
-        run: ./build/rux install Std
+        run: ./Bin/Release/rux install Std
 
       # Workspace mode: run from the repo root so `rux test` discovers Tests/.
       - name: Test
-        run: ./build/rux test --release
+        run: ./Bin/Release/rux test --release

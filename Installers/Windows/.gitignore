@@ -1,0 +1,5 @@
+# WiX / MSI build artifacts
+out/
+*.msi
+*.wixpdb
+*.wixobj

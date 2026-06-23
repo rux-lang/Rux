@@ -1458,6 +1458,12 @@ private:
         return t.kind == TypeRef::Kind::Pointer && !t.inner.empty() && IsWin64ByRefAggregate(t.inner[0]);
     }
 
+    [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
+        const auto it = regTypes.find(reg);
+        return it != regTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
+               it->second.inner[0] == pointee;
+    }
+
     static int Win64CallFrameSize(const std::size_t argCount) {
         const std::size_t stackArgs = argCount > 4 ? argCount - 4 : 0;
         return AlignUp(static_cast<int>(32 + stackArgs * 8), 16);
@@ -1821,11 +1827,23 @@ private:
 
     void LoadReturnValue(const LirReg reg, const TypeRef &t) const {
         if (SizeOfRuntime(t) == 16) {
-            enc.MovRaxLoad(Disp(reg));
-            enc.MovR10Load(Disp(reg) + 8);
-            enc.Byte(0x4C);
-            enc.Byte(0x89);
-            enc.Byte(0xD2); // mov rdx, r10
+            if (IsRegPointerTo(reg, t)) {
+                enc.MovR10Load(Disp(reg));
+                enc.Byte(0x49);
+                enc.Byte(0x8B);
+                enc.Byte(0x02); // mov rax, [r10]
+                enc.Byte(0x49);
+                enc.Byte(0x8B);
+                enc.Byte(0x52);
+                enc.Byte(0x08); // mov rdx, [r10 + 8]
+            }
+            else {
+                enc.MovRaxLoad(Disp(reg));
+                enc.MovR10Load(Disp(reg) + 8);
+                enc.Byte(0x4C);
+                enc.Byte(0x89);
+                enc.Byte(0xD2); // mov rdx, r10
+            }
             return;
         }
         LoadA(reg, t);
@@ -1849,11 +1867,27 @@ private:
             return;
         }
         enc.MovR11Load(-hiddenReturnOff);
-        enc.MovRaxLoad(Disp(src));
+        if (IsRegPointerTo(src, t)) {
+            enc.MovR10Load(Disp(src));
+            enc.Byte(0x49);
+            enc.Byte(0x8B);
+            enc.Byte(0x02); // mov rax, [r10]
+        }
+        else {
+            enc.MovRaxLoad(Disp(src));
+        }
         enc.Byte(0x49);
         enc.Byte(0x89);
         enc.Byte(0x03); // mov [r11], rax
-        enc.MovRaxLoad(Disp(src) + 8);
+        if (IsRegPointerTo(src, t)) {
+            enc.Byte(0x49);
+            enc.Byte(0x8B);
+            enc.Byte(0x42);
+            enc.Byte(0x08); // mov rax, [r10 + 8]
+        }
+        else {
+            enc.MovRaxLoad(Disp(src) + 8);
+        }
         enc.Byte(0x49);
         enc.Byte(0x89);
         enc.Byte(0x43);

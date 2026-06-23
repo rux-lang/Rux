@@ -1,4 +1,4 @@
-name: Windows Server 2025
+name: Windows
 
 on:
   push:
@@ -48,7 +48,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: rux-windows-x64.exe
-          path: build/rux.exe
+          path: Bin/Release/rux.exe
           if-no-files-found: error
 
   test:
@@ -63,12 +63,12 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: rux-windows-x64.exe
-          path: build
+          path: Bin/Release
 
       # The test packages depend on the Std package, so install it first.
       - name: Install Std
-        run: ./build/rux.exe install Std
+        run: ./Bin/Release/rux.exe install Std
 
       # Workspace mode: run from the repo root so `rux test` discovers Tests/.
       - name: Test
-        run: ./build/rux.exe test --release
+        run: ./Bin/Release/rux.exe test --release

@@ -54,8 +54,8 @@ by the test job. Using `ubuntu.yml` as the reference shape:
     - Upload the `rux` binary as an artifact.
 2. **Test job** (`needs: build`)
     - Download the built binary and restore its executable bit.
-    - `./build/rux install Std` (test packages depend on Std).
-    - `./build/rux test --release` from the repo root (workspace mode discovers `Tests/`).
+    - `./Bin/Release/rux install Std` (test packages depend on Std).
+    - `./Bin/Release/rux test --release` from the repo root (workspace mode discovers `Tests/`).
 
 ### Platform-specific quirks
 

@@ -5,77 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Released]
+## [0.3.0] - 2026-06-23
 
----
-
-## [0.3.1] - 2026-06-21
-
-Adds more correctness fixes, broader literal and constant-expression support, improved overload resolution, expanded platform/runtime support, better test coverage, and cleaner CLI/build tooling.
-
-### Added
-
-#### Language
-
-- **Constant integer expression coercion** — compile-time folded integer expressions now coerce to sized integer targets when the value fits
-- **Typed non-decimal integer suffixes** — `0xFFu`, `0b1010u`, `0o17i`, and underscore separators in non-decimal literals
-- **Constant character cast validation** — compile-time validation for `as char8`, `as char16`, and `as char32`
-- **Boolean bitwise operators** — `&`, `|`, `^`, and `~` on `bool` types
-- **Attribute handling improvements** — `@[Target(...)]` import filtering by platform, plus warning and error attribute support (`@[Warn(...)]`, `@[Error(...)]`)
-
-#### Runtime / Linker
-
-- **macOS `munmap` thunk** — adds `munmap` support to the Mach-O linker so `Std::Memory::Free` can release mmap-backed allocations
-- **Floating-point remainder support** — adds FP `%` handling
-- **Floating-point comparison fixes** — correct FP comparison behavior
-
-#### Tooling / Tests
-
-- **CTest-based test suite** — CMake/CTest migration for cross-platform test execution
-- **Expanded regression coverage** — recursion, integer, boolean, floating point, tuples, numeric suffixes, constant expressions, and bool bitwise ops
-- **Improved CLI help generation** — generated help text with wrapping and consistency checks
-
-#### Build / Infrastructure
-
-- **Per-OS CI workflows** — dedicated GitHub Actions workflows for macOS 26, FreeBSD, OpenBSD, NetBSD, DragonFly BSD, and OmniOS (illumos), in addition to the existing Ubuntu and Windows runners
-- **macOS release binaries** — the release workflow now builds, tests, and publishes a macOS artifact alongside Linux and Windows
-- **Build instructions** — beginner-friendly, per-platform build-from-source guide in the README for all supported operating systems
-- **Funding / sponsorship** — `FUNDING.yml` adds a Sponsor button (Open Collective and donate page)
-
-### Fixed
-
-#### Semantics / Type Checking
-
-- **Overload resolution** now hard-errors on unresolved overloads instead of silently falling back
-- **Bare integer literals** now work in single-overload resolution
-- **Binary expression operands** are now type-checked on both sides
-- **`is` folding** now produces a compile-time boolean instead of emitting a fake call
-- **Tuple size / field offset layout** is now aligned consistently across backends
-- **Pointer arithmetic** now scales by element size
-- **Slice-of-slice assignment** no longer corrupts the slice length field
-- **Import resolution** for `import Std::Io` / module-qualified calls is fixed
-- **Compatibility checks** for mixed character and integer types are relaxed where appropriate
-- **Platform-conditional imports** under `@[Target(...)]` are filtered correctly during dependency collection
-
-#### Language Diagnostics
-
-- **Constant casts** now reject out-of-range character values and Unicode surrogate code points
-- **Out-of-range integer literals** now produce clearer diagnostics outside `let` bindings
-- **Unsigned/sized integer literal handling** is now consistent across decimal, hex, binary, and octal forms
-
-#### Platform / Build
-
-- **Windows CMake linking** issues are fixed
-- **GCC/MinGW** terminal-link workaround is added
-- **Install/uninstall** now work outside project directories
-- **Help command handling** is cleaner, more robust, and terminal-width aware
-- **SysV stack argument passing** is restored in codegen
-- **Type dependency resolution** and wildcard target handling are fixed
-- **OpenBSD test cases** are removed where they no longer apply
-
-## [0.3.0] - 2026-06-01
-
-Adds broad multi-platform host support, a revamped platform abstraction layer, new language features, a macOS linker backend, Windows DLL output, and many bug fixes.
+Adds broad multi-platform host support, a revamped platform abstraction layer, new language features, a macOS linker
+backend, and Windows DLL output, along with correctness fixes, broader literal and constant-expression support, improved
+overload resolution, expanded runtime support, better test coverage, cleaner CLI/build tooling, and many bug fixes.
 
 ### Added
 
@@ -83,11 +17,24 @@ Adds broad multi-platform host support, a revamped platform abstraction layer, n
 
 - **Target attributes** — `@[Target(...)]` attributes to conditionally compile code per platform
 - **Unicode escape sequences** — `\u{...}` escapes in string and character literals
+- **Constant integer expression coercion** — compile-time folded integer expressions now coerce to sized integer targets
+  when the value fits
+- **Typed non-decimal integer suffixes** — `0xFFu`, `0b1010u`, `0o17i`, and underscore separators in non-decimal
+  literals
+- **Constant character cast validation** — compile-time validation for `as char8`, `as char16`, and `as char32`
+- **Boolean bitwise operators** — `&`, `|`, `^`, and `~` on `bool` types
+- **Attribute handling improvements** — `@[Target(...)]` import filtering by platform, plus warning and error attribute
+  support (`@[Warn(...)]`, `@[Error(...)]`)
 
-#### Linker
+#### Runtime / Linker
 
-- **Windows PE32+ DLL output** — emit `.dll` artifacts when `Type = "Dll"` in `Rux.toml` (export directory, optional `DllMain`)
+- **Windows PE32+ DLL output** — emit `.dll` artifacts when `Type = "Dll"` in `Rux.toml` (export directory, optional
+  `DllMain`)
 - **macOS Mach-O linker backend** — native x86-64 Mach-O executable output on macOS
+- **macOS `munmap` thunk** — adds `munmap` support to the Mach-O linker so `Std::Memory::Free` can release mmap-backed
+  allocations
+- **Floating-point remainder support** — adds FP `%` handling
+- **Floating-point comparison fixes** — correct FP comparison behavior
 
 #### Platform
 
@@ -95,7 +42,8 @@ Adds broad multi-platform host support, a revamped platform abstraction layer, n
 - **NetBSD x86-64 host** — native compilation and execution on NetBSD x86-64
 - **DragonFly BSD x86-64 host** — native compilation and execution on DragonFly BSD x86-64
 - **Illumos x86-64 host** — native compilation and execution on Illumos/OmniOS x86-64
-- **Platform abstraction layer** — revamped `Platform` implementation with platform macros and CPU feature detection at runtime
+- **Platform abstraction layer** — revamped `Platform` implementation with platform macros and CPU feature detection at
+  runtime
 - **BSD and Illumos ELF target support** — correct ELF OSABI, `PT_NOTE`, `ET_DYN` per target
 - **Target-specific platform dependencies** — `[target.<triple>.dependencies]` in `Rux.toml`
 
@@ -111,24 +59,48 @@ Adds broad multi-platform host support, a revamped platform abstraction layer, n
 - `rux install --dev` — install a package as a dev dependency
 - Inline TOML table dependency fields in `Rux.toml`
 
-#### Build / Infrastructure
-
-- Nix Flake derivation for reproducible builds
-- Windows, Linux, macOS, FreeBSD, OpenBSD, NetBSD, DragonFly BSD, and Illumos CI runners
-- macOS Homebrew formula and `install` target
-- `Tests/Dll` — minimal DLL smoke test and `Tests/run_dll_test.sh` (Windows CI)
-
 ### Fixed
 
+#### Semantics / Type Checking
+
+- **Overload resolution** now hard-errors on unresolved overloads instead of silently falling back
+- **Bare integer literals** now work in single-overload resolution
+- **Binary expression operands** are now type-checked on both sides
+- **`is` folding** now produces a compile-time boolean instead of emitting a fake call
+- **Tuple size / field offset layout** is now aligned consistently across backends
+- **Pointer arithmetic** now scales by element size
+- **Slice-of-slice assignment** no longer corrupts the slice length field
+- **Import resolution** for `import Std::Io` / module-qualified calls is fixed
+- **Compatibility checks** for mixed character and integer types are relaxed where appropriate
+- **Platform-conditional imports** under `@[Target(...)]` are filtered correctly during dependency collection
 - Enums and type aliases not resolving inside `extern` blocks
-- Integer `**` (power) operator — defines `__rux_ipow` runtime helper
-- Double pointer parsing bug
-- Out-of-range integer literals now report a clear diagnostic outside `let` bindings
-- Platform dependency resolution via wildcard targets and robust TOML parsing
-- `ReadFile`/`WriteFile` thunks: preserve R9 across syscall, guard `mov [r9]` with null check, preserve non-volatile RDI/RSI on Win64
-- Entry stack alignment: pre-adjust RSP before `call Main`
-- OpenBSD ELF header fixes for `execve` compatibility
 - `bool` and `float` type handling regressions
+- Double pointer parsing bug
+
+#### Language Diagnostics
+
+- **Constant casts** now reject out-of-range character values and Unicode surrogate code points
+- **Out-of-range integer literals** now produce clearer diagnostics outside `let` bindings
+- **Unsigned/sized integer literal handling** is now consistent across decimal, hex, binary, and octal forms
+
+#### Codegen / Runtime
+
+- Integer `**` (power) operator — defines `__rux_ipow` runtime helper
+- **SysV stack argument passing** is restored in codegen
+- Entry stack alignment: pre-adjust RSP before `call Main`
+- `ReadFile`/`WriteFile` thunks: preserve R9 across syscall, guard `mov [r9]` with null check, preserve non-volatile
+  RDI/RSI on Win64
+
+#### Platform / Build
+
+- **Windows CMake linking** issues are fixed
+- **GCC/MinGW** terminal-link workaround is added
+- **Install/uninstall** now work outside project directories
+- **Help command handling** is cleaner, more robust, and terminal-width aware
+- **Type dependency resolution** and wildcard target handling are fixed
+- Platform dependency resolution via wildcard targets and robust TOML parsing
+- OpenBSD ELF header fixes for `execve` compatibility
+- **OpenBSD test cases** are removed where they no longer apply
 - Windows `std::max` macro conflict with compiler internals
 - UB in `gitclone` due to missing `return`
 
@@ -199,7 +171,8 @@ Expands the compiler with control flow, composite types, modules, and a richer t
 
 Initial release of the Rux compiler and package manager.
 
-> **Note:** This release supports compiling simple `Main` functions with arithmetic return expressions only. Full language features are not yet implemented.
+> **Note:** This release supports compiling simple `Main` functions with arithmetic return expressions only. Full
+> language features are not yet implemented.
 
 ```rux
 func Main() -> int32 {
@@ -209,7 +182,8 @@ func Main() -> int32 {
 
 ### Compiler pipeline
 
-- **Lexer** — tokenizes `.rux` source files; reports diagnostics with file, line, and column; supports token stream dump (`--dump-tokens`)
+- **Lexer** — tokenizes `.rux` source files; reports diagnostics with file, line, and column; supports token stream
+  dump (`--dump-tokens`)
 - **Parser** — produces an AST from the token stream; supports AST dump (`--dump-ast`)
 - **Semantic analysis** — type checking and name resolution; supports analysis dump (`--dump-sema`)
 - **HIR** — high-level intermediate representation lowered from the AST
