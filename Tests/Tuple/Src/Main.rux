@@ -1,18 +1,14 @@
 import Std::Assert;
 
-// func divide(a: int, b: int) -> (int, bool) {
-//     if b == 0 {
-//         return (0, false);
-//     }
-//     return (a / b, true);
-// }
+func divide(a: int, b: int) -> (int, bool) {
+    if b == 0 {
+        return (0, false);
+    }
+    return (a / b, true);
+}
 
 func Main() -> int
 {
-    // TODO: Uncomment the following code to test tuple functionality
-    // Have some unclear bugs
-    /*
-    //let pair  = (1, 2); 
     let pair: (int, float) = (1, 3.1415);
     Assert(pair.0 == 1, "Expected pair.0 to be 1");
     Assert(pair.1 - 3.1415 < 0.001, "Expected pair.1 to be 3.1415");
@@ -28,6 +24,6 @@ func Main() -> int
         Assert(false, "Expected division by zero to fail");
     } else {
         Assert(true, "Expected division by zero to fail");
-    }*/
+    }
     return 0;
 }

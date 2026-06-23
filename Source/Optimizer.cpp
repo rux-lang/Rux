@@ -51,15 +51,10 @@ void Optimizer::OptimizeStmt(HirStmtPtr &stmt) {
 
             // only track immutable bindings, mutable tracking is not supported (yet)
             if (!s->isMut) {
-                bool sExists = false;
-
                 if (IsIntegerLiteral(s->init.get())) {
-                    sExists = true;
-                }
-
-                if (IsIntegerLiteral(s->init.get())) {
-                    constants[s->name] =
-                        ConstantValue{false, GetIntegerLiteral(s->init.get()).value(), false, s->init->type};
+                    if (const auto value = GetIntegerLiteral(s->init.get())) {
+                        constants[s->name] = ConstantValue{false, *value, false, s->init->type};
+                    }
                 }
                 else if (IsBoolLiteral(s->init.get())) {
                     constants[s->name] = {true, 0, GetBoolLiteral(s->init.get()), s->init->type};
