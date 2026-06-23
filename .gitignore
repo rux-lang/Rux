@@ -5,6 +5,7 @@ Build/
 build/
 cmake-build-*/
 out/
+Temp/
 
 # CMake
 CMakeCache.txt

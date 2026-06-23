@@ -365,6 +365,12 @@ private:
         return SizeOf(t);
     }
 
+    [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
+        const auto it = regTypes.find(reg);
+        return it != regTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
+               it->second.inner[0] == pointee;
+    }
+
     // Stack slot allocation
     int32_t AllocSlot(LirReg reg, int bytes) {
         if (auto it = slotMap.find(reg); it != slotMap.end()) {
@@ -454,6 +460,16 @@ private:
             int store_sz = (sz > 0) ? sz : 8;
             TI(std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(store_sz), off, GprA(store_sz)));
         }
+    }
+
+    void LoadReturnValue(LirReg reg, const TypeRef &t) {
+        if (SizeOfRuntime(t) == 16 && IsRegPointerTo(reg, t)) {
+            TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(reg)));
+            TI(std::format("{:<8}rax, qword [r10]", "mov"));
+            TI(std::format("{:<8}rdx, qword [r10 + 8]", "mov"));
+            return;
+        }
+        LoadA(reg, t);
     }
 
     // Block labels
@@ -1407,7 +1423,7 @@ private:
 
         case LirTermKind::Return: {
             if (term.retVal && *term.retVal != LirNoReg) {
-                LoadA(*term.retVal, term.retType);
+                LoadReturnValue(*term.retVal, term.retType);
                 // Result already in rax or xmm0 — do not overwrite
             }
             EmitEpilogue();
