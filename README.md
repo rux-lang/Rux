@@ -26,8 +26,6 @@
 [![Mastodon](https://img.shields.io/mastodon/follow/113727153489087809?domain=mastodon.social&style=flat&logo=mastodon&logoColor=white&label=Mastodon&color=blue)](https://mastodon.social/@ruxlang)
 [![Telegram](https://img.shields.io/badge/73-gray?style=flat&logo=telegram&logoColor=white&label=Telegram&color=blue)](https://t.me/ruxlang)
 
----
-
 Rux is a fast, compiled, strongly typed, multi-paradigm programming language.
 
 ## Project Status
@@ -219,8 +217,7 @@ Here’s how you can get [involved](https://rux-lang.dev/community).
 ## Contributing
 
 The Rux repository is hosted at [rux-lang/Rux](https://github.com/rux-lang/Rux) on GitHub.
-
-Read the [Contributing guide](.github/CONTRIBUTING.md) to get started.
+Read the [Contributing guide](CONTRIBUTING.md) to get started.
 
 ## License
 

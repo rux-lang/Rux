@@ -1,12 +1,10 @@
 # Security Policy
 
-The Rux team takes the security of the compiler and its toolchain seriously. Thank you for helping keep Rux and its
-users safe.
+The Rux team takes the security of the compiler and its toolchain seriously. Thank you for helping keep Rux and its users safe.
 
 ## Supported Versions
 
-Rux is under active development. Security fixes are applied to the latest released minor version only. We recommend
-always running the most recent release.
+Rux is under active development. Security fixes are applied to the latest released minor version only. We recommend always running the most recent release.
 
 ## Reporting a Vulnerability
 
@@ -21,8 +19,7 @@ Instead, report them privately using one of the following channels:
 
 To help us triage quickly, please include as much of the following as you can:
 
-- The type of issue (e.g. memory corruption, code injection via crafted source, path traversal in the package manager,
-  etc.)
+- The type of issue (e.g. memory corruption, code injection via crafted source, path traversal in the package manager, etc.)
 - The affected component (lexer, parser, codegen, linker, CLI, package manager)
 - Rux version and host platform (OS, architecture, compiler)
 - Step-by-step instructions to reproduce, including any minimal source input
@@ -54,8 +51,7 @@ We ask that you give us a reasonable opportunity to address the issue before any
 
 ## Safe Harbor
 
-We consider security research conducted in good faith and in accordance with this policy to be authorized. We will not
-pursue or support legal action against researchers who:
+We consider security research conducted in good faith and in accordance with this policy to be authorized. We will not pursue or support legal action against researchers who:
 
 - Make a good-faith effort to avoid privacy violations, data destruction, and service disruption.
 - Only interact with systems and accounts they own or have explicit permission to access.
