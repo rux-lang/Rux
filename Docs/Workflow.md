@@ -65,7 +65,7 @@ UBSan, pass the flags yourself on a throwaway build dir, e.g.
 | `Compiler/Include/Rux/` | Headers (`.h`), all under the `Rux` namespace                 |
 | `Compiler/CMakeLists.txt` | The `rux` build target (sources, includes, output dir)      |
 | `Tests/`                | Test packages, one per subdirectory                           |
-| `Installers/`           | Platform installer projects (e.g. `Installers/Windows` MSI)   |
+| `Installers/`           | Platform installer projects (e.g. `Installers/Windows`: MSI + PowerShell) |
 | `Bin/`                  | Output for the compiler (`Bin/<Config>/`) and compiled Rux packages; **git-ignored** |
 | `CMakeLists.txt`        | Top-level build entry: project `VERSION` + `add_subdirectory(Compiler)` |
 

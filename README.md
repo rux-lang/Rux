@@ -43,16 +43,14 @@ Currently, under development.
 
 ## Building from Source
 
-Rux is written in modern **C++26**, so it needs an up-to-date toolchain. If
-you are new to building C/C++ projects, just follow the steps for your
-operating system top to bottom — every command can be copied and pasted.
+Rux is written in modern **C++26**, so it needs an up-to-date toolchain. If you are new to building C/C++ projects, just follow the steps for your operating system top to bottom — every command can be copied and pasted.
 
 ### Prerequisites
 
 You need the following tools, all in a recent version:
 
 | Tool                              | Version | Description                 |
-|-----------------------------------|---------|-----------------------------|
+| --------------------------------- | ------- | --------------------------- |
 | [Clang](https://clang.llvm.org/)  | 21.1+   | The C++26 compiler          |
 | [CMake](https://cmake.org/)       | 4.2+    | Generates the build files   |
 | [Ninja](https://ninja-build.org/) | 1.13+   | Runs the actual build, fast |
@@ -70,15 +68,13 @@ cd Rux
 
 ### 2. Install the toolchain and configure
 
-Expand the section for your operating system. Each one installs the tools and
-then runs CMake to prepare a `build` directory.
+Expand the section for your operating system. Each one installs the tools and then runs CMake to prepare a `build` directory.
 
 <details>
 <summary><b>DragonFly BSD</b></summary>
 
 ```sh
 sudo pkg install -y llvm cmake ninja git
-
 cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
 ```
 
@@ -89,7 +85,6 @@ cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
 
 ```sh
 sudo pkg install -y llvm22 cmake ninja git
-
 cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++22
 ```
 
@@ -98,12 +93,10 @@ cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++22
 <details>
 <summary><b>macOS</b></summary>
 
-Apple's built-in Clang lags behind and lacks full C++26 support, so install
-the latest LLVM with [Homebrew](https://brew.sh/):
+Apple's built-in Clang lags behind and lacks full C++26 support, so install the latest LLVM with [Homebrew](https://brew.sh/):
 
 ```sh
 brew install llvm cmake ninja git
-
 cmake -S . -B build -G Ninja \
   -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++"
 ```
@@ -115,7 +108,6 @@ cmake -S . -B build -G Ninja \
 
 ```sh
 sudo pkgin -y install clang cmake ninja-build git
-
 cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
 ```
 
@@ -126,7 +118,6 @@ cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
 
 ```sh
 pfexec pkg install clang cmake ninja git
-
 cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
 ```
 
@@ -137,7 +128,6 @@ cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
 
 ```sh
 doas pkg_add llvm%22 cmake ninja git
-
 cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
 ```
 
@@ -164,12 +154,8 @@ cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++-22
 <details>
 <summary><b>Windows</b></summary>
 
-1. Install **Visual Studio 2026** (the free Community edition is fine) with the
-   **"Desktop development with C++"** workload. This provides the Windows SDK
-   and C runtime that Clang links against.
-2. Install the latest Clang, CMake, and Ninja with
-   [Scoop](https://scoop.sh/). If you don't have Scoop yet, install it from a
-   regular (non-admin) PowerShell:
+1. Install **Visual Studio 2026** (the free Community edition is fine) with the **"Desktop development with C++"** workload. This provides the Windows SDK and C runtime that Clang links against.
+2. Install the latest Clang, CMake, and Ninja with [Scoop](https://scoop.sh/). If you don't have Scoop yet, install it from a regular (non-admin) PowerShell:
 
    ```powershell
    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
@@ -182,12 +168,9 @@ cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++-22
    scoop install llvm cmake ninja
    ```
 
-3. Open the **"x64 Native Tools Command Prompt for VS 2026"** from the Start
-   menu. This sets up the Windows SDK and C runtime environment that Clang
-   needs to compile and link.
+3. Open the **"x64 Native Tools Command Prompt for VS 2026"** from the Start menu. This sets up the Windows SDK and C runtime environment that Clang needs to compile and link.
 
-   Prefer your own terminal? Any PowerShell window works too — just initialize
-   the build environment once per session first:
+   Prefer your own terminal? Any PowerShell window works too — just initialize the build environment once per session first:
 
    ```powershell
    $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
@@ -213,20 +196,21 @@ cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++-22
 cmake --build build --config Release
 ```
 
-The compiled `rux` binary is written to the `Bin/Release` directory
-(`Bin/Release/rux`, or `Bin\Release\rux.exe` on Windows).
+The compiled `rux` binary is written to the `Bin/Release` directory (`Bin/Release/rux`, or `Bin\Release\rux.exe` on Windows).
 
 ### 4. Verify
 
 Run the binary to confirm it works:
 
 ```sh
-./Bin/Release/rux help          # on Windows: .\Bin\Release\rux.exe help
+./Bin/Release/rux help
 ```
 
-To use `rux` from anywhere, copy it to a directory on your `PATH` (for
-example `/usr/local/bin` on Unix-like systems), or add the `Bin/Release`
-directory to your `PATH`.
+```powershell
+.\Bin\Release\rux.exe help
+```
+
+To use `rux` from anywhere, copy it to a directory on your `PATH` (for example `/usr/local/bin` on Unix-like systems), or add the `Bin/Release` directory to your `PATH`.
 
 ## Community
 

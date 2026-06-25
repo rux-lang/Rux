@@ -125,13 +125,13 @@ jobs:
       # Package the freshly built binary into a per-user MSI installer.
       - name: Build MSI installer
         shell: pwsh
-        run: ./Installers/Windows/Build.ps1 -RuxExe Bin/Release/rux.exe
+        run: ./Installers/Windows/Msi/Build.ps1 -RuxExe Bin/Release/rux.exe
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v7
         with:
           name: rux-windows-msi
-          path: Installers/Windows/out/rux-windows.msi
+          path: Installers/Windows/Msi/out/rux-windows.msi
           if-no-files-found: error
 
   release:

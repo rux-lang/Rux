@@ -32,7 +32,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 
 # --- Resolve the rux.exe to package ---------------------------------------
 if (-not $RuxExe) {
@@ -79,7 +79,7 @@ Write-Host "Building $msi"
 Write-Host "  version: $Version"
 Write-Host "  rux.exe: $RuxExe"
 
-# wix resolves relative Source paths (LICENSE, README.md, License.rtf) against
+# wix resolves relative Source paths (LICENSE, License.rtf, Readme.txt) against
 # the working directory, so run from this script's folder. RuxExe/OutDir were
 # already resolved to absolute paths above, so they stay correct.
 Push-Location $PSScriptRoot
