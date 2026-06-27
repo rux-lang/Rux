@@ -1,9 +1,11 @@
 #pragma once
 
+#include <filesystem>
 #include <span>
 #include <string_view>
 
 namespace Rux {
+
 enum class ColorMode {
     Auto,
     On,
@@ -14,6 +16,7 @@ struct GlobalOptions {
     ColorMode color = ColorMode::Auto;
     bool quiet = false;
     bool verbose = false;
+    std::filesystem::path manifest; // Custom manifest path; empty = find automatically
 };
 
 class Cli {

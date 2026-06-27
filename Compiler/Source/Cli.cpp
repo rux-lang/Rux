@@ -47,6 +47,13 @@ GlobalOptions Cli::ParseGlobalOptions(std::span<const std::string_view> args) {
             else {
                 opts.color = ColorMode::Auto;
             }
+            continue;
+        }
+        if (arg == "--manifest") {
+            if (i + 1 < args.size()) {
+                opts.manifest = args[++i];
+            }
+            continue;
         }
     }
     return opts;
@@ -99,6 +106,13 @@ int Cli::Run() const {
                 preCommandGlobals.push_back(arg);
                 continue;
             }
+            if (arg == "--manifest") {
+                preCommandGlobals.push_back(arg);
+                if (i + 1 < sv.size()) {
+                    preCommandGlobals.push_back(sv[++i]);
+                }
+                continue;
+            }
             command = arg;
             foundCommand = true;
         }
@@ -118,7 +132,28 @@ int Cli::Run() const {
     allArgs.insert(allArgs.end(), cmdArgs.begin(), cmdArgs.end());
 
     GlobalOptions opts = ParseGlobalOptions(allArgs);
-    std::span<const std::string_view> rest(cmdArgs);
+
+    // Filter global options out of cmdArgs so command handlers never see them.
+    std::vector<std::string_view> filteredCmdArgs;
+    for (std::size_t i = 0; i < cmdArgs.size(); ++i) {
+        const std::string_view arg = cmdArgs[i];
+        if (arg == "-q" || arg == "--quiet" || arg == "-v" || arg == "--verbose") {
+            continue;
+        }
+        if (arg == "--color") {
+            ++i; // skip value
+            continue;
+        }
+        if (arg.starts_with("--color=")) {
+            continue;
+        }
+        if (arg == "--manifest") {
+            ++i; // skip value
+            continue;
+        }
+        filteredCmdArgs.push_back(arg);
+    }
+    std::span<const std::string_view> rest(filteredCmdArgs);
 
     if (command == "help") {
         return RunHelp(rest, opts);
