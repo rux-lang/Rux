@@ -295,8 +295,8 @@ constexpr std::array doc_exs = {""sv, "--open"sv};
 constexpr std::array fmt_usage = {"[options]"sv};
 constexpr std::array fmt_opts = {
     OptionDoc{.flags = "--check"sv, .desc = "Check file formatting status without modifying source files"sv},
-    OptionDoc{.flags = "--manifest"sv, .desc = "Format only the manifest configuration file (Rux.toml)"sv}};
-constexpr std::array fmt_exs = {""sv, "--check"sv, "--manifest"sv};
+    OptionDoc{.flags = "--manifest-only"sv, .desc = "Format only the manifest configuration file (Rux.toml)"sv}};
+constexpr std::array fmt_exs = {""sv, "--check"sv, "--manifest-only"sv};
 
 // Info
 constexpr std::array info_usage = {"[package name]"sv};
@@ -362,6 +362,7 @@ namespace GlobalOpts {
 constexpr std::array catalog = {
     OptionDoc{.flags = "--color <auto|on|off>"sv, .desc = "Control colored console output"sv},
     OptionDoc{.flags = "-h, --help"sv, .desc = "Show help information"sv},
+    OptionDoc{.flags = "--manifest <path>"sv, .desc = "Use the specified manifest file instead of Rux.toml"sv},
     OptionDoc{.flags = "-q, --quiet"sv, .desc = "Do not show log messages"sv},
     OptionDoc{.flags = "-v, --verbose"sv, .desc = "Use verbose output"sv},
     OptionDoc{.flags = "-V, --version"sv, .desc = "Show version information"sv}};

@@ -88,7 +88,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
         queued.insert(pkgName);
     }
     else {
-        const auto manifestPath = RequireManifest();
+        const auto manifestPath = RequireManifest(opts.manifest);
         if (!manifestPath) {
             return 1;
         }
@@ -220,7 +220,7 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
         return 0;
     }
 
-    const auto manifestPath = RequireManifest();
+    const auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
     }

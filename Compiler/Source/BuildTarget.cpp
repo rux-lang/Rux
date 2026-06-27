@@ -132,6 +132,20 @@ std::optional<std::filesystem::path> RequireManifest() {
     return path;
 }
 
+std::optional<std::filesystem::path> RequireManifest(const std::filesystem::path &manifestPath) {
+    // When no explicit path is given, fall back to directory-walking discovery.
+    if (manifestPath.empty()) {
+        return RequireManifest();
+    }
+    // Validate that the explicitly-provided manifest exists.
+    std::error_code ec;
+    if (!std::filesystem::exists(manifestPath, ec)) {
+        std::print(stderr, "error: specified manifest '{}' not found\n", manifestPath.string());
+        return std::nullopt;
+    }
+    return manifestPath;
+}
+
 std::optional<Manifest> LoadManifest(const std::filesystem::path &path) {
     auto m = Manifest::Load(path);
     if (!m) {

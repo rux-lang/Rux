@@ -439,7 +439,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         hadErrors = true;
     };
 
-    auto manifestPath = RequireManifest();
+    auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         if (jsonOutput) {
             EmitFatal("could not find 'Rux.toml' in current directory or any "

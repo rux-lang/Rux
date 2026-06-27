@@ -79,7 +79,7 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opt
         PrintHelpFor("add");
         return 1;
     }
-    auto manifestPath = RequireManifest();
+    auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
     }
@@ -157,7 +157,7 @@ int Cli::RunRemove(std::span<const std::string_view> args, const GlobalOptions &
         PrintHelpFor("remove");
         return 1;
     }
-    auto manifestPath = RequireManifest();
+    auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
     }
@@ -194,7 +194,18 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         PrintUnknownOption(arg, "test");
         return 1;
     }
-    auto manifestPath = Manifest::Find();
+    std::optional<std::filesystem::path> manifestPath;
+    if (!opts.manifest.empty()) {
+        manifestPath = opts.manifest;
+        if (!std::filesystem::exists(*manifestPath)) {
+            std::print(stderr, "error: specified manifest '{}' not found\n", manifestPath->string());
+            return 1;
+        }
+    }
+    else {
+        manifestPath = Manifest::Find();
+    }
+
     std::filesystem::path projectRoot;
     std::filesystem::path testsDir;
 
