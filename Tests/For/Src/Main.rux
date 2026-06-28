@@ -6,9 +6,36 @@ import Std::Assert;
 //     inclusive: bool8;
 // }
 
+const HI: uint32 = 5;
+const LO: uint32 = 1;
+
 func Main() -> int {
     for i in 0..=10 {
         Assert(i < 11, "loop index out of bounds");
     }
+
+    // Regression test for https://github.com/rux-lang/Rux/issues/161:
+    // a range bound whose type is narrower than the range element type
+    // (here a uint32 const in a Range<int>) must be widened when stored
+    // into the range. Otherwise the bound's high bits are left
+    // uninitialized and the loop runs zero times or never terminates.
+    var exclusive: int = 0;
+    for i in 0..HI {
+        exclusive += 1;
+    }
+    Assert(exclusive == 5, "const exclusive upper bound should iterate 5 times");
+
+    var inclusive: int = 0;
+    for i in 0..=HI {
+        inclusive += 1;
+    }
+    Assert(inclusive == 6, "const inclusive upper bound should iterate 6 times");
+
+    var both: int = 0;
+    for i in LO..HI {
+        both += 1;
+    }
+    Assert(both == 4, "const lower and upper bounds should iterate 4 times");
+
     return 0;
 }
