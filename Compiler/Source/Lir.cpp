@@ -1824,13 +1824,16 @@ private:
 
     void StoreRangeInit(const HirRangeExpr &e, LirReg slot) {
         const TypeRef elemType = e.type.inner.empty() ? TypeRef::MakeInt64() : e.type.inner[0];
+        // Endpoints may be narrower than the range element type (e.g. a uint32
+        // bound in a Range<int>). Widen them to the element type so the store
+        // writes the full field; otherwise the unwritten high bits are garbage.
         if (e.lo) {
-            const LirReg loVal = LowerExpr(*e.lo);
+            const LirReg loVal = EmitCastIfNeeded(LowerExpr(*e.lo), e.lo->type, elemType);
             const LirReg loPtr = EmitFieldPtr(slot, "lo", elemType);
             EmitStore(loVal, loPtr, elemType);
         }
         if (e.hi) {
-            const LirReg hiVal = LowerExpr(*e.hi);
+            const LirReg hiVal = EmitCastIfNeeded(LowerExpr(*e.hi), e.hi->type, elemType);
             const LirReg hiPtr = EmitFieldPtr(slot, "hi", elemType);
             EmitStore(hiVal, hiPtr, elemType);
         }
