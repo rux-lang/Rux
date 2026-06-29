@@ -46,7 +46,9 @@ void PruneModuleForTarget(Module &module, std::string_view target);
 // ---- Workspace / registry locations -----------------------------------------
 
 // Locate the nearest Rux.toml, printing an error if none is found.
+// When manifestPath is non-empty, use that path directly instead of searching.
 [[nodiscard]] std::optional<std::filesystem::path> RequireManifest();
+[[nodiscard]] std::optional<std::filesystem::path> RequireManifest(const std::filesystem::path &manifestPath);
 
 // Parse a manifest, printing an error on failure.
 [[nodiscard]] std::optional<Manifest> LoadManifest(const std::filesystem::path &path);

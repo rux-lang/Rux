@@ -1901,6 +1901,14 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 // differ. The pure-computation thunks are byte-identical to their Linux
 // counterparts.
 static std::optional<Buf> MacCompatThunk(const std::string &name) {
+    // Helper: builds a syscall thunk from the register-shuffle body and
+    // appends the common carry-flag error handling (jnc +3; neg rax; ret).
+    static const auto MacSyscallThunk = [](std::initializer_list<uint8_t> body) -> Buf {
+        Buf r(body);
+        static constexpr uint8_t kErrTail[] = {0x73, 0x03, 0x48, 0xF7, 0xD8, 0xC3};
+        r.insert(r.end(), kErrTail, kErrTail + sizeof(kErrTail));
+        return r;
+    };
     static const std::unordered_map<std::string, Buf> thunks = {
         {"ExitProcess",
          {
@@ -2061,9 +2069,62 @@ static std::optional<Buf> MacCompatThunk(const std::string &name) {
              0x41, 0x89, 0x01,             // mov [r9], eax (*bytesWritten = result)
              0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1 (TRUE)
              0xC3,                         // ret
-             0x31, 0xC0,                   // xor eax, eax (FALSE)
-             0xC3                          // ret
-         }},
+              0x31, 0xC0,                   // xor eax, eax (FALSE)
+              0xC3                          // ret
+          }},
+        // Raw syscall thunks for macOS. Same register shuffle as linux but with
+        // carry-flag handling: macOS sets carry on error (positive errno in rax),
+        // so we negate the result to match the Linux convention (negative errno).
+        // The common tail (jnc +3; neg rax; ret) is appended by MacSyscallThunk.
+        {"__rux_macos_syscall0", MacSyscallThunk({
+            0x48, 0x89, 0xC8,       // mov rax, rcx
+            0x0F, 0x05,             // syscall
+        })},
+        {"__rux_macos_syscall1", MacSyscallThunk({
+            0x48, 0x89, 0xC8,       // mov rax, rcx
+            0x48, 0x89, 0xD7,       // mov rdi, rdx
+            0x0F, 0x05,             // syscall
+        })},
+        {"__rux_macos_syscall2", MacSyscallThunk({
+            0x48, 0x89, 0xC8,       // mov rax, rcx
+            0x48, 0x89, 0xD7,       // mov rdi, rdx
+            0x4C, 0x89, 0xC6,       // mov rsi, r8
+            0x0F, 0x05,             // syscall
+        })},
+        {"__rux_macos_syscall3", MacSyscallThunk({
+            0x48, 0x89, 0xC8,       // mov rax, rcx
+            0x48, 0x89, 0xD7,       // mov rdi, rdx
+            0x4C, 0x89, 0xC6,       // mov rsi, r8
+            0x4C, 0x89, 0xCA,       // mov rdx, r9
+            0x0F, 0x05,             // syscall
+        })},
+        {"__rux_macos_syscall4", MacSyscallThunk({
+            0x48, 0x89, 0xC8,             // mov rax, rcx
+            0x48, 0x89, 0xD7,             // mov rdi, rdx
+            0x4C, 0x89, 0xC6,             // mov rsi, r8
+            0x4C, 0x89, 0xCA,             // mov rdx, r9
+            0x4C, 0x8B, 0x54, 0x24, 0x28, // mov r10, [rsp + 40]
+            0x0F, 0x05,                   // syscall
+        })},
+        {"__rux_macos_syscall5", MacSyscallThunk({
+            0x48, 0x89, 0xC8,             // mov rax, rcx
+            0x48, 0x89, 0xD7,             // mov rdi, rdx
+            0x4C, 0x89, 0xC6,             // mov rsi, r8
+            0x4C, 0x89, 0xCA,             // mov rdx, r9
+            0x4C, 0x8B, 0x54, 0x24, 0x28, // mov r10, [rsp + 40]
+            0x4C, 0x8B, 0x44, 0x24, 0x30, // mov r8, [rsp + 48]
+            0x0F, 0x05,                   // syscall
+        })},
+        {"__rux_macos_syscall6", MacSyscallThunk({
+            0x48, 0x89, 0xC8,             // mov rax, rcx
+            0x48, 0x89, 0xD7,             // mov rdi, rdx
+            0x4C, 0x89, 0xC6,             // mov rsi, r8
+            0x4C, 0x89, 0xCA,             // mov rdx, r9
+            0x4C, 0x8B, 0x54, 0x24, 0x28, // mov r10, [rsp + 40]
+            0x4C, 0x8B, 0x44, 0x24, 0x30, // mov r8, [rsp + 48]
+            0x4C, 0x8B, 0x4C, 0x24, 0x38, // mov r9, [rsp + 56]
+            0x0F, 0x05,                   // syscall
+        })},
     };
 
     const auto it = thunks.find(name);

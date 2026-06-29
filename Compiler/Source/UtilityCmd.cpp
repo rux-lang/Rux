@@ -50,7 +50,7 @@ int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions &opt
             check = true;
             continue;
         }
-        if (arg == "--manifest") {
+        if (arg == "--manifest-only") {
             manifestOnly = true;
             continue;
         }
@@ -61,7 +61,7 @@ int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions &opt
         PrintUnknownOption(arg, "fmt");
         return 1;
     }
-    auto manifestPath = RequireManifest();
+    auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
     }
@@ -173,7 +173,7 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         PrintUnknownOption(arg, "doc");
         return 1;
     }
-    const auto manifestPath = RequireManifest();
+    const auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
     }
@@ -235,7 +235,7 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions &op
         return 0;
     }
 
-    const auto manifestPath = RequireManifest();
+    const auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
     }
@@ -370,7 +370,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
         return 0;
     }
 
-    const auto manifestPath = RequireManifest();
+    const auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
     }
@@ -490,7 +490,14 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
     }
 
     std::filesystem::path manifestPath;
-    if (packageName.empty()) {
+    if (!opts.manifest.empty()) {
+        manifestPath = opts.manifest;
+        if (!std::filesystem::exists(manifestPath)) {
+            std::print(stderr, "error: specified manifest '{}' not found\n", manifestPath.string());
+            return 1;
+        }
+    }
+    else if (packageName.empty()) {
         auto localManifestOpt = Manifest::Find(std::filesystem::current_path());
         if (!localManifestOpt) {
             std::print(stderr, "error: missing package name, and no Rux.toml found in current directory\n");

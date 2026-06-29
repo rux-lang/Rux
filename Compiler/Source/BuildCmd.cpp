@@ -141,7 +141,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
 
     (void)isDebug; // Stop -Wunused-but-set-variable
 
-    auto manifestPath = RequireManifest();
+    auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
     }
@@ -655,7 +655,7 @@ int Cli::RunClean(std::span<const std::string_view> args, const GlobalOptions &o
         PrintUnknownOption(arg, "clean");
         return 1;
     }
-    const auto manifestPath = RequireManifest();
+    const auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
     }
@@ -715,7 +715,7 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         PrintUnknownOption(arg, "run");
         return 1;
     }
-    auto manifestPath = RequireManifest();
+    auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
     }
