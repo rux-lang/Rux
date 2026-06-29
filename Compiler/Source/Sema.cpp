@@ -3310,7 +3310,13 @@ private:
     // Expressions
     TypeRef CheckExpr(const Expr &expr) {
         if (auto *e = dynamic_cast<const LiteralExpr *>(&expr)) {
-            return LiteralType(e->token);
+            TypeRef type = LiteralType(e->token);
+            if (e->token.kind == TokenKind::IntLiteral) {
+                if (!ParseIntegerLiteralValue(e->token)) {
+                    EmitError(e->location, std::format("invalid integer literal '{}'", e->token.text));
+                }
+            }
+            return type;
         }
 
         if (auto *e = dynamic_cast<const IdentExpr *>(&expr)) {
