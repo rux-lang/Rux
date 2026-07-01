@@ -19,12 +19,6 @@ add_executable(rux
     Source/BuildReport.cpp
     Source/BuildTarget.cpp
     Source/Process.cpp
-    Source/HelpCmd.cpp
-    Source/BuildCmd.cpp
-    Source/CheckCmd.cpp
-    Source/InstallCmd.cpp
-    Source/PackageCmd.cpp
-    Source/UtilityCmd.cpp
 
     # Package / manifest handling
     Source/Manifest.cpp
