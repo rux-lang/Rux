@@ -91,7 +91,7 @@ private:
     // Literal helpers
     Token ScanIntLiteral(SourceLocation start, std::size_t tokenStart);
     Token ScanFloatSuffix(SourceLocation start, std::size_t tokenStart);
-    void ConsumeNumberSuffix();
+    void ConsumeNumberSuffix(SourceLocation start);
     std::string ScanEscapeSequence(); // inside string / char
 
     // Emit helpers

@@ -1,5 +1,6 @@
 #include "Rux/Lexer.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cctype>
 #include <fstream>
@@ -430,13 +431,24 @@ Token Lexer::ScanNumber(SourceLocation start) {
     while (!IsAtEnd() && std::isdigit(static_cast<unsigned char>(Peek()))) {
         Advance();
     }
+    if (Peek() == '_') {
+        while (!IsAtEnd()) {
+            const char c = Peek();
+            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+                break;
+            }
+            Advance();
+        }
+        EmitError(start, "invalid numeric literal");
+        return MakeToken(TokenKind::IntLiteral, start, tokenStart);
+    }
     // Check for floating-point  .  or  e/E
     const bool hasDot = Peek() == '.' && std::isdigit(static_cast<unsigned char>(Peek(1)));
     const bool hasExp = (Peek() == 'e' || Peek() == 'E');
     if (hasDot || hasExp) {
         return ScanFloatSuffix(start, tokenStart);
     }
-    ConsumeNumberSuffix();
+    ConsumeNumberSuffix(start);
     return MakeToken(TokenKind::IntLiteral, start, tokenStart);
 }
 
@@ -458,11 +470,12 @@ Token Lexer::ScanIntLiteral(SourceLocation start, std::size_t tokenStart) {
         }
     }
 
-    // Consume the valid base digits (and '_' separators), stopping at the
+    // Consume the valid base digits, stopping at the
     // first character that is not a digit for this base so a type suffix
     // (e.g. 0xFFu) can follow, exactly like the decimal literal path in
     // ScanNumber.
     std::size_t digitCount = 0;
+    bool hasUnderscore = false;
     while (!IsAtEnd()) {
         const char c = Peek();
         bool valid = false;
@@ -474,6 +487,7 @@ Token Lexer::ScanIntLiteral(SourceLocation start, std::size_t tokenStart) {
         }
         else if (c == '_') {
             valid = true;
+            hasUnderscore = true;
         }
         if (!valid) {
             break;
@@ -486,7 +500,10 @@ Token Lexer::ScanIntLiteral(SourceLocation start, std::size_t tokenStart) {
     if (digitCount == 0) {
         EmitError(start, "expected digits after base prefix");
     }
-    ConsumeNumberSuffix();
+    if (hasUnderscore) {
+        EmitError(start, "invalid numeric literal");
+    }
+    ConsumeNumberSuffix(start);
     return MakeToken(TokenKind::IntLiteral, start, tokenStart);
 }
 
@@ -513,19 +530,28 @@ Token Lexer::ScanFloatSuffix(SourceLocation start, std::size_t tokenStart) {
             }
         }
     }
-    ConsumeNumberSuffix();
+    ConsumeNumberSuffix(start);
     return MakeToken(TokenKind::FloatLiteral, start, tokenStart);
 }
 
-void Lexer::ConsumeNumberSuffix() {
+void Lexer::ConsumeNumberSuffix(const SourceLocation start) {
     if (!std::isalpha(static_cast<unsigned char>(Peek()))) {
         return;
     }
+    const std::size_t suffixStart = pos;
     while (!IsAtEnd()) {
         if (const char c = Peek(); !std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
             break;
         }
         Advance();
+    }
+
+    const std::string_view suffix(source.data() + suffixStart, pos - suffixStart);
+    static constexpr std::string_view validSuffixes[] = {
+        "i", "i8", "i16", "i32", "i64", "u", "u8", "u16", "u32", "u64", "f32", "f64",
+    };
+    if (std::find(std::begin(validSuffixes), std::end(validSuffixes), suffix) == std::end(validSuffixes)) {
+        EmitError(start, "invalid numeric literal");
     }
 }
 
