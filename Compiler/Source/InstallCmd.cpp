@@ -1,17 +1,11 @@
-#include "Rux/BuildReport.h"
 #include "Rux/BuildTarget.h"
 #include "Rux/Cli.h"
-#include "Rux/Hir.h"
 #include "Rux/Manifest.h"
 #include "Rux/Platform.h"
 #include "Rux/Process.h"
 #include "Rux/Target.h"
-#include "Rux/Terminal.h"
-#include "Rux/Version.h"
 
-#include <algorithm>
 #include <chrono>
-#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <format>
@@ -134,7 +128,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
     for (std::size_t i = 0; i < queue.size(); ++i) {
         const std::string &pkgName = queue[i];
 
-        const std::string repoUrl = JsonLookupString(*jsonOptInstall, pkgName);
+        const std::string repoUrl = JsonFindPackageRepository(*jsonOptInstall, pkgName);
         if (repoUrl.empty()) {
             std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
             return 1;

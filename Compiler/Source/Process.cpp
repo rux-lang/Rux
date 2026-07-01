@@ -5,7 +5,6 @@
 
 #include <array>
 #include <cstdio>
-#include <cstdlib>
 
 #if !RUX_OS_WINDOWS
     #include <sys/wait.h>
@@ -40,6 +39,46 @@ std::string JsonLookupString(std::string_view json, std::string_view key) {
             break;
         }
         return std::string(json.substr(i, end - i));
+    }
+    return {};
+}
+
+std::string JsonFindPackageRepository(std::string_view json, std::string_view name) {
+    // Walk each top-level object in the array and return the "repository" of the
+    // one whose "name" matches. Braces and quotes inside string values are
+    // skipped so they don't confuse the object boundaries.
+    std::size_t i = 0;
+    while ((i = json.find('{', i)) != std::string_view::npos) {
+        std::size_t depth = 0;
+        bool inString = false;
+        bool escaped = false;
+        std::size_t j = i;
+        for (; j < json.size(); ++j) {
+            const char c = json[j];
+            if (escaped) {
+                escaped = false;
+            }
+            else if (c == '\\') {
+                escaped = inString;
+            }
+            else if (c == '"') {
+                inString = !inString;
+            }
+            else if (!inString && c == '{') {
+                ++depth;
+            }
+            else if (!inString && c == '}') {
+                if (--depth == 0) {
+                    break;
+                }
+            }
+        }
+
+        const std::string_view object = json.substr(i, j - i + 1);
+        if (JsonLookupString(object, "name") == name) {
+            return JsonLookupString(object, "repository");
+        }
+        i = j + 1;
     }
     return {};
 }

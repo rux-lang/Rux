@@ -9,13 +9,20 @@
 
 namespace Rux::Misc {
 
-// Location of the package registry index.
-inline constexpr std::string_view kRegistryUrl =
-    "https://raw.githubusercontent.com/rux-lang/Registry/refs/heads/main/Packages.json";
+// Location of the package registry index, served by the Rux Web API. Returns a
+// JSON array of package objects (see JsonFindPackageRepository).
+inline constexpr std::string_view kRegistryUrl = "https://api.rux-lang.dev/packages";
 
 // Look up a string value in a flat JSON object: { "Key": "value", ... }.
 // Returns an empty string if the key is missing.
 [[nodiscard]] std::string JsonLookupString(std::string_view json, std::string_view key);
+
+// Find a package by name in the registry index and return its repository URL.
+//
+// The index is a JSON array of flat package objects, e.g.
+//   [ { "name": "Std", "repository": "https://github.com/...", ... }, ... ]
+// Returns an empty string if no package with that name exists.
+[[nodiscard]] std::string JsonFindPackageRepository(std::string_view json, std::string_view name);
 
 // Fetch the body of an HTTPS URL. Returns nullopt on failure.
 //
