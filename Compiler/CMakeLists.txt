@@ -47,12 +47,20 @@ add_library(RuxCore STATIC
     Frontend/Lexer.cpp
     Frontend/SourceLoader.cpp
     Frontend/Parser/Parser.cpp
+    Frontend/Parser/ParserDecl.cpp
+    Frontend/Parser/ParserType.cpp
+    Frontend/Parser/ParserStmt.cpp
+    Frontend/Parser/ParserExpr.cpp
+    Frontend/Parser/ParserDump.cpp
     Frontend/Sema/Type.cpp
     Frontend/Sema/Sema.cpp
+    Frontend/Sema/SemaDump.cpp
 
     # Intermediate representations and optimization
     Ir/Hir/Hir.cpp
+    Ir/Hir/HirDump.cpp
     Ir/Lir/Lir.cpp
+    Ir/Lir/LirDump.cpp
     Ir/Optimizer.cpp
 
     # Backend: code generation, object files, linking
