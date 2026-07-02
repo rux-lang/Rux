@@ -2,22 +2,14 @@
 
 #include "Frontend/Ast/Ast.h"
 #include "Frontend/Lexer.h"
+#include "Support/Diagnostics.h"
 
 #include <filesystem>
 #include <string>
 #include <vector>
 
 namespace Rux {
-struct ParserDiagnostic {
-    enum class Severity {
-        Warning,
-        Error,
-    };
-
-    Severity severity = Severity::Error;
-    SourceLocation location;
-    std::string message;
-};
+using ParserDiagnostic = Diagnostic;
 
 struct ParseResult {
     Module module;

@@ -1,23 +1,14 @@
 #pragma once
 
 #include "Frontend/Ast/Ast.h"
+#include "Support/Diagnostics.h"
 
 #include <filesystem>
 #include <string>
 #include <vector>
 
 namespace Rux {
-struct SemaDiagnostic {
-    enum class Severity {
-        Warning,
-        Error,
-    };
-
-    Severity severity = Severity::Error;
-    std::string sourceName; // source file path for multi-file diagnostics
-    SourceLocation location;
-    std::string message;
-};
+using SemaDiagnostic = Diagnostic;
 
 // A globally-scoped symbol collected during the first analysis pass.
 struct SemaSymbol {

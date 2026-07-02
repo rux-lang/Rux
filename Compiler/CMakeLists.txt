@@ -25,6 +25,9 @@ endif ()
 # Everything except the CLI surface lives in RuxCore so tests can link the
 # compiler internals without pulling in main()/command handling.
 add_library(RuxCore STATIC
+    # Shared support
+    Support/Diagnostics.cpp
+
     # Platform layer
     Platform/Host.cpp
     Platform/Process.cpp

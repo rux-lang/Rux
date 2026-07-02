@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Support/SourceLocation.h"
+
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -133,12 +135,6 @@ enum class TokenKind : std::uint8_t {
     NewLine,   // significant newline (if the grammar uses them)
     EndOfFile, // end of file
     Unknown,   // unrecognized character — carry it for better errors
-};
-
-struct SourceLocation {
-    std::uint32_t line = 1;   // 1-based
-    std::uint32_t column = 1; // 1-based (UTF-8 byte offset in line)
-    std::uint32_t offset = 0; // byte offset from start of file
 };
 
 struct Token {

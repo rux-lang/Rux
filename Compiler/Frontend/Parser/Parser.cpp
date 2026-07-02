@@ -172,11 +172,11 @@ bool Parser::IsTypeArgListAhead() const noexcept {
 
 // Diagnostics
 void Parser::EmitError(const SourceLocation loc, std::string message) {
-    diagnostics.push_back(ParserDiagnostic{ParserDiagnostic::Severity::Error, loc, std::move(message)});
+    diagnostics.push_back(ParserDiagnostic{ParserDiagnostic::Severity::Error, sourceName, loc, std::move(message)});
 }
 
 void Parser::EmitWarning(const SourceLocation loc, std::string message) {
-    diagnostics.push_back(ParserDiagnostic{ParserDiagnostic::Severity::Warning, loc, std::move(message)});
+    diagnostics.push_back(ParserDiagnostic{ParserDiagnostic::Severity::Warning, sourceName, loc, std::move(message)});
 }
 
 void Parser::Synchronize() {

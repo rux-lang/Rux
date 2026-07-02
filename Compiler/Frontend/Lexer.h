@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Frontend/Token.h"
+#include "Support/Diagnostics.h"
 
 #include <filesystem>
 #include <optional>
@@ -8,16 +9,7 @@
 #include <vector>
 
 namespace Rux {
-struct LexerDiagnostic {
-    enum class Severity {
-        Warning,
-        Error,
-    };
-
-    Severity severity = Severity::Error;
-    SourceLocation location;
-    std::string message;
-};
+using LexerDiagnostic = Diagnostic;
 
 struct LexerResult {
     std::vector<Token> tokens;

@@ -17,6 +17,7 @@
 #include "Platform/Process.h"
 #include "Platform/Target.h"
 #include "Platform/Terminal.h"
+#include "Support/Diagnostics.h"
 #include "Support/Version.h"
 
 #include <algorithm>
@@ -30,7 +31,6 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
-#include <limits>
 #include <optional>
 #include <print>
 #include <ranges>
@@ -1017,11 +1017,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         Lexer lexer(file.source, file.path.string());
         auto lexResult = lexer.Tokenize();
         stats.localTokens += CountTokens(lexResult);
-        for (const auto &diag : lexResult.diagnostics) {
-            const auto &loc = diag.location;
-            const char *sev = diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
-            std::print(stderr, "{}:{}:{}: {}: {}\n", file.path.string(), loc.line, loc.column, sev, diag.message);
-        }
+        PrintDiagnostics(lexResult.diagnostics);
         if (lexResult.HasErrors()) {
             lexErrors = true;
         }
@@ -1056,11 +1052,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         }
         Parser parser(std::move(lexResult.tokens), file.path.string());
         auto parseResult = parser.Parse();
-        for (const auto &diag : parseResult.diagnostics) {
-            const auto &loc = diag.location;
-            const char *sev = diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
-            std::print(stderr, "{}:{}:{}: {}: {}\n", file.path.string(), loc.line, loc.column, sev, diag.message);
-        }
+        PrintDiagnostics(parseResult.diagnostics);
         if (parseResult.HasErrors()) {
             parseErrors = true;
             continue;
@@ -1203,11 +1195,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
                 const auto depLexingEnd = std::chrono::steady_clock::now();
                 stats.lexing += ElapsedMs(depLexingStart, depLexingEnd);
                 stats.dependencyTokens += CountTokens(depLex);
-                for (const auto &diag : depLex.diagnostics) {
-                    const char *sev = diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
-                    std::print(stderr, "{}:{}:{}: {}: {}\n", depFile.path.string(), diag.location.line,
-                               diag.location.column, sev, diag.message);
-                }
+                PrintDiagnostics(depLex.diagnostics);
                 if (depLex.HasErrors()) {
                     return 1;
                 }
@@ -1215,11 +1203,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
                 Parser depParser(std::move(depLex.tokens), depFile.path.string());
                 auto depParse = depParser.Parse();
                 stats.parsing += ElapsedMs(depParsingStart);
-                for (const auto &diag : depParse.diagnostics) {
-                    const char *sev = diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
-                    std::print(stderr, "{}:{}:{}: {}: {}\n", depFile.path.string(), diag.location.line,
-                               diag.location.column, sev, diag.message);
-                }
+                PrintDiagnostics(depParse.diagnostics);
                 if (depParse.HasErrors()) {
                     return 1;
                 }
@@ -1276,11 +1260,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name,
               std::string(TargetOsName(targetName)));
     auto semaResult = sema.Analyze();
-    for (const auto &diag : semaResult.diagnostics) {
-        const auto &loc = diag.location;
-        const char *sev = diag.severity == SemaDiagnostic::Severity::Error ? "error" : "warning";
-        std::print(stderr, "{}:{}:{}: {}: {}\n", diag.sourceName, loc.line, loc.column, sev, diag.message);
-    }
+    PrintDiagnostics(semaResult.diagnostics);
     if (dumpSema) {
         auto semaDir = manifestPath->parent_path() / "Temp" / "Sema";
         std::filesystem::create_directories(semaDir);
@@ -1581,14 +1561,6 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
 #endif
 }
 
-struct JsonDiagnostic {
-    std::string file;
-    int line = 0;
-    int column = 0;
-    std::string severity;
-    std::string message;
-};
-
 struct PendingPackage {
     std::string name;
     std::filesystem::path root;
@@ -1628,53 +1600,7 @@ struct DependencyQueue {
     std::string targetName;
 };
 
-auto JsonEscape(std::string_view s) -> std::string {
-    std::string out;
-    if (s.size() < ((std::numeric_limits<size_t>::max)() - 128)) {
-        out.reserve(s.size() + (s.size() / 10) + 16);
-    }
-    for (char ch : s) {
-        unsigned char u_ch = static_cast<unsigned char>(ch);
-        switch (u_ch) {
-        case '"':
-            out += "\\\"";
-            break;
-        case '\\':
-            out += "\\\\";
-            break;
-        case '\b':
-            out += "\\b";
-            break;
-        case '\f':
-            out += "\\f";
-            break;
-        case '\n':
-            out += "\\n";
-            break;
-        case '\r':
-            out += "\\r";
-            break;
-        case '\t':
-            out += "\\t";
-            break;
-        default: {
-            if (u_ch < 0x20) {
-                char buf[7];
-                std::snprintf(buf, sizeof(buf), "\\u%04x", u_ch);
-                out += buf;
-            }
-            else {
-                out += ch;
-            }
-            break;
-        }
-        }
-    }
-    return out;
-}
-
-auto enqueueDependency(DependencyQueue &queue,
-                       const std::function<void(std::string, int, int, std::string, std::string)> &EmitDiag) -> bool {
+auto enqueueDependency(DependencyQueue &queue, const std::function<void(Diagnostic)> &EmitDiag) -> bool {
     if (queue.queuedPackageNames.count(queue.pkgName)) {
         return true;
     }
@@ -1688,15 +1614,15 @@ auto enqueueDependency(DependencyQueue &queue,
         }
     }
     if (!targetDep) {
-        EmitDiag("", 0, 0, "error", "package '" + queue.pkgName + "' is not listed in [Dependencies]");
+        EmitDiag(ErrorDiagnostic("package '" + queue.pkgName + "' is not listed in [Dependencies]"));
         return false;
     }
     std::filesystem::path depRoot;
     if (targetDep->path.empty()) {
         depRoot = RegistryPackagesDir() / DependencyPackageName(*targetDep);
         if (!std::filesystem::exists(depRoot)) {
-            EmitDiag("", 0, 0, "error",
-                     "package '" + DependencyPackageName(*targetDep) + "' is not installed — run 'rux install'");
+            EmitDiag(ErrorDiagnostic("package '" + DependencyPackageName(*targetDep) +
+                                     "' is not installed — run 'rux install'"));
             return false;
         }
     }
@@ -1705,16 +1631,15 @@ auto enqueueDependency(DependencyQueue &queue,
 
         auto rel = depRoot.lexically_relative(queue.ownerRoot);
         if (!rel.empty() && rel.begin()->string() == "..") {
-            EmitDiag("", 0, 0, "error",
-                     "package '" + queue.pkgName + "' contains an invalid path escaping root bounds");
+            EmitDiag(ErrorDiagnostic("package '" + queue.pkgName + "' contains an invalid path escaping root bounds"));
             return false;
         }
     }
 
     auto depManifest = Manifest::Load(depRoot / "Rux.toml");
     if (!depManifest) {
-        EmitDiag("", 0, 0, "error",
-                 "dependency package '" + queue.pkgName + "' was not found at '" + depRoot.string() + "'");
+        EmitDiag(
+            ErrorDiagnostic("dependency package '" + queue.pkgName + "' was not found at '" + depRoot.string() + "'"));
         return false;
     }
 
@@ -1723,30 +1648,10 @@ auto enqueueDependency(DependencyQueue &queue,
     return true;
 }
 
-int HandleJsonOutput(bool hadErrors, const std::vector<JsonDiagnostic> &jsonDiags) {
-    std::print("{{\n");
-    std::print("  \"success\": {},\n", hadErrors ? "false" : "true");
-    std::print("  \"diagnostics\": [\n");
-    for (std::size_t i = 0; i < jsonDiags.size(); ++i) {
-        const auto &d = jsonDiags[i];
-        std::print("    {{");
-        std::print("\"file\":\"{}\",", JsonEscape(d.file));
-        std::print("\"line\":{},", d.line);
-        std::print("\"column\":{},", d.column);
-        std::print("\"severity\":\"{}\",", JsonEscape(d.severity));
-        std::print("\"message\":\"{}\"", JsonEscape(d.message));
-        std::print("}}{}\n", (i + 1 < jsonDiags.size()) ? "," : "");
-    }
-    std::print("  ]\n");
-    std::print("}}\n");
-    return hadErrors ? 1 : 0;
-}
-
 void HandleErrors(bool &hadErrors, const std::vector<ParseResult> &parseResults,
                   const std::vector<ParseResult> &depParseResults, const std::vector<std::string> &loadedPackages,
                   const std::vector<std::string> &loadedModuleNames, const Manifest &manifest,
-                  const std::string &targetName,
-                  const std::function<void(std::string, int, int, std::string, std::string)> &EmitDiag) {
+                  const std::string &targetName, const std::function<void(Diagnostic)> &EmitDiag) {
     std::vector<const Module *> userModules;
     userModules.reserve(parseResults.size());
     for (const auto &pr : parseResults) {
@@ -1766,10 +1671,8 @@ void HandleErrors(bool &hadErrors, const std::vector<ParseResult> &parseResults,
               std::string(TargetOsName(targetName)));
     auto semaResult = sema.Analyze();
     for (const auto &diag : semaResult.diagnostics) {
-        const auto &loc = diag.location;
-        const char *sev = diag.severity == SemaDiagnostic::Severity::Error ? "error" : "warning";
-        EmitDiag(diag.sourceName, static_cast<int>(loc.line), static_cast<int>(loc.column), sev, diag.message);
-        if (diag.severity == SemaDiagnostic::Severity::Error) {
+        EmitDiag(diag);
+        if (diag.IsError()) {
             hadErrors = true;
         }
     }
@@ -1783,7 +1686,7 @@ int HandlePendingIndex(bool &hadErrors, const GlobalOptions &opts, bool jsonOutp
                        std::vector<std::string> &imports, ImportCollector &collector,
                        std::vector<ParseResult> &depParseResults, std::vector<std::string> &loadedPackages,
                        std::vector<std::string> &loadedModuleNames, std::unordered_set<std::string> &queuedPackageNames,
-                       const std::function<void(std::string, int, int, std::string, std::string)> &EmitDiag) {
+                       const std::function<void(Diagnostic)> &EmitDiag) {
     for (std::size_t pendingIndex = 0; pendingIndex < pendingPackages.size(); ++pendingIndex) {
         const auto &pendingPkg = pendingPackages[pendingIndex];
         if (opts.verbose && !jsonOutput) {
@@ -1796,7 +1699,7 @@ int HandlePendingIndex(bool &hadErrors, const GlobalOptions &opts, bool jsonOutp
         };
         for (const auto &error : depLoadResult->errors) {
             if (jsonOutput) {
-                EmitDiag("", 0, 0, "error", error);
+                EmitDiag(ErrorDiagnostic(error));
                 hadErrors = true;
             }
             else {
@@ -1814,10 +1717,8 @@ int HandlePendingIndex(bool &hadErrors, const GlobalOptions &opts, bool jsonOutp
             auto depLex = depLexer.Tokenize();
 
             for (const auto &diag : depLex.diagnostics) {
-                const char *sev = diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
-                EmitDiag(depFile.path.string(), static_cast<int>(diag.location.line),
-                         static_cast<int>(diag.location.column), sev, diag.message);
-                if (diag.severity == LexerDiagnostic::Severity::Error) {
+                EmitDiag(diag);
+                if (diag.IsError()) {
                     hadErrors = true;
                 }
             }
@@ -1828,10 +1729,8 @@ int HandlePendingIndex(bool &hadErrors, const GlobalOptions &opts, bool jsonOutp
             Parser depParser(std::move(depLex.tokens), depFile.path.string());
             auto depParse = depParser.Parse();
             for (const auto &diag : depParse.diagnostics) {
-                const char *sev = diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
-                EmitDiag(depFile.path.string(), static_cast<int>(diag.location.line),
-                         static_cast<int>(diag.location.column), sev, diag.message);
-                if (diag.severity == ParserDiagnostic::Severity::Error) {
+                EmitDiag(diag);
+                if (diag.IsError()) {
                     hadErrors = true;
                 }
             }
@@ -1907,23 +1806,18 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         PrintUnknownOption(arg, "check");
         return 1;
     }
-    std::vector<JsonDiagnostic> jsonDiags;
+    std::vector<Diagnostic> jsonDiags;
     bool hadErrors = false;
-    auto EmitDiag = [&](std::string file, int line, int column, std::string severity, std::string message) {
+    auto EmitDiag = [&](Diagnostic diag) {
         if (jsonOutput) {
-            jsonDiags.push_back({std::move(file), line, column, std::move(severity), std::move(message)});
+            jsonDiags.push_back(std::move(diag));
         }
         else {
-            if (file.empty()) {
-                std::print(stderr, "error: {}\n", message);
-            }
-            else {
-                std::print(stderr, "{}:{}:{}: {}: {}\n", file, line, column, severity, message);
-            }
+            PrintDiagnostic(diag);
         }
     };
     auto EmitFatal = [&](std::string message) {
-        EmitDiag("", 0, 0, "error", std::move(message));
+        EmitDiag(ErrorDiagnostic(std::move(message)));
         hadErrors = true;
     };
     auto manifestPath = RequireManifest(opts.manifest);
@@ -1982,7 +1876,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     }
     for (const auto &err : loadResult->errors) {
         if (jsonOutput) {
-            EmitDiag("", 0, 0, "error", err);
+            EmitDiag(ErrorDiagnostic(err));
             hadErrors = true;
         }
         else {
@@ -1999,10 +1893,8 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         Lexer lexer(file.source, file.path.string());
         auto lexResult = lexer.Tokenize();
         for (const auto &diag : lexResult.diagnostics) {
-            const auto &loc = diag.location;
-            const char *sev = diag.severity == LexerDiagnostic::Severity::Error ? "error" : "warning";
-            EmitDiag(file.path.string(), static_cast<int>(loc.line), static_cast<int>(loc.column), sev, diag.message);
-            if (diag.severity == LexerDiagnostic::Severity::Error) {
+            EmitDiag(diag);
+            if (diag.IsError()) {
                 lexErrors = true;
             }
         }
@@ -2026,10 +1918,8 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         Parser parser(std::move(lexResult.tokens), file.path.string());
         auto parseResult = parser.Parse();
         for (const auto &diag : parseResult.diagnostics) {
-            const auto &loc = diag.location;
-            const char *sev = diag.severity == ParserDiagnostic::Severity::Error ? "error" : "warning";
-            EmitDiag(file.path.string(), static_cast<int>(loc.line), static_cast<int>(loc.column), sev, diag.message);
-            if (diag.severity == ParserDiagnostic::Severity::Error) {
+            EmitDiag(diag);
+            if (diag.IsError()) {
                 parseErrors = true;
             }
         }
@@ -2080,7 +1970,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
                      EmitDiag);
     }
     if (jsonOutput) {
-        return HandleJsonOutput(hadErrors, jsonDiags);
+        PrintDiagnosticsJson(jsonDiags, !hadErrors);
     }
     return hadErrors ? 1 : 0;
 }
