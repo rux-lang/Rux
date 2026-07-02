@@ -1,5 +1,7 @@
 #include "Backend/X64/Asm.h"
 
+#include "Backend/Layout.h"
+
 #include <cstring>
 #include <format>
 #include <fstream>
@@ -9,65 +11,11 @@
 #include <vector>
 
 namespace Rux {
+
+using namespace Layout;
+
 // Type utilities
 namespace {
-int SizeOf(const TypeRef &t) {
-    switch (t.kind) {
-    case TypeRef::Kind::Bool8: // Bool == Bool8
-    case TypeRef::Kind::Char8:
-    case TypeRef::Kind::Int8:
-    case TypeRef::Kind::UInt8:
-        return 1;
-    case TypeRef::Kind::Bool16:
-    case TypeRef::Kind::Char16:
-    case TypeRef::Kind::Int16:
-    case TypeRef::Kind::UInt16:
-        return 2;
-    case TypeRef::Kind::Bool32:
-    case TypeRef::Kind::Char32: // Char == Char32
-    case TypeRef::Kind::Int32:
-    case TypeRef::Kind::UInt32:
-    case TypeRef::Kind::Float32:
-        return 4;
-    case TypeRef::Kind::Opaque:
-        return 0;
-    case TypeRef::Kind::Tuple: {
-        const auto alignUp = [](int v, int a) { return (v + a - 1) & ~(a - 1); };
-        int offset = 0;
-        int maxAlign = 1;
-        for (const auto &elem : t.inner) {
-            const int sz = SizeOf(elem);
-            const int al = sz > 0 ? std::min(sz, 8) : 1;
-            if (al > 1) {
-                offset = alignUp(offset, al);
-            }
-            offset += sz > 0 ? sz : 8;
-            maxAlign = std::max(maxAlign, al);
-        }
-        return alignUp(offset, maxAlign);
-    }
-    case TypeRef::Kind::Named:
-        if (!t.inner.empty()) {
-            return SizeOf(t.inner[0]);
-        }
-        if (t.name == "Slice" || t.name.starts_with("Slice<")) {
-            return 16;
-        }
-        return 8;
-    default:
-        return 8; // int, uint, int64, uint64, float64, pointer, str,
-                  // named, …
-    }
-}
-
-bool IsFloat(const TypeRef &t) {
-    return t.kind == TypeRef::Kind::Float32 || t.kind == TypeRef::Kind::Float64;
-}
-
-int AlignUp(int v, int a) {
-    return (v + a - 1) & ~(a - 1);
-}
-
 // x86-64 register names sized for the rax family
 std::string_view GprA(int bytes) {
     switch (bytes) {
@@ -123,67 +71,11 @@ std::string_view PtrSize(const int bytes) {
     }
 }
 
-// System V AMD64 integer argument registers (in order)
-constexpr std::string_view kIntArgRegs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
-// Microsoft x64 integer argument registers (in order)
-constexpr std::string_view kWin64IntArgRegs[] = {"rcx", "rdx", "r8", "r9"};
-// System V AMD64 float argument registers (in order)
-constexpr std::string_view kFltArgRegs[] = {"xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7"};
 #ifdef _WIN32
 constexpr bool kDefaultCallIsWin64 = true;
 #else
 constexpr bool kDefaultCallIsWin64 = false;
 #endif
-
-// Struct field layout
-struct FieldLayout {
-    std::string name;
-    int offset = 0;
-    int size = 0;
-};
-
-struct StructLayout {
-    std::vector<FieldLayout> fields;
-    int totalSize = 0;
-    int alignment = 1;
-};
-
-using LayoutMap = std::unordered_map<std::string, StructLayout>;
-
-std::string BaseTypeName(const std::string &name) {
-    const std::size_t pos = name.find('<');
-    return pos == std::string::npos ? name : name.substr(0, pos);
-}
-
-StructLayout ComputeLayout(const LirStructDecl &s, const LayoutMap &known) {
-    StructLayout result;
-    int offset = 0;
-    int maxAlign = 1;
-    for (const auto &f : s.fields) {
-        int sz = SizeOf(f.type);
-        int al = sz > 0 ? std::min(sz, 8) : 1;
-        if (f.type.kind == TypeRef::Kind::Named) {
-            const auto baseName = BaseTypeName(f.type.name);
-            if (auto it = known.find(baseName); it != known.end()) {
-                sz = it->second.totalSize;
-                al = it->second.alignment;
-            }
-            else if (baseName == "Slice" || baseName.starts_with("Slice<")) {
-                sz = 16;
-                al = 8;
-            }
-        }
-        if (al > 1) {
-            offset = AlignUp(offset, al);
-        }
-        result.fields.push_back({f.name, offset, sz});
-        offset += sz;
-        maxAlign = std::max(maxAlign, al);
-    }
-    result.totalSize = AlignUp(offset, maxAlign);
-    result.alignment = maxAlign;
-    return result;
-}
 
 // Code generator
 class AsmGen {
@@ -569,7 +461,7 @@ private:
                 interfaceNames.insert(name);
             }
             for (const auto &s : mod.structs) {
-                layouts[s.name] = ComputeLayout(s, layouts);
+                layouts[s.name] = ComputeStructLayout(s, layouts);
             }
         }
     }

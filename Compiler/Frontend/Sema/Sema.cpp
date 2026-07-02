@@ -3,6 +3,7 @@
 #include "Frontend/Lexer.h"
 #include "Frontend/Sema/Type.h"
 #include "Platform/Target.h"
+#include "Support/Layout.h"
 
 #include <algorithm>
 #include <cassert>
@@ -16,6 +17,9 @@
 #include <unordered_set>
 
 namespace Rux {
+
+using Layout::AlignUp;
+
 // SemaResult
 
 bool SemaResult::HasErrors() const noexcept {
@@ -732,10 +736,6 @@ private:
             args.push_back(ParseTypeRefFromString(content.substr(start)));
         }
         return args;
-    }
-
-    static std::uint64_t AlignUp(const std::uint64_t value, const std::uint64_t align) {
-        return (value + align - 1) & ~(align - 1);
     }
 
     static TypeRef StringLiteralElementType(const Token &tok) {
@@ -1840,22 +1840,12 @@ private:
         }
 
         if (type.kind == TypeRef::Kind::Tuple) {
-            auto alignUp = [](std::uint64_t v, std::uint64_t a) { return (v + a - 1) & ~(a - 1); };
-            std::uint64_t offset = 0;
-            std::uint64_t maxAlign = 1;
-            for (const auto &elem : type.inner) {
-                const auto elemSize = SizeOfTypeRef(elem, substitutions);
-                if (!elemSize) {
-                    return std::nullopt;
-                }
-                const std::uint64_t al = *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8)) : 1;
-                if (al > 1) {
-                    offset = alignUp(offset, al);
-                }
-                offset += *elemSize > 0 ? *elemSize : 8;
-                maxAlign = std::max(maxAlign, al);
+            const auto layout = Layout::FieldsSizeAndAlign(
+                type.inner, [&](const TypeRef &elem) { return SizeOfTypeRef(elem, substitutions); });
+            if (!layout) {
+                return std::nullopt;
             }
-            return alignUp(offset, maxAlign);
+            return layout->first;
         }
 
         return type.SizeInBytes();
@@ -1872,40 +1862,14 @@ private:
         std::uint64_t maxPayloadSize = 0;
         std::uint64_t maxPayloadAlign = 1;
 
-        auto fieldLayout = [&](const auto &fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
-            std::uint64_t offset = 0;
-            std::uint64_t maxAlign = 1;
-            for (const auto &field : fields) {
-                const auto fieldSize = SizeOfTypeExprWithSubstitution(*field, substitutions);
-                if (!fieldSize) {
-                    return std::nullopt;
-                }
-                const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
-                if (align > 1) {
-                    offset = AlignUp(offset, align);
-                }
-                offset += *fieldSize > 0 ? *fieldSize : 8;
-                maxAlign = std::max(maxAlign, align);
-            }
-            return std::pair{AlignUp(offset, maxAlign), maxAlign};
+        auto fieldLayout = [&](const auto &fields) {
+            return Layout::FieldsSizeAndAlign(
+                fields, [&](const auto &field) { return SizeOfTypeExprWithSubstitution(*field, substitutions); });
         };
 
-        auto namedFieldLayout = [&](const auto &fields) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
-            std::uint64_t offset = 0;
-            std::uint64_t maxAlign = 1;
-            for (const auto &field : fields) {
-                const auto fieldSize = SizeOfTypeExprWithSubstitution(*field.type, substitutions);
-                if (!fieldSize) {
-                    return std::nullopt;
-                }
-                const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
-                if (align > 1) {
-                    offset = AlignUp(offset, align);
-                }
-                offset += *fieldSize > 0 ? *fieldSize : 8;
-                maxAlign = std::max(maxAlign, align);
-            }
-            return std::pair{AlignUp(offset, maxAlign), maxAlign};
+        auto namedFieldLayout = [&](const auto &fields) {
+            return Layout::FieldsSizeAndAlign(
+                fields, [&](const auto &field) { return SizeOfTypeExprWithSubstitution(*field.type, substitutions); });
         };
 
         for (const auto &variant : decl.variants) {
@@ -1954,21 +1918,13 @@ private:
             return std::nullopt;
         }
 
-        std::uint64_t offset = 0;
-        std::uint64_t maxAlign = 1;
-        for (const auto &field : structIt->second->fields) {
-            const auto fieldSize = SizeOfTypeExprWithSubstitution(*field.type, substitutions);
-            if (!fieldSize) {
-                return std::nullopt;
-            }
-            const std::uint64_t align = *fieldSize > 0 ? std::min<std::uint64_t>(*fieldSize, 8) : 1;
-            if (align > 1) {
-                offset = AlignUp(offset, align);
-            }
-            offset += *fieldSize > 0 ? *fieldSize : 8;
-            maxAlign = std::max(maxAlign, align);
+        const auto layout = Layout::FieldsSizeAndAlign(structIt->second->fields, [&](const auto &field) {
+            return SizeOfTypeExprWithSubstitution(*field.type, substitutions);
+        });
+        if (!layout) {
+            return std::nullopt;
         }
-        return AlignUp(offset, maxAlign);
+        return layout->first;
     }
 
     std::optional<std::uint64_t>

@@ -1,5 +1,6 @@
 #include "Backend/Rcu/Rcu.h"
 
+#include "Backend/Layout.h"
 #include "Support/Version.h"
 
 #include <charconv>
@@ -16,58 +17,10 @@
 #include <utility>
 
 namespace Rux {
+
+using namespace Layout;
+
 namespace {
-// Type utilities (mirrored from Asm.cpp)
-int SizeOf(const TypeRef &t) {
-    switch (t.kind) {
-    case TypeRef::Kind::Bool8: // Bool == Bool8
-    case TypeRef::Kind::Char8: // Char8
-    case TypeRef::Kind::Int8:
-    case TypeRef::Kind::UInt8:
-        return 1;
-    case TypeRef::Kind::Bool16:
-    case TypeRef::Kind::Char16:
-    case TypeRef::Kind::Int16:
-    case TypeRef::Kind::UInt16:
-        return 2;
-    case TypeRef::Kind::Bool32:
-    case TypeRef::Kind::Char32: // Char == Char32
-    case TypeRef::Kind::Int32:
-    case TypeRef::Kind::UInt32:
-    case TypeRef::Kind::Float32:
-        return 4;
-    case TypeRef::Kind::Opaque:
-        return 0;
-    case TypeRef::Kind::Tuple: {
-        const auto alignUp = [](int v, int a) { return (v + a - 1) & ~(a - 1); };
-        int offset = 0;
-        int maxAlign = 1;
-        for (const auto &elem : t.inner) {
-            const int sz = SizeOf(elem);
-            const int al = sz > 0 ? std::min(sz, 8) : 1;
-            if (al > 1) {
-                offset = alignUp(offset, al);
-            }
-            offset += sz > 0 ? sz : 8;
-            maxAlign = std::max(maxAlign, al);
-        }
-        return alignUp(offset, maxAlign);
-    }
-    case TypeRef::Kind::Named:
-        if (!t.inner.empty()) {
-            return SizeOf(t.inner[0]);
-        }
-        return 8;
-    default:
-        return 8; // int, uint, int64, uint64, float64, pointer, str,
-        // named, …
-    }
-}
-
-bool IsFloat(const TypeRef &t) {
-    return t.kind == TypeRef::Kind::Float32 || t.kind == TypeRef::Kind::Float64;
-}
-
 std::string_view NumericLiteralSuffix(std::string_view text) {
     static constexpr std::string_view suffixes[] = {
         "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "i", "u",
@@ -144,10 +97,6 @@ std::optional<std::uint64_t> ParseIntegerLiteralBits(std::string_view text) {
         return std::nullopt;
     }
     return std::uint64_t{0} - value;
-}
-
-int AlignUp(int v, int a) {
-    return (v + a - 1) & ~(a - 1);
 }
 
 // String table
@@ -1376,19 +1325,6 @@ private:
     uint32_t ipowSym = ~0u;
 
     // Struct field layouts
-    struct FieldLayout {
-        std::string name;
-        int offset = 0;
-        int size = 0;
-    };
-
-    struct StructLayout {
-        std::vector<FieldLayout> fields;
-        int totalSize = 0;
-        int alignment = 1;
-    };
-
-    using LayoutMap = std::unordered_map<std::string, StructLayout>;
     LayoutMap layouts;
     std::unordered_set<std::string> interfaceNames;
 
@@ -1413,11 +1349,6 @@ private:
     // Helpers
     [[nodiscard]] int32_t Disp(const LirReg r) const {
         return -static_cast<int32_t>(slotMap.at(r));
-    }
-
-    static std::string BaseTypeName(const std::string &name) {
-        const std::size_t pos = name.find('<');
-        return pos == std::string::npos ? name : name.substr(0, pos);
     }
 
     [[nodiscard]] int SizeOfRuntime(const TypeRef &t) const {

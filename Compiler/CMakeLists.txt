@@ -56,6 +56,7 @@ add_library(RuxCore STATIC
     Ir/Optimizer.cpp
 
     # Backend: code generation, object files, linking
+    Backend/Layout.cpp
     Backend/X64/Asm.cpp
     Backend/Rcu/Rcu.cpp
     Backend/Link/Linker.cpp

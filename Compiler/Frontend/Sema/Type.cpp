@@ -1,5 +1,7 @@
 #include "Frontend/Sema/Type.h"
 
+#include "Support/Layout.h"
+
 #include <algorithm>
 
 namespace Rux {
@@ -136,10 +138,6 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
 }
 
 std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
-    auto alignUp = [](const std::uint64_t value, const std::uint64_t align) {
-        return (value + align - 1) & ~(align - 1);
-    };
-
     switch (kind) {
     case Kind::Unknown:
     case Kind::TypeParam:
@@ -181,24 +179,14 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
         if (!elemSize || *elemSize == 0) {
             return std::nullopt;
         }
-        return alignUp(2 * *elemSize + 1, *elemSize);
+        return Layout::AlignUp(2 * *elemSize + 1, *elemSize);
     }
     case Kind::Tuple: {
-        std::uint64_t offset = 0;
-        std::uint64_t maxAlign = 1;
-        for (const auto &elem : inner) {
-            const auto elemSize = elem.SizeInBytes();
-            if (!elemSize) {
-                return std::nullopt;
-            }
-            const std::uint64_t al = *elemSize > 0 ? std::min(*elemSize, std::uint64_t(8)) : 1;
-            if (al > 1) {
-                offset = alignUp(offset, al);
-            }
-            offset += *elemSize > 0 ? *elemSize : 8;
-            maxAlign = std::max(maxAlign, al);
+        const auto layout = Layout::FieldsSizeAndAlign(inner, [](const TypeRef &elem) { return elem.SizeInBytes(); });
+        if (!layout) {
+            return std::nullopt;
         }
-        return alignUp(offset, maxAlign);
+        return layout->first;
     }
     case Kind::Named:
         if (!inner.empty()) {
