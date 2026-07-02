@@ -59,6 +59,9 @@ add_library(RuxCore STATIC
     Backend/Layout.cpp
     Backend/X64/Asm.cpp
     Backend/Rcu/Rcu.cpp
+    Backend/Rcu/RcuCodeGen.cpp
+    Backend/Rcu/RcuDump.cpp
+    Backend/Rcu/RcuWriter.cpp
     Backend/Link/Linker.cpp
 )
 
