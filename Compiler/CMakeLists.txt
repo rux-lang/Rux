@@ -43,6 +43,7 @@ add_library(RuxCore STATIC
     Frontend/Lexer.cpp
     Frontend/SourceLoader.cpp
     Frontend/Parser/Parser.cpp
+    Frontend/Sema/Type.cpp
     Frontend/Sema/Sema.cpp
 
     # Intermediate representations and optimization
