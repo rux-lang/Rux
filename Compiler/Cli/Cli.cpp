@@ -5,6 +5,7 @@
 #include "Backend/X64/Asm.h"
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
+#include "Driver/Driver.h"
 #include "Frontend/Ast/Ast.h"
 #include "Frontend/Lexer.h"
 #include "Frontend/Parser/Parser.h"
@@ -880,7 +881,6 @@ int Cli::Run() const {
 }
 
 int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &opts) {
-    const auto t0 = std::chrono::steady_clock::now();
     bool isRelease = false;
     bool isDebug = false;
     std::string_view profile;
@@ -993,390 +993,31 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         std::print("Compiling {} v{} [{}]\n", manifest->package.name, manifest->package.version,
                    manifestPath->parent_path().string());
     }
-    Misc::BuildStats stats;
-    auto loadResult = SourceLoader::Load(manifestPath->parent_path());
-    if (!loadResult) {
+    CompileOptions copts;
+    copts.manifestPath = *manifestPath;
+    copts.manifest = std::move(*manifest);
+    copts.targetName = std::move(targetName);
+    copts.profileName = std::string(profileName);
+    copts.quiet = opts.quiet;
+    copts.verbose = opts.verbose;
+    copts.dumpTokens = dumpTokens;
+    copts.dumpAst = dumpAst;
+    copts.dumpSema = dumpSema;
+    copts.dumpHir = dumpHir;
+    copts.dumpLir = dumpLir;
+    copts.dumpAsm = dumpAsm;
+    copts.dumpRcu = dumpRcu;
+    Driver driver(std::move(copts));
+    const CompileResult result = driver.Compile();
+    if (!result.ok) {
         return 1;
     }
-    stats.localFiles = loadResult->files.size();
-    for (const auto &file : loadResult->files) {
-        stats.localLines += CountLines(file.source);
-        stats.localSourceSize += file.source.size();
-    }
-    for (const auto &err : loadResult->errors) {
-        std::print(stderr, "{}", err);
-    }
-    bool lexErrors = false;
-    std::vector<LexerResult> lexResults;
-    lexResults.reserve(loadResult->files.size());
-    const auto localLexingStart = std::chrono::steady_clock::now();
-    for (const auto &file : loadResult->files) {
-        if (opts.verbose) {
-            std::print("     Lexing {}\n", file.path.string());
-        }
-        Lexer lexer(file.source, file.path.string());
-        auto lexResult = lexer.Tokenize();
-        stats.localTokens += CountTokens(lexResult);
-        PrintDiagnostics(lexResult.diagnostics);
-        if (lexResult.HasErrors()) {
-            lexErrors = true;
-        }
-        if (dumpTokens) {
-            auto tempDir = manifestPath->parent_path() / "Temp" / "Tokens";
-            std::filesystem::create_directories(tempDir);
-            auto rel = std::filesystem::relative(file.path, manifestPath->parent_path() / "Src");
-            auto tokPath = tempDir / rel;
-            tokPath.replace_extension(".tokens");
-            Lexer::DumpTokens(lexResult, tokPath);
-        }
-        lexResults.push_back(std::move(lexResult));
-    }
-    const auto localLexingEnd = std::chrono::steady_clock::now();
-    stats.lexing += ElapsedMs(localLexingStart, localLexingEnd);
-    if (lexErrors) {
-        return 1;
-    }
-    // Parse
-    bool parseErrors = false;
-    std::vector<ParseResult> parseResults;
-    parseResults.reserve(loadResult->files.size());
-    const auto localParsingStart = std::chrono::steady_clock::now();
-    for (std::size_t fileIndex = 0; fileIndex < loadResult->files.size(); ++fileIndex) {
-        const auto &file = loadResult->files[fileIndex];
-        if (opts.verbose) {
-            std::print("    Parsing {}\n", file.path.string());
-        }
-        auto &lexResult = lexResults[fileIndex];
-        if (lexResult.HasErrors()) {
-            continue;
-        }
-        Parser parser(std::move(lexResult.tokens), file.path.string());
-        auto parseResult = parser.Parse();
-        PrintDiagnostics(parseResult.diagnostics);
-        if (parseResult.HasErrors()) {
-            parseErrors = true;
-            continue;
-        }
-        PruneModuleForTarget(parseResult.module, targetName);
-        if (dumpAst) {
-            auto tempDir = manifestPath->parent_path() / "Temp" / "Ast";
-            std::filesystem::create_directories(tempDir);
-            auto rel = std::filesystem::relative(file.path, manifestPath->parent_path() / "Src");
-            auto astPath = (tempDir / rel).replace_extension(".ast");
-            Parser::DumpAst(parseResult, astPath);
-        }
-        parseResults.push_back(std::move(parseResult));
-    }
-    stats.parsing += ElapsedMs(localParsingStart);
-    if (parseErrors) {
-        return 1;
-    }
-
-    // Load dependency packages referenced by import declarations
-    std::vector<ParseResult> depParseResults;
-    std::vector<std::string> loadedPackages;    // parallel: package name per entry
-    std::vector<std::string> loadedModuleNames; // parallel: source name per entry
-    {
-        struct PendingPackage {
-            std::string name;
-            std::filesystem::path root;
-            Manifest manifest;
-        };
-
-        std::vector<PendingPackage> pendingPackages;
-        std::unordered_set<std::string> queuedPackageNames;
-        auto enqueueDependency = [&](const std::string &pkgName, const Manifest &ownerManifest,
-                                     const std::filesystem::path &ownerRoot) -> bool {
-            if (queuedPackageNames.count(pkgName)) {
-                return true;
-            }
-            // Resolve imports through the target view of the owning
-            // manifest. This is what maps Platform to Linux on linux-x64.
-            const auto deps = ownerManifest.EffectiveDependencies(targetName);
-            const Dependency *dep = nullptr;
-            for (const auto &d : deps) {
-                if (d.name == pkgName) {
-                    dep = &d;
-                    break;
-                }
-            }
-            if (!dep) {
-                std::print(stderr, "error: package '{}' is not listed in [Dependencies]\n", pkgName);
-                return false;
-            }
-            std::filesystem::path depRoot;
-            if (dep->path.empty()) {
-                depRoot = RegistryPackagesDir() / DependencyPackageName(*dep);
-                if (!std::filesystem::exists(depRoot)) {
-                    std::print(stderr,
-                               "error: package '{}' is not installed — run "
-                               "'rux install'\n",
-                               DependencyPackageName(*dep));
-                    return false;
-                }
-            }
-            else {
-                depRoot = (ownerRoot / dep->path).lexically_normal();
-            }
-            auto depManifest = Manifest::Load(depRoot / "Rux.toml");
-            if (!depManifest) {
-                std::print(stderr, "error: dependency package '{}' was not found at '{}'\n", pkgName, depRoot.string());
-                return false;
-            }
-            queuedPackageNames.insert(pkgName);
-            // Keep the import name as the package namespace loaded into
-            // Sema, even when the files came from another package name.
-            pendingPackages.push_back({dep->name, depRoot, std::move(*depManifest)});
-            return true;
-        };
-        std::vector<std::string> imports;
-        auto collectImports = [&](this auto &&self, const Decl &decl) -> void {
-            if (const auto *ud = dynamic_cast<const UseDecl *>(&decl)) {
-                if (!DeclMatchesTarget(*ud, targetName)) {
-                    return;
-                }
-                if (!ud->path.empty()) {
-                    imports.push_back(ud->path[0]);
-                }
-                return;
-            }
-            if (const auto *mod = dynamic_cast<const ModuleDecl *>(&decl)) {
-                for (const auto &item : mod->items) {
-                    if (item) {
-                        self(*item);
-                    }
-                }
-            }
-        };
-        for (const auto &pr : parseResults) {
-            imports.clear();
-            for (const auto &decl : pr.module.items) {
-                if (decl) {
-                    collectImports(*decl);
-                }
-            }
-            for (const auto &pkgName : imports) {
-                if (pkgName == manifest->package.name) {
-                    continue;
-                }
-                if (!enqueueDependency(pkgName, *manifest, manifestPath->parent_path())) {
-                    return 1;
-                }
-            }
-        }
-        for (std::size_t pendingIndex = 0; pendingIndex < pendingPackages.size(); ++pendingIndex) {
-            const std::filesystem::path pendingRoot = pendingPackages[pendingIndex].root;
-            const Manifest pendingManifest = pendingPackages[pendingIndex].manifest;
-            const std::string packageName = pendingPackages[pendingIndex].name;
-            if (opts.verbose) {
-                std::print("  Loading package {} from {}\n", packageName, pendingRoot.string());
-            }
-            auto depLoadResult = SourceLoader::Load(pendingRoot);
-            if (!depLoadResult) {
-                return 1;
-            }
-            stats.dependencyFiles += depLoadResult->files.size();
-            for (const auto &depFile : depLoadResult->files) {
-                stats.dependencyLines += Rux::Misc::CountLines(depFile.source);
-                stats.dependencySourceSize += depFile.source.size();
-            }
-            for (const auto &error : depLoadResult->errors) {
-                std::print(stderr, "{}", error);
-            }
-            if (!depLoadResult->errors.empty()) {
-                return 1;
-            }
-            std::vector<ParseResult> packageParseResults;
-            packageParseResults.reserve(depLoadResult->files.size());
-            for (const auto &depFile : depLoadResult->files) {
-                const auto depLexingStart = std::chrono::steady_clock::now();
-                Lexer depLexer(depFile.source, depFile.path.string());
-                auto depLex = depLexer.Tokenize();
-                const auto depLexingEnd = std::chrono::steady_clock::now();
-                stats.lexing += ElapsedMs(depLexingStart, depLexingEnd);
-                stats.dependencyTokens += CountTokens(depLex);
-                PrintDiagnostics(depLex.diagnostics);
-                if (depLex.HasErrors()) {
-                    return 1;
-                }
-                const auto depParsingStart = std::chrono::steady_clock::now();
-                Parser depParser(std::move(depLex.tokens), depFile.path.string());
-                auto depParse = depParser.Parse();
-                stats.parsing += ElapsedMs(depParsingStart);
-                PrintDiagnostics(depParse.diagnostics);
-                if (depParse.HasErrors()) {
-                    return 1;
-                }
-                PruneModuleForTarget(depParse.module, targetName);
-                packageParseResults.push_back(std::move(depParse));
-            }
-            imports.clear();
-            for (const auto &pr : packageParseResults) {
-                for (const auto &decl : pr.module.items) {
-                    if (decl) {
-                        collectImports(*decl);
-                    }
-                }
-            }
-            for (const auto &pkgName : imports) {
-                if (pkgName == pendingManifest.package.name || pkgName == packageName) {
-                    continue;
-                }
-                if (!enqueueDependency(pkgName, pendingManifest, pendingRoot)) {
-                    return 1;
-                }
-            }
-            for (auto &depParse : packageParseResults) {
-                loadedModuleNames.push_back(depParse.module.name);
-                depParseResults.push_back(std::move(depParse));
-                loadedPackages.push_back(packageName);
-            }
-        }
-    }
-
-    // Semantic analysis
-    const auto semanticStart = std::chrono::steady_clock::now();
-    if (opts.verbose) {
-        std::print("  Analyzing {}\n", manifest->package.name);
-    }
-    std::vector<const Module *> userModules;
-    userModules.reserve(parseResults.size());
-    for (const auto &pr : parseResults) {
-        userModules.push_back(&pr.module);
-    }
-    // Build per-package dep info so Sema can isolate imported package symbols.
-    std::vector<DepPackage> depPackages;
-    {
-        std::unordered_map<std::string, std::size_t> pkgIdx;
-        for (std::size_t i = 0; i < depParseResults.size(); ++i) {
-            const std::string &pkgName = loadedPackages[i];
-            auto [it, inserted] = pkgIdx.emplace(pkgName, depPackages.size());
-            if (inserted) {
-                depPackages.push_back({pkgName, {}});
-            }
-            depPackages[it->second].modules.push_back({loadedModuleNames[i], &depParseResults[i].module});
-        }
-    }
-    Sema sema(std::move(userModules), std::move(depPackages), manifest->package.name,
-              std::string(TargetOsName(targetName)));
-    auto semaResult = sema.Analyze();
-    PrintDiagnostics(semaResult.diagnostics);
-    if (dumpSema) {
-        auto semaDir = manifestPath->parent_path() / "Temp" / "Sema";
-        std::filesystem::create_directories(semaDir);
-        Sema::DumpResult(semaResult, semaDir / "sema.txt");
-    }
-    if (semaResult.HasErrors()) {
-        return 1;
-    }
-    stats.semantic = ElapsedMs(semanticStart);
-
-    // HIR
-    const auto hirStart = std::chrono::steady_clock::now();
-    if (opts.verbose) {
-        std::print("  Lowering {}\n", manifest->package.name);
-    }
-    std::vector<const Module *> hirModules;
-    hirModules.reserve(depParseResults.size() + parseResults.size());
-    for (const auto &pr : depParseResults) {
-        hirModules.push_back(&pr.module);
-    }
-    for (const auto &pr : parseResults) {
-        hirModules.push_back(&pr.module);
-    }
-    Hir hir(hirModules);
-    auto hirPackage = hir.Generate();
-    if (dumpHir) {
-        auto hirDir = manifestPath->parent_path() / "Temp" / "Hir";
-        std::filesystem::create_directories(hirDir);
-        Hir::Dump(hirPackage, hirDir / "hir.txt");
-    }
-    stats.hir = ElapsedMs(hirStart);
-
-    // LIR
-    const auto lirStart = std::chrono::steady_clock::now();
-    if (opts.verbose) {
-        std::print("  Emitting LIR for {}\n", manifest->package.name);
-    }
-    Lir lir(std::move(hirPackage));
-    auto lirPackage = lir.Generate();
-    if (dumpLir) {
-        auto lirDir = manifestPath->parent_path() / "Temp" / "Lir";
-        std::filesystem::create_directories(lirDir);
-        Lir::Dump(lirPackage, lirDir / "lir.txt");
-    }
-    stats.lir = ElapsedMs(lirStart);
-
-    // Assembly dump (optional)
-    const auto codegenStart = std::chrono::steady_clock::now();
-    if (dumpAsm) {
-        if (opts.verbose) {
-            std::print("  Emitting assembly for {}\n", manifest->package.name);
-        }
-        auto asmDir = manifestPath->parent_path() / "Temp" / "Asm";
-        std::filesystem::create_directories(asmDir);
-        Asm::Emit(lirPackage, asmDir / "out.asm");
-    }
-
-    // RCU object generation
-    if (opts.verbose) {
-        std::print("  Emitting RCU objects for {}\n", manifest->package.name);
-    }
-    Rcu rcu(lirPackage, std::string(manifest->package.name));
-    auto rcuFiles = rcu.Generate();
-    if (dumpRcu) {
-        auto objDir = manifestPath->parent_path() / "Temp" / "Obj";
-        auto dumpDir = manifestPath->parent_path() / "Temp" / "Rcu";
-        std::filesystem::create_directories(objDir);
-        std::filesystem::create_directories(dumpDir);
-
-        for (const auto &rcuFile : rcuFiles) {
-            std::filesystem::path stem = rcuFile.sourcePath.empty() ? std::filesystem::path("out")
-                                                                    : std::filesystem::path(rcuFile.sourcePath).stem();
-            Rcu::Emit(rcuFile, objDir / (stem.string() + ".rcu"));
-            Rcu::Dump(rcuFile, dumpDir / (stem.string() + ".rcu.txt"));
-        }
-    }
-    stats.codegen = ElapsedMs(codegenStart);
-
-    // Link
-    const auto linkingStart = std::chrono::steady_clock::now();
-    if (opts.verbose) {
-        std::print("   Linking {}\n", manifest->package.name);
-    }
-    const auto root = manifestPath->parent_path();
-    const auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
-    const bool buildDll = (manifest->package.type == "Dll" || manifest->package.type == "dll");
-    std::string outputName = manifest->package.name;
-    if constexpr (HostOS == OS::Windows) {
-        outputName += buildDll ? ".dll" : ".exe";
-    }
-    const auto exePath = binDir / outputName;
-    Linker linker(std::move(rcuFiles), std::string(manifest->package.name), {root}, buildDll);
-    if (!linker.Link(exePath)) {
-        for (const auto &err : linker.Errors()) {
-            std::print(stderr, "error: {}\n", err.message);
-        }
-        return 1;
-    }
-    stats.linking = ElapsedMs(linkingStart);
-
-    // Done
-    const auto buildEnd = std::chrono::steady_clock::now();
-    stats.total = ElapsedMs(t0, buildEnd);
-    stats.totalSeconds = ElapsedSeconds(t0, buildEnd);
-    std::error_code sizeError;
-    stats.executableSize = std::filesystem::file_size(exePath, sizeError);
-    if (sizeError) {
-        stats.executableSize = 0;
-    }
-    stats.peakMemoryBytes = PeakMemoryBytes();
     if (!opts.quiet && showStats) {
-        PrintBuildStats(exePath, profileName, stats);
+        PrintBuildStats(result.executablePath, profileName, result.stats);
         return 0;
     }
     if (!opts.quiet) {
-        PrintBuildSummary(exePath, profileName, stats);
+        PrintBuildSummary(result.executablePath, profileName, result.stats);
     }
     return 0;
 }
@@ -1463,41 +1104,43 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     if (!manifest) {
         return 1;
     }
-    // Build first
-    GlobalOptions buildOpts = opts;
-    if (!opts.verbose) {
-        buildOpts.quiet = true;
+    // Build first (quiet unless verbose)
+    const std::string_view profileName = isRelease ? "Release" : "Debug";
+    std::string targetName = HostTargetTriple();
+    if (!IsSupportedTargetTriple(targetName)) {
+        std::print(stderr,
+                   "error: unsupported target '{}'; supported targets are "
+                   "linux-x64, windows-x64, macos-x64, macos-arm64, "
+                   "freebsd-x64, openbsd-x64, netbsd-x64, illumos-x64\n",
+                   targetName);
+        return 1;
     }
-
-    std::vector<std::string_view> buildArgs;
-    if (isRelease) {
-        buildArgs.emplace_back("--release");
+    const bool buildQuiet = !opts.verbose || opts.quiet;
+    if (!buildQuiet) {
+        std::print("Compiling {} v{} [{}]\n", manifest->package.name, manifest->package.version,
+                   manifestPath->parent_path().string());
     }
-    if (buildOpts.quiet) {
-        buildArgs.emplace_back("--quiet");
+    CompileOptions copts;
+    copts.manifestPath = *manifestPath;
+    copts.manifest = *manifest;
+    copts.targetName = std::move(targetName);
+    copts.profileName = std::string(profileName);
+    copts.quiet = buildQuiet;
+    copts.verbose = opts.verbose;
+    Driver driver(std::move(copts));
+    const CompileResult result = driver.Compile();
+    if (!result.ok) {
+        return 1;
     }
-    if (buildOpts.verbose) {
-        buildArgs.emplace_back("--verbose");
+    if (!buildQuiet) {
+        PrintBuildSummary(result.executablePath, profileName, result.stats);
     }
-    int rc = RunBuild(buildArgs, buildOpts);
-    if (rc != 0) {
-        return rc;
-    }
-    std::string_view profileName = isRelease ? "Release" : "Debug";
-    auto root = manifestPath->parent_path();
-    auto binDir = ResolveBuildOutputDir(root, *manifest, profileName);
     const bool runDll = (manifest->package.type == "Dll" || manifest->package.type == "dll");
     if (runDll) {
         std::print(stderr, "error: cannot run a DLL package directly\n");
         return 1;
     }
-    std::string exeName = manifest->package.name;
-
-    if constexpr (HostOS == OS::Windows) {
-        exeName.append(".exe");
-    }
-
-    auto exePath = binDir / exeName;
+    auto exePath = result.executablePath;
     if (!std::filesystem::exists(exePath)) {
         std::print(stderr, "error: executable not found: '{}'\n", exePath.string());
         return 1;
@@ -1559,225 +1202,6 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     waitpid(pid, &status, 0);
     return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
 #endif
-}
-
-struct PendingPackage {
-    std::string name;
-    std::filesystem::path root;
-    Manifest manifest;
-};
-
-struct ImportCollector {
-    std::vector<std::string> &imports;
-    std::string_view target;
-
-    void collect(const Decl &decl) {
-        if (const auto *ud = dynamic_cast<const UseDecl *>(&decl)) {
-            if (!DeclMatchesTarget(*ud, target)) {
-                return;
-            }
-            if (!ud->path.empty()) {
-                imports.push_back(ud->path[0]);
-            }
-            return;
-        }
-        if (const auto *mod = dynamic_cast<const ModuleDecl *>(&decl)) {
-            for (const auto &item : mod->items) {
-                if (item) {
-                    collect(*item);
-                }
-            }
-        }
-    }
-};
-
-struct DependencyQueue {
-    const std::string pkgName;
-    const Manifest ownerManifest;
-    const std::filesystem::path ownerRoot;
-    std::unordered_set<std::string> queuedPackageNames;
-    std::vector<PendingPackage> pendingPackages;
-    std::string targetName;
-};
-
-auto enqueueDependency(DependencyQueue &queue, const std::function<void(Diagnostic)> &EmitDiag) -> bool {
-    if (queue.queuedPackageNames.count(queue.pkgName)) {
-        return true;
-    }
-
-    const auto deps = queue.ownerManifest.EffectiveDependencies(queue.targetName);
-    std::optional<Rux::Dependency> targetDep; // Add Rux:: here
-    for (const auto &d : deps) {
-        if (d.name == queue.pkgName) {
-            targetDep = d;
-            break;
-        }
-    }
-    if (!targetDep) {
-        EmitDiag(ErrorDiagnostic("package '" + queue.pkgName + "' is not listed in [Dependencies]"));
-        return false;
-    }
-    std::filesystem::path depRoot;
-    if (targetDep->path.empty()) {
-        depRoot = RegistryPackagesDir() / DependencyPackageName(*targetDep);
-        if (!std::filesystem::exists(depRoot)) {
-            EmitDiag(ErrorDiagnostic("package '" + DependencyPackageName(*targetDep) +
-                                     "' is not installed — run 'rux install'"));
-            return false;
-        }
-    }
-    else {
-        depRoot = (queue.ownerRoot / targetDep->path).lexically_normal();
-
-        auto rel = depRoot.lexically_relative(queue.ownerRoot);
-        if (!rel.empty() && rel.begin()->string() == "..") {
-            EmitDiag(ErrorDiagnostic("package '" + queue.pkgName + "' contains an invalid path escaping root bounds"));
-            return false;
-        }
-    }
-
-    auto depManifest = Manifest::Load(depRoot / "Rux.toml");
-    if (!depManifest) {
-        EmitDiag(
-            ErrorDiagnostic("dependency package '" + queue.pkgName + "' was not found at '" + depRoot.string() + "'"));
-        return false;
-    }
-
-    queue.queuedPackageNames.insert(queue.pkgName);
-    queue.pendingPackages.push_back({targetDep->name, depRoot, std::move(*depManifest)});
-    return true;
-}
-
-void HandleErrors(bool &hadErrors, const std::vector<ParseResult> &parseResults,
-                  const std::vector<ParseResult> &depParseResults, const std::vector<std::string> &loadedPackages,
-                  const std::vector<std::string> &loadedModuleNames, const Manifest &manifest,
-                  const std::string &targetName, const std::function<void(Diagnostic)> &EmitDiag) {
-    std::vector<const Module *> userModules;
-    userModules.reserve(parseResults.size());
-    for (const auto &pr : parseResults) {
-        userModules.push_back(&pr.module);
-    }
-    std::vector<DepPackage> depPackages;
-    std::unordered_map<std::string, std::size_t> pkgIdx;
-    for (std::size_t i = 0; i < depParseResults.size(); ++i) {
-        const std::string &pkgName = loadedPackages[i];
-        auto [it, inserted] = pkgIdx.emplace(pkgName, depPackages.size());
-        if (inserted) {
-            depPackages.push_back({pkgName, {}});
-        }
-        depPackages[it->second].modules.push_back({loadedModuleNames[i], &depParseResults[i].module});
-    }
-    Sema sema(std::move(userModules), std::move(depPackages), manifest.package.name,
-              std::string(TargetOsName(targetName)));
-    auto semaResult = sema.Analyze();
-    for (const auto &diag : semaResult.diagnostics) {
-        EmitDiag(diag);
-        if (diag.IsError()) {
-            hadErrors = true;
-        }
-    }
-    if (semaResult.HasErrors()) {
-        hadErrors = true;
-    }
-}
-
-int HandlePendingIndex(bool &hadErrors, const GlobalOptions &opts, bool jsonOutput,
-                       std::vector<PendingPackage> &pendingPackages, const std::string &targetName,
-                       std::vector<std::string> &imports, ImportCollector &collector,
-                       std::vector<ParseResult> &depParseResults, std::vector<std::string> &loadedPackages,
-                       std::vector<std::string> &loadedModuleNames, std::unordered_set<std::string> &queuedPackageNames,
-                       const std::function<void(Diagnostic)> &EmitDiag) {
-    for (std::size_t pendingIndex = 0; pendingIndex < pendingPackages.size(); ++pendingIndex) {
-        const auto &pendingPkg = pendingPackages[pendingIndex];
-        if (opts.verbose && !jsonOutput) {
-            std::print(" Loading package {} from {}\n", pendingPkg.name, pendingPkg.root.string());
-        }
-        auto depLoadResult = SourceLoader::Load(pendingPkg.root);
-        if (!depLoadResult) {
-            hadErrors = true;
-            break;
-        };
-        for (const auto &error : depLoadResult->errors) {
-            if (jsonOutput) {
-                EmitDiag(ErrorDiagnostic(error));
-                hadErrors = true;
-            }
-            else {
-                std::print(stderr, "{}", error);
-            }
-        }
-        if (!depLoadResult->errors.empty()) {
-            hadErrors = true;
-            break;
-        }
-        std::vector<ParseResult> packageParseResults;
-        packageParseResults.reserve(depLoadResult->files.size());
-        for (const auto &depFile : depLoadResult->files) {
-            Lexer depLexer(depFile.source, depFile.path.string());
-            auto depLex = depLexer.Tokenize();
-
-            for (const auto &diag : depLex.diagnostics) {
-                EmitDiag(diag);
-                if (diag.IsError()) {
-                    hadErrors = true;
-                }
-            }
-            if (depLex.HasErrors()) {
-                hadErrors = true;
-                break;
-            }
-            Parser depParser(std::move(depLex.tokens), depFile.path.string());
-            auto depParse = depParser.Parse();
-            for (const auto &diag : depParse.diagnostics) {
-                EmitDiag(diag);
-                if (diag.IsError()) {
-                    hadErrors = true;
-                }
-            }
-            if (depParse.HasErrors()) {
-                hadErrors = true;
-                break;
-            }
-            PruneModuleForTarget(depParse.module, targetName);
-            packageParseResults.push_back(std::move(depParse));
-        }
-        if (hadErrors) {
-            break;
-        }
-        imports.clear();
-        for (const auto &pr : packageParseResults) {
-            for (const auto &decl : pr.module.items) {
-                if (decl) {
-                    collector.collect(*decl);
-                }
-            }
-        }
-        for (const auto &pkgName : imports) {
-            const auto &currentPkg = pendingPackages[pendingIndex];
-            if (pkgName == currentPkg.manifest.package.name || pkgName == currentPkg.name) {
-                continue;
-            }
-            DependencyQueue depQueue{.pkgName = pkgName,
-                                     .ownerManifest = currentPkg.manifest,
-                                     .ownerRoot = currentPkg.root,
-                                     .queuedPackageNames = queuedPackageNames,
-                                     .pendingPackages = pendingPackages,
-                                     .targetName = targetName};
-            if (!enqueueDependency(depQueue, EmitDiag)) {
-                hadErrors = true;
-                break;
-            }
-        }
-        if (hadErrors) {
-            break;
-        }
-        for (auto &depParse : packageParseResults) {
-            loadedModuleNames.push_back(depParse.module.name);
-            depParseResults.push_back(std::move(depParse));
-            loadedPackages.push_back(pendingPackages[pendingIndex].name);
-        }
-    }
-    return 0;
 }
 
 int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &opts) {
@@ -1867,107 +1291,27 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         std::print("Checking {} v{} [{}]\n", manifest->package.name, manifest->package.version,
                    manifestPath->parent_path().string());
     }
-    auto loadResult = SourceLoader::Load(manifestPath->parent_path());
-    if (!loadResult) {
+    CompileOptions copts;
+    copts.manifestPath = *manifestPath;
+    copts.manifest = std::move(*manifest);
+    copts.targetName = std::move(targetName);
+    copts.profileName = "Debug";
+    copts.quiet = opts.quiet;
+    copts.verbose = opts.verbose && !jsonOutput;
+    copts.checkOnly = true;
+    copts.emitDiagnostic = EmitDiag;
+    copts.emitError = [&](std::string_view line) {
         if (jsonOutput) {
-            EmitFatal("failed to load source files");
-        }
-        return 1;
-    }
-    for (const auto &err : loadResult->errors) {
-        if (jsonOutput) {
-            EmitDiag(ErrorDiagnostic(err));
-            hadErrors = true;
+            EmitDiag(ErrorDiagnostic(std::string(line)));
         }
         else {
-            std::print(stderr, "{}", err);
+            std::print(stderr, "{}", line);
         }
-    }
-    bool lexErrors = false;
-    std::vector<LexerResult> lexResults;
-    lexResults.reserve(loadResult->files.size());
-    for (const auto &file : loadResult->files) {
-        if (opts.verbose && !jsonOutput) {
-            std::print("    Lexing {}\n", file.path.string());
-        }
-        Lexer lexer(file.source, file.path.string());
-        auto lexResult = lexer.Tokenize();
-        for (const auto &diag : lexResult.diagnostics) {
-            EmitDiag(diag);
-            if (diag.IsError()) {
-                lexErrors = true;
-            }
-        }
-        lexResults.push_back(std::move(lexResult));
-    }
-    if (lexErrors) {
+    };
+    Driver driver(std::move(copts));
+    const CompileResult result = driver.Compile();
+    if (!result.ok) {
         hadErrors = true;
-    }
-    bool parseErrors = false;
-    std::vector<ParseResult> parseResults;
-    parseResults.reserve(loadResult->files.size());
-    for (std::size_t fileIndex = 0; fileIndex < loadResult->files.size(); ++fileIndex) {
-        const auto &file = loadResult->files[fileIndex];
-        if (opts.verbose && !jsonOutput) {
-            std::print("    Parsing {}\n", file.path.string());
-        }
-        auto &lexResult = lexResults[fileIndex];
-        if (lexResult.HasErrors()) {
-            continue;
-        }
-        Parser parser(std::move(lexResult.tokens), file.path.string());
-        auto parseResult = parser.Parse();
-        for (const auto &diag : parseResult.diagnostics) {
-            EmitDiag(diag);
-            if (diag.IsError()) {
-                parseErrors = true;
-            }
-        }
-        if (!parseResult.HasErrors()) {
-            PruneModuleForTarget(parseResult.module, targetName);
-            parseResults.push_back(std::move(parseResult));
-        }
-    }
-    if (parseErrors) {
-        hadErrors = true;
-    }
-    std::vector<ParseResult> depParseResults;
-    std::vector<std::string> loadedPackages;
-    std::vector<std::string> loadedModuleNames;
-    std::vector<PendingPackage> pendingPackages;
-    std::unordered_set<std::string> queuedPackageNames;
-    std::vector<std::string> imports;
-    ImportCollector collector{imports, targetName};
-    for (const auto &pr : parseResults) {
-        imports.clear();
-        for (const auto &decl : pr.module.items) {
-            if (decl) {
-                collector.collect(*decl);
-            }
-        }
-        for (const auto &pkgName : imports) {
-            if (pkgName == manifest->package.name) {
-                continue;
-            }
-            DependencyQueue depQueue{.pkgName = pkgName,
-                                     .ownerManifest = *manifest,
-                                     .ownerRoot = manifestPath->parent_path(),
-                                     .queuedPackageNames = queuedPackageNames,
-                                     .pendingPackages = pendingPackages,
-                                     .targetName = targetName};
-            if (!enqueueDependency(depQueue, EmitDiag)) {
-                hadErrors = true;
-                break;
-            }
-        }
-    }
-    if (!hadErrors) {
-        HandlePendingIndex(hadErrors, opts, jsonOutput, pendingPackages, targetName, imports, collector,
-                           depParseResults, loadedPackages, loadedModuleNames, queuedPackageNames, EmitDiag);
-    }
-    if (!hadErrors) {
-        HandleErrors(hadErrors, parseResults, depParseResults, loadedPackages, loadedModuleNames, *manifest, targetName,
-                     EmitDiag);
     }
     if (jsonOutput) {
         PrintDiagnosticsJson(jsonDiags, !hadErrors);
@@ -2412,40 +1756,20 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             return outcome;
         }
 
-        // Build: temporarily change the working directory into the package root
-        // so that RequireManifest() and source paths resolve correctly.
-        const auto savedCwd = std::filesystem::current_path();
-        std::error_code ec;
-        std::filesystem::current_path(pkgDir, ec);
-        if (ec) {
-            std::print(stderr, "error: cannot chdir into '{}': {}\n", pkgDir.string(), ec.message());
+        // Build the package quietly (suppress per-file build output for tests).
+        CompileOptions copts;
+        copts.manifestPath = pkgDir / "Rux.toml";
+        copts.manifest = std::move(*pkgManifest);
+        copts.targetName = HostTargetTriple();
+        copts.profileName = std::string(profileName);
+        copts.quiet = true;
+        Driver driver(std::move(copts));
+        const CompileResult result = driver.Compile();
+        if (!result.ok) {
             outcome.status = TestStatus::BuildError;
             return outcome;
         }
-
-        GlobalOptions buildOpts = opts;
-        buildOpts.quiet = true; // suppress per-file build output for tests
-        std::vector<std::string_view> buildArgs;
-        if (isRelease) {
-            buildArgs.emplace_back("--release");
-        }
-        buildArgs.emplace_back("--quiet");
-
-        const int buildRc = RunBuild(buildArgs, buildOpts);
-        std::filesystem::current_path(savedCwd, ec); // always restore CWD
-
-        if (buildRc != 0) {
-            outcome.status = TestStatus::BuildError;
-            return outcome;
-        }
-
-        // Locate the built executable.
-        const auto binDir = ResolveBuildOutputDir(pkgDir, *pkgManifest, profileName);
-        std::string exeName = pkgManifest->package.name;
-#if RUX_OS_WINDOWS
-        exeName += ".exe";
-#endif
-        const auto exePath = binDir / exeName;
+        const auto exePath = result.executablePath;
 
         if (!std::filesystem::exists(exePath)) {
             std::print(stderr, "error: built executable not found at '{}'\n", exePath.string());

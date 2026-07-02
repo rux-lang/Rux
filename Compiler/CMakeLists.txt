@@ -33,7 +33,8 @@ add_library(RuxCore STATIC
     Platform/Process.cpp
     Platform/Terminal.cpp
 
-    # Driver support
+    # Driver: compile pipeline orchestration
+    Driver/Driver.cpp
     Driver/BuildReport.cpp
     Driver/BuildTarget.cpp
 
