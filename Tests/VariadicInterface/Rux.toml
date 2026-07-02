@@ -1,0 +1,7 @@
+[Package]
+Name = "VariadicInterface"
+Version = "0.1.0"
+Description = "Test variadic interface arguments"
+
+[Build]
+Output = "../Bin"

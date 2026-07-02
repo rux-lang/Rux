@@ -365,6 +365,10 @@ private:
         return SizeOf(t);
     }
 
+    [[nodiscard]] int StackValueSize(const TypeRef &t) const {
+        return std::max(SizeOf(t), SizeOfRuntime(t));
+    }
+
     [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
         const auto it = regTypes.find(reg);
         return it != regTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
@@ -538,13 +542,13 @@ private:
                         dataSz = count * (elemSz > 0 ? elemSz : 8);
                     }
                     else {
-                        dataSz = SizeOfRuntime(instr.type);
+                        dataSz = StackValueSize(instr.type);
                     }
                     allocaData[instr.dst] = AllocRegion(dataSz > 0 ? dataSz : 8);
                     regTypes[instr.dst] = TypeRef::MakePointer(instr.type);
                 }
                 else {
-                    int sz = SizeOfRuntime(instr.type);
+                    int sz = StackValueSize(instr.type);
                     AllocSlot(instr.dst, sz > 0 ? sz : 8);
                     regTypes[instr.dst] = instr.type;
                 }

@@ -1,0 +1,91 @@
+interface TinyValue {
+    func Value() -> int;
+}
+
+struct Tiny8 {
+    value: int8;
+}
+
+struct Tiny16 {
+    value: int16;
+}
+
+struct Tiny32 {
+    value: int32;
+}
+
+struct Pair32 {
+    a: int32;
+    b: int32;
+}
+
+struct Tiny64 {
+    value: int64;
+}
+
+extend Tiny8 : TinyValue {
+    func Value(self) -> int {
+        return 8;
+    }
+}
+
+extend Tiny16 : TinyValue {
+    func Value(self) -> int {
+        return 16;
+    }
+}
+
+extend Tiny32 : TinyValue {
+    func Value(self) -> int {
+        return 32;
+    }
+}
+
+extend Pair32 : TinyValue {
+    func Value(self) -> int {
+        return 64;
+    }
+}
+
+extend Tiny64 : TinyValue {
+    func Value(self) -> int {
+        return 128;
+    }
+}
+
+func SumTiny(args: TinyValue...) -> int {
+    var sum: int = 0;
+    for val in args {
+        sum += val.Value();
+    }
+    return sum;
+}
+
+func Main() -> int {
+    let tiny8 = Tiny8 { value: 1 };
+    let tiny16 = Tiny16 { value: 2 };
+    let tiny32 = Tiny32 { value: 3 };
+    let pair32 = Pair32 { a: 4, b: 5 };
+    let tiny64 = Tiny64 { value: 6 };
+
+    if SumTiny(tiny8) != 8 {
+        return 1;
+    }
+    if SumTiny(tiny16) != 16 {
+        return 2;
+    }
+    if SumTiny(tiny32) != 32 {
+        return 3;
+    }
+    if SumTiny(pair32) != 64 {
+        return 4;
+    }
+    if SumTiny(tiny64) != 128 {
+        return 5;
+    }
+    if SumTiny(tiny8, tiny16, tiny32, pair32, tiny64) != 248 {
+        return 6;
+    }
+
+    return 0;
+}
