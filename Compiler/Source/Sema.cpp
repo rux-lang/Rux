@@ -591,24 +591,24 @@ private:
         if (!DeclMatchesTarget(decl)) {
             return;
         }
-        if (auto *d = dynamic_cast<const FuncDecl *>(&decl)) {
-            if (Symbol *sym = globalScope.Lookup(d->name)) {
-                sym->type = MakeFuncType(d->params, d->returnType, d->typeParams);
+        if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
+            if (Symbol *sym = globalScope.Lookup(fn->name)) {
+                sym->type = MakeFuncType(fn->params, fn->returnType, fn->typeParams);
             }
         }
-        else if (auto *d = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            if (Symbol *sym = globalScope.Lookup(d->name)) {
-                sym->type = MakeFuncType(d->params, d->returnType);
+        else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+            if (Symbol *sym = globalScope.Lookup(externFn->name)) {
+                sym->type = MakeFuncType(externFn->params, externFn->returnType);
             }
         }
-        else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
-            for (const auto &item : d->items) {
+        else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+            for (const auto &item : externBlock->items) {
                 ResolveDeclSignature(*item);
             }
         }
-        else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
-            Scope &moduleScope = ModuleScopeFor(d->name, globalScope);
-            for (const auto &item : d->items) {
+        else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
+            Scope &moduleScope = ModuleScopeFor(modDecl->name, globalScope);
+            for (const auto &item : modDecl->items) {
                 ResolveDeclSignatureInScope(*item, moduleScope);
             }
         }
@@ -628,24 +628,24 @@ private:
         if (!DeclMatchesTarget(decl)) {
             return;
         }
-        if (auto *d = dynamic_cast<const FuncDecl *>(&decl)) {
-            if (Symbol *sym = scope.Lookup(d->name)) {
-                sym->type = MakeFuncType(d->params, d->returnType, d->typeParams);
+        if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
+            if (Symbol *sym = scope.Lookup(fn->name)) {
+                sym->type = MakeFuncType(fn->params, fn->returnType, fn->typeParams);
             }
         }
-        else if (auto *d = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            if (Symbol *sym = scope.Lookup(d->name)) {
-                sym->type = MakeFuncType(d->params, d->returnType);
+        else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+            if (Symbol *sym = scope.Lookup(externFn->name)) {
+                sym->type = MakeFuncType(externFn->params, externFn->returnType);
             }
         }
-        else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
-            for (const auto &item : d->items) {
+        else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+            for (const auto &item : externBlock->items) {
                 ResolveDeclSignatureInScope(*item, scope);
             }
         }
-        else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
-            Scope &moduleScope = ModuleScopeFor(d->name, scope);
-            for (const auto &item : d->items) {
+        else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
+            Scope &moduleScope = ModuleScopeFor(modDecl->name, scope);
+            for (const auto &item : modDecl->items) {
                 ResolveDeclSignatureInScope(*item, moduleScope);
             }
         }
@@ -669,13 +669,13 @@ private:
         if (!DeclMatchesTarget(decl)) {
             return;
         }
-        if (auto *d = dynamic_cast<const UseDecl *>(&decl)) {
-            CheckUseDecl(*d);
+        if (auto *useDecl = dynamic_cast<const UseDecl *>(&decl)) {
+            CheckUseDecl(*useDecl);
         }
-        else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
+        else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
             Scope *savedScope = currentScope;
-            currentScope = &ModuleScopeFor(d->name, *currentScope);
-            for (const auto &item : d->items) {
+            currentScope = &ModuleScopeFor(modDecl->name, *currentScope);
+            for (const auto &item : modDecl->items) {
                 ApplyDeclImports(*item);
             }
             currentScope = savedScope;
@@ -696,7 +696,7 @@ private:
         return parent;
     }
 
-    void CollectDecl(const Decl &decl, Scope &scope, const std::string *packageName = nullptr,
+    void CollectDecl(const Decl &decl, Scope &scope, const std::string *depPackageName = nullptr,
                      const std::string &modulePath = "") {
         if (!DeclMatchesTarget(decl)) {
             return;
@@ -717,85 +717,87 @@ private:
             }
         };
 
-        if (auto *d = dynamic_cast<const FuncDecl *>(&decl)) {
+        if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Func;
-            sym.name = d->name;
-            sym.location = d->location;
-            sym.funcOverloads.push_back(d);
+            sym.name = fn->name;
+            sym.location = fn->location;
+            sym.funcOverloads.push_back(fn);
             if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back({SemaSymbol::Kind::Func, d->name, currentFile, d->location, {}, false});
+                symbols.push_back({SemaSymbol::Kind::Func, fn->name, currentFile, fn->location, {}, false});
             }
         }
-        else if (auto *d = dynamic_cast<const StructDecl *>(&decl)) {
-            structDecls[d->name] = d;
-            simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "struct");
+        else if (auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
+            structDecls[structDecl->name] = structDecl;
+            simple(Symbol::Kind::Type, structDecl->name, SemaSymbol::Kind::Type, "struct");
         }
-        else if (auto *d = dynamic_cast<const EnumDecl *>(&decl)) {
-            enumDecls[d->name] = d;
-            simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "enum");
+        else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
+            enumDecls[enumDecl->name] = enumDecl;
+            simple(Symbol::Kind::Type, enumDecl->name, SemaSymbol::Kind::Type, "enum");
         }
-        else if (auto *d = dynamic_cast<const UnionDecl *>(&decl)) {
-            simple(Symbol::Kind::Type, d->name, SemaSymbol::Kind::Type, "union");
+        else if (auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+            simple(Symbol::Kind::Type, unionDecl->name, SemaSymbol::Kind::Type, "union");
         }
-        else if (auto *d = dynamic_cast<const InterfaceDecl *>(&decl)) {
-            interfaceDecls[d->name] = d;
+        else if (auto *ifaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
+            interfaceDecls[ifaceDecl->name] = ifaceDecl;
             Symbol sym;
             sym.kind = Symbol::Kind::Interface;
-            sym.name = d->name;
-            sym.location = d->location;
-            for (auto &m : d->methods) {
+            sym.name = ifaceDecl->name;
+            sym.location = ifaceDecl->location;
+            for (auto &m : ifaceDecl->methods) {
                 sym.interfaceMethods.push_back(m->name);
             }
             if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back({SemaSymbol::Kind::Interface, d->name, currentFile, d->location, "interface"});
+                symbols.push_back(
+                    {SemaSymbol::Kind::Interface, ifaceDecl->name, currentFile, ifaceDecl->location, "interface"});
             }
         }
-        else if (auto *d = dynamic_cast<const ConstDecl *>(&decl)) {
+        else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Const;
-            sym.name = d->name;
-            sym.location = d->location;
-            if (d->type) {
-                sym.type = ResolveType(*d->type->get());
+            sym.name = constDecl->name;
+            sym.location = constDecl->location;
+            if (constDecl->type) {
+                sym.type = ResolveType(*constDecl->type->get());
             }
             if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back({SemaSymbol::Kind::Const, d->name, currentFile, d->location,
+                symbols.push_back({SemaSymbol::Kind::Const, constDecl->name, currentFile, constDecl->location,
                                    sym.type.IsUnknown() ? "" : sym.type.ToString(), false});
             }
         }
-        else if (auto *d = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+        else if (auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Type;
-            sym.name = d->name;
-            sym.location = d->location;
-            sym.type = ResolveType(*d->type);
+            sym.name = aliasDecl->name;
+            sym.location = aliasDecl->location;
+            sym.type = ResolveType(*aliasDecl->type);
             if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back({SemaSymbol::Kind::Type, d->name, currentFile, d->location,
+                symbols.push_back({SemaSymbol::Kind::Type, aliasDecl->name, currentFile, aliasDecl->location,
                                    sym.type.IsUnknown() ? "" : sym.type.ToString(), false});
             }
         }
-        else if (auto *d = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            simple(Symbol::Kind::Func, d->name, SemaSymbol::Kind::Func, "extern");
+        else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+            simple(Symbol::Kind::Func, externFn->name, SemaSymbol::Kind::Func, "extern");
         }
-        else if (auto *d = dynamic_cast<const ExternVarDecl *>(&decl)) {
+        else if (auto *externVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Var;
-            sym.name = d->name;
-            sym.location = d->location;
+            sym.name = externVar->name;
+            sym.location = externVar->location;
             sym.isMut = true;
             if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back({SemaSymbol::Kind::Var, d->name, currentFile, d->location, "extern", true});
+                symbols.push_back(
+                    {SemaSymbol::Kind::Var, externVar->name, currentFile, externVar->location, "extern", true});
             }
         }
-        else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
-            for (auto &item : d->items) {
-                CollectDecl(*item, scope, packageName, modulePath);
+        else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+            for (auto &item : externBlock->items) {
+                CollectDecl(*item, scope, depPackageName, modulePath);
             }
         }
-        else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
+        else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
             Scope *moduleScopePtr = nullptr;
-            if (Symbol *existing = scope.Lookup(d->name);
+            if (Symbol *existing = scope.Lookup(modDecl->name);
                 existing && existing->kind == Symbol::Kind::Module && existing->moduleScope) {
                 moduleScopePtr = existing->moduleScope;
             }
@@ -806,28 +808,28 @@ private:
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Module;
-                sym.name = d->name;
+                sym.name = modDecl->name;
                 sym.location = decl.location;
                 sym.moduleScope = moduleScopePtr;
                 if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                    symbols.push_back({SemaSymbol::Kind::Module, d->name, currentFile, decl.location, {}, false});
+                    symbols.push_back({SemaSymbol::Kind::Module, modDecl->name, currentFile, decl.location, {}, false});
                 }
             }
 
-            const std::string childPath = JoinModulePath(modulePath, d->name);
-            if (packageName) {
-                packageModuleScopes[*packageName][childPath] = moduleScopePtr;
+            const std::string childPath = JoinModulePath(modulePath, modDecl->name);
+            if (depPackageName) {
+                packageModuleScopes[*depPackageName][childPath] = moduleScopePtr;
             }
-            for (auto &item : d->items) {
-                CollectDecl(*item, *moduleScopePtr, packageName, childPath);
+            for (auto &item : modDecl->items) {
+                CollectDecl(*item, *moduleScopePtr, depPackageName, childPath);
             }
         }
-        else if (auto *d = dynamic_cast<const ImplDecl *>(&decl)) {
-            for (const auto &method : d->methods) {
-                methodsByType[d->typeName][method->name].push_back(method.get());
+        else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
+            for (const auto &method : implDecl->methods) {
+                methodsByType[implDecl->typeName][method->name].push_back(method.get());
             }
-            if (d->interfaceName) {
-                typeImplementsInterfaces[d->typeName].insert(*d->interfaceName);
+            if (implDecl->interfaceName) {
+                typeImplementsInterfaces[implDecl->typeName].insert(*implDecl->interfaceName);
             }
         }
         // Import declarations don't add names in the first pass.
@@ -1674,8 +1676,8 @@ private:
         };
 
         Symbol *matched = nullptr;
-        for (const auto &[_, modules] : packageModuleScopes) {
-            for (const auto &[__, scope] : modules) {
+        for (const auto &[_, moduleScopes] : packageModuleScopes) {
+            for (const auto &[__, scope] : moduleScopes) {
                 auto *sym = const_cast<Scope *>(scope)->LookupLocal(name);
                 if (!sym || (sym->kind != Symbol::Kind::Type && sym->kind != Symbol::Kind::Interface)) {
                     continue;
@@ -2311,59 +2313,59 @@ private:
         if (!DeclMatchesTarget(decl)) {
             return;
         }
-        if (auto *d = dynamic_cast<const FuncDecl *>(&decl)) {
-            CheckFuncDecl(*d);
+        if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
+            CheckFuncDecl(*fn);
         }
-        else if (auto *d = dynamic_cast<const StructDecl *>(&decl)) {
-            CheckStructDecl(*d);
+        else if (auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
+            CheckStructDecl(*structDecl);
         }
-        else if (auto *d = dynamic_cast<const EnumDecl *>(&decl)) {
-            CheckEnumDecl(*d);
+        else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
+            CheckEnumDecl(*enumDecl);
         }
-        else if (auto *d = dynamic_cast<const UnionDecl *>(&decl)) {
-            CheckUnionDecl(*d);
+        else if (auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+            CheckUnionDecl(*unionDecl);
         }
-        else if (auto *d = dynamic_cast<const InterfaceDecl *>(&decl)) {
-            CheckInterfaceDecl(*d);
+        else if (auto *ifaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
+            CheckInterfaceDecl(*ifaceDecl);
         }
-        else if (auto *d = dynamic_cast<const ImplDecl *>(&decl)) {
-            CheckImplDecl(*d);
+        else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
+            CheckImplDecl(*implDecl);
         }
-        else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
-            CheckModuleDecl(*d);
+        else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
+            CheckModuleDecl(*modDecl);
         }
-        else if (auto *d = dynamic_cast<const ConstDecl *>(&decl)) {
-            CheckConstDecl(*d);
+        else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
+            CheckConstDecl(*constDecl);
         }
-        else if (auto *d = dynamic_cast<const TypeAliasDecl *>(&decl)) {
-            ResolveType(*d->type); // triggers unknown-type errors
+        else if (auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+            ResolveType(*aliasDecl->type); // triggers unknown-type errors
         }
-        else if (auto *d = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            if (d->dll.empty()) {
-                EmitError(d->location, std::format("extern function '{}' must specify a "
-                                                   "source DLL via "
-                                                   "@[Import(lib: \"dll.dll\")]",
-                                                   d->name));
+        else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+            if (externFn->dll.empty()) {
+                EmitError(externFn->location, std::format("extern function '{}' must specify a "
+                                                          "source DLL via "
+                                                          "@[Import(lib: \"dll.dll\")]",
+                                                          externFn->name));
             }
-            if (d->returnType) {
-                ResolveType(*d->returnType->get());
+            if (externFn->returnType) {
+                ResolveType(*externFn->returnType->get());
             }
-            for (auto &p : d->params) {
+            for (auto &p : externFn->params) {
                 if (!p.isVariadic) {
                     ResolveType(*p.type);
                 }
             }
         }
-        else if (auto *d = dynamic_cast<const ExternVarDecl *>(&decl)) {
-            ResolveType(*d->type);
+        else if (auto *externVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
+            ResolveType(*externVar->type);
         }
-        else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
-            for (auto &item : d->items) {
+        else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+            for (auto &item : externBlock->items) {
                 CheckDecl(*item);
             }
         }
-        else if (auto *d = dynamic_cast<const UseDecl *>(&decl)) {
-            CheckUseDecl(*d);
+        else if (auto *useDecl = dynamic_cast<const UseDecl *>(&decl)) {
+            CheckUseDecl(*useDecl);
         }
     }
 
@@ -2795,9 +2797,9 @@ private:
 
         Scope *matchedScope = nullptr;
         std::string matchedPackage;
-        for (const auto &[candidatePackage, modules] : packageModuleScopes) {
-            auto modIt = modules.find(logicalModulePath);
-            if (modIt == modules.end()) {
+        for (const auto &[candidatePackage, moduleScopes] : packageModuleScopes) {
+            auto modIt = moduleScopes.find(logicalModulePath);
+            if (modIt == moduleScopes.end()) {
                 continue;
             }
             if (matchedScope && matchedScope != modIt->second) {
@@ -2859,8 +2861,8 @@ private:
             };
 
             const Symbol *matched = nullptr;
-            for (const auto &[_, modules] : packageModuleScopes) {
-                for (const auto &[__, scope] : modules) {
+            for (const auto &[_, moduleScopes] : packageModuleScopes) {
+                for (const auto &[__, scope] : moduleScopes) {
                     const auto &table = scope->Table();
                     auto it = table.find(name);
                     if (it == table.end()) {
@@ -3000,121 +3002,122 @@ private:
     }
 
     void CheckStmt(const Stmt &stmt) {
-        if (auto *s = dynamic_cast<const ExprStmt *>(&stmt)) {
-            CheckExpr(*s->expr);
+        if (auto *exprStmt = dynamic_cast<const ExprStmt *>(&stmt)) {
+            CheckExpr(*exprStmt->expr);
         }
-        else if (auto *s = dynamic_cast<const LetStmt *>(&stmt)) {
-            TypeRef initType = s->init ? CheckExpr(*s->init) : TypeRef::MakeUnknown();
-            TypeRef declType = s->type ? ResolveType(*s->type->get()) : initType;
+        else if (auto *letStmt = dynamic_cast<const LetStmt *>(&stmt)) {
+            TypeRef initType = letStmt->init ? CheckExpr(*letStmt->init) : TypeRef::MakeUnknown();
+            TypeRef declType = letStmt->type ? ResolveType(*letStmt->type->get()) : initType;
 
-            if (!s->init && !s->type) {
-                EmitError(s->location, "uninitialized variable requires an explicit type");
+            if (!letStmt->init && !letStmt->type) {
+                EmitError(letStmt->location, "uninitialized variable requires an explicit type");
             }
 
-            if (!s->init && !s->isMut) {
-                EmitError(s->location, "immutable variable requires an initializer");
+            if (!letStmt->init && !letStmt->isMut) {
+                EmitError(letStmt->location, "immutable variable requires an initializer");
             }
 
-            if (!s->init && s->pattern) {
-                EmitError(s->location, "destructuring declaration requires an initializer");
+            if (!letStmt->init && letStmt->pattern) {
+                EmitError(letStmt->location, "destructuring declaration requires an initializer");
             }
 
-            if (!s->type && declType.IsUnknown() && !s->pattern) {
-                EmitWarning(s->location, std::format("cannot infer type of '{}'", s->name));
+            if (!letStmt->type && declType.IsUnknown() && !letStmt->pattern) {
+                EmitWarning(letStmt->location, std::format("cannot infer type of '{}'", letStmt->name));
             }
 
-            if (s->init && s->type && !initType.IsUnknown() && !declType.IsUnknown() &&
-                !CanAssignExprTo(*s->init, initType, declType)) {
-                EmitError(s->location, AssignmentErrorMessage(*s->init, declType,
-                                                              std::format("cannot assign '{}' to '{}'",
-                                                                          initType.ToString(), declType.ToString())));
+            if (letStmt->init && letStmt->type && !initType.IsUnknown() && !declType.IsUnknown() &&
+                !CanAssignExprTo(*letStmt->init, initType, declType)) {
+                EmitError(letStmt->location,
+                          AssignmentErrorMessage(
+                              *letStmt->init, declType,
+                              std::format("cannot assign '{}' to '{}'", initType.ToString(), declType.ToString())));
             }
 
-            if (s->pattern) {
-                CheckLetPattern(*s->pattern, declType, s->isMut);
+            if (letStmt->pattern) {
+                CheckLetPattern(*letStmt->pattern, declType, letStmt->isMut);
                 return;
             }
 
             Symbol sym;
             sym.kind = Symbol::Kind::Var;
-            sym.name = s->name;
-            sym.location = s->location;
+            sym.name = letStmt->name;
+            sym.location = letStmt->location;
             sym.type = declType;
-            sym.isMut = s->isMut;
+            sym.isMut = letStmt->isMut;
             Define(sym);
         }
-        else if (const auto *s = dynamic_cast<const IfStmt *>(&stmt)) {
-            TypeRef cond = CheckExpr(*s->condition);
+        else if (const auto *ifStmt = dynamic_cast<const IfStmt *>(&stmt)) {
+            TypeRef cond = CheckExpr(*ifStmt->condition);
             if (!cond.IsUnknown() && !cond.IsBool()) {
-                EmitError(s->condition->location, "if condition must be 'bool'");
+                EmitError(ifStmt->condition->location, "if condition must be 'bool'");
             }
-            CheckBlock(*s->thenBlock);
-            for (const auto &elif : s->elseIfs) {
+            CheckBlock(*ifStmt->thenBlock);
+            for (const auto &elif : ifStmt->elseIfs) {
                 TypeRef elifCond = CheckExpr(*elif.condition);
                 if (!elifCond.IsUnknown() && !elifCond.IsBool()) {
                     EmitError(elif.condition->location, "if condition must be 'bool'");
                 }
                 CheckBlock(*elif.block);
             }
-            if (s->elseBlock) {
-                CheckBlock(*s->elseBlock);
+            if (ifStmt->elseBlock) {
+                CheckBlock(*ifStmt->elseBlock);
             }
         }
-        else if (const auto *s = dynamic_cast<const WhileStmt *>(&stmt)) {
-            if (!s->label.empty()) {
-                activeLabels.insert(s->label);
+        else if (const auto *whileStmt = dynamic_cast<const WhileStmt *>(&stmt)) {
+            if (!whileStmt->label.empty()) {
+                activeLabels.insert(whileStmt->label);
             }
 
             // FIX: Capture and validate the condition type
-            TypeRef cond = CheckExpr(*s->condition);
+            TypeRef cond = CheckExpr(*whileStmt->condition);
             if (!cond.IsUnknown() && !cond.IsBool()) {
-                EmitError(s->condition->location, "while condition must be 'bool'");
+                EmitError(whileStmt->condition->location, "while condition must be 'bool'");
             }
 
             ++loopDepth;
-            CheckBlock(*s->body);
+            CheckBlock(*whileStmt->body);
             --loopDepth;
-            if (!s->label.empty()) {
-                activeLabels.erase(s->label);
+            if (!whileStmt->label.empty()) {
+                activeLabels.erase(whileStmt->label);
             }
         }
 
-        else if (const auto *s = dynamic_cast<const DoWhileStmt *>(&stmt)) {
-            if (!s->label.empty()) {
-                activeLabels.insert(s->label);
+        else if (const auto *doWhileStmt = dynamic_cast<const DoWhileStmt *>(&stmt)) {
+            if (!doWhileStmt->label.empty()) {
+                activeLabels.insert(doWhileStmt->label);
             }
 
             ++loopDepth;
-            CheckBlock(*s->body);
+            CheckBlock(*doWhileStmt->body);
             --loopDepth;
 
-            TypeRef cond = CheckExpr(*s->condition);
+            TypeRef cond = CheckExpr(*doWhileStmt->condition);
             if (!cond.IsUnknown() && !cond.IsBool()) {
-                EmitError(s->condition->location, "do-while condition must be 'bool'");
+                EmitError(doWhileStmt->condition->location, "do-while condition must be 'bool'");
             }
 
-            if (!s->label.empty()) {
-                activeLabels.erase(s->label);
+            if (!doWhileStmt->label.empty()) {
+                activeLabels.erase(doWhileStmt->label);
             }
         }
-        else if (auto *s = dynamic_cast<const LoopStmt *>(&stmt)) {
-            if (!s->label.empty()) {
-                activeLabels.insert(s->label);
+        else if (auto *loopStmt = dynamic_cast<const LoopStmt *>(&stmt)) {
+            if (!loopStmt->label.empty()) {
+                activeLabels.insert(loopStmt->label);
             }
             ++loopDepth;
-            CheckBlock(*s->body);
+            CheckBlock(*loopStmt->body);
             --loopDepth;
-            if (!s->label.empty()) {
-                activeLabels.erase(s->label);
+            if (!loopStmt->label.empty()) {
+                activeLabels.erase(loopStmt->label);
             }
         }
-        else if (auto *s = dynamic_cast<const ForStmt *>(&stmt)) {
-            TypeRef iterType = CheckExpr(*s->iterable);
+        else if (auto *forStmt = dynamic_cast<const ForStmt *>(&stmt)) {
+            TypeRef iterType = CheckExpr(*forStmt->iterable);
             PushScope(); // scope for the loop variable
             Symbol var;
             var.kind = Symbol::Kind::Var;
-            var.name = s->variable;
-            var.location = s->location;
+            var.name = forStmt->variable;
+            var.location = forStmt->location;
             if (iterType.IsRange() && !iterType.inner.empty()) {
                 var.type = iterType.inner[0];
             }
@@ -3126,99 +3129,101 @@ private:
             }
             var.isMut = false;
             Define(var);
-            if (!s->label.empty()) {
-                activeLabels.insert(s->label);
+            if (!forStmt->label.empty()) {
+                activeLabels.insert(forStmt->label);
             }
             ++loopDepth;
-            CheckBlock(*s->body); // CheckBlock pushes its own nested scope
+            CheckBlock(*forStmt->body); // CheckBlock pushes its own nested scope
             --loopDepth;
-            if (!s->label.empty()) {
-                activeLabels.erase(s->label);
+            if (!forStmt->label.empty()) {
+                activeLabels.erase(forStmt->label);
             }
             PopScope();
         }
-        else if (auto *s = dynamic_cast<const MatchStmt *>(&stmt)) {
-            CheckExpr(*s->subject);
-            for (const auto &arm : s->arms) {
+        else if (auto *matchStmt = dynamic_cast<const MatchStmt *>(&stmt)) {
+            CheckExpr(*matchStmt->subject);
+            for (const auto &arm : matchStmt->arms) {
                 PushScope(); // each arm has its own binding scope
                 CheckPattern(*arm.pattern);
                 CheckExpr(*arm.body);
                 PopScope();
             }
         }
-        else if (auto *s = dynamic_cast<const ReturnStmt *>(&stmt)) {
-            if (s->value) {
-                if (TypeRef valType = CheckExpr(**s->value); !valType.IsUnknown() && !currentReturnType.IsUnknown() &&
-                                                             !currentReturnType.IsOpaque() &&
-                                                             !CanAssignExprTo(**s->value, valType, currentReturnType)) {
-                    EmitError(s->location,
-                              AssignmentErrorMessage(**s->value, currentReturnType,
+        else if (auto *retStmt = dynamic_cast<const ReturnStmt *>(&stmt)) {
+            if (retStmt->value) {
+                if (TypeRef valType = CheckExpr(**retStmt->value);
+                    !valType.IsUnknown() && !currentReturnType.IsUnknown() && !currentReturnType.IsOpaque() &&
+                    !CanAssignExprTo(**retStmt->value, valType, currentReturnType)) {
+                    EmitError(retStmt->location,
+                              AssignmentErrorMessage(**retStmt->value, currentReturnType,
                                                      std::format("return type mismatch: "
                                                                  "expected '{}', found '{}'",
                                                                  currentReturnType.ToString(), valType.ToString())));
                 }
             }
             else if (!currentReturnType.IsOpaque() && !currentReturnType.IsUnknown()) {
-                EmitError(s->location,
+                EmitError(retStmt->location,
                           std::format("missing return value; expected '{}'", currentReturnType.ToString()));
             }
         }
-        else if (auto *s = dynamic_cast<const BreakStmt *>(&stmt)) {
+        else if (auto *breakStmt = dynamic_cast<const BreakStmt *>(&stmt)) {
             if (loopDepth == 0) {
                 EmitError(stmt.location, "'break' outside of a loop");
             }
-            else if (!s->label.empty() && !activeLabels.count(s->label)) {
-                EmitError(stmt.location, std::format("unknown loop label '{}'", s->label));
+            else if (!breakStmt->label.empty() && !activeLabels.count(breakStmt->label)) {
+                EmitError(stmt.location, std::format("unknown loop label '{}'", breakStmt->label));
             }
         }
-        else if (auto *s = dynamic_cast<const ContinueStmt *>(&stmt)) {
+        else if (auto *contStmt = dynamic_cast<const ContinueStmt *>(&stmt)) {
             if (loopDepth == 0) {
                 EmitError(stmt.location, "'continue' outside of a loop");
             }
-            else if (!s->label.empty() && !activeLabels.count(s->label)) {
-                EmitError(stmt.location, std::format("unknown loop label '{}'", s->label));
+            else if (!contStmt->label.empty() && !activeLabels.count(contStmt->label)) {
+                EmitError(stmt.location, std::format("unknown loop label '{}'", contStmt->label));
             }
         }
-        else if (auto *s = dynamic_cast<const DeclStmt *>(&stmt)) {
-            CollectDecl(*s->decl, *currentScope);
-            CheckDecl(*s->decl);
+        else if (auto *declStmt = dynamic_cast<const DeclStmt *>(&stmt)) {
+            CollectDecl(*declStmt->decl, *currentScope);
+            CheckDecl(*declStmt->decl);
         }
     }
 
     void CheckLetPattern(const Pattern &pat, const TypeRef &type, bool isMut) {
-        if (auto *p = dynamic_cast<const IdentPattern *>(&pat)) {
+        if (auto *identPat = dynamic_cast<const IdentPattern *>(&pat)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Var;
-            sym.name = p->name;
-            sym.location = p->location;
+            sym.name = identPat->name;
+            sym.location = identPat->location;
             sym.type = type;
             sym.isMut = isMut;
             Define(sym);
         }
         else if (dynamic_cast<const WildcardPattern *>(&pat)) {}
-        else if (auto *p = dynamic_cast<const TuplePattern *>(&pat)) {
+        else if (auto *tuplePat = dynamic_cast<const TuplePattern *>(&pat)) {
             if (type.kind != TypeRef::Kind::Tuple) {
                 if (!type.IsUnknown()) {
-                    EmitError(p->location, std::format("cannot destructure non-tuple type '{}'", type.ToString()));
+                    EmitError(tuplePat->location,
+                              std::format("cannot destructure non-tuple type '{}'", type.ToString()));
                 }
-                for (const auto &elem : p->elements) {
+                for (const auto &elem : tuplePat->elements) {
                     CheckLetPattern(*elem, TypeRef::MakeUnknown(), isMut);
                 }
                 return;
             }
 
-            if (p->elements.size() != type.inner.size()) {
-                EmitError(p->location, std::format("tuple pattern has {} elements but "
-                                                   "type '{}' has {}",
-                                                   p->elements.size(), type.ToString(), type.inner.size()));
+            if (tuplePat->elements.size() != type.inner.size()) {
+                EmitError(tuplePat->location,
+                          std::format("tuple pattern has {} elements but "
+                                      "type '{}' has {}",
+                                      tuplePat->elements.size(), type.ToString(), type.inner.size()));
             }
 
-            const std::size_t n = std::min(p->elements.size(), type.inner.size());
+            const std::size_t n = std::min(tuplePat->elements.size(), type.inner.size());
             for (std::size_t i = 0; i < n; ++i) {
-                CheckLetPattern(*p->elements[i], type.inner[i], isMut);
+                CheckLetPattern(*tuplePat->elements[i], type.inner[i], isMut);
             }
-            for (std::size_t i = n; i < p->elements.size(); ++i) {
-                CheckLetPattern(*p->elements[i], TypeRef::MakeUnknown(), isMut);
+            for (std::size_t i = n; i < tuplePat->elements.size(); ++i) {
+                CheckLetPattern(*tuplePat->elements[i], TypeRef::MakeUnknown(), isMut);
             }
         }
         else {
@@ -3228,44 +3233,44 @@ private:
     }
 
     void CheckPattern(const Pattern &pat) {
-        if (auto *p = dynamic_cast<const IdentPattern *>(&pat)) {
+        if (auto *identPat = dynamic_cast<const IdentPattern *>(&pat)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Var;
-            sym.name = p->name;
-            sym.location = p->location;
+            sym.name = identPat->name;
+            sym.location = identPat->location;
             sym.type = TypeRef::MakeUnknown();
             sym.isMut = false;
             Define(sym);
         }
-        else if (auto *p = dynamic_cast<const GuardedPattern *>(&pat)) {
-            CheckPattern(*p->inner);
-            CheckExpr(*p->guard);
+        else if (auto *guardPat = dynamic_cast<const GuardedPattern *>(&pat)) {
+            CheckPattern(*guardPat->inner);
+            CheckExpr(*guardPat->guard);
         }
-        else if (auto *p = dynamic_cast<const RangePattern *>(&pat)) {
-            CheckPattern(*p->lo);
-            CheckPattern(*p->hi);
+        else if (auto *rangePat = dynamic_cast<const RangePattern *>(&pat)) {
+            CheckPattern(*rangePat->lo);
+            CheckPattern(*rangePat->hi);
         }
-        else if (auto *p = dynamic_cast<const TuplePattern *>(&pat)) {
-            for (const auto &e : p->elements) {
+        else if (auto *tuplePat = dynamic_cast<const TuplePattern *>(&pat)) {
+            for (const auto &e : tuplePat->elements) {
                 CheckPattern(*e);
             }
         }
-        else if (auto *p = dynamic_cast<const StructPattern *>(&pat)) {
-            if (!currentScope->Lookup(p->typeName)) {
-                EmitError(p->location, std::format("unknown type '{}' in struct pattern", p->typeName));
+        else if (auto *structPat = dynamic_cast<const StructPattern *>(&pat)) {
+            if (!currentScope->Lookup(structPat->typeName)) {
+                EmitError(structPat->location, std::format("unknown type '{}' in struct pattern", structPat->typeName));
             }
-            for (const auto &f : p->fields) {
+            for (const auto &f : structPat->fields) {
                 CheckPattern(*f.pattern);
             }
         }
-        else if (auto *p = dynamic_cast<const EnumPattern *>(&pat)) {
-            if (!p->path.empty() && !currentScope->Lookup(p->path[0])) {
-                EmitError(p->location, std::format("unknown name '{}' in enum pattern", p->path[0]));
+        else if (auto *enumPat = dynamic_cast<const EnumPattern *>(&pat)) {
+            if (!enumPat->path.empty() && !currentScope->Lookup(enumPat->path[0])) {
+                EmitError(enumPat->location, std::format("unknown name '{}' in enum pattern", enumPat->path[0]));
             }
             const EnumDecl::Variant *variant =
-                p->path.size() >= 2 ? LookupEnumVariant(p->path[0], p->path[1]) : nullptr;
+                enumPat->path.size() >= 2 ? LookupEnumVariant(enumPat->path[0], enumPat->path[1]) : nullptr;
             std::unordered_set<std::string> named;
-            for (const auto &arg : p->namedArgs) {
+            for (const auto &arg : enumPat->namedArgs) {
                 if (!named.insert(arg.name).second) {
                     EmitError(arg.location, std::format("duplicate field '{}' in enum pattern", arg.name));
                     continue;
@@ -3291,16 +3296,16 @@ private:
                     CheckPattern(*arg.pattern);
                 }
             }
-            for (std::size_t i = 0; i < p->args.size(); ++i) {
+            for (std::size_t i = 0; i < enumPat->args.size(); ++i) {
                 if (variant && i < variant->fields.size()) {
-                    CheckLetPattern(*p->args[i], ResolveType(*variant->fields[i]), false);
+                    CheckLetPattern(*enumPat->args[i], ResolveType(*variant->fields[i]), false);
                 }
                 else if (variant && i - variant->fields.size() < variant->namedFields.size()) {
-                    CheckLetPattern(*p->args[i], ResolveType(*variant->namedFields[i - variant->fields.size()].type),
-                                    false);
+                    CheckLetPattern(*enumPat->args[i],
+                                    ResolveType(*variant->namedFields[i - variant->fields.size()].type), false);
                 }
                 else {
-                    CheckPattern(*p->args[i]);
+                    CheckPattern(*enumPat->args[i]);
                 }
             }
         }
@@ -3815,14 +3820,14 @@ private:
                     EmitError(e->location,
                               std::format("constant value is out of range for type '{}'", targetType.ToString()));
                 }
-                else if (const auto value = EvalConstCharCastValue(*e->operand)) {
-                    if (*value > *maxCodePoint) {
+                else if (const auto charValue = EvalConstCharCastValue(*e->operand)) {
+                    if (*charValue > *maxCodePoint) {
                         EmitError(e->location,
                                   std::format("constant value is out of range for type '{}'", targetType.ToString()));
                     }
-                    else if (IsSurrogateCodePoint(*value)) {
+                    else if (IsSurrogateCodePoint(*charValue)) {
                         EmitError(e->location, std::format("surrogate code point U+{:04X} cannot be converted to '{}'",
-                                                           *value, targetType.ToString()));
+                                                           *charValue, targetType.ToString()));
                     }
                 }
             }

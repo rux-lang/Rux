@@ -42,29 +42,29 @@ void Optimizer::OptimizeBlock(HirBlock &block) {
 }
 
 void Optimizer::OptimizeStmt(HirStmtPtr &stmt) {
-    if (auto *s = dynamic_cast<HirExprStmt *>(stmt.get())) {
-        OptimizeExpr(s->expr);
+    if (auto *exprStmt = dynamic_cast<HirExprStmt *>(stmt.get())) {
+        OptimizeExpr(exprStmt->expr);
     }
-    else if (auto *s = dynamic_cast<HirLetStmt *>(stmt.get())) {
-        if (s->init) {
-            OptimizeExpr(s->init);
+    else if (auto *letStmt = dynamic_cast<HirLetStmt *>(stmt.get())) {
+        if (letStmt->init) {
+            OptimizeExpr(letStmt->init);
 
             // only track immutable bindings, mutable tracking is not supported (yet)
-            if (!s->isMut) {
-                if (IsIntegerLiteral(s->init.get())) {
-                    if (const auto value = GetIntegerLiteral(s->init.get())) {
-                        constants[s->name] = ConstantValue{false, *value, false, s->init->type};
+            if (!letStmt->isMut) {
+                if (IsIntegerLiteral(letStmt->init.get())) {
+                    if (const auto value = GetIntegerLiteral(letStmt->init.get())) {
+                        constants[letStmt->name] = ConstantValue{false, *value, false, letStmt->init->type};
                     }
                 }
-                else if (IsBoolLiteral(s->init.get())) {
-                    constants[s->name] = {true, 0, GetBoolLiteral(s->init.get()), s->init->type};
+                else if (IsBoolLiteral(letStmt->init.get())) {
+                    constants[letStmt->name] = {true, 0, GetBoolLiteral(letStmt->init.get()), letStmt->init->type};
                 }
             }
         }
     }
-    else if (auto *s = dynamic_cast<HirReturnStmt *>(stmt.get())) {
-        if (s->value) {
-            OptimizeExpr(*s->value);
+    else if (auto *retStmt = dynamic_cast<HirReturnStmt *>(stmt.get())) {
+        if (retStmt->value) {
+            OptimizeExpr(*retStmt->value);
         }
     }
 }

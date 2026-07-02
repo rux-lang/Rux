@@ -284,67 +284,67 @@ private:
             sym.type = std::move(t);
             globalScope.Define(std::move(sym));
         };
-        if (auto *d = dynamic_cast<const FuncDecl *>(&decl)) {
-            functionsByName[d->name].push_back(d);
+        if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
+            functionsByName[fn->name].push_back(fn);
             HirSymbol sym;
             sym.kind = HirSymbol::Kind::Func;
-            sym.name = d->name;
-            sym.type = MakeFuncType(d->params, d->returnType, d->typeParams);
-            sym.funcOverloads.push_back(d);
+            sym.name = fn->name;
+            sym.type = MakeFuncType(fn->params, fn->returnType, fn->typeParams);
+            sym.funcOverloads.push_back(fn);
             globalScope.Define(std::move(sym));
         }
-        else if (auto *d = dynamic_cast<const StructDecl *>(&decl)) {
-            structDecls[d->name] = d;
-            simple(HirSymbol::Kind::Type, d->name, TypeRef::MakeNamed(d->name));
+        else if (auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
+            structDecls[structDecl->name] = structDecl;
+            simple(HirSymbol::Kind::Type, structDecl->name, TypeRef::MakeNamed(structDecl->name));
         }
-        else if (auto *d = dynamic_cast<const EnumDecl *>(&decl)) {
-            enumDecls[d->name] = d;
-            simple(HirSymbol::Kind::Type, d->name, EnumType(*d));
+        else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
+            enumDecls[enumDecl->name] = enumDecl;
+            simple(HirSymbol::Kind::Type, enumDecl->name, EnumType(*enumDecl));
         }
-        else if (auto *d = dynamic_cast<const UnionDecl *>(&decl)) {
-            simple(HirSymbol::Kind::Type, d->name, TypeRef::MakeNamed(d->name));
+        else if (auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+            simple(HirSymbol::Kind::Type, unionDecl->name, TypeRef::MakeNamed(unionDecl->name));
         }
-        else if (auto *d = dynamic_cast<const InterfaceDecl *>(&decl)) {
-            simple(HirSymbol::Kind::Interface, d->name, TypeRef::MakeNamed(d->name));
-            interfaceDecls[d->name] = d;
+        else if (auto *ifaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
+            simple(HirSymbol::Kind::Interface, ifaceDecl->name, TypeRef::MakeNamed(ifaceDecl->name));
+            interfaceDecls[ifaceDecl->name] = ifaceDecl;
         }
-        else if (auto *d = dynamic_cast<const ConstDecl *>(&decl)) {
+        else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
             TypeRef constType;
-            if (d->type) {
-                constType = ResolveType(*d->type->get());
+            if (constDecl->type) {
+                constType = ResolveType(*constDecl->type->get());
             }
-            simple(HirSymbol::Kind::Const, d->name, constType);
+            simple(HirSymbol::Kind::Const, constDecl->name, constType);
         }
-        else if (auto *d = dynamic_cast<const TypeAliasDecl *>(&decl)) {
-            simple(HirSymbol::Kind::Type, d->name, ResolveType(*d->type));
+        else if (auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+            simple(HirSymbol::Kind::Type, aliasDecl->name, ResolveType(*aliasDecl->type));
         }
-        else if (auto *d = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            simple(HirSymbol::Kind::Func, d->name, MakeFuncType(d->params, d->returnType));
+        else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+            simple(HirSymbol::Kind::Func, externFn->name, MakeFuncType(externFn->params, externFn->returnType));
         }
-        else if (auto *d = dynamic_cast<const ExternVarDecl *>(&decl)) {
+        else if (auto *externVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
             HirSymbol sym;
             sym.kind = HirSymbol::Kind::Var;
-            sym.name = d->name;
+            sym.name = externVar->name;
             sym.isMut = true;
             globalScope.Define(std::move(sym));
         }
-        else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
-            for (auto &item : d->items) {
+        else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+            for (auto &item : externBlock->items) {
                 CollectDecl(*item);
             }
         }
-        else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
-            for (auto &item : d->items) {
+        else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
+            for (auto &item : modDecl->items) {
                 CollectDecl(*item);
             }
         }
-        else if (auto *d = dynamic_cast<const ImplDecl *>(&decl)) {
-            for (const auto &method : d->methods) {
-                methodsByType[d->typeName][method->name].push_back(method.get());
+        else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
+            for (const auto &method : implDecl->methods) {
+                methodsByType[implDecl->typeName][method->name].push_back(method.get());
             }
-            if (d->interfaceName) {
-                typeInterfaceVtables[d->typeName][*d->interfaceName] =
-                    "__vtable__" + d->typeName + "__" + *d->interfaceName;
+            if (implDecl->interfaceName) {
+                typeInterfaceVtables[implDecl->typeName][*implDecl->interfaceName] =
+                    "__vtable__" + implDecl->typeName + "__" + *implDecl->interfaceName;
             }
         }
     }
@@ -2010,47 +2010,47 @@ private:
     }
 
     void LowerTopLevelDecl(const Decl &decl, HirModule &hmod) {
-        if (auto *d = dynamic_cast<const FuncDecl *>(&decl)) {
-            HirFunc hf = LowerFunc(*d);
-            hf.name = FunctionCalleeName(d->name, *d);
+        if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
+            HirFunc hf = LowerFunc(*fn);
+            hf.name = FunctionCalleeName(fn->name, *fn);
             hmod.funcs.push_back(std::move(hf));
         }
-        else if (auto *d = dynamic_cast<const StructDecl *>(&decl)) {
-            hmod.structs.push_back(LowerStruct(*d));
+        else if (auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
+            hmod.structs.push_back(LowerStruct(*structDecl));
         }
-        else if (auto *d = dynamic_cast<const EnumDecl *>(&decl)) {
-            hmod.enums.push_back(LowerEnum(*d));
+        else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
+            hmod.enums.push_back(LowerEnum(*enumDecl));
         }
-        else if (auto *d = dynamic_cast<const UnionDecl *>(&decl)) {
-            hmod.unions.push_back(LowerUnion(*d));
+        else if (auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+            hmod.unions.push_back(LowerUnion(*unionDecl));
         }
-        else if (auto *d = dynamic_cast<const InterfaceDecl *>(&decl)) {
-            hmod.interfaces.push_back(LowerInterface(*d));
+        else if (auto *ifaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
+            hmod.interfaces.push_back(LowerInterface(*ifaceDecl));
         }
-        else if (auto *d = dynamic_cast<const ImplDecl *>(&decl)) {
-            hmod.impls.push_back(LowerImpl(*d));
+        else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
+            hmod.impls.push_back(LowerImpl(*implDecl));
         }
-        else if (auto *d = dynamic_cast<const ConstDecl *>(&decl)) {
-            hmod.consts.push_back(LowerConst(*d));
+        else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
+            hmod.consts.push_back(LowerConst(*constDecl));
         }
-        else if (auto *d = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            hmod.externFuncs.push_back(LowerExternFunc(*d));
+        else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+            hmod.externFuncs.push_back(LowerExternFunc(*externFn));
         }
-        else if (auto *d = dynamic_cast<const ExternVarDecl *>(&decl)) {
-            hmod.externVars.push_back(LowerExternVar(*d));
+        else if (auto *externVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
+            hmod.externVars.push_back(LowerExternVar(*externVar));
         }
-        else if (auto *d = dynamic_cast<const ExternBlockDecl *>(&decl)) {
-            for (auto &item : d->items) {
+        else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+            for (auto &item : externBlock->items) {
                 LowerTopLevelDecl(*item, hmod);
             }
         }
-        else if (auto *d = dynamic_cast<const TypeAliasDecl *>(&decl)) {
-            hmod.typeAliases.push_back(LowerTypeAlias(*d));
+        else if (auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+            hmod.typeAliases.push_back(LowerTypeAlias(*aliasDecl));
         }
-        else if (auto *d = dynamic_cast<const ModuleDecl *>(&decl)) {
+        else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
             const auto savedModulePath = currentModulePath;
-            currentModulePath = currentModulePath.empty() ? d->name : currentModulePath + "::" + d->name;
-            for (auto &item : d->items) {
+            currentModulePath = currentModulePath.empty() ? modDecl->name : currentModulePath + "::" + modDecl->name;
+            for (auto &item : modDecl->items) {
                 LowerTopLevelDecl(*item, hmod);
             }
             currentModulePath = savedModulePath;
@@ -3146,9 +3146,10 @@ private:
                 }
             }
             else if (he->object->type.IsRange()) {
-                TypeRef elemType = he->object->type.inner.empty() ? TypeRef::MakeInt64() : he->object->type.inner[0];
+                TypeRef rangeElemType =
+                    he->object->type.inner.empty() ? TypeRef::MakeInt64() : he->object->type.inner[0];
                 if (e->field == "lo" || e->field == "hi") {
-                    he->type = elemType;
+                    he->type = rangeElemType;
                 }
                 else if (e->field == "inclusive") {
                     he->type = TypeRef::MakeBool();
@@ -3430,9 +3431,9 @@ private:
                         hp->hasPayload = !variant->fields.empty() || !variant->namedFields.empty();
                     }
                     if (const auto enumIt = enumDecls.find(p->path[0]); enumIt != enumDecls.end()) {
-                        for (const auto &variant : enumIt->second->variants) {
-                            if (variant.fields.empty() && variant.namedFields.empty()) {
-                                if (auto disc = LookupEnumVariantDiscriminant(p->path[0], variant.name)) {
+                        for (const auto &unitVariant : enumIt->second->variants) {
+                            if (unitVariant.fields.empty() && unitVariant.namedFields.empty()) {
+                                if (auto disc = LookupEnumVariantDiscriminant(p->path[0], unitVariant.name)) {
                                     hp->unitDiscriminants.push_back(*disc);
                                 }
                             }

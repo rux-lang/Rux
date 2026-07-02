@@ -71,7 +71,9 @@ bool ScaffoldPackage(const fs::path &root, const std::string &name, const Packag
 
     if (const auto tomlPath = root / "Rux.toml"; !initMode || !fs::exists(tomlPath)) {
         Manifest m;
-        m.package = {.name = name, .version = "0.1.0", .type = (type == PackageType::Executable ? "bin" : "lib")};
+        m.package.name = name;
+        m.package.version = "0.1.0";
+        m.package.type = (type == PackageType::Executable ? "bin" : "lib");
         if (!m.Save(tomlPath)) {
             std::println(stderr, "error: cannot write Rux.toml");
             return false;

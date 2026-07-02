@@ -553,6 +553,7 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
         .usage = Data::update_usage,
         .postUsage =
             "Without --global, checks all registry dependencies listed in Rux.toml and pulls the latest changes. Missing packages are cloned from the registry.\nWith --global, updates every package present in the local cache."sv,
+        .footer = {},
         .examples = Data::update_exs,
         .options = Data::update_opts},
 

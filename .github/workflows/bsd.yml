@@ -37,7 +37,8 @@ jobs:
             set -e
             cmake -S . -B build -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_CXX_COMPILER=clang++22
+              -DCMAKE_CXX_COMPILER=clang++22 \
+              -DRUX_WERROR=ON
             cmake --build build --config Release
 
       - name: Upload binary artifact
