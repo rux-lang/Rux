@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Backend/Rcu/Rcu.h"
+#include "Platform/Target.h"
 
 #include <filesystem>
 #include <string>
@@ -11,13 +12,15 @@ struct LinkerError {
     std::string message;
 };
 
-// Links one or more RcuFile objects into a native x86-64 executable.
-// Windows hosts emit PE32+; Unix-like hosts emit ELF64; macOS hosts emit
-// Mach-O.
+// Links one or more RcuFile objects into a native x86-64 executable, choosing
+// the object format from the target OS: Windows → PE32+, macOS → Mach-O,
+// every other supported OS (Linux, the BSDs, illumos) → ELF64. All three
+// writers are always compiled; Link() dispatches on `targetOs` at run time.
 class Linker {
 public:
     explicit Linker(std::vector<RcuFile> objects, std::string packageName,
-                    std::vector<std::filesystem::path> importSearchDirs = {}, bool isDll = false);
+                    std::vector<std::filesystem::path> importSearchDirs = {}, bool isDll = false,
+                    Platform::OS targetOs = Platform::HostOS);
 
     // Produce the EXE or DLL at outputPath. Creates parent directories as
     // needed. Returns false if any errors occurred; call Errors() for
@@ -34,13 +37,14 @@ private:
     std::vector<std::filesystem::path> importSearchDirs;
     std::vector<LinkerError> errors;
     bool isDll = false;
+    Platform::OS targetOs = Platform::HostOS;
 
     void Error(std::string msg);
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) ||                    \
-    defined(__NetBSD__) || defined(__illumos__) || (defined(__sun) && defined(__SVR4))
+
+    // Object-format writers, one per target family. Each is always compiled;
+    // Link() selects the one matching `targetOs`.
+    [[nodiscard]] bool LinkPe64(const std::filesystem::path &outputPath);
     [[nodiscard]] bool LinkElf64(const std::filesystem::path &outputPath);
-#elif defined(__APPLE__)
     [[nodiscard]] bool LinkMachO64(const std::filesystem::path &outputPath);
-#endif
 };
 } // namespace Rux

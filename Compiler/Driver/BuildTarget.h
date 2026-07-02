@@ -5,6 +5,7 @@
 
 #include "Frontend/Ast/Ast.h"
 #include "Package/Manifest.h"
+#include "Platform/Target.h"
 
 #include <filesystem>
 #include <optional>
@@ -28,6 +29,10 @@ namespace Rux::Misc {
 // Canonical OS name ("Linux", "Windows", "macOS", "BSD", "Illumos") for the OS
 // component of an "os-arch" triple, or "" if it cannot be determined.
 [[nodiscard]] std::string_view TargetOsName(std::string_view target);
+
+// Platform::OS for the OS component of an "os-arch" triple; drives the linker's
+// object-format choice. Falls back to the host OS for an unrecognized triple.
+[[nodiscard]] Platform::OS TargetTripleOs(std::string_view target);
 
 // ---- Target-conditional declarations ----------------------------------------
 

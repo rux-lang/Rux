@@ -471,7 +471,8 @@ bool Driver::GenerateExecutable(std::filesystem::path &exePath) {
         outputName += buildDll ? ".dll" : ".exe";
     }
     exePath = binDir / outputName;
-    Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name), {root}, buildDll);
+    Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name), {root}, buildDll,
+                  TargetTripleOs(opts.targetName));
     if (!linker.Link(exePath)) {
         for (const auto &err : linker.Errors()) {
             Emit(ErrorDiagnostic(err.message));

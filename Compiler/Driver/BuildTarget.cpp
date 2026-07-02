@@ -66,6 +66,38 @@ std::string_view TargetOsName(const std::string_view target) {
     return "";
 }
 
+Platform::OS TargetTripleOs(const std::string_view target) {
+    const auto dash_pos = target.find('-');
+    const auto os_prefix = dash_pos == std::string_view::npos ? target : target.substr(0, dash_pos);
+
+    if (os_prefix == "linux") {
+        return Platform::OS::Linux;
+    }
+    if (os_prefix == "windows") {
+        return Platform::OS::Windows;
+    }
+    if (os_prefix == "macos") {
+        return Platform::OS::MacOS;
+    }
+    if (os_prefix == "freebsd") {
+        return Platform::OS::FreeBSD;
+    }
+    if (os_prefix == "openbsd") {
+        return Platform::OS::OpenBSD;
+    }
+    if (os_prefix == "netbsd") {
+        return Platform::OS::NetBSD;
+    }
+    if (os_prefix == "dragonfly") {
+        return Platform::OS::DragonFlyBSD;
+    }
+    if (os_prefix == "illumos") {
+        return Platform::OS::Illumos;
+    }
+
+    return Platform::HostOS;
+}
+
 bool DeclMatchesTarget(const Decl &decl, const std::string_view target) {
     if (decl.targetOs.empty()) {
         return true;

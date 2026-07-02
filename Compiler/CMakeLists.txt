@@ -63,6 +63,9 @@ add_library(RuxCore STATIC
     Backend/Rcu/RcuDump.cpp
     Backend/Rcu/RcuWriter.cpp
     Backend/Link/Linker.cpp
+    Backend/Link/PeWriter.cpp
+    Backend/Link/ElfWriter.cpp
+    Backend/Link/MachOWriter.cpp
 )
 
 target_include_directories(RuxCore PUBLIC

@@ -1,6 +1,7 @@
 #include "Backend/X64/Asm.h"
 
 #include "Backend/Layout.h"
+#include "Platform/Platform.h"
 
 #include <cstring>
 #include <format>
@@ -71,11 +72,11 @@ std::string_view PtrSize(const int bytes) {
     }
 }
 
-#ifdef _WIN32
-constexpr bool kDefaultCallIsWin64 = true;
-#else
-constexpr bool kDefaultCallIsWin64 = false;
-#endif
+// The --dump-asm text output reflects the host ABI's default calling
+// convention. (The RCU object path always emits Win64 and relies on the
+// Unix linker's compat thunks to translate; this constant only affects the
+// human-readable dump.)
+constexpr bool kDefaultCallIsWin64 = RUX_OS_WINDOWS;
 
 // Code generator
 class AsmGen {
