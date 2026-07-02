@@ -2,8 +2,8 @@ string(TIMESTAMP RUX_BUILD_DATE "%Y-%m-%d")
 string(TIMESTAMP RUX_BUILD_TIME "%H:%M:%S")
 
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/Include/Rux/Version.h.in
-    ${CMAKE_CURRENT_BINARY_DIR}/generated/Rux/Version.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Support/Version.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/Support/Version.h
     @ONLY
 )
 
@@ -26,42 +26,46 @@ endif ()
 # compiler internals without pulling in main()/command handling.
 add_library(RuxCore STATIC
     # Platform layer
-    Source/Host.cpp
-    Source/Terminal.cpp
-    Source/Process.cpp
+    Platform/Host.cpp
+    Platform/Process.cpp
+    Platform/Terminal.cpp
 
     # Driver support
-    Source/BuildReport.cpp
-    Source/BuildTarget.cpp
+    Driver/BuildReport.cpp
+    Driver/BuildTarget.cpp
 
     # Package / manifest handling
-    Source/Manifest.cpp
-    Source/Package.cpp
+    Package/Manifest.cpp
+    Package/Package.cpp
 
-    # Compiler pipeline
-    Source/Token.cpp
-    Source/Lexer.cpp
-    Source/SourceLoader.cpp
-    Source/Parser.cpp
-    Source/Sema.cpp
-    Source/Hir.cpp
-    Source/Lir.cpp
-    Source/Optimizer.cpp
-    Source/Asm.cpp
-    Source/Rcu.cpp
-    Source/Linker.cpp
+    # Frontend: lexing, parsing, semantic analysis
+    Frontend/Token.cpp
+    Frontend/Lexer.cpp
+    Frontend/SourceLoader.cpp
+    Frontend/Parser/Parser.cpp
+    Frontend/Sema/Sema.cpp
+
+    # Intermediate representations and optimization
+    Ir/Hir/Hir.cpp
+    Ir/Lir/Lir.cpp
+    Ir/Optimizer.cpp
+
+    # Backend: code generation, object files, linking
+    Backend/X64/Asm.cpp
+    Backend/Rcu/Rcu.cpp
+    Backend/Link/Linker.cpp
 )
 
 target_include_directories(RuxCore PUBLIC
-    Include
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
 target_link_libraries(RuxCore PUBLIC RuxWarnings)
 
 add_executable(rux
-    Source/Main.cpp
-    Source/Cli.cpp
+    Main.cpp
+    Cli/Cli.cpp
 )
 
 target_link_libraries(rux PRIVATE RuxCore)

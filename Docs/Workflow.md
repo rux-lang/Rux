@@ -32,7 +32,8 @@ when to pick the other.
 ## 3. The inner loop
 
 1. **Branch** off `dev` (see [Branch Architecture](Branches.md)).
-2. **Edit** sources under `Compiler/Source/` and `Compiler/Include/`.
+2. **Edit** sources under `Compiler/<Component>/` (e.g. `Compiler/Frontend/`,
+   `Compiler/Backend/`); headers live next to their `.cpp` files.
 3. **Build** the incremental build:
    ```sh
    cmake --build build --config Release
@@ -61,9 +62,15 @@ UBSan, pass the flags yourself on a throwaway build dir, e.g.
 
 | Path                    | Purpose                                                       |
 |-------------------------|---------------------------------------------------------------|
-| `Compiler/Source/`      | Compiler implementation (`.cpp`)                              |
-| `Compiler/Include/Rux/` | Headers (`.h`), all under the `Rux` namespace                 |
-| `Compiler/CMakeLists.txt` | The `rux` build target (sources, includes, output dir)      |
+| `Compiler/Cli/`         | Command-line interface (argument parsing, command handlers)   |
+| `Compiler/Driver/`      | Build orchestration support (targets, build reports)          |
+| `Compiler/Frontend/`    | Lexer, parser (`Parser/`), AST (`Ast/`), semantic analysis (`Sema/`) |
+| `Compiler/Ir/`          | Intermediate representations (`Hir/`, `Lir/`) and optimizer   |
+| `Compiler/Backend/`     | Code generation (`X64/`), object files (`Rcu/`), linking (`Link/`) |
+| `Compiler/Package/`     | Manifest (`Rux.toml`) parsing and package scaffolding         |
+| `Compiler/Platform/`    | OS/architecture detection and OS-specific code (the only place for OS `#ifdef`s) |
+| `Compiler/Support/`     | Shared utilities (e.g. the generated `Version.h`)             |
+| `Compiler/CMakeLists.txt` | The `RuxCore` library + `rux` executable targets            |
 | `Tests/`                | Test packages, one per subdirectory                           |
 | `Installers/`           | Platform installer projects (e.g. `Installers/Windows`: MSI + PowerShell) |
 | `Bin/`                  | Output for the compiler (`Bin/<Config>/`) and compiled Rux packages; **git-ignored** |

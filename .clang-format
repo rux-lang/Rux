@@ -33,7 +33,7 @@ DerivePointerAlignment: false
 FixNamespaceComments: true
 IncludeBlocks: Regroup
 IncludeCategories:
-  - Regex: '^"Rux/'
+  - Regex: '^"(Backend|Cli|Driver|Frontend|Ir|Package|Platform|Support)/'
     Priority: 1
   - Regex: '^<'
     Priority: 2
