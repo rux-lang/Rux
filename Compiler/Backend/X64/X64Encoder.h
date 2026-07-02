@@ -13,36 +13,36 @@ namespace Rux {
 class X64Enc {
 public:
     explicit X64Enc(std::vector<uint8_t> &buf)
-        : out_(buf) {
+        : out(buf) {
     }
 
     [[nodiscard]] uint32_t Size() const {
-        return static_cast<uint32_t>(out_.size());
+        return static_cast<uint32_t>(out.size());
     }
 
     void Byte(uint8_t b) const {
-        out_.push_back(b);
+        out.push_back(b);
     }
 
     void Dword(uint32_t d) const {
-        out_.push_back(d & 0xFF);
-        out_.push_back((d >> 8) & 0xFF);
-        out_.push_back((d >> 16) & 0xFF);
-        out_.push_back((d >> 24) & 0xFF);
+        out.push_back(d & 0xFF);
+        out.push_back((d >> 8) & 0xFF);
+        out.push_back((d >> 16) & 0xFF);
+        out.push_back((d >> 24) & 0xFF);
     }
 
     void Qword(uint64_t q) const {
         for (int i = 0; i < 8; ++i) {
-            out_.push_back(q & 0xFF);
+            out.push_back(q & 0xFF);
             q >>= 8;
         }
     }
 
     void Patch32(uint32_t off, int32_t v) const {
-        out_[off] = v & 0xFF;
-        out_[off + 1] = (v >> 8) & 0xFF;
-        out_[off + 2] = (v >> 16) & 0xFF;
-        out_[off + 3] = (v >> 24) & 0xFF;
+        out[off] = v & 0xFF;
+        out[off + 1] = (v >> 8) & 0xFF;
+        out[off + 2] = (v >> 16) & 0xFF;
+        out[off + 3] = (v >> 24) & 0xFF;
     }
 
     // Prologue / Epilogue
@@ -1118,7 +1118,7 @@ public:
     }
 
 private:
-    std::vector<uint8_t> &out_;
+    std::vector<uint8_t> &out;
 
     static uint32_t u(const int32_t v) {
         return static_cast<uint32_t>(v);
