@@ -1442,6 +1442,10 @@ private:
         return SizeOf(t);
     }
 
+    [[nodiscard]] int StackValueSize(const TypeRef &t) const {
+        return std::max(SizeOf(t), SizeOfRuntime(t));
+    }
+
     [[nodiscard]] bool IsWin64ByRefAggregate(const TypeRef &t) const {
         return SizeOfRuntime(t) == 16;
     }
@@ -2043,13 +2047,13 @@ private:
                         dsz = count * (elemSize > 0 ? elemSize : 8);
                     }
                     else {
-                        dsz = SizeOfRuntime(instr.type);
+                        dsz = StackValueSize(instr.type);
                     }
                     allocaData[instr.dst] = AllocRegion(dsz > 0 ? dsz : 8);
                     regTypes[instr.dst] = TypeRef::MakePointer(instr.type);
                 }
                 else {
-                    int sz = SizeOfRuntime(instr.type);
+                    int sz = StackValueSize(instr.type);
                     AllocSlot(instr.dst, sz > 0 ? sz : 8);
                     regTypes[instr.dst] = instr.type;
                 }
