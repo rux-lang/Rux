@@ -37,6 +37,18 @@ static std::string DecodeStringLiteralText(const std::string &text) {
         case 'r':
             out += '\r';
             break;
+        case 'a':
+            out += '\a';
+            break;
+        case 'b':
+            out += '\b';
+            break;
+        case 'f':
+            out += '\f';
+            break;
+        case 'v':
+            out += '\v';
+            break;
         case '0':
             out += '\0';
             break;

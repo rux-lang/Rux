@@ -153,6 +153,18 @@ std::optional<std::uint32_t> Lexer::DecodeCharLiteralCodePoint(std::string_view 
         if (body == "\\r") {
             return static_cast<std::uint32_t>('\r');
         }
+        if (body == "\\a") {
+            return static_cast<std::uint32_t>('\a');
+        }
+        if (body == "\\b") {
+            return static_cast<std::uint32_t>('\b');
+        }
+        if (body == "\\f") {
+            return static_cast<std::uint32_t>('\f');
+        }
+        if (body == "\\v") {
+            return static_cast<std::uint32_t>('\v');
+        }
         if (body == "\\0") {
             return static_cast<std::uint32_t>('\0');
         }
@@ -625,6 +637,14 @@ std::string Lexer::ScanEscapeSequence() {
         return "\t";
     case 'r':
         return "\r";
+    case 'a':
+        return "\a";
+    case 'b':
+        return "\b";
+    case 'f':
+        return "\f";
+    case 'v':
+        return "\v";
     case '0':
         return "\0";
     case '\\':
