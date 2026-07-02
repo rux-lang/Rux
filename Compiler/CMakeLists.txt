@@ -71,6 +71,14 @@ target_link_libraries(RuxCore PUBLIC RuxWarnings)
 add_executable(rux
     Main.cpp
     Cli/Cli.cpp
+    Cli/CliHelp.cpp
+    Cli/CmdBuild.cpp
+    Cli/CmdCheck.cpp
+    Cli/CmdMisc.cpp
+    Cli/CmdNew.cpp
+    Cli/CmdPackage.cpp
+    Cli/CmdRun.cpp
+    Cli/CmdTest.cpp
 )
 
 target_link_libraries(rux PRIVATE RuxCore)
