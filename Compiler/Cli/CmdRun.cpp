@@ -4,15 +4,7 @@
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/Driver.h"
-#include "Platform/Platform.h"
-
-#if RUX_OS_WINDOWS
-    #include "Platform/WinApi.h"
-#else
-    #include <fcntl.h>
-    #include <sys/wait.h>
-    #include <unistd.h>
-#endif
+#include "Platform/Process.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -102,58 +94,10 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     if (opts.verbose && !opts.quiet) {
         std::print("     Running `{}`\n", exePath.string());
     }
-#if RUX_OS_WINDOWS
-    std::string cmdLine = "\"" + exePath.string() + "\"";
-    for (const auto &a : runArgs) {
-        cmdLine += " \"";
-        cmdLine += std::string(a);
-        cmdLine += '"';
-    }
-    STARTUPINFOA si{};
-    PROCESS_INFORMATION pi{};
-    si.cb = sizeof(si);
-    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-    si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-    si.dwFlags = STARTF_USESTDHANDLES;
-    if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi)) {
-        std::print(stderr, "error: failed to launch '{}' (code {})\n", exePath.string(), GetLastError());
-        return 1;
-    }
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD exitCode = 0;
-    GetExitCodeProcess(pi.hProcess, &exitCode);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-    return static_cast<int>(exitCode);
-#else
-    std::vector<std::string> argStrings;
-    argStrings.push_back(exePath.string());
-    for (const auto &a : runArgs) {
-        argStrings.emplace_back(a);
-    }
-
-    std::vector<char *> argv;
-    for (auto &s : argStrings) {
-        argv.push_back(s.data());
-    }
-
-    argv.push_back(nullptr);
-
-    pid_t pid = fork();
-    if (pid < 0) {
-        std::print(stderr, "error: fork failed\n");
-        return 1;
-    }
-
-    if (pid == 0) {
-        execv(exePath.c_str(), argv.data());
+    const auto exitCode = RunInherited(exePath, runArgs);
+    if (!exitCode) {
         std::print(stderr, "error: failed to launch '{}'\n", exePath.string());
-        _exit(127);
+        return 1;
     }
-
-    int status = 0;
-    waitpid(pid, &status, 0);
-    return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
-#endif
+    return *exitCode;
 }

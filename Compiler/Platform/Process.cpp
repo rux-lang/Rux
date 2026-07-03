@@ -5,8 +5,10 @@
 
 #include <array>
 #include <cstdio>
+#include <vector>
 
 #if !RUX_OS_WINDOWS
+    #include <fcntl.h>
     #include <sys/wait.h>
     #include <unistd.h>
 #endif
@@ -141,6 +143,82 @@ bool GitPull(const std::filesystem::path &repoDir) {
     return exitCode == 0;
 }
 
+std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<const std::string_view> args) {
+    std::string cmdLine = "\"" + exe.string() + "\"";
+    for (const auto &a : args) {
+        cmdLine += " \"";
+        cmdLine += std::string(a);
+        cmdLine += '"';
+    }
+    STARTUPINFOA si{};
+    PROCESS_INFORMATION pi{};
+    si.cb = sizeof(si);
+    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi)) {
+        return std::nullopt;
+    }
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exitCode = 0;
+    GetExitCodeProcess(pi.hProcess, &exitCode);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return static_cast<int>(exitCode);
+}
+
+std::optional<RunResult> RunCaptured(const std::filesystem::path &exe) {
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+    HANDLE readPipe = nullptr;
+    HANDLE writePipe = nullptr;
+    if (!CreatePipe(&readPipe, &writePipe, &sa, 0)) {
+        return std::nullopt;
+    }
+    // The read end must stay in this process only.
+    SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0);
+
+    HANDLE hNul = CreateFileA("NUL", GENERIC_READ, FILE_SHARE_READ, &sa, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    std::string cmdLine = "\"" + exe.string() + "\"";
+    STARTUPINFOA si{};
+    PROCESS_INFORMATION pi{};
+    si.cb = sizeof(si);
+    si.hStdInput = hNul != INVALID_HANDLE_VALUE ? hNul : GetStdHandle(STD_INPUT_HANDLE);
+    si.hStdOutput = writePipe;
+    si.hStdError = writePipe;
+    si.dwFlags = STARTF_USESTDHANDLES;
+    if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi)) {
+        CloseHandle(readPipe);
+        CloseHandle(writePipe);
+        if (hNul != INVALID_HANDLE_VALUE) {
+            CloseHandle(hNul);
+        }
+        return std::nullopt;
+    }
+    // Close our copy of the write end so ReadFile returns EOF once the child
+    // exits and no writable handle remains.
+    CloseHandle(writePipe);
+    RunResult result;
+    char buf[4096];
+    DWORD n = 0;
+    while (ReadFile(readPipe, buf, sizeof(buf), &n, nullptr) && n > 0) {
+        result.output.append(buf, n);
+    }
+    CloseHandle(readPipe);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exitCode = 0;
+    GetExitCodeProcess(pi.hProcess, &exitCode);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    if (hNul != INVALID_HANDLE_VALUE) {
+        CloseHandle(hNul);
+    }
+    result.exitCode = static_cast<int>(exitCode);
+    return result;
+}
+
 #else
 
 namespace {
@@ -201,6 +279,74 @@ bool GitClone(const std::string &repoUrl, const std::filesystem::path &dest, boo
 bool GitPull(const std::filesystem::path &repoDir) {
     const std::string cmd = "git -C \"" + repoDir.string() + "\" pull";
     return std::system(cmd.c_str()) == 0;
+}
+
+std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<const std::string_view> args) {
+    std::vector<std::string> argStrings;
+    argStrings.push_back(exe.string());
+    for (const auto &a : args) {
+        argStrings.emplace_back(a);
+    }
+
+    std::vector<char *> argv;
+    argv.reserve(argStrings.size() + 1);
+    for (auto &s : argStrings) {
+        argv.push_back(s.data());
+    }
+    argv.push_back(nullptr);
+
+    const pid_t pid = fork();
+    if (pid < 0) {
+        return std::nullopt;
+    }
+    if (pid == 0) {
+        execv(argStrings.front().c_str(), argv.data());
+        _exit(127);
+    }
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+}
+
+std::optional<RunResult> RunCaptured(const std::filesystem::path &exe) {
+    const std::string exeStr = exe.string();
+    const char *argv[] = {exeStr.c_str(), nullptr};
+    int fds[2];
+    if (pipe(fds) != 0) {
+        return std::nullopt;
+    }
+    const pid_t pid = fork();
+    if (pid < 0) {
+        close(fds[0]);
+        close(fds[1]);
+        return std::nullopt;
+    }
+    if (pid == 0) {
+        int devnull = open("/dev/null", O_RDONLY);
+        if (devnull >= 0) {
+            dup2(devnull, 0);
+            close(devnull);
+        }
+        dup2(fds[1], 1);
+        dup2(fds[1], 2);
+        close(fds[0]);
+        close(fds[1]);
+        execv(exeStr.c_str(), const_cast<char *const *>(argv));
+        _exit(127);
+    }
+    close(fds[1]);
+    RunResult result;
+    char buf[4096];
+    ssize_t n = 0;
+    while ((n = read(fds[0], buf, sizeof(buf))) > 0) {
+        result.output.append(buf, static_cast<std::size_t>(n));
+    }
+    close(fds[0]);
+    int status = 0;
+    waitpid(pid, &status, 0);
+    result.exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+    return result;
 }
 
 #endif

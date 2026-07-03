@@ -30,6 +30,7 @@ add_library(RuxCore STATIC
 
     # Platform layer
     Platform/Host.cpp
+    Platform/Os.cpp
     Platform/Process.cpp
     Platform/Terminal.cpp
 

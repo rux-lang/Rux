@@ -1,13 +1,11 @@
 #include "Driver/BuildTarget.h"
 
-#include "Platform/Platform.h"
+#include "Platform/Os.h"
 #include "Platform/Target.h"
-#include "Platform/WinApi.h"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <cstdlib>
 #include <format>
 #include <print>
 #include <ranges>
@@ -197,14 +195,12 @@ std::filesystem::path ResolveBuildOutputDir(const std::filesystem::path &root, c
 }
 
 std::filesystem::path RegistryPackagesDir() {
-#if RUX_OS_WINDOWS
-    wchar_t buf[MAX_PATH]{};
-    GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
-    return std::filesystem::path(buf) / "Rux" / "Packages";
-#else
-    const char *home = std::getenv("HOME");
-    return std::filesystem::path(home ? home : "/tmp") / ".rux" / "packages";
-#endif
+    if constexpr (HostOS == OS::Windows) {
+        return GetEnvPath("LOCALAPPDATA").value_or(std::filesystem::path{}) / "Rux" / "Packages";
+    }
+    else {
+        return GetEnvPath("HOME").value_or(std::filesystem::path("/tmp")) / ".rux" / "packages";
+    }
 }
 
 } // namespace Rux::Misc

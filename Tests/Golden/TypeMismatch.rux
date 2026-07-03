@@ -1,0 +1,4 @@
+func Main() -> int {
+    let x: int32 = "hello";
+    return 0;
+}

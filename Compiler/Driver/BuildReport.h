@@ -62,9 +62,6 @@ inline double ElapsedSeconds(const std::chrono::steady_clock::time_point start,
 
 // ---- Reporting --------------------------------------------------------------
 
-// Peak resident memory of the current process, in bytes (0 if unavailable).
-[[nodiscard]] std::uintmax_t PeakMemoryBytes() noexcept;
-
 void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats);
 void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats);
 

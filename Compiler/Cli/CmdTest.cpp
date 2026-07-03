@@ -4,16 +4,8 @@
 #include "Driver/BuildTarget.h"
 #include "Driver/Driver.h"
 #include "Package/Manifest.h"
-#include "Platform/Platform.h"
+#include "Platform/Process.h"
 #include "Platform/Terminal.h"
-
-#if RUX_OS_WINDOWS
-    #include "Platform/WinApi.h"
-#else
-    #include <fcntl.h>
-    #include <sys/wait.h>
-    #include <unistd.h>
-#endif
 
 #include <algorithm>
 #include <chrono>
@@ -82,8 +74,10 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         }
     }
     const std::string_view profileName = isRelease ? "Release" : "Debug";
-    // Collect test package directories: any subdirectory of Tests/ that
-    // contains a Rux.toml with Type = "bin".
+    // Collect test package directories: any directory under Tests/ that
+    // contains a Rux.toml with Type = "bin". A directory without a manifest is
+    // a group (e.g. Tests/Lang/) and is searched recursively, a few levels
+    // deep so build-output trees don't get walked.
     std::vector<std::filesystem::path> testPackages;
     {
         std::error_code ec;
@@ -93,24 +87,34 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             }
             return 0;
         }
-        for (const auto &entry : std::filesystem::directory_iterator(testsDir, ec)) {
-            if (!entry.is_directory()) {
-                continue;
+        constexpr int maxGroupDepth = 3;
+        std::vector<std::pair<std::filesystem::path, int>> pendingDirs;
+        pendingDirs.emplace_back(testsDir, 0);
+        while (!pendingDirs.empty()) {
+            const auto [dir, depth] = std::move(pendingDirs.back());
+            pendingDirs.pop_back();
+            for (const auto &entry : std::filesystem::directory_iterator(dir, ec)) {
+                if (!entry.is_directory()) {
+                    continue;
+                }
+                const auto toml = entry.path() / "Rux.toml";
+                if (!std::filesystem::exists(toml)) {
+                    if (depth + 1 < maxGroupDepth) {
+                        pendingDirs.emplace_back(entry.path(), depth + 1);
+                    }
+                    continue;
+                }
+                auto pkgManifest = Manifest::Load(toml);
+                if (!pkgManifest) {
+                    continue;
+                }
+                // Only run binary packages (not DLLs / shared libraries).
+                const auto &type = pkgManifest->package.type;
+                if (type != "bin" && type != "Bin") {
+                    continue;
+                }
+                testPackages.push_back(entry.path());
             }
-            const auto toml = entry.path() / "Rux.toml";
-            if (!std::filesystem::exists(toml)) {
-                continue;
-            }
-            auto pkgManifest = Manifest::Load(toml);
-            if (!pkgManifest) {
-                continue;
-            }
-            // Only run binary packages (not DLLs / shared libraries).
-            const auto &type = pkgManifest->package.type;
-            if (type != "bin" && type != "Bin") {
-                continue;
-            }
-            testPackages.push_back(entry.path());
         }
         std::sort(testPackages.begin(), testPackages.end());
     }
@@ -178,96 +182,14 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         const auto start = std::chrono::steady_clock::now();
 
         // Execute the test binary, capturing its combined stdout/stderr.
-#if RUX_OS_WINDOWS
-        SECURITY_ATTRIBUTES sa{};
-        sa.nLength = sizeof(sa);
-        sa.bInheritHandle = TRUE;
-        HANDLE readPipe = nullptr;
-        HANDLE writePipe = nullptr;
-        if (!CreatePipe(&readPipe, &writePipe, &sa, 0)) {
+        auto run = RunCaptured(exePath);
+        if (!run) {
+            std::print(stderr, "error: failed to launch '{}'\n", exePath.string());
             outcome.status = TestStatus::LaunchError;
             return outcome;
         }
-        // The read end must stay in this process only.
-        SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0);
-
-        HANDLE hNul =
-            CreateFileA("NUL", GENERIC_READ, FILE_SHARE_READ, &sa, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        std::string cmdLine = "\"" + exePath.string() + "\"";
-        STARTUPINFOA si{};
-        PROCESS_INFORMATION pi{};
-        si.cb = sizeof(si);
-        si.hStdInput = hNul != INVALID_HANDLE_VALUE ? hNul : GetStdHandle(STD_INPUT_HANDLE);
-        si.hStdOutput = writePipe;
-        si.hStdError = writePipe;
-        si.dwFlags = STARTF_USESTDHANDLES;
-        if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi)) {
-            std::print(stderr, "error: failed to launch '{}' (code {})\n", exePath.string(), GetLastError());
-            CloseHandle(readPipe);
-            CloseHandle(writePipe);
-            if (hNul != INVALID_HANDLE_VALUE)
-                CloseHandle(hNul);
-            outcome.status = TestStatus::LaunchError;
-            return outcome;
-        }
-        // Close our copy of the write end so ReadFile returns EOF once the
-        // child exits and no writable handle remains.
-        CloseHandle(writePipe);
-        char buf[4096];
-        DWORD n = 0;
-        while (ReadFile(readPipe, buf, sizeof(buf), &n, nullptr) && n > 0) {
-            outcome.output.append(buf, n);
-        }
-        CloseHandle(readPipe);
-        WaitForSingleObject(pi.hProcess, INFINITE);
-        DWORD exitCode = 0;
-        GetExitCodeProcess(pi.hProcess, &exitCode);
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
-        if (hNul != INVALID_HANDLE_VALUE)
-            CloseHandle(hNul);
-        outcome.exitCode = static_cast<int>(exitCode);
-#else
-        const std::string exeStr = exePath.string();
-        const char *argv[] = {exeStr.c_str(), nullptr};
-        int fds[2];
-        if (pipe(fds) != 0) {
-            std::print(stderr, "error: pipe failed\n");
-            outcome.status = TestStatus::LaunchError;
-            return outcome;
-        }
-        const pid_t pid = fork();
-        if (pid < 0) {
-            std::print(stderr, "error: fork failed\n");
-            close(fds[0]);
-            close(fds[1]);
-            outcome.status = TestStatus::LaunchError;
-            return outcome;
-        }
-        if (pid == 0) {
-            int devnull = open("/dev/null", O_RDONLY);
-            if (devnull >= 0) {
-                dup2(devnull, 0);
-                close(devnull);
-            }
-            dup2(fds[1], 1);
-            dup2(fds[1], 2);
-            close(fds[0]);
-            close(fds[1]);
-            execv(exeStr.c_str(), const_cast<char *const *>(argv));
-            _exit(127);
-        }
-        close(fds[1]);
-        char buf[4096];
-        ssize_t n = 0;
-        while ((n = read(fds[0], buf, sizeof(buf))) > 0) {
-            outcome.output.append(buf, static_cast<std::size_t>(n));
-        }
-        close(fds[0]);
-        int status = 0;
-        waitpid(pid, &status, 0);
-        outcome.exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
-#endif
+        outcome.exitCode = run->exitCode;
+        outcome.output = std::move(run->output);
 
         outcome.duration = ElapsedMs(start);
         outcome.status = outcome.exitCode == 0 ? TestStatus::Passed : TestStatus::Failed;
@@ -277,10 +199,15 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     if (!opts.quiet) {
         std::print("Running {} {}\n\n", testPackages.size(), testPackages.size() == 1 ? "test" : "tests");
     }
+    // Tests are labeled by their path relative to Tests/ (e.g. "Lang/Assert").
+    const auto testLabel = [&](const std::filesystem::path &pkgDir) {
+        return pkgDir.lexically_relative(testsDir).generic_string();
+    };
+
     // Width of the test-name column, so the trailing timings line up.
     std::size_t nameWidth = 0;
     for (const auto &pkgDir : testPackages) {
-        nameWidth = std::max(nameWidth, pkgDir.filename().string().size());
+        nameWidth = std::max(nameWidth, testLabel(pkgDir).size());
     }
 
     // Run every discovered test package and tally results, buffering the output
@@ -297,7 +224,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     int failed = 0;
     const auto suiteStart = std::chrono::steady_clock::now();
     for (const auto &pkgDir : testPackages) {
-        const std::string label = pkgDir.filename().string();
+        const std::string label = testLabel(pkgDir);
         TestOutcome outcome = runOne(pkgDir);
         // Trailing detail: a timing for tests that ran, otherwise the failure kind.
         std::string detail;

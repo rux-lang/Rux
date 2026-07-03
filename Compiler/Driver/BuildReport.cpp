@@ -1,9 +1,6 @@
 #include "Driver/BuildReport.h"
 
 #include "Driver/BuildTarget.h"
-#include "Platform/Platform.h"
-#include "Platform/Target.h"
-#include "Platform/WinApi.h"
 #include "Support/Version.h"
 
 #include <cmath>
@@ -11,15 +8,7 @@
 #include <print>
 #include <sstream>
 
-#if RUX_OS_WINDOWS
-    #include <psapi.h>
-#elif RUX_IS_UNIX
-    #include <sys/resource.h>
-#endif
-
 namespace Rux::Misc {
-
-using namespace Platform;
 
 std::size_t CountLines(std::string_view source) {
     if (source.empty()) {
@@ -101,23 +90,6 @@ std::string FormatSize(std::uintmax_t bytes) {
 
     const double mb = kb / 1024.0;
     return FormatDecimal(mb, 2) + " MB";
-}
-
-std::uintmax_t PeakMemoryBytes() noexcept {
-#if RUX_OS_WINDOWS
-    PROCESS_MEMORY_COUNTERS counters{};
-    if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters))) {
-        return static_cast<std::uintmax_t>(counters.PeakWorkingSetSize);
-    }
-#elif RUX_IS_UNIX
-    rusage usage{};
-    if (getrusage(RUSAGE_SELF, &usage) == 0) {
-        // macOS reports bytes directly; other Unices report in KB.
-        constexpr std::uintmax_t unitMultiplier = (HostOS == OS::MacOS) ? 1ULL : 1024ULL;
-        return static_cast<std::uintmax_t>(usage.ru_maxrss) * unitMultiplier;
-    }
-#endif
-    return 0;
 }
 
 void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats) {

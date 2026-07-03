@@ -2,10 +2,10 @@
 
 #include "Backend/Link/Linker.h"
 #include "Backend/Link/LinkerInternal.h"
+#include "Platform/Os.h"
 #include "Platform/Platform.h"
 
 #include <algorithm>
-#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -13,13 +13,6 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
-
-// The DLL search consults the Windows system directory via Win32; that call is
-// this file's only host-specific dependency and is guarded below.
-#if RUX_OS_WINDOWS
-    #define NOMINMAX
-    #include <windows.h>
-#endif
 
 namespace Rux {
 
@@ -196,18 +189,7 @@ ReadDllExports(const std::filesystem::path &path) {
 }
 
 static std::string GetPathEnv() {
-#if RUX_COMPILER_MSVC
-    char *value = nullptr;
-    size_t size = 0;
-    if (_dupenv_s(&value, &size, "PATH") != 0 || value == nullptr) {
-        return {};
-    }
-    std::unique_ptr<char, decltype(&std::free)> owned(value, &std::free);
-    return std::string(value, size > 0 ? size - 1 : 0);
-#else
-    const char *value = std::getenv("PATH");
-    return value ? std::string(value) : std::string();
-#endif
+    return Platform::GetEnv("PATH").value_or(std::string{});
 }
 
 [[maybe_unused]] static std::optional<std::filesystem::path>
@@ -253,21 +235,13 @@ FindDllFile(const std::string &dll, const std::vector<std::filesystem::path> &se
         return hit;
     }
 
-#if RUX_OS_WINDOWS
     // System DLLs (kernel32, user32, ...) live in the Windows system
     // directory, which is the authoritative source for them — don't rely on
     // it happening to be on PATH (it isn't under some shells, e.g. Git
-    // Bash).
-    {
-        wchar_t sysDir[MAX_PATH];
-        const UINT len = GetSystemDirectoryW(sysDir, MAX_PATH);
-        if (len > 0 && len < MAX_PATH) {
-            if (auto hit = probe(std::filesystem::path(std::wstring(sysDir, len)))) {
-                return hit;
-            }
-        }
+    // Bash). Empty (and skipped by probe) on non-Windows hosts.
+    if (auto hit = probe(Platform::WindowsSystemDirectory())) {
+        return hit;
     }
-#endif
 
     const std::string pathEnv = GetPathEnv();
     if (pathEnv.empty()) {
@@ -812,7 +786,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
 
         // DLL name string
         const uint32_t dllNameStrOff = static_cast<uint32_t>(rdataBuf.size());
-        WriteCStr(rdataBuf, (packageName + ".dll").c_str());
+        WriteCStr(rdataBuf, Platform::SharedLibraryFileName(packageName, Platform::OS::Windows).c_str());
         PadTo(rdataBuf, 2);
 
         // Function name strings + patch name/func arrays

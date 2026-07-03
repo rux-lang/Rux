@@ -9,5 +9,12 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif ()
 
+option(RUX_BUILD_TESTS "Build the C++ unit tests (Tests/Unit)" OFF)
+
 # The compiler is a self-contained component; its target lives in Compiler/.
 add_subdirectory(Compiler)
+
+if (RUX_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(Tests/Unit)
+endif ()

@@ -1,25 +1,8 @@
 // Help-text registry, layout engine, and the help/version printers.
 
 #include "Cli/Cli.h"
-#include "Platform/Platform.h"
+#include "Platform/Os.h"
 #include "Support/Version.h"
-
-#if RUX_OS_WINDOWS
-    #include "Platform/WinApi.h"
-#else
-    #include <sys/ioctl.h>
-    #include <unistd.h>
-    #if defined(__has_include)
-        #if __has_include(<sys/termios.h>)
-            #include <sys/termios.h>
-        #elif __has_include(<termios.h>)
-            #include <termios.h>
-        #endif
-        #if __has_include(<stropts.h>)
-            #include <stropts.h>
-        #endif
-    #endif
-#endif
 
 #include <algorithm>
 #include <array>
@@ -85,19 +68,9 @@ constexpr auto CliName = "rux"sv;
 } // namespace Layout
 
 std::size_t GetTerminalWidth() {
-#if RUX_OS_WINDOWS
-    CONSOLE_SCREEN_BUFFER_INFO csbi;
-    if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi) == TRUE) {
-        const auto width = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-        return std::max(static_cast<std::size_t>(width), Layout::MinTerminalWidth);
+    if (const std::size_t width = Platform::TerminalWidth(); width > 0) {
+        return std::max(width, Layout::MinTerminalWidth);
     }
-#else
-    winsize w{};
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) != -1 && w.ws_col > 0) {
-        return std::max(static_cast<std::size_t>(w.ws_col), Layout::MinTerminalWidth);
-    }
-#endif
-
     return Layout::DefaultWidth;
 }
 

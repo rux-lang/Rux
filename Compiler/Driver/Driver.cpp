@@ -10,7 +10,7 @@
 #include "Frontend/SourceLoader.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Lir/Lir.h"
-#include "Platform/Target.h"
+#include "Platform/Os.h"
 
 #include <chrono>
 #include <print>
@@ -466,13 +466,11 @@ bool Driver::GenerateExecutable(std::filesystem::path &exePath) {
     }
     const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName);
     const bool buildDll = (opts.manifest.package.type == "Dll" || opts.manifest.package.type == "dll");
-    std::string outputName = opts.manifest.package.name;
-    if constexpr (HostOS == OS::Windows) {
-        outputName += buildDll ? ".dll" : ".exe";
-    }
+    const OS targetOs = TargetTripleOs(opts.targetName);
+    const std::string outputName = buildDll ? SharedLibraryFileName(opts.manifest.package.name, targetOs)
+                                            : ExecutableFileName(opts.manifest.package.name, targetOs);
     exePath = binDir / outputName;
-    Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name), {root}, buildDll,
-                  TargetTripleOs(opts.targetName));
+    Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name), {root}, buildDll, targetOs);
     if (!linker.Link(exePath)) {
         for (const auto &err : linker.Errors()) {
             Emit(ErrorDiagnostic(err.message));

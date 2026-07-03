@@ -71,14 +71,18 @@ UBSan, pass the flags yourself on a throwaway build dir, e.g.
 | `Compiler/Platform/`    | OS/architecture detection and OS-specific code (the only place for OS `#ifdef`s) |
 | `Compiler/Support/`     | Shared utilities (e.g. the generated `Version.h`)             |
 | `Compiler/CMakeLists.txt` | The `RuxCore` library + `rux` executable targets            |
-| `Tests/`                | Test packages, one per subdirectory                           |
+| `Tests/Lang/`           | Rux language test packages, one per subdirectory (`rux test`) |
+| `Tests/Unit/`           | C++ unit tests for compiler internals (doctest + CTest)       |
+| `Tests/Golden/`         | Golden diagnostics cases: `<Case>.rux` + `<Case>.expected`    |
+| `Tools/`                | Repo maintenance scripts (e.g. the platform-isolation guard)  |
 | `Installers/`           | Platform installer projects (e.g. `Installers/Windows`: MSI + PowerShell) |
 | `Bin/`                  | Output for the compiler (`Bin/<Config>/`) and compiled Rux packages; **git-ignored** |
 | `CMakeLists.txt`        | Top-level build entry: project `VERSION` + `add_subdirectory(Compiler)` |
 
-`Bin/` is where `rux` drops the binaries it produces — test packages set
-`[Build] Output = "../Bin"` in their manifest, so `rux test`/`rux build` write
-here. The Rux compiler itself also builds here, to `Bin/<Config>/` (e.g.
+`Bin/` is where `rux` drops the binaries it produces. Test packages set
+`[Build] Output = "../Bin"` in their manifest, so `rux test` writes their
+binaries to `Tests/Lang/Bin/` (git-ignored, like every `Bin/` directory).
+The Rux compiler itself builds to `Bin/<Config>/` (e.g.
 `Bin/Release/rux`); the CMake intermediates stay in the `build/` directory you
 pass to `-B`. `Bin/` is listed in `.gitignore`; nothing under it is tracked.
 
@@ -107,10 +111,19 @@ Supporting layers around the pipeline:
   plus `BuildReport.cpp`, `BuildTarget.cpp`, `Terminal.cpp`, `Process.cpp`.
 - **Packages & manifests** — `Package.cpp`, `Manifest.cpp` (parse `Rux.toml`,
   resolve dependencies).
-- **Platform layer** — `Host.cpp` (`Platform.h`, `WinApi.h`) isolates OS
-  differences.
+- **Platform layer** — `Platform/` isolates OS differences: `Platform.h`
+  (compile-time detection), `Host.cpp` (runtime hardware queries), `Os.h`
+  (environment, console, temp/system directories, memory stats, output file
+  naming), `Process.h` (subprocess running), `Terminal.h`, `WinApi.h`. Direct
+  OS API calls (`getenv`, `<windows.h>`, `fork`, ...) are allowed **only**
+  here — CI enforces this with `Tools/CheckPlatformIsolation.sh`.
 
 ## 5. Testing
+
+There are two suites: Rux-language test packages (run with `rux test`) and C++
+unit tests for the compiler internals (run with `ctest`).
+
+### Language tests (`Tests/Lang/`)
 
 Run the full suite from the repo root:
 
@@ -119,10 +132,12 @@ Run the full suite from the repo root:
 ./Bin/Release/rux test            # add --release to test the optimized build, --verbose for paths
 ```
 
-`rux test` discovers every subdirectory of `Tests/`, builds and runs each
-package, and reports per-package results plus a summary. A test package is a
-normal binary package whose **exit code is the only signal: `0` = pass, anything
-else = fail** — no framework required:
+`rux test` walks `Tests/` recursively: a directory with a `Rux.toml` is a test
+package; a directory without one (like `Tests/Lang/`) is a group and is
+searched further. Each package is built and run, and per-package results plus a
+summary are reported. A test package is a normal binary package whose **exit
+code is the only signal: `0` = pass, anything else = fail** — no framework
+required:
 
 ```rux
 func Main() -> int {
@@ -133,7 +148,7 @@ func Main() -> int {
 }
 ```
 
-Each package lives at `Tests/<Name>/` with a `Rux.toml` manifest and
+Each package lives at `Tests/Lang/<Name>/` with a `Rux.toml` manifest and
 `Src/Main.rux`:
 
 ```toml
@@ -146,7 +161,32 @@ Description = "Test for Rux compiler"
 Output = "../Bin"
 ```
 
-**When you add a language feature, add a matching test package under `Tests/`.**
+**When you add a language feature, add a matching test package under
+`Tests/Lang/`.**
+
+### Unit tests (`Tests/Unit/`)
+
+C++ tests against `RuxCore` using the vendored
+[doctest](https://github.com/doctest/doctest) header. Build and run them with:
+
+```sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DRUX_BUILD_TESTS=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+(The test binary is `build/Tests/Unit/rux-tests`; run it directly for doctest's
+filtering options, e.g. `rux-tests -ts="Lexer*"`.)
+
+### Golden diagnostics (`Tests/Golden/`)
+
+Part of the unit-test binary: every `Tests/Golden/<Case>.rux` is compiled
+through the frontend (lex → parse → sema), the diagnostics are rendered one per
+line as `line:column: severity: message`, and compared against
+`<Case>.expected`. To add a case, drop a `.rux` file in `Tests/Golden/`,
+run the test binary once with `RUX_UPDATE_GOLDEN=1` to generate the
+`.expected` file, and review it before committing. **When you change or add a
+diagnostic, add or regenerate the affected golden cases.**
 
 ## 6. Code style
 

@@ -23,6 +23,20 @@ Each supported platform has its own workflow under
 
 Their status is shown by the badges at the top of the [README](../README.md).
 
+Two additions run alongside the per-OS matrix:
+
+- **`lint.yml`** — repository-wide checks: the platform-isolation guard
+  (`Tools/CheckPlatformIsolation.sh`, which fails when OS APIs like
+  `getenv`/`<windows.h>`/`fork` are used outside `Compiler/Platform/`) and a
+  `clang-format --dry-run -Werror` pass over the sources.
+- **GCC job** (in `linux.yml`) — builds the compiler and runs the unit tests
+  with `g++-14` to keep the codebase portable beyond Clang/MSVC. Warnings are
+  not fatal there; the Clang jobs carry `-Werror`.
+
+The Linux and Windows build jobs also configure with `-DRUX_BUILD_TESTS=ON` and
+run the C++ unit tests (doctest via `ctest`) before uploading the binary
+artifact; see [Development Workflow](Workflow.md) for the test layout.
+
 ## Triggers
 
 ```yaml

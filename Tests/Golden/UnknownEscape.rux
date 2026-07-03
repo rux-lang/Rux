@@ -1,0 +1,4 @@
+func Main() -> int {
+    let s = "\q";
+    return 0;
+}
