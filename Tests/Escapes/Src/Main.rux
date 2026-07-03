@@ -1,0 +1,13 @@
+import Std::Assert;
+
+// Verify the \a \b \f \v escape sequences: each byte of the string literal
+// (decoded via the string-literal path) must equal the matching char literal
+// (decoded via the char-literal path).
+func Main() -> int {
+    let escapes = "\a\b\f\v";
+    Assert(escapes[0] == '\a', "Expected '\\a' (bell, 0x07)");
+    Assert(escapes[1] == '\b', "Expected '\\b' (backspace, 0x08)");
+    Assert(escapes[2] == '\f', "Expected '\\f' (form feed, 0x0C)");
+    Assert(escapes[3] == '\v', "Expected '\\v' (vertical tab, 0x0B)");
+    return 0;
+}

@@ -1773,6 +1773,18 @@ private:
                 case 'r':
                     cp = '\r';
                     break;
+                case 'a':
+                    cp = '\a';
+                    break;
+                case 'b':
+                    cp = '\b';
+                    break;
+                case 'f':
+                    cp = '\f';
+                    break;
+                case 'v':
+                    cp = '\v';
+                    break;
                 case '0':
                     cp = 0;
                     break;
@@ -1833,6 +1845,18 @@ private:
                 break;
             case 'r':
                 out += '\r';
+                break;
+            case 'a':
+                out += '\a';
+                break;
+            case 'b':
+                out += '\b';
+                break;
+            case 'f':
+                out += '\f';
+                break;
+            case 'v':
+                out += '\v';
                 break;
             case '0':
                 out += '\0';
