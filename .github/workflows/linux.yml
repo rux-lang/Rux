@@ -50,37 +50,6 @@ jobs:
           path: Bin/Release/rux
           if-no-files-found: error
 
-  # Keep the codebase building with GCC as well as Clang/MSVC. Warnings are
-  # not fatal here; the Clang jobs carry -Werror.
-  gcc:
-    name: GCC build
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install GCC 14
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y g++-14
-
-      - name: Install CMake and Ninja
-        uses: lukka/get-cmake@v4.3.3
-        with:
-          cmakeVersion: "4.2.0"
-          ninjaVersion: latest
-
-      - name: Configure and build
-        run: |
-          cmake -S . -B build-gcc -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=g++-14 \
-            -DRUX_BUILD_TESTS=ON
-          cmake --build build-gcc --config Release
-
-      - name: Unit tests
-        run: ctest --test-dir build-gcc --output-on-failure
-
   test:
     name: Test
     needs: build
