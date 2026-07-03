@@ -11,20 +11,21 @@
 [![Linux](https://github.com/rux-lang/Rux/actions/workflows/linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/linux.yml)
 [![macOS](https://github.com/rux-lang/Rux/actions/workflows/macos.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/macos.yml)
 [![Windows](https://github.com/rux-lang/Rux/actions/workflows/windows.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/windows.yml)
+[![Lint](https://github.com/rux-lang/Rux/actions/workflows/lint.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/lint.yml)
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](https://github.com/rux-lang/Rux/blob/main/LICENSE)
 
 [![GitHub stars](https://img.shields.io/github/stars/rux-lang/Rux?style=flat&logo=github&label=Stars&logoColor=white&color=blue)](https://github.com/rux-lang)
 [![GitHub followers](https://img.shields.io/github/followers/rux-lang?style=flat&logo=github&label=Followers&logoColor=white&color=blue)](https://github.com/rux-lang)
 [![GitHub forks](https://img.shields.io/github/forks/rux-lang/Rux?style=flat&logo=github&logoColor=white&label=Forks&color=blue)](https://github.com/rux-lang)
-[![Discussion](https://img.shields.io/badge/13-gray?style=flat&logo=github&logoColor=white&label=Discussions&color=blue)](https://github.com/rux-lang/Rux/discussions)
+[![Discussion](https://img.shields.io/badge/16-gray?style=flat&logo=github&logoColor=white&label=Discussions&color=blue)](https://github.com/rux-lang/Rux/discussions)
 [![Discord](https://img.shields.io/discord/1321469752811585576?style=flat&logo=discord&logoColor=white&label=Discord&color=blue)](https://discord.com/invite/uvSHjtZSVG)
 [![Reddit](https://img.shields.io/reddit/subreddit-subscribers/ruxlang?style=flat&logo=reddit&logoColor=white&label=Reddit&color=blue)](https://www.reddit.com/r/ruxlang)
 [![YouTube](https://img.shields.io/youtube/channel/subscribers/UCNqQ7NIA5pBl3ZO--nOyvDA?style=flat&logo=youtube&logoColor=white&label=YouTube&color=blue)](https://www.youtube.com/@ruxlang)
-[![X](https://img.shields.io/badge/76-gray?logo=x&style=flat&logoColor=white&label=Twitter&color=blue)](https://x.com/ruxlang)
+[![X](https://img.shields.io/badge/98-gray?logo=x&style=flat&logoColor=white&label=Twitter&color=blue)](https://x.com/ruxlang)
 [![Bluesky](https://img.shields.io/bluesky/followers/rux-lang.dev?style=flat&logo=Bluesky&logoColor=white&label=Bluesky&color=blue)](https://bsky.app/profile/rux-lang.dev)
 [![Mastodon](https://img.shields.io/mastodon/follow/113727153489087809?domain=mastodon.social&style=flat&logo=mastodon&logoColor=white&label=Mastodon&color=blue)](https://mastodon.social/@ruxlang)
-[![Telegram](https://img.shields.io/badge/73-gray?style=flat&logo=telegram&logoColor=white&label=Telegram&color=blue)](https://t.me/ruxlang)
+[![Telegram](https://img.shields.io/badge/78-gray?style=flat&logo=telegram&logoColor=white&label=Telegram&color=blue)](https://t.me/ruxlang)
 
 Rux is a fast, compiled, strongly typed, multi-paradigm programming language.
 
@@ -201,11 +202,11 @@ The compiled `rux` binary is written to the `Bin/Release` directory (`Bin/Releas
 Run the binary to confirm it works:
 
 ```sh
-./Bin/Release/rux help
+./Bin/Release/rux version
 ```
 
 ```powershell
-.\Bin\Release\rux.exe help
+.\Bin\Release\rux.exe version
 ```
 
 To use `rux` from anywhere, copy it to a directory on your `PATH` (for example `/usr/local/bin` on Unix-like systems), or add the `Bin/Release` directory to your `PATH`.
