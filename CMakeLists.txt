@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 4.2)
 project(Rux VERSION 0.3.0 LANGUAGES CXX)
 
+include(GNUInstallDirs)
+
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

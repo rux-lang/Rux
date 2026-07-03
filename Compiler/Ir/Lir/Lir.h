@@ -1,13 +1,13 @@
 #pragma once
 
-#include "Frontend/Sema/Type.h"
-#include "Ir/Hir/Hir.h"
-
 #include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
+
+#include "Semantic/Type.h"
+#include "Target/CallingConvention.h"
 
 namespace Rux {
 // Virtual register
@@ -200,21 +200,4 @@ struct LirPackage {
     std::vector<LirModule> modules;
 };
 
-// Generator
-// Lowers a typed HIR package into a flat, control-flow-explicit LIR.
-// Each function body is decomposed into basic blocks of three-address
-// instructions. Control flow (if/while/for/match) becomes explicit jumps
-// and branches; local variables are represented as alloca/load/store
-// triples.
-class Lir {
-public:
-    explicit Lir(HirPackage package);
-    [[nodiscard]] LirPackage Generate();
-
-    // Write a human-readable dump of the LIR package to `path`.
-    static bool Dump(const LirPackage &package, const std::filesystem::path &path);
-
-private:
-    HirPackage hir;
-};
 } // namespace Rux

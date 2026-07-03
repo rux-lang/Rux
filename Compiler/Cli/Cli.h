@@ -37,6 +37,7 @@ private:
     static int RunClean(std::span<const std::string_view> args, const GlobalOptions &opts);
     static int RunDoc(std::span<const std::string_view> args, const GlobalOptions &opts);
     static int RunFmt(std::span<const std::string_view> args, const GlobalOptions &opts);
+    static int RunLint(std::span<const std::string_view> args, const GlobalOptions &opts);
     static int RunInit(std::span<const std::string_view> args, const GlobalOptions &opts);
     static int RunInstall(std::span<const std::string_view> args, const GlobalOptions &opts);
     static int RunUninstall(std::span<const std::string_view> args, const GlobalOptions &opts);

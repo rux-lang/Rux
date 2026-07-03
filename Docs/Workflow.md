@@ -5,7 +5,7 @@ come from and where it goes, see [Branch Architecture](Branches.md).
 
 ## 1. Prerequisites
 
-Install the toolchain (Clang 22.1+, CMake 4.3+, Ninja 1.13+, Git 2.54+) per your
+Install the toolchain (Clang 22.1+, CMake 4.2+, Ninja 1.13+, Git 2.52+) per your
 OS — see [Building from Source](../README.md#building-from-source).
 
 Beyond that build toolchain you need **`clang-format`** (ships with LLVM/Clang)
@@ -32,8 +32,9 @@ when to pick the other.
 ## 3. The inner loop
 
 1. **Branch** off `dev` (see [Branch Architecture](Branches.md)).
-2. **Edit** sources under `Compiler/<Component>/` (e.g. `Compiler/Frontend/`,
-   `Compiler/Backend/`); headers live next to their `.cpp` files.
+2. **Edit** sources under `Compiler/<Component>/` (e.g. `Compiler/Syntax/`,
+   `Compiler/Semantic/`, or `Compiler/CodeGen/`); headers live next to their
+   `.cpp` files.
 3. **Build** the incremental build:
    ```sh
    cmake --build build --config Release
@@ -62,26 +63,33 @@ UBSan, pass the flags yourself on a throwaway build dir, e.g.
 
 | Path                    | Purpose                                                       |
 |-------------------------|---------------------------------------------------------------|
-| `Compiler/Cli/`         | Command-line interface (argument parsing, command handlers)   |
-| `Compiler/Driver/`      | Build orchestration support (targets, build reports)          |
-| `Compiler/Frontend/`    | Lexer, parser (`Parser/`), AST (`Ast/`), semantic analysis (`Sema/`) |
-| `Compiler/Ir/`          | Intermediate representations (`Hir/`, `Lir/`) and optimizer   |
-| `Compiler/Backend/`     | Code generation (`X64/`), object files (`Rcu/`), linking (`Link/`) |
-| `Compiler/Package/`     | Manifest (`Rux.toml`) parsing and package scaffolding         |
-| `Compiler/Platform/`    | OS/architecture detection and OS-specific code (the only place for OS `#ifdef`s) |
-| `Compiler/Support/`     | Shared utilities (e.g. the generated `Version.h`)             |
-| `Compiler/CMakeLists.txt` | The `RuxCore` library + `rux` executable targets            |
-| `Tests/Lang/`           | Rux language test packages, one per subdirectory (`rux test`) |
+| `Compiler/Cli/`         | Command-line interface and terminal presentation               |
+| `Compiler/Driver/`      | Compilation orchestration, targets, and build reports          |
+| `Compiler/Source/`      | Source discovery, loading, and locations                       |
+| `Compiler/Lexer/`       | Tokens and lexical analysis                                    |
+| `Compiler/Syntax/`      | AST and parser                                                  |
+| `Compiler/Semantic/`    | Types, symbols, analysis, and the persistent semantic model    |
+| `Compiler/Ir/`          | HIR/LIR models, printers, and IR-local passes                  |
+| `Compiler/Lowering/`    | Explicit AST-to-HIR and HIR-to-LIR transformations             |
+| `Compiler/CodeGen/`     | Target-specific code generation                               |
+| `Compiler/Object/`      | Object formats and serialization                               |
+| `Compiler/Linker/`      | PE, ELF, and Mach-O executable writers                         |
+| `Compiler/Target/`      | Compilation target, ABI, data-layout, and architecture model   |
+| `Compiler/System/`      | Host OS, hardware, filesystem, and process services            |
+| `Compiler/Package/`     | Manifest parsing and package management                        |
+| `Compiler/Formatter/`   | Formatting engine used by `rux fmt`                            |
+| `Compiler/Linter/`      | Lint engine and rules used by `rux lint`                       |
+| `Tests/Integration/`    | Rux language test packages, one per subdirectory (`rux test`)  |
 | `Tests/Unit/`           | C++ unit tests for compiler internals (doctest + CTest)       |
 | `Tests/Golden/`         | Golden diagnostics cases: `<Case>.rux` + `<Case>.expected`    |
 | `Tools/`                | Repo maintenance scripts (e.g. the platform-isolation guard)  |
-| `Installers/`           | Platform installer projects (e.g. `Installers/Windows`: MSI + PowerShell) |
+| `Packaging/`           | Platform installer projects (e.g. `Packaging/Windows`: MSI + PowerShell) |
 | `Bin/`                  | Output for the compiler (`Bin/<Config>/`) and compiled Rux packages; **git-ignored** |
 | `CMakeLists.txt`        | Top-level build entry: project `VERSION` + `add_subdirectory(Compiler)` |
 
 `Bin/` is where `rux` drops the binaries it produces. Test packages set
 `[Build] Output = "../Bin"` in their manifest, so `rux test` writes their
-binaries to `Tests/Lang/Bin/` (git-ignored, like every `Bin/` directory).
+binaries to `Tests/Integration/Bin/` (git-ignored, like every `Bin/` directory).
 The Rux compiler itself builds to `Bin/<Config>/` (e.g.
 `Bin/Release/rux`); the CMake intermediates stay in the `build/` directory you
 pass to `-B`. `Bin/` is listed in `.gitignore`; nothing under it is tracked.
@@ -93,37 +101,34 @@ set of files, so this is the map for "where do I make this change?":
 
 | Stage             | File(s)                  | Role                                                     |
 |-------------------|--------------------------|----------------------------------------------------------|
-| Source loading    | `SourceLoader.cpp`       | Locate and read source files                             |
-| Lexing            | `Token.cpp`, `Lexer.cpp` | Source text → token stream                               |
-| Parsing           | `Parser.cpp` (`Ast.h`)   | Tokens → AST (Pratt / precedence-climbing expressions)   |
-| Semantic analysis | `Sema.cpp` (`Type.h`)    | Name resolution, type checking, diagnostics              |
-| HIR lowering      | `Hir.cpp`                | AST → high-level IR                                      |
-| LIR lowering      | `Lir.cpp`                | HIR → low-level IR                                       |
-| Optimization      | `Optimizer.cpp`          | Optimize the LIR                                         |
-| Codegen           | `Asm.cpp`                | LIR → x86-64 assembly (Intel syntax, System V AMD64 ABI) |
-| Object emission   | `Rcu.cpp`                | Emit the native object file in Rux's RCU format          |
-| Linking           | `Linker.cpp`             | Link objects into the final executable                   |
+| Source loading    | `Source/SourceLoader.cpp`                | Locate and read source files               |
+| Lexing            | `Lexer/Lexer.cpp`                        | Source text → token stream                 |
+| Parsing           | `Syntax/Parser/`                         | Tokens → AST                             |
+| Semantic analysis | `Semantic/SemanticAnalyzer.cpp`          | AST → validated `SemanticModel`            |
+| HIR lowering      | `Lowering/AstToHir/`                     | Semantic model → HIR                       |
+| HIR passes        | `Ir/Hir/Passes/`                         | HIR optimization                           |
+| LIR lowering      | `Lowering/HirToLir/`                     | HIR → control-flow-explicit LIR             |
+| Code generation   | `CodeGen/X86_64/`                        | LIR → x86-64 RCU object data                |
+| Object emission   | `Object/Rcu/`                            | RCU serialization and diagnostics           |
+| Linking           | `Linker/{Pe,Elf,MachO}/`                 | Objects → target executable                 |
 
 Supporting layers around the pipeline:
 
-- **CLI & driver** — `Main.cpp`, `Cli.cpp`, the `*Cmd.cpp` files
-  (`BuildCmd`, `CheckCmd`, `InstallCmd`, `PackageCmd`, `HelpCmd`, `UtilityCmd`),
-  plus `BuildReport.cpp`, `BuildTarget.cpp`, `Terminal.cpp`, `Process.cpp`.
-- **Packages & manifests** — `Package.cpp`, `Manifest.cpp` (parse `Rux.toml`,
-  resolve dependencies).
-- **Platform layer** — `Platform/` isolates OS differences: `Platform.h`
-  (compile-time detection), `Host.cpp` (runtime hardware queries), `Os.h`
-  (environment, console, temp/system directories, memory stats, output file
-  naming), `Process.h` (subprocess running), `Terminal.h`, `WinApi.h`. Direct
-  OS API calls (`getenv`, `<windows.h>`, `fork`, ...) are allowed **only**
-  here — CI enforces this with `Tools/CheckPlatformIsolation.sh`.
+- **CLI & driver** — `Main.cpp`, `Cli/`, `Driver/CompilerDriver.cpp`, build
+  reports, and target selection.
+- **Packages & manifests** — `Package/Package.cpp`, `Package/Manifest.cpp`
+  (parse `Rux.toml`, resolve dependencies).
+- **Target and system layers** — `Target/` models the machine being compiled
+  for; `System/` isolates services of the host running the compiler. Direct OS
+  API calls (`getenv`, `<windows.h>`, `fork`, ...) are allowed only in
+  `System/`; CI enforces this with `Tools/PlatformIsolation/Check.sh`.
 
 ## 5. Testing
 
 There are two suites: Rux-language test packages (run with `rux test`) and C++
 unit tests for the compiler internals (run with `ctest`).
 
-### Language tests (`Tests/Lang/`)
+### Language tests (`Tests/Integration/`)
 
 Run the full suite from the repo root:
 
@@ -133,7 +138,7 @@ Run the full suite from the repo root:
 ```
 
 `rux test` walks `Tests/` recursively: a directory with a `Rux.toml` is a test
-package; a directory without one (like `Tests/Lang/`) is a group and is
+package; a directory without one (like `Tests/Integration/`) is a group and is
 searched further. Each package is built and run, and per-package results plus a
 summary are reported. A test package is a normal binary package whose **exit
 code is the only signal: `0` = pass, anything else = fail** — no framework
@@ -148,7 +153,7 @@ func Main() -> int {
 }
 ```
 
-Each package lives at `Tests/Lang/<Name>/` with a `Rux.toml` manifest and
+Each package lives at `Tests/Integration/<Name>/` with a `Rux.toml` manifest and
 `Src/Main.rux`:
 
 ```toml
@@ -162,7 +167,7 @@ Output = "../Bin"
 ```
 
 **When you add a language feature, add a matching test package under
-`Tests/Lang/`.**
+`Tests/Integration/`.**
 
 ### Unit tests (`Tests/Unit/`)
 

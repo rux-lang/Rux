@@ -3,7 +3,7 @@
 #include "Cli/Cli.h"
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
-#include "Driver/Driver.h"
+#include "Driver/CompilerDriver.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -15,7 +15,7 @@
 #include <utility>
 
 using namespace Rux;
-using namespace Misc;
+using namespace Driver;
 
 int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &opts) {
     bool isRelease = false;
@@ -144,7 +144,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     copts.dumpLir = dumpLir;
     copts.dumpAsm = dumpAsm;
     copts.dumpRcu = dumpRcu;
-    Driver driver(std::move(copts));
+    CompilerDriver driver(std::move(copts));
     const CompileResult result = driver.Compile();
     if (!result.ok) {
         return 1;

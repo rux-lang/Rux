@@ -2,7 +2,7 @@
 
 #include <doctest.h>
 
-using namespace Rux::Misc;
+using namespace Rux::Driver;
 
 TEST_CASE("CountLines counts newline-terminated and trailing lines") {
     CHECK(CountLines("") == 0);

@@ -1,8 +1,8 @@
-#include "Frontend/Lexer.h"
-
 #include <doctest.h>
 #include <string>
 #include <utility>
+
+#include "Lexer/Lexer.h"
 
 using namespace Rux;
 

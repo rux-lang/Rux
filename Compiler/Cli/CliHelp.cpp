@@ -1,8 +1,7 @@
 // Help-text registry, layout engine, and the help/version printers.
 
 #include "Cli/Cli.h"
-#include "Platform/Os.h"
-#include "Support/Version.h"
+#include "Driver/Version.h"
 
 #include <algorithm>
 #include <array>
@@ -13,6 +12,8 @@
 #include <ranges>
 #include <span>
 #include <string_view>
+
+#include "System/Os.h"
 
 using namespace Rux;
 using namespace std::string_view_literals;
@@ -68,7 +69,7 @@ constexpr auto CliName = "rux"sv;
 } // namespace Layout
 
 std::size_t GetTerminalWidth() {
-    if (const std::size_t width = Platform::TerminalWidth(); width > 0) {
+    if (const std::size_t width = System::TerminalWidth(); width > 0) {
         return std::max(width, Layout::MinTerminalWidth);
     }
     return Layout::DefaultWidth;
@@ -243,6 +244,11 @@ constexpr std::array fmt_opts = {
     OptionDoc{.flags = "--manifest-only"sv, .desc = "Format only the manifest configuration file (Rux.toml)"sv}};
 constexpr std::array fmt_exs = {""sv, "--check"sv, "--manifest-only"sv};
 
+// Lint
+constexpr std::array lint_usage = {"[options]"sv};
+constexpr std::array<OptionDoc, 0> lint_opts = {};
+constexpr std::array lint_exs = {""sv, "--verbose"sv};
+
 // Info
 constexpr std::array info_usage = {"[package name]"sv};
 constexpr std::array info_opts = {OptionDoc{.flags = "--json"sv, .desc = "Output package metadata in JSON format"sv}};
@@ -410,6 +416,15 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
         .footer = {},
         .examples = Data::install_exs,
         .options = Data::install_opts},
+
+    CommandDoc{.name = "lint"sv,
+               .shortDesc = "Lint package source files"sv,
+               .description = "Run source-level diagnostics without emitting build artifacts"sv,
+               .usage = Data::lint_usage,
+               .postUsage = {},
+               .footer = "Use 'rux check' for complete package semantic validation."sv,
+               .examples = Data::lint_exs,
+               .options = Data::lint_opts},
 
     CommandDoc{.name = "list"sv,
                .shortDesc = "List dependencies"sv,

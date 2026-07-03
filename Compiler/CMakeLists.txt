@@ -2,8 +2,8 @@ string(TIMESTAMP RUX_BUILD_DATE "%Y-%m-%d")
 string(TIMESTAMP RUX_BUILD_TIME "%H:%M:%S")
 
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/Support/Version.h.in
-    ${CMAKE_CURRENT_BINARY_DIR}/generated/Support/Version.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Driver/Version.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/Driver/Version.h
     @ONLY
 )
 
@@ -22,74 +22,115 @@ if (RUX_WERROR)
         $<IF:$<STREQUAL:$<CXX_COMPILER_FRONTEND_VARIANT>,MSVC>,/WX,-Werror>)
 endif ()
 
-# Everything except the CLI surface lives in RuxCore so tests can link the
-# compiler internals without pulling in main()/command handling.
-add_library(RuxCore STATIC
-    # Shared support
-    Support/Diagnostics.cpp
+function(rux_add_component target)
+    add_library(${target} STATIC ${ARGN})
+    target_include_directories(${target} PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}/generated)
+    target_link_libraries(${target} PUBLIC RuxWarnings)
+endfunction()
 
-    # Platform layer
-    Platform/Host.cpp
-    Platform/Os.cpp
-    Platform/Process.cpp
-    Platform/Terminal.cpp
+rux_add_component(RuxDiagnostics
+    Diagnostics/Diagnostics.cpp)
 
-    # Driver: compile pipeline orchestration
-    Driver/Driver.cpp
-    Driver/BuildReport.cpp
-    Driver/BuildTarget.cpp
+rux_add_component(RuxSource
+    Source/SourceLoader.cpp)
+target_link_libraries(RuxSource PUBLIC RuxDiagnostics)
 
-    # Package / manifest handling
+rux_add_component(RuxSystem
+    System/Host.cpp
+    System/Os.cpp
+    System/Process.cpp)
+
+rux_add_component(RuxPackage
     Package/Manifest.cpp
-    Package/Package.cpp
+    Package/Package.cpp)
 
-    # Frontend: lexing, parsing, semantic analysis
-    Frontend/Token.cpp
-    Frontend/Lexer.cpp
-    Frontend/SourceLoader.cpp
-    Frontend/Parser/Parser.cpp
-    Frontend/Parser/ParserDecl.cpp
-    Frontend/Parser/ParserType.cpp
-    Frontend/Parser/ParserStmt.cpp
-    Frontend/Parser/ParserExpr.cpp
-    Frontend/Parser/ParserDump.cpp
-    Frontend/Sema/Type.cpp
-    Frontend/Sema/Sema.cpp
-    Frontend/Sema/SemaDump.cpp
+rux_add_component(RuxLexer
+    Lexer/Token.cpp
+    Lexer/Lexer.cpp)
+target_link_libraries(RuxLexer PUBLIC RuxDiagnostics)
 
-    # Intermediate representations and optimization
-    Ir/Hir/Hir.cpp
-    Ir/Hir/HirDump.cpp
-    Ir/Lir/Lir.cpp
-    Ir/Lir/LirDump.cpp
-    Ir/Optimizer.cpp
+rux_add_component(RuxSyntax
+    Syntax/Parser/Parser.cpp
+    Syntax/Parser/ParserDecl.cpp
+    Syntax/Parser/ParserType.cpp
+    Syntax/Parser/ParserStmt.cpp
+    Syntax/Parser/ParserExpr.cpp
+    Syntax/Parser/ParserDump.cpp)
+target_link_libraries(RuxSyntax PUBLIC RuxLexer RuxDiagnostics)
 
-    # Backend: code generation, object files, linking
-    Backend/Layout.cpp
-    Backend/X64/Asm.cpp
-    Backend/Rcu/Rcu.cpp
-    Backend/Rcu/RcuCodeGen.cpp
-    Backend/Rcu/RcuDump.cpp
-    Backend/Rcu/RcuWriter.cpp
-    Backend/Link/Linker.cpp
-    Backend/Link/PeWriter.cpp
-    Backend/Link/ElfWriter.cpp
-    Backend/Link/MachOWriter.cpp
-)
+rux_add_component(RuxSemantic
+    Semantic/Type.cpp
+    Semantic/SemanticAnalyzer.cpp
+    Semantic/SemanticPrinter.cpp)
+target_link_libraries(RuxSemantic PUBLIC RuxSyntax RuxDiagnostics)
 
-target_include_directories(RuxCore PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_BINARY_DIR}/generated
-)
+rux_add_component(RuxFormatter
+    Formatter/Formatter.cpp)
+target_link_libraries(RuxFormatter PUBLIC RuxSyntax)
 
-target_link_libraries(RuxCore PUBLIC RuxWarnings)
+rux_add_component(RuxLinter
+    Linter/Linter.cpp)
+target_link_libraries(RuxLinter PUBLIC RuxSyntax RuxSemantic)
+
+rux_add_component(RuxHir
+    Ir/Hir/HirDump.cpp)
+target_link_libraries(RuxHir PUBLIC RuxSemantic RuxLexer)
+
+rux_add_component(RuxHirPasses
+    Ir/Hir/Passes/PassManager.cpp)
+target_link_libraries(RuxHirPasses PUBLIC RuxHir)
+
+rux_add_component(RuxLir
+    Ir/Lir/LirDump.cpp)
+target_link_libraries(RuxLir PUBLIC RuxSemantic)
+
+rux_add_component(RuxLowering
+    Lowering/AstToHir/AstToHir.cpp
+    Lowering/HirToLir/HirToLir.cpp)
+target_link_libraries(RuxLowering PUBLIC
+    RuxSyntax RuxSemantic RuxHir RuxHirPasses RuxLir)
+
+rux_add_component(RuxObjectRcu
+    Object/Rcu/RcuDump.cpp
+    Object/Rcu/RcuWriter.cpp)
+
+rux_add_component(RuxCodeGenX86_64
+    CodeGen/Layout.cpp
+    CodeGen/X86_64/AssemblyPrinter.cpp
+    CodeGen/X86_64/RcuEmitter.cpp)
+target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxLir RuxObjectRcu)
+
+rux_add_component(RuxLinker
+    Linker/Linker.cpp
+    Linker/Pe/PeWriter.cpp
+    Linker/Elf/ElfWriter.cpp
+    Linker/MachO/MachOWriter.cpp)
+target_link_libraries(RuxLinker PUBLIC RuxObjectRcu RuxSystem)
+
+rux_add_component(RuxDriver
+    Driver/CompilerDriver.cpp
+    Driver/BuildReport.cpp
+    Driver/BuildTarget.cpp)
+target_link_libraries(RuxDriver PUBLIC
+    RuxSource RuxSystem RuxPackage RuxLexer RuxSyntax RuxSemantic
+    RuxHir RuxHirPasses RuxLir RuxLowering RuxCodeGenX86_64
+    RuxObjectRcu RuxLinker)
+
+# Compatibility aggregation target for embedders and existing tests. It owns
+# no sources; dependency validation happens in the component targets above.
+add_library(RuxCore INTERFACE)
+target_link_libraries(RuxCore INTERFACE RuxDriver)
 
 add_executable(rux
     Main.cpp
     Cli/Cli.cpp
     Cli/CliHelp.cpp
+    Cli/TerminalStyle.cpp
     Cli/CmdBuild.cpp
     Cli/CmdCheck.cpp
+    Cli/CmdLint.cpp
     Cli/CmdMisc.cpp
     Cli/CmdNew.cpp
     Cli/CmdPackage.cpp
@@ -97,7 +138,7 @@ add_executable(rux
     Cli/CmdTest.cpp
 )
 
-target_link_libraries(rux PRIVATE RuxCore)
+target_link_libraries(rux PRIVATE RuxCore RuxFormatter RuxLinter)
 
 # Emit the binary to Bin/<Config>/ (e.g. Bin/Release/rux) in the source tree,
 # keeping CMake intermediates in the build directory. $<CONFIG> resolves to the
@@ -107,7 +148,9 @@ set_target_properties(rux PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Bin/$<CONFIG>)
 
 if (MSVC OR (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
-    set_property(TARGET rux RuxCore PROPERTY
+    set_property(TARGET rux RuxDiagnostics RuxSource RuxSystem RuxPackage
+        RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxLinter RuxHir RuxHirPasses RuxLir
+        RuxLowering RuxObjectRcu RuxCodeGenX86_64 RuxLinker RuxDriver PROPERTY
         MSVC_RUNTIME_LIBRARY
         "$<IF:$<CONFIG:Release>,MultiThreaded,MultiThreaded$<$<CONFIG:Debug>:Debug>DLL>")
 endif ()

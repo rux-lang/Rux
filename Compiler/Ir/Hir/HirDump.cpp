@@ -1,7 +1,7 @@
-// Human-readable HIR dump (Hir::Dump).
+// Human-readable HIR dump.
 
-#include "Ir/Hir/Hir.h"
 #include "Ir/Hir/HirInternal.h"
+#include "Ir/Hir/HirPrinter.h"
 
 #include <format>
 #include <fstream>
@@ -317,7 +317,7 @@ static void DumpFuncSignature(std::ostream &out, const HirFunc &f, const std::st
                        params.empty() ? "()" : "(" + params + ")", ret);
 }
 
-bool Hir::Dump(const HirPackage &package, const std::filesystem::path &path) {
+bool HirPrinter::Dump(const HirPackage &package, const std::filesystem::path &path) {
     std::ofstream out(path);
     if (!out) {
         return false;

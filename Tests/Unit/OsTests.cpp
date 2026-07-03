@@ -1,9 +1,10 @@
-#include "Platform/Os.h"
-#include "Platform/Platform.h"
-
 #include <doctest.h>
 
-using namespace Rux::Platform;
+#include "System/Os.h"
+#include "Target/Platform.h"
+
+using namespace Rux::System;
+using namespace Rux::Target;
 
 TEST_CASE("GetEnv returns nullopt for unset variables") {
     constexpr const char *unset = "RUX_TEST_VARIABLE_THAT_IS_NEVER_SET";

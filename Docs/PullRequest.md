@@ -31,10 +31,10 @@ exact workflows and platforms.
 
 Not every workflow blocks merging. The **required** checks are:
 
-- **Ubuntu** (`ubuntu.yml`)
+- **Linux** (`linux.yml`)
 - **Windows** (`windows.yml`)
 
-The macOS and BSD/illumos workflows run too and are worth watching, but they are
+The macOS, BSD, and Illumos workflows run too and are worth watching, but they are
 **informational** — they won't block the merge button. Both required checks must
 be green before a PR is eligible to merge.
 

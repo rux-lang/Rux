@@ -2,9 +2,9 @@
 
 // Shared between HIR lowering (Hir.cpp) and the HIR text dump (HirDump.cpp).
 
-#include "Frontend/Token.h"
-
 #include <string_view>
+
+#include "Lexer/Token.h"
 
 namespace Rux {
 

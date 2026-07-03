@@ -1,11 +1,10 @@
 // `rux test` — build and run every test package under Tests/.
 
 #include "Cli/Cli.h"
+#include "Cli/TerminalStyle.h"
 #include "Driver/BuildTarget.h"
-#include "Driver/Driver.h"
+#include "Driver/CompilerDriver.h"
 #include "Package/Manifest.h"
-#include "Platform/Process.h"
-#include "Platform/Terminal.h"
 
 #include <algorithm>
 #include <chrono>
@@ -20,8 +19,12 @@
 #include <utility>
 #include <vector>
 
+#include "System/Process.h"
+
 using namespace Rux;
-using namespace Misc;
+using namespace CliSupport;
+using namespace Driver;
+using namespace System;
 
 int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &opts) {
     bool isRelease = false;
@@ -76,7 +79,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     const std::string_view profileName = isRelease ? "Release" : "Debug";
     // Collect test package directories: any directory under Tests/ that
     // contains a Rux.toml with Type = "bin". A directory without a manifest is
-    // a group (e.g. Tests/Lang/) and is searched recursively, a few levels
+    // a group (e.g. Tests/Integration/) and is searched recursively, a few levels
     // deep so build-output trees don't get walked.
     std::vector<std::filesystem::path> testPackages;
     {
@@ -162,7 +165,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         copts.targetName = HostTargetTriple();
         copts.profileName = std::string(profileName);
         copts.quiet = true;
-        Driver driver(std::move(copts));
+        CompilerDriver driver(std::move(copts));
         const CompileResult result = driver.Compile();
         if (!result.ok) {
             outcome.status = TestStatus::BuildError;

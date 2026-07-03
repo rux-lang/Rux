@@ -3,9 +3,7 @@
 // Helpers for resolving the active build target (OS/arch triple), pruning the
 // AST to that target, and locating workspace/registry directories.
 
-#include "Frontend/Ast/Ast.h"
 #include "Package/Manifest.h"
-#include "Platform/Target.h"
 
 #include <filesystem>
 #include <optional>
@@ -13,7 +11,10 @@
 #include <string_view>
 #include <vector>
 
-namespace Rux::Misc {
+#include "Syntax/Ast/Ast.h"
+#include "Target/Target.h"
+
+namespace Rux::Driver {
 
 // ---- Target triples ---------------------------------------------------------
 
@@ -30,9 +31,9 @@ namespace Rux::Misc {
 // component of an "os-arch" triple, or "" if it cannot be determined.
 [[nodiscard]] std::string_view TargetOsName(std::string_view target);
 
-// Platform::OS for the OS component of an "os-arch" triple; drives the linker's
+// Target::OS for the OS component of an "os-arch" triple; drives the linker's
 // object-format choice. Falls back to the host OS for an unrecognized triple.
-[[nodiscard]] Platform::OS TargetTripleOs(std::string_view target);
+[[nodiscard]] Target::OS TargetTripleOs(std::string_view target);
 
 // ---- Target-conditional declarations ----------------------------------------
 
@@ -65,4 +66,4 @@ void PruneModuleForTarget(Module &module, std::string_view target);
 // Per-user directory where installed registry packages are cached.
 [[nodiscard]] std::filesystem::path RegistryPackagesDir();
 
-} // namespace Rux::Misc
+} // namespace Rux::Driver

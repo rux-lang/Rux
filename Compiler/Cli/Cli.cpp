@@ -184,6 +184,9 @@ int Cli::Run() const {
     if (command == "fmt") {
         return RunFmt(rest, opts);
     }
+    if (command == "lint") {
+        return RunLint(rest, opts);
+    }
     if (command == "init") {
         return RunInit(rest, opts);
     }

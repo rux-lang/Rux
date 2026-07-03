@@ -1,8 +1,5 @@
 #include "Driver/BuildTarget.h"
 
-#include "Platform/Os.h"
-#include "Platform/Target.h"
-
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -10,9 +7,13 @@
 #include <print>
 #include <ranges>
 
-namespace Rux::Misc {
+#include "System/Os.h"
+#include "Target/Target.h"
 
-using namespace Platform;
+namespace Rux::Driver {
+
+using namespace Target;
+using namespace System;
 
 std::string TargetName() {
     if constexpr (HostArch == Arch::Unknown) {
@@ -64,36 +65,36 @@ std::string_view TargetOsName(const std::string_view target) {
     return "";
 }
 
-Platform::OS TargetTripleOs(const std::string_view target) {
+Target::OS TargetTripleOs(const std::string_view target) {
     const auto dash_pos = target.find('-');
     const auto os_prefix = dash_pos == std::string_view::npos ? target : target.substr(0, dash_pos);
 
     if (os_prefix == "linux") {
-        return Platform::OS::Linux;
+        return Target::OS::Linux;
     }
     if (os_prefix == "windows") {
-        return Platform::OS::Windows;
+        return Target::OS::Windows;
     }
     if (os_prefix == "macos") {
-        return Platform::OS::MacOS;
+        return Target::OS::MacOS;
     }
     if (os_prefix == "freebsd") {
-        return Platform::OS::FreeBSD;
+        return Target::OS::FreeBSD;
     }
     if (os_prefix == "openbsd") {
-        return Platform::OS::OpenBSD;
+        return Target::OS::OpenBSD;
     }
     if (os_prefix == "netbsd") {
-        return Platform::OS::NetBSD;
+        return Target::OS::NetBSD;
     }
     if (os_prefix == "dragonfly") {
-        return Platform::OS::DragonFlyBSD;
+        return Target::OS::DragonFlyBSD;
     }
     if (os_prefix == "illumos") {
-        return Platform::OS::Illumos;
+        return Target::OS::Illumos;
     }
 
-    return Platform::HostOS;
+    return Target::HostOS;
 }
 
 bool DeclMatchesTarget(const Decl &decl, const std::string_view target) {
@@ -203,4 +204,4 @@ std::filesystem::path RegistryPackagesDir() {
     }
 }
 
-} // namespace Rux::Misc
+} // namespace Rux::Driver

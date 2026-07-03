@@ -3,7 +3,6 @@
 #include "Cli/Cli.h"
 #include "Driver/BuildTarget.h"
 #include "Package/Manifest.h"
-#include "Platform/Process.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -20,8 +19,11 @@
 #include <unordered_set>
 #include <vector>
 
+#include "System/Process.h"
+
 using namespace Rux;
-using namespace Misc;
+using namespace Driver;
+using namespace System;
 
 int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions &opts) {
     std::string_view packageSpec;

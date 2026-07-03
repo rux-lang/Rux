@@ -11,9 +11,22 @@ set(RUX_TEST_SOURCES
     ProcessTests.cpp
 )
 
+if (TARGET RuxFormatter)
+    list(APPEND RUX_TEST_SOURCES FormatterTests.cpp)
+endif ()
+if (TARGET RuxLinter)
+    list(APPEND RUX_TEST_SOURCES LinterTests.cpp)
+endif ()
+
 add_executable(rux-tests ${RUX_TEST_SOURCES})
 
 target_link_libraries(rux-tests PRIVATE RuxCore)
+if (TARGET RuxFormatter)
+    target_link_libraries(rux-tests PRIVATE RuxFormatter)
+endif ()
+if (TARGET RuxLinter)
+    target_link_libraries(rux-tests PRIVATE RuxLinter)
+endif ()
 
 # SYSTEM keeps the project's warning flags (and -Werror in CI) from applying
 # to the vendored doctest header.

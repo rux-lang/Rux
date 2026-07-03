@@ -10,25 +10,23 @@ delivery (publishing binaries) is covered separately in the
 Each supported platform has its own workflow under
 [`.github/workflows/`](../.github/workflows/):
 
-| Workflow        | Platform            | Runner            | Toolchain install         |
-|-----------------|---------------------|-------------------|---------------------------|
-| `ubuntu.yml`    | Ubuntu 24.04        | GitHub-hosted     | `apt.llvm.org` → Clang 22 |
-| `windows.yml`   | Windows Server 2025 | GitHub-hosted     | Runner's bundled Clang    |
-| `macos.yml`     | macOS 26            | GitHub-hosted     | Homebrew `llvm@22`        |
-| `freebsd.yml`   | FreeBSD 14.2        | QEMU VM on Ubuntu | `pkg llvm22`              |
-| `dragonfly.yml` | DragonFly BSD 6.4   | QEMU VM on Ubuntu | `pkg llvm`                |
-| `netbsd.yml`    | NetBSD 10.1         | QEMU VM on Ubuntu | `pkgin clang`             |
-| `openbsd.yml`   | OpenBSD 7.6         | QEMU VM on Ubuntu | `pkg_add llvm%22`         |
-| `omnios.yml`    | OmniOS r151052      | QEMU VM on Ubuntu | `pkg install clang` (IPS) |
+| Workflow      | Platform            | Runner            | Toolchain install         |
+|---------------|---------------------|-------------------|---------------------------|
+| `linux.yml`   | Ubuntu 24.04        | GitHub-hosted     | `apt.llvm.org` → Clang 22 |
+| `windows.yml` | Windows Server 2025 | GitHub-hosted     | Runner's bundled Clang    |
+| `macos.yml`   | macOS 26            | GitHub-hosted     | Homebrew `llvm@22`        |
+| `bsd.yml`     | FreeBSD 14.2        | QEMU VM on Ubuntu | `pkg llvm22`              |
+| `illumos.yml` | OmniOS r151052      | QEMU VM on Ubuntu | `pkg install clang` (IPS) |
 
 Their status is shown by the badges at the top of the [README](../README.md).
 
 Two additions run alongside the per-OS matrix:
 
 - **`lint.yml`** — repository-wide checks: the platform-isolation guard
-  (`Tools/CheckPlatformIsolation.sh`, which fails when OS APIs like
-  `getenv`/`<windows.h>`/`fork` are used outside `Compiler/Platform/`) and a
-  `clang-format --dry-run -Werror` pass over the sources.
+  (`Tools/PlatformIsolation/Check.sh`, which fails when OS APIs like
+  `getenv`/`<windows.h>`/`fork` are used outside `Compiler/System/`) and a
+  `clang-format-22 --dry-run -Werror` pass over `Compiler/` and `Tests/Unit/`
+  (excluding vendored `ThirdParty` code).
 - **GCC job** (in `linux.yml`) — builds the compiler and runs the unit tests
   with `g++-14` to keep the codebase portable beyond Clang/MSVC. Warnings are
   not fatal there; the Clang jobs carry `-Werror`.
@@ -55,14 +53,15 @@ keeps running.
 
 Every workflow is two jobs — **Build**, then **Test** (`needs: build`). Splitting
 them means the binary is compiled once, uploaded as an artifact, then downloaded
-by the test job. Using `ubuntu.yml` as the reference shape:
+by the test job. Using `linux.yml` as the reference shape:
 
 1. **Build job**
     - Check out the repo.
     - Install Clang 22, plus CMake and Ninja.
-    - Configure and build Release:
+    - Configure and build Release (Clang jobs add `-DRUX_WERROR=ON`, so
+      warnings fail the build):
       ```sh
-      cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++-22
+      cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++-22 -DRUX_WERROR=ON
       cmake --build build --config Release
       ```
     - Upload the `rux` binary as an artifact.
@@ -85,28 +84,28 @@ emulated ones differ in *where the whole job runs*:
 - **macOS** — Apple Clang lags upstream and lacks full C++26 support, so the
   workflow installs LLVM `llvm@22` from Homebrew and points
   `CMAKE_CXX_COMPILER` at the Homebrew `clang++`.
-- **FreeBSD, DragonFly, NetBSD, OpenBSD, OmniOS** — GitHub has no native runner
-  for these, so each job boots its own OS image in a QEMU VM (via the
+- **FreeBSD (`bsd.yml`) and OmniOS (`illumos.yml`)** — GitHub has no native
+  runner for these, so each job boots its own OS image in a QEMU VM (via the
   `vmactions/*-vm` actions) on an Ubuntu host. Because Build and Test are
   separate jobs, each boots a *fresh* VM and installs the toolchain again — and
   the Test VM additionally installs the Clang runtime libraries the prebuilt
   binary links against. The compiler binary name varies by packaging: versioned
   (`clang++22` on FreeBSD) where the OS ships versioned LLVM packages, plain
-  `clang++` elsewhere.
+  `clang++` on OmniOS.
 
 ## Required checks
 
 The following must pass before a PR can merge (configured in branch protection —
 see [Branch Architecture](Branches.md)):
 
-- **`ubuntu.yml`** (Ubuntu 24.04)
+- **`linux.yml`** (Ubuntu 24.04)
 - **`windows.yml`** (Windows Server 2025)
 
-The remaining workflows — `macos.yml` and the BSD/illumos family
-(`freebsd`, `dragonfly`, `netbsd`, `openbsd`, `omnios`) — run on every push and
-PR and report status, but are **informational**: they broaden platform coverage
-without blocking merges, since the emulated VMs are slower and occasionally
-flaky. A red informational check is still worth investigating before merging.
+The remaining workflows — `macos.yml`, `bsd.yml` (FreeBSD), and `illumos.yml`
+(OmniOS) — run on every push and PR and report status, but are
+**informational**: they broaden platform coverage without blocking merges, since
+the emulated VMs are slower and occasionally flaky. A red informational check is
+still worth investigating before merging.
 
 ## Reproducing CI locally
 

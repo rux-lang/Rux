@@ -1,8 +1,8 @@
-#include "Platform/Process.h"
-
 #include <doctest.h>
 
-using namespace Rux::Misc;
+#include "System/Process.h"
+
+using namespace Rux::System;
 
 TEST_CASE("JsonLookupString finds string values in flat objects") {
     constexpr const char *json = R"({ "name": "Std", "repository": "https://example.com/std" })";

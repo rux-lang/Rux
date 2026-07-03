@@ -1,6 +1,6 @@
-// Human-readable LIR dump (Lir::Dump).
+// Human-readable LIR dump.
 
-#include "Ir/Lir/Lir.h"
+#include "Ir/Lir/LirPrinter.h"
 
 #include <format>
 #include <fstream>
@@ -238,7 +238,7 @@ static void DumpFunc(std::ostream &out, const LirFunc &fn) {
     }
 }
 
-bool Lir::Dump(const LirPackage &package, const std::filesystem::path &path) {
+bool LirPrinter::Dump(const LirPackage &package, const std::filesystem::path &path) {
     std::ofstream out(path);
     if (!out) {
         return false;

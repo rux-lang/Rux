@@ -1,0 +1,54 @@
+#pragma once
+
+#include "Ir/Hir/Hir.h"
+
+#include <cstdint>
+#include <optional>
+#include <unordered_map>
+
+namespace Rux {
+
+class HirPassManager {
+public:
+    static void Run(HirPackage &package);
+
+private:
+    static void OptimizeModule(HirModule &module);
+
+    static void OptimizeFunc(HirFunc &func);
+
+    static void OptimizeBlock(HirBlock &block);
+
+    static void OptimizeStmt(HirStmtPtr &stmt);
+
+    static void OptimizeExpr(HirExprPtr &expr);
+
+    static bool FoldBinary(HirExprPtr &expr);
+
+    static bool FoldUnary(HirExprPtr &expr);
+
+    static bool IsIntegerLiteral(const HirExpr *expr);
+
+    static std::optional<std::int64_t> GetIntegerLiteral(const HirExpr *expr);
+
+    static HirExprPtr MakeIntegerLiteral(std::int64_t value, const TypeRef &type);
+
+    static HirExprPtr MakeBoolLiteral(bool value, const TypeRef &type);
+
+    static bool IsBoolLiteral(const HirExpr *expr);
+
+    static bool GetBoolLiteral(const HirExpr *expr);
+
+    static bool SimplifyBinary(HirExprPtr &expr);
+
+    struct ConstantValue {
+        bool isBool = false;
+        std::int64_t intValue = 0;
+        bool boolValue = false;
+        TypeRef type;
+    };
+
+    static inline std::unordered_map<std::string, ConstantValue> constants;
+};
+
+} // namespace Rux

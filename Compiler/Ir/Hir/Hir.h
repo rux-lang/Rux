@@ -1,13 +1,15 @@
 #pragma once
 
-#include "Frontend/Ast/Ast.h"
-#include "Frontend/Sema/Type.h"
-
 #include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
+
+#include "Lexer/Token.h"
+#include "Semantic/Type.h"
+#include "Source/SourceLocation.h"
+#include "Target/CallingConvention.h"
 
 namespace Rux {
 // Forward declarations
@@ -481,21 +483,6 @@ struct HirModule {
 
 struct HirPackage {
     std::vector<HirModule> modules;
-};
-
-// Generator
-// Lowers a set of parsed AST modules into typed HIR.
-// Input modules must have passed semantic analysis without errors.
-class Hir {
-public:
-    explicit Hir(std::vector<const Module *> modules);
-    [[nodiscard]] HirPackage Generate();
-
-    // Write a human-readable dump of the HIR package to `path`.
-    static bool Dump(const HirPackage &package, const std::filesystem::path &path);
-
-private:
-    std::vector<const Module *> modules_;
 };
 
 inline HirGuardedPattern::~HirGuardedPattern() = default;

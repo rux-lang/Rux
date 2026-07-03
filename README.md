@@ -30,7 +30,7 @@ Rux is a fast, compiled, strongly typed, multi-paradigm programming language.
 
 ## Project Status
 
-Currently, under development.
+Currently under development.
 
 ## Documentation
 
@@ -49,7 +49,7 @@ You need the following tools, all in a recent version:
 
 | Tool                              | Version | Description                 |
 | --------------------------------- | ------- | --------------------------- |
-| [Clang](https://clang.llvm.org/)  | 21.1+   | The C++26 compiler          |
+| [Clang](https://clang.llvm.org/)  | 22.1+   | The C++26 compiler          |
 | [CMake](https://cmake.org/)       | 4.2+    | Generates the build files   |
 | [Ninja](https://ninja-build.org/) | 1.13+   | Runs the actual build, fast |
 | [Git](https://git-scm.com/)       | 2.52+   | Downloads the source code   |

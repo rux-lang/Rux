@@ -1,14 +1,14 @@
 #include "Driver/BuildReport.h"
 
 #include "Driver/BuildTarget.h"
-#include "Support/Version.h"
+#include "Driver/Version.h"
 
 #include <cmath>
 #include <iomanip>
 #include <print>
 #include <sstream>
 
-namespace Rux::Misc {
+namespace Rux::Driver {
 
 std::size_t CountLines(std::string_view source) {
     if (source.empty()) {
@@ -159,4 +159,4 @@ void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view pr
                exePath.filename().string(), FormatSize(stats.executableSize));
 }
 
-} // namespace Rux::Misc
+} // namespace Rux::Driver

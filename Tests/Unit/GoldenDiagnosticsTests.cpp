@@ -9,11 +9,6 @@
 // run the test binary with RUX_UPDATE_GOLDEN=1 and review the diff.
 
 #include "Driver/BuildTarget.h"
-#include "Frontend/Lexer.h"
-#include "Frontend/Parser/Parser.h"
-#include "Frontend/Sema/Sema.h"
-#include "Platform/Os.h"
-#include "Support/Diagnostics.h"
 
 #include <algorithm>
 #include <doctest.h>
@@ -25,6 +20,12 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "Diagnostics/Diagnostics.h"
+#include "Lexer/Lexer.h"
+#include "Semantic/SemanticAnalyzer.h"
+#include "Syntax/Parser/Parser.h"
+#include "System/Os.h"
 
 using namespace Rux;
 
@@ -73,8 +74,9 @@ std::string FrontendDiagnostics(std::string source, const std::string &sourceNam
         return out;
     }
 
-    Sema sema({&parseResult.module}, {}, "Golden", std::string(Misc::TargetOsName(Misc::HostTargetTriple())));
-    const auto semaResult = sema.Analyze();
+    SemanticAnalyzer analyzer({&parseResult.module}, {}, "Golden",
+                              std::string(Driver::TargetOsName(Driver::HostTargetTriple())));
+    const auto semaResult = analyzer.Analyze();
     AppendDiagnostics(out, semaResult.diagnostics);
     return out;
 }
@@ -94,7 +96,7 @@ TEST_CASE("Golden diagnostics match the expected files") {
     std::sort(cases.begin(), cases.end());
     REQUIRE_MESSAGE(!cases.empty(), "no .rux cases in ", goldenDir.string());
 
-    const bool update = Platform::HasEnv("RUX_UPDATE_GOLDEN");
+    const bool update = System::HasEnv("RUX_UPDATE_GOLDEN");
 
     for (const auto &casePath : cases) {
         const std::string caseName = casePath.stem().string();

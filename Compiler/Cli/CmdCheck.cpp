@@ -2,8 +2,7 @@
 
 #include "Cli/Cli.h"
 #include "Driver/BuildTarget.h"
-#include "Driver/Driver.h"
-#include "Support/Diagnostics.h"
+#include "Driver/CompilerDriver.h"
 
 #include <cstdio>
 #include <print>
@@ -13,8 +12,10 @@
 #include <utility>
 #include <vector>
 
+#include "Diagnostics/Diagnostics.h"
+
 using namespace Rux;
-using namespace Misc;
+using namespace Driver;
 
 int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &opts) {
     bool jsonOutput = false;
@@ -120,7 +121,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
             std::print(stderr, "{}", line);
         }
     };
-    Driver driver(std::move(copts));
+    CompilerDriver driver(std::move(copts));
     const CompileResult result = driver.Compile();
     if (!result.ok) {
         hadErrors = true;

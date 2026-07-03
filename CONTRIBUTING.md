@@ -21,7 +21,12 @@ in [`Docs/`](Docs/).
    git checkout dev
    git checkout -b my-feature
    ```
-3. Make your change, add a test, and run the suite (`./Bin/Release/rux test`).
+3. Make your change, add a test, and run the suite — the test packages depend
+   on `Std`, so install it once first:
+   ```sh
+   ./Bin/Release/rux install Std
+   ./Bin/Release/rux test
+   ```
 4. Format touched files with `clang-format -i <files>`.
 5. Push your branch and open a Pull Request **against `dev`**.
 

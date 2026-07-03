@@ -36,12 +36,13 @@ tag can never produce a release.
 
 Each `needs: verify-version`, then builds Release **and runs the test suite** —
 a broken build or failing test blocks the release. Each uploads its binary as an
-artifact:
+artifact; the Windows job additionally packages the freshly built binary into a
+per-user MSI installer (`Packaging/Windows/Msi/Build.ps1`):
 
-| Job       | Runner       | Artifact  |
-|-----------|--------------|-----------|
-| `linux`   | ubuntu-24.04 | `rux`     |
-| `windows` | windows-2025 | `rux.exe` |
+| Job       | Runner       | Artifacts                                       |
+|-----------|--------------|-------------------------------------------------|
+| `linux`   | ubuntu-24.04 | `rux-linux` (the `rux` binary)                  |
+| `windows` | windows-2025 | `rux-windows` (`rux.exe`), `rux-windows-msi`    |
 
 ### 3. `release` (publish)
 
@@ -51,6 +52,7 @@ artifact:
 2. Package them:
     - `rux-linux.tar.gz` (preserves the executable bit)
     - `rux-windows.zip`
+    - `rux-windows.msi` (attached as-is)
 3. Create a **draft** GitHub Release with auto-generated release notes and the
    archives attached.
 

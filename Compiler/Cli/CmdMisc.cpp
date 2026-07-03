@@ -12,8 +12,10 @@
 #include <string_view>
 #include <vector>
 
+#include "Formatter/Formatter.h"
+
 using namespace Rux;
-using namespace Misc;
+using namespace Driver;
 
 int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions &opts) {
     bool check = false;
@@ -95,7 +97,7 @@ int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions &opt
         }
         return 0;
     }
-    auto sourceDir = root / "Source";
+    auto sourceDir = root / "Src";
     if (!std::filesystem::exists(sourceDir)) {
         if (!opts.quiet) {
             std::print("  No source directory found.\n");
@@ -103,6 +105,7 @@ int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions &opt
         return 0;
     }
     int fileCount = 0;
+    bool formattingFailed = false;
     for (const auto &entry : std::filesystem::recursive_directory_iterator(sourceDir)) {
         if (!entry.is_regular_file()) {
             continue;
@@ -111,20 +114,38 @@ int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions &opt
             continue;
         }
         ++fileCount;
-        if (!opts.quiet) {
-            if (check) {
-                std::print("  Checking   {}\n", entry.path().string());
-            }
-            else {
-                std::print("  Formatting {}\n", entry.path().string());
-            }
+        std::ifstream input(entry.path(), std::ios::binary);
+        std::string source{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+        if (!input && !input.eof()) {
+            std::print(stderr, "error: failed to read '{}'\n", entry.path().string());
+            formattingFailed = true;
+            continue;
         }
-        // TODO: source formatter
+        auto result = Formatting::Format(source);
+        if (!result.changed) {
+            continue;
+        }
+        if (check) {
+            if (!opts.quiet) {
+                std::print(stderr, "error: '{}' is not formatted\n", entry.path().string());
+            }
+            formattingFailed = true;
+            continue;
+        }
+        if (!opts.quiet) {
+            std::print("  Formatting {}\n", entry.path().string());
+        }
+        std::ofstream output(entry.path(), std::ios::binary | std::ios::trunc);
+        output << result.text;
+        if (!output) {
+            std::print(stderr, "error: failed to write '{}'\n", entry.path().string());
+            formattingFailed = true;
+        }
     }
     if (fileCount == 0 && !opts.quiet) {
         std::print("  No .rux files found.\n");
     }
-    return 0;
+    return formattingFailed ? 1 : 0;
 }
 
 int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opts) {

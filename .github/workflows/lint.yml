@@ -19,9 +19,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Direct OS API usage must stay inside Compiler/Platform/.
+      # Direct OS API usage must stay inside Compiler/System/.
       - name: Check platform isolation
-        run: sh Tools/CheckPlatformIsolation.sh
+        run: sh Tools/PlatformIsolation/Check.sh
 
   format:
     name: clang-format
