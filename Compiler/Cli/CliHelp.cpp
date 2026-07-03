@@ -8,9 +8,11 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdio>
+#include <functional>
 #include <print>
 #include <ranges>
 #include <span>
+#include <string>
 #include <string_view>
 
 #include "System/Os.h"
@@ -136,7 +138,7 @@ constexpr void Wrap(std::string_view text, const std::size_t width, Callback cal
 }
 
 void PrintCmdLine(std::string_view cmd, std::string_view suffix) {
-    std::print("{0:<{1}}", "", Layout::BlockIndent);
+    std::print("{}", std::string(Layout::BlockIndent, ' '));
     // If the example is already a complete command line starting with
     // "rux", print it directly and bail out early.
     if (suffix.starts_with(Layout::CliName)) {
@@ -164,9 +166,8 @@ void PrintBlock(std::string_view title, const std::string_view text, const size_
     }
     const size_t usable = UsableWidth(termWidth, indent);
     Wrap(text, usable, [&](std::string_view line) -> void {
-        // If the line is empty, pad with 0 spaces (prints just a
-        // newline)
-        std::println("{0:<{1}}{2}", "", line.empty() ? 0 : indent, line);
+        const std::string padding(line.empty() ? 0 : indent, ' ');
+        std::println("{}{}", padding, line);
     });
     std::println("");
 }
@@ -178,16 +179,17 @@ void PrintAligned(const std::string_view left, const std::string_view right, con
     bool first = true;
     Wrap(right, width, [&](std::string_view line) {
         if (first) {
-            std::println("{0:<{1}}{2:<{3}}{4}", "", Layout::BlockIndent, left, leftWidth + Layout::AlignedPadding,
-                         line);
+            std::string leftColumn(left);
+            leftColumn.resize(leftWidth + Layout::AlignedPadding, ' ');
+            std::println("{}{}{}", std::string(Layout::BlockIndent, ' '), leftColumn, line);
             first = false;
         }
         else {
-            std::println("{0:<{1}}{2}", "", line.empty() ? 0 : indent, line);
+            std::println("{}{}", std::string(line.empty() ? 0 : indent, ' '), line);
         }
     });
     if (first) {
-        std::println("{0:<{1}}{2}", "", Layout::BlockIndent, left);
+        std::println("{}{}", std::string(Layout::BlockIndent, ' '), left);
     }
 }
 

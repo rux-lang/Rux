@@ -228,6 +228,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     const auto suiteStart = std::chrono::steady_clock::now();
     for (const auto &pkgDir : testPackages) {
         const std::string label = testLabel(pkgDir);
+        std::string paddedLabel = label;
+        paddedLabel.resize(nameWidth, ' ');
         TestOutcome outcome = runOne(pkgDir);
         // Trailing detail: a timing for tests that ran, otherwise the failure kind.
         std::string detail;
@@ -245,13 +247,13 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         if (outcome.status == TestStatus::Passed) {
             ++passed;
             if (!opts.quiet) {
-                std::print("{}[PASSED]{} {:<{}} ({})\n", style.Green(), style.Reset(), label, nameWidth, detail);
+                std::print("{}[PASSED]{} {} ({})\n", style.Green(), style.Reset(), paddedLabel, detail);
             }
         }
         else {
             ++failed;
             if (!opts.quiet) {
-                std::print("{}[FAILED]{} {:<{}} ({})\n", style.Red(), style.Reset(), label, nameWidth, detail);
+                std::print("{}[FAILED]{} {} ({})\n", style.Red(), style.Reset(), paddedLabel, detail);
             }
             failures.push_back({label, outcome.status, outcome.exitCode, std::move(outcome.output)});
         }
