@@ -253,9 +253,10 @@ bool CompilerDriver::LoadDependencies() {
     };
 
     std::vector<std::string> imports;
+    const std::string &targetName = opts.targetName;
     auto collectImports = [&](this auto &&self, const Decl &decl) -> void {
         if (const auto *ud = dynamic_cast<const UseDecl *>(&decl)) {
-            if (!DeclMatchesTarget(*ud, opts.targetName)) {
+            if (!DeclMatchesTarget(*ud, targetName)) {
                 return;
             }
             if (!ud->path.empty()) {

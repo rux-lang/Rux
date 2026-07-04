@@ -1,6 +1,7 @@
 #include "Source/SourceLoader.h"
 
 #include <algorithm>
+#include <format>
 #include <fstream>
 #include <print>
 #include <sstream>

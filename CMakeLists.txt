@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.2)
+cmake_minimum_required(VERSION 3.31)
 project(Rux VERSION 0.3.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)

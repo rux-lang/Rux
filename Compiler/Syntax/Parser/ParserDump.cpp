@@ -1,5 +1,6 @@
 // Human-readable AST dump (Parser::DumpAst).
 
+#include <format>
 #include <fstream>
 #include <ostream>
 #include <sstream>

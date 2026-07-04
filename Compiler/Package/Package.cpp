@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <expected>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <print>
 #include <ranges>

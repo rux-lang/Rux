@@ -1,5 +1,6 @@
 // Type-expression parsing.
 
+#include <format>
 #include <memory>
 #include <vector>
 

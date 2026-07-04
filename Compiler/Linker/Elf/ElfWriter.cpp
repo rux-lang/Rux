@@ -1,5 +1,6 @@
 // ELF64 object writer for Linux, the BSDs, Solaris, and illumos.
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <fstream>

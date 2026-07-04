@@ -1,5 +1,6 @@
 // Static Mach-O object writer for macOS (x86-64, ad-hoc code-signed).
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
