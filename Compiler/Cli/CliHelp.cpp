@@ -153,7 +153,7 @@ void PrintCmdLine(std::string_view cmd, std::string_view suffix) {
     if (!suffix.empty()) {
         std::print(" {}", suffix);
     }
-    std::println();
+    std::println("");
 }
 
 void PrintBlock(std::string_view title, const std::string_view text, const size_t termWidth,
