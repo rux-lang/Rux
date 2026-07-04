@@ -2,14 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
-to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.3.0] - 2026-06-23
 
-Adds broad multi-platform host support, a revamped platform abstraction layer, new language features, a macOS linker
-backend, and Windows DLL output, along with correctness fixes, broader literal and constant-expression support, improved
-overload resolution, expanded runtime support, better test coverage, cleaner CLI/build tooling, and many bug fixes.
+Adds broad multi-platform host support, a revamped platform abstraction layer, new language features, a macOS linker backend, and Windows DLL output, along with correctness fixes, broader literal and constant-expression support, improved overload resolution, expanded runtime support, better test coverage, cleaner CLI/build tooling, and many bug fixes.
 
 ### Added
 
@@ -17,22 +14,17 @@ overload resolution, expanded runtime support, better test coverage, cleaner CLI
 
 - **Target attributes** — `@[Target(...)]` attributes to conditionally compile code per platform
 - **Unicode escape sequences** — `\u{...}` escapes in string and character literals
-- **Constant integer expression coercion** — compile-time folded integer expressions now coerce to sized integer targets
-  when the value fits
-- **Typed non-decimal integer suffixes** — `0xFFu`, `0b1010u`, `0o17i`, and underscore separators in non-decimal
-  literals
+- **Constant integer expression coercion** — compile-time folded integer expressions now coerce to sized integer targets when the value fits
+- **Typed non-decimal integer suffixes** — `0xFFu`, `0b1010u`, `0o17i`, and underscore separators in non-decimal literals
 - **Constant character cast validation** — compile-time validation for `as char8`, `as char16`, and `as char32`
 - **Boolean bitwise operators** — `&`, `|`, `^`, and `~` on `bool` types
-- **Attribute handling improvements** — `@[Target(...)]` import filtering by platform, plus warning and error attribute
-  support (`@[Warn(...)]`, `@[Error(...)]`)
+- **Attribute handling improvements** — `@[Target(...)]` import filtering by platform, plus warning and error attribute support (`@[Warn(...)]`, `@[Error(...)]`)
 
 #### Runtime / Linker
 
-- **Windows PE32+ DLL output** — emit `.dll` artifacts when `Type = "Dll"` in `Rux.toml` (export directory, optional
-  `DllMain`)
+- **Windows PE32+ DLL output** — emit `.dll` artifacts when `Type = "Dll"` in `Rux.toml` (export directory, optional `DllMain`)
 - **macOS Mach-O linker backend** — native x86-64 Mach-O executable output on macOS
-- **macOS `munmap` thunk** — adds `munmap` support to the Mach-O linker so `Std::Memory::Free` can release mmap-backed
-  allocations
+- **macOS `munmap` thunk** — adds `munmap` support to the Mach-O linker so `Std::Memory::Free` can release mmap-backed allocations
 - **Floating-point remainder support** — adds FP `%` handling
 - **Floating-point comparison fixes** — correct FP comparison behavior
 
@@ -42,10 +34,9 @@ overload resolution, expanded runtime support, better test coverage, cleaner CLI
 - **NetBSD x86-64 host** — native compilation and execution on NetBSD x86-64
 - **DragonFly BSD x86-64 host** — native compilation and execution on DragonFly BSD x86-64
 - **Illumos x86-64 host** — native compilation and execution on Illumos/OmniOS x86-64
-- **Platform abstraction layer** — revamped `Platform` implementation with platform macros and CPU feature detection at
-  runtime
+- **Platform abstraction layer** — revamped `Platform` implementation with platform macros and CPU feature detection at runtime
 - **BSD and Illumos ELF target support** — correct ELF OSABI, `PT_NOTE`, `ET_DYN` per target
-- **Target-specific platform dependencies** — `[target.<triple>.dependencies]` in `Rux.toml`
+- **Target-specific platform dependencies** — `[Target.<Platform>.Dependencies]` in `Rux.toml`
 
 #### Syscall Thunks
 
@@ -88,8 +79,7 @@ overload resolution, expanded runtime support, better test coverage, cleaner CLI
 - Integer `**` (power) operator — defines `__rux_ipow` runtime helper
 - **SysV stack argument passing** is restored in codegen
 - Entry stack alignment: pre-adjust RSP before `call Main`
-- `ReadFile`/`WriteFile` thunks: preserve R9 across syscall, guard `mov [r9]` with null check, preserve non-volatile
-  RDI/RSI on Win64
+- `ReadFile`/`WriteFile` thunks: preserve R9 across syscall, guard `mov [r9]` with null check, preserve non-volatile RDI/RSI on Win64
 
 #### Platform / Build
 
@@ -171,8 +161,7 @@ Expands the compiler with control flow, composite types, modules, and a richer t
 
 Initial release of the Rux compiler and package manager.
 
-> **Note:** This release supports compiling simple `Main` functions with arithmetic return expressions only. Full
-> language features are not yet implemented.
+> **Note:** This release supports compiling simple `Main` functions with arithmetic return expressions only. Full language features are not yet implemented.
 
 ```rux
 func Main() -> int32 {
@@ -182,8 +171,7 @@ func Main() -> int32 {
 
 ### Compiler pipeline
 
-- **Lexer** — tokenizes `.rux` source files; reports diagnostics with file, line, and column; supports token stream
-  dump (`--dump-tokens`)
+- **Lexer** — tokenizes `.rux` source files; reports diagnostics with file, line, and column; supports token stream dump (`--dump-tokens`)
 - **Parser** — produces an AST from the token stream; supports AST dump (`--dump-ast`)
 - **Semantic analysis** — type checking and name resolution; supports analysis dump (`--dump-sema`)
 - **HIR** — high-level intermediate representation lowered from the AST
