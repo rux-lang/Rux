@@ -81,8 +81,8 @@ constexpr bool kDefaultCallIsWin64 = RUX_OS_WINDOWS;
 // Code generator
 class AsmGen {
 public:
-    explicit AsmGen(const LirPackage &pkg)
-        : pkg(pkg) {
+    explicit AsmGen(const LirPackage &package)
+        : pkg(package) {
     }
 
     std::string Generate();

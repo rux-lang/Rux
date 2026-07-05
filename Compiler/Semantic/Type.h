@@ -48,6 +48,8 @@ struct TypeRef {
     Kind kind = Kind::Unknown;
     std::string name;
     std::vector<TypeRef> inner; // C++17: vector<incomplete T> is valid
+    bool isVariadic = false;    // Func kind: trailing C-style ... (extern) or
+                                // Rux variadic; extra call args are allowed
 
     // Factories
     static TypeRef MakeUnknown() {

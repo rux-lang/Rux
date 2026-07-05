@@ -11,12 +11,12 @@ namespace Rux {
 
 class RcuEmitter {
 public:
-    explicit RcuEmitter(const LirPackage &package, std::string packageName = {});
+    explicit RcuEmitter(const LirPackage &package, std::string inputPackageName = {});
     [[nodiscard]] std::vector<RcuFile> Generate() const;
 
 private:
-    const LirPackage &lir_;
-    std::string packageName_;
+    const LirPackage &lir;
+    std::string packageName;
 };
 
 } // namespace Rux

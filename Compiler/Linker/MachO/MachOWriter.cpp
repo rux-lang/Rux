@@ -334,7 +334,7 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     // 3. Append compat thunks after the preamble (sorted for determinism).
     std::unordered_map<std::string, uint32_t> macCompatThunkOff;
     std::vector<std::string> macCompatNames(macCompatExterns.begin(), macCompatExterns.end());
-    std::sort(macCompatNames.begin(), macCompatNames.end());
+    std::ranges::sort(macCompatNames);
     for (const auto &name : macCompatNames) {
         auto thunk = MacCompatThunk(name);
         if (!thunk) {
@@ -343,7 +343,7 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         macCompatThunkOff[name] = static_cast<uint32_t>(textPre.size());
         textPre.insert(textPre.end(), thunk->begin(), thunk->end());
     }
-    const uint32_t preambleSize = static_cast<uint32_t>(textPre.size());
+    const auto preambleSize = static_cast<uint32_t>(textPre.size());
 
     // 4. Merge per-object sections.
     struct ObjLayout {
@@ -380,12 +380,12 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     constexpr uint32_t kSect = 80;       // section_64
     constexpr uint32_t kThreadCmd = 184; // LC_UNIXTHREAD with x86_THREAD_STATE64 (count 42)
     constexpr uint32_t kNCmds = 5;
-    const uint32_t sizeOfCmds = kSegCmd +               // __PAGEZERO
-                                (kSegCmd + 2 * kSect) + // __TEXT
-                                (kSegCmd + 1 * kSect) + // __DATA
-                                kSegCmd +               // __LINKEDIT
-                                kThreadCmd;
-    const uint64_t headerSize = 32 + sizeOfCmds;
+    constexpr uint32_t sizeOfCmds = kSegCmd +               // __PAGEZERO
+                                    (kSegCmd + 2 * kSect) + // __TEXT
+                                    (kSegCmd + 1 * kSect) + // __DATA
+                                    kSegCmd +               // __LINKEDIT
+                                    kThreadCmd;
+    constexpr uint64_t headerSize = 32 + sizeOfCmds;
 
     // 6. File/VA layout. Invariant: every segment's VA == kBase + its file
     // offset,
@@ -394,8 +394,8 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     //    16-byte LC_CODE_SIGNATURE there, and without room it would
     //    overwrite __text.
     static constexpr uint64_t kCodeSigLcSlack = 32;
-    const uint64_t textOff = alignUp64(headerSize + kCodeSigLcSlack, 16);
-    const uint64_t textVA = kBase + textOff;
+    constexpr uint64_t textOff = alignUp64(headerSize + kCodeSigLcSlack, 16);
+    constexpr uint64_t textVA = kBase + textOff;
     const uint64_t rodataOff = alignUp64(textOff + textBuf.size(), 16);
     const uint64_t rodataVA = kBase + rodataOff;
     const uint64_t textSegFileEnd = rodataOff + mergedRodata.size();
@@ -518,7 +518,7 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
                     if (patchAt + 4 > buf->size()) {
                         continue;
                     }
-                    const int32_t disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
+                    const auto disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
                     Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
                 }
                 else if (reloc.type == RcuRelType::Abs64) {

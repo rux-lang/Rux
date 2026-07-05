@@ -7,13 +7,14 @@
 
 namespace Rux {
 
-Linker::Linker(std::vector<RcuFile> objects, std::string packageName,
-               std::vector<std::filesystem::path> importSearchDirs, bool isDll, Target::OS targetOs)
-    : objects(std::move(objects))
-    , packageName(std::move(packageName))
-    , importSearchDirs(std::move(importSearchDirs))
-    , isDll(isDll)
-    , targetOs(targetOs) {
+Linker::Linker(std::vector<RcuFile> inputObjects, std::string inputPackageName,
+               std::vector<std::filesystem::path> inputImportSearchDirs, const bool inputIsDll,
+               const Target::OS inputTargetOs)
+    : objects(std::move(inputObjects))
+    , packageName(std::move(inputPackageName))
+    , importSearchDirs(std::move(inputImportSearchDirs))
+    , isDll(inputIsDll)
+    , targetOs(inputTargetOs) {
 }
 
 void Linker::Error(std::string msg) {

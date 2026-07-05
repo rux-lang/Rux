@@ -15,8 +15,8 @@ namespace Rux {
 namespace {
 class AstPrinter {
 public:
-    explicit AstPrinter(std::ostream &out)
-        : out(out) {
+    explicit AstPrinter(std::ostream &output)
+        : out(output) {
     }
 
     void Print(const Module &mod) {

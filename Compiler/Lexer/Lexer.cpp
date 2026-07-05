@@ -78,9 +78,9 @@ bool LexerResult::HasErrors() const noexcept {
     return false;
 }
 
-Lexer::Lexer(std::string source, std::string sourceName)
-    : source(std::move(source))
-    , sourceName(std::move(sourceName)) {
+Lexer::Lexer(std::string inputSource, std::string inputSourceName)
+    : source(std::move(inputSource))
+    , sourceName(std::move(inputSourceName)) {
 }
 
 std::optional<LexerResult> Lexer::FromFile(const std::filesystem::path &path) {

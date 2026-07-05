@@ -19,7 +19,7 @@ struct ParseResult {
 
 class Parser {
 public:
-    explicit Parser(std::vector<Token> tokens, std::string sourceName = "<input>");
+    explicit Parser(std::vector<Token> inputTokens, std::string inputSourceName = "<input>");
 
     // Convenience: lex and parse in one step.
     [[nodiscard]] static std::optional<ParseResult> FromLexResult(const LexerResult &lex,

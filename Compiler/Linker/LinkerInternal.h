@@ -6,8 +6,6 @@
 #include <cstring>
 #include <vector>
 
-#include "Linker/Linker.h"
-
 namespace Rux {
 
 using Buf = std::vector<uint8_t>;

@@ -101,6 +101,23 @@ public:
                 globalConsts[mod.name + "::" + c.name] = &c;
             }
         }
+        // Calling conventions are resolved package-wide: a call may target an
+        // extern function declared in an imported module (e.g. C::printf), so
+        // the map must span every module, not just the one being lowered.
+        funcConvs.clear();
+        for (const auto &mod : hir.modules) {
+            for (const auto &ef : mod.externFuncs) {
+                // Extern C functions default to the platform C ABI (SysV on
+                // Linux/BSD/macOS, Win64 on Windows) so arguments land in the
+                // registers the shared library expects.
+                funcConvs[ef.name] = ef.callConv == CallingConvention::Default ? PlatformCConvention() : ef.callConv;
+            }
+            for (const auto &f : mod.funcs) {
+                if (f.callConv != CallingConvention::Default) {
+                    funcConvs[f.name] = f.callConv;
+                }
+            }
+        }
         LirPackage pkg;
         for (const auto &mod : hir.modules) {
             pkg.modules.push_back(LowerModule(mod));
@@ -351,19 +368,8 @@ private:
 
     // Module lowering
     LirModule LowerModule(const HirModule &mod) {
-        // Build calling-convention map before lowering functions
-        funcConvs.clear();
-        for (const auto &ef : mod.externFuncs) {
-            if (ef.callConv != CallingConvention::Default) {
-                funcConvs[ef.name] = ef.callConv;
-            }
-        }
-        for (const auto &f : mod.funcs) {
-            if (f.callConv != CallingConvention::Default) {
-                funcConvs[f.name] = f.callConv;
-            }
-        }
-
+        // funcConvs is populated package-wide in Run() before any module is
+        // lowered, so cross-module (imported) calls resolve correctly.
         LirModule lm;
         lm.name = mod.name;
         for (const auto &iface : mod.interfaces) {

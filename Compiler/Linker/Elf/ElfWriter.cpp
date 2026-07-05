@@ -1,14 +1,22 @@
-// ELF64 object writer for Linux, the BSDs, Solaris, and illumos.
+// ELF64 executable writer for Linux, the BSDs, Solaris, and illumos.
+//
+// Programs that reference no external symbols are emitted as a static
+// ET_EXEC (the kernel jumps straight to our entry). Programs that import
+// functions from shared libraries (libc.so.6 and friends) are emitted as a
+// dynamically linked ET_EXEC with a PT_INTERP/PT_DYNAMIC and a standard
+// PLT/GOT: each imported call goes through a PLT stub that the dynamic
+// linker binds to the real libc routine. Imported calls use the SysV ABI
+// directly — the linker adds no register-shuffle glue.
 
 #include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <fstream>
 #include <map>
-#include <optional>
+#include <ranges>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "Linker/Linker.h"
 #include "Linker/LinkerInternal.h"
@@ -16,421 +24,74 @@
 
 namespace Rux {
 
-static std::optional<Buf> LinuxCompatThunk(const std::string &name) {
-    static const std::unordered_map<std::string, Buf> thunks = {
-        {"ExitProcess",
-         {0x48, 0x89, 0xCF, 0xB8, RUX_IS_BSD || RUX_IS_SUNOS ? 0x01 : 0x3C, 0x00, 0x00, 0x00, 0x0F, 0x05}},
-        {"GetStdHandle",
-         {
-             0x81, 0xF9, 0xF6, 0xFF, 0xFF,
-             0xFF,       // cmp ecx, -10 (STD_INPUT_HANDLE)
-             0x74, 0x0E, // je +14 (return 0)
-             0x81, 0xF9, 0xF5, 0xFF, 0xFF,
-             0xFF,                         // cmp ecx, -11 (STD_OUTPUT_HANDLE)
-             0x74, 0x09,                   // je +9 (return 1)
-             0xB8, 0x02, 0x00, 0x00, 0x00, // mov eax, 2
-             0xC3,                         // ret
-             0x31, 0xC0,                   // xor eax, eax
-             0xC3,                         // ret
-             0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1
-             0xC3,                         // ret
-         }},
-        {"GetProcessHeap", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
-        {"HeapFree", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
-        {"HeapAlloc", {0x4C, 0x89, 0xC6, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
-
-#if RUX_IS_BSD
-                       0x02, 0x10, 0x00, 0x00,
-#elif RUX_IS_SUNOS
-                       0x02, 0x01, 0x00, 0x00,
-#else
-                       0x22, 0x00, 0x00, 0x00,
-#endif
-                       0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
-#if RUX_OS_FREEBSD
-                       0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
+// Dynamic-linker interpreter path and default C library for the host ELF OS.
+#if RUX_OS_LINUX
+static constexpr const char *kElfInterp = "/lib64/ld-linux-x86-64.so.2";
+static constexpr const char *kDefaultLib = "libc.so.6";
+#elif RUX_OS_FREEBSD
+static constexpr const char *kElfInterp = "/libexec/ld-elf.so.1";
+static constexpr const char *kDefaultLib = "libc.so.7";
+#elif RUX_OS_DRAGONFLY
+static constexpr const char *kElfInterp = "/libexec/ld-elf.so.2";
+static constexpr const char *kDefaultLib = "libc.so.8";
 #elif RUX_OS_OPENBSD
-                       0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
-#elif RUX_OS_DRAGONFLY || RUX_OS_NETBSD
-                       0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
+static constexpr const char *kElfInterp = "/usr/libexec/ld.so";
+static constexpr const char *kDefaultLib = "libc.so";
+#elif RUX_OS_NETBSD
+static constexpr const char *kElfInterp = "/libexec/ld.elf_so";
+static constexpr const char *kDefaultLib = "libc.so.12";
 #elif RUX_IS_SUNOS
-                       0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
+static constexpr const char *kElfInterp = "/lib/amd64/ld.so.1";
+static constexpr const char *kDefaultLib = "libc.so.1";
 #else
-                       0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
+static constexpr const char *kElfInterp = "/lib64/ld-linux-x86-64.so.2";
+static constexpr const char *kDefaultLib = "libc.so.6";
 #endif
-                       0x05, 0xC3}},
-        {"HeapReAlloc", {0x48, 0x8B, 0x74, 0x24, 0x28, 0x31, 0xFF, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x41, 0xBA,
-#if RUX_IS_BSD
-                         0x02, 0x10, 0x00, 0x00,
-#elif RUX_IS_SUNOS
-                         0x02, 0x01, 0x00, 0x00,
-#else
-                         0x22, 0x00, 0x00, 0x00,
-#endif
-                         0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x45, 0x31, 0xC9,
-#if RUX_OS_FREEBSD
-                         0xB8, 0xDD, 0x01, 0x00, 0x00, 0x0F,
-#elif RUX_OS_OPENBSD
-                         0xB8, 0x31, 0x00, 0x00, 0x00, 0x0F,
-#elif RUX_OS_DRAGONFLY || RUX_OS_NETBSD
-                         0xB8, 0xC5, 0x00, 0x00, 0x00, 0x0F,
-#elif RUX_IS_SUNOS
-                         0xB8, 0x73, 0x00, 0x00, 0x00, 0x0F,
-#else
-                         0xB8, 0x09, 0x00, 0x00, 0x00, 0x0F,
-#endif
-                         0x05, 0xC3}},
-        {"RtlCopyMemory", {0x4D, 0x85, 0xC0, 0x74, 0x0F, 0x8A, 0x02, 0x88, 0x01, 0x48, 0xFF,
-                           0xC2, 0x48, 0xFF, 0xC1, 0x49, 0xFF, 0xC8, 0x75, 0xF1, 0xC3}},
-        {"RtlCompareMemory",
-         {
-             0x49,
-             0x85,
-             0xC0, // test r8, r8
-             0x74,
-             0x2A, // jz done_zero
 
-             0x48,
-             0x31,
-             0xC0, // xor rax, rax (result = 0)
-
-             // --- align loop (16 bytes SIMD) ---
-             0x49,
-             0x83,
-             0xF8,
-             0x10, // cmp r8, 16
-             0x72,
-             0x1E, // jb byte_tail
-
-             0xF3,
-             0x0F,
-             0x6F,
-             0x01, // movdqu xmm0, [rcx]
-             0xF3,
-             0x0F,
-             0x6F,
-             0x12, // movdqu xmm1, [rdx]
-
-             0x66,
-             0x0F,
-             0x74,
-             0xC1, // pcmpeqb xmm0, xmm1
-             0x66,
-             0x0F,
-             0xD7,
-             0xC0, // pmovmskb eax, xmm0
-
-             0x3D,
-             0xFF,
-             0xFF,
-             0x00,
-             0x00, // cmp eax, 0xFFFF
-             0x75,
-             0x1A, // jne mismatch
-
-             0x48,
-             0x83,
-             0xC1,
-             0x10, // rcx += 16
-             0x48,
-             0x83,
-             0xC2,
-             0x10, // rdx += 16
-             0x48,
-             0x83,
-             0xC0,
-             0x10, // rax += 16
-             0x49,
-             0x83,
-             0xE8,
-             0x10, // r8  -= 16
-
-             0xEB,
-             0xDA, // jmp loop
-         }},
-        {"RtlFillMemory",
-         {0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88, 0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
-        {"RtlZeroMemory", {0x45, 0x31, 0xC0, 0x48, 0x85, 0xD2, 0x74, 0x0B, 0x44, 0x88,
-                           0x01, 0x48, 0xFF, 0xC1, 0x48, 0xFF, 0xCA, 0x75, 0xF5, 0xC3}},
-        {"MultiByteToWideChar", {0x4C, 0x89, 0xC8, 0x4C, 0x8B, 0x54, 0x24, 0x28, 0x4D, 0x85, 0xD2, 0x74, 0x19,
-                                 0x4D, 0x85, 0xC9, 0x7E, 0x14, 0x45, 0x0F, 0xB6, 0x18, 0x66, 0x45, 0x89, 0x1A,
-                                 0x49, 0xFF, 0xC0, 0x49, 0x83, 0xC2, 0x02, 0x49, 0xFF, 0xC9, 0x75, 0xEC, 0xC3}},
-        {"WriteConsoleW", {0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x08, 0x49, 0x89, 0xD4, 0x4D, 0x89,
-                           0xC5, 0x4D, 0x85, 0xED, 0x74, 0x24, 0x41, 0x8A, 0x04, 0x24, 0x88, 0x04, 0x24,
-#if RUX_IS_BSD || RUX_IS_SUNOS
-                           0xB8, 0x04, 0x00, 0x00, 0x00, 0xBF,
-#else
-                           0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF,
-#endif
-                           0x01, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE6, 0xBA, 0x01, 0x00, 0x00, 0x00, 0x0F,
-                           0x05, 0x49, 0x83, 0xC4, 0x02, 0x49, 0xFF, 0xCD, 0xEB, 0xD7, 0x48, 0x83, 0xC4,
-                           0x08, 0x41, 0x5D, 0x41, 0x5C, 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}},
-        {"ReadFile",
-         {
-             0x89,
-             0xCF, // mov edi, ecx  (fd)
-             0x48, 0x89,
-             0xD6, // mov rsi, rdx  (buf)
-             0x4C, 0x89,
-             0xC2, // mov rdx, r8   (count)
-#if RUX_IS_BSD || RUX_IS_SUNOS
-             0xB8, 0x03, 0x00, 0x00,
-             0x00, // mov eax, 3 (SYS_read)
-#else
-             0x31,
-             0xC0, // xor eax, eax (SYS_read = 0)
-#endif
-             0x4D, 0x89,
-             0xC8, // mov r8, r9  (save output pointer to r8
-                   // before syscall)
-             0x0F,
-             0x05, // syscall
-             0x85,
-             0xC0, // test eax, eax
-             0x78,
-             0x11, // js +17 (error)
-             0x4D, 0x89,
-             0xC1, // mov r9, r8  (restore output pointer)
-             0x4D, 0x85,
-             0xC9, // test r9, r9
-             0x74,
-             0x03, // jz +3 (skip if null)
-             0x41, 0x89,
-             0x01, // mov [r9], eax  (*bytesRead = result)
-             0xB8, 0x01, 0x00, 0x00,
-             0x00, // mov eax, 1 (TRUE)
-             0xC3, // ret
-             0x31,
-             0xC0, // xor eax, eax (FALSE)
-             0xC3  // ret
-         }},
-        // WriteFile(handle, buf, count, *bytesWritten, overlapped) ->
-        // write(fd, buf, count). Same shape as ReadFile; only the syscall
-        // number differs.
-        {"WriteFile",
-         {
-             0x89,
-             0xCF, // mov edi, ecx  (fd)
-             0x48, 0x89,
-             0xD6, // mov rsi, rdx  (buf)
-             0x4C, 0x89,
-             0xC2, // mov rdx, r8   (count)
-#if RUX_IS_BSD || RUX_IS_SUNOS
-             0xB8, 0x04, 0x00, 0x00,
-             0x00, // mov eax, 4 (SYS_write)
-#else
-             0xB8, 0x01, 0x00, 0x00,
-             0x00, // mov eax, 1 (SYS_write)
-#endif
-             0x4D, 0x89,
-             0xC8, // mov r8, r9  (save output pointer to r8
-                   // before syscall)
-             0x0F,
-             0x05, // syscall
-             0x85,
-             0xC0, // test eax, eax
-             0x78,
-             0x11, // js +17 (error)
-             0x4D, 0x89,
-             0xC1, // mov r9, r8  (restore output pointer)
-             0x4D, 0x85,
-             0xC9, // test r9, r9
-             0x74,
-             0x03, // jz +3 (skip if null)
-             0x41, 0x89,
-             0x01, // mov [r9], eax  (*bytesWritten = result)
-             0xB8, 0x01, 0x00, 0x00,
-             0x00, // mov eax, 1 (TRUE)
-             0xC3, // ret
-             0x31,
-             0xC0, // xor eax, eax (FALSE)
-             0xC3  // ret
-         }},
-#if RUX_IS_ELF_OS
-        // Rux extern calls currently use the Win64 register layout. These
-        // thunks move that layout into Linux x86_64 syscall registers:
-        // rax=number, rdi/rsi/rdx/r10/r8/r9=args.
-        {"__rux_linux_syscall0",
-         {
-             0x48, 0x89,
-             0xC8, // mov rax, rcx
-             0x0F,
-             0x05, // syscall
-             0xC3  // ret
-         }},
-        {"__rux_linux_syscall1",
-         {
-             0x48, 0x89,
-             0xC8, // mov rax, rcx
-             0x48, 0x89,
-             0xD7, // mov rdi, rdx
-             0x0F,
-             0x05, // syscall
-             0xC3  // ret
-         }},
-        {"__rux_linux_syscall2",
-         {
-             0x48, 0x89,
-             0xC8, // mov rax, rcx
-             0x48, 0x89,
-             0xD7, // mov rdi, rdx
-             0x4C, 0x89,
-             0xC6, // mov rsi, r8
-             0x0F,
-             0x05, // syscall
-             0xC3  // ret
-         }},
-        {"__rux_linux_syscall3",
-         {
-             0x48, 0x89,
-             0xC8, // mov rax, rcx
-             0x48, 0x89,
-             0xD7, // mov rdi, rdx
-             0x4C, 0x89,
-             0xC6, // mov rsi, r8
-             0x4C, 0x89,
-             0xCA, // mov rdx, r9
-             0x0F,
-             0x05, // syscall
-             0xC3  // ret
-         }},
-        {"__rux_linux_syscall4",
-         {
-             0x48, 0x89, 0xC8,             // mov rax, rcx
-             0x48, 0x89, 0xD7,             // mov rdi, rdx
-             0x4C, 0x89, 0xC6,             // mov rsi, r8
-             0x4C, 0x89, 0xCA,             // mov rdx, r9
-             0x4C, 0x8B, 0x54, 0x24, 0x28, // mov r10, [rsp + 40]
-             0x0F, 0x05,                   // syscall
-             0xC3                          // ret
-         }},
-        {"__rux_linux_syscall5",
-         {
-             0x48, 0x89, 0xC8,             // mov rax, rcx
-             0x48, 0x89, 0xD7,             // mov rdi, rdx
-             0x4C, 0x89, 0xC6,             // mov rsi, r8
-             0x4C, 0x89, 0xCA,             // mov rdx, r9
-             0x4C, 0x8B, 0x54, 0x24, 0x28, // mov r10, [rsp + 40]
-             0x4C, 0x8B, 0x44, 0x24, 0x30, // mov r8, [rsp + 48]
-             0x0F, 0x05,                   // syscall
-             0xC3                          // ret
-         }},
-        {"__rux_linux_syscall6",
-         {
-             0x48, 0x89, 0xC8,             // mov rax, rcx
-             0x48, 0x89, 0xD7,             // mov rdi, rdx
-             0x4C, 0x89, 0xC6,             // mov rsi, r8
-             0x4C, 0x89, 0xCA,             // mov rdx, r9
-             0x4C, 0x8B, 0x54, 0x24, 0x28, // mov r10, [rsp + 40]
-             0x4C, 0x8B, 0x44, 0x24, 0x30, // mov r8, [rsp + 48]
-             0x4C, 0x8B, 0x4C, 0x24, 0x38, // mov r9, [rsp + 56]
-             0x0F, 0x05,                   // syscall
-             0xC3                          // ret
-         }},
-        {"__rux_linux_nanosleep",
-         {
-             0x48, 0xC7, 0xC0, 0x23, 0x00, 0x00,
-             0x00, // mov rax, 35
-             0x48, 0x89,
-             0xCF, // mov rdi, rcx
-             0x48, 0x89,
-             0xD6, // mov rsi, rdx
-             0x0F,
-             0x05, // syscall
-             0xC3  // ret
-         }},
-        {"__rux_linux_clock_gettime",
-         {
-             0x48, 0xC7, 0xC0, 0xE4, 0x00, 0x00,
-             0x00, // mov rax, 228
-             0x48, 0x63,
-             0xF9, // movsxd rdi, ecx
-             0x48, 0x89,
-             0xD6, // mov rsi, rdx
-             0x0F,
-             0x05, // syscall
-             0xC3  // ret
-         }},
-        {"__rux_bsd_nanosleep",
-         {
-    #if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
-             0x48, 0xC7, 0xC0, 0xF0, 0x00, 0x00,
-             0x00, // mov rax, 240
-    #elif defined(__OpenBSD__)
-             0x48, 0xC7, 0xC0, 0x5B, 0x00, 0x00,
-             0x00, // mov rax, 91
-    #endif
-             0x48, 0x89,
-             0xCF, // mov rdi, rcx
-             0x48, 0x89,
-             0xD6, // mov rsi, rdx
-             0x0F,
-             0x05, // syscall
-             0xC3  // ret
-         }},
-        {"__rux_bsd_clock_gettime",
-         {
-    #if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
-             0x48, 0xC7, 0xC0, 0xE8, 0x00, 0x00,
-             0x00, // mov rax, 232
-    #elif defined(__OpenBSD__)
-             0x48, 0xC7, 0xC0, 0x57, 0x00, 0x00,
-             0x00, // mov rax, 87
-    #endif
-             0x48, 0x63,
-             0xF9, // movsxd rdi, ecx
-             0x48, 0x89,
-             0xD6, // mov rsi, rdx
-             0x0F,
-             0x05, // syscall
-             0xC3  // ret
-         }},
-        {"__rux_bsd_mmap",
-         {
-    #if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
-             0x48, 0xC7, 0xC0, 0xDD, 0x01, 0x00, 0x00, // mov rax, 477
-    #elif defined(__OpenBSD__)
-             0x48, 0xC7, 0xC0, 0xC5, 0x00, 0x00, 0x00, // mov rax, 197
-    #endif
-             0x48, 0x89, 0xCF,             // mov rdi, rcx
-             0x48, 0x89, 0xD6,             // mov rsi, rdx
-             0x4C, 0x89, 0xC2,             // mov rdx, r8
-             0x4D, 0x89, 0xCA,             // mov r10, r9
-             0x4C, 0x8B, 0x44, 0x24, 0x28, // mov r8, [rsp + 40]
-             0x4C, 0x8B, 0x4C, 0x24, 0x30, // mov r9, [rsp + 48]
-             0x0F, 0x05,                   // syscall
-             0xC3                          // ret
-         }},
-        {"__rux_bsd_const_MAP_ANONYMOUS",
-         {
-    #if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
-             0xB8, 0x00, 0x10, 0x00,
-             0x00, // mov eax, 4096
-    #elif defined(__OpenBSD__)
-             0xB8, 0x20, 0x00, 0x00,
-             0x00, // mov eax, 32
-    #endif
-             0xC3 // ret
-         }},
-        {"__rux_bsd_const_CLOCK_MONOTONIC",
-         {
-    #if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
-             0xB8, 0x04, 0x00, 0x00,
-             0x00, // mov eax, 4
-    #elif defined(__OpenBSD__)
-             0xB8, 0x03, 0x00, 0x00,
-             0x00, // mov eax, 3
-    #endif
-             0xC3 // ret
-         }},
-#endif
-    };
-
-    const auto it = thunks.find(name);
-    if (it == thunks.end()) {
-        return std::nullopt;
+// Classic SysV ELF symbol hash (used by DT_HASH).
+static uint32_t ElfHash(const std::string &name) {
+    uint32_t h = 0;
+    for (const unsigned char c : name) {
+        h = (h << 4) + c;
+        const uint32_t g = h & 0xF0000000u;
+        if (g) {
+            h ^= g >> 24;
+        }
+        h &= ~g;
     }
-    return it->second;
+    return h;
+}
+
+// Builds the OS-identification ELF note some BSDs require in order to
+// execute the binary. Empty on OSes that need none.
+static Buf BuildOsNote() {
+    Buf n;
+#if RUX_OS_NETBSD
+    WriteU32(n, 7);                                     // name size ("NetBSD\0")
+    WriteU32(n, 4);                                     // desc size
+    WriteU32(n, 1);                                     // type (OS version)
+    for (const char c : std::string("NetBSD\0\0", 8)) { // padded to 8
+        WriteU8(n, static_cast<uint8_t>(c));
+    }
+    WriteU32(n, 1000000000u);
+#elif RUX_OS_OPENBSD
+    WriteU32(n, 8); // name size ("OpenBSD\0")
+    WriteU32(n, 4); // desc size
+    WriteU32(n, 1); // type (NT_OPENBSD_IDENT)
+    for (const char c : std::string("OpenBSD\0", 8)) {
+        WriteU8(n, static_cast<uint8_t>(c));
+    }
+    WriteU32(n, 0); // any version
+#elif RUX_OS_DRAGONFLY
+    WriteU32(n, 10);                                          // name size ("DragonFly\0")
+    WriteU32(n, 4);                                           // desc size
+    WriteU32(n, 1);                                           // type
+    for (const char c : std::string("DragonFly\0\0\0", 12)) { // padded to 12
+        WriteU8(n, static_cast<uint8_t>(c));
+    }
+    WriteU32(n, 0);
+#endif
+    return n;
 }
 
 bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
@@ -440,10 +101,12 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     static constexpr uint32_t kPfW = 0x2;
     static constexpr uint32_t kPfR = 0x4;
 
-    const auto alignUp64 = [](const uint64_t v, const uint64_t a) { return (v + a - 1) & ~(a - 1); };
+    const auto alignUp = [](const uint64_t v, const uint64_t a) { return (v + a - 1) & ~(a - 1); };
 
+    // 1. Collect the names defined across all objects (non-extern). A
+    //    cross-module call produces an ExternFunc relocation whose target is
+    //    defined in another object; those are not dynamic-library imports.
     std::unordered_set<std::string> definedSymbols;
-    std::unordered_set<std::string> linuxCompatExterns;
     for (const auto &obj : objects) {
         for (const auto &sym : obj.symbols) {
             if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData && !sym.name.empty()) {
@@ -452,6 +115,31 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         }
     }
 
+    // 2. Collect explicit library assignments from declarations first. A
+    //    call and its extern declaration may live in different RCU objects;
+    //    the call-site symbol then has an empty typeName while the declaration
+    //    carries the library name.
+    std::unordered_map<std::string, std::string> explicitImportLib;
+    for (const auto &obj : objects) {
+        for (const auto &sym : obj.symbols) {
+            if (sym.kind != RcuSymKind::ExternFunc || sym.name.empty() || sym.typeName.empty()) {
+                continue;
+            }
+            const auto [it, inserted] = explicitImportLib.try_emplace(sym.name, sym.typeName);
+            if (!inserted && it->second != sym.typeName) {
+                Error("external symbol '" + sym.name + "' is assigned to both '" + it->second + "' and '" +
+                      sym.typeName + "'");
+            }
+        }
+    }
+
+    // Collect the functions actually referenced by relocations. Prefer the
+    // library recorded by an extern declaration in any object, then the
+    // call-site metadata, and finally the host's default libc.
+    // Imported data is not supported: a direct RIP-relative reference to a
+    // library datum would require a copy relocation, which needs the object's
+    // size.
+    std::unordered_map<std::string, std::string> importLib; // func -> library
     for (const auto &obj : objects) {
         for (const auto &sec : obj.sections) {
             for (const auto &reloc : sec.relocs) {
@@ -459,14 +147,22 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                     continue;
                 }
                 const auto &sym = obj.symbols[reloc.symbolIndex];
-                if ((sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) &&
-                    !definedSymbols.contains(sym.name)) {
-                    if (LinuxCompatThunk(sym.name)) {
-                        linuxCompatExterns.insert(sym.name);
+                if (definedSymbols.contains(sym.name)) {
+                    continue;
+                }
+                if (sym.kind == RcuSymKind::ExternFunc) {
+                    const auto explicitIt = explicitImportLib.find(sym.name);
+                    const std::string &lib = explicitIt != explicitImportLib.end()
+                                               ? explicitIt->second
+                                               : (sym.typeName.empty() ? kDefaultLib : sym.typeName);
+                    const auto [it, inserted] = importLib.try_emplace(sym.name, lib);
+                    if (!inserted && it->second != lib) {
+                        Error("external symbol '" + sym.name + "' is referenced from both '" + it->second + "' and '" +
+                              lib + "'");
                     }
-                    else {
-                        Error("external symbol '" + sym.name + "' is not supported by the ELF linker yet");
-                    }
+                }
+                else if (sym.kind == RcuSymKind::ExternData) {
+                    Error("external data symbol '" + sym.name + "' cannot be imported by the ELF linker");
                 }
             }
         }
@@ -475,70 +171,50 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         return false;
     }
 
+    // A program that imports from a shared library is linked dynamically and
+    // runs against libc; one that imports nothing stays a freestanding static
+    // executable. A dynamic program must terminate through libc's exit() so
+    // buffered stdio is flushed — a raw exit syscall would discard it — so we
+    // pull in exit() as an implicit import (mirroring the PE writer's use of
+    // ExitProcess for its entry stub).
+    const bool dynamic = !importLib.empty();
+    if (dynamic) {
+        importLib.try_emplace("exit", kDefaultLib);
+    }
+
+    // 3. Entry preamble (__rux_start): align the stack and call Main. A static
+    //    program then exits with a raw syscall (no libc); a dynamic one tail
+    //    calls libc exit() with Main's return value so stdio is flushed.
     Buf textPre;
     textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
-    textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (16-byte align after call)
+    textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (Rux enters Main at rsp % 16 == 0)
     const size_t kCallMainDisp = textPre.size() + 1;
     textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
-    textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x08});       // add rsp, 8 (undo sub)
-    textPre.insert(textPre.end(), {0x89, 0xC7});                   // mov edi, eax
-#if RUX_IS_BSD || RUX_IS_SUNOS
-    textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD/Illumos exit)
-#else
-    textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
-#endif
-    textPre.insert(textPre.end(), {0x0F, 0x05}); // syscall
-
-    std::unordered_map<std::string, uint32_t> linuxCompatThunkOff;
-    std::vector<std::string> linuxCompatNames(linuxCompatExterns.begin(), linuxCompatExterns.end());
-    std::sort(linuxCompatNames.begin(), linuxCompatNames.end());
-    for (const auto &name : linuxCompatNames) {
-        auto thunk = LinuxCompatThunk(name);
-        if (!thunk) {
-            continue;
-        }
-        linuxCompatThunkOff[name] = static_cast<uint32_t>(textPre.size());
-        textPre.insert(textPre.end(), thunk->begin(), thunk->end());
+    textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x08});       // add rsp, 8 (restore 16-byte alignment)
+    textPre.insert(textPre.end(), {0x89, 0xC7});                   // mov edi, eax (exit code)
+    size_t kCallExitDisp = 0;
+    if (dynamic) {
+        kCallExitDisp = textPre.size() + 1;
+        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call exit@plt
+        textPre.insert(textPre.end(), {0xCC});                         // int3 (unreachable)
     }
-    const uint32_t preambleSize = static_cast<uint32_t>(textPre.size());
+    else {
+#if RUX_IS_BSD || RUX_IS_SUNOS
+        textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD/Illumos exit)
+#else
+        textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
+#endif
+        textPre.insert(textPre.end(), {0x0F, 0x05}); // syscall
+    }
+    const auto preambleSize = static_cast<uint32_t>(textPre.size());
 
+    // 4. Merge per-object sections.
     struct ObjLayout {
         uint32_t textOff, rodataOff, dataOff;
     };
 
     std::vector<ObjLayout> layouts(objects.size());
     Buf mergedText, mergedRodata, mergedData;
-
-#if RUX_OS_NETBSD
-    // Prepend NetBSD ELF Note
-    mergedRodata.insert(mergedRodata.end(), {
-                                                0x07, 0x00, 0x00, 0x00,                 // Name size (7)
-                                                0x04, 0x00, 0x00, 0x00,                 // Desc size (4)
-                                                0x01, 0x00, 0x00, 0x00,                 // Type (1 = OS version)
-                                                'N',  'e',  't',  'B',  'S', 'D', 0, 0, // Name (NetBSD\0\0)
-                                                0x00, 0xCA, 0x9A, 0x3B                  // Desc (1000000000)
-                                            });
-#elif defined(__OpenBSD__)
-    // Prepend OpenBSD ELF Note (required for execve to accept the binary)
-    mergedRodata.insert(mergedRodata.end(), {
-                                                0x08, 0x00, 0x00, 0x00, // Name size (7 + null, padded to 8)
-                                                0x04, 0x00, 0x00, 0x00, // Desc size (4)
-                                                0x01, 0x00, 0x00, 0x00, // Type (NT_OPENBSD_IDENT)
-                                                'O',  'p',  'e',  'n',  'B', 'S', 'D', 0, // Name (OpenBSD\0)
-                                                0x00, 0x00, 0x00, 0x00                    // Desc (0 = any version)
-                                            });
-#elif defined(__DragonFly__)
-    // Prepend DragonFly ELF Note (required for execve to accept the binary)
-    mergedRodata.insert(mergedRodata.end(),
-                        {
-                            0x0A, 0x00, 0x00, 0x00, // Name size (9 + null, padded to 12)
-                            0x04, 0x00, 0x00, 0x00, // Desc size (4)
-                            0x01, 0x00, 0x00, 0x00, // Type
-                            'D',  'r',  'a',  'g',  'o', 'n', 'F', 'l', 'y', 0, 0, 0, // Name (DragonFly\0\0\0)
-                            0x00, 0x00, 0x00, 0x00                                    // Desc
-                        });
-#endif
-
     for (size_t i = 0; i < objects.size(); ++i) {
         const auto &obj = objects[i];
         layouts[i] = {static_cast<uint32_t>(mergedText.size()), static_cast<uint32_t>(mergedRodata.size()),
@@ -560,57 +236,251 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     textBuf.insert(textBuf.end(), textPre.begin(), textPre.end());
     textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
 
-    const uint16_t phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0)
-#if RUX_OS_NETBSD || RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
-                                                 + 1 // PT_NOTE
-#endif
-
-    );
-    const uint64_t phoff = 64;
-    const uint64_t textOff = alignUp64(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
-    const uint64_t textVA = kBase + textOff;
-    const uint64_t rdataOff = alignUp64(textOff + textBuf.size(), kPage);
-    const uint64_t rdataVA = kBase + rdataOff;
-    const uint64_t dataOff = alignUp64(rdataOff + mergedRodata.size(), kPage);
-    const uint64_t dataVA = kBase + dataOff;
-
-    std::unordered_map<std::string, uint64_t> symMap;
-    for (const auto &[name, off] : linuxCompatThunkOff) {
-        symMap[name] = textVA + off;
-    }
-
-    for (size_t i = 0; i < objects.size(); ++i) {
-        const auto &obj = objects[i];
-        const auto &lay = layouts[i];
-        for (const auto &sym : obj.symbols) {
-            if (sym.name.empty()) {
-                continue;
+    // Maps each defined (non-extern) symbol to its virtual address, given the
+    // final segment placement. Local data/constant labels are intentionally
+    // skipped: generated labels such as __f64_0 recur per object and must
+    // resolve relative to their owning object via the section-index path.
+    const auto buildDefinedSymMap = [&](uint64_t textVA, uint64_t roVA, uint64_t dataVA) {
+        std::unordered_map<std::string, uint64_t> m;
+        for (size_t i = 0; i < objects.size(); ++i) {
+            const auto &obj = objects[i];
+            const auto &lay = layouts[i];
+            for (const auto &sym : obj.symbols) {
+                if (sym.name.empty() || sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
+                    continue;
+                }
+                if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func && sym.name != "Main") {
+                    continue;
+                }
+                uint64_t va = 0;
+                if (sym.sectionIdx == RCU_TEXT_IDX) {
+                    va = textVA + preambleSize + lay.textOff + sym.value;
+                }
+                else if (sym.sectionIdx == RCU_RODATA_IDX) {
+                    va = roVA + lay.rodataOff + sym.value;
+                }
+                else if (sym.sectionIdx == RCU_DATA_IDX) {
+                    va = dataVA + lay.dataOff + sym.value;
+                }
+                else {
+                    continue;
+                }
+                m.try_emplace(sym.name, va);
             }
-            if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
-                continue;
-            }
-            if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func && sym.name != "Main") {
-                continue;
-            }
-
-            uint64_t va = 0;
-            if (sym.sectionIdx == RCU_TEXT_IDX) {
-                va = textVA + preambleSize + lay.textOff + sym.value;
-            }
-            else if (sym.sectionIdx == RCU_RODATA_IDX) {
-                va = rdataVA + lay.rodataOff + sym.value;
-            }
-            else if (sym.sectionIdx == RCU_DATA_IDX) {
-                va = dataVA + lay.dataOff + sym.value;
-            }
-            else {
-                continue;
-            }
-            symMap.try_emplace(sym.name, va);
         }
-    }
+        return m;
+    };
 
-    {
+    // Applies every object's relocations against the resolved symbol map.
+    const auto applyRelocs = [&](const std::unordered_map<std::string, uint64_t> &symMap, Buf &txt, Buf &ro, Buf &dat,
+                                 uint64_t textVA, uint64_t roVA, uint64_t dataVA) {
+        for (size_t i = 0; i < objects.size(); ++i) {
+            const auto &obj = objects[i];
+            const auto &lay = layouts[i];
+            for (const auto &sec : obj.sections) {
+                Buf *buf = nullptr;
+                uint32_t baseInBuf = 0;
+                uint64_t secBaseVA = 0;
+                if (sec.type == RcuSecType::Text) {
+                    buf = &txt;
+                    baseInBuf = preambleSize + lay.textOff;
+                    secBaseVA = textVA + preambleSize + lay.textOff;
+                }
+                else if (sec.type == RcuSecType::RoData) {
+                    buf = &ro;
+                    baseInBuf = lay.rodataOff;
+                    secBaseVA = roVA + lay.rodataOff;
+                }
+                else if (sec.type == RcuSecType::Data) {
+                    buf = &dat;
+                    baseInBuf = lay.dataOff;
+                    secBaseVA = dataVA + lay.dataOff;
+                }
+                else {
+                    continue;
+                }
+
+                for (const auto &reloc : sec.relocs) {
+                    if (reloc.symbolIndex >= obj.symbols.size()) {
+                        continue;
+                    }
+                    const auto &sym = obj.symbols[reloc.symbolIndex];
+                    uint64_t targetVA = 0;
+                    if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
+                        auto it = symMap.find(sym.name);
+                        if (it == symMap.end()) {
+                            Error("undefined external symbol '" + sym.name + "'");
+                            continue;
+                        }
+                        targetVA = it->second;
+                    }
+                    else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() && symMap.contains(sym.name)) {
+                        targetVA = symMap.at(sym.name);
+                    }
+                    else if (sym.sectionIdx == RCU_TEXT_IDX) {
+                        targetVA = textVA + preambleSize + lay.textOff + sym.value;
+                    }
+                    else if (sym.sectionIdx == RCU_RODATA_IDX) {
+                        targetVA = roVA + lay.rodataOff + sym.value;
+                    }
+                    else if (sym.sectionIdx == RCU_DATA_IDX) {
+                        targetVA = dataVA + lay.dataOff + sym.value;
+                    }
+                    else {
+                        continue;
+                    }
+
+                    const size_t patchAt = baseInBuf + reloc.sectionOffset;
+                    const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
+                    if (reloc.type == RcuRelType::Rel32) {
+                        if (patchAt + 4 > buf->size()) {
+                            continue;
+                        }
+                        const auto disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
+                        Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
+                    }
+                    else if (reloc.type == RcuRelType::Abs64) {
+                        if (patchAt + 8 > buf->size()) {
+                            continue;
+                        }
+                        Patch64(*buf, patchAt, targetVA + static_cast<uint64_t>(reloc.addend));
+                    }
+                    else if (reloc.type == RcuRelType::Abs32) {
+                        if (patchAt + 4 > buf->size()) {
+                            continue;
+                        }
+                        Patch32(*buf, patchAt, static_cast<uint32_t>(targetVA + reloc.addend));
+                    }
+                }
+            }
+        }
+    };
+
+    // Sorted, deterministic list of imported function names.
+    std::vector<std::string> importNames;
+    importNames.reserve(importLib.size());
+    for (const auto &name : importLib | std::views::keys) {
+        importNames.push_back(name);
+    }
+    std::ranges::sort(importNames);
+
+    const Buf osNote = BuildOsNote();
+    const bool hasNote = !osNote.empty();
+
+    // Common file emitter shared by both paths.
+    const auto emitFile = [&](uint16_t phnum, const Buf &phdrs,
+                              const std::vector<std::pair<uint64_t, const Buf *>> &segments, uint64_t entryVA,
+                              uint64_t phoff) -> bool {
+        std::filesystem::create_directories(outputPath.parent_path());
+        std::ofstream out(outputPath, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            Error("cannot open output file: " + outputPath.string());
+            return false;
+        }
+        const auto writeRaw = [&](const void *d, size_t n) {
+            out.write(static_cast<const char *>(d), static_cast<std::streamsize>(n));
+        };
+        const auto padToOffset = [&](uint64_t offset) {
+            static constexpr uint8_t zeros[4096] = {};
+            while (static_cast<uint64_t>(out.tellp()) < offset) {
+                const uint64_t remaining = offset - static_cast<uint64_t>(out.tellp());
+                writeRaw(zeros, static_cast<size_t>(std::min<uint64_t>(remaining, sizeof(zeros))));
+            }
+        };
+
+        Buf hdr;
+        const uint8_t osabi =
+#if RUX_OS_FREEBSD
+            9; // FreeBSD
+#elif RUX_OS_OPENBSD
+            12; // OpenBSD
+#elif RUX_OS_NETBSD
+            2; // NetBSD
+#elif RUX_IS_SUNOS
+            6; // Solaris/Illumos
+#else
+            0; // System V (Linux, DragonFly)
+#endif
+        static constexpr uint8_t kIdent[7] = {0x7F, 'E', 'L', 'F', 2, 1, 1};
+        for (const uint8_t b : kIdent) {
+            WriteU8(hdr, b);
+        }
+        WriteU8(hdr, osabi);
+        for (int i = 0; i < 8; ++i) {
+            WriteU8(hdr, 0);
+        }
+        WriteU16(hdr, 2);    // ET_EXEC
+        WriteU16(hdr, 0x3E); // EM_X86_64
+        WriteU32(hdr, 1);    // e_version
+        WriteU64(hdr, entryVA);
+        WriteU64(hdr, phoff);
+        WriteU64(hdr, 0);  // e_shoff
+        WriteU32(hdr, 0);  // e_flags
+        WriteU16(hdr, 64); // e_ehsize
+        WriteU16(hdr, 56); // e_phentsize
+        WriteU16(hdr, phnum);
+        WriteU16(hdr, 0); // e_shentsize
+        WriteU16(hdr, 0); // e_shnum
+        WriteU16(hdr, 0); // e_shstrndx
+        writeRaw(hdr.data(), hdr.size());
+        writeRaw(phdrs.data(), phdrs.size());
+
+        for (const auto &[off, buf] : segments) {
+            if (buf->empty()) {
+                continue;
+            }
+            padToOffset(off);
+            writeRaw(buf->data(), buf->size());
+        }
+
+        out.close();
+        if (!out) {
+            Error("cannot write output file: " + outputPath.string());
+            return false;
+        }
+
+        std::error_code ec;
+        std::filesystem::permissions(outputPath,
+                                     std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec |
+                                         std::filesystem::perms::others_exec,
+                                     std::filesystem::perm_options::add, ec);
+        if (ec) {
+            Error("cannot mark output executable: " + ec.message());
+            return false;
+        }
+        return true;
+    };
+
+    const auto writePhdr = [](Buf &b, uint32_t type, uint32_t flags, uint64_t off, uint64_t vaddr, uint64_t fileSize,
+                              uint64_t memSize, uint64_t align) {
+        WriteU32(b, type);
+        WriteU32(b, flags);
+        WriteU64(b, off);
+        WriteU64(b, vaddr);
+        WriteU64(b, vaddr); // p_paddr
+        WriteU64(b, fileSize);
+        WriteU64(b, memSize);
+        WriteU64(b, align);
+    };
+
+    if (!dynamic) {
+        // --- Static executable: no imports, no interpreter. ---
+        const auto phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0) + (hasNote ? 1 : 0));
+        constexpr uint64_t phoff = 64;
+        const uint64_t textOff = alignUp(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
+        const uint64_t textVA = kBase + textOff;
+
+        // The OS note (when present) leads .rodata so PT_NOTE can point at it.
+        Buf rodataBuf = osNote;
+        rodataBuf.insert(rodataBuf.end(), mergedRodata.begin(), mergedRodata.end());
+        const uint64_t noteRodataDelta = osNote.size();
+
+        const uint64_t rdataOff = alignUp(textOff + textBuf.size(), kPage);
+        const uint64_t rdataVA = kBase + rdataOff;
+        const uint64_t dataOff = alignUp(rdataOff + rodataBuf.size(), kPage);
+        const uint64_t dataVA = kBase + dataOff;
+
+        auto symMap = buildDefinedSymMap(textVA, rdataVA + noteRodataDelta, dataVA);
         auto it = symMap.find("Main");
         if (it == symMap.end()) {
             Error("undefined symbol 'Main' — no entry point found");
@@ -618,202 +488,284 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         }
         const uint64_t nextInst = textVA + kCallMainDisp + 4;
         Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(it->second - nextInst));
+
+        applyRelocs(symMap, textBuf, rodataBuf, mergedData, textVA, rdataVA + noteRodataDelta, dataVA);
+        if (!errors.empty()) {
+            return false;
+        }
+
+        Buf phdrs;
+        writePhdr(phdrs, 1, kPfR | kPfX, textOff, textVA, textBuf.size(), textBuf.size(), kPage);
+        writePhdr(phdrs, 1, kPfR, rdataOff, rdataVA, rodataBuf.size(), rodataBuf.size(), kPage);
+        if (hasNote) {
+            writePhdr(phdrs, 4, kPfR, rdataOff, rdataVA, osNote.size(), osNote.size(), 4);
+        }
+        if (!mergedData.empty()) {
+            writePhdr(phdrs, 1, kPfR | kPfW, dataOff, dataVA, mergedData.size(), mergedData.size(), kPage);
+        }
+
+        return emitFile(phnum, phdrs, {{textOff, &textBuf}, {rdataOff, &rodataBuf}, {dataOff, &mergedData}}, textVA,
+                        phoff);
     }
 
-    for (size_t i = 0; i < objects.size(); ++i) {
-        const auto &obj = objects[i];
-        const auto &lay = layouts[i];
-        for (const auto &sec : obj.sections) {
-            Buf *buf = nullptr;
-            uint32_t baseInBuf = 0;
-            uint64_t secBaseVA = 0;
-            if (sec.type == RcuSecType::Text) {
-                buf = &textBuf;
-                baseInBuf = preambleSize + lay.textOff;
-                secBaseVA = textVA + preambleSize + lay.textOff;
-            }
-            else if (sec.type == RcuSecType::RoData) {
-                buf = &mergedRodata;
-                baseInBuf = lay.rodataOff;
-                secBaseVA = rdataVA + lay.rodataOff;
-            }
-            else if (sec.type == RcuSecType::Data) {
-                buf = &mergedData;
-                baseInBuf = lay.dataOff;
-                secBaseVA = dataVA + lay.dataOff;
-            }
-            else {
-                continue;
-            }
+    // --- Dynamically linked executable importing from shared libraries. ---
+    const size_t n = importNames.size();
+    std::unordered_map<std::string, size_t> importIdx;
+    for (size_t i = 0; i < n; ++i) {
+        importIdx[importNames[i]] = i;
+    }
 
-            for (const auto &reloc : sec.relocs) {
-                if (reloc.symbolIndex >= obj.symbols.size()) {
-                    continue;
-                }
-                const auto &sym = obj.symbols[reloc.symbolIndex];
-                uint64_t targetVA = 0;
-                if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
-                    auto it = symMap.find(sym.name);
-                    if (it == symMap.end()) {
-                        Error("undefined external symbol '" + sym.name + "'");
-                        continue;
-                    }
-                    targetVA = it->second;
-                }
-                else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() && symMap.contains(sym.name)) {
-                    targetVA = symMap[sym.name];
-                }
-                else if (sym.sectionIdx == RCU_TEXT_IDX) {
-                    targetVA = textVA + preambleSize + lay.textOff + sym.value;
-                }
-                else if (sym.sectionIdx == RCU_RODATA_IDX) {
-                    targetVA = rdataVA + lay.rodataOff + sym.value;
-                }
-                else if (sym.sectionIdx == RCU_DATA_IDX) {
-                    targetVA = dataVA + lay.dataOff + sym.value;
-                }
-                else {
-                    continue;
-                }
-
-                const size_t patchAt = baseInBuf + reloc.sectionOffset;
-                const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
-                if (reloc.type == RcuRelType::Rel32) {
-                    if (patchAt + 4 > buf->size()) {
-                        continue;
-                    }
-                    const int32_t disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
-                    Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
-                }
-                else if (reloc.type == RcuRelType::Abs64) {
-                    if (patchAt + 8 > buf->size()) {
-                        continue;
-                    }
-                    Patch64(*buf, patchAt, targetVA + static_cast<uint64_t>(reloc.addend));
-                }
-                else if (reloc.type == RcuRelType::Abs32) {
-                    if (patchAt + 4 > buf->size()) {
-                        continue;
-                    }
-                    Patch32(*buf, patchAt, static_cast<uint32_t>(targetVA + reloc.addend));
-                }
-            }
+    // Deterministic set of needed libraries.
+    std::vector<std::string> neededLibs;
+    for (const auto &name : importNames) {
+        const std::string &lib = importLib.at(name);
+        if (std::ranges::find(neededLibs, lib) == neededLibs.end()) {
+            neededLibs.push_back(lib);
         }
     }
+    std::ranges::sort(neededLibs);
+
+    // .dynstr: index 0 is the empty string; then each import name and library.
+    Buf dynstr;
+    dynstr.push_back(0);
+    std::unordered_map<std::string, uint32_t> strOff;
+    const auto internStr = [&](const std::string &s) -> uint32_t {
+        if (const auto it = strOff.find(s); it != strOff.end()) {
+            return it->second;
+        }
+        const auto off = static_cast<uint32_t>(dynstr.size());
+        dynstr.insert(dynstr.end(), s.begin(), s.end());
+        dynstr.push_back(0);
+        strOff[s] = off;
+        return off;
+    };
+    std::vector<uint32_t> nameStrOff(n);
+    for (size_t i = 0; i < n; ++i) {
+        nameStrOff[i] = internStr(importNames[i]);
+    }
+    std::vector<uint32_t> libStrOff(neededLibs.size());
+    for (size_t i = 0; i < neededLibs.size(); ++i) {
+        libStrOff[i] = internStr(neededLibs[i]);
+    }
+
+    // .dynsym: index 0 is STN_UNDEF; then one undefined STT_FUNC per import.
+    const size_t nsym = n + 1;
+    Buf dynsym;
+    WriteZeros(dynsym, 24); // null symbol
+    for (size_t i = 0; i < n; ++i) {
+        WriteU32(dynsym, nameStrOff[i]); // st_name
+        WriteU8(dynsym, 0x12);           // st_info: STB_GLOBAL | STT_FUNC
+        WriteU8(dynsym, 0);              // st_other
+        WriteU16(dynsym, 0);             // st_shndx: SHN_UNDEF
+        WriteU64(dynsym, 0);             // st_value
+        WriteU64(dynsym, 0);             // st_size
+    }
+
+    // .hash (SysV): distribute all dynsym entries across buckets by ElfHash.
+    const uint32_t nbucket = static_cast<uint32_t>(std::max<size_t>(1, nsym));
+    std::vector<uint32_t> bucket(nbucket, 0);
+    std::vector<uint32_t> chain(nsym, 0);
+    for (size_t i = n; i >= 1; --i) { // walk backwards so lower indices head the chain
+        const uint32_t b = ElfHash(importNames[i - 1]) % nbucket;
+        chain[i] = bucket[b];
+        bucket[b] = static_cast<uint32_t>(i);
+    }
+    Buf hash;
+    WriteU32(hash, nbucket);
+    WriteU32(hash, static_cast<uint32_t>(nsym));
+    for (const uint32_t v : bucket) {
+        WriteU32(hash, v);
+    }
+    for (const uint32_t v : chain) {
+        WriteU32(hash, v);
+    }
+
+    // Interp string.
+    Buf interp;
+    WriteCStr(interp, kElfInterp);
+
+    // Fixed-size buffers whose bytes are patched once addresses are known.
+    const size_t relaSz = n * 24;
+    const size_t pltSz = (n + 1) * 16;
+    const size_t gotSz = (3 + n) * 8;
+    const size_t dynSz = (neededLibs.size() + 11) * 16;
+
+    // 5. Assign file offsets; every section's VA is kBase + its file offset.
+    uint64_t off = 64 + static_cast<uint64_t>([&] {
+                       // PT_PHDR, PT_INTERP, PT_LOAD(rx), PT_LOAD(rw), PT_DYNAMIC, [PT_NOTE]
+                       return (5 + (hasNote ? 1 : 0)) * 56;
+                   }());
+    constexpr uint64_t phoff = 64;
+    const auto phnum = static_cast<uint16_t>(5 + (hasNote ? 1 : 0));
+
+    const uint64_t interpOff = off;
+    off += interp.size();
+    uint64_t noteOff = 0;
+    if (hasNote) {
+        noteOff = alignUp(off, 4);
+        off = noteOff + osNote.size();
+    }
+    const uint64_t hashOff = alignUp(off, 8);
+    off = hashOff + hash.size();
+    const uint64_t dynsymOff = alignUp(off, 8);
+    off = dynsymOff + dynsym.size();
+    const uint64_t dynstrOff = off;
+    off += dynstr.size();
+    const uint64_t relaOff = alignUp(off, 8);
+    off = relaOff + relaSz;
+    const uint64_t pltOff = alignUp(off, 16);
+    off = pltOff + pltSz;
+    const uint64_t textOff = alignUp(off, 16);
+    off = textOff + textBuf.size();
+    const uint64_t rodataOff = alignUp(off, 8);
+    off = rodataOff + mergedRodata.size();
+    const uint64_t rxFileEnd = off;
+
+    // Read/write segment starts on a fresh page.
+    const uint64_t dynamicOff = alignUp(rxFileEnd, kPage);
+    off = dynamicOff + dynSz;
+    const uint64_t gotOff = alignUp(off, 8);
+    off = gotOff + gotSz;
+    const uint64_t dataOff = alignUp(off, 8);
+    // The RW segment's file size must not claim bytes past the last one we
+    // actually write (an empty .data would leave the trailing alignment gap
+    // unwritten).
+    const uint64_t rwFileEnd = mergedData.empty() ? (gotOff + gotSz) : (dataOff + mergedData.size());
+
+    const uint64_t interpVA = kBase + interpOff;
+    const uint64_t hashVA = kBase + hashOff;
+    const uint64_t dynsymVA = kBase + dynsymOff;
+    const uint64_t dynstrVA = kBase + dynstrOff;
+    const uint64_t relaVA = kBase + relaOff;
+    const uint64_t pltVA = kBase + pltOff;
+    const uint64_t textVA = kBase + textOff;
+    const uint64_t rodataVA = kBase + rodataOff;
+    const uint64_t dynamicVA = kBase + dynamicOff;
+    const uint64_t gotVA = kBase + gotOff;
+    const uint64_t dataVA = kBase + dataOff;
+
+    // 6. .plt — PLT[0] is the resolver trampoline; PLT[k] (k>=1) binds import
+    //    k-1 lazily through its GOT slot.
+    Buf plt;
+    // PLT[0]: push [rip+GOT+8]; jmp [rip+GOT+16]; pad to 16.
+    WriteU8(plt, 0xFF);
+    WriteU8(plt, 0x35);
+    WriteU32(plt, static_cast<uint32_t>((gotVA + 8) - (pltVA + 6)));
+    WriteU8(plt, 0xFF);
+    WriteU8(plt, 0x25);
+    WriteU32(plt, static_cast<uint32_t>((gotVA + 16) - (pltVA + 12)));
+    for (const uint8_t b : {0x0F, 0x1F, 0x40, 0x00}) { // nop dword [rax+0]
+        WriteU8(plt, b);
+    }
+    for (size_t i = 0; i < n; ++i) {
+        const uint64_t entryVA = pltVA + (i + 1) * 16;
+        const uint64_t gotEntryVA = gotVA + (3 + i) * 8;
+        WriteU8(plt, 0xFF); // jmp [rip+got]
+        WriteU8(plt, 0x25);
+        WriteU32(plt, static_cast<uint32_t>(gotEntryVA - (entryVA + 6)));
+        WriteU8(plt, 0x68); // push i
+        WriteU32(plt, static_cast<uint32_t>(i));
+        WriteU8(plt, 0xE9); // jmp PLT[0]
+        WriteU32(plt, static_cast<uint32_t>(pltVA - (entryVA + 16)));
+    }
+
+    // 7. .got.plt — [0]=&_DYNAMIC, [1]/[2] filled by the loader, then one slot
+    //    per import initialised to its PLT push sequence for lazy binding.
+    Buf got;
+    WriteU64(got, dynamicVA);
+    WriteU64(got, 0);
+    WriteU64(got, 0);
+    for (size_t i = 0; i < n; ++i) {
+        WriteU64(got, pltVA + (i + 1) * 16 + 6); // address of `push i`
+    }
+
+    // 8. .rela.plt — one R_X86_64_JUMP_SLOT per import.
+    Buf rela;
+    for (size_t i = 0; i < n; ++i) {
+        WriteU64(rela, gotVA + (3 + i) * 8);                         // r_offset
+        WriteU64(rela, (static_cast<uint64_t>(i + 1) << 32) | 7ull); // r_info: sym (i+1), R_X86_64_JUMP_SLOT
+        WriteU64(rela, 0);                                           // r_addend
+    }
+
+    // 9. .dynamic
+    Buf dyn;
+    const auto writeDyn = [&](int64_t tag, uint64_t val) {
+        WriteU64(dyn, static_cast<uint64_t>(tag));
+        WriteU64(dyn, val);
+    };
+    for (size_t i = 0; i < neededLibs.size(); ++i) {
+        writeDyn(1, libStrOff[i]); // DT_NEEDED
+    }
+    writeDyn(4, hashVA);         // DT_HASH
+    writeDyn(5, dynstrVA);       // DT_STRTAB
+    writeDyn(6, dynsymVA);       // DT_SYMTAB
+    writeDyn(10, dynstr.size()); // DT_STRSZ
+    writeDyn(11, 24);            // DT_SYMENT
+    writeDyn(3, gotVA);          // DT_PLTGOT
+    writeDyn(2, relaSz);         // DT_PLTRELSZ
+    writeDyn(20, 7);             // DT_PLTREL = DT_RELA
+    writeDyn(23, relaVA);        // DT_JMPREL
+    writeDyn(21, 0);             // DT_DEBUG
+    writeDyn(0, 0);              // DT_NULL
+    if (dyn.size() != dynSz) {
+        Error("internal: ELF .dynamic size mismatch");
+        return false;
+    }
+
+    // 10. Resolve symbols: defined symbols plus each import at its PLT stub.
+    auto symMap = buildDefinedSymMap(textVA, rodataVA, dataVA);
+    for (size_t i = 0; i < n; ++i) {
+        symMap[importNames[i]] = pltVA + (i + 1) * 16;
+    }
+    auto mainIt = symMap.find("Main");
+    if (mainIt == symMap.end()) {
+        Error("undefined symbol 'Main' — no entry point found");
+        return false;
+    }
+    const uint64_t nextInst = textVA + kCallMainDisp + 4;
+    Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(mainIt->second - nextInst));
+
+    // Wire the entry stub's `call exit@plt` to libc exit's PLT stub.
+    const auto exitIt = symMap.find("exit");
+    if (exitIt == symMap.end()) {
+        Error("internal: implicit libc 'exit' import was not resolved");
+        return false;
+    }
+    const uint64_t exitNext = textVA + kCallExitDisp + 4;
+    Patch32(textBuf, kCallExitDisp, static_cast<uint32_t>(exitIt->second - exitNext));
+
+    applyRelocs(symMap, textBuf, mergedRodata, mergedData, textVA, rodataVA, dataVA);
     if (!errors.empty()) {
         return false;
     }
 
-    std::filesystem::create_directories(outputPath.parent_path());
-    std::ofstream out(outputPath, std::ios::binary | std::ios::trunc);
-    if (!out) {
-        Error("cannot open output file: " + outputPath.string());
-        return false;
+    // 11. Program headers.
+    Buf phdrs;
+    writePhdr(phdrs, 6, kPfR, phoff, kBase + phoff, static_cast<uint64_t>(phnum) * 56,
+              static_cast<uint64_t>(phnum) * 56, 8);                                 // PT_PHDR
+    writePhdr(phdrs, 3, kPfR, interpOff, interpVA, interp.size(), interp.size(), 1); // PT_INTERP
+    writePhdr(phdrs, 1, kPfR | kPfX, 0, kBase, rxFileEnd, rxFileEnd, kPage);         // PT_LOAD (r-x)
+    writePhdr(phdrs, 1, kPfR | kPfW, dynamicOff, dynamicVA, rwFileEnd - dynamicOff, rwFileEnd - dynamicOff,
+              kPage);                                                         // PT_LOAD (rw-)
+    writePhdr(phdrs, 2, kPfR | kPfW, dynamicOff, dynamicVA, dynSz, dynSz, 8); // PT_DYNAMIC
+    if (hasNote) {
+        writePhdr(phdrs, 4, kPfR, noteOff, kBase + noteOff, osNote.size(), osNote.size(), 4); // PT_NOTE
     }
 
-    const auto writeRaw = [&](const void *d, size_t n) {
-        out.write(static_cast<const char *>(d), static_cast<std::streamsize>(n));
-    };
-    [[maybe_unused]] const auto wU8 = [&](uint8_t v) { writeRaw(&v, 1); };
-    const auto wU16 = [&](uint16_t v) { writeRaw(&v, 2); };
-    const auto wU32 = [&](uint32_t v) { writeRaw(&v, 4); };
-    const auto wU64 = [&](uint64_t v) { writeRaw(&v, 8); };
-    const auto wBuf = [&](const Buf &b) {
-        if (!b.empty()) {
-            writeRaw(b.data(), b.size());
-        }
-    };
-    const auto padToOffset = [&](uint64_t offset) {
-        static constexpr uint8_t zeros[4096] = {};
-        while (static_cast<uint64_t>(out.tellp()) < offset) {
-            const uint64_t remaining = offset - static_cast<uint64_t>(out.tellp());
-            writeRaw(zeros, static_cast<size_t>(std::min<uint64_t>(remaining, sizeof(zeros))));
-        }
-    };
-    const auto writePhdr = [&](uint32_t flags, uint64_t off, uint64_t vaddr, uint64_t fileSize, uint64_t memSize) {
-        wU32(1); // PT_LOAD
-        wU32(flags);
-        wU64(off);
-        wU64(vaddr);
-        wU64(vaddr);
-        wU64(fileSize);
-        wU64(memSize);
-        wU64(kPage);
-    };
-
-    uint8_t ident[16] = {0x7F, 'E', 'L', 'F', 2, 1, 1,
-#if RUX_OS_FREEBSD
-                         9, // EI_OSABI: FreeBSD
-#elif RUX_OS_DRAGONFLY
-                         0, // EI_OSABI: System V
-#elif RUX_OS_OPENBSD
-                         12, // EI_OSABI: OpenBSD
-#elif RUX_OS_NETBSD
-                         2, // EI_OSABI: NetBSD
-#elif RUX_IS_SUNOS
-                         6, // EI_OSABI: Solaris/Illumos
-#else
-                         0, // EI_OSABI: System V
-#endif
-                         0,    0,   0,   0,   0, 0, 0, 0};
-    writeRaw(ident, sizeof(ident));
-    wU16(2);    // ET_EXEC
-    wU16(0x3E); // EM_X86_64
-    wU32(1);
-    wU64(textVA); // e_entry
-    wU64(phoff);
-    wU64(0);
-    wU32(0);
-    wU16(64);
-    wU16(56);
-    wU16(phnum);
-    wU16(0);
-    wU16(0);
-    wU16(0);
-
-    writePhdr(kPfR | kPfX, textOff, textVA, textBuf.size(), textBuf.size());
-    writePhdr(kPfR, rdataOff, rdataVA, mergedRodata.size(), mergedRodata.size());
-#if RUX_OS_NETBSD || RUX_OS_OPENBSD || RUX_OS_DRAGONFLY
-    // Write PT_NOTE program header pointing to the OS note at the start of
-    // .rodata
-    wU32(4);        // p_type: PT_NOTE
-    wU32(kPfR);     // p_flags: PF_R
-    wU64(rdataOff); // p_offset
-    wU64(rdataVA);  // p_vaddr
-    wU64(rdataVA);  // p_paddr
-    wU64(24);       // p_filesz: 24 bytes
-    wU64(24);       // p_memsz: 24 bytes
-    wU64(4);        // p_align: 4 bytes
-#endif
-    if (!mergedData.empty()) {
-        writePhdr(kPfR | kPfW, dataOff, dataVA, mergedData.size(), mergedData.size());
-    }
-
-    padToOffset(textOff);
-    wBuf(textBuf);
-    padToOffset(rdataOff);
-    wBuf(mergedRodata);
-    if (!mergedData.empty()) {
-        padToOffset(dataOff);
-        wBuf(mergedData);
-    }
-
-    out.close();
-    if (!out) {
-        Error("cannot write output file: " + outputPath.string());
-        return false;
-    }
-
-    std::error_code ec;
-    std::filesystem::permissions(outputPath,
-                                 std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec |
-                                     std::filesystem::perms::others_exec,
-                                 std::filesystem::perm_options::add, ec);
-    if (ec) {
-        Error("cannot mark output executable: " + ec.message());
-        return false;
-    }
-    return true;
+    return emitFile(phnum, phdrs,
+                    {{interpOff, &interp},
+                     {noteOff, &osNote},
+                     {hashOff, &hash},
+                     {dynsymOff, &dynsym},
+                     {dynstrOff, &dynstr},
+                     {relaOff, &rela},
+                     {pltOff, &plt},
+                     {textOff, &textBuf},
+                     {rodataOff, &mergedRodata},
+                     {dynamicOff, &dyn},
+                     {gotOff, &got},
+                     {dataOff, &mergedData}},
+                    textVA, phoff);
 }
 
 } // namespace Rux

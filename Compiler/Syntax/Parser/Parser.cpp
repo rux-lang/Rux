@@ -20,9 +20,9 @@ bool ParseResult::HasErrors() const noexcept {
 }
 
 // Constructor / FromLexResult
-Parser::Parser(std::vector<Token> tokens, std::string sourceName)
-    : tokens(std::move(tokens))
-    , sourceName(std::move(sourceName)) {
+Parser::Parser(std::vector<Token> inputTokens, std::string inputSourceName)
+    : tokens(std::move(inputTokens))
+    , sourceName(std::move(inputSourceName)) {
 }
 
 std::optional<ParseResult> Parser::FromLexResult(const LexerResult &lex, const std::string &sourceName) {

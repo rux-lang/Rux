@@ -21,7 +21,7 @@ class Lexer {
 public:
     // Construct from in-memory source text.
     // `sourceName` is used only for diagnostic messages (e.g. file path).
-    explicit Lexer(std::string source, std::string sourceName = "<input>");
+    explicit Lexer(std::string inputSource, std::string inputSourceName = "<input>");
 
     // Convenience: read file from disk and lex it.
     // Returns std::nullopt if the file cannot be read.

@@ -52,8 +52,8 @@ struct Symbol {
 
 class Scope {
 public:
-    explicit Scope(Scope *parent = nullptr)
-        : parent(parent) {
+    explicit Scope(Scope *parentScope = nullptr)
+        : parent(parentScope) {
     }
 
     // Returns false and emits a diagnostic if the name is already defined.
@@ -108,14 +108,15 @@ private:
 // Internal: Analyzer
 class Analyzer {
 public:
-    Analyzer(std::vector<const Module *> &modules, std::vector<DepPackage> &deps, const std::string &packageName,
-             std::vector<SemanticDiagnostic> &diags, std::vector<SemanticSymbol> &symbols, const std::string &targetOs)
-        : modules(modules)
-        , deps(deps)
-        , packageName(packageName)
-        , diags(diags)
-        , symbols(symbols)
-        , targetOs(targetOs)
+    Analyzer(std::vector<const Module *> &inputModules, std::vector<DepPackage> &inputDeps,
+             const std::string &inputPackageName, std::vector<SemanticDiagnostic> &inputDiags,
+             std::vector<SemanticSymbol> &inputSymbols, const std::string &inputTargetOs)
+        : modules(inputModules)
+        , deps(inputDeps)
+        , packageName(inputPackageName)
+        , diags(inputDiags)
+        , symbols(inputSymbols)
+        , targetOs(inputTargetOs)
         , currentScope(&globalScope) {
     }
 
@@ -225,20 +226,26 @@ private:
     }
 
     TypeRef MakeFuncType(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
-                         const std::vector<std::string> &typeParams = {}) {
+                         const std::vector<std::string> &typeParams = {}, bool cVariadic = false) {
         auto savedTypeParams = currentTypeParams;
         currentTypeParams = typeParams;
 
         std::vector<TypeRef> paramTypes;
+        bool variadic = cVariadic;
         for (const auto &param : params) {
             if (!param.isVariadic) {
                 paramTypes.push_back(ResolveType(*param.type));
+            }
+            else {
+                variadic = true;
             }
         }
         TypeRef ret = returnType ? ResolveType(*returnType->get()) : TypeRef::MakeOpaque();
 
         currentTypeParams = savedTypeParams;
-        return TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
+        TypeRef funcType = TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
+        funcType.isVariadic = variadic;
+        return funcType;
     }
 
     // Builtins
@@ -301,7 +308,7 @@ private:
         }
         else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
             if (Symbol *sym = globalScope.Lookup(externFn->name)) {
-                sym->type = MakeFuncType(externFn->params, externFn->returnType);
+                sym->type = MakeFuncType(externFn->params, externFn->returnType, {}, externFn->isVariadic);
             }
         }
         else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
@@ -338,7 +345,7 @@ private:
         }
         else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
             if (Symbol *sym = scope.Lookup(externFn->name)) {
-                sym->type = MakeFuncType(externFn->params, externFn->returnType);
+                sym->type = MakeFuncType(externFn->params, externFn->returnType, {}, externFn->isVariadic);
             }
         }
         else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
@@ -3340,12 +3347,17 @@ private:
 
             if (calleeType.kind == TypeRef::Kind::Func && !calleeType.inner.empty()) {
                 const std::size_t paramCount = calleeType.inner.size() - 1;
-                if (argTypes.size() != paramCount) {
+                const bool arityOk =
+                    calleeType.isVariadic ? argTypes.size() >= paramCount : argTypes.size() == paramCount;
+                if (!arityOk) {
                     EmitError(e->location,
-                              std::format("function expects {} argument(s), got {}", paramCount, argTypes.size()));
+                              std::format("function expects {}{} argument(s), got {}",
+                                          calleeType.isVariadic ? "at least " : "", paramCount, argTypes.size()));
                 }
                 else {
-                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    // Only the fixed parameters are type-checked; trailing
+                    // C-variadic arguments accept any type.
+                    for (std::size_t i = 0; i < paramCount; ++i) {
                         const TypeRef &argType = argTypes[i];
                         const TypeRef &paramType = calleeType.inner[i];
                         if (!argType.IsUnknown() && !paramType.IsUnknown() &&
@@ -3861,12 +3873,12 @@ private:
 };
 
 // Sema public API
-SemanticAnalyzer::SemanticAnalyzer(std::vector<const Module *> userModules, std::vector<DepPackage> deps,
-                                   std::string packageName, std::string targetOs)
+SemanticAnalyzer::SemanticAnalyzer(std::vector<const Module *> userModules, std::vector<DepPackage> inputDeps,
+                                   std::string inputPackageName, std::string inputTargetOs)
     : modules(std::move(userModules))
-    , deps(std::move(deps))
-    , packageName(std::move(packageName))
-    , targetOs(std::move(targetOs)) {
+    , deps(std::move(inputDeps))
+    , packageName(std::move(inputPackageName))
+    , targetOs(std::move(inputTargetOs)) {
 }
 
 SemanticModel SemanticAnalyzer::Analyze() {

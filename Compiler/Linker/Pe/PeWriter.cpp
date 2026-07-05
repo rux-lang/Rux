@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -13,7 +14,6 @@
 #include "Linker/Linker.h"
 #include "Linker/LinkerInternal.h"
 #include "System/Os.h"
-#include "Target/Platform.h"
 
 namespace Rux {
 
@@ -300,7 +300,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
 
     // Second pass: collect imports from relocations. For compiler-generated
     // extern symbols (e.g. runtime helpers) that carry no explicit DLL,
-    // fall back to KERNEL32.DLL so existing behaviour is preserved. Skip
+    // fall back to KERNEL32.DLL so existing behavior is preserved. Skip
     // symbols that are defined locally (cross-module references, not DLL
     // imports).
     for (const auto &obj : objects) {
@@ -310,7 +310,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
                     continue;
                 }
                 const auto &sym = obj.symbols[reloc.symbolIndex];
-                if (sym.kind == RcuSymKind::ExternFunc && !definedSymbols.count(sym.name)) {
+                if (sym.kind == RcuSymKind::ExternFunc && !definedSymbols.contains(sym.name)) {
                     importDll.try_emplace(sym.name, "KERNEL32.DLL");
                 }
             }
@@ -320,10 +320,10 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
     // Sorted for determinism
     std::vector<std::string> importNames;
     importNames.reserve(importDll.size());
-    for (const auto &[n, _] : importDll) {
+    for (const auto &n : importDll | std::views::keys) {
         importNames.push_back(n);
     }
-    std::sort(importNames.begin(), importNames.end());
+    std::ranges::sort(importNames);
 
     std::unordered_map<std::string, size_t> importIdx;
     for (size_t i = 0; i < importNames.size(); ++i) {
@@ -379,8 +379,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
         const size_t kCallDllMainDisp = textPre.size() + 1;
         textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call DllMain
         // If DllMain returned 0 (init failed), still propagate it;
-        // otherwise keep eax. For simplicity we trust DllMain's return
-        // value directly.
+        // otherwise keep eax. For simplicity, we trust DllMain's return value directly.
         textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x28}); // add rsp, 0x28
         textPre.push_back(0xC3);                                 // ret
         (void)kCallDllMainDisp;                                  // used below during patching
@@ -412,7 +411,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
         textPre.insert(textPre.end(), {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00});
     }
 
-    const uint32_t preambleSize = static_cast<uint32_t>(textPre.size());
+    const auto preambleSize = static_cast<uint32_t>(textPre.size());
 
     // 3. Merge RCU sections
 
@@ -456,7 +455,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
     for (size_t i = 0; i < numImports; ++i) {
         importsByDll[importDll[importNames[i]]].push_back(i);
     }
-    const uint32_t importDirOff = static_cast<uint32_t>(rdataBuf.size());
+    const auto importDirOff = static_cast<uint32_t>(rdataBuf.size());
     const size_t importDirPos = rdataBuf.size();
     WriteZeros(rdataBuf, (importsByDll.size() + 1) * 20);
     std::vector<std::string> importDllNames;
@@ -474,7 +473,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
         intPos[g] = rdataBuf.size();
         WriteZeros(rdataBuf, (importDllMembers[g].size() + 1) * 8);
     }
-    const uint32_t iatOff = static_cast<uint32_t>(rdataBuf.size());
+    const auto iatOff = static_cast<uint32_t>(rdataBuf.size());
     std::vector<uint32_t> iatGroupOff(importDllNames.size());
     std::vector<size_t> iatPos(importDllNames.size());
     std::vector<uint32_t> iatEntryOff(numImports);
@@ -513,7 +512,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
     const uint32_t textFileSize = AlignUp(textVirtSize, kFileAlign);
     const uint32_t textFileOff = sizeOfHeaders;
     const uint32_t rdataRva = textRva + AlignUp(textVirtSize, kSecAlign);
-    const uint32_t rdataVirtSize = static_cast<uint32_t>(rdataBuf.size());
+    const auto rdataVirtSize = static_cast<uint32_t>(rdataBuf.size());
     const uint32_t rdataFileSize = AlignUp(rdataVirtSize, kFileAlign);
     const uint32_t rdataFileOff = textFileOff + textFileSize;
     uint32_t dataRva = 0, dataVirtSize = 0, dataFileSize = 0, dataFileOff = 0;
@@ -597,7 +596,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
     for (size_t i = 0; i < numImports; ++i) {
         uint64_t thunkVA = kImageBase + textRva + thunkOff[i];
         uint64_t iatEntryVA = kImageBase + rdataRva + iatEntryOff[i];
-        int32_t disp = static_cast<int32_t>(iatEntryVA - (thunkVA + 6));
+        auto disp = static_cast<int32_t>(iatEntryVA - (thunkVA + 6));
         Patch32(textBuf, thunkOff[i] + 2, static_cast<uint32_t>(disp));
     }
 
@@ -690,7 +689,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
                     }
                     targetVA = it->second;
                 }
-                else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() && symMap.count(sym.name)) {
+                else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() && symMap.contains(sym.name)) {
                     // Named exported symbol, including cross-module
                     // references.
                     targetVA = symMap[sym.name];
@@ -716,7 +715,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
                     if (patchAt + 4 > buf->size()) {
                         continue;
                     }
-                    int32_t disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
+                    auto disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
                     Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
                 }
                 else if (reloc.type == RcuRelType::Abs64) {
@@ -747,13 +746,13 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
         for (const auto &obj : objects) {
             for (const auto &sym : obj.symbols) {
                 if (sym.kind == RcuSymKind::Func && sym.visibility != RcuSymVis::Local && !sym.name.empty() &&
-                    sym.name != "DllMain" && symMap.count(sym.name)) {
+                    sym.name != "DllMain" && symMap.contains(sym.name)) {
                     exportNames.push_back(sym.name);
                 }
             }
         }
-        std::sort(exportNames.begin(), exportNames.end());
-        exportNames.erase(std::unique(exportNames.begin(), exportNames.end()), exportNames.end());
+        std::ranges::sort(exportNames);
+        exportNames.erase(std::ranges::unique(exportNames).begin(), exportNames.end());
     }
 
     // Build export directory data (appended to .rdata)
@@ -761,38 +760,38 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
     uint32_t exportDirSize = 0;
     if (isDll && !exportNames.empty()) {
         exportDirOff = static_cast<uint32_t>(rdataBuf.size());
-        const uint32_t numExports = static_cast<uint32_t>(exportNames.size());
+        const auto numExports = static_cast<uint32_t>(exportNames.size());
 
         // Reserve IMAGE_EXPORT_DIRECTORY (40 bytes)
         const size_t expDirPos = rdataBuf.size();
         WriteZeros(rdataBuf, 40);
 
         // AddressOfFunctions array (RVAs)
-        const uint32_t funcArrayOff = static_cast<uint32_t>(rdataBuf.size());
+        const auto funcArrayOff = static_cast<uint32_t>(rdataBuf.size());
         for (uint32_t i = 0; i < numExports; ++i) {
             WriteU32(rdataBuf, 0); // patched below
         }
 
         // AddressOfNames array (RVAs to name strings)
-        const uint32_t nameArrayOff = static_cast<uint32_t>(rdataBuf.size());
+        const auto nameArrayOff = static_cast<uint32_t>(rdataBuf.size());
         for (uint32_t i = 0; i < numExports; ++i) {
             WriteU32(rdataBuf, 0); // patched below
         }
 
         // AddressOfNameOrdinals array
-        const uint32_t ordArrayOff = static_cast<uint32_t>(rdataBuf.size());
+        const auto ordArrayOff = static_cast<uint32_t>(rdataBuf.size());
         for (uint32_t i = 0; i < numExports; ++i) {
             WriteU16(rdataBuf, static_cast<uint16_t>(i));
         }
 
         // DLL name string
-        const uint32_t dllNameStrOff = static_cast<uint32_t>(rdataBuf.size());
+        const auto dllNameStrOff = static_cast<uint32_t>(rdataBuf.size());
         WriteCStr(rdataBuf, System::SharedLibraryFileName(packageName, Target::OS::Windows).c_str());
         PadTo(rdataBuf, 2);
 
         // Function name strings + patch name/func arrays
         for (uint32_t i = 0; i < numExports; ++i) {
-            const uint32_t nameStrOff = static_cast<uint32_t>(rdataBuf.size());
+            const auto nameStrOff = static_cast<uint32_t>(rdataBuf.size());
             WriteCStr(rdataBuf, exportNames[i].c_str());
             PadTo(rdataBuf, 2);
             // Patch name array entry
@@ -800,7 +799,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
             // Patch function RVA
             auto it = symMap.find(exportNames[i]);
             if (it != symMap.end()) {
-                uint32_t funcRva = static_cast<uint32_t>(it->second - kImageBase);
+                auto funcRva = static_cast<uint32_t>(it->second - kImageBase);
                 Patch32(rdataBuf, funcArrayOff + i * 4, funcRva);
             }
         }

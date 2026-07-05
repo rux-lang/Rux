@@ -18,9 +18,9 @@ struct LinkerError {
 // writers are always compiled; Link() dispatches on `targetOs` at run time.
 class Linker {
 public:
-    explicit Linker(std::vector<RcuFile> objects, std::string packageName,
-                    std::vector<std::filesystem::path> importSearchDirs = {}, bool isDll = false,
-                    Target::OS targetOs = Target::HostOS);
+    explicit Linker(std::vector<RcuFile> inputObjects, std::string inputPackageName,
+                    std::vector<std::filesystem::path> inputImportSearchDirs = {}, bool inputIsDll = false,
+                    Target::OS inputTargetOs = Target::HostOS);
 
     // Produce the EXE or DLL at outputPath. Creates parent directories as
     // needed. Returns false if any errors occurred; call Errors() for

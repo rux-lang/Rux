@@ -50,8 +50,8 @@ struct HirSymbol {
 
 class HirScope {
 public:
-    explicit HirScope(HirScope *parent = nullptr)
-        : parent(parent) {
+    explicit HirScope(HirScope *parentScope = nullptr)
+        : parent(parentScope) {
     }
 
     void Define(HirSymbol sym) {
@@ -168,8 +168,8 @@ std::string_view OpStr(TokenKind op) {
 // Internal: Lowering
 class Lowering {
 public:
-    explicit Lowering(std::vector<const Module *> &modules)
-        : modules(modules)
+    explicit Lowering(std::vector<const Module *> &inputModules)
+        : modules(inputModules)
         , currentScope(&globalScope) {
     }
 

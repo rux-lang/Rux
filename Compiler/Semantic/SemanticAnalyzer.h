@@ -25,8 +25,8 @@ struct DepPackage {
 // package work.
 class SemanticAnalyzer {
 public:
-    explicit SemanticAnalyzer(std::vector<const Module *> userModules, std::vector<DepPackage> deps = {},
-                              std::string packageName = {}, std::string targetOs = {});
+    explicit SemanticAnalyzer(std::vector<const Module *> userModules, std::vector<DepPackage> inputDeps = {},
+                              std::string inputPackageName = {}, std::string inputTargetOs = {});
     [[nodiscard]] SemanticModel Analyze();
 
 private:

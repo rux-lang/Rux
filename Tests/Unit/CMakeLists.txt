@@ -7,6 +7,7 @@ set(RUX_TEST_SOURCES
     BuildReportTests.cpp
     GoldenDiagnosticsTests.cpp
     LexerTests.cpp
+    LinkerTests.cpp
     OsTests.cpp
     ProcessTests.cpp
 )

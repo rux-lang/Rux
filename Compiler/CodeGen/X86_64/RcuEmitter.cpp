@@ -117,12 +117,12 @@ struct JumpPatch {
 
 class RcuCodeGen {
 public:
-    explicit RcuCodeGen(const LirModule &mod, const std::vector<LirStructDecl> &structDecls,
-                        const std::vector<std::string> &packageInterfaceNames, std::string pkgName)
-        : mod(mod)
-        , structDecls(structDecls)
-        , packageInterfaceNames(packageInterfaceNames)
-        , pkgName(std::move(pkgName))
+    explicit RcuCodeGen(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
+                        const std::vector<std::string> &inputPackageInterfaceNames, std::string packageName)
+        : mod(module)
+        , structDecls(inputStructDecls)
+        , packageInterfaceNames(inputPackageInterfaceNames)
+        , pkgName(std::move(packageName))
         , enc(textData) {
     }
 
@@ -992,6 +992,12 @@ private:
                     }
                 }
             }
+            // System V AMD64 requires AL to hold the number of vector
+            // registers used when calling a variadic function; it is an
+            // ignored scratch register for non-variadic callees, so setting
+            // it unconditionally is always safe and lets printf-style
+            // functions decide whether to spill XMM registers.
+            enc.MovEaxImm32(fltIdx);
         }
     }
 
@@ -1607,10 +1613,13 @@ private:
             }
             bool win64Call = EffectiveConv(instr.callConv) == CallingConvention::Win64;
             const bool hiddenReturn = win64Call && instr.dst != LirNoReg && IsWin64ByRefAggregate(instr.type);
-            const int callFrameSize = win64Call ? Win64CallFrameSize(instr.srcs.size() + (hiddenReturn ? 1 : 0)) : 0;
-            if (win64Call) {
-                enc.SubRspImm32(callFrameSize);
-            }
+            // Win64 reserves 32-byte shadow space plus any stack args. System V
+            // needs no shadow space, but Rux enters every function with rsp
+            // 16-byte aligned (its body invariant is rsp % 16 == 8), whereas
+            // the SysV ABI requires rsp % 16 == 0 at the call site; the 8-byte
+            // pad restores that so libc's aligned SSE prologues do not fault.
+            const int callFrameSize = win64Call ? Win64CallFrameSize(instr.srcs.size() + (hiddenReturn ? 1 : 0)) : 8;
+            enc.SubRspImm32(callFrameSize);
             if (hiddenReturn) {
                 enc.LeaArgStackWin64(0, Disp(instr.dst));
                 EmitCallArgs(instr.srcs, instr.callConv, 1);
@@ -1628,9 +1637,7 @@ private:
             uint32_t ro;
             enc.Call(ro);
             AddTextReloc(ro, symIdx);
-            if (win64Call) {
-                enc.AddRspImm32(callFrameSize);
-            }
+            enc.AddRspImm32(callFrameSize);
             if (instr.dst != LirNoReg && !instr.type.IsOpaque() && !hiddenReturn) {
                 StoreReturnValue(instr.dst, instr.type);
             }
@@ -2093,22 +2100,22 @@ RcuFile GenerateRcuModule(const LirModule &mod, const std::vector<LirStructDecl>
     return gen.Generate();
 }
 
-RcuEmitter::RcuEmitter(const LirPackage &package, std::string packageName)
-    : lir_(package)
-    , packageName_(std::move(packageName)) {
+RcuEmitter::RcuEmitter(const LirPackage &package, std::string inputPackageName)
+    : lir(package)
+    , packageName(std::move(inputPackageName)) {
 }
 
 std::vector<RcuFile> RcuEmitter::Generate() const {
     std::vector<RcuFile> result;
-    result.reserve(lir_.modules.size());
+    result.reserve(lir.modules.size());
     std::vector<LirStructDecl> structDecls;
     std::vector<std::string> interfaceNames;
-    for (const auto &module : lir_.modules) {
+    for (const auto &module : lir.modules) {
         structDecls.insert(structDecls.end(), module.structs.begin(), module.structs.end());
         interfaceNames.insert(interfaceNames.end(), module.interfaceNames.begin(), module.interfaceNames.end());
     }
-    for (const auto &module : lir_.modules) {
-        result.push_back(GenerateRcuModule(module, structDecls, interfaceNames, packageName_));
+    for (const auto &module : lir.modules) {
+        result.push_back(GenerateRcuModule(module, structDecls, interfaceNames, packageName));
     }
     return result;
 }
