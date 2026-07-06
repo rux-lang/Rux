@@ -1,12 +1,14 @@
-// Inline x86-64 assembly functions. Arguments arrive in the Win64 registers
-// (rcx, rdx, r8, r9); the result is returned in rax.
+// Explicit Win64 assembly functions exercise the calling-convention override.
+// Default assembly functions use the target ABI (SysV on Linux).
 
+@[Call(.Win64)]
 asm func Add(a: int64, b: int64) -> int64 {
     mov rax, rcx
     add rax, rdx
     ret
 }
 
+@[Call(.Win64)]
 asm func MulSub(a: int64, b: int64) -> int64 {
     mov rax, rcx
     imul rax, rdx
@@ -15,6 +17,7 @@ asm func MulSub(a: int64, b: int64) -> int64 {
 }
 
 // Loop with a local label, a conditional jump and a decrement.
+@[Call(.Win64)]
 asm func SumTo(n: int64) -> int64 {
     xor rax, rax
     mov rdx, rcx
@@ -29,6 +32,7 @@ done:
 }
 
 // Spill and reload through the stack, then shift.
+@[Call(.Win64)]
 asm func DoubleViaStack(a: int64) -> int64 {
     mov qword [rsp - 8], rcx
     mov rax, qword [rsp - 8]
@@ -37,12 +41,14 @@ asm func DoubleViaStack(a: int64) -> int64 {
 }
 
 // Calls another asm function; preserves the argument across the call.
+@[Call(.Win64)]
 asm func Triple(x: int64) -> int64 {
     mov rax, rcx
     imul rax, 3
     ret
 }
 
+@[Call(.Win64)]
 asm func TripleThenAdd(x: int64) -> int64 {
     push rcx
     call Triple
@@ -81,6 +87,9 @@ func Main() -> int {
     }
     if (FloatToInt(7.9) != 7) {
         return 10;
+    }
+    if (PlatformAbiCheck() != 0) {
+        return 11;
     }
     return 0;
 }

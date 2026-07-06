@@ -21,6 +21,11 @@ static bool IsAsmNameToken(const Token &t) {
     return t.Is(TokenKind::Ident) || t.IsKeyword();
 }
 
+static bool IsZeroOperandAsmMnemonic(const std::string_view mnemonic) {
+    return mnemonic == "ret" || mnemonic == "leave" || mnemonic == "nop" || mnemonic == "syscall" ||
+           mnemonic == "cqo" || mnemonic == "cdq" || mnemonic == "cdqe";
+}
+
 // Attribute parsing
 static std::string DecodeStringLiteralText(const std::string &text) {
     std::string out;
@@ -397,7 +402,7 @@ std::vector<AsmInstr> Parser::ParseAsmBody() {
 
         // Operands, comma-separated. Stop when the operand is not followed
         // by a comma (i.e. the next token starts a new instruction).
-        if (!Check(TokenKind::RightBrace) && !CanStartAsmOperand()) {
+        if (IsZeroOperandAsmMnemonic(instr.mnemonic) || (!Check(TokenKind::RightBrace) && !CanStartAsmOperand())) {
             instrs.push_back(std::move(instr));
             continue;
         }

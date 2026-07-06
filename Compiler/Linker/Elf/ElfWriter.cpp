@@ -187,10 +187,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     //    calls libc exit() with Main's return value so stdio is flushed.
     Buf textPre;
     textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
-    textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8 (Rux enters Main at rsp % 16 == 0)
     const size_t kCallMainDisp = textPre.size() + 1;
     textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
-    textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x08});       // add rsp, 8 (restore 16-byte alignment)
     textPre.insert(textPre.end(), {0x89, 0xC7});                   // mov edi, eax (exit code)
     size_t kCallExitDisp = 0;
     if (dynamic) {

@@ -1700,7 +1700,7 @@ private:
         ci.dst = dst;
         ci.type = e.type;
         ci.op = LirOpcode::CallIndirect;
-        ci.callConv = CallingConvention::Win64;
+        ci.callConv = CallingConvention::Default;
         ci.srcs = {fnPtr, dataPtr};
         for (const auto &arg : e.args) {
             ci.srcs.push_back(LowerExpr(*arg));

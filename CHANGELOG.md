@@ -12,6 +12,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Inline assembly functions** — `asm func Name(...) -> T { ... }` bodies are written directly in x86-64 (Intel syntax) and assembled to machine code, bypassing the normal HIR/LIR pipeline. Supports the common instruction subset (ALU ops, `mov`/`lea`, `movzx`/`movsx`, the multiply/divide group, shifts, `push`/`pop`, `call`/`jmp`, the full `jcc`/`setcc` family, `ret`/`leave`/`nop`/`syscall`), register/immediate/memory operands, local labels, and calls to other functions.
 
+### Changed
+
+- **Native Linux calling convention** — ordinary and inline-assembly Rux functions now use the System V AMD64 ABI on Linux, including `rdi`/`rsi`/`rdx`/`rcx`/`r8`/`r9` integer arguments, 16-byte call-site stack alignment, and stack-passed overflow arguments. `@[Call(.Win64)]` remains available as an explicit override.
+
+### Fixed
+
+- **Zero-operand assembly parsing** — instructions such as `syscall` followed by `ret` are now parsed as two instructions instead of treating the second mnemonic as an operand.
+
 ## [0.3.0] - 2026-06-23
 
 Adds broad multi-platform host support, a revamped platform abstraction layer, new language features, a macOS linker backend, and Windows DLL output, along with correctness fixes, broader literal and constant-expression support, improved overload resolution, expanded runtime support, better test coverage, cleaner CLI/build tooling, and many bug fixes.

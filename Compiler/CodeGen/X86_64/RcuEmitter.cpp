@@ -107,7 +107,7 @@ CallingConvention EffectiveConv(const CallingConvention c) {
     if (c != CallingConvention::Default) {
         return c;
     }
-    return CallingConvention::Win64;
+    return PlatformDefaultConvention();
 }
 
 // RCU Code Generator: LirModule → RcuFile
@@ -270,6 +270,75 @@ private:
         return AlignUp(static_cast<int>(32 + stackArgs * 8), 16);
     }
 
+    [[nodiscard]] std::size_t SysVStackArgCount(const std::vector<LirReg> &args) const {
+        int intIdx = 0;
+        int fltIdx = 0;
+        std::size_t stackArgs = 0;
+        for (const LirReg arg : args) {
+            const TypeRef type = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+            if (IsFloat(type)) {
+                if (fltIdx < 8) {
+                    ++fltIdx;
+                }
+                else {
+                    ++stackArgs;
+                }
+            }
+            else if (intIdx < 6) {
+                ++intIdx;
+            }
+            else {
+                ++stackArgs;
+            }
+        }
+        return stackArgs;
+    }
+
+    [[nodiscard]] int SysVCallFrameSize(const std::vector<LirReg> &args) const {
+        return AlignUp(static_cast<int>(SysVStackArgCount(args) * 8), 16);
+    }
+
+    void StoreSysVStackArgs(const std::vector<LirReg> &args) const {
+        int intIdx = 0;
+        int fltIdx = 0;
+        int stackIdx = 0;
+        for (const LirReg arg : args) {
+            const TypeRef type = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+            bool onStack = false;
+            if (IsFloat(type)) {
+                if (fltIdx < 8) {
+                    ++fltIdx;
+                }
+                else {
+                    onStack = true;
+                }
+            }
+            else if (intIdx < 6) {
+                ++intIdx;
+            }
+            else {
+                onStack = true;
+            }
+            if (!onStack) {
+                continue;
+            }
+
+            LoadA(arg, type);
+            const int32_t offset = stackIdx++ * 8;
+            if (IsFloat(type)) {
+                if (SizeOf(type) == 4) {
+                    enc.MovssXmm0StoreRsp(offset);
+                }
+                else {
+                    enc.MovsdXmm0StoreRsp(offset);
+                }
+            }
+            else {
+                enc.MovRaxStoreRsp(offset);
+            }
+        }
+    }
+
     uint32_t AddSymbol(RcuSymbol s) {
         auto idx = static_cast<uint32_t>(symbols.size());
         symbols.push_back(std::move(s));
@@ -320,6 +389,16 @@ private:
             return;
         }
         symbols[ipowSym].value = enc.Size();
+        if (EffectiveConv(CallingConvention::Default) == CallingConvention::SysV) {
+            // Keep the compact helper body below in its historical rcx/rdx
+            // form after accepting native SysV rdi/rsi arguments.
+            enc.Byte(0x48);
+            enc.Byte(0x89);
+            enc.Byte(0xF9); // mov rcx, rdi
+            enc.Byte(0x48);
+            enc.Byte(0x89);
+            enc.Byte(0xF2); // mov rdx, rsi
+        }
         // clang-format off
                 static constexpr std::uint8_t kThunk[] = {
                     0x48, 0x85, 0xD2,                         // test rdx, rdx    ; exponent
@@ -1696,18 +1775,22 @@ private:
             }
             bool win64Call = EffectiveConv(instr.callConv) == CallingConvention::Win64;
             const bool hiddenReturn = win64Call && instr.dst != LirNoReg && IsWin64ByRefAggregate(instr.type);
-            // Win64 reserves 32-byte shadow space plus any stack args. System V
-            // needs no shadow space, but Rux enters every function with rsp
-            // 16-byte aligned (its body invariant is rsp % 16 == 8), whereas
-            // the SysV ABI requires rsp % 16 == 0 at the call site; the 8-byte
-            // pad restores that so libc's aligned SSE prologues do not fault.
-            const int callFrameSize = win64Call ? Win64CallFrameSize(instr.srcs.size() + (hiddenReturn ? 1 : 0)) : 8;
-            enc.SubRspImm32(callFrameSize);
+            // Win64 reserves 32-byte shadow space. SysV reserves only enough
+            // space for overflow arguments; both frame sizes preserve the
+            // required 16-byte alignment at the call instruction.
+            const int callFrameSize = win64Call ? Win64CallFrameSize(instr.srcs.size() + (hiddenReturn ? 1 : 0))
+                                                : SysVCallFrameSize(instr.srcs);
+            if (callFrameSize > 0) {
+                enc.SubRspImm32(callFrameSize);
+            }
             if (hiddenReturn) {
                 enc.LeaArgStackWin64(0, Disp(instr.dst));
                 EmitCallArgs(instr.srcs, instr.callConv, 1);
             }
             else {
+                if (!win64Call) {
+                    StoreSysVStackArgs(instr.srcs);
+                }
                 EmitCallArgs(instr.srcs, instr.callConv);
             }
             uint32_t symIdx;
@@ -1720,7 +1803,9 @@ private:
             uint32_t ro;
             enc.Call(ro);
             AddTextReloc(ro, symIdx);
-            enc.AddRspImm32(callFrameSize);
+            if (callFrameSize > 0) {
+                enc.AddRspImm32(callFrameSize);
+            }
             if (instr.dst != LirNoReg && !instr.type.IsOpaque() && !hiddenReturn) {
                 StoreReturnValue(instr.dst, instr.type);
             }
@@ -1734,8 +1819,9 @@ private:
             std::vector<LirReg> args(instr.srcs.begin() + 1, instr.srcs.end());
             bool win64Call = EffectiveConv(instr.callConv) == CallingConvention::Win64;
             const bool hiddenReturn = win64Call && instr.dst != LirNoReg && IsWin64ByRefAggregate(instr.type);
-            const int callFrameSize = win64Call ? Win64CallFrameSize(args.size() + (hiddenReturn ? 1 : 0)) : 0;
-            if (win64Call) {
+            const int callFrameSize =
+                win64Call ? Win64CallFrameSize(args.size() + (hiddenReturn ? 1 : 0)) : SysVCallFrameSize(args);
+            if (callFrameSize > 0) {
                 enc.SubRspImm32(callFrameSize);
             }
             if (hiddenReturn) {
@@ -1743,11 +1829,14 @@ private:
                 EmitCallArgs(args, instr.callConv, 1);
             }
             else {
+                if (!win64Call) {
+                    StoreSysVStackArgs(args);
+                }
                 EmitCallArgs(args, instr.callConv);
             }
             enc.MovR10Load(Disp(callee));
             enc.CallR10();
-            if (win64Call) {
+            if (callFrameSize > 0) {
                 enc.AddRspImm32(callFrameSize);
             }
             if (instr.dst != LirNoReg && !instr.type.IsOpaque() && !hiddenReturn) {
@@ -1975,7 +2064,7 @@ private:
         EmitStackAlloc(frameSize);
         // Spill ABI param registers to stack slots
         bool win64Func = EffectiveConv(func.callConv) == CallingConvention::Win64;
-        int intIdx = 0, fltIdx = 0, win64Idx = 0;
+        int intIdx = 0, fltIdx = 0, sysvStackIdx = 0, win64Idx = 0;
         if (win64Func && hiddenReturnOff != 0) {
             enc.MovArgStoreWin64(0, -hiddenReturnOff);
             win64Idx = 1;
@@ -2047,11 +2136,27 @@ private:
                         enc.Dword(static_cast<uint32_t>(d));
                         ++fltIdx;
                     }
+                    else {
+                        const int32_t stackArgOff = 16 + sysvStackIdx++ * 8;
+                        if (sz == 4) {
+                            enc.MovssXmm0Load(stackArgOff);
+                            enc.MovssXmm0Store(d);
+                        }
+                        else {
+                            enc.MovsdXmm0Load(stackArgOff);
+                            enc.MovsdXmm0Store(d);
+                        }
+                    }
                 }
                 else {
                     if (intIdx < 6) {
                         enc.MovArgStore(intIdx, d);
                         ++intIdx;
+                    }
+                    else {
+                        const int32_t stackArgOff = 16 + sysvStackIdx++ * 8;
+                        enc.MovRaxLoad(stackArgOff);
+                        StoreA(p.reg, p.type);
                     }
                 }
             }

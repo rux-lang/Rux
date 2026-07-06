@@ -1,13 +1,15 @@
-// SSE/SSE2 asm functions. On Win64 the first float64 arguments arrive in
-// xmm0, xmm1, ...; a float64 result is returned in xmm0.
+// SSE/SSE2 asm functions with an explicit Win64 convention. The first
+// float64 arguments arrive in xmm0, xmm1, ... and results use xmm0.
 
 // Square root of a double: sqrtsd computes it in place in xmm0.
+@[Call(.Win64)]
 asm func Sqrt(x: float64) -> float64 {
     sqrtsd xmm0, xmm0
     ret
 }
 
 // a * b + c, exercising a second and third float argument (xmm1, xmm2).
+@[Call(.Win64)]
 asm func MulAdd(a: float64, b: float64, c: float64) -> float64 {
     mulsd xmm0, xmm1
     addsd xmm0, xmm2
@@ -15,18 +17,21 @@ asm func MulAdd(a: float64, b: float64, c: float64) -> float64 {
 }
 
 // Round-trip a double through a GP register with movq, then take min/max.
+@[Call(.Win64)]
 asm func MinOf(a: float64, b: float64) -> float64 {
     minsd xmm0, xmm1
     ret
 }
 
 // Convert an integer argument (rcx) to a double result: cvtsi2sd + movq back.
+@[Call(.Win64)]
 asm func IntToFloat(n: int64) -> float64 {
     cvtsi2sd xmm0, rcx
     ret
 }
 
 // Truncate a double back to an integer (returned in rax).
+@[Call(.Win64)]
 asm func FloatToInt(x: float64) -> int64 {
     cvttsd2si rax, xmm0
     ret
