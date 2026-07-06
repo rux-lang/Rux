@@ -2099,7 +2099,11 @@ private:
             }
         }
 
-        if (!d.body) {
+        if (d.isAsm) {
+            // An asm function's body is raw x86-64, not Rux statements; it is
+            // validated when the assembler encodes it, not here.
+        }
+        else if (!d.body) {
             EmitError(d.location, std::format("function '{}' has no body", d.name));
         }
         else {

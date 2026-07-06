@@ -446,6 +446,16 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     }
     RcuEmitter rcuEmitter(lirPackage, std::string(opts.manifest.package.name));
     auto rcuFiles = rcuEmitter.Generate();
+    if (!rcuEmitter.Diagnostics().empty()) {
+        bool hasError = false;
+        for (const auto &diag : rcuEmitter.Diagnostics()) {
+            Emit(diag);
+            hasError = hasError || diag.IsError();
+        }
+        if (hasError) {
+            return false;
+        }
+    }
     if (opts.dumpRcu) {
         auto objDir = root / "Temp" / "Obj";
         auto dumpDir = root / "Temp" / "Rcu";

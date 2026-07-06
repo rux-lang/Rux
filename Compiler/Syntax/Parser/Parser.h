@@ -88,6 +88,13 @@ private:
     std::unique_ptr<ConstDecl> ParseConstDecl(bool isPublic);
     std::unique_ptr<TypeAliasDecl> ParseTypeAliasDecl(bool isPublic);
 
+    // Inline-assembly body parsing (asm func)
+    std::vector<AsmInstr> ParseAsmBody();
+    [[nodiscard]] bool CanStartAsmOperand() const noexcept;
+    AsmOperand ParseAsmOperand();
+    void ParseAsmMemory(AsmOperand &op);
+    std::int64_t ParseAsmInt();
+
     // Shared declaration helpers
     Param ParseParam(bool allowVariadic = false);
     std::vector<Param> ParseParamList(bool allowVariadic = false);

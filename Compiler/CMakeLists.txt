@@ -98,9 +98,10 @@ rux_add_component(RuxObjectRcu
 
 rux_add_component(RuxCodeGenX86_64
         CodeGen/Layout.cpp
+        CodeGen/X86_64/Assembler.cpp
         CodeGen/X86_64/AssemblyPrinter.cpp
         CodeGen/X86_64/RcuEmitter.cpp)
-target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxLir RuxObjectRcu)
+target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxLir RuxObjectRcu RuxDiagnostics)
 
 rux_add_component(RuxLinker
         Linker/Linker.cpp

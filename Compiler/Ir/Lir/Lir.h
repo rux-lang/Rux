@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Semantic/Type.h"
+#include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
 
 namespace Rux {
@@ -116,7 +117,9 @@ struct LirFunc {
     CallingConvention callConv = CallingConvention::Default;
     std::vector<LirParam> params;
     TypeRef returnType;
-    std::vector<LirBlock> blocks; // empty for extern declarations
+    std::vector<LirBlock> blocks;  // empty for extern declarations
+    bool isAsm = false;            // raw x86-64 assembly function
+    std::vector<AsmInstr> asmBody; // instructions when isAsm
 };
 
 // Type declarations (passed through from HIR)

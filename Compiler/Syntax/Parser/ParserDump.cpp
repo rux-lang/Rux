@@ -1,5 +1,6 @@
 // Human-readable AST dump (Parser::DumpAst).
 
+#include <cstdlib>
 #include <format>
 #include <fstream>
 #include <ostream>
@@ -245,11 +246,65 @@ private:
         if (f.returnType) {
             out << " -> " << TypeStr(f.returnType->get());
         }
+        if (f.isAsm) {
+            out << '\n';
+            ++indent;
+            for (const auto &instr : f.asmBody) {
+                Pad();
+                if (!instr.labelDef.empty()) {
+                    out << instr.labelDef << ":\n";
+                    continue;
+                }
+                out << instr.mnemonic;
+                for (std::size_t i = 0; i < instr.operands.size(); ++i) {
+                    out << (i == 0 ? " " : ", ");
+                    PrintAsmOperand(instr.operands[i]);
+                }
+                out << '\n';
+            }
+            --indent;
+            return;
+        }
         out << (f.body ? "" : " [signature]") << '\n';
         if (f.body) {
             ++indent;
             PrintBlock(*f.body);
             --indent;
+        }
+    }
+
+    void PrintAsmOperand(const AsmOperand &op) {
+        switch (op.kind) {
+        case AsmOperand::Kind::Reg:
+        case AsmOperand::Kind::Sym:
+            out << op.name;
+            break;
+        case AsmOperand::Kind::Imm:
+            out << op.imm;
+            break;
+        case AsmOperand::Kind::Mem: {
+            out << '[';
+            bool wrote = false;
+            if (!op.memBase.empty()) {
+                out << op.memBase;
+                wrote = true;
+            }
+            if (!op.memIndex.empty()) {
+                out << (wrote ? " + " : "") << op.memIndex << '*' << op.memScale;
+                wrote = true;
+            }
+            if (!op.memSym.empty()) {
+                out << (wrote ? " + " : "") << op.memSym;
+                wrote = true;
+            }
+            if (op.imm != 0 || !wrote) {
+                out << (wrote && op.imm >= 0 ? " + " : (wrote ? " - " : "")) << (wrote ? std::abs(op.imm) : op.imm);
+            }
+            out << ']';
+            break;
+        }
+        case AsmOperand::Kind::None:
+            break;
         }
     }
 

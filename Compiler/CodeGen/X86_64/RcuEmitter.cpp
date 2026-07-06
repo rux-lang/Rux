@@ -16,6 +16,7 @@
 #include <utility>
 
 #include "CodeGen/Layout.h"
+#include "CodeGen/X86_64/Assembler.h"
 #include "CodeGen/X86_64/Encoder.h"
 #include "Object/Rcu/RcuStringTable.h"
 
@@ -118,11 +119,13 @@ struct JumpPatch {
 class RcuCodeGen {
 public:
     explicit RcuCodeGen(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
-                        const std::vector<std::string> &inputPackageInterfaceNames, std::string packageName)
+                        const std::vector<std::string> &inputPackageInterfaceNames, std::string packageName,
+                        std::vector<Diagnostic> &inputDiagnostics)
         : mod(module)
         , structDecls(inputStructDecls)
         , packageInterfaceNames(inputPackageInterfaceNames)
         , pkgName(std::move(packageName))
+        , diagnostics(inputDiagnostics)
         , enc(textData) {
     }
 
@@ -133,6 +136,7 @@ private:
     const std::vector<LirStructDecl> &structDecls;
     const std::vector<std::string> &packageInterfaceNames;
     std::string pkgName;
+    std::vector<Diagnostic> &diagnostics;
 
     // Section data buffers
     std::vector<uint8_t> textData;
@@ -1811,10 +1815,62 @@ private:
         }
     }
 
+    // Resolve a symbol referenced from inline assembly to its symbol-table
+    // index: a local text symbol, module data/const, an already-declared
+    // extern, or a newly declared extern function.
+    uint32_t ResolveAsmSymbol(const std::string &name) {
+        if (const auto it = funcSyms.find(name); it != funcSyms.end()) {
+            return it->second;
+        }
+        if (const auto it = dataSyms.find(name); it != dataSyms.end()) {
+            return it->second;
+        }
+        if (const auto it = externSyms.find(name); it != externSyms.end()) {
+            return it->second;
+        }
+        return GetOrAddExtern(name, RcuSymKind::ExternFunc);
+    }
+
+    // An `asm func` is emitted as a raw blob: no prologue, epilogue or frame.
+    // Its instructions are encoded directly and any symbol references become
+    // ordinary text relocations.
+    void GenAsmFunc(const LirFunc &func) {
+        const uint32_t funcStart = enc.Size();
+        RcuSymbol sym;
+        sym.name = func.name;
+        sym.sectionIdx = RCU_TEXT_IDX;
+        sym.value = funcStart;
+        sym.kind = RcuSymKind::Func;
+        sym.visibility = func.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
+        sym.typeName = func.returnType.ToString();
+        uint32_t symIdx;
+        if (const auto it = funcSyms.find(func.name); it != funcSyms.end()) {
+            symbols[it->second] = std::move(sym);
+            symIdx = it->second;
+        }
+        else {
+            symIdx = AddSymbol(std::move(sym));
+            funcSyms[func.name] = symIdx;
+        }
+
+        AsmAssembly asmResult = AssembleAsmFunc(func.asmBody, mod.name, textData);
+        for (const auto &fixup : asmResult.fixups) {
+            textRelocs.push_back({fixup.offset, ResolveAsmSymbol(fixup.symbol), fixup.relType, fixup.addend});
+        }
+        for (auto &diag : asmResult.diagnostics) {
+            diagnostics.push_back(std::move(diag));
+        }
+        symbols[symIdx].size = enc.Size() - funcStart;
+    }
+
     // Function generation
     void GenFunc(const LirFunc &func) {
         if (func.isExtern) {
             GetOrAddExtern(func.name, RcuSymKind::ExternFunc, func.dll);
+            return;
+        }
+        if (func.isAsm) {
+            GenAsmFunc(func);
             return;
         }
         PrepassFunc(func);
@@ -2095,8 +2151,9 @@ RcuFile RcuCodeGen::Generate() {
 } // namespace
 
 RcuFile GenerateRcuModule(const LirModule &mod, const std::vector<LirStructDecl> &structDecls,
-                          const std::vector<std::string> &interfaceNames, const std::string &packageName) {
-    RcuCodeGen gen(mod, structDecls, interfaceNames, packageName);
+                          const std::vector<std::string> &interfaceNames, const std::string &packageName,
+                          std::vector<Diagnostic> &diagnostics) {
+    RcuCodeGen gen(mod, structDecls, interfaceNames, packageName, diagnostics);
     return gen.Generate();
 }
 
@@ -2115,7 +2172,7 @@ std::vector<RcuFile> RcuEmitter::Generate() const {
         interfaceNames.insert(interfaceNames.end(), module.interfaceNames.begin(), module.interfaceNames.end());
     }
     for (const auto &module : lir.modules) {
-        result.push_back(GenerateRcuModule(module, structDecls, interfaceNames, packageName));
+        result.push_back(GenerateRcuModule(module, structDecls, interfaceNames, packageName, diagnostics));
     }
     return result;
 }

@@ -1,0 +1,86 @@
+// Inline x86-64 assembly functions. Arguments arrive in the Win64 registers
+// (rcx, rdx, r8, r9); the result is returned in rax.
+
+asm func Add(a: int64, b: int64) -> int64 {
+    mov rax, rcx
+    add rax, rdx
+    ret
+}
+
+asm func MulSub(a: int64, b: int64) -> int64 {
+    mov rax, rcx
+    imul rax, rdx
+    sub rax, 1
+    ret
+}
+
+// Loop with a local label, a conditional jump and a decrement.
+asm func SumTo(n: int64) -> int64 {
+    xor rax, rax
+    mov rdx, rcx
+next:
+    test rdx, rdx
+    jz done
+    add rax, rdx
+    dec rdx
+    jmp next
+done:
+    ret
+}
+
+// Spill and reload through the stack, then shift.
+asm func DoubleViaStack(a: int64) -> int64 {
+    mov qword [rsp - 8], rcx
+    mov rax, qword [rsp - 8]
+    shl rax, 1
+    ret
+}
+
+// Calls another asm function; preserves the argument across the call.
+asm func Triple(x: int64) -> int64 {
+    mov rax, rcx
+    imul rax, 3
+    ret
+}
+
+asm func TripleThenAdd(x: int64) -> int64 {
+    push rcx
+    call Triple
+    pop rcx
+    add rax, rcx
+    ret
+}
+
+func Main() -> int {
+    if (Add(40, 2) != 42) {
+        return 1;
+    }
+    if (MulSub(6, 7) != 41) {
+        return 2;
+    }
+    if (SumTo(100) != 5050) {
+        return 3;
+    }
+    if (DoubleViaStack(21) != 42) {
+        return 4;
+    }
+    if (TripleThenAdd(10) != 40) {
+        return 5;
+    }
+    if (Sqrt(16.0) != 4.0) {
+        return 6;
+    }
+    if (MulAdd(3.0, 4.0, 5.0) != 17.0) {
+        return 7;
+    }
+    if (MinOf(2.5, 9.0) != 2.5) {
+        return 8;
+    }
+    if (IntToFloat(42) != 42.0) {
+        return 9;
+    }
+    if (FloatToInt(7.9) != 7) {
+        return 10;
+    }
+    return 0;
+}

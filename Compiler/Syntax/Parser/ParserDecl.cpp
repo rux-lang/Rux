@@ -1,15 +1,26 @@
 // Declaration parsing: attributes, functions, types, modules, imports.
 
+#include <cctype>
+#include <charconv>
 #include <format>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "Syntax/Parser/Parser.h"
 
 namespace Rux {
+// Inside an asm body, any identifier-like token — a plain identifier or a
+// language keyword such as `loop` or `for` — may name a mnemonic, register,
+// symbol or label. The lexer has already classified keywords, so recover their
+// identifier role here.
+static bool IsAsmNameToken(const Token &t) {
+    return t.Is(TokenKind::Ident) || t.IsKeyword();
+}
+
 // Attribute parsing
 static std::string DecodeStringLiteralText(const std::string &text) {
     std::string out;
@@ -339,7 +350,12 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(bool isPublic, bool isAsm, Calli
         decl->returnType = ParseType();
     }
 
-    if (Check(TokenKind::LeftBrace)) {
+    if (isAsm) {
+        Expect(TokenKind::LeftBrace, "expected '{'");
+        decl->asmBody = ParseAsmBody();
+        Expect(TokenKind::RightBrace, "expected '}'");
+    }
+    else if (Check(TokenKind::LeftBrace)) {
         decl->body = ParseBlock();
     }
     else {
@@ -347,6 +363,234 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(bool isPublic, bool isAsm, Calli
     }
 
     return decl;
+}
+
+// asm body: a sequence of instructions and label definitions between the
+// braces of an `asm func`. Newlines are not significant to the lexer, so an
+// instruction's operand list simply ends at the first token that is not a
+// comma — the next mnemonic, a label, or the closing brace.
+std::vector<AsmInstr> Parser::ParseAsmBody() {
+    std::vector<AsmInstr> instrs;
+    while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+        // A label definition: `name:`.
+        if (IsAsmNameToken(Peek()) && Peek(1).Is(TokenKind::Colon)) {
+            AsmInstr label;
+            label.location = CurrentLocation();
+            label.labelDef = Advance().text; // name
+            Advance();                       // ':'
+            instrs.push_back(std::move(label));
+            continue;
+        }
+
+        if (!IsAsmNameToken(Peek())) {
+            EmitError(CurrentLocation(), std::format("expected an assembly mnemonic, found '{}'", Peek().text));
+            Advance(); // skip the offending token to make progress
+            continue;
+        }
+
+        AsmInstr instr;
+        instr.location = CurrentLocation();
+        instr.mnemonic = Advance().text;
+        for (char &c : instr.mnemonic) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+
+        // Operands, comma-separated. Stop when the operand is not followed
+        // by a comma (i.e. the next token starts a new instruction).
+        if (!Check(TokenKind::RightBrace) && !CanStartAsmOperand()) {
+            instrs.push_back(std::move(instr));
+            continue;
+        }
+        while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+            instr.operands.push_back(ParseAsmOperand());
+            if (!Match(TokenKind::Comma)) {
+                break;
+            }
+        }
+        instrs.push_back(std::move(instr));
+    }
+    return instrs;
+}
+
+// True when the current token can begin an operand of the instruction whose
+// mnemonic was just consumed. Used to tell a zero-operand instruction (ret,
+// syscall) followed by another mnemonic apart from one that takes operands.
+bool Parser::CanStartAsmOperand() const noexcept {
+    switch (Peek().kind) {
+    case TokenKind::IntLiteral:
+    case TokenKind::LeftBracket:
+    case TokenKind::Minus:
+    case TokenKind::Plus:
+        return true;
+    default:
+        // An identifier-like token begins a new instruction if it is itself a
+        // label definition (`name :`); otherwise it is a register / symbol.
+        return IsAsmNameToken(Peek()) && !Peek(1).Is(TokenKind::Colon);
+    }
+}
+
+// Parse one operand: a register, an immediate, a `[...]` memory reference, a
+// size-prefixed memory reference (qword [...]), or a symbol / label name.
+AsmOperand Parser::ParseAsmOperand() {
+    AsmOperand op;
+    op.location = CurrentLocation();
+
+    // Optional size specifier before a memory operand: byte/word/dword/qword.
+    int sizeHint = 0;
+    if (Check(TokenKind::Ident)) {
+        const std::string &t = Peek().text;
+        if (t == "byte") {
+            sizeHint = 1;
+        }
+        else if (t == "word") {
+            sizeHint = 2;
+        }
+        else if (t == "dword") {
+            sizeHint = 4;
+        }
+        else if (t == "qword") {
+            sizeHint = 8;
+        }
+        if (sizeHint != 0 && Peek(1).Is(TokenKind::LeftBracket)) {
+            Advance();               // size keyword
+            Match(TokenKind::Ident); // optional 'ptr'
+        }
+        else {
+            sizeHint = 0;
+        }
+    }
+
+    if (Check(TokenKind::LeftBracket)) {
+        ParseAsmMemory(op);
+        op.memSize = sizeHint;
+        return op;
+    }
+
+    if (CheckAny({TokenKind::IntLiteral, TokenKind::Minus, TokenKind::Plus})) {
+        op.kind = AsmOperand::Kind::Imm;
+        op.imm = ParseAsmInt();
+        return op;
+    }
+
+    // An identifier-like token: either a register or a symbol / label reference.
+    if (!IsAsmNameToken(Peek())) {
+        EmitError(CurrentLocation(), std::format("expected an assembly operand, found '{}'", Peek().text));
+        return op;
+    }
+    const Token &tok = Advance();
+    std::string name = tok.text;
+    std::string lowered = name;
+    for (char &c : lowered) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (IsX64RegisterName(lowered)) {
+        op.kind = AsmOperand::Kind::Reg;
+        op.name = std::move(lowered);
+    }
+    else {
+        op.kind = AsmOperand::Kind::Sym;
+        op.name = std::move(name);
+    }
+    return op;
+}
+
+// Parse a memory operand `[base + index*scale +/- disp]`. Any of base, index
+// and displacement may be omitted.
+void Parser::ParseAsmMemory(AsmOperand &op) {
+    op.kind = AsmOperand::Kind::Mem;
+    Expect(TokenKind::LeftBracket, "expected '['");
+    bool negateNext = false;
+    while (!Check(TokenKind::RightBracket) && !IsAtEnd()) {
+        if (Match(TokenKind::Plus)) {
+            negateNext = false;
+            continue;
+        }
+        if (Match(TokenKind::Minus)) {
+            negateNext = true;
+            continue;
+        }
+        if (Check(TokenKind::IntLiteral)) {
+            std::int64_t v = ParseAsmInt();
+            op.imm += negateNext ? -v : v;
+            negateNext = false;
+            continue;
+        }
+        if (IsAsmNameToken(Peek())) {
+            std::string name = Advance().text;
+            std::string lowered = name;
+            for (char &c : lowered) {
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+            // Scaled index: reg * scale.
+            if (Match(TokenKind::Star)) {
+                op.memIndex = std::move(lowered);
+                op.memScale = static_cast<int>(ParseAsmInt());
+            }
+            else if (lowered == "rip") {
+                op.memBase = "rip";
+            }
+            else if (IsX64RegisterName(lowered)) {
+                if (op.memBase.empty()) {
+                    op.memBase = std::move(lowered);
+                }
+                else {
+                    op.memIndex = std::move(lowered);
+                }
+            }
+            else {
+                op.memSym = std::move(name);
+            }
+            continue;
+        }
+        EmitError(CurrentLocation(), std::format("unexpected token '{}' in memory operand", Peek().text));
+        Advance();
+    }
+    Expect(TokenKind::RightBracket, "expected ']'");
+}
+
+// Parse an optionally-signed integer literal (decimal, hex, octal, binary).
+std::int64_t Parser::ParseAsmInt() {
+    bool negative = false;
+    if (Match(TokenKind::Minus)) {
+        negative = true;
+    }
+    else {
+        Match(TokenKind::Plus);
+    }
+    const Token &tok = Expect(TokenKind::IntLiteral, "expected an integer");
+    std::string text;
+    for (const char c : tok.text) {
+        if (c != '_') {
+            text.push_back(c);
+        }
+    }
+    int base = 10;
+    std::string_view digits(text);
+    if (digits.size() > 2 && digits[0] == '0') {
+        switch (digits[1]) {
+        case 'x':
+        case 'X':
+            base = 16;
+            digits.remove_prefix(2);
+            break;
+        case 'b':
+        case 'B':
+            base = 2;
+            digits.remove_prefix(2);
+            break;
+        case 'o':
+        case 'O':
+            base = 8;
+            digits.remove_prefix(2);
+            break;
+        default:
+            break;
+        }
+    }
+    std::uint64_t value = 0;
+    std::from_chars(digits.data(), digits.data() + digits.size(), value, base);
+    auto result = static_cast<std::int64_t>(value);
+    return negative ? -result : result;
 }
 
 // struct

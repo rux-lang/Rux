@@ -2090,6 +2090,7 @@ private:
         hf.name = d.name;
         hf.isPublic = d.isPublic;
         hf.isAsm = d.isAsm;
+        hf.asmBody = d.asmBody;
         hf.callConv = d.callConv;
         hf.typeParams = d.typeParams;
         hf.params = LowerParams(d.params);

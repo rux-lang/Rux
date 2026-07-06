@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "Lexer/Token.h"
+#include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
 
 namespace Rux {
@@ -423,7 +424,8 @@ struct FuncDecl : Decl {
     std::vector<std::string> typeParams;
     std::vector<Param> params;
     std::optional<TypeExprPtr> returnType;
-    std::unique_ptr<Block> body; // null = signature only
+    std::unique_ptr<Block> body;   // null = signature only
+    std::vector<AsmInstr> asmBody; // instructions when isAsm; body is null
 };
 
 // struct Name { field: Type; ... }

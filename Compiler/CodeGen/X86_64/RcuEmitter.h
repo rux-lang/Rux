@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "Diagnostics/Diagnostics.h"
 #include "Object/Rcu/Rcu.h"
 
 namespace Rux {
@@ -14,9 +15,16 @@ public:
     explicit RcuEmitter(const LirPackage &package, std::string inputPackageName = {});
     [[nodiscard]] std::vector<RcuFile> Generate() const;
 
+    // Diagnostics accumulated during generation (e.g. errors encoding an
+    // `asm func` body). Populated by Generate(); check after calling it.
+    [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const {
+        return diagnostics;
+    }
+
 private:
     const LirPackage &lir;
     std::string packageName;
+    mutable std::vector<Diagnostic> diagnostics;
 };
 
 } // namespace Rux

@@ -9,6 +9,7 @@
 #include "Lexer/Token.h"
 #include "Semantic/Type.h"
 #include "Source/SourceLocation.h"
+#include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
 
 namespace Rux {
@@ -359,7 +360,8 @@ struct HirFunc {
     std::vector<std::string> typeParams;
     std::vector<HirParam> params;
     TypeRef returnType;
-    std::optional<HirBlock> body; // absent for interface/extern signatures
+    std::optional<HirBlock> body;  // absent for interface/extern signatures
+    std::vector<AsmInstr> asmBody; // instructions when isAsm; body is absent
     SourceLocation location;
 };
 

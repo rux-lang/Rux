@@ -482,6 +482,17 @@ private:
         lf.isExtern = false;
         lf.callConv = hf.callConv;
         lf.returnType = hf.returnType;
+        // An asm function is an opaque blob of raw x86-64: no params to spill,
+        // no basic blocks, no automatic prologue/epilogue. Its instructions are
+        // carried verbatim to the code generator, which encodes them directly.
+        if (hf.isAsm) {
+            lf.isAsm = true;
+            lf.asmBody = hf.asmBody;
+            for (const auto &[name, type, isVariadic] : hf.params) {
+                lf.params.push_back({LirNoReg, type, name});
+            }
+            return lf;
+        }
         fn = &lf;
         cur = NewBlock("entry");
         for (const auto &[name, type, isVariadic] : hf.params) {

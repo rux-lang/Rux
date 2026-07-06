@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+#### Language
+
+- **Inline assembly functions** — `asm func Name(...) -> T { ... }` bodies are written directly in x86-64 (Intel syntax) and assembled to machine code, bypassing the normal HIR/LIR pipeline. Supports the common instruction subset (ALU ops, `mov`/`lea`, `movzx`/`movsx`, the multiply/divide group, shifts, `push`/`pop`, `call`/`jmp`, the full `jcc`/`setcc` family, `ret`/`leave`/`nop`/`syscall`), register/immediate/memory operands, local labels, and calls to other functions.
+
 ## [0.3.0] - 2026-06-23
 
 Adds broad multi-platform host support, a revamped platform abstraction layer, new language features, a macOS linker backend, and Windows DLL output, along with correctness fixes, broader literal and constant-expression support, improved overload resolution, expanded runtime support, better test coverage, cleaner CLI/build tooling, and many bug fixes.
