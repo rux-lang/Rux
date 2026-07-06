@@ -15,7 +15,8 @@ in [`Docs/`](Docs/).
 ## Quick Start
 
 1. Build the compiler and run the tests by following
-   [Building from Source](README.md#building-from-source) in the README.
+   [Building from Source](README.md#building-from-source) in the README. 
+   *(Alternatively, if you use Nix, you can simply run `nix develop` to drop into a pre-configured development environment).*
 2. [Fork](https://github.com/rux-lang/Rux/fork) the repo and branch off `dev`:
    ```sh
    git checkout dev
