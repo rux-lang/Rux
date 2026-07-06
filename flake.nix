@@ -13,7 +13,7 @@
       devShells = forAllSystems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          stdenv = pkgs.llvmPackages_latest.libcxxStdenv;
+          stdenv = pkgs.llvmPackages_22.libcxxStdenv;
         in {
           default = pkgs.mkShell.override { inherit stdenv; } {
             packages = with pkgs; [
