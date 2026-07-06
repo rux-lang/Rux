@@ -306,6 +306,11 @@ private:
                 sym->type = MakeFuncType(fn->params, fn->returnType, fn->typeParams);
             }
         }
+        else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
+            if (Symbol *sym = globalScope.Lookup(enumDecl->name)) {
+                sym->type = EnumType(*enumDecl);
+            }
+        }
         else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
             if (Symbol *sym = globalScope.Lookup(externFn->name)) {
                 sym->type = MakeFuncType(externFn->params, externFn->returnType, {}, externFn->isVariadic);
@@ -341,6 +346,11 @@ private:
         if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             if (Symbol *sym = scope.Lookup(fn->name)) {
                 sym->type = MakeFuncType(fn->params, fn->returnType, fn->typeParams);
+            }
+        }
+        else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
+            if (Symbol *sym = scope.Lookup(enumDecl->name)) {
+                sym->type = EnumType(*enumDecl);
             }
         }
         else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {

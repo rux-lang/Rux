@@ -24,7 +24,13 @@ enum Shape {
     Point
 }
 
+func IdentityDirection(direction: Direction) -> Direction {
+    return direction;
+}
+
 func Main() -> int {
+    Assert(IdentityDirection(Direction::North) == Direction::North,
+           "Expected enum argument and return types to match");
     let shape = Shape::Rect { width: 10.0, height: 20.0 };
     let val = match shape { 
         Shape::Circle { radius } => radius,
