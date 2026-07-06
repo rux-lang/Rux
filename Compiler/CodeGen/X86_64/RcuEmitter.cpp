@@ -224,8 +224,27 @@ private:
         return std::max(SizeOf(t), SizeOfRuntime(t));
     }
 
+    [[nodiscard]] bool IsAggregate(const TypeRef &t) const {
+        switch (t.kind) {
+        case TypeRef::Kind::Tuple:
+        case TypeRef::Kind::Slice:
+        case TypeRef::Kind::Range:
+            return true;
+        case TypeRef::Kind::Named: {
+            const std::string base = BaseTypeName(t.name);
+            return base == "Slice" || interfaceNames.count(base) > 0 || layouts.contains(base);
+        }
+        default:
+            return false;
+        }
+    }
+
     [[nodiscard]] bool IsWin64ByRefAggregate(const TypeRef &t) const {
-        return SizeOfRuntime(t) == 16;
+        if (!IsAggregate(t)) {
+            return false;
+        }
+        const int size = SizeOfRuntime(t);
+        return size > 0 && size != 1 && size != 2 && size != 4 && size != 8;
     }
 
     [[nodiscard]] bool IsWin64AddressParam(const TypeRef &t) const {
@@ -643,37 +662,103 @@ private:
         StoreA(dst, t);
     }
 
+    void LoadChunkFromR10(const int32_t offset, const int size) const {
+        if (size == 8) {
+            enc.Byte(0x49);
+            enc.Byte(0x8B);
+            enc.Byte(0x82); // mov rax, [r10 + disp32]
+        }
+        else if (size == 4) {
+            enc.Byte(0x41);
+            enc.Byte(0x8B);
+            enc.Byte(0x82); // mov eax, [r10 + disp32]
+        }
+        else if (size == 2) {
+            enc.Byte(0x41);
+            enc.Byte(0x0F);
+            enc.Byte(0xB7);
+            enc.Byte(0x82); // movzx eax, word [r10 + disp32]
+        }
+        else {
+            enc.Byte(0x41);
+            enc.Byte(0x0F);
+            enc.Byte(0xB6);
+            enc.Byte(0x82); // movzx eax, byte [r10 + disp32]
+        }
+        enc.Dword(static_cast<uint32_t>(offset));
+    }
+
+    void StoreChunkToR11(const int32_t offset, const int size) const {
+        if (size == 8) {
+            enc.Byte(0x49);
+            enc.Byte(0x89);
+            enc.Byte(0x83); // mov [r11 + disp32], rax
+        }
+        else if (size == 4) {
+            enc.Byte(0x41);
+            enc.Byte(0x89);
+            enc.Byte(0x83); // mov [r11 + disp32], eax
+        }
+        else if (size == 2) {
+            enc.Byte(0x66);
+            enc.Byte(0x41);
+            enc.Byte(0x89);
+            enc.Byte(0x83); // mov [r11 + disp32], ax
+        }
+        else {
+            enc.Byte(0x41);
+            enc.Byte(0x88);
+            enc.Byte(0x83); // mov [r11 + disp32], al
+        }
+        enc.Dword(static_cast<uint32_t>(offset));
+    }
+
+    template <typename StoreChunk>
+    void CopyAggregateFromR10(const int size, StoreChunk storeChunk) const {
+        int32_t offset = 0;
+        for (const int chunkSize : {8, 4, 2, 1}) {
+            while (offset + chunkSize <= size) {
+                LoadChunkFromR10(offset, chunkSize);
+                storeChunk(offset, chunkSize);
+                offset += chunkSize;
+            }
+        }
+    }
+
+    void CopyAggregateFromR10ToStack(const int32_t dstDisp, const int size) const {
+        CopyAggregateFromR10(size, [&](const int32_t offset, const int chunkSize) {
+            if (chunkSize == 8) {
+                enc.MovRaxStore(dstDisp + offset);
+            }
+            else if (chunkSize == 4) {
+                enc.MovEaxStore(dstDisp + offset);
+            }
+            else if (chunkSize == 2) {
+                enc.MovAxStore(dstDisp + offset);
+            }
+            else {
+                enc.MovAlStore(dstDisp + offset);
+            }
+        });
+    }
+
     void StoreHiddenReturnValue(const LirReg src, const TypeRef &t) const {
-        if (hiddenReturnOff == 0 || SizeOfRuntime(t) != 16) {
+        if (hiddenReturnOff == 0 || !IsWin64ByRefAggregate(t)) {
             LoadReturnValue(src, t);
             return;
         }
         enc.MovR11Load(-hiddenReturnOff);
         if (IsRegPointerTo(src, t)) {
             enc.MovR10Load(Disp(src));
-            enc.Byte(0x49);
-            enc.Byte(0x8B);
-            enc.Byte(0x02); // mov rax, [r10]
         }
         else {
-            enc.MovRaxLoad(Disp(src));
+            enc.Byte(0x4C);
+            enc.Byte(0x8D);
+            enc.Byte(0x95);
+            enc.Dword(static_cast<uint32_t>(Disp(src))); // lea r10, [rbp + disp32]
         }
-        enc.Byte(0x49);
-        enc.Byte(0x89);
-        enc.Byte(0x03); // mov [r11], rax
-        if (IsRegPointerTo(src, t)) {
-            enc.Byte(0x49);
-            enc.Byte(0x8B);
-            enc.Byte(0x42);
-            enc.Byte(0x08); // mov rax, [r10 + 8]
-        }
-        else {
-            enc.MovRaxLoad(Disp(src) + 8);
-        }
-        enc.Byte(0x49);
-        enc.Byte(0x89);
-        enc.Byte(0x43);
-        enc.Byte(0x08); // mov [r11 + 8], rax
+        CopyAggregateFromR10(SizeOfRuntime(t),
+                             [&](const int32_t offset, const int size) { StoreChunkToR11(offset, size); });
         enc.Byte(0x4C);
         enc.Byte(0x89);
         enc.Byte(0xD8); // mov rax, r11
@@ -1072,16 +1157,8 @@ private:
             else {
                 LirReg ptr = instr.srcs[0];
                 enc.MovR10Load(Disp(ptr));
-                if (runtimeSz == 16) {
-                    enc.Byte(0x49);
-                    enc.Byte(0x8B);
-                    enc.Byte(0x02); // mov rax, [r10]
-                    enc.MovRaxStore(Disp(instr.dst));
-                    enc.Byte(0x49);
-                    enc.Byte(0x8B);
-                    enc.Byte(0x42);
-                    enc.Byte(0x08); // mov rax, [r10 + 8]
-                    enc.MovRaxStore(Disp(instr.dst) + 8);
+                if (IsAggregate(t) && runtimeSz > 8) {
+                    CopyAggregateFromR10ToStack(Disp(instr.dst), runtimeSz);
                     break;
                 }
                 // Load through pointer: use r10 as base
@@ -1160,16 +1237,18 @@ private:
             int sz = SizeOf(t);
             int runtimeSz = SizeOfRuntime(t);
             enc.MovR11Load(Disp(ptr));
-            if (runtimeSz == 16) {
-                enc.MovRaxLoad(Disp(val));
-                enc.Byte(0x49);
-                enc.Byte(0x89);
-                enc.Byte(0x03); // mov [r11], rax
-                enc.MovRaxLoad(Disp(val) + 8);
-                enc.Byte(0x49);
-                enc.Byte(0x89);
-                enc.Byte(0x43);
-                enc.Byte(0x08); // mov [r11 + 8], rax
+            if (IsAggregate(t) && runtimeSz > 8) {
+                if (IsRegPointerTo(val, t)) {
+                    enc.MovR10Load(Disp(val));
+                }
+                else {
+                    enc.Byte(0x4C);
+                    enc.Byte(0x8D);
+                    enc.Byte(0x95);
+                    enc.Dword(static_cast<uint32_t>(Disp(val))); // lea r10, [rbp + disp32]
+                }
+                CopyAggregateFromR10(runtimeSz,
+                                     [&](const int32_t offset, const int size) { StoreChunkToR11(offset, size); });
                 break;
             }
             if (IsFloat(t)) {
@@ -1916,15 +1995,7 @@ private:
                     }
                     else if (IsWin64ByRefAggregate(p.type)) {
                         enc.MovR10Load(stackArgOff);
-                        enc.Byte(0x49);
-                        enc.Byte(0x8B);
-                        enc.Byte(0x02); // mov rax, [r10]
-                        enc.MovRaxStore(d);
-                        enc.Byte(0x49);
-                        enc.Byte(0x8B);
-                        enc.Byte(0x42);
-                        enc.Byte(0x08); // mov rax, [r10 + 8]
-                        enc.MovRaxStore(d + 8);
+                        CopyAggregateFromR10ToStack(d, SizeOfRuntime(p.type));
                     }
                     else if (IsFloat(p.type)) {
                         if (sz == 4) {
@@ -1949,15 +2020,7 @@ private:
                 }
                 else if (IsWin64ByRefAggregate(p.type)) {
                     enc.MovR10ArgWin64(win64Idx);
-                    enc.Byte(0x49);
-                    enc.Byte(0x8B);
-                    enc.Byte(0x02); // mov rax, [r10]
-                    enc.MovRaxStore(d);
-                    enc.Byte(0x49);
-                    enc.Byte(0x8B);
-                    enc.Byte(0x42);
-                    enc.Byte(0x08); // mov rax, [r10 + 8]
-                    enc.MovRaxStore(d + 8);
+                    CopyAggregateFromR10ToStack(d, SizeOfRuntime(p.type));
                 }
                 else if (IsFloat(p.type)) {
                     // MOVSS/MOVSD [rbp+d], xmmN

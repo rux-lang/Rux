@@ -11,6 +11,10 @@ func makePair() -> (int, float) {
     return (1, 3.1415);
 }
 
+func makeTriple() -> (int64, int64, int64) {
+    return (11i64, 22i64, 33i64);
+}
+
 func Main() -> int {
     let pair: (int, float) = (1, 3.1415);
     Assert(sizeof((int, float)) == 16, "Expected size of pair to be 16 bytes");
@@ -24,6 +28,12 @@ func Main() -> int {
     let returned = makePair();
     Assert(returned.0 == 1, "Expected returned.0 to be 1");
     Assert(returned.1 - 3.1415 < 0.001, "Expected returned.1 to be 3.1415");
+
+    let triple = makeTriple();
+    Assert(sizeof((int64, int64, int64)) == 24, "Expected size of triple to be 24 bytes");
+    Assert(triple.0 == 11i64, "Expected triple.0 to be 11");
+    Assert(triple.1 == 22i64, "Expected triple.1 to be 22");
+    Assert(triple.2 == 33i64, "Expected triple.2 to be 33");
 
     let (quotient, ok) = divide(10, 2);
     Assert(ok, "Expected division by non-zero to succeed");
