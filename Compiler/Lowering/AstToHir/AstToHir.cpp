@@ -1074,6 +1074,17 @@ private:
         if (dynamic_cast<const SelfTypeExpr *>(&expr)) {
             return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
         }
+        if (auto *t = dynamic_cast<const FunctionTypeExpr *>(&expr)) {
+            std::vector<TypeRef> paramTypes;
+            paramTypes.reserve(t->params.size());
+            for (const auto &p : t->params) {
+                paramTypes.push_back(ResolveType(*p));
+            }
+            TypeRef ret = t->returnType ? ResolveType(*t->returnType->get()) : TypeRef::MakeOpaque();
+            TypeRef funcType = TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
+            funcType.isVariadic = t->isVariadic;
+            return funcType;
+        }
         return TypeRef::MakeUnknown();
     }
 

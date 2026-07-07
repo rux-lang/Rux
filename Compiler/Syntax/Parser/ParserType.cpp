@@ -11,6 +11,11 @@ namespace Rux {
 TypeExprPtr Parser::ParseType() {
     const auto loc = CurrentLocation();
 
+    // Function type: func(params) -> T
+    if (Check(TokenKind::FuncKeyword)) {
+        return ParseFunctionType();
+    }
+
     // Pointer: *T  or  *const T
     if (Match(TokenKind::Star)) {
         const bool pointeeConst = Match(TokenKind::ConstKeyword); // optional 'const' qualifier
@@ -91,5 +96,40 @@ TypeExprPtr Parser::ParseBaseType() {
 
     EmitError(loc, std::format("expected a type, got '{}'", Peek().text));
     return nullptr;
+}
+
+// func(x: int, y: int) -> bool
+// Parameter names are optional; only the types and the return type matter.
+TypeExprPtr Parser::ParseFunctionType() {
+    const auto loc = CurrentLocation();
+    Expect(TokenKind::FuncKeyword, "expected 'func'");
+
+    auto t = std::make_unique<FunctionTypeExpr>();
+    t->location = loc;
+
+    Expect(TokenKind::LeftParen, "expected '(' after 'func'");
+    while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+        if (Match(TokenKind::DotDotDot)) {
+            t->isVariadic = true;
+            break;
+        }
+        // Optional parameter name for readability: `name: Type`.
+        if (Check(TokenKind::Ident) && Peek(1).kind == TokenKind::Colon) {
+            Advance(); // name
+            Advance(); // ':'
+        }
+        t->params.push_back(ParseType());
+        if (!Match(TokenKind::Comma)) {
+            break;
+        }
+    }
+    Expect(TokenKind::RightParen, "expected ')'");
+
+    // An omitted return arrow means the function yields no value.
+    if (Match(TokenKind::Arrow)) {
+        t->returnType = ParseType();
+    }
+
+    return t;
 }
 } // namespace Rux

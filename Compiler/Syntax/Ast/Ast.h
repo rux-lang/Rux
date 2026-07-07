@@ -65,6 +65,15 @@ struct TupleTypeExpr : TypeExpr {
 // self used as a type (interface method params)
 struct SelfTypeExpr : TypeExpr {};
 
+// func(x: int32, y: int32) -> bool
+// Parameter names are optional and for readability only; only the parameter
+// types and the return type participate in type identity.
+struct FunctionTypeExpr : TypeExpr {
+    std::vector<TypeExprPtr> params;
+    std::optional<TypeExprPtr> returnType; // nullopt => no return value (opaque)
+    bool isVariadic = false;               // trailing C-style ...
+};
+
 // Block
 
 struct Block {

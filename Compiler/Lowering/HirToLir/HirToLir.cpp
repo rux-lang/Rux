@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace Rux {
@@ -105,17 +106,20 @@ public:
         // extern function declared in an imported module (e.g. C::printf), so
         // the map must span every module, not just the one being lowered.
         funcConvs.clear();
+        funcNames.clear();
         for (const auto &mod : hir.modules) {
             for (const auto &ef : mod.externFuncs) {
                 // Extern C functions default to the platform C ABI (SysV on
                 // Linux/BSD/macOS, Win64 on Windows) so arguments land in the
                 // registers the shared library expects.
                 funcConvs[ef.name] = ef.callConv == CallingConvention::Default ? PlatformCConvention() : ef.callConv;
+                funcNames.insert(ef.name);
             }
             for (const auto &f : mod.funcs) {
                 if (f.callConv != CallingConvention::Default) {
                     funcConvs[f.name] = f.callConv;
                 }
+                funcNames.insert(f.name);
             }
         }
         LirPackage pkg;
@@ -149,6 +153,7 @@ private:
 
     std::unordered_map<std::string, LabelTargets> labelTargets;
     std::unordered_map<std::string, CallingConvention> funcConvs; // name → calling convention
+    std::unordered_set<std::string> funcNames;                    // every function symbol (for address-of)
 
     // Block / register allocation
     LirReg NewReg() {
@@ -1146,6 +1151,11 @@ private:
                 }
                 return EmitLoad(it->second, e->type);
             }
+            // A function referenced by name (not called) evaluates to its
+            // address, i.e. a function pointer.
+            if (funcNames.contains(e->name)) {
+                return EmitGlobalAddr(e->name);
+            }
             return EmitNamedLoad(e->name, e->type);
         }
         if (dynamic_cast<const HirSelfExpr *>(&expr)) {
@@ -1169,6 +1179,11 @@ private:
             if (const auto it = globalConsts.find(path); it != globalConsts.end()) {
                 LirReg value = LowerExpr(*it->second->value);
                 return EmitCastIfNeeded(value, it->second->value->type, it->second->type);
+            }
+            // Module-qualified function referenced by name → its address. The
+            // binary symbol is the final path segment (e.g. Math::Add → "Add").
+            if (funcNames.contains(e->segments.back())) {
+                return EmitGlobalAddr(e->segments.back());
             }
             return EmitNamedLoad(path, e->type);
         }
@@ -1742,7 +1757,9 @@ private:
         ci.dst = dst;
         ci.type = e.type;
         ci.srcs = std::move(argRegs);
-        if (auto *v = dynamic_cast<const HirVarExpr *>(e.callee.get())) {
+        if (auto *v = dynamic_cast<const HirVarExpr *>(e.callee.get()); v && !locals.contains(v->name)) {
+            // Direct call to a named function. A same-named local would be a
+            // function-pointer variable and is handled by the indirect path.
             ci.op = LirOpcode::Call;
             ci.strArg = v->name;
             auto it = funcConvs.find(v->name);

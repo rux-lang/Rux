@@ -103,7 +103,8 @@ private:
 
     // Type expressions
     TypeExprPtr ParseType();
-    TypeExprPtr ParseBaseType(); // named, path, pointer, tuple, self
+    TypeExprPtr ParseBaseType();     // named, path, pointer, tuple, self
+    TypeExprPtr ParseFunctionType(); // func(params) -> T
 
     // Blocks and statements
     std::unique_ptr<Block> ParseBlock();
