@@ -36,9 +36,98 @@ void HirPassManager::OptimizeFunc(HirFunc &func) {
 }
 
 void HirPassManager::OptimizeBlock(HirBlock &block) {
+    std::vector<HirStmtPtr> optimizedStmts;
+    bool unreachable = false;
+
     for (auto &stmt : block.stmts) {
-        OptimizeStmt(stmt);
+        if (!stmt) continue;
+
+        if (unreachable) {
+            // Élimination du code mort
+            continue;
+        }
+
+        // On optimise le statement de manière itérative s'il se simplifie en un nouveau IfStmt
+        bool stmtProcessed = false;
+        while (stmt && !stmtProcessed) {
+            OptimizeStmt(stmt);
+
+            if (auto *ifStmt = dynamic_cast<HirIfStmt *>(stmt.get())) {
+                if (ifStmt->condition && IsBoolLiteral(ifStmt->condition.get())) {
+                    bool condValue = GetBoolLiteral(ifStmt->condition.get());
+                    if (condValue) {
+                        // La condition est true : on insère les statements du thenBlock
+                        for (auto &subStmt : ifStmt->thenBlock.stmts) {
+                            if (subStmt) {
+                                if (unreachable) continue;
+                                if (dynamic_cast<const HirReturnStmt *>(subStmt.get()) ||
+                                    dynamic_cast<const HirBreakStmt *>(subStmt.get()) ||
+                                    dynamic_cast<const HirContinueStmt *>(subStmt.get())) {
+                                    unreachable = true;
+                                }
+                                optimizedStmts.push_back(std::move(subStmt));
+                            }
+                        }
+                        stmt.reset();
+                        stmtProcessed = true;
+                    }
+                    else {
+                        // La condition est false
+                        if (ifStmt->elseIfs.empty()) {
+                            if (ifStmt->elseBlock) {
+                                // On insère le contenu de elseBlock
+                                for (auto &subStmt : ifStmt->elseBlock->stmts) {
+                                    if (subStmt) {
+                                        if (unreachable) continue;
+                                        if (dynamic_cast<const HirReturnStmt *>(subStmt.get()) ||
+                                            dynamic_cast<const HirBreakStmt *>(subStmt.get()) ||
+                                            dynamic_cast<const HirContinueStmt *>(subStmt.get())) {
+                                            unreachable = true;
+                                        }
+                                        optimizedStmts.push_back(std::move(subStmt));
+                                    }
+                                }
+                            }
+                            stmt.reset();
+                            stmtProcessed = true;
+                        }
+                        else {
+                            // On transforme le elseIf en un nouveau IfStmt et on continue l'optimisation
+                            auto firstElseIf = std::move(ifStmt->elseIfs[0]);
+                            auto newIfStmt = std::make_unique<HirIfStmt>();
+                            newIfStmt->location = firstElseIf.location;
+                            newIfStmt->condition = std::move(firstElseIf.condition);
+                            newIfStmt->thenBlock = std::move(firstElseIf.block);
+                            newIfStmt->elseIfs.assign(
+                                std::make_move_iterator(ifStmt->elseIfs.begin() + 1),
+                                std::make_move_iterator(ifStmt->elseIfs.end())
+                            );
+                            newIfStmt->elseBlock = std::move(ifStmt->elseBlock);
+                            
+                            stmt = std::move(newIfStmt);
+                            // La boucle continue pour optimiser ce nouveau IfStmt
+                        }
+                    }
+                }
+                else {
+                    stmtProcessed = true;
+                }
+            }
+            else {
+                stmtProcessed = true;
+            }
+        }
+
+        if (stmt && stmtProcessed) {
+            if (dynamic_cast<const HirReturnStmt *>(stmt.get()) ||
+                dynamic_cast<const HirBreakStmt *>(stmt.get()) ||
+                dynamic_cast<const HirContinueStmt *>(stmt.get())) {
+                unreachable = true;
+            }
+            optimizedStmts.push_back(std::move(stmt));
+        }
     }
+    block.stmts = std::move(optimizedStmts);
 }
 
 void HirPassManager::OptimizeStmt(HirStmtPtr &stmt) {
@@ -65,6 +154,38 @@ void HirPassManager::OptimizeStmt(HirStmtPtr &stmt) {
     else if (auto *retStmt = dynamic_cast<HirReturnStmt *>(stmt.get())) {
         if (retStmt->value) {
             OptimizeExpr(*retStmt->value);
+        }
+    }
+    else if (auto *ifStmt = dynamic_cast<HirIfStmt *>(stmt.get())) {
+        OptimizeExpr(ifStmt->condition);
+        OptimizeBlock(ifStmt->thenBlock);
+        for (auto &elif : ifStmt->elseIfs) {
+            OptimizeExpr(elif.condition);
+            OptimizeBlock(elif.block);
+        }
+        if (ifStmt->elseBlock) {
+            OptimizeBlock(*ifStmt->elseBlock);
+        }
+    }
+    else if (auto *whileStmt = dynamic_cast<HirWhileStmt *>(stmt.get())) {
+        OptimizeExpr(whileStmt->condition);
+        OptimizeBlock(whileStmt->body);
+    }
+    else if (auto *doWhileStmt = dynamic_cast<HirDoWhileStmt *>(stmt.get())) {
+        OptimizeBlock(doWhileStmt->body);
+        OptimizeExpr(doWhileStmt->condition);
+    }
+    else if (auto *loopStmt = dynamic_cast<HirLoopStmt *>(stmt.get())) {
+        OptimizeBlock(loopStmt->body);
+    }
+    else if (auto *forStmt = dynamic_cast<HirForStmt *>(stmt.get())) {
+        OptimizeExpr(forStmt->iterable);
+        OptimizeBlock(forStmt->body);
+    }
+    else if (auto *matchStmt = dynamic_cast<HirMatchStmt *>(stmt.get())) {
+        OptimizeExpr(matchStmt->subject);
+        for (auto &arm : matchStmt->arms) {
+            OptimizeExpr(arm.body);
         }
     }
 }
@@ -104,6 +225,76 @@ void HirPassManager::OptimizeExpr(HirExprPtr &expr) {
     else if (auto *unary = dynamic_cast<HirUnaryExpr *>(expr.get())) {
         OptimizeExpr(unary->operand);
         FoldUnary(expr);
+    }
+    else if (auto *tern = dynamic_cast<HirTernaryExpr *>(expr.get())) {
+        OptimizeExpr(tern->condition);
+        OptimizeExpr(tern->thenExpr);
+        OptimizeExpr(tern->elseExpr);
+    }
+    else if (auto *assign = dynamic_cast<HirAssignExpr *>(expr.get())) {
+        OptimizeExpr(assign->target);
+        OptimizeExpr(assign->value);
+    }
+    else if (auto *range = dynamic_cast<HirRangeExpr *>(expr.get())) {
+        OptimizeExpr(range->lo);
+        OptimizeExpr(range->hi);
+    }
+    else if (auto *call = dynamic_cast<HirCallExpr *>(expr.get())) {
+        OptimizeExpr(call->callee);
+        for (auto &arg : call->args) {
+            OptimizeExpr(arg);
+        }
+    }
+    else if (auto *coerce = dynamic_cast<HirCoerceToInterfaceExpr *>(expr.get())) {
+        OptimizeExpr(coerce->value);
+    }
+    else if (auto *ifaceCall = dynamic_cast<HirInterfaceCallExpr *>(expr.get())) {
+        OptimizeExpr(ifaceCall->fatPtrExpr);
+        for (auto &arg : ifaceCall->args) {
+            OptimizeExpr(arg);
+        }
+    }
+    else if (auto *idx = dynamic_cast<HirIndexExpr *>(expr.get())) {
+        OptimizeExpr(idx->object);
+        OptimizeExpr(idx->index);
+    }
+    else if (auto *field = dynamic_cast<HirFieldExpr *>(expr.get())) {
+        OptimizeExpr(field->object);
+    }
+    else if (auto *structInit = dynamic_cast<HirStructInitExpr *>(expr.get())) {
+        for (auto &f : structInit->fields) {
+            OptimizeExpr(f.value);
+        }
+    }
+    else if (auto *slice = dynamic_cast<HirSliceExpr *>(expr.get())) {
+        for (auto &el : slice->elements) {
+            OptimizeExpr(el);
+        }
+    }
+    else if (auto *tuple = dynamic_cast<HirTupleExpr *>(expr.get())) {
+        for (auto &el : tuple->elements) {
+            OptimizeExpr(el);
+        }
+    }
+    else if (auto *cast = dynamic_cast<HirCastExpr *>(expr.get())) {
+        OptimizeExpr(cast->operand);
+    }
+    else if (auto *isExpr = dynamic_cast<HirIsExpr *>(expr.get())) {
+        OptimizeExpr(isExpr->operand);
+    }
+    else if (auto *blockExpr = dynamic_cast<HirBlockExpr *>(expr.get())) {
+        OptimizeBlock(blockExpr->block);
+    }
+    else if (auto *matchExpr = dynamic_cast<HirMatchExpr *>(expr.get())) {
+        OptimizeExpr(matchExpr->subject);
+        for (auto &arm : matchExpr->arms) {
+            OptimizeExpr(arm.body);
+        }
+    }
+    else if (auto *enumConst = dynamic_cast<HirEnumConstructExpr *>(expr.get())) {
+        for (auto &payload : enumConst->payloads) {
+            OptimizeExpr(payload);
+        }
     }
 }
 
