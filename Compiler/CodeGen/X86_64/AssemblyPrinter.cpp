@@ -1139,33 +1139,55 @@ private:
     // Call emission
     void EmitCall(const std::string &callee, const std::vector<LirReg> &args, LirReg dst, const TypeRef &retType,
                   CallingConvention callConv) {
-        const bool win64 = callConv == CallingConvention::Win64;
+        const bool win64 = callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
         const auto *intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
         const int maxIntRegs = win64 ? 4 : 6;
         std::vector<LirReg> stackArgs;
         // Set up arguments into ABI registers
-        int intIdx = 0, fltIdx = 0;
-        for (LirReg arg : args) {
-            TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
-            if (IsFloat(at)) {
-                if (fltIdx < 8) {
-                    int sz = SizeOf(at);
-                    TI(std::format("{:<8}{}, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", kFltArgRegs[fltIdx],
-                                   PtrSize(sz), slotMap.at(arg)));
-                    fltIdx++;
+        if (win64) {
+            for (int i = 0; i < static_cast<int>(args.size()); ++i) {
+                LirReg arg = args[i];
+                TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+                if (i < 4) {
+                    if (IsFloat(at)) {
+                        int sz = SizeOf(at);
+                        TI(std::format("{:<8}{}, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", kFltArgRegs[i],
+                                       PtrSize(sz), slotMap.at(arg)));
+                    }
+                    else {
+                        int sz = std::max(SizeOf(at), 1);
+                        TI(std::format("{:<8}{}, {} [rbp - {}]", "mov", intRegs[i], PtrSize(sz), slotMap.at(arg)));
+                    }
                 }
                 else {
                     stackArgs.push_back(arg);
                 }
             }
-            else {
-                if (intIdx < maxIntRegs) {
-                    int sz = std::max(SizeOf(at), 1);
-                    TI(std::format("{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
-                    intIdx++;
+        }
+        else {
+            int intIdx = 0, fltIdx = 0;
+            for (LirReg arg : args) {
+                TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+                if (IsFloat(at)) {
+                    if (fltIdx < 8) {
+                        int sz = SizeOf(at);
+                        TI(std::format("{:<8}{}, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", kFltArgRegs[fltIdx],
+                                       PtrSize(sz), slotMap.at(arg)));
+                        fltIdx++;
+                    }
+                    else {
+                        stackArgs.push_back(arg);
+                    }
                 }
                 else {
-                    stackArgs.push_back(arg);
+                    if (intIdx < maxIntRegs) {
+                        int sz = std::max(SizeOf(at), 1);
+                        TI(std::format("{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
+                        intIdx++;
+                    }
+                    else {
+                        stackArgs.push_back(arg);
+                    }
                 }
             }
         }
@@ -1195,7 +1217,7 @@ private:
         LirReg callee = srcs[0];
         std::vector<LirReg> args(srcs.begin() + 1, srcs.end());
         const std::vector<LirReg> stackArgs = EmitCallArgs(args, callConv);
-        const bool win64 = callConv == CallingConvention::Win64;
+        const bool win64 = callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
         const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
                                      : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
         if (stackBytes > 0) {
@@ -1232,31 +1254,53 @@ private:
     }
 
     std::vector<LirReg> EmitCallArgs(const std::vector<LirReg> &args, CallingConvention callConv) {
-        const bool win64 = callConv == CallingConvention::Win64;
+        const bool win64 = callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
         const auto *intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
         const int maxIntRegs = win64 ? 4 : 6;
         std::vector<LirReg> stackArgs;
-        int intIdx = 0, fltIdx = 0;
-        for (LirReg arg : args) {
-            if (TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64(); IsFloat(at)) {
-                if (fltIdx < 8) {
-                    const int sz = SizeOf(at);
-                    TI(std::format("{:<8}{}, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", kFltArgRegs[fltIdx],
-                                   PtrSize(sz), slotMap.at(arg)));
-                    fltIdx++;
+        if (win64) {
+            for (int i = 0; i < static_cast<int>(args.size()); ++i) {
+                LirReg arg = args[i];
+                TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+                if (i < 4) {
+                    if (IsFloat(at)) {
+                        const int sz = SizeOf(at);
+                        TI(std::format("{:<8}{}, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", kFltArgRegs[i],
+                                       PtrSize(sz), slotMap.at(arg)));
+                    }
+                    else {
+                        const int sz = std::max(SizeOf(at), 1);
+                        TI(std::format("{:<8}{}, {} [rbp - {}]", "mov", intRegs[i], PtrSize(sz), slotMap.at(arg)));
+                    }
                 }
                 else {
                     stackArgs.push_back(arg);
                 }
             }
-            else {
-                if (intIdx < maxIntRegs) {
-                    const int sz = std::max(SizeOf(at), 1);
-                    TI(std::format("{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
-                    intIdx++;
+        }
+        else {
+            int intIdx = 0, fltIdx = 0;
+            for (LirReg arg : args) {
+                if (TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64(); IsFloat(at)) {
+                    if (fltIdx < 8) {
+                        const int sz = SizeOf(at);
+                        TI(std::format("{:<8}{}, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", kFltArgRegs[fltIdx],
+                                       PtrSize(sz), slotMap.at(arg)));
+                        fltIdx++;
+                    }
+                    else {
+                        stackArgs.push_back(arg);
+                    }
                 }
                 else {
-                    stackArgs.push_back(arg);
+                    if (intIdx < maxIntRegs) {
+                        const int sz = std::max(SizeOf(at), 1);
+                        TI(std::format("{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
+                        intIdx++;
+                    }
+                    else {
+                        stackArgs.push_back(arg);
+                    }
                 }
             }
         }
@@ -1367,9 +1411,13 @@ std::string AsmGen::Generate() {
     }
     std::ostringstream out;
     out << "; Generated by Rux Compiler\n";
-    out << "; Target:  x86-64  (System V AMD64 ABI, NASM syntax)\n";
-    out << "; Calling: rdi/rsi/rdx/rcx/r8/r9 (int args), xmm0-7 (float "
-           "args)\n";
+    if (kDefaultCallIsWin64) {
+        out << "; Target:  x86-64  (Windows x64 ABI, NASM syntax)\n";
+        out << "; Calling: rcx/rdx/r8/r9 (int args), xmm0-3 (float args)\n";
+    } else {
+        out << "; Target:  x86-64  (System V AMD64 ABI, NASM syntax)\n";
+        out << "; Calling: rdi/rsi/rdx/rcx/r8/r9 (int args), xmm0-7 (float args)\n";
+    }
     out << "; Scratch: r10, r11 (caller-saved)\n";
     out << "\n";
     out << "bits 64\n\n";
