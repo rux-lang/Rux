@@ -13,9 +13,10 @@ TypeExprPtr Parser::ParseType() {
 
     // Pointer: *T  or  *const T
     if (Match(TokenKind::Star)) {
-        Match(TokenKind::ConstKeyword); // consume optional 'const' qualifier
+        const bool pointeeConst = Match(TokenKind::ConstKeyword); // optional 'const' qualifier
         auto p = std::make_unique<PointerTypeExpr>();
         p->location = loc;
+        p->pointeeConst = pointeeConst;
         p->pointee = ParseType();
         return p;
     }

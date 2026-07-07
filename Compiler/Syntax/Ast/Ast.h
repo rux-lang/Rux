@@ -51,9 +51,10 @@ struct SliceTypeExpr : TypeExpr {
                   // arrays (T[N])
 };
 
-// *uint8
+// *uint8  or  *const uint8
 struct PointerTypeExpr : TypeExpr {
     TypeExprPtr pointee;
+    bool pointeeConst = false; // *const T: the pointee is read-only
 };
 
 // (int32, float64)

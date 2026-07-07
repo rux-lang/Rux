@@ -45,6 +45,7 @@ struct Symbol {
     SourceLocation location;
     TypeRef type;
     bool isMut = false;
+    bool isParam = false; // function parameter: a mutable local copy, so &param is writable
     std::vector<const FuncDecl *> funcOverloads;
     std::vector<std::string> interfaceMethods; // for Interface kind
     Scope *moduleScope = nullptr;              // for Module kind: the imported module's scope
@@ -1497,7 +1498,8 @@ private:
             if (pointeeType.IsUnknown()) {
                 return TypeRef::MakeUnknown();
             }
-            return TypeRef::MakePointer(pointeeType);
+            pointeeType.isConst = pointeeType.isConst || t->pointeeConst;
+            return TypeRef::MakePointer(std::move(pointeeType));
         }
 
         if (const auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
@@ -1552,7 +1554,9 @@ private:
             return named;
         }
         if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
-            return TypeRef::MakePointer(ResolveTypeWithSubstitution(*t->pointee, substitutions));
+            TypeRef pointeeType = ResolveTypeWithSubstitution(*t->pointee, substitutions);
+            pointeeType.isConst = pointeeType.isConst || t->pointeeConst;
+            return TypeRef::MakePointer(std::move(pointeeType));
         }
         if (auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
             return TypeRef::MakeNamed(SliceTypeName(ResolveTypeWithSubstitution(*t->element, substitutions)));
@@ -2094,6 +2098,7 @@ private:
             sym.type = param.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
                                         : ResolveType(*param.type);
             sym.isMut = false;
+            sym.isParam = true;
             Define(sym);
             if (param.defaultValue) {
                 TypeRef paramType = ResolveType(*param.type);
@@ -3089,6 +3094,13 @@ private:
                 CheckMutability(*e->operand);
             }
             TypeRef t = CheckExpr(*e->operand);
+            // Taking the address of an immutable place yields a pointer whose
+            // pointee is read-only, so writes through it can be rejected. The
+            // pointee's own const flag also propagates (e.g. &(*constPtr)).
+            if (e->op == TokenKind::Amp) {
+                t.isConst = t.isConst || PlaceIsImmutable(*e->operand);
+                return TypeRef::MakePointer(std::move(t));
+            }
             return CheckUnary(e->op, t, e->location);
         }
 
@@ -3868,6 +3880,24 @@ private:
         }
     }
 
+    // True when the expression denotes a provably immutable place (its storage
+    // cannot be written through). Conservative: anything we cannot prove
+    // immutable is treated as mutable, so no new errors on unrelated code.
+    bool PlaceIsImmutable(const Expr &place) {
+        if (auto *e = dynamic_cast<const IdentExpr *>(&place)) {
+            Symbol *sym = currentScope->Lookup(e->name);
+            if (!sym) {
+                return false;
+            }
+            if (sym->kind == Symbol::Kind::Const) {
+                return true;
+            }
+            // A `let` binding is immutable; a parameter is a mutable local copy.
+            return sym->kind == Symbol::Kind::Var && !sym->isMut && !sym->isParam;
+        }
+        return false;
+    }
+
     // Check that an assignment target is mutable.
     void CheckMutability(const Expr &target) {
         if (auto *e = dynamic_cast<const IdentExpr *>(&target)) {
@@ -3881,6 +3911,14 @@ private:
             }
             if (sym->kind == Symbol::Kind::Var && !sym->isMut) {
                 EmitError(target.location, std::format("cannot assign to immutable variable '{}'", e->name));
+            }
+        }
+        else if (auto *u = dynamic_cast<const UnaryExpr *>(&target); u && u->op == TokenKind::Star) {
+            // Writing through a pointer whose pointee is read-only (e.g. from
+            // &(let x)) is forbidden.
+            TypeRef ptr = CheckExpr(*u->operand);
+            if (ptr.kind == TypeRef::Kind::Pointer && !ptr.inner.empty() && ptr.inner[0].isConst) {
+                EmitError(target.location, "cannot assign through a pointer to immutable data");
             }
         }
     }

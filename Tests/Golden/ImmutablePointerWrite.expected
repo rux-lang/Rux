@@ -1,0 +1,2 @@
+5:5: error: cannot assign through a pointer to immutable data
+9:5: error: cannot assign '*immut int' to '*int'

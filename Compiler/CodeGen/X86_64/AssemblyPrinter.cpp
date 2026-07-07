@@ -1139,7 +1139,8 @@ private:
     // Call emission
     void EmitCall(const std::string &callee, const std::vector<LirReg> &args, LirReg dst, const TypeRef &retType,
                   CallingConvention callConv) {
-        const bool win64 = callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
+        const bool win64 =
+            callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
         const auto *intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
         const int maxIntRegs = win64 ? 4 : 6;
         std::vector<LirReg> stackArgs;
@@ -1217,7 +1218,8 @@ private:
         LirReg callee = srcs[0];
         std::vector<LirReg> args(srcs.begin() + 1, srcs.end());
         const std::vector<LirReg> stackArgs = EmitCallArgs(args, callConv);
-        const bool win64 = callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
+        const bool win64 =
+            callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
         const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
                                      : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
         if (stackBytes > 0) {
@@ -1254,7 +1256,8 @@ private:
     }
 
     std::vector<LirReg> EmitCallArgs(const std::vector<LirReg> &args, CallingConvention callConv) {
-        const bool win64 = callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
+        const bool win64 =
+            callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
         const auto *intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
         const int maxIntRegs = win64 ? 4 : 6;
         std::vector<LirReg> stackArgs;
@@ -1414,7 +1417,8 @@ std::string AsmGen::Generate() {
     if (kDefaultCallIsWin64) {
         out << "; Target:  x86-64  (Windows x64 ABI, NASM syntax)\n";
         out << "; Calling: rcx/rdx/r8/r9 (int args), xmm0-3 (float args)\n";
-    } else {
+    }
+    else {
         out << "; Target:  x86-64  (System V AMD64 ABI, NASM syntax)\n";
         out << "; Calling: rdi/rsi/rdx/rcx/r8/r9 (int args), xmm0-7 (float args)\n";
     }

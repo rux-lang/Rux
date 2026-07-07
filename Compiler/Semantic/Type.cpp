@@ -65,6 +65,14 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
     if (IsUnknown() || other.IsUnknown()) {
         return true;
     }
+    // Pointer const-correctness: a pointer to immutable data must not be
+    // assignable to a pointer to mutable data (that would permit writing
+    // through it). Adding const (*T -> *const T) is fine, and *opaque stays the
+    // permissive untyped escape hatch (handled below).
+    if (kind == Kind::Pointer && other.kind == Kind::Pointer && !inner.empty() && !other.inner.empty() &&
+        inner[0].isConst && !other.inner[0].isConst && !other.inner[0].IsOpaque()) {
+        return false;
+    }
     if (*this == other) {
         return true;
     }
@@ -249,6 +257,9 @@ std::string TypeRef::ToString() const {
     case Kind::TypeParam:
         return name;
     case Kind::Pointer:
+        if (!inner.empty() && inner[0].isConst) {
+            return "*immut " + inner[0].ToString();
+        }
         return "*" + (inner.empty() ? "?" : inner[0].ToString());
     case Kind::Slice:
         return (inner.empty() ? "?" : inner[0].ToString()) + "[]";
@@ -281,6 +292,9 @@ std::string TypeRef::ToString() const {
 }
 
 bool TypeRef::operator==(const TypeRef &o) const noexcept {
+    // Note: isConst is deliberately NOT compared. It marks a place/pointee as
+    // read-only and is irrelevant to a type's value identity; pointer
+    // const-correctness is enforced separately in IsAssignableTo.
     if (kind != o.kind || name != o.name || inner.size() != o.inner.size()) {
         return false;
     }
