@@ -168,13 +168,6 @@ TEST_CASE("optimizer folds integer wrapping and parses hex/binary literals") {
     auto &func = mod.funcs[0];
     REQUIRE(func.body.has_value());
 
-    // L'ordre des stmts dans le corps après pliage complet de if true et DCE devrait être:
-    // let a, let b, let c, return 100.
-    if (func.body->stmts.size() != 4) {
-        for (std::size_t i = 0; i < func.body->stmts.size(); ++i) {
-            std::printf("STMT %zu: %s\n", i, typeid(*func.body->stmts[i]).name());
-        }
-    }
     REQUIRE(func.body->stmts.size() == 4);
     auto *ret = dynamic_cast<HirReturnStmt *>(func.body->stmts[3].get());
     REQUIRE(ret != nullptr);
