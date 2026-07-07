@@ -40,7 +40,8 @@ void HirPassManager::OptimizeBlock(HirBlock &block) {
     bool unreachable = false;
 
     for (auto &stmt : block.stmts) {
-        if (!stmt) continue;
+        if (!stmt)
+            continue;
 
         if (unreachable) {
             // Élimination du code mort
@@ -59,7 +60,8 @@ void HirPassManager::OptimizeBlock(HirBlock &block) {
                         // La condition est true : on insère les statements du thenBlock
                         for (auto &subStmt : ifStmt->thenBlock.stmts) {
                             if (subStmt) {
-                                if (unreachable) continue;
+                                if (unreachable)
+                                    continue;
                                 if (dynamic_cast<const HirReturnStmt *>(subStmt.get()) ||
                                     dynamic_cast<const HirBreakStmt *>(subStmt.get()) ||
                                     dynamic_cast<const HirContinueStmt *>(subStmt.get())) {
@@ -78,7 +80,8 @@ void HirPassManager::OptimizeBlock(HirBlock &block) {
                                 // On insère le contenu de elseBlock
                                 for (auto &subStmt : ifStmt->elseBlock->stmts) {
                                     if (subStmt) {
-                                        if (unreachable) continue;
+                                        if (unreachable)
+                                            continue;
                                         if (dynamic_cast<const HirReturnStmt *>(subStmt.get()) ||
                                             dynamic_cast<const HirBreakStmt *>(subStmt.get()) ||
                                             dynamic_cast<const HirContinueStmt *>(subStmt.get())) {
@@ -98,12 +101,10 @@ void HirPassManager::OptimizeBlock(HirBlock &block) {
                             newIfStmt->location = firstElseIf.location;
                             newIfStmt->condition = std::move(firstElseIf.condition);
                             newIfStmt->thenBlock = std::move(firstElseIf.block);
-                            newIfStmt->elseIfs.assign(
-                                std::make_move_iterator(ifStmt->elseIfs.begin() + 1),
-                                std::make_move_iterator(ifStmt->elseIfs.end())
-                            );
+                            newIfStmt->elseIfs.assign(std::make_move_iterator(ifStmt->elseIfs.begin() + 1),
+                                                      std::make_move_iterator(ifStmt->elseIfs.end()));
                             newIfStmt->elseBlock = std::move(ifStmt->elseBlock);
-                            
+
                             stmt = std::move(newIfStmt);
                             // La boucle continue pour optimiser ce nouveau IfStmt
                         }
@@ -119,8 +120,7 @@ void HirPassManager::OptimizeBlock(HirBlock &block) {
         }
 
         if (stmt && stmtProcessed) {
-            if (dynamic_cast<const HirReturnStmt *>(stmt.get()) ||
-                dynamic_cast<const HirBreakStmt *>(stmt.get()) ||
+            if (dynamic_cast<const HirReturnStmt *>(stmt.get()) || dynamic_cast<const HirBreakStmt *>(stmt.get()) ||
                 dynamic_cast<const HirContinueStmt *>(stmt.get())) {
                 unreachable = true;
             }
@@ -313,12 +313,73 @@ std::optional<std::int64_t> HirPassManager::GetIntegerLiteral(const HirExpr *exp
     if (!lit) {
         return std::nullopt;
     }
-    std::int64_t result;
-    auto [ptr, ec] = std::from_chars(lit->value.data(), lit->value.data() + lit->value.size(), result);
-    if (ec == std::errc()) {
-        return result;
+
+    std::string text;
+    text.reserve(lit->value.size());
+    for (const char c : lit->value) {
+        if (c != '_') {
+            text.push_back(c);
+        }
     }
-    return std::nullopt;
+
+    for (const std::string_view suffix :
+         {"i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "i", "u", "f"}) {
+        if (text.size() > suffix.size() && text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0) {
+            text.erase(text.size() - suffix.size());
+            break;
+        }
+    }
+
+    bool isNegative = false;
+    std::string_view digits(text);
+    if (!digits.empty() && digits[0] == '-') {
+        isNegative = true;
+        digits.remove_prefix(1);
+    }
+    else if (!digits.empty() && digits[0] == '+') {
+        digits.remove_prefix(1);
+    }
+
+    int base = 10;
+    if (digits.size() > 2 && digits[0] == '0') {
+        switch (digits[1]) {
+        case 'x':
+        case 'X':
+            base = 16;
+            digits.remove_prefix(2);
+            break;
+        case 'b':
+        case 'B':
+            base = 2;
+            digits.remove_prefix(2);
+            break;
+        case 'o':
+        case 'O':
+            base = 8;
+            digits.remove_prefix(2);
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (digits.empty()) {
+        return std::nullopt;
+    }
+
+    std::uint64_t uvalue = 0;
+    const auto *first = digits.data();
+    const auto *last = first + digits.size();
+    const auto [ptr, ec] = std::from_chars(first, last, uvalue, base);
+    if (ec != std::errc{} || ptr != last) {
+        return std::nullopt;
+    }
+
+    std::int64_t svalue = static_cast<std::int64_t>(uvalue);
+    if (isNegative) {
+        svalue = -static_cast<std::int64_t>(uvalue);
+    }
+    return svalue;
 }
 
 bool HirPassManager::GetBoolLiteral(const HirExpr *expr) {
@@ -329,10 +390,50 @@ bool HirPassManager::GetBoolLiteral(const HirExpr *expr) {
     return lit->value == "true";
 }
 
+static std::int64_t TruncateToType(std::int64_t value, const TypeRef &type) {
+    if (!type.IsInteger()) {
+        return value;
+    }
+
+    int bits = 64;
+    switch (type.kind) {
+    case TypeRef::Kind::Int8:
+    case TypeRef::Kind::UInt8:
+        bits = 8;
+        break;
+    case TypeRef::Kind::Int16:
+    case TypeRef::Kind::UInt16:
+        bits = 16;
+        break;
+    case TypeRef::Kind::Int32:
+    case TypeRef::Kind::UInt32:
+        bits = 32;
+        break;
+    default:
+        bits = 64;
+        break;
+    }
+
+    if (bits == 64) {
+        return value;
+    }
+
+    std::uint64_t mask = (1ULL << bits) - 1;
+    std::uint64_t uval = static_cast<std::uint64_t>(value) & mask;
+
+    if (type.IsSigned()) {
+        std::uint64_t sign_bit = 1ULL << (bits - 1);
+        if (uval & sign_bit) {
+            uval |= ~mask;
+        }
+    }
+    return static_cast<std::int64_t>(uval);
+}
+
 HirExprPtr HirPassManager::MakeIntegerLiteral(std::int64_t value, const TypeRef &type) {
     auto lit = std::make_unique<HirLiteralExpr>();
     lit->type = type;
-    lit->value = std::to_string(value);
+    lit->value = std::to_string(TruncateToType(value, type));
     return lit;
 }
 
