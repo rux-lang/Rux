@@ -4,7 +4,6 @@
 
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 #include "Ir/Hir/Hir.h"
-#include "Ir/Hir/Passes/PassManager.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
