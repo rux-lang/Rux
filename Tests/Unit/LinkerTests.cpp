@@ -1,5 +1,4 @@
 #include <doctest.h>
-
 #include <filesystem>
 #include <fstream>
 #include <iterator>
