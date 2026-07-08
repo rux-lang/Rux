@@ -818,8 +818,13 @@ private:
         const bool isRange = s.iterable->type.IsRange();
         const TypeRef elemType = (isRange && !s.iterable->type.inner.empty()) ? s.iterable->type.inner[0] : s.varType;
 
-        LirReg slot = EmitAlloca(s.varType);
-        locals[s.variable] = slot;
+        // When the loop reuses a variable already in scope, its storage is the
+        // outer variable's slot, so the loop's mutations persist afterwards.
+        // Otherwise the loop gets a fresh slot. In both cases the name is bound
+        // to `slot` only *after* the iterable is lowered below, so that a
+        // self-referential bound like `for k in k..7` reads the pre-loop value
+        // of the outer `k` rather than the induction slot mid-initialization.
+        LirReg slot = s.reusesOuterVar ? locals.at(s.variable) : EmitAlloca(s.varType);
 
         if (isRange) {
             // Get a slot holding the range struct
@@ -832,6 +837,10 @@ private:
             else {
                 iterSlot = LowerLValue(*s.iterable);
             }
+
+            // The iterable has been lowered in the enclosing scope; now bind the
+            // loop variable name to its induction slot for the loop body.
+            locals[s.variable] = slot;
 
             // i = range.lo
             LirReg loPtr = EmitFieldPtr(iterSlot, "lo", elemType);
@@ -903,6 +912,10 @@ private:
         if (IsSliceType(s.iterable->type)) {
             const TypeRef dataType = TypeRef::MakePointer(elemType);
             LirReg iterSlot = LowerLValue(*s.iterable);
+
+            // The iterable has been lowered in the enclosing scope; now bind the
+            // loop variable name to its induction slot for the loop body.
+            locals[s.variable] = slot;
 
             LirReg dataFieldPtr = EmitFieldPtr(iterSlot, "data", dataType);
             LirReg dataPtr = EmitLoad(dataFieldPtr, dataType);

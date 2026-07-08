@@ -2895,22 +2895,33 @@ private:
         }
         else if (auto *forStmt = dynamic_cast<const ForStmt *>(&stmt)) {
             TypeRef iterType = CheckExpr(*forStmt->iterable);
-            PushScope(); // scope for the loop variable
-            Symbol var;
-            var.kind = Symbol::Kind::Var;
-            var.name = forStmt->variable;
-            var.location = forStmt->location;
+            TypeRef elemType;
             if (iterType.IsRange() && !iterType.inner.empty()) {
-                var.type = iterType.inner[0];
+                elemType = iterType.inner[0];
             }
-            else if (auto elemType = SliceElementType(iterType)) {
-                var.type = *elemType;
+            else if (auto sliceElem = SliceElementType(iterType)) {
+                elemType = *sliceElem;
             }
             else {
-                var.type = TypeRef::MakeUnknown();
+                elemType = TypeRef::MakeUnknown();
             }
-            var.isMut = false;
-            Define(var);
+            // If a mutable variable of the same name and type is already in
+            // scope, the loop reuses it as its induction variable rather than
+            // shadowing it, so its final value persists after the loop. This
+            // mirrors the decision made in AstToHir/HirToLir.
+            Symbol *outerVar = currentScope->Lookup(forStmt->variable);
+            const bool reuseOuterVar = outerVar != nullptr && outerVar->kind == Symbol::Kind::Var && outerVar->isMut &&
+                                       !elemType.IsUnknown() && outerVar->type == elemType;
+            PushScope(); // scope for the loop variable
+            if (!reuseOuterVar) {
+                Symbol var;
+                var.kind = Symbol::Kind::Var;
+                var.name = forStmt->variable;
+                var.location = forStmt->location;
+                var.type = elemType;
+                var.isMut = false;
+                Define(var);
+            }
             if (!forStmt->label.empty()) {
                 activeLabels.insert(forStmt->label);
             }

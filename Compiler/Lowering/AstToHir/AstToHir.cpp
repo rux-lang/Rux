@@ -2457,12 +2457,21 @@ private:
                 elemType = *sliceElem;
             }
             hs->varType = elemType;
+            // If a mutable variable of the same name and type is already in
+            // scope, the loop reuses it as the induction variable instead of
+            // shadowing it (see HirForStmt::reusesOuterVar). Otherwise the loop
+            // introduces a fresh binding scoped to the body.
+            HirSymbol *outer = currentScope->Lookup(s->variable);
+            hs->reusesOuterVar =
+                outer != nullptr && outer->kind == HirSymbol::Kind::Var && outer->isMut && outer->type == elemType;
             PushScope();
-            HirSymbol var;
-            var.kind = HirSymbol::Kind::Var;
-            var.name = s->variable;
-            var.type = elemType;
-            Define(var);
+            if (!hs->reusesOuterVar) {
+                HirSymbol var;
+                var.kind = HirSymbol::Kind::Var;
+                var.name = s->variable;
+                var.type = elemType;
+                Define(var);
+            }
             hs->body = LowerBlock(*s->body);
             PopScope();
             return hs;

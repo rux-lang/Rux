@@ -312,6 +312,11 @@ struct HirForStmt : HirStmt {
     TypeRef varType;
     HirExprPtr iterable;
     HirBlock body;
+    // True when `variable` names a mutable variable already in scope, which the
+    // loop reuses as its induction variable rather than introducing a fresh
+    // binding. The loop then mutates that outer variable, so its final value
+    // persists after the loop (e.g. `for k in k..7` leaves k == 7).
+    bool reusesOuterVar = false;
 };
 
 struct HirMatchStmt : HirStmt {

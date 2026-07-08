@@ -37,5 +37,31 @@ func Main() -> int {
     }
     Assert(both == 4, "const lower and upper bounds should iterate 4 times");
 
+    // Regression test for https://github.com/rux-lang/Rux/issues/163:
+    // when a loop's range bound reuses an in-scope variable name, that bound
+    // must be evaluated in the enclosing scope (reading the variable's
+    // pre-loop value) before the loop takes over the variable. `for k in k..7`
+    // with an outer k=3 iterates over 3..7 (4 times). Because the loop reuses
+    // the existing mutable `k` as its induction variable, `k` holds its final
+    // value (7) after the loop.
+    var k: int = 3;
+    var count: int = 0;
+    for k in k..7 {
+        count += 1;
+    }
+    Assert(count == 4, "self-referential range bound should iterate 4 times");
+    Assert(k == 7, "reused loop variable should retain its final value");
+
+    // Same reuse semantics for slice iteration: the loop drives the existing
+    // `elem`, which retains the last element after the loop.
+    var nums: int[] = [10, 20, 30];
+    var elem: int = 99;
+    var sum: int = 0;
+    for elem in nums {
+        sum += elem;
+    }
+    Assert(sum == 60, "slice loop should sum all elements");
+    Assert(elem == 30, "reused slice loop variable should retain its final value");
+
     return 0;
 }
