@@ -1257,6 +1257,23 @@ private:
     }
 
     bool CanAssignExprTo(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) const {
+        // Tuple literals are contextually typed element-by-element. This lets
+        // each element use the same assignment rules as a scalar expression
+        // (notably range-checked unsuffixed integer literals), and naturally
+        // handles nested tuple literals as well.
+        if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expr);
+            tuple && exprType.kind == TypeRef::Kind::Tuple && targetType.kind == TypeRef::Kind::Tuple) {
+            if (tuple->elements.size() != targetType.inner.size() || exprType.inner.size() != targetType.inner.size()) {
+                return false;
+            }
+            for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
+                if (!CanAssignExprTo(*tuple->elements[i], exprType.inner[i], targetType.inner[i])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         if (targetType.IsInteger() && IsUnsuffixedIntegerLiteral(expr)) {
             return UnsuffixedIntegerLiteralFits(expr, targetType);
         }

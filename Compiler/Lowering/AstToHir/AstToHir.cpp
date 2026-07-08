@@ -2539,6 +2539,20 @@ private:
 
     // Expression lowering
     HirExprPtr LowerExprAs(const Expr &expr, const TypeRef &targetType) {
+        // Preserve the destination tuple type by contextually lowering every
+        // tuple-literal element. Besides producing the right aggregate type,
+        // this applies any required scalar coercion recursively.
+        if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expr);
+            tuple && targetType.kind == TypeRef::Kind::Tuple && tuple->elements.size() == targetType.inner.size()) {
+            auto loweredTuple = std::make_unique<HirTupleExpr>();
+            loweredTuple->location = tuple->location;
+            for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
+                loweredTuple->elements.push_back(LowerExprAs(*tuple->elements[i], targetType.inner[i]));
+            }
+            loweredTuple->type = targetType;
+            return loweredTuple;
+        }
+
         HirExprPtr lowered = LowerExpr(expr);
         if (UnsuffixedIntegerLiteralFits(expr, targetType)) {
             lowered->type = targetType;
