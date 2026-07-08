@@ -16,7 +16,6 @@
 #include <utility>
 
 #include "CodeGen/Layout.h"
-#include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/X86_64/Assembler.h"
 #include "CodeGen/X86_64/Encoder.h"
 #include "Object/Rcu/RcuStringTable.h"
@@ -177,14 +176,21 @@ private:
     std::unordered_set<std::string> interfaceNames;
 
     // Per-function state
+    struct PhiMove {
+        LirReg dst;
+        LirReg src;
+        TypeRef type;
+    };
+
     std::unordered_map<LirReg, int32_t> slotMap;
     std::unordered_map<LirReg, int32_t> allocaData;
     std::unordered_map<LirReg, TypeRef> regTypes;
     std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::vector<PhiMove>>> phiMoves;
     int32_t nextOff = 0;
     int32_t frameSize = 0;
-    int32_t phiTempOff = 0;
     int32_t hiddenReturnOff = 0;
+    std::unordered_map<LirReg, int> physRegMap;
+    std::vector<int> usedPhysRegs;
 
     std::vector<uint32_t> blockOffsets;
     std::vector<JumpPatch> jumpPatches;
@@ -208,6 +214,12 @@ private:
             if (base == "Slice") {
                 return 16;
             }
+            if (base == "String" || base == "StringArray" || base == "SystemTime") {
+                return 16;
+            }
+            if (base == "StringBuilder") {
+                return 24;
+            }
             auto it = layouts.find(base);
             if (it != layouts.end()) {
                 return it->second.totalSize;
@@ -217,7 +229,7 @@ private:
     }
 
     [[nodiscard]] int StackValueSize(const TypeRef &t) const {
-        return std::max(SizeOf(t), SizeOfRuntime(t));
+        return SizeOfRuntime(t);
     }
 
     [[nodiscard]] bool IsAggregate(const TypeRef &t) const {
@@ -244,6 +256,9 @@ private:
     }
 
     [[nodiscard]] bool IsWin64AddressParam(const TypeRef &t) const {
+        if (t.kind == TypeRef::Kind::Slice) {
+            return true;
+        }
         if (t.kind != TypeRef::Kind::Named) {
             return false;
         }
@@ -581,9 +596,28 @@ private:
     }
 
     // Load A (rax / xmm0) and B (r10 / xmm1)
-    void LoadAFromDisp(const int32_t d, const TypeRef &t) const {
-        const int sz = SizeOf(t);
+    void LoadA(const LirReg reg, const TypeRef &t) const {
+        auto it = physRegMap.find(reg);
+        if (it != physRegMap.end()) {
+            enc.MovRaxPhysReg(it->second);
+            int sz = SizeOfRuntime(t);
+            if (sz > 0 && sz < 8) {
+                if (t.IsSigned()) {
+                    if (sz == 4) enc.MovsxdRaxEax();
+                    else if (sz == 2) enc.MovsxRaxAx();
+                    else enc.MovsxRaxAl();
+                }
+                else {
+                    if (sz == 4) enc.MovEaxEax();
+                    else if (sz == 2) enc.MovzxRaxAx();
+                    else enc.MovzxRaxAl();
+                }
+            }
+            return;
+        }
+        const int sz = SizeOfRuntime(t);
         const int runtimeSz = SizeOfRuntime(t);
+        const int32_t d = Disp(reg);
         if (runtimeSz == 16) {
             enc.MovRaxLoad(d);
             enc.MovR10Load(d + 8);
@@ -626,12 +660,26 @@ private:
         }
     }
 
-    void LoadA(const LirReg reg, const TypeRef &t) const {
-        LoadAFromDisp(Disp(reg), t);
-    }
-
     void LoadB(LirReg reg, const TypeRef &t) const {
-        int sz = SizeOf(t);
+        auto it = physRegMap.find(reg);
+        if (it != physRegMap.end()) {
+            enc.MovR10PhysReg(it->second);
+            int sz = SizeOfRuntime(t);
+            if (sz > 0 && sz < 8) {
+                if (t.IsSigned()) {
+                    if (sz == 4) enc.MovsxdR10r10d();
+                    else if (sz == 2) enc.MovsxR10r10w();
+                    else enc.MovsxR10r10b();
+                }
+                else {
+                    if (sz == 4) enc.MovR10dR10d();
+                    else if (sz == 2) enc.MovzxR10r10w();
+                    else enc.MovzxR10r10b();
+                }
+            }
+            return;
+        }
+        int sz = SizeOfRuntime(t);
         int32_t d = Disp(reg);
         if (IsFloat(t)) {
             if (t.kind == TypeRef::Kind::Float32) {
@@ -668,9 +716,10 @@ private:
         }
     }
 
-    void StoreAToDisp(const int32_t d, const TypeRef &t) const {
-        int sz = SizeOf(t);
+    void StoreStack(LirReg dst, const TypeRef &t) const {
+        int sz = SizeOfRuntime(t);
         int runtimeSz = SizeOfRuntime(t);
+        int32_t d = Disp(dst);
         if (runtimeSz == 16) {
             enc.MovRaxStore(d);
             enc.Byte(0x48);
@@ -704,13 +753,23 @@ private:
     }
 
     void StoreA(LirReg dst, const TypeRef &t) const {
-        StoreAToDisp(Disp(dst), t);
+        auto it = physRegMap.find(dst);
+        if (it != physRegMap.end()) {
+            enc.MovPhysRegRax(it->second);
+            return;
+        }
+        StoreStack(dst, t);
     }
 
     void LoadReturnValue(const LirReg reg, const TypeRef &t) const {
         if (SizeOfRuntime(t) == 16) {
             if (IsRegPointerTo(reg, t)) {
-                enc.MovR10Load(Disp(reg));
+                auto it = physRegMap.find(reg);
+                if (it != physRegMap.end()) {
+                    enc.MovR10PhysReg(it->second);
+                } else {
+                    enc.MovR10Load(Disp(reg));
+                }
                 enc.Byte(0x49);
                 enc.Byte(0x8B);
                 enc.Byte(0x02); // mov rax, [r10]
@@ -830,7 +889,12 @@ private:
         }
         enc.MovR11Load(-hiddenReturnOff);
         if (IsRegPointerTo(src, t)) {
-            enc.MovR10Load(Disp(src));
+            auto it = physRegMap.find(src);
+            if (it != physRegMap.end()) {
+                enc.MovR10PhysReg(it->second);
+            } else {
+                enc.MovR10Load(Disp(src));
+            }
         }
         else {
             enc.Byte(0x4C);
@@ -951,22 +1015,147 @@ private:
     }
 
     void PrepassFunc(const LirFunc &func) {
-        nextOff = 0;
-        frameSize = 0;
-        phiTempOff = 0;
-        hiddenReturnOff = 0;
         slotMap.clear();
         allocaData.clear();
         regTypes.clear();
         phiMoves.clear();
+        physRegMap.clear();
+        usedPhysRegs.clear();
+
+        // 1. Collect type information and calculate intervals for virtual registers
+        struct LiveInterval {
+            LirReg reg;
+            int start = -1;
+            int end = -1;
+            TypeRef type;
+        };
+
+        std::unordered_map<LirReg, LiveInterval> intervals;
+        int instIdx = 0;
+        
+        std::unordered_map<LirReg, TypeRef> tempRegTypes;
+        
+        // Params
+        for (const auto &p : func.params) {
+            tempRegTypes[p.reg] = IsWin64AddressParam(p.type) ? TypeRef::MakePointer(p.type) : p.type;
+            intervals[p.reg] = {p.reg, 0, 0, tempRegTypes[p.reg]};
+        }
+
+        // Instructions
+        for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
+            for (const auto &instr : func.blocks[bi].instrs) {
+                if (instr.dst != LirNoReg) {
+                    if (instr.op == LirOpcode::Alloca) {
+                        tempRegTypes[instr.dst] = TypeRef::MakePointer(instr.type);
+                    } else {
+                        tempRegTypes[instr.dst] = instr.type;
+                    }
+                }
+                
+                for (LirReg src : instr.srcs) {
+                    TypeRef srcT = tempRegTypes.contains(src) ? tempRegTypes[src] : TypeRef::MakeInt64();
+                    if (intervals.find(src) == intervals.end()) {
+                        intervals[src] = {src, instIdx, instIdx, srcT};
+                    } else {
+                        intervals[src].end = instIdx;
+                    }
+                }
+
+                if (instr.dst != LirNoReg) {
+                    if (intervals.find(instr.dst) == intervals.end()) {
+                        intervals[instr.dst] = {instr.dst, instIdx, instIdx, tempRegTypes[instr.dst]};
+                    } else {
+                        intervals[instr.dst].end = instIdx;
+                    }
+                }
+                
+                if (instr.op == LirOpcode::Phi) {
+                    for (const auto &[src, pred] : instr.phiPreds) {
+                        TypeRef srcT = tempRegTypes.contains(src) ? tempRegTypes[src] : TypeRef::MakeInt64();
+                        if (intervals.find(src) == intervals.end()) {
+                            intervals[src] = {src, instIdx, instIdx, srcT};
+                        } else {
+                            intervals[src].end = instIdx;
+                        }
+                    }
+                }
+
+                instIdx++;
+            }
+            
+            if (func.blocks[bi].term) {
+                const auto &term = *func.blocks[bi].term;
+                if (term.cond != LirNoReg) {
+                    TypeRef condT = tempRegTypes.contains(term.cond) ? tempRegTypes[term.cond] : TypeRef::MakeInt64();
+                    if (intervals.find(term.cond) == intervals.end()) {
+                        intervals[term.cond] = {term.cond, instIdx, instIdx, condT};
+                    } else {
+                        intervals[term.cond].end = instIdx;
+                    }
+                }
+                if (term.retVal && *term.retVal != LirNoReg) {
+                    TypeRef retT = tempRegTypes.contains(*term.retVal) ? tempRegTypes[*term.retVal] : TypeRef::MakeInt64();
+                    if (intervals.find(*term.retVal) == intervals.end()) {
+                        intervals[*term.retVal] = {*term.retVal, instIdx, instIdx, retT};
+                    } else {
+                        intervals[*term.retVal].end = instIdx;
+                    }
+                }
+                instIdx++;
+            }
+        }
+
+        // 2. Perform Register Allocation (Linear Scan)
+        std::vector<LiveInterval> candidates;
+        if (func.blocks.size() == 1) {
+            for (const auto &[reg, iv] : intervals) {
+                if (IsFloat(iv.type) || IsAggregate(iv.type) || SizeOfRuntime(iv.type) > 8) {
+                    continue;
+                }
+                candidates.push_back(iv);
+            }
+        }
+
+        std::sort(candidates.begin(), candidates.end(), [](const LiveInterval &a, const LiveInterval &b) {
+            return a.start < b.start;
+        });
+
+        constexpr int numPhysRegs = 5;
+        std::vector<int> regEndTimes(numPhysRegs, -1);
+
+        for (const auto &iv : candidates) {
+            int allocatedIdx = -1;
+            for (int r = 0; r < numPhysRegs; ++r) {
+                if (regEndTimes[r] < iv.start) {
+                    allocatedIdx = r;
+                    break;
+                }
+            }
+
+            if (allocatedIdx != -1) {
+                physRegMap[iv.reg] = allocatedIdx;
+                regEndTimes[allocatedIdx] = iv.end;
+                if (std::find(usedPhysRegs.begin(), usedPhysRegs.end(), allocatedIdx) == usedPhysRegs.end()) {
+                    usedPhysRegs.push_back(allocatedIdx);
+                }
+            }
+        }
+
+        std::sort(usedPhysRegs.begin(), usedPhysRegs.end());
+
+        // 3. Allocate Stack Slots
+        nextOff = static_cast<int32_t>(usedPhysRegs.size() * 8);
+        hiddenReturnOff = 0;
+        
         if (EffectiveConv(func.callConv) == CallingConvention::Win64 && IsWin64ByRefAggregate(func.returnType)) {
             hiddenReturnOff = AllocRegion(8);
         }
+        
         for (const auto &p : func.params) {
-            int sz = IsWin64AddressParam(p.type) ? 8 : SizeOfRuntime(p.type);
-            AllocSlot(p.reg, sz > 0 ? sz : 8);
             regTypes[p.reg] = IsWin64AddressParam(p.type) ? TypeRef::MakePointer(p.type) : p.type;
+            AllocSlot(p.reg, std::max(8, SizeOfRuntime(regTypes[p.reg])));
         }
+        
         for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
             for (const auto &instr : func.blocks[bi].instrs) {
                 if (instr.op == LirOpcode::Phi) {
@@ -977,8 +1166,8 @@ private:
                 if (instr.dst == LirNoReg) {
                     continue;
                 }
+                
                 if (instr.op == LirOpcode::Alloca) {
-                    AllocSlot(instr.dst, 8);
                     int dsz;
                     if (!instr.strArg.empty()) {
                         int count = 0;
@@ -994,31 +1183,18 @@ private:
                     else {
                         dsz = StackValueSize(instr.type);
                     }
+                    
+                    AllocSlot(instr.dst, 8);
                     allocaData[instr.dst] = AllocRegion(dsz > 0 ? dsz : 8);
                     regTypes[instr.dst] = TypeRef::MakePointer(instr.type);
                 }
                 else {
+                    regTypes[instr.dst] = instr.type;
                     int sz = StackValueSize(instr.type);
                     AllocSlot(instr.dst, sz > 0 ? sz : 8);
-                    regTypes[instr.dst] = instr.type;
                 }
             }
         }
-
-        int phiTempSize = 0;
-        for (const auto &[from, edges] : phiMoves) {
-            (void)from;
-            for (const auto &[to, moves] : edges) {
-                (void)to;
-                for (const auto &move : moves) {
-                    phiTempSize = std::max(phiTempSize, StackValueSize(move.type));
-                }
-            }
-        }
-        if (phiTempSize > 0) {
-            phiTempOff = AllocRegion(phiTempSize);
-        }
-
         frameSize = AlignUp(nextOff, 16);
         if (frameSize == 0) {
             frameSize = 16;
@@ -1074,26 +1250,12 @@ private:
         if (it2 == it1->second.end()) {
             return;
         }
-        std::vector<PhiMove> moves;
-        for (const auto &move : it2->second) {
-            if (slotMap.contains(move.src)) {
-                moves.push_back(move);
+        for (const auto &m : it2->second) {
+            if (!slotMap.contains(m.src)) {
+                continue;
             }
-        }
-        for (const auto &step : ResolvePhiMoves(std::move(moves))) {
-            if (step.kind == PhiMoveStep::Kind::SaveDestination) {
-                LoadA(step.dst, step.type);
-                StoreAToDisp(-phiTempOff, step.type);
-            }
-            else {
-                if (step.sourceIsTemporary) {
-                    LoadAFromDisp(-phiTempOff, step.type);
-                }
-                else {
-                    LoadA(step.src, step.type);
-                }
-                StoreA(step.dst, step.type);
-            }
+            LoadA(m.src, m.type);
+            StoreA(m.dst, m.type);
         }
     }
 
@@ -1158,7 +1320,13 @@ private:
                     enc.LeaArgStackWin64(idx, d);
                 }
                 else if (IsPointerToWin64ByRefAggregate(at)) {
-                    enc.MovArgLoadWin64(idx, d);
+                    auto it = physRegMap.find(arg);
+                    if (it != physRegMap.end()) {
+                        LoadA(arg, at);
+                        enc.MovArgWin64Rax(idx);
+                    } else {
+                        enc.MovArgLoadWin64(idx, d);
+                    }
                 }
                 else {
                     LoadA(arg, at);
@@ -1214,7 +1382,7 @@ private:
                 uint32_t relocOff;
                 enc.LeaRaxRip(relocOff);
                 AddTextReloc(relocOff, symIdx);
-                enc.MovRaxStore(Disp(instr.dst));
+                StoreA(instr.dst, t);
             }
             else if (t.kind == TypeRef::Kind::Float32) {
                 uint32_t symIdx = InternF32(instr.strArg);
@@ -1250,12 +1418,12 @@ private:
         case LirOpcode::Alloca: {
             int32_t dataOff = allocaData.at(instr.dst);
             enc.LeaRaxStack(-dataOff);
-            enc.MovRaxStore(Disp(instr.dst));
+            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
             break;
         }
         case LirOpcode::Load: {
             const TypeRef &t = instr.type;
-            int sz = SizeOf(t);
+            int sz = SizeOfRuntime(t);
             int runtimeSz = SizeOfRuntime(t);
             if (!instr.strArg.empty()) {
                 // Named global — load via RIP-relative
@@ -1266,7 +1434,12 @@ private:
             }
             else {
                 LirReg ptr = instr.srcs[0];
-                enc.MovR10Load(Disp(ptr));
+                auto it = physRegMap.find(ptr);
+                if (it != physRegMap.end()) {
+                    enc.MovR10PhysReg(it->second);
+                } else {
+                    enc.MovR10Load(Disp(ptr));
+                }
                 if (IsAggregate(t) && runtimeSz > 8) {
                     CopyAggregateFromR10ToStack(Disp(instr.dst), runtimeSz);
                     break;
@@ -1344,12 +1517,22 @@ private:
             LirReg val = instr.srcs[0];
             LirReg ptr = instr.srcs[1];
             const TypeRef &t = instr.type;
-            int sz = SizeOf(t);
+            int sz = SizeOfRuntime(t);
             int runtimeSz = SizeOfRuntime(t);
-            enc.MovR11Load(Disp(ptr));
+            auto itPtr = physRegMap.find(ptr);
+            if (itPtr != physRegMap.end()) {
+                enc.MovR11PhysReg(itPtr->second);
+            } else {
+                enc.MovR11Load(Disp(ptr));
+            }
             if (IsAggregate(t) && runtimeSz > 8) {
                 if (IsRegPointerTo(val, t)) {
-                    enc.MovR10Load(Disp(val));
+                    auto it = physRegMap.find(val);
+                    if (it != physRegMap.end()) {
+                        enc.MovR10PhysReg(it->second);
+                    } else {
+                        enc.MovR10Load(Disp(val));
+                    }
                 }
                 else {
                     enc.Byte(0x4C);
@@ -1558,7 +1741,12 @@ private:
         case LirOpcode::Shr: {
             const TypeRef &t = instr.type;
             LoadA(instr.srcs[0], t);
-            enc.MovR11Load(Disp(instr.srcs[1]));
+            auto it = physRegMap.find(instr.srcs[1]);
+            if (it != physRegMap.end()) {
+                enc.MovR11PhysReg(it->second);
+            } else {
+                enc.MovR11Load(Disp(instr.srcs[1]));
+            }
             enc.MovRcxR11();
             bool isShr = (instr.op == LirOpcode::Shr);
             if (isShr && t.IsSigned()) {
@@ -1769,7 +1957,7 @@ private:
             }
             // Built-in: FloatFromBits64 — reinterpret uint64 bits as float64
             if (instr.strArg == "FloatFromBits64" && instr.srcs.size() == 1) {
-                enc.MovRaxLoad(Disp(instr.srcs[0]));
+                LoadA(instr.srcs[0], TypeRef::MakeInt64());
                 enc.Byte(0x66);
                 enc.Byte(0x48);
                 enc.Byte(0x0F);
@@ -1794,7 +1982,7 @@ private:
             }
             // Built-in: FloatFromBits32 — reinterpret uint32 bits as float32
             if (instr.strArg == "FloatFromBits32" && instr.srcs.size() == 1) {
-                enc.MovRaxLoad(Disp(instr.srcs[0]));
+                LoadA(instr.srcs[0], TypeRef::MakeInt32());
                 enc.Byte(0x66);
                 enc.Byte(0x0F);
                 enc.Byte(0x6E);
@@ -1865,7 +2053,12 @@ private:
                 }
                 EmitCallArgs(args, instr.callConv);
             }
-            enc.MovR10Load(Disp(callee));
+            auto it = physRegMap.find(callee);
+            if (it != physRegMap.end()) {
+                enc.MovR10PhysReg(it->second);
+            } else {
+                enc.MovR10Load(Disp(callee));
+            }
             enc.CallR10();
             if (callFrameSize > 0) {
                 enc.AddRspImm32(callFrameSize);
@@ -1889,17 +2082,17 @@ private:
             uint32_t relocOff;
             enc.LeaRaxRip(relocOff);
             AddTextReloc(relocOff, symIdx);
-            enc.MovRaxStore(Disp(instr.dst));
+            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
             break;
         }
         case LirOpcode::FieldPtr: {
             LirReg base = instr.srcs[0];
-            enc.MovRaxLoad(Disp(base));
+            LoadA(base, regTypes.at(base));
             int off = FieldOffset(base, instr.strArg);
             if (off != 0) {
                 enc.LeaRaxRaxDisp(off);
             }
-            enc.MovRaxStore(Disp(instr.dst));
+            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
             break;
         }
         case LirOpcode::IndexPtr: {
@@ -1911,11 +2104,11 @@ private:
             if (elemSz < 1) {
                 elemSz = 1;
             }
-            enc.MovRaxLoad(Disp(base));
+            LoadA(base, regTypes.at(base));
             LoadB(idx, regTypes.at(idx));
             enc.ImulR11R10Imm32(elemSz);
             enc.AddRaxR11();
-            enc.MovRaxStore(Disp(instr.dst));
+            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
             break;
         }
         case LirOpcode::Phi:
@@ -1941,19 +2134,7 @@ private:
             // garbage
             {
                 const TypeRef condT = regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeBool();
-                const int condSz = SizeOf(condT);
-                if (condSz <= 1) {
-                    enc.MovzxRaxByte(Disp(term.cond));
-                }
-                else if (condSz == 2) {
-                    enc.MovzxRaxWord(Disp(term.cond));
-                }
-                else if (condSz == 4) {
-                    enc.MovEaxLoad(Disp(term.cond));
-                }
-                else {
-                    enc.MovRaxLoad(Disp(term.cond));
-                }
+                LoadA(term.cond, condT);
             }
             enc.TestRaxRax();
             const bool truePhi = HasPhiMoves(blockIdx, term.trueTarget);
@@ -1992,12 +2173,23 @@ private:
                     LoadReturnValue(*term.retVal, term.retType);
                 }
             }
-            enc.Leave();
+            if (!usedPhysRegs.empty()) {
+                int32_t remainingFrame = frameSize - static_cast<int32_t>(usedPhysRegs.size() * 8);
+                if (remainingFrame > 0) {
+                    enc.AddRspImm32(remainingFrame);
+                }
+                for (auto it = usedPhysRegs.rbegin(); it != usedPhysRegs.rend(); ++it) {
+                    enc.PopReg(*it);
+                }
+                enc.PopRbp();
+            } else {
+                enc.Leave();
+            }
             enc.Ret();
             break;
         }
         case LirTermKind::Switch: {
-            enc.MovRaxLoad(Disp(term.cond));
+            LoadA(term.cond, regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeInt64());
             for (const auto &c : term.cases) {
                 const std::uint64_t bits = ParseIntegerLiteralBits(c.value).value_or(0);
                 enc.CmpRaxImm32(static_cast<int32_t>(bits));
@@ -2092,7 +2284,11 @@ private:
         // Prologue
         enc.PushRbp();
         enc.MovRbpRsp();
-        EmitStackAlloc(frameSize);
+        for (int rIdx : usedPhysRegs) {
+            enc.PushReg(rIdx);
+        }
+        int32_t remainingFrame = frameSize - static_cast<int32_t>(usedPhysRegs.size() * 8);
+        EmitStackAlloc(remainingFrame);
         // Spill ABI param registers to stack slots
         bool win64Func = EffectiveConv(func.callConv) == CallingConvention::Win64;
         int intIdx = 0, fltIdx = 0, sysvStackIdx = 0, win64Idx = 0;
@@ -2129,7 +2325,7 @@ private:
                     }
                     else {
                         enc.MovRaxLoad(stackArgOff);
-                        StoreA(p.reg, p.type);
+                        StoreStack(p.reg, p.type);
                     }
                     ++win64Idx;
                     continue;
@@ -2152,7 +2348,7 @@ private:
                 }
                 else {
                     enc.MovRaxArgWin64(win64Idx);
-                    StoreA(p.reg, p.type);
+                    StoreStack(p.reg, p.type);
                 }
                 ++win64Idx;
             }
@@ -2187,9 +2383,31 @@ private:
                     else {
                         const int32_t stackArgOff = 16 + sysvStackIdx++ * 8;
                         enc.MovRaxLoad(stackArgOff);
-                        StoreA(p.reg, p.type);
+                        StoreStack(p.reg, p.type);
                     }
                 }
+            }
+        }
+        // Load params into their allocated physical registers
+        for (const auto &p : func.params) {
+            auto it = physRegMap.find(p.reg);
+            if (it != physRegMap.end()) {
+                int sz = IsWin64AddressParam(p.type) ? 8 : SizeOfRuntime(p.type);
+                int32_t d = Disp(p.reg);
+                if (sz == 8 || sz == 0) {
+                    enc.MovRaxLoad(d);
+                }
+                else if (p.type.IsSigned()) {
+                    if (sz == 4) enc.MovsxdRaxDword(d);
+                    else if (sz == 2) enc.MovsxRaxWord(d);
+                    else enc.MovsxRaxByte(d);
+                }
+                else {
+                    if (sz == 4) enc.MovEaxLoad(d);
+                    else if (sz == 2) enc.MovzxRaxWord(d);
+                    else enc.MovzxRaxByte(d);
+                }
+                enc.MovPhysRegRax(it->second);
             }
         }
         // Basic blocks

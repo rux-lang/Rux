@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "CodeGen/Layout.h"
-#include "CodeGen/PhiMoveResolver.h"
 #include "Target/Platform.h"
 
 namespace Rux {
@@ -109,16 +108,23 @@ private:
     std::unordered_set<std::string> interfaceNames;
 
     // Per-function state
+    struct PhiMove {
+        LirReg dst;
+        LirReg src;
+        TypeRef type;
+    };
+
     std::string curFunc;
     std::unordered_map<LirReg, int32_t> slotMap;    // vreg → rbp offset (positive, address = rbp - offset)
     std::unordered_map<LirReg, int32_t> allocaData; // alloca vreg → data region rbp offset
     std::unordered_map<LirReg, TypeRef> regTypes;   // vreg → value type (pointer for alloca)
     int32_t nextOff = 0;
     int32_t frameSize = 0;
-    int32_t phiTempOff = 0;
 
     // phiMoves_[fromBlock][toBlock] = list of (dst, src, type)
     std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::vector<PhiMove>>> phiMoves;
+    std::unordered_map<LirReg, int> physRegMap;
+    std::vector<int> usedPhysRegs;
 
     std::unordered_set<std::string> declaredExterns;
 
@@ -247,6 +253,12 @@ private:
             if (base == "Slice") {
                 return 16;
             }
+            if (base == "String" || base == "StringArray" || base == "SystemTime") {
+                return 16;
+            }
+            if (base == "StringBuilder") {
+                return 24;
+            }
             if (const auto it = layouts.find(base); it != layouts.end()) {
                 return it->second.totalSize;
             }
@@ -254,8 +266,34 @@ private:
         return SizeOf(t);
     }
 
+    [[nodiscard]] bool IsAggregate(const TypeRef &t) const {
+        switch (t.kind) {
+        case TypeRef::Kind::Tuple:
+        case TypeRef::Kind::Slice:
+        case TypeRef::Kind::Range:
+            return true;
+        case TypeRef::Kind::Named: {
+            const std::string base = BaseTypeName(t.name);
+            return base == "Slice" || interfaceNames.contains(base) || layouts.contains(base);
+        }
+        default:
+            return false;
+        }
+    }
+
+    [[nodiscard]] bool IsWin64AddressParam(const TypeRef &t) const {
+        if (t.kind == TypeRef::Kind::Slice) {
+            return true;
+        }
+        if (t.kind != TypeRef::Kind::Named) {
+            return false;
+        }
+        const std::string base = BaseTypeName(t.name);
+        return base == "Slice" || interfaceNames.contains(base);
+    }
+
     [[nodiscard]] int StackValueSize(const TypeRef &t) const {
-        return std::max(SizeOf(t), SizeOfRuntime(t));
+        return SizeOfRuntime(t);
     }
 
     [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
@@ -283,13 +321,43 @@ private:
         return nextOff;
     }
 
+    std::string_view PhysRegName(int rIdx) const {
+        switch (rIdx) {
+            case 0: return "rbx";
+            case 1: return "r12";
+            case 2: return "r13";
+            case 3: return "r14";
+            case 4: return "r15";
+            default: return "rbx";
+        }
+    }
+
     // Load/store helpers
     // Integer loads promote to 64-bit (sign- or zero-extend as needed).
     // Float loads use xmm0 (primary) or xmm1 (secondary).
     // Load vreg into rax (integer) or xmm0 (float)
-    void LoadAFromOffset(int off, const TypeRef &t) {
-        int sz = SizeOf(t);
+    void LoadA(LirReg reg, const TypeRef &t) {
+        auto it = physRegMap.find(reg);
+        if (it != physRegMap.end()) {
+            TI(std::format("{:<8}rax, {}", "mov", PhysRegName(it->second)));
+            int sz = SizeOfRuntime(t);
+            if (sz > 0 && sz < 8) {
+                if (t.IsSigned()) {
+                    if (sz == 4) TI("movsxd  rax, eax");
+                    else if (sz == 2) TI("movsx   rax, ax");
+                    else TI("movsx   rax, al");
+                }
+                else {
+                    if (sz == 4) TI("mov     eax, eax");
+                    else if (sz == 2) TI("movzx   rax, ax");
+                    else TI("movzx   rax, al");
+                }
+            }
+            return;
+        }
+        int sz = SizeOfRuntime(t);
         int runtimeSz = SizeOfRuntime(t);
+        int off = slotMap.at(reg);
         if (runtimeSz == 16) {
             TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", off));
             TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", off - 8));
@@ -313,14 +381,28 @@ private:
         }
     }
 
-    void LoadA(LirReg reg, const TypeRef &t) {
-        LoadAFromOffset(slotMap.at(reg), t);
-    }
-
     // Load vreg into r10 (integer) or xmm1 (float)
     void LoadB(LirReg reg, const TypeRef &t) {
-        int sz = SizeOf(t);
-        int off = slotMap.at(reg);
+        auto it = physRegMap.find(reg);
+        if (it != physRegMap.end()) {
+            TI(std::format("{:<8}r10, {}", "mov", PhysRegName(it->second)));
+            int sz = SizeOfRuntime(t);
+            if (sz > 0 && sz < 8) {
+                if (t.IsSigned()) {
+                    if (sz == 4) TI("movsxd  r10, r10d");
+                    else if (sz == 2) TI("movsx   r10, r10w");
+                    else TI("movsx   r10, r10b");
+                }
+                else {
+                    if (sz == 4) TI("mov     r10d, r10d");
+                    else if (sz == 2) TI("movzx   r10, r10w");
+                    else TI("movzx   r10, r10b");
+                }
+            }
+            return;
+        }
+        int sz = SizeOfRuntime(t);
+        int32_t off = slotMap.at(reg);
         if (IsFloat(t)) {
             TI(std::format("{:<8}xmm1, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
         }
@@ -341,9 +423,15 @@ private:
     }
 
     // Store rax (integer) or xmm0 (float) into dst's slot
-    void StoreAToOffset(int off, const TypeRef &t) {
-        int sz = SizeOf(t);
+    void StoreA(LirReg dst, const TypeRef &t) {
+        auto it = physRegMap.find(dst);
+        if (it != physRegMap.end()) {
+            TI(std::format("{:<8}{}, rax", "mov", PhysRegName(it->second)));
+            return;
+        }
+        int sz = SizeOfRuntime(t);
         int runtimeSz = SizeOfRuntime(t);
+        int off = slotMap.at(dst);
         if (runtimeSz == 16) {
             TI(std::format("{:<8}qword [rbp - {}], rax", "mov", off));
             TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", off - 8));
@@ -357,13 +445,14 @@ private:
         }
     }
 
-    void StoreA(LirReg dst, const TypeRef &t) {
-        StoreAToOffset(slotMap.at(dst), t);
-    }
-
     void LoadReturnValue(LirReg reg, const TypeRef &t) {
         if (SizeOfRuntime(t) == 16 && IsRegPointerTo(reg, t)) {
-            TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(reg)));
+            auto it = physRegMap.find(reg);
+            if (it != physRegMap.end()) {
+                TI(std::format("{:<8}r10, {}", "mov", PhysRegName(it->second)));
+            } else {
+                TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(reg)));
+            }
             TI(std::format("{:<8}rax, qword [r10]", "mov"));
             TI(std::format("{:<8}rdx, qword [r10 + 8]", "mov"));
             return;
@@ -389,47 +478,153 @@ private:
         if (it2 == it1->second.end()) {
             return;
         }
-        std::vector<PhiMove> moves;
-        for (const auto &move : it2->second) {
-            if (slotMap.contains(move.src)) {
-                moves.push_back(move);
+        for (const auto &m : it2->second) {
+            if (!slotMap.contains(m.src)) {
+                continue;
             }
-        }
-        for (const auto &step : ResolvePhiMoves(std::move(moves))) {
-            if (step.kind == PhiMoveStep::Kind::SaveDestination) {
-                LoadA(step.dst, step.type);
-                StoreAToOffset(phiTempOff, step.type);
-            }
-            else {
-                if (step.sourceIsTemporary) {
-                    LoadAFromOffset(phiTempOff, step.type);
-                }
-                else {
-                    LoadA(step.src, step.type);
-                }
-                StoreA(step.dst, step.type);
-            }
+            LoadA(m.src, m.type);
+            StoreA(m.dst, m.type);
         }
     }
 
     // Pre-pass
     void PrepassFunc(const LirFunc &func) {
-        nextOff = 0;
-        frameSize = 0;
-        phiTempOff = 0;
         slotMap.clear();
         allocaData.clear();
         regTypes.clear();
         phiMoves.clear();
+        physRegMap.clear();
+        usedPhysRegs.clear();
 
-        // Parameters
+        // 1. Collect type information and calculate intervals for virtual registers
+        struct LiveInterval {
+            LirReg reg;
+            int start = -1;
+            int end = -1;
+            TypeRef type;
+        };
+
+        std::unordered_map<LirReg, LiveInterval> intervals;
+        int instIdx = 0;
+        
+        std::unordered_map<LirReg, TypeRef> tempRegTypes;
+        
+        // Params
         for (const auto &p : func.params) {
-            AllocSlot(p.reg,
-                      8); // always 8 bytes — value enters via ABI reg
-            regTypes[p.reg] = p.type;
+            tempRegTypes[p.reg] = IsWin64AddressParam(p.type) ? TypeRef::MakePointer(p.type) : p.type;
+            intervals[p.reg] = {p.reg, 0, 0, tempRegTypes[p.reg]};
         }
 
         // Instructions
+        for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
+            for (const auto &instr : func.blocks[bi].instrs) {
+                if (instr.dst != LirNoReg) {
+                    if (instr.op == LirOpcode::Alloca) {
+                        tempRegTypes[instr.dst] = TypeRef::MakePointer(instr.type);
+                    } else {
+                        tempRegTypes[instr.dst] = instr.type;
+                    }
+                }
+                
+                for (LirReg src : instr.srcs) {
+                    TypeRef srcT = tempRegTypes.contains(src) ? tempRegTypes[src] : TypeRef::MakeInt64();
+                    if (intervals.find(src) == intervals.end()) {
+                        intervals[src] = {src, instIdx, instIdx, srcT};
+                    } else {
+                        intervals[src].end = instIdx;
+                    }
+                }
+
+                if (instr.dst != LirNoReg) {
+                    if (intervals.find(instr.dst) == intervals.end()) {
+                        intervals[instr.dst] = {instr.dst, instIdx, instIdx, tempRegTypes[instr.dst]};
+                    } else {
+                        intervals[instr.dst].end = instIdx;
+                    }
+                }
+                
+                if (instr.op == LirOpcode::Phi) {
+                    for (const auto &[src, pred] : instr.phiPreds) {
+                        TypeRef srcT = tempRegTypes.contains(src) ? tempRegTypes[src] : TypeRef::MakeInt64();
+                        if (intervals.find(src) == intervals.end()) {
+                            intervals[src] = {src, instIdx, instIdx, srcT};
+                        } else {
+                            intervals[src].end = instIdx;
+                        }
+                    }
+                }
+
+                instIdx++;
+            }
+            
+            if (func.blocks[bi].term) {
+                const auto &term = *func.blocks[bi].term;
+                if (term.cond != LirNoReg) {
+                    TypeRef condT = tempRegTypes.contains(term.cond) ? tempRegTypes[term.cond] : TypeRef::MakeInt64();
+                    if (intervals.find(term.cond) == intervals.end()) {
+                        intervals[term.cond] = {term.cond, instIdx, instIdx, condT};
+                    } else {
+                        intervals[term.cond].end = instIdx;
+                    }
+                }
+                if (term.retVal && *term.retVal != LirNoReg) {
+                    TypeRef retT = tempRegTypes.contains(*term.retVal) ? tempRegTypes[*term.retVal] : TypeRef::MakeInt64();
+                    if (intervals.find(*term.retVal) == intervals.end()) {
+                        intervals[*term.retVal] = {*term.retVal, instIdx, instIdx, retT};
+                    } else {
+                        intervals[*term.retVal].end = instIdx;
+                    }
+                }
+                instIdx++;
+            }
+        }
+
+        // 2. Perform Register Allocation (Linear Scan)
+        std::vector<LiveInterval> candidates;
+        if (func.blocks.size() == 1) {
+            for (const auto &[reg, iv] : intervals) {
+                if (IsFloat(iv.type) || IsAggregate(iv.type) || SizeOfRuntime(iv.type) > 8) {
+                    continue;
+                }
+                candidates.push_back(iv);
+            }
+        }
+
+        std::sort(candidates.begin(), candidates.end(), [](const LiveInterval &a, const LiveInterval &b) {
+            return a.start < b.start;
+        });
+
+        constexpr int numPhysRegs = 5;
+        std::vector<int> regEndTimes(numPhysRegs, -1);
+
+        for (const auto &iv : candidates) {
+            int allocatedIdx = -1;
+            for (int r = 0; r < numPhysRegs; ++r) {
+                if (regEndTimes[r] < iv.start) {
+                    allocatedIdx = r;
+                    break;
+                }
+            }
+
+            if (allocatedIdx != -1) {
+                physRegMap[iv.reg] = allocatedIdx;
+                regEndTimes[allocatedIdx] = iv.end;
+                if (std::find(usedPhysRegs.begin(), usedPhysRegs.end(), allocatedIdx) == usedPhysRegs.end()) {
+                    usedPhysRegs.push_back(allocatedIdx);
+                }
+            }
+        }
+
+        std::sort(usedPhysRegs.begin(), usedPhysRegs.end());
+
+        // 3. Allocate Stack Slots
+        nextOff = static_cast<int32_t>(usedPhysRegs.size() * 8);
+        
+        for (const auto &p : func.params) {
+            regTypes[p.reg] = IsWin64AddressParam(p.type) ? TypeRef::MakePointer(p.type) : p.type;
+            AllocSlot(p.reg, std::max(8, SizeOfRuntime(regTypes[p.reg])));
+        }
+        
         for (uint32_t bi = 0; bi < func.blocks.size(); bi++) {
             const auto &block = func.blocks[bi];
             for (const auto &instr : block.instrs) {
@@ -441,9 +636,8 @@ private:
                 if (instr.dst == LirNoReg) {
                     continue;
                 }
-
+                
                 if (instr.op == LirOpcode::Alloca) {
-                    AllocSlot(instr.dst, 8); // pointer slot
                     int dataSz;
                     if (!instr.strArg.empty()) {
                         int count = std::stoi(instr.strArg);
@@ -454,34 +648,21 @@ private:
                     else {
                         dataSz = StackValueSize(instr.type);
                     }
+                    
+                    AllocSlot(instr.dst, 8);
                     allocaData[instr.dst] = AllocRegion(dataSz > 0 ? dataSz : 8);
                     regTypes[instr.dst] = TypeRef::MakePointer(instr.type);
                 }
                 else {
+                    regTypes[instr.dst] = instr.type;
                     int sz = StackValueSize(instr.type);
                     AllocSlot(instr.dst, sz > 0 ? sz : 8);
-                    regTypes[instr.dst] = instr.type;
                 }
             }
-        }
-
-        int phiTempSize = 0;
-        for (const auto &[from, edges] : phiMoves) {
-            (void)from;
-            for (const auto &[to, moves] : edges) {
-                (void)to;
-                for (const auto &move : moves) {
-                    phiTempSize = std::max(phiTempSize, StackValueSize(move.type));
-                }
-            }
-        }
-        if (phiTempSize > 0) {
-            phiTempOff = AllocRegion(phiTempSize);
         }
 
         frameSize = AlignUp(nextOff, 16);
         if (frameSize == 0) {
-            // always reserve at least one slot for alignment
             frameSize = 16;
         }
     }
@@ -549,31 +730,98 @@ private:
         // Prologue
         TI("push    rbp");
         TI("mov     rbp, rsp");
-        if (frameSize > 0) {
-            TI(std::format("sub     rsp, {}", frameSize));
+        for (int rIdx : usedPhysRegs) {
+            TI(std::format("push    {}", PhysRegName(rIdx)));
+        }
+        int32_t remainingFrame = frameSize - static_cast<int32_t>(usedPhysRegs.size() * 8);
+        if (remainingFrame > 0) {
+            TI(std::format("sub     rsp, {}", remainingFrame));
         }
 
-        // Spill integer parameter ABI registers to their stack slots
-        int intArgIdx = 0, fltArgIdx = 0;
-        for (const auto &p : func.params) {
-            int sz = SizeOf(p.type);
-            int off = slotMap.at(p.reg);
-            if (IsFloat(p.type)) {
-                if (fltArgIdx < 8) {
-                    TI(std::format("{:<8}{} [rbp - {}], {}", sz == 4 ? "movss" : "movsd", PtrSize(sz), off,
-                                   kFltArgRegs[fltArgIdx]));
-                    fltArgIdx++;
+        // Spill parameter ABI registers to their stack slots
+        if (kDefaultCallIsWin64) {
+            int argIdx = 0;
+            for (const auto &p : func.params) {
+                int sz = SizeOf(p.type);
+                int off = slotMap.at(p.reg);
+                if (argIdx < 4) {
+                    if (IsWin64AddressParam(p.type)) {
+                        TI(std::format("mov     qword [rbp - {}], {}", off, kWin64IntArgRegs[argIdx]));
+                    }
+                    else if (IsFloat(p.type)) {
+                        TI(std::format("{:<8}{} [rbp - {}], {}", sz == 4 ? "movss" : "movsd", PtrSize(sz), off,
+                                       kFltArgRegs[argIdx]));
+                    }
+                    else {
+                        TI(std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(std::max(sz, 1)), off,
+                                       kWin64IntArgRegs[argIdx]));
+                    }
+                    argIdx++;
                 }
-                // Remaining float params arrive on the stack (System
-                // V): skip for now
+                else {
+                    // Remaining arguments arrive on the stack at [rbp + 16 + 32 + (argIdx - 4)*8]
+                    int32_t stackArgOff = 48 + (argIdx - 4) * 8;
+                    if (IsWin64AddressParam(p.type)) {
+                        TI(std::format("mov     rax, qword [rbp + {}]", stackArgOff));
+                        TI(std::format("mov     qword [rbp - {}], rax", off));
+                    }
+                    else if (IsFloat(p.type)) {
+                        TI(std::format("{:<8}xmm0, {} [rbp + {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), stackArgOff));
+                        TI(std::format("{:<8}{} [rbp - {}], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
+                    }
+                    else {
+                        TI(std::format("mov     rax, {} [rbp + {}]", PtrSize(std::max(sz, 1)), stackArgOff));
+                        TI(std::format("mov     {} [rbp - {}], rax", PtrSize(std::max(sz, 1)), off));
+                    }
+                    argIdx++;
+                }
             }
-            else {
-                if (intArgIdx < 6) {
-                    TI(std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(std::max(sz, 1)), off,
-                                   kIntArgRegs[intArgIdx]));
-                    intArgIdx++;
+        }
+        else {
+            int intArgIdx = 0, fltArgIdx = 0;
+            for (const auto &p : func.params) {
+                int sz = SizeOf(p.type);
+                int off = slotMap.at(p.reg);
+                if (IsFloat(p.type)) {
+                    if (fltArgIdx < 8) {
+                        TI(std::format("{:<8}{} [rbp - {}], {}", sz == 4 ? "movss" : "movsd", PtrSize(sz), off,
+                                       kFltArgRegs[fltArgIdx]));
+                        fltArgIdx++;
+                    }
+                    // Remaining float params arrive on the stack (System
+                    // V): skip for now
                 }
-                // Stack params beyond the 6th: at [rbp + 16 + 8*n]
+                else {
+                    if (intArgIdx < 6) {
+                        TI(std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(std::max(sz, 1)), off,
+                                       kIntArgRegs[intArgIdx]));
+                        intArgIdx++;
+                    }
+                    // Stack params beyond the 6th: at [rbp + 16 + 8*n]
+                }
+            }
+        }
+        // Load params into their allocated physical registers
+        for (const auto &p : func.params) {
+            auto it = physRegMap.find(p.reg);
+            if (it != physRegMap.end()) {
+                int sz = IsWin64AddressParam(p.type) ? 8 : SizeOfRuntime(p.type);
+                int off = slotMap.at(p.reg);
+                if (sz == 8 || sz == 0) {
+                    TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", off));
+                }
+                else if (p.type.IsSigned()) {
+                    TI(std::format("{:<8}rax, {} [rbp - {}]", sz == 4 ? "movsxd" : "movsx", PtrSize(sz), off));
+                }
+                else {
+                    if (sz == 4) {
+                        TI(std::format("{:<8}eax, dword [rbp - {}]", "mov", off));
+                    }
+                    else {
+                        TI(std::format("{:<8}rax, {} [rbp - {}]", "movzx", PtrSize(sz), off));
+                    }
+                }
+                TI(std::format("{:<8}{}, rax", "mov", PhysRegName(it->second)));
             }
         }
 
@@ -645,13 +893,13 @@ private:
         case LirOpcode::Alloca: {
             int32_t dataOff = allocaData.at(instr.dst);
             TI(std::format("{:<8}rax, [rbp - {}]", "lea", dataOff));
-            TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
             break;
         }
 
         case LirOpcode::Load: {
             const TypeRef &t = instr.type;
-            int sz = SizeOf(t);
+            int sz = SizeOfRuntime(t);
             int runtimeSz = SizeOfRuntime(t);
             if (!instr.strArg.empty()) {
                 // Named global / constant
@@ -660,7 +908,12 @@ private:
             else {
                 // Load through pointer in srcs[0]
                 LirReg ptr = instr.srcs[0];
-                TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(ptr)));
+                auto it = physRegMap.find(ptr);
+                if (it != physRegMap.end()) {
+                    TI(std::format("{:<8}r10, {}", "mov", PhysRegName(it->second)));
+                } else {
+                    TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(ptr)));
+                }
                 if (runtimeSz == 16) {
                     TI(std::format("{:<8}rax, qword [r10]", "mov"));
                     TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
@@ -697,11 +950,16 @@ private:
             LirReg val = instr.srcs[0];
             LirReg ptr = instr.srcs[1];
             const TypeRef &t = instr.type;
-            int sz = SizeOf(t);
+            int sz = SizeOfRuntime(t);
             int runtimeSz = SizeOfRuntime(t);
 
             // Load pointer
-            TI(std::format("{:<8}r11, qword [rbp - {}]", "mov", slotMap.at(ptr)));
+            auto itPtr = physRegMap.find(ptr);
+            if (itPtr != physRegMap.end()) {
+                TI(std::format("{:<8}r11, {}", "mov", PhysRegName(itPtr->second)));
+            } else {
+                TI(std::format("{:<8}r11, qword [rbp - {}]", "mov", slotMap.at(ptr)));
+            }
 
             if (runtimeSz == 16) {
                 TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(val)));
@@ -715,7 +973,7 @@ private:
             }
             else {
                 int store_sz = (sz > 0) ? sz : 8;
-                TI(std::format("{:<8}{}, {} [rbp - {}]", "mov", GprA(store_sz), PtrSize(store_sz), slotMap.at(val)));
+                LoadA(val, t);
                 TI(std::format("{:<8}{} [r11], {}", "mov", PtrSize(store_sz), GprA(store_sz)));
             }
             break;
@@ -1047,8 +1305,7 @@ private:
 
         case LirOpcode::FieldPtr: {
             LirReg base = instr.srcs[0];
-            // Load base pointer
-            TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(base)));
+            LoadA(base, regTypes.at(base));
 
             // Compute field offset using struct layout
             int fieldOff = ResolveFieldOffset(base, instr.strArg);
@@ -1056,7 +1313,7 @@ private:
                 TI(std::format("{:<8}rax, [rax + {}]", "lea", fieldOff));
             }
             // else pointer is already at the field start
-            TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
             break;
         }
 
@@ -1070,11 +1327,11 @@ private:
                 elemSz = 1;
             }
 
-            TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(base)));
+            LoadA(base, regTypes.at(base));
             LoadB(idx, regTypes.at(idx));
             TI(std::format("{:<8}r11, r10, {}", "imul", elemSz));
             TI("add     rax, r11");
-            TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
             break;
         }
 
@@ -1086,7 +1343,7 @@ private:
 
         case LirOpcode::GlobalAddr:
             TI(std::format("{:<8}rax, [rel {}]", "lea", instr.strArg));
-            TI(std::format("{:<8}qword [rbp - {}], rax", "mov", slotMap.at(instr.dst)));
+            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
             break;
 
         default:
@@ -1170,8 +1427,7 @@ private:
     // Call emission
     void EmitCall(const std::string &callee, const std::vector<LirReg> &args, LirReg dst, const TypeRef &retType,
                   CallingConvention callConv) {
-        const bool win64 =
-            callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
+        const bool win64 = callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
         const auto *intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
         const int maxIntRegs = win64 ? 4 : 6;
         std::vector<LirReg> stackArgs;
@@ -1187,8 +1443,8 @@ private:
                                        PtrSize(sz), slotMap.at(arg)));
                     }
                     else {
-                        int sz = std::max(SizeOf(at), 1);
-                        TI(std::format("{:<8}{}, {} [rbp - {}]", "mov", intRegs[i], PtrSize(sz), slotMap.at(arg)));
+                        LoadA(arg, at);
+                        TI(std::format("{:<8}{}, rax", "mov", intRegs[i]));
                     }
                 }
                 else {
@@ -1213,8 +1469,8 @@ private:
                 }
                 else {
                     if (intIdx < maxIntRegs) {
-                        int sz = std::max(SizeOf(at), 1);
-                        TI(std::format("{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
+                        LoadA(arg, at);
+                        TI(std::format("{:<8}{}, rax", "mov", intRegs[intIdx]));
                         intIdx++;
                     }
                     else {
@@ -1249,8 +1505,7 @@ private:
         LirReg callee = srcs[0];
         std::vector<LirReg> args(srcs.begin() + 1, srcs.end());
         const std::vector<LirReg> stackArgs = EmitCallArgs(args, callConv);
-        const bool win64 =
-            callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
+        const bool win64 = callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
         const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
                                      : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
         if (stackBytes > 0) {
@@ -1272,23 +1527,14 @@ private:
     void StoreStackArgs(const std::vector<LirReg> &stackArgs, bool win64) {
         for (std::size_t i = 0; i < stackArgs.size(); ++i) {
             TypeRef at = regTypes.contains(stackArgs[i]) ? regTypes.at(stackArgs[i]) : TypeRef::MakeInt64();
-            if (const int sz = std::max(SizeOf(at), 1); sz == 8) {
-                TI(std::format("{:<8}rax, {} [rbp - {}]", "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
-            }
-            else if (sz == 4) {
-                TI(std::format("{:<8}eax, {} [rbp - {}]", "mov", PtrSize(sz), slotMap.at(stackArgs[i])));
-            }
-            else {
-                TI(std::format("{:<8}rax, {} [rbp - {}]", "movzx", PtrSize(sz), slotMap.at(stackArgs[i])));
-            }
+            LoadA(stackArgs[i], at);
             const int offset = win64 ? (32 + i * 8) : (i * 8);
             TI(std::format("{:<8}qword [rsp + {}], rax", "mov", offset));
         }
     }
 
     std::vector<LirReg> EmitCallArgs(const std::vector<LirReg> &args, CallingConvention callConv) {
-        const bool win64 =
-            callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
+        const bool win64 = callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
         const auto *intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
         const int maxIntRegs = win64 ? 4 : 6;
         std::vector<LirReg> stackArgs;
@@ -1303,8 +1549,8 @@ private:
                                        PtrSize(sz), slotMap.at(arg)));
                     }
                     else {
-                        const int sz = std::max(SizeOf(at), 1);
-                        TI(std::format("{:<8}{}, {} [rbp - {}]", "mov", intRegs[i], PtrSize(sz), slotMap.at(arg)));
+                        LoadA(arg, at);
+                        TI(std::format("{:<8}{}, rax", "mov", intRegs[i]));
                     }
                 }
                 else {
@@ -1328,8 +1574,8 @@ private:
                 }
                 else {
                     if (intIdx < maxIntRegs) {
-                        const int sz = std::max(SizeOf(at), 1);
-                        TI(std::format("{:<8}{}, {} [rbp - {}]", "mov", intRegs[intIdx], PtrSize(sz), slotMap.at(arg)));
+                        LoadA(arg, at);
+                        TI(std::format("{:<8}{}, rax", "mov", intRegs[intIdx]));
                         intIdx++;
                     }
                     else {
@@ -1351,22 +1597,9 @@ private:
         }
 
         case LirTermKind::Branch: {
-            // Load condition — use the actual size to avoid reading
-            // stack garbage
+            // Load condition
             TypeRef condT = regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeBool();
-            int condSz = SizeOf(condT);
-            if (condSz <= 1) {
-                TI(std::format("{:<8}rax, byte [rbp - {}]", "movzx", slotMap.at(term.cond)));
-            }
-            else if (condSz == 2) {
-                TI(std::format("{:<8}rax, word [rbp - {}]", "movzx", slotMap.at(term.cond)));
-            }
-            else if (condSz == 4) {
-                TI(std::format("{:<8}eax, dword [rbp - {}]", "mov", slotMap.at(term.cond)));
-            }
-            else {
-                TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(term.cond)));
-            }
+            LoadA(term.cond, condT);
             TI("test    rax, rax");
 
             std::string trueLabel = BlockLabel(term.trueTarget, func.blocks[term.trueTarget].label);
@@ -1407,7 +1640,7 @@ private:
 
         case LirTermKind::Switch: {
             TypeRef condT = regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeInt64();
-            TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", slotMap.at(term.cond)));
+            LoadA(term.cond, condT);
             for (const auto &c : term.cases) {
                 TI(std::format("{:<8}rax, {}", "cmp", c.value));
                 std::string lbl = BlockLabel(c.target, func.blocks[c.target].label);
@@ -1429,7 +1662,18 @@ private:
     }
 
     void EmitEpilogue() {
-        TI("leave");
+        if (!usedPhysRegs.empty()) {
+            int32_t remainingFrame = frameSize - static_cast<int32_t>(usedPhysRegs.size() * 8);
+            if (remainingFrame > 0) {
+                TI(std::format("add     rsp, {}", remainingFrame));
+            }
+            for (auto it = usedPhysRegs.rbegin(); it != usedPhysRegs.rend(); ++it) {
+                TI(std::format("pop     {}", PhysRegName(*it)));
+            }
+            TI("pop     rbp");
+        } else {
+            TI("leave");
+        }
         TI("ret");
     }
 };
@@ -1448,8 +1692,7 @@ std::string AsmGen::Generate() {
     if (kDefaultCallIsWin64) {
         out << "; Target:  x86-64  (Windows x64 ABI, NASM syntax)\n";
         out << "; Calling: rcx/rdx/r8/r9 (int args), xmm0-3 (float args)\n";
-    }
-    else {
+    } else {
         out << "; Target:  x86-64  (System V AMD64 ABI, NASM syntax)\n";
         out << "; Calling: rdi/rsi/rdx/rcx/r8/r9 (int args), xmm0-7 (float args)\n";
     }
