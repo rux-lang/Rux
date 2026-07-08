@@ -232,9 +232,10 @@ struct RangeExpr : Expr {
     bool inclusive;
 };
 
-// f(a, b, c)
+// f(a, b, c)  or  f<T1, T2>(a, b, c)
 struct CallExpr : Expr {
     ExprPtr callee;
+    std::vector<TypeExprPtr> typeArgs;
     std::vector<ExprPtr> args;
 };
 

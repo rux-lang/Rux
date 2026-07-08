@@ -2,7 +2,6 @@
 
 #include <format>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -405,6 +404,18 @@ ExprPtr Parser::ParsePostfix() {
                 left = std::move(e);
                 continue;
             }
+        }
+        // Generic function call: expr<T1, T2>(args)
+        if (IsGenericCallAhead()) {
+            auto typeArgs = ParseTypeArgs();
+            auto args = ParseArgList();
+            auto e = std::make_unique<CallExpr>();
+            e->location = loc;
+            e->callee = std::move(left);
+            e->typeArgs = std::move(typeArgs);
+            e->args = std::move(args);
+            left = std::move(e);
+            continue;
         }
         // Function/direct call: expr(args)
         if (Check(TokenKind::LeftParen)) {

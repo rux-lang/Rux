@@ -48,6 +48,7 @@ private:
     [[nodiscard]] const Token &Previous() const noexcept;
     [[nodiscard]] SourceLocation CurrentLocation() const noexcept;
     [[nodiscard]] bool IsGenericStructInitAhead() const noexcept;
+    [[nodiscard]] bool IsGenericCallAhead() const noexcept;
     [[nodiscard]] bool IsTypeArgListAhead() const noexcept;
 
     // Diagnostics

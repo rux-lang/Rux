@@ -16,6 +16,7 @@
 #include <utility>
 
 #include "CodeGen/Layout.h"
+#include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/X86_64/Assembler.h"
 #include "CodeGen/X86_64/Encoder.h"
 #include "Object/Rcu/RcuStringTable.h"
@@ -179,13 +180,6 @@ private:
     // Struct field layouts
     LayoutMap layouts;
     std::unordered_set<std::string> interfaceNames;
-
-    // Per-function state
-    struct PhiMove {
-        LirReg dst;
-        LirReg src;
-        TypeRef type;
-    };
 
     std::unordered_map<LirReg, int32_t> slotMap;
     std::unordered_map<LirReg, int32_t> allocaData;
@@ -798,14 +792,20 @@ private:
             int sz = SizeOfRuntime(t);
             if (sz > 0 && sz < 8) {
                 if (t.IsSigned()) {
-                    if (sz == 4) enc.MovsxdRaxEax();
-                    else if (sz == 2) enc.MovsxRaxAx();
-                    else enc.MovsxRaxAl();
+                    if (sz == 4)
+                        enc.MovsxdRaxEax();
+                    else if (sz == 2)
+                        enc.MovsxRaxAx();
+                    else
+                        enc.MovsxRaxAl();
                 }
                 else {
-                    if (sz == 4) enc.MovEaxEax();
-                    else if (sz == 2) enc.MovzxRaxAx();
-                    else enc.MovzxRaxAl();
+                    if (sz == 4)
+                        enc.MovEaxEax();
+                    else if (sz == 2)
+                        enc.MovzxRaxAx();
+                    else
+                        enc.MovzxRaxAl();
                 }
             }
             return;
@@ -862,14 +862,20 @@ private:
             int sz = SizeOfRuntime(t);
             if (sz > 0 && sz < 8) {
                 if (t.IsSigned()) {
-                    if (sz == 4) enc.MovsxdR10r10d();
-                    else if (sz == 2) enc.MovsxR10r10w();
-                    else enc.MovsxR10r10b();
+                    if (sz == 4)
+                        enc.MovsxdR10r10d();
+                    else if (sz == 2)
+                        enc.MovsxR10r10w();
+                    else
+                        enc.MovsxR10r10b();
                 }
                 else {
-                    if (sz == 4) enc.MovR10dR10d();
-                    else if (sz == 2) enc.MovzxR10r10w();
-                    else enc.MovzxR10r10b();
+                    if (sz == 4)
+                        enc.MovR10dR10d();
+                    else if (sz == 2)
+                        enc.MovzxR10r10w();
+                    else
+                        enc.MovzxR10r10b();
                 }
             }
             return;
@@ -962,7 +968,8 @@ private:
                 auto it = physRegMap.find(reg);
                 if (it != physRegMap.end()) {
                     enc.MovR10PhysReg(it->second);
-                } else {
+                }
+                else {
                     enc.MovR10Load(Disp(reg));
                 }
                 enc.Byte(0x49);
@@ -1087,7 +1094,8 @@ private:
             auto it = physRegMap.find(src);
             if (it != physRegMap.end()) {
                 enc.MovR10PhysReg(it->second);
-            } else {
+            }
+            else {
                 enc.MovR10Load(Disp(src));
             }
         }
@@ -1227,9 +1235,9 @@ private:
 
         std::unordered_map<LirReg, LiveInterval> intervals;
         int instIdx = 0;
-        
+
         std::unordered_map<LirReg, TypeRef> tempRegTypes;
-        
+
         // Params
         for (const auto &p : func.params) {
             tempRegTypes[p.reg] = IsWin64AddressParam(p.type) ? TypeRef::MakePointer(p.type) : p.type;
@@ -1242,16 +1250,18 @@ private:
                 if (instr.dst != LirNoReg) {
                     if (instr.op == LirOpcode::Alloca) {
                         tempRegTypes[instr.dst] = TypeRef::MakePointer(instr.type);
-                    } else {
+                    }
+                    else {
                         tempRegTypes[instr.dst] = instr.type;
                     }
                 }
-                
+
                 for (LirReg src : instr.srcs) {
                     TypeRef srcT = tempRegTypes.contains(src) ? tempRegTypes[src] : TypeRef::MakeInt64();
                     if (intervals.find(src) == intervals.end()) {
                         intervals[src] = {src, instIdx, instIdx, srcT};
-                    } else {
+                    }
+                    else {
                         intervals[src].end = instIdx;
                     }
                 }
@@ -1259,17 +1269,19 @@ private:
                 if (instr.dst != LirNoReg) {
                     if (intervals.find(instr.dst) == intervals.end()) {
                         intervals[instr.dst] = {instr.dst, instIdx, instIdx, tempRegTypes[instr.dst]};
-                    } else {
+                    }
+                    else {
                         intervals[instr.dst].end = instIdx;
                     }
                 }
-                
+
                 if (instr.op == LirOpcode::Phi) {
                     for (const auto &[src, pred] : instr.phiPreds) {
                         TypeRef srcT = tempRegTypes.contains(src) ? tempRegTypes[src] : TypeRef::MakeInt64();
                         if (intervals.find(src) == intervals.end()) {
                             intervals[src] = {src, instIdx, instIdx, srcT};
-                        } else {
+                        }
+                        else {
                             intervals[src].end = instIdx;
                         }
                     }
@@ -1277,22 +1289,25 @@ private:
 
                 instIdx++;
             }
-            
+
             if (func.blocks[bi].term) {
                 const auto &term = *func.blocks[bi].term;
                 if (term.cond != LirNoReg) {
                     TypeRef condT = tempRegTypes.contains(term.cond) ? tempRegTypes[term.cond] : TypeRef::MakeInt64();
                     if (intervals.find(term.cond) == intervals.end()) {
                         intervals[term.cond] = {term.cond, instIdx, instIdx, condT};
-                    } else {
+                    }
+                    else {
                         intervals[term.cond].end = instIdx;
                     }
                 }
                 if (term.retVal && *term.retVal != LirNoReg) {
-                    TypeRef retT = tempRegTypes.contains(*term.retVal) ? tempRegTypes[*term.retVal] : TypeRef::MakeInt64();
+                    TypeRef retT =
+                        tempRegTypes.contains(*term.retVal) ? tempRegTypes[*term.retVal] : TypeRef::MakeInt64();
                     if (intervals.find(*term.retVal) == intervals.end()) {
                         intervals[*term.retVal] = {*term.retVal, instIdx, instIdx, retT};
-                    } else {
+                    }
+                    else {
                         intervals[*term.retVal].end = instIdx;
                     }
                 }
@@ -1311,9 +1326,8 @@ private:
             }
         }
 
-        std::sort(candidates.begin(), candidates.end(), [](const LiveInterval &a, const LiveInterval &b) {
-            return a.start < b.start;
-        });
+        std::sort(candidates.begin(), candidates.end(),
+                  [](const LiveInterval &a, const LiveInterval &b) { return a.start < b.start; });
 
         constexpr int numPhysRegs = 5;
         std::vector<int> regEndTimes(numPhysRegs, -1);
@@ -1341,16 +1355,16 @@ private:
         // 3. Allocate Stack Slots
         nextOff = static_cast<int32_t>(usedPhysRegs.size() * 8);
         hiddenReturnOff = 0;
-        
+
         if (EffectiveConv(func.callConv) == CallingConvention::Win64 && IsWin64ByRefAggregate(func.returnType)) {
             hiddenReturnOff = AllocRegion(8);
         }
-        
+
         for (const auto &p : func.params) {
             regTypes[p.reg] = IsWin64AddressParam(p.type) ? TypeRef::MakePointer(p.type) : p.type;
             AllocSlot(p.reg, std::max(8, SizeOfRuntime(regTypes[p.reg])));
         }
-        
+
         for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
             for (const auto &instr : func.blocks[bi].instrs) {
                 if (instr.op == LirOpcode::Phi) {
@@ -1361,7 +1375,7 @@ private:
                 if (instr.dst == LirNoReg) {
                     continue;
                 }
-                
+
                 if (instr.op == LirOpcode::Alloca) {
                     int dsz;
                     if (!instr.strArg.empty()) {
@@ -1378,7 +1392,7 @@ private:
                     else {
                         dsz = StackValueSize(instr.type);
                     }
-                    
+
                     AllocSlot(instr.dst, 8);
                     allocaData[instr.dst] = AllocRegion(dsz > 0 ? dsz : 8);
                     regTypes[instr.dst] = TypeRef::MakePointer(instr.type);
@@ -1445,12 +1459,108 @@ private:
         if (it2 == it1->second.end()) {
             return;
         }
+
+        std::vector<Rux::PhiMove> rawMoves;
+        rawMoves.reserve(it2->second.size());
         for (const auto &m : it2->second) {
-            if (!slotMap.contains(m.src)) {
-                continue;
+            rawMoves.push_back({m.dst, m.src, m.type});
+        }
+
+        std::vector<PhiMoveStep> steps = ResolvePhiMoves(std::move(rawMoves));
+        int32_t tempDisp = -static_cast<int32_t>(frameSize + 8);
+
+        for (const auto &step : steps) {
+            if (step.kind == PhiMoveStep::Kind::SaveDestination) {
+                int sz = SizeOfRuntime(step.type);
+                if (sz == 16) {
+                    LoadA(step.dst, step.type);
+                    enc.MovRaxStore(tempDisp);
+                    enc.Byte(0x48);
+                    enc.Byte(0x89);
+                    enc.Byte(0x95);
+                    enc.Dword(static_cast<uint32_t>(tempDisp + 8));
+                }
+                else if (IsFloat(step.type)) {
+                    LoadA(step.dst, step.type);
+                    if (step.type.kind == TypeRef::Kind::Float32) {
+                        enc.MovssXmm0Store(tempDisp);
+                    }
+                    else {
+                        enc.MovsdXmm0Store(tempDisp);
+                    }
+                }
+                else {
+                    LoadA(step.dst, step.type);
+                    int ss = (sz > 0) ? sz : 8;
+                    if (ss == 8) {
+                        enc.MovRaxStore(tempDisp);
+                    }
+                    else if (ss == 4) {
+                        enc.MovEaxStore(tempDisp);
+                    }
+                    else if (ss == 2) {
+                        enc.MovAxStore(tempDisp);
+                    }
+                    else {
+                        enc.MovAlStore(tempDisp);
+                    }
+                }
             }
-            LoadA(m.src, m.type);
-            StoreA(m.dst, m.type);
+            else {
+                if (step.sourceIsTemporary) {
+                    int sz = SizeOfRuntime(step.type);
+                    if (sz == 16) {
+                        enc.MovRaxLoad(tempDisp);
+                        enc.MovR10Load(tempDisp + 8);
+                        enc.Byte(0x4C);
+                        enc.Byte(0x89);
+                        enc.Byte(0xD2);
+                        StoreA(step.dst, step.type);
+                    }
+                    else if (IsFloat(step.type)) {
+                        if (step.type.kind == TypeRef::Kind::Float32) {
+                            enc.MovssXmm0Load(tempDisp);
+                        }
+                        else {
+                            enc.MovsdXmm0Load(tempDisp);
+                        }
+                        StoreA(step.dst, step.type);
+                    }
+                    else {
+                        int ss = (sz > 0) ? sz : 8;
+                        if (ss == 8) {
+                            enc.MovRaxLoad(tempDisp);
+                        }
+                        else if (step.type.IsSigned()) {
+                            if (ss == 4) {
+                                enc.MovsxdRaxDword(tempDisp);
+                            }
+                            else if (ss == 2) {
+                                enc.MovsxRaxWord(tempDisp);
+                            }
+                            else {
+                                enc.MovsxRaxByte(tempDisp);
+                            }
+                        }
+                        else {
+                            if (ss == 4) {
+                                enc.MovEaxLoad(tempDisp);
+                            }
+                            else if (ss == 2) {
+                                enc.MovzxRaxWord(tempDisp);
+                            }
+                            else {
+                                enc.MovzxRaxByte(tempDisp);
+                            }
+                        }
+                        StoreA(step.dst, step.type);
+                    }
+                }
+                else {
+                    LoadA(step.src, step.type);
+                    StoreA(step.dst, step.type);
+                }
+            }
         }
     }
 
@@ -1519,7 +1629,8 @@ private:
                     if (it != physRegMap.end()) {
                         LoadA(arg, at);
                         enc.MovArgWin64Rax(idx);
-                    } else {
+                    }
+                    else {
                         enc.MovArgLoadWin64(idx, d);
                     }
                 }
@@ -1632,7 +1743,8 @@ private:
                 auto it = physRegMap.find(ptr);
                 if (it != physRegMap.end()) {
                     enc.MovR10PhysReg(it->second);
-                } else {
+                }
+                else {
                     enc.MovR10Load(Disp(ptr));
                 }
                 if (IsAggregate(t) && runtimeSz > 8) {
@@ -1717,7 +1829,8 @@ private:
             auto itPtr = physRegMap.find(ptr);
             if (itPtr != physRegMap.end()) {
                 enc.MovR11PhysReg(itPtr->second);
-            } else {
+            }
+            else {
                 enc.MovR11Load(Disp(ptr));
             }
             if (IsAggregate(t) && runtimeSz > 8) {
@@ -1725,7 +1838,8 @@ private:
                     auto it = physRegMap.find(val);
                     if (it != physRegMap.end()) {
                         enc.MovR10PhysReg(it->second);
-                    } else {
+                    }
+                    else {
                         enc.MovR10Load(Disp(val));
                     }
                 }
@@ -1941,7 +2055,8 @@ private:
             auto it = physRegMap.find(instr.srcs[1]);
             if (it != physRegMap.end()) {
                 enc.MovR11PhysReg(it->second);
-            } else {
+            }
+            else {
                 enc.MovR11Load(Disp(instr.srcs[1]));
             }
             enc.MovRcxR11();
@@ -2253,7 +2368,8 @@ private:
             auto it = physRegMap.find(callee);
             if (it != physRegMap.end()) {
                 enc.MovR10PhysReg(it->second);
-            } else {
+            }
+            else {
                 enc.MovR10Load(Disp(callee));
             }
             enc.CallR10();
@@ -2379,7 +2495,8 @@ private:
                     enc.PopReg(*it);
                 }
                 enc.PopRbp();
-            } else {
+            }
+            else {
                 enc.Leave();
             }
             enc.Ret();
@@ -2595,14 +2712,20 @@ private:
                     enc.MovRaxLoad(d);
                 }
                 else if (p.type.IsSigned()) {
-                    if (sz == 4) enc.MovsxdRaxDword(d);
-                    else if (sz == 2) enc.MovsxRaxWord(d);
-                    else enc.MovsxRaxByte(d);
+                    if (sz == 4)
+                        enc.MovsxdRaxDword(d);
+                    else if (sz == 2)
+                        enc.MovsxRaxWord(d);
+                    else
+                        enc.MovsxRaxByte(d);
                 }
                 else {
-                    if (sz == 4) enc.MovEaxLoad(d);
-                    else if (sz == 2) enc.MovzxRaxWord(d);
-                    else enc.MovzxRaxByte(d);
+                    if (sz == 4)
+                        enc.MovEaxLoad(d);
+                    else if (sz == 2)
+                        enc.MovzxRaxWord(d);
+                    else
+                        enc.MovzxRaxByte(d);
                 }
                 enc.MovPhysRegRax(it->second);
             }

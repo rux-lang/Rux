@@ -10,11 +10,11 @@
 #include <cstdint>
 #include <ctime>
 #include <format>
-#include <fstream>
 #include <limits>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "Target/Layout.h"
 #include "Target/Platform.h"
@@ -197,6 +197,9 @@ private:
     bool inImpl = false;
     TypeRef currentSelfType = TypeRef::MakeUnknown();
     std::vector<std::string> currentTypeParams;
+    std::unordered_map<std::string, TypeRef> currentSubstitutions;
+    std::vector<HirFunc> monomorphizedFuncs;
+    std::unordered_set<std::string> generatedMonomorphizedFuncNames;
     std::unordered_map<std::string, const StructDecl *> structDecls;
     std::unordered_map<std::string, const EnumDecl *> enumDecls;
     std::unordered_map<std::string, std::vector<const FuncDecl *>> functionsByName;
@@ -279,6 +282,27 @@ private:
         TypeRef ret = returnType ? ResolveType(*returnType->get()) : TypeRef::MakeOpaque();
 
         currentTypeParams = savedTypeParams;
+        return TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
+    }
+
+    TypeRef MakeFuncTypeWithSubstitution(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
+                                         const std::unordered_map<std::string, TypeRef> &substitutions,
+                                         const std::vector<std::string> &typeParams = {}) {
+        auto savedTypeParams = currentTypeParams;
+        currentTypeParams = typeParams;
+        auto savedSubstitutions = currentSubstitutions;
+        currentSubstitutions = substitutions;
+
+        std::vector<TypeRef> paramTypes;
+        for (const auto &param : params) {
+            if (!param.isVariadic) {
+                paramTypes.push_back(ResolveType(*param.type));
+            }
+        }
+        TypeRef ret = returnType ? ResolveType(*returnType->get()) : TypeRef::MakeOpaque();
+
+        currentTypeParams = savedTypeParams;
+        currentSubstitutions = savedSubstitutions;
         return TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
     }
 
@@ -1035,6 +1059,9 @@ private:
     TypeRef ResolveType(const TypeExpr &expr) {
         if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
             if (t->typeArgs.empty()) {
+                if (auto it = currentSubstitutions.find(t->name); it != currentSubstitutions.end()) {
+                    return it->second;
+                }
                 for (const auto &tp : currentTypeParams) {
                     if (tp == t->name) {
                         return TypeRef::MakeTypeParam(t->name);
@@ -1250,7 +1277,8 @@ private:
         return out;
     }
 
-    const FuncDecl *LookupFunction(const std::string &name, const std::vector<TypeRef> &argTypes) {
+    const FuncDecl *LookupFunction(const std::string &name, const std::vector<TypeRef> &argTypes,
+                                   const std::vector<TypeExprPtr> &typeArgs = {}) {
         const auto it = functionsByName.find(name);
         if (it == functionsByName.end() || it->second.empty()) {
             return nullptr;
@@ -1260,7 +1288,12 @@ private:
             // assignability to prevent bogus calls from silently bypassing
             // the type-checker.
             const auto *decl = it->second[0];
-            TypeRef ft = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+            std::unordered_map<std::string, TypeRef> substitutions;
+            const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
+            for (std::size_t i = 0; i < count; ++i) {
+                substitutions.emplace(decl->typeParams[i], ResolveType(*typeArgs[i]));
+            }
+            TypeRef ft = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
             if (ft.kind != TypeRef::Kind::Func || ft.inner.empty()) {
                 return decl;
             }
@@ -1290,7 +1323,13 @@ private:
         for (const bool allowVariadic : {false, true}) {
             for (const bool exactOnly : {true, false}) {
                 for (const auto *decl : it->second) {
-                    TypeRef ft = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+                    std::unordered_map<std::string, TypeRef> substitutions;
+                    const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
+                    for (std::size_t i = 0; i < count; ++i) {
+                        substitutions.emplace(decl->typeParams[i], ResolveType(*typeArgs[i]));
+                    }
+                    TypeRef ft =
+                        MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
                     if (ft.kind != TypeRef::Kind::Func || ft.inner.empty()) {
                         continue;
                     }
@@ -1999,6 +2038,13 @@ private:
         for (const auto &decl : mod.items) {
             LowerTopLevelDecl(*decl, hmod);
         }
+        std::size_t processed = 0;
+        while (processed < monomorphizedFuncs.size()) {
+            hmod.funcs.push_back(std::move(monomorphizedFuncs[processed]));
+            ++processed;
+        }
+        monomorphizedFuncs.clear();
+        generatedMonomorphizedFuncNames.clear();
         return hmod;
     }
 
@@ -2054,21 +2100,27 @@ private:
 
     // Declaration lowering
 
-    HirFunc LowerFunc(const FuncDecl &d, bool isMethod = false) {
+    HirFunc LowerFunc(const FuncDecl &d, bool isMethod = false,
+                      const std::unordered_map<std::string, TypeRef> &substitutions = {},
+                      const std::string &overrideName = "") {
         auto savedTypeParams = currentTypeParams;
-        currentTypeParams = d.typeParams;
+        currentTypeParams = substitutions.empty() ? d.typeParams : std::vector<std::string>{};
+        auto savedSubstitutions = currentSubstitutions;
+        currentSubstitutions = substitutions;
         TypeRef retType = d.returnType ? ResolveType(**d.returnType) : TypeRef::MakeOpaque();
         auto savedRet = currentReturnType;
         currentReturnType = retType;
         auto savedFuncName = currentFunctionName;
-        currentFunctionName = d.name;
+        currentFunctionName = overrideName.empty() ? d.name : overrideName;
         PushScope();
-        for (const auto &tp : d.typeParams) {
-            HirSymbol sym;
-            sym.kind = HirSymbol::Kind::Type;
-            sym.name = tp;
-            sym.type = TypeRef::MakeTypeParam(tp);
-            Define(sym);
+        if (substitutions.empty()) {
+            for (const auto &tp : d.typeParams) {
+                HirSymbol sym;
+                sym.kind = HirSymbol::Kind::Type;
+                sym.name = tp;
+                sym.type = TypeRef::MakeTypeParam(tp);
+                Define(sym);
+            }
         }
         if (isMethod) {
             HirSymbol self;
@@ -2093,21 +2145,23 @@ private:
         if (d.body) {
             body = LowerBlock(*d.body);
         }
-        PopScope();
-        currentReturnType = savedRet;
-        currentTypeParams = savedTypeParams;
-        currentFunctionName = savedFuncName;
         HirFunc hf;
-        hf.name = d.name;
+        hf.name = overrideName.empty() ? d.name : overrideName;
         hf.isPublic = d.isPublic;
         hf.isAsm = d.isAsm;
         hf.asmBody = d.asmBody;
         hf.callConv = d.callConv;
-        hf.typeParams = d.typeParams;
+        hf.typeParams = substitutions.empty() ? d.typeParams : std::vector<std::string>{};
         hf.params = LowerParams(d.params);
         hf.returnType = retType;
         hf.body = std::move(body);
         hf.location = d.location;
+
+        PopScope();
+        currentReturnType = savedRet;
+        currentTypeParams = savedTypeParams;
+        currentSubstitutions = savedSubstitutions;
+        currentFunctionName = savedFuncName;
         return hf;
     }
 
@@ -2879,8 +2933,14 @@ private:
                 const std::string &funcName = path->segments.back();
                 HirSymbol *sym = currentScope->Lookup(funcName);
                 if (sym && sym->kind == HirSymbol::Kind::Func && !sym->funcOverloads.empty()) {
-                    if (const FuncDecl *decl = LookupFunction(funcName, argTypes)) {
-                        TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+                    if (const FuncDecl *decl = LookupFunction(funcName, argTypes, e->typeArgs)) {
+                        std::unordered_map<std::string, TypeRef> substitutions;
+                        const std::size_t count = std::min(decl->typeParams.size(), e->typeArgs.size());
+                        for (std::size_t i = 0; i < count; ++i) {
+                            substitutions.emplace(decl->typeParams[i], ResolveType(*e->typeArgs[i]));
+                        }
+                        TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
+                                                                        decl->typeParams);
                         if (funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()) {
                             const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
                             const std::size_t fixedCount = decl->params.size() - (isVariadic ? 1 : 0);
@@ -2917,7 +2977,20 @@ private:
 
                             auto callee = std::make_unique<HirVarExpr>();
                             callee->location = path->location;
-                            callee->name = FunctionCalleeName(funcName, *decl);
+                            if (!decl->typeParams.empty()) {
+                                std::string specializedName = funcName;
+                                for (std::size_t i = 0; i < e->typeArgs.size(); ++i) {
+                                    specializedName += "_" + MangleTypeName(ResolveType(*e->typeArgs[i]));
+                                }
+                                if (generatedMonomorphizedFuncNames.insert(specializedName).second) {
+                                    monomorphizedFuncs.push_back(
+                                        LowerFunc(*decl, false, substitutions, specializedName));
+                                }
+                                callee->name = specializedName;
+                            }
+                            else {
+                                callee->name = FunctionCalleeName(funcName, *decl);
+                            }
                             callee->type = funcType;
 
                             auto he = std::make_unique<HirCallExpr>();
@@ -2949,8 +3022,14 @@ private:
                 }
                 HirSymbol *sym = currentScope->Lookup(ident->name);
                 if (sym && sym->kind == HirSymbol::Kind::Func && !sym->funcOverloads.empty()) {
-                    if (const FuncDecl *decl = LookupFunction(ident->name, argTypes)) {
-                        TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+                    if (const FuncDecl *decl = LookupFunction(ident->name, argTypes, e->typeArgs)) {
+                        std::unordered_map<std::string, TypeRef> substitutions;
+                        const std::size_t count = std::min(decl->typeParams.size(), e->typeArgs.size());
+                        for (std::size_t i = 0; i < count; ++i) {
+                            substitutions.emplace(decl->typeParams[i], ResolveType(*e->typeArgs[i]));
+                        }
+                        TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
+                                                                        decl->typeParams);
                         if (funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()) {
                             const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
                             const std::size_t fixedCount = decl->params.size() - (isVariadic ? 1 : 0);
@@ -2991,7 +3070,20 @@ private:
 
                             auto callee = std::make_unique<HirVarExpr>();
                             callee->location = ident->location;
-                            callee->name = FunctionCalleeName(ident->name, *decl);
+                            if (!decl->typeParams.empty()) {
+                                std::string specializedName = ident->name;
+                                for (std::size_t i = 0; i < e->typeArgs.size(); ++i) {
+                                    specializedName += "_" + MangleTypeName(ResolveType(*e->typeArgs[i]));
+                                }
+                                if (generatedMonomorphizedFuncNames.insert(specializedName).second) {
+                                    monomorphizedFuncs.push_back(
+                                        LowerFunc(*decl, false, substitutions, specializedName));
+                                }
+                                callee->name = specializedName;
+                            }
+                            else {
+                                callee->name = FunctionCalleeName(ident->name, *decl);
+                            }
                             callee->type = funcType;
 
                             auto he = std::make_unique<HirCallExpr>();
