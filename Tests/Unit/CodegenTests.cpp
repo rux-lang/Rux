@@ -1,9 +1,12 @@
+#include "Ir/Hir/Hir.h"
+
 #include <doctest.h>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/X86_64/AssemblyPrinter.h"
-#include "Ir/Hir/Hir.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
@@ -35,6 +38,84 @@ static std::string CompileToAsm(const std::string &source) {
 
     AssemblyPrinter printer(std::move(lirPackage));
     return printer.Generate();
+}
+
+TEST_CASE("phi parallel-copy resolver preserves cycles and duplicate sources") {
+    const TypeRef intType = TypeRef::MakeInt64();
+    const std::vector<PhiMove> moves = {
+        {1, 2, intType},
+        {2, 1, intType},
+        {3, 1, intType},
+    };
+    const auto steps = ResolvePhiMoves(moves);
+
+    std::unordered_map<LirReg, int64_t> values = {{1, 10}, {2, 20}, {3, 30}};
+    int64_t temporary = 0;
+    for (const auto &step : steps) {
+        if (step.kind == PhiMoveStep::Kind::SaveDestination) {
+            temporary = values.at(step.dst);
+        }
+        else {
+            values[step.dst] = step.sourceIsTemporary ? temporary : values.at(step.src);
+        }
+    }
+
+    CHECK(values.at(1) == 20);
+    CHECK(values.at(2) == 10);
+    CHECK(values.at(3) == 10);
+}
+
+TEST_CASE("assembly phi lowering breaks a swap cycle with a stack temporary") {
+    const TypeRef intType = TypeRef::MakeInt64();
+
+    LirBlock entry;
+    entry.label = "entry";
+    LirInstr first;
+    first.dst = 1;
+    first.type = intType;
+    first.op = LirOpcode::Const;
+    first.strArg = "1";
+    LirInstr second = first;
+    second.dst = 2;
+    second.strArg = "2";
+    entry.instrs = {std::move(first), std::move(second)};
+    entry.term.emplace();
+    entry.term->kind = LirTermKind::Jump;
+    entry.term->trueTarget = 1;
+
+    LirBlock loop;
+    loop.label = "loop";
+    LirInstr phiA;
+    phiA.dst = 3;
+    phiA.type = intType;
+    phiA.op = LirOpcode::Phi;
+    phiA.phiPreds = {{1, 0}, {4, 1}};
+    LirInstr phiB = phiA;
+    phiB.dst = 4;
+    phiB.phiPreds = {{2, 0}, {3, 1}};
+    loop.instrs = {std::move(phiA), std::move(phiB)};
+    loop.term.emplace();
+    loop.term->kind = LirTermKind::Jump;
+    loop.term->trueTarget = 1;
+
+    LirFunc function;
+    function.name = "PhiSwap";
+    function.returnType = intType;
+    function.blocks = {std::move(entry), std::move(loop)};
+    LirModule module;
+    module.name = "test";
+    module.funcs.push_back(std::move(function));
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+
+    const std::string output = AssemblyPrinter(std::move(package)).Generate();
+    const std::string expected = "mov     rax, qword [rbp - 24]\n"
+                                 "    mov     qword [rbp - 40], rax\n"
+                                 "    mov     rax, qword [rbp - 32]\n"
+                                 "    mov     qword [rbp - 24], rax\n"
+                                 "    mov     rax, qword [rbp - 40]\n"
+                                 "    mov     qword [rbp - 32], rax";
+    CHECK(output.find(expected) != std::string::npos);
 }
 
 TEST_CASE("codegen generates correct calling convention for extern functions") {

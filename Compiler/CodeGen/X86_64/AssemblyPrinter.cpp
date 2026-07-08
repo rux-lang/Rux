@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "CodeGen/Layout.h"
+#include "CodeGen/PhiMoveResolver.h"
 #include "Target/Platform.h"
 
 namespace Rux {
@@ -108,18 +109,13 @@ private:
     std::unordered_set<std::string> interfaceNames;
 
     // Per-function state
-    struct PhiMove {
-        LirReg dst;
-        LirReg src;
-        TypeRef type;
-    };
-
     std::string curFunc;
     std::unordered_map<LirReg, int32_t> slotMap;    // vreg → rbp offset (positive, address = rbp - offset)
     std::unordered_map<LirReg, int32_t> allocaData; // alloca vreg → data region rbp offset
     std::unordered_map<LirReg, TypeRef> regTypes;   // vreg → value type (pointer for alloca)
     int32_t nextOff = 0;
     int32_t frameSize = 0;
+    int32_t phiTempOff = 0;
 
     // phiMoves_[fromBlock][toBlock] = list of (dst, src, type)
     std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::vector<PhiMove>>> phiMoves;
@@ -291,10 +287,9 @@ private:
     // Integer loads promote to 64-bit (sign- or zero-extend as needed).
     // Float loads use xmm0 (primary) or xmm1 (secondary).
     // Load vreg into rax (integer) or xmm0 (float)
-    void LoadA(LirReg reg, const TypeRef &t) {
+    void LoadAFromOffset(int off, const TypeRef &t) {
         int sz = SizeOf(t);
         int runtimeSz = SizeOfRuntime(t);
-        int off = slotMap.at(reg);
         if (runtimeSz == 16) {
             TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", off));
             TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", off - 8));
@@ -316,6 +311,10 @@ private:
                 TI(std::format("{:<8}rax, {} [rbp - {}]", "movzx", PtrSize(sz), off));
             }
         }
+    }
+
+    void LoadA(LirReg reg, const TypeRef &t) {
+        LoadAFromOffset(slotMap.at(reg), t);
     }
 
     // Load vreg into r10 (integer) or xmm1 (float)
@@ -342,10 +341,9 @@ private:
     }
 
     // Store rax (integer) or xmm0 (float) into dst's slot
-    void StoreA(LirReg dst, const TypeRef &t) {
+    void StoreAToOffset(int off, const TypeRef &t) {
         int sz = SizeOf(t);
         int runtimeSz = SizeOfRuntime(t);
-        int off = slotMap.at(dst);
         if (runtimeSz == 16) {
             TI(std::format("{:<8}qword [rbp - {}], rax", "mov", off));
             TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", off - 8));
@@ -357,6 +355,10 @@ private:
             int store_sz = (sz > 0) ? sz : 8;
             TI(std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(store_sz), off, GprA(store_sz)));
         }
+    }
+
+    void StoreA(LirReg dst, const TypeRef &t) {
+        StoreAToOffset(slotMap.at(dst), t);
     }
 
     void LoadReturnValue(LirReg reg, const TypeRef &t) {
@@ -387,12 +389,26 @@ private:
         if (it2 == it1->second.end()) {
             return;
         }
-        for (const auto &m : it2->second) {
-            if (!slotMap.contains(m.src)) {
-                continue;
+        std::vector<PhiMove> moves;
+        for (const auto &move : it2->second) {
+            if (slotMap.contains(move.src)) {
+                moves.push_back(move);
             }
-            LoadA(m.src, m.type);
-            StoreA(m.dst, m.type);
+        }
+        for (const auto &step : ResolvePhiMoves(std::move(moves))) {
+            if (step.kind == PhiMoveStep::Kind::SaveDestination) {
+                LoadA(step.dst, step.type);
+                StoreAToOffset(phiTempOff, step.type);
+            }
+            else {
+                if (step.sourceIsTemporary) {
+                    LoadAFromOffset(phiTempOff, step.type);
+                }
+                else {
+                    LoadA(step.src, step.type);
+                }
+                StoreA(step.dst, step.type);
+            }
         }
     }
 
@@ -400,6 +416,7 @@ private:
     void PrepassFunc(const LirFunc &func) {
         nextOff = 0;
         frameSize = 0;
+        phiTempOff = 0;
         slotMap.clear();
         allocaData.clear();
         regTypes.clear();
@@ -446,6 +463,20 @@ private:
                     regTypes[instr.dst] = instr.type;
                 }
             }
+        }
+
+        int phiTempSize = 0;
+        for (const auto &[from, edges] : phiMoves) {
+            (void)from;
+            for (const auto &[to, moves] : edges) {
+                (void)to;
+                for (const auto &move : moves) {
+                    phiTempSize = std::max(phiTempSize, StackValueSize(move.type));
+                }
+            }
+        }
+        if (phiTempSize > 0) {
+            phiTempOff = AllocRegion(phiTempSize);
         }
 
         frameSize = AlignUp(nextOff, 16);

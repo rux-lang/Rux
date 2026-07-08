@@ -16,6 +16,7 @@
 #include <utility>
 
 #include "CodeGen/Layout.h"
+#include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/X86_64/Assembler.h"
 #include "CodeGen/X86_64/Encoder.h"
 #include "Object/Rcu/RcuStringTable.h"
@@ -176,18 +177,13 @@ private:
     std::unordered_set<std::string> interfaceNames;
 
     // Per-function state
-    struct PhiMove {
-        LirReg dst;
-        LirReg src;
-        TypeRef type;
-    };
-
     std::unordered_map<LirReg, int32_t> slotMap;
     std::unordered_map<LirReg, int32_t> allocaData;
     std::unordered_map<LirReg, TypeRef> regTypes;
     std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::vector<PhiMove>>> phiMoves;
     int32_t nextOff = 0;
     int32_t frameSize = 0;
+    int32_t phiTempOff = 0;
     int32_t hiddenReturnOff = 0;
 
     std::vector<uint32_t> blockOffsets;
@@ -585,10 +581,9 @@ private:
     }
 
     // Load A (rax / xmm0) and B (r10 / xmm1)
-    void LoadA(const LirReg reg, const TypeRef &t) const {
+    void LoadAFromDisp(const int32_t d, const TypeRef &t) const {
         const int sz = SizeOf(t);
         const int runtimeSz = SizeOfRuntime(t);
-        const int32_t d = Disp(reg);
         if (runtimeSz == 16) {
             enc.MovRaxLoad(d);
             enc.MovR10Load(d + 8);
@@ -631,6 +626,10 @@ private:
         }
     }
 
+    void LoadA(const LirReg reg, const TypeRef &t) const {
+        LoadAFromDisp(Disp(reg), t);
+    }
+
     void LoadB(LirReg reg, const TypeRef &t) const {
         int sz = SizeOf(t);
         int32_t d = Disp(reg);
@@ -669,10 +668,9 @@ private:
         }
     }
 
-    void StoreA(LirReg dst, const TypeRef &t) const {
+    void StoreAToDisp(const int32_t d, const TypeRef &t) const {
         int sz = SizeOf(t);
         int runtimeSz = SizeOfRuntime(t);
-        int32_t d = Disp(dst);
         if (runtimeSz == 16) {
             enc.MovRaxStore(d);
             enc.Byte(0x48);
@@ -703,6 +701,10 @@ private:
                 enc.MovAlStore(d);
             }
         }
+    }
+
+    void StoreA(LirReg dst, const TypeRef &t) const {
+        StoreAToDisp(Disp(dst), t);
     }
 
     void LoadReturnValue(const LirReg reg, const TypeRef &t) const {
@@ -951,6 +953,7 @@ private:
     void PrepassFunc(const LirFunc &func) {
         nextOff = 0;
         frameSize = 0;
+        phiTempOff = 0;
         hiddenReturnOff = 0;
         slotMap.clear();
         allocaData.clear();
@@ -1000,6 +1003,20 @@ private:
                     regTypes[instr.dst] = instr.type;
                 }
             }
+        }
+
+        int phiTempSize = 0;
+        for (const auto &[from, edges] : phiMoves) {
+            (void)from;
+            for (const auto &[to, moves] : edges) {
+                (void)to;
+                for (const auto &move : moves) {
+                    phiTempSize = std::max(phiTempSize, StackValueSize(move.type));
+                }
+            }
+        }
+        if (phiTempSize > 0) {
+            phiTempOff = AllocRegion(phiTempSize);
         }
 
         frameSize = AlignUp(nextOff, 16);
@@ -1057,12 +1074,26 @@ private:
         if (it2 == it1->second.end()) {
             return;
         }
-        for (const auto &m : it2->second) {
-            if (!slotMap.contains(m.src)) {
-                continue;
+        std::vector<PhiMove> moves;
+        for (const auto &move : it2->second) {
+            if (slotMap.contains(move.src)) {
+                moves.push_back(move);
             }
-            LoadA(m.src, m.type);
-            StoreA(m.dst, m.type);
+        }
+        for (const auto &step : ResolvePhiMoves(std::move(moves))) {
+            if (step.kind == PhiMoveStep::Kind::SaveDestination) {
+                LoadA(step.dst, step.type);
+                StoreAToDisp(-phiTempOff, step.type);
+            }
+            else {
+                if (step.sourceIsTemporary) {
+                    LoadAFromDisp(-phiTempOff, step.type);
+                }
+                else {
+                    LoadA(step.src, step.type);
+                }
+                StoreA(step.dst, step.type);
+            }
         }
     }
 
