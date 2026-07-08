@@ -43,19 +43,18 @@ int SizeOf(const TypeRef &t) {
         int elemSize = SizeOf(elemType);
         return AlignUp(2 * elemSize + 1, elemSize > 0 ? elemSize : 1);
     }
-    case TypeRef::Kind::Named:
-        {
-            const auto baseName = BaseTypeName(t.name);
-            if (baseName == "Slice" || baseName.starts_with("Slice<")) {
-                return 16;
-            }
-            if (baseName == "String" || baseName == "StringArray" || baseName == "SystemTime") {
-                return 16;
-            }
-            if (baseName == "StringBuilder") {
-                return 24;
-            }
+    case TypeRef::Kind::Named: {
+        const auto baseName = BaseTypeName(t.name);
+        if (baseName == "Slice" || baseName.starts_with("Slice<")) {
+            return 16;
         }
+        if (baseName == "String" || baseName == "StringArray" || baseName == "SystemTime") {
+            return 16;
+        }
+        if (baseName == "StringBuilder") {
+            return 24;
+        }
+    }
         if (!t.inner.empty()) {
             return SizeOf(t.inner[0]);
         }
