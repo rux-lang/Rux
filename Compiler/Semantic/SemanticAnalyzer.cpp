@@ -249,6 +249,31 @@ private:
         return funcType;
     }
 
+    TypeRef MakeFuncTypeWithSubstitution(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
+                                         const std::unordered_map<std::string, TypeRef> &substitutions,
+                                         const std::vector<std::string> &typeParams = {}, bool cVariadic = false) {
+        auto savedTypeParams = currentTypeParams;
+        currentTypeParams = typeParams;
+
+        std::vector<TypeRef> paramTypes;
+        bool variadic = cVariadic;
+        for (const auto &param : params) {
+            if (!param.isVariadic) {
+                paramTypes.push_back(ResolveTypeWithSubstitution(*param.type, substitutions));
+            }
+            else {
+                variadic = true;
+            }
+        }
+        TypeRef ret = returnType ? ResolveTypeWithSubstitution(**returnType, substitutions) : TypeRef::MakeOpaque();
+
+        currentTypeParams = savedTypeParams;
+        TypeRef funcType = TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
+        funcType.isVariadic = variadic;
+        return funcType;
+    }
+
+
     // Builtins
     void RegisterBuiltins() {
         auto add = [&](const char *name, TypeRef t) {
@@ -1747,7 +1772,8 @@ private:
         return params;
     }
 
-    const FuncDecl *LookupFunctionOverload(const Symbol &sym, const std::vector<TypeRef> &argTypes) {
+    const FuncDecl *LookupFunctionOverload(const Symbol &sym, const std::vector<TypeRef> &argTypes,
+                                           const std::vector<TypeExprPtr> &typeArgs = {}) {
         if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) {
             return nullptr;
         }
@@ -1756,7 +1782,12 @@ private:
             // that Bar(wrongType) against a lone Bar(int32) returns null
             // and lets the caller emit a proper diagnostic.
             const auto *decl = sym.funcOverloads[0];
-            TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+            std::unordered_map<std::string, TypeRef> substitutions;
+            const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
+            for (std::size_t i = 0; i < count; ++i) {
+                substitutions.emplace(decl->typeParams[i], ResolveType(*typeArgs[i]));
+            }
+            TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
             if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) {
                 return decl;
             }
@@ -1787,7 +1818,12 @@ private:
         for (const bool allowVariadic : {false, true}) {
             for (const bool exactOnly : {true, false}) {
                 for (const auto *decl : sym.funcOverloads) {
-                    TypeRef funcType = MakeFuncType(decl->params, decl->returnType, decl->typeParams);
+                    std::unordered_map<std::string, TypeRef> substitutions;
+                    const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
+                    for (std::size_t i = 0; i < count; ++i) {
+                        substitutions.emplace(decl->typeParams[i], ResolveType(*typeArgs[i]));
+                    }
+                    TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
                     if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) {
                         continue;
                     }
@@ -3192,7 +3228,7 @@ private:
 
                 if (Symbol *sym = currentScope->Lookup(ident->name);
                     sym && sym->kind == Symbol::Kind::Func && !sym->funcOverloads.empty()) {
-                    const FuncDecl *decl = LookupFunctionOverload(*sym, argTypes);
+                    const FuncDecl *decl = LookupFunctionOverload(*sym, argTypes, e->typeArgs);
                     if (!decl) {
                         std::string argList;
                         for (std::size_t i = 0; i < argTypes.size(); ++i) {
@@ -3206,13 +3242,22 @@ private:
                                                            ident->name, argList));
                         return TypeRef::MakeUnknown();
                     }
+                    if (e->typeArgs.size() != decl->typeParams.size()) {
+                        EmitError(e->location, std::format("function '{}' expects {} type argument(s), got {}",
+                                                          ident->name, decl->typeParams.size(), e->typeArgs.size()));
+                    }
                     if (!decl->warnMessage.empty()) {
                         EmitWarning(e->location, decl->warnMessage);
                     }
                     if (!decl->errorMessage.empty()) {
                         EmitError(e->location, decl->errorMessage);
                     }
-                    TypeRef funcType = FunctionType(*decl);
+                    std::unordered_map<std::string, TypeRef> substitutions;
+                    const std::size_t count = std::min(decl->typeParams.size(), e->typeArgs.size());
+                    for (std::size_t i = 0; i < count; ++i) {
+                        substitutions.emplace(decl->typeParams[i], ResolveType(*e->typeArgs[i]));
+                    }
+                    TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
                     const std::size_t paramCount =
                         funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty() ? funcType.inner.size() - 1 : 0;
                     const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;

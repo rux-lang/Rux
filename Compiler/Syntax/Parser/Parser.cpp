@@ -137,6 +137,35 @@ bool Parser::IsGenericStructInitAhead() const noexcept {
     }
 }
 
+bool Parser::IsGenericCallAhead() const noexcept {
+    if (!Check(TokenKind::Less)) {
+        return false;
+    }
+
+    int angleDepth = 0;
+    for (std::size_t ahead = 0;; ++ahead) {
+        const TokenKind kind = Peek(ahead).kind;
+        if (kind == TokenKind::EndOfFile || kind == TokenKind::LeftBrace || kind == TokenKind::Semicolon) {
+            return false;
+        }
+
+        if (kind == TokenKind::Less) {
+            ++angleDepth;
+            continue;
+        }
+
+        if (kind == TokenKind::Greater) {
+            --angleDepth;
+            if (angleDepth == 0) {
+                return Peek(ahead + 1).kind == TokenKind::LeftParen;
+            }
+            if (angleDepth < 0) {
+                return false;
+            }
+        }
+    }
+}
+
 bool Parser::IsTypeArgListAhead() const noexcept {
     if (!Check(TokenKind::Less)) {
         return false;

@@ -848,6 +848,17 @@ private:
                 PrintExpr(*call->callee);
             }
             --indent;
+            if (!call->typeArgs.empty()) {
+                Pad();
+                out << "TypeArgs [";
+                for (std::size_t i = 0; i < call->typeArgs.size(); ++i) {
+                    if (i) {
+                        out << ", ";
+                    }
+                    out << TypeStr(call->typeArgs[i].get());
+                }
+                out << "]\n";
+            }
             if (!call->args.empty()) {
                 Pad();
                 out << "Args [" << call->args.size() << "]\n";
