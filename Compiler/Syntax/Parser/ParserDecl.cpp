@@ -818,13 +818,23 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
 
     Expect(TokenKind::LeftBrace, "expected '{'");
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+        ParsedAttrs attrs = ParseAttrs();
         bool pub = Match(TokenKind::PubKeyword);
         if (!Check(TokenKind::FuncKeyword)) {
             EmitError(CurrentLocation(), "expected 'func' in extend body");
             Recover();
             continue;
         }
-        if (auto method = ParseFuncDecl(pub, false)) {
+        if (auto method = ParseFuncDecl(pub, false, attrs.callConv)) {
+            if (method->targetOs.empty()) {
+                method->targetOs = attrs.targetOs;
+            }
+            if (method->warnMessage.empty()) {
+                method->warnMessage = attrs.warnMessage;
+            }
+            if (method->errorMessage.empty()) {
+                method->errorMessage = attrs.errorMessage;
+            }
             decl->methods.push_back(std::move(method));
         }
     }

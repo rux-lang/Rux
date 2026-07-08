@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Dependency compilation** — `rux check` and `rux build` now share the same dependency-loading pipeline, so installed and path-based dependencies are available during semantic analysis and unresolved dependencies stop before code generation.
 - **Zero-operand assembly parsing** — instructions such as `syscall` followed by `ret` are now parsed as two instructions instead of treating the second mnemonic as an operand.
+- **Attributes on extend methods** — annotations such as `@[Target(...)]` are now accepted on methods inside an `extend` block instead of failing with "expected 'func' in extend body" (#197).
 
 ## [0.3.0] - 2026-06-23
 
