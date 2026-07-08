@@ -746,6 +746,48 @@ std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
     return decl;
 }
 
+// Language aliases that ResolveType normalizes; mirror them here so the
+// canonical key produced from the type expression matches the resolved
+// receiver type's spelling (e.g. `bool[]` and a `bool8[]` receiver agree).
+static std::string NormalizePrimitiveName(const std::string &name) {
+    if (name == "bool") {
+        return "bool8";
+    }
+    if (name == "char") {
+        return "char32";
+    }
+    if (name == "float") {
+        return "float64";
+    }
+    return name;
+}
+
+// Canonical string key for an `extend` target. Named types keep their bare name
+// (generic-agnostic, matching struct behaviour); slices become `Slice<Elem>` to
+// match the internal slice type spelling used for method lookup.
+static std::string ImplTypeName(const TypeExpr &type) {
+    if (const auto *n = dynamic_cast<const NamedTypeExpr *>(&type)) {
+        return NormalizePrimitiveName(n->name);
+    }
+    if (const auto *s = dynamic_cast<const SliceTypeExpr *>(&type)) {
+        return "Slice<" + ImplTypeName(*s->element) + ">";
+    }
+    if (const auto *p = dynamic_cast<const PointerTypeExpr *>(&type)) {
+        return "*" + ImplTypeName(*p->pointee);
+    }
+    if (const auto *pt = dynamic_cast<const PathTypeExpr *>(&type)) {
+        std::string result;
+        for (std::size_t i = 0; i < pt->segments.size(); ++i) {
+            if (i) {
+                result += "::";
+            }
+            result += pt->segments[i];
+        }
+        return result;
+    }
+    return "?";
+}
+
 // extend
 std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
     const auto loc = CurrentLocation();
@@ -754,18 +796,23 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
     auto decl = std::make_unique<ImplDecl>();
     decl->location = loc;
 
-    // extend TypeName  or  extend TypeName : InterfaceName  or  extend
-    // InterfaceName for TypeName
-    const std::string firstName = Expect(TokenKind::Ident, "expected type name").text;
+    // extend Type  or  extend Type : InterfaceName  or  extend InterfaceName
+    // for Type. The leading item is parsed as a full type expression so that
+    // compound receivers such as `int[]` are supported.
+    TypeExprPtr firstType = ParseType();
+    const std::string firstName = firstType ? ImplTypeName(*firstType) : "?";
     if (Match(TokenKind::Colon)) {
+        decl->extendedType = std::move(firstType);
         decl->typeName = firstName;
         decl->interfaceName = Expect(TokenKind::Ident, "expected interface name after ':'").text;
     }
     else if (Match(TokenKind::ForKeyword)) {
         decl->interfaceName = firstName;
-        decl->typeName = Expect(TokenKind::Ident, "expected type name after 'for'").text;
+        decl->extendedType = ParseType();
+        decl->typeName = decl->extendedType ? ImplTypeName(*decl->extendedType) : "?";
     }
     else {
+        decl->extendedType = std::move(firstType);
         decl->typeName = firstName;
     }
 

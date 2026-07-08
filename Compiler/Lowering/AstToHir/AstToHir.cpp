@@ -885,6 +885,11 @@ private:
             named = &type.inner[0];
         }
         if (named->kind == TypeRef::Kind::Named) {
+            // Keep the full element-specific name for slices so `extend int[]`
+            // methods are found on `int[]` receivers (see SemanticAnalyzer).
+            if (named->name.starts_with("Slice<")) {
+                return named->name;
+            }
             return BaseTypeName(named->name);
         }
         switch (named->kind) {
@@ -2256,14 +2261,25 @@ private:
         bool savedInImpl = inImpl;
         TypeRef savedSelfType = currentSelfType;
         inImpl = true;
-        TypeRef selfBase;
-        if (HirSymbol *sym = currentScope->Lookup(d.typeName); sym && !sym->type.IsUnknown()) {
-            selfBase = sym->type;
+        TypeRef extendedType = d.extendedType ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
+        const bool isSliceReceiver =
+            extendedType.kind == TypeRef::Kind::Slice ||
+            (extendedType.kind == TypeRef::Kind::Named && extendedType.name.starts_with("Slice<"));
+        if (isSliceReceiver) {
+            // `self` is the slice value; the slice ABI passes its address, so
+            // slice indexing and iteration inside the method work as usual.
+            currentSelfType = extendedType;
         }
         else {
-            selfBase = TypeRef::MakeNamed(d.typeName);
+            TypeRef selfBase;
+            if (HirSymbol *sym = currentScope->Lookup(d.typeName); sym && !sym->type.IsUnknown()) {
+                selfBase = sym->type;
+            }
+            else {
+                selfBase = TypeRef::MakeNamed(d.typeName);
+            }
+            currentSelfType = TypeRef::MakePointer(selfBase);
         }
-        currentSelfType = TypeRef::MakePointer(selfBase);
 
         HirImplBlock hib;
         hib.typeName = d.typeName;

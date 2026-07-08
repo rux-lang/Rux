@@ -1280,6 +1280,13 @@ private:
             named = &type.inner[0];
         }
         if (named->kind == TypeRef::Kind::Named) {
+            // Slice extension methods are keyed on the full element-specific
+            // name (e.g. `Slice<int>`) so `extend int[]` stays distinct from
+            // `extend str[]`; other named types collapse to their base name so
+            // generic instantiations share one method set.
+            if (named->name.starts_with("Slice<")) {
+                return named->name;
+            }
             return BaseTypeName(named->name);
         }
         switch (named->kind) {
@@ -2406,7 +2413,13 @@ private:
     }
 
     void CheckImplDecl(const ImplDecl &d) {
-        if (!currentScope->Lookup(d.typeName)) {
+        // A compound receiver (e.g. `int[]`) resolves through the type
+        // expression rather than a named symbol.
+        TypeRef extendedType = d.extendedType ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
+        const bool isSliceReceiver =
+            extendedType.kind == TypeRef::Kind::Slice ||
+            (extendedType.kind == TypeRef::Kind::Named && extendedType.name.starts_with("Slice<"));
+        if (!isSliceReceiver && !currentScope->Lookup(d.typeName)) {
             EmitError(d.location, std::format("extend for unknown type '{}'", d.typeName));
         }
 
@@ -2433,14 +2446,21 @@ private:
         bool savedInImpl = inImpl;
         TypeRef savedSelfType = currentSelfType;
         inImpl = true;
-        TypeRef selfBase;
-        if (Symbol *sym = currentScope->Lookup(d.typeName); sym && !sym->type.IsUnknown()) {
-            selfBase = sym->type;
+        if (isSliceReceiver) {
+            // A slice is a fat pointer already; `self` is the slice value, so
+            // `for x in self` and `self[i]` work directly.
+            currentSelfType = extendedType;
         }
         else {
-            selfBase = TypeRef::MakeNamed(d.typeName);
+            TypeRef selfBase;
+            if (Symbol *sym = currentScope->Lookup(d.typeName); sym && !sym->type.IsUnknown()) {
+                selfBase = sym->type;
+            }
+            else {
+                selfBase = TypeRef::MakeNamed(d.typeName);
+            }
+            currentSelfType = TypeRef::MakePointer(selfBase);
         }
-        currentSelfType = TypeRef::MakePointer(selfBase);
         for (const auto &m : d.methods) {
             CheckFuncDecl(*m, /*isMethod=*/true);
         }

@@ -497,8 +497,12 @@ struct InterfaceDecl : Decl {
 };
 
 // extend TypeName [for InterfaceName] { func ... }
+// TypeName may be a compound type such as a slice (int[]); `typeName` holds the
+// canonical string key used for method lookup, while `extendedType` preserves
+// the full type expression so semantic analysis can recover the receiver type.
 struct ImplDecl : Decl {
     std::string typeName;
+    TypeExprPtr extendedType;
     std::optional<std::string> interfaceName;
     std::vector<std::unique_ptr<FuncDecl>> methods;
 };

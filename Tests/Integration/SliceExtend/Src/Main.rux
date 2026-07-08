@@ -1,0 +1,48 @@
+import Std::Assert;
+
+// Extension methods on a built-in slice type. `self` is the slice value, so it
+// can be iterated and indexed directly.
+extend int[] {
+    func Sum(self) -> int {
+        var sum = 0;
+        for num in self {
+            sum += num;
+        }
+        return sum;
+    }
+
+    func Contains(self, target: int) -> bool {
+        var i: uint64 = 0;
+        while i < self.length {
+            if self[i] == target {
+                return true;
+            }
+            i += 1;
+        }
+        return false;
+    }
+}
+
+// A second slice extension with a different element type must stay distinct
+// from int[]: method lookup is element-specific.
+extend char8[] {
+    func Count(self) -> int {
+        var n = 0;
+        for c in self {
+            n += 1;
+        }
+        return n;
+    }
+}
+
+func Main() -> int {
+    var nums: int[] = [1, 2, 3, 4, 5];
+    Assert(nums.Sum() == 15, "Expected sum of 15");
+    Assert(nums.Contains(3), "Expected nums to contain 3");
+    Assert(!nums.Contains(99), "Expected nums to not contain 99");
+
+    var text: char8[] = "Hello";
+    Assert(text.Count() == 5, "Expected count of 5");
+
+    return 0;
+}
