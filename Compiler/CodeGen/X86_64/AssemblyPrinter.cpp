@@ -131,6 +131,11 @@ private:
     // Set when the unit uses the integer ** operator; emits __rux_ipow.
     bool usesIpow = false;
 
+    // Set when the unit uses the float ** operator; emit the synthesized
+    // pow helpers. The f32 helper wraps the f64 one.
+    bool usesFpow = false;
+    bool usesFpowF32 = false;
+
     // Low-level emit helpers
     void T(const std::string_view s) {
         text << s << '\n';
@@ -236,6 +241,108 @@ private:
         TL(".negative");
         TI("xor     eax, eax");
         TL(".done");
+        TI("ret");
+    }
+
+    // Double-precision exponentiation helper: xmm0 = xmm0 ** xmm1
+    // (base ** exponent). Computed as |base|**exp = 2**(exp*log2(|base|))
+    // on the x87 FPU, so the output stays self-contained (no libm/CRT
+    // dependency). Mirrors the machine-code helper synthesized by the RCU
+    // backend; see EmitFloatPowHelper there for the full rationale.
+    void EmitFloatPowHelper() {
+        TB();
+        TL("__rux_powf64");
+        TI("sub     rsp, 16");
+        TI("movsd   [rsp], xmm0");     // base
+        TI("movsd   [rsp + 8], xmm1"); // exponent
+        // exp == 0 -> 1.0
+        TI("mov     rax, [rsp + 8]");
+        TI("add     rax, rax"); // drop sign bit
+        TI("jnz     .not_exp0");
+        TI("mov     rax, 0x3FF0000000000000");
+        TI("mov     [rsp], rax");
+        TI("movsd   xmm0, [rsp]");
+        TI("add     rsp, 16");
+        TI("ret");
+        TL(".not_exp0");
+        // |base| == 0 -> 0.0 (exp>0) or +inf (exp<0)
+        TI("mov     rax, [rsp]");
+        TI("add     rax, rax");
+        TI("jnz     .base_nonzero");
+        TI("mov     rax, [rsp + 8]");
+        TI("test    rax, rax");
+        TI("js      .base0_neg");
+        TI("xor     eax, eax");
+        TI("mov     [rsp], rax");
+        TI("movsd   xmm0, [rsp]");
+        TI("add     rsp, 16");
+        TI("ret");
+        TL(".base0_neg");
+        TI("mov     rax, 0x7FF0000000000000");
+        TI("mov     [rsp], rax");
+        TI("movsd   xmm0, [rsp]");
+        TI("add     rsp, 16");
+        TI("ret");
+        TL(".base_nonzero");
+        // Sign decision -> edx: 0 keep, 1 negate, 2 NaN.
+        TI("xor     edx, edx");
+        TI("mov     rax, [rsp]");
+        TI("test    rax, rax");
+        TI("jns     .magnitude"); // base > 0
+        TI("movsd   xmm2, [rsp + 8]");
+        TI("cvttsd2si rax, xmm2");
+        TI("cvtsi2sd xmm3, rax");
+        TI("ucomisd xmm2, xmm3");
+        TI("jne     .nonint"); // non-integer exponent -> NaN
+        TI("and     eax, 1");
+        TI("mov     edx, eax"); // 1 if odd
+        TI("jmp     .magnitude");
+        TL(".nonint");
+        TI("mov     edx, 2");
+        TL(".magnitude");
+        TI("fld     qword [rsp + 8]"); // exp
+        TI("fld     qword [rsp]");     // base
+        TI("fabs");                    // |base|
+        TI("fyl2x");                   // w = exp*log2(|base|)
+        TI("fld     st0");
+        TI("frndint");          // i = round(w)
+        TI("fsub    st1, st0"); // frac = w - i in [-1,1]
+        TI("fxch");
+        TI("f2xm1"); // 2^frac - 1
+        TI("fld1");
+        TI("faddp   st1, st0"); // 2^frac
+        TI("fscale");           // 2^frac * 2^i
+        TI("fstp    st1");      // drop i -> st0 = magnitude
+        TI("test    edx, edx");
+        TI("jz      .store");
+        TI("cmp     edx, 2");
+        TI("jz      .nan");
+        TI("fchs"); // negate (odd exponent)
+        TL(".store");
+        TI("fstp    qword [rsp]");
+        TI("movsd   xmm0, [rsp]");
+        TI("add     rsp, 16");
+        TI("ret");
+        TL(".nan");
+        TI("fstp    st0"); // drop magnitude
+        TI("mov     rax, 0x7FF8000000000000");
+        TI("mov     [rsp], rax");
+        TI("movsd   xmm0, [rsp]");
+        TI("add     rsp, 16");
+        TI("ret");
+    }
+
+    // Single-precision exponentiation helper: xmm0 = xmm0 ** xmm1. Widens
+    // the arguments to f64, defers to __rux_powf64, then narrows the result.
+    void EmitFloatPowF32Helper() {
+        TB();
+        TL("__rux_powf32");
+        TI("cvtss2sd xmm0, xmm0");
+        TI("cvtss2sd xmm1, xmm1");
+        TI("sub     rsp, 8"); // keep 16-byte alignment at the inner call
+        TI("call    __rux_powf64");
+        TI("add     rsp, 8");
+        TI("cvtsd2ss xmm0, xmm0");
         TI("ret");
     }
 
@@ -1089,10 +1196,14 @@ private:
                 TI(std::format("sub     rsp, {}", shadowSpace));
             }
             if (IsFloat(t)) {
-                NeedExtern("pow");
+                // Float ** uses a synthesized x87 helper, not libm pow, so
+                // no CRT/math dependency is introduced.
+                const bool isF32 = t.kind == TypeRef::Kind::Float32;
+                usesFpow = true;
+                usesFpowF32 = usesFpowF32 || isF32;
                 LoadA(instr.srcs[0], t);
                 LoadB(instr.srcs[1], t);
-                TI("call    pow");
+                TI(isF32 ? "call    __rux_powf32" : "call    __rux_powf64");
             }
             else {
                 usesIpow = true;
@@ -1686,6 +1797,13 @@ std::string AsmGen::Generate() {
     }
     if (usesIpow) {
         EmitIntPowHelper();
+    }
+    // The f32 pow helper calls the f64 one, so emit f64 first.
+    if (usesFpow) {
+        EmitFloatPowHelper();
+    }
+    if (usesFpowF32) {
+        EmitFloatPowF32Helper();
     }
     std::ostringstream out;
     out << "; Generated by Rux Compiler\n";

@@ -171,6 +171,11 @@ private:
     // used).
     uint32_t ipowSym = ~0u;
 
+    // Symbol indices of the synthesized floating-point pow helpers (~0u
+    // until used). The f32 helper is a thin wrapper around the f64 one.
+    uint32_t fpowSym = ~0u;
+    uint32_t fpowf32Sym = ~0u;
+
     // Struct field layouts
     LayoutMap layouts;
     std::unordered_set<std::string> interfaceNames;
@@ -434,6 +439,196 @@ private:
         for (const std::uint8_t b : kThunk) {
             enc.Byte(b);
         }
+    }
+
+    // Lazily declares the synthesized double-precision pow helper and
+    // returns its symbol index. The body is emitted once per object by
+    // EmitFloatPowHelper(), alongside the other runtime helpers.
+    uint32_t EnsureFloatPowHelper() {
+        if (fpowSym == ~0u) {
+            RcuSymbol s;
+            s.name = "__rux_powf64";
+            s.sectionIdx = RCU_TEXT_IDX;
+            s.value = 0; // patched to the real offset in EmitFloatPowHelper
+            s.kind = RcuSymKind::Func;
+            s.visibility = RcuSymVis::Local;
+            fpowSym = AddSymbol(s);
+        }
+        return fpowSym;
+    }
+
+    // Lazily declares the synthesized single-precision pow helper. It is a
+    // thin wrapper around the double helper, so ensure that one exists too.
+    uint32_t EnsureFloatPowF32Helper() {
+        EnsureFloatPowHelper();
+        if (fpowf32Sym == ~0u) {
+            RcuSymbol s;
+            s.name = "__rux_powf32";
+            s.sectionIdx = RCU_TEXT_IDX;
+            s.value = 0; // patched to the real offset in EmitFloatPowF32Helper
+            s.kind = RcuSymKind::Func;
+            s.visibility = RcuSymVis::Local;
+            fpowf32Sym = AddSymbol(s);
+        }
+        return fpowf32Sym;
+    }
+
+    // Emits the double-precision exponentiation helper into .text:
+    //   xmm0 = xmm0 ** xmm1   (base ** exponent, both f64)
+    //
+    // Computed as |base|**exp = 2**(exp * log2(|base|)) on the x87 FPU
+    // (fyl2x + f2xm1 + fscale), so no libm/CRT dependency is needed on any
+    // backend. The sign of a negative base is restored for integer
+    // exponents (odd -> negated result, even -> positive); a negative base
+    // with a non-integer exponent yields NaN, matching C pow(). Special
+    // cases handled up front: exp == 0 -> 1, base == 0 -> 0 (or +inf for a
+    // negative exponent). Only volatile registers (rax/rdx, xmm0-xmm3) are
+    // touched, so the helper is ABI-safe under both SysV and Win64.
+    void EmitFloatPowHelper() {
+        if (fpowSym == ~0u) {
+            return;
+        }
+        symbols[fpowSym].value = enc.Size();
+
+        auto b = [&](std::initializer_list<uint8_t> bytes) {
+            for (uint8_t x : bytes) {
+                enc.Byte(x);
+            }
+        };
+        // Emits a two-byte Jcc rel32 and returns the offset of its
+        // displacement field for later patching.
+        auto jcc = [&](uint8_t cc) -> uint32_t {
+            enc.Byte(0x0F);
+            enc.Byte(cc);
+            uint32_t off = enc.Size();
+            enc.Dword(0);
+            return off;
+        };
+        // Patches a previously emitted Jcc/Jmp to target the current offset.
+        auto patch = [&](uint32_t patchOff) {
+            int32_t rel = static_cast<int32_t>(enc.Size()) - static_cast<int32_t>(patchOff + 4);
+            enc.Patch32(patchOff, rel);
+        };
+
+        // clang-format off
+        // Prologue: reserve 16 bytes of scratch; [rsp]=base, [rsp+8]=exp.
+        b({0x48, 0x83, 0xEC, 0x10});             // sub  rsp, 16
+        b({0xF2, 0x0F, 0x11, 0x04, 0x24});       // movsd [rsp], xmm0      ; base
+        b({0xF2, 0x0F, 0x11, 0x4C, 0x24, 0x08}); // movsd [rsp+8], xmm1    ; exp
+
+        // exp == 0  ->  return 1.0  (covers base==0/inf/NaN per C pow).
+        b({0x48, 0x8B, 0x44, 0x24, 0x08});       // mov  rax, [rsp+8]
+        b({0x48, 0x01, 0xC0});                   // add  rax, rax          ; drop sign bit
+        uint32_t jExpNonZero = jcc(0x85);        // jnz  .not_exp0
+        b({0x48, 0xB8}); enc.Qword(0x3FF0000000000000ull); // mov rax, 1.0 bits
+        b({0x48, 0x89, 0x04, 0x24});             // mov  [rsp], rax
+        b({0xF2, 0x0F, 0x10, 0x04, 0x24});       // movsd xmm0, [rsp]
+        b({0x48, 0x83, 0xC4, 0x10});             // add  rsp, 16
+        b({0xC3});                               // ret
+        patch(jExpNonZero);                      // .not_exp0:
+
+        // |base| == 0  ->  0.0 (exp>0) or +inf (exp<0).
+        b({0x48, 0x8B, 0x04, 0x24});             // mov  rax, [rsp]
+        b({0x48, 0x01, 0xC0});                   // add  rax, rax          ; drop sign bit
+        uint32_t jBaseNonZero = jcc(0x85);       // jnz  .base_nonzero
+        b({0x48, 0x8B, 0x44, 0x24, 0x08});       // mov  rax, [rsp+8]
+        b({0x48, 0x85, 0xC0});                   // test rax, rax          ; exp sign
+        uint32_t jBase0NegExp = jcc(0x88);       // js   .base0_neg_exp
+        b({0x31, 0xC0});                         // xor  eax, eax          ; +0.0
+        b({0x48, 0x89, 0x04, 0x24});             // mov  [rsp], rax
+        b({0xF2, 0x0F, 0x10, 0x04, 0x24});       // movsd xmm0, [rsp]
+        b({0x48, 0x83, 0xC4, 0x10});             // add  rsp, 16
+        b({0xC3});                               // ret
+        patch(jBase0NegExp);                     // .base0_neg_exp:
+        b({0x48, 0xB8}); enc.Qword(0x7FF0000000000000ull); // mov rax, +inf bits
+        b({0x48, 0x89, 0x04, 0x24});             // mov  [rsp], rax
+        b({0xF2, 0x0F, 0x10, 0x04, 0x24});       // movsd xmm0, [rsp]
+        b({0x48, 0x83, 0xC4, 0x10});             // add  rsp, 16
+        b({0xC3});                               // ret
+        patch(jBaseNonZero);                     // .base_nonzero:
+
+        // Sign decision -> edx: 0 keep, 1 negate, 2 NaN.
+        b({0x31, 0xD2});                         // xor  edx, edx
+        b({0x48, 0x8B, 0x04, 0x24});             // mov  rax, [rsp]        ; base bits
+        b({0x48, 0x85, 0xC0});                   // test rax, rax
+        uint32_t jBasePos = jcc(0x89);           // jns  .magnitude        ; base > 0
+        // base < 0: the exponent must be an integer, else the result is NaN.
+        b({0xF2, 0x0F, 0x10, 0x54, 0x24, 0x08}); // movsd xmm2, [rsp+8]
+        b({0xF2, 0x48, 0x0F, 0x2C, 0xC2});       // cvttsd2si rax, xmm2
+        b({0xF2, 0x48, 0x0F, 0x2A, 0xD8});       // cvtsi2sd  xmm3, rax
+        b({0x66, 0x0F, 0x2E, 0xD3});             // ucomisd xmm2, xmm3
+        uint32_t jNonInt = jcc(0x85);            // jne  .nonint
+        b({0x83, 0xE0, 0x01});                   // and  eax, 1            ; parity
+        b({0x89, 0xC2});                         // mov  edx, eax          ; 1 if odd
+        enc.Byte(0xE9); uint32_t jToMag = enc.Size(); enc.Dword(0); // jmp .magnitude
+        patch(jNonInt);                          // .nonint:
+        b({0xBA, 0x02, 0x00, 0x00, 0x00});       // mov  edx, 2
+        patch(jBasePos);                         // .magnitude:
+        patch(jToMag);
+
+        // magnitude = |base| ** exp  =  2 ** (exp * log2(|base|)).
+        b({0xDD, 0x44, 0x24, 0x08});             // fld  qword [rsp+8]     ; exp
+        b({0xDD, 0x04, 0x24});                   // fld  qword [rsp]       ; base
+        b({0xD9, 0xE1});                         // fabs                   ; |base|
+        b({0xD9, 0xF1});                         // fyl2x                  ; w = exp*log2(|base|)
+        b({0xD9, 0xC0});                         // fld  st0
+        b({0xD9, 0xFC});                         // frndint                ; i = round(w)
+        b({0xDC, 0xE9});                         // fsub st1, st0          ; frac = w - i in [-1,1]
+        b({0xD9, 0xC9});                         // fxch                   ; st0=frac st1=i
+        b({0xD9, 0xF0});                         // f2xm1                  ; 2^frac - 1
+        b({0xD9, 0xE8});                         // fld1
+        b({0xDE, 0xC1});                         // faddp st1, st0         ; 2^frac
+        b({0xD9, 0xFD});                         // fscale                 ; 2^frac * 2^i
+        b({0xDD, 0xD9});                         // fstp st1               ; drop i -> st0=magnitude
+
+        b({0x85, 0xD2});                         // test edx, edx
+        uint32_t jStore = jcc(0x84);             // jz   .store
+        b({0x83, 0xFA, 0x02});                   // cmp  edx, 2
+        uint32_t jNan = jcc(0x84);               // jz   .nan
+        b({0xD9, 0xE0});                         // fchs                   ; negate (odd exponent)
+        patch(jStore);                           // .store:
+        b({0xDD, 0x1C, 0x24});                   // fstp qword [rsp]
+        b({0xF2, 0x0F, 0x10, 0x04, 0x24});       // movsd xmm0, [rsp]
+        b({0x48, 0x83, 0xC4, 0x10});             // add  rsp, 16
+        b({0xC3});                               // ret
+        patch(jNan);                             // .nan:
+        b({0xDD, 0xD8});                         // fstp st0               ; drop magnitude
+        b({0x48, 0xB8}); enc.Qword(0x7FF8000000000000ull); // mov rax, qNaN bits
+        b({0x48, 0x89, 0x04, 0x24});             // mov  [rsp], rax
+        b({0xF2, 0x0F, 0x10, 0x04, 0x24});       // movsd xmm0, [rsp]
+        b({0x48, 0x83, 0xC4, 0x10});             // add  rsp, 16
+        b({0xC3});                               // ret
+        // clang-format on
+    }
+
+    // Emits the single-precision pow helper into .text:
+    //   xmm0 = xmm0 ** xmm1   (base ** exponent, both f32)
+    //
+    // Widens the arguments to f64, defers to __rux_powf64, then narrows the
+    // result. Computing in double precision keeps the f32 result correctly
+    // rounded and avoids duplicating the x87 sequence.
+    void EmitFloatPowF32Helper() {
+        if (fpowf32Sym == ~0u) {
+            return;
+        }
+        symbols[fpowf32Sym].value = enc.Size();
+
+        auto b = [&](std::initializer_list<uint8_t> bytes) {
+            for (uint8_t x : bytes) {
+                enc.Byte(x);
+            }
+        };
+        // clang-format off
+        b({0xF3, 0x0F, 0x5A, 0xC0}); // cvtss2sd xmm0, xmm0
+        b({0xF3, 0x0F, 0x5A, 0xC9}); // cvtss2sd xmm1, xmm1
+        b({0x48, 0x83, 0xEC, 0x08}); // sub  rsp, 8            ; keep 16-byte align at call
+        uint32_t ro;
+        enc.Call(ro);
+        AddTextReloc(ro, fpowSym);   // call __rux_powf64
+        b({0x48, 0x83, 0xC4, 0x08}); // add  rsp, 8
+        b({0xF2, 0x0F, 0x5A, 0xC0}); // cvtsd2ss xmm0, xmm0
+        b({0xC3});                   // ret
+        // clang-format on
     }
 
     void PredeclareFunctions() {
@@ -1718,7 +1913,9 @@ private:
                 enc.SubRspImm32(callFrameSize);
             }
             if (IsFloat(t)) {
-                uint32_t sym = GetOrAddExtern("pow", RcuSymKind::ExternFunc);
+                // Float exponentiation uses a synthesized x87 helper rather
+                // than libm pow, so no CRT/math DLL import is required.
+                uint32_t sym = t.kind == TypeRef::Kind::Float32 ? EnsureFloatPowF32Helper() : EnsureFloatPowHelper();
                 EmitCallArgs(instr.srcs, CallingConvention::Default);
                 uint32_t ro;
                 enc.Call(ro);
@@ -2494,8 +2691,10 @@ private:
             GenFunc(func);
         }
         // Runtime helpers referenced by the generated code, emitted
-        // once.
+        // once. The f32 pow helper calls the f64 one, so emit f64 first.
         EmitIntPowHelper();
+        EmitFloatPowHelper();
+        EmitFloatPowF32Helper();
     }
 };
 
