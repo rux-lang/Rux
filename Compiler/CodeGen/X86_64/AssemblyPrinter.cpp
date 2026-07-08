@@ -323,12 +323,18 @@ private:
 
     std::string_view PhysRegName(int rIdx) const {
         switch (rIdx) {
-            case 0: return "rbx";
-            case 1: return "r12";
-            case 2: return "r13";
-            case 3: return "r14";
-            case 4: return "r15";
-            default: return "rbx";
+        case 0:
+            return "rbx";
+        case 1:
+            return "r12";
+        case 2:
+            return "r13";
+        case 3:
+            return "r14";
+        case 4:
+            return "r15";
+        default:
+            return "rbx";
         }
     }
 
@@ -343,14 +349,20 @@ private:
             int sz = SizeOfRuntime(t);
             if (sz > 0 && sz < 8) {
                 if (t.IsSigned()) {
-                    if (sz == 4) TI("movsxd  rax, eax");
-                    else if (sz == 2) TI("movsx   rax, ax");
-                    else TI("movsx   rax, al");
+                    if (sz == 4)
+                        TI("movsxd  rax, eax");
+                    else if (sz == 2)
+                        TI("movsx   rax, ax");
+                    else
+                        TI("movsx   rax, al");
                 }
                 else {
-                    if (sz == 4) TI("mov     eax, eax");
-                    else if (sz == 2) TI("movzx   rax, ax");
-                    else TI("movzx   rax, al");
+                    if (sz == 4)
+                        TI("mov     eax, eax");
+                    else if (sz == 2)
+                        TI("movzx   rax, ax");
+                    else
+                        TI("movzx   rax, al");
                 }
             }
             return;
@@ -389,14 +401,20 @@ private:
             int sz = SizeOfRuntime(t);
             if (sz > 0 && sz < 8) {
                 if (t.IsSigned()) {
-                    if (sz == 4) TI("movsxd  r10, r10d");
-                    else if (sz == 2) TI("movsx   r10, r10w");
-                    else TI("movsx   r10, r10b");
+                    if (sz == 4)
+                        TI("movsxd  r10, r10d");
+                    else if (sz == 2)
+                        TI("movsx   r10, r10w");
+                    else
+                        TI("movsx   r10, r10b");
                 }
                 else {
-                    if (sz == 4) TI("mov     r10d, r10d");
-                    else if (sz == 2) TI("movzx   r10, r10w");
-                    else TI("movzx   r10, r10b");
+                    if (sz == 4)
+                        TI("mov     r10d, r10d");
+                    else if (sz == 2)
+                        TI("movzx   r10, r10w");
+                    else
+                        TI("movzx   r10, r10b");
                 }
             }
             return;
@@ -450,7 +468,8 @@ private:
             auto it = physRegMap.find(reg);
             if (it != physRegMap.end()) {
                 TI(std::format("{:<8}r10, {}", "mov", PhysRegName(it->second)));
-            } else {
+            }
+            else {
                 TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(reg)));
             }
             TI(std::format("{:<8}rax, qword [r10]", "mov"));
@@ -506,9 +525,9 @@ private:
 
         std::unordered_map<LirReg, LiveInterval> intervals;
         int instIdx = 0;
-        
+
         std::unordered_map<LirReg, TypeRef> tempRegTypes;
-        
+
         // Params
         for (const auto &p : func.params) {
             tempRegTypes[p.reg] = IsWin64AddressParam(p.type) ? TypeRef::MakePointer(p.type) : p.type;
@@ -521,16 +540,18 @@ private:
                 if (instr.dst != LirNoReg) {
                     if (instr.op == LirOpcode::Alloca) {
                         tempRegTypes[instr.dst] = TypeRef::MakePointer(instr.type);
-                    } else {
+                    }
+                    else {
                         tempRegTypes[instr.dst] = instr.type;
                     }
                 }
-                
+
                 for (LirReg src : instr.srcs) {
                     TypeRef srcT = tempRegTypes.contains(src) ? tempRegTypes[src] : TypeRef::MakeInt64();
                     if (intervals.find(src) == intervals.end()) {
                         intervals[src] = {src, instIdx, instIdx, srcT};
-                    } else {
+                    }
+                    else {
                         intervals[src].end = instIdx;
                     }
                 }
@@ -538,17 +559,19 @@ private:
                 if (instr.dst != LirNoReg) {
                     if (intervals.find(instr.dst) == intervals.end()) {
                         intervals[instr.dst] = {instr.dst, instIdx, instIdx, tempRegTypes[instr.dst]};
-                    } else {
+                    }
+                    else {
                         intervals[instr.dst].end = instIdx;
                     }
                 }
-                
+
                 if (instr.op == LirOpcode::Phi) {
                     for (const auto &[src, pred] : instr.phiPreds) {
                         TypeRef srcT = tempRegTypes.contains(src) ? tempRegTypes[src] : TypeRef::MakeInt64();
                         if (intervals.find(src) == intervals.end()) {
                             intervals[src] = {src, instIdx, instIdx, srcT};
-                        } else {
+                        }
+                        else {
                             intervals[src].end = instIdx;
                         }
                     }
@@ -556,22 +579,25 @@ private:
 
                 instIdx++;
             }
-            
+
             if (func.blocks[bi].term) {
                 const auto &term = *func.blocks[bi].term;
                 if (term.cond != LirNoReg) {
                     TypeRef condT = tempRegTypes.contains(term.cond) ? tempRegTypes[term.cond] : TypeRef::MakeInt64();
                     if (intervals.find(term.cond) == intervals.end()) {
                         intervals[term.cond] = {term.cond, instIdx, instIdx, condT};
-                    } else {
+                    }
+                    else {
                         intervals[term.cond].end = instIdx;
                     }
                 }
                 if (term.retVal && *term.retVal != LirNoReg) {
-                    TypeRef retT = tempRegTypes.contains(*term.retVal) ? tempRegTypes[*term.retVal] : TypeRef::MakeInt64();
+                    TypeRef retT =
+                        tempRegTypes.contains(*term.retVal) ? tempRegTypes[*term.retVal] : TypeRef::MakeInt64();
                     if (intervals.find(*term.retVal) == intervals.end()) {
                         intervals[*term.retVal] = {*term.retVal, instIdx, instIdx, retT};
-                    } else {
+                    }
+                    else {
                         intervals[*term.retVal].end = instIdx;
                     }
                 }
@@ -590,9 +616,8 @@ private:
             }
         }
 
-        std::sort(candidates.begin(), candidates.end(), [](const LiveInterval &a, const LiveInterval &b) {
-            return a.start < b.start;
-        });
+        std::sort(candidates.begin(), candidates.end(),
+                  [](const LiveInterval &a, const LiveInterval &b) { return a.start < b.start; });
 
         constexpr int numPhysRegs = 5;
         std::vector<int> regEndTimes(numPhysRegs, -1);
@@ -619,12 +644,12 @@ private:
 
         // 3. Allocate Stack Slots
         nextOff = static_cast<int32_t>(usedPhysRegs.size() * 8);
-        
+
         for (const auto &p : func.params) {
             regTypes[p.reg] = IsWin64AddressParam(p.type) ? TypeRef::MakePointer(p.type) : p.type;
             AllocSlot(p.reg, std::max(8, SizeOfRuntime(regTypes[p.reg])));
         }
-        
+
         for (uint32_t bi = 0; bi < func.blocks.size(); bi++) {
             const auto &block = func.blocks[bi];
             for (const auto &instr : block.instrs) {
@@ -636,7 +661,7 @@ private:
                 if (instr.dst == LirNoReg) {
                     continue;
                 }
-                
+
                 if (instr.op == LirOpcode::Alloca) {
                     int dataSz;
                     if (!instr.strArg.empty()) {
@@ -648,7 +673,7 @@ private:
                     else {
                         dataSz = StackValueSize(instr.type);
                     }
-                    
+
                     AllocSlot(instr.dst, 8);
                     allocaData[instr.dst] = AllocRegion(dataSz > 0 ? dataSz : 8);
                     regTypes[instr.dst] = TypeRef::MakePointer(instr.type);
@@ -766,7 +791,8 @@ private:
                         TI(std::format("mov     qword [rbp - {}], rax", off));
                     }
                     else if (IsFloat(p.type)) {
-                        TI(std::format("{:<8}xmm0, {} [rbp + {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), stackArgOff));
+                        TI(std::format("{:<8}xmm0, {} [rbp + {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz),
+                                       stackArgOff));
                         TI(std::format("{:<8}{} [rbp - {}], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
                     }
                     else {
@@ -911,7 +937,8 @@ private:
                 auto it = physRegMap.find(ptr);
                 if (it != physRegMap.end()) {
                     TI(std::format("{:<8}r10, {}", "mov", PhysRegName(it->second)));
-                } else {
+                }
+                else {
                     TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(ptr)));
                 }
                 if (runtimeSz == 16) {
@@ -957,7 +984,8 @@ private:
             auto itPtr = physRegMap.find(ptr);
             if (itPtr != physRegMap.end()) {
                 TI(std::format("{:<8}r11, {}", "mov", PhysRegName(itPtr->second)));
-            } else {
+            }
+            else {
                 TI(std::format("{:<8}r11, qword [rbp - {}]", "mov", slotMap.at(ptr)));
             }
 
@@ -1427,7 +1455,8 @@ private:
     // Call emission
     void EmitCall(const std::string &callee, const std::vector<LirReg> &args, LirReg dst, const TypeRef &retType,
                   CallingConvention callConv) {
-        const bool win64 = callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
+        const bool win64 =
+            callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
         const auto *intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
         const int maxIntRegs = win64 ? 4 : 6;
         std::vector<LirReg> stackArgs;
@@ -1505,7 +1534,8 @@ private:
         LirReg callee = srcs[0];
         std::vector<LirReg> args(srcs.begin() + 1, srcs.end());
         const std::vector<LirReg> stackArgs = EmitCallArgs(args, callConv);
-        const bool win64 = callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
+        const bool win64 =
+            callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
         const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
                                      : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
         if (stackBytes > 0) {
@@ -1534,7 +1564,8 @@ private:
     }
 
     std::vector<LirReg> EmitCallArgs(const std::vector<LirReg> &args, CallingConvention callConv) {
-        const bool win64 = callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
+        const bool win64 =
+            callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
         const auto *intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
         const int maxIntRegs = win64 ? 4 : 6;
         std::vector<LirReg> stackArgs;
@@ -1671,7 +1702,8 @@ private:
                 TI(std::format("pop     {}", PhysRegName(*it)));
             }
             TI("pop     rbp");
-        } else {
+        }
+        else {
             TI("leave");
         }
         TI("ret");
@@ -1692,7 +1724,8 @@ std::string AsmGen::Generate() {
     if (kDefaultCallIsWin64) {
         out << "; Target:  x86-64  (Windows x64 ABI, NASM syntax)\n";
         out << "; Calling: rcx/rdx/r8/r9 (int args), xmm0-3 (float args)\n";
-    } else {
+    }
+    else {
         out << "; Target:  x86-64  (System V AMD64 ABI, NASM syntax)\n";
         out << "; Calling: rdi/rsi/rdx/rcx/r8/r9 (int args), xmm0-7 (float args)\n";
     }
