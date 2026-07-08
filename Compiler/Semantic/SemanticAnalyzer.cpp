@@ -272,7 +272,6 @@ private:
         return funcType;
     }
 
-
     // Builtins
     void RegisterBuiltins() {
         auto add = [&](const char *name, TypeRef t) {
@@ -1786,7 +1785,8 @@ private:
             for (std::size_t i = 0; i < count; ++i) {
                 substitutions.emplace(decl->typeParams[i], ResolveType(*typeArgs[i]));
             }
-            TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
+            TypeRef funcType =
+                MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
             if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) {
                 return decl;
             }
@@ -1822,7 +1822,8 @@ private:
                     for (std::size_t i = 0; i < count; ++i) {
                         substitutions.emplace(decl->typeParams[i], ResolveType(*typeArgs[i]));
                     }
-                    TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
+                    TypeRef funcType =
+                        MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
                     if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) {
                         continue;
                     }
@@ -3243,7 +3244,7 @@ private:
                     }
                     if (e->typeArgs.size() != decl->typeParams.size()) {
                         EmitError(e->location, std::format("function '{}' expects {} type argument(s), got {}",
-                                                          ident->name, decl->typeParams.size(), e->typeArgs.size()));
+                                                           ident->name, decl->typeParams.size(), e->typeArgs.size()));
                     }
                     if (!decl->warnMessage.empty()) {
                         EmitWarning(e->location, decl->warnMessage);
@@ -3256,7 +3257,8 @@ private:
                     for (std::size_t i = 0; i < count; ++i) {
                         substitutions.emplace(decl->typeParams[i], ResolveType(*e->typeArgs[i]));
                     }
-                    TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
+                    TypeRef funcType =
+                        MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
                     const std::size_t paramCount =
                         funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty() ? funcType.inner.size() - 1 : 0;
                     const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;

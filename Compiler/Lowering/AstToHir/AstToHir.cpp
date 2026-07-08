@@ -306,7 +306,6 @@ private:
         return TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
     }
 
-
     void CollectDecl(const Decl &decl) {
         auto simple = [&](HirSymbol::Kind k, const std::string &name, TypeRef t = {}) {
             HirSymbol sym;
@@ -1329,7 +1328,8 @@ private:
                     for (std::size_t i = 0; i < count; ++i) {
                         substitutions.emplace(decl->typeParams[i], ResolveType(*typeArgs[i]));
                     }
-                    TypeRef ft = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
+                    TypeRef ft =
+                        MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
                     if (ft.kind != TypeRef::Kind::Func || ft.inner.empty()) {
                         continue;
                     }
@@ -2939,7 +2939,8 @@ private:
                         for (std::size_t i = 0; i < count; ++i) {
                             substitutions.emplace(decl->typeParams[i], ResolveType(*e->typeArgs[i]));
                         }
-                        TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
+                        TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
+                                                                        decl->typeParams);
                         if (funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()) {
                             const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
                             const std::size_t fixedCount = decl->params.size() - (isVariadic ? 1 : 0);
@@ -2982,10 +2983,12 @@ private:
                                     specializedName += "_" + MangleTypeName(ResolveType(*e->typeArgs[i]));
                                 }
                                 if (generatedMonomorphizedFuncNames.insert(specializedName).second) {
-                                    monomorphizedFuncs.push_back(LowerFunc(*decl, false, substitutions, specializedName));
+                                    monomorphizedFuncs.push_back(
+                                        LowerFunc(*decl, false, substitutions, specializedName));
                                 }
                                 callee->name = specializedName;
-                            } else {
+                            }
+                            else {
                                 callee->name = FunctionCalleeName(funcName, *decl);
                             }
                             callee->type = funcType;
@@ -3025,7 +3028,8 @@ private:
                         for (std::size_t i = 0; i < count; ++i) {
                             substitutions.emplace(decl->typeParams[i], ResolveType(*e->typeArgs[i]));
                         }
-                        TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
+                        TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
+                                                                        decl->typeParams);
                         if (funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()) {
                             const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
                             const std::size_t fixedCount = decl->params.size() - (isVariadic ? 1 : 0);
@@ -3072,10 +3076,12 @@ private:
                                     specializedName += "_" + MangleTypeName(ResolveType(*e->typeArgs[i]));
                                 }
                                 if (generatedMonomorphizedFuncNames.insert(specializedName).second) {
-                                    monomorphizedFuncs.push_back(LowerFunc(*decl, false, substitutions, specializedName));
+                                    monomorphizedFuncs.push_back(
+                                        LowerFunc(*decl, false, substitutions, specializedName));
                                 }
                                 callee->name = specializedName;
-                            } else {
+                            }
+                            else {
                                 callee->name = FunctionCalleeName(ident->name, *decl);
                             }
                             callee->type = funcType;
