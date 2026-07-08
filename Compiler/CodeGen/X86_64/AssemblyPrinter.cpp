@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "CodeGen/Layout.h"
+#include "CodeGen/PhiMoveResolver.h"
 #include "Target/Platform.h"
 
 namespace Rux {
@@ -106,13 +107,6 @@ private:
     // Struct field layouts (built once)
     LayoutMap layouts;
     std::unordered_set<std::string> interfaceNames;
-
-    // Per-function state
-    struct PhiMove {
-        LirReg dst;
-        LirReg src;
-        TypeRef type;
-    };
 
     std::string curFunc;
     std::unordered_map<LirReg, int32_t> slotMap;    // vreg → rbp offset (positive, address = rbp - offset)
@@ -497,12 +491,55 @@ private:
         if (it2 == it1->second.end()) {
             return;
         }
+
+        std::vector<Rux::PhiMove> rawMoves;
+        rawMoves.reserve(it2->second.size());
         for (const auto &m : it2->second) {
-            if (!slotMap.contains(m.src)) {
-                continue;
+            rawMoves.push_back({m.dst, m.src, m.type});
+        }
+
+        std::vector<PhiMoveStep> steps = ResolvePhiMoves(std::move(rawMoves));
+        int32_t tempOff = frameSize + 8;
+
+        for (const auto &step : steps) {
+            if (step.kind == PhiMoveStep::Kind::SaveDestination) {
+                int sz = SizeOfRuntime(step.type);
+                if (sz == 16) {
+                    LoadA(step.dst, step.type);
+                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", tempOff));
+                    TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", tempOff - 8));
+                }
+                else if (IsFloat(step.type)) {
+                    LoadA(step.dst, step.type);
+                    TI(std::format("{:<8}{} [rbp - {}], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz), tempOff));
+                }
+                else {
+                    LoadA(step.dst, step.type);
+                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", tempOff));
+                }
             }
-            LoadA(m.src, m.type);
-            StoreA(m.dst, m.type);
+            else {
+                if (step.sourceIsTemporary) {
+                    int sz = SizeOfRuntime(step.type);
+                    if (sz == 16) {
+                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", tempOff));
+                        TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", tempOff - 8));
+                        StoreA(step.dst, step.type);
+                    }
+                    else if (IsFloat(step.type)) {
+                        TI(std::format("{:<8}xmm0, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), tempOff));
+                        StoreA(step.dst, step.type);
+                    }
+                    else {
+                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", tempOff));
+                        StoreA(step.dst, step.type);
+                    }
+                }
+                else {
+                    LoadA(step.src, step.type);
+                    StoreA(step.dst, step.type);
+                }
+            }
         }
     }
 

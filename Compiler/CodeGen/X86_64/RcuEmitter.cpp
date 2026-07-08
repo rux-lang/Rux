@@ -16,6 +16,7 @@
 #include <utility>
 
 #include "CodeGen/Layout.h"
+#include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/X86_64/Assembler.h"
 #include "CodeGen/X86_64/Encoder.h"
 #include "Object/Rcu/RcuStringTable.h"
@@ -174,13 +175,6 @@ private:
     // Struct field layouts
     LayoutMap layouts;
     std::unordered_set<std::string> interfaceNames;
-
-    // Per-function state
-    struct PhiMove {
-        LirReg dst;
-        LirReg src;
-        TypeRef type;
-    };
 
     std::unordered_map<LirReg, int32_t> slotMap;
     std::unordered_map<LirReg, int32_t> allocaData;
@@ -1270,12 +1264,108 @@ private:
         if (it2 == it1->second.end()) {
             return;
         }
+
+        std::vector<Rux::PhiMove> rawMoves;
+        rawMoves.reserve(it2->second.size());
         for (const auto &m : it2->second) {
-            if (!slotMap.contains(m.src)) {
-                continue;
+            rawMoves.push_back({m.dst, m.src, m.type});
+        }
+
+        std::vector<PhiMoveStep> steps = ResolvePhiMoves(std::move(rawMoves));
+        int32_t tempDisp = -static_cast<int32_t>(frameSize + 8);
+
+        for (const auto &step : steps) {
+            if (step.kind == PhiMoveStep::Kind::SaveDestination) {
+                int sz = SizeOfRuntime(step.type);
+                if (sz == 16) {
+                    LoadA(step.dst, step.type);
+                    enc.MovRaxStore(tempDisp);
+                    enc.Byte(0x48);
+                    enc.Byte(0x89);
+                    enc.Byte(0x95);
+                    enc.Dword(static_cast<uint32_t>(tempDisp + 8));
+                }
+                else if (IsFloat(step.type)) {
+                    LoadA(step.dst, step.type);
+                    if (step.type.kind == TypeRef::Kind::Float32) {
+                        enc.MovssXmm0Store(tempDisp);
+                    }
+                    else {
+                        enc.MovsdXmm0Store(tempDisp);
+                    }
+                }
+                else {
+                    LoadA(step.dst, step.type);
+                    int ss = (sz > 0) ? sz : 8;
+                    if (ss == 8) {
+                        enc.MovRaxStore(tempDisp);
+                    }
+                    else if (ss == 4) {
+                        enc.MovEaxStore(tempDisp);
+                    }
+                    else if (ss == 2) {
+                        enc.MovAxStore(tempDisp);
+                    }
+                    else {
+                        enc.MovAlStore(tempDisp);
+                    }
+                }
             }
-            LoadA(m.src, m.type);
-            StoreA(m.dst, m.type);
+            else {
+                if (step.sourceIsTemporary) {
+                    int sz = SizeOfRuntime(step.type);
+                    if (sz == 16) {
+                        enc.MovRaxLoad(tempDisp);
+                        enc.MovR10Load(tempDisp + 8);
+                        enc.Byte(0x4C);
+                        enc.Byte(0x89);
+                        enc.Byte(0xD2);
+                        StoreA(step.dst, step.type);
+                    }
+                    else if (IsFloat(step.type)) {
+                        if (step.type.kind == TypeRef::Kind::Float32) {
+                            enc.MovssXmm0Load(tempDisp);
+                        }
+                        else {
+                            enc.MovsdXmm0Load(tempDisp);
+                        }
+                        StoreA(step.dst, step.type);
+                    }
+                    else {
+                        int ss = (sz > 0) ? sz : 8;
+                        if (ss == 8) {
+                            enc.MovRaxLoad(tempDisp);
+                        }
+                        else if (step.type.IsSigned()) {
+                            if (ss == 4) {
+                                enc.MovsxdRaxDword(tempDisp);
+                            }
+                            else if (ss == 2) {
+                                enc.MovsxRaxWord(tempDisp);
+                            }
+                            else {
+                                enc.MovsxRaxByte(tempDisp);
+                            }
+                        }
+                        else {
+                            if (ss == 4) {
+                                enc.MovEaxLoad(tempDisp);
+                            }
+                            else if (ss == 2) {
+                                enc.MovzxRaxWord(tempDisp);
+                            }
+                            else {
+                                enc.MovzxRaxByte(tempDisp);
+                            }
+                        }
+                        StoreA(step.dst, step.type);
+                    }
+                }
+                else {
+                    LoadA(step.src, step.type);
+                    StoreA(step.dst, step.type);
+                }
+            }
         }
     }
 
