@@ -4,7 +4,6 @@
 #include <cassert>
 #include <charconv>
 #include <format>
-#include <fstream>
 #include <limits>
 #include <memory>
 #include <optional>
