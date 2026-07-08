@@ -2398,6 +2398,15 @@ private:
             StoreA(instr.dst, TypeRef::MakePointer(instr.type));
             break;
         }
+        case LirOpcode::StringAddr: {
+            const TypeRef elemType = instr.type.inner.empty() ? TypeRef::MakeChar8() : instr.type.inner[0];
+            const uint32_t symIdx = InternStr(EncodeStringLiteral(instr.strArg, SizeOfRuntime(elemType)));
+            uint32_t relocOff;
+            enc.LeaRaxRip(relocOff);
+            AddTextReloc(relocOff, symIdx);
+            StoreA(instr.dst, instr.type);
+            break;
+        }
         case LirOpcode::FieldPtr: {
             LirReg base = instr.srcs[0];
             LoadA(base, regTypes.at(base));

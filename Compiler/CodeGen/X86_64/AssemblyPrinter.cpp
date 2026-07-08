@@ -1522,6 +1522,14 @@ private:
             StoreA(instr.dst, TypeRef::MakePointer(instr.type));
             break;
 
+        case LirOpcode::StringAddr: {
+            const TypeRef elemType = instr.type.inner.empty() ? TypeRef::MakeChar8() : instr.type.inner[0];
+            const std::string lbl = InternStr(EncodeStringLiteral(instr.strArg, SizeOfRuntime(elemType)));
+            TI(std::format("{:<8}rax, [rel {}]", "lea", lbl));
+            StoreA(instr.dst, instr.type);
+            break;
+        }
+
         default:
             TC(std::format("TODO: opcode {}", static_cast<int>(instr.op)));
             break;

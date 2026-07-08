@@ -58,6 +58,7 @@ enum class LirOpcode {
     Phi, // %dst = phi <type> [%val, bb], ...
     // Global address
     GlobalAddr, // %dst = globaladdr <name> — address of a named global symbol
+    StringAddr, // %dst = stringaddr <value> — address of static literal storage
 };
 
 // LIR Instruction

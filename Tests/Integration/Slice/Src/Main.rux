@@ -1,10 +1,19 @@
 import Std::Assert;
 
+func PlatformName() -> char8[] {
+    return "Windows";
+}
+
+func IsWindows(value: char8[]) -> bool {
+    return value.length == 7 && value[0] == c8'W' && value[1] == c8'i' && value[6] == c8's';
+}
+
 func Main() -> int {
     var str: char8[] = "Hello, world!";
     Assert(str[0] == 'H', "Expected first character to be 'H'");
     Assert(str[7] == 'w', "Expected eighth character to be 'w'");
     Assert(str.data != null, "Expected non-null data pointer");
     Assert(str.length == 13, "Expected length of 13");
+    Assert(IsWindows(PlatformName()), "Returned string literal must have static storage duration");
     return 0;
 }

@@ -345,6 +345,17 @@ private:
         return r;
     }
 
+    LirReg EmitStringAddr(std::string value, const TypeRef &elemType) {
+        LirReg r = NewReg();
+        LirInstr i;
+        i.dst = r;
+        i.op = LirOpcode::StringAddr;
+        i.type = TypeRef::MakePointer(elemType);
+        i.strArg = std::move(value);
+        Emit(std::move(i));
+        return r;
+    }
+
     [[nodiscard]] bool IsInterfaceType(const TypeRef &t) const {
         return t.kind == TypeRef::Kind::Named && interfacesByName.contains(t.name);
     }
@@ -1853,15 +1864,7 @@ private:
 
     void StoreStringLiteralSlice(const HirLiteralExpr &e, LirReg slot) {
         const TypeRef elemType = StringSliceElementType(e);
-        const LirReg data = EmitAlloca(elemType);
-        fn->blocks[cur].instrs.back().strArg = std::to_string(e.value.size());
-        for (std::size_t i = 0; i < e.value.size(); ++i) {
-            const auto ch = static_cast<unsigned char>(e.value[i]);
-            LirReg val = EmitConst(std::to_string(ch), elemType);
-            LirReg idx = EmitConst(std::to_string(i), TypeRef::MakeUInt64());
-            LirReg ptr = EmitIndexPtr(data, idx, elemType);
-            EmitStore(val, ptr, elemType);
-        }
+        const LirReg data = EmitStringAddr(e.value, elemType);
         LirReg dataField = EmitFieldPtr(slot, "data", TypeRef::MakePointer(elemType));
         EmitStore(data, dataField, TypeRef::MakePointer(elemType));
         LirReg len = EmitConst(std::to_string(e.value.size()), TypeRef::MakeUInt64());

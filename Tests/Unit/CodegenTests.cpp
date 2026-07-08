@@ -118,6 +118,18 @@ TEST_CASE("assembly phi lowering breaks a swap cycle with a stack temporary") {
     CHECK(output.find(expected) != std::string::npos);
 }
 
+TEST_CASE("string literal slices reference static storage") {
+    const std::string output = CompileToAsm(R"(
+        func Name() -> char8[] {
+            return "Windows";
+        }
+    )");
+
+    CHECK(output.find("section .rodata") != std::string::npos);
+    CHECK(output.find("db    87, 105, 110, 100, 111, 119, 115, 0") != std::string::npos);
+    CHECK(output.find("lea     rax, [rel __str") != std::string::npos);
+}
+
 TEST_CASE("codegen generates correct calling convention for extern functions") {
     std::string source = R"(
         @[Import(lib: "kernel32.dll")]

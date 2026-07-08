@@ -73,6 +73,8 @@ static std::string_view OpcodeStr(LirOpcode op) {
         return "phi";
     case LirOpcode::GlobalAddr:
         return "globaladdr";
+    case LirOpcode::StringAddr:
+        return "stringaddr";
     default:
         return "?";
     }
@@ -95,6 +97,9 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
     switch (i.op) {
     case LirOpcode::Const:
         out << std::format("{} = const {} {}\n", RegStr(i.dst), i.type.ToString(), i.strArg);
+        return;
+    case LirOpcode::StringAddr:
+        out << std::format("{} = stringaddr {} <{} bytes>\n", RegStr(i.dst), i.type.ToString(), i.strArg.size());
         return;
     case LirOpcode::Alloca:
         out << std::format("{} = alloca {}\n", RegStr(i.dst), i.type.ToString());

@@ -26,6 +26,10 @@ namespace Rux::Layout {
 // Strip a generic argument list: "Foo<int32>" -> "Foo".
 [[nodiscard]] std::string BaseTypeName(const std::string &name);
 
+// Encode decoded string bytes as fixed-width elements. InternStr appends the
+// final byte of the width-sized NUL terminator.
+[[nodiscard]] std::string EncodeStringLiteral(std::string_view value, int elementSize);
+
 // Struct field layout
 struct FieldLayout {
     std::string name;

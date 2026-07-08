@@ -2,6 +2,21 @@
 
 namespace Rux::Layout {
 
+std::string EncodeStringLiteral(const std::string_view value, int elementSize) {
+    if (elementSize != 2 && elementSize != 4) {
+        elementSize = 1;
+    }
+
+    std::string encoded;
+    encoded.reserve(value.size() * static_cast<std::size_t>(elementSize) + static_cast<std::size_t>(elementSize - 1));
+    for (const unsigned char byte : value) {
+        encoded.push_back(static_cast<char>(byte));
+        encoded.append(static_cast<std::size_t>(elementSize - 1), '\0');
+    }
+    encoded.append(static_cast<std::size_t>(elementSize - 1), '\0');
+    return encoded;
+}
+
 int SizeOf(const TypeRef &t) {
     switch (t.kind) {
     case TypeRef::Kind::Bool8: // Bool == Bool8
