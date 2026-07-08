@@ -565,7 +565,8 @@ private:
     }
 
     void LoadReturnValue(LirReg reg, const TypeRef &t) {
-        if (SizeOfRuntime(t) == 16 && IsRegPointerTo(reg, t)) {
+        const int size = SizeOfRuntime(t);
+        if (IsRegPointerTo(reg, t) && (size == 1 || size == 2 || size == 4 || size == 8 || size == 16)) {
             auto it = physRegMap.find(reg);
             if (it != physRegMap.end()) {
                 TI(std::format("{:<8}r10, {}", "mov", PhysRegName(it->second)));
@@ -573,8 +574,19 @@ private:
             else {
                 TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", slotMap.at(reg)));
             }
-            TI(std::format("{:<8}rax, qword [r10]", "mov"));
-            TI(std::format("{:<8}rdx, qword [r10 + 8]", "mov"));
+            if (size == 16) {
+                TI(std::format("{:<8}rax, qword [r10]", "mov"));
+                TI(std::format("{:<8}rdx, qword [r10 + 8]", "mov"));
+            }
+            else if (size == 8) {
+                TI(std::format("{:<8}rax, qword [r10]", "mov"));
+            }
+            else if (size == 4) {
+                TI(std::format("{:<8}eax, dword [r10]", "mov"));
+            }
+            else {
+                TI(std::format("{:<8}eax, {} [r10]", "movzx", PtrSize(size)));
+            }
             return;
         }
         LoadA(reg, t);

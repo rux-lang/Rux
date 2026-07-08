@@ -963,8 +963,9 @@ private:
     }
 
     void LoadReturnValue(const LirReg reg, const TypeRef &t) const {
-        if (SizeOfRuntime(t) == 16) {
-            if (IsRegPointerTo(reg, t)) {
+        const int size = SizeOfRuntime(t);
+        if (IsRegPointerTo(reg, t)) {
+            if (size == 16) {
                 auto it = physRegMap.find(reg);
                 if (it != physRegMap.end()) {
                     enc.MovR10PhysReg(it->second);
@@ -979,14 +980,28 @@ private:
                 enc.Byte(0x8B);
                 enc.Byte(0x52);
                 enc.Byte(0x08); // mov rdx, [r10 + 8]
+                return;
             }
-            else {
-                enc.MovRaxLoad(Disp(reg));
-                enc.MovR10Load(Disp(reg) + 8);
-                enc.Byte(0x4C);
-                enc.Byte(0x89);
-                enc.Byte(0xD2); // mov rdx, r10
+
+            if (size == 1 || size == 2 || size == 4 || size == 8) {
+                auto it = physRegMap.find(reg);
+                if (it != physRegMap.end()) {
+                    enc.MovR10PhysReg(it->second);
+                }
+                else {
+                    enc.MovR10Load(Disp(reg));
+                }
+                LoadChunkFromR10(0, size);
+                return;
             }
+        }
+
+        if (size == 16) {
+            enc.MovRaxLoad(Disp(reg));
+            enc.MovR10Load(Disp(reg) + 8);
+            enc.Byte(0x4C);
+            enc.Byte(0x89);
+            enc.Byte(0xD2); // mov rdx, r10
             return;
         }
         LoadA(reg, t);
