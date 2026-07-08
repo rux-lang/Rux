@@ -799,6 +799,78 @@ public:
         Byte(0xC0);
     }
 
+    void MovzxRaxAx() const {
+        Byte(0x48);
+        Byte(0x0F);
+        Byte(0xB7);
+        Byte(0xC0);
+    }
+
+    void MovsxdRaxEax() const {
+        Byte(0x48);
+        Byte(0x63);
+        Byte(0xC0);
+    }
+
+    void MovsxRaxAl() const {
+        Byte(0x48);
+        Byte(0x0F);
+        Byte(0xBE);
+        Byte(0xC0);
+    }
+
+    void MovsxRaxAx() const {
+        Byte(0x48);
+        Byte(0x0F);
+        Byte(0xBF);
+        Byte(0xC0);
+    }
+
+    void MovEaxEax() const {
+        Byte(0x89);
+        Byte(0xC0);
+    }
+
+    void MovzxR10r10b() const {
+        Byte(0x4D);
+        Byte(0x0F);
+        Byte(0xB6);
+        Byte(0xD2);
+    }
+
+    void MovzxR10r10w() const {
+        Byte(0x4D);
+        Byte(0x0F);
+        Byte(0xB7);
+        Byte(0xD2);
+    }
+
+    void MovsxdR10r10d() const {
+        Byte(0x4D);
+        Byte(0x63);
+        Byte(0xD2);
+    }
+
+    void MovsxR10r10b() const {
+        Byte(0x4D);
+        Byte(0x0F);
+        Byte(0xBE);
+        Byte(0xD2);
+    }
+
+    void MovsxR10r10w() const {
+        Byte(0x4D);
+        Byte(0x0F);
+        Byte(0xBF);
+        Byte(0xD2);
+    }
+
+    void MovR10dR10d() const {
+        Byte(0x45);
+        Byte(0x89);
+        Byte(0xD2);
+    }
+
     void SetpDl() const {
         Byte(0x0F);
         Byte(0x9A);
@@ -1115,6 +1187,98 @@ public:
         Byte(0x8D);
         Byte(0x80);
         Dword(u(v));
+    }
+
+    void PopRbp() const {
+        Byte(0x5D);
+    }
+
+    // Callee-saved registers push / pop / moves
+    void PushRbx() const { Byte(0x53); }
+    void PopRbx() const { Byte(0x5B); }
+    void PushR12() const { Byte(0x41); Byte(0x54); }
+    void PopR12() const { Byte(0x41); Byte(0x5C); }
+    void PushR13() const { Byte(0x41); Byte(0x55); }
+    void PopR13() const { Byte(0x41); Byte(0x5D); }
+    void PushR14() const { Byte(0x41); Byte(0x56); }
+    void PopR14() const { Byte(0x41); Byte(0x5E); }
+    void PushR15() const { Byte(0x41); Byte(0x57); }
+    void PopR15() const { Byte(0x41); Byte(0x5F); }
+
+    void PushReg(int rIdx) const {
+        if (rIdx == 0) PushRbx();
+        else if (rIdx == 1) PushR12();
+        else if (rIdx == 2) PushR13();
+        else if (rIdx == 3) PushR14();
+        else if (rIdx == 4) PushR15();
+    }
+
+    void PopReg(int rIdx) const {
+        if (rIdx == 0) PopRbx();
+        else if (rIdx == 1) PopR12();
+        else if (rIdx == 2) PopR13();
+        else if (rIdx == 3) PopR14();
+        else if (rIdx == 4) PopR15();
+    }
+
+    // Move RAX from physical register (used by LoadA)
+    void MovRaxPhysReg(int rIdx) const {
+        if (rIdx == 0) { // rbx
+            Byte(0x48); Byte(0x89); Byte(0xD8); // mov rax, rbx
+        } else if (rIdx == 1) { // r12
+            Byte(0x4C); Byte(0x89); Byte(0xE0); // mov rax, r12
+        } else if (rIdx == 2) { // r13
+            Byte(0x4C); Byte(0x89); Byte(0xE8); // mov rax, r13
+        } else if (rIdx == 3) { // r14
+            Byte(0x4C); Byte(0x89); Byte(0xF0); // mov rax, r14
+        } else if (rIdx == 4) { // r15
+            Byte(0x4C); Byte(0x89); Byte(0xF8); // mov rax, r15
+        }
+    }
+
+    // Move R10 from physical register (used by LoadB)
+    void MovR10PhysReg(int rIdx) const {
+        if (rIdx == 0) { // rbx
+            Byte(0x49); Byte(0x89); Byte(0xDA); // mov r10, rbx
+        } else if (rIdx == 1) { // r12
+            Byte(0x4D); Byte(0x89); Byte(0xE2); // mov r10, r12
+        } else if (rIdx == 2) { // r13
+            Byte(0x4D); Byte(0x89); Byte(0xEA); // mov r10, r13
+        } else if (rIdx == 3) { // r14
+            Byte(0x4D); Byte(0x89); Byte(0xF2); // mov r10, r14
+        } else if (rIdx == 4) { // r15
+            Byte(0x4D); Byte(0x89); Byte(0xFA); // mov r10, r15
+        }
+    }
+
+    // Move R11 from physical register (used by Store and other instructions)
+    void MovR11PhysReg(int rIdx) const {
+        if (rIdx == 0) { // rbx
+            Byte(0x49); Byte(0x89); Byte(0xDB); // mov r11, rbx
+        } else if (rIdx == 1) { // r12
+            Byte(0x4D); Byte(0x89); Byte(0xE3); // mov r11, r12
+        } else if (rIdx == 2) { // r13
+            Byte(0x4D); Byte(0x89); Byte(0xEB); // mov r11, r13
+        } else if (rIdx == 3) { // r14
+            Byte(0x4D); Byte(0x89); Byte(0xF3); // mov r11, r14
+        } else if (rIdx == 4) { // r15
+            Byte(0x4D); Byte(0x89); Byte(0xFB); // mov r11, r15
+        }
+    }
+
+    // Move physical register from RAX (used by StoreA)
+    void MovPhysRegRax(int rIdx) const {
+        if (rIdx == 0) { // rbx
+            Byte(0x48); Byte(0x89); Byte(0xC3); // mov rbx, rax
+        } else if (rIdx == 1) { // r12
+            Byte(0x49); Byte(0x89); Byte(0xC4); // mov r12, rax
+        } else if (rIdx == 2) { // r13
+            Byte(0x49); Byte(0x89); Byte(0xC5); // mov r13, rax
+        } else if (rIdx == 3) { // r14
+            Byte(0x49); Byte(0x89); Byte(0xC6); // mov r14, rax
+        } else if (rIdx == 4) { // r15
+            Byte(0x49); Byte(0x89); Byte(0xC7); // mov r15, rax
+        }
     }
 
 private:

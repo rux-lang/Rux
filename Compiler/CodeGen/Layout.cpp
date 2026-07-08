@@ -36,12 +36,28 @@ int SizeOf(const TypeRef &t) {
         }
         return AlignUp(offset, maxAlign);
     }
+    case TypeRef::Kind::Slice:
+        return 16;
+    case TypeRef::Kind::Range: {
+        const TypeRef &elemType = t.inner.empty() ? TypeRef::MakeInt64() : t.inner[0];
+        int elemSize = SizeOf(elemType);
+        return AlignUp(2 * elemSize + 1, elemSize > 0 ? elemSize : 1);
+    }
     case TypeRef::Kind::Named:
+        {
+            const auto baseName = BaseTypeName(t.name);
+            if (baseName == "Slice" || baseName.starts_with("Slice<")) {
+                return 16;
+            }
+            if (baseName == "String" || baseName == "StringArray" || baseName == "SystemTime") {
+                return 16;
+            }
+            if (baseName == "StringBuilder") {
+                return 24;
+            }
+        }
         if (!t.inner.empty()) {
             return SizeOf(t.inner[0]);
-        }
-        if (t.name == "Slice" || t.name.starts_with("Slice<")) {
-            return 16;
         }
         return 8;
     default:
@@ -74,6 +90,18 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known)
             }
             else if (baseName == "Slice" || baseName.starts_with("Slice<")) {
                 sz = 16;
+                al = 8;
+            }
+            else if (baseName == "String" || baseName == "StringArray") {
+                sz = 16;
+                al = 8;
+            }
+            else if (baseName == "SystemTime") {
+                sz = 16;
+                al = 2;
+            }
+            else if (baseName == "StringBuilder") {
+                sz = 24;
                 al = 8;
             }
         }
