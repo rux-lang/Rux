@@ -1,0 +1,42 @@
+name: PR Target Branch Guard
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+jobs:
+  check-target-branch:
+    name: Check Target Branch
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate base branch
+        id: check
+        run: |
+          echo "Base branch is: ${{ github.event.pull_request.base.ref }}"
+
+          if [ "${{ github.event.pull_request.base.ref }}" = "main" ]; then
+            echo "WARN=true" >> $GITHUB_OUTPUT
+          else
+            echo "WARN=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment warning on PR
+        if: steps.check.outputs.WARN == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.payload.pull_request.number;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body: "Warning: This PR targets **main** instead of **dev**. Make sure this is intentional before merging."
+            });
+
+      - name: Fail if targeting main
+        if: steps.check.outputs.WARN == 'true'
+        run: |
+          echo "PRs should target dev, not main."
+          exit 1
