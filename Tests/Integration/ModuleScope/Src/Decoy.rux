@@ -1,0 +1,17 @@
+// A module Main never imports, whose function names collide with the ones it
+// does. Sorting before Fast.rux, it is collected first, so a lookup that
+// ignores modules finds these declarations first. Nothing here may be called.
+
+module ModuleScope::Decoy {
+    // Same name and signature as Fast::Scale. Neither module overloads it, so
+    // both would claim the bare symbol `Scale`.
+    func Scale(x: float64) -> float64 {
+        return x * 10.0;
+    }
+
+    // Same name as Fast::Widen, which its own module does overload. The two
+    // modules must not be treated as overloads of one another.
+    func Widen(x: float64) -> float64 {
+        return x * 100.0;
+    }
+}

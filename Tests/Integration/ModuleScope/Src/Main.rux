@@ -1,0 +1,22 @@
+// An imported function must win over a same-named function in a module that was
+// never imported, and the two must not share a symbol in the object file.
+
+import ModuleScope::Fast::{ Scale, Widen };
+
+func Main() -> int {
+    // Decoy::Scale would give 10.0.
+    if Scale(1.0) != 2.0 {
+        return 1;
+    }
+
+    // Fast overloads Widen, Decoy does not; the float64 overloads must stay
+    // distinct. Decoy::Widen would give 100.0.
+    if Widen(1.0) != 4.0 {
+        return 2;
+    }
+    if Widen(1.0f32) != 3.0f32 {
+        return 3;
+    }
+
+    return 0;
+}

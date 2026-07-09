@@ -2494,6 +2494,27 @@ private:
         currentScope = savedScope;
     }
 
+    static bool IsSliceTypeRef(const TypeRef &type) {
+        return type.kind == TypeRef::Kind::Slice ||
+               (type.kind == TypeRef::Kind::Named && type.name.starts_with("Slice<"));
+    }
+
+    // An element of a constant array must reduce to a literal, since the array
+    // is laid out in read-only data rather than evaluated at each use.
+    bool IsConstArrayElement(const Expr &e) const {
+        if (dynamic_cast<const LiteralExpr *>(&e)) {
+            return true;
+        }
+        if (const auto *u = dynamic_cast<const UnaryExpr *>(&e)) {
+            return u->op == TokenKind::Minus && IsConstArrayElement(*u->operand);
+        }
+        if (const auto *ident = dynamic_cast<const IdentExpr *>(&e)) {
+            const Symbol *sym = currentScope->Lookup(ident->name);
+            return sym && sym->kind == Symbol::Kind::Const;
+        }
+        return false;
+    }
+
     void CheckConstDecl(const ConstDecl &d) {
         TypeRef valueType = CheckExpr(*d.value);
         TypeRef constType = d.type ? ResolveType(*d.type->get()) : valueType;
@@ -2503,6 +2524,23 @@ private:
                       AssignmentErrorMessage(*d.value, constType,
                                              std::format("cannot assign '{}' to constant of type '{}'",
                                                          valueType.ToString(), constType.ToString())));
+        }
+        if (IsSliceTypeRef(constType)) {
+            const auto *array = dynamic_cast<const SliceExpr *>(d.value.get());
+            const bool isText = dynamic_cast<const LiteralExpr *>(d.value.get()) != nullptr;
+            if (!isText && !array) {
+                EmitError(d.value->location, "a constant of slice type must be initialized with an array "
+                                             "literal or a string literal");
+            }
+            else if (array) {
+                for (const auto &element : array->elements) {
+                    if (!IsConstArrayElement(*element)) {
+                        EmitError(element->location, "element of a constant array must be a literal or a "
+                                                     "named constant");
+                        break;
+                    }
+                }
+            }
         }
         if (Symbol *sym = currentScope->Lookup(d.name)) {
             sym->type = constType;

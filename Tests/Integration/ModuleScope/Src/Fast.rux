@@ -1,0 +1,13 @@
+module ModuleScope::Fast {
+    func Scale(x: float64) -> float64 {
+        return x * 2.0;
+    }
+
+    func Widen(x: float32) -> float32 {
+        return x * 3.0f32;
+    }
+
+    func Widen(x: float64) -> float64 {
+        return x * 4.0;
+    }
+}

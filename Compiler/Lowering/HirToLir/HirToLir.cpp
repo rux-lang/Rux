@@ -334,12 +334,15 @@ private:
         return ptr;
     }
 
-    LirReg EmitGlobalAddr(std::string label) {
+    // `pointee` names what the symbol holds, so that a later FieldPtr can find
+    // the layout. Opaque is right for a function address, which is never
+    // dereferenced.
+    LirReg EmitGlobalAddr(std::string label, TypeRef pointee = TypeRef::MakeOpaque()) {
         LirReg r = NewReg();
         LirInstr i;
         i.dst = r;
         i.op = LirOpcode::GlobalAddr;
-        i.type = TypeRef::MakePointer(TypeRef::MakeOpaque());
+        i.type = TypeRef::MakePointer(std::move(pointee));
         i.strArg = std::move(label);
         Emit(std::move(i));
         return r;
@@ -427,6 +430,7 @@ private:
             cd.isPublic = c.isPublic;
             cd.type = c.type;
             cd.value = PrintConstExpr(*c.value);
+            CollectConstContents(c, cd);
             lm.consts.push_back(std::move(cd));
         }
         for (const auto &ta : mod.typeAliases) {
@@ -484,6 +488,54 @@ private:
             return PrintConstExpr(*b->left) + " op " + PrintConstExpr(*b->right);
         }
         return "<const>";
+    }
+
+    // The literal an array element spells out, with a leading minus folded in
+    // and a named constant resolved to the literal it stands for. Anything else
+    // is not a constant the backend can lay out; the semantic analyzer rejects
+    // those before we get here.
+    std::optional<std::string> PrintConstElement(const HirExpr &e) const {
+        if (auto *lit = dynamic_cast<const HirLiteralExpr *>(&e)) {
+            return lit->value;
+        }
+        if (auto *u = dynamic_cast<const HirUnaryExpr *>(&e); u && u->op == TokenKind::Minus) {
+            if (const auto inner = PrintConstElement(*u->operand)) {
+                return inner->starts_with('-') ? inner->substr(1) : "-" + *inner;
+            }
+        }
+        if (auto *v = dynamic_cast<const HirVarExpr *>(&e)) {
+            if (const auto it = globalConsts.find(v->name); it != globalConsts.end()) {
+                return PrintConstElement(*it->second->value);
+            }
+        }
+        return std::nullopt;
+    }
+
+    // Records the contents of a slice-typed constant so the backend can emit it
+    // as data rather than as an expression evaluated at each use.
+    void CollectConstContents(const HirConst &c, LirConstDecl &cd) const {
+        if (!IsSliceType(c.type)) {
+            return;
+        }
+        if (auto *lit = dynamic_cast<const HirLiteralExpr *>(c.value.get()); lit && IsStringSliceLiteral(*lit)) {
+            cd.isTextSlice = true;
+            cd.text = lit->value;
+            cd.elementType = StringSliceElementType(*lit);
+            return;
+        }
+        if (auto *arr = dynamic_cast<const HirSliceExpr *>(c.value.get())) {
+            std::vector<std::string> elements;
+            for (const auto &element : arr->elements) {
+                const auto printed = PrintConstElement(*element);
+                if (!printed) {
+                    return;
+                }
+                elements.push_back(*printed);
+            }
+            cd.elementType =
+                arr->elementType.IsUnknown() && !arr->elements.empty() ? arr->elements.front()->type : arr->elementType;
+            cd.elements = std::move(elements);
+        }
     }
 
     // Function lowering
@@ -1919,6 +1971,18 @@ private:
             auto it = locals.find(e->name);
             if (it != locals.end()) {
                 return it->second;
+            }
+            // A slice-typed constant lives in read-only data under its own
+            // name, so indexing or reading .length works off that address. A
+            // local const has no symbol, so its initializer is materialized.
+            if (const auto constIt = localConsts.find(e->name); constIt != localConsts.end()) {
+                return LowerLValue(*constIt->second.value);
+            }
+            if (const auto constIt = globalConsts.find(e->name); constIt != globalConsts.end()) {
+                if (IsSliceType(constIt->second->type)) {
+                    return EmitGlobalAddr(e->name, constIt->second->type);
+                }
+                return LowerLValue(*constIt->second->value);
             }
             // Global variable address.
             LirReg ptr = NewReg();

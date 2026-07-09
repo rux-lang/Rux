@@ -2809,6 +2809,87 @@ private:
         }
     }
 
+    // Appends one element of a constant array to .rodata, little-endian.
+    void AppendConstElement(const std::string &literal, const TypeRef &type) {
+        const int size = SizeOf(type);
+        std::uint64_t bits = 0;
+        if (type.kind == TypeRef::Kind::Float64) {
+            const double value = std::stod(literal);
+            std::memcpy(&bits, &value, 8);
+        }
+        else if (type.kind == TypeRef::Kind::Float32) {
+            const float value = std::stof(literal);
+            std::uint32_t narrow = 0;
+            std::memcpy(&narrow, &value, 4);
+            bits = narrow;
+        }
+        else if (type.IsBool()) {
+            bits = (literal == "true" || literal == "1") ? 1 : 0;
+        }
+        else if (literal.starts_with('-')) {
+            const std::uint64_t magnitude = ParseIntegerLiteralBits(literal.substr(1)).value_or(0);
+            bits = static_cast<std::uint64_t>(-static_cast<std::int64_t>(magnitude));
+        }
+        else {
+            bits = ParseIntegerLiteralBits(literal).value_or(0);
+        }
+        for (int i = 0; i < size; ++i) {
+            rodataData.push_back(bits & 0xFF);
+            bits >>= 8;
+        }
+    }
+
+    // A slice constant becomes two read-only symbols: its elements, and a
+    // {data, length} header under the constant's own name whose data field is
+    // relocated to point at them. Code then reaches the elements the same way
+    // it reaches those of any other slice.
+    void EmitConstSlice(const LirConstDecl &c) {
+        const int elemSize = std::max(SizeOf(c.elementType), 1);
+        const uint32_t elemsOff = AlignRodata(std::min(elemSize, 8));
+        std::uint64_t length = 0;
+        if (c.isTextSlice) {
+            for (const unsigned char byte : c.text) {
+                rodataData.push_back(byte);
+            }
+            rodataData.push_back(0); // keep C interop's terminator
+            length = c.text.size();
+        }
+        else {
+            for (const auto &element : c.elements) {
+                AppendConstElement(element, c.elementType);
+            }
+            length = c.elements.size();
+        }
+
+        RcuSymbol elems;
+        elems.name = c.name + "$elements";
+        elems.sectionIdx = RCU_RODATA_IDX;
+        elems.value = elemsOff;
+        elems.size = static_cast<uint32_t>(rodataData.size() - elemsOff);
+        elems.kind = RcuSymKind::Const;
+        elems.visibility = RcuSymVis::Local;
+        const uint32_t elemsSym = AddSymbol(std::move(elems));
+
+        const uint32_t headerOff = AlignRodata(8);
+        for (int i = 0; i < 16; ++i) {
+            rodataData.push_back(0);
+        }
+        AddRodataReloc(headerOff, elemsSym, RcuRelType::Abs64);
+        for (int i = 0; i < 8; ++i) {
+            rodataData[headerOff + 8 + i] = static_cast<std::uint8_t>((length >> (8 * i)) & 0xFF);
+        }
+
+        RcuSymbol header;
+        header.name = c.name;
+        header.sectionIdx = RCU_RODATA_IDX;
+        header.value = headerOff;
+        header.size = 16;
+        header.kind = RcuSymKind::Const;
+        header.visibility = c.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
+        header.typeName = c.type.ToString();
+        dataSyms[c.name] = AddSymbol(std::move(header));
+    }
+
     void GenModule() {
         BuildLayouts();
         PredeclareFunctions();
@@ -2818,6 +2899,12 @@ private:
         }
         // Module constants → .data symbols
         for (const auto &c : mod.consts) {
+            // A constant of slice type is addressed, not inlined, so it needs
+            // real contents behind its name rather than a placeholder.
+            if (c.isTextSlice || !c.elements.empty()) {
+                EmitConstSlice(c);
+                continue;
+            }
             RcuSymbol s;
             s.name = c.name;
             s.sectionIdx = RCU_DATA_IDX;
@@ -2830,7 +2917,7 @@ private:
                 dataData.push_back(0);
             }
             s.size = 8;
-            AddSymbol(s);
+            dataSyms[c.name] = AddSymbol(s);
         }
         EmitVtables();
         // Functions

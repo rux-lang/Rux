@@ -178,6 +178,7 @@ public:
         for (auto *mod : modules) {
             CollectModule(*mod);
         }
+        BuildFunctionSymbolNames();
         HirPackage pkg;
         for (auto *mod : modules) {
             pkg.modules.push_back(LowerModule(*mod));
@@ -207,6 +208,20 @@ private:
     std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> typeInterfaceVtables;
     std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
+
+    // Free functions live in a single flat lookup table, so a module path is
+    // kept alongside each one: it decides which candidates a call site can see
+    // and keeps same-named functions from different modules apart in the object
+    // file. Empty means the function was declared outside any `module`.
+    std::unordered_map<const FuncDecl *, std::string> funcModulePath;
+    std::unordered_map<const FuncDecl *, std::string> funcSymbolName;
+    // Module paths named by each source file's `import` declarations.
+    std::unordered_map<std::string, std::vector<std::string>> fileImports;
+    // Declared module path of the enclosing `module`, during collection and
+    // during lowering respectively. Distinct from currentModulePath, which is
+    // derived from the file name for the `#module` builtin.
+    std::string collectModulePath;
+    std::string declModulePath;
 
     // Scope management
     void PushScope() {
@@ -263,9 +278,29 @@ private:
     // First pass: collect global names
     void CollectModule(const Module &mod) {
         currentFile = mod.name;
+        collectModulePath.clear();
         for (const auto &decl : mod.items) {
             CollectDecl(*decl);
         }
+    }
+
+    // The module a bare `import` makes visible: `import Std::Io::Print` names
+    // module Std::Io, `import Std::{ Assert }` and `import Std.Io.*` name the
+    // module they are rooted at. Mirrors SemanticAnalyzer::LogicalModulePathForImport.
+    static std::string ImportedModulePath(const UseDecl &d) {
+        if (d.path.empty()) {
+            return "";
+        }
+        // A Single import ends in the imported name, not in a module segment.
+        const std::size_t end = d.kind == UseDecl::Kind::Single ? d.path.size() - 1 : d.path.size();
+        if (end == 0) {
+            return "";
+        }
+        std::string out = d.path[0];
+        for (std::size_t i = 1; i < end; ++i) {
+            out += "::" + d.path[i];
+        }
+        return out;
     }
 
     TypeRef MakeFuncType(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
@@ -316,12 +351,18 @@ private:
         };
         if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             functionsByName[fn->name].push_back(fn);
+            funcModulePath[fn] = collectModulePath;
             HirSymbol sym;
             sym.kind = HirSymbol::Kind::Func;
             sym.name = fn->name;
             sym.type = MakeFuncType(fn->params, fn->returnType, fn->typeParams);
             sym.funcOverloads.push_back(fn);
             globalScope.Define(std::move(sym));
+        }
+        else if (auto *useDecl = dynamic_cast<const UseDecl *>(&decl)) {
+            if (std::string path = ImportedModulePath(*useDecl); !path.empty()) {
+                fileImports[currentFile].push_back(std::move(path));
+            }
         }
         else if (auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
             structDecls[structDecl->name] = structDecl;
@@ -364,9 +405,12 @@ private:
             }
         }
         else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
+            const auto saved = collectModulePath;
+            collectModulePath = collectModulePath.empty() ? modDecl->name : collectModulePath + "::" + modDecl->name;
             for (auto &item : modDecl->items) {
                 CollectDecl(*item);
             }
+            collectModulePath = saved;
         }
         else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
             for (const auto &method : implDecl->methods) {
@@ -1251,6 +1295,30 @@ private:
         return it != functionsByName.end() && it->second.size() > 1;
     }
 
+    const std::string &ModulePathOf(const FuncDecl &decl) const {
+        static const std::string empty;
+        const auto it = funcModulePath.find(&decl);
+        return it == funcModulePath.end() ? empty : it->second;
+    }
+
+    // Overloading is a property of a single module: two modules that happen to
+    // declare the same function name are not overloads of each other, and
+    // mangling them as if they were is what makes their symbols collide.
+    bool FunctionIsOverloadedInModule(const std::string &name, const FuncDecl &decl) const {
+        const auto it = functionsByName.find(name);
+        if (it == functionsByName.end()) {
+            return false;
+        }
+        const std::string &modulePath = ModulePathOf(decl);
+        std::size_t count = 0;
+        for (const auto *candidate : it->second) {
+            if (ModulePathOf(*candidate) == modulePath && ++count > 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     static std::string MangleTypeName(const TypeRef &type) {
         std::string out;
         for (const char c : type.ToString()) {
@@ -1264,10 +1332,7 @@ private:
         return out.empty() ? "_" : out;
     }
 
-    std::string FunctionCalleeName(const std::string &name, const FuncDecl &decl) {
-        if (!FunctionIsOverloaded(name)) {
-            return name;
-        }
+    std::string MangleWithParams(const std::string &name, const FuncDecl &decl) {
         std::string out = name + "__";
         bool first = true;
         for (const auto &param : decl.params) {
@@ -1282,17 +1347,97 @@ private:
         return out;
     }
 
+    // Name within the declaring module: bare unless the module overloads it, in
+    // which case the parameter types disambiguate.
+    std::string ModuleLocalSymbolName(const std::string &name, const FuncDecl &decl) {
+        return FunctionIsOverloadedInModule(name, decl) ? MangleWithParams(name, decl) : name;
+    }
+
+    // Assigns every collected free function the name it is emitted under, once
+    // all modules have been collected. A module-local name is enough until two
+    // modules claim the same one; those get their module path prefixed, so a
+    // call can never bind to a same-named function from an unrelated module.
+    // Generic templates are excluded: the monomorphizer names each instance
+    // after its type arguments.
+    void BuildFunctionSymbolNames() {
+        std::unordered_map<std::string, std::unordered_set<std::string>> owners;
+        for (const auto &[name, decls] : functionsByName) {
+            for (const auto *decl : decls) {
+                if (decl->typeParams.empty()) {
+                    owners[ModuleLocalSymbolName(name, *decl)].insert(ModulePathOf(*decl));
+                }
+            }
+        }
+        for (const auto &[name, decls] : functionsByName) {
+            for (const auto *decl : decls) {
+                if (!decl->typeParams.empty()) {
+                    continue;
+                }
+                std::string local = ModuleLocalSymbolName(name, *decl);
+                const std::string &modulePath = ModulePathOf(*decl);
+                const bool contested = owners[local].size() > 1 && !modulePath.empty();
+                funcSymbolName[decl] = contested ? modulePath + "::" + local : std::move(local);
+            }
+        }
+    }
+
+    std::string FunctionCalleeName(const std::string &name, const FuncDecl &decl) {
+        if (const auto it = funcSymbolName.find(&decl); it != funcSymbolName.end()) {
+            return it->second;
+        }
+        // A generic template, which BuildFunctionSymbolNames leaves alone: its
+        // instances are named after their type arguments, and the uninstantiated
+        // template keeps the original overload mangling.
+        return FunctionIsOverloaded(name) ? MangleWithParams(name, decl) : name;
+    }
+
+    // Whether a call in the file being lowered may bind to this function: it is
+    // declared outside any module, in the same module as the call, or in a
+    // module the file imports. Everything else is only reachable through the
+    // fallback in LookupFunction.
+    bool FunctionIsVisibleHere(const FuncDecl &decl) const {
+        const std::string &modulePath = ModulePathOf(decl);
+        if (modulePath.empty() || modulePath == declModulePath) {
+            return true;
+        }
+        const auto it = fileImports.find(currentFile);
+        if (it == fileImports.end()) {
+            return false;
+        }
+        return std::ranges::find(it->second, modulePath) != it->second.end();
+    }
+
     const FuncDecl *LookupFunction(const std::string &name, const std::vector<TypeRef> &argTypes,
                                    const std::vector<TypeExprPtr> &typeArgs = {}) {
         const auto it = functionsByName.find(name);
         if (it == functionsByName.end() || it->second.empty()) {
             return nullptr;
         }
-        if (it->second.size() == 1) {
+        // An imported or same-module function always wins over one that merely
+        // shares its name from somewhere else in the program. Only if none of
+        // them fits do we consider the rest, which keeps existing code that
+        // relies on the flat lookup working.
+        std::vector<const FuncDecl *> visible;
+        for (const auto *decl : it->second) {
+            if (FunctionIsVisibleHere(*decl)) {
+                visible.push_back(decl);
+            }
+        }
+        if (!visible.empty() && visible.size() < it->second.size()) {
+            if (const FuncDecl *decl = ResolveOverload(visible, argTypes, typeArgs)) {
+                return decl;
+            }
+        }
+        return ResolveOverload(it->second, argTypes, typeArgs);
+    }
+
+    const FuncDecl *ResolveOverload(const std::vector<const FuncDecl *> &candidates,
+                                    const std::vector<TypeRef> &argTypes, const std::vector<TypeExprPtr> &typeArgs) {
+        if (candidates.size() == 1) {
             // Single-candidate validation. We must still verify arity and
             // assignability to prevent bogus calls from silently bypassing
             // the type-checker.
-            const auto *decl = it->second[0];
+            const auto *decl = candidates[0];
             std::unordered_map<std::string, TypeRef> substitutions;
             const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
             for (std::size_t i = 0; i < count; ++i) {
@@ -1327,7 +1472,7 @@ private:
         }
         for (const bool allowVariadic : {false, true}) {
             for (const bool exactOnly : {true, false}) {
-                for (const auto *decl : it->second) {
+                for (const auto *decl : candidates) {
                     std::unordered_map<std::string, TypeRef> substitutions;
                     const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
                     for (std::size_t i = 0; i < count; ++i) {
@@ -2038,6 +2183,7 @@ private:
     HirModule LowerModule(const Module &mod) {
         currentFile = mod.name;
         currentModulePath = FilePathToModulePath(mod.name);
+        declModulePath.clear();
         HirModule hmod;
         hmod.name = mod.name;
         for (const auto &decl : mod.items) {
@@ -2093,11 +2239,14 @@ private:
         }
         else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
             const auto savedModulePath = currentModulePath;
+            const auto savedDeclModulePath = declModulePath;
             currentModulePath = currentModulePath.empty() ? modDecl->name : currentModulePath + "::" + modDecl->name;
+            declModulePath = declModulePath.empty() ? modDecl->name : declModulePath + "::" + modDecl->name;
             for (auto &item : modDecl->items) {
                 LowerTopLevelDecl(*item, hmod);
             }
             currentModulePath = savedModulePath;
+            declModulePath = savedDeclModulePath;
         }
         // Import declarations are resolved by sema and have no HIR
         // representation.

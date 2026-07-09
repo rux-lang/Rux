@@ -1,0 +1,92 @@
+// A constant of slice type is addressed rather than inlined, so it must exist
+// in read-only data with a {data, length} header. Reading one used to follow a
+// header that was never filled in.
+
+const SCALAR: uint32 = 5;
+const RATIO: float64 = 1.5;
+
+const WORDS: uint32[4] = [0xA2F9836Eu32, 0x4E441529u32, 0u32, 0xFFFFFFFFu32];
+const SIGNED: int64[3] = [-1i64, 0i64, 9223372036854775807i64];
+const REALS: float64[3] = [1.5, -2.5, 1e300];
+const SMALL: uint8[3] = [1u8, 2u8, 255u8];
+const NAMED: uint32[2] = [SCALAR, 7u32];
+const TEXT: char8[] = "abc";
+
+func Sum(values: uint32[]) -> uint32 {
+    var total: uint32 = 0;
+    for value in values {
+        total += value;
+    }
+    return total;
+}
+
+func Main() -> int {
+    // Scalar constants are inlined and were never affected.
+    if SCALAR != 5u32 {
+        return 1;
+    }
+    if RATIO != 1.5 {
+        return 2;
+    }
+
+    // Elements survive at every width, including the ends of each range.
+    if WORDS[0] != 0xA2F9836Eu32 {
+        return 3;
+    }
+    if WORDS[3] != 0xFFFFFFFFu32 {
+        return 4;
+    }
+    if SIGNED[0] != -1i64 {
+        return 5;
+    }
+    if SIGNED[2] != 9223372036854775807i64 {
+        return 6;
+    }
+    if REALS[1] != -2.5 {
+        return 7;
+    }
+    if REALS[2] != 1e300 {
+        return 8;
+    }
+    if SMALL[2] != 255u8 {
+        return 9;
+    }
+
+    // An element may name another constant.
+    if NAMED[0] != 5u32 {
+        return 10;
+    }
+
+    // The length comes from the header, not from the data pointer.
+    if WORDS.length != 4 {
+        return 11;
+    }
+    if TEXT.length != 3 {
+        return 12;
+    }
+    if TEXT[2] != c8'c' {
+        return 13;
+    }
+
+    // Iterating and passing a constant array as a slice.
+    var iterated: uint32 = 0;
+    for value in WORDS {
+        iterated += value;
+    }
+    if iterated != Sum(WORDS) {
+        return 14;
+    }
+
+    // Indexing with a computed index reaches the same data.
+    var index: uint = 0;
+    var total: uint32 = 0;
+    while index < WORDS.length {
+        total += WORDS[index];
+        index += 1;
+    }
+    if total != iterated {
+        return 15;
+    }
+
+    return 0;
+}

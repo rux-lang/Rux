@@ -165,6 +165,15 @@ struct LirConstDecl {
     bool isPublic = false;
     TypeRef type;
     std::string value; // printed literal of the constant expression
+
+    // A constant of slice type is emitted as read-only data plus a
+    // {data, length} header published under `name`. Its contents come either
+    // from an array literal (elements) or from a string literal (text, holding
+    // the already decoded bytes); exactly one is set.
+    TypeRef elementType;
+    std::vector<std::string> elements;
+    std::string text;
+    bool isTextSlice = false;
 };
 
 struct LirTypeAlias {

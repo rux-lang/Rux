@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Dependency compilation** — `rux check` and `rux build` now share the same dependency-loading pipeline, so installed and path-based dependencies are available during semantic analysis and unresolved dependencies stop before code generation.
 - **Zero-operand assembly parsing** — instructions such as `syscall` followed by `ret` are now parsed as two instructions instead of treating the second mnemonic as an operand.
 - **Attributes on extend methods** — annotations such as `@[Target(...)]` are now accepted on methods inside an `extend` block instead of failing with "expected 'func' in extend body" (#197).
+- **Module scope in call resolution** — a call now binds to a function from its own module or from a module the file imports, in preference to a same-named function declared elsewhere in the program. Functions in different modules are no longer treated as overloads of one another, and two modules that would emit the same symbol are disambiguated by their module path, so importing one package could silently redirect a call into another.
+- **Constants of slice type** — `const Name: T[N] = [...]` and `const Name: char8[] = "..."` are now emitted into read-only data with a `{data, length}` header, instead of an eight-byte placeholder that was never filled in. Reading, indexing, iterating or taking the `.length` of such a constant crashed at runtime. Elements may be literals, negated literals, or other named constants; anything the backend cannot lay out is now a compile error rather than a corrupt read.
 
 ## [0.3.0] - 2026-06-23
 
