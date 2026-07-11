@@ -1,0 +1,88 @@
+// A method called on a `let` binding, whose value the folder substitutes as a
+// literal. The literal has to carry the type of the binding and not the type the
+// literal would have had on its own: `let flag: bool16 = false` binds a bool16,
+// while the `false` is a bool of the default width. A method takes its receiver
+// by address, so a literal left at the default width put a one byte slot behind
+// a two byte type, and the method read the byte above the slot along with it --
+// a false bool16 arrived as true whenever the stack above it was not clean.
+
+extend bool8 {
+    func Value(self) -> bool8 {
+        return *self;
+    }
+}
+
+extend bool16 {
+    func Value(self) -> bool16 {
+        return *self;
+    }
+}
+
+extend bool32 {
+    func Value(self) -> bool32 {
+        return *self;
+    }
+}
+
+extend int8 {
+    func Value(self) -> int8 {
+        return *self;
+    }
+}
+
+extend int16 {
+    func Value(self) -> int16 {
+        return *self;
+    }
+}
+
+// Leaves a run of non-zero bytes on the stack, so that a slot read past its end
+// picks up something other than a helpful zero.
+func Dirty() -> int {
+    var junk: char8[64];
+    var i: uint = 0;
+    while i < 64 {
+        junk[i] = 0xFFu8 as char8;
+        i++;
+    }
+    return junk[0] as int;
+}
+
+func Main() -> int {
+    if Dirty() == 0 { return 1; }
+
+    // A let receiver of each bool width. The false ones are what the fold used
+    // to narrow; the true ones guard against a fix that simply always answers
+    // true.
+    let f8: bool8 = false;
+    let t8: bool8 = true;
+    if f8.Value() { return 10; }
+    if !t8.Value() { return 11; }
+
+    let f16: bool16 = false;
+    let t16: bool16 = true;
+    if f16.Value() { return 20; }
+    if !t16.Value() { return 21; }
+
+    let f32: bool32 = false;
+    let t32: bool32 = true;
+    if f32.Value() { return 30; }
+    if !t32.Value() { return 31; }
+
+    // A var receiver, which is passed by its own address and was always right.
+    var v16: bool16 = false;
+    if v16.Value() { return 40; }
+
+    // The same substitution for the narrow integers, whose literals are of the
+    // default integer width rather than of the width the binding declares.
+    let small: int8 = -5;
+    if small.Value() != -5 { return 50; }
+
+    let medium: int16 = -300;
+    if medium.Value() != -300 { return 51; }
+
+    let zero16: int16 = 0;
+    if zero16.Value() != 0 { return 52; }
+
+    return 0;
+}

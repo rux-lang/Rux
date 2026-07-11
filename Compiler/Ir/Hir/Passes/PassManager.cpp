@@ -140,13 +140,20 @@ void HirPassManager::OptimizeStmt(HirStmtPtr &stmt) {
 
             // only track immutable bindings, mutable tracking is not supported (yet)
             if (!letStmt->isMut) {
+                // The binding's own type, not the literal's. A `let flag: bool16 =
+                // false` has an init of the default bool width, and substituting
+                // the literal at its own type would drop the binding down to that
+                // width: a later address-of would then hand out a slot narrower
+                // than the type it stands for, and whoever read it back at the
+                // declared width would take in the bytes above it.
+                const TypeRef &type = letStmt->type.IsUnknown() ? letStmt->init->type : letStmt->type;
                 if (IsIntegerLiteral(letStmt->init.get())) {
                     if (const auto value = GetIntegerLiteral(letStmt->init.get())) {
-                        constants[letStmt->name] = ConstantValue{false, *value, false, letStmt->init->type};
+                        constants[letStmt->name] = ConstantValue{false, *value, false, type};
                     }
                 }
                 else if (IsBoolLiteral(letStmt->init.get())) {
-                    constants[letStmt->name] = {true, 0, GetBoolLiteral(letStmt->init.get()), letStmt->init->type};
+                    constants[letStmt->name] = {true, 0, GetBoolLiteral(letStmt->init.get()), type};
                 }
             }
         }

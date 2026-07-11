@@ -1422,13 +1422,19 @@ private:
             // Short-circuit path: result is the known constant.
             SetBlock(shortBlock);
             LirReg shortVal = EmitConst(e.op == TK::AmpAmp ? "false" : "true", TypeRef::MakeBool());
+            // The block a side ends in is not the block it started in: an operand
+            // that is itself a short-circuit -- the `b && c` of `a || (b && c)` --
+            // opens blocks of its own and leaves the cursor on its own merge. That
+            // block, not the one entered here, is what reaches the phi below, and
+            // naming the wrong predecessor is what let the phi take the value from
+            // an edge that was never followed.
+            std::uint32_t shortBlockIdx = cur;
             Jump(mergeBlock);
-            std::uint32_t shortBlockIdx = shortBlock;
             // Right-hand side path.
             SetBlock(rhsBlock);
             LirReg rhs = LowerExpr(*e.right);
+            std::uint32_t rhsBlockIdx = cur;
             Jump(mergeBlock);
-            std::uint32_t rhsBlockIdx = rhsBlock;
             // Join with a phi.
             SetBlock(mergeBlock);
             LirReg result = NewReg();

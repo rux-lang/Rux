@@ -1,0 +1,7 @@
+[Package]
+Name = "Logical"
+Version = "0.1.0"
+Description = "Test for Rux compiler"
+
+[Build]
+Output = "../Bin"

@@ -1,0 +1,49 @@
+// The short-circuit operators, and in particular one nested inside the other.
+// An operand that is itself a `&&` or a `||` opens blocks of its own and ends in
+// a block other than the one it was entered through, so the phi that joins the
+// two paths has to name the block the operand really came from. Naming the block
+// it started in made `a || (b && c)` take its value from an edge that was never
+// followed, and the whole expression came out false however the operands stood.
+
+func Main() -> int {
+    var x: int = 5;
+
+    // The plain forms, which never broke.
+    if !(x > 100 || x >= 1) { return 1; }
+    if !(x >= 1 && x <= 10) { return 2; }
+    if x > 100 || x < 0 { return 3; }
+    if x >= 1 && x > 10 { return 4; }
+
+    // A && nested in the right of a ||: false || (true && true).
+    if !(x > 100 || (x >= 1 && x <= 10)) { return 10; }
+
+    // The same tree without the parentheses, since && binds tighter.
+    if !(x > 100 || x >= 1 && x <= 10) { return 11; }
+
+    // A && nested in the left of a ||: (true && true) || false.
+    if !((x >= 1 && x <= 10) || x > 100) { return 12; }
+
+    // A || nested inside a &&.
+    if !(x < 10 && (x == 5 || x == 6)) { return 13; }
+    if !((x == 4 || x == 5) && x < 10) { return 14; }
+
+    // The nesting must not make a false expression true either.
+    if x > 100 || (x > 50 && x < 60) { return 20; }
+    if x < 10 && (x == 4 || x == 6) { return 21; }
+
+    // Three deep, and both operands of a || carrying control flow of their own.
+    if !((x > 1 && x < 9) || (x > 100 && x < 200)) { return 30; }
+    if !(x == 5 || (x > 1 && (x < 3 || x < 9))) { return 31; }
+
+    // Short-circuiting still holds: the right side of a false && and of a true ||
+    // is never reached, which a division by zero there would otherwise announce.
+    var zero: int = 0;
+    if zero != 0 && 10 / zero == 1 { return 40; }
+    if !(zero == 0 || 10 / zero == 1) { return 41; }
+
+    // And the value of a nested chain used as a value, not as a condition.
+    let flag = x > 100 || (x >= 1 && x <= 10);
+    if !flag { return 50; }
+
+    return 0;
+}
