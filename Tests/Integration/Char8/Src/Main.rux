@@ -1,0 +1,81 @@
+import Std::Assert;
+
+func Main() -> int {
+    // Literals. A bare quote is a char8, and the c8 prefix says so explicitly.
+    let a = 'A';
+    let b: char8 = c8'A';
+    Assert(a == b, "char8 bare and c8 literals agree");
+
+    // A char8 is one byte, and its value is the code of the character.
+    Assert(c8'A' as uint8 == 65, "char8 'A' is 65");
+    Assert(c8'0' as uint8 == 48, "char8 '0' is 48");
+    Assert(c8' ' as uint8 == 32, "char8 space is 32");
+    Assert(c8'\0' as uint8 == 0, "char8 null is 0");
+    Assert(c8'\n' as uint8 == 10, "char8 newline is 10");
+    Assert(c8'\t' as uint8 == 9, "char8 tab is 9");
+    Assert(c8'\\' as uint8 == 92, "char8 backslash is 92");
+    Assert(c8'\'' as uint8 == 39, "char8 quote is 39");
+
+    // The escape that names a code point, which for a char8 reaches as far as
+    // the byte does.
+    Assert(c8'\u{41}' == c8'A', "char8 \\u{41} is 'A'");
+    Assert(c8'\u{7F}' as uint8 == 127, "char8 \\u{7F} is 127");
+
+    // Comparison and ordering, which follow the codes.
+    Assert(c8'a' == c8'a', "char8 equality");
+    Assert(c8'a' != c8'b', "char8 inequality");
+    Assert(c8'a' < c8'b', "char8 less-than follows the code");
+    Assert(c8'z' > c8'a', "char8 greater-than follows the code");
+    Assert(c8'A' < c8'a', "char8 upper case sorts before lower");
+    Assert(c8'a' <= c8'a', "char8 less-than-or-equal (equal case)");
+    Assert(c8'b' >= c8'a', "char8 greater-than-or-equal (greater case)");
+
+    // The case fold the text packages lean on: the gap between the two cases is
+    // 32, and arithmetic on a char8 goes through its integer value.
+    let upper = ((c8'a' as uint8) - 32) as char8;
+    Assert(upper == c8'A', "char8 lower to upper by subtracting 32");
+
+    let lower = ((c8'A' as uint8) + 32) as char8;
+    Assert(lower == c8'a', "char8 upper to lower by adding 32");
+
+    // The classification a scanner does, which is a pair of range tests.
+    let digit = c8'7';
+    Assert(digit >= c8'0' && digit <= c8'9', "char8 digit range test");
+    Assert((digit as uint8) - (c8'0' as uint8) == 7, "char8 digit to value");
+
+    // Casting to the integer widths, and back.
+    Assert(c8'A' as int == 65, "char8 casts to int");
+    Assert(c8'A' as uint32 == 65u32, "char8 casts to uint32");
+    Assert(65u8 as char8 == c8'A', "uint8 casts to char8");
+
+    // The high half of the byte, which is not a code point on its own: it is one
+    // byte of a UTF-8 sequence, and it survives the round trip as the byte it is.
+    let raw = 0xC3u8 as char8;
+    Assert(raw as uint8 == 0xC3, "char8 holds a byte above 0x7F");
+
+    // Widening to the wider character types, which is a code point at a time.
+    let ch: char8 = c8'Z';
+    let wide: char16 = ch as char16;
+    let wider: char32 = ch as char32;
+    Assert(wide as uint32 == 90u32, "char8 widens to char16");
+    Assert(wider as uint32 == 90u32, "char8 widens to char32");
+
+    // Indexing a string literal yields its bytes, which are char8.
+    let text = "Hi!";
+    Assert(text[0] == c8'H', "char8 from a literal at index 0");
+    Assert(text[1] == c8'i', "char8 from a literal at index 1");
+    Assert(text[2] == c8'!', "char8 from a literal at index 2");
+    Assert(text.length == 3, "a three byte literal has a length of three");
+
+    // Assignment and mutation.
+    var cursor: char8 = c8'a';
+    cursor = c8'b';
+    Assert(cursor == c8'b', "char8 var mutation");
+
+    // Use in a condition, where a char8 is compared rather than tested.
+    let terminator: char8 = c8'\0';
+    Assert(terminator == c8'\0', "char8 null compares equal to itself");
+    Assert(!(terminator != c8'\0'), "char8 null is not unequal to itself");
+
+    return 0;
+}

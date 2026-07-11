@@ -1,0 +1,92 @@
+import Std::Assert;
+
+func Main() -> int {
+    // Basic arithmetic. Every literal carries the f32 suffix: an unsuffixed one
+    // is a float64, and a float64 does not narrow to a float32 on its own.
+    let a: float32 = 10.0f32;
+    let b: float32 = 4.0f32;
+
+    Assert(a + b == 14.0f32, "float32 addition");
+    Assert(a - b == 6.0f32, "float32 subtraction");
+    Assert(a * b == 40.0f32, "float32 multiplication");
+    Assert(a / b == 2.5f32, "float32 division does not truncate");
+    Assert(-a == -10.0f32, "float32 negation");
+
+    // The infinities, which a division by zero yields rather than faulting.
+    let zero: float32 = 0.0f32;
+    let inf = 1.0f32 / zero;
+    let negInf = -1.0f32 / zero;
+    Assert(inf > 0.0f32, "float32 division by zero is the positive infinity");
+    Assert(negInf < 0.0f32, "float32 division by minus zero is the negative infinity");
+    Assert(inf > 3.4028235e38f32, "float32 infinity is above every finite value");
+    Assert(inf + 1.0f32 == inf, "float32 infinity absorbs an addition");
+
+    // A NaN differs from itself, and every comparison against one is false.
+    let nan = zero / zero;
+    Assert(nan != nan, "float32 NaN is not equal to itself");
+    Assert(!(nan < 1.0f32), "float32 NaN is not less than a number");
+    Assert(!(nan >= nan), "float32 NaN is not greater-or-equal to itself");
+
+    // The two zeros compare equal, and the sign of a zero shows in the division.
+    let negZero = -0.0f32;
+    Assert(negZero == 0.0f32, "float32 minus zero equals zero");
+    Assert(1.0f32 / negZero < 0.0f32, "float32 minus zero divides to the negative infinity");
+
+    // Comparisons.
+    Assert(1.5f32 == 1.5f32, "float32 equality");
+    Assert(1.5f32 != 2.5f32, "float32 inequality");
+    Assert(-2.5f32 < 1.5f32, "float32 less-than across sign");
+    Assert(2.5f32 >= 2.5f32, "float32 greater-than-or-equal (equal case)");
+
+    // The ends of the range, which are far narrower than a float64's.
+    let max: float32 = 3.4028235e38f32;
+    let min: float32 = 1.1754944e-38f32;
+    Assert(max > 0.0f32, "float32 max is finite and positive");
+    Assert(max * 2.0f32 > max, "float32 max overflows to infinity rather than wrapping");
+    Assert(min > 0.0f32, "float32 smallest normal is above zero");
+
+    // A float32 carries about seven decimal digits, so the values a float64 can
+    // still tell apart run together here: 16777216 and its successor are the
+    // classic pair, since past 2^24 the gap between neighbours is more than one.
+    let big: float32 = 16777216.0f32;
+    Assert(big + 1.0f32 == big, "float32 cannot represent 2^24 + 1");
+    Assert(big + 2.0f32 != big, "float32 can still represent 2^24 + 2");
+
+    // The precision a float32 does hold: the powers of two, exactly.
+    Assert(0.5f32 + 0.25f32 == 0.75f32, "float32 sums of powers of two are exact");
+
+    // Casting to and from the integers, which truncates toward zero.
+    Assert(3.9f32 as int == 3, "float32 casts to int by truncation");
+    Assert(-3.9f32 as int == -3, "float32 truncates toward zero, not down");
+    Assert(3 as float32 == 3.0f32, "int casts to float32");
+
+    // Widening to a float64, which is exact: every float32 is a float64.
+    let value: float32 = 2.5f32;
+    Assert(value as float64 == 2.5, "float32 widens exactly to float64");
+
+    // What that widening really carries: a float32 tenth is not a float64 tenth,
+    // because the value being widened is the float32's own approximation.
+    let tenth: float32 = 0.1f32;
+    Assert(tenth as float64 != 0.1, "float32 0.1 widens to something other than the float64 0.1");
+    Assert(tenth as float64 > 0.1, "float32 0.1 rounds up, so it widens to just above it");
+
+    // Narrowing from a float64, which rounds rather than truncating.
+    Assert(0.5 as float32 == 0.5f32, "float64 0.5 narrows exactly to float32");
+    Assert(1.0e300 as float32 > 3.4028235e38f32, "a float64 past the float32 range narrows to infinity");
+
+    // Assignment and mutation.
+    var x: float32 = 5.0f32;
+    x = x + 1.0f32;
+    Assert(x == 6.0f32, "float32 var mutation via addition");
+
+    x += 4.0f32;
+    Assert(x == 10.0f32, "float32 compound += operator");
+
+    x *= 2.0f32;
+    Assert(x == 20.0f32, "float32 compound *= operator");
+
+    x /= 4.0f32;
+    Assert(x == 5.0f32, "float32 compound /= operator");
+
+    return 0;
+}

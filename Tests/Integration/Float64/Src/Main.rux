@@ -1,0 +1,108 @@
+import Std::Assert;
+
+func Main() -> int {
+    // Basic arithmetic. An unsuffixed float literal is a float64.
+    let a: float64 = 10.0;
+    let b: float64 = 4.0;
+
+    Assert(a + b == 14.0, "float64 addition");
+    Assert(a - b == 6.0, "float64 subtraction");
+    Assert(a * b == 40.0, "float64 multiplication");
+    Assert(a / b == 2.5, "float64 division does not truncate");
+    Assert(-a == -10.0, "float64 negation");
+
+    // Division by a float zero is defined, and is where the infinities come from
+    // rather than being a fault.
+    let zero: float64 = 0.0;
+    let inf = 1.0 / zero;
+    let negInf = -1.0 / zero;
+    Assert(inf > 0.0, "float64 division by zero is the positive infinity");
+    Assert(negInf < 0.0, "float64 division by minus zero is the negative infinity");
+    Assert(inf > 1.7976931348623157e308, "float64 infinity is above every finite value");
+    Assert(inf + 1.0 == inf, "float64 infinity absorbs an addition");
+    Assert(inf * 2.0 == inf, "float64 infinity absorbs a multiplication");
+    Assert(1.0 / inf == 0.0, "float64 reciprocal of infinity is zero");
+
+    // A NaN is the only value that differs from itself, and every comparison
+    // against one is false. This is what a classification leans on.
+    let nan = zero / zero;
+    Assert(nan != nan, "float64 NaN is not equal to itself");
+    Assert(!(nan == nan), "float64 NaN is not equal to itself, the other way round");
+    Assert(!(nan < 1.0), "float64 NaN is not less than a number");
+    Assert(!(nan > 1.0), "float64 NaN is not greater than a number");
+    Assert(!(nan >= nan), "float64 NaN is not greater-or-equal to itself");
+    Assert(nan + 1.0 != nan + 1.0, "float64 NaN propagates through arithmetic");
+
+    // The two zeros compare equal, and the sign of a zero shows only in what a
+    // division by it yields.
+    let negZero = -0.0;
+    Assert(negZero == 0.0, "float64 minus zero equals zero");
+    Assert(1.0 / negZero < 0.0, "float64 minus zero divides to the negative infinity");
+    Assert(1.0 / 0.0 > 0.0, "float64 zero divides to the positive infinity");
+
+    // Comparisons.
+    Assert(1.5 == 1.5, "float64 equality");
+    Assert(1.5 != 2.5, "float64 inequality");
+    Assert(-2.5 < 1.5, "float64 less-than across sign");
+    Assert(1.5 <= 1.5, "float64 less-than-or-equal (equal case)");
+    Assert(2.5 > 1.5, "float64 greater-than");
+    Assert(2.5 >= 2.5, "float64 greater-than-or-equal (equal case)");
+
+    // The ends of the range, and the smallest normal value.
+    let max: float64 = 1.7976931348623157e308;
+    let min: float64 = 2.2250738585072014e-308;
+    Assert(max > 0.0, "float64 max is finite and positive");
+    Assert(max * 2.0 > max, "float64 max overflows to infinity rather than wrapping");
+    Assert(min > 0.0, "float64 smallest normal is above zero");
+    Assert(min / 2.0 > 0.0, "float64 halving the smallest normal reaches the subnormals");
+
+    // A float64 carries about fifteen decimal digits, which is why a tenth is not
+    // exactly a tenth and three of them do not make three tenths.
+    Assert(0.1 + 0.2 != 0.3, "float64 0.1 + 0.2 is not 0.3");
+    Assert(0.1 + 0.2 > 0.3, "float64 0.1 + 0.2 lands just above 0.3");
+    Assert(0.5 + 0.25 == 0.75, "float64 sums of powers of two are exact");
+
+    // Literals: an exponent, a suffix, and a leading sign.
+    let exponent = 1.5e3;
+    let suffixed = 2.5f64;
+    Assert(exponent == 1500.0, "float64 exponent literal");
+    Assert(suffixed == 2.5, "float64 literal with the f64 suffix");
+    Assert(1.0e-3 == 0.001, "float64 negative exponent literal");
+
+    // Casting to and from the integers, which truncates toward zero.
+    Assert(3.9 as int == 3, "float64 casts to int by truncation");
+    Assert(-3.9 as int == -3, "float64 truncates toward zero, not down");
+    Assert(3.0 as int64 == 3i64, "float64 casts to int64");
+    Assert(255.9 as uint8 == 255u8, "float64 casts to uint8");
+    Assert(3 as float64 == 3.0, "int casts to float64");
+    Assert(-3 as float64 == -3.0, "negative int casts to float64");
+
+    // Casting to a float32 and back, which is where the precision goes: a tenth
+    // does not survive the round trip, while a half does.
+    let tenth: float64 = 0.1;
+    Assert(tenth as float32 as float64 != 0.1, "float64 0.1 loses precision through float32");
+    Assert(0.5 as float32 as float64 == 0.5, "float64 0.5 survives a float32 round trip");
+
+    // A float32 widens to a float64 exactly, since every float32 is a float64.
+    let small: float32 = 2.5f32;
+    Assert(small as float64 == 2.5, "float32 widens exactly to float64");
+
+    // Assignment and mutation.
+    var x: float64 = 5.0;
+    x = x + 1.0;
+    Assert(x == 6.0, "float64 var mutation via addition");
+
+    x += 4.0;
+    Assert(x == 10.0, "float64 compound += operator");
+
+    x -= 2.0;
+    Assert(x == 8.0, "float64 compound -= operator");
+
+    x *= 2.0;
+    Assert(x == 16.0, "float64 compound *= operator");
+
+    x /= 4.0;
+    Assert(x == 4.0, "float64 compound /= operator");
+
+    return 0;
+}

@@ -304,6 +304,19 @@ private:
         return dst;
     }
 
+    // The types that live in a register and are held to a width: everything a
+    // comparison can widen one side of without changing what is being asked.
+    static bool IsScalar(const TypeRef &t) {
+        return t.IsNumeric() || t.IsBool() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
+               t.kind == TypeRef::Kind::Char32;
+    }
+
+    static bool IsComparison(const TokenKind op) {
+        using TK = TokenKind;
+        return op == TK::Equal || op == TK::BangEqual || op == TK::Less || op == TK::LessEqual || op == TK::Greater ||
+               op == TK::GreaterEqual;
+    }
+
     LirReg EmitCastIfNeeded(LirReg src, const TypeRef &fromType, const TypeRef &toType) {
         if (src == LirNoReg || fromType.IsUnknown() || toType.IsUnknown() || fromType == toType) {
             return src;
@@ -1446,8 +1459,31 @@ private:
             Emit(std::move(phi));
             return result;
         }
-        const LirReg lhs = LowerExpr(*e.left);
-        const LirReg rhs = LowerExpr(*e.right);
+        LirReg lhs = LowerExpr(*e.left);
+        LirReg rhs = LowerExpr(*e.right);
+
+        // A comparison loads both of its operands at the width of the left one,
+        // so a right operand of a narrower type would be read past the slot it
+        // sits in and take in whatever follows it: `'A' == c8'A'` compared four
+        // bytes against a byte and came out false. Widen the narrower side to the
+        // type of the other, which is the implicit conversion the language
+        // already allows between these types.
+        if (IsComparison(e.op)) {
+            const TypeRef &leftType = e.left->type;
+            const TypeRef &rightType = e.right->type;
+            if (IsScalar(leftType) && IsScalar(rightType) && leftType != rightType) {
+                const auto leftSize = leftType.SizeInBytes();
+                const auto rightSize = rightType.SizeInBytes();
+                if (leftSize && rightSize) {
+                    if (*leftSize > *rightSize) {
+                        rhs = EmitCast(rhs, rightType, leftType);
+                    }
+                    else if (*rightSize > *leftSize) {
+                        lhs = EmitCast(lhs, leftType, rightType);
+                    }
+                }
+            }
+        }
 
         // Scale integer operand by element size for pointer arithmetic.
         if ((e.op == TK::Plus || e.op == TK::Minus) && e.type.kind == TypeRef::Kind::Pointer && !e.type.inner.empty()) {

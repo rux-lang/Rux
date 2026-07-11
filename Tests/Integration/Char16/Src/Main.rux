@@ -1,0 +1,53 @@
+import Std::Assert;
+
+func Main() -> int {
+    // Literals. The c16 prefix gives one UTF-16 code unit.
+    let a: char16 = c16'A';
+    Assert(a as uint32 == 65u32, "char16 'A' is 65");
+    Assert(c16'0' as uint32 == 48u32, "char16 '0' is 48");
+    Assert(c16'\0' as uint32 == 0u32, "char16 null is 0");
+    Assert(c16'\n' as uint32 == 10u32, "char16 newline is 10");
+
+    // The escape that names a code point, which is how the values above the
+    // ASCII range are written without relying on the encoding of the source file.
+    Assert(c16'\u{E9}' as uint32 == 0xE9u32, "char16 \\u{E9} is U+00E9");
+    Assert(c16'\u{20AC}' as uint32 == 0x20ACu32, "char16 \\u{20AC} is the euro sign");
+    Assert(c16'\u{FFFF}' as uint32 == 0xFFFFu32, "char16 holds the last code unit");
+
+    // The source file is UTF-8, and a character written into it directly decodes
+    // to the same code point as its escape.
+    Assert(c16'é' == c16'\u{E9}', "char16 literal and escape agree");
+    Assert(c16'€' == c16'\u{20AC}', "char16 euro literal and escape agree");
+
+    // Two bytes, so the range runs past what a char8 can hold.
+    Assert(c16'\u{100}' as uint32 == 256u32, "char16 reaches past one byte");
+    Assert(c16'\u{FFFF}' as uint16 == 0xFFFFu16, "char16 fills its two bytes");
+
+    // Comparison and ordering, which follow the code points.
+    Assert(c16'a' == c16'a', "char16 equality");
+    Assert(c16'a' != c16'b', "char16 inequality");
+    Assert(c16'a' < c16'b', "char16 less-than follows the code point");
+    Assert(c16'\u{20AC}' > c16'a', "char16 orders a wide code point above ASCII");
+    Assert(c16'a' <= c16'a', "char16 less-than-or-equal (equal case)");
+
+    // Casting to the integer widths, and back.
+    Assert(c16'A' as int == 65, "char16 casts to int");
+    Assert(0x20ACu32 as char16 as uint32 == 0x20ACu32, "uint32 casts to char16 and back");
+
+    // Narrowing to a char8, which keeps only the low byte: the euro sign does not
+    // fit in one, and what survives is the truncation rather than a replacement.
+    let euro: char16 = c16'\u{20AC}';
+    Assert(euro as char8 as uint8 == 0xAC, "char16 truncates to char8");
+
+    // Widening from a char8, and on to a char32, neither of which loses anything.
+    let narrow: char8 = c8'Z';
+    Assert(narrow as char16 as uint32 == 90u32, "char8 widens to char16");
+    Assert(euro as char32 as uint32 == 0x20ACu32, "char16 widens to char32");
+
+    // Assignment and mutation.
+    var cursor: char16 = c16'a';
+    cursor = c16'\u{E9}';
+    Assert(cursor as uint32 == 0xE9u32, "char16 var mutation");
+
+    return 0;
+}

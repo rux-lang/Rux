@@ -1,0 +1,72 @@
+import Std::Assert;
+
+func Main() -> int {
+    // Literals. The c32 prefix gives one code point, which is what a char32 holds.
+    let a: char32 = c32'A';
+    Assert(a as uint32 == 65u32, "char32 'A' is 65");
+    Assert(c32'\0' as uint32 == 0u32, "char32 null is 0");
+    Assert(c32'\t' as uint32 == 9u32, "char32 tab is 9");
+
+    // The escapes, and the characters they stand for written out directly: the
+    // source file is UTF-8 and the two paths must decode to the same code point.
+    Assert(c32'\u{E9}' as uint32 == 0xE9u32, "char32 \\u{E9} is U+00E9");
+    Assert(c32'é' == c32'\u{E9}', "char32 literal and escape agree");
+    Assert(c32'€' == c32'\u{20AC}', "char32 euro literal and escape agree");
+
+    // The planes above the first, which only a char32 reaches: a char16 would
+    // need a surrogate pair to say this at all.
+    Assert(c32'\u{10000}' as uint32 == 0x10000u32, "char32 reaches the second plane");
+    Assert(c32'\u{1F600}' as uint32 == 0x1F600u32, "char32 holds an emoji code point");
+    Assert(c32'\u{10FFFF}' as uint32 == 0x10FFFFu32, "char32 holds the last code point");
+
+    // Comparison and ordering, which follow the code points across the planes.
+    Assert(c32'a' == c32'a', "char32 equality");
+    Assert(c32'a' != c32'b', "char32 inequality");
+    Assert(c32'a' < c32'b', "char32 less-than follows the code point");
+    Assert(c32'\u{1F600}' > c32'\u{20AC}', "char32 orders the second plane above the first");
+    Assert(c32'\u{20AC}' >= c32'\u{20AC}', "char32 greater-than-or-equal (equal case)");
+
+    // Compared against a narrower character, which the language widens rather
+    // than rejecting. A comparison takes the width of its left operand, so the
+    // wide-on-the-left order is the one that used to read the narrow operand
+    // past the end of its slot and answer false for two equal code points.
+    let narrowA: char8 = c8'A';
+    let wideA: char32 = c32'A';
+    Assert(wideA == narrowA, "char32 equals an equal char8, wide on the left");
+    Assert(narrowA == wideA, "char32 equals an equal char8, narrow on the left");
+    Assert(wideA != c8'B', "char32 differs from an unequal char8");
+    Assert(c32'\u{20AC}' > narrowA, "char32 orders above a char8 by code point");
+    Assert(wideA == c16'A', "char32 equals an equal char16");
+    Assert('A' == c8'A', "a bare char literal, which is a char32, equals an equal char8");
+
+    // Casting to the integer widths, and back.
+    Assert(c32'A' as int == 65, "char32 casts to int");
+    Assert(c32'\u{1F600}' as uint32 == 128512u32, "char32 casts to uint32");
+    Assert(0x1F600u32 as char32 as uint32 == 0x1F600u32, "uint32 casts to char32 and back");
+
+    // Narrowing, which keeps the low bits of the code point rather than
+    // re-encoding it: the emoji fits in neither of the smaller types.
+    let face: char32 = c32'\u{1F600}';
+    Assert(face as char16 as uint32 == 0xF600u32, "char32 truncates to char16");
+    Assert(face as char8 as uint8 == 0x00, "char32 truncates to char8");
+
+    // Widening, which loses nothing in either step.
+    let narrow: char8 = c8'Z';
+    let wide: char16 = c16'\u{20AC}';
+    Assert(narrow as char32 as uint32 == 90u32, "char8 widens to char32");
+    Assert(wide as char32 as uint32 == 0x20ACu32, "char16 widens to char32");
+
+    // The surrogate range is reserved by UTF-16 and is not a code point, but it
+    // is a value a char32 can be cast to at run time, which is what an encoder
+    // has to defend itself against.
+    var reserved: uint32 = 0xD800;
+    let surrogate = reserved as char32;
+    Assert(surrogate as uint32 == 0xD800u32, "char32 holds a surrogate value from a cast");
+
+    // Assignment and mutation.
+    var cursor: char32 = c32'a';
+    cursor = c32'\u{1F600}';
+    Assert(cursor as uint32 == 0x1F600u32, "char32 var mutation");
+
+    return 0;
+}

@@ -1,5 +1,5 @@
 [Package]
-Name = "Bool"
+Name = "Char8"
 Version = "0.1.0"
 Description = "Test for Rux compiler"
 

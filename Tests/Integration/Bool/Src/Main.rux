@@ -1,59 +1,123 @@
-func TestBool() {
-    var val: bool = true;
-    val = false;
-    val = 10 > 5;
-    val = 10 < 5;
-}
+import Std::Assert;
 
-func TestBool8() {
-    var val: bool8 = true;
-    val = false;
-    val = 10 > 5;
-    val = 10 < 5;
+// Counts the operands that were evaluated at all, which is how the short-circuit
+// checks below prove that a right-hand side was skipped rather than merely that
+// the answer came out right.
+func Sees(counter: *int, value: bool) -> bool {
+    *counter += 1;
+    return value;
 }
-
-func TestBool16() {
-    var val: bool16 = true;
-    val = false;
-    val = 10 > 5;
-    val = 10 < 5;
-}
-
-func TestBool32() {
-    var val: bool32 = true;
-    val = false;
-    val = 10 > 5;
-    val = 10 < 5;
-}
-
 
 func Main() -> int {
-    let valA = 10 > 5;
-    let valB = 10 < 5;
-    let valC = 10 == 10;
-    let valD = 10 != 5;
-    let valE = 10 >= 5;
-    let valF = 10 <= 5;
-    let valG = 10 > 5 && 5 > 3;
-    let valH = 10 > 5 || 5 < 3;
-    let valI = !(10 > 5);
-    let valJ = (10 > 5) && (5 < 3) || (10 == 10);
-    let valK = (10 > 5) && (5 < 3) || (10 == 10) && !(5 > 3);
-    let valL = (10 > 5) && (5 < 3) || (10 == 10) && !(5 > 3) || (10 != 5);
-    if !valG {
-        return 1;
+    // A bool holds one of two values, and a comparison is where most of them
+    // come from.
+    let yes = true;
+    let no = false;
+    Assert(yes, "true is true");
+    Assert(!no, "false is false");
+    Assert(10 > 5, "greater-than yields a bool");
+    Assert(!(10 < 5), "less-than yields a bool");
+    Assert(10 == 10, "equality yields a bool");
+    Assert(10 != 5, "inequality yields a bool");
+    Assert(10 >= 10, "greater-or-equal yields a bool");
+    Assert(5 <= 10, "less-or-equal yields a bool");
+
+    // The three widths say the same two things: what differs is how much room
+    // they take, not what they can mean.
+    let yes8: bool8 = true;
+    let no8: bool8 = false;
+    Assert(yes8, "bool8 true");
+    Assert(!no8, "bool8 false");
+
+    let yes16: bool16 = true;
+    let no16: bool16 = false;
+    Assert(yes16, "bool16 true");
+    Assert(!no16, "bool16 false");
+
+    let yes32: bool32 = true;
+    let no32: bool32 = false;
+    Assert(yes32, "bool32 true");
+    Assert(!no32, "bool32 false");
+
+    // A bool of each width holds up as a condition, which is a test against zero
+    // at whatever width the value really is.
+    var reached = false;
+    if yes16 {
+        reached = true;
     }
-    if !valH {
-        return 1;
+    Assert(reached, "bool16 drives an if");
+
+    reached = false;
+    if no32 {
+        reached = true;
     }
-    if !valJ {
-        return 1;
-    }
-    if valK {
-        return 1;
-    }
-    if !valL {
-        return 1;
-    }
+    Assert(!reached, "a false bool32 does not drive an if");
+
+    // A comparison assigned into each width, rather than a literal.
+    var computed16: bool16 = 10 > 5;
+    Assert(computed16, "a comparison assigns into a bool16");
+    computed16 = 10 < 5;
+    Assert(!computed16, "a false comparison assigns into a bool16");
+
+    var computed32: bool32 = 10 != 10;
+    Assert(!computed32, "a false comparison assigns into a bool32");
+
+    // Negation, and the double negation that leaves a value as it was.
+    Assert(!false, "not false is true");
+    Assert(!!true, "not not true is true");
+    Assert(!(yes && no), "not of a false conjunction");
+
+    // The conjunction and the disjunction, over each pair of values.
+    Assert(true && true, "true and true");
+    Assert(!(true && false), "true and false");
+    Assert(!(false && true), "false and true");
+    Assert(!(false && false), "false and false");
+    Assert(true || true, "true or true");
+    Assert(true || false, "true or false");
+    Assert(false || true, "false or true");
+    Assert(!(false || false), "false or false");
+
+    // Short-circuiting: the right-hand side of a false && and of a true || is
+    // never evaluated, which the call counter is here to witness.
+    var calls: int = 0;
+    let skippedAnd = Sees(&calls, false) && Sees(&calls, true);
+    Assert(!skippedAnd, "a false && is false");
+    Assert(calls == 1, "&& does not evaluate its right side when the left is false");
+
+    calls = 0;
+    let skippedOr = Sees(&calls, true) || Sees(&calls, false);
+    Assert(skippedOr, "a true || is true");
+    Assert(calls == 1, "|| does not evaluate its right side when the left is true");
+
+    calls = 0;
+    let bothAnd = Sees(&calls, true) && Sees(&calls, true);
+    Assert(bothAnd, "a && with two true sides is true");
+    Assert(calls == 2, "&& evaluates its right side when the left is true");
+
+    calls = 0;
+    let bothOr = Sees(&calls, false) || Sees(&calls, true);
+    Assert(bothOr, "a || with a true right side is true");
+    Assert(calls == 2, "|| evaluates its right side when the left is false");
+
+    // Precedence: && binds tighter than ||, so the parentheses below change
+    // nothing, and the mixed chains hold whichever way they are written.
+    Assert(false || true && true, "&& binds tighter than ||");
+    Assert(false || (true && true), "the same tree, parenthesised");
+    Assert((true && false) || true, "a false conjunction still yields to a true disjunct");
+    Assert(!(true && false || false), "a false chain stays false");
+    Assert(true && (false || true), "a || nested inside a &&");
+
+    // A bool as a value rather than as a condition: assigned, passed, returned.
+    let flag = 10 > 5 && 5 > 3;
+    Assert(flag, "a chain assigned into a binding");
+    Assert(Sees(&calls, flag), "a bool passed to a function and returned from it");
+
+    // Assignment and mutation.
+    var toggle = true;
+    toggle = !toggle;
+    Assert(!toggle, "a bool var can be toggled");
+    toggle = !toggle;
+    Assert(toggle, "and toggled back");
+
     return 0;
 }
