@@ -68,7 +68,8 @@ by the test job. Using `linux.yml` as the reference shape:
 2. **Test job** (`needs: build`)
     - Download the built binary and restore its executable bit.
     - `./Bin/Release/rux install Std` (test packages depend on Std).
-    - `./Bin/Release/rux test --release` from the repo root (workspace mode discovers `Tests/`).
+    - `./Bin/Release/rux test --release` from the repo root (workspace mode discovers the root
+      `Tests/` plus each member package's `Tests/`).
 
 ### Platform-specific quirks
 

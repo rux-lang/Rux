@@ -51,8 +51,18 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     else {
         manifestPath = Manifest::Find();
     }
+
+    // A directory to search for test packages, plus the prefix its tests are
+    // labeled with. A package has a single root (its own Tests/). A workspace
+    // has the root Tests/ *and* each member package's Tests/, so tests may sit
+    // either centrally or next to the code they cover.
+    struct TestRoot {
+        std::filesystem::path dir;
+        std::string labelPrefix;
+    };
+
     std::filesystem::path projectRoot;
-    std::filesystem::path testsDir;
+    std::vector<TestRoot> testRoots;
     if (manifestPath) {
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) {
@@ -62,13 +72,30 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             std::print("Testing {} v{}\n", manifest->package.name, manifest->package.version);
         }
         projectRoot = manifestPath->parent_path();
-        testsDir = projectRoot / "Tests";
+        testRoots.push_back({projectRoot / "Tests", {}});
     }
     else {
         projectRoot = std::filesystem::current_path();
-        testsDir = projectRoot / "Tests";
         std::error_code ec;
-        if (!std::filesystem::exists(testsDir, ec)) {
+        if (std::filesystem::exists(projectRoot / "Tests", ec)) {
+            testRoots.push_back({projectRoot / "Tests", {}});
+        }
+        // Members are the immediate subdirectories holding a Rux.toml. Tests
+        // found under a member are labeled with the member's name, so
+        // Text/Tests/Compare reads as "Text/Compare" — the same label a
+        // centrally placed Tests/Text/Compare would get.
+        for (const auto &entry : std::filesystem::directory_iterator(projectRoot, ec)) {
+            if (!entry.is_directory()) {
+                continue;
+            }
+            if (!std::filesystem::exists(entry.path() / "Rux.toml")) {
+                continue;
+            }
+            if (auto memberTests = entry.path() / "Tests"; std::filesystem::exists(memberTests, ec)) {
+                testRoots.push_back({std::move(memberTests), entry.path().filename().generic_string()});
+            }
+        }
+        if (testRoots.empty()) {
             static_cast<void>(RequireManifest()); // Prints standard "Rux.toml not found" error
             return 1;
         }
@@ -77,49 +104,67 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         }
     }
     const std::string_view profileName = isRelease ? "Release" : "Debug";
-    // Collect test package directories: any directory under Tests/ that
+
+    // Collect test package directories: any directory under a test root that
     // contains a Rux.toml with Type = "bin". A directory without a manifest is
     // a group (e.g. Tests/Integration/) and is searched recursively, a few levels
     // deep so build-output trees don't get walked.
-    std::vector<std::filesystem::path> testPackages;
+    struct TestPackage {
+        std::filesystem::path dir;
+        std::string label;
+    };
+
+    std::vector<TestPackage> testPackages;
+    bool anyRootExists = false;
     {
         std::error_code ec;
-        if (!std::filesystem::exists(testsDir, ec)) {
-            if (!opts.quiet) {
-                std::print("  No Tests/ directory found — nothing to run.\n");
-            }
-            return 0;
-        }
         constexpr int maxGroupDepth = 3;
-        std::vector<std::pair<std::filesystem::path, int>> pendingDirs;
-        pendingDirs.emplace_back(testsDir, 0);
-        while (!pendingDirs.empty()) {
-            const auto [dir, depth] = std::move(pendingDirs.back());
-            pendingDirs.pop_back();
-            for (const auto &entry : std::filesystem::directory_iterator(dir, ec)) {
-                if (!entry.is_directory()) {
-                    continue;
-                }
-                const auto toml = entry.path() / "Rux.toml";
-                if (!std::filesystem::exists(toml)) {
-                    if (depth + 1 < maxGroupDepth) {
-                        pendingDirs.emplace_back(entry.path(), depth + 1);
+        for (const auto &root : testRoots) {
+            if (!std::filesystem::exists(root.dir, ec)) {
+                continue;
+            }
+            anyRootExists = true;
+            std::vector<std::pair<std::filesystem::path, int>> pendingDirs;
+            pendingDirs.emplace_back(root.dir, 0);
+            while (!pendingDirs.empty()) {
+                const auto [dir, depth] = std::move(pendingDirs.back());
+                pendingDirs.pop_back();
+                for (const auto &entry : std::filesystem::directory_iterator(dir, ec)) {
+                    if (!entry.is_directory()) {
+                        continue;
                     }
-                    continue;
+                    const auto toml = entry.path() / "Rux.toml";
+                    if (!std::filesystem::exists(toml)) {
+                        if (depth + 1 < maxGroupDepth) {
+                            pendingDirs.emplace_back(entry.path(), depth + 1);
+                        }
+                        continue;
+                    }
+                    auto pkgManifest = Manifest::Load(toml);
+                    if (!pkgManifest) {
+                        continue;
+                    }
+                    // Only run binary packages (not DLLs / shared libraries).
+                    const auto &type = pkgManifest->package.type;
+                    if (type != "bin" && type != "Bin") {
+                        continue;
+                    }
+                    auto label = entry.path().lexically_relative(root.dir).generic_string();
+                    if (!root.labelPrefix.empty()) {
+                        label = root.labelPrefix + "/" + label;
+                    }
+                    testPackages.push_back({entry.path(), std::move(label)});
                 }
-                auto pkgManifest = Manifest::Load(toml);
-                if (!pkgManifest) {
-                    continue;
-                }
-                // Only run binary packages (not DLLs / shared libraries).
-                const auto &type = pkgManifest->package.type;
-                if (type != "bin" && type != "Bin") {
-                    continue;
-                }
-                testPackages.push_back(entry.path());
             }
         }
-        std::sort(testPackages.begin(), testPackages.end());
+        std::sort(testPackages.begin(), testPackages.end(),
+                  [](const TestPackage &a, const TestPackage &b) { return a.label < b.label; });
+    }
+    if (!anyRootExists) {
+        if (!opts.quiet) {
+            std::print("  No Tests/ directory found — nothing to run.\n");
+        }
+        return 0;
     }
     if (testPackages.empty()) {
         if (!opts.quiet) {
@@ -202,15 +247,10 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     if (!opts.quiet) {
         std::print("Running {} {}\n\n", testPackages.size(), testPackages.size() == 1 ? "test" : "tests");
     }
-    // Tests are labeled by their path relative to Tests/ (e.g. "Lang/Assert").
-    const auto testLabel = [&](const std::filesystem::path &pkgDir) {
-        return pkgDir.lexically_relative(testsDir).generic_string();
-    };
-
     // Width of the test-name column, so the trailing timings line up.
     std::size_t nameWidth = 0;
-    for (const auto &pkgDir : testPackages) {
-        nameWidth = std::max(nameWidth, testLabel(pkgDir).size());
+    for (const auto &pkg : testPackages) {
+        nameWidth = std::max(nameWidth, pkg.label.size());
     }
 
     // Run every discovered test package and tally results, buffering the output
@@ -226,11 +266,11 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     int passed = 0;
     int failed = 0;
     const auto suiteStart = std::chrono::steady_clock::now();
-    for (const auto &pkgDir : testPackages) {
-        const std::string label = testLabel(pkgDir);
+    for (const auto &pkg : testPackages) {
+        const std::string &label = pkg.label;
         std::string paddedLabel = label;
         paddedLabel.resize(nameWidth, ' ');
-        TestOutcome outcome = runOne(pkgDir);
+        TestOutcome outcome = runOne(pkg.dir);
         // Trailing detail: a timing for tests that ran, otherwise the failure kind.
         std::string detail;
         switch (outcome.status) {

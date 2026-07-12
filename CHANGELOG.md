@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Workspace test discovery** — `rux test` at a workspace root now discovers each member package's `Tests/` directory in addition to the root `Tests/`, so test packages can live beside the code they cover. Tests found under a member are labeled with the member's name (`Text/Tests/Compare` reports as `Text/Compare`), and a root `Tests/` keeps working as before.
 - **Native Linux calling convention** — ordinary and inline-assembly Rux functions now use the System V AMD64 ABI on Linux, including `rdi`/`rsi`/`rdx`/`rcx`/`r8`/`r9` integer arguments, 16-byte call-site stack alignment, and stack-passed overflow arguments. `@[Call(.Win64)]` remains available as an explicit override.
 
 ### Fixed

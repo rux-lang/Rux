@@ -140,9 +140,16 @@ Run the full suite from the repo root:
 `rux test` walks `Tests/` recursively: a directory with a `Rux.toml` is a test
 package; a directory without one (like `Tests/Integration/`) is a group and is
 searched further. Each package is built and run, and per-package results plus a
-summary are reported. A test package is a normal binary package whose **exit
-code is the only signal: `0` = pass, anything else = fail** — no framework
-required:
+summary are reported.
+
+Run from a package directory, it tests that package alone (its own `Tests/`).
+Run from a workspace root — a directory with no `Rux.toml` of its own — it
+discovers the root `Tests/` **and** each member package's `Tests/`, so tests may
+live centrally or beside the code they cover. A test under a member is labeled
+with the member's name, so `Text/Tests/Compare` reports as `Text/Compare`.
+
+A test package is a normal binary package whose **exit code is the only signal:
+`0` = pass, anything else = fail** — no framework required:
 
 ```rux
 func Main() -> int {
