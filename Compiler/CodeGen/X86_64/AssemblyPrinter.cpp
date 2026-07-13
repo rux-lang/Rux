@@ -79,6 +79,13 @@ std::string_view PtrSize(const int bytes) {
 // human-readable dump.)
 constexpr bool kDefaultCallIsWin64 = RUX_OS_WINDOWS;
 
+// `.C` stands for the target's C ABI, so it has to be collapsed before the
+// Win64/SysV split; `Default` still falls back to the dump's own default.
+constexpr bool IsWin64Conv(const CallingConvention c) {
+    const CallingConvention resolved = ResolveCConvention(c);
+    return resolved == CallingConvention::Win64 || (resolved == CallingConvention::Default && kDefaultCallIsWin64);
+}
+
 // Code generator
 class AsmGen {
 public:
@@ -1623,8 +1630,7 @@ private:
     // Call emission
     void EmitCall(const std::string &callee, const std::vector<LirReg> &args, LirReg dst, const TypeRef &retType,
                   CallingConvention callConv) {
-        const bool win64 =
-            callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
+        const bool win64 = IsWin64Conv(callConv);
         const auto *intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
         const int maxIntRegs = win64 ? 4 : 6;
         std::vector<LirReg> stackArgs;
@@ -1702,8 +1708,7 @@ private:
         LirReg callee = srcs[0];
         std::vector<LirReg> args(srcs.begin() + 1, srcs.end());
         const std::vector<LirReg> stackArgs = EmitCallArgs(args, callConv);
-        const bool win64 =
-            callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
+        const bool win64 = IsWin64Conv(callConv);
         const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
                                      : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
         if (stackBytes > 0) {
@@ -1732,8 +1737,7 @@ private:
     }
 
     std::vector<LirReg> EmitCallArgs(const std::vector<LirReg> &args, CallingConvention callConv) {
-        const bool win64 =
-            callConv == CallingConvention::Win64 || (callConv == CallingConvention::Default && kDefaultCallIsWin64);
+        const bool win64 = IsWin64Conv(callConv);
         const auto *intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
         const int maxIntRegs = win64 ? 4 : 6;
         std::vector<LirReg> stackArgs;

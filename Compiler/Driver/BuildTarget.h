@@ -35,17 +35,16 @@ namespace Rux::Driver {
 // object-format choice. Falls back to the host OS for an unrecognized triple.
 [[nodiscard]] Target::OS TargetTripleOs(std::string_view target);
 
-// ---- Target-conditional declarations ----------------------------------------
+// Architecture and fully-derived target description for an "os-arch" triple.
+// Unknown components fall back to the native target, matching TargetTripleOs.
+[[nodiscard]] Target::Arch TargetTripleArch(std::string_view target);
+[[nodiscard]] TargetContext TargetContextForTriple(std::string_view target);
 
-[[nodiscard]] bool DeclMatchesTarget(const Decl &decl, std::string_view target);
+// ---- Platform packages ------------------------------------------------------
 
 // Names that denote a platform package rather than a normal dependency.
 [[nodiscard]] bool IsPlatformPackageName(std::string_view name);
 [[nodiscard]] bool PlatformPackageMatchesTarget(std::string_view name, std::string_view target);
-
-// Recursively drop declarations that do not apply to `target`.
-void PruneDeclsForTarget(std::vector<DeclPtr> &decls, std::string_view target);
-void PruneModuleForTarget(Module &module, std::string_view target);
 
 [[nodiscard]] std::string DependencyPackageName(const Dependency &dep);
 

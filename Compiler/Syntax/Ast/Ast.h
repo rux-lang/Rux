@@ -175,21 +175,51 @@ struct SizeOfExpr : Expr {
     TypeExprPtr type;
 };
 
-// #line, #column, #file, #function, #date, #time, #module
+// .Windows — an enum variant named without its type, which the surrounding
+// context supplies. Currently the context is a `#if` condition, where the
+// variant is matched against the enum on the other side of the comparison.
+struct EnumShorthandExpr : Expr {
+    std::string variant;
+};
+
+// A compiler-provided value such as #line, #target.arch or #config("name").
 struct IntrinsicExpr : Expr {
     enum class Kind {
         Line,
         Column,
         File,
+        FileName,
+        FilePath,
         Function,
         Date,
         Time,
         Module,
         RuxVersion,
         Os,
+        Arch,
+        Abi,
+        Endian,
+        PointerBits,
+        DataModel,
+        ObjectFormat,
+        TargetTriple,
+        TargetFeature,
+        BuildProfile,
+        BuildMode,
+        Optimization,
+        DebugAssertions,
+        DebugInfo,
+        IsTest,
+        OutputKind,
+        BuildTimestamp,
+        CompilerVersion,
+        CompilerHasFeature,
+        Config,
+        HasConfig,
     };
 
     Kind kind;
+    std::vector<ExprPtr> args;
 };
 
 // !x, -x, ~x, *x, &x
@@ -332,7 +362,11 @@ struct LetStmt : Stmt {
 };
 
 // if cond { } else if cond { } else { }
+// `#if` sets isCompileTime: the conditions are folded during compilation and
+// only the taken branch reaches semantic analysis; the others are discarded
+// without being type-checked.
 struct IfStmt : Stmt {
+    bool isCompileTime = false;
     ExprPtr condition;
     std::unique_ptr<Block> thenBlock;
 
@@ -411,8 +445,6 @@ struct DeclStmt : Stmt {
 struct Decl {
     SourceLocation location;
     bool isPublic = false;
-    std::string targetOs;     // empty = unconditional; "Windows", "Linux" =
-                              // platform-conditional
     std::string warnMessage;  // non-empty = emit this warning at each call site
     std::string errorMessage; // non-empty = emit this error at each call site
     virtual ~Decl() = default;
@@ -424,6 +456,20 @@ struct Param {
     TypeExprPtr type;
     bool isVariadic = false; // for extern ...
     std::optional<ExprPtr> defaultValue;
+};
+
+// #if cond { decls } else if cond { decls } else { decls }
+// Conditional compilation at declaration level. The taken branch's items are
+// spliced into the enclosing declaration list before semantic analysis, so no
+// later stage ever sees this node.
+struct CompileTimeIfDecl : Decl {
+    struct Branch {
+        SourceLocation location;
+        ExprPtr condition; // null for the trailing `else`
+        std::vector<DeclPtr> items;
+    };
+
+    std::vector<Branch> branches;
 };
 
 // func [asm] Name<T>(params) -> Type { body }
@@ -505,6 +551,11 @@ struct ImplDecl : Decl {
     TypeExprPtr extendedType;
     std::optional<std::string> interfaceName;
     std::vector<std::unique_ptr<FuncDecl>> methods;
+
+    // `#if` chains written between the methods. Conditional compilation folds
+    // each one and moves the methods of the taken branch into `methods`, so by
+    // the time anything else looks at an ImplDecl this is empty.
+    std::vector<std::unique_ptr<CompileTimeIfDecl>> conditionals;
 };
 
 // module Name { decls... }
@@ -543,6 +594,9 @@ struct TypeAliasDecl : Decl {
 struct ExternFuncDecl : Decl {
     std::string name;
     std::string dll;
+    // #{ symbol: "..." }: the name to import from the DLL when it differs from
+    // the Rux-visible `name`. Empty means the two are the same.
+    std::string symbolName;
     CallingConvention callConv = CallingConvention::Default;
     std::vector<Param> params;
     bool isVariadic = false;
@@ -555,7 +609,7 @@ struct ExternVarDecl : Decl {
     TypeExprPtr type;
 };
 
-// @[Import(lib: "...")] extern { func ...; ... }
+// #{ library: "..." } extern { func ...; ... }
 struct ExternBlockDecl : Decl {
     std::string dll;
     CallingConvention callConv = CallingConvention::Default;

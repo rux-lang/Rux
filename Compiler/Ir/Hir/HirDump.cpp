@@ -359,10 +359,15 @@ bool HirPrinter::Dump(const HirPackage &package, const std::filesystem::path &pa
             std::string ret = ef.returnType.IsOpaque() ? "" : " -> " + ef.returnType.ToString();
             std::string attr;
             if (!ef.dll.empty()) {
-                attr += std::format("@[Import(lib: \"{}\")]\n", ef.dll);
+                if (ef.symbolName.empty()) {
+                    attr += std::format("#{{ library: \"{}\" }}\n", ef.dll);
+                }
+                else {
+                    attr += std::format("#{{ library: \"{}\", symbol: \"{}\" }}\n", ef.dll, ef.symbolName);
+                }
             }
-            if (ef.callConv == CallingConvention::Win64) {
-                attr += "@[Call(.Win64)]\n";
+            if (ef.callConv != CallingConvention::Default) {
+                attr += std::format("#{{ abi: {} }}\n", ConventionName(ef.callConv));
             }
             out << std::format("\n{}extern {}func {}({}){}\n", attr, pub, ef.name, params, ret);
         }

@@ -97,23 +97,48 @@ Target::OS TargetTripleOs(const std::string_view target) {
     return Target::HostOS;
 }
 
-bool DeclMatchesTarget(const Decl &decl, const std::string_view target) {
-    if (decl.targetOs.empty()) {
-        return true;
+Target::Arch TargetTripleArch(const std::string_view target) {
+    const auto dashPos = target.rfind('-');
+    const auto arch = dashPos == std::string_view::npos ? target : target.substr(dashPos + 1);
+    if (arch == "x86") {
+        return Target::Arch::X86_32;
     }
-    const std::string_view targetOs = TargetOsName(target);
-    // Normalize both sides for robust comparison.
-    if (decl.targetOs.size() != targetOs.size()) {
-        return false;
+    if (arch == "x64" || arch == "x86_64") {
+        return Target::Arch::X86_64;
     }
-    // Case-insensitive comparison handles any casing in @[Target("...")].
-    for (std::size_t i = 0; i < decl.targetOs.size(); ++i) {
-        if (std::tolower(static_cast<unsigned char>(decl.targetOs[i])) !=
-            std::tolower(static_cast<unsigned char>(targetOs[i]))) {
-            return false;
-        }
+    if (arch == "arm" || arch == "arm32") {
+        return Target::Arch::ARM32;
     }
-    return true;
+    if (arch == "arm64" || arch == "aarch64") {
+        return Target::Arch::ARM64;
+    }
+    if (arch == "riscv32") {
+        return Target::Arch::RISCV32;
+    }
+    if (arch == "riscv64") {
+        return Target::Arch::RISCV64;
+    }
+    return Target::HostArch;
+}
+
+TargetContext TargetContextForTriple(const std::string_view target) {
+    const Target::OS os = TargetTripleOs(target);
+    const Target::Arch arch = TargetTripleArch(target);
+    const bool is64 = Target::Is64Bit(arch);
+    const Target::DataModel dataModel = os == Target::OS::Windows
+                                          ? (is64 ? Target::DataModel::LLP64 : Target::DataModel::ILP32)
+                                          : (is64 ? Target::DataModel::LP64 : Target::DataModel::ILP32);
+    const Target::ABIInfo abi = Target::GetABIInfo(os, arch, dataModel);
+    const bool native = os == Target::HostOS && arch == Target::HostArch;
+    return TargetContext{.os = os,
+                         .arch = arch,
+                         .data_model = dataModel,
+                         .abi = abi.abi,
+                         .default_cc = abi.cc,
+                         .endianness = native ? Target::HostEndianness : Target::Endian::Little,
+                         .object_format = Target::GetObjectFormat(os),
+                         .pointer_size = Target::GetPointerSize(arch),
+                         .cpu_features = native ? Target::HostCpuFeatures : Target::CpuFeature::None};
 }
 
 bool IsPlatformPackageName(const std::string_view name) {
@@ -122,30 +147,6 @@ bool IsPlatformPackageName(const std::string_view name) {
 
 bool PlatformPackageMatchesTarget(const std::string_view name, const std::string_view target) {
     return name == TargetOsName(target);
-}
-
-namespace {
-
-void PruneDeclForTarget(Decl &decl, const std::string_view target) {
-    if (auto *module = dynamic_cast<ModuleDecl *>(&decl)) {
-        PruneDeclsForTarget(module->items, target);
-    }
-    else if (auto *block = dynamic_cast<ExternBlockDecl *>(&decl)) {
-        PruneDeclsForTarget(block->items, target);
-    }
-}
-
-} // namespace
-
-void PruneDeclsForTarget(std::vector<DeclPtr> &decls, const std::string_view target) {
-    std::erase_if(decls, [&](const DeclPtr &decl) { return !decl || !DeclMatchesTarget(*decl, target); });
-    for (const auto &decl : decls) {
-        PruneDeclForTarget(*decl, target);
-    }
-}
-
-void PruneModuleForTarget(Module &module, const std::string_view target) {
-    PruneDeclsForTarget(module.items, target);
 }
 
 std::string DependencyPackageName(const Dependency &dep) {

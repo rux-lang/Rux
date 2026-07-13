@@ -10,7 +10,9 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "Driver/Version.h"
 #include "Lexer/Lexer.h"
+#include "Semantic/ConditionalCompilation.h"
 #include "Semantic/Type.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
@@ -110,13 +112,12 @@ class Analyzer {
 public:
     Analyzer(std::vector<const Module *> &inputModules, std::vector<DepPackage> &inputDeps,
              const std::string &inputPackageName, std::vector<SemanticDiagnostic> &inputDiags,
-             std::vector<SemanticSymbol> &inputSymbols, const std::string &inputTargetOs)
+             std::vector<SemanticSymbol> &inputSymbols)
         : modules(inputModules)
         , deps(inputDeps)
         , packageName(inputPackageName)
         , diags(inputDiags)
         , symbols(inputSymbols)
-        , targetOs(inputTargetOs)
         , currentScope(&globalScope) {
     }
 
@@ -179,7 +180,6 @@ private:
     const std::string &packageName;
     std::vector<SemanticDiagnostic> &diags;
     std::vector<SemanticSymbol> &symbols;
-    const std::string &targetOs;
     Scope globalScope{nullptr};
     Scope *currentScope;
     // packageModuleScopes[pkgName][modulePath] = logical module scope.
@@ -322,9 +322,6 @@ private:
     }
 
     void ResolveDeclSignature(const Decl &decl) {
-        if (!DeclMatchesTarget(decl)) {
-            return;
-        }
         if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             if (Symbol *sym = globalScope.Lookup(fn->name)) {
                 sym->type = MakeFuncType(fn->params, fn->returnType, fn->typeParams);
@@ -364,9 +361,6 @@ private:
     }
 
     void ResolveDeclSignatureInScope(const Decl &decl, Scope &scope) {
-        if (!DeclMatchesTarget(decl)) {
-            return;
-        }
         if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             if (Symbol *sym = scope.Lookup(fn->name)) {
                 sym->type = MakeFuncType(fn->params, fn->returnType, fn->typeParams);
@@ -410,9 +404,6 @@ private:
     }
 
     void ApplyDeclImports(const Decl &decl) {
-        if (!DeclMatchesTarget(decl)) {
-            return;
-        }
         if (auto *useDecl = dynamic_cast<const UseDecl *>(&decl)) {
             CheckUseDecl(*useDecl);
         }
@@ -442,9 +433,6 @@ private:
 
     void CollectDecl(const Decl &decl, Scope &scope, const std::string *depPackageName = nullptr,
                      const std::string &modulePath = "") {
-        if (!DeclMatchesTarget(decl)) {
-            return;
-        }
         // Records the symbol in `scope` and, for top-level (global) scope,
         // also appends a SemanticSymbol to `symbols_` for the dump.
         bool isGlobal = (&scope == &globalScope);
@@ -1058,14 +1046,45 @@ private:
                !UnsuffixedIntegerLiteralFits(expr, targetType);
     }
 
+    // Explains a `@x` whose pointee came out read-only because `x` is an
+    // immutable place. The types alone ("'*const int32' to '*int32'") do not
+    // say that the `let` on the operand is the cause, so name the binding and
+    // the fix. Empty when the rejection has some other cause.
+    std::string ImmutableAddressOfHint(const Expr &expr, const TypeRef &targetType) {
+        // Only a pointer-to-mutable target loses the const; anything else that
+        // fails to assign here failed for an unrelated reason.
+        if (targetType.kind != TypeRef::Kind::Pointer || targetType.inner.empty() || targetType.inner[0].isConst) {
+            return {};
+        }
+        const auto *addressOf = dynamic_cast<const UnaryExpr *>(&expr);
+        if (!addressOf || addressOf->op != TokenKind::At) {
+            return {};
+        }
+        const auto *ident = dynamic_cast<const IdentExpr *>(addressOf->operand.get());
+        if (!ident || !PlaceIsImmutable(*addressOf->operand)) {
+            return {};
+        }
+        const Symbol *sym = currentScope->Lookup(ident->name);
+        if (sym && sym->kind == Symbol::Kind::Const) {
+            return std::format(": '{}' is a constant, so its address is a pointer to immutable data", ident->name);
+        }
+        return std::format(": '{}' is an immutable 'let' binding, so its address is a pointer to immutable data; "
+                           "declare it 'var' to allow writes through the pointer",
+                           ident->name);
+    }
+
     // Picks the diagnostic for a rejected assignment/conversion. An
     // unsuffixed integer literal that does not fit the target gets a
-    // dedicated "out of range" message; everything else uses `fallback`.
+    // dedicated "out of range" message; taking the address of an immutable
+    // place gets the reason appended; everything else uses `fallback`.
     // Keeps the wording consistent across let, return, assignment, const,
     // and field positions.
-    static std::string AssignmentErrorMessage(const Expr &expr, const TypeRef &targetType, std::string fallback) {
+    std::string AssignmentErrorMessage(const Expr &expr, const TypeRef &targetType, std::string fallback) {
         if (IsIntegerLiteralOutOfRangeFor(expr, targetType)) {
             return std::format("integer literal is out of range for type '{}'", targetType.ToString());
+        }
+        if (const std::string hint = ImmutableAddressOfHint(expr, targetType); !hint.empty()) {
+            return fallback + hint;
         }
         return fallback;
     }
@@ -2066,9 +2085,6 @@ private:
     }
 
     void CheckDecl(const Decl &decl) {
-        if (!DeclMatchesTarget(decl)) {
-            return;
-        }
         if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             CheckFuncDecl(*fn);
         }
@@ -2100,7 +2116,7 @@ private:
             if (externFn->dll.empty()) {
                 EmitError(externFn->location, std::format("extern function '{}' must specify a "
                                                           "source DLL via "
-                                                          "@[Import(lib: \"dll.dll\")]",
+                                                          "#{{ library: \"dll.dll\" }}",
                                                           externFn->name));
             }
             if (externFn->returnType) {
@@ -2744,22 +2760,7 @@ private:
         }
     }
 
-    static std::string_view HostOs() noexcept {
-        return ToString(Target::HostOS);
-    }
-
-    [[nodiscard]] std::string_view EffectiveOs() const {
-        return targetOs.empty() ? HostOs() : std::string_view(targetOs);
-    }
-
-    [[nodiscard]] bool DeclMatchesTarget(const Decl &d) const {
-        return d.targetOs.empty() || d.targetOs == EffectiveOs();
-    }
-
     void CheckUseDecl(const UseDecl &d) {
-        if (!DeclMatchesTarget(d)) {
-            return;
-        }
         if (d.path.empty()) {
             EmitError(d.location, "empty import path");
             return;
@@ -3232,10 +3233,59 @@ private:
         if (dynamic_cast<const IntrinsicExpr *>(&expr)) {
             const auto *e = static_cast<const IntrinsicExpr *>(&expr);
             using K = IntrinsicExpr::Kind;
-            if (e->kind == K::Line || e->kind == K::Column) {
+            const bool takesArgument = e->kind == K::TargetFeature || e->kind == K::CompilerHasFeature ||
+                                       e->kind == K::Config || e->kind == K::HasConfig;
+            if (takesArgument) {
+                if (e->args.size() != 1 || !e->args[0]) {
+                    EmitError(e->location, "compile-time intrinsic expects exactly one argument");
+                }
+                else if (e->kind == K::TargetFeature && dynamic_cast<const EnumShorthandExpr *>(e->args[0].get())) {
+                    // `.AVX2` is given its meaning by #target.hasFeature.
+                }
+                else {
+                    const TypeRef argType = CheckExpr(*e->args[0]);
+                    const std::string stringType = SliceTypeName(TypeRef::MakeChar8());
+                    if (!argType.IsUnknown() && !(argType.kind == TypeRef::Kind::Named && argType.name == stringType)) {
+                        EmitError(e->args[0]->location, "compile-time intrinsic argument must be a string");
+                    }
+                }
+            }
+
+            if (e->kind == K::Line || e->kind == K::Column || e->kind == K::PointerBits) {
                 return TypeRef::MakeUInt();
             }
+            if (e->kind == K::BuildTimestamp) {
+                return TypeRef::MakeUInt64();
+            }
+            if (e->kind == K::TargetFeature || e->kind == K::CompilerHasFeature || e->kind == K::HasConfig ||
+                e->kind == K::DebugAssertions || e->kind == K::DebugInfo || e->kind == K::IsTest) {
+                return TypeRef::MakeBool();
+            }
+            if (e->kind == K::Os || e->kind == K::Arch || e->kind == K::Abi || e->kind == K::Endian ||
+                e->kind == K::DataModel || e->kind == K::ObjectFormat || e->kind == K::BuildMode ||
+                e->kind == K::Optimization || e->kind == K::OutputKind) {
+                const char *name = e->kind == K::Os             ? "#os"
+                                   : e->kind == K::Arch         ? "#arch"
+                                   : e->kind == K::Abi          ? "#abi"
+                                   : e->kind == K::Endian       ? "#endian"
+                                   : e->kind == K::DataModel    ? "#dataModel"
+                                   : e->kind == K::ObjectFormat ? "#objectFormat"
+                                   : e->kind == K::BuildMode    ? "#buildMode"
+                                   : e->kind == K::Optimization ? "#optimization"
+                                                                : "#outputKind";
+                EmitError(e->location, std::string("'") + name + "' can only be used in a '#if' condition");
+                return TypeRef::MakeUnknown();
+            }
             return TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+        }
+
+        if (const auto *e = dynamic_cast<const EnumShorthandExpr *>(&expr)) {
+            // Only a `#if` condition supplies the enum a bare `.Variant` needs;
+            // everywhere else the variant must be written out in full.
+            EmitError(e->location, std::format("'.{}' can only be used in a '#if' condition; write the enum "
+                                               "out in full, as in 'Enum::{}'",
+                                               e->variant, e->variant));
+            return TypeRef::MakeUnknown();
         }
 
         if (auto *e = dynamic_cast<const UnaryExpr *>(&expr)) {
@@ -3246,7 +3296,7 @@ private:
             // Taking the address of an immutable place yields a pointer whose
             // pointee is read-only, so writes through it can be rejected. The
             // pointee's own const flag also propagates (e.g. &(*constPtr)).
-            if (e->op == TokenKind::Amp) {
+            if (e->op == TokenKind::At) {
                 t.isConst = t.isConst || PlaceIsImmutable(*e->operand);
                 return TypeRef::MakePointer(std::move(t));
             }
@@ -3780,7 +3830,7 @@ private:
                                            t.ToString()));
             }
             return t.inner.empty() ? TypeRef::MakeUnknown() : t.inner[0];
-        case TokenKind::Amp:
+        case TokenKind::At:
             return TypeRef::MakePointer(t);
         case TokenKind::PlusPlus:
         case TokenKind::MinusMinus:
@@ -3811,6 +3861,8 @@ private:
             return "**";
         case TK::Amp:
             return "&";
+        case TK::At:
+            return "@";
         case TK::Pipe:
             return "|";
         case TK::Caret:
@@ -4084,16 +4136,58 @@ private:
 };
 
 // Sema public API
-SemanticAnalyzer::SemanticAnalyzer(std::vector<const Module *> userModules, std::vector<DepPackage> inputDeps,
-                                   std::string inputPackageName, std::string inputTargetOs)
+SemanticAnalyzer::SemanticAnalyzer(std::vector<Module *> userModules, std::vector<DepPackage> inputDeps,
+                                   std::string inputPackageName, CompileTimeContext inputContext)
     : modules(std::move(userModules))
     , deps(std::move(inputDeps))
     , packageName(std::move(inputPackageName))
-    , targetOs(std::move(inputTargetOs)) {
+    , compileTimeContext(std::move(inputContext)) {
+    if (compileTimeContext.compilerVersion.empty()) {
+        compileTimeContext.compilerVersion = RUX_VERSION;
+    }
+}
+
+SemanticAnalyzer::SemanticAnalyzer(std::vector<Module *> userModules, std::vector<DepPackage> inputDeps,
+                                   std::string inputPackageName, std::string inputTargetSystem)
+    : SemanticAnalyzer(std::move(userModules), std::move(inputDeps), std::move(inputPackageName),
+                       CompileTimeContext{}) {
+    if (inputTargetSystem == "Windows")
+        compileTimeContext.target.os = Target::OS::Windows;
+    else if (inputTargetSystem == "Linux")
+        compileTimeContext.target.os = Target::OS::Linux;
+    else if (inputTargetSystem == "macOS" || inputTargetSystem == "MacOS")
+        compileTimeContext.target.os = Target::OS::MacOS;
+    else if (inputTargetSystem == "FreeBSD")
+        compileTimeContext.target.os = Target::OS::FreeBSD;
+    else if (inputTargetSystem == "OpenBSD")
+        compileTimeContext.target.os = Target::OS::OpenBSD;
+    else if (inputTargetSystem == "NetBSD")
+        compileTimeContext.target.os = Target::OS::NetBSD;
+    else if (inputTargetSystem == "Dragonfly" || inputTargetSystem == "DragonFlyBSD")
+        compileTimeContext.target.os = Target::OS::DragonFlyBSD;
+    else if (inputTargetSystem == "Solaris")
+        compileTimeContext.target.os = Target::OS::Solaris;
+    else if (inputTargetSystem == "Illumos")
+        compileTimeContext.target.os = Target::OS::Illumos;
+    compileTimeContext.target.object_format = Target::GetObjectFormat(compileTimeContext.target.os);
 }
 
 SemanticModel SemanticAnalyzer::Analyze() {
-    Analyzer analyzer(modules, deps, packageName, diags, symbols, targetOs);
+    // Fold `#if` first: the branches that were not taken are dropped here, so
+    // nothing below ever sees — or type-checks — them. Each package resolves its
+    // own conditionals against its own constants.
+    for (auto &dep : deps) {
+        std::vector<Module *> depModules;
+        depModules.reserve(dep.modules.size());
+        for (const auto &entry : dep.modules) {
+            depModules.push_back(entry.module);
+        }
+        ResolveConditionalCompilation(depModules, compileTimeContext, diags);
+    }
+    ResolveConditionalCompilation(modules, compileTimeContext, diags);
+
+    std::vector<const Module *> constModules(modules.begin(), modules.end());
+    Analyzer analyzer(constModules, deps, packageName, diags, symbols);
     analyzer.Run();
     std::vector<const Module *> orderedModules;
     for (const auto &dep : deps) {
@@ -4102,6 +4196,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
         }
     }
     orderedModules.insert(orderedModules.end(), modules.begin(), modules.end());
-    return SemanticModel{std::move(diags), std::move(symbols), std::move(orderedModules)};
+    return SemanticModel{std::move(diags), std::move(symbols), std::move(orderedModules),
+                         std::move(compileTimeContext)};
 }
 } // namespace Rux

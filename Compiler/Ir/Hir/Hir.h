@@ -449,6 +449,9 @@ struct HirConst {
 struct HirExternFunc {
     std::string name;
     std::string dll;
+    // The name imported from the DLL, when it differs from `name`. Empty means
+    // the two are the same.
+    std::string symbolName;
     bool isPublic = false;
     CallingConvention callConv = CallingConvention::Default;
     std::vector<HirParam> params;

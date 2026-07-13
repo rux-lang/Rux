@@ -203,6 +203,7 @@ constexpr std::array add_exs = {"Std"sv, "Std@0.1.0"sv, "Json --path ../Json"sv}
 constexpr std::array build_usage = {"[options]"sv};
 constexpr std::array build_opts = {
     OptionDoc{.flags = "--debug"sv, .desc = "Build with debug symbols (unoptimized output)"sv},
+    OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a #config compile-time value"sv},
     OptionDoc{.flags = "--profile <n>"sv, .desc = "Build using a custom profile defined in Rux.toml"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile (optimized, no debug info)"sv},
     OptionDoc{.flags = "--stats"sv, .desc = "Print build timing, source, performance, and output statistics"sv},
@@ -223,6 +224,7 @@ constexpr std::array build_exs = {
 // Check
 constexpr std::array check_usage = {"[options]"sv};
 constexpr std::array check_opts = {
+    OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a #config compile-time value"sv},
     OptionDoc{.flags = "--json"sv, .desc = "Output diagnostics in JSON format"sv},
     OptionDoc{.flags = "--target <triple>"sv, .desc = "Check code health for a specific target platform"sv}};
 constexpr std::array check_exs = {""sv, "--json"sv, "--target windows-x64"sv};
@@ -289,12 +291,16 @@ constexpr std::array remove_exs = {"Json"sv, "Random"sv};
 
 // Run
 constexpr std::array run_usage = {"[options] [-- args...]"sv};
-constexpr std::array run_opts = {OptionDoc{.flags = "--release"sv, .desc = "Build with release profile"sv}};
+constexpr std::array run_opts = {
+    OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a #config compile-time value"sv},
+    OptionDoc{.flags = "--release"sv, .desc = "Build with release profile"sv}};
 constexpr std::array run_exs = {""sv, "--release"sv, "-- --port 8080"sv};
 
 // Test
 constexpr std::array test_usage = {"[options]"sv};
-constexpr std::array test_opts = {OptionDoc{.flags = "--release"sv, .desc = "Build with release profile"sv}};
+constexpr std::array test_opts = {
+    OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a #config compile-time value"sv},
+    OptionDoc{.flags = "--release"sv, .desc = "Build with release profile"sv}};
 constexpr std::array test_exs = {""sv, "--release"sv};
 
 // Uninstall

@@ -63,7 +63,7 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
     if (IsUnknown() || other.IsUnknown()) {
         return true;
     }
-    // A pointer-to-immutable (*immut T) cannot be coerced into a
+    // A pointer-to-immutable (*const T) cannot be coerced into a
     // pointer-to-mutable (*T): that would silently launder away const.
     if (kind == Kind::Pointer && other.kind == Kind::Pointer && !inner.empty() && !other.inner.empty() &&
         inner[0].isConst && !other.inner[0].isConst) {
@@ -254,7 +254,7 @@ std::string TypeRef::ToString() const {
         return name;
     case Kind::Pointer:
         if (!inner.empty() && inner[0].isConst) {
-            return "*immut " + inner[0].ToString();
+            return "*const " + inner[0].ToString();
         }
         return "*" + (inner.empty() ? "?" : inner[0].ToString());
     case Kind::Slice:

@@ -90,6 +90,14 @@ enum class Endian : std::uint8_t {
     Big,
 };
 
+enum class ObjectFormat : std::uint8_t {
+    Unknown,
+    ELF,
+    COFF,
+    MachO,
+    Wasm,
+};
+
 // ---- CPU feature bitset -----------------------------------------------------
 
 struct CpuFeatures {
@@ -214,6 +222,25 @@ struct MemoryInfo {
 
 [[nodiscard]] constexpr std::size_t GetPointerSize(Arch arch) noexcept {
     return Is64Bit(arch) ? Pointer64 : Pointer32;
+}
+
+[[nodiscard]] constexpr ObjectFormat GetObjectFormat(OS os) noexcept {
+    switch (os) {
+    case OS::Windows:
+        return ObjectFormat::COFF;
+    case OS::MacOS:
+        return ObjectFormat::MachO;
+    case OS::Linux:
+    case OS::FreeBSD:
+    case OS::OpenBSD:
+    case OS::NetBSD:
+    case OS::DragonFlyBSD:
+    case OS::Solaris:
+    case OS::Illumos:
+        return ObjectFormat::ELF;
+    default:
+        return ObjectFormat::Unknown;
+    }
 }
 
 // ---- ABI -------------------------------------------------------------------
@@ -400,6 +427,7 @@ struct TargetContext {
     Target::ABI abi;
     Target::CallingConv default_cc;
     Target::Endian endianness;
+    Target::ObjectFormat object_format;
     std::size_t pointer_size;
     Target::CpuFeatures cpu_features;
 
@@ -411,6 +439,7 @@ struct TargetContext {
                              .abi = Target::HostABI,
                              .default_cc = Target::HostCC,
                              .endianness = Target::HostEndianness,
+                             .object_format = Target::GetObjectFormat(Target::HostOS),
                              .pointer_size = Target::HostPointerSize,
                              .cpu_features = Target::HostCpuFeatures};
     }

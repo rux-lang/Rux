@@ -19,7 +19,7 @@ static HirPackage CompileAndOptimize(const std::string &source) {
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
 
-    std::vector<const Module *> modules = {&parsed.module};
+    std::vector<Module *> modules = {&parsed.module};
     SemanticAnalyzer analyzer(modules, {}, "test", "windows");
     auto semaModel = analyzer.Analyze();
     REQUIRE_FALSE(semaModel.HasErrors());

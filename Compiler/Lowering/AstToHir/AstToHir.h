@@ -15,6 +15,7 @@ public:
 
 private:
     std::vector<const Module *> modules_;
+    CompileTimeContext compileTimeContext_;
 };
 
 } // namespace Rux

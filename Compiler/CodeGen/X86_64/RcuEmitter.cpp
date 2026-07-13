@@ -105,8 +105,9 @@ std::optional<std::uint64_t> ParseIntegerLiteralBits(std::string_view text) {
 }
 
 CallingConvention EffectiveConv(const CallingConvention c) {
-    if (c != CallingConvention::Default) {
-        return c;
+    const CallingConvention resolved = ResolveCConvention(c);
+    if (resolved != CallingConvention::Default) {
+        return resolved;
     }
     return PlatformDefaultConvention();
 }

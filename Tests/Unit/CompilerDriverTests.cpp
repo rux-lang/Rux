@@ -60,6 +60,14 @@ func Main() -> int {
     DependencyFixture(const DependencyFixture &) = delete;
     DependencyFixture &operator=(const DependencyFixture &) = delete;
 
+    void SetApplicationSource(const std::string_view source) const {
+        REQUIRE(WriteFile(appRoot / "Src" / "Main.rux", source));
+    }
+
+    void SetManifestDefine(std::string name, std::string value) {
+        application.build.defines[std::move(name)] = std::move(value);
+    }
+
     [[nodiscard]] CompileOptions Options(const bool checkOnly, std::vector<Diagnostic> &diagnostics) const {
         CompileOptions options;
         options.manifestPath = appRoot / "Rux.toml";
@@ -111,5 +119,39 @@ TEST_CASE("compiler driver loads path dependencies when building") {
     CHECK(result.ok);
     CHECK(diagnostics.empty());
     CHECK(result.stats.dependencyFiles == 1);
+    CHECK(std::filesystem::is_regular_file(result.executablePath));
+}
+
+TEST_CASE("compiler driver supplies manifest and command-line build context") {
+    DependencyFixture fixture;
+    fixture.SetManifestDefine("allocator", "system");
+    fixture.SetApplicationSource(R"(
+#if #config.has("allocator") &&
+    #config("allocator") == "mimalloc" &&
+    #build.isTest &&
+    #build.mode == .Debug &&
+    #compiler.hasFeature("namespaced-intrinsics") {
+    func Main() -> int {
+        let timestamp = #build.timestamp;
+        let date = #build.date;
+        let time = #build.time;
+        return 0;
+    }
+} else {
+    func Main() -> int {
+        return MissingConfiguration;
+    }
+}
+)");
+
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.defines["allocator"] = "mimalloc";
+    options.isTest = true;
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
     CHECK(std::filesystem::is_regular_file(result.executablePath));
 }

@@ -66,14 +66,16 @@ private:
     // Attribute parsing
     struct ParsedAttrs {
         std::string importLib;
+        std::string importSymbol;
         CallingConvention callConv = CallingConvention::Default;
-        std::string targetOs;
         std::string warnMessage;
         std::string errorMessage;
     };
 
-    // Parses zero or more @[AttrName(...)] attributes before a declaration.
+    // Parses the `#{ key: value, ... }` metadata blocks and `#Name("...")` meta
+    // functions before a declaration.
     ParsedAttrs ParseAttrs();
+    void ParseMetaFunc(ParsedAttrs &attrs);
     DeclPtr ParseExternDecl(bool isPublic, ParsedAttrs attrs);
 
     // Declarations
@@ -85,8 +87,9 @@ private:
     std::unique_ptr<InterfaceDecl> ParseInterfaceDecl(bool isPublic);
     std::unique_ptr<ImplDecl> ParseImplDecl();
     std::unique_ptr<ModuleDecl> ParseModuleDecl(bool isPublic);
-    std::unique_ptr<UseDecl> ParseUseDecl(ParsedAttrs attrs);
+    std::unique_ptr<UseDecl> ParseUseDecl();
     std::unique_ptr<ConstDecl> ParseConstDecl(bool isPublic);
+    std::unique_ptr<CompileTimeIfDecl> ParseCompileTimeIfDecl();
     std::unique_ptr<TypeAliasDecl> ParseTypeAliasDecl(bool isPublic);
 
     // Inline-assembly body parsing (asm func)

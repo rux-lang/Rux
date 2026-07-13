@@ -25,7 +25,7 @@ static std::string CompileToAsm(const std::string &source) {
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
 
-    std::vector<const Module *> modules = {&parsed.module};
+    std::vector<Module *> modules = {&parsed.module};
     SemanticAnalyzer analyzer(modules, {}, "test", RUX_OS_WINDOWS ? "windows" : "linux");
     auto semaModel = analyzer.Analyze();
     REQUIRE_FALSE(semaModel.HasErrors());
@@ -132,7 +132,7 @@ TEST_CASE("string literal slices reference static storage") {
 
 TEST_CASE("codegen generates correct calling convention for extern functions") {
     std::string source = R"(
-        @[Import(lib: "kernel32.dll")]
+        #{ library: "kernel32.dll" }
         extern func CreateFileA(
             lpFileName: *uint8,
             dwDesiredAccess: uint32,

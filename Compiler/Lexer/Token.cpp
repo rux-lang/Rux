@@ -232,6 +232,10 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "#column";
     case TokenKind::HashFile:
         return "#file";
+    case TokenKind::HashFileName:
+        return "#fileName";
+    case TokenKind::HashFilePath:
+        return "#filePath";
     case TokenKind::HashFunction:
         return "#function";
     case TokenKind::HashDate:
@@ -244,6 +248,54 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "#ruxVersion";
     case TokenKind::hashOs:
         return "#os";
+    case TokenKind::HashArch:
+        return "#arch";
+    case TokenKind::HashAbi:
+        return "#abi";
+    case TokenKind::HashEndian:
+        return "#endian";
+    case TokenKind::HashPointerBits:
+        return "#pointerBits";
+    case TokenKind::HashDataModel:
+        return "#dataModel";
+    case TokenKind::HashObjectFormat:
+        return "#objectFormat";
+    case TokenKind::HashTargetTriple:
+        return "#targetTriple";
+    case TokenKind::HashTargetFeature:
+        return "#targetFeature";
+    case TokenKind::HashBuildProfile:
+        return "#buildProfile";
+    case TokenKind::HashBuildMode:
+        return "#buildMode";
+    case TokenKind::HashOptimization:
+        return "#optimization";
+    case TokenKind::HashDebugAssertions:
+        return "#debugAssertions";
+    case TokenKind::HashDebugInfo:
+        return "#debugInfo";
+    case TokenKind::HashIsTest:
+        return "#isTest";
+    case TokenKind::HashOutputKind:
+        return "#outputKind";
+    case TokenKind::HashBuildTimestamp:
+        return "#buildTimestamp";
+    case TokenKind::HashCompilerVersion:
+        return "#compilerVersion";
+    case TokenKind::HashCompilerHasFeature:
+        return "#compilerHasFeature";
+    case TokenKind::HashConfig:
+        return "#config";
+    case TokenKind::HashHasConfig:
+        return "#hasConfig";
+    case TokenKind::HashTarget:
+        return "#target";
+    case TokenKind::HashBuild:
+        return "#build";
+    case TokenKind::HashCompiler:
+        return "#compiler";
+    case TokenKind::HashSource:
+        return "#source";
     case TokenKind::NewLine:
         return "NewLine";
     case TokenKind::EndOfFile:

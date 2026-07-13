@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "Diagnostics/Diagnostics.h"
+#include "Semantic/CompileTimeContext.h"
 #include "Syntax/Ast/Ast.h"
 
 namespace Rux {
@@ -34,6 +35,7 @@ struct SemanticModel {
     std::vector<SemanticDiagnostic> diagnostics;
     std::vector<SemanticSymbol> symbols;
     std::vector<const Module *> modules;
+    CompileTimeContext compileTimeContext;
 
     [[nodiscard]] bool HasErrors() const noexcept;
 };

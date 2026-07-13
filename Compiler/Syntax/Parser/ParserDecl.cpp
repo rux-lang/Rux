@@ -86,100 +86,130 @@ static std::string DecodeStringLiteralText(const std::string &text) {
     return out;
 }
 
-// Parses zero or more @[AttrName(...)] attributes that precede a
-// declaration. Unknown attribute names are a compilation error.
+// Parses one `#Name("...")` meta function, with the '#' already consumed. A
+// meta function acts at each use of the declaration rather than describing it,
+// which is why it reads as a call and not as a `#{ }` key.
+void Parser::ParseMetaFunc(ParsedAttrs &attrs) {
+    const SourceLocation nameLoc = CurrentLocation();
+    const std::string name = Advance().text;
+
+    if (name != "Error" && name != "Warn") {
+        EmitError(nameLoc, std::format("unknown meta function '#{}'", name));
+        // Skip a parenthesized argument list, if any, so the declaration that
+        // follows still parses.
+        if (Match(TokenKind::LeftParen)) {
+            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                Advance();
+            }
+            Expect(TokenKind::RightParen, "expected ')' to close the meta function");
+        }
+        return;
+    }
+
+    Expect(TokenKind::LeftParen, std::format("expected '(' after '#{}'", name));
+    if (Check(TokenKind::StringLiteral)) {
+        std::string message = DecodeStringLiteralText(Advance().text);
+        if (name == "Error") {
+            attrs.errorMessage = std::move(message);
+        }
+        else {
+            attrs.warnMessage = std::move(message);
+        }
+    }
+    else {
+        EmitError(CurrentLocation(), std::format("'#{}' takes a message string", name));
+    }
+    Expect(TokenKind::RightParen, "expected ')' to close the meta function");
+}
+
+// Parses the compiler directives that precede a declaration. Two forms share
+// the '#' sigil:
+//
+//   #{ key: value, ... }   passive metadata describing the declaration
+//   #Name("...")           a meta function, which *does* something at each use
+//
+// A declaration may carry any number of either, in any order; they accumulate.
+// Unknown keys and unknown meta functions are a compilation error.
 Parser::ParsedAttrs Parser::ParseAttrs() {
     ParsedAttrs attrs;
-    while (Check(TokenKind::At)) {
-        Advance(); // consume '@'
-        Expect(TokenKind::LeftBracket, "expected '[' after '@'");
+    while (Check(TokenKind::Hash)) {
+        Advance(); // consume '#'
 
-        const SourceLocation attrLoc = CurrentLocation();
-        std::string attrName;
+        // #Name("...") — meta function
         if (Check(TokenKind::Ident)) {
-            attrName = Advance().text;
+            ParseMetaFunc(attrs);
+            continue;
         }
 
-        if (Check(TokenKind::LeftParen)) {
-            Advance(); // consume '('
+        Expect(TokenKind::LeftBrace, "expected '{' or a meta function name after '#'");
 
-            if (attrName == "Call" && Check(TokenKind::Dot)) {
-                // @[Call(.Win64)] — positional enum variant
-                Advance(); // consume '.'
+        while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+            const SourceLocation keyLoc = CurrentLocation();
+            if (!Check(TokenKind::Ident)) {
+                EmitError(keyLoc, "expected a metadata key");
+                break;
+            }
+            const std::string key = Advance().text;
+            Expect(TokenKind::Colon, "expected ':' after metadata key");
+
+            if (key == "abi") {
+                // #{ abi: .Win64 } — an enum variant naming the ABI
+                Expect(TokenKind::Dot, "expected '.' before an ABI");
+                const SourceLocation variantLoc = CurrentLocation();
                 std::string variant;
                 if (Check(TokenKind::Ident)) {
                     variant = Advance().text;
                 }
-                if (variant == "Win64") {
+                if (variant == "C") {
+                    attrs.callConv = CallingConvention::C;
+                }
+                else if (variant == "Win64") {
                     attrs.callConv = CallingConvention::Win64;
                 }
-                else {
-                    EmitWarning(CurrentLocation(), std::format("unknown calling convention '.{}'", variant));
-                }
-            }
-            else if (attrName == "Target" && Check(TokenKind::StringLiteral)) {
-                // @[Target("Windows")] — positional OS string
-                const Token tok = Advance();
-                std::string os = DecodeStringLiteralText(tok.text);
-                if (os == "MacOS" || os == "Macos" || os == "macos") {
-                    os = "macOS";
-                }
-                if (os != "BSD" && os != "Illumos" && os != "Linux" && os != "macOS" && os != "Windows") {
-                    EmitError(tok.location, std::format("unsupported target '{}'; valid "
-                                                        "targets are: BSD, "
-                                                        "Illumos, Linux, macOS, Windows",
-                                                        os));
+                else if (variant == "SysV") {
+                    attrs.callConv = CallingConvention::SysV;
                 }
                 else {
-                    attrs.targetOs = std::move(os);
+                    // A misspelled ABI silently compiled to the platform
+                    // default, which passes arguments in the wrong registers.
+                    EmitError(variantLoc, std::format("unknown ABI '.{}'; valid ABIs are: "
+                                                      ".C, .SysV, .Win64",
+                                                      variant));
                 }
             }
-            else if (attrName == "Warn" && Check(TokenKind::StringLiteral)) {
-                // @[Warn("message")] — emit a compiler warning at each call
-                // site
-                attrs.warnMessage = DecodeStringLiteralText(Advance().text);
-            }
-            else if (attrName == "Error" && Check(TokenKind::StringLiteral)) {
-                // @[Error("message")] — emit a compiler error at each call
-                // site
-                attrs.errorMessage = DecodeStringLiteralText(Advance().text);
-            }
-            else if (attrName == "Import") {
-                // @[Import(lib: "...")] — DLL import library
-                while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-                    if (!Check(TokenKind::Ident)) {
-                        Advance();
-                        continue;
-                    }
-                    std::string key = Advance().text;
-                    if (!Match(TokenKind::Colon)) {
-                        continue;
-                    }
-                    if (key == "lib" && Check(TokenKind::StringLiteral)) {
-                        attrs.importLib = DecodeStringLiteralText(Advance().text);
-                    }
-                    else {
-                        Advance(); // skip unknown value
-                    }
-                    if (!Match(TokenKind::Comma)) {
-                        break;
-                    }
+            else if (key == "target") {
+                // Superseded by conditional compilation, which says the same
+                // thing in a form that also works for statements and can name a
+                // single system rather than a family.
+                EmitError(keyLoc, "'target' is no longer a metadata key; wrap the declaration in a "
+                                  "conditional compilation block instead, as in '#if #os == .Windows { ... }'");
+                while (!Check(TokenKind::Comma) && !Check(TokenKind::RightBrace) && !IsAtEnd()) {
+                    Advance();
                 }
+            }
+            else if (key == "library" && Check(TokenKind::StringLiteral)) {
+                // #{ library: "Kernel32.dll" } — DLL the extern is imported from
+                attrs.importLib = DecodeStringLiteralText(Advance().text);
+            }
+            else if (key == "symbol" && Check(TokenKind::StringLiteral)) {
+                // #{ symbol: "Beep" } — name to import when it differs from the
+                // Rux-visible function name
+                attrs.importSymbol = DecodeStringLiteralText(Advance().text);
             }
             else {
-                EmitError(attrLoc, std::format("unknown attribute '{}'", attrName));
-                while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                EmitError(keyLoc, std::format("unknown metadata key '{}'", key));
+                // Skip the value so one bad key does not derail the block.
+                while (!Check(TokenKind::Comma) && !Check(TokenKind::RightBrace) && !IsAtEnd()) {
                     Advance();
                 }
             }
 
-            Expect(TokenKind::RightParen, "expected ')' to close attribute");
-        }
-        else {
-            EmitError(attrLoc, std::format("unknown attribute '{}'", attrName));
+            if (!Match(TokenKind::Comma)) {
+                break;
+            }
         }
 
-        Expect(TokenKind::RightBracket, "expected ']' to close attribute");
+        Expect(TokenKind::RightBrace, "expected '}' to close the metadata block");
     }
     return attrs;
 }
@@ -188,6 +218,12 @@ Parser::ParsedAttrs Parser::ParseAttrs() {
 DeclPtr Parser::ParseDecl() {
     const auto loc = CurrentLocation();
 
+    // Conditional compilation. Checked before ParseAttrs so the '#' of `#if` is
+    // not mistaken for the '#' of a `#{ ... }` metadata block.
+    if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::IfKeyword)) {
+        return ParseCompileTimeIfDecl();
+    }
+
     ParsedAttrs attrs = ParseAttrs();
 
     bool isPublic = false;
@@ -195,11 +231,8 @@ DeclPtr Parser::ParseDecl() {
         isPublic = true;
     }
 
-    auto withTarget = [&](DeclPtr decl) -> DeclPtr {
+    auto withAttrs = [&](DeclPtr decl) -> DeclPtr {
         if (decl) {
-            if (decl->targetOs.empty()) {
-                decl->targetOs = attrs.targetOs;
-            }
             if (decl->warnMessage.empty()) {
                 decl->warnMessage = attrs.warnMessage;
             }
@@ -213,41 +246,41 @@ DeclPtr Parser::ParseDecl() {
     // asm func
     if (Check(TokenKind::Ident) && Peek().text == "asm" && Peek(1).Is(TokenKind::FuncKeyword)) {
         Advance(); // consume 'asm'
-        return withTarget(ParseFuncDecl(isPublic, true, attrs.callConv));
+        return withAttrs(ParseFuncDecl(isPublic, true, attrs.callConv));
     }
 
     if (Check(TokenKind::FuncKeyword)) {
-        return withTarget(ParseFuncDecl(isPublic, false, attrs.callConv));
+        return withAttrs(ParseFuncDecl(isPublic, false, attrs.callConv));
     }
     if (Check(TokenKind::StructKeyword)) {
-        return withTarget(ParseStructDecl(isPublic));
+        return withAttrs(ParseStructDecl(isPublic));
     }
     if (Check(TokenKind::EnumKeyword)) {
-        return withTarget(ParseEnumDecl(isPublic));
+        return withAttrs(ParseEnumDecl(isPublic));
     }
     if (Check(TokenKind::UnionKeyword)) {
-        return withTarget(ParseUnionDecl(isPublic));
+        return withAttrs(ParseUnionDecl(isPublic));
     }
     if (Check(TokenKind::InterfaceKeyword)) {
-        return withTarget(ParseInterfaceDecl(isPublic));
+        return withAttrs(ParseInterfaceDecl(isPublic));
     }
     if (Check(TokenKind::ExtendKeyword)) {
-        return withTarget(ParseImplDecl());
+        return withAttrs(ParseImplDecl());
     }
     if (Check(TokenKind::ModuleKeyword)) {
-        return withTarget(ParseModuleDecl(isPublic));
+        return withAttrs(ParseModuleDecl(isPublic));
     }
     if (Check(TokenKind::ImportKeyword)) {
-        return ParseUseDecl(std::move(attrs));
+        return ParseUseDecl();
     }
     if (Check(TokenKind::ConstKeyword)) {
-        return withTarget(ParseConstDecl(isPublic));
+        return withAttrs(ParseConstDecl(isPublic));
     }
     if (Check(TokenKind::TypeKeyword)) {
-        return withTarget(ParseTypeAliasDecl(isPublic));
+        return withAttrs(ParseTypeAliasDecl(isPublic));
     }
     if (Check(TokenKind::ExternKeyword)) {
-        return withTarget(ParseExternDecl(isPublic, attrs));
+        return withAttrs(ParseExternDecl(isPublic, attrs));
     }
 
     EmitError(loc, std::format("unexpected token '{}', expected a declaration", Peek().text));
@@ -818,6 +851,15 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
 
     Expect(TokenKind::LeftBrace, "expected '{'");
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+        // Methods can be conditionally compiled like any other declaration.
+        // Conditional compilation later moves those of the taken branch into
+        // `methods`.
+        if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::IfKeyword)) {
+            if (auto conditional = ParseCompileTimeIfDecl()) {
+                decl->conditionals.push_back(std::move(conditional));
+            }
+            continue;
+        }
         ParsedAttrs attrs = ParseAttrs();
         bool pub = Match(TokenKind::PubKeyword);
         if (!Check(TokenKind::FuncKeyword)) {
@@ -826,9 +868,6 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
             continue;
         }
         if (auto method = ParseFuncDecl(pub, false, attrs.callConv)) {
-            if (method->targetOs.empty()) {
-                method->targetOs = attrs.targetOs;
-            }
             if (method->warnMessage.empty()) {
                 method->warnMessage = attrs.warnMessage;
             }
@@ -883,13 +922,12 @@ std::unique_ptr<ModuleDecl> Parser::ParseModuleDecl(bool isPublic) {
 }
 
 // import
-std::unique_ptr<UseDecl> Parser::ParseUseDecl(ParsedAttrs attrs) {
+std::unique_ptr<UseDecl> Parser::ParseUseDecl() {
     const auto loc = CurrentLocation();
     Expect(TokenKind::ImportKeyword, "expected 'import'");
 
     auto decl = std::make_unique<UseDecl>();
     decl->location = loc;
-    decl->targetOs = std::move(attrs.targetOs);
 
     // Parse path segments separated by '.' or '::'
     decl->path.push_back(Expect(TokenKind::Ident, "expected module path").text);
@@ -954,6 +992,61 @@ std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic) {
     return decl;
 }
 
+// #if cond { decls } else if cond { decls } else { decls }
+std::unique_ptr<CompileTimeIfDecl> Parser::ParseCompileTimeIfDecl() {
+    const auto loc = CurrentLocation();
+    Expect(TokenKind::Hash, "expected '#'");
+    Expect(TokenKind::IfKeyword, "expected 'if'");
+
+    auto decl = std::make_unique<CompileTimeIfDecl>();
+    decl->location = loc;
+
+    auto parseItems = [&] {
+        std::vector<DeclPtr> items;
+        Expect(TokenKind::LeftBrace, "expected '{'");
+        while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+            if (auto item = ParseDecl()) {
+                items.push_back(std::move(item));
+            }
+            else {
+                Recover();
+            }
+        }
+        Expect(TokenKind::RightBrace, "expected '}'");
+        return items;
+    };
+
+    auto parseCondition = [&] {
+        structInitAllowed = false;
+        auto condition = ParseExpr();
+        structInitAllowed = true;
+        return condition;
+    };
+
+    CompileTimeIfDecl::Branch first;
+    first.location = loc;
+    first.condition = parseCondition();
+    first.items = parseItems();
+    decl->branches.push_back(std::move(first));
+
+    while (Check(TokenKind::ElseKeyword)) {
+        CompileTimeIfDecl::Branch branch;
+        branch.location = CurrentLocation();
+        Advance(); // consume 'else'
+        const bool isElseIf = Match(TokenKind::IfKeyword);
+        if (isElseIf) {
+            branch.condition = parseCondition();
+        }
+        branch.items = parseItems();
+        decl->branches.push_back(std::move(branch));
+        if (!isElseIf) {
+            break; // a bare `else` ends the chain
+        }
+    }
+
+    return decl;
+}
+
 // type alias
 std::unique_ptr<TypeAliasDecl> Parser::ParseTypeAliasDecl(bool isPublic) {
     const auto loc = CurrentLocation();
@@ -977,8 +1070,13 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs attrs) {
     Expect(TokenKind::ExternKeyword, "expected 'extern'");
 
     if (Check(TokenKind::LeftBrace)) {
-        // @[...] extern { func ...; ... }
+        // #{ ... } extern { func ...; ... }
         Advance(); // consume '{'
+        // One symbol name cannot stand for every function in the block; it has
+        // to sit on the individual declaration.
+        if (!attrs.importSymbol.empty()) {
+            EmitError(loc, "'symbol' cannot be applied to an extern block; put it on a single extern func");
+        }
         auto block = std::make_unique<ExternBlockDecl>();
         block->location = loc;
         block->dll = attrs.importLib;
@@ -1040,13 +1138,14 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs attrs) {
     }
 
     if (Check(TokenKind::FuncKeyword)) {
-        // @[Import(lib: "...")] extern func Name(params) -> Type;
+        // #{ library: "..." } extern func Name(params) -> Type;
         Advance(); // consume 'func'
 
         auto decl = std::make_unique<ExternFuncDecl>();
         decl->location = loc;
         decl->isPublic = isPublic;
         decl->dll = std::move(attrs.importLib);
+        decl->symbolName = std::move(attrs.importSymbol);
         decl->callConv = attrs.callConv;
         decl->name = Expect(TokenKind::Ident, "expected function name").text;
 

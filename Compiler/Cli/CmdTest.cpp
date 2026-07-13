@@ -1,6 +1,7 @@
 // `rux test` — build and run every test package under Tests/.
 
 #include "Cli/Cli.h"
+#include "Cli/DefineOption.h"
 #include "Cli/TerminalStyle.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
@@ -28,9 +29,19 @@ using namespace System;
 
 int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &opts) {
     bool isRelease = false;
-    for (auto &arg : args) {
+    std::map<std::string, std::string> defines;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const auto arg = args[i];
         if (arg == "--release") {
             isRelease = true;
+            continue;
+        }
+        if (arg == "--define" && i + 1 < args.size()) {
+            std::string error;
+            if (!AddCompileTimeDefine(args[++i], defines, error)) {
+                std::print(stderr, "error: {}\n", error);
+                return 1;
+            }
             continue;
         }
         if (arg == "-h" || arg == "--help") {
@@ -209,6 +220,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         copts.manifest = std::move(*pkgManifest);
         copts.targetName = HostTargetTriple();
         copts.profileName = std::string(profileName);
+        copts.defines = defines;
+        copts.isTest = true;
         copts.quiet = true;
         CompilerDriver driver(std::move(copts));
         const CompileResult result = driver.Compile();

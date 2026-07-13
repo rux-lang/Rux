@@ -200,6 +200,9 @@ std::optional<Manifest> Manifest::Load(const std::filesystem::path &path) {
                 m.build.output = value;
             }
         }
+        else if (section == "Build.Defines") {
+            m.build.defines[std::string(key)] = value.empty() ? "true" : value;
+        }
         else if (section == "Dependencies") {
             m.dependencies.push_back(ParseDependency(std::string(key), std::string(value)));
         }
@@ -243,6 +246,13 @@ bool Manifest::Save(const std::filesystem::path &path) const {
 
     file << "\n[Build]\n"
          << "Output  = \"" << build.output << "\"\n";
+
+    if (!build.defines.empty()) {
+        file << "\n[Build.Defines]\n";
+        for (const auto &[name, value] : build.defines) {
+            file << name << " = \"" << value << "\"\n";
+        }
+    }
 
     if (!dependencies.empty()) {
         file << "\n[Dependencies]\n";

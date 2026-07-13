@@ -303,7 +303,10 @@ ExprPtr Parser::ParseExp() {
 }
 
 ExprPtr Parser::ParseUnary() {
-    if (CheckAny({TokenKind::Bang, TokenKind::Minus, TokenKind::Tilde, TokenKind::Star, TokenKind::Amp,
+    // '@' is address-of. It is unambiguous against the '@[Attr]' attribute
+    // sigil: attributes are only parsed in declaration position, and there
+    // the '@' is always followed by '['.
+    if (CheckAny({TokenKind::Bang, TokenKind::Minus, TokenKind::Tilde, TokenKind::Star, TokenKind::At,
                   TokenKind::PlusPlus, TokenKind::MinusMinus})) {
         const auto loc = CurrentLocation();
         const auto op = Advance().kind;
@@ -525,24 +528,136 @@ ExprPtr Parser::ParsePrimary() {
         Expect(TokenKind::RightParen, "expected ')' after sizeof type");
         return e;
     }
-    // Compile-time intrinsics: #line, #column, #file, #function, #date, #ruxVersion
-    // #time
+    // Enum variant without its type: .Windows
+    if (Check(TokenKind::Dot) && Peek(1).Is(TokenKind::Ident)) {
+        Advance(); // consume '.'
+        auto e = std::make_unique<EnumShorthandExpr>();
+        e->location = loc;
+        e->variant = Advance().text;
+        return e;
+    }
+    // Compile-time intrinsics. Both the concise compatibility spellings
+    // (`#arch`) and namespaced spellings (`#target.arch`) produce the same AST.
     {
         using K = IntrinsicExpr::Kind;
         static constexpr std::pair<TokenKind, K> intrinsics[] = {
-            {TokenKind::HashLine, K::Line},     {TokenKind::HashColumn, K::Column},
-            {TokenKind::HashFile, K::File},     {TokenKind::HashFunction, K::Function},
-            {TokenKind::HashDate, K::Date},     {TokenKind::HashTime, K::Time},
-            {TokenKind::HashModule, K::Module}, {TokenKind::hashRuxVersion, K::RuxVersion},
+            {TokenKind::HashLine, K::Line},
+            {TokenKind::HashColumn, K::Column},
+            {TokenKind::HashFile, K::File},
+            {TokenKind::HashFileName, K::FileName},
+            {TokenKind::HashFilePath, K::FilePath},
+            {TokenKind::HashFunction, K::Function},
+            {TokenKind::HashDate, K::Date},
+            {TokenKind::HashTime, K::Time},
+            {TokenKind::HashModule, K::Module},
+            {TokenKind::hashRuxVersion, K::RuxVersion},
             {TokenKind::hashOs, K::Os},
+            {TokenKind::HashArch, K::Arch},
+            {TokenKind::HashAbi, K::Abi},
+            {TokenKind::HashEndian, K::Endian},
+            {TokenKind::HashPointerBits, K::PointerBits},
+            {TokenKind::HashDataModel, K::DataModel},
+            {TokenKind::HashObjectFormat, K::ObjectFormat},
+            {TokenKind::HashTargetTriple, K::TargetTriple},
+            {TokenKind::HashTargetFeature, K::TargetFeature},
+            {TokenKind::HashBuildProfile, K::BuildProfile},
+            {TokenKind::HashBuildMode, K::BuildMode},
+            {TokenKind::HashOptimization, K::Optimization},
+            {TokenKind::HashDebugAssertions, K::DebugAssertions},
+            {TokenKind::HashDebugInfo, K::DebugInfo},
+            {TokenKind::HashIsTest, K::IsTest},
+            {TokenKind::HashOutputKind, K::OutputKind},
+            {TokenKind::HashBuildTimestamp, K::BuildTimestamp},
+            {TokenKind::HashCompilerVersion, K::CompilerVersion},
+            {TokenKind::HashCompilerHasFeature, K::CompilerHasFeature},
+            {TokenKind::HashHasConfig, K::HasConfig},
+        };
+        auto takesArgument = [](const K kind) {
+            return kind == K::TargetFeature || kind == K::CompilerHasFeature || kind == K::Config ||
+                   kind == K::HasConfig;
+        };
+        auto finish = [&](const K kind) -> ExprPtr {
+            auto e = std::make_unique<IntrinsicExpr>();
+            e->location = loc;
+            e->kind = kind;
+            if (takesArgument(kind)) {
+                Expect(TokenKind::LeftParen, "expected '(' after compile-time intrinsic");
+                if (!Check(TokenKind::RightParen)) {
+                    e->args.push_back(ParseExpr());
+                }
+                Expect(TokenKind::RightParen, "expected ')' after compile-time intrinsic argument");
+            }
+            return e;
         };
         for (auto [tok, kind] : intrinsics) {
             if (Match(tok)) {
-                auto e = std::make_unique<IntrinsicExpr>();
-                e->location = loc;
-                e->kind = kind;
-                return e;
+                return finish(kind);
             }
+        }
+
+        auto namespaced = [&](const TokenKind root,
+                              const std::initializer_list<std::pair<std::string_view, K>> members) -> ExprPtr {
+            if (!Match(root)) {
+                return nullptr;
+            }
+            Expect(TokenKind::Dot, "expected '.' after compile-time namespace");
+            const Token &member = Check(TokenKind::ModuleKeyword)
+                                    ? Advance()
+                                    : Expect(TokenKind::Ident, "expected compile-time value name after '.'");
+            for (const auto &[name, kind] : members) {
+                if (member.text == name) {
+                    return finish(kind);
+                }
+            }
+            EmitError(member.location, "unknown compile-time value '" + member.text + "'");
+            return finish(K::Line);
+        };
+
+        if (auto e = namespaced(TokenKind::HashTarget, {{"os", K::Os},
+                                                        {"arch", K::Arch},
+                                                        {"abi", K::Abi},
+                                                        {"endian", K::Endian},
+                                                        {"pointerBits", K::PointerBits},
+                                                        {"dataModel", K::DataModel},
+                                                        {"objectFormat", K::ObjectFormat},
+                                                        {"triple", K::TargetTriple},
+                                                        {"hasFeature", K::TargetFeature}})) {
+            return e;
+        }
+        if (auto e = namespaced(TokenKind::HashBuild, {{"profile", K::BuildProfile},
+                                                       {"mode", K::BuildMode},
+                                                       {"optimization", K::Optimization},
+                                                       {"debugAssertions", K::DebugAssertions},
+                                                       {"debugInfo", K::DebugInfo},
+                                                       {"isTest", K::IsTest},
+                                                       {"outputKind", K::OutputKind},
+                                                       {"timestamp", K::BuildTimestamp},
+                                                       {"date", K::Date},
+                                                       {"time", K::Time}})) {
+            return e;
+        }
+        if (auto e = namespaced(TokenKind::HashCompiler,
+                                {{"version", K::CompilerVersion}, {"hasFeature", K::CompilerHasFeature}})) {
+            return e;
+        }
+        if (auto e = namespaced(TokenKind::HashSource, {{"line", K::Line},
+                                                        {"column", K::Column},
+                                                        {"file", K::File},
+                                                        {"fileName", K::FileName},
+                                                        {"filePath", K::FilePath},
+                                                        {"function", K::Function},
+                                                        {"module", K::Module}})) {
+            return e;
+        }
+        if (Match(TokenKind::HashConfig)) {
+            if (Match(TokenKind::Dot)) {
+                const Token &member = Expect(TokenKind::Ident, "expected compile-time value name after '.'");
+                if (member.text != "has") {
+                    EmitError(member.location, "unknown compile-time value '" + member.text + "'");
+                }
+                return finish(K::HasConfig);
+            }
+            return finish(K::Config);
         }
     }
     // Slice literal: [a, b, c]

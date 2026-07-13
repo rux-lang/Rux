@@ -10,7 +10,7 @@ func Main() -> int {
     Assert(p.x == 10, "Expected p.x to be 10");
     Assert(p.y == 20, "Expected p.y to be 20");
 
-    var ptr: *Point = &p;
+    var ptr: *Point = @p;
     Assert(ptr != null, "Expected ptr to not be null");
 
     ptr.x = 30;

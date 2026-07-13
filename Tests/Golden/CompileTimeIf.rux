@@ -1,0 +1,31 @@
+const Level = 3;
+
+func Main() -> int {
+    // A `#if` condition must be known while compiling.
+    var runtime = 1;
+    #if runtime > 0 {
+        return 1;
+    }
+
+    // ... and it must be a bool, not merely a constant.
+    #if Level {
+        return 2;
+    }
+
+    // An undefined name is not a compile-time constant either.
+    #if Missing {
+        return 3;
+    }
+
+    // `#os` names a variant of the built-in OS enum; a misspelling is caught
+    // rather than quietly taking the other branch.
+    #if #os == .Wndows {
+        return 4;
+    }
+
+    // Both `#os` and the `.Variant` shorthand are compile-time only.
+    let os = #os;
+    let level = .Three;
+
+    return 0;
+}

@@ -111,6 +111,8 @@ private:
             return "**";
         case TokenKind::Amp:
             return "&";
+        case TokenKind::At:
+            return "@";
         case TokenKind::Pipe:
             return "|";
         case TokenKind::Caret:
@@ -205,6 +207,34 @@ private:
         else if (const auto *extVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
             PrintExternVarDecl(*extVar);
         }
+        else if (const auto *compileTimeIf = dynamic_cast<const CompileTimeIfDecl *>(&decl)) {
+            PrintCompileTimeIfDecl(*compileTimeIf);
+        }
+    }
+
+    void PrintCompileTimeIfDecl(const CompileTimeIfDecl &d) {
+        Pad();
+        out << "CompileTimeIfDecl\n";
+        ++indent;
+        for (const auto &branch : d.branches) {
+            Pad();
+            out << (branch.condition ? "Branch\n" : "Else\n");
+            ++indent;
+            if (branch.condition) {
+                Pad();
+                out << "Condition\n";
+                ++indent;
+                PrintExpr(*branch.condition);
+                --indent;
+            }
+            for (const auto &item : branch.items) {
+                if (item) {
+                    PrintDecl(*item);
+                }
+            }
+            --indent;
+        }
+        --indent;
     }
 
     void PrintFuncDecl(const FuncDecl &f) {
@@ -419,6 +449,11 @@ private:
                 PrintFuncDecl(*m);
             }
         }
+        for (const auto &conditional : impl.conditionals) {
+            if (conditional) {
+                PrintCompileTimeIfDecl(*conditional);
+            }
+        }
         --indent;
     }
 
@@ -438,10 +473,6 @@ private:
     }
 
     void PrintUseDecl(const UseDecl &u) const {
-        Pad();
-        if (!u.targetOs.empty()) {
-            out << "@[Target(\"" << u.targetOs << "\")]\n";
-        }
         Pad();
         out << "ImportDecl '";
         for (std::size_t i = 0; i < u.path.size(); ++i) {
@@ -499,11 +530,15 @@ private:
     void PrintExternFuncDecl(const ExternFuncDecl &f) const {
         if (!f.dll.empty()) {
             Pad();
-            out << "@[Import(lib: \"" << f.dll << "\")]\n";
+            out << "#{ library: \"" << f.dll << "\"";
+            if (!f.symbolName.empty()) {
+                out << ", symbol: \"" << f.symbolName << "\"";
+            }
+            out << " }\n";
         }
-        if (f.callConv == CallingConvention::Win64) {
+        if (f.callConv != CallingConvention::Default) {
             Pad();
-            out << "@[Call(.Win64)]\n";
+            out << "#{ abi: " << ConventionName(f.callConv) << " }\n";
         }
         Pad();
         if (f.isPublic) {
@@ -617,7 +652,7 @@ private:
 
     void PrintIfStmt(const IfStmt &s) {
         Pad();
-        out << "IfStmt\n";
+        out << (s.isCompileTime ? "CompileTimeIfStmt\n" : "IfStmt\n");
         ++indent;
 
         Pad();
@@ -758,11 +793,51 @@ private:
             Pad();
             out << "SizeOfExpr " << TypeStr(sizeOfExpr->type.get()) << '\n';
         }
+        else if (const auto *shorthand = dynamic_cast<const EnumShorthandExpr *>(&expr)) {
+            Pad();
+            out << "EnumShorthandExpr '." << shorthand->variant << "'\n";
+        }
         else if (const auto *intr = dynamic_cast<const IntrinsicExpr *>(&expr)) {
-            static constexpr const char *names[] = {"#line", "#column", "#file",       "#function", "#date",
-                                                    "#time", "#module", "#ruxVersion", "#os"};
+            static constexpr const char *names[] = {"#line",
+                                                    "#column",
+                                                    "#file",
+                                                    "#fileName",
+                                                    "#filePath",
+                                                    "#function",
+                                                    "#date",
+                                                    "#time",
+                                                    "#module",
+                                                    "#ruxVersion",
+                                                    "#os",
+                                                    "#arch",
+                                                    "#abi",
+                                                    "#endian",
+                                                    "#pointerBits",
+                                                    "#dataModel",
+                                                    "#objectFormat",
+                                                    "#targetTriple",
+                                                    "#targetFeature",
+                                                    "#buildProfile",
+                                                    "#buildMode",
+                                                    "#optimization",
+                                                    "#debugAssertions",
+                                                    "#debugInfo",
+                                                    "#isTest",
+                                                    "#outputKind",
+                                                    "#buildTimestamp",
+                                                    "#compilerVersion",
+                                                    "#compilerHasFeature",
+                                                    "#config",
+                                                    "#hasConfig"};
             Pad();
             out << "IntrinsicExpr " << names[static_cast<int>(intr->kind)] << '\n';
+            ++indent;
+            for (const auto &arg : intr->args) {
+                if (arg) {
+                    PrintExpr(*arg);
+                }
+            }
+            --indent;
         }
         else if (const auto *unaryExpr = dynamic_cast<const UnaryExpr *>(&expr)) {
             Pad();

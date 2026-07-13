@@ -10,6 +10,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -23,13 +24,15 @@
 namespace Rux::Driver {
 
 struct CompileOptions {
-    std::filesystem::path manifestPath; // resolved path to Rux.toml
-    Manifest manifest;                  // parsed manifest for manifestPath
-    std::string targetName;             // validated "os-arch" triple
-    std::string profileName;            // "Release", "Debug", or a custom profile
+    std::filesystem::path manifestPath;         // resolved path to Rux.toml
+    Manifest manifest;                          // parsed manifest for manifestPath
+    std::string targetName;                     // validated "os-arch" triple
+    std::string profileName;                    // "Release", "Debug", or a custom profile
+    std::map<std::string, std::string> defines; // --define overrides
 
     bool quiet = false;
-    bool verbose = false;   // print per-phase progress lines to stdout
+    bool verbose = false; // print per-phase progress lines to stdout
+    bool isTest = false;
     bool checkOnly = false; // stop after semantic analysis; keep going past
                             // frontend errors so all diagnostics are reported
 
@@ -67,6 +70,11 @@ private:
     // Emit every diagnostic; returns true if any is an error.
     bool EmitAll(std::span<const Diagnostic> diags) const;
 
+    // The operating system of the build target, named exactly ("FreeBSD", not
+    // the "BSD" family). This is what `#os` reports.
+    [[nodiscard]] std::string TargetSystemName() const;
+    void InitializeCompileTimeContext();
+
     // Pipeline phases. Each returns false when the pipeline cannot continue.
     bool LexAndParseSources();
     bool LoadDependencies();
@@ -77,6 +85,8 @@ private:
     std::filesystem::path root; // package root (manifest directory)
     BuildStats stats;
     bool hadErrors = false; // frontend errors accumulated in checkOnly mode
+    bool invalidSourceDateEpoch = false;
+    CompileTimeContext compileTimeContext;
 
     std::vector<ParseResult> parseResults;      // user modules
     std::vector<ParseResult> depParseResults;   // dependency modules

@@ -4,12 +4,14 @@
 #include "Ir/Hir/HirInternal.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cctype>
 #include <charconv>
 #include <cstdint>
 #include <ctime>
 #include <format>
+#include <filesystem>
 #include <limits>
 #include <optional>
 #include <string>
@@ -23,11 +25,11 @@ namespace Rux {
 
 using Layout::AlignUp;
 
-static bool LocalTime(std::time_t time, std::tm &out) {
+static bool UtcTime(std::time_t time, std::tm &out) {
 #if RUX_OS_WINDOWS
-    return localtime_s(&out, &time) == 0;
+    return gmtime_s(&out, &time) == 0;
 #else
-    return localtime_r(&time, &out) != nullptr;
+    return gmtime_r(&time, &out) != nullptr;
 #endif
 }
 
@@ -110,6 +112,8 @@ std::string_view OpStr(TokenKind op) {
         return "--";
     case TK::Amp:
         return "&";
+    case TK::At:
+        return "@";
     case TK::Pipe:
         return "|";
     case TK::Caret:
@@ -168,8 +172,9 @@ std::string_view OpStr(TokenKind op) {
 // Internal: Lowering
 class Lowering {
 public:
-    explicit Lowering(std::vector<const Module *> &inputModules)
+    Lowering(std::vector<const Module *> &inputModules, const CompileTimeContext &inputContext)
         : modules(inputModules)
+        , context(inputContext)
         , currentScope(&globalScope) {
     }
 
@@ -188,6 +193,7 @@ public:
 
 private:
     std::vector<const Module *> &modules;
+    const CompileTimeContext &context;
     HirScope globalScope{nullptr};
     HirScope *currentScope;
     std::vector<std::unique_ptr<HirScope>> ownedScopes;
@@ -2265,7 +2271,12 @@ private:
         auto savedRet = currentReturnType;
         currentReturnType = retType;
         auto savedFuncName = currentFunctionName;
-        currentFunctionName = overrideName.empty() ? d.name : overrideName;
+        if (isMethod) {
+            currentFunctionName = NamedBaseTypeName(currentSelfType) + "::" + d.name;
+        }
+        else {
+            currentFunctionName = declModulePath.empty() ? d.name : declModulePath + "::" + d.name;
+        }
         PushScope();
         if (substitutions.empty()) {
             for (const auto &tp : d.typeParams) {
@@ -2468,6 +2479,7 @@ private:
         HirExternFunc hef;
         hef.name = d.name;
         hef.dll = d.dll;
+        hef.symbolName = d.symbolName;
         hef.isPublic = d.isPublic;
         hef.callConv = d.callConv;
         hef.isVariadic = d.isVariadic;
@@ -2753,13 +2765,82 @@ private:
     // callSiteLoc rather than at the declaration site (call-site builtins:
     // #line, #column, #file, #ruxVersion etc.).
     HirExprPtr LowerDefaultArg(const Expr &defaultExpr, const TypeRef &targetType, const SourceLocation &callSiteLoc) {
-        if (const auto *intr = dynamic_cast<const IntrinsicExpr *>(&defaultExpr)) {
+        if (const auto *intr = dynamic_cast<const IntrinsicExpr *>(&defaultExpr); intr && intr->args.empty()) {
             IntrinsicExpr tmp;
             tmp.location = callSiteLoc;
             tmp.kind = intr->kind;
             return LowerExprAs(tmp, targetType);
         }
         return LowerExprAs(defaultExpr, targetType);
+    }
+
+    std::string IntrinsicArgument(const IntrinsicExpr &expr) const {
+        if (expr.args.size() != 1 || !expr.args[0]) {
+            return {};
+        }
+        if (const auto *variant = dynamic_cast<const EnumShorthandExpr *>(expr.args[0].get())) {
+            return variant->variant;
+        }
+        if (const auto *literal = dynamic_cast<const LiteralExpr *>(expr.args[0].get());
+            literal && literal->token.kind == TokenKind::StringLiteral) {
+            return DecodeStringLiteral(literal->token.text);
+        }
+        return {};
+    }
+
+    bool TargetHasFeature(const std::string_view name) const {
+        const Target::CpuFeatures features = context.target.cpu_features;
+        if (name == "SSE2")
+            return features.Has(Target::CpuFeature::SSE2);
+        if (name == "SSE3")
+            return features.Has(Target::CpuFeature::SSE3);
+        if (name == "SSSE3")
+            return features.Has(Target::CpuFeature::SSSE3);
+        if (name == "SSE41")
+            return features.Has(Target::CpuFeature::SSE41);
+        if (name == "SSE42")
+            return features.Has(Target::CpuFeature::SSE42);
+        if (name == "AVX")
+            return features.Has(Target::CpuFeature::AVX);
+        if (name == "AVX2")
+            return features.Has(Target::CpuFeature::AVX2);
+        if (name == "AVX512")
+            return features.Has(Target::CpuFeature::AVX512);
+        if (name == "NEON")
+            return features.Has(Target::CpuFeature::NEON);
+        if (name == "SVE")
+            return features.Has(Target::CpuFeature::SVE);
+        if (name == "RVV")
+            return features.Has(Target::CpuFeature::RVV);
+        return false;
+    }
+
+    static bool CompilerHasFeature(const std::string_view feature) {
+        static constexpr std::array features{"conditional-compilation", "namespaced-intrinsics", "target-intrinsics",
+                                             "build-intrinsics", "compiler-feature-detection",
+                                             "source-location-defaults", "extern-symbol-names"};
+        return std::ranges::contains(features, feature);
+    }
+
+    std::string LogicalCurrentFilePath() const {
+        const std::filesystem::path path(currentFile);
+        if (!context.sourceRoot.empty()) {
+            const auto relative = path.lexically_relative(context.sourceRoot);
+            if (!relative.empty() && relative.begin()->generic_string() != "..") {
+                return relative.generic_string();
+            }
+        }
+        return path.generic_string();
+    }
+
+    std::string FormatBuildTime(const char *format) const {
+        const std::time_t value = static_cast<std::time_t>(context.buildTimestamp);
+        std::tm utc{};
+        if (!UtcTime(value, utc)) {
+            return {};
+        }
+        char buffer[32]{};
+        return std::strftime(buffer, sizeof(buffer), format, &utc) == 0 ? std::string{} : std::string(buffer);
     }
 
     TypeRef StructInitFieldType(const StructInitExpr &expr, const std::string &fieldName) {
@@ -2885,31 +2966,26 @@ private:
                 he->value = std::to_string(e->location.column);
                 break;
             case K::File:
+            case K::FileName:
                 he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
                 he->value = std::filesystem::path(currentFile).filename().string();
+                break;
+            case K::FilePath:
+                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                he->value = LogicalCurrentFilePath();
                 break;
             case K::Function:
                 he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
                 he->value = currentFunctionName;
                 break;
             case K::Date: {
-                std::time_t t = std::time(nullptr);
-                std::tm tm{};
-                LocalTime(t, tm);
-                char buf[12];
-                std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
                 he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = buf;
+                he->value = FormatBuildTime("%Y-%m-%d");
                 break;
             }
             case K::Time: {
-                std::time_t t = std::time(nullptr);
-                std::tm tm{};
-                LocalTime(t, tm);
-                char buf[9];
-                std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm);
                 he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = buf;
+                he->value = FormatBuildTime("%H:%M:%S");
                 break;
             }
             case K::Module: {
@@ -2917,24 +2993,71 @@ private:
                 he->value = currentModulePath;
                 break;
             }
-            case K::RuxVersion: {
+            case K::RuxVersion:
+            case K::CompilerVersion: {
                 he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = RUX_VERSION;
+                he->value = context.compilerVersion.empty() ? RUX_VERSION : context.compilerVersion;
                 break;
             }
-            case K::Os: {
+            case K::Os:
+            case K::Arch:
+            case K::Abi:
+            case K::Endian:
+            case K::DataModel:
+            case K::ObjectFormat:
+            case K::BuildMode:
+            case K::Optimization:
+            case K::OutputKind:
+                // Compile-time-only enums are folded away by conditional
+                // compilation and rejected by semantic analysis elsewhere.
+                he->type = TypeRef::MakeUnknown();
+                break;
+            case K::PointerBits:
+                he->type = TypeRef::MakeUInt();
+                he->value = std::to_string(context.target.pointer_size * 8);
+                break;
+            case K::TargetTriple:
                 he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                std::string os;
-#if RUX_OS_WINDOWS
-                os = "Windows";
-#elif RUX_OS_LINUX
-                os = "Linux";
-#elif RUX_OS_MACOS
-                os = "macOS";
-#endif
-                he->value = os;
+                he->value = context.targetTriple;
+                break;
+            case K::TargetFeature:
+                he->type = TypeRef::MakeBool();
+                he->value = TargetHasFeature(IntrinsicArgument(*e)) ? "true" : "false";
+                break;
+            case K::BuildProfile:
+                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                he->value = context.profileName;
+                break;
+            case K::DebugAssertions:
+                he->type = TypeRef::MakeBool();
+                he->value = context.debugAssertions ? "true" : "false";
+                break;
+            case K::DebugInfo:
+                he->type = TypeRef::MakeBool();
+                he->value = context.debugInfo ? "true" : "false";
+                break;
+            case K::IsTest:
+                he->type = TypeRef::MakeBool();
+                he->value = context.isTest ? "true" : "false";
+                break;
+            case K::BuildTimestamp:
+                he->type = TypeRef::MakeUInt64();
+                he->value = std::to_string(context.buildTimestamp);
+                break;
+            case K::CompilerHasFeature:
+                he->type = TypeRef::MakeBool();
+                he->value = CompilerHasFeature(IntrinsicArgument(*e)) ? "true" : "false";
+                break;
+            case K::Config: {
+                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+                const auto it = context.config.find(IntrinsicArgument(*e));
+                he->value = it == context.config.end() ? std::string{} : it->second;
                 break;
             }
+            case K::HasConfig:
+                he->type = TypeRef::MakeBool();
+                he->value = context.config.contains(IntrinsicArgument(*e)) ? "true" : "false";
+                break;
             }
             return he;
         }
@@ -2967,7 +3090,7 @@ private:
                 else {
                     auto addr = std::make_unique<HirUnaryExpr>();
                     addr->location = left->location;
-                    addr->op = TokenKind::Amp;
+                    addr->op = TokenKind::At;
                     addr->type = TypeRef::MakePointer(left->type);
                     addr->operand = std::move(left);
                     selfArg = std::move(addr);
@@ -3314,7 +3437,7 @@ private:
                     else {
                         auto addr = std::make_unique<HirUnaryExpr>();
                         addr->location = receiver->location;
-                        addr->op = TokenKind::Amp;
+                        addr->op = TokenKind::At;
                         addr->type = TypeRef::MakePointer(receiver->type);
                         addr->operand = std::move(receiver);
                         selfArg = std::move(addr);
@@ -3577,7 +3700,7 @@ private:
         switch (op) {
         case TokenKind::Bang:
             return TypeRef::MakeBool();
-        case TokenKind::Amp:
+        case TokenKind::At:
             return TypeRef::MakePointer(t);
         case TokenKind::Star:
             return t.inner.empty() ? TypeRef::MakeUnknown() : t.inner[0];
@@ -3786,11 +3909,12 @@ private:
 
 // Hir public API
 AstToHirLowering::AstToHirLowering(const SemanticModel &model)
-    : modules_(model.modules) {
+    : modules_(model.modules)
+    , compileTimeContext_(model.compileTimeContext) {
 }
 
 HirPackage AstToHirLowering::Generate() {
-    Lowering lowering(modules_);
+    Lowering lowering(modules_, compileTimeContext_);
     return lowering.Run();
 }
 } // namespace Rux

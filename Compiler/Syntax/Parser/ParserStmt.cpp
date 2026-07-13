@@ -34,7 +34,7 @@ StmtPtr Parser::ParseStmt() {
     if (Check(TokenKind::LetKeyword) || Check(TokenKind::VarKeyword)) {
         return ParseLetStmt();
     }
-    if (Check(TokenKind::IfKeyword)) {
+    if (Check(TokenKind::IfKeyword) || (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::IfKeyword))) {
         return ParseIfStmt();
     }
     // Optional loop label: `ident ':' loop-keyword`
@@ -162,10 +162,13 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
 
 std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
     const auto loc = CurrentLocation();
+    // `#if` is the compile-time form: same shape, folded before analysis.
+    const bool isCompileTime = Match(TokenKind::Hash);
     Expect(TokenKind::IfKeyword, "expected 'if'");
 
     auto s = std::make_unique<IfStmt>();
     s->location = loc;
+    s->isCompileTime = isCompileTime;
     structInitAllowed = false;
     s->condition = ParseExpr();
     structInitAllowed = true;

@@ -107,6 +107,7 @@ public:
         // the map must span every module, not just the one being lowered.
         funcConvs.clear();
         funcNames.clear();
+        externSymbols.clear();
         for (const auto &mod : hir.modules) {
             for (const auto &ef : mod.externFuncs) {
                 // Extern C functions default to the platform C ABI (SysV on
@@ -114,6 +115,13 @@ public:
                 // registers the shared library expects.
                 funcConvs[ef.name] = ef.callConv == CallingConvention::Default ? PlatformCConvention() : ef.callConv;
                 funcNames.insert(ef.name);
+                // `#{ symbol: "..." }` renames the imported symbol. Record it
+                // package-wide, for the same reason funcConvs is: a call may
+                // target an extern declared in another module, and every
+                // reference has to reach the linker under the same name.
+                if (!ef.symbolName.empty() && ef.symbolName != ef.name) {
+                    externSymbols[ef.name] = ef.symbolName;
+                }
             }
             for (const auto &f : mod.funcs) {
                 if (f.callConv != CallingConvention::Default) {
@@ -154,6 +162,14 @@ private:
     std::unordered_map<std::string, LabelTargets> labelTargets;
     std::unordered_map<std::string, CallingConvention> funcConvs; // name → calling convention
     std::unordered_set<std::string> funcNames;                    // every function symbol (for address-of)
+    std::unordered_map<std::string, std::string> externSymbols;   // Rux name → imported symbol name
+
+    // The name a function reaches the linker under: the `#{ symbol: "..." }`
+    // override when one was given, otherwise the Rux name itself.
+    const std::string &SymbolFor(const std::string &name) const {
+        const auto it = externSymbols.find(name);
+        return it == externSymbols.end() ? name : it->second;
+    }
 
     // Block / register allocation
     LirReg NewReg() {
@@ -454,7 +470,7 @@ private:
         }
         for (const auto &ef : mod.externFuncs) {
             LirFunc lf;
-            lf.name = ef.name;
+            lf.name = SymbolFor(ef.name);
             lf.dll = ef.dll;
             lf.isPublic = ef.isPublic;
             lf.isExtern = true;
@@ -1243,7 +1259,7 @@ private:
             // A function referenced by name (not called) evaluates to its
             // address, i.e. a function pointer.
             if (funcNames.contains(e->name)) {
-                return EmitGlobalAddr(e->name);
+                return EmitGlobalAddr(SymbolFor(e->name));
             }
             return EmitNamedLoad(e->name, e->type);
         }
@@ -1272,7 +1288,7 @@ private:
             // Module-qualified function referenced by name → its address. The
             // binary symbol is the final path segment (e.g. Math::Add → "Add").
             if (funcNames.contains(e->segments.back())) {
-                return EmitGlobalAddr(e->segments.back());
+                return EmitGlobalAddr(SymbolFor(e->segments.back()));
             }
             return EmitNamedLoad(path, e->type);
         }
@@ -1381,7 +1397,7 @@ private:
             LirReg ptr = LowerExpr(*e.operand);
             return EmitLoad(ptr, e.type);
         }
-        case TK::Amp: {
+        case TK::At: {
             // Address-of: return the alloca slot for named locals,
             // otherwise materialize a temporary.
             if (auto *v = dynamic_cast<const HirVarExpr *>(e.operand.get())) {
@@ -1879,21 +1895,24 @@ private:
             // Direct call to a named function. A same-named local would be a
             // function-pointer variable and is handled by the indirect path.
             ci.op = LirOpcode::Call;
-            ci.strArg = v->name;
             auto it = funcConvs.find(v->name);
             if (it != funcConvs.end()) {
                 ci.callConv = it->second;
             }
+            // The convention is keyed by the Rux name; the call itself has to
+            // relocate against the imported symbol.
+            ci.strArg = SymbolFor(v->name);
         }
         else if (auto *p = dynamic_cast<const HirPathExpr *>(e.callee.get())) {
             ci.op = LirOpcode::Call;
             // Module qualifiers are compile-time only; the binary symbol is
             // just the final segment (e.g. Math::Add → "Add").
-            ci.strArg = p->segments.back();
-            auto it = funcConvs.find(ci.strArg);
+            const std::string &callee = p->segments.back();
+            auto it = funcConvs.find(callee);
             if (it != funcConvs.end()) {
                 ci.callConv = it->second;
             }
+            ci.strArg = SymbolFor(callee);
         }
         else {
             // Function pointer / indirect call: evaluate callee first.

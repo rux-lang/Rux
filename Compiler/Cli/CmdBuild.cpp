@@ -1,6 +1,7 @@
 // `rux build` and `rux clean`.
 
 #include "Cli/Cli.h"
+#include "Cli/DefineOption.h"
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
@@ -15,6 +16,7 @@
 #include <utility>
 
 using namespace Rux;
+using namespace CliSupport;
 using namespace Driver;
 
 int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &opts) {
@@ -30,6 +32,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     bool dumpAsm = false;
     bool dumpRcu = false;
     bool showStats = false;
+    std::map<std::string, std::string> defines;
     for (std::size_t i = 0; i < args.size(); ++i) {
         std::string_view arg = args[i];
         if (arg == "--release") {
@@ -86,6 +89,14 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
             target = args[++i];
             continue;
         }
+        if (arg == "--define" && i + 1 < args.size()) {
+            std::string error;
+            if (!AddCompileTimeDefine(args[++i], defines, error)) {
+                std::print(stderr, "error: {}\n", error);
+                return 1;
+            }
+            continue;
+        }
         if (arg == "-h" || arg == "--help") {
             PrintHelpFor("build");
             return 0;
@@ -135,6 +146,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     copts.manifest = std::move(*manifest);
     copts.targetName = std::move(targetName);
     copts.profileName = std::string(profileName);
+    copts.defines = std::move(defines);
     copts.quiet = opts.quiet;
     copts.verbose = opts.verbose;
     copts.dumpTokens = dumpTokens;

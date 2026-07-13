@@ -1,2 +1,2 @@
 5:5: error: cannot assign through a pointer to immutable data
-9:5: error: cannot assign '*immut int' to '*int'
+9:5: error: cannot assign '*const int' to '*int': 'a' is an immutable 'let' binding, so its address is a pointer to immutable data; declare it 'var' to allow writes through the pointer

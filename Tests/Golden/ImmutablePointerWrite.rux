@@ -1,16 +1,16 @@
 func Main() -> int {
     // Writing through a pointer taken from a `let` binding is forbidden.
     let a = 10;
-    let p = &a;
+    let p = @a;
     *p = 50;
 
     // Laundering the immutable pointer into a mutable-pointee binding is also
     // rejected at the point the immutability would be dropped.
-    var r: *int = &a;
+    var r: *int = @a;
 
     // Control: taking the address of a `var` and writing through it is fine.
     var b = 20;
-    var q = &b;
+    var q = @b;
     *q = 60;
 
     return 0;

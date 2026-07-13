@@ -769,6 +769,12 @@ Token Lexer::ScanSymbol(const SourceLocation start) {
         if (tryMatch("file")) {
             return MakeToken(TokenKind::HashFile, start, tokenStart);
         }
+        if (tryMatch("fileName")) {
+            return MakeToken(TokenKind::HashFileName, start, tokenStart);
+        }
+        if (tryMatch("filePath")) {
+            return MakeToken(TokenKind::HashFilePath, start, tokenStart);
+        }
         if (tryMatch("function")) {
             return MakeToken(TokenKind::HashFunction, start, tokenStart);
         }
@@ -786,6 +792,78 @@ Token Lexer::ScanSymbol(const SourceLocation start) {
         }
         if (tryMatch("os")) {
             return MakeToken(TokenKind::hashOs, start, tokenStart);
+        }
+        if (tryMatch("arch")) {
+            return MakeToken(TokenKind::HashArch, start, tokenStart);
+        }
+        if (tryMatch("abi")) {
+            return MakeToken(TokenKind::HashAbi, start, tokenStart);
+        }
+        if (tryMatch("endian")) {
+            return MakeToken(TokenKind::HashEndian, start, tokenStart);
+        }
+        if (tryMatch("pointerBits")) {
+            return MakeToken(TokenKind::HashPointerBits, start, tokenStart);
+        }
+        if (tryMatch("dataModel")) {
+            return MakeToken(TokenKind::HashDataModel, start, tokenStart);
+        }
+        if (tryMatch("objectFormat")) {
+            return MakeToken(TokenKind::HashObjectFormat, start, tokenStart);
+        }
+        if (tryMatch("targetTriple")) {
+            return MakeToken(TokenKind::HashTargetTriple, start, tokenStart);
+        }
+        if (tryMatch("targetFeature")) {
+            return MakeToken(TokenKind::HashTargetFeature, start, tokenStart);
+        }
+        if (tryMatch("buildProfile")) {
+            return MakeToken(TokenKind::HashBuildProfile, start, tokenStart);
+        }
+        if (tryMatch("buildMode")) {
+            return MakeToken(TokenKind::HashBuildMode, start, tokenStart);
+        }
+        if (tryMatch("optimization")) {
+            return MakeToken(TokenKind::HashOptimization, start, tokenStart);
+        }
+        if (tryMatch("debugAssertions")) {
+            return MakeToken(TokenKind::HashDebugAssertions, start, tokenStart);
+        }
+        if (tryMatch("debugInfo")) {
+            return MakeToken(TokenKind::HashDebugInfo, start, tokenStart);
+        }
+        if (tryMatch("isTest")) {
+            return MakeToken(TokenKind::HashIsTest, start, tokenStart);
+        }
+        if (tryMatch("outputKind")) {
+            return MakeToken(TokenKind::HashOutputKind, start, tokenStart);
+        }
+        if (tryMatch("buildTimestamp")) {
+            return MakeToken(TokenKind::HashBuildTimestamp, start, tokenStart);
+        }
+        if (tryMatch("compilerVersion")) {
+            return MakeToken(TokenKind::HashCompilerVersion, start, tokenStart);
+        }
+        if (tryMatch("compilerHasFeature")) {
+            return MakeToken(TokenKind::HashCompilerHasFeature, start, tokenStart);
+        }
+        if (tryMatch("hasConfig")) {
+            return MakeToken(TokenKind::HashHasConfig, start, tokenStart);
+        }
+        if (tryMatch("config")) {
+            return MakeToken(TokenKind::HashConfig, start, tokenStart);
+        }
+        if (tryMatch("target")) {
+            return MakeToken(TokenKind::HashTarget, start, tokenStart);
+        }
+        if (tryMatch("build")) {
+            return MakeToken(TokenKind::HashBuild, start, tokenStart);
+        }
+        if (tryMatch("compiler")) {
+            return MakeToken(TokenKind::HashCompiler, start, tokenStart);
+        }
+        if (tryMatch("source")) {
+            return MakeToken(TokenKind::HashSource, start, tokenStart);
         }
         return MakeToken(TokenKind::Hash, start, tokenStart);
     }

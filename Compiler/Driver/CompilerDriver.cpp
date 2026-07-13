@@ -5,8 +5,11 @@
 #include "Ir/Hir/HirPrinter.h"
 #include "Ir/Lir/Lir.h"
 #include "Ir/Lir/LirPrinter.h"
+#include "Driver/Version.h"
 
+#include <charconv>
 #include <chrono>
+#include <limits>
 #include <print>
 #include <unordered_map>
 #include <unordered_set>
@@ -21,6 +24,7 @@
 #include "Object/Rcu/Rcu.h"
 #include "Object/Rcu/RcuDumper.h"
 #include "Object/Rcu/RcuWriter.h"
+#include "Semantic/ConditionalCompilation.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Semantic/SemanticPrinter.h"
 #include "Source/SourceLoader.h"
@@ -35,6 +39,47 @@ using namespace System;
 CompilerDriver::CompilerDriver(CompileOptions options)
     : opts(std::move(options)) {
     root = opts.manifestPath.parent_path();
+    InitializeCompileTimeContext();
+}
+
+void CompilerDriver::InitializeCompileTimeContext() {
+    compileTimeContext.target = TargetContextForTriple(opts.targetName);
+    compileTimeContext.targetTriple = opts.targetName;
+    compileTimeContext.profileName = opts.profileName.empty() ? "Debug" : opts.profileName;
+    const bool release = compileTimeContext.profileName == "Release" || compileTimeContext.profileName == "release";
+    compileTimeContext.buildMode = release ? Target::BuildMode::Release : Target::BuildMode::Debug;
+    compileTimeContext.optimization = release ? OptimizationMode::Speed : OptimizationMode::None;
+    compileTimeContext.debugAssertions = !release;
+    compileTimeContext.debugInfo = !release;
+    compileTimeContext.isTest = opts.isTest;
+    compileTimeContext.sourceRoot = root.lexically_normal();
+    compileTimeContext.compilerVersion = RUX_VERSION;
+    compileTimeContext.config = opts.manifest.build.defines;
+    for (const auto &[name, value] : opts.defines) {
+        compileTimeContext.config[name] = value;
+    }
+
+    const std::string &packageType = opts.manifest.package.type;
+    if (packageType == "Dll" || packageType == "dll" || packageType == "sharedlib" || packageType == "SharedLib") {
+        compileTimeContext.outputKind = OutputKind::SharedLibrary;
+    }
+    else if (packageType == "lib" || packageType == "Lib" || packageType == "staticlib" ||
+             packageType == "StaticLib") {
+        compileTimeContext.outputKind = OutputKind::StaticLibrary;
+    }
+
+    compileTimeContext.buildTimestamp =
+        static_cast<std::int64_t>(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+    if (const auto epoch = System::GetEnv("SOURCE_DATE_EPOCH")) {
+        std::int64_t parsed = 0;
+        const auto result = std::from_chars(epoch->data(), epoch->data() + epoch->size(), parsed);
+        if (result.ec != std::errc{} || result.ptr != epoch->data() + epoch->size() || parsed < 0) {
+            invalidSourceDateEpoch = true;
+        }
+        else {
+            compileTimeContext.buildTimestamp = parsed;
+        }
+    }
 }
 
 void CompilerDriver::Emit(const Diagnostic &diag) const {
@@ -64,9 +109,17 @@ bool CompilerDriver::EmitAll(std::span<const Diagnostic> diags) const {
     return hasErrors;
 }
 
+std::string CompilerDriver::TargetSystemName() const {
+    return std::string(Target::ToString(TargetTripleOs(opts.targetName)));
+}
+
 CompileResult CompilerDriver::Compile() {
     CompileResult result;
     const auto t0 = std::chrono::steady_clock::now();
+    if (invalidSourceDateEpoch) {
+        Emit(ErrorDiagnostic("SOURCE_DATE_EPOCH must be a non-negative integer number of seconds"));
+        return result;
+    }
 
     if (!LexAndParseSources()) {
         return result;
@@ -180,7 +233,16 @@ bool CompilerDriver::LexAndParseSources() {
         if (parseResult.HasErrors()) {
             continue;
         }
-        PruneModuleForTarget(parseResult.module, opts.targetName);
+        // Fold `#if` before anything reads the module: which imports a file has
+        // depends on which branches survive, and dependency loading below is the
+        // first thing to ask.
+        {
+            std::vector<Diagnostic> foldDiagnostics;
+            ResolveConditionalCompilation({&parseResult.module}, compileTimeContext, foldDiagnostics);
+            if (EmitAll(foldDiagnostics)) {
+                parseErrors = true;
+            }
+        }
         if (opts.dumpAst) {
             auto tempDir = root / "Temp" / "Ast";
             std::filesystem::create_directories(tempDir);
@@ -253,12 +315,8 @@ bool CompilerDriver::LoadDependencies() {
     };
 
     std::vector<std::string> imports;
-    const std::string &targetName = opts.targetName;
     auto collectImports = [&](this auto &&self, const Decl &decl) -> void {
         if (const auto *ud = dynamic_cast<const UseDecl *>(&decl)) {
-            if (!DeclMatchesTarget(*ud, targetName)) {
-                return;
-            }
             if (!ud->path.empty()) {
                 imports.push_back(ud->path[0]);
             }
@@ -332,7 +390,11 @@ bool CompilerDriver::LoadDependencies() {
             if (depParse.HasErrors()) {
                 return false;
             }
-            PruneModuleForTarget(depParse.module, opts.targetName);
+            std::vector<Diagnostic> foldDiagnostics;
+            ResolveConditionalCompilation({&depParse.module}, compileTimeContext, foldDiagnostics);
+            if (EmitAll(foldDiagnostics)) {
+                return false;
+            }
             packageParseResults.push_back(std::move(depParse));
         }
         imports.clear();
@@ -365,9 +427,9 @@ bool CompilerDriver::Analyze() {
     if (opts.verbose) {
         std::print("  Analyzing {}\n", opts.manifest.package.name);
     }
-    std::vector<const Module *> userModules;
+    std::vector<Module *> userModules;
     userModules.reserve(parseResults.size());
-    for (const auto &pr : parseResults) {
+    for (auto &pr : parseResults) {
         userModules.push_back(&pr.module);
     }
     // Build per-package dep info so Sema can isolate imported package symbols.
@@ -384,7 +446,7 @@ bool CompilerDriver::Analyze() {
         }
     }
     SemanticAnalyzer analyzer(std::move(userModules), std::move(depPackages), opts.manifest.package.name,
-                              std::string(TargetOsName(opts.targetName)));
+                              compileTimeContext);
     semanticModel = analyzer.Analyze();
     EmitAll(semanticModel->diagnostics);
     if (opts.dumpSema) {

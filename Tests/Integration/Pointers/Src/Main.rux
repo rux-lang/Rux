@@ -8,7 +8,7 @@ struct Point {
 
 func Main() -> int {
     var point = Point {x: 10.0, y: 20.0, z: 30.0};
-    var ptr = &point;
+    var ptr = @point;
     Assert(ptr != null, "Pointer is null");
     return 0;
 }

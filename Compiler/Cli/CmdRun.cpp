@@ -1,6 +1,7 @@
 // `rux run` — build the package, then execute the resulting binary.
 
 #include "Cli/Cli.h"
+#include "Cli/DefineOption.h"
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
@@ -17,14 +18,17 @@
 #include "System/Process.h"
 
 using namespace Rux;
+using namespace CliSupport;
 using namespace Driver;
 using namespace System;
 
 int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opts) {
     bool isRelease = false;
     std::vector<std::string_view> runArgs;
+    std::map<std::string, std::string> defines;
     bool passThroughMode = false;
-    for (auto arg : args) {
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const auto arg = args[i];
         if (passThroughMode) {
             runArgs.push_back(arg);
             continue;
@@ -35,6 +39,14 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         }
         if (arg == "--release") {
             isRelease = true;
+            continue;
+        }
+        if (arg == "--define" && i + 1 < args.size()) {
+            std::string error;
+            if (!AddCompileTimeDefine(args[++i], defines, error)) {
+                std::print(stderr, "error: {}\n", error);
+                return 1;
+            }
             continue;
         }
         if (arg == "-h" || arg == "--help") {
@@ -73,6 +85,7 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     copts.manifest = *manifest;
     copts.targetName = std::move(targetName);
     copts.profileName = std::string(profileName);
+    copts.defines = std::move(defines);
     copts.quiet = buildQuiet;
     copts.verbose = opts.verbose;
     CompilerDriver driver(std::move(copts));

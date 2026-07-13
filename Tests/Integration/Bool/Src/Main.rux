@@ -80,22 +80,22 @@ func Main() -> int {
     // Short-circuiting: the right-hand side of a false && and of a true || is
     // never evaluated, which the call counter is here to witness.
     var calls: int = 0;
-    let skippedAnd = Sees(&calls, false) && Sees(&calls, true);
+    let skippedAnd = Sees(@calls, false) && Sees(@calls, true);
     Assert(!skippedAnd, "a false && is false");
     Assert(calls == 1, "&& does not evaluate its right side when the left is false");
 
     calls = 0;
-    let skippedOr = Sees(&calls, true) || Sees(&calls, false);
+    let skippedOr = Sees(@calls, true) || Sees(@calls, false);
     Assert(skippedOr, "a true || is true");
     Assert(calls == 1, "|| does not evaluate its right side when the left is true");
 
     calls = 0;
-    let bothAnd = Sees(&calls, true) && Sees(&calls, true);
+    let bothAnd = Sees(@calls, true) && Sees(@calls, true);
     Assert(bothAnd, "a && with two true sides is true");
     Assert(calls == 2, "&& evaluates its right side when the left is true");
 
     calls = 0;
-    let bothOr = Sees(&calls, false) || Sees(&calls, true);
+    let bothOr = Sees(@calls, false) || Sees(@calls, true);
     Assert(bothOr, "a || with a true right side is true");
     Assert(calls == 2, "|| evaluates its right side when the left is false");
 
@@ -110,7 +110,7 @@ func Main() -> int {
     // A bool as a value rather than as a condition: assigned, passed, returned.
     let flag = 10 > 5 && 5 > 3;
     Assert(flag, "a chain assigned into a binding");
-    Assert(Sees(&calls, flag), "a bool passed to a function and returned from it");
+    Assert(Sees(@calls, flag), "a bool passed to a function and returned from it");
 
     // Assignment and mutation.
     var toggle = true;

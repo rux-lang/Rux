@@ -1,0 +1,9 @@
+// The `target` metadata key was replaced by conditional compilation.
+#{ target: "Linux" }
+func Legacy() -> int {
+    return 1;
+}
+
+func Main() -> int {
+    return 0;
+}
