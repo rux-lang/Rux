@@ -1,18 +1,22 @@
 #include "Semantic/SemanticAnalyzer.h"
 
+#include "Driver/Version.h"
+
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <charconv>
 #include <format>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 
-#include "Driver/Version.h"
 #include "Lexer/Lexer.h"
 #include "Semantic/ConditionalCompilation.h"
+#include "Semantic/PrimitiveConstants.h"
 #include "Semantic/Type.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
@@ -20,6 +24,22 @@
 namespace Rux {
 
 using Layout::AlignUp;
+
+namespace {
+
+// These names are part of the language's primitive type set, but the current
+// type system and backends do not implement their representations yet. Keep
+// them reserved so they cannot silently become user-defined types.
+constexpr std::array<std::string_view, 20> UnimplementedPrimitiveTypes{
+    "int128",   "int256",   "int512", "uint128", "uint256", "uint512", "float8", "float16", "float80", "float128",
+    "float256", "float512", "bool64", "bool128", "bool256", "bool512", "char64", "char128", "char256", "char512",
+};
+
+bool IsUnimplementedPrimitiveType(const std::string_view name) {
+    return std::ranges::find(UnimplementedPrimitiveTypes, name) != UnimplementedPrimitiveTypes.end();
+}
+
+} // namespace
 
 // SemanticModel
 
@@ -48,8 +68,9 @@ struct Symbol {
     bool isMut = false;
     bool isParam = false; // function parameter: a mutable local copy, so &param is writable
     std::vector<const FuncDecl *> funcOverloads;
-    std::vector<std::string> interfaceMethods; // for Interface kind
-    Scope *moduleScope = nullptr;              // for Module kind: the imported module's scope
+    const ExternFuncDecl *externDecl = nullptr; // retained for #Warn/#Error at call sites
+    std::vector<std::string> interfaceMethods;  // for Interface kind
+    Scope *moduleScope = nullptr;               // for Module kind: the imported module's scope
 };
 
 class Scope {
@@ -66,6 +87,9 @@ public:
                                                 sym.funcOverloads.end());
                 if (it->second.type.IsUnknown() && !sym.type.IsUnknown()) {
                     it->second.type = std::move(sym.type);
+                }
+                if (!it->second.externDecl && sym.externDecl) {
+                    it->second.externDecl = sym.externDecl;
                 }
                 return true;
             }
@@ -112,12 +136,13 @@ class Analyzer {
 public:
     Analyzer(std::vector<const Module *> &inputModules, std::vector<DepPackage> &inputDeps,
              const std::string &inputPackageName, std::vector<SemanticDiagnostic> &inputDiags,
-             std::vector<SemanticSymbol> &inputSymbols)
+             std::vector<SemanticSymbol> &inputSymbols, const CompileTimeContext &inputContext)
         : modules(inputModules)
         , deps(inputDeps)
         , packageName(inputPackageName)
         , diags(inputDiags)
         , symbols(inputSymbols)
+        , context(inputContext)
         , currentScope(&globalScope) {
     }
 
@@ -180,6 +205,7 @@ private:
     const std::string &packageName;
     std::vector<SemanticDiagnostic> &diags;
     std::vector<SemanticSymbol> &symbols;
+    const CompileTimeContext &context;
     Scope globalScope{nullptr};
     Scope *currentScope;
     // packageModuleScopes[pkgName][modulePath] = logical module scope.
@@ -189,6 +215,7 @@ private:
     std::vector<std::unique_ptr<Scope>> ownedScopes;
     std::string currentFile;
     TypeRef currentReturnType = TypeRef::MakeOpaque();
+    bool currentFunctionNoReturn = false;
     int loopDepth = 0;
     std::unordered_set<std::string> activeLabels;
     bool inImpl = false;
@@ -199,6 +226,12 @@ private:
     std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methodsByType;
     std::unordered_map<std::string, std::unordered_set<std::string>> typeImplementsInterfaces;
+
+    struct FunctionSignature {
+        std::size_t typeParamCount = 0;
+        std::vector<TypeRef> paramTypes;
+        std::vector<bool> variadicParams;
+    };
 
     // Diagnostics
 
@@ -303,6 +336,30 @@ private:
         add("float32", TypeRef::MakeFloat32());
         add("float64", TypeRef::MakeFloat64());
         add("float", TypeRef::MakeFloat());
+        for (const std::string_view name : UnimplementedPrimitiveTypes) {
+            add(name.data(), TypeRef::MakeUnknown());
+        }
+
+        const auto addAssert = [&](const char *name) {
+            Symbol sym;
+            // Const reserves the name against user declarations while still
+            // allowing the function value to participate in ordinary call
+            // type checking.
+            sym.kind = Symbol::Kind::Const;
+            sym.name = name;
+            sym.type = TypeRef::MakeFunc({TypeRef::MakeBool(), TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))},
+                                         TypeRef::MakeOpaque());
+            globalScope.Define(std::move(sym), diags, "<builtin>");
+        };
+        addAssert("Assert");
+        addAssert("DebugAssert");
+
+        Symbol panic;
+        panic.kind = Symbol::Kind::Const;
+        panic.name = "Panic";
+        panic.type =
+            TypeRef::MakeFunc({TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))}, TypeRef::MakeOpaque());
+        globalScope.Define(std::move(panic), diags, "<builtin>");
     }
 
     // First pass: collect global declaration names
@@ -509,7 +566,15 @@ private:
             }
         }
         else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            simple(Symbol::Kind::Func, externFn->name, SemanticSymbol::Kind::Func, "extern");
+            Symbol sym;
+            sym.kind = Symbol::Kind::Func;
+            sym.name = externFn->name;
+            sym.location = externFn->location;
+            sym.externDecl = externFn;
+            if (scope.Define(sym, diags, currentFile) && isGlobal) {
+                symbols.push_back(
+                    {SemanticSymbol::Kind::Func, externFn->name, currentFile, externFn->location, "extern", false});
+            }
         }
         else if (auto *externVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
             Symbol sym;
@@ -1485,6 +1550,13 @@ private:
         };
 
         if (const auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
+            if (IsUnimplementedPrimitiveType(t->name)) {
+                EmitError(expr.location, std::format("primitive type '{}' is reserved but is not implemented in this "
+                                                     "compiler version",
+                                                     t->name));
+                return TypeRef::MakeUnknown();
+            }
+
             for (const auto &tp : currentTypeParams) {
                 if (tp == t->name) {
                     if (!t->typeArgs.empty()) {
@@ -2069,6 +2141,61 @@ private:
         return SizeOfTypeExprWithSubstitution(expr);
     }
 
+    std::optional<FunctionSignature> ResolveFunctionSignature(const FuncDecl &decl, const bool isMethod) {
+        auto savedTypeParams = currentTypeParams;
+        currentTypeParams = decl.typeParams;
+
+        std::unordered_map<std::string, TypeRef> substitutions;
+        for (std::size_t i = 0; i < decl.typeParams.size(); ++i) {
+            substitutions.emplace(decl.typeParams[i], TypeRef::MakeTypeParam(std::format("${}", i)));
+        }
+
+        FunctionSignature signature;
+        signature.typeParamCount = decl.typeParams.size();
+        for (const auto &param : decl.params) {
+            if (isMethod && param.name == "self") {
+                continue;
+            }
+            TypeRef type = ResolveTypeWithSubstitution(*param.type, substitutions);
+            if (type.IsUnknown()) {
+                currentTypeParams = savedTypeParams;
+                return std::nullopt;
+            }
+            signature.paramTypes.push_back(std::move(type));
+            signature.variadicParams.push_back(param.isVariadic);
+        }
+
+        currentTypeParams = savedTypeParams;
+        return signature;
+    }
+
+    static bool SameFunctionSignature(const FunctionSignature &lhs, const FunctionSignature &rhs) {
+        return lhs.typeParamCount == rhs.typeParamCount && lhs.paramTypes == rhs.paramTypes &&
+               lhs.variadicParams == rhs.variadicParams;
+    }
+
+    void ValidateFunctionSignature(const FuncDecl &decl, const std::vector<const FuncDecl *> &overloads,
+                                   const bool isMethod = false) {
+        const auto signature = ResolveFunctionSignature(decl, isMethod);
+        if (!signature) {
+            return;
+        }
+
+        for (const FuncDecl *previous : overloads) {
+            if (previous == &decl) {
+                break;
+            }
+            const auto previousSignature = ResolveFunctionSignature(*previous, isMethod);
+            if (previousSignature && SameFunctionSignature(*signature, *previousSignature)) {
+                EmitError(decl.location,
+                          std::format("function '{}' has the same parameter signature as a previous declaration at "
+                                      "{}:{}",
+                                      decl.name, previous->location.line, previous->location.column));
+                return;
+            }
+        }
+    }
+
     // Second pass: check declarations
     void CheckModule(const Module &mod) {
         currentFile = mod.name;
@@ -2086,6 +2213,10 @@ private:
 
     void CheckDecl(const Decl &decl) {
         if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
+            if (const Symbol *symbol = currentScope->LookupLocal(fn->name);
+                symbol && symbol->kind == Symbol::Kind::Func) {
+                ValidateFunctionSignature(*fn, symbol->funcOverloads);
+            }
             CheckFuncDecl(*fn);
         }
         else if (auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
@@ -2116,7 +2247,7 @@ private:
             if (externFn->dll.empty()) {
                 EmitError(externFn->location, std::format("extern function '{}' must specify a "
                                                           "source DLL via "
-                                                          "#{{ library: \"dll.dll\" }}",
+                                                          "#Link(\"dll.dll\")",
                                                           externFn->name));
             }
             if (externFn->returnType) {
@@ -2149,6 +2280,8 @@ private:
 
         auto savedRet = currentReturnType;
         currentReturnType = retType;
+        const bool savedNoReturn = currentFunctionNoReturn;
+        currentFunctionNoReturn = d.isNoReturn;
 
         PushScope();
 
@@ -2222,6 +2355,7 @@ private:
 
         PopScope();
         currentReturnType = savedRet;
+        currentFunctionNoReturn = savedNoReturn;
         currentTypeParams = savedTypeParams;
     }
 
@@ -2495,6 +2629,11 @@ private:
             currentSelfType = TypeRef::MakePointer(selfBase);
         }
         for (const auto &m : d.methods) {
+            if (const auto typeIt = methodsByType.find(d.typeName); typeIt != methodsByType.end()) {
+                if (const auto methodIt = typeIt->second.find(m->name); methodIt != typeIt->second.end()) {
+                    ValidateFunctionSignature(*m, methodIt->second, /*isMethod=*/true);
+                }
+            }
             CheckFuncDecl(*m, /*isMethod=*/true);
         }
         currentSelfType = savedSelfType;
@@ -2668,6 +2807,13 @@ private:
 
     void DefineImportedSymbol(const Symbol &sym) {
         if (Symbol *existing = currentScope->LookupLocal(sym.name)) {
+            // Legacy packages may still export Assert. The built-in is the
+            // canonical binding now, so importing that name is a harmless
+            // compatibility no-op instead of a duplicate-definition error.
+            if ((sym.name == "Assert" || sym.name == "DebugAssert" || sym.name == "Panic") &&
+                existing->kind == Symbol::Kind::Const && existing->type.kind == TypeRef::Kind::Func) {
+                return;
+            }
             if (existing->kind == sym.kind && existing->location.line == sym.location.line &&
                 existing->location.column == sym.location.column) {
                 *existing = sym;
@@ -2982,6 +3128,9 @@ private:
             }
         }
         else if (auto *retStmt = dynamic_cast<const ReturnStmt *>(&stmt)) {
+            if (currentFunctionNoReturn) {
+                EmitError(retStmt->location, "return is not allowed in a '#NoReturn' function");
+            }
             if (retStmt->value) {
                 if (TypeRef valType = CheckExpr(**retStmt->value);
                     !valType.IsUnknown() && !currentReturnType.IsUnknown() && !currentReturnType.IsOpaque() &&
@@ -3144,6 +3293,39 @@ private:
         // WildcardPattern, LiteralPattern: nothing to resolve
     }
 
+    // Resolves a direct or module-qualified callee without emitting
+    // diagnostics. The normal expression checker remains responsible for
+    // undefined names and invalid paths; this lookup only recovers declaration
+    // metadata that is not represented by a function TypeRef.
+    Symbol *LookupCalleeSymbol(const Expr &callee) {
+        if (const auto *ident = dynamic_cast<const IdentExpr *>(&callee)) {
+            return currentScope->Lookup(ident->name);
+        }
+
+        const auto *path = dynamic_cast<const PathExpr *>(&callee);
+        if (!path || path->segments.empty()) {
+            return nullptr;
+        }
+
+        Symbol *current = currentScope->Lookup(path->segments[0]);
+        for (std::size_t i = 1; current && i < path->segments.size(); ++i) {
+            if (current->kind != Symbol::Kind::Module || !current->moduleScope) {
+                return nullptr;
+            }
+            current = current->moduleScope->Lookup(path->segments[i]);
+        }
+        return current;
+    }
+
+    void EmitCallSiteDiagnostics(const Decl &decl, const SourceLocation location) {
+        if (!decl.warnMessage.empty()) {
+            EmitWarning(location, decl.warnMessage);
+        }
+        if (!decl.errorMessage.empty()) {
+            EmitError(location, decl.errorMessage);
+        }
+    }
+
     // Expressions
     TypeRef CheckExpr(const Expr &expr) {
         if (auto *e = dynamic_cast<const LiteralExpr *>(&expr)) {
@@ -3178,6 +3360,11 @@ private:
             if (e->segments.size() >= 2 &&
                 (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
                 if (first->kind == Symbol::Kind::Type) {
+                    if (e->segments.size() == 2) {
+                        if (const auto constant = LookupPrimitiveConstant(first->type, e->segments[1], context)) {
+                            return constant->type;
+                        }
+                    }
                     const std::string &variantName = e->segments[1];
                     if (const EnumDecl::Variant *variant = LookupEnumVariant(first->name, variantName)) {
                         if (e->segments.size() > 2) {
@@ -3264,15 +3451,15 @@ private:
             if (e->kind == K::Os || e->kind == K::Arch || e->kind == K::Abi || e->kind == K::Endian ||
                 e->kind == K::DataModel || e->kind == K::ObjectFormat || e->kind == K::BuildMode ||
                 e->kind == K::Optimization || e->kind == K::OutputKind) {
-                const char *name = e->kind == K::Os             ? "#os"
-                                   : e->kind == K::Arch         ? "#arch"
-                                   : e->kind == K::Abi          ? "#abi"
-                                   : e->kind == K::Endian       ? "#endian"
-                                   : e->kind == K::DataModel    ? "#dataModel"
-                                   : e->kind == K::ObjectFormat ? "#objectFormat"
-                                   : e->kind == K::BuildMode    ? "#buildMode"
-                                   : e->kind == K::Optimization ? "#optimization"
-                                                                : "#outputKind";
+                const char *name = e->kind == K::Os           ? "#target.os"
+                                 : e->kind == K::Arch         ? "#target.arch"
+                                 : e->kind == K::Abi          ? "#target.abi"
+                                 : e->kind == K::Endian       ? "#target.endian"
+                                 : e->kind == K::DataModel    ? "#target.dataModel"
+                                 : e->kind == K::ObjectFormat ? "#target.objectFormat"
+                                 : e->kind == K::BuildMode    ? "#build.mode"
+                                 : e->kind == K::Optimization ? "#build.optimization"
+                                                              : "#build.outputKind";
                 EmitError(e->location, std::string("'") + name + "' can only be used in a '#if' condition");
                 return TypeRef::MakeUnknown();
             }
@@ -3571,6 +3758,10 @@ private:
                         }
                     }
                 }
+            }
+
+            if (Symbol *calleeSymbol = LookupCalleeSymbol(*e->callee); calleeSymbol && calleeSymbol->externDecl) {
+                EmitCallSiteDiagnostics(*calleeSymbol->externDecl, e->location);
             }
 
             TypeRef calleeType = CheckExpr(*e->callee);
@@ -4187,7 +4378,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
     ResolveConditionalCompilation(modules, compileTimeContext, diags);
 
     std::vector<const Module *> constModules(modules.begin(), modules.end());
-    Analyzer analyzer(constModules, deps, packageName, diags, symbols);
+    Analyzer analyzer(constModules, deps, packageName, diags, symbols, compileTimeContext);
     analyzer.Run();
     std::vector<const Module *> orderedModules;
     for (const auto &dep : deps) {

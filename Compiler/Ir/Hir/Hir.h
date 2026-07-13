@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -161,6 +162,12 @@ struct HirRangeExpr : HirExpr {
 struct HirCallExpr : HirExpr {
     HirExprPtr callee;
     std::vector<HirExprPtr> args;
+    bool isNoReturn = false;
+    // Populated for compiler builtins that need to report their call site.
+    std::string sourceFile;
+    std::string sourceFunction;
+    std::uint32_t sourceLine = 0;
+    std::uint32_t sourceColumn = 0;
 };
 
 // Wrap a concrete value into an interface fat pointer {data_ptr,
@@ -361,6 +368,7 @@ struct HirFunc {
     std::string name;
     bool isPublic = false;
     bool isAsm = false;
+    bool isNoReturn = false;
     CallingConvention callConv = CallingConvention::Default;
     std::vector<std::string> typeParams;
     std::vector<HirParam> params;
@@ -453,6 +461,7 @@ struct HirExternFunc {
     // the two are the same.
     std::string symbolName;
     bool isPublic = false;
+    bool isNoReturn = false;
     CallingConvention callConv = CallingConvention::Default;
     std::vector<HirParam> params;
     bool isVariadic = false;

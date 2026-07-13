@@ -1,11 +1,11 @@
 #include "Driver/CompilerDriver.h"
 
 #include "Driver/BuildTarget.h"
+#include "Driver/Version.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Hir/HirPrinter.h"
 #include "Ir/Lir/Lir.h"
 #include "Ir/Lir/LirPrinter.h"
-#include "Driver/Version.h"
 
 #include <charconv>
 #include <chrono>
@@ -63,8 +63,7 @@ void CompilerDriver::InitializeCompileTimeContext() {
     if (packageType == "Dll" || packageType == "dll" || packageType == "sharedlib" || packageType == "SharedLib") {
         compileTimeContext.outputKind = OutputKind::SharedLibrary;
     }
-    else if (packageType == "lib" || packageType == "Lib" || packageType == "staticlib" ||
-             packageType == "StaticLib") {
+    else if (packageType == "lib" || packageType == "Lib" || packageType == "staticlib" || packageType == "StaticLib") {
         compileTimeContext.outputKind = OutputKind::StaticLibrary;
     }
 
@@ -506,7 +505,7 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     if (opts.verbose) {
         std::print("  Emitting RCU objects for {}\n", opts.manifest.package.name);
     }
-    RcuEmitter rcuEmitter(lirPackage, std::string(opts.manifest.package.name));
+    RcuEmitter rcuEmitter(lirPackage, std::string(opts.manifest.package.name), compileTimeContext.target.os);
     auto rcuFiles = rcuEmitter.Generate();
     if (!rcuEmitter.Diagnostics().empty()) {
         bool hasError = false;

@@ -115,7 +115,7 @@ public:
                 // registers the shared library expects.
                 funcConvs[ef.name] = ef.callConv == CallingConvention::Default ? PlatformCConvention() : ef.callConv;
                 funcNames.insert(ef.name);
-                // `#{ symbol: "..." }` renames the imported symbol. Record it
+                // The optional second `#Link` argument renames the imported symbol. Record it
                 // package-wide, for the same reason funcConvs is: a call may
                 // target an extern declared in another module, and every
                 // reference has to reach the linker under the same name.
@@ -164,7 +164,7 @@ private:
     std::unordered_set<std::string> funcNames;                    // every function symbol (for address-of)
     std::unordered_map<std::string, std::string> externSymbols;   // Rux name → imported symbol name
 
-    // The name a function reaches the linker under: the `#{ symbol: "..." }`
+    // The name a function reaches the linker under: the second `#Link` argument
     // override when one was given, otherwise the Rux name itself.
     const std::string &SymbolFor(const std::string &name) const {
         const auto it = externSymbols.find(name);
@@ -223,6 +223,12 @@ private:
         t.kind = LirTermKind::Return;
         t.retVal = val;
         t.retType = std::move(type);
+        Terminate(std::move(t));
+    }
+
+    void Unreachable() const {
+        LirTerminator t;
+        t.kind = LirTermKind::Unreachable;
         Terminate(std::move(t));
     }
 
@@ -474,6 +480,7 @@ private:
             lf.dll = ef.dll;
             lf.isPublic = ef.isPublic;
             lf.isExtern = true;
+            lf.isNoReturn = ef.isNoReturn;
             lf.callConv = ef.callConv;
             lf.returnType = ef.returnType;
             LirReg pr = 0;
@@ -577,6 +584,7 @@ private:
         lf.name = nameOverride.empty() ? hf.name : std::string(nameOverride);
         lf.isPublic = hf.isPublic;
         lf.isExtern = false;
+        lf.isNoReturn = hf.isNoReturn;
         lf.callConv = hf.callConv;
         lf.returnType = hf.returnType;
         // An asm function is an opaque blob of raw x86-64: no params to spill,
@@ -1873,6 +1881,62 @@ private:
     }
 
     LirReg LowerCall(const HirCallExpr &e) {
+        if (const auto *callee = dynamic_cast<const HirVarExpr *>(e.callee.get())) {
+            if (callee->name == "__builtin_debug_assert_disabled") {
+                return LirNoReg;
+            }
+            if (callee->name == "__builtin_assert") {
+                if (e.args.size() != 2) {
+                    return LirNoReg;
+                }
+
+                const LirReg condition = LowerExpr(*e.args[0]);
+                const LirReg message = LowerLValue(*e.args[1]);
+                std::string messageText;
+                if (const auto *literal = dynamic_cast<const HirLiteralExpr *>(e.args[1].get());
+                    literal && IsStringSliceLiteral(*literal)) {
+                    messageText = literal->value;
+                }
+
+                LirInstr assertion;
+                assertion.op = LirOpcode::Assert;
+                assertion.type = TypeRef::MakeOpaque();
+                assertion.srcs = {condition, message};
+                assertion.strArg = std::move(messageText);
+                assertion.sourceFile = e.sourceFile;
+                assertion.sourceFunction = e.sourceFunction;
+                assertion.sourceLine = e.sourceLine;
+                assertion.sourceColumn = e.sourceColumn;
+                Emit(std::move(assertion));
+                return LirNoReg;
+            }
+            if (callee->name == "__builtin_panic") {
+                if (e.args.size() != 1) {
+                    return LirNoReg;
+                }
+
+                const LirReg message = LowerLValue(*e.args[0]);
+                std::string messageText;
+                if (const auto *literal = dynamic_cast<const HirLiteralExpr *>(e.args[0].get());
+                    literal && IsStringSliceLiteral(*literal)) {
+                    messageText = literal->value;
+                }
+
+                LirInstr panic;
+                panic.op = LirOpcode::Panic;
+                panic.type = TypeRef::MakeOpaque();
+                panic.srcs = {message};
+                panic.strArg = std::move(messageText);
+                panic.sourceFile = e.sourceFile;
+                panic.sourceFunction = e.sourceFunction;
+                panic.sourceLine = e.sourceLine;
+                panic.sourceColumn = e.sourceColumn;
+                Emit(std::move(panic));
+                Unreachable();
+                return LirNoReg;
+            }
+        }
+
         std::vector<LirReg> argRegs;
         argRegs.reserve(e.args.size());
         for (const auto &arg : e.args) {
@@ -1921,6 +1985,9 @@ private:
             ci.srcs.insert(ci.srcs.begin(), fp);
         }
         Emit(std::move(ci));
+        if (e.isNoReturn) {
+            Unreachable();
+        }
         return dst;
     }
 

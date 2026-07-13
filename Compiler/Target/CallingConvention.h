@@ -10,7 +10,7 @@ namespace Rux {
 // Concrete register and stack rules are resolved by TargetInfo.
 enum class CallingConvention {
     Default,
-    C,     // #{ abi: .C }: whatever the target's C ABI is
+    C,     // #Abi(.C): whatever the target's C ABI is
     Win64, // Microsoft x64 (rcx, rdx, r8, r9 + 32-byte shadow space)
     SysV,  // System V AMD64 (rdi, rsi, rdx, rcx, r8, r9)
 };
@@ -44,8 +44,8 @@ constexpr CallingConvention ResolveCConvention(const CallingConvention c) {
     return c == CallingConvention::C ? PlatformCConvention() : c;
 }
 
-// The `#{ abi: ... }` variant a convention was written as, for dumps. Empty for
-// Default, which is spelled by leaving the key out.
+// The `#Abi(...)` variant a convention was written as, for dumps. Empty for
+// Default, which is spelled by leaving the attribute out.
 constexpr std::string_view ConventionName(const CallingConvention c) {
     switch (c) {
     case CallingConvention::C:

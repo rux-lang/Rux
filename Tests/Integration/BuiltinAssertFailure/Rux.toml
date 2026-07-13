@@ -1,0 +1,7 @@
+[Package]
+Name = "BuiltinAssertFailure"
+Version = "0.1.0"
+Description = "Built-in assertion failure reporting integration test"
+
+[Build]
+Output = "../Bin"

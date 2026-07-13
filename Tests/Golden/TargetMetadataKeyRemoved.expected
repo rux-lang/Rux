@@ -1,1 +1,1 @@
-2:4: error: 'target' is no longer a metadata key; wrap the declaration in a conditional compilation block instead, as in '#if #os == .Windows { ... }'
+2:1: error: metadata blocks '#{...}' are unsupported; use attribute calls such as '#Abi(.Win64)'

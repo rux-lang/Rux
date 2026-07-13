@@ -1,0 +1,7 @@
+[Package]
+Name = "BuiltinPanicFailure"
+Version = "0.1.0"
+Description = "Built-in panic reporting integration test"
+
+[Build]
+Output = "../Bin"

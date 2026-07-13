@@ -51,6 +51,8 @@ enum class LirOpcode {
     // Calls
     Call,         // %dst = call <type> @<name>(%args...)
     CallIndirect, // %dst = call_ind <type> %callee(%args...)
+    Assert,       // reports call-site context and traps when condition is false
+    Panic,        // reports call-site context and always traps
     // Aggregate access (return pointer)
     FieldPtr, // %dst = fieldptr *<type> %base, <field>
     IndexPtr, // %dst = indexptr *<type> %base, %idx
@@ -70,6 +72,11 @@ struct LirInstr {
     std::string strArg;       // literal (Const), name (Load/Call), field (FieldPtr), from-type (Cast)
     std::vector<std::pair<LirReg, std::uint32_t>> phiPreds;  // Phi: (reg, block_index)
     CallingConvention callConv = CallingConvention::Default; // for Call instructions
+    // Optional source context used by instructions that report runtime failures.
+    std::string sourceFile;
+    std::string sourceFunction;
+    std::uint32_t sourceLine = 0;
+    std::uint32_t sourceColumn = 0;
 };
 
 // Terminators
@@ -78,6 +85,7 @@ enum class LirTermKind {
     Branch,
     Return,
     Switch,
+    Unreachable,
 };
 
 struct LirSwitchCase {
@@ -115,6 +123,7 @@ struct LirFunc {
     std::string dll; // non-empty for extern declarations
     bool isPublic = false;
     bool isExtern = false;
+    bool isNoReturn = false;
     CallingConvention callConv = CallingConvention::Default;
     std::vector<LirParam> params;
     TypeRef returnType;

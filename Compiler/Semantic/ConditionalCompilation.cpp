@@ -1,10 +1,13 @@
 #include "Semantic/ConditionalCompilation.h"
 
+#include "Driver/Version.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <ctime>
+#include <charconv>
 #include <cstdint>
+#include <ctime>
 #include <filesystem>
 #include <format>
 #include <limits>
@@ -16,16 +19,15 @@
 #include <variant>
 #include <vector>
 
-#include "Driver/Version.h"
+#include "Semantic/PrimitiveConstants.h"
 #include "Target/Target.h"
 
 namespace Rux {
 namespace {
 
-// The operating systems `#os` can name. Each is a real system, not a family:
-// FreeBSD and OpenBSD are told apart here even though `#{ target: "BSD" }`
-// lumps them together. `buildable` marks the ones a build can currently produce;
-// the rest are accepted so that code can name them, and comparing `#os` against
+// The operating systems `#target.os` can name. Each is a real system, not a
+// family, so FreeBSD and OpenBSD remain distinct. `buildable` marks the ones a build can currently produce;
+// the rest are accepted so that code can name them, and comparing `#target.os` against
 // one warns rather than quietly never running.
 struct OsVariant {
     std::string_view name;
@@ -58,8 +60,8 @@ struct EnumValue {
 
 // A compile-time value. `#if` conditions must evaluate to a bool; the other
 // alternatives exist so that comparisons such as `Version >= 2`, `Name == "x"`
-// and `#os == .Windows` can produce one.
-using Value = std::variant<bool, std::int64_t, std::string, EnumValue>;
+// and `#target.os == .Windows` can produce one.
+using Value = std::variant<bool, std::int64_t, std::uint64_t, double, std::string, EnumValue>;
 
 bool EqualsIgnoringCase(const std::string_view a, const std::string_view b) {
     return std::ranges::equal(a, b, [](const char x, const char y) {
@@ -89,19 +91,26 @@ bool IsBuildableOs(const std::string_view variant) {
 }
 
 constexpr std::array ArchVariants{"X86_32", "X86_64", "ARM32", "ARM64", "RISCV32", "RISCV64"};
-constexpr std::array AbiVariants{"SystemV", "WindowsX86", "WindowsX64", "AAPCS", "AAPCS64", "RISCV_ILP32",
-                                 "RISCV_LP64"};
+constexpr std::array AbiVariants{"SystemV", "WindowsX86",  "WindowsX64", "AAPCS",
+                                 "AAPCS64", "RISCV_ILP32", "RISCV_LP64"};
 constexpr std::array EndianVariants{"Little", "Big"};
 constexpr std::array DataModelVariants{"ILP32", "LP64", "LLP64"};
 constexpr std::array ObjectFormatVariants{"ELF", "COFF", "MachO", "Wasm"};
 constexpr std::array BuildModeVariants{"Debug", "Release"};
 constexpr std::array OptimizationVariants{"None", "Size", "Speed"};
 constexpr std::array OutputKindVariants{"Executable", "StaticLibrary", "SharedLibrary"};
-constexpr std::array TargetFeatureVariants{"SSE2", "SSE3", "SSSE3", "SSE41", "SSE42", "AVX", "AVX2", "AVX512",
-                                           "NEON", "SVE", "RVV"};
-constexpr std::array CompilerFeatures{"conditional-compilation", "namespaced-intrinsics", "target-intrinsics",
-                                      "build-intrinsics", "compiler-feature-detection", "source-location-defaults",
-                                      "extern-symbol-names"};
+constexpr std::array TargetFeatureVariants{"SSE2", "SSE3",   "SSSE3", "SSE41", "SSE42", "AVX",
+                                           "AVX2", "AVX512", "NEON",  "SVE",   "RVV"};
+constexpr std::array CompilerFeatures{"conditional-compilation",
+                                      "namespaced-intrinsics",
+                                      "target-intrinsics",
+                                      "build-intrinsics",
+                                      "compiler-feature-detection",
+                                      "source-location-defaults",
+                                      "extern-symbol-names",
+                                      "when-attribute",
+                                      "link-attribute",
+                                      "no-return-attribute"};
 
 template <std::size_t N>
 void RegisterVariants(std::unordered_map<std::string, std::vector<std::string>> &enums, const std::string &name,
@@ -237,7 +246,7 @@ std::string FormatTimestamp(const std::int64_t timestamp, const char *format) {
     return buffer;
 }
 
-std::optional<std::int64_t> ParseIntLiteral(std::string_view text) {
+std::optional<Value> ParseIntLiteral(std::string_view text) {
     // Strip a numeric suffix (12u8, 3i64) and the digit separators.
     std::string digits;
     digits.reserve(text.size());
@@ -288,13 +297,73 @@ std::optional<std::int64_t> ParseIntLiteral(std::string_view text) {
         if (digit >= static_cast<std::uint64_t>(base)) {
             return std::nullopt;
         }
-        const auto limit = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+        const auto limit = std::numeric_limits<std::uint64_t>::max();
         if (value > (limit - digit) / static_cast<std::uint64_t>(base)) {
-            return std::nullopt; // does not fit an int64
+            return std::nullopt;
         }
         value = value * static_cast<std::uint64_t>(base) + digit;
     }
-    return static_cast<std::int64_t>(value);
+    if (value <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+        return Value{static_cast<std::int64_t>(value)};
+    }
+    return Value{value};
+}
+
+std::optional<double> ParseFloatValue(std::string_view text) {
+    std::string value;
+    value.reserve(text.size());
+    for (const char c : text) {
+        if (c != '_') {
+            value.push_back(c);
+        }
+    }
+    try {
+        std::size_t consumed = 0;
+        const double result = std::stod(value, &consumed);
+        const std::string_view suffix{value.data() + consumed, value.size() - consumed};
+        if (!suffix.empty() && suffix != "f32" && suffix != "f64") {
+            return std::nullopt;
+        }
+        return result;
+    }
+    catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::optional<Value> PrimitiveValue(const PrimitiveConstant &constant) {
+    if (constant.type.IsFloat()) {
+        if (const auto value = ParseFloatValue(constant.value)) {
+            return Value{*value};
+        }
+        return std::nullopt;
+    }
+
+    if (!constant.type.IsInteger() && constant.type.kind != TypeRef::Kind::Char8 &&
+        constant.type.kind != TypeRef::Kind::Char16 && constant.type.kind != TypeRef::Kind::Char32) {
+        return std::nullopt;
+    }
+
+    if (constant.value.starts_with('-')) {
+        std::int64_t value = 0;
+        const auto [end, error] =
+            std::from_chars(constant.value.data(), constant.value.data() + constant.value.size(), value);
+        if (error == std::errc{} && end == constant.value.data() + constant.value.size()) {
+            return Value{value};
+        }
+        return std::nullopt;
+    }
+
+    std::uint64_t value = 0;
+    const auto [end, error] =
+        std::from_chars(constant.value.data(), constant.value.data() + constant.value.size(), value);
+    if (error != std::errc{} || end != constant.value.data() + constant.value.size()) {
+        return std::nullopt;
+    }
+    if (value <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+        return Value{static_cast<std::int64_t>(value)};
+    }
+    return Value{value};
 }
 
 // "hello" / c8"hello" -> hello. Only the escapes that can plausibly appear in a
@@ -451,9 +520,8 @@ private:
                 }
             }
         }
-        EmitError(expr.args[0]->location,
-                  allowEnum ? "compile-time intrinsic argument must be a string or enum variant"
-                            : "compile-time intrinsic argument must be a string");
+        EmitError(expr.args[0]->location, allowEnum ? "compile-time intrinsic argument must be a string or enum variant"
+                                                    : "compile-time intrinsic argument must be a string");
         reportedError = true;
         return std::nullopt;
     }
@@ -492,6 +560,11 @@ private:
                 return Value{e->token.text == "true"};
             case TokenKind::IntLiteral:
                 if (const auto value = ParseIntLiteral(e->token.text)) {
+                    return *value;
+                }
+                return std::nullopt;
+            case TokenKind::FloatLiteral:
+                if (const auto value = ParseFloatValue(e->token.text)) {
                     return Value{*value};
                 }
                 return std::nullopt;
@@ -540,7 +613,6 @@ private:
                 return Value{FormatTimestamp(context.buildTimestamp, "%H:%M:%S")};
             case K::Module:
                 return Value{currentModulePath};
-            case K::RuxVersion:
             case K::CompilerVersion:
                 return Value{context.compilerVersion};
             case K::Os:
@@ -577,7 +649,8 @@ private:
             case K::BuildProfile:
                 return Value{context.profileName};
             case K::BuildMode:
-                return Value{EnumValue{"BuildMode", context.buildMode == Target::BuildMode::Release ? "Release" : "Debug"}};
+                return Value{
+                    EnumValue{"BuildMode", context.buildMode == Target::BuildMode::Release ? "Release" : "Debug"}};
             case K::Optimization: {
                 std::string variant = "None";
                 if (context.optimization == OptimizationMode::Size)
@@ -628,6 +701,11 @@ private:
         }
 
         if (const auto *e = dynamic_cast<const PathExpr *>(&expr)) {
+            if (e->segments.size() == 2) {
+                if (const auto constant = LookupPrimitiveConstant(e->segments[0], e->segments[1], context)) {
+                    return PrimitiveValue(*constant);
+                }
+            }
             // The long form of the same thing: OS::Windows.
             if (e->segments.size() == 2) {
                 return Value{EnumValue{e->segments[0], e->segments[1]}};
@@ -650,12 +728,24 @@ private:
                 if (const auto *i = std::get_if<std::int64_t>(&*operand)) {
                     return Value{static_cast<std::int64_t>(0u - static_cast<std::uint64_t>(*i))};
                 }
+                if (const auto *u = std::get_if<std::uint64_t>(&*operand); u && *u <= (std::uint64_t{1} << 63)) {
+                    if (*u == (std::uint64_t{1} << 63)) {
+                        return Value{std::numeric_limits<std::int64_t>::min()};
+                    }
+                    return Value{-static_cast<std::int64_t>(*u)};
+                }
+                if (const auto *f = std::get_if<double>(&*operand)) {
+                    return Value{-*f};
+                }
                 return std::nullopt;
             case TokenKind::Plus:
                 return operand;
             case TokenKind::Tilde:
                 if (const auto *i = std::get_if<std::int64_t>(&*operand)) {
                     return Value{~*i};
+                }
+                if (const auto *u = std::get_if<std::uint64_t>(&*operand)) {
+                    return Value{~*u};
                 }
                 return std::nullopt;
             default:
@@ -670,7 +760,7 @@ private:
         return std::nullopt;
     }
 
-    // `#os == .Windows`. Enum values compare by variant, and only for equality;
+    // `#target.os == .Windows`. Enum values compare by variant, and only for equality;
     // a shorthand takes its enum from the value on the other side.
     std::optional<Value> EvalEnumComparison(const BinaryExpr &e, const EnumValue &left, const EnumValue &right) {
         if (e.op != TokenKind::Equal && e.op != TokenKind::BangEqual) {
@@ -755,7 +845,128 @@ private:
         }
 
         const auto right = Eval(*e.right);
-        if (!right || left->index() != right->index()) {
+        if (!right) {
+            return std::nullopt;
+        }
+
+        const bool leftInteger =
+            std::holds_alternative<std::int64_t>(*left) || std::holds_alternative<std::uint64_t>(*left);
+        const bool rightInteger =
+            std::holds_alternative<std::int64_t>(*right) || std::holds_alternative<std::uint64_t>(*right);
+        if (leftInteger && rightInteger) {
+            const auto equal = [&] {
+                if (const auto *l = std::get_if<std::int64_t>(&*left)) {
+                    if (const auto *r = std::get_if<std::int64_t>(&*right))
+                        return *l == *r;
+                    return *l >= 0 && static_cast<std::uint64_t>(*l) == std::get<std::uint64_t>(*right);
+                }
+                const auto l = std::get<std::uint64_t>(*left);
+                if (const auto *r = std::get_if<std::uint64_t>(&*right))
+                    return l == *r;
+                const auto r = std::get<std::int64_t>(*right);
+                return r >= 0 && l == static_cast<std::uint64_t>(r);
+            };
+            const auto less = [&] {
+                if (const auto *l = std::get_if<std::int64_t>(&*left)) {
+                    if (const auto *r = std::get_if<std::int64_t>(&*right))
+                        return *l < *r;
+                    return *l < 0 || static_cast<std::uint64_t>(*l) < std::get<std::uint64_t>(*right);
+                }
+                const auto l = std::get<std::uint64_t>(*left);
+                if (const auto *r = std::get_if<std::uint64_t>(&*right))
+                    return l < *r;
+                const auto r = std::get<std::int64_t>(*right);
+                return r >= 0 && l < static_cast<std::uint64_t>(r);
+            };
+
+            switch (e.op) {
+            case TokenKind::Equal:
+                return Value{equal()};
+            case TokenKind::BangEqual:
+                return Value{!equal()};
+            case TokenKind::Less:
+                return Value{less()};
+            case TokenKind::LessEqual:
+                return Value{less() || equal()};
+            case TokenKind::Greater:
+                return Value{!less() && !equal()};
+            case TokenKind::GreaterEqual:
+                return Value{!less()};
+            default:
+                break;
+            }
+
+            if (const auto *l = std::get_if<std::int64_t>(&*left)) {
+                const auto *r = std::get_if<std::int64_t>(&*right);
+                if (!r) {
+                    return std::nullopt;
+                }
+                const auto lu = static_cast<std::uint64_t>(*l);
+                const auto ru = static_cast<std::uint64_t>(*r);
+                switch (e.op) {
+                case TokenKind::Plus:
+                    return Value{static_cast<std::int64_t>(lu + ru)};
+                case TokenKind::Minus:
+                    return Value{static_cast<std::int64_t>(lu - ru)};
+                case TokenKind::Star:
+                    return Value{static_cast<std::int64_t>(lu * ru)};
+                case TokenKind::Slash:
+                case TokenKind::Percent:
+                    if (*r == 0 || (*l == std::numeric_limits<std::int64_t>::min() && *r == -1))
+                        return std::nullopt;
+                    return Value{e.op == TokenKind::Slash ? *l / *r : *l % *r};
+                case TokenKind::Amp:
+                    return Value{*l & *r};
+                case TokenKind::Pipe:
+                    return Value{*l | *r};
+                case TokenKind::Caret:
+                    return Value{*l ^ *r};
+                case TokenKind::LessLess:
+                case TokenKind::GreaterGreater:
+                    if (*r < 0 || *r >= 64)
+                        return std::nullopt;
+                    return Value{e.op == TokenKind::LessLess
+                                     ? static_cast<std::int64_t>(lu << static_cast<std::uint64_t>(*r))
+                                     : *l >> *r};
+                default:
+                    return std::nullopt;
+                }
+            }
+
+            const auto l = std::get<std::uint64_t>(*left);
+            const auto *r = std::get_if<std::uint64_t>(&*right);
+            if (!r) {
+                return std::nullopt;
+            }
+            switch (e.op) {
+            case TokenKind::Plus:
+                return Value{l + *r};
+            case TokenKind::Minus:
+                return Value{l - *r};
+            case TokenKind::Star:
+                return Value{l * *r};
+            case TokenKind::Slash:
+            case TokenKind::Percent:
+                if (*r == 0)
+                    return std::nullopt;
+                return Value{e.op == TokenKind::Slash ? l / *r : l % *r};
+            case TokenKind::Amp:
+                return Value{l & *r};
+            case TokenKind::Pipe:
+                return Value{l | *r};
+            case TokenKind::Caret:
+                return Value{l ^ *r};
+            case TokenKind::LessLess:
+            case TokenKind::GreaterGreater:
+                if (*r >= 64)
+                    return std::nullopt;
+                return Value{e.op == TokenKind::LessLess ? l << *r : l >> *r};
+            default:
+                return std::nullopt;
+            }
+        }
+
+        if (left->index() != right->index()) {
             return std::nullopt;
         }
 
@@ -800,51 +1011,36 @@ private:
             }
         }
 
-        const auto l = std::get<std::int64_t>(*left);
-        const auto r = std::get<std::int64_t>(*right);
-        const auto lu = static_cast<std::uint64_t>(l);
-        const auto ru = static_cast<std::uint64_t>(r);
-        switch (e.op) {
-        case TokenKind::Less:
-            return Value{l < r};
-        case TokenKind::LessEqual:
-            return Value{l <= r};
-        case TokenKind::Greater:
-            return Value{l > r};
-        case TokenKind::GreaterEqual:
-            return Value{l >= r};
-        case TokenKind::Plus:
-            return Value{static_cast<std::int64_t>(lu + ru)};
-        case TokenKind::Minus:
-            return Value{static_cast<std::int64_t>(lu - ru)};
-        case TokenKind::Star:
-            return Value{static_cast<std::int64_t>(lu * ru)};
-        case TokenKind::Slash:
-        case TokenKind::Percent:
-            if (r == 0 || (l == std::numeric_limits<std::int64_t>::min() && r == -1)) {
+        if (const auto *lf = std::get_if<double>(&*left)) {
+            const double rf = std::get<double>(*right);
+            switch (e.op) {
+            case TokenKind::Less:
+                return Value{*lf < rf};
+            case TokenKind::LessEqual:
+                return Value{*lf <= rf};
+            case TokenKind::Greater:
+                return Value{*lf > rf};
+            case TokenKind::GreaterEqual:
+                return Value{*lf >= rf};
+            case TokenKind::Plus:
+                return Value{*lf + rf};
+            case TokenKind::Minus:
+                return Value{*lf - rf};
+            case TokenKind::Star:
+                return Value{*lf * rf};
+            case TokenKind::Slash:
+                return Value{*lf / rf};
+            default:
                 return std::nullopt;
             }
-            return Value{e.op == TokenKind::Slash ? l / r : l % r};
-        case TokenKind::Amp:
-            return Value{l & r};
-        case TokenKind::Pipe:
-            return Value{l | r};
-        case TokenKind::Caret:
-            return Value{l ^ r};
-        case TokenKind::LessLess:
-        case TokenKind::GreaterGreater:
-            if (r < 0 || r >= 64) {
-                return std::nullopt;
-            }
-            return Value{e.op == TokenKind::LessLess ? static_cast<std::int64_t>(lu << static_cast<std::uint64_t>(r))
-                                                     : l >> r};
-        default:
-            return std::nullopt;
         }
+
+        return std::nullopt;
     }
 
-    // Evaluates a `#if` condition, reporting why it cannot be used if it fails.
-    bool EvalCondition(const Expr *condition, const SourceLocation location) {
+    // Evaluates a conditional-compilation condition, reporting why it cannot
+    // be used if it fails.
+    bool EvalCondition(const Expr *condition, const SourceLocation location, const std::string_view directive) {
         if (!condition) {
             return false;
         }
@@ -852,14 +1048,15 @@ private:
         const auto value = Eval(*condition);
         if (!value) {
             if (!reportedError) {
-                EmitError(location, "'#if' condition must be a compile-time constant expression");
+                EmitError(location,
+                          std::format("'{}' condition must be a compile-time constant expression", directive));
             }
             return false;
         }
         if (const auto *b = std::get_if<bool>(&*value)) {
             return *b;
         }
-        EmitError(location, "'#if' condition must be of type 'bool'");
+        EmitError(location, std::format("'{}' condition must be of type 'bool'", directive));
         return false;
     }
 
@@ -880,8 +1077,8 @@ private:
                     const std::string savedDeclModule = currentDeclModulePath;
                     currentModulePath =
                         currentModulePath.empty() ? module->name : currentModulePath + "::" + module->name;
-                    currentDeclModulePath = currentDeclModulePath.empty() ? module->name
-                                                                         : currentDeclModulePath + "::" + module->name;
+                    currentDeclModulePath =
+                        currentDeclModulePath.empty() ? module->name : currentDeclModulePath + "::" + module->name;
                     ResolveDecls(module->items);
                     currentModulePath = savedModule;
                     currentDeclModulePath = savedDeclModule;
@@ -895,7 +1092,8 @@ private:
 
             for (auto &branch : compileTimeIf->branches) {
                 // A branch with no condition is the trailing `else`.
-                if (branch.condition && !EvalCondition(branch.condition.get(), compileTimeIf->location)) {
+                const std::string_view directive = compileTimeIf->isWhen ? "#When" : "#if";
+                if (branch.condition && !EvalCondition(branch.condition.get(), compileTimeIf->location, directive)) {
                     continue;
                 }
                 ResolveDecls(branch.items);
@@ -919,7 +1117,8 @@ private:
                 continue;
             }
             for (auto &branch : conditional->branches) {
-                if (branch.condition && !EvalCondition(branch.condition.get(), conditional->location)) {
+                const std::string_view directive = conditional->isWhen ? "#When" : "#if";
+                if (branch.condition && !EvalCondition(branch.condition.get(), conditional->location, directive)) {
                     continue;
                 }
                 ResolveDecls(branch.items); // a nested `#if` resolves first
@@ -946,8 +1145,7 @@ private:
     void ResolveDeclBodies(Decl &decl) {
         if (auto *func = dynamic_cast<FuncDecl *>(&decl)) {
             const std::string savedFunction = currentFunction;
-            currentFunction =
-                currentDeclModulePath.empty() ? func->name : currentDeclModulePath + "::" + func->name;
+            currentFunction = currentDeclModulePath.empty() ? func->name : currentDeclModulePath + "::" + func->name;
             if (func->body) {
                 ResolveBlock(*func->body);
             }
@@ -967,8 +1165,8 @@ private:
             const std::string savedModule = currentModulePath;
             const std::string savedDeclModule = currentDeclModulePath;
             currentModulePath = currentModulePath.empty() ? module->name : currentModulePath + "::" + module->name;
-            currentDeclModulePath = currentDeclModulePath.empty() ? module->name
-                                                                 : currentDeclModulePath + "::" + module->name;
+            currentDeclModulePath =
+                currentDeclModulePath.empty() ? module->name : currentDeclModulePath + "::" + module->name;
             for (const auto &item : module->items) {
                 if (item) {
                     ResolveDeclBodies(*item);
@@ -997,12 +1195,12 @@ private:
         auto *ifStmt = dynamic_cast<IfStmt *>(stmt.get());
         if (ifStmt && ifStmt->isCompileTime) {
             Block *taken = nullptr;
-            if (EvalCondition(ifStmt->condition.get(), ifStmt->location)) {
+            if (EvalCondition(ifStmt->condition.get(), ifStmt->location, "#if")) {
                 taken = ifStmt->thenBlock.get();
             }
             else {
                 for (auto &elseIf : ifStmt->elseIfs) {
-                    if (EvalCondition(elseIf.condition.get(), elseIf.location)) {
+                    if (EvalCondition(elseIf.condition.get(), elseIf.location, "#if")) {
                         taken = elseIf.block.get();
                         break;
                     }
@@ -1162,7 +1360,8 @@ void ResolveConditionalCompilation(const std::vector<Module *> &modules, const s
                                    std::vector<Diagnostic> &diags) {
     CompileTimeContext context;
     if (const auto variant = OsVariantFor(targetSystem.empty() ? ToString(Target::HostOS) : targetSystem)) {
-        for (int value = static_cast<int>(Target::OS::Unknown); value <= static_cast<int>(Target::OS::Illumos); ++value) {
+        for (int value = static_cast<int>(Target::OS::Unknown); value <= static_cast<int>(Target::OS::Illumos);
+             ++value) {
             const auto os = static_cast<Target::OS>(value);
             if (const auto candidate = OsVariantFor(ToString(os)); candidate && *candidate == *variant) {
                 context.target.os = os;

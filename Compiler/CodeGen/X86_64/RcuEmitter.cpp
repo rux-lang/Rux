@@ -122,11 +122,12 @@ class RcuCodeGen {
 public:
     explicit RcuCodeGen(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
                         const std::vector<std::string> &inputPackageInterfaceNames, std::string packageName,
-                        std::vector<Diagnostic> &inputDiagnostics)
+                        const Target::OS inputTargetOs, std::vector<Diagnostic> &inputDiagnostics)
         : mod(module)
         , structDecls(inputStructDecls)
         , packageInterfaceNames(inputPackageInterfaceNames)
         , pkgName(std::move(packageName))
+        , targetOs(inputTargetOs)
         , diagnostics(inputDiagnostics)
         , enc(textData) {
     }
@@ -138,6 +139,7 @@ private:
     const std::vector<LirStructDecl> &structDecls;
     const std::vector<std::string> &packageInterfaceNames;
     std::string pkgName;
+    Target::OS targetOs;
     std::vector<Diagnostic> &diagnostics;
 
     // Section data buffers
@@ -1743,6 +1745,105 @@ private:
             StoreA(instr.dst, TypeRef::MakePointer(instr.type));
             break;
         }
+        case LirOpcode::Assert:
+        case LirOpcode::Panic: {
+            const bool isAssertion = instr.op == LirOpcode::Assert;
+            if (instr.srcs.size() < (isAssertion ? 2 : 1)) {
+                break;
+            }
+            uint32_t okPatch = 0;
+            if (isAssertion) {
+                LoadA(instr.srcs[0], TypeRef::MakeBool());
+                enc.TestRaxRax();
+                enc.Jnz(okPatch);
+            }
+
+            const LirReg messageReg = instr.srcs[isAssertion ? 1 : 0];
+            const std::string prefix = isAssertion ? "Assertion failed: " : "Panic: ";
+            const std::string function = instr.sourceFunction.empty() ? "<unknown>" : instr.sourceFunction;
+            const std::string file = instr.sourceFile.empty() ? "<unknown>" : instr.sourceFile;
+            const std::string suffix =
+                std::format("\n  at {} ({}:{}:{})\n", function, file, instr.sourceLine, instr.sourceColumn);
+
+            if (targetOs == Target::OS::Windows) {
+                const uint32_t getStdHandle = GetOrAddExtern("GetStdHandle", RcuSymKind::ExternFunc, "KERNEL32.DLL");
+                const uint32_t writeFile = GetOrAddExtern("WriteFile", RcuSymKind::ExternFunc, "KERNEL32.DLL");
+
+                // Shadow space, the fifth WriteFile argument, and a DWORD for
+                // lpNumberOfBytesWritten. The failure path never returns.
+                enc.SubRspImm32(48);
+                enc.MovQwordRspImm32(32, 0);
+
+                const auto prepareWrite = [&]() {
+                    enc.MovEaxImm32(-12); // STD_ERROR_HANDLE
+                    enc.MovArgWin64Rax(0);
+                    uint32_t getHandleReloc;
+                    enc.Call(getHandleReloc);
+                    AddTextReloc(getHandleReloc, getStdHandle);
+                    enc.MovArgWin64Rax(0);
+                    enc.LeaR9Rsp(40);
+                };
+                const auto writeStatic = [&](const std::string &text) {
+                    prepareWrite();
+                    const uint32_t textSymbol = InternStr(text);
+                    uint32_t textReloc;
+                    enc.LeaRaxRip(textReloc);
+                    AddTextReloc(textReloc, textSymbol);
+                    enc.MovArgWin64Rax(1);
+                    enc.MovEaxImm32(static_cast<int32_t>(text.size()));
+                    enc.MovArgWin64Rax(2);
+                    uint32_t writeReloc;
+                    enc.Call(writeReloc);
+                    AddTextReloc(writeReloc, writeFile);
+                };
+
+                writeStatic(prefix);
+
+                prepareWrite();
+                LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
+                enc.MovR10Rax();
+                enc.MovRdxR10Load();
+                enc.MovR8R10Load(8);
+                uint32_t messageWriteReloc;
+                enc.Call(messageWriteReloc);
+                AddTextReloc(messageWriteReloc, writeFile);
+
+                writeStatic(suffix);
+            }
+            else {
+                const int syscallNumber = targetOs == Target::OS::Linux ? 1
+                                        : targetOs == Target::OS::MacOS ? 0x0200'0004
+                                                                        : 4;
+                const auto writeStatic = [&](const std::string &text) {
+                    const uint32_t textSymbol = InternStr(text);
+                    uint32_t textReloc;
+                    enc.LeaRaxRip(textReloc);
+                    AddTextReloc(textReloc, textSymbol);
+                    enc.MovRsiRax();
+                    enc.MovEdxImm32(static_cast<int32_t>(text.size()));
+                    enc.MovEdiImm32(2);
+                    enc.MovEaxImm32(syscallNumber);
+                    enc.Syscall();
+                };
+
+                writeStatic(prefix);
+                LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
+                enc.MovR10Rax();
+                enc.MovRsiR10Load();
+                enc.MovRdxR10Load(8);
+                enc.MovEdiImm32(2);
+                enc.MovEaxImm32(syscallNumber);
+                enc.Syscall();
+                writeStatic(suffix);
+            }
+
+            enc.Ud2();
+            if (isAssertion) {
+                const auto here = static_cast<int32_t>(enc.Size());
+                enc.Patch32(okPatch, here - static_cast<int32_t>(okPatch + 4));
+            }
+            break;
+        }
         case LirOpcode::Load: {
             const TypeRef &t = instr.type;
             int sz = SizeOfRuntime(t);
@@ -2542,6 +2643,9 @@ private:
             jumpPatches.push_back({po, term.defaultTarget});
             break;
         }
+        case LirTermKind::Unreachable:
+            enc.Ud2();
+            break;
         }
     }
 
@@ -3003,14 +3107,15 @@ RcuFile RcuCodeGen::Generate() {
 
 RcuFile GenerateRcuModule(const LirModule &mod, const std::vector<LirStructDecl> &structDecls,
                           const std::vector<std::string> &interfaceNames, const std::string &packageName,
-                          std::vector<Diagnostic> &diagnostics) {
-    RcuCodeGen gen(mod, structDecls, interfaceNames, packageName, diagnostics);
+                          const Target::OS targetOs, std::vector<Diagnostic> &diagnostics) {
+    RcuCodeGen gen(mod, structDecls, interfaceNames, packageName, targetOs, diagnostics);
     return gen.Generate();
 }
 
-RcuEmitter::RcuEmitter(const LirPackage &package, std::string inputPackageName)
+RcuEmitter::RcuEmitter(const LirPackage &package, std::string inputPackageName, const Target::OS inputTargetOs)
     : lir(package)
-    , packageName(std::move(inputPackageName)) {
+    , packageName(std::move(inputPackageName))
+    , targetOs(inputTargetOs) {
 }
 
 std::vector<RcuFile> RcuEmitter::Generate() const {
@@ -3023,7 +3128,7 @@ std::vector<RcuFile> RcuEmitter::Generate() const {
         interfaceNames.insert(interfaceNames.end(), module.interfaceNames.begin(), module.interfaceNames.end());
     }
     for (const auto &module : lir.modules) {
-        result.push_back(GenerateRcuModule(module, structDecls, interfaceNames, packageName, diagnostics));
+        result.push_back(GenerateRcuModule(module, structDecls, interfaceNames, packageName, targetOs, diagnostics));
     }
     return result;
 }

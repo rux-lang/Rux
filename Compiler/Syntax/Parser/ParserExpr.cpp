@@ -536,42 +536,9 @@ ExprPtr Parser::ParsePrimary() {
         e->variant = Advance().text;
         return e;
     }
-    // Compile-time intrinsics. Both the concise compatibility spellings
-    // (`#arch`) and namespaced spellings (`#target.arch`) produce the same AST.
+    // Compile-time intrinsics use namespaced spellings such as `#target.arch`.
     {
         using K = IntrinsicExpr::Kind;
-        static constexpr std::pair<TokenKind, K> intrinsics[] = {
-            {TokenKind::HashLine, K::Line},
-            {TokenKind::HashColumn, K::Column},
-            {TokenKind::HashFile, K::File},
-            {TokenKind::HashFileName, K::FileName},
-            {TokenKind::HashFilePath, K::FilePath},
-            {TokenKind::HashFunction, K::Function},
-            {TokenKind::HashDate, K::Date},
-            {TokenKind::HashTime, K::Time},
-            {TokenKind::HashModule, K::Module},
-            {TokenKind::hashRuxVersion, K::RuxVersion},
-            {TokenKind::hashOs, K::Os},
-            {TokenKind::HashArch, K::Arch},
-            {TokenKind::HashAbi, K::Abi},
-            {TokenKind::HashEndian, K::Endian},
-            {TokenKind::HashPointerBits, K::PointerBits},
-            {TokenKind::HashDataModel, K::DataModel},
-            {TokenKind::HashObjectFormat, K::ObjectFormat},
-            {TokenKind::HashTargetTriple, K::TargetTriple},
-            {TokenKind::HashTargetFeature, K::TargetFeature},
-            {TokenKind::HashBuildProfile, K::BuildProfile},
-            {TokenKind::HashBuildMode, K::BuildMode},
-            {TokenKind::HashOptimization, K::Optimization},
-            {TokenKind::HashDebugAssertions, K::DebugAssertions},
-            {TokenKind::HashDebugInfo, K::DebugInfo},
-            {TokenKind::HashIsTest, K::IsTest},
-            {TokenKind::HashOutputKind, K::OutputKind},
-            {TokenKind::HashBuildTimestamp, K::BuildTimestamp},
-            {TokenKind::HashCompilerVersion, K::CompilerVersion},
-            {TokenKind::HashCompilerHasFeature, K::CompilerHasFeature},
-            {TokenKind::HashHasConfig, K::HasConfig},
-        };
         auto takesArgument = [](const K kind) {
             return kind == K::TargetFeature || kind == K::CompilerHasFeature || kind == K::Config ||
                    kind == K::HasConfig;
@@ -589,12 +556,6 @@ ExprPtr Parser::ParsePrimary() {
             }
             return e;
         };
-        for (auto [tok, kind] : intrinsics) {
-            if (Match(tok)) {
-                return finish(kind);
-            }
-        }
-
         auto namespaced = [&](const TokenKind root,
                               const std::initializer_list<std::pair<std::string_view, K>> members) -> ExprPtr {
             if (!Match(root)) {

@@ -70,13 +70,24 @@ private:
         CallingConvention callConv = CallingConvention::Default;
         std::string warnMessage;
         std::string errorMessage;
+        ExprPtr whenCondition;
+        SourceLocation whenLocation;
+        bool usedLink = false;
+        bool usedLibrary = false;
+        bool usedSymbol = false;
+        bool usedNoReturn = false;
+        bool usedAbi = false;
+        SourceLocation linkLocation;
+        SourceLocation noReturnLocation;
+        SourceLocation abiLocation;
     };
 
-    // Parses the `#{ key: value, ... }` metadata blocks and `#Name("...")` meta
-    // functions before a declaration.
+    // Parses `#Name(...)` attribute calls before a declaration. The former
+    // `#{...}` metadata-block form is rejected.
     ParsedAttrs ParseAttrs();
-    void ParseMetaFunc(ParsedAttrs &attrs);
-    DeclPtr ParseExternDecl(bool isPublic, ParsedAttrs attrs);
+    void ParseAttributeCall(ParsedAttrs &attrs);
+    DeclPtr ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs);
+    DeclPtr ParseExternDecl(bool isPublic, ParsedAttrs &attrs);
 
     // Declarations
     std::unique_ptr<FuncDecl> ParseFuncDecl(bool isPublic, bool isAsm,

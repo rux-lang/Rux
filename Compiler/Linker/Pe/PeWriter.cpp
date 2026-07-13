@@ -202,7 +202,7 @@ FindDllFile(const std::string &dll, const std::vector<std::filesystem::path> &se
     }
 
     // Candidate file names to probe in each search location. Imports are
-    // commonly declared without an extension (e.g. #{ library: "kernel32" });
+    // commonly declared without an extension (e.g. #Link("kernel32"));
     // mirror the OS loader and also try the name with ".dll" appended.
     std::vector<std::filesystem::path> candidates{dllPath};
     if (dllPath.extension().empty()) {

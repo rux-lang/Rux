@@ -1,5 +1,6 @@
 #include "Ir/Hir/Hir.h"
 
+#include <algorithm>
 #include <doctest.h>
 #include <string>
 #include <unordered_map>
@@ -130,10 +131,128 @@ TEST_CASE("string literal slices reference static storage") {
     CHECK(output.find("lea     rax, [rel __str") != std::string::npos);
 }
 
+TEST_CASE("metadata blocks are rejected before extern functions") {
+    Lexer lexer(R"(
+        #{ library: "Kernel32.dll" }
+        extern func CreateFileA() -> *uint8;
+    )",
+                "test.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+
+    Parser parser(std::move(lexed.tokens), "test.rux");
+    const auto parsed = parser.Parse();
+
+    REQUIRE(parsed.HasErrors());
+    REQUIRE_EQ(parsed.diagnostics.size(), 1);
+    CHECK_EQ(parsed.diagnostics.front().message,
+             "metadata blocks '#{...}' are unsupported; use attribute calls such as '#Abi(.Win64)'");
+}
+
+TEST_CASE("metadata blocks are rejected after compatibility attributes") {
+    Lexer lexer(R"(
+        #Library("Kernel32.dll")
+        #{ symbol: "Beep" }
+        extern func Tone(freq: uint32, duration: uint32) -> bool32;
+    )",
+                "test.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+
+    Parser parser(std::move(lexed.tokens), "test.rux");
+    const auto parsed = parser.Parse();
+
+    REQUIRE(parsed.HasErrors());
+    REQUIRE_EQ(parsed.diagnostics.size(), 1);
+    CHECK_EQ(parsed.diagnostics.front().message,
+             "metadata blocks '#{...}' are unsupported; use attribute calls such as '#Abi(.Win64)'");
+}
+
+TEST_CASE("Abi attribute replaces ABI metadata blocks") {
+    Lexer lexer(R"(
+        #Abi(.SysV)
+        func Native() {}
+    )",
+                "test.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+
+    Parser parser(std::move(lexed.tokens), "test.rux");
+    const auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    REQUIRE_EQ(parsed.module.items.size(), 1);
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items.front().get());
+    REQUIRE(function != nullptr);
+    CHECK_EQ(function->callConv, CallingConvention::SysV);
+}
+
+TEST_CASE("Abi attribute validates its target, value, and uniqueness") {
+    Lexer lexer(R"(
+        #Abi(.Unknown)
+        const Value = 1;
+
+        #Abi(.C)
+        #Abi(.Win64)
+        func Duplicate() {}
+    )",
+                "test.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+
+    Parser parser(std::move(lexed.tokens), "test.rux");
+    const auto parsed = parser.Parse();
+    REQUIRE(parsed.HasErrors());
+    CHECK(std::ranges::any_of(parsed.diagnostics, [](const Diagnostic &diagnostic) {
+        return diagnostic.message.find("unknown ABI '.Unknown'") != std::string::npos;
+    }));
+    CHECK(std::ranges::any_of(parsed.diagnostics, [](const Diagnostic &diagnostic) {
+        return diagnostic.message.find("'#Abi' can only be applied to a function or extern block") != std::string::npos;
+    }));
+    CHECK(std::ranges::any_of(parsed.diagnostics, [](const Diagnostic &diagnostic) {
+        return diagnostic.message.find("duplicate '#Abi' attribute") != std::string::npos;
+    }));
+}
+
+TEST_CASE("Link cannot be combined with compatibility import attributes") {
+    Lexer lexer(R"(
+        #Link("Kernel32.dll")
+        #Library("Kernel32.dll")
+        extern func Beep(freq: uint32, duration: uint32) -> bool32;
+    )",
+                "test.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+
+    Parser parser(std::move(lexed.tokens), "test.rux");
+    const auto parsed = parser.Parse();
+
+    REQUIRE(parsed.HasErrors());
+    REQUIRE_EQ(parsed.diagnostics.size(), 1);
+    CHECK_EQ(parsed.diagnostics.front().message, "'#Library' cannot be combined with '#Link'");
+}
+
+TEST_CASE("two-argument Link cannot be applied to an extern block") {
+    Lexer lexer(R"(
+        #Link("Kernel32.dll", "Beep")
+        extern { func Beep(freq: uint32, duration: uint32) -> bool32; }
+    )",
+                "test.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+
+    Parser parser(std::move(lexed.tokens), "test.rux");
+    const auto parsed = parser.Parse();
+
+    REQUIRE(parsed.HasErrors());
+    REQUIRE_EQ(parsed.diagnostics.size(), 1);
+    CHECK_EQ(parsed.diagnostics.front().message, "an imported symbol name cannot be applied to an extern block; "
+                                                 "use the one-argument '#Link(\"library\")' form");
+}
+
 TEST_CASE("codegen generates correct calling convention for extern functions") {
     std::string source = R"(
-        #{ library: "kernel32.dll" }
-        extern func CreateFileA(
+        #Link("Kernel32.dll", "CreateFileA")
+        extern func OpenFile(
             lpFileName: *uint8,
             dwDesiredAccess: uint32,
             dwShareMode: uint32,
@@ -144,7 +263,7 @@ TEST_CASE("codegen generates correct calling convention for extern functions") {
         ) -> *uint8;
 
         func Main() -> int {
-            let handle = CreateFileA(
+            let handle = OpenFile(
                 null,
                 1073741824u32,
                 0u32,
@@ -158,6 +277,7 @@ TEST_CASE("codegen generates correct calling convention for extern functions") {
     )";
 
     std::string asmOutput = CompileToAsm(source);
+    CHECK(asmOutput.find("CreateFileA") != std::string::npos);
 
 #if RUX_OS_WINDOWS
     // Sur Windows, on s'attend à la convention d'appel Win64.

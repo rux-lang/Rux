@@ -1,0 +1,9 @@
+#NoReturn()
+func Fail(message: char8[]) {
+    Panic(message);
+}
+
+func Main() -> int {
+    Fail("database invariant violated");
+    return 0;
+}

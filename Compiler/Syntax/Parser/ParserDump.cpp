@@ -214,7 +214,7 @@ private:
 
     void PrintCompileTimeIfDecl(const CompileTimeIfDecl &d) {
         Pad();
-        out << "CompileTimeIfDecl\n";
+        out << (d.isWhen ? "CompileTimeWhenDecl\n" : "CompileTimeIfDecl\n");
         ++indent;
         for (const auto &branch : d.branches) {
             Pad();
@@ -238,6 +238,10 @@ private:
     }
 
     void PrintFuncDecl(const FuncDecl &f) {
+        if (f.isNoReturn) {
+            Pad();
+            out << "#NoReturn()\n";
+        }
         Pad();
         if (f.isPublic) {
             out << "pub ";
@@ -528,17 +532,21 @@ private:
     }
 
     void PrintExternFuncDecl(const ExternFuncDecl &f) const {
+        if (f.isNoReturn) {
+            Pad();
+            out << "#NoReturn()\n";
+        }
         if (!f.dll.empty()) {
             Pad();
-            out << "#{ library: \"" << f.dll << "\"";
+            out << "#Link(\"" << f.dll << "\"";
             if (!f.symbolName.empty()) {
-                out << ", symbol: \"" << f.symbolName << "\"";
+                out << ", \"" << f.symbolName << "\"";
             }
-            out << " }\n";
+            out << ")\n";
         }
         if (f.callConv != CallingConvention::Default) {
             Pad();
-            out << "#{ abi: " << ConventionName(f.callConv) << " }\n";
+            out << "#Abi(" << ConventionName(f.callConv) << ")\n";
         }
         Pad();
         if (f.isPublic) {
@@ -798,37 +806,36 @@ private:
             out << "EnumShorthandExpr '." << shorthand->variant << "'\n";
         }
         else if (const auto *intr = dynamic_cast<const IntrinsicExpr *>(&expr)) {
-            static constexpr const char *names[] = {"#line",
-                                                    "#column",
-                                                    "#file",
-                                                    "#fileName",
-                                                    "#filePath",
-                                                    "#function",
-                                                    "#date",
-                                                    "#time",
-                                                    "#module",
-                                                    "#ruxVersion",
-                                                    "#os",
-                                                    "#arch",
-                                                    "#abi",
-                                                    "#endian",
-                                                    "#pointerBits",
-                                                    "#dataModel",
-                                                    "#objectFormat",
-                                                    "#targetTriple",
-                                                    "#targetFeature",
-                                                    "#buildProfile",
-                                                    "#buildMode",
-                                                    "#optimization",
-                                                    "#debugAssertions",
-                                                    "#debugInfo",
-                                                    "#isTest",
-                                                    "#outputKind",
-                                                    "#buildTimestamp",
-                                                    "#compilerVersion",
-                                                    "#compilerHasFeature",
+            static constexpr const char *names[] = {"#source.line",
+                                                    "#source.column",
+                                                    "#source.file",
+                                                    "#source.fileName",
+                                                    "#source.filePath",
+                                                    "#source.function",
+                                                    "#build.date",
+                                                    "#build.time",
+                                                    "#source.module",
+                                                    "#target.os",
+                                                    "#target.arch",
+                                                    "#target.abi",
+                                                    "#target.endian",
+                                                    "#target.pointerBits",
+                                                    "#target.dataModel",
+                                                    "#target.objectFormat",
+                                                    "#target.triple",
+                                                    "#target.hasFeature",
+                                                    "#build.profile",
+                                                    "#build.mode",
+                                                    "#build.optimization",
+                                                    "#build.debugAssertions",
+                                                    "#build.debugInfo",
+                                                    "#build.isTest",
+                                                    "#build.outputKind",
+                                                    "#build.timestamp",
+                                                    "#compiler.version",
+                                                    "#compiler.hasFeature",
                                                     "#config",
-                                                    "#hasConfig"};
+                                                    "#config.has"};
             Pad();
             out << "IntrinsicExpr " << names[static_cast<int>(intr->kind)] << '\n';
             ++indent;

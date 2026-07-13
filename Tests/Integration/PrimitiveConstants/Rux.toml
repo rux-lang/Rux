@@ -1,0 +1,7 @@
+[Package]
+Name = "PrimitiveConstants"
+Version = "0.1.0"
+Description = "Primitive associated constants integration test"
+
+[Build]
+Output = "../Bin"

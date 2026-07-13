@@ -86,140 +86,278 @@ static std::string DecodeStringLiteralText(const std::string &text) {
     return out;
 }
 
-// Parses one `#Name("...")` meta function, with the '#' already consumed. A
-// meta function acts at each use of the declaration rather than describing it,
-// which is why it reads as a call and not as a `#{ }` key.
-void Parser::ParseMetaFunc(ParsedAttrs &attrs) {
+// Parses one `#Name("...")` attribute call, with the '#' already consumed.
+// `#Error` and `#Warn` act at each use of the declaration, `#Link` describes
+// how an extern declaration is imported (`#Library` and `#Symbol` are retained
+// as compatibility spellings), and `#When` conditionally includes the
+// declaration at compile time, `#Abi(...)` selects a calling convention, and
+// `#NoReturn()` marks a function that never returns to its caller.
+void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
+    const SourceLocation attributeLoc = Previous().location;
     const SourceLocation nameLoc = CurrentLocation();
     const std::string name = Advance().text;
 
-    if (name != "Error" && name != "Warn") {
-        EmitError(nameLoc, std::format("unknown meta function '#{}'", name));
+    if (name != "Error" && name != "Warn" && name != "Link" && name != "Library" && name != "Symbol" &&
+        name != "When" && name != "NoReturn" && name != "Abi") {
+        EmitError(nameLoc, std::format("unknown attribute call '#{}'", name));
         // Skip a parenthesized argument list, if any, so the declaration that
         // follows still parses.
         if (Match(TokenKind::LeftParen)) {
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                 Advance();
             }
-            Expect(TokenKind::RightParen, "expected ')' to close the meta function");
+            Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
         }
         return;
     }
 
     Expect(TokenKind::LeftParen, std::format("expected '(' after '#{}'", name));
-    if (Check(TokenKind::StringLiteral)) {
-        std::string message = DecodeStringLiteralText(Advance().text);
-        if (name == "Error") {
-            attrs.errorMessage = std::move(message);
+    if (name == "NoReturn") {
+        if (attrs.usedNoReturn) {
+            EmitError(nameLoc, "duplicate '#NoReturn' attribute");
+        }
+        attrs.usedNoReturn = true;
+        attrs.noReturnLocation = attributeLoc;
+        if (!Check(TokenKind::RightParen)) {
+            EmitError(CurrentLocation(), "'#NoReturn' does not accept arguments");
+            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                Advance();
+            }
+        }
+        Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+        return;
+    }
+
+    if (name == "Abi") {
+        if (attrs.usedAbi) {
+            EmitError(nameLoc, "duplicate '#Abi' attribute");
+        }
+        attrs.usedAbi = true;
+        attrs.abiLocation = attributeLoc;
+
+        Expect(TokenKind::Dot, "expected '.' before an ABI");
+        const SourceLocation variantLoc = CurrentLocation();
+        std::string variant;
+        if (Check(TokenKind::Ident)) {
+            variant = Advance().text;
         }
         else {
-            attrs.warnMessage = std::move(message);
+            EmitError(variantLoc, "expected an ABI name");
+        }
+
+        if (variant == "C") {
+            attrs.callConv = CallingConvention::C;
+        }
+        else if (variant == "Win64") {
+            attrs.callConv = CallingConvention::Win64;
+        }
+        else if (variant == "SysV") {
+            attrs.callConv = CallingConvention::SysV;
+        }
+        else if (!variant.empty()) {
+            EmitError(variantLoc, std::format("unknown ABI '.{}'; valid ABIs are: .C, .SysV, .Win64", variant));
+        }
+
+        if (!Check(TokenKind::RightParen)) {
+            EmitError(CurrentLocation(), "'#Abi' accepts exactly one argument");
+            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                Advance();
+            }
+        }
+        Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+        return;
+    }
+
+    if (name == "Link") {
+        const bool duplicate = attrs.usedLink;
+        const bool mixed = attrs.usedLibrary || attrs.usedSymbol;
+        if (duplicate) {
+            EmitError(nameLoc, "duplicate '#Link' attribute");
+        }
+        if (mixed) {
+            EmitError(nameLoc, "'#Link' cannot be combined with '#Library' or '#Symbol'");
+        }
+        attrs.usedLink = true;
+        attrs.linkLocation = attributeLoc;
+
+        if (!Check(TokenKind::StringLiteral)) {
+            EmitError(CurrentLocation(), "'#Link' requires a library name string");
+            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                Advance();
+            }
+            Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+            return;
+        }
+
+        std::string library = DecodeStringLiteralText(Advance().text);
+        std::string symbol;
+        if (Match(TokenKind::Comma)) {
+            if (Check(TokenKind::StringLiteral)) {
+                symbol = DecodeStringLiteralText(Advance().text);
+            }
+            else {
+                EmitError(CurrentLocation(), "'#Link' symbol name must be a string");
+            }
+            if (Match(TokenKind::Comma)) {
+                EmitError(Previous().location, "'#Link' accepts at most two arguments");
+                while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                    Advance();
+                }
+            }
+        }
+        Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+
+        if (!duplicate && !mixed) {
+            attrs.importLib = std::move(library);
+            attrs.importSymbol = std::move(symbol);
+        }
+        return;
+    }
+
+    if (name == "When") {
+        if (Check(TokenKind::RightParen)) {
+            EmitError(CurrentLocation(), "'#When' requires a compile-time condition");
+        }
+        else {
+            ExprPtr condition = ParseExpr();
+            if (attrs.whenCondition) {
+                EmitError(nameLoc, "duplicate '#When' attribute");
+            }
+            else {
+                attrs.whenCondition = std::move(condition);
+                attrs.whenLocation = attributeLoc;
+            }
+        }
+        Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+        return;
+    }
+
+    if (Check(TokenKind::StringLiteral)) {
+        std::string value = DecodeStringLiteralText(Advance().text);
+        if (name == "Error") {
+            attrs.errorMessage = std::move(value);
+        }
+        else if (name == "Warn") {
+            attrs.warnMessage = std::move(value);
+        }
+        else if (name == "Library") {
+            attrs.usedLibrary = true;
+            if (attrs.usedLink) {
+                EmitError(nameLoc, "'#Library' cannot be combined with '#Link'");
+            }
+            else {
+                attrs.importLib = std::move(value);
+            }
+        }
+        else {
+            attrs.usedSymbol = true;
+            if (attrs.usedLink) {
+                EmitError(nameLoc, "'#Symbol' cannot be combined with '#Link'");
+            }
+            else {
+                attrs.importSymbol = std::move(value);
+            }
         }
     }
     else {
-        EmitError(CurrentLocation(), std::format("'#{}' takes a message string", name));
+        std::string argument = "message";
+        if (name == "Library") {
+            argument = "library name";
+        }
+        else if (name == "Symbol") {
+            argument = "imported symbol name";
+        }
+        EmitError(CurrentLocation(), std::format("'#{}' takes a {} string", name, argument));
     }
-    Expect(TokenKind::RightParen, "expected ')' to close the meta function");
+    Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
 }
 
-// Parses the compiler directives that precede a declaration. Two forms share
-// the '#' sigil:
-//
-//   #{ key: value, ... }   passive metadata describing the declaration
-//   #Name("...")           a meta function, which *does* something at each use
-//
-// A declaration may carry any number of either, in any order; they accumulate.
-// Unknown keys and unknown meta functions are a compilation error.
+// Parses the attributes that precede a declaration. A declaration may carry
+// any number of `#Name(...)` calls. The removed `#{...}` metadata form is
+// consumed only for recovery and always produces an error.
 Parser::ParsedAttrs Parser::ParseAttrs() {
     ParsedAttrs attrs;
     while (Check(TokenKind::Hash)) {
         Advance(); // consume '#'
 
-        // #Name("...") — meta function
+        // #Name("...") — attribute call
         if (Check(TokenKind::Ident)) {
-            ParseMetaFunc(attrs);
+            ParseAttributeCall(attrs);
             continue;
         }
 
-        Expect(TokenKind::LeftBrace, "expected '{' or a meta function name after '#'");
-
+        const SourceLocation metadataLoc = Previous().location;
+        Expect(TokenKind::LeftBrace, "expected an attribute name after '#'");
+        EmitError(metadataLoc, "metadata blocks '#{...}' are unsupported; use attribute calls such as '#Abi(.Win64)'");
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
-            const SourceLocation keyLoc = CurrentLocation();
-            if (!Check(TokenKind::Ident)) {
-                EmitError(keyLoc, "expected a metadata key");
-                break;
-            }
-            const std::string key = Advance().text;
-            Expect(TokenKind::Colon, "expected ':' after metadata key");
-
-            if (key == "abi") {
-                // #{ abi: .Win64 } — an enum variant naming the ABI
-                Expect(TokenKind::Dot, "expected '.' before an ABI");
-                const SourceLocation variantLoc = CurrentLocation();
-                std::string variant;
-                if (Check(TokenKind::Ident)) {
-                    variant = Advance().text;
-                }
-                if (variant == "C") {
-                    attrs.callConv = CallingConvention::C;
-                }
-                else if (variant == "Win64") {
-                    attrs.callConv = CallingConvention::Win64;
-                }
-                else if (variant == "SysV") {
-                    attrs.callConv = CallingConvention::SysV;
-                }
-                else {
-                    // A misspelled ABI silently compiled to the platform
-                    // default, which passes arguments in the wrong registers.
-                    EmitError(variantLoc, std::format("unknown ABI '.{}'; valid ABIs are: "
-                                                      ".C, .SysV, .Win64",
-                                                      variant));
-                }
-            }
-            else if (key == "target") {
-                // Superseded by conditional compilation, which says the same
-                // thing in a form that also works for statements and can name a
-                // single system rather than a family.
-                EmitError(keyLoc, "'target' is no longer a metadata key; wrap the declaration in a "
-                                  "conditional compilation block instead, as in '#if #os == .Windows { ... }'");
-                while (!Check(TokenKind::Comma) && !Check(TokenKind::RightBrace) && !IsAtEnd()) {
-                    Advance();
-                }
-            }
-            else if (key == "library" && Check(TokenKind::StringLiteral)) {
-                // #{ library: "Kernel32.dll" } — DLL the extern is imported from
-                attrs.importLib = DecodeStringLiteralText(Advance().text);
-            }
-            else if (key == "symbol" && Check(TokenKind::StringLiteral)) {
-                // #{ symbol: "Beep" } — name to import when it differs from the
-                // Rux-visible function name
-                attrs.importSymbol = DecodeStringLiteralText(Advance().text);
-            }
-            else {
-                EmitError(keyLoc, std::format("unknown metadata key '{}'", key));
-                // Skip the value so one bad key does not derail the block.
-                while (!Check(TokenKind::Comma) && !Check(TokenKind::RightBrace) && !IsAtEnd()) {
-                    Advance();
-                }
-            }
-
-            if (!Match(TokenKind::Comma)) {
-                break;
-            }
+            Advance();
         }
-
-        Expect(TokenKind::RightBrace, "expected '}' to close the metadata block");
+        Expect(TokenKind::RightBrace, "expected '}' to close the removed metadata block");
     }
     return attrs;
+}
+
+DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
+    if (!decl) {
+        return nullptr;
+    }
+
+    if (decl->warnMessage.empty()) {
+        decl->warnMessage = attrs.warnMessage;
+    }
+    if (decl->errorMessage.empty()) {
+        decl->errorMessage = attrs.errorMessage;
+    }
+
+    if (attrs.usedLink && !dynamic_cast<ExternFuncDecl *>(decl.get()) && !dynamic_cast<ExternBlockDecl *>(decl.get())) {
+        EmitError(attrs.linkLocation, "'#Link' can only be applied to an extern function or extern block");
+    }
+
+    if (attrs.usedNoReturn) {
+        if (auto *function = dynamic_cast<FuncDecl *>(decl.get())) {
+            function->isNoReturn = true;
+            if (function->returnType) {
+                EmitError(attrs.noReturnLocation, "'#NoReturn' function cannot declare a return type");
+            }
+        }
+        else if (auto *externFunction = dynamic_cast<ExternFuncDecl *>(decl.get())) {
+            externFunction->isNoReturn = true;
+            if (externFunction->returnType) {
+                EmitError(attrs.noReturnLocation, "'#NoReturn' function cannot declare a return type");
+            }
+        }
+        else {
+            EmitError(attrs.noReturnLocation, "'#NoReturn' can only be applied to a function");
+        }
+    }
+
+    if (attrs.usedAbi && !dynamic_cast<FuncDecl *>(decl.get()) && !dynamic_cast<ExternFuncDecl *>(decl.get()) &&
+        !dynamic_cast<ExternBlockDecl *>(decl.get())) {
+        EmitError(attrs.abiLocation, "'#Abi' can only be applied to a function or extern block");
+    }
+
+    if (!attrs.whenCondition) {
+        return decl;
+    }
+
+    auto conditional = std::make_unique<CompileTimeIfDecl>();
+    conditional->location = attrs.whenLocation;
+    conditional->isWhen = true;
+
+    CompileTimeIfDecl::Branch branch;
+    branch.location = attrs.whenLocation;
+    branch.condition = std::move(attrs.whenCondition);
+    branch.items.push_back(std::move(decl));
+    conditional->branches.push_back(std::move(branch));
+    return conditional;
 }
 
 // Top-level declarations
 DeclPtr Parser::ParseDecl() {
     const auto loc = CurrentLocation();
 
-    // Conditional compilation. Checked before ParseAttrs so the '#' of `#if` is
-    // not mistaken for the '#' of a `#{ ... }` metadata block.
+    // Conditional compilation. Checked before ParseAttrs so `#if` is not
+    // mistaken for an attribute call.
     if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::IfKeyword)) {
         return ParseCompileTimeIfDecl();
     }
@@ -231,56 +369,44 @@ DeclPtr Parser::ParseDecl() {
         isPublic = true;
     }
 
-    auto withAttrs = [&](DeclPtr decl) -> DeclPtr {
-        if (decl) {
-            if (decl->warnMessage.empty()) {
-                decl->warnMessage = attrs.warnMessage;
-            }
-            if (decl->errorMessage.empty()) {
-                decl->errorMessage = attrs.errorMessage;
-            }
-        }
-        return decl;
-    };
-
     // asm func
     if (Check(TokenKind::Ident) && Peek().text == "asm" && Peek(1).Is(TokenKind::FuncKeyword)) {
         Advance(); // consume 'asm'
-        return withAttrs(ParseFuncDecl(isPublic, true, attrs.callConv));
+        return ApplyAttrs(ParseFuncDecl(isPublic, true, attrs.callConv), attrs);
     }
 
     if (Check(TokenKind::FuncKeyword)) {
-        return withAttrs(ParseFuncDecl(isPublic, false, attrs.callConv));
+        return ApplyAttrs(ParseFuncDecl(isPublic, false, attrs.callConv), attrs);
     }
     if (Check(TokenKind::StructKeyword)) {
-        return withAttrs(ParseStructDecl(isPublic));
+        return ApplyAttrs(ParseStructDecl(isPublic), attrs);
     }
     if (Check(TokenKind::EnumKeyword)) {
-        return withAttrs(ParseEnumDecl(isPublic));
+        return ApplyAttrs(ParseEnumDecl(isPublic), attrs);
     }
     if (Check(TokenKind::UnionKeyword)) {
-        return withAttrs(ParseUnionDecl(isPublic));
+        return ApplyAttrs(ParseUnionDecl(isPublic), attrs);
     }
     if (Check(TokenKind::InterfaceKeyword)) {
-        return withAttrs(ParseInterfaceDecl(isPublic));
+        return ApplyAttrs(ParseInterfaceDecl(isPublic), attrs);
     }
     if (Check(TokenKind::ExtendKeyword)) {
-        return withAttrs(ParseImplDecl());
+        return ApplyAttrs(ParseImplDecl(), attrs);
     }
     if (Check(TokenKind::ModuleKeyword)) {
-        return withAttrs(ParseModuleDecl(isPublic));
+        return ApplyAttrs(ParseModuleDecl(isPublic), attrs);
     }
     if (Check(TokenKind::ImportKeyword)) {
-        return ParseUseDecl();
+        return ApplyAttrs(ParseUseDecl(), attrs);
     }
     if (Check(TokenKind::ConstKeyword)) {
-        return withAttrs(ParseConstDecl(isPublic));
+        return ApplyAttrs(ParseConstDecl(isPublic), attrs);
     }
     if (Check(TokenKind::TypeKeyword)) {
-        return withAttrs(ParseTypeAliasDecl(isPublic));
+        return ApplyAttrs(ParseTypeAliasDecl(isPublic), attrs);
     }
     if (Check(TokenKind::ExternKeyword)) {
-        return withAttrs(ParseExternDecl(isPublic, attrs));
+        return ApplyAttrs(ParseExternDecl(isPublic, attrs), attrs);
     }
 
     EmitError(loc, std::format("unexpected token '{}', expected a declaration", Peek().text));
@@ -868,13 +994,15 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
             continue;
         }
         if (auto method = ParseFuncDecl(pub, false, attrs.callConv)) {
-            if (method->warnMessage.empty()) {
-                method->warnMessage = attrs.warnMessage;
+            DeclPtr attributed = ApplyAttrs(std::move(method), attrs);
+            if (auto *conditional = dynamic_cast<CompileTimeIfDecl *>(attributed.get())) {
+                attributed.release();
+                decl->conditionals.emplace_back(conditional);
             }
-            if (method->errorMessage.empty()) {
-                method->errorMessage = attrs.errorMessage;
+            else {
+                auto *methodDecl = static_cast<FuncDecl *>(attributed.release());
+                decl->methods.emplace_back(methodDecl);
             }
-            decl->methods.push_back(std::move(method));
         }
     }
     Expect(TokenKind::RightBrace, "expected '}'");
@@ -1065,17 +1193,18 @@ std::unique_ptr<TypeAliasDecl> Parser::ParseTypeAliasDecl(bool isPublic) {
 }
 
 // extern
-DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs attrs) {
+DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
     const auto loc = CurrentLocation();
     Expect(TokenKind::ExternKeyword, "expected 'extern'");
 
     if (Check(TokenKind::LeftBrace)) {
-        // #{ ... } extern { func ...; ... }
+        // #Link(...) [#Abi(...)] extern { func ...; ... }
         Advance(); // consume '{'
         // One symbol name cannot stand for every function in the block; it has
         // to sit on the individual declaration.
         if (!attrs.importSymbol.empty()) {
-            EmitError(loc, "'symbol' cannot be applied to an extern block; put it on a single extern func");
+            EmitError(loc, "an imported symbol name cannot be applied to an extern block; "
+                           "use the one-argument '#Link(\"library\")' form");
         }
         auto block = std::make_unique<ExternBlockDecl>();
         block->location = loc;
@@ -1138,7 +1267,7 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs attrs) {
     }
 
     if (Check(TokenKind::FuncKeyword)) {
-        // #{ library: "..." } extern func Name(params) -> Type;
+        // #Link("..."[, "symbol"]) extern func Name(params) -> Type;
         Advance(); // consume 'func'
 
         auto decl = std::make_unique<ExternFuncDecl>();

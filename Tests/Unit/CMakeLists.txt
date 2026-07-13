@@ -4,6 +4,8 @@
 
 set(RUX_TEST_SOURCES
     Main.cpp
+    BuiltinAssertTests.cpp
+    BuiltinPanicTests.cpp
     BuildReportTests.cpp
     CodegenTests.cpp
     CompilerDriverTests.cpp
@@ -14,6 +16,8 @@ set(RUX_TEST_SOURCES
     OptimizerTests.cpp
     OsTests.cpp
     ProcessTests.cpp
+    PrimitiveConstantsTests.cpp
+    SemanticTests.cpp
 )
 
 if (TARGET RuxFormatter)

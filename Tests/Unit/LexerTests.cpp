@@ -33,6 +33,26 @@ TEST_CASE("Lexer keeps the original source spelling in token text") {
     CHECK(result.tokens[3].text == "0xFF");
 }
 
+TEST_CASE("Lexer does not recognize flat compile-time intrinsic aliases") {
+    static constexpr const char *aliases[] = {
+        "line",          "column",             "file",          "fileName",       "filePath",
+        "function",      "module",             "date",          "time",           "ruxVersion",
+        "os",            "arch",               "abi",           "endian",         "pointerBits",
+        "dataModel",     "objectFormat",       "targetTriple",  "targetFeature",  "buildProfile",
+        "buildMode",     "optimization",       "debugAssertions", "debugInfo",      "isTest",
+        "outputKind",    "buildTimestamp",     "compilerVersion", "compilerHasFeature", "hasConfig",
+    };
+
+    for (const char *alias : aliases) {
+        CAPTURE(std::string(alias));
+        const auto result = Lex(std::string("#") + alias);
+        REQUIRE(result.diagnostics.empty());
+        REQUIRE(result.tokens.size() == 3);
+        CHECK(result.tokens[0].Is(TokenKind::Hash));
+        CHECK(result.tokens[1].text == alias);
+    }
+}
+
 TEST_CASE("Lexer accepts every control escape sequence") {
     const auto result = Lex(R"(let s = "\n\t\r\a\b\f\v\0\\\"";)");
     CHECK(result.diagnostics.empty());

@@ -65,6 +65,10 @@ static std::string_view OpcodeStr(LirOpcode op) {
         return "call";
     case LirOpcode::CallIndirect:
         return "call_ind";
+    case LirOpcode::Assert:
+        return "assert";
+    case LirOpcode::Panic:
+        return "panic";
     case LirOpcode::FieldPtr:
         return "fieldptr";
     case LirOpcode::IndexPtr:
@@ -151,6 +155,17 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
         return;
     }
 
+    case LirOpcode::Assert:
+        out << std::format("assert {}, {}, \"{}\" at {} ({}:{}:{})\n", i.srcs.empty() ? "?" : RegStr(i.srcs[0]),
+                           i.srcs.size() > 1 ? RegStr(i.srcs[1]) : "?", i.strArg, i.sourceFunction, i.sourceFile,
+                           i.sourceLine, i.sourceColumn);
+        return;
+
+    case LirOpcode::Panic:
+        out << std::format("panic {}, \"{}\" at {} ({}:{}:{})\n", i.srcs.empty() ? "?" : RegStr(i.srcs[0]), i.strArg,
+                           i.sourceFunction, i.sourceFile, i.sourceLine, i.sourceColumn);
+        return;
+
     case LirOpcode::FieldPtr:
         out << std::format("{} = fieldptr {} {}, {}\n", RegStr(i.dst), i.type.ToString(),
                            i.srcs.empty() ? "?" : RegStr(i.srcs[0]), i.strArg);
@@ -217,6 +232,9 @@ static void DumpTerminator(std::ostream &out, const LirTerminator &t, const LirF
         out << '\n';
         return;
     }
+    case LirTermKind::Unreachable:
+        out << "unreachable\n";
+        return;
     }
 }
 
@@ -231,6 +249,9 @@ static void DumpFunc(std::ostream &out, const LirFunc &fn) {
         params += std::format("{}: {}", RegStr(fn.params[i].reg), fn.params[i].type.ToString());
     }
     std::string ret = fn.returnType.IsOpaque() ? "" : " -> " + fn.returnType.ToString();
+    if (fn.isNoReturn) {
+        out << "\n#NoReturn()";
+    }
     out << std::format("\n{}{}func {}({}){}\n", pub, ext, fn.name, params, ret);
     for (const auto &block : fn.blocks) {
         out << std::format("  {}:\n", block.label);

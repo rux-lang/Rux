@@ -182,7 +182,7 @@ struct EnumShorthandExpr : Expr {
     std::string variant;
 };
 
-// A compiler-provided value such as #line, #target.arch or #config("name").
+// A compiler-provided value such as #source.line, #target.arch or #config("name").
 struct IntrinsicExpr : Expr {
     enum class Kind {
         Line,
@@ -194,7 +194,6 @@ struct IntrinsicExpr : Expr {
         Date,
         Time,
         Module,
-        RuxVersion,
         Os,
         Arch,
         Abi,
@@ -470,12 +469,14 @@ struct CompileTimeIfDecl : Decl {
     };
 
     std::vector<Branch> branches;
+    bool isWhen = false; // true when produced by #When(condition) sugar
 };
 
 // func [asm] Name<T>(params) -> Type { body }
 // body is null for interface method signatures
 struct FuncDecl : Decl {
     bool isAsm = false;
+    bool isNoReturn = false;
     CallingConvention callConv = CallingConvention::Default;
     std::string name;
     std::vector<std::string> typeParams;
@@ -593,8 +594,9 @@ struct TypeAliasDecl : Decl {
 // extern func Name(params) -> Type from "DLL";
 struct ExternFuncDecl : Decl {
     std::string name;
+    bool isNoReturn = false;
     std::string dll;
-    // #{ symbol: "..." }: the name to import from the DLL when it differs from
+    // The optional second #Link argument: the name to import from the DLL when it differs from
     // the Rux-visible `name`. Empty means the two are the same.
     std::string symbolName;
     CallingConvention callConv = CallingConvention::Default;
@@ -609,7 +611,7 @@ struct ExternVarDecl : Decl {
     TypeExprPtr type;
 };
 
-// #{ library: "..." } extern { func ...; ... }
+// #Link("...") extern { func ...; ... }
 struct ExternBlockDecl : Decl {
     std::string dll;
     CallingConvention callConv = CallingConvention::Default;

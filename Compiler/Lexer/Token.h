@@ -119,40 +119,8 @@ enum class TokenKind : std::uint8_t {
     LessLessAssign,       // <<=
     GreaterGreaterAssign, // >>=
 
-    // Compile-time intrinsics. The HashTarget/Build/Compiler/Source tokens are
-    // namespace roots such as `#target.arch`; the others are compatibility
-    // spellings and concise aliases.
-    HashLine,
-    HashColumn,
-    HashFile,
-    HashFileName,
-    HashFilePath,
-    HashFunction,
-    HashDate,
-    HashTime,
-    HashModule,
-    hashRuxVersion,
-    hashOs,
-    HashArch,
-    HashAbi,
-    HashEndian,
-    HashPointerBits,
-    HashDataModel,
-    HashObjectFormat,
-    HashTargetTriple,
-    HashTargetFeature,
-    HashBuildProfile,
-    HashBuildMode,
-    HashOptimization,
-    HashDebugAssertions,
-    HashDebugInfo,
-    HashIsTest,
-    HashOutputKind,
-    HashBuildTimestamp,
-    HashCompilerVersion,
-    HashCompilerHasFeature,
+    // Compile-time intrinsic namespace roots, such as `#target.arch`.
     HashConfig,
-    HashHasConfig,
     HashTarget,
     HashBuild,
     HashCompiler,

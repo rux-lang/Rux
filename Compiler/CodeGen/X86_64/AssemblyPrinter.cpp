@@ -1086,6 +1086,85 @@ private:
             break;
         }
 
+        case LirOpcode::Assert:
+        case LirOpcode::Panic: {
+            const bool isAssertion = instr.op == LirOpcode::Assert;
+            if (instr.srcs.size() < (isAssertion ? 2 : 1)) {
+                break;
+            }
+            std::string okLabel;
+            if (isAssertion) {
+                LoadA(instr.srcs[0], TypeRef::MakeBool());
+                TI("test    rax, rax");
+                okLabel = std::format(".{}_assert_ok_{}", curFunc, constIdx++);
+                TI(std::format("{:<8}{}", "jnz", okLabel));
+            }
+
+            const LirReg messageReg = instr.srcs[isAssertion ? 1 : 0];
+            const std::string prefix = isAssertion ? "Assertion failed: " : "Panic: ";
+            const std::string function = instr.sourceFunction.empty() ? "<unknown>" : instr.sourceFunction;
+            const std::string file = instr.sourceFile.empty() ? "<unknown>" : instr.sourceFile;
+            const std::string suffix =
+                std::format("\n  at {} ({}:{}:{})\n", function, file, instr.sourceLine, instr.sourceColumn);
+
+            if constexpr (kDefaultCallIsWin64) {
+                NeedExtern("GetStdHandle");
+                NeedExtern("WriteFile");
+                TI("sub     rsp, 48");
+                TI("mov     qword [rsp + 32], 0");
+
+                const auto prepareWrite = [&]() {
+                    TI("mov     ecx, -12");
+                    TI("call    GetStdHandle");
+                    TI("mov     rcx, rax");
+                    TI("lea     r9, [rsp + 40]");
+                };
+                const auto writeStatic = [&](const std::string &value) {
+                    prepareWrite();
+                    const std::string label = InternStr(value);
+                    TI(std::format("{:<8}rdx, [rel {}]", "lea", label));
+                    TI(std::format("{:<8}r8d, {}", "mov", value.size()));
+                    TI("call    WriteFile");
+                };
+
+                writeStatic(prefix);
+                prepareWrite();
+                LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
+                TI("mov     r10, rax");
+                TI("mov     rdx, [r10]");
+                TI("mov     r8, [r10 + 8]");
+                TI("call    WriteFile");
+                writeStatic(suffix);
+            }
+            else {
+                constexpr int syscallNumber = RUX_OS_MACOS ? 0x0200'0004 : RUX_OS_LINUX ? 1 : 4;
+                const auto writeStatic = [&](const std::string &value) {
+                    const std::string label = InternStr(value);
+                    TI(std::format("{:<8}rsi, [rel {}]", "lea", label));
+                    TI(std::format("{:<8}edx, {}", "mov", value.size()));
+                    TI("mov     edi, 2");
+                    TI(std::format("{:<8}eax, {}", "mov", syscallNumber));
+                    TI("syscall");
+                };
+
+                writeStatic(prefix);
+                LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
+                TI("mov     r10, rax");
+                TI("mov     rsi, [r10]");
+                TI("mov     rdx, [r10 + 8]");
+                TI("mov     edi, 2");
+                TI(std::format("{:<8}eax, {}", "mov", syscallNumber));
+                TI("syscall");
+                writeStatic(suffix);
+            }
+
+            TI("ud2");
+            if (isAssertion) {
+                TL(okLabel);
+            }
+            break;
+        }
+
         case LirOpcode::Load: {
             const TypeRef &t = instr.type;
             int sz = SizeOfRuntime(t);
@@ -1853,6 +1932,9 @@ private:
             TI(std::format("{:<8}{}", "jmp", BlockLabel(term.defaultTarget, func.blocks[term.defaultTarget].label)));
             break;
         }
+        case LirTermKind::Unreachable:
+            TI("ud2");
+            break;
         }
     }
 

@@ -194,7 +194,7 @@ TEST_CASE("#if selects methods inside an extend block") {
 struct Animal {}
 
 extend Animal {
-    #if #os == .Windows {
+    #if #target.os == .Windows {
         func Sound(self) -> int { return 1; }
     } else {
         func Sound(self) -> int { return 2; }
@@ -228,10 +228,10 @@ extend Animal {
     CHECK(ReturnedLiteral(*sound) == "2");
 }
 
-TEST_CASE("#if tests the target OS through #os") {
+TEST_CASE("#if tests the target OS through #target.os") {
     const std::string source = R"(
 func Do() -> int {
-    #if #os == .Windows {
+    #if #target.os == .Windows {
         return 1;
     } else {
         return 2;
@@ -252,10 +252,10 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*linuxFunc) == "2");
 }
 
-TEST_CASE("#os compares against the long form of the OS enum too") {
+TEST_CASE("#target.os compares against the long form of the OS enum too") {
     auto parsed = ParseSource(R"(
 func Do() -> int {
-    #if #os != OS::Linux {
+    #if #target.os != OS::Linux {
         return 1;
     } else {
         return 2;
@@ -290,14 +290,14 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*func) == "2");
 }
 
-TEST_CASE("#os tells the BSDs apart") {
+TEST_CASE("#target.os tells the BSDs apart") {
     const std::string source = R"(
 func Do() -> int {
-    #if #os == .FreeBSD {
+    #if #target.os == .FreeBSD {
         return 1;
-    } else if #os == .OpenBSD {
+    } else if #target.os == .OpenBSD {
         return 2;
-    } else if #os == .DragonFlyBSD {
+    } else if #target.os == .DragonFlyBSD {
         return 3;
     } else {
         return 4;
@@ -326,7 +326,7 @@ func Do() -> int {
 TEST_CASE("an OS no build target produces warns instead of quietly never running") {
     auto parsed = ParseSource(R"(
 func Do() -> int {
-    #if #os == .Haiku {
+    #if #target.os == .Haiku {
         return 1;
     }
     return 0;
@@ -345,7 +345,7 @@ func Do() -> int {
 TEST_CASE("a misspelled OS variant is an error, not a silently false branch") {
     auto parsed = ParseSource(R"(
 func Do() -> int {
-    #if #os == .Wndows {
+    #if #target.os == .Wndows {
         return 1;
     }
     return 0;
@@ -358,16 +358,16 @@ func Do() -> int {
           ".Haiku, .Illumos, .iOS, .Linux, .MacOS, .NetBSD, .OpenBSD, .QNX, .Redox, .Solaris, .Windows");
 }
 
-TEST_CASE("#os outside a #if condition is an error") {
+TEST_CASE("#target.os outside a #if condition is an error") {
     auto parsed = ParseSource(R"(
 func Do() -> int {
-    let os = #os;
+    let os = #target.os;
     return 0;
 }
 )");
     const auto model = Analyze(parsed.module);
     REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message == "'#os' can only be used in a '#if' condition");
+    CHECK(model.diagnostics[0].message == "'#target.os' can only be used in a '#if' condition");
 }
 
 TEST_CASE("an enum shorthand outside a #if condition is an error") {
@@ -490,23 +490,19 @@ func Selected() -> int {
     CHECK(ReturnedLiteral(*FindFunc(parsed.module, "Selected")) == "1");
 }
 
-TEST_CASE("flat target aliases remain compatible") {
-    auto parsed = ParseSource(R"(
+TEST_CASE("flat intrinsic aliases are rejected") {
+    Lexer lexer(R"(
 func Selected() -> int {
-    #if #arch == .ARM64 && #pointerBits == 64 && #objectFormat == .MachO && #buildMode == .Debug {
-        return 1;
-    } else {
-        return 0;
-    }
+    return #line;
 }
-)");
-    CompileTimeContext context;
-    context.target.arch = Target::Arch::ARM64;
-    context.target.pointer_size = 8;
-    context.target.object_format = Target::ObjectFormat::MachO;
-    const auto model = Analyze(parsed.module, std::move(context));
-    CHECK_FALSE(model.HasErrors());
-    CHECK(ReturnedLiteral(*FindFunc(parsed.module, "Selected")) == "1");
+)",
+                "test.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+
+    Parser parser(std::move(lexed.tokens), "test.rux");
+    const auto parsed = parser.Parse();
+    CHECK(parsed.HasErrors());
 }
 
 TEST_CASE("ordinary intrinsic expressions lower to context literals") {
@@ -584,4 +580,102 @@ module Demo {
     CHECK(values["hasConfig"] == "true");
     CHECK(values["version"] == "1.2.3");
     CHECK(values["compilerFeature"] == "true");
+}
+
+TEST_CASE("#When includes true declarations and removes false declarations and imports") {
+    auto parsed = ParseSource(R"(
+const Enabled = true;
+
+#When(Enabled && #compiler.hasFeature("when-attribute"))
+func Kept() -> int { return 1; }
+
+#When(false)
+func Removed(value: MissingType) {}
+
+#When(false)
+import Missing::Thing;
+
+#When(false)
+extern func MissingLibrary();
+
+#When(true)
+#Link("Kernel32.dll", "Beep")
+extern func Tone(freq: uint32, duration: uint32) -> bool32;
+)");
+
+    const auto model = Analyze(parsed.module);
+    CHECK_FALSE(model.HasErrors());
+    CHECK(FindFunc(parsed.module, "Kept") != nullptr);
+    CHECK(FindFunc(parsed.module, "Removed") == nullptr);
+
+    const ExternFuncDecl *external = nullptr;
+    for (const auto &item : parsed.module.items) {
+        if (const auto *candidate = dynamic_cast<const ExternFuncDecl *>(item.get())) {
+            external = candidate;
+        }
+    }
+    REQUIRE(external != nullptr);
+    CHECK_EQ(external->name, "Tone");
+    CHECK_EQ(external->dll, "Kernel32.dll");
+    CHECK_EQ(external->symbolName, "Beep");
+}
+
+TEST_CASE("#When conditionally includes methods inside an extend block") {
+    auto parsed = ParseSource(R"(
+struct Animal {}
+
+extend Animal {
+    #When(#target.os == .Windows)
+    func Sound(self) -> int { return 1; }
+
+    #When(false)
+    func Removed(self, value: MissingType) {}
+}
+)");
+
+    const auto model = Analyze(parsed.module, "Windows");
+    CHECK_FALSE(model.HasErrors());
+
+    const auto *impl = dynamic_cast<const ImplDecl *>(parsed.module.items[1].get());
+    REQUIRE(impl != nullptr);
+    REQUIRE_EQ(impl->methods.size(), 1);
+    CHECK_EQ(impl->methods[0]->name, "Sound");
+}
+
+TEST_CASE("#When rejects non-boolean and runtime conditions") {
+    auto nonBoolean = ParseSource(R"(
+#When(1)
+func Bad() {}
+)");
+    const auto nonBooleanModel = Analyze(nonBoolean.module);
+    REQUIRE(nonBooleanModel.HasErrors());
+    CHECK_EQ(nonBooleanModel.diagnostics[0].message, "'#When' condition must be of type 'bool'");
+
+    auto runtime = ParseSource(R"(
+func Runtime() -> bool { return true; }
+
+#When(Runtime())
+func Bad() {}
+)");
+    const auto runtimeModel = Analyze(runtime.module);
+    REQUIRE(runtimeModel.HasErrors());
+    CHECK_EQ(runtimeModel.diagnostics[0].message,
+             "'#When' condition must be a compile-time constant expression");
+}
+
+TEST_CASE("duplicate #When attributes are rejected") {
+    Lexer lexer(R"(
+#When(true)
+#When(false)
+func Duplicate() {}
+)",
+                "test.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+
+    Parser parser(std::move(lexed.tokens), "test.rux");
+    const auto parsed = parser.Parse();
+    REQUIRE(parsed.HasErrors());
+    REQUIRE_EQ(parsed.diagnostics.size(), 1);
+    CHECK_EQ(parsed.diagnostics[0].message, "duplicate '#When' attribute");
 }

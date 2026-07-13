@@ -10,14 +10,15 @@
 #include <charconv>
 #include <cstdint>
 #include <ctime>
-#include <format>
 #include <filesystem>
+#include <format>
 #include <limits>
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 
+#include "Semantic/PrimitiveConstants.h"
 #include "Target/Layout.h"
 #include "Target/Platform.h"
 
@@ -47,6 +48,7 @@ struct HirSymbol {
     std::string name;
     TypeRef type;
     bool isMut = false;
+    bool isNoReturn = false;
     std::vector<const FuncDecl *> funcOverloads;
 };
 
@@ -225,7 +227,7 @@ private:
     std::unordered_map<std::string, std::vector<std::string>> fileImports;
     // Declared module path of the enclosing `module`, during collection and
     // during lowering respectively. Distinct from currentModulePath, which is
-    // derived from the file name for the `#module` builtin.
+    // derived from the file name for the `#source.module` intrinsic.
     std::string collectModulePath;
     std::string declModulePath;
 
@@ -279,6 +281,24 @@ private:
         add("float32", TypeRef::MakeFloat32());
         add("float64", TypeRef::MakeFloat64());
         add("float", TypeRef::MakeFloat());
+
+        const auto addAssert = [&](const char *name) {
+            HirSymbol sym;
+            sym.kind = HirSymbol::Kind::Const;
+            sym.name = name;
+            sym.type = TypeRef::MakeFunc({TypeRef::MakeBool(), TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))},
+                                         TypeRef::MakeOpaque());
+            globalScope.Define(std::move(sym));
+        };
+        addAssert("Assert");
+        addAssert("DebugAssert");
+
+        HirSymbol panic;
+        panic.kind = HirSymbol::Kind::Const;
+        panic.name = "Panic";
+        panic.type =
+            TypeRef::MakeFunc({TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))}, TypeRef::MakeOpaque());
+        globalScope.Define(std::move(panic));
     }
 
     // First pass: collect global names
@@ -362,6 +382,7 @@ private:
             sym.kind = HirSymbol::Kind::Func;
             sym.name = fn->name;
             sym.type = MakeFuncType(fn->params, fn->returnType, fn->typeParams);
+            sym.isNoReturn = fn->isNoReturn;
             sym.funcOverloads.push_back(fn);
             globalScope.Define(std::move(sym));
         }
@@ -396,7 +417,12 @@ private:
             simple(HirSymbol::Kind::Type, aliasDecl->name, ResolveType(*aliasDecl->type));
         }
         else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            simple(HirSymbol::Kind::Func, externFn->name, MakeFuncType(externFn->params, externFn->returnType));
+            HirSymbol sym;
+            sym.kind = HirSymbol::Kind::Func;
+            sym.name = externFn->name;
+            sym.type = MakeFuncType(externFn->params, externFn->returnType);
+            sym.isNoReturn = externFn->isNoReturn;
+            globalScope.Define(std::move(sym));
         }
         else if (auto *externVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
             HirSymbol sym;
@@ -2314,6 +2340,7 @@ private:
         hf.name = overrideName.empty() ? d.name : overrideName;
         hf.isPublic = d.isPublic;
         hf.isAsm = d.isAsm;
+        hf.isNoReturn = d.isNoReturn;
         hf.asmBody = d.asmBody;
         hf.callConv = d.callConv;
         hf.typeParams = substitutions.empty() ? d.typeParams : std::vector<std::string>{};
@@ -2481,6 +2508,7 @@ private:
         hef.dll = d.dll;
         hef.symbolName = d.symbolName;
         hef.isPublic = d.isPublic;
+        hef.isNoReturn = d.isNoReturn;
         hef.callConv = d.callConv;
         hef.isVariadic = d.isVariadic;
         hef.returnType = d.returnType ? ResolveType(**d.returnType) : TypeRef::MakeOpaque();
@@ -2763,7 +2791,7 @@ private:
 
     // Like LowerExprAs but, for intrinsic defaults, evaluates at
     // callSiteLoc rather than at the declaration site (call-site builtins:
-    // #line, #column, #file, #ruxVersion etc.).
+    // #source.line, #source.column, #source.file, #compiler.version, etc.).
     HirExprPtr LowerDefaultArg(const Expr &defaultExpr, const TypeRef &targetType, const SourceLocation &callSiteLoc) {
         if (const auto *intr = dynamic_cast<const IntrinsicExpr *>(&defaultExpr); intr && intr->args.empty()) {
             IntrinsicExpr tmp;
@@ -2816,9 +2844,9 @@ private:
     }
 
     static bool CompilerHasFeature(const std::string_view feature) {
-        static constexpr std::array features{"conditional-compilation", "namespaced-intrinsics", "target-intrinsics",
-                                             "build-intrinsics", "compiler-feature-detection",
-                                             "source-location-defaults", "extern-symbol-names"};
+        static constexpr std::array features{
+            "conditional-compilation",    "namespaced-intrinsics",    "target-intrinsics",   "build-intrinsics",
+            "compiler-feature-detection", "source-location-defaults", "extern-symbol-names", "no-return-attribute"};
         return std::ranges::contains(features, feature);
     }
 
@@ -2904,6 +2932,13 @@ private:
                 if (HirSymbol *first = currentScope->Lookup(e->segments[0]);
                     first && (first->kind == HirSymbol::Kind::Type || first->kind == HirSymbol::Kind::Interface)) {
                     if (first->kind == HirSymbol::Kind::Type) {
+                        if (const auto constant = LookupPrimitiveConstant(first->type, e->segments[1], context)) {
+                            auto he = std::make_unique<HirLiteralExpr>();
+                            he->location = e->location;
+                            he->type = constant->type;
+                            he->value = constant->value;
+                            return he;
+                        }
                         if (const auto discriminant = LookupEnumVariantDiscriminant(e->segments[0], e->segments[1])) {
                             const auto *variant = LookupEnumVariant(e->segments[0], e->segments[1]);
                             if (variant && (!variant->fields.empty() || !variant->namedFields.empty())) {
@@ -2993,7 +3028,6 @@ private:
                 he->value = currentModulePath;
                 break;
             }
-            case K::RuxVersion:
             case K::CompilerVersion: {
                 he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
                 he->value = context.compilerVersion.empty() ? RUX_VERSION : context.compilerVersion;
@@ -3103,6 +3137,7 @@ private:
 
                 auto call = std::make_unique<HirCallExpr>();
                 call->location = e->location;
+                call->isNoReturn = method->isNoReturn;
                 call->type = callee->type.inner.empty() ? TypeRef::MakeUnknown() : callee->type.inner.back();
                 call->callee = std::move(callee);
                 call->args.push_back(std::move(selfArg));
@@ -3166,6 +3201,48 @@ private:
             return he;
         }
         if (auto *e = dynamic_cast<const CallExpr *>(&expr)) {
+            const auto *builtinIdent = dynamic_cast<const IdentExpr *>(e->callee.get());
+            HirSymbol *calleeSymbol = builtinIdent ? currentScope->Lookup(builtinIdent->name) : nullptr;
+            const bool isAssertion =
+                builtinIdent && (builtinIdent->name == "Assert" || builtinIdent->name == "DebugAssert");
+            const bool isPanic = builtinIdent && builtinIdent->name == "Panic";
+            if ((isAssertion || isPanic) && calleeSymbol && calleeSymbol->kind == HirSymbol::Kind::Const) {
+                auto he = std::make_unique<HirCallExpr>();
+                he->location = e->location;
+                he->type = TypeRef::MakeOpaque();
+                he->sourceFile = LogicalCurrentFilePath();
+                he->sourceFunction = currentFunctionName;
+                he->sourceLine = e->location.line;
+                he->sourceColumn = e->location.column;
+
+                auto callee = std::make_unique<HirVarExpr>();
+                callee->location = builtinIdent->location;
+                callee->type = isPanic ? TypeRef::MakeFunc({TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))},
+                                                           TypeRef::MakeOpaque())
+                                       : TypeRef::MakeFunc({TypeRef::MakeBool(),
+                                                            TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))},
+                                                           TypeRef::MakeOpaque());
+                const bool disabled = builtinIdent->name == "DebugAssert" && !context.debugAssertions;
+                callee->name = isPanic  ? "__builtin_panic"
+                             : disabled ? "__builtin_debug_assert_disabled"
+                                        : "__builtin_assert";
+                he->callee = std::move(callee);
+                he->isNoReturn = isPanic;
+
+                // Disabled debug assertions are still checked by semantic
+                // analysis, but their arguments are not evaluated at runtime.
+                if (isPanic && e->args.size() == 1) {
+                    he->args.push_back(
+                        LowerExprAs(*e->args[0], TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))));
+                }
+                else if (!disabled && e->args.size() == 2) {
+                    he->args.push_back(LowerExprAs(*e->args[0], TypeRef::MakeBool()));
+                    he->args.push_back(
+                        LowerExprAs(*e->args[1], TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))));
+                }
+                return he;
+            }
+
             if (auto *path = dynamic_cast<const PathExpr *>(e->callee.get()); path && path->segments.size() == 2) {
                 const auto *variant = LookupEnumVariant(path->segments[0], path->segments[1]);
                 if (variant && (!variant->fields.empty() || !variant->namedFields.empty())) {
@@ -3217,6 +3294,7 @@ private:
                         callee->type = funcType;
                         auto he = std::make_unique<HirCallExpr>();
                         he->location = e->location;
+                        he->isNoReturn = method->isNoReturn;
                         he->callee = std::move(callee);
                         for (std::size_t i = 0; i < args.size(); ++i) {
                             if (i + 1 < funcType.inner.size() &&
@@ -3306,6 +3384,7 @@ private:
 
                             auto he = std::make_unique<HirCallExpr>();
                             he->location = e->location;
+                            he->isNoReturn = decl->isNoReturn;
                             he->type = funcType.inner.back();
                             he->callee = std::move(callee);
                             for (std::size_t i = 0; i < args.size(); ++i) {
@@ -3399,6 +3478,7 @@ private:
 
                             auto he = std::make_unique<HirCallExpr>();
                             he->location = e->location;
+                            he->isNoReturn = decl->isNoReturn;
                             he->type = funcType.inner.back();
                             he->callee = std::move(callee);
                             for (std::size_t i = 0; i < args.size(); ++i) {
@@ -3430,6 +3510,7 @@ private:
                     }
                 }
                 if (const FuncDecl *method = LookupMethod(receiver->type, field->field, argTypes)) {
+                    he->isNoReturn = method->isNoReturn;
                     HirExprPtr selfArg;
                     if (receiver->type.kind == TypeRef::Kind::Pointer) {
                         selfArg = std::move(receiver);
@@ -3507,6 +3588,16 @@ private:
             }
 
             he->callee = LowerExpr(*e->callee);
+            if (const auto *ident = dynamic_cast<const IdentExpr *>(e->callee.get())) {
+                if (const HirSymbol *symbol = currentScope->Lookup(ident->name)) {
+                    he->isNoReturn = symbol->isNoReturn;
+                }
+            }
+            else if (const auto *path = dynamic_cast<const PathExpr *>(e->callee.get()); !path->segments.empty()) {
+                if (const HirSymbol *symbol = currentScope->Lookup(path->segments.back())) {
+                    he->isNoReturn = symbol->isNoReturn;
+                }
+            }
             const bool hasParamTypes =
                 he->callee->type.kind == TypeRef::Kind::Func && he->callee->type.inner.size() == e->args.size() + 1;
             for (std::size_t i = 0; i < e->args.size(); ++i) {

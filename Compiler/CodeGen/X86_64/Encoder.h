@@ -85,6 +85,11 @@ public:
         Byte(0xC3);
     }
 
+    void Ud2() const {
+        Byte(0x0F);
+        Byte(0x0B);
+    }
+
     // RAX ↔ [RBP + disp32]
     void MovRaxLoad(const int32_t d) const {
         Byte(0x48);
@@ -187,6 +192,12 @@ public:
         Dword(u(d));
     }
 
+    void MovR10Rax() const {
+        Byte(0x49);
+        Byte(0x89);
+        Byte(0xC2);
+    }
+
     void MovzxR10Word(const int32_t d) const {
         Byte(0x4C);
         Byte(0x0F);
@@ -245,6 +256,28 @@ public:
         Byte(0x4C);
         Byte(0x89);
         Byte(0x9D);
+        Dword(u(d));
+    }
+
+    // Registers loaded from [r10 + disp32].
+    void MovRdxR10Load(const int32_t d = 0) const {
+        Byte(0x49);
+        Byte(0x8B);
+        Byte(0x92);
+        Dword(u(d));
+    }
+
+    void MovR8R10Load(const int32_t d = 0) const {
+        Byte(0x4D);
+        Byte(0x8B);
+        Byte(0x82);
+        Dword(u(d));
+    }
+
+    void MovRsiR10Load(const int32_t d = 0) const {
+        Byte(0x49);
+        Byte(0x8B);
+        Byte(0xB2);
         Dword(u(d));
     }
 
@@ -366,6 +399,23 @@ public:
         Byte(0x8D);
         Byte(modrm[idx]);
         Dword(u(d));
+    }
+
+    void LeaR9Rsp(const int32_t d) const {
+        Byte(0x4C);
+        Byte(0x8D);
+        Byte(0x8C);
+        Byte(0x24);
+        Dword(u(d));
+    }
+
+    void MovQwordRspImm32(const int32_t d, const int32_t value) const {
+        Byte(0x48);
+        Byte(0xC7);
+        Byte(0x84);
+        Byte(0x24);
+        Dword(u(d));
+        Dword(u(value));
     }
 
     void MovR10ArgWin64(const int idx) const {
@@ -558,6 +608,27 @@ public:
     void MovEaxImm32(int32_t v) const {
         Byte(0xB8);
         Dword(static_cast<uint32_t>(v));
+    }
+
+    void MovEdiImm32(const int32_t v) const {
+        Byte(0xBF);
+        Dword(static_cast<uint32_t>(v));
+    }
+
+    void MovEdxImm32(const int32_t v) const {
+        Byte(0xBA);
+        Dword(static_cast<uint32_t>(v));
+    }
+
+    void MovRsiRax() const {
+        Byte(0x48);
+        Byte(0x89);
+        Byte(0xC6);
+    }
+
+    void Syscall() const {
+        Byte(0x0F);
+        Byte(0x05);
     }
 
     // LEA / MOV rax, [rip + rel32]

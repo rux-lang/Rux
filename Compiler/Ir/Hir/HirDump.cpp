@@ -287,6 +287,9 @@ static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &
 }
 
 static void DumpFuncSignature(std::ostream &out, const HirFunc &f, const std::string &prefix = "") {
+    if (f.isNoReturn) {
+        out << prefix << "#NoReturn()\n";
+    }
     std::string pub = f.isPublic ? "pub " : "";
     std::string asm_ = f.isAsm ? "asm " : "";
     std::string tps;
@@ -358,16 +361,19 @@ bool HirPrinter::Dump(const HirPackage &package, const std::filesystem::path &pa
             }
             std::string ret = ef.returnType.IsOpaque() ? "" : " -> " + ef.returnType.ToString();
             std::string attr;
+            if (ef.isNoReturn) {
+                attr += "#NoReturn()\n";
+            }
             if (!ef.dll.empty()) {
                 if (ef.symbolName.empty()) {
-                    attr += std::format("#{{ library: \"{}\" }}\n", ef.dll);
+                    attr += std::format("#Link(\"{}\")\n", ef.dll);
                 }
                 else {
-                    attr += std::format("#{{ library: \"{}\", symbol: \"{}\" }}\n", ef.dll, ef.symbolName);
+                    attr += std::format("#Link(\"{}\", \"{}\")\n", ef.dll, ef.symbolName);
                 }
             }
             if (ef.callConv != CallingConvention::Default) {
-                attr += std::format("#{{ abi: {} }}\n", ConventionName(ef.callConv));
+                attr += std::format("#Abi({})\n", ConventionName(ef.callConv));
             }
             out << std::format("\n{}extern {}func {}({}){}\n", attr, pub, ef.name, params, ret);
         }

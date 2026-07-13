@@ -1,0 +1,69 @@
+#if int32::Bits == 32 && int32::Bytes == 4 &&
+    int32::Min == -2147483648 && int32::Max == 2147483647 &&
+    uint64::Max > int64::Max && float32::Infinity > float32::Max &&
+    float32::NaN != float32::NaN {
+    const COMPILE_TIME_CONSTANTS_WORK: bool = true;
+} else {
+    const COMPILE_TIME_CONSTANTS_WORK: bool = false;
+}
+
+const GLOBAL_LIMIT: int32 = int32::Max;
+
+func Main() -> int {
+    Assert(COMPILE_TIME_CONSTANTS_WORK, "primitive constants work in compile-time conditions");
+    Assert(GLOBAL_LIMIT == 2147483647i32, "primitive constants initialize global constants");
+
+    Assert(bool8::Bits == 8 && bool8::Bytes == 1, "bool8 width constants");
+    Assert(bool16::Bits == 16 && bool16::Bytes == 2, "bool16 width constants");
+    Assert(bool32::Bits == 32 && bool32::Bytes == 4, "bool32 width constants");
+    Assert(bool::Bits == bool8::Bits && bool::Bytes == bool8::Bytes, "bool alias constants");
+
+    Assert(char8::Bits == 8 && char8::Bytes == 1, "char8 width constants");
+    Assert(char8::Min as uint32 == 0u32 && char8::Max as uint32 == 255u32, "char8 range constants");
+    Assert(char16::Bits == 16 && char16::Bytes == 2, "char16 width constants");
+    Assert(char16::Min as uint32 == 0u32 && char16::Max as uint32 == 65535u32, "char16 range constants");
+    Assert(char32::Bits == 32 && char32::Bytes == 4, "char32 width constants");
+    Assert(char32::Min as uint32 == 0u32 && char32::Max as uint32 == 0x10FFFFu32,
+           "char32 range constants");
+    Assert(char::Max == char32::Max, "char alias constants");
+
+    Assert(int8::Bits == 8 && int8::Bytes == 1 && int8::Min == -128i8 && int8::Max == 127i8,
+           "int8 constants");
+    Assert(int16::Bits == 16 && int16::Bytes == 2 && int16::Min == -32768i16 && int16::Max == 32767i16,
+           "int16 constants");
+    Assert(int32::Bits == 32 && int32::Bytes == 4 && int32::Min == -2147483648i32 &&
+           int32::Max == 2147483647i32, "int32 constants");
+    Assert(int64::Bits == 64 && int64::Bytes == 8 && int64::Min == -9223372036854775808i64 &&
+           int64::Max == 9223372036854775807i64, "int64 constants");
+    Assert(int::Bits == 64 && int::Bytes == 8 && int::Min == int64::Min && int::Max == int64::Max,
+           "native int constants");
+
+    Assert(uint8::Bits == 8 && uint8::Bytes == 1 && uint8::Min == 0u8 && uint8::Max == 255u8,
+           "uint8 constants");
+    Assert(uint16::Bits == 16 && uint16::Bytes == 2 && uint16::Min == 0u16 && uint16::Max == 65535u16,
+           "uint16 constants");
+    Assert(uint32::Bits == 32 && uint32::Bytes == 4 && uint32::Min == 0u32 && uint32::Max == 4294967295u32,
+           "uint32 constants");
+    Assert(uint64::Bits == 64 && uint64::Bytes == 8 && uint64::Min == 0u64 &&
+           uint64::Max == 18446744073709551615u64, "uint64 constants");
+    Assert(uint::Bits == 64 && uint::Bytes == 8 && uint::Min == uint64::Min && uint::Max == uint64::Max,
+           "native uint constants");
+
+    Assert(float32::Bits == 32 && float32::Bytes == 4, "float32 width constants");
+    Assert(float32::Lowest == -float32::Max && float32::Max > 0.0f32, "float32 finite range constants");
+    Assert(float32::MinPositive > 0.0f32 && float32::MinPositive < 1.0f32, "float32 minimum positive");
+    Assert(1.0f32 + float32::Epsilon > 1.0f32, "float32 epsilon");
+    Assert(float32::Infinity > float32::Max, "float32 infinity");
+    Assert(float32::NaN != float32::NaN, "float32 NaN");
+
+    Assert(float64::Bits == 64 && float64::Bytes == 8, "float64 width constants");
+    Assert(float64::Lowest == -float64::Max && float64::Max > 0.0, "float64 finite range constants");
+    Assert(float64::MinPositive > 0.0 && float64::MinPositive < 1.0, "float64 minimum positive");
+    Assert(1.0 + float64::Epsilon > 1.0, "float64 epsilon");
+    Assert(float64::Infinity > float64::Max, "float64 infinity");
+    Assert(float64::NaN != float64::NaN, "float64 NaN");
+    Assert(float::Bits == float64::Bits && float::Max == float64::Max && float::NaN != float::NaN,
+           "float alias constants");
+
+    return 0;
+}

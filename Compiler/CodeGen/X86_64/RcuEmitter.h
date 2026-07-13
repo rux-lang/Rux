@@ -7,12 +7,14 @@
 
 #include "Diagnostics/Diagnostics.h"
 #include "Object/Rcu/Rcu.h"
+#include "Target/Target.h"
 
 namespace Rux {
 
 class RcuEmitter {
 public:
-    explicit RcuEmitter(const LirPackage &package, std::string inputPackageName = {});
+    explicit RcuEmitter(const LirPackage &package, std::string inputPackageName = {},
+                        Target::OS inputTargetOs = Target::HostOS);
     [[nodiscard]] std::vector<RcuFile> Generate() const;
 
     // Diagnostics accumulated during generation (e.g. errors encoding an
@@ -24,6 +26,7 @@ public:
 private:
     const LirPackage &lir;
     std::string packageName;
+    Target::OS targetOs;
     mutable std::vector<Diagnostic> diagnostics;
 };
 

@@ -6,11 +6,11 @@
 struct Animal {}
 
 extend Animal {
-    #if #os == .Linux {
+    #if #target.os == .Linux {
         func Talk() {}
     }
 
-    #{ abi: .C }
+    #Abi(.C)
     func Legs(self) -> int {
         return 4;
     }
