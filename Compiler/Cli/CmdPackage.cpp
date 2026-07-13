@@ -138,10 +138,15 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
 
 int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOptions &opts) {
     std::string_view packageName;
+    bool global = false;
     for (auto arg : args) {
         if (arg == "-h" || arg == "--help") {
             PrintHelpFor("uninstall");
             return 0;
+        }
+        if (arg == "--global") {
+            global = true;
+            continue;
         }
         if (!arg.starts_with('-') && packageName.empty()) {
             packageName = arg;
@@ -149,6 +154,47 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
         }
         PrintUnknownOption(arg, "uninstall");
         return 1;
+    }
+    if (global && !packageName.empty()) {
+        std::print(stderr, "error: '--global' cannot be combined with a package name\n");
+        return 1;
+    }
+
+    if (global) {
+        const auto cacheDir = RegistryPackagesDir();
+        std::vector<std::filesystem::path> pkgDirs;
+        std::error_code ec;
+        if (std::filesystem::exists(cacheDir, ec)) {
+            for (const auto &entry : std::filesystem::directory_iterator(cacheDir, ec)) {
+                if (entry.is_directory()) {
+                    pkgDirs.push_back(entry.path());
+                }
+            }
+        }
+        if (pkgDirs.empty()) {
+            if (!opts.quiet) {
+                std::print("  Global cache is empty ({})\n", cacheDir.string());
+            }
+            return 0;
+        }
+        std::ranges::sort(pkgDirs);
+        int removed = 0;
+        for (const auto &pkgDir : pkgDirs) {
+            const std::string pkgName = pkgDir.filename().string();
+            std::filesystem::remove_all(pkgDir, ec);
+            if (ec) {
+                std::print(stderr, "error: failed to remove '{}': {}\n", pkgDir.string(), ec.message());
+                return 1;
+            }
+            if (!opts.quiet) {
+                std::print("   Uninstalled {}\n", pkgName);
+            }
+            ++removed;
+        }
+        if (!opts.quiet) {
+            std::print("     Summary: {} uninstalled\n", removed);
+        }
+        return 0;
     }
 
     if (!packageName.empty()) {

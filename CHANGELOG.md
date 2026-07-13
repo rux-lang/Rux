@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Inline assembly functions** — `asm func Name(...) -> T { ... }` bodies are written directly in x86-64 (Intel syntax) and assembled to machine code, bypassing the normal HIR/LIR pipeline. Supports the common instruction subset (ALU ops, `mov`/`lea`, `movzx`/`movsx`, the multiply/divide group, shifts, `push`/`pop`, `call`/`jmp`, the full `jcc`/`setcc` family, `ret`/`leave`/`nop`/`syscall`), register/immediate/memory operands, local labels, and calls to other functions.
 
+#### CLI / Package Manager
+
+- `rux uninstall --global` — remove every package from the global cache, whether or not the current `Rux.toml` declares it. Completes the `--global` set alongside `rux list --global` and `rux update --global`.
+
 ### Changed
 
 - **Workspace test discovery** — `rux test` at a workspace root now discovers each member package's `Tests/` directory in addition to the root `Tests/`, so test packages can live beside the code they cover. Tests found under a member are labeled with the member's name (`Text/Tests/Compare` reports as `Text/Compare`), and a root `Tests/` keeps working as before.

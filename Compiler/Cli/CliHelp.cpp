@@ -298,8 +298,10 @@ constexpr std::array test_opts = {OptionDoc{.flags = "--release"sv, .desc = "Bui
 constexpr std::array test_exs = {""sv, "--release"sv};
 
 // Uninstall
-constexpr std::array uninstall_usage = {""sv, "[package]"sv};
-constexpr std::array uninstall_exs = {""sv, "Json"sv};
+constexpr std::array uninstall_usage = {""sv, "[package]"sv, "[options]"sv};
+constexpr std::array uninstall_opts = {
+    OptionDoc{.flags = "--global"sv, .desc = "Uninstall every package in the global environment cache"sv}};
+constexpr std::array uninstall_exs = {""sv, "Json"sv, "--global"sv};
 
 // Update
 constexpr std::array update_usage = {"[options]"sv};
@@ -479,10 +481,11 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .usage = Data::uninstall_usage,
                .postUsage = "Without a package name, removes all registry dependencies "
                             "listed in Rux.toml from the local "
-                            "cache.\nWith a package name, removes only that package."sv,
+                            "cache.\nWith a package name, removes only that package.\nWith --global, removes every "
+                            "package present in the cache, whether or not Rux.toml declares it."sv,
                .footer = {},
                .examples = Data::uninstall_exs,
-               .options = {}},
+               .options = Data::uninstall_opts},
 
     CommandDoc{
         .name = "update"sv,
