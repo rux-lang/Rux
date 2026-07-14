@@ -70,6 +70,7 @@ private:
         CallingConvention callConv = CallingConvention::Default;
         std::string warnMessage;
         std::string errorMessage;
+        std::string intrinsicName;
         ExprPtr whenCondition;
         SourceLocation whenLocation;
         bool usedLink = false;
@@ -77,9 +78,11 @@ private:
         bool usedSymbol = false;
         bool usedNoReturn = false;
         bool usedAbi = false;
+        bool usedIntrinsic = false;
         SourceLocation linkLocation;
         SourceLocation noReturnLocation;
         SourceLocation abiLocation;
+        SourceLocation intrinsicLocation;
     };
 
     // Parses `#Name(...)` attribute calls before a declaration. The former

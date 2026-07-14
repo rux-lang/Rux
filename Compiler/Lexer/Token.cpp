@@ -156,6 +156,8 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "At";
     case TokenKind::Hash:
         return "Hash";
+    case TokenKind::Dollar:
+        return "Dollar";
     case TokenKind::Question:
         return "Question";
     case TokenKind::Plus:
@@ -226,16 +228,6 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "LessLessAssign";
     case TokenKind::GreaterGreaterAssign:
         return "GreaterGreaterAssign";
-    case TokenKind::HashConfig:
-        return "#config";
-    case TokenKind::HashTarget:
-        return "#target";
-    case TokenKind::HashBuild:
-        return "#build";
-    case TokenKind::HashCompiler:
-        return "#compiler";
-    case TokenKind::HashSource:
-        return "#source";
     case TokenKind::NewLine:
         return "NewLine";
     case TokenKind::EndOfFile:

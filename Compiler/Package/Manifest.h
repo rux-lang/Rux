@@ -49,7 +49,7 @@ struct Build {
     /// Output directory or artifact name.
     std::string output = "Bin";
 
-    /// User-defined compile-time values exposed through #config.
+    /// User-defined compile-time values exposed through the Rux package's `config` value.
     std::map<std::string, std::string> defines;
 };
 

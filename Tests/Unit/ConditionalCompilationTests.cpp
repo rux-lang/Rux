@@ -194,7 +194,7 @@ TEST_CASE("#if selects methods inside an extend block") {
 struct Animal {}
 
 extend Animal {
-    #if #target.os == .Windows {
+    #if target.os == .Windows {
         func Sound(self) -> int { return 1; }
     } else {
         func Sound(self) -> int { return 2; }
@@ -228,10 +228,10 @@ extend Animal {
     CHECK(ReturnedLiteral(*sound) == "2");
 }
 
-TEST_CASE("#if tests the target OS through #target.os") {
+TEST_CASE("#if tests the target OS through target.os") {
     const std::string source = R"(
 func Do() -> int {
-    #if #target.os == .Windows {
+    #if target.os == .Windows {
         return 1;
     } else {
         return 2;
@@ -252,10 +252,10 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*linuxFunc) == "2");
 }
 
-TEST_CASE("#target.os compares against the long form of the OS enum too") {
+TEST_CASE("target.os compares against the long form of OperatingSystem too") {
     auto parsed = ParseSource(R"(
 func Do() -> int {
-    #if #target.os != OS::Linux {
+    #if target.os != OperatingSystem::Linux {
         return 1;
     } else {
         return 2;
@@ -290,14 +290,14 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*func) == "2");
 }
 
-TEST_CASE("#target.os tells the BSDs apart") {
+TEST_CASE("target.os tells the BSDs apart") {
     const std::string source = R"(
 func Do() -> int {
-    #if #target.os == .FreeBSD {
+    #if target.os == .FreeBSD {
         return 1;
-    } else if #target.os == .OpenBSD {
+    } else if target.os == .OpenBSD {
         return 2;
-    } else if #target.os == .DragonFlyBSD {
+    } else if target.os == .DragonFlyBSD {
         return 3;
     } else {
         return 4;
@@ -326,7 +326,7 @@ func Do() -> int {
 TEST_CASE("an OS no build target produces warns instead of quietly never running") {
     auto parsed = ParseSource(R"(
 func Do() -> int {
-    #if #target.os == .Haiku {
+    #if target.os == .Haiku {
         return 1;
     }
     return 0;
@@ -345,7 +345,7 @@ func Do() -> int {
 TEST_CASE("a misspelled OS variant is an error, not a silently false branch") {
     auto parsed = ParseSource(R"(
 func Do() -> int {
-    #if #target.os == .Wndows {
+    #if target.os == .Wndows {
         return 1;
     }
     return 0;
@@ -354,20 +354,39 @@ func Do() -> int {
     const auto model = Analyze(parsed.module);
     REQUIRE(model.HasErrors());
     CHECK(model.diagnostics[0].message ==
-          "'.Wndows' is not a variant of 'OS'; the variants are: .AIX, .Android, .DragonFlyBSD, .FreeBSD, .Fuchsia, "
+          "'.Wndows' is not a variant of 'OperatingSystem'; the variants are: .AIX, .Android, .DragonFlyBSD, .FreeBSD, "
+          ".Fuchsia, "
           ".Haiku, .Illumos, .iOS, .Linux, .MacOS, .NetBSD, .OpenBSD, .QNX, .Redox, .Solaris, .Windows");
 }
 
-TEST_CASE("#target.os outside a #if condition is an error") {
+TEST_CASE("compiler-initialized constants are ordinary expressions outside #if") {
     auto parsed = ParseSource(R"(
+struct Target {
+    pointerBits: uint;
+}
+
+#Intrinsic("Target")
+const $target: Target;
+
 func Do() -> int {
-    let os = #target.os;
+    let bits = target.pointerBits;
     return 0;
 }
 )");
-    const auto model = Analyze(parsed.module);
-    REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message == "'#target.os' can only be used in a '#if' condition");
+    CompileTimeContext context;
+    context.target.pointer_size = 8;
+    const auto model = Analyze(parsed.module, std::move(context));
+    REQUIRE_FALSE(model.HasErrors());
+
+    AstToHirLowering lowering(model);
+    const HirPackage package = lowering.Generate();
+    REQUIRE(package.modules.size() == 1);
+    REQUIRE(package.modules[0].funcs.size() == 1);
+    const auto *let = dynamic_cast<const HirLetStmt *>(package.modules[0].funcs[0].body->stmts[0].get());
+    REQUIRE(let != nullptr);
+    const auto *literal = dynamic_cast<const HirLiteralExpr *>(let->init.get());
+    REQUIRE(literal != nullptr);
+    CHECK(literal->value == "64");
 }
 
 TEST_CASE("an enum shorthand outside a #if condition is an error") {
@@ -418,22 +437,22 @@ func Do() -> int {
 TEST_CASE("target and build intrinsics expose the full compile-time context") {
     auto parsed = ParseSource(R"(
 func Selected() -> int {
-    #if #target.os == .Windows &&
-        #target.arch == .X86_64 &&
-        #target.abi == .WindowsX64 &&
-        #target.endian == .Little &&
-        #target.pointerBits == 64 &&
-        #target.dataModel == .LLP64 &&
-        #target.objectFormat == .COFF &&
-        #target.triple == "windows-x64" &&
-        #target.hasFeature(.AVX2) &&
-        #build.profile == "Production" &&
-        #build.mode == .Release &&
-        #build.optimization == .Speed &&
-        !#build.debugAssertions &&
-        #build.debugInfo &&
-        #build.isTest &&
-        #build.outputKind == .SharedLibrary {
+    #if target.os == .Windows &&
+        target.arch == .X86_64 &&
+        target.abi == .WindowsX64 &&
+        target.endian == .Little &&
+        target.pointerBits == 64 &&
+        target.dataModel == .LLP64 &&
+        target.objectFormat == .COFF &&
+        target.triple == "windows-x64" &&
+        target.hasFeature(.AVX2) &&
+        build.profile == "Production" &&
+        build.mode == .Release &&
+        build.optimization == .Speed &&
+        !build.debugAssertions &&
+        build.debugInfo &&
+        build.isTest &&
+        build.outputKind == .SharedLibrary {
         return 1;
     } else {
         return 0;
@@ -467,13 +486,13 @@ func Selected() -> int {
 TEST_CASE("configuration and compiler feature intrinsics are queryable") {
     auto parsed = ParseSource(R"(
 func Selected() -> int {
-    #if #config.has("sqlite") &&
-        #config("allocator") == "mimalloc" &&
-        #compiler.hasFeature("conditional-compilation") &&
-        !#compiler.hasFeature("imaginary-feature") &&
-        #compiler.version == "1.2.3" &&
-        #source.function == "Selected" &&
-        #source.module == "test" {
+    #if config.has("sqlite") &&
+        config.get("allocator") == "mimalloc" &&
+        compiler.hasFeature("conditional-compilation") &&
+        !compiler.hasFeature("imaginary-feature") &&
+        compiler.version == "1.2.3" &&
+        source.function == "Selected" &&
+        source.module == "test" {
         return 1;
     } else {
         return 0;
@@ -505,30 +524,103 @@ func Selected() -> int {
     CHECK(parsed.HasErrors());
 }
 
+TEST_CASE("#Intrinsic declares a compiler-initialized ordinary constant") {
+    auto parsed = ParseSource(R"(
+struct Target { pointerBits: uint; }
+
+#Intrinsic("Target")
+const $target: Target;
+)");
+    REQUIRE(parsed.module.items.size() == 2);
+    const auto *decl = dynamic_cast<const ConstDecl *>(parsed.module.items[1].get());
+    REQUIRE(decl != nullptr);
+    CHECK(decl->name == "target");
+    CHECK(decl->intrinsicName == "Target");
+    CHECK(decl->isCompilerInitialized);
+    CHECK(decl->value == nullptr);
+}
+
 TEST_CASE("ordinary intrinsic expressions lower to context literals") {
     auto parsed = ParseSource(R"(
+enum TargetFeature { SSE2, SSE3, SSSE3, SSE41, SSE42, AVX, AVX2, AVX512, NEON, SVE, RVV }
+
+struct Target {
+    pointerBits: uint;
+    triple: char8[];
+}
+
+extend Target {
+    #Intrinsic("Target.HasFeature")
+    func hasFeature(self, feature: TargetFeature) -> bool;
+}
+
+struct Build {
+    profile: char8[];
+    debugAssertions: bool;
+    debugInfo: bool;
+    isTest: bool;
+    timestamp: uint64;
+    date: char8[];
+    time: char8[];
+}
+
+struct Compiler { version: char8[]; }
+extend Compiler {
+    #Intrinsic("Compiler.HasFeature")
+    func hasFeature(self, feature: char8[]) -> bool;
+}
+
+struct Source {
+    line: uint;
+    column: uint;
+    fileName: char8[];
+    filePath: char8[];
+    function: char8[];
+    module: char8[];
+}
+
+struct Config {}
+extend Config {
+    #Intrinsic("Config.Get")
+    func get(self, name: char8[]) -> char8[];
+    #Intrinsic("Config.Has")
+    func has(self, name: char8[]) -> bool;
+}
+
+#Intrinsic("Target")
+const $target: Target;
+#Intrinsic("Build")
+const $build: Build;
+#Intrinsic("Compiler")
+const $compiler: Compiler;
+#Intrinsic("Source")
+const $source: Source;
+#Intrinsic("Config")
+const $config: Config;
+
 module Demo {
     func Values() {
-        let line = #source.line;
-        let column = #source.column;
-        let fileName = #source.fileName;
-        let filePath = #source.filePath;
-        let function = #source.function;
-        let moduleName = #source.module;
-        let date = #build.date;
-        let time = #build.time;
-        let timestamp = #build.timestamp;
-        let pointerBits = #target.pointerBits;
-        let targetTriple = #target.triple;
-        let feature = #target.hasFeature(.AVX2);
-        let profile = #build.profile;
-        let debugAssertions = #build.debugAssertions;
-        let debugInfo = #build.debugInfo;
-        let isTest = #build.isTest;
-        let config = #config("allocator");
-        let hasConfig = #config.has("allocator");
-        let version = #compiler.version;
-        let compilerFeature = #compiler.hasFeature("namespaced-intrinsics");
+        let line = source.line;
+        let column = source.column;
+        let fileName = source.fileName;
+        let filePath = source.filePath;
+        let function = source.function;
+        let moduleName = source.module;
+        let date = build.date;
+        let time = build.time;
+        let timestamp = build.timestamp;
+        let pointerBits = target.pointerBits;
+        let targetTriple = target.triple;
+        let feature = target.hasFeature(TargetFeature::AVX2);
+        let profile = build.profile;
+        let debugAssertions = build.debugAssertions;
+        let debugInfo = build.debugInfo;
+        let isTest = build.isTest;
+        let configValue = config.get("allocator");
+        let hasConfig = config.has("allocator");
+        let version = compiler.version;
+        let compilerFeature = compiler.hasFeature("namespaced-intrinsics");
+        let currentTarget = target;
     }
 }
 )");
@@ -545,6 +637,11 @@ module Demo {
     context.compilerVersion = "1.2.3";
 
     const SemanticModel model = Analyze(parsed.module, std::move(context));
+    std::string diagnosticMessages;
+    for (const Diagnostic &diagnostic : model.diagnostics) {
+        diagnosticMessages += diagnostic.message + "\n";
+    }
+    INFO(diagnosticMessages);
     REQUIRE_FALSE(model.HasErrors());
     AstToHirLowering lowering(model);
     const HirPackage package = lowering.Generate();
@@ -556,9 +653,16 @@ module Demo {
     for (const auto &stmt : package.modules[0].funcs[0].body->stmts) {
         const auto *let = dynamic_cast<const HirLetStmt *>(stmt.get());
         REQUIRE(let != nullptr);
-        const auto *literal = dynamic_cast<const HirLiteralExpr *>(let->init.get());
-        REQUIRE(literal != nullptr);
-        values[let->name] = literal->value;
+        if (const auto *literal = dynamic_cast<const HirLiteralExpr *>(let->init.get())) {
+            values[let->name] = literal->value;
+        }
+        else {
+            const auto *object = dynamic_cast<const HirStructInitExpr *>(let->init.get());
+            REQUIRE(object != nullptr);
+            CHECK(let->name == "currentTarget");
+            CHECK(object->typeName == "Target");
+            CHECK(object->fields.size() == 2);
+        }
     }
     CHECK(values["line"] != "0");
     CHECK(values["column"] != "0");
@@ -576,7 +680,7 @@ module Demo {
     CHECK(values["debugAssertions"] == "false");
     CHECK(values["debugInfo"] == "true");
     CHECK(values["isTest"] == "true");
-    CHECK(values["config"] == "mimalloc");
+    CHECK(values["configValue"] == "mimalloc");
     CHECK(values["hasConfig"] == "true");
     CHECK(values["version"] == "1.2.3");
     CHECK(values["compilerFeature"] == "true");
@@ -586,7 +690,7 @@ TEST_CASE("#When includes true declarations and removes false declarations and i
     auto parsed = ParseSource(R"(
 const Enabled = true;
 
-#When(Enabled && #compiler.hasFeature("when-attribute"))
+#When(Enabled && compiler.hasFeature("when-attribute"))
 func Kept() -> int { return 1; }
 
 #When(false)
@@ -625,7 +729,7 @@ TEST_CASE("#When conditionally includes methods inside an extend block") {
 struct Animal {}
 
 extend Animal {
-    #When(#target.os == .Windows)
+    #When(target.os == .Windows)
     func Sound(self) -> int { return 1; }
 
     #When(false)

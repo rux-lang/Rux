@@ -125,15 +125,24 @@ TEST_CASE("compiler driver supplies manifest and command-line build context") {
     DependencyFixture fixture;
     fixture.SetManifestDefine("allocator", "system");
     fixture.SetApplicationSource(R"(
-#if #config.has("allocator") &&
-    #config("allocator") == "mimalloc" &&
-    #build.isTest &&
-    #build.mode == .Debug &&
-    #compiler.hasFeature("namespaced-intrinsics") {
+struct Build {
+    timestamp: uint64;
+    date: char8[];
+    time: char8[];
+}
+
+#Intrinsic("Build")
+const $build: Build;
+
+#if config.has("allocator") &&
+    config.get("allocator") == "mimalloc" &&
+    build.isTest &&
+    build.mode == .Debug &&
+    compiler.hasFeature("namespaced-intrinsics") {
     func Main() -> int {
-        let timestamp = #build.timestamp;
-        let date = #build.date;
-        let time = #build.time;
+        let timestamp = build.timestamp;
+        let date = build.date;
+        let time = build.time;
         return 0;
     }
 } else {

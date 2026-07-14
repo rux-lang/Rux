@@ -98,7 +98,7 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     const std::string name = Advance().text;
 
     if (name != "Error" && name != "Warn" && name != "Link" && name != "Library" && name != "Symbol" &&
-        name != "When" && name != "NoReturn" && name != "Abi") {
+        name != "When" && name != "NoReturn" && name != "Abi" && name != "Intrinsic") {
         EmitError(nameLoc, std::format("unknown attribute call '#{}'", name));
         // Skip a parenthesized argument list, if any, so the declaration that
         // follows still parses.
@@ -112,6 +112,30 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     }
 
     Expect(TokenKind::LeftParen, std::format("expected '(' after '#{}'", name));
+    if (name == "Intrinsic") {
+        if (attrs.usedIntrinsic) {
+            EmitError(nameLoc, "duplicate '#Intrinsic' attribute");
+        }
+        attrs.usedIntrinsic = true;
+        attrs.intrinsicLocation = attributeLoc;
+        if (Check(TokenKind::StringLiteral)) {
+            attrs.intrinsicName = DecodeStringLiteralText(Advance().text);
+            if (attrs.intrinsicName.empty()) {
+                EmitError(nameLoc, "'#Intrinsic' name cannot be empty");
+            }
+        }
+        else {
+            EmitError(CurrentLocation(), "'#Intrinsic' takes exactly one name string");
+        }
+        if (!Check(TokenKind::RightParen)) {
+            EmitError(CurrentLocation(), "'#Intrinsic' accepts exactly one argument");
+            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                Advance();
+            }
+        }
+        Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+        return;
+    }
     if (name == "NoReturn") {
         if (attrs.usedNoReturn) {
             EmitError(nameLoc, "duplicate '#NoReturn' attribute");
@@ -307,6 +331,19 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
     }
     if (decl->errorMessage.empty()) {
         decl->errorMessage = attrs.errorMessage;
+    }
+    decl->intrinsicName = attrs.intrinsicName;
+
+    if (attrs.usedIntrinsic && !dynamic_cast<FuncDecl *>(decl.get()) && !dynamic_cast<ConstDecl *>(decl.get())) {
+        EmitError(attrs.intrinsicLocation, "'#Intrinsic' can only be applied to a function or constant");
+    }
+    if (auto *constant = dynamic_cast<ConstDecl *>(decl.get()); constant && constant->isCompilerInitialized) {
+        if (!attrs.usedIntrinsic) {
+            EmitError(constant->location, "compiler-initialized constant requires an '#Intrinsic' attribute");
+        }
+    }
+    else if (attrs.usedIntrinsic && dynamic_cast<ConstDecl *>(decl.get())) {
+        EmitError(attrs.intrinsicLocation, "intrinsic constant must use a compiler-initialized '$' declaration");
     }
 
     if (attrs.usedLink && !dynamic_cast<ExternFuncDecl *>(decl.get()) && !dynamic_cast<ExternBlockDecl *>(decl.get())) {
@@ -780,7 +817,10 @@ std::unique_ptr<StructDecl> Parser::ParseStructDecl(bool isPublic) {
             field.isPublic = true;
         }
 
-        field.name = Expect(TokenKind::Ident, "expected field name").text;
+        // Keywords are contextual after a field declaration starts. This lets
+        // ordinary package APIs expose members such as `source.module`.
+        field.name =
+            Check(TokenKind::ModuleKeyword) ? Advance().text : Expect(TokenKind::Ident, "expected field name").text;
         Expect(TokenKind::Colon, "expected ':'");
         field.type = ParseType();
         Expect(TokenKind::Semicolon, "expected ';' after field");
@@ -1107,14 +1147,26 @@ std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic) {
     auto decl = std::make_unique<ConstDecl>();
     decl->location = loc;
     decl->isPublic = isPublic;
+    decl->isCompilerInitialized = Match(TokenKind::Dollar);
     decl->name = Expect(TokenKind::Ident, "expected constant name").text;
 
     if (Match(TokenKind::Colon)) {
         decl->type = ParseType();
     }
 
-    Expect(TokenKind::Assign, "expected '='");
-    decl->value = ParseExpr();
+    if (decl->isCompilerInitialized) {
+        if (!decl->type) {
+            EmitError(decl->location, "compiler-initialized constant requires an explicit type");
+        }
+        if (Match(TokenKind::Assign)) {
+            EmitError(decl->location, "compiler-initialized constant cannot have a source initializer");
+            decl->value = ParseExpr();
+        }
+    }
+    else {
+        Expect(TokenKind::Assign, "expected '='");
+        decl->value = ParseExpr();
+    }
 
     Expect(TokenKind::Semicolon, "expected ';'");
     return decl;

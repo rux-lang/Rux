@@ -182,7 +182,7 @@ struct EnumShorthandExpr : Expr {
     std::string variant;
 };
 
-// A compiler-provided value such as #source.line, #target.arch or #config("name").
+// A compiler-provided value such as source.line, target.arch or config.get("name").
 struct IntrinsicExpr : Expr {
     enum class Kind {
         Line,
@@ -444,6 +444,9 @@ struct DeclStmt : Stmt {
 struct Decl {
     SourceLocation location;
     bool isPublic = false;
+    // Non-empty for declarations whose implementation/value is supplied by
+    // the compiler rather than Rux source.
+    std::string intrinsicName;
     std::string warnMessage;  // non-empty = emit this warning at each call site
     std::string errorMessage; // non-empty = emit this error at each call site
     virtual ~Decl() = default;
@@ -583,6 +586,9 @@ struct ConstDecl : Decl {
     std::string name;
     std::optional<TypeExprPtr> type;
     ExprPtr value;
+    // Written as `const $name: Type;`. The '$' marks compiler initialization
+    // and is not part of the public identifier.
+    bool isCompilerInitialized = false;
 };
 
 // type Name = Type;

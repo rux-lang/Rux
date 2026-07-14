@@ -1,3 +1,6 @@
+#Intrinsic("Panic")
+func Panic(message: char8[]);
+
 #NoReturn()
 func Fail(message: char8[]) {
     Panic(message);

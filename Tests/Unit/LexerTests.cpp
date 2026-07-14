@@ -77,6 +77,27 @@ TEST_CASE("Lexer does not recognize flat compile-time intrinsic aliases") {
     }
 }
 
+TEST_CASE("Lexer treats compiler parameter roots as ordinary identifiers") {
+    const auto result = Lex("#target.os target.os");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.tokens.size() == 8);
+    CHECK(result.tokens[0].Is(TokenKind::Hash));
+    CHECK(result.tokens[1].Is(TokenKind::Ident));
+    CHECK(result.tokens[1].text == "target");
+    CHECK(result.tokens[4].Is(TokenKind::Ident));
+    CHECK(result.tokens[4].text == "target");
+}
+
+TEST_CASE("Lexer recognizes compiler-initialized constant declarations") {
+    const auto result = Lex("const $target: Target;");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.tokens.size() == 7);
+    CHECK(result.tokens[0].Is(TokenKind::ConstKeyword));
+    CHECK(result.tokens[1].Is(TokenKind::Dollar));
+    CHECK(result.tokens[2].Is(TokenKind::Ident));
+    CHECK(result.tokens[2].text == "target");
+}
+
 TEST_CASE("Lexer accepts every control escape sequence") {
     const auto result = Lex(R"(let s = "\n\t\r\a\b\f\v\0\\\"";)");
     CHECK(result.diagnostics.empty());

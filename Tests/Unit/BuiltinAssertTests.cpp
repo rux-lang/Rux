@@ -16,8 +16,16 @@ using namespace Rux;
 
 namespace {
 
+constexpr std::string_view AssertIntrinsics = R"(
+    #Intrinsic("Assert")
+    func Assert(condition: bool, message: char8[]);
+
+    #Intrinsic("DebugAssert")
+    func DebugAssert(condition: bool, message: char8[]);
+)";
+
 LirPackage CompileToLir(const std::string &source, const bool debugAssertions) {
-    Lexer lexer(source, "test.rux");
+    Lexer lexer(std::string(AssertIntrinsics) + source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -140,19 +148,20 @@ TEST_CASE("release-mode DebugAssert is removed without evaluating arguments") {
     }
 }
 
-TEST_CASE("builtin assertions enforce their signatures and reserve their names") {
-    const auto redefinitionDiagnostics = Analyze(R"(
-        func Assert(condition: bool, message: char8[]) {}
-
-        func Main() -> int {
-            return 0;
-        }
+TEST_CASE("assertion intrinsics require declarations and enforce their signatures") {
+    const auto undefinedDiagnostics = Analyze(R"(
+        func Main() { Assert(true, "missing import"); }
     )");
-    CHECK(std::ranges::any_of(redefinitionDiagnostics, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message.find("'Assert' is already defined") != std::string::npos;
+    CHECK(std::ranges::any_of(undefinedDiagnostics, [](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.message == "undefined name 'Assert'";
     }));
 
     const auto signatureDiagnostics = Analyze(R"(
+        #Intrinsic("Assert")
+        func Assert(condition: bool, message: char8[]);
+        #Intrinsic("DebugAssert")
+        func DebugAssert(condition: bool, message: char8[]);
+
         func Main() -> int {
             Assert("not bool", "condition");
             DebugAssert(true, 2);
@@ -160,9 +169,10 @@ TEST_CASE("builtin assertions enforce their signatures and reserve their names")
         }
     )");
     CHECK(std::ranges::any_of(signatureDiagnostics, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message.find("cannot pass 'Slice<char8>' to parameter of type 'bool8'") != std::string::npos;
+        return diagnostic.message ==
+               "no matching overload for 'Assert' with argument types (Slice<char8>, Slice<char8>)";
     }));
     CHECK(std::ranges::any_of(signatureDiagnostics, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message.find("cannot pass 'int' to parameter of type 'Slice<char8>'") != std::string::npos;
+        return diagnostic.message == "no matching overload for 'DebugAssert' with argument types (bool8, int)";
     }));
 }

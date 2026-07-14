@@ -69,7 +69,7 @@ private:
     bool EmitAll(std::span<const Diagnostic> diags) const;
 
     // The operating system of the build target, named exactly ("FreeBSD", not
-    // the "BSD" family). This is what `#target.os` reports.
+    // the "BSD" family). This is what `target.os` reports.
     [[nodiscard]] std::string TargetSystemName() const;
     void InitializeCompileTimeContext();
 

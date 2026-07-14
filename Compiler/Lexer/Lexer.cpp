@@ -744,39 +744,10 @@ Token Lexer::ScanSymbol(const SourceLocation start) {
         return MakeToken(TokenKind::Semicolon, start, tokenStart);
     case '@':
         return MakeToken(TokenKind::At, start, tokenStart);
-    case '#': {
-        auto isIdentChar = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
-        auto tryMatch = [&](std::string_view kw) -> bool {
-            for (std::size_t i = 0; i < kw.size(); ++i) {
-                if (Peek(i) != kw[i]) {
-                    return false;
-                }
-            }
-            if (isIdentChar(Peek(kw.size()))) {
-                return false;
-            }
-            for (std::size_t i = 0; i < kw.size(); ++i) {
-                Advance();
-            }
-            return true;
-        };
-        if (tryMatch("config")) {
-            return MakeToken(TokenKind::HashConfig, start, tokenStart);
-        }
-        if (tryMatch("target")) {
-            return MakeToken(TokenKind::HashTarget, start, tokenStart);
-        }
-        if (tryMatch("build")) {
-            return MakeToken(TokenKind::HashBuild, start, tokenStart);
-        }
-        if (tryMatch("compiler")) {
-            return MakeToken(TokenKind::HashCompiler, start, tokenStart);
-        }
-        if (tryMatch("source")) {
-            return MakeToken(TokenKind::HashSource, start, tokenStart);
-        }
+    case '#':
         return MakeToken(TokenKind::Hash, start, tokenStart);
-    }
+    case '$':
+        return MakeToken(TokenKind::Dollar, start, tokenStart);
     case '?':
         return MakeToken(TokenKind::Question, start, tokenStart);
     case '~':

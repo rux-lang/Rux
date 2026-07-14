@@ -6,7 +6,7 @@
 struct Animal {}
 
 extend Animal {
-    #if #target.os == .Linux {
+    #if target.os == .Linux {
         func Talk() {}
     }
 

@@ -1,8 +1,6 @@
 6:5: error: '#if' condition must be a compile-time constant expression
 11:5: error: '#if' condition must be of type 'bool'
 16:5: error: '#if' condition must be a compile-time constant expression
-22:20: error: '.Wndows' is not a variant of 'OS'; the variants are: .AIX, .Android, .DragonFlyBSD, .FreeBSD, .Fuchsia, .Haiku, .Illumos, .iOS, .Linux, .MacOS, .NetBSD, .OpenBSD, .QNX, .Redox, .Solaris, .Windows
-27:14: error: '#target.os' can only be used in a '#if' condition
-27:5: warning: cannot infer type of 'os'
-28:17: error: '.Three' can only be used in a '#if' condition; write the enum out in full, as in 'Enum::Three'
-28:5: warning: cannot infer type of 'level'
+22:19: error: '.Wndows' is not a variant of 'OperatingSystem'; the variants are: .AIX, .Android, .DragonFlyBSD, .FreeBSD, .Fuchsia, .Haiku, .Illumos, .iOS, .Linux, .MacOS, .NetBSD, .OpenBSD, .QNX, .Redox, .Solaris, .Windows
+27:17: error: '.Three' can only be used in a '#if' condition; write the enum out in full, as in 'Enum::Three'
+27:5: warning: cannot infer type of 'level'

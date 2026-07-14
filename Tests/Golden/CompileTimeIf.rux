@@ -17,14 +17,13 @@ func Main() -> int {
         return 3;
     }
 
-    // `#target.os` names a variant of the built-in OS enum; a misspelling is caught
+    // `target.os` names a variant of the built-in OS enum; a misspelling is caught
     // rather than quietly taking the other branch.
-    #if #target.os == .Wndows {
+    #if target.os == .Wndows {
         return 4;
     }
 
-    // Both `#target.os` and the `.Variant` shorthand are compile-time only.
-    let os = #target.os;
+    // Enum shorthand remains restricted to compile-time conditions.
     let level = .Three;
 
     return 0;

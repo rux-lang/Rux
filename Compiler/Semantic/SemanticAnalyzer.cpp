@@ -63,6 +63,7 @@ struct Symbol {
     TypeRef type;
     bool isMut = false;
     bool isParam = false; // function parameter: a mutable local copy, so &param is writable
+    std::string intrinsicName;
     std::vector<const FuncDecl *> funcOverloads;
     const ExternFuncDecl *externDecl = nullptr; // retained for #Warn/#Error at call sites
     std::vector<std::string> interfaceMethods;  // for Interface kind
@@ -335,27 +336,6 @@ private:
         for (const std::string_view name : UnimplementedPrimitiveTypes) {
             add(name.data(), TypeRef::MakeUnknown());
         }
-
-        const auto addAssert = [&](const char *name) {
-            Symbol sym;
-            // Const reserves the name against user declarations while still
-            // allowing the function value to participate in ordinary call
-            // type checking.
-            sym.kind = Symbol::Kind::Const;
-            sym.name = name;
-            sym.type = TypeRef::MakeFunc({TypeRef::MakeBool(), TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))},
-                                         TypeRef::MakeOpaque());
-            globalScope.Define(std::move(sym), diags, "<builtin>");
-        };
-        addAssert("Assert");
-        addAssert("DebugAssert");
-
-        Symbol panic;
-        panic.kind = Symbol::Kind::Const;
-        panic.name = "Panic";
-        panic.type =
-            TypeRef::MakeFunc({TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))}, TypeRef::MakeOpaque());
-        globalScope.Define(std::move(panic), diags, "<builtin>");
     }
 
     // First pass: collect global declaration names
@@ -507,6 +487,7 @@ private:
             sym.kind = Symbol::Kind::Func;
             sym.name = fn->name;
             sym.location = fn->location;
+            sym.intrinsicName = fn->intrinsicName;
             sym.funcOverloads.push_back(fn);
             if (scope.Define(sym, diags, currentFile) && isGlobal) {
                 symbols.push_back({SemanticSymbol::Kind::Func, fn->name, currentFile, fn->location, {}, false});
@@ -542,6 +523,7 @@ private:
             sym.kind = Symbol::Kind::Const;
             sym.name = constDecl->name;
             sym.location = constDecl->location;
+            sym.intrinsicName = constDecl->intrinsicName;
             if (constDecl->type) {
                 sym.type = ResolveType(*constDecl->type->get());
             }
@@ -2343,7 +2325,9 @@ private:
             // validated when the assembler encodes it, not here.
         }
         else if (!d.body) {
-            EmitError(d.location, std::format("function '{}' has no body", d.name));
+            if (d.intrinsicName.empty()) {
+                EmitError(d.location, std::format("function '{}' has no body", d.name));
+            }
         }
         else {
             CheckBlock(*d.body);
@@ -2667,6 +2651,25 @@ private:
     }
 
     void CheckConstDecl(const ConstDecl &d) {
+        if (d.isCompilerInitialized) {
+            if (d.intrinsicName.empty()) {
+                EmitError(d.location, std::format("compiler-initialized constant '{}' has no intrinsic", d.name));
+            }
+            if (!d.type) {
+                EmitError(d.location, std::format("compiler-initialized constant '{}' requires a type", d.name));
+                return;
+            }
+            const TypeRef constType = ResolveType(**d.type);
+            if (Symbol *sym = currentScope->Lookup(d.name)) {
+                sym->type = constType;
+                sym->intrinsicName = d.intrinsicName;
+            }
+            return;
+        }
+        if (!d.value) {
+            EmitError(d.location, std::format("constant '{}' requires an initializer", d.name));
+            return;
+        }
         TypeRef valueType = CheckExpr(*d.value);
         TypeRef constType = d.type ? ResolveType(*d.type->get()) : valueType;
         if (d.type && !valueType.IsUnknown() && !constType.IsUnknown() &&
@@ -2803,13 +2806,6 @@ private:
 
     void DefineImportedSymbol(const Symbol &sym) {
         if (Symbol *existing = currentScope->LookupLocal(sym.name)) {
-            // Legacy packages may still export Assert. The built-in is the
-            // canonical binding now, so importing that name is a harmless
-            // compatibility no-op instead of a duplicate-definition error.
-            if ((sym.name == "Assert" || sym.name == "DebugAssert" || sym.name == "Panic") &&
-                existing->kind == Symbol::Kind::Const && existing->type.kind == TypeRef::Kind::Func) {
-                return;
-            }
             if (existing->kind == sym.kind && existing->location.line == sym.location.line &&
                 existing->location.column == sym.location.column) {
                 *existing = sym;
@@ -3423,7 +3419,7 @@ private:
                     EmitError(e->location, "compile-time intrinsic expects exactly one argument");
                 }
                 else if (e->kind == K::TargetFeature && dynamic_cast<const EnumShorthandExpr *>(e->args[0].get())) {
-                    // `.AVX2` is given its meaning by #target.hasFeature.
+                    // `.AVX2` is given its meaning by target.hasFeature.
                 }
                 else {
                     const TypeRef argType = CheckExpr(*e->args[0]);
@@ -3447,15 +3443,15 @@ private:
             if (e->kind == K::Os || e->kind == K::Arch || e->kind == K::Abi || e->kind == K::Endian ||
                 e->kind == K::DataModel || e->kind == K::ObjectFormat || e->kind == K::BuildMode ||
                 e->kind == K::Optimization || e->kind == K::OutputKind) {
-                const char *name = e->kind == K::Os           ? "#target.os"
-                                 : e->kind == K::Arch         ? "#target.arch"
-                                 : e->kind == K::Abi          ? "#target.abi"
-                                 : e->kind == K::Endian       ? "#target.endian"
-                                 : e->kind == K::DataModel    ? "#target.dataModel"
-                                 : e->kind == K::ObjectFormat ? "#target.objectFormat"
-                                 : e->kind == K::BuildMode    ? "#build.mode"
-                                 : e->kind == K::Optimization ? "#build.optimization"
-                                                              : "#build.outputKind";
+                const char *name = e->kind == K::Os           ? "target.os"
+                                 : e->kind == K::Arch         ? "target.arch"
+                                 : e->kind == K::Abi          ? "target.abi"
+                                 : e->kind == K::Endian       ? "target.endian"
+                                 : e->kind == K::DataModel    ? "target.dataModel"
+                                 : e->kind == K::ObjectFormat ? "target.objectFormat"
+                                 : e->kind == K::BuildMode    ? "build.mode"
+                                 : e->kind == K::Optimization ? "build.optimization"
+                                                              : "build.outputKind";
                 EmitError(e->location, std::string("'") + name + "' can only be used in a '#if' condition");
                 return TypeRef::MakeUnknown();
             }

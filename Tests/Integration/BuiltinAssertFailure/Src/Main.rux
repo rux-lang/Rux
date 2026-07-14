@@ -1,3 +1,6 @@
+#Intrinsic("Assert")
+func Assert(condition: bool, message: char8[]);
+
 func Main() -> int {
     let message: char8[] = "the value must be positive";
     Assert(false, message);

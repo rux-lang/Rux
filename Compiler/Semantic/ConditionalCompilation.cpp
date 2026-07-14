@@ -23,9 +23,9 @@
 
 namespace Rux {
 namespace {
-// The operating systems `#target.os` can name. Each is a real system, not a
+// The operating systems `target.os` can name. Each is a real system, not a
 // family, so FreeBSD and OpenBSD remain distinct. `buildable` marks the ones a build can currently produce;
-// the rest are accepted so that code can name them, and comparing `#target.os` against
+// the rest are accepted so that code can name them, and comparing `target.os` against
 // one warns rather than quietly never running.
 struct OsVariant {
     std::string_view name;
@@ -58,7 +58,7 @@ struct EnumValue {
 
 // A compile-time value. `#if` conditions must evaluate to a bool; the other
 // alternatives exist so that comparisons such as `Version >= 2`, `Name == "x"`
-// and `#target.os == .Windows` can produce one.
+// and `target.os == .Windows` can produce one.
 using Value = std::variant<bool, std::int64_t, std::uint64_t, double, std::string, EnumValue>;
 
 bool EqualsIgnoringCase(const std::string_view a, const std::string_view b) {
@@ -420,13 +420,21 @@ public:
             os.emplace_back(variant.name);
         }
         RegisterVariants(enumVariants, "Arch", ArchVariants);
+        RegisterVariants(enumVariants, "Architecture", ArchVariants);
         RegisterVariants(enumVariants, "ABI", AbiVariants);
+        RegisterVariants(enumVariants, "ApplicationBinaryInterface", AbiVariants);
         RegisterVariants(enumVariants, "Endian", EndianVariants);
+        RegisterVariants(enumVariants, "Endianness", EndianVariants);
         RegisterVariants(enumVariants, "DataModel", DataModelVariants);
         RegisterVariants(enumVariants, "ObjectFormat", ObjectFormatVariants);
         RegisterVariants(enumVariants, "BuildMode", BuildModeVariants);
         RegisterVariants(enumVariants, "Optimization", OptimizationVariants);
+        RegisterVariants(enumVariants, "OptimizationMode", OptimizationVariants);
         RegisterVariants(enumVariants, "OutputKind", OutputKindVariants);
+        auto &operatingSystem = enumVariants["OperatingSystem"];
+        for (const auto &variant : OsVariants) {
+            operatingSystem.emplace_back(variant.name);
+        }
     }
 
     void Run(const std::vector<Module *> &modules) {
@@ -551,6 +559,135 @@ private:
         return false;
     }
 
+    static std::optional<std::string_view> CompilerParamRoot(const Expr &expr) {
+        const auto *ident = dynamic_cast<const IdentExpr *>(&expr);
+        if (!ident) {
+            return std::nullopt;
+        }
+        if (ident->name == "target")
+            return "Target";
+        if (ident->name == "build")
+            return "Build";
+        if (ident->name == "compiler")
+            return "Compiler";
+        if (ident->name == "source")
+            return "Source";
+        if (ident->name == "config")
+            return "Config";
+        return std::nullopt;
+    }
+
+    std::optional<Value> EvalCompilerParamField(const std::string_view root, const std::string_view field,
+                                                const SourceLocation location) const {
+        if (root == "Target") {
+            if (field == "os") {
+                if (const auto variant = OsVariantFor(ToString(context.target.os)))
+                    return Value{EnumValue{"OperatingSystem", *variant}};
+            }
+            if (field == "arch")
+                return Value{EnumValue{"Architecture", ArchVariant(context.target.arch)}};
+            if (field == "abi")
+                return Value{EnumValue{"ApplicationBinaryInterface", AbiVariant(context.target.abi)}};
+            if (field == "endian")
+                return Value{
+                    EnumValue{"Endianness", context.target.endianness == Target::Endian::Big ? "Big" : "Little"}};
+            if (field == "pointerBits")
+                return Value{static_cast<std::int64_t>(context.target.pointer_size * 8)};
+            if (field == "dataModel")
+                return Value{EnumValue{"DataModel", DataModelVariant(context.target.data_model)}};
+            if (field == "objectFormat")
+                return Value{EnumValue{"ObjectFormat", ObjectFormatVariant(context.target.object_format)}};
+            if (field == "triple")
+                return Value{context.targetTriple};
+        }
+        if (root == "Build") {
+            if (field == "profile")
+                return Value{context.profileName};
+            if (field == "mode")
+                return Value{
+                    EnumValue{"BuildMode", context.buildMode == Target::BuildMode::Release ? "Release" : "Debug"}};
+            if (field == "optimization") {
+                std::string variant = context.optimization == OptimizationMode::Size  ? "Size"
+                                    : context.optimization == OptimizationMode::Speed ? "Speed"
+                                                                                      : "None";
+                return Value{EnumValue{"OptimizationMode", std::move(variant)}};
+            }
+            if (field == "debugAssertions")
+                return Value{context.debugAssertions};
+            if (field == "debugInfo")
+                return Value{context.debugInfo};
+            if (field == "isTest")
+                return Value{context.isTest};
+            if (field == "outputKind") {
+                std::string variant = context.outputKind == OutputKind::StaticLibrary ? "StaticLibrary"
+                                    : context.outputKind == OutputKind::SharedLibrary ? "SharedLibrary"
+                                                                                      : "Executable";
+                return Value{EnumValue{"OutputKind", std::move(variant)}};
+            }
+            if (field == "timestamp")
+                return Value{context.buildTimestamp};
+            if (field == "date")
+                return Value{FormatTimestamp(context.buildTimestamp, "%Y-%m-%d")};
+            if (field == "time")
+                return Value{FormatTimestamp(context.buildTimestamp, "%H:%M:%S")};
+        }
+        if (root == "Compiler" && field == "version")
+            return Value{context.compilerVersion};
+        if (root == "Source") {
+            if (field == "line")
+                return Value{static_cast<std::int64_t>(location.line)};
+            if (field == "column")
+                return Value{static_cast<std::int64_t>(location.column)};
+            if (field == "file" || field == "fileName")
+                return Value{std::filesystem::path(currentFile).filename().generic_string()};
+            if (field == "filePath")
+                return Value{LogicalFilePath(currentFile, context.sourceRoot)};
+            if (field == "function")
+                return Value{currentFunction};
+            if (field == "module")
+                return Value{currentModulePath};
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Value> EvalCompilerParamCall(const std::string_view root, const std::string_view member,
+                                               const CallExpr &call) {
+        if (call.args.size() != 1 || !call.args[0]) {
+            EmitError(call.location, "compiler parameter query expects exactly one argument");
+            reportedError = true;
+            return std::nullopt;
+        }
+        const auto argument = Eval(*call.args[0]);
+        if (!argument) {
+            return std::nullopt;
+        }
+        std::string name;
+        if (const auto *text = std::get_if<std::string>(&*argument))
+            name = *text;
+        else if (const auto *enumerator = std::get_if<EnumValue>(&*argument))
+            name = enumerator->variant;
+        else
+            return std::nullopt;
+
+        if (root == "Target" && member == "hasFeature") {
+            if (!std::ranges::contains(TargetFeatureVariants, name)) {
+                EmitError(call.location, "unknown target feature '." + name + "'");
+                reportedError = true;
+                return std::nullopt;
+            }
+            return Value{TargetHasFeature(name)};
+        }
+        if (root == "Compiler" && member == "hasFeature")
+            return Value{std::ranges::contains(CompilerFeatures, name)};
+        if (root == "Config" && member == "get") {
+            const auto it = context.config.find(name);
+            return Value{it == context.config.end() ? std::string{} : it->second};
+        }
+        if (root == "Config" && member == "has")
+            return Value{context.config.contains(name)};
+        return std::nullopt;
+    }
+
     std::optional<Value> Eval(const Expr &expr) {
         if (const auto *e = dynamic_cast<const LiteralExpr *>(&expr)) {
             switch (e->token.kind) {
@@ -589,6 +726,22 @@ private:
             auto value = Eval(*it->second);
             constsInProgress.erase(e->name);
             return value;
+        }
+
+        if (const auto *e = dynamic_cast<const FieldExpr *>(&expr)) {
+            if (const auto root = CompilerParamRoot(*e->object)) {
+                return EvalCompilerParamField(*root, e->field, e->location);
+            }
+            return std::nullopt;
+        }
+
+        if (const auto *e = dynamic_cast<const CallExpr *>(&expr)) {
+            if (const auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {
+                if (const auto root = CompilerParamRoot(*field->object)) {
+                    return EvalCompilerParamCall(*root, field->field, *e);
+                }
+            }
+            return std::nullopt;
         }
 
         if (const auto *e = dynamic_cast<const IntrinsicExpr *>(&expr)) {
@@ -758,7 +911,7 @@ private:
         return std::nullopt;
     }
 
-    // `#target.os == .Windows`. Enum values compare by variant, and only for equality;
+    // `target.os == .Windows`. Enum values compare by variant, and only for equality;
     // a shorthand takes its enum from the value on the other side.
     std::optional<Value> EvalEnumComparison(const BinaryExpr &e, const EnumValue &left, const EnumValue &right) {
         if (e.op != TokenKind::Equal && e.op != TokenKind::BangEqual) {
@@ -785,7 +938,7 @@ private:
                 reportedError = true;
                 return std::nullopt;
             }
-            if (type == "OS" && !IsBuildableOs(side->variant)) {
+            if ((type == "OS" || type == "OperatingSystem") && !IsBuildableOs(side->variant)) {
                 EmitWarning(e.location, std::format("no build target produces '.{}', so this branch is never taken",
                                                     side->variant));
             }

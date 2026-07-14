@@ -15,8 +15,13 @@ using namespace Rux;
 
 namespace {
 
+constexpr std::string_view PanicIntrinsic = R"(
+    #Intrinsic("Panic")
+    func Panic(message: char8[]);
+)";
+
 LirPackage CompileToLir(const std::string &source) {
-    Lexer lexer(source, "test.rux");
+    Lexer lexer(std::string(PanicIntrinsic) + source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -82,7 +87,7 @@ bool HasConstant(const LirFunc &function, const std::string_view value) {
 
 } // namespace
 
-TEST_CASE("Panic is an import-free builtin with source context") {
+TEST_CASE("the imported Panic intrinsic lowers with source context") {
     const auto package = CompileToLir(R"(
         func Main() {
             let message: char8[] = "unrecoverable state";
@@ -132,22 +137,24 @@ TEST_CASE("#NoReturn marks functions and terminates caller control flow") {
     CHECK_FALSE(HasConstant(*main, "99"));
 }
 
-TEST_CASE("Panic enforces its signature and reserves its name") {
-    const auto redefinitionDiagnostics = Analyze(R"(
-        func Panic(message: char8[]) {}
-        func Main() {}
+TEST_CASE("Panic requires an intrinsic declaration and enforces its signature") {
+    const auto undefinedDiagnostics = Analyze(R"(
+        func Main() { Panic("missing import"); }
     )");
-    CHECK(std::ranges::any_of(redefinitionDiagnostics, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message.find("'Panic' is already defined") != std::string::npos;
+    CHECK(std::ranges::any_of(undefinedDiagnostics, [](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.message == "undefined name 'Panic'";
     }));
 
     const auto signatureDiagnostics = Analyze(R"(
+        #Intrinsic("Panic")
+        func Panic(message: char8[]);
+
         func Main() {
             Panic(42);
         }
     )");
     CHECK(std::ranges::any_of(signatureDiagnostics, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message.find("cannot pass 'int' to parameter of type 'Slice<char8>'") != std::string::npos;
+        return diagnostic.message == "no matching overload for 'Panic' with argument types (int)";
     }));
 }
 

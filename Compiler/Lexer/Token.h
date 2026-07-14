@@ -73,6 +73,7 @@ enum class TokenKind : std::uint8_t {
     FatArrow,     // =>
     At,           // @
     Hash,         // #
+    Dollar,       // $
     Question,     // ?
 
     // Arithmetic operators
@@ -118,13 +119,6 @@ enum class TokenKind : std::uint8_t {
     CaretAssign,          // ^=
     LessLessAssign,       // <<=
     GreaterGreaterAssign, // >>=
-
-    // Compile-time intrinsic namespace roots, such as `#target.arch`.
-    HashConfig,
-    HashTarget,
-    HashBuild,
-    HashCompiler,
-    HashSource,
 
     // Special
     NewLine,   // significant newline (if the grammar uses them)

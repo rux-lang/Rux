@@ -1,3 +1,9 @@
+#Intrinsic("Assert")
+func Assert(condition: bool, message: char8[]);
+
+#Intrinsic("DebugAssert")
+func DebugAssert(condition: bool, message: char8[]);
+
 func MustNotRun() -> bool {
     var zero = 0;
     let failure = 1 / zero;
@@ -6,9 +12,9 @@ func MustNotRun() -> bool {
 
 func Main() -> int {
     var condition = true;
-    Assert(condition, "Assert works without an import");
+    Assert(condition, "Assert intrinsic works");
 
-    #if #build.debugAssertions {
+    #if build.debugAssertions {
         DebugAssert(condition, "DebugAssert is active in debug builds");
     } else {
         DebugAssert(MustNotRun(), "DebugAssert does not evaluate arguments in release builds");

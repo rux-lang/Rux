@@ -18,6 +18,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -47,6 +48,7 @@ struct HirSymbol {
     TypeRef type;
     bool isMut = false;
     bool isNoReturn = false;
+    std::string intrinsicName;
     std::vector<const FuncDecl *> funcOverloads;
 };
 
@@ -225,7 +227,7 @@ private:
     std::unordered_map<std::string, std::vector<std::string>> fileImports;
     // Declared module path of the enclosing `module`, during collection and
     // during lowering respectively. Distinct from currentModulePath, which is
-    // derived from the file name for the `#source.module` intrinsic.
+    // derived from the file name for the `source.module` intrinsic.
     std::string collectModulePath;
     std::string declModulePath;
 
@@ -279,24 +281,6 @@ private:
         add("float32", TypeRef::MakeFloat32());
         add("float64", TypeRef::MakeFloat64());
         add("float", TypeRef::MakeFloat());
-
-        const auto addAssert = [&](const char *name) {
-            HirSymbol sym;
-            sym.kind = HirSymbol::Kind::Const;
-            sym.name = name;
-            sym.type = TypeRef::MakeFunc({TypeRef::MakeBool(), TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))},
-                                         TypeRef::MakeOpaque());
-            globalScope.Define(std::move(sym));
-        };
-        addAssert("Assert");
-        addAssert("DebugAssert");
-
-        HirSymbol panic;
-        panic.kind = HirSymbol::Kind::Const;
-        panic.name = "Panic";
-        panic.type =
-            TypeRef::MakeFunc({TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))}, TypeRef::MakeOpaque());
-        globalScope.Define(std::move(panic));
     }
 
     // First pass: collect global names
@@ -381,6 +365,7 @@ private:
             sym.name = fn->name;
             sym.type = MakeFuncType(fn->params, fn->returnType, fn->typeParams);
             sym.isNoReturn = fn->isNoReturn;
+            sym.intrinsicName = fn->intrinsicName;
             sym.funcOverloads.push_back(fn);
             globalScope.Define(std::move(sym));
         }
@@ -409,7 +394,12 @@ private:
             if (constDecl->type) {
                 constType = ResolveType(*constDecl->type->get());
             }
-            simple(HirSymbol::Kind::Const, constDecl->name, constType);
+            HirSymbol sym;
+            sym.kind = HirSymbol::Kind::Const;
+            sym.name = constDecl->name;
+            sym.type = std::move(constType);
+            sym.intrinsicName = constDecl->intrinsicName;
+            globalScope.Define(std::move(sym));
         }
         else if (auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
             simple(HirSymbol::Kind::Type, aliasDecl->name, ResolveType(*aliasDecl->type));
@@ -2231,6 +2221,9 @@ private:
 
     void LowerTopLevelDecl(const Decl &decl, HirModule &hmod) {
         if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
+            if (!fn->intrinsicName.empty() && !fn->body && !fn->isAsm) {
+                return;
+            }
             HirFunc hf = LowerFunc(*fn);
             hf.name = FunctionCalleeName(fn->name, *fn);
             hmod.funcs.push_back(std::move(hf));
@@ -2251,7 +2244,9 @@ private:
             hmod.impls.push_back(LowerImpl(*implDecl));
         }
         else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
-            hmod.consts.push_back(LowerConst(*constDecl));
+            if (!constDecl->isCompilerInitialized) {
+                hmod.consts.push_back(LowerConst(*constDecl));
+            }
         }
         else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
             hmod.externFuncs.push_back(LowerExternFunc(*externFn));
@@ -2471,6 +2466,9 @@ private:
         hib.interfaceName = d.interfaceName;
         hib.location = d.location;
         for (const auto &m : d.methods) {
+            if (!m->intrinsicName.empty() && !m->body && !m->isAsm) {
+                continue;
+            }
             HirFunc hf = LowerFunc(*m, /*isMethod=*/true);
             if (MethodIsOverloaded(d.typeName, m->name)) {
                 TypeRef selfType = TypeRef::MakePointer(TypeRef::MakeNamed(d.typeName));
@@ -2789,7 +2787,7 @@ private:
 
     // Like LowerExprAs but, for intrinsic defaults, evaluates at
     // callSiteLoc rather than at the declaration site (call-site builtins:
-    // #source.line, #source.column, #source.file, #compiler.version, etc.).
+    // source.line, source.column, source.file, compiler.version, etc.).
     HirExprPtr LowerDefaultArg(const Expr &defaultExpr, const TypeRef &targetType, const SourceLocation &callSiteLoc) {
         if (const auto *intr = dynamic_cast<const IntrinsicExpr *>(&defaultExpr); intr && intr->args.empty()) {
             IntrinsicExpr tmp;
@@ -2798,6 +2796,172 @@ private:
             return LowerExprAs(tmp, targetType);
         }
         return LowerExprAs(defaultExpr, targetType);
+    }
+
+    std::optional<std::string> CompilerParamRoot(const Expr &expr) const {
+        const auto *ident = dynamic_cast<const IdentExpr *>(&expr);
+        if (!ident) {
+            return std::nullopt;
+        }
+        const HirSymbol *symbol = currentScope->Lookup(ident->name);
+        if (!symbol || symbol->kind != HirSymbol::Kind::Const || symbol->intrinsicName.empty()) {
+            return std::nullopt;
+        }
+        return symbol->intrinsicName;
+    }
+
+    template <typename T>
+    HirExprPtr CompilerParamLiteral(const SourceLocation location, TypeRef type, T value) const {
+        auto literal = std::make_unique<HirLiteralExpr>();
+        literal->location = location;
+        literal->type = std::move(type);
+        if constexpr (std::is_same_v<std::decay_t<T>, bool>) {
+            literal->value = value ? "true" : "false";
+        }
+        else {
+            literal->value = std::to_string(value);
+        }
+        return literal;
+    }
+
+    HirExprPtr CompilerParamString(const SourceLocation location, std::string value) const {
+        auto literal = std::make_unique<HirLiteralExpr>();
+        literal->location = location;
+        literal->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+        literal->value = std::move(value);
+        return literal;
+    }
+
+    HirExprPtr CompilerParamEnum(const SourceLocation location, const std::string &typeName,
+                                 const std::int64_t discriminant) {
+        TypeRef type = TypeRef::MakeNamed(typeName);
+        if (const auto it = enumDecls.find(typeName); it != enumDecls.end()) {
+            type = EnumType(*it->second);
+        }
+        return CompilerParamLiteral(location, std::move(type), discriminant);
+    }
+
+    static std::optional<std::string> CompilerParamArgument(const Expr &expr) {
+        if (const auto *variant = dynamic_cast<const EnumShorthandExpr *>(&expr)) {
+            return variant->variant;
+        }
+        if (const auto *path = dynamic_cast<const PathExpr *>(&expr); path && path->segments.size() == 2) {
+            return path->segments[1];
+        }
+        if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr);
+            literal && literal->token.kind == TokenKind::StringLiteral) {
+            return DecodeStringLiteral(literal->token.text);
+        }
+        return std::nullopt;
+    }
+
+    HirExprPtr LowerCompilerParamField(const std::string &root, const std::string &field,
+                                       const SourceLocation location) {
+        if (root == "Target") {
+            if (field == "os")
+                return CompilerParamEnum(location, "OperatingSystem", static_cast<std::int64_t>(context.target.os));
+            if (field == "arch")
+                return CompilerParamEnum(location, "Architecture", static_cast<std::int64_t>(context.target.arch));
+            if (field == "abi")
+                return CompilerParamEnum(location, "ApplicationBinaryInterface",
+                                         static_cast<std::int64_t>(context.target.abi));
+            if (field == "endian")
+                return CompilerParamEnum(location, "Endianness", static_cast<std::int64_t>(context.target.endianness));
+            if (field == "pointerBits")
+                return CompilerParamLiteral(location, TypeRef::MakeUInt(), context.target.pointer_size * 8);
+            if (field == "dataModel")
+                return CompilerParamEnum(location, "DataModel", static_cast<std::int64_t>(context.target.data_model));
+            if (field == "objectFormat")
+                return CompilerParamEnum(location, "ObjectFormat",
+                                         static_cast<std::int64_t>(context.target.object_format));
+            if (field == "triple")
+                return CompilerParamString(location, context.targetTriple);
+        }
+        if (root == "Build") {
+            if (field == "profile")
+                return CompilerParamString(location, context.profileName);
+            if (field == "mode")
+                return CompilerParamEnum(location, "BuildMode", static_cast<std::int64_t>(context.buildMode));
+            if (field == "optimization")
+                return CompilerParamEnum(location, "OptimizationMode", static_cast<std::int64_t>(context.optimization));
+            if (field == "debugAssertions")
+                return CompilerParamLiteral(location, TypeRef::MakeBool(), context.debugAssertions);
+            if (field == "debugInfo")
+                return CompilerParamLiteral(location, TypeRef::MakeBool(), context.debugInfo);
+            if (field == "isTest")
+                return CompilerParamLiteral(location, TypeRef::MakeBool(), context.isTest);
+            if (field == "outputKind")
+                return CompilerParamEnum(location, "OutputKind", static_cast<std::int64_t>(context.outputKind));
+            if (field == "timestamp")
+                return CompilerParamLiteral(location, TypeRef::MakeUInt64(), context.buildTimestamp);
+            if (field == "date")
+                return CompilerParamString(location, FormatBuildTime("%Y-%m-%d"));
+            if (field == "time")
+                return CompilerParamString(location, FormatBuildTime("%H:%M:%S"));
+        }
+        if (root == "Compiler" && field == "version")
+            return CompilerParamString(location,
+                                       context.compilerVersion.empty() ? RUX_VERSION : context.compilerVersion);
+        if (root == "Source") {
+            if (field == "line")
+                return CompilerParamLiteral(location, TypeRef::MakeUInt(), location.line);
+            if (field == "column")
+                return CompilerParamLiteral(location, TypeRef::MakeUInt(), location.column);
+            if (field == "file" || field == "fileName")
+                return CompilerParamString(location, std::filesystem::path(currentFile).filename().string());
+            if (field == "filePath")
+                return CompilerParamString(location, LogicalCurrentFilePath());
+            if (field == "function")
+                return CompilerParamString(location, currentFunctionName);
+            if (field == "module")
+                return CompilerParamString(location, currentModulePath);
+        }
+        return nullptr;
+    }
+
+    HirExprPtr LowerCompilerParamObject(const std::string &root, const TypeRef &type, const SourceLocation location) {
+        if (root != "Target" && root != "Build" && root != "Compiler" && root != "Source" && root != "Config")
+            return nullptr;
+
+        auto object = std::make_unique<HirStructInitExpr>();
+        object->location = location;
+        object->type = type;
+        object->typeName = type.name.empty() ? root : type.name;
+        const auto declaration = structDecls.find(object->typeName);
+        if (declaration == structDecls.end()) {
+            return nullptr;
+        }
+        for (const StructDecl::Field &field : declaration->second->fields) {
+            HirStructInitField value;
+            value.name = field.name;
+            value.value = LowerCompilerParamField(root, field.name, location);
+            if (!value.value) {
+                return nullptr;
+            }
+            object->fields.push_back(std::move(value));
+        }
+        return object;
+    }
+
+    HirExprPtr LowerCompilerParamCall(const std::string &root, const std::string &member, const CallExpr &call) const {
+        if (call.args.size() != 1 || !call.args[0]) {
+            return nullptr;
+        }
+        const auto argument = CompilerParamArgument(*call.args[0]);
+        if (!argument) {
+            return nullptr;
+        }
+        if (root == "Target" && member == "hasFeature")
+            return CompilerParamLiteral(call.location, TypeRef::MakeBool(), TargetHasFeature(*argument));
+        if (root == "Compiler" && member == "hasFeature")
+            return CompilerParamLiteral(call.location, TypeRef::MakeBool(), CompilerHasFeature(*argument));
+        if (root == "Config" && member == "get") {
+            const auto it = context.config.find(*argument);
+            return CompilerParamString(call.location, it == context.config.end() ? std::string{} : it->second);
+        }
+        if (root == "Config" && member == "has")
+            return CompilerParamLiteral(call.location, TypeRef::MakeBool(), context.config.contains(*argument));
+        return nullptr;
     }
 
     std::string IntrinsicArgument(const IntrinsicExpr &expr) const {
@@ -2843,8 +3007,10 @@ private:
 
     static bool CompilerHasFeature(const std::string_view feature) {
         static constexpr std::array features{
-            "conditional-compilation",    "namespaced-intrinsics",    "target-intrinsics",   "build-intrinsics",
-            "compiler-feature-detection", "source-location-defaults", "extern-symbol-names", "no-return-attribute"};
+            "conditional-compilation", "namespaced-intrinsics",      "target-intrinsics",
+            "build-intrinsics",        "compiler-feature-detection", "source-location-defaults",
+            "extern-symbol-names",     "no-return-attribute",        "when-attribute",
+            "link-attribute"};
         return std::ranges::contains(features, feature);
     }
 
@@ -2911,6 +3077,12 @@ private:
             return he;
         }
         if (auto *e = dynamic_cast<const IdentExpr *>(&expr)) {
+            if (HirSymbol *sym = currentScope->Lookup(e->name);
+                sym && sym->kind == HirSymbol::Kind::Const && !sym->intrinsicName.empty()) {
+                if (HirExprPtr value = LowerCompilerParamObject(sym->intrinsicName, sym->type, e->location)) {
+                    return value;
+                }
+            }
             auto he = std::make_unique<HirVarExpr>();
             he->location = e->location;
             he->name = e->name;
@@ -3199,12 +3371,19 @@ private:
             return he;
         }
         if (auto *e = dynamic_cast<const CallExpr *>(&expr)) {
+            if (const auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {
+                if (const auto root = CompilerParamRoot(*field->object)) {
+                    if (HirExprPtr value = LowerCompilerParamCall(*root, field->field, *e)) {
+                        return value;
+                    }
+                }
+            }
             const auto *builtinIdent = dynamic_cast<const IdentExpr *>(e->callee.get());
             HirSymbol *calleeSymbol = builtinIdent ? currentScope->Lookup(builtinIdent->name) : nullptr;
-            const bool isAssertion =
-                builtinIdent && (builtinIdent->name == "Assert" || builtinIdent->name == "DebugAssert");
-            const bool isPanic = builtinIdent && builtinIdent->name == "Panic";
-            if ((isAssertion || isPanic) && calleeSymbol && calleeSymbol->kind == HirSymbol::Kind::Const) {
+            const bool isAssertion = calleeSymbol && (calleeSymbol->intrinsicName == "Assert" ||
+                                                      calleeSymbol->intrinsicName == "DebugAssert");
+            const bool isPanic = calleeSymbol && calleeSymbol->intrinsicName == "Panic";
+            if (isAssertion || isPanic) {
                 auto he = std::make_unique<HirCallExpr>();
                 he->location = e->location;
                 he->type = TypeRef::MakeOpaque();
@@ -3220,7 +3399,7 @@ private:
                                        : TypeRef::MakeFunc({TypeRef::MakeBool(),
                                                             TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))},
                                                            TypeRef::MakeOpaque());
-                const bool disabled = builtinIdent->name == "DebugAssert" && !context.debugAssertions;
+                const bool disabled = calleeSymbol->intrinsicName == "DebugAssert" && !context.debugAssertions;
                 callee->name = isPanic  ? "__builtin_panic"
                              : disabled ? "__builtin_debug_assert_disabled"
                                         : "__builtin_assert";
@@ -3619,6 +3798,11 @@ private:
             return he;
         }
         if (auto *e = dynamic_cast<const FieldExpr *>(&expr)) {
+            if (const auto root = CompilerParamRoot(*e->object)) {
+                if (HirExprPtr value = LowerCompilerParamField(*root, e->field, e->location)) {
+                    return value;
+                }
+            }
             auto he = std::make_unique<HirFieldExpr>();
             he->location = e->location;
             he->object = LowerExpr(*e->object);
