@@ -1,6 +1,8 @@
 #include "Semantic/ConditionalCompilation.h"
 
 #include "Driver/Version.h"
+#include "Semantic/PrimitiveConstants.h"
+#include "Target/Target.h"
 
 #include <algorithm>
 #include <array>
@@ -19,12 +21,8 @@
 #include <variant>
 #include <vector>
 
-#include "Semantic/PrimitiveConstants.h"
-#include "Target/Target.h"
-
 namespace Rux {
 namespace {
-
 // The operating systems `#target.os` can name. Each is a real system, not a
 // family, so FreeBSD and OpenBSD remain distinct. `buildable` marks the ones a build can currently produce;
 // the rest are accepted so that code can name them, and comparing `#target.os` against
@@ -35,10 +33,10 @@ struct OsVariant {
 };
 
 constexpr OsVariant OsVariants[] = {
-    {"Windows", true}, {"Linux", true},    {"MacOS", true},        {"FreeBSD", true},
-    {"OpenBSD", true}, {"NetBSD", true},   {"DragonFlyBSD", true}, {"Illumos", true},
-    {"Solaris", true}, {"Android", false}, {"iOS", false},         {"AIX", false},
-    {"Haiku", false},  {"Fuchsia", false}, {"QNX", false},         {"Redox", false},
+    {"AIX", false},     {"Android", false}, {"DragonFlyBSD", true}, {"FreeBSD", true},
+    {"Fuchsia", false}, {"Haiku", false},   {"Illumos", true},      {"iOS", false},
+    {"Linux", true},    {"MacOS", true},    {"NetBSD", true},       {"OpenBSD", true},
+    {"QNX", false},     {"Redox", false},   {"Solaris", true},      {"Windows", true},
 };
 
 // Spellings of an OS that are not the variant name: what the host reports, or
@@ -90,17 +88,17 @@ bool IsBuildableOs(const std::string_view variant) {
     return it != std::end(OsVariants) && it->buildable;
 }
 
-constexpr std::array ArchVariants{"X86_32", "X86_64", "ARM32", "ARM64", "RISCV32", "RISCV64"};
-constexpr std::array AbiVariants{"SystemV", "WindowsX86",  "WindowsX64", "AAPCS",
-                                 "AAPCS64", "RISCV_ILP32", "RISCV_LP64"};
-constexpr std::array EndianVariants{"Little", "Big"};
-constexpr std::array DataModelVariants{"ILP32", "LP64", "LLP64"};
-constexpr std::array ObjectFormatVariants{"ELF", "COFF", "MachO", "Wasm"};
+constexpr std::array ArchVariants{"ARM32", "ARM64", "RISCV32", "RISCV64", "X86_32", "X86_64"};
+constexpr std::array AbiVariants{"AAPCS",   "AAPCS64",    "RISCV_ILP32", "RISCV_LP64",
+                                 "SystemV", "WindowsX64", "WindowsX86"};
+constexpr std::array EndianVariants{"Big", "Little"};
+constexpr std::array DataModelVariants{"ILP32", "LLP64", "LP64"};
+constexpr std::array ObjectFormatVariants{"COFF", "ELF", "MachO", "Wasm"};
 constexpr std::array BuildModeVariants{"Debug", "Release"};
 constexpr std::array OptimizationVariants{"None", "Size", "Speed"};
-constexpr std::array OutputKindVariants{"Executable", "StaticLibrary", "SharedLibrary"};
-constexpr std::array TargetFeatureVariants{"SSE2", "SSE3",   "SSSE3", "SSE41", "SSE42", "AVX",
-                                           "AVX2", "AVX512", "NEON",  "SVE",   "RVV"};
+constexpr std::array OutputKindVariants{"Executable", "SharedLibrary", "StaticLibrary"};
+constexpr std::array TargetFeatureVariants{"AVX",  "AVX2",  "AVX512", "NEON",  "RVV", "SSE2",
+                                           "SSE3", "SSE41", "SSE42",  "SSSE3", "SVE"};
 constexpr std::array CompilerFeatures{"conditional-compilation",
                                       "namespaced-intrinsics",
                                       "target-intrinsics",
@@ -1347,7 +1345,6 @@ private:
         }
     }
 };
-
 } // namespace
 
 void ResolveConditionalCompilation(const std::vector<Module *> &modules, const CompileTimeContext &context,
@@ -1360,7 +1357,7 @@ void ResolveConditionalCompilation(const std::vector<Module *> &modules, const s
                                    std::vector<Diagnostic> &diags) {
     CompileTimeContext context;
     if (const auto variant = OsVariantFor(targetSystem.empty() ? ToString(Target::HostOS) : targetSystem)) {
-        for (int value = static_cast<int>(Target::OS::Unknown); value <= static_cast<int>(Target::OS::Illumos);
+        for (int value = static_cast<int>(Target::OS::Unknown); value <= static_cast<int>(Target::OS::Windows);
              ++value) {
             const auto os = static_cast<Target::OS>(value);
             if (const auto candidate = OsVariantFor(ToString(os)); candidate && *candidate == *variant) {
@@ -1374,5 +1371,4 @@ void ResolveConditionalCompilation(const std::vector<Module *> &modules, const s
     Resolver resolver(context, diags);
     resolver.Run(modules);
 }
-
 } // namespace Rux

@@ -6,7 +6,6 @@
 #include <utility>
 
 namespace Rux {
-
 Linker::Linker(std::vector<RcuFile> inputObjects, std::string inputPackageName,
                std::vector<std::filesystem::path> inputImportSearchDirs, const bool inputIsDll,
                const Target::OS inputTargetOs)

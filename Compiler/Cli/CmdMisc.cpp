@@ -2,6 +2,7 @@
 
 #include "Cli/Cli.h"
 #include "Driver/BuildTarget.h"
+#include "Formatter/Formatter.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -11,8 +12,6 @@
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include "Formatter/Formatter.h"
 
 using namespace Rux;
 using namespace Driver;

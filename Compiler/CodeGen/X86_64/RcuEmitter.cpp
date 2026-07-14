@@ -2,7 +2,12 @@
 
 #include "CodeGen/X86_64/RcuEmitter.h"
 
+#include "CodeGen/Layout.h"
+#include "CodeGen/PhiMoveResolver.h"
+#include "CodeGen/X86_64/Assembler.h"
+#include "CodeGen/X86_64/Encoder.h"
 #include "Driver/Version.h"
+#include "Object/Rcu/RcuStringTable.h"
 
 #include <charconv>
 #include <chrono>
@@ -15,14 +20,7 @@
 #include <unordered_set>
 #include <utility>
 
-#include "CodeGen/Layout.h"
-#include "CodeGen/PhiMoveResolver.h"
-#include "CodeGen/X86_64/Assembler.h"
-#include "CodeGen/X86_64/Encoder.h"
-#include "Object/Rcu/RcuStringTable.h"
-
 namespace Rux {
-
 using namespace Layout;
 
 namespace {
@@ -595,7 +593,7 @@ private:
         b({0xF2, 0x0F, 0x10, 0x04, 0x24});       // movsd xmm0, [rsp]
         b({0x48, 0x83, 0xC4, 0x10});             // add  rsp, 16
         b({0xC3});                               // ret
-        // clang-format on
+                   // clang-format on
     }
 
     // Emits the single-precision pow helper into .text:
@@ -625,7 +623,7 @@ private:
         b({0x48, 0x83, 0xC4, 0x08}); // add  rsp, 8
         b({0xF2, 0x0F, 0x5A, 0xC0}); // cvtsd2ss xmm0, xmm0
         b({0xC3});                   // ret
-        // clang-format on
+                   // clang-format on
     }
 
     void PredeclareFunctions() {
@@ -3132,5 +3130,4 @@ std::vector<RcuFile> RcuEmitter::Generate() const {
     }
     return result;
 }
-
 } // namespace Rux

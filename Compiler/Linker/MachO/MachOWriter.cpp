@@ -1,5 +1,8 @@
 // Static Mach-O object writer for macOS (x86-64, ad-hoc code-signed).
 
+#include "Linker/Linker.h"
+#include "Linker/LinkerInternal.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
@@ -9,11 +12,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "Linker/Linker.h"
-#include "Linker/LinkerInternal.h"
-
 namespace Rux {
-
 static std::optional<Buf> MacCompatThunk(const std::string &name) {
     // Helper: builds a syscall thunk from the register-shuffle body and
     // appends the common carry-flag error handling (jnc +3; neg rax; ret).
@@ -61,10 +60,10 @@ static std::optional<Buf> MacCompatThunk(const std::string &name) {
              0xFF, // xor edi, edi (addr = NULL)
              0xBA, 0x03, 0x00, 0x00,
              0x00, // mov edx, 3
-                   // (PROT_READ|PROT_WRITE)
+             // (PROT_READ|PROT_WRITE)
              0x41, 0xBA, 0x02, 0x10, 0x00,
              0x00, // mov r10d, 0x1002
-                   // (MAP_PRIVATE|MAP_ANON)
+             // (MAP_PRIVATE|MAP_ANON)
              0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF,
              0xFF, // mov r8, -1 (fd)
              0x45, 0x31,
@@ -81,7 +80,7 @@ static std::optional<Buf> MacCompatThunk(const std::string &name) {
          {
              0x48, 0x8B, 0x74, 0x24,
              0x28, // mov rsi, [rsp+40] (newSize,
-                   // 4th Win64 stack arg)
+             // 4th Win64 stack arg)
              0x31,
              0xFF, // xor edi, edi
              0xBA, 0x03, 0x00, 0x00,
@@ -736,5 +735,4 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
 
     return true;
 }
-
 } // namespace Rux

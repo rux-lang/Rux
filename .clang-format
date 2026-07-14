@@ -1,5 +1,5 @@
-# Rux C++ style — LLVM base, 4-space indent, east const, 120 columns.
-# Targets the latest Clang/clang-format (Clang 22+, matching the CI workflows).
+# Rux C++ style — LLVM base, 4-space indent, 120 columns.
+# Keep this configuration and CI pinned to clang-format 22 for stable output.
 Language: Cpp
 BasedOnStyle: LLVM
 
@@ -33,7 +33,8 @@ DerivePointerAlignment: false
 FixNamespaceComments: true
 IncludeBlocks: Regroup
 IncludeCategories:
-  - Regex: '^"(Backend|Cli|Driver|Frontend|Ir|Package|Platform|Support)/'
+  # The matching header of a .cpp file is assigned priority 0 automatically.
+  - Regex: '^"'
     Priority: 1
   - Regex: '^<'
     Priority: 2
@@ -51,7 +52,8 @@ NamespaceIndentation: None
 PackConstructorInitializers: Never
 PointerAlignment: Right
 PPIndentWidth: 4
-QualifierAlignment: Left
+# Moving qualifiers without semantic information can change the meaning of code.
+QualifierAlignment: Leave
 ReferenceAlignment: Right
 SeparateDefinitionBlocks: Always
 SortIncludes:

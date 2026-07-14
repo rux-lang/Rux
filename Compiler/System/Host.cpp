@@ -1,11 +1,11 @@
 #include "System/Host.h"
 
+#include "System/WinApi.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <thread>
 #include <vector>
-
-#include "System/WinApi.h"
 
 #if RUX_OS_LINUX
     #include <sys/auxv.h>
@@ -32,11 +32,9 @@
 #endif
 
 namespace Rux::System {
-
 using namespace Target;
 
 namespace {
-
 #if RUX_ARCH_X86 || RUX_ARCH_X64
 
 [[nodiscard]] inline bool HasOSXSAVE() noexcept {
@@ -235,7 +233,6 @@ namespace {
     static const RuntimeCpuInfo info = DetectRuntimeCpuInfo();
     return info;
 }
-
 } // namespace
 
 RuntimeCpuInfo GetRuntimeCpuInfo() noexcept {
@@ -316,5 +313,4 @@ MemoryInfo GetRuntimeMemoryInfo() noexcept {
 bool HostSupports(CpuFeatures f) noexcept {
     return CachedCpuInfo().features.Has(f);
 }
-
 } // namespace Rux::System

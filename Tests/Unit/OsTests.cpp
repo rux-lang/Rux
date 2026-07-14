@@ -1,7 +1,7 @@
-#include <doctest.h>
-
 #include "System/Os.h"
 #include "Target/Platform.h"
+
+#include <doctest.h>
 
 using namespace Rux::System;
 using namespace Rux::Target;

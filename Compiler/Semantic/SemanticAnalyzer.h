@@ -1,9 +1,9 @@
 #pragma once
 
+#include "Semantic/SemanticModel.h"
+
 #include <string>
 #include <vector>
-
-#include "Semantic/SemanticModel.h"
 
 namespace Rux {
 // A dependency package: its name and parsed source modules.

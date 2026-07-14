@@ -7,7 +7,6 @@
 #include <vector>
 
 namespace Rux {
-
 struct PhiMove {
     LirReg dst;
     LirReg src;
@@ -72,5 +71,4 @@ inline std::vector<PhiMoveStep> ResolvePhiMoves(std::vector<PhiMove> moves) {
     }
     return steps;
 }
-
 } // namespace Rux

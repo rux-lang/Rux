@@ -1,11 +1,11 @@
 #include "System/Process.h"
 
+#include "System/WinApi.h"
+#include "Target/Platform.h"
+
 #include <array>
 #include <cstdio>
 #include <vector>
-
-#include "System/WinApi.h"
-#include "Target/Platform.h"
 
 #if !RUX_OS_WINDOWS
     #include <fcntl.h>
@@ -14,7 +14,6 @@
 #endif
 
 namespace Rux::System {
-
 std::string JsonLookupString(std::string_view json, std::string_view key) {
     const std::string needle = "\"" + std::string(key) + "\"";
     std::size_t pos = 0;
@@ -222,7 +221,6 @@ std::optional<RunResult> RunCaptured(const std::filesystem::path &exe) {
 #else
 
 namespace {
-
 // Wrap a value in single quotes, escaping embedded single quotes, so it can be
 // passed safely as one shell argument.
 std::string ShellQuote(const std::string &value) {
@@ -259,7 +257,6 @@ std::optional<std::string> RunCommandCapture(const std::string &command) {
     }
     return output;
 }
-
 } // namespace
 
 std::optional<std::string> FetchUrl(const std::string &url) {
@@ -350,5 +347,4 @@ std::optional<RunResult> RunCaptured(const std::filesystem::path &exe) {
 }
 
 #endif
-
 } // namespace Rux::System

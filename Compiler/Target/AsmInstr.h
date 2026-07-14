@@ -5,16 +5,15 @@
 // LIR, and encoded to machine code by the x86-64 assembler in
 // CodeGen/X86_64/Assembler.cpp.
 
+#include "Source/SourceLocation.h"
+
 #include <cstdint>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
-#include "Source/SourceLocation.h"
-
 namespace Rux {
-
 // Decoded x86-64 register: its number (0..15), byte width, and the quirks that
 // affect REX encoding. Covers both the general-purpose and the XMM (SSE) files.
 // Shared by the parser (to classify an identifier as a register) and the
@@ -107,5 +106,4 @@ struct AsmInstr {
     std::vector<AsmOperand> operands;
     std::string labelDef; // non-empty => this entry defines a label
 };
-
 } // namespace Rux

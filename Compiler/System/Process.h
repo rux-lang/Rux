@@ -9,7 +9,6 @@
 #include <string_view>
 
 namespace Rux::System {
-
 // Outcome of a captured subprocess run.
 struct RunResult {
     int exitCode = 0;
@@ -54,5 +53,4 @@ inline constexpr std::string_view kRegistryUrl = "https://api.rux-lang.dev/packa
 
 // Pull the latest changes in an existing git repository. Returns true on success.
 [[nodiscard]] bool GitPull(const std::filesystem::path &repoDir);
-
 } // namespace Rux::System

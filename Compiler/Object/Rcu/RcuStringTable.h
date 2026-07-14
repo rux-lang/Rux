@@ -8,7 +8,6 @@
 #include <vector>
 
 namespace Rux {
-
 class RcuStringTable {
 public:
     RcuStringTable() {
@@ -49,5 +48,4 @@ private:
     std::vector<char> data_;
     std::unordered_map<std::string, uint32_t> map_;
 };
-
 } // namespace Rux

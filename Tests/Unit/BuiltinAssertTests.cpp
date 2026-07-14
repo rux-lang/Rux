@@ -1,8 +1,3 @@
-#include <algorithm>
-#include <doctest.h>
-#include <string>
-#include <vector>
-
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Lexer/Lexer.h"
@@ -11,6 +6,11 @@
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 #include "Target/Platform.h"
+
+#include <algorithm>
+#include <doctest.h>
+#include <string>
+#include <vector>
 
 using namespace Rux;
 

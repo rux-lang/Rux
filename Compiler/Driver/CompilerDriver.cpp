@@ -1,22 +1,13 @@
 #include "Driver/CompilerDriver.h"
 
+#include "CodeGen/X86_64/AssemblyPrinter.h"
+#include "CodeGen/X86_64/RcuEmitter.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/Version.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Hir/HirPrinter.h"
 #include "Ir/Lir/Lir.h"
 #include "Ir/Lir/LirPrinter.h"
-
-#include <charconv>
-#include <chrono>
-#include <limits>
-#include <print>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility>
-
-#include "CodeGen/X86_64/AssemblyPrinter.h"
-#include "CodeGen/X86_64/RcuEmitter.h"
 #include "Lexer/Lexer.h"
 #include "Linker/Linker.h"
 #include "Lowering/AstToHir/AstToHir.h"
@@ -31,8 +22,15 @@
 #include "Syntax/Ast/Ast.h"
 #include "System/Os.h"
 
-namespace Rux::Driver {
+#include <charconv>
+#include <chrono>
+#include <limits>
+#include <print>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 
+namespace Rux::Driver {
 using namespace Target;
 using namespace System;
 
@@ -553,5 +551,4 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     stats.linking = ElapsedMs(linkingStart);
     return true;
 }
-
 } // namespace Rux::Driver

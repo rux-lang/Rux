@@ -1,14 +1,13 @@
 // Human-readable text dump of RcuFile contents.
 
+#include "Object/Rcu/RcuDumper.h"
+#include "Object/Rcu/RcuSerialization.h"
+
 #include <format>
 #include <fstream>
 #include <sstream>
 
-#include "Object/Rcu/RcuDumper.h"
-#include "Object/Rcu/RcuSerialization.h"
-
 namespace Rux {
-
 bool RcuDumper::Dump(const RcuFile &file, const std::filesystem::path &path) {
     std::ofstream stream(path, std::ios::out | std::ios::trunc);
     if (!stream) {
@@ -196,5 +195,4 @@ public:
 std::string DumpRcuFileText(const RcuFile &file) {
     return TextDumper::Dump(file);
 }
-
 } // namespace Rux

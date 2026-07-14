@@ -1,11 +1,10 @@
 #pragma once
 
-#include <string_view>
-
 #include "Target/Platform.h"
 
-namespace Rux {
+#include <string_view>
 
+namespace Rux {
 // Language-level calling convention carried from syntax through codegen.
 // Concrete register and stack rules are resolved by TargetInfo.
 enum class CallingConvention {
@@ -58,5 +57,4 @@ constexpr std::string_view ConventionName(const CallingConvention c) {
         return "";
     }
 }
-
 } // namespace Rux

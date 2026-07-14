@@ -1,10 +1,10 @@
 #pragma once
 
+#include "Source/SourceLocation.h"
+
 #include <cstdint>
 #include <string>
 #include <string_view>
-
-#include "Source/SourceLocation.h"
 
 namespace Rux {
 enum class TokenKind : std::uint8_t {

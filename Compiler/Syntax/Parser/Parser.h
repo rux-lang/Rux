@@ -1,12 +1,12 @@
 #pragma once
 
-#include <filesystem>
-#include <string>
-#include <vector>
-
 #include "Diagnostics/Diagnostics.h"
 #include "Lexer/Lexer.h"
 #include "Syntax/Ast/Ast.h"
+
+#include <filesystem>
+#include <string>
+#include <vector>
 
 namespace Rux {
 using ParserDiagnostic = Diagnostic;

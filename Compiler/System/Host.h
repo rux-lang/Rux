@@ -9,7 +9,6 @@
 #include "Target/Target.h"
 
 namespace Rux::System {
-
 // CPU feature flags, cache line size, and core counts of the executing machine.
 [[nodiscard]] Target::RuntimeCpuInfo GetRuntimeCpuInfo() noexcept;
 
@@ -18,5 +17,4 @@ namespace Rux::System {
 
 // True if the executing CPU supports every feature in `feature_mask`.
 [[nodiscard]] bool HostSupports(Target::CpuFeatures feature_mask) noexcept;
-
 } // namespace Rux::System

@@ -1,16 +1,15 @@
-#include "Ir/Lir/Lir.h"
-
-#include <algorithm>
-#include <doctest.h>
-#include <string>
-#include <vector>
-
 #include "CodeGen/X86_64/AssemblyPrinter.h"
+#include "Ir/Lir/Lir.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
+
+#include <algorithm>
+#include <doctest.h>
+#include <string>
+#include <vector>
 
 using namespace Rux;
 

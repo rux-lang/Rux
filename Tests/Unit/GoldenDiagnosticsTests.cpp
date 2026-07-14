@@ -8,7 +8,12 @@
 // To (re)generate the expected files after an intentional diagnostics change,
 // run the test binary with RUX_UPDATE_GOLDEN=1 and review the diff.
 
+#include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
+#include "Lexer/Lexer.h"
+#include "Semantic/SemanticAnalyzer.h"
+#include "Syntax/Parser/Parser.h"
+#include "System/Os.h"
 
 #include <algorithm>
 #include <doctest.h>
@@ -20,12 +25,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "Diagnostics/Diagnostics.h"
-#include "Lexer/Lexer.h"
-#include "Semantic/SemanticAnalyzer.h"
-#include "Syntax/Parser/Parser.h"
-#include "System/Os.h"
 
 using namespace Rux;
 

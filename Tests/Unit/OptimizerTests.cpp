@@ -1,12 +1,11 @@
 #include "Ir/Hir/Hir.h"
 #include "Ir/Hir/Passes/PassManager.h"
-
-#include <doctest.h>
-
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
+
+#include <doctest.h>
 
 using namespace Rux;
 

@@ -5,7 +5,6 @@
 #include <string_view>
 
 namespace Rux::CliSupport {
-
 inline bool AddCompileTimeDefine(const std::string_view spec, std::map<std::string, std::string> &defines,
                                  std::string &error) {
     const auto equals = spec.find('=');
@@ -19,5 +18,4 @@ inline bool AddCompileTimeDefine(const std::string_view spec, std::map<std::stri
     defines[std::string(name)] = std::string(value);
     return true;
 }
-
 } // namespace Rux::CliSupport

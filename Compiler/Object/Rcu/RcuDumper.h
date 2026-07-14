@@ -1,14 +1,12 @@
 #pragma once
 
-#include <filesystem>
-
 #include "Object/Rcu/Rcu.h"
 
-namespace Rux {
+#include <filesystem>
 
+namespace Rux {
 class RcuDumper {
 public:
     static bool Dump(const RcuFile &file, const std::filesystem::path &path);
 };
-
 } // namespace Rux

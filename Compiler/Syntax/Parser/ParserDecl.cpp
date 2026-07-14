@@ -1,5 +1,7 @@
 // Declaration parsing: attributes, functions, types, modules, imports.
 
+#include "Syntax/Parser/Parser.h"
+
 #include <cctype>
 #include <charconv>
 #include <format>
@@ -9,8 +11,6 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-
-#include "Syntax/Parser/Parser.h"
 
 namespace Rux {
 // Inside an asm body, any identifier-like token — a plain identifier or a

@@ -2,6 +2,9 @@
 
 #include "Driver/Version.h"
 #include "Ir/Hir/HirInternal.h"
+#include "Semantic/PrimitiveConstants.h"
+#include "Target/Layout.h"
+#include "Target/Platform.h"
 
 #include <algorithm>
 #include <array>
@@ -18,12 +21,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "Semantic/PrimitiveConstants.h"
-#include "Target/Layout.h"
-#include "Target/Platform.h"
-
 namespace Rux {
-
 using Layout::AlignUp;
 
 static bool UtcTime(std::time_t time, std::tm &out) {
@@ -2110,7 +2108,7 @@ private:
                 if (const std::size_t end = ParseUnicodeEscape(text, i, u); end != i) {
                     AppendUtf8(out, u);
                     i = end; // the loop's ++i then steps past the closing
-                             // '}'
+                    // '}'
                 }
                 break;
             }

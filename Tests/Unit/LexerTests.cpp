@@ -1,8 +1,8 @@
+#include "Lexer/Lexer.h"
+
 #include <doctest.h>
 #include <string>
 #include <utility>
-
-#include "Lexer/Lexer.h"
 
 using namespace Rux;
 
@@ -35,12 +35,36 @@ TEST_CASE("Lexer keeps the original source spelling in token text") {
 
 TEST_CASE("Lexer does not recognize flat compile-time intrinsic aliases") {
     static constexpr const char *aliases[] = {
-        "line",          "column",             "file",          "fileName",       "filePath",
-        "function",      "module",             "date",          "time",           "ruxVersion",
-        "os",            "arch",               "abi",           "endian",         "pointerBits",
-        "dataModel",     "objectFormat",       "targetTriple",  "targetFeature",  "buildProfile",
-        "buildMode",     "optimization",       "debugAssertions", "debugInfo",      "isTest",
-        "outputKind",    "buildTimestamp",     "compilerVersion", "compilerHasFeature", "hasConfig",
+        "line",
+        "column",
+        "file",
+        "fileName",
+        "filePath",
+        "function",
+        "module",
+        "date",
+        "time",
+        "ruxVersion",
+        "os",
+        "arch",
+        "abi",
+        "endian",
+        "pointerBits",
+        "dataModel",
+        "objectFormat",
+        "targetTriple",
+        "targetFeature",
+        "buildProfile",
+        "buildMode",
+        "optimization",
+        "debugAssertions",
+        "debugInfo",
+        "isTest",
+        "outputKind",
+        "buildTimestamp",
+        "compilerVersion",
+        "compilerHasFeature",
+        "hasConfig",
     };
 
     for (const char *alias : aliases) {

@@ -1,6 +1,6 @@
-#include <doctest.h>
-
 #include "Formatter/Formatter.h"
+
+#include <doctest.h>
 
 TEST_CASE("formatter normalizes line endings and trailing whitespace") {
     const auto result = Rux::Formatting::Format("let value = 1;  \r\nreturn value;\t");

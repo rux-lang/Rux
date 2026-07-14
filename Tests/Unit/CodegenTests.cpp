@@ -1,19 +1,18 @@
-#include "Ir/Hir/Hir.h"
-
-#include <algorithm>
-#include <doctest.h>
-#include <string>
-#include <unordered_map>
-#include <vector>
-
 #include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/X86_64/AssemblyPrinter.h"
+#include "Ir/Hir/Hir.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 #include "Target/Platform.h"
+
+#include <algorithm>
+#include <doctest.h>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 using namespace Rux;
 

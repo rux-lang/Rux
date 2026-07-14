@@ -1,14 +1,14 @@
 #pragma once
 
+#include "Semantic/Type.h"
+#include "Target/AsmInstr.h"
+#include "Target/CallingConvention.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
-
-#include "Semantic/Type.h"
-#include "Target/AsmInstr.h"
-#include "Target/CallingConvention.h"
 
 namespace Rux {
 // Virtual register
@@ -221,5 +221,4 @@ struct LirModule {
 struct LirPackage {
     std::vector<LirModule> modules;
 };
-
 } // namespace Rux

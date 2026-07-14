@@ -1,10 +1,10 @@
+#include "Linker/Linker.h"
+
 #include <doctest.h>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
-
-#include "Linker/Linker.h"
 
 using namespace Rux;
 

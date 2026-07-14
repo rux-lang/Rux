@@ -8,7 +8,6 @@
 #include <string_view>
 
 namespace Rux::CliSupport {
-
 // Holds whether ANSI styling is active and hands out escape codes that collapse
 // to empty strings when color is disabled, so call sites can interpolate them
 // unconditionally.
@@ -40,5 +39,4 @@ struct AnsiStyle {
 // convention, and whether stdout is an interactive terminal. On Windows this
 // also enables virtual-terminal processing so the escape codes are interpreted.
 [[nodiscard]] bool ColorEnabled(ColorMode mode);
-
 } // namespace Rux::CliSupport

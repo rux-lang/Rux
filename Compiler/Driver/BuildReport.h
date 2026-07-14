@@ -3,6 +3,8 @@
 // Build statistics aggregation, human-readable number formatting, and the
 // build-report printers used by the `build` command.
 
+#include "Lexer/Lexer.h"
+
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -10,10 +12,7 @@
 #include <string>
 #include <string_view>
 
-#include "Lexer/Lexer.h"
-
 namespace Rux::Driver {
-
 struct BuildStats {
     std::chrono::milliseconds lexing{0};
     std::chrono::milliseconds parsing{0};
@@ -64,5 +63,4 @@ inline double ElapsedSeconds(const std::chrono::steady_clock::time_point start,
 
 void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats);
 void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats);
-
 } // namespace Rux::Driver

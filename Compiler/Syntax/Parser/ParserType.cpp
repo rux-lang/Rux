@@ -1,10 +1,10 @@
 // Type-expression parsing.
 
+#include "Syntax/Parser/Parser.h"
+
 #include <format>
 #include <memory>
 #include <vector>
-
-#include "Syntax/Parser/Parser.h"
 
 namespace Rux {
 // Type expressions

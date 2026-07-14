@@ -98,5 +98,4 @@ struct RcuFile {
     std::vector<RcuSection> sections;
     std::vector<RcuSymbol> symbols;
 };
-
 } // namespace Rux

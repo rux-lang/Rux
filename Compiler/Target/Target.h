@@ -8,13 +8,12 @@
 // `TargetContext` aggregate consumed by the back end. Everything here is
 // `constexpr` and free of system headers.
 
+#include "Target/Platform.h"
+
 #include <cstdint>
 #include <string_view>
 
-#include "Target/Platform.h"
-
 namespace Rux::Target {
-
 inline constexpr std::size_t CacheLineSize = 64;
 inline constexpr std::size_t Pointer32 = 4;
 inline constexpr std::size_t Pointer64 = 8;
@@ -22,44 +21,51 @@ inline constexpr std::size_t Pointer64 = 8;
 // ---- Enumerations -----------------------------------------------------------
 
 enum class OS : std::uint8_t {
-    Unknown,
-    Windows,
-    Linux,
-    MacOS,
-    FreeBSD,
-    OpenBSD,
-    NetBSD,
-    DragonFlyBSD,
-    Solaris,
-    Illumos,
+    Unknown = 0,
+    AIX = 1,
+    Android = 2,
+    DragonFlyBSD = 3,
+    FreeBSD = 4,
+    Fuchsia = 5,
+    Haiku = 6,
+    Illumos = 7,
+    iOS = 8,
+    Linux = 9,
+    MacOS = 10,
+    NetBSD = 11,
+    OpenBSD = 12,
+    QNX = 13,
+    Redox = 14,
+    Solaris = 15,
+    Windows = 16,
 };
 
 enum class Arch : std::uint8_t {
-    Unknown,
-    X86_32,
-    X86_64,
-    ARM32,
-    ARM64,
-    RISCV32,
-    RISCV64,
+    Unknown = 0,
+    ARM32 = 1,
+    ARM64 = 2,
+    RISCV32 = 3,
+    RISCV64 = 4,
+    X86_32 = 5,
+    X86_64 = 6,
 };
 
 enum class DataModel : std::uint8_t {
-    Unknown,
-    ILP32,
-    LP64,
-    LLP64,
+    Unknown = 0,
+    ILP32 = 1,
+    LLP64 = 2,
+    LP64 = 3,
 };
 
 enum class ABI : std::uint8_t {
-    Unknown,
-    SystemV,
-    WindowsX86,
-    WindowsX64,
-    AAPCS,
-    AAPCS64,
-    RISCV_ILP32,
-    RISCV_LP64,
+    Unknown = 0,
+    AAPCS = 1,
+    AAPCS64 = 2,
+    RISCV_ILP32 = 3,
+    RISCV_LP64 = 4,
+    SystemV = 5,
+    WindowsX64 = 6,
+    WindowsX86 = 7,
 };
 
 enum class CallingConv : std::uint8_t {
@@ -81,21 +87,21 @@ enum class Compiler : std::uint8_t {
 };
 
 enum class BuildMode : std::uint8_t {
-    Debug,
-    Release,
+    Debug = 0,
+    Release = 1,
 };
 
 enum class Endian : std::uint8_t {
-    Little,
-    Big,
+    Big = 0,
+    Little = 1,
 };
 
 enum class ObjectFormat : std::uint8_t {
-    Unknown,
-    ELF,
-    COFF,
-    MachO,
-    Wasm,
+    Unknown = 0,
+    COFF = 1,
+    ELF = 2,
+    MachO = 3,
+    Wasm = 4,
 };
 
 // ---- CPU feature bitset -----------------------------------------------------
@@ -128,7 +134,6 @@ struct CpuFeatures {
 };
 
 namespace CpuFeature {
-
 inline constexpr CpuFeatures None{0};
 
 // x86 / x64
@@ -148,7 +153,6 @@ inline constexpr CpuFeatures SVE{1ull << 17};
 
 // RISC-V
 inline constexpr CpuFeatures RVV{1ull << 24};
-
 } // namespace CpuFeature
 
 struct RuntimeCpuInfo {
@@ -167,24 +171,38 @@ struct MemoryInfo {
 
 [[nodiscard]] constexpr std::string_view ToString(OS os) noexcept {
     switch (os) {
-    case OS::Windows:
-        return "Windows";
+    case OS::AIX:
+        return "AIX";
+    case OS::Android:
+        return "Android";
+    case OS::DragonFlyBSD:
+        return "Dragonfly";
+    case OS::FreeBSD:
+        return "FreeBSD";
+    case OS::Fuchsia:
+        return "Fuchsia";
+    case OS::Haiku:
+        return "Haiku";
+    case OS::Illumos:
+        return "Illumos";
+    case OS::iOS:
+        return "iOS";
     case OS::Linux:
         return "Linux";
     case OS::MacOS:
         return "macOS";
-    case OS::FreeBSD:
-        return "FreeBSD";
-    case OS::OpenBSD:
-        return "OpenBSD";
     case OS::NetBSD:
         return "NetBSD";
-    case OS::DragonFlyBSD:
-        return "Dragonfly";
+    case OS::OpenBSD:
+        return "OpenBSD";
+    case OS::QNX:
+        return "QNX";
+    case OS::Redox:
+        return "Redox";
     case OS::Solaris:
         return "Solaris";
-    case OS::Illumos:
-        return "Illumos";
+    case OS::Windows:
+        return "Windows";
     default:
         return "unknown";
     }
@@ -230,13 +248,13 @@ struct MemoryInfo {
         return ObjectFormat::COFF;
     case OS::MacOS:
         return ObjectFormat::MachO;
-    case OS::Linux:
-    case OS::FreeBSD:
-    case OS::OpenBSD:
-    case OS::NetBSD:
     case OS::DragonFlyBSD:
-    case OS::Solaris:
+    case OS::FreeBSD:
     case OS::Illumos:
+    case OS::Linux:
+    case OS::NetBSD:
+    case OS::OpenBSD:
+    case OS::Solaris:
         return ObjectFormat::ELF;
     default:
         return ObjectFormat::Unknown;
@@ -258,7 +276,8 @@ struct ABIInfo {
         if (os == OS::Windows && model == DataModel::LLP64) {
             return {ABI::WindowsX64, CallingConv::Win64, true, 16};
         }
-        if (model == DataModel::LP64) { // Linux, macOS, BSDs
+        if (model == DataModel::LP64) {
+            // Linux, macOS, BSDs
             return {ABI::SystemV, CallingConv::SysV, false, 16};
         }
     }
@@ -413,11 +432,9 @@ inline constexpr CpuFeatures HostCpuFeatures = []() noexcept {
 inline constexpr ABIInfo HostABIDetails = GetABIInfo(HostOS, HostArch, HostDataModel);
 inline constexpr ABI HostABI = HostABIDetails.abi;
 inline constexpr CallingConv HostCC = HostABIDetails.cc;
-
 } // namespace Rux::Target
 
 namespace Rux {
-
 // Fully resolved description of the machine code is being generated for. Created
 // from the host today; a cross-compilation front end can populate it explicitly.
 struct TargetContext {
@@ -444,5 +461,4 @@ struct TargetContext {
                              .cpu_features = Target::HostCpuFeatures};
     }
 };
-
 } // namespace Rux

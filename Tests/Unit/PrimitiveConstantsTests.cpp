@@ -1,8 +1,8 @@
+#include "Semantic/PrimitiveConstants.h"
+
 #include <array>
 #include <doctest.h>
 #include <string_view>
-
-#include "Semantic/PrimitiveConstants.h"
 
 using namespace Rux;
 

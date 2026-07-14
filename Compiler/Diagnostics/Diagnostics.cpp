@@ -5,9 +5,7 @@
 #include <print>
 
 namespace Rux {
-
 namespace {
-
 std::string JsonEscape(std::string_view s) {
     std::string out;
     if (s.size() < ((std::numeric_limits<size_t>::max)() - 128)) {
@@ -52,7 +50,6 @@ std::string JsonEscape(std::string_view s) {
     }
     return out;
 }
-
 } // namespace
 
 Diagnostic ErrorDiagnostic(std::string message) {
@@ -99,5 +96,4 @@ void PrintDiagnosticsJson(std::span<const Diagnostic> diags, const bool success)
     std::print("  ]\n");
     std::print("}}\n");
 }
-
 } // namespace Rux

@@ -1,5 +1,9 @@
 // PE32+ object writer and Windows DLL import resolution.
 
+#include "Linker/Linker.h"
+#include "Linker/LinkerInternal.h"
+#include "System/Os.h"
+
 #include <algorithm>
 #include <fstream>
 #include <map>
@@ -11,12 +15,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "Linker/Linker.h"
-#include "Linker/LinkerInternal.h"
-#include "System/Os.h"
-
 namespace Rux {
-
 [[maybe_unused]] static constexpr uint64_t kImageBase = 0x1'4000'0000ULL;
 [[maybe_unused]] static constexpr uint32_t kSecAlign = 0x1000; // 4 KB section alignment
 [[maybe_unused]] static constexpr uint32_t kFileAlign = 0x200; // 512 B file alignment
@@ -620,8 +619,8 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
         else {
             // No DllMain: replace `E8 00 00 00 00` with `B8 01 00 00 00`
             // (mov eax, 1)
-            textBuf[kCallMainDisp - 1] = 0xB8;  // change opcode from E8 (call) to B8 (mov eax,
-                                                // imm32)
+            textBuf[kCallMainDisp - 1] = 0xB8; // change opcode from E8 (call) to B8 (mov eax,
+            // imm32)
             Patch32(textBuf, kCallMainDisp, 1); // imm = 1 (TRUE)
         }
     }
@@ -969,5 +968,4 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
     }
     return errors.empty();
 }
-
 } // namespace Rux

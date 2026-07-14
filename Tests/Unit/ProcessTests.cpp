@@ -1,6 +1,6 @@
-#include <doctest.h>
-
 #include "System/Process.h"
+
+#include <doctest.h>
 
 using namespace Rux::System;
 

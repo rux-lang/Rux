@@ -8,7 +8,6 @@
 #include <string_view>
 
 namespace Rux {
-
 bool SemanticPrinter::Dump(const SemanticModel &result, const std::filesystem::path &path) {
     std::ofstream out(path);
     if (!out) {
@@ -74,5 +73,4 @@ bool SemanticPrinter::Dump(const SemanticModel &result, const std::filesystem::p
 
     return out.good();
 }
-
 } // namespace Rux

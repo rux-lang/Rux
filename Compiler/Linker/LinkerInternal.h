@@ -7,7 +7,6 @@
 #include <vector>
 
 namespace Rux {
-
 using Buf = std::vector<uint8_t>;
 
 inline void WriteU8(Buf &b, uint8_t v) {
@@ -72,5 +71,4 @@ inline void Patch64(Buf &b, size_t off, uint64_t v) {
         b[off + i] = static_cast<uint8_t>(v >> (i * 8));
     }
 }
-
 } // namespace Rux

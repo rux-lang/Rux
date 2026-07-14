@@ -6,6 +6,7 @@
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 #include "Package/Manifest.h"
+#include "System/Process.h"
 
 #include <algorithm>
 #include <chrono>
@@ -19,8 +20,6 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-
-#include "System/Process.h"
 
 using namespace Rux;
 using namespace CliSupport;

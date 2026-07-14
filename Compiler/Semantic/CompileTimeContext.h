@@ -1,27 +1,26 @@
 #pragma once
 
+#include "Target/Target.h"
+
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <map>
 #include <string>
 
-#include "Target/Target.h"
-
 namespace Rux {
-
 // Build properties which are known before semantic analysis and may therefore
 // participate in `#if` expressions or be embedded as ordinary literals.
 enum class OptimizationMode : std::uint8_t {
-    None,
-    Size,
-    Speed,
+    None = 0,
+    Size = 1,
+    Speed = 2,
 };
 
 enum class OutputKind : std::uint8_t {
-    Executable,
-    StaticLibrary,
-    SharedLibrary,
+    Executable = 0,
+    SharedLibrary = 1,
+    StaticLibrary = 2,
 };
 
 struct CompileTimeContext {
@@ -49,5 +48,4 @@ struct CompileTimeContext {
     // Manifest [Build.Defines] values, overridden by command-line --define.
     std::map<std::string, std::string> config;
 };
-
 } // namespace Rux

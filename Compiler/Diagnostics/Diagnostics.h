@@ -5,14 +5,13 @@
 // envelope on stdout. Stages accumulate diagnostics in their result structs;
 // only the CLI/driver layer prints them.
 
+#include "Source/SourceLocation.h"
+
 #include <span>
 #include <string>
 #include <string_view>
 
-#include "Source/SourceLocation.h"
-
 namespace Rux {
-
 struct Diagnostic {
     enum class Severity {
         Warning,
@@ -46,5 +45,4 @@ bool PrintDiagnostics(std::span<const Diagnostic> diags);
 // Print the `rux check --json` envelope to stdout:
 //   { "success": ..., "diagnostics": [ {"file": ..., "line": ..., ...} ] }
 void PrintDiagnosticsJson(std::span<const Diagnostic> diags, bool success);
-
 } // namespace Rux

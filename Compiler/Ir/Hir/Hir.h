@@ -1,17 +1,17 @@
 #pragma once
 
+#include "Lexer/Token.h"
+#include "Semantic/Type.h"
+#include "Source/SourceLocation.h"
+#include "Target/AsmInstr.h"
+#include "Target/CallingConvention.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
-
-#include "Lexer/Token.h"
-#include "Semantic/Type.h"
-#include "Source/SourceLocation.h"
-#include "Target/AsmInstr.h"
-#include "Target/CallingConvention.h"
 
 namespace Rux {
 // Forward declarations
@@ -181,8 +181,8 @@ struct HirCoerceToInterfaceExpr : HirExpr {
 // vtable)
 struct HirInterfaceCallExpr : HirExpr {
     HirExprPtr fatPtrExpr; // expression that yields the fat-pointer address
-                           // (8 bytes)
-    int methodIdx = 0;     // index of the method in the vtable
+    // (8 bytes)
+    int methodIdx = 0; // index of the method in the vtable
     std::vector<HirExprPtr> args;
 };
 

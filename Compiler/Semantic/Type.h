@@ -37,7 +37,7 @@ struct TypeRef {
         Named,     // user-defined struct/enum/union — name = type name
         TypeParam, // generic parameter T — name = param name
         Func,      // func(...) -> T — inner[0..n-2] = params, inner[n-1] =
-                   // return
+        // return
         // Aliases — must come after all concrete values so they don't shift
         // the counter
         Bool = Bool8,    // bool is an alias for bool8
@@ -49,9 +49,10 @@ struct TypeRef {
     std::string name;
     std::vector<TypeRef> inner; // C++17: vector<incomplete T> is valid
     bool isVariadic = false;    // Func kind: trailing C-style ... (extern) or
-                                // Rux variadic; extra call args are allowed
-    bool isConst = false;       // this type, viewed as a place/pointee, is
-                                // read-only (e.g. the pointee of &(let x))
+    // Rux variadic; extra call args are allowed
+    bool isConst = false; // this type, viewed as a place/pointee, is
+
+    // read-only (e.g. the pointee of &(let x))
 
     // Factories
     static TypeRef MakeUnknown() {

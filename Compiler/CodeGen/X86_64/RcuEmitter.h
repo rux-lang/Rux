@@ -1,16 +1,14 @@
 #pragma once
 
+#include "Diagnostics/Diagnostics.h"
 #include "Ir/Lir/Lir.h"
+#include "Object/Rcu/Rcu.h"
+#include "Target/Target.h"
 
 #include <string>
 #include <vector>
 
-#include "Diagnostics/Diagnostics.h"
-#include "Object/Rcu/Rcu.h"
-#include "Target/Target.h"
-
 namespace Rux {
-
 class RcuEmitter {
 public:
     explicit RcuEmitter(const LirPackage &package, std::string inputPackageName = {},
@@ -29,5 +27,4 @@ private:
     Target::OS targetOs;
     mutable std::vector<Diagnostic> diagnostics;
 };
-
 } // namespace Rux

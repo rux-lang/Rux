@@ -1,18 +1,16 @@
 #include "Linter/Linter.h"
 
+#include "Lexer/Lexer.h"
+#include "Syntax/Parser/Parser.h"
+
 #include <algorithm>
 #include <cctype>
 #include <format>
 #include <iterator>
 #include <string_view>
 
-#include "Lexer/Lexer.h"
-#include "Syntax/Parser/Parser.h"
-
 namespace Rux::Linting {
-
 namespace {
-
 bool IsPascalCase(std::string_view name) {
     if (name.empty()) {
         return false;
@@ -445,7 +443,6 @@ private:
         }
     }
 };
-
 } // namespace
 
 bool LintResult::HasErrors() const noexcept {
@@ -478,5 +475,4 @@ LintResult Lint(std::string source, std::string sourceName) {
 
     return result;
 }
-
 } // namespace Rux::Linting

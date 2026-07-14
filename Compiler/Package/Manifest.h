@@ -19,7 +19,7 @@ struct Dependency {
     std::string package; // registry/package name; empty means same as name
     std::string version; // empty = "latest"
     std::string path;    // for path-based deps: { Path = "..." }, empty if
-                         // version-based
+    // version-based
 };
 
 /**

@@ -1,12 +1,12 @@
 #pragma once
 
+#include "Diagnostics/Diagnostics.h"
+#include "Lexer/Token.h"
+
 #include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
-
-#include "Diagnostics/Diagnostics.h"
-#include "Lexer/Token.h"
 
 namespace Rux {
 using LexerDiagnostic = Diagnostic;

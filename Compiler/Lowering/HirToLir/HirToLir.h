@@ -4,7 +4,6 @@
 #include "Ir/Lir/Lir.h"
 
 namespace Rux {
-
 class HirToLirLowering {
 public:
     explicit HirToLirLowering(HirPackage package);
@@ -13,5 +12,4 @@ public:
 private:
     HirPackage hir_;
 };
-
 } // namespace Rux

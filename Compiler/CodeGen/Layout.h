@@ -4,17 +4,15 @@
 // shared by the assembly and RCU-object code generators.
 
 #include "Ir/Lir/Lir.h"
+#include "Semantic/Type.h"
+#include "Target/Layout.h"
 
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
-#include "Semantic/Type.h"
-#include "Target/Layout.h"
-
 namespace Rux::Layout {
-
 // Size in bytes of a LIR-level type. Aggregates follow the shared layout
 // rule; a named type resolves through its attached inner type when present,
 // otherwise Slice is a fat pointer (16) and anything else defaults to
@@ -54,5 +52,4 @@ inline constexpr std::string_view kIntArgRegs[] = {"rdi", "rsi", "rdx", "rcx", "
 inline constexpr std::string_view kWin64IntArgRegs[] = {"rcx", "rdx", "r8", "r9"};
 // System V AMD64 float argument registers (in order)
 inline constexpr std::string_view kFltArgRegs[] = {"xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7"};
-
 } // namespace Rux::Layout

@@ -4,6 +4,8 @@
 // AST to that target, and locating workspace/registry directories.
 
 #include "Package/Manifest.h"
+#include "Syntax/Ast/Ast.h"
+#include "Target/Target.h"
 
 #include <filesystem>
 #include <optional>
@@ -11,11 +13,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Syntax/Ast/Ast.h"
-#include "Target/Target.h"
-
 namespace Rux::Driver {
-
 // ---- Target triples ---------------------------------------------------------
 
 // Human-readable name of the host target, e.g. "Windows x64".
@@ -64,5 +62,4 @@ namespace Rux::Driver {
 
 // Per-user directory where installed registry packages are cached.
 [[nodiscard]] std::filesystem::path RegistryPackagesDir();
-
 } // namespace Rux::Driver

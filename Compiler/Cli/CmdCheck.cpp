@@ -2,6 +2,7 @@
 
 #include "Cli/Cli.h"
 #include "Cli/DefineOption.h"
+#include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 
@@ -12,8 +13,6 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-
-#include "Diagnostics/Diagnostics.h"
 
 using namespace Rux;
 using namespace CliSupport;

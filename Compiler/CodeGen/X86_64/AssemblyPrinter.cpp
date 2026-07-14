@@ -1,5 +1,9 @@
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 
+#include "CodeGen/Layout.h"
+#include "CodeGen/PhiMoveResolver.h"
+#include "Target/Platform.h"
+
 #include <cstring>
 #include <format>
 #include <fstream>
@@ -8,12 +12,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "CodeGen/Layout.h"
-#include "CodeGen/PhiMoveResolver.h"
-#include "Target/Platform.h"
-
 namespace Rux {
-
 using namespace Layout;
 
 // Type utilities

@@ -7,7 +7,6 @@
 #include <unordered_map>
 
 namespace Rux {
-
 class HirPassManager {
 public:
     static void Run(HirPackage &package);
@@ -50,5 +49,4 @@ private:
 
     static inline std::unordered_map<std::string, ConstantValue> constants;
 };
-
 } // namespace Rux

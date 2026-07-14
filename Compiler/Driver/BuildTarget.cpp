@@ -1,5 +1,8 @@
 #include "Driver/BuildTarget.h"
 
+#include "System/Os.h"
+#include "Target/Target.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -7,11 +10,7 @@
 #include <print>
 #include <ranges>
 
-#include "System/Os.h"
-#include "Target/Target.h"
-
 namespace Rux::Driver {
-
 using namespace Target;
 using namespace System;
 
@@ -204,5 +203,4 @@ std::filesystem::path RegistryPackagesDir() {
         return GetEnvPath("HOME").value_or(std::filesystem::path("/tmp")) / ".rux" / "packages";
     }
 }
-
 } // namespace Rux::Driver

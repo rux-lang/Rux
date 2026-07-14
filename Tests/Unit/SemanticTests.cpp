@@ -1,12 +1,12 @@
+#include "Lexer/Lexer.h"
+#include "Semantic/SemanticAnalyzer.h"
+#include "Syntax/Parser/Parser.h"
+
 #include <array>
 #include <doctest.h>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include "Lexer/Lexer.h"
-#include "Semantic/SemanticAnalyzer.h"
-#include "Syntax/Parser/Parser.h"
 
 using namespace Rux;
 

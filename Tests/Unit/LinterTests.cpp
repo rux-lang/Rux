@@ -1,6 +1,6 @@
-#include <doctest.h>
-
 #include "Linter/Linter.h"
+
+#include <doctest.h>
 
 using namespace Rux;
 

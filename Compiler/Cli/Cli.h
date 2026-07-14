@@ -5,7 +5,6 @@
 #include <string_view>
 
 namespace Rux {
-
 enum class ColorMode {
     Auto,
     On,

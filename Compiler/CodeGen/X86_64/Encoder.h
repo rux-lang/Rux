@@ -6,7 +6,6 @@
 #include <vector>
 
 namespace Rux {
-
 // x86-64 binary encoder
 // All accesses to stack slots use [rbp + disp] where disp is negative.
 // disp = -slotMap[vreg]  (i.e., pass negative displacement directly).
@@ -1341,27 +1340,32 @@ public:
 
     // Move RAX from physical register (used by LoadA)
     void MovRaxPhysReg(int rIdx) const {
-        if (rIdx == 0) { // rbx
+        if (rIdx == 0) {
+            // rbx
             Byte(0x48);
             Byte(0x89);
             Byte(0xD8); // mov rax, rbx
         }
-        else if (rIdx == 1) { // r12
+        else if (rIdx == 1) {
+            // r12
             Byte(0x4C);
             Byte(0x89);
             Byte(0xE0); // mov rax, r12
         }
-        else if (rIdx == 2) { // r13
+        else if (rIdx == 2) {
+            // r13
             Byte(0x4C);
             Byte(0x89);
             Byte(0xE8); // mov rax, r13
         }
-        else if (rIdx == 3) { // r14
+        else if (rIdx == 3) {
+            // r14
             Byte(0x4C);
             Byte(0x89);
             Byte(0xF0); // mov rax, r14
         }
-        else if (rIdx == 4) { // r15
+        else if (rIdx == 4) {
+            // r15
             Byte(0x4C);
             Byte(0x89);
             Byte(0xF8); // mov rax, r15
@@ -1370,27 +1374,32 @@ public:
 
     // Move R10 from physical register (used by LoadB)
     void MovR10PhysReg(int rIdx) const {
-        if (rIdx == 0) { // rbx
+        if (rIdx == 0) {
+            // rbx
             Byte(0x49);
             Byte(0x89);
             Byte(0xDA); // mov r10, rbx
         }
-        else if (rIdx == 1) { // r12
+        else if (rIdx == 1) {
+            // r12
             Byte(0x4D);
             Byte(0x89);
             Byte(0xE2); // mov r10, r12
         }
-        else if (rIdx == 2) { // r13
+        else if (rIdx == 2) {
+            // r13
             Byte(0x4D);
             Byte(0x89);
             Byte(0xEA); // mov r10, r13
         }
-        else if (rIdx == 3) { // r14
+        else if (rIdx == 3) {
+            // r14
             Byte(0x4D);
             Byte(0x89);
             Byte(0xF2); // mov r10, r14
         }
-        else if (rIdx == 4) { // r15
+        else if (rIdx == 4) {
+            // r15
             Byte(0x4D);
             Byte(0x89);
             Byte(0xFA); // mov r10, r15
@@ -1399,27 +1408,32 @@ public:
 
     // Move R11 from physical register (used by Store and other instructions)
     void MovR11PhysReg(int rIdx) const {
-        if (rIdx == 0) { // rbx
+        if (rIdx == 0) {
+            // rbx
             Byte(0x49);
             Byte(0x89);
             Byte(0xDB); // mov r11, rbx
         }
-        else if (rIdx == 1) { // r12
+        else if (rIdx == 1) {
+            // r12
             Byte(0x4D);
             Byte(0x89);
             Byte(0xE3); // mov r11, r12
         }
-        else if (rIdx == 2) { // r13
+        else if (rIdx == 2) {
+            // r13
             Byte(0x4D);
             Byte(0x89);
             Byte(0xEB); // mov r11, r13
         }
-        else if (rIdx == 3) { // r14
+        else if (rIdx == 3) {
+            // r14
             Byte(0x4D);
             Byte(0x89);
             Byte(0xF3); // mov r11, r14
         }
-        else if (rIdx == 4) { // r15
+        else if (rIdx == 4) {
+            // r15
             Byte(0x4D);
             Byte(0x89);
             Byte(0xFB); // mov r11, r15
@@ -1428,27 +1442,32 @@ public:
 
     // Move physical register from RAX (used by StoreA)
     void MovPhysRegRax(int rIdx) const {
-        if (rIdx == 0) { // rbx
+        if (rIdx == 0) {
+            // rbx
             Byte(0x48);
             Byte(0x89);
             Byte(0xC3); // mov rbx, rax
         }
-        else if (rIdx == 1) { // r12
+        else if (rIdx == 1) {
+            // r12
             Byte(0x49);
             Byte(0x89);
             Byte(0xC4); // mov r12, rax
         }
-        else if (rIdx == 2) { // r13
+        else if (rIdx == 2) {
+            // r13
             Byte(0x49);
             Byte(0x89);
             Byte(0xC5); // mov r13, rax
         }
-        else if (rIdx == 3) { // r14
+        else if (rIdx == 3) {
+            // r14
             Byte(0x49);
             Byte(0x89);
             Byte(0xC6); // mov r14, rax
         }
-        else if (rIdx == 4) { // r15
+        else if (rIdx == 4) {
+            // r15
             Byte(0x49);
             Byte(0x89);
             Byte(0xC7); // mov r15, rax
@@ -1462,5 +1481,4 @@ private:
         return static_cast<uint32_t>(v);
     }
 };
-
 } // namespace Rux

@@ -5,7 +5,6 @@
 
 namespace Rux {
 namespace {
-
 std::optional<std::uint32_t> StorageBits(const TypeRef &type, const CompileTimeContext &context) {
     using K = TypeRef::Kind;
     switch (type.kind) {
@@ -93,7 +92,6 @@ std::optional<std::string_view> FloatConstant(const TypeRef::Kind kind, const st
     }
     return std::nullopt;
 }
-
 } // namespace
 
 std::optional<TypeRef> PrimitiveTypeFromName(const std::string_view name) {
@@ -186,5 +184,4 @@ std::optional<PrimitiveConstant> LookupPrimitiveConstant(const std::string_view 
     const auto type = PrimitiveTypeFromName(typeName);
     return type ? LookupPrimitiveConstant(*type, name, context) : std::nullopt;
 }
-
 } // namespace Rux

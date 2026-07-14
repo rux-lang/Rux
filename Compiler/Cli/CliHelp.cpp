@@ -2,6 +2,7 @@
 
 #include "Cli/Cli.h"
 #include "Driver/Version.h"
+#include "System/Os.h"
 
 #include <algorithm>
 #include <array>
@@ -14,8 +15,6 @@
 #include <span>
 #include <string>
 #include <string_view>
-
-#include "System/Os.h"
 
 using namespace Rux;
 using namespace std::string_view_literals;
@@ -349,27 +348,25 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .examples = Data::build_exs,
                .options = Data::build_opts},
 
-    CommandDoc{
-        .name = "check"sv,
-        .shortDesc = "Check package source code for errors without building"sv,
-        .description =
-            "Parse and analyze the source workspace files for syntactic or semantic safety flaws without emitting compilation binaries."sv,
-        .usage = Data::check_usage,
-        .postUsage = {},
-        .footer = {},
-        .examples = Data::check_exs,
-        .options = Data::check_opts},
+    CommandDoc{.name = "check"sv,
+               .shortDesc = "Check package source code for errors without building"sv,
+               .description = "Parse and analyze the source workspace files for syntactic or semantic safety flaws "
+                              "without emitting compilation binaries."sv,
+               .usage = Data::check_usage,
+               .postUsage = {},
+               .footer = {},
+               .examples = Data::check_exs,
+               .options = Data::check_opts},
 
-    CommandDoc{
-        .name = "clean"sv,
-        .shortDesc = "Remove build artifacts"sv,
-        .description =
-            "Purge compiled code modules, system logs, and cached local build tracking states from the environment workspace."sv,
-        .usage = Data::clean_usage,
-        .postUsage = "Removes the configured build output directory and Temp/ folder."sv,
-        .footer = {},
-        .examples = Data::clean_exs,
-        .options = Data::clean_opts},
+    CommandDoc{.name = "clean"sv,
+               .shortDesc = "Remove build artifacts"sv,
+               .description = "Purge compiled code modules, system logs, and cached local build tracking states from "
+                              "the environment workspace."sv,
+               .usage = Data::clean_usage,
+               .postUsage = "Removes the configured build output directory and Temp/ folder."sv,
+               .footer = {},
+               .examples = Data::clean_exs,
+               .options = Data::clean_opts},
 
     CommandDoc{.name = "doc"sv,
                .shortDesc = "Generate package documentation"sv,
@@ -416,16 +413,15 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .examples = Data::init_exs,
                .options = Data::init_opts},
 
-    CommandDoc{
-        .name = "install"sv,
-        .shortDesc = "Install dependencies"sv,
-        .description = {} /* Fallback */,
-        .usage = Data::install_usage,
-        .postUsage =
-            "Without a package name, downloads all registry dependencies listed in Rux.toml.\nWith a package name, adds it to Rux.toml and downloads it to the local cache."sv,
-        .footer = {},
-        .examples = Data::install_exs,
-        .options = Data::install_opts},
+    CommandDoc{.name = "install"sv,
+               .shortDesc = "Install dependencies"sv,
+               .description = {} /* Fallback */,
+               .usage = Data::install_usage,
+               .postUsage = "Without a package name, downloads all registry dependencies listed in Rux.toml.\nWith a "
+                            "package name, adds it to Rux.toml and downloads it to the local cache."sv,
+               .footer = {},
+               .examples = Data::install_exs,
+               .options = Data::install_opts},
 
     CommandDoc{.name = "lint"sv,
                .shortDesc = "Lint package source files"sv,
@@ -493,16 +489,16 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .examples = Data::uninstall_exs,
                .options = Data::uninstall_opts},
 
-    CommandDoc{
-        .name = "update"sv,
-        .shortDesc = "Update dependencies"sv,
-        .description = {} /* Fallback */,
-        .usage = Data::update_usage,
-        .postUsage =
-            "Without --global, checks all registry dependencies listed in Rux.toml and pulls the latest changes. Missing packages are cloned from the registry.\nWith --global, updates every package present in the local cache."sv,
-        .footer = {},
-        .examples = Data::update_exs,
-        .options = Data::update_opts},
+    CommandDoc{.name = "update"sv,
+               .shortDesc = "Update dependencies"sv,
+               .description = {} /* Fallback */,
+               .usage = Data::update_usage,
+               .postUsage = "Without --global, checks all registry dependencies listed in Rux.toml and pulls the "
+                            "latest changes. Missing packages are cloned from the registry.\nWith --global, updates "
+                            "every package present in the local cache."sv,
+               .footer = {},
+               .examples = Data::update_exs,
+               .options = Data::update_opts},
 
     CommandDoc{.name = "version"sv,
                .shortDesc = "Show version information"sv,

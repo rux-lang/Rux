@@ -361,7 +361,7 @@ std::vector<Dependency> Manifest::EffectiveDependencies(const std::string &targe
     const std::string osName = OsFromTriple(target);
     if (!osName.empty() && osName != target) {
         mergeFrom(osName); // OS-name key (e.g. "Windows" when target is
-                           // "windows-x64")
+        // "windows-x64")
     }
 
     return result;
@@ -387,5 +387,4 @@ std::optional<std::filesystem::path> Manifest::Find(const std::filesystem::path 
 
     return std::nullopt;
 }
-
 } // namespace Rux

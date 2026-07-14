@@ -1,7 +1,6 @@
 #include "Formatter/Formatter.h"
 
 namespace Rux::Formatting {
-
 FormatResult Format(const std::string_view source) {
     std::string formatted;
     formatted.reserve(source.size() + 1);
@@ -30,5 +29,4 @@ FormatResult Format(const std::string_view source) {
     }
     return {formatted, formatted != source};
 }
-
 } // namespace Rux::Formatting

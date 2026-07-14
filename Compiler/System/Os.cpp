@@ -1,13 +1,13 @@
 #include "System/Os.h"
 
+#include "System/WinApi.h"
+#include "Target/Platform.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <system_error>
 #include <utility>
 #include <vector>
-
-#include "System/WinApi.h"
-#include "Target/Platform.h"
 
 #if RUX_OS_WINDOWS
     #include <psapi.h>
@@ -28,7 +28,6 @@
 #endif
 
 namespace Rux::System {
-
 using namespace Target;
 
 // ---- Environment --------------------------------------------------------------
@@ -173,5 +172,4 @@ std::string SharedLibraryFileName(std::string name, OS os) {
     }
     return name;
 }
-
 } // namespace Rux::System

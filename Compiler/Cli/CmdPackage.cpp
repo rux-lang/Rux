@@ -3,6 +3,7 @@
 #include "Cli/Cli.h"
 #include "Driver/BuildTarget.h"
 #include "Package/Manifest.h"
+#include "System/Process.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -18,8 +19,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#include "System/Process.h"
 
 using namespace Rux;
 using namespace Driver;

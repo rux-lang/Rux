@@ -5,8 +5,11 @@
 // The CLI parses arguments, loads the manifest, validates the target, and
 // decides what to print; the Driver owns everything in between.
 
+#include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildReport.h"
 #include "Package/Manifest.h"
+#include "Semantic/SemanticModel.h"
+#include "Syntax/Parser/Parser.h"
 
 #include <filesystem>
 #include <functional>
@@ -17,12 +20,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Diagnostics/Diagnostics.h"
-#include "Semantic/SemanticModel.h"
-#include "Syntax/Parser/Parser.h"
-
 namespace Rux::Driver {
-
 struct CompileOptions {
     std::filesystem::path manifestPath;         // resolved path to Rux.toml
     Manifest manifest;                          // parsed manifest for manifestPath
@@ -34,7 +32,7 @@ struct CompileOptions {
     bool verbose = false; // print per-phase progress lines to stdout
     bool isTest = false;
     bool checkOnly = false; // stop after semantic analysis; keep going past
-                            // frontend errors so all diagnostics are reported
+    // frontend errors so all diagnostics are reported
 
     // Debug dumps written under <package root>/Temp (build --dump-*).
     bool dumpTokens = false;
@@ -94,5 +92,4 @@ private:
     std::vector<std::string> loadedModuleNames; // parallel: source name per dep entry
     std::optional<SemanticModel> semanticModel;
 };
-
 } // namespace Rux::Driver

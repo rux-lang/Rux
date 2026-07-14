@@ -3,7 +3,6 @@
 #include "System/Os.h"
 
 namespace Rux::CliSupport {
-
 bool ColorEnabled(ColorMode mode) {
     if (mode == ColorMode::On) {
         return true;
@@ -16,5 +15,4 @@ bool ColorEnabled(ColorMode mode) {
     }
     return System::StdoutIsInteractive();
 }
-
 } // namespace Rux::CliSupport

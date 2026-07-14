@@ -8,6 +8,10 @@
 // linker binds to the real libc routine. Imported calls use the SysV ABI
 // directly — the linker adds no register-shuffle glue.
 
+#include "Linker/Linker.h"
+#include "Linker/LinkerInternal.h"
+#include "Target/Platform.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <fstream>
@@ -18,12 +22,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "Linker/Linker.h"
-#include "Linker/LinkerInternal.h"
-#include "Target/Platform.h"
-
 namespace Rux {
-
 // Dynamic-linker interpreter path and default C library for the host ELF OS.
 #if RUX_OS_LINUX
 static constexpr const char *kElfInterp = "/lib64/ld-linux-x86-64.so.2";
@@ -67,10 +66,11 @@ static uint32_t ElfHash(const std::string &name) {
 static Buf BuildOsNote() {
     Buf n;
 #if RUX_OS_NETBSD
-    WriteU32(n, 7);                                     // name size ("NetBSD\0")
-    WriteU32(n, 4);                                     // desc size
-    WriteU32(n, 1);                                     // type (OS version)
-    for (const char c : std::string("NetBSD\0\0", 8)) { // padded to 8
+    WriteU32(n, 7); // name size ("NetBSD\0")
+    WriteU32(n, 4); // desc size
+    WriteU32(n, 1); // type (OS version)
+    for (const char c : std::string("NetBSD\0\0", 8)) {
+        // padded to 8
         WriteU8(n, static_cast<uint8_t>(c));
     }
     WriteU32(n, 1000000000u);
@@ -83,10 +83,11 @@ static Buf BuildOsNote() {
     }
     WriteU32(n, 0); // any version
 #elif RUX_OS_DRAGONFLY
-    WriteU32(n, 10);                                          // name size ("DragonFly\0")
-    WriteU32(n, 4);                                           // desc size
-    WriteU32(n, 1);                                           // type
-    for (const char c : std::string("DragonFly\0\0\0", 12)) { // padded to 12
+    WriteU32(n, 10); // name size ("DragonFly\0")
+    WriteU32(n, 4);  // desc size
+    WriteU32(n, 1);  // type
+    for (const char c : std::string("DragonFly\0\0\0", 12)) {
+        // padded to 12
         WriteU8(n, static_cast<uint8_t>(c));
     }
     WriteU32(n, 0);
@@ -563,7 +564,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     const uint32_t nbucket = static_cast<uint32_t>(std::max<size_t>(1, nsym));
     std::vector<uint32_t> bucket(nbucket, 0);
     std::vector<uint32_t> chain(nsym, 0);
-    for (size_t i = n; i >= 1; --i) { // walk backwards so lower indices head the chain
+    for (size_t i = n; i >= 1; --i) {
+        // walk backwards so lower indices head the chain
         const uint32_t b = ElfHash(importNames[i - 1]) % nbucket;
         chain[i] = bucket[b];
         bucket[b] = static_cast<uint32_t>(i);
@@ -652,7 +654,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     WriteU8(plt, 0xFF);
     WriteU8(plt, 0x25);
     WriteU32(plt, static_cast<uint32_t>((gotVA + 16) - (pltVA + 12)));
-    for (const uint8_t b : {0x0F, 0x1F, 0x40, 0x00}) { // nop dword [rax+0]
+    for (const uint8_t b : {0x0F, 0x1F, 0x40, 0x00}) {
+        // nop dword [rax+0]
         WriteU8(plt, b);
     }
     for (size_t i = 0; i < n; ++i) {
@@ -765,5 +768,4 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                      {dataOff, &mergedData}},
                     textVA, phoff);
 }
-
 } // namespace Rux

@@ -9,7 +9,6 @@
 #include <sstream>
 
 namespace Rux::Driver {
-
 std::size_t CountLines(std::string_view source) {
     if (source.empty()) {
         return 0;
@@ -158,5 +157,4 @@ void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view pr
                FormatCompactNumber(static_cast<double>(totalTokens)), FormatCompactNumber(compileSpeed),
                exePath.filename().string(), FormatSize(stats.executableSize));
 }
-
 } // namespace Rux::Driver

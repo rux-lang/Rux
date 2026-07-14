@@ -1,5 +1,7 @@
 // Human-readable AST dump (Parser::DumpAst).
 
+#include "Syntax/Parser/Parser.h"
+
 #include <cstdlib>
 #include <format>
 #include <fstream>
@@ -7,8 +9,6 @@
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include "Syntax/Parser/Parser.h"
 
 namespace Rux {
 // AstPrinter  –  human-readable tree dump

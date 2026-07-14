@@ -1,10 +1,10 @@
 // Statement and block parsing.
 
+#include "Syntax/Parser/Parser.h"
+
 #include <memory>
 #include <optional>
 #include <vector>
-
-#include "Syntax/Parser/Parser.h"
 
 namespace Rux {
 // Block and statements

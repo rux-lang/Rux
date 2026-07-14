@@ -1,16 +1,16 @@
 // `#if` conditional compilation: the taken branch is spliced into its parent
 // and the others are dropped before anything type-checks them.
 
-#include <doctest.h>
-#include <string>
-#include <unordered_map>
-#include <vector>
-
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Ast/Ast.h"
 #include "Syntax/Parser/Parser.h"
+
+#include <doctest.h>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 using namespace Rux;
 
@@ -659,8 +659,7 @@ func Bad() {}
 )");
     const auto runtimeModel = Analyze(runtime.module);
     REQUIRE(runtimeModel.HasErrors());
-    CHECK_EQ(runtimeModel.diagnostics[0].message,
-             "'#When' condition must be a compile-time constant expression");
+    CHECK_EQ(runtimeModel.diagnostics[0].message, "'#When' condition must be a compile-time constant expression");
 }
 
 TEST_CASE("duplicate #When attributes are rejected") {

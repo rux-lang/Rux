@@ -9,16 +9,15 @@
 // not taken. Code in a discarded branch is parsed but never type-checked or
 // lowered, so it may reference symbols that do not exist on the current build.
 
-#include <string>
-#include <string_view>
-#include <vector>
-
 #include "Diagnostics/Diagnostics.h"
 #include "Semantic/CompileTimeContext.h"
 #include "Syntax/Ast/Ast.h"
 
-namespace Rux {
+#include <string>
+#include <string_view>
+#include <vector>
 
+namespace Rux {
 // Folds every `#if` in `modules` in place using the same context later consumed
 // by semantic analysis and lowering.
 void ResolveConditionalCompilation(const std::vector<Module *> &modules, const CompileTimeContext &context,
@@ -28,5 +27,4 @@ void ResolveConditionalCompilation(const std::vector<Module *> &modules, const C
 // to select an OS. Empty means the host.
 void ResolveConditionalCompilation(const std::vector<Module *> &modules, std::string_view targetSystem,
                                    std::vector<Diagnostic> &diags);
-
 } // namespace Rux

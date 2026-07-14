@@ -2,14 +2,13 @@
 
 #include "Object/Rcu/RcuWriter.h"
 
-#include <cstring>
-#include <fstream>
-
 #include "Object/Rcu/RcuSerialization.h"
 #include "Object/Rcu/RcuStringTable.h"
 
-namespace Rux {
+#include <cstring>
+#include <fstream>
 
+namespace Rux {
 bool RcuWriter::Write(const RcuFile &file, const std::filesystem::path &path) {
     const auto bytes = SerializeRcuFile(file);
     std::ofstream stream(path, std::ios::binary | std::ios::trunc);
@@ -21,7 +20,6 @@ bool RcuWriter::Write(const RcuFile &file, const std::filesystem::path &path) {
 }
 
 namespace {
-
 // CRC-32C (Castagnoli)
 uint32_t Crc32cTable[256];
 bool Crc32cReady = false;
@@ -254,5 +252,4 @@ private:
 std::vector<std::uint8_t> SerializeRcuFile(const RcuFile &file) {
     return BinaryWriter::Serialize(file);
 }
-
 } // namespace Rux

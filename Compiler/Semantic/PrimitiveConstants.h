@@ -1,14 +1,13 @@
 #pragma once
 
+#include "Semantic/CompileTimeContext.h"
+#include "Semantic/Type.h"
+
 #include <optional>
 #include <string>
 #include <string_view>
 
-#include "Semantic/CompileTimeContext.h"
-#include "Semantic/Type.h"
-
 namespace Rux {
-
 // A built-in constant associated with a primitive type. `value` uses the same
 // printable representation as HIR/LIR literals, so resolving one never creates
 // storage or a linker-visible symbol.
@@ -24,5 +23,4 @@ struct PrimitiveConstant {
 
 [[nodiscard]] std::optional<PrimitiveConstant> LookupPrimitiveConstant(std::string_view typeName, std::string_view name,
                                                                        const CompileTimeContext &context);
-
 } // namespace Rux

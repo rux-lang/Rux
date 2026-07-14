@@ -1,16 +1,15 @@
 // `rux lint`: run source-level lint checks for the current package.
 
 #include "Cli/Cli.h"
+#include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
+#include "Linter/Linter.h"
+#include "Source/SourceLoader.h"
 
 #include <cstdio>
 #include <print>
 #include <span>
 #include <string_view>
-
-#include "Diagnostics/Diagnostics.h"
-#include "Linter/Linter.h"
-#include "Source/SourceLoader.h"
 
 using namespace Rux;
 using namespace Driver;

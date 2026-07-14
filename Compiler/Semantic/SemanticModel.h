@@ -1,14 +1,13 @@
 #pragma once
 
-#include <string>
-#include <vector>
-
 #include "Diagnostics/Diagnostics.h"
 #include "Semantic/CompileTimeContext.h"
 #include "Syntax/Ast/Ast.h"
 
-namespace Rux {
+#include <string>
+#include <vector>
 
+namespace Rux {
 using SemanticDiagnostic = Diagnostic;
 
 struct SemanticSymbol {
@@ -39,5 +38,4 @@ struct SemanticModel {
 
     [[nodiscard]] bool HasErrors() const noexcept;
 };
-
 } // namespace Rux

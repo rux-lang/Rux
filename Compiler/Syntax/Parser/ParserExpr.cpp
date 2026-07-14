@@ -1,12 +1,12 @@
 // Expression parsing (precedence climbing) and patterns.
 
+#include "Syntax/Parser/Parser.h"
+
 #include <format>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "Syntax/Parser/Parser.h"
 
 namespace Rux {
 // Expressions

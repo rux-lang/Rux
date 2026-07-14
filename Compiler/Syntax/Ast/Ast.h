@@ -1,13 +1,13 @@
 #pragma once
 
+#include "Lexer/Token.h"
+#include "Target/AsmInstr.h"
+#include "Target/CallingConvention.h"
+
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
-
-#include "Lexer/Token.h"
-#include "Target/AsmInstr.h"
-#include "Target/CallingConvention.h"
 
 namespace Rux {
 // Forward declarations
@@ -48,7 +48,7 @@ struct SliceTypeExpr : TypeExpr {
 
     TypeExprPtr element;
     ExprPtr size; // null for unsized slices (T[]), non-null for fixed-size
-                  // arrays (T[N])
+    // arrays (T[N])
 };
 
 // *uint8  or  *const uint8

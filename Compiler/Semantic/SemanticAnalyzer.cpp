@@ -1,6 +1,12 @@
 #include "Semantic/SemanticAnalyzer.h"
 
 #include "Driver/Version.h"
+#include "Lexer/Lexer.h"
+#include "Semantic/ConditionalCompilation.h"
+#include "Semantic/PrimitiveConstants.h"
+#include "Semantic/Type.h"
+#include "Target/Layout.h"
+#include "Target/Target.h"
 
 #include <algorithm>
 #include <array>
@@ -14,19 +20,10 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "Lexer/Lexer.h"
-#include "Semantic/ConditionalCompilation.h"
-#include "Semantic/PrimitiveConstants.h"
-#include "Semantic/Type.h"
-#include "Target/Layout.h"
-#include "Target/Target.h"
-
 namespace Rux {
-
 using Layout::AlignUp;
 
 namespace {
-
 // These names are part of the language's primitive type set, but the current
 // type system and backends do not implement their representations yet. Keep
 // them reserved so they cannot silently become user-defined types.
@@ -38,7 +35,6 @@ constexpr std::array<std::string_view, 20> UnimplementedPrimitiveTypes{
 bool IsUnimplementedPrimitiveType(const std::string_view name) {
     return std::ranges::find(UnimplementedPrimitiveTypes, name) != UnimplementedPrimitiveTypes.end();
 }
-
 } // namespace
 
 // SemanticModel
@@ -2946,7 +2942,7 @@ private:
             }
         }
         else // Glob: promote all from the specific module (or all modules
-             // if Pkg::*)
+        // if Pkg::*)
         {
             const std::string modulePath = ModulePathForImport(d);
             ImportScope scope = ResolveImportScope(d, pkgName, modulePath);
@@ -3875,7 +3871,7 @@ private:
                 EmitError(e->location, std::format("type '{}' has no field '{}'", obj.ToString(), e->field));
             }
             return TypeRef::MakeUnknown(); // field type lookup needs full
-                                           // type info
+            // type info
         }
 
         if (auto *e = dynamic_cast<const StructInitExpr *>(&expr)) {

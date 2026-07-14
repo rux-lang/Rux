@@ -9,16 +9,15 @@
 // Compiler/System/ so the rest of the compiler is platform-agnostic; CI
 // greps for strays (see Tools/PlatformIsolation/Check.sh).
 
+#include "Target/Target.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
 
-#include "Target/Target.h"
-
 namespace Rux::System {
-
 // ---- Environment --------------------------------------------------------------
 
 // Value of the environment variable `name`, or nullopt when it is not set.
@@ -64,5 +63,4 @@ namespace Rux::System {
 // Shared-library file name for `os`: appends ".dll" on Windows; unchanged
 // elsewhere (ELF/Mach-O outputs currently carry no prefix or extension).
 [[nodiscard]] std::string SharedLibraryFileName(std::string name, Target::OS os = Target::HostOS);
-
 } // namespace Rux::System

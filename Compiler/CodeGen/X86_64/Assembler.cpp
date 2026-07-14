@@ -16,17 +16,16 @@
 
 #include "CodeGen/X86_64/Assembler.h"
 
+#include "Object/Rcu/Rcu.h"
+
 #include <cstdint>
 #include <format>
 #include <optional>
 #include <string_view>
 #include <unordered_map>
 
-#include "Object/Rcu/Rcu.h"
-
 namespace Rux {
 namespace {
-
 using Bytes = std::vector<std::uint8_t>;
 
 // Resolved r/m encoding: the ModRM byte with an empty reg field, plus the SIB,
@@ -1277,12 +1276,10 @@ private:
         return std::nullopt;
     }
 };
-
 } // namespace
 
 AsmAssembly AssembleAsmFunc(const std::vector<AsmInstr> &instrs, const std::string &sourceName, Bytes &out) {
     Assembler asmr(instrs, sourceName, out);
     return asmr.Run();
 }
-
 } // namespace Rux

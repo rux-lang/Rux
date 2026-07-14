@@ -1,5 +1,6 @@
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
+#include "System/Os.h"
 
 #include <chrono>
 #include <doctest.h>
@@ -8,8 +9,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "System/Os.h"
 
 using namespace Rux;
 using namespace Rux::Driver;

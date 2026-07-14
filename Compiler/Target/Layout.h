@@ -11,7 +11,6 @@
 #include <utility>
 
 namespace Rux::Layout {
-
 [[nodiscard]] constexpr std::uint64_t AlignUp(const std::uint64_t value, const std::uint64_t align) noexcept {
     return (value + align - 1) & ~(align - 1);
 }
@@ -47,5 +46,4 @@ template <typename Range, typename SizeFn>
     }
     return std::pair{AlignUp(offset, maxAlign), maxAlign};
 }
-
 } // namespace Rux::Layout

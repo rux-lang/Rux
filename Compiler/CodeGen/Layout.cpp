@@ -1,7 +1,6 @@
 #include "CodeGen/Layout.h"
 
 namespace Rux::Layout {
-
 std::string EncodeStringLiteral(const std::string_view value, int elementSize) {
     if (elementSize != 2 && elementSize != 4) {
         elementSize = 1;
@@ -76,7 +75,7 @@ int SizeOf(const TypeRef &t) {
         return 8;
     default:
         return 8; // int, uint, int64, uint64, float64, pointer, str,
-                  // named, …
+        // named, …
     }
 }
 
@@ -130,5 +129,4 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known)
     result.alignment = maxAlign;
     return result;
 }
-
 } // namespace Rux::Layout

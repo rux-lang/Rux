@@ -5,15 +5,14 @@
 // resolved here; references to symbols declared elsewhere (call targets,
 // rip-relative data) are reported as fixups for the object emitter to relocate.
 
+#include "Diagnostics/Diagnostics.h"
+#include "Target/AsmInstr.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
 
-#include "Diagnostics/Diagnostics.h"
-#include "Target/AsmInstr.h"
-
 namespace Rux {
-
 // A reference the assembler could not resolve within the function. Offsets are
 // absolute positions inside the buffer passed to AssembleAsmFunc (i.e. they
 // already account for the function's start offset).
@@ -34,5 +33,4 @@ struct AsmAssembly {
 // `sourceName` are used only for diagnostics.
 AsmAssembly AssembleAsmFunc(const std::vector<AsmInstr> &instrs, const std::string &sourceName,
                             std::vector<std::uint8_t> &out);
-
 } // namespace Rux
