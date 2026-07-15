@@ -96,6 +96,10 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
             std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
             return 1;
         }
+        // A non-empty folder means the package lives in a subdirectory of a
+        // monorepo, so only that subdirectory is installed rather than the whole
+        // repository.
+        const std::string folder = JsonFindPackageField(*jsonOptInstall, pkgName, "folder");
         const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
         std::error_code ec;
         create_directories(pkgDir.parent_path(), ec);
@@ -109,7 +113,9 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
             if (!opts.quiet) {
                 std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
             }
-            if (!GitClone(repoUrl, pkgDir, packageFromDev)) {
+            const bool cloned = folder.empty() ? GitClone(repoUrl, pkgDir, packageFromDev)
+                                               : GitCloneSubdir(repoUrl, folder, pkgDir, packageFromDev);
+            if (!cloned) {
                 std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                 return 1;
             }
@@ -540,6 +546,10 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
             std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
             return 1;
         }
+        // A non-empty folder means the package lives in a subdirectory of a
+        // monorepo; those are installed by copying files (no .git to pull), so
+        // updating re-fetches the subdirectory instead.
+        const std::string folder = JsonFindPackageField(*jsonOpt, pkgName, "folder");
         const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
         std::error_code ec;
         std::filesystem::create_directories(pkgDir.parent_path(), ec);
@@ -548,7 +558,15 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
             if (!opts.quiet) {
                 std::print("    Updating {}...\n", pkgName);
             }
-            if (!GitPull(pkgDir)) {
+            bool refreshed;
+            if (folder.empty()) {
+                refreshed = GitPull(pkgDir);
+            }
+            else {
+                std::filesystem::remove_all(pkgDir, ec);
+                refreshed = GitCloneSubdir(repoUrl, folder, pkgDir, false);
+            }
+            if (!refreshed) {
                 std::print(stderr, "error: failed to update '{}'\n", pkgName);
                 return 1;
             }
@@ -558,7 +576,9 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
             if (!opts.quiet) {
                 std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
             }
-            if (!GitClone(repoUrl, pkgDir, false)) {
+            const bool cloned =
+                folder.empty() ? GitClone(repoUrl, pkgDir, false) : GitCloneSubdir(repoUrl, folder, pkgDir, false);
+            if (!cloned) {
                 std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
                 return 1;
             }

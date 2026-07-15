@@ -44,9 +44,9 @@ std::string JsonLookupString(std::string_view json, std::string_view key) {
     return {};
 }
 
-std::string JsonFindPackageRepository(std::string_view json, std::string_view name) {
-    // Walk each top-level object in the array and return the "repository" of the
-    // one whose "name" matches. Braces and quotes inside string values are
+std::string JsonFindPackageField(std::string_view json, std::string_view name, std::string_view field) {
+    // Walk each top-level object in the array and return the requested field of
+    // the one whose "name" matches. Braces and quotes inside string values are
     // skipped so they don't confuse the object boundaries.
     std::size_t i = 0;
     while ((i = json.find('{', i)) != std::string_view::npos) {
@@ -77,11 +77,50 @@ std::string JsonFindPackageRepository(std::string_view json, std::string_view na
 
         const std::string_view object = json.substr(i, j - i + 1);
         if (JsonLookupString(object, "name") == name) {
-            return JsonLookupString(object, "repository");
+            return JsonLookupString(object, field);
         }
         i = j + 1;
     }
     return {};
+}
+
+std::string JsonFindPackageRepository(std::string_view json, std::string_view name) {
+    return JsonFindPackageField(json, name, "repository");
+}
+
+bool GitCloneSubdir(const std::string &repoUrl, const std::string &folder, const std::filesystem::path &dest,
+                    bool devBranch) {
+    // Git has no single command to clone one subdirectory, so clone the whole
+    // repository next to `dest` and copy just this package's files out of it.
+    // Only Rux.toml and Src/ are taken, so Tests/ and the repository's other
+    // packages never land in the installed package.
+    std::error_code ec;
+    std::filesystem::path tmp = dest;
+    tmp += ".tmp";
+    std::filesystem::remove_all(tmp, ec);
+    if (!GitClone(repoUrl, tmp, devBranch)) {
+        std::filesystem::remove_all(tmp, ec);
+        return false;
+    }
+    const std::filesystem::path src = tmp / folder;
+    bool ok = false;
+    if (std::filesystem::exists(src / "Rux.toml", ec)) {
+        std::filesystem::create_directories(dest, ec);
+        std::filesystem::copy_file(src / "Rux.toml", dest / "Rux.toml",
+                                   std::filesystem::copy_options::overwrite_existing, ec);
+        ok = !ec;
+        if (ok && std::filesystem::exists(src / "Src", ec)) {
+            std::filesystem::copy(
+                src / "Src", dest / "Src",
+                std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
+            ok = !ec;
+        }
+    }
+    std::filesystem::remove_all(tmp, ec);
+    if (!ok) {
+        std::filesystem::remove_all(dest, ec);
+    }
+    return ok;
 }
 
 #if RUX_OS_WINDOWS

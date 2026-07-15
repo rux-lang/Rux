@@ -34,11 +34,15 @@ inline constexpr std::string_view kRegistryUrl = "https://api.rux-lang.dev/packa
 // Returns an empty string if the key is missing.
 [[nodiscard]] std::string JsonLookupString(std::string_view json, std::string_view key);
 
-// Find a package by name in the registry index and return its repository URL.
+// Find a package by name in the registry index and return one of its string
+// fields (e.g. "repository" or "folder").
 //
 // The index is a JSON array of flat package objects, e.g.
-//   [ { "name": "Std", "repository": "https://github.com/...", ... }, ... ]
-// Returns an empty string if no package with that name exists.
+//   [ { "name": "Std", "repository": "https://github.com/...", "folder": "", ... }, ... ]
+// Returns an empty string if no package with that name (or no such field) exists.
+[[nodiscard]] std::string JsonFindPackageField(std::string_view json, std::string_view name, std::string_view field);
+
+// Convenience wrapper for the "repository" field. See JsonFindPackageField.
 [[nodiscard]] std::string JsonFindPackageRepository(std::string_view json, std::string_view name);
 
 // Fetch the body of an HTTPS URL. Returns nullopt on failure.
@@ -50,6 +54,14 @@ inline constexpr std::string_view kRegistryUrl = "https://api.rux-lang.dev/packa
 // Clone a git repository into `dest`. Pass devBranch=true to clone the `dev`
 // branch. Returns true on success.
 [[nodiscard]] bool GitClone(const std::string &repoUrl, const std::filesystem::path &dest, bool devBranch);
+
+// Install a single package that lives in the `folder` subdirectory of a monorepo
+// at `repoUrl`. Clones the repository to a temporary location and copies only
+// that package's `Rux.toml` and `Src/` into `dest`, leaving `Tests/` and every
+// other package in the repository behind. Pass devBranch=true for the `dev`
+// branch. Returns true on success.
+[[nodiscard]] bool GitCloneSubdir(const std::string &repoUrl, const std::string &folder,
+                                  const std::filesystem::path &dest, bool devBranch);
 
 // Pull the latest changes in an existing git repository. Returns true on success.
 [[nodiscard]] bool GitPull(const std::filesystem::path &repoDir);
