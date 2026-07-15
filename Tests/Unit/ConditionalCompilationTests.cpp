@@ -9,6 +9,7 @@
 
 #include <doctest.h>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -27,14 +28,53 @@ ParseResult ParseSource(const std::string &source) {
     return parsed;
 }
 
-// Runs the front end the way the driver does, which folds `#if` in `module`.
+// A stand-in `Rux` package so `import Rux::{...}` resolves in these tests. The
+// fold uses its own built-in variant tables, so the enum bodies here only need
+// to exist, not to be complete.
+constexpr std::string_view kRuxPackageSource = R"(
+const target = 0;
+const build = 0;
+const compiler = 0;
+const source = 0;
+const config = 0;
+enum OperatingSystem { Windows }
+enum Architecture { X86_64 }
+enum ApplicationBinaryInterface { WindowsX64 }
+enum Endianness { Little }
+enum DataModel { LLP64 }
+enum ObjectFormat { COFF }
+enum BuildMode { Debug }
+enum OptimizationMode { Speed }
+enum OutputKind { SharedLibrary }
+)";
+
+DepPackage RuxDep(ParseResult &storage) {
+    storage = ParseSource(std::string(kRuxPackageSource));
+    DepPackage dep;
+    dep.name = "Rux";
+    dep.modules.push_back({"Rux", &storage.module});
+    return dep;
+}
+
+// Runs the front end the way the driver does, which folds `#if` in `module`,
+// with the stand-in `Rux` package available so `import Rux::{...}` resolves.
 SemanticModel Analyze(Module &module, const std::string &targetSystem = "Windows") {
+    ParseResult rux;
     std::vector<Module *> modules = {&module};
-    SemanticAnalyzer analyzer(modules, {}, "test", targetSystem);
+    SemanticAnalyzer analyzer(modules, {RuxDep(rux)}, "test", targetSystem);
     return analyzer.Analyze();
 }
 
 SemanticModel Analyze(Module &module, CompileTimeContext context) {
+    ParseResult rux;
+    std::vector<Module *> modules = {&module};
+    SemanticAnalyzer analyzer(modules, {RuxDep(rux)}, "test", std::move(context));
+    return analyzer.Analyze();
+}
+
+// For tests that lower the result: no dependency, so the lowered package holds
+// only the module under test.
+SemanticModel AnalyzeNoDeps(Module &module, CompileTimeContext context) {
     std::vector<Module *> modules = {&module};
     SemanticAnalyzer analyzer(modules, {}, "test", std::move(context));
     return analyzer.Analyze();
@@ -191,10 +231,12 @@ const Debug = false;
 
 TEST_CASE("#if selects methods inside an extend block") {
     auto parsed = ParseSource(R"(
+import Rux::{ target, OperatingSystem };
+
 struct Animal {}
 
 extend Animal {
-    #if target.os == .Windows {
+    #if target.os == OperatingSystem::Windows {
         func Sound(self) -> int { return 1; }
     } else {
         func Sound(self) -> int { return 2; }
@@ -230,8 +272,10 @@ extend Animal {
 
 TEST_CASE("#if tests the target OS through target.os") {
     const std::string source = R"(
+import Rux::{ target, OperatingSystem };
+
 func Do() -> int {
-    #if target.os == .Windows {
+    #if target.os == OperatingSystem::Windows {
         return 1;
     } else {
         return 2;
@@ -252,8 +296,10 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*linuxFunc) == "2");
 }
 
-TEST_CASE("target.os compares against the long form of OperatingSystem too") {
+TEST_CASE("target.os compares against the OperatingSystem enum") {
     auto parsed = ParseSource(R"(
+import Rux::{ target, OperatingSystem };
+
 func Do() -> int {
     #if target.os != OperatingSystem::Linux {
         return 1;
@@ -269,14 +315,78 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*func) == "1");
 }
 
-TEST_CASE("the shorthand works for the program's own enums") {
+TEST_CASE("an enum shorthand is rejected in a #if condition") {
+    auto parsed = ParseSource(R"(
+import Rux::{ target };
+
+func Do() -> int {
+    #if target.os == .Windows {
+        return 1;
+    }
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module, "Windows");
+    REQUIRE(model.HasErrors());
+    CHECK(model.diagnostics[0].message ==
+          "enum shorthand '.Windows' is not allowed in a '#if' condition; write it in full, as in "
+          "'OperatingSystem::Windows'");
+}
+
+TEST_CASE("the dropped OS alias no longer names the OperatingSystem enum") {
+    auto parsed = ParseSource(R"(
+import Rux::{ target };
+
+func Do() -> int {
+    #if target.os == OS::Windows {
+        return 1;
+    }
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module, "Windows");
+    REQUIRE(model.HasErrors());
+    CHECK(model.diagnostics[0].message == "cannot compare 'OperatingSystem' with 'OS'");
+}
+
+TEST_CASE("a built-in enum named in a condition must be imported from Rux") {
+    auto parsed = ParseSource(R"(
+import Rux::{ target };
+
+func Do() -> int {
+    #if target.os == OperatingSystem::Windows {
+        return 1;
+    }
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module, "Windows");
+    REQUIRE(model.HasErrors());
+    CHECK(model.diagnostics[0].message == "unknown identifier 'OperatingSystem'");
+}
+
+TEST_CASE("a build intrinsic used in a condition must be imported from Rux") {
+    auto parsed = ParseSource(R"(
+func Do() -> int {
+    #if target.os == OperatingSystem::Windows {
+        return 1;
+    }
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module, "Windows");
+    REQUIRE(model.HasErrors());
+    CHECK(model.diagnostics[0].message == "unknown identifier 'target'");
+}
+
+TEST_CASE("the program's own enums compare by their qualified name") {
     auto parsed = ParseSource(R"(
 enum Mode { Fast, Small }
 
 const Build = Mode::Small;
 
 func Do() -> int {
-    #if Build == .Fast {
+    #if Build == Mode::Fast {
         return 1;
     } else {
         return 2;
@@ -292,12 +402,14 @@ func Do() -> int {
 
 TEST_CASE("target.os tells the BSDs apart") {
     const std::string source = R"(
+import Rux::{ target, OperatingSystem };
+
 func Do() -> int {
-    #if target.os == .FreeBSD {
+    #if target.os == OperatingSystem::FreeBSD {
         return 1;
-    } else if target.os == .OpenBSD {
+    } else if target.os == OperatingSystem::OpenBSD {
         return 2;
-    } else if target.os == .DragonFlyBSD {
+    } else if target.os == OperatingSystem::DragonFlyBSD {
         return 3;
     } else {
         return 4;
@@ -325,8 +437,10 @@ func Do() -> int {
 
 TEST_CASE("an OS no build target produces warns instead of quietly never running") {
     auto parsed = ParseSource(R"(
+import Rux::{ target, OperatingSystem };
+
 func Do() -> int {
-    #if target.os == .Haiku {
+    #if target.os == OperatingSystem::Haiku {
         return 1;
     }
     return 0;
@@ -344,8 +458,10 @@ func Do() -> int {
 
 TEST_CASE("a misspelled OS variant is an error, not a silently false branch") {
     auto parsed = ParseSource(R"(
+import Rux::{ target, OperatingSystem };
+
 func Do() -> int {
-    #if target.os == .Wndows {
+    #if target.os == OperatingSystem::Wndows {
         return 1;
     }
     return 0;
@@ -375,7 +491,7 @@ func Do() -> int {
 )");
     CompileTimeContext context;
     context.target.pointer_size = 8;
-    const auto model = Analyze(parsed.module, std::move(context));
+    const auto model = AnalyzeNoDeps(parsed.module, std::move(context));
     REQUIRE_FALSE(model.HasErrors());
 
     AstToHirLowering lowering(model);
@@ -389,7 +505,7 @@ func Do() -> int {
     CHECK(literal->value == "64");
 }
 
-TEST_CASE("an enum shorthand outside a #if condition is an error") {
+TEST_CASE("an enum shorthand is an error; the variant must be written in full") {
     auto parsed = ParseSource(R"(
 enum Mode { Fast, Small }
 
@@ -399,8 +515,7 @@ func Do() -> Mode {
 )");
     const auto model = Analyze(parsed.module);
     REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message ==
-          "'.Fast' can only be used in a '#if' condition; write the enum out in full, as in 'Enum::Fast'");
+    CHECK(model.diagnostics[0].message == "'.Fast' must be written in full, as in 'Enum::Fast'");
 }
 
 TEST_CASE("a #if condition that is not a compile-time constant is an error") {
@@ -436,23 +551,26 @@ func Do() -> int {
 
 TEST_CASE("target and build intrinsics expose the full compile-time context") {
     auto parsed = ParseSource(R"(
+import Rux::{ target, build, compiler, OperatingSystem, Architecture, ApplicationBinaryInterface, Endianness,
+             DataModel, ObjectFormat, BuildMode, OptimizationMode, OutputKind };
+
 func Selected() -> int {
-    #if target.os == .Windows &&
-        target.arch == .X86_64 &&
-        target.abi == .WindowsX64 &&
-        target.endian == .Little &&
+    #if target.os == OperatingSystem::Windows &&
+        target.arch == Architecture::X86_64 &&
+        target.abi == ApplicationBinaryInterface::WindowsX64 &&
+        target.endian == Endianness::Little &&
         target.pointerBits == 64 &&
-        target.dataModel == .LLP64 &&
-        target.objectFormat == .COFF &&
+        target.dataModel == DataModel::LLP64 &&
+        target.objectFormat == ObjectFormat::COFF &&
         target.triple == "windows-x64" &&
         target.hasFeature(.AVX2) &&
         build.profile == "Production" &&
-        build.mode == .Release &&
-        build.optimization == .Speed &&
+        build.mode == BuildMode::Release &&
+        build.optimization == OptimizationMode::Speed &&
         !build.debugAssertions &&
         build.debugInfo &&
         build.isTest &&
-        build.outputKind == .SharedLibrary {
+        build.outputKind == OutputKind::SharedLibrary {
         return 1;
     } else {
         return 0;
@@ -485,6 +603,8 @@ func Selected() -> int {
 
 TEST_CASE("configuration and compiler feature intrinsics are queryable") {
     auto parsed = ParseSource(R"(
+import Rux::{ config, compiler, source };
+
 func Selected() -> int {
     #if config.has("sqlite") &&
         config.get("allocator") == "mimalloc" &&
@@ -636,7 +756,7 @@ module Demo {
     context.config["allocator"] = "mimalloc";
     context.compilerVersion = "1.2.3";
 
-    const SemanticModel model = Analyze(parsed.module, std::move(context));
+    const SemanticModel model = AnalyzeNoDeps(parsed.module, std::move(context));
     std::string diagnosticMessages;
     for (const Diagnostic &diagnostic : model.diagnostics) {
         diagnosticMessages += diagnostic.message + "\n";
@@ -688,6 +808,8 @@ module Demo {
 
 TEST_CASE("#When includes true declarations and removes false declarations and imports") {
     auto parsed = ParseSource(R"(
+import Rux::{ compiler };
+
 const Enabled = true;
 
 #When(Enabled && compiler.hasFeature("when-attribute"))
@@ -726,10 +848,12 @@ extern func Tone(freq: uint32, duration: uint32) -> bool32;
 
 TEST_CASE("#When conditionally includes methods inside an extend block") {
     auto parsed = ParseSource(R"(
+import Rux::{ target, OperatingSystem };
+
 struct Animal {}
 
 extend Animal {
-    #When(target.os == .Windows)
+    #When(target.os == OperatingSystem::Windows)
     func Sound(self) -> int { return 1; }
 
     #When(false)
@@ -740,7 +864,12 @@ extend Animal {
     const auto model = Analyze(parsed.module, "Windows");
     CHECK_FALSE(model.HasErrors());
 
-    const auto *impl = dynamic_cast<const ImplDecl *>(parsed.module.items[1].get());
+    const ImplDecl *impl = nullptr;
+    for (const auto &item : parsed.module.items) {
+        if (const auto *candidate = dynamic_cast<const ImplDecl *>(item.get())) {
+            impl = candidate;
+        }
+    }
     REQUIRE(impl != nullptr);
     REQUIRE_EQ(impl->methods.size(), 1);
     CHECK_EQ(impl->methods[0]->name, "Sound");

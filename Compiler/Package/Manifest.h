@@ -60,7 +60,6 @@ struct Manifest {
     Package package;
     Build build;
     std::vector<Dependency> dependencies;
-    std::map<std::string, std::vector<Dependency>> targetDependencies;
 
     /**
      * @brief Load a manifest from disk.
@@ -93,13 +92,6 @@ struct Manifest {
      * @return false if not found
      */
     bool RemoveDependency(const std::string &name);
-
-    /**
-     * @brief Get combined global and target-specific dependencies.
-     * @param target Target name
-     * @return Merged dependency list
-     */
-    [[nodiscard]] std::vector<Dependency> EffectiveDependencies(const std::string &target) const;
 
     /**
      * @brief Find a Rux.toml by walking up directories.

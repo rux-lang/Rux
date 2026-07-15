@@ -2,6 +2,7 @@
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
+#include <algorithm>
 #include <array>
 #include <doctest.h>
 #include <string>
@@ -22,6 +23,32 @@ std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source) {
     REQUIRE_FALSE(parsed.HasErrors());
 
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    return analyzer.Analyze().diagnostics;
+}
+
+// Analyze `userSource` with a single dependency package `depName` whose source
+// is `depSource`. The parsed modules stay alive for the whole Analyze() call.
+std::vector<SemanticDiagnostic> AnalyzeWithDep(const std::string &userSource, const std::string &depName,
+                                               const std::string &depSource) {
+    Lexer depLexer(depSource, "dep.rux");
+    auto depLexed = depLexer.Tokenize();
+    REQUIRE_FALSE(depLexed.HasErrors());
+    Parser depParser(std::move(depLexed.tokens), "dep.rux");
+    auto depParsed = depParser.Parse();
+    REQUIRE_FALSE(depParsed.HasErrors());
+
+    Lexer lexer(userSource, "test.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "test.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    DepPackage dep;
+    dep.name = depName;
+    dep.modules.push_back({depName, &depParsed.module});
+
+    SemanticAnalyzer analyzer({&parsed.module}, {std::move(dep)}, "App", "Windows");
     return analyzer.Analyze().diagnostics;
 }
 
@@ -144,4 +171,76 @@ TEST_CASE("ordinary unknown types keep the unknown-type diagnostic") {
 
     REQUIRE_EQ(diagnostics.size(), 1);
     CHECK_EQ(diagnostics.front().message, "unknown type 'CustomInteger'");
+}
+
+TEST_CASE("bare package import binds the eponymous module for qualified access") {
+    const auto diagnostics = AnalyzeWithDep(R"(
+        import Platform;
+
+        func Main() -> int {
+            return Platform::Now();
+        }
+    )",
+                                            "Platform", R"(
+        module Platform {
+            func Now() -> int { return 7; }
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("bare package import without an eponymous module is an error") {
+    const auto diagnostics = AnalyzeWithDep(R"(
+        import Utils;
+
+        func Main() -> int { return 0; }
+    )",
+                                            "Utils", R"(
+        module Helpers {
+            func Ping() -> int { return 1; }
+        }
+    )");
+
+    const bool reported = std::ranges::any_of(diagnostics, [](const SemanticDiagnostic &d) {
+        return d.severity == Diagnostic::Severity::Error &&
+               d.message == "import 'Utils' does not name a module; name an item instead (e.g. import Utils::Name)";
+    });
+    CHECK(reported);
+}
+
+TEST_CASE("importing a module's item without naming the module is an error") {
+    const auto diagnostics = AnalyzeWithDep(R"(
+        import Foo::Bar;
+
+        func Main() -> int { return 0; }
+    )",
+                                            "Foo", R"(
+        module Foo {
+            func Bar() -> int { return 7; }
+        }
+    )");
+
+    const bool reported = std::ranges::any_of(diagnostics, [](const SemanticDiagnostic &d) {
+        return d.severity == Diagnostic::Severity::Error &&
+               d.message == "'Bar' not found in package 'Foo'; did you mean 'import Foo::Foo::Bar'?";
+    });
+    CHECK(reported);
+}
+
+TEST_CASE("importing a module's item through its full path resolves") {
+    const auto diagnostics = AnalyzeWithDep(R"(
+        import Foo::Foo::Bar;
+
+        func Main() -> int {
+            return Bar();
+        }
+    )",
+                                            "Foo", R"(
+        module Foo {
+            func Bar() -> int { return 7; }
+        }
+    )");
+
+    CHECK(diagnostics.empty());
 }

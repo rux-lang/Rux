@@ -273,18 +273,16 @@ bool CompilerDriver::LoadDependencies() {
         if (queuedPackageNames.count(pkgName)) {
             return true;
         }
-        // Resolve imports through the target view of the owning manifest.
-        // This is what maps Platform to Linux on linux-x64.
-        const auto deps = ownerManifest.EffectiveDependencies(opts.targetName);
         const Dependency *dep = nullptr;
-        for (const auto &d : deps) {
+        for (const auto &d : ownerManifest.dependencies) {
             if (d.name == pkgName) {
                 dep = &d;
                 break;
             }
         }
         if (!dep) {
-            Emit(ErrorDiagnostic("package '" + pkgName + "' is not listed in [Dependencies]"));
+            Emit(ErrorDiagnostic("package '" + pkgName + "' is not listed in [Dependencies] of '" +
+                                 (ownerRoot / "Rux.toml").string() + "'"));
             return false;
         }
         std::filesystem::path depRoot;

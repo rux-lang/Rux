@@ -2752,11 +2752,6 @@ private:
         const std::string logicalModulePath = LogicalModulePathForImport(d);
         if (auto pkgIt = packageModuleScopes.find(pkgName); pkgIt != packageModuleScopes.end()) {
             if (auto modIt = pkgIt->second.find(modulePath); modIt != pkgIt->second.end()) {
-                if (modulePath.empty() && !logicalModulePath.empty()) {
-                    if (auto logicalIt = pkgIt->second.find(logicalModulePath); logicalIt != pkgIt->second.end()) {
-                        return {&logicalIt->second->Table(), ImportScopeDisplayName(pkgName, logicalModulePath)};
-                    }
-                }
                 return {&modIt->second->Table(), ImportScopeDisplayName(pkgName, modulePath)};
             }
         }
@@ -2797,7 +2792,18 @@ private:
         }
         auto sym_it = scope.table->find(name);
         if (sym_it == scope.table->end()) {
-            EmitError(d.location, std::format("'{}' not found in {}", name, scope.displayName));
+            std::string message = std::format("'{}' not found in {}", name, scope.displayName);
+            // The item is not at this path, but if one of the package's modules
+            // holds it, point at the fully-qualified import.
+            if (auto pkgIt = packageModuleScopes.find(pkgName); pkgIt != packageModuleScopes.end()) {
+                for (const auto &[candidateModule, candidateScope] : pkgIt->second) {
+                    if (!candidateModule.empty() && candidateScope->Table().contains(name)) {
+                        message += std::format("; did you mean 'import {}::{}::{}'?", pkgName, candidateModule, name);
+                        break;
+                    }
+                }
+            }
+            EmitError(d.location, std::move(message));
             return;
         }
         DefineImportedSymbol(sym_it->second);
@@ -2906,29 +2912,42 @@ private:
         const std::string &pkgName = d.path[0];
 
         if (d.kind == UseDecl::Kind::Single) {
+            // Bind `packageModuleScopes[pkgName][moduleName]` as a module alias
+            // usable through `::`. Returns true when the module exists.
+            auto bindModuleAlias = [&](const std::string &moduleName) -> bool {
+                auto pkgIt = packageModuleScopes.find(pkgName);
+                if (pkgIt == packageModuleScopes.end()) {
+                    return false;
+                }
+                auto modIt = pkgIt->second.find(moduleName);
+                if (modIt == pkgIt->second.end()) {
+                    return false;
+                }
+                Symbol sym;
+                sym.kind = Symbol::Kind::Module;
+                sym.name = moduleName;
+                sym.location = d.location;
+                sym.moduleScope = modIt->second;
+                DefineImportedSymbol(sym);
+                return true;
+            };
+
+            // Bare `import Pkg;` binds the package's eponymous module as a
+            // namespace, so its members are reached through `Pkg::Name`.
             if (d.path.size() < 2) {
-                EmitError(d.location, std::format("import '{}' must name at least one "
-                                                  "item (e.g. import {}::Name)",
+                if (bindModuleAlias(pkgName)) {
+                    return;
+                }
+                EmitError(d.location, std::format("import '{}' does not name a module; name an "
+                                                  "item instead (e.g. import {}::Name)",
                                                   pkgName, pkgName));
                 return;
             }
             const std::string &name = d.path.back();
             // If path.size()==2 and name matches a logical module, create a
             // module alias.
-            if (d.path.size() == 2) {
-                auto pkgIt = packageModuleScopes.find(pkgName);
-                if (pkgIt != packageModuleScopes.end()) {
-                    auto modIt = pkgIt->second.find(name);
-                    if (modIt != pkgIt->second.end()) {
-                        Symbol sym;
-                        sym.kind = Symbol::Kind::Module;
-                        sym.name = name;
-                        sym.location = d.location;
-                        sym.moduleScope = modIt->second;
-                        DefineImportedSymbol(sym);
-                        return;
-                    }
-                }
+            if (d.path.size() == 2 && bindModuleAlias(name)) {
+                return;
             }
             PromoteFromPackage(d, pkgName, name);
         }
@@ -3459,11 +3478,10 @@ private:
         }
 
         if (const auto *e = dynamic_cast<const EnumShorthandExpr *>(&expr)) {
-            // Only a `#if` condition supplies the enum a bare `.Variant` needs;
-            // everywhere else the variant must be written out in full.
-            EmitError(e->location, std::format("'.{}' can only be used in a '#if' condition; write the enum "
-                                               "out in full, as in 'Enum::{}'",
-                                               e->variant, e->variant));
+            // The bare `.Variant` shorthand is not part of the language; the
+            // variant must always be written out in full.
+            EmitError(e->location,
+                      std::format("'.{}' must be written in full, as in 'Enum::{}'", e->variant, e->variant));
             return TypeRef::MakeUnknown();
         }
 

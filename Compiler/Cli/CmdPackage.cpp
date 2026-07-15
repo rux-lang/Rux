@@ -45,7 +45,6 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
     }
     std::vector<std::string> queue;
     std::unordered_set<std::string> queued;
-    const std::string installTarget = HostTargetTriple();
     // Seed the work queue: either the explicitly named package, or every
     // registry dependency declared by the current project's manifest. From
     // here both cases share the same transitive resolution loop below.
@@ -63,7 +62,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
         if (!manifest) {
             return 1;
         }
-        for (const auto &dep : manifest->EffectiveDependencies(installTarget)) {
+        for (const auto &dep : manifest->dependencies) {
             if (const std::string packageName = DependencyPackageName(dep);
                 dep.path.empty() && !queued.contains(packageName)) {
                 queue.push_back(packageName);
@@ -120,7 +119,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
             ++installed;
         }
         if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
-            for (const auto &dep : depManifest->EffectiveDependencies(installTarget)) {
+            for (const auto &dep : depManifest->dependencies) {
                 if (const std::string depPackageName = DependencyPackageName(dep);
                     dep.path.empty() && !queued.contains(depPackageName)) {
                     queue.push_back(depPackageName);
@@ -222,7 +221,7 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
         return 1;
     }
     std::vector<std::string> toRemove;
-    for (const auto &dep : manifest->EffectiveDependencies(HostTargetTriple())) {
+    for (const auto &dep : manifest->dependencies) {
         if (dep.path.empty()) {
             toRemove.push_back(DependencyPackageName(dep));
         }
@@ -511,8 +510,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
     }
     std::vector<std::string> queue;
     std::unordered_set<std::string> queued;
-    const std::string updateTarget = HostTargetTriple();
-    for (const auto &dep : manifest->EffectiveDependencies(updateTarget)) {
+    for (const auto &dep : manifest->dependencies) {
         const std::string packageName = DependencyPackageName(dep);
         if (dep.path.empty() && !queued.count(packageName)) {
             queue.push_back(packageName);
@@ -571,7 +569,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
         }
         // Enqueue registry deps declared by this package
         if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
-            for (const auto &dep : depManifest->EffectiveDependencies(updateTarget)) {
+            for (const auto &dep : depManifest->dependencies) {
                 const std::string depPackageName = DependencyPackageName(dep);
                 if (dep.path.empty() && !queued.count(depPackageName)) {
                     queue.push_back(depPackageName);

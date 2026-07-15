@@ -1,12 +1,14 @@
 // Regression test for issue #197: a directive before a method inside an
 // `extend` block used to fail with "expected 'func' in extend body". The
 // extend-body parser now consumes leading attributes, and a method can also be
-// conditionally compiled, so the program below compiles cleanly on every host:
-// the OS-gated method is simply not there when the OS does not match.
+// conditionally compiled, so the program below compiles cleanly: the gated
+// method is present when its condition holds.
+const IncludeTalk = true;
+
 struct Animal {}
 
 extend Animal {
-    #if target.os == .Linux {
+    #if IncludeTalk {
         func Talk() {}
     }
 

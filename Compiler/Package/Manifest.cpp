@@ -70,66 +70,6 @@ static Dependency ParseDependency(std::string key, const std::string &value) {
     return dep;
 }
 
-static std::optional<std::string> TargetNameFromDependenciesSection(const std::string &section) {
-    // [Target.OS.Dependencies] — legacy format
-    {
-        constexpr std::string_view prefix = "Target.";
-        constexpr std::string_view suffix = ".Dependencies";
-        if (section.starts_with(prefix) && section.ends_with(suffix)) {
-            if (section.size() <= prefix.size() + suffix.size()) {
-                return std::nullopt;
-            }
-            const auto begin = prefix.size();
-            const auto len = section.size() - prefix.size() - suffix.size();
-            if (len > 0) {
-                return section.substr(begin, len);
-            }
-        }
-    }
-    // [Dependencies.Target.OS] — preferred format
-    {
-        constexpr std::string_view prefix = "Dependencies.Target.";
-        if (section.starts_with(prefix)) {
-            const auto os = section.substr(prefix.size());
-            if (!os.empty()) {
-                return std::string(os);
-            }
-        }
-    }
-    return std::nullopt;
-}
-
-// Canonicalize OS names from Rux.toml section keys (e.g. "MacOS" →
-// "macOS").
-static std::string CanonicalOsName(const std::string &name) {
-    if (name == "MacOS" || name == "Macos" || name == "macos") {
-        return "macOS";
-    }
-    return name;
-}
-
-// Extract the OS name from a target triple (e.g. "windows-x64" →
-// "Windows").
-static std::string OsFromTriple(const std::string &triple) {
-    if (triple.starts_with("windows")) {
-        return "Windows";
-    }
-    if (triple.starts_with("linux")) {
-        return "Linux";
-    }
-    if (triple.starts_with("macos") || triple.starts_with("darwin")) {
-        return "macOS";
-    }
-    if (triple.starts_with("freebsd") || triple.starts_with("openbsd") || triple.starts_with("netbsd") ||
-        triple.starts_with("dragonfly")) {
-        return "BSD";
-    }
-    if (triple.starts_with("illumos")) {
-        return "Illumos";
-    }
-    return {};
-}
-
 std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec) {
     if (const auto at = spec.find('@'); at != std::string_view::npos) {
         return {std::string(Trim(spec.substr(0, at))), std::string(Trim(spec.substr(at + 1)))};
@@ -206,10 +146,6 @@ std::optional<Manifest> Manifest::Load(const std::filesystem::path &path) {
         else if (section == "Dependencies") {
             m.dependencies.push_back(ParseDependency(std::string(key), std::string(value)));
         }
-        else if (const auto target = TargetNameFromDependenciesSection(section)) {
-            m.targetDependencies[CanonicalOsName(*target)].push_back(
-                ParseDependency(std::string(key), std::string(value)));
-        }
     }
 
     if (m.package.name.empty()) {
@@ -279,34 +215,6 @@ bool Manifest::Save(const std::filesystem::path &path) const {
             }
         }
     }
-    for (const auto &[target, deps] : targetDependencies) {
-        if (deps.empty()) {
-            continue;
-        }
-        file << "\n[Target." << target << ".Dependencies]\n";
-        for (const auto &dep : deps) {
-            const bool hasPackageAlias = !dep.package.empty() && dep.package != dep.name;
-            if (!dep.path.empty() || hasPackageAlias) {
-                file << dep.name << " = { ";
-                bool wrote = false;
-                if (hasPackageAlias) {
-                    file << "Package = \"" << dep.package << "\"";
-                    wrote = true;
-                }
-                if (!dep.path.empty()) {
-                    if (wrote) {
-                        file << ", ";
-                    }
-                    file << "Path = \"" << dep.path << "\"";
-                }
-                file << " }\n";
-            }
-            else {
-                file << dep.name << " = \"" << (dep.version.empty() ? "*" : dep.version) << "\"\n";
-            }
-        }
-    }
-
     return file.good();
 }
 
@@ -334,37 +242,6 @@ bool Manifest::AddPathDependency(const std::string &name, const std::string &pat
     }
     dependencies.push_back({name, {}, {}, path});
     return true;
-}
-
-std::vector<Dependency> Manifest::EffectiveDependencies(const std::string &target) const {
-    std::vector<Dependency> result = dependencies;
-
-    auto mergeFrom = [&](const std::string &key) {
-        auto it = targetDependencies.find(key);
-        if (it == targetDependencies.end()) {
-            return;
-        }
-        for (const auto &targetDep : it->second) {
-            auto existing =
-                std::ranges::find_if(result, [&](const Dependency &dep) { return dep.name == targetDep.name; });
-            if (existing == result.end()) {
-                result.push_back(targetDep);
-            }
-            else {
-                *existing = targetDep;
-            }
-        }
-    };
-
-    mergeFrom("*");    // wildcard dependencies
-    mergeFrom(target); // exact key (e.g. "windows-x64" or "Windows")
-    const std::string osName = OsFromTriple(target);
-    if (!osName.empty() && osName != target) {
-        mergeFrom(osName); // OS-name key (e.g. "Windows" when target is
-        // "windows-x64")
-    }
-
-    return result;
 }
 
 bool Manifest::RemoveDependency(const std::string &name) {

@@ -413,11 +413,11 @@ public:
     Resolver(const CompileTimeContext &inputContext, std::vector<Diagnostic> &inputDiags)
         : context(inputContext)
         , diags(inputDiags) {
-        // `OS` is built in; the program's own enums are collected from its
-        // declarations, so a `#if` can compare against those too.
-        auto &os = enumVariants["OS"];
+        // `OperatingSystem` is built in; the program's own enums are collected
+        // from its declarations, so a `#if` can compare against those too.
+        auto &operatingSystem = enumVariants["OperatingSystem"];
         for (const auto &variant : OsVariants) {
-            os.emplace_back(variant.name);
+            operatingSystem.emplace_back(variant.name);
         }
         RegisterVariants(enumVariants, "Arch", ArchVariants);
         RegisterVariants(enumVariants, "Architecture", ArchVariants);
@@ -431,9 +431,11 @@ public:
         RegisterVariants(enumVariants, "Optimization", OptimizationVariants);
         RegisterVariants(enumVariants, "OptimizationMode", OptimizationVariants);
         RegisterVariants(enumVariants, "OutputKind", OutputKindVariants);
-        auto &operatingSystem = enumVariants["OperatingSystem"];
-        for (const auto &variant : OsVariants) {
-            operatingSystem.emplace_back(variant.name);
+        // Everything registered so far is a Rux built-in; naming one in a `#if`
+        // condition requires an explicit `import Rux::{...}` in the file. The
+        // program's own enums, collected later, do not.
+        for (const auto &[name, _] : enumVariants) {
+            builtinEnumNames.insert(name);
         }
     }
 
@@ -447,12 +449,14 @@ public:
             currentFile = module->name;
             currentModulePath = FilePathToModulePath(module->name);
             currentDeclModulePath.clear();
+            SetRuxImportsForModule(*module);
             ResolveDecls(module->items);
         }
         for (auto *module : modules) {
             currentFile = module->name;
             currentModulePath = FilePathToModulePath(module->name);
             currentDeclModulePath.clear();
+            SetRuxImportsForModule(*module);
             for (const auto &decl : module->items) {
                 ResolveDeclBodies(*decl);
             }
@@ -469,6 +473,16 @@ private:
     std::unordered_map<std::string, const Expr *> constExprs;
     std::unordered_map<std::string, std::vector<std::string>> enumVariants;
     std::unordered_set<std::string> constsInProgress;
+    // Rux built-in enum type names, and the program's own enum names. The former
+    // must be imported to be named in a condition; the latter never are.
+    std::unordered_set<std::string> builtinEnumNames;
+    std::unordered_set<std::string> programEnumNames;
+    // Intrinsics the program declares itself with `#Intrinsic`, which count as
+    // in scope without an import.
+    std::unordered_set<std::string> localIntrinsics;
+    // Names imported from the `Rux` package in the file currently being folded.
+    std::unordered_set<std::string> ruxImports;
+    bool ruxGlobImport = false;
     // Set when evaluation already explained why a condition failed, so the
     // generic "not a compile-time constant" is not piled on top of it.
     bool reportedError = false;
@@ -489,11 +503,17 @@ private:
                 continue;
             }
             if (const auto *constDecl = dynamic_cast<const ConstDecl *>(decl.get())) {
+                // A `#Intrinsic("Target") const $target` brings the intrinsic
+                // into scope locally, just as importing it from Rux would.
+                if (constDecl->isCompilerInitialized) {
+                    localIntrinsics.insert(constDecl->name);
+                }
                 if (constDecl->value) {
                     constExprs.emplace(constDecl->name, constDecl->value.get());
                 }
             }
             else if (const auto *enumDecl = dynamic_cast<const EnumDecl *>(decl.get())) {
+                programEnumNames.insert(enumDecl->name);
                 auto &variants = enumVariants[enumDecl->name];
                 for (const auto &variant : enumDecl->variants) {
                     variants.push_back(variant.name);
@@ -505,6 +525,51 @@ private:
             // Constants inside an unresolved `#if` are registered when its
             // branch is spliced in.
         }
+    }
+
+    // Record which names the current file imports from the `Rux` package, so a
+    // `#if` condition can require its build intrinsics and enums to be imported.
+    void SetRuxImportsForModule(const Module &module) {
+        ruxImports.clear();
+        ruxGlobImport = false;
+        CollectRuxImports(module.items);
+    }
+
+    void CollectRuxImports(const std::vector<DeclPtr> &decls) {
+        for (const auto &decl : decls) {
+            if (!decl) {
+                continue;
+            }
+            if (const auto *use = dynamic_cast<const UseDecl *>(decl.get())) {
+                if (use->path.empty() || use->path.front() != "Rux") {
+                    continue;
+                }
+                if (use->kind == UseDecl::Kind::Glob) {
+                    ruxGlobImport = true;
+                }
+                else if (use->kind == UseDecl::Kind::Multi) {
+                    for (const auto &name : use->names) {
+                        ruxImports.insert(name);
+                    }
+                }
+                else if (use->path.size() >= 2) {
+                    ruxImports.insert(use->path.back());
+                }
+            }
+            else if (const auto *module = dynamic_cast<const ModuleDecl *>(decl.get())) {
+                CollectRuxImports(module->items);
+            }
+        }
+    }
+
+    // A Rux build intrinsic or enum named in a condition must be imported.
+    bool RequireRuxImport(const std::string &name, const SourceLocation location) {
+        if (ruxGlobImport || ruxImports.contains(name) || localIntrinsics.contains(name)) {
+            return true;
+        }
+        EmitError(location, std::format("unknown identifier '{}'", name));
+        reportedError = true;
+        return false;
     }
 
     // Evaluation
@@ -730,6 +795,10 @@ private:
 
         if (const auto *e = dynamic_cast<const FieldExpr *>(&expr)) {
             if (const auto root = CompilerParamRoot(*e->object)) {
+                const auto *ident = dynamic_cast<const IdentExpr *>(e->object.get());
+                if (ident && !RequireRuxImport(ident->name, ident->location)) {
+                    return std::nullopt;
+                }
                 return EvalCompilerParamField(*root, e->field, e->location);
             }
             return std::nullopt;
@@ -738,6 +807,10 @@ private:
         if (const auto *e = dynamic_cast<const CallExpr *>(&expr)) {
             if (const auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {
                 if (const auto root = CompilerParamRoot(*field->object)) {
+                    const auto *ident = dynamic_cast<const IdentExpr *>(field->object.get());
+                    if (ident && !RequireRuxImport(ident->name, ident->location)) {
+                        return std::nullopt;
+                    }
                     return EvalCompilerParamCall(*root, field->field, *e);
                 }
             }
@@ -768,7 +841,7 @@ private:
                 return Value{context.compilerVersion};
             case K::Os:
                 if (const auto variant = OsVariantFor(ToString(context.target.os))) {
-                    return Value{EnumValue{"OS", *variant}};
+                    return Value{EnumValue{"OperatingSystem", *variant}};
                 }
                 return std::nullopt;
             case K::Arch:
@@ -846,8 +919,8 @@ private:
         }
 
         if (const auto *e = dynamic_cast<const EnumShorthandExpr *>(&expr)) {
-            // Which enum this belongs to is decided by whatever it is compared
-            // against.
+            // An empty enum type marks a shorthand; the comparison then rejects
+            // it and asks for the fully-qualified form.
             return Value{EnumValue{"", e->variant}};
         }
 
@@ -857,8 +930,14 @@ private:
                     return PrimitiveValue(*constant);
                 }
             }
-            // The long form of the same thing: OS::Windows.
+            // The long form of an enum variant: OperatingSystem::Windows. A
+            // built-in Rux enum must be imported; the program's own need not be.
             if (e->segments.size() == 2) {
+                const std::string &enumName = e->segments[0];
+                if (builtinEnumNames.contains(enumName) && !programEnumNames.contains(enumName) &&
+                    !RequireRuxImport(enumName, e->location)) {
+                    return std::nullopt;
+                }
                 return Value{EnumValue{e->segments[0], e->segments[1]}};
             }
             return std::nullopt;
@@ -927,6 +1006,17 @@ private:
         if (type.empty()) {
             return std::nullopt; // two shorthands: nothing says which enum
         }
+        // The enum shorthand is not accepted in a condition; the variant must be
+        // written in full, as in `OperatingSystem::Windows`.
+        for (const auto *side : {&left, &right}) {
+            if (side->type.empty()) {
+                EmitError(e.location, std::format("enum shorthand '.{}' is not allowed in a '#if' condition; "
+                                                  "write it in full, as in '{}::{}'",
+                                                  side->variant, type, side->variant));
+                reportedError = true;
+                return std::nullopt;
+            }
+        }
         const auto variants = enumVariants.find(type);
         if (variants == enumVariants.end()) {
             return std::nullopt;
@@ -938,7 +1028,7 @@ private:
                 reportedError = true;
                 return std::nullopt;
             }
-            if ((type == "OS" || type == "OperatingSystem") && !IsBuildableOs(side->variant)) {
+            if (type == "OperatingSystem" && !IsBuildableOs(side->variant)) {
                 EmitWarning(e.location, std::format("no build target produces '.{}', so this branch is never taken",
                                                     side->variant));
             }

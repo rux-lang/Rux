@@ -17,13 +17,13 @@ func Main() -> int {
         return 3;
     }
 
-    // `target.os` names a variant of the built-in OS enum; a misspelling is caught
-    // rather than quietly taking the other branch.
-    #if target.os == .Wndows {
+    // Build intrinsics such as `target` must be imported from the Rux package
+    // before a condition may name them.
+    #if target.os == OperatingSystem::Windows {
         return 4;
     }
 
-    // Enum shorthand remains restricted to compile-time conditions.
+    // The enum shorthand is never a substitute for the full name.
     let level = .Three;
 
     return 0;
