@@ -222,4 +222,4 @@ Read the [Contributing guide](CONTRIBUTING.md) to get started.
 
 ## License
 
-[MIT](LICENSE)
+Licensed under the [MIT License](LICENSE.md).

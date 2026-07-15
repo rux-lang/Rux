@@ -1,8 +1,6 @@
 # Contributing to Rux
 
-Thanks for your interest in contributing to the Rux programming language! This
-page is the entry point. It covers the essentials; the deeper process docs live
-in [`Docs/`](Docs/).
+Thanks for your interest in contributing to the Rux programming language! This page is the entry point. It covers the essentials; the deeper process docs live in [`Docs/`](Docs/).
 
 ## Ways to Contribute
 
@@ -14,8 +12,7 @@ in [`Docs/`](Docs/).
 
 ## Quick Start
 
-1. Build the compiler and run the tests by following
-   [Building from Source](README.md#building-from-source) in the README.
+1. Build the compiler and run the tests by following [Building from Source](README.md#building-from-source) in the README.
 2. [Fork](https://github.com/rux-lang/Rux/fork) the repo and branch off `dev`:
    ```sh
    git checkout dev
@@ -44,9 +41,7 @@ For anything beyond the quick start, see the detailed guides:
 
 ## Code Style
 
-Formatting is enforced by [`.clang-format`](.clang-format) (LLVM base, 4-space
-indent, west const, 120-column limit). Format the files you changed before
-committing:
+Formatting is enforced by [`.clang-format`](.clang-format) (LLVM base, 4-space indent, west const, 120-column limit). Format the files you changed before committing:
 
 ```sh
 clang-format -i <files>
@@ -58,8 +53,7 @@ Or format every source file at once:
 clang-format -i $(git ls-files '*.cpp' '*.h')
 ```
 
-Otherwise, match the conventions already in the codebase — consistency matters
-more than personal preference.
+Otherwise, match the conventions already in the codebase — consistency matters more than personal preference.
 
 ## Reporting Bugs
 
@@ -71,12 +65,8 @@ Include:
 
 ## Community
 
-Have questions before diving in? Join us on
-[Discord](https://discord.com/invite/uvSHjtZSVG) or
-[GitHub Discussions](https://github.com/rux-lang/Rux/discussions). Please also
-read our [Code of Conduct](.github/CODE_OF_CONDUCT.md).
+Have questions before diving in? Join us on [Discord](https://discord.com/invite/uvSHjtZSVG) or [GitHub Discussions](https://github.com/rux-lang/Rux/discussions). Please also read our [Code of Conduct](.github/CODE_OF_CONDUCT.md).
 
 ## License
 
-By contributing you agree that your work will be licensed under the
-[MIT License](LICENSE).
+By contributing you agree that your work will be licensed under the [MIT License](LICENSE).
