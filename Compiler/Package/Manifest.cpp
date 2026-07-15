@@ -70,6 +70,31 @@ static Dependency ParseDependency(std::string key, const std::string &value) {
     return dep;
 }
 
+// Split a bracketed, comma-separated list of quoted strings (which may span
+// several lines, already joined into `text`) into its entries. Package paths
+// contain no commas, so a plain comma split is sufficient.
+static void ParseStringArray(std::string_view text, std::vector<std::string> &out) {
+    const auto open = text.find('[');
+    const auto close = text.rfind(']');
+    if (open == std::string_view::npos || close == std::string_view::npos || close <= open) {
+        return;
+    }
+    std::string_view inner = text.substr(open + 1, close - open - 1);
+    std::size_t pos = 0;
+    while (pos <= inner.size()) {
+        const auto comma = inner.find(',', pos);
+        const auto end = comma == std::string_view::npos ? inner.size() : comma;
+        const auto entry = Unquote(inner.substr(pos, end - pos));
+        if (!entry.empty()) {
+            out.emplace_back(entry);
+        }
+        if (comma == std::string_view::npos) {
+            break;
+        }
+        pos = comma + 1;
+    }
+}
+
 std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec) {
     if (const auto at = spec.find('@'); at != std::string_view::npos) {
         return {std::string(Trim(spec.substr(0, at))), std::string(Trim(spec.substr(at + 1)))};
@@ -146,9 +171,23 @@ std::optional<Manifest> Manifest::Load(const std::filesystem::path &path) {
         else if (section == "Dependencies") {
             m.dependencies.push_back(ParseDependency(std::string(key), std::string(value)));
         }
+        else if (section == "Workspace") {
+            if (key == "Packages") {
+                // The array may span several lines; keep reading until the
+                // closing bracket is seen, then split the joined text.
+                std::string arrayText(Trim(trimmed.substr(eq + 1)));
+                while (arrayText.find(']') == std::string::npos && std::getline(file, line)) {
+                    arrayText.push_back(' ');
+                    arrayText.append(Trim(line));
+                }
+                ParseStringArray(arrayText, m.workspace.packages);
+            }
+        }
     }
 
-    if (m.package.name.empty()) {
+    // A valid manifest is either a package (has a name) or a workspace
+    // (lists member packages).
+    if (m.package.name.empty() && m.workspace.packages.empty()) {
         return std::nullopt;
     }
     return m;

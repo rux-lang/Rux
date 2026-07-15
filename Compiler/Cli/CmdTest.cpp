@@ -78,11 +78,35 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         if (!manifest) {
             return 1;
         }
-        if (!opts.quiet) {
-            std::print("Testing {} v{}\n", manifest->package.name, manifest->package.version);
-        }
         projectRoot = manifestPath->parent_path();
-        testRoots.push_back({projectRoot / "Tests", {}});
+        if (manifest->IsWorkspace()) {
+            // Workspace manifest: gather the root Tests/ (for centrally placed
+            // tests) plus each declared member package's own Tests/, so a
+            // member's tests read as "Member/...".
+            if (!opts.quiet) {
+                std::print("Testing workspace\n");
+            }
+            std::error_code ec;
+            if (std::filesystem::exists(projectRoot / "Tests", ec)) {
+                testRoots.push_back({projectRoot / "Tests", {}});
+            }
+            for (const auto &member : manifest->workspace.packages) {
+                const auto memberDir = (projectRoot / member).lexically_normal();
+                if (!std::filesystem::exists(memberDir / "Rux.toml", ec)) {
+                    std::print(stderr, "warning: workspace member '{}' has no Rux.toml — skipping\n", member);
+                    continue;
+                }
+                if (auto memberTests = memberDir / "Tests"; std::filesystem::exists(memberTests, ec)) {
+                    testRoots.push_back({std::move(memberTests), std::filesystem::path(member).generic_string()});
+                }
+            }
+        }
+        else {
+            if (!opts.quiet) {
+                std::print("Testing {} v{}\n", manifest->package.name, manifest->package.version);
+            }
+            testRoots.push_back({projectRoot / "Tests", {}});
+        }
     }
     else {
         projectRoot = std::filesystem::current_path();

@@ -43,6 +43,18 @@ struct Package {
 };
 
 /**
+ * @brief Workspace section of the manifest.
+ *
+ * A workspace manifest groups several member packages under one root
+ * `Rux.toml`. It carries no `[Package]` of its own; instead it lists the
+ * relative paths of the member packages it owns.
+ */
+struct Workspace {
+    /// Relative paths (from the manifest directory) of member packages.
+    std::vector<std::string> packages;
+};
+
+/**
  * @brief Build configuration section.
  */
 struct Build {
@@ -60,6 +72,17 @@ struct Manifest {
     Package package;
     Build build;
     std::vector<Dependency> dependencies;
+    Workspace workspace;
+
+    /**
+     * @brief Whether this manifest describes a workspace rather than a package.
+     *
+     * A workspace manifest declares `[Workspace]` with one or more member
+     * packages and has no `[Package]` of its own.
+     */
+    [[nodiscard]] bool IsWorkspace() const noexcept {
+        return package.name.empty() && !workspace.packages.empty();
+    }
 
     /**
      * @brief Load a manifest from disk.
