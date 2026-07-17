@@ -1,0 +1,26 @@
+name: PR
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, reopened, synchronize, ready_for_review, edited ]
+
+permissions:
+  contents: read
+
+jobs:
+  main-branch:
+    name: Use dev as PR target
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Explain target branch policy
+        run: |
+          {
+            echo "## Retarget this pull request"
+            echo
+            echo "Pull requests should target \`dev\`, not \`main\`."
+            echo
+            echo "Please change the base branch of this PR to \`dev\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Pull requests should target dev, not main. Please retarget this PR to dev."
+          exit 1
