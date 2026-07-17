@@ -103,14 +103,6 @@ std::optional<std::uint64_t> ParseIntegerLiteralBits(std::string_view text) {
     return std::uint64_t{0} - value;
 }
 
-CallingConvention EffectiveConv(const CallingConvention c) {
-    const CallingConvention resolved = ResolveCConvention(c);
-    if (resolved != CallingConvention::Default) {
-        return resolved;
-    }
-    return PlatformDefaultConvention();
-}
-
 // RCU Code Generator: LirModule → RcuFile
 struct JumpPatch {
     uint32_t patchOff;
@@ -140,6 +132,16 @@ private:
     std::string pkgName;
     Target::OS targetOs;
     std::vector<Diagnostic> &diagnostics;
+
+    [[nodiscard]] CallingConvention EffectiveConv(const CallingConvention c) const {
+        if (c == CallingConvention::C) {
+            return targetOs == Target::OS::Windows ? CallingConvention::Win64 : CallingConvention::SysV;
+        }
+        if (c != CallingConvention::Default) {
+            return c;
+        }
+        return targetOs == Target::OS::Linux ? CallingConvention::SysV : CallingConvention::Win64;
+    }
 
     // Section data buffers
     std::vector<uint8_t> textData;

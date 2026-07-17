@@ -80,6 +80,41 @@ TEST_CASE("RCU System V calls preserve register-allocated arguments") {
     CHECK(std::search(begin, end, moveRegisterArgument.begin(), moveRegisterArgument.end()) != end);
 }
 
+TEST_CASE("RCU default calling convention follows the requested target") {
+    const auto package = CompileToLir(R"(
+        func Consume(value: uint) {}
+
+        func Main() -> int {
+            Consume(1024);
+            return 0;
+        }
+    )");
+
+    const auto FindMainText = [](const std::vector<RcuFile> &objects) {
+        REQUIRE_EQ(objects.size(), 1);
+        const auto &object = objects.front();
+        const auto main =
+            std::ranges::find_if(object.symbols, [](const RcuSymbol &symbol) { return symbol.name == "Main"; });
+        REQUIRE(main != object.symbols.end());
+        REQUIRE(main->sectionIdx < object.sections.size());
+        const auto &text = object.sections[main->sectionIdx].data;
+        return std::vector<std::uint8_t>(text.begin() + main->value, text.begin() + main->value + main->size);
+    };
+
+    const auto linuxText = FindMainText(RcuEmitter(package, "test", Target::OS::Linux).Generate());
+    const auto windowsText = FindMainText(RcuEmitter(package, "test", Target::OS::Windows).Generate());
+    const std::vector<std::uint8_t> linuxArgument = {
+        0x48, 0x89, 0xD8, // mov rax, rbx
+        0x48, 0x89, 0xC7, // mov rdi, rax
+    };
+    const std::vector<std::uint8_t> windowsArgument = {
+        0x48, 0x89, 0xD8, // mov rax, rbx
+        0x48, 0x89, 0xC1, // mov rcx, rax
+    };
+    CHECK(std::ranges::search(linuxText, linuxArgument).begin() != linuxText.end());
+    CHECK(std::ranges::search(windowsText, windowsArgument).begin() != windowsText.end());
+}
+
 TEST_CASE("RCU System V calls pass two-word aggregates in two registers") {
     const auto package = CompileToLir(R"(
         struct Pair {
