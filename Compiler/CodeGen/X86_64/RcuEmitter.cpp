@@ -2,6 +2,7 @@
 
 #include "CodeGen/X86_64/RcuEmitter.h"
 
+#include "CodeGen/FloatLiteral.h"
 #include "CodeGen/Layout.h"
 #include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/X86_64/Assembler.h"
@@ -255,6 +256,10 @@ private:
         return size > 0 && size != 1 && size != 2 && size != 4 && size != 8;
     }
 
+    [[nodiscard]] bool IsSysVMemoryAggregate(const TypeRef &t) const {
+        return IsAggregate(t) && SizeOfRuntime(t) > 16;
+    }
+
     [[nodiscard]] bool IsWin64AddressParam(const TypeRef &t) const {
         if (t.kind == TypeRef::Kind::Slice) {
             return true;
@@ -281,8 +286,8 @@ private:
         return AlignUp(static_cast<int>(32 + stackArgs * 8), 16);
     }
 
-    [[nodiscard]] std::size_t SysVStackArgCount(const std::vector<LirReg> &args) const {
-        int intIdx = 0;
+    [[nodiscard]] std::size_t SysVStackArgCount(const std::vector<LirReg> &args, const int startIntIdx = 0) const {
+        int intIdx = startIntIdx;
         int fltIdx = 0;
         std::size_t stackArgs = 0;
         for (const LirReg arg : args) {
@@ -295,6 +300,17 @@ private:
                     ++stackArgs;
                 }
             }
+            else if (IsSysVMemoryAggregate(type)) {
+                stackArgs += static_cast<std::size_t>(AlignUp(SizeOfRuntime(type), 8) / 8);
+            }
+            else if (IsAggregate(type) && SizeOfRuntime(type) == 16) {
+                if (intIdx <= 4) {
+                    intIdx += 2;
+                }
+                else {
+                    stackArgs += 2;
+                }
+            }
             else if (intIdx < 6) {
                 ++intIdx;
             }
@@ -305,16 +321,38 @@ private:
         return stackArgs;
     }
 
-    [[nodiscard]] int SysVCallFrameSize(const std::vector<LirReg> &args) const {
-        return AlignUp(static_cast<int>(SysVStackArgCount(args) * 8), 16);
+    [[nodiscard]] int SysVCallFrameSize(const std::vector<LirReg> &args, const int startIntIdx = 0) const {
+        return AlignUp(static_cast<int>(SysVStackArgCount(args, startIntIdx) * 8), 16);
     }
 
-    void StoreSysVStackArgs(const std::vector<LirReg> &args) const {
-        int intIdx = 0;
+    void StoreSysVStackArgs(const std::vector<LirReg> &args, const int startIntIdx = 0) const {
+        int intIdx = startIntIdx;
         int fltIdx = 0;
         int stackIdx = 0;
         for (const LirReg arg : args) {
             const TypeRef type = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+            if (IsSysVMemoryAggregate(type)) {
+                const int size = AlignUp(SizeOfRuntime(type), 8);
+                for (int offset = 0; offset < size; offset += 8) {
+                    enc.MovRaxLoad(Disp(arg) + offset);
+                    enc.MovRaxStoreRsp(stackIdx++ * 8);
+                }
+                continue;
+            }
+            const bool twoWordAggregate = IsAggregate(type) && SizeOfRuntime(type) == 16;
+            if (twoWordAggregate) {
+                if (intIdx <= 4) {
+                    intIdx += 2;
+                }
+                else {
+                    enc.MovRaxLoad(Disp(arg));
+                    enc.MovRaxStoreRsp(stackIdx++ * 8);
+                    enc.MovRaxLoad(Disp(arg) + 8);
+                    enc.MovRaxStoreRsp(stackIdx++ * 8);
+                }
+                continue;
+            }
+
             bool onStack = false;
             if (IsFloat(type)) {
                 if (fltIdx < 8) {
@@ -680,7 +718,7 @@ private:
             return it->second;
         }
         uint32_t off = AlignRodata(4);
-        float fv = std::stof(val);
+        const float fv = ParseFloatLiteral<float>(val);
         uint32_t bits;
         std::memcpy(&bits, &fv, 4);
         for (int i = 0; i < 4; ++i) {
@@ -706,7 +744,7 @@ private:
             return it->second;
         }
         uint32_t off = AlignRodata(8);
-        double dv = std::stod(val);
+        const double dv = ParseFloatLiteral<double>(val);
         uint64_t bits;
         std::memcpy(&bits, &dv, 8);
         for (int i = 0; i < 8; ++i) {
@@ -1101,7 +1139,7 @@ private:
     }
 
     void StoreHiddenReturnValue(const LirReg src, const TypeRef &t) const {
-        if (hiddenReturnOff == 0 || !IsWin64ByRefAggregate(t)) {
+        if (hiddenReturnOff == 0) {
             LoadReturnValue(src, t);
             return;
         }
@@ -1372,7 +1410,9 @@ private:
         nextOff = static_cast<int32_t>(usedPhysRegs.size() * 8);
         hiddenReturnOff = 0;
 
-        if (EffectiveConv(func.callConv) == CallingConvention::Win64 && IsWin64ByRefAggregate(func.returnType)) {
+        const CallingConvention conv = EffectiveConv(func.callConv);
+        if ((conv == CallingConvention::Win64 && IsWin64ByRefAggregate(func.returnType)) ||
+            (conv == CallingConvention::SysV && IsSysVMemoryAggregate(func.returnType))) {
             hiddenReturnOff = AllocRegion(8);
         }
 
@@ -1658,7 +1698,7 @@ private:
             }
         }
         else {
-            int intIdx = 0, fltIdx = 0;
+            int intIdx = startIdx, fltIdx = 0;
             for (LirReg arg : args) {
                 TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
                 int32_t d = Disp(arg);
@@ -1674,9 +1714,18 @@ private:
                         ++fltIdx;
                     }
                 }
+                else if (IsAggregate(at) && SizeOfRuntime(at) == 16) {
+                    if (intIdx <= 4) {
+                        enc.MovRaxLoad(d);
+                        enc.MovArgRax(intIdx++);
+                        enc.MovRaxLoad(d + 8);
+                        enc.MovArgRax(intIdx++);
+                    }
+                }
                 else {
                     if (intIdx < 6) {
-                        enc.MovArgLoad(intIdx, d);
+                        LoadA(arg, at);
+                        enc.MovArgRax(intIdx);
                         ++intIdx;
                     }
                 }
@@ -2420,17 +2469,25 @@ private:
                 break;
             }
             bool win64Call = EffectiveConv(instr.callConv) == CallingConvention::Win64;
-            const bool hiddenReturn = win64Call && instr.dst != LirNoReg && IsWin64ByRefAggregate(instr.type);
+            const bool hiddenReturn = instr.dst != LirNoReg && (win64Call ? IsWin64ByRefAggregate(instr.type)
+                                                                          : IsSysVMemoryAggregate(instr.type));
             // Win64 reserves 32-byte shadow space. SysV reserves only enough
             // space for overflow arguments; both frame sizes preserve the
             // required 16-byte alignment at the call instruction.
             const int callFrameSize = win64Call ? Win64CallFrameSize(instr.srcs.size() + (hiddenReturn ? 1 : 0))
-                                                : SysVCallFrameSize(instr.srcs);
+                                                : SysVCallFrameSize(instr.srcs, hiddenReturn ? 1 : 0);
             if (callFrameSize > 0) {
                 enc.SubRspImm32(callFrameSize);
             }
             if (hiddenReturn) {
-                enc.LeaArgStackWin64(0, Disp(instr.dst));
+                if (win64Call) {
+                    enc.LeaArgStackWin64(0, Disp(instr.dst));
+                }
+                else {
+                    enc.LeaRaxStack(Disp(instr.dst));
+                    enc.MovArgRax(0);
+                    StoreSysVStackArgs(instr.srcs, 1);
+                }
                 EmitCallArgs(instr.srcs, instr.callConv, 1);
             }
             else {
@@ -2464,14 +2521,22 @@ private:
             LirReg callee = instr.srcs[0];
             std::vector<LirReg> args(instr.srcs.begin() + 1, instr.srcs.end());
             bool win64Call = EffectiveConv(instr.callConv) == CallingConvention::Win64;
-            const bool hiddenReturn = win64Call && instr.dst != LirNoReg && IsWin64ByRefAggregate(instr.type);
-            const int callFrameSize =
-                win64Call ? Win64CallFrameSize(args.size() + (hiddenReturn ? 1 : 0)) : SysVCallFrameSize(args);
+            const bool hiddenReturn = instr.dst != LirNoReg && (win64Call ? IsWin64ByRefAggregate(instr.type)
+                                                                          : IsSysVMemoryAggregate(instr.type));
+            const int callFrameSize = win64Call ? Win64CallFrameSize(args.size() + (hiddenReturn ? 1 : 0))
+                                                : SysVCallFrameSize(args, hiddenReturn ? 1 : 0);
             if (callFrameSize > 0) {
                 enc.SubRspImm32(callFrameSize);
             }
             if (hiddenReturn) {
-                enc.LeaArgStackWin64(0, Disp(instr.dst));
+                if (win64Call) {
+                    enc.LeaArgStackWin64(0, Disp(instr.dst));
+                }
+                else {
+                    enc.LeaRaxStack(Disp(instr.dst));
+                    enc.MovArgRax(0);
+                    StoreSysVStackArgs(args, 1);
+                }
                 EmitCallArgs(args, instr.callConv, 1);
             }
             else {
@@ -2603,7 +2668,7 @@ private:
         }
         case LirTermKind::Return: {
             if (term.retVal && *term.retVal != LirNoReg) {
-                if (hiddenReturnOff != 0 && IsWin64ByRefAggregate(term.retType)) {
+                if (hiddenReturnOff != 0) {
                     StoreHiddenReturnValue(*term.retVal, term.retType);
                 }
                 else {
@@ -2733,9 +2798,15 @@ private:
         // Spill ABI param registers to stack slots
         bool win64Func = EffectiveConv(func.callConv) == CallingConvention::Win64;
         int intIdx = 0, fltIdx = 0, sysvStackIdx = 0, win64Idx = 0;
-        if (win64Func && hiddenReturnOff != 0) {
-            enc.MovArgStoreWin64(0, -hiddenReturnOff);
-            win64Idx = 1;
+        if (hiddenReturnOff != 0) {
+            if (win64Func) {
+                enc.MovArgStoreWin64(0, -hiddenReturnOff);
+                win64Idx = 1;
+            }
+            else {
+                enc.MovArgStore(0, -hiddenReturnOff);
+                intIdx = 1;
+            }
         }
         for (const auto &p : func.params) {
             int sz = SizeOf(p.type);
@@ -2794,7 +2865,14 @@ private:
                 ++win64Idx;
             }
             else {
-                if (IsFloat(p.type)) {
+                if (IsSysVMemoryAggregate(p.type)) {
+                    const int size = AlignUp(SizeOfRuntime(p.type), 8);
+                    for (int offset = 0; offset < size; offset += 8) {
+                        enc.MovRaxLoad(16 + sysvStackIdx++ * 8);
+                        enc.MovRaxStore(d + offset);
+                    }
+                }
+                else if (IsFloat(p.type)) {
                     if (fltIdx < 8) {
                         // MOVSS/MOVSD [rbp+d], xmmN
                         enc.Byte(sz == 4 ? 0xF3 : 0xF2);
@@ -2814,6 +2892,18 @@ private:
                             enc.MovsdXmm0Load(stackArgOff);
                             enc.MovsdXmm0Store(d);
                         }
+                    }
+                }
+                else if (IsAggregate(p.type) && sz == 16) {
+                    if (intIdx <= 4) {
+                        enc.MovArgStore(intIdx++, d);
+                        enc.MovArgStore(intIdx++, d + 8);
+                    }
+                    else {
+                        enc.MovRaxLoad(16 + sysvStackIdx++ * 8);
+                        enc.MovRaxStore(d);
+                        enc.MovRaxLoad(16 + sysvStackIdx++ * 8);
+                        enc.MovRaxStore(d + 8);
                     }
                 }
                 else {
@@ -2917,11 +3007,11 @@ private:
         const int size = SizeOf(type);
         std::uint64_t bits = 0;
         if (type.kind == TypeRef::Kind::Float64) {
-            const double value = std::stod(literal);
+            const double value = ParseFloatLiteral<double>(literal);
             std::memcpy(&bits, &value, 8);
         }
         else if (type.kind == TypeRef::Kind::Float32) {
-            const float value = std::stof(literal);
+            const float value = ParseFloatLiteral<float>(literal);
             std::uint32_t narrow = 0;
             std::memcpy(&narrow, &value, 4);
             bits = narrow;

@@ -86,7 +86,7 @@ static std::string DecodeStringLiteralText(const std::string &text) {
     return out;
 }
 
-// Parses one `#Name("...")` attribute call, with the '#' already consumed.
+// Parses one `#Name(...)` attribute call, with the '#' already consumed.
 // `#Error` and `#Warn` act at each use of the declaration, `#Link` describes
 // how an extern declaration is imported (`#Library` and `#Symbol` are retained
 // as compatibility spellings), and `#When` conditionally includes the
@@ -185,8 +185,16 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
         attrs.usedLink = true;
         attrs.linkLocation = attributeLoc;
 
-        if (!Check(TokenKind::StringLiteral)) {
-            EmitError(CurrentLocation(), "'#Link' requires a library name string");
+        std::string library;
+        std::string libraryConst;
+        if (Check(TokenKind::StringLiteral)) {
+            library = DecodeStringLiteralText(Advance().text);
+        }
+        else if (Check(TokenKind::Ident)) {
+            libraryConst = Advance().text;
+        }
+        else {
+            EmitError(CurrentLocation(), "'#Link' requires a library name string or compile-time string constant");
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                 Advance();
             }
@@ -194,14 +202,17 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
             return;
         }
 
-        std::string library = DecodeStringLiteralText(Advance().text);
         std::string symbol;
+        std::string symbolConst;
         if (Match(TokenKind::Comma)) {
             if (Check(TokenKind::StringLiteral)) {
                 symbol = DecodeStringLiteralText(Advance().text);
             }
+            else if (Check(TokenKind::Ident)) {
+                symbolConst = Advance().text;
+            }
             else {
-                EmitError(CurrentLocation(), "'#Link' symbol name must be a string");
+                EmitError(CurrentLocation(), "'#Link' symbol name must be a string or compile-time string constant");
             }
             if (Match(TokenKind::Comma)) {
                 EmitError(Previous().location, "'#Link' accepts at most two arguments");
@@ -214,7 +225,9 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
 
         if (!duplicate && !mixed) {
             attrs.importLib = std::move(library);
+            attrs.importLibConst = std::move(libraryConst);
             attrs.importSymbol = std::move(symbol);
+            attrs.importSymbolConst = std::move(symbolConst);
         }
         return;
     }
@@ -1295,13 +1308,14 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
         Advance(); // consume '{'
         // One symbol name cannot stand for every function in the block; it has
         // to sit on the individual declaration.
-        if (!attrs.importSymbol.empty()) {
+        if (!attrs.importSymbol.empty() || !attrs.importSymbolConst.empty()) {
             EmitError(loc, "an imported symbol name cannot be applied to an extern block; "
                            "use the one-argument '#Link(\"library\")' form");
         }
         auto block = std::make_unique<ExternBlockDecl>();
         block->location = loc;
         block->dll = attrs.importLib;
+        block->dllConst = attrs.importLibConst;
         block->callConv = attrs.callConv;
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             if (Check(TokenKind::ExternKeyword)) {
@@ -1318,6 +1332,7 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
                 fd->location = CurrentLocation();
                 fd->isPublic = isPublic;
                 fd->dll = attrs.importLib;
+                fd->dllConst = attrs.importLibConst;
                 fd->callConv = attrs.callConv;
                 fd->name = Expect(TokenKind::Ident, "expected function name").text;
                 Expect(TokenKind::LeftParen, "expected '('");
@@ -1367,7 +1382,9 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
         decl->location = loc;
         decl->isPublic = isPublic;
         decl->dll = std::move(attrs.importLib);
+        decl->dllConst = std::move(attrs.importLibConst);
         decl->symbolName = std::move(attrs.importSymbol);
+        decl->symbolNameConst = std::move(attrs.importSymbolConst);
         decl->callConv = attrs.callConv;
         decl->name = Expect(TokenKind::Ident, "expected function name").text;
 

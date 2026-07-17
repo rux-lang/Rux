@@ -66,7 +66,9 @@ private:
     // Attribute parsing
     struct ParsedAttrs {
         std::string importLib;
+        std::string importLibConst;
         std::string importSymbol;
+        std::string importSymbolConst;
         CallingConvention callConv = CallingConvention::Default;
         std::string warnMessage;
         std::string errorMessage;

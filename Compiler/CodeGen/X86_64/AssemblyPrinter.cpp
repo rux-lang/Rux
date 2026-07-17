@@ -1,5 +1,6 @@
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 
+#include "CodeGen/FloatLiteral.h"
 #include "CodeGen/Layout.h"
 #include "CodeGen/PhiMoveResolver.h"
 #include "Target/Platform.h"
@@ -185,7 +186,7 @@ private:
             bits = static_cast<std::uint32_t>(std::stoull(val, nullptr, 16));
         }
         else {
-            float fv = std::stof(val);
+            const float fv = ParseFloatLiteral<float>(val);
             std::memcpy(&bits, &fv, sizeof(bits));
         }
         rodata << lbl << ":\n    dd    0x" << std::hex << bits << std::dec << "\n";
@@ -204,7 +205,7 @@ private:
             bits = std::stoull(val, nullptr, 16);
         }
         else {
-            double dv = std::stod(val);
+            const double dv = ParseFloatLiteral<double>(val);
             std::memcpy(&bits, &dv, sizeof(bits));
         }
         rodata << lbl << ":\n    dq    0x" << std::hex << bits << std::dec << "\n";

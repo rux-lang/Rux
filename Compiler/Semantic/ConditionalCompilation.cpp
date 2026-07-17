@@ -445,6 +445,7 @@ public:
             currentDeclModulePath.clear();
             SetRuxImportsForModule(*module);
             ResolveDecls(module->items);
+            ResolveLinkConstants(module->items);
         }
         for (auto *module : modules) {
             currentFile = module->name;
@@ -1294,6 +1295,52 @@ private:
         }
         EmitError(location, "'when' condition must be of type 'bool'");
         return false;
+    }
+
+    void ResolveLinkConstant(std::string &constantName, std::string &result, const SourceLocation location,
+                             const std::string_view argumentName) {
+        if (constantName.empty()) {
+            return;
+        }
+
+        const auto it = constExprs.find(constantName);
+        if (it == constExprs.end()) {
+            EmitError(location,
+                      std::format("'#Link' {} '{}' is not a compile-time constant", argumentName, constantName));
+            return;
+        }
+
+        const auto value = Eval(*it->second);
+        if (!value) {
+            EmitError(location,
+                      std::format("'#Link' {} '{}' is not a compile-time constant", argumentName, constantName));
+            return;
+        }
+        if (const auto *text = std::get_if<std::string>(&*value)) {
+            result = *text;
+            constantName.clear();
+            return;
+        }
+        EmitError(location, std::format("'#Link' {} '{}' must be a string", argumentName, constantName));
+    }
+
+    void ResolveLinkConstants(std::vector<DeclPtr> &decls) {
+        for (auto &decl : decls) {
+            if (!decl) {
+                continue;
+            }
+            if (auto *function = dynamic_cast<ExternFuncDecl *>(decl.get())) {
+                ResolveLinkConstant(function->dllConst, function->dll, function->location, "library name");
+                ResolveLinkConstant(function->symbolNameConst, function->symbolName, function->location, "symbol name");
+            }
+            else if (auto *block = dynamic_cast<ExternBlockDecl *>(decl.get())) {
+                ResolveLinkConstant(block->dllConst, block->dll, block->location, "library name");
+                ResolveLinkConstants(block->items);
+            }
+            else if (auto *module = dynamic_cast<ModuleDecl *>(decl.get())) {
+                ResolveLinkConstants(module->items);
+            }
+        }
     }
 
     // Declaration-level `when`

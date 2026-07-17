@@ -43,8 +43,8 @@ bool IsCamelCase(std::string_view name) {
 
 class LinterVisitor {
 public:
-    explicit LinterVisitor(std::string sourceName)
-        : sourceName(std::move(sourceName)) {
+    explicit LinterVisitor(std::string inputSourceName)
+        : sourceName(std::move(inputSourceName)) {
     }
 
     std::vector<Diagnostic> diagnostics;

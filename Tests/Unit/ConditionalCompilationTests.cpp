@@ -7,6 +7,7 @@
 #include "Syntax/Ast/Ast.h"
 #include "Syntax/Parser/Parser.h"
 
+#include <algorithm>
 #include <doctest.h>
 #include <string>
 #include <string_view>
@@ -85,6 +86,15 @@ const FuncDecl *FindFunc(const Module &module, const std::string_view name) {
         const auto *func = dynamic_cast<const FuncDecl *>(item.get());
         if (func && func->name == name) {
             return func;
+        }
+    }
+    return nullptr;
+}
+
+const ExternBlockDecl *FindExternBlock(const Module &module) {
+    for (const auto &item : module.items) {
+        if (const auto *block = dynamic_cast<const ExternBlockDecl *>(item.get())) {
+            return block;
         }
     }
     return nullptr;
@@ -832,4 +842,46 @@ when false {
     CHECK_EQ(external->name, "Tone");
     CHECK_EQ(external->dll, "Kernel32.dll");
     CHECK_EQ(external->symbolName, "Beep");
+}
+
+TEST_CASE("Link resolves a target-selected compile-time string constant") {
+    auto parsed = ParseSource(R"(
+import Rux::{ OperatingSystem, target };
+
+when target.os == OperatingSystem::Windows {
+    const LibName = "ucrtbase.dll";
+} else {
+    const LibName = "libm.so.6";
+}
+
+#Link(LibName)
+extern {
+    func cos(value: float64) -> float64;
+}
+)");
+
+    const auto model = Analyze(parsed.module, "Linux");
+    CHECK_FALSE(model.HasErrors());
+
+    const auto *block = FindExternBlock(parsed.module);
+    REQUIRE(block != nullptr);
+    CHECK_EQ(block->dll, "libm.so.6");
+    REQUIRE_EQ(block->items.size(), 1);
+    const auto *function = dynamic_cast<const ExternFuncDecl *>(block->items.front().get());
+    REQUIRE(function != nullptr);
+    CHECK_EQ(function->dll, "libm.so.6");
+}
+
+TEST_CASE("Link rejects a compile-time constant that is not a string") {
+    auto parsed = ParseSource(R"(
+const LibName = 42;
+#Link(LibName)
+extern func Run();
+)");
+
+    const auto model = Analyze(parsed.module);
+    REQUIRE(model.HasErrors());
+    CHECK(std::ranges::any_of(model.diagnostics, [](const auto &diagnostic) {
+        return diagnostic.message == "'#Link' library name 'LibName' must be a string";
+    }));
 }

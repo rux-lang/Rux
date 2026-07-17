@@ -602,9 +602,13 @@ struct ExternFuncDecl : Decl {
     std::string name;
     bool isNoReturn = false;
     std::string dll;
+    // A compile-time string constant used as the first #Link argument. The
+    // conditional-compilation pass resolves it into `dll` after `when` folds.
+    std::string dllConst;
     // The optional second #Link argument: the name to import from the DLL when it differs from
     // the Rux-visible `name`. Empty means the two are the same.
     std::string symbolName;
+    std::string symbolNameConst;
     CallingConvention callConv = CallingConvention::Default;
     std::vector<Param> params;
     bool isVariadic = false;
@@ -620,6 +624,7 @@ struct ExternVarDecl : Decl {
 // #Link("...") extern { func ...; ... }
 struct ExternBlockDecl : Decl {
     std::string dll;
+    std::string dllConst;
     CallingConvention callConv = CallingConvention::Default;
     std::vector<DeclPtr> items; // ExternFuncDecl or ExternVarDecl
 };

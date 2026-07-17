@@ -1,5 +1,7 @@
+#include "CodeGen/FloatLiteral.h"
 #include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/X86_64/AssemblyPrinter.h"
+#include "CodeGen/X86_64/RcuEmitter.h"
 #include "Ir/Hir/Hir.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
@@ -9,6 +11,7 @@
 #include "Target/Platform.h"
 
 #include <algorithm>
+#include <bit>
 #include <doctest.h>
 #include <string>
 #include <unordered_map>
@@ -16,7 +19,7 @@
 
 using namespace Rux;
 
-static std::string CompileToAsm(const std::string &source) {
+static LirPackage CompileToLir(const std::string &source) {
     Lexer lexer(source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
@@ -34,10 +37,116 @@ static std::string CompileToAsm(const std::string &source) {
     auto hirPackage = hirLowering.Generate();
 
     HirToLirLowering lirLowering(std::move(hirPackage));
-    auto lirPackage = lirLowering.Generate();
+    return lirLowering.Generate();
+}
 
-    AssemblyPrinter printer(std::move(lirPackage));
+static std::string CompileToAsm(const std::string &source) {
+    AssemblyPrinter printer(CompileToLir(source));
     return printer.Generate();
+}
+
+TEST_CASE("floating literal parsing preserves subnormal values") {
+    CHECK_EQ(std::bit_cast<std::uint64_t>(ParseFloatLiteral<double>("5.0e-324")), 1);
+    CHECK_EQ(std::bit_cast<std::uint32_t>(ParseFloatLiteral<float>("1.4e-45f32")), 1);
+    CHECK_EQ(ParseFloatLiteral<double>("1_000.5"), 1000.5);
+}
+
+TEST_CASE("RCU System V calls preserve register-allocated arguments") {
+    const auto package = CompileToLir(R"(
+        func Consume(value: uint) {}
+
+        func Main() -> int {
+            Consume(1024);
+            return 0;
+        }
+    )");
+
+    const auto objects = RcuEmitter(package, "test", Target::OS::Linux).Generate();
+    REQUIRE_EQ(objects.size(), 1);
+
+    const auto &object = objects.front();
+    const auto main =
+        std::ranges::find_if(object.symbols, [](const RcuSymbol &symbol) { return symbol.name == "Main"; });
+    REQUIRE(main != object.symbols.end());
+    REQUIRE(main->sectionIdx < object.sections.size());
+
+    const auto &text = object.sections[main->sectionIdx].data;
+    const std::vector<uint8_t> moveRegisterArgument = {
+        0x48, 0x89, 0xD8, // mov rax, rbx
+        0x48, 0x89, 0xC7, // mov rdi, rax
+    };
+    const auto begin = text.begin() + main->value;
+    const auto end = begin + main->size;
+    CHECK(std::search(begin, end, moveRegisterArgument.begin(), moveRegisterArgument.end()) != end);
+}
+
+TEST_CASE("RCU System V calls pass two-word aggregates in two registers") {
+    const auto package = CompileToLir(R"(
+        struct Pair {
+            first: uint;
+            second: uint;
+        }
+
+        func Consume(value: Pair) -> uint {
+            return value.second;
+        }
+
+        func Main() -> int {
+            let value = Pair { first: 10, second: 20 };
+            return Consume(value) == 20 ? 0 : 1;
+        }
+    )");
+
+    const auto objects = RcuEmitter(package, "test", Target::OS::Linux).Generate();
+    REQUIRE_EQ(objects.size(), 1);
+
+    const auto &object = objects.front();
+    const auto main =
+        std::ranges::find_if(object.symbols, [](const RcuSymbol &symbol) { return symbol.name == "Main"; });
+    REQUIRE(main != object.symbols.end());
+    REQUIRE(main->sectionIdx < object.sections.size());
+
+    const auto &text = object.sections[main->sectionIdx].data;
+    const auto begin = text.begin() + main->value;
+    const auto end = begin + main->size;
+    const std::vector<uint8_t> moveFirstWord = {0x48, 0x89, 0xC7};  // mov rdi, rax
+    const std::vector<uint8_t> moveSecondWord = {0x48, 0x89, 0xC6}; // mov rsi, rax
+    CHECK(std::search(begin, end, moveFirstWord.begin(), moveFirstWord.end()) != end);
+    CHECK(std::search(begin, end, moveSecondWord.begin(), moveSecondWord.end()) != end);
+}
+
+TEST_CASE("RCU System V calls return large aggregates through hidden storage") {
+    const auto package = CompileToLir(R"(
+        struct Triple {
+            first: uint;
+            second: uint;
+            third: uint;
+        }
+
+        func MakeTriple() -> Triple {
+            return Triple { first: 10, second: 20, third: 30 };
+        }
+
+        func Main() -> int {
+            let value = MakeTriple();
+            return value.third == 30 ? 0 : 1;
+        }
+    )");
+
+    const auto objects = RcuEmitter(package, "test", Target::OS::Linux).Generate();
+    REQUIRE_EQ(objects.size(), 1);
+
+    const auto &object = objects.front();
+    const auto main =
+        std::ranges::find_if(object.symbols, [](const RcuSymbol &symbol) { return symbol.name == "Main"; });
+    REQUIRE(main != object.symbols.end());
+    REQUIRE(main->sectionIdx < object.sections.size());
+
+    const auto &text = object.sections[main->sectionIdx].data;
+    const auto begin = text.begin() + main->value;
+    const auto end = begin + main->size;
+    const std::vector<uint8_t> moveHiddenDestination = {0x48, 0x89, 0xC7}; // mov rdi, rax
+    CHECK(std::search(begin, end, moveHiddenDestination.begin(), moveHiddenDestination.end()) != end);
 }
 
 TEST_CASE("phi parallel-copy resolver preserves cycles and duplicate sources") {

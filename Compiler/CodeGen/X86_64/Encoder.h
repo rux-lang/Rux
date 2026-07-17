@@ -308,6 +308,14 @@ public:
         Dword(u(d));
     }
 
+    void MovArgRax(const int idx) const {
+        static constexpr uint8_t rex[] = {0x48, 0x48, 0x48, 0x48, 0x49, 0x49};
+        static constexpr uint8_t modrm[] = {0xC7, 0xC6, 0xC2, 0xC1, 0xC0, 0xC1};
+        Byte(rex[idx]);
+        Byte(0x89);
+        Byte(modrm[idx]);
+    }
+
     // Win64 ABI arg regs ↔ [RBP + disp32]
     // argIdx: 0=RCX,1=RDX,2=R8,3=R9
     void MovArgLoadWin64(const int idx, const int32_t d) const {
