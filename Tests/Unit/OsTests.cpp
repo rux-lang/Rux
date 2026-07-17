@@ -1,3 +1,4 @@
+#include "Driver/BuildTarget.h"
 #include "System/Os.h"
 #include "Target/Platform.h"
 
@@ -56,4 +57,16 @@ TEST_CASE("SharedLibraryFileName appends .dll only for Windows targets") {
     CHECK(SharedLibraryFileName("Std", OS::Windows) == "Std.dll");
     CHECK(SharedLibraryFileName("Std", OS::Linux) == "Std");
     CHECK(SharedLibraryFileName("Std", OS::FreeBSD) == "Std");
+}
+
+TEST_CASE("workspace platform package names match their target triples") {
+    using namespace Rux::Driver;
+
+    CHECK(IsPlatformPackageName("Linux"));
+    CHECK(IsPlatformPackageName("MacOS"));
+    CHECK(IsPlatformPackageName("Bsd"));
+    CHECK(PlatformPackageMatchesTarget("Linux", "linux-x64"));
+    CHECK(PlatformPackageMatchesTarget("MacOS", "macos-aarch64"));
+    CHECK(PlatformPackageMatchesTarget("Bsd", "freebsd-x64"));
+    CHECK_FALSE(PlatformPackageMatchesTarget("Illumos", "linux-x64"));
 }

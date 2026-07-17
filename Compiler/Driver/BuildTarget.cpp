@@ -141,11 +141,19 @@ TargetContext TargetContextForTriple(const std::string_view target) {
 }
 
 bool IsPlatformPackageName(const std::string_view name) {
-    return name == "Windows" || name == "Linux" || name == "macOS" || name == "BSD" || name == "Illumos";
+    return name == "Windows" || name == "Linux" || name == "macOS" || name == "MacOS" || name == "BSD" ||
+           name == "Bsd" || name == "Illumos";
 }
 
 bool PlatformPackageMatchesTarget(const std::string_view name, const std::string_view target) {
-    return name == TargetOsName(target);
+    const auto targetOs = TargetOsName(target);
+    if (name == "MacOS") {
+        return targetOs == "macOS";
+    }
+    if (name == "Bsd") {
+        return targetOs == "BSD";
+    }
+    return name == targetOs;
 }
 
 std::string DependencyPackageName(const Dependency &dep) {

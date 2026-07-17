@@ -417,7 +417,8 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .shortDesc = "Install dependencies"sv,
                .description = {} /* Fallback */,
                .usage = Data::install_usage,
-               .postUsage = "Without a package name, downloads all registry dependencies listed in Rux.toml.\nWith a "
+               .postUsage = "Without a package name, downloads all registry dependencies listed in Rux.toml. For a "
+                            "workspace, dependencies from every member package are installed in one pass.\nWith a "
                             "package name, adds it to Rux.toml and downloads it to the local cache."sv,
                .footer = {},
                .examples = Data::install_exs,
@@ -428,7 +429,7 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .description = "Run source-level diagnostics without emitting build artifacts"sv,
                .usage = Data::lint_usage,
                .postUsage = {},
-               .footer = "Use 'rux check' for complete package semantic validation."sv,
+               .footer = "Use 'rux check' for complete package or workspace semantic validation."sv,
                .examples = Data::lint_exs,
                .options = Data::lint_opts},
 

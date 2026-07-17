@@ -7,6 +7,7 @@
 #include "Driver/CompilerDriver.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <print>
 #include <span>
 #include <string>
@@ -75,11 +76,9 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         }
         return 1;
     }
-    auto manifest = LoadManifest(*manifestPath);
+    auto manifest = Manifest::Load(*manifestPath);
     if (!manifest) {
-        if (jsonOutput) {
-            EmitFatal("failed to parse 'Rux.toml'");
-        }
+        EmitFatal("failed to parse '" + manifestPath->string() + "'");
         return 1;
     }
     std::string targetName = target.empty() ? HostTargetTriple() : std::string(target);
@@ -110,32 +109,65 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         }
         return 1;
     }
-    if (!opts.quiet && !jsonOutput) {
-        std::print("Checking {} v{} [{}]\n", manifest->package.name, manifest->package.version,
-                   manifestPath->parent_path().string());
-    }
-    CompileOptions copts;
-    copts.manifestPath = *manifestPath;
-    copts.manifest = std::move(*manifest);
-    copts.targetName = std::move(targetName);
-    copts.profileName = "Debug";
-    copts.defines = std::move(defines);
-    copts.quiet = opts.quiet;
-    copts.verbose = opts.verbose && !jsonOutput;
-    copts.checkOnly = true;
-    copts.emitDiagnostic = EmitDiag;
-    copts.emitError = [&](std::string_view line) {
-        if (jsonOutput) {
-            EmitDiag(ErrorDiagnostic(std::string(line)));
+    auto CheckPackage = [&](const std::filesystem::path &packageManifestPath, Manifest packageManifest) {
+        if (packageManifest.IsWorkspace() || packageManifest.package.name.empty()) {
+            EmitFatal("workspace member '" + packageManifestPath.parent_path().string() + "' is not a package");
+            return;
         }
-        else {
-            std::print(stderr, "{}", line);
+        if (!opts.quiet && !jsonOutput) {
+            std::print("Checking {} v{} [{}]\n", packageManifest.package.name, packageManifest.package.version,
+                       packageManifestPath.parent_path().string());
+        }
+        CompileOptions copts;
+        copts.manifestPath = packageManifestPath;
+        copts.manifest = std::move(packageManifest);
+        copts.targetName = targetName;
+        copts.profileName = "Debug";
+        copts.defines = defines;
+        copts.quiet = opts.quiet;
+        copts.verbose = opts.verbose && !jsonOutput;
+        copts.checkOnly = true;
+        copts.emitDiagnostic = EmitDiag;
+        copts.emitError = [&](std::string_view line) {
+            if (jsonOutput) {
+                EmitDiag(ErrorDiagnostic(std::string(line)));
+            }
+            else {
+                std::print(stderr, "{}", line);
+            }
+        };
+        CompilerDriver driver(std::move(copts));
+        if (!driver.Compile().ok) {
+            hadErrors = true;
         }
     };
-    CompilerDriver driver(std::move(copts));
-    const CompileResult result = driver.Compile();
-    if (!result.ok) {
-        hadErrors = true;
+
+    if (manifest->IsWorkspace()) {
+        if (!opts.quiet && !jsonOutput) {
+            std::print("Checking workspace\n");
+        }
+        const auto workspaceRoot = manifestPath->parent_path();
+        for (const auto &member : manifest->workspace.packages) {
+            const auto memberManifestPath = (workspaceRoot / member / "Rux.toml").lexically_normal();
+            std::error_code ec;
+            if (!std::filesystem::exists(memberManifestPath, ec)) {
+                EmitFatal("workspace member '" + member + "' has no Rux.toml");
+                continue;
+            }
+            auto memberManifest = Manifest::Load(memberManifestPath);
+            if (!memberManifest) {
+                EmitFatal("failed to parse '" + memberManifestPath.string() + "'");
+                continue;
+            }
+            if (IsPlatformPackageName(memberManifest->package.name) &&
+                !PlatformPackageMatchesTarget(memberManifest->package.name, targetName)) {
+                continue;
+            }
+            CheckPackage(memberManifestPath, std::move(*memberManifest));
+        }
+    }
+    else {
+        CheckPackage(*manifestPath, std::move(*manifest));
     }
     if (jsonOutput) {
         PrintDiagnosticsJson(jsonDiags, !hadErrors);

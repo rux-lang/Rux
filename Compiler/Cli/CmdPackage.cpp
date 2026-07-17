@@ -62,12 +62,40 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
         if (!manifest) {
             return 1;
         }
-        for (const auto &dep : manifest->dependencies) {
-            if (const std::string packageName = DependencyPackageName(dep);
-                dep.path.empty() && !queued.contains(packageName)) {
-                queue.push_back(packageName);
-                queued.insert(packageName);
+        auto QueueDependencies = [&](const Manifest &packageManifest) {
+            for (const auto &dep : packageManifest.dependencies) {
+                if (const std::string packageName = DependencyPackageName(dep);
+                    dep.path.empty() && !queued.contains(packageName)) {
+                    queue.push_back(packageName);
+                    queued.insert(packageName);
+                }
             }
+        };
+        if (manifest->IsWorkspace()) {
+            if (!opts.quiet) {
+                std::print("Installing workspace\n");
+            }
+            const auto workspaceRoot = manifestPath->parent_path();
+            for (const auto &member : manifest->workspace.packages) {
+                const auto memberManifestPath = (workspaceRoot / member / "Rux.toml").lexically_normal();
+                std::error_code ec;
+                if (!std::filesystem::exists(memberManifestPath, ec)) {
+                    std::print(stderr, "error: workspace member '{}' has no Rux.toml\n", member);
+                    return 1;
+                }
+                auto memberManifest = LoadManifest(memberManifestPath);
+                if (!memberManifest) {
+                    return 1;
+                }
+                if (memberManifest->IsWorkspace() || memberManifest->package.name.empty()) {
+                    std::print(stderr, "error: workspace member '{}' is not a package\n", member);
+                    return 1;
+                }
+                QueueDependencies(*memberManifest);
+            }
+        }
+        else {
+            QueueDependencies(*manifest);
         }
         if (queue.empty()) {
             if (!opts.quiet) {
