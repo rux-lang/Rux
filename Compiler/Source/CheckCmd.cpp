@@ -177,7 +177,8 @@ auto enqueueDependency(DependencyQueue &queue,
         depRoot = RegistryPackagesDir() / DependencyPackageName(*targetDep);
         if (!std::filesystem::exists(depRoot)) {
             EmitDiag("", 0, 0, "error",
-                     "package '" + DependencyPackageName(*targetDep) + "' is not installed. Run 'rux install' to install all dependencies required by this project.");
+                     "package '" + DependencyPackageName(*targetDep) +
+                         "' is not installed. Run 'rux install' to install all required dependencies");
             return false;
         }
     }
