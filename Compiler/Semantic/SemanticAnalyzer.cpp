@@ -2651,12 +2651,9 @@ private:
     }
 
     void CheckConstDecl(const ConstDecl &d) {
-        if (d.isCompilerInitialized) {
-            if (d.intrinsicName.empty()) {
-                EmitError(d.location, std::format("compiler-initialized constant '{}' has no intrinsic", d.name));
-            }
+        if (!d.intrinsicName.empty()) {
             if (!d.type) {
-                EmitError(d.location, std::format("compiler-initialized constant '{}' requires a type", d.name));
+                EmitError(d.location, std::format("'intrinsic' constant '{}' requires a type", d.name));
                 return;
             }
             const TypeRef constType = ResolveType(**d.type);
@@ -3471,7 +3468,7 @@ private:
                                  : e->kind == K::BuildMode    ? "build.mode"
                                  : e->kind == K::Optimization ? "build.optimization"
                                                               : "build.outputKind";
-                EmitError(e->location, std::string("'") + name + "' can only be used in a '#if' condition");
+                EmitError(e->location, std::string("'") + name + "' can only be used in a 'when' condition");
                 return TypeRef::MakeUnknown();
             }
             return TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
@@ -4374,7 +4371,7 @@ SemanticAnalyzer::SemanticAnalyzer(std::vector<Module *> userModules, std::vecto
 }
 
 SemanticModel SemanticAnalyzer::Analyze() {
-    // Fold `#if` first: the branches that were not taken are dropped here, so
+    // Fold `when` first: the branches that were not taken are dropped here, so
     // nothing below ever sees — or type-checks — them. Each package resolves its
     // own conditionals against its own constants.
     for (auto &dep : deps) {

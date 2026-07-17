@@ -232,8 +232,9 @@ void Parser::Synchronize() {
             k == TokenKind::ModuleKeyword || k == TokenKind::ImportKeyword || k == TokenKind::ConstKeyword ||
             k == TokenKind::TypeKeyword || k == TokenKind::ExternKeyword || k == TokenKind::PubKeyword ||
             k == TokenKind::LetKeyword || k == TokenKind::VarKeyword || k == TokenKind::IfKeyword ||
-            k == TokenKind::WhileKeyword || k == TokenKind::DoKeyword || k == TokenKind::LoopKeyword ||
-            k == TokenKind::ForKeyword || k == TokenKind::ReturnKeyword || k == TokenKind::MatchKeyword) {
+            k == TokenKind::WhenKeyword || k == TokenKind::WhileKeyword || k == TokenKind::DoKeyword ||
+            k == TokenKind::LoopKeyword || k == TokenKind::ForKeyword || k == TokenKind::ReturnKeyword ||
+            k == TokenKind::MatchKeyword) {
             return;
         }
 

@@ -230,7 +230,7 @@ bool CompilerDriver::LexAndParseSources() {
         if (parseResult.HasErrors()) {
             continue;
         }
-        // Fold `#if` before anything reads the module: which imports a file has
+        // Fold `when` before anything reads the module: which imports a file has
         // depends on which branches survive, and dependency loading below is the
         // first thing to ask.
         {

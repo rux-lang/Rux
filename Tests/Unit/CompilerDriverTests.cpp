@@ -131,24 +131,21 @@ struct Build {
     time: char8[];
 }
 
-#Intrinsic("Build")
-const $build: Build;
+intrinsic const build: Build;
 
 struct Config {}
-#Intrinsic("Config")
-const $config: Config;
+intrinsic const config: Config;
 
 struct Compiler {}
-#Intrinsic("Compiler")
-const $compiler: Compiler;
+intrinsic const compiler: Compiler;
 
 enum BuildMode { Debug }
 
-#if config.has("allocator") &&
-    config.get("allocator") == "mimalloc" &&
-    build.isTest &&
-    build.mode == BuildMode::Debug &&
-    compiler.hasFeature("namespaced-intrinsics") {
+when config.Has("allocator") &&
+     config.Get("allocator") == "mimalloc" &&
+     build.isTest &&
+     build.mode == BuildMode::Debug &&
+     compiler.HasFeature("namespaced-intrinsics") {
     func Main() -> int {
         let timestamp = build.timestamp;
         let date = build.date;

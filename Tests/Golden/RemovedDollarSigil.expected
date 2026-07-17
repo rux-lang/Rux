@@ -1,0 +1,1 @@
+5:17: error: '$' is no longer part of a declaration; write 'intrinsic const name: Type;'

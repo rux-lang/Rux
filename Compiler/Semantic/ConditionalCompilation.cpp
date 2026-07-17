@@ -56,7 +56,7 @@ struct EnumValue {
     bool operator==(const EnumValue &) const = default;
 };
 
-// A compile-time value. `#if` conditions must evaluate to a bool; the other
+// A compile-time value. `when` conditions must evaluate to a bool; the other
 // alternatives exist so that comparisons such as `Version >= 2`, `Name == "x"`
 // and `target.os == .Windows` can produce one.
 using Value = std::variant<bool, std::int64_t, std::uint64_t, double, std::string, EnumValue>;
@@ -99,16 +99,10 @@ constexpr std::array OptimizationVariants{"None", "Size", "Speed"};
 constexpr std::array OutputKindVariants{"Executable", "SharedLibrary", "StaticLibrary"};
 constexpr std::array TargetFeatureVariants{"AVX",  "AVX2",  "AVX512", "NEON",  "RVV", "SSE2",
                                            "SSE3", "SSE41", "SSE42",  "SSSE3", "SVE"};
-constexpr std::array CompilerFeatures{"conditional-compilation",
-                                      "namespaced-intrinsics",
-                                      "target-intrinsics",
-                                      "build-intrinsics",
-                                      "compiler-feature-detection",
-                                      "source-location-defaults",
-                                      "extern-symbol-names",
-                                      "when-attribute",
-                                      "link-attribute",
-                                      "no-return-attribute"};
+constexpr std::array CompilerFeatures{
+    "conditional-compilation",    "namespaced-intrinsics",    "target-intrinsics",   "build-intrinsics",
+    "compiler-feature-detection", "source-location-defaults", "extern-symbol-names", "link-attribute",
+    "no-return-attribute"};
 
 template <std::size_t N>
 void RegisterVariants(std::unordered_map<std::string, std::vector<std::string>> &enums, const std::string &name,
@@ -365,7 +359,7 @@ std::optional<Value> PrimitiveValue(const PrimitiveConstant &constant) {
 }
 
 // "hello" / c8"hello" -> hello. Only the escapes that can plausibly appear in a
-// `#if` comparison are decoded; anything else is kept verbatim.
+// `when` comparison are decoded; anything else is kept verbatim.
 std::optional<std::string> ParseStringLiteral(std::string_view text) {
     const auto open = text.find('"');
     if (open == std::string_view::npos || text.back() != '"' || text.size() < open + 2) {
@@ -414,7 +408,7 @@ public:
         : context(inputContext)
         , diags(inputDiags) {
         // `OperatingSystem` is built in; the program's own enums are collected
-        // from its declarations, so a `#if` can compare against those too.
+        // from its declarations, so a `when` can compare against those too.
         auto &operatingSystem = enumVariants["OperatingSystem"];
         for (const auto &variant : OsVariants) {
             operatingSystem.emplace_back(variant.name);
@@ -431,7 +425,7 @@ public:
         RegisterVariants(enumVariants, "Optimization", OptimizationVariants);
         RegisterVariants(enumVariants, "OptimizationMode", OptimizationVariants);
         RegisterVariants(enumVariants, "OutputKind", OutputKindVariants);
-        // Everything registered so far is a Rux built-in; naming one in a `#if`
+        // Everything registered so far is a Rux built-in; naming one in a `when`
         // condition requires an explicit `import Rux::{...}` in the file. The
         // program's own enums, collected later, do not.
         for (const auto &[name, _] : enumVariants) {
@@ -443,7 +437,7 @@ public:
         for (const auto *module : modules) {
             CollectCompileTimeDecls(module->items);
         }
-        // Declarations first: a `#if` branch can define constants that a
+        // Declarations first: a `when` branch can define constants that a
         // condition inside a function body then tests.
         for (auto *module : modules) {
             currentFile = module->name;
@@ -477,7 +471,7 @@ private:
     // must be imported to be named in a condition; the latter never are.
     std::unordered_set<std::string> builtinEnumNames;
     std::unordered_set<std::string> programEnumNames;
-    // Intrinsics the program declares itself with `#Intrinsic`, which count as
+    // Intrinsics the program declares itself with `intrinsic`, which count as
     // in scope without an import.
     std::unordered_set<std::string> localIntrinsics;
     // Names imported from the `Rux` package in the file currently being folded.
@@ -503,9 +497,9 @@ private:
                 continue;
             }
             if (const auto *constDecl = dynamic_cast<const ConstDecl *>(decl.get())) {
-                // A `#Intrinsic("Target") const $target` brings the intrinsic
-                // into scope locally, just as importing it from Rux would.
-                if (constDecl->isCompilerInitialized) {
+                // An `intrinsic const target: Target;` brings the intrinsic into
+                // scope locally, just as importing it from Rux would.
+                if (!constDecl->intrinsicName.empty()) {
                     localIntrinsics.insert(constDecl->name);
                 }
                 if (constDecl->value) {
@@ -522,13 +516,13 @@ private:
             else if (const auto *module = dynamic_cast<const ModuleDecl *>(decl.get())) {
                 CollectCompileTimeDecls(module->items);
             }
-            // Constants inside an unresolved `#if` are registered when its
+            // Constants inside an unresolved `when` are registered when its
             // branch is spliced in.
         }
     }
 
     // Record which names the current file imports from the `Rux` package, so a
-    // `#if` condition can require its build intrinsics and enums to be imported.
+    // `when` condition can require its build intrinsics and enums to be imported.
     void SetRuxImportsForModule(const Module &module) {
         ruxImports.clear();
         ruxGlobImport = false;
@@ -734,7 +728,9 @@ private:
         else
             return std::nullopt;
 
-        if (root == "Target" && member == "hasFeature") {
+        // These match the method names the Rux package declares, which are
+        // functions and so PascalCase; only the fields are lowerCamelCase.
+        if (root == "Target" && member == "HasFeature") {
             if (!std::ranges::contains(TargetFeatureVariants, name)) {
                 EmitError(call.location, "unknown target feature '." + name + "'");
                 reportedError = true;
@@ -742,13 +738,13 @@ private:
             }
             return Value{TargetHasFeature(name)};
         }
-        if (root == "Compiler" && member == "hasFeature")
+        if (root == "Compiler" && member == "HasFeature")
             return Value{std::ranges::contains(CompilerFeatures, name)};
-        if (root == "Config" && member == "get") {
+        if (root == "Config" && member == "Get") {
             const auto it = context.config.find(name);
             return Value{it == context.config.end() ? std::string{} : it->second};
         }
-        if (root == "Config" && member == "has")
+        if (root == "Config" && member == "Has")
             return Value{context.config.contains(name)};
         return std::nullopt;
     }
@@ -1010,7 +1006,7 @@ private:
         // written in full, as in `OperatingSystem::Windows`.
         for (const auto *side : {&left, &right}) {
             if (side->type.empty()) {
-                EmitError(e.location, std::format("enum shorthand '.{}' is not allowed in a '#if' condition; "
+                EmitError(e.location, std::format("enum shorthand '.{}' is not allowed in a 'when' condition; "
                                                   "write it in full, as in '{}::{}'",
                                                   side->variant, type, side->variant));
                 reportedError = true;
@@ -1281,7 +1277,7 @@ private:
 
     // Evaluates a conditional-compilation condition, reporting why it cannot
     // be used if it fails.
-    bool EvalCondition(const Expr *condition, const SourceLocation location, const std::string_view directive) {
+    bool EvalCondition(const Expr *condition, const SourceLocation location) {
         if (!condition) {
             return false;
         }
@@ -1289,19 +1285,18 @@ private:
         const auto value = Eval(*condition);
         if (!value) {
             if (!reportedError) {
-                EmitError(location,
-                          std::format("'{}' condition must be a compile-time constant expression", directive));
+                EmitError(location, "'when' condition must be a compile-time constant expression");
             }
             return false;
         }
         if (const auto *b = std::get_if<bool>(&*value)) {
             return *b;
         }
-        EmitError(location, std::format("'{}' condition must be of type 'bool'", directive));
+        EmitError(location, "'when' condition must be of type 'bool'");
         return false;
     }
 
-    // Declaration-level `#if`
+    // Declaration-level `when`
 
     void ResolveDecls(std::vector<DeclPtr> &decls) {
         std::vector<DeclPtr> resolved;
@@ -1311,8 +1306,8 @@ private:
             if (!decl) {
                 continue;
             }
-            auto *compileTimeIf = dynamic_cast<CompileTimeIfDecl *>(decl.get());
-            if (!compileTimeIf) {
+            auto *when = dynamic_cast<WhenDecl *>(decl.get());
+            if (!when) {
                 if (auto *module = dynamic_cast<ModuleDecl *>(decl.get())) {
                     const std::string savedModule = currentModulePath;
                     const std::string savedDeclModule = currentDeclModulePath;
@@ -1331,10 +1326,9 @@ private:
                 continue;
             }
 
-            for (auto &branch : compileTimeIf->branches) {
+            for (auto &branch : when->branches) {
                 // A branch with no condition is the trailing `else`.
-                const std::string_view directive = compileTimeIf->isWhen ? "#When" : "#if";
-                if (branch.condition && !EvalCondition(branch.condition.get(), compileTimeIf->location, directive)) {
+                if (branch.condition && !EvalCondition(branch.condition.get(), when->location)) {
                     continue;
                 }
                 ResolveDecls(branch.items);
@@ -1349,7 +1343,7 @@ private:
         decls = std::move(resolved);
     }
 
-    // An `extend` body holds methods, not a declaration list, so the `#if`
+    // An `extend` body holds methods, not a declaration list, so the `when`
     // chains written between them are folded separately: the methods of the
     // taken branch join the ones written unconditionally.
     void ResolveImplConditionals(ImplDecl &impl) {
@@ -1358,11 +1352,10 @@ private:
                 continue;
             }
             for (auto &branch : conditional->branches) {
-                const std::string_view directive = conditional->isWhen ? "#When" : "#if";
-                if (branch.condition && !EvalCondition(branch.condition.get(), conditional->location, directive)) {
+                if (branch.condition && !EvalCondition(branch.condition.get(), conditional->location)) {
                     continue;
                 }
-                ResolveDecls(branch.items); // a nested `#if` resolves first
+                ResolveDecls(branch.items); // a nested `when` resolves first
                 for (auto &item : branch.items) {
                     if (!item) {
                         continue;
@@ -1381,7 +1374,7 @@ private:
         impl.conditionals.clear();
     }
 
-    // Statement-level `#if`
+    // Statement-level `when`
 
     void ResolveDeclBodies(Decl &decl) {
         if (auto *func = dynamic_cast<FuncDecl *>(&decl)) {
@@ -1429,19 +1422,19 @@ private:
         block.stmts = std::move(resolved);
     }
 
-    // Appends `stmt` to `out`, or — for a `#if` — the statements of its taken
+    // Appends `stmt` to `out`, or — for a `when` — the statements of its taken
     // branch, which are spliced into the enclosing block rather than nested in
-    // one, so a `#if` introduces no scope of its own.
+    // one, so a `when` introduces no scope of its own.
     void ResolveStmt(StmtPtr stmt, std::vector<StmtPtr> &out) {
         auto *ifStmt = dynamic_cast<IfStmt *>(stmt.get());
         if (ifStmt && ifStmt->isCompileTime) {
             Block *taken = nullptr;
-            if (EvalCondition(ifStmt->condition.get(), ifStmt->location, "#if")) {
+            if (EvalCondition(ifStmt->condition.get(), ifStmt->location)) {
                 taken = ifStmt->thenBlock.get();
             }
             else {
                 for (auto &elseIf : ifStmt->elseIfs) {
-                    if (EvalCondition(elseIf.condition.get(), elseIf.location, "#if")) {
+                    if (EvalCondition(elseIf.condition.get(), elseIf.location)) {
                         taken = elseIf.block.get();
                         break;
                     }

@@ -20,6 +20,7 @@ enum class TokenKind : std::uint8_t {
 
     // Control flow
     IfKeyword,       // if
+    WhenKeyword,     // when
     ElseKeyword,     // else
     WhileKeyword,    // while
     DoKeyword,       // do
@@ -32,6 +33,7 @@ enum class TokenKind : std::uint8_t {
     MatchKeyword,    // match
 
     // Declarations
+    IntrinsicKeyword, // intrinsic
     FuncKeyword,      // func
     LetKeyword,       // let
     VarKeyword,       // var
@@ -73,7 +75,6 @@ enum class TokenKind : std::uint8_t {
     FatArrow,     // =>
     At,           // @
     Hash,         // #
-    Dollar,       // $
     Question,     // ?
 
     // Arithmetic operators

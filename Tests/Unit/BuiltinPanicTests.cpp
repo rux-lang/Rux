@@ -16,8 +16,7 @@ using namespace Rux;
 namespace {
 
 constexpr std::string_view PanicIntrinsic = R"(
-    #Intrinsic("Panic")
-    func Panic(message: char8[]);
+    intrinsic func Panic(message: char8[]);
 )";
 
 LirPackage CompileToLir(const std::string &source) {
@@ -146,8 +145,7 @@ TEST_CASE("Panic requires an intrinsic declaration and enforces its signature") 
     }));
 
     const auto signatureDiagnostics = Analyze(R"(
-        #Intrinsic("Panic")
-        func Panic(message: char8[]);
+        intrinsic func Panic(message: char8[]);
 
         func Main() {
             Panic(42);

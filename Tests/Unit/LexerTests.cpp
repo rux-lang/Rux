@@ -88,14 +88,20 @@ TEST_CASE("Lexer treats compiler parameter roots as ordinary identifiers") {
     CHECK(result.tokens[4].text == "target");
 }
 
-TEST_CASE("Lexer recognizes compiler-initialized constant declarations") {
-    const auto result = Lex("const $target: Target;");
+TEST_CASE("Lexer recognizes intrinsic constant declarations") {
+    const auto result = Lex("intrinsic const target: Target;");
     REQUIRE(result.diagnostics.empty());
     REQUIRE(result.tokens.size() == 7);
-    CHECK(result.tokens[0].Is(TokenKind::ConstKeyword));
-    CHECK(result.tokens[1].Is(TokenKind::Dollar));
+    CHECK(result.tokens[0].Is(TokenKind::IntrinsicKeyword));
+    CHECK(result.tokens[1].Is(TokenKind::ConstKeyword));
     CHECK(result.tokens[2].Is(TokenKind::Ident));
     CHECK(result.tokens[2].text == "target");
+}
+
+// '$' carried the old compiler-initialized marker and now has no meaning.
+TEST_CASE("Lexer rejects '$'") {
+    const auto result = Lex("const $target: Target;");
+    CHECK_FALSE(result.diagnostics.empty());
 }
 
 TEST_CASE("Lexer accepts every control escape sequence") {
@@ -132,6 +138,9 @@ TEST_CASE("DecodeCharLiteralCodePoint decodes plain and escaped characters") {
 TEST_CASE("KeywordKind distinguishes keywords from identifiers") {
     CHECK(KeywordKind("func") == TokenKind::FuncKeyword);
     CHECK(KeywordKind("while") == TokenKind::WhileKeyword);
+    CHECK(KeywordKind("if") == TokenKind::IfKeyword);
+    CHECK(KeywordKind("when") == TokenKind::WhenKeyword);
     CHECK(KeywordKind("funcy") == TokenKind::Ident);
+    CHECK(KeywordKind("whenever") == TokenKind::Ident);
     CHECK(KeywordKind("") == TokenKind::Ident);
 }

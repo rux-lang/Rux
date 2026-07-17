@@ -1,0 +1,20 @@
+// The two forms `when` replaced. Each reports the rewrite and nothing else: the
+// `#if` chains still parse as `when`, so a rejected spelling does not cascade
+// into "unknown identifier" for everything it declares.
+const Debug = true;
+
+#if Debug {
+    func Gated() -> int { return 1; }
+} else {
+    func Gated() -> int { return 2; }
+}
+
+#When(Debug)
+func Attributed() -> int { return 3; }
+
+func Main() -> int {
+    #if Debug {
+        return Gated();
+    }
+    return 0;
+}

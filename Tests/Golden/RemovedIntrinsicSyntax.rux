@@ -1,0 +1,10 @@
+// The two spellings the `intrinsic` keyword replaced. `$` is caught by the
+// lexer, so it is kept on its own case below the attribute to let each report.
+struct Target { pointerBits: uint; }
+
+#Intrinsic("Target")
+const target: Target;
+
+func Main() -> int {
+    return 0;
+}

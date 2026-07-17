@@ -70,19 +70,14 @@ private:
         CallingConvention callConv = CallingConvention::Default;
         std::string warnMessage;
         std::string errorMessage;
-        std::string intrinsicName;
-        ExprPtr whenCondition;
-        SourceLocation whenLocation;
         bool usedLink = false;
         bool usedLibrary = false;
         bool usedSymbol = false;
         bool usedNoReturn = false;
         bool usedAbi = false;
-        bool usedIntrinsic = false;
         SourceLocation linkLocation;
         SourceLocation noReturnLocation;
         SourceLocation abiLocation;
-        SourceLocation intrinsicLocation;
     };
 
     // Parses `#Name(...)` attribute calls before a declaration. The former
@@ -91,6 +86,7 @@ private:
     void ParseAttributeCall(ParsedAttrs &attrs);
     DeclPtr ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs);
     DeclPtr ParseExternDecl(bool isPublic, ParsedAttrs &attrs);
+    DeclPtr ParseIntrinsicDecl(bool isPublic, ParsedAttrs &attrs, SourceLocation intrinsicLoc);
 
     // Declarations
     std::unique_ptr<FuncDecl> ParseFuncDecl(bool isPublic, bool isAsm,
@@ -102,8 +98,9 @@ private:
     std::unique_ptr<ImplDecl> ParseImplDecl();
     std::unique_ptr<ModuleDecl> ParseModuleDecl(bool isPublic);
     std::unique_ptr<UseDecl> ParseUseDecl();
-    std::unique_ptr<ConstDecl> ParseConstDecl(bool isPublic);
-    std::unique_ptr<CompileTimeIfDecl> ParseCompileTimeIfDecl();
+    std::unique_ptr<ConstDecl> ParseConstDecl(bool isPublic, bool isIntrinsic = false);
+    std::unique_ptr<WhenDecl> ParseWhenDecl();
+    std::unique_ptr<WhenDecl> ParseWhenBody(SourceLocation loc);
     std::unique_ptr<TypeAliasDecl> ParseTypeAliasDecl(bool isPublic);
 
     // Inline-assembly body parsing (asm func)

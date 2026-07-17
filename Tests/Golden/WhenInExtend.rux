@@ -8,7 +8,7 @@ const IncludeTalk = true;
 struct Animal {}
 
 extend Animal {
-    #if IncludeTalk {
+    when IncludeTalk {
         func Talk() {}
     }
 

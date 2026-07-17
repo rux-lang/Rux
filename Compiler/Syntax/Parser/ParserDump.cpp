@@ -207,14 +207,14 @@ private:
         else if (const auto *extVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
             PrintExternVarDecl(*extVar);
         }
-        else if (const auto *compileTimeIf = dynamic_cast<const CompileTimeIfDecl *>(&decl)) {
-            PrintCompileTimeIfDecl(*compileTimeIf);
+        else if (const auto *when = dynamic_cast<const WhenDecl *>(&decl)) {
+            PrintWhenDecl(*when);
         }
     }
 
-    void PrintCompileTimeIfDecl(const CompileTimeIfDecl &d) {
+    void PrintWhenDecl(const WhenDecl &d) {
         Pad();
-        out << (d.isWhen ? "CompileTimeWhenDecl\n" : "CompileTimeIfDecl\n");
+        out << "WhenDecl\n";
         ++indent;
         for (const auto &branch : d.branches) {
             Pad();
@@ -455,7 +455,7 @@ private:
         }
         for (const auto &conditional : impl.conditionals) {
             if (conditional) {
-                PrintCompileTimeIfDecl(*conditional);
+                PrintWhenDecl(*conditional);
             }
         }
         --indent;
@@ -660,7 +660,7 @@ private:
 
     void PrintIfStmt(const IfStmt &s) {
         Pad();
-        out << (s.isCompileTime ? "CompileTimeIfStmt\n" : "IfStmt\n");
+        out << (s.isCompileTime ? "WhenStmt\n" : "IfStmt\n");
         ++indent;
 
         Pad();

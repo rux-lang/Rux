@@ -34,7 +34,13 @@ StmtPtr Parser::ParseStmt() {
     if (Check(TokenKind::LetKeyword) || Check(TokenKind::VarKeyword)) {
         return ParseLetStmt();
     }
-    if (Check(TokenKind::IfKeyword) || (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::IfKeyword))) {
+    if (Check(TokenKind::IfKeyword) || Check(TokenKind::WhenKeyword)) {
+        return ParseIfStmt();
+    }
+    // The form `when` replaced.
+    if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::IfKeyword)) {
+        EmitError(loc, "'#if' is no longer conditional compilation; write 'when <condition> { ... }'");
+        Advance(); // consume '#', so the `if` below parses as the run-time form
         return ParseIfStmt();
     }
     // Optional loop label: `ident ':' loop-keyword`
@@ -162,9 +168,10 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
 
 std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
     const auto loc = CurrentLocation();
-    // `#if` is the compile-time form: same shape, folded before analysis.
-    const bool isCompileTime = Match(TokenKind::Hash);
-    Expect(TokenKind::IfKeyword, "expected 'if'");
+    // `when` is the compile-time form: same shape, folded before analysis.
+    const bool isCompileTime = Check(TokenKind::WhenKeyword);
+    const TokenKind keyword = isCompileTime ? TokenKind::WhenKeyword : TokenKind::IfKeyword;
+    Expect(keyword, isCompileTime ? "expected 'when'" : "expected 'if'");
 
     auto s = std::make_unique<IfStmt>();
     s->location = loc;
@@ -174,11 +181,21 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
     structInitAllowed = true;
     s->thenBlock = ParseBlock();
 
-    while (Check(TokenKind::ElseKeyword) && Peek(1).Is(TokenKind::IfKeyword)) {
+    // A chain keeps the keyword it opened with: `if`/`else if` throughout, or
+    // `when`/`else when` throughout. Mixing them would hide which arms the
+    // compiler resolves and which the program tests as it runs.
+    const TokenKind wrongKeyword = isCompileTime ? TokenKind::IfKeyword : TokenKind::WhenKeyword;
+    while (Check(TokenKind::ElseKeyword) && (Peek(1).Is(keyword) || Peek(1).Is(wrongKeyword))) {
         IfStmt::ElseIf elif;
         elif.location = CurrentLocation();
         Advance(); // consume 'else'
-        Advance(); // consume 'if'
+        if (Check(wrongKeyword)) {
+            EmitError(CurrentLocation(), isCompileTime ? "expected 'when' after 'else' in a compile-time 'when' chain; "
+                                                         "'if' is the run-time conditional"
+                                                       : "expected 'if' after 'else' in a run-time 'if' chain; "
+                                                         "'when' is the compile-time conditional");
+        }
+        Advance(); // consume 'if' / 'when'
         structInitAllowed = false;
         elif.condition = ParseExpr();
         structInitAllowed = true;

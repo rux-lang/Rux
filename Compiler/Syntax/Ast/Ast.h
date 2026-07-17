@@ -361,9 +361,10 @@ struct LetStmt : Stmt {
 };
 
 // if cond { } else if cond { } else { }
-// `#if` sets isCompileTime: the conditions are folded during compilation and
+// `when` sets isCompileTime: the conditions are folded during compilation and
 // only the taken branch reaches semantic analysis; the others are discarded
-// without being type-checked.
+// without being type-checked. A compile-time chain spells every arm `when`, so
+// `elseIfs` holds `else when` arms.
 struct IfStmt : Stmt {
     bool isCompileTime = false;
     ExprPtr condition;
@@ -445,7 +446,8 @@ struct Decl {
     SourceLocation location;
     bool isPublic = false;
     // Non-empty for declarations whose implementation/value is supplied by
-    // the compiler rather than Rux source.
+    // the compiler rather than Rux source: the `intrinsic` keyword sets it to
+    // the registry key derived from the declaration itself (see ParseDecl).
     std::string intrinsicName;
     std::string warnMessage;  // non-empty = emit this warning at each call site
     std::string errorMessage; // non-empty = emit this error at each call site
@@ -460,11 +462,11 @@ struct Param {
     std::optional<ExprPtr> defaultValue;
 };
 
-// #if cond { decls } else if cond { decls } else { decls }
+// when cond { decls } else when cond { decls } else { decls }
 // Conditional compilation at declaration level. The taken branch's items are
 // spliced into the enclosing declaration list before semantic analysis, so no
 // later stage ever sees this node.
-struct CompileTimeIfDecl : Decl {
+struct WhenDecl : Decl {
     struct Branch {
         SourceLocation location;
         ExprPtr condition; // null for the trailing `else`
@@ -472,7 +474,6 @@ struct CompileTimeIfDecl : Decl {
     };
 
     std::vector<Branch> branches;
-    bool isWhen = false; // true when produced by #When(condition) sugar
 };
 
 // func [asm] Name<T>(params) -> Type { body }
@@ -556,10 +557,10 @@ struct ImplDecl : Decl {
     std::optional<std::string> interfaceName;
     std::vector<std::unique_ptr<FuncDecl>> methods;
 
-    // `#if` chains written between the methods. Conditional compilation folds
+    // `when` chains written between the methods. Conditional compilation folds
     // each one and moves the methods of the taken branch into `methods`, so by
     // the time anything else looks at an ImplDecl this is empty.
-    std::vector<std::unique_ptr<CompileTimeIfDecl>> conditionals;
+    std::vector<std::unique_ptr<WhenDecl>> conditionals;
 };
 
 // module Name { decls... }
@@ -582,13 +583,12 @@ struct UseDecl : Decl {
 };
 
 // const Name[: Type] = expr;
+// `intrinsic const name: Type;` has no value: `intrinsicName` names the
+// compiler-supplied one, and is the only thing marking it.
 struct ConstDecl : Decl {
     std::string name;
     std::optional<TypeExprPtr> type;
     ExprPtr value;
-    // Written as `const $name: Type;`. The '$' marks compiler initialization
-    // and is not part of the public identifier.
-    bool isCompilerInitialized = false;
 };
 
 // type Name = Type;

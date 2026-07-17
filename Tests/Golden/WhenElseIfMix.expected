@@ -1,0 +1,2 @@
+8:8: error: expected 'when' after 'else' in a compile-time 'when' chain; 'if' is the run-time conditional
+17:12: error: expected 'when' after 'else' in a compile-time 'when' chain; 'if' is the run-time conditional

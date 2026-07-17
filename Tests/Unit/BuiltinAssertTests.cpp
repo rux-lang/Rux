@@ -17,11 +17,9 @@ using namespace Rux;
 namespace {
 
 constexpr std::string_view AssertIntrinsics = R"(
-    #Intrinsic("Assert")
-    func Assert(condition: bool, message: char8[]);
+    intrinsic func Assert(condition: bool, message: char8[]);
 
-    #Intrinsic("DebugAssert")
-    func DebugAssert(condition: bool, message: char8[]);
+    intrinsic func DebugAssert(condition: bool, message: char8[]);
 )";
 
 LirPackage CompileToLir(const std::string &source, const bool debugAssertions) {
@@ -157,10 +155,8 @@ TEST_CASE("assertion intrinsics require declarations and enforce their signature
     }));
 
     const auto signatureDiagnostics = Analyze(R"(
-        #Intrinsic("Assert")
-        func Assert(condition: bool, message: char8[]);
-        #Intrinsic("DebugAssert")
-        func DebugAssert(condition: bool, message: char8[]);
+        intrinsic func Assert(condition: bool, message: char8[]);
+        intrinsic func DebugAssert(condition: bool, message: char8[]);
 
         func Main() -> int {
             Assert("not bool", "condition");

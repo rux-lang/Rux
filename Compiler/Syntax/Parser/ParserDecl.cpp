@@ -98,8 +98,13 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     const std::string name = Advance().text;
 
     if (name != "Error" && name != "Warn" && name != "Link" && name != "Library" && name != "Symbol" &&
-        name != "When" && name != "NoReturn" && name != "Abi" && name != "Intrinsic") {
-        EmitError(nameLoc, std::format("unknown attribute call '#{}'", name));
+        name != "NoReturn" && name != "Abi") {
+        // `#Intrinsic("Name")` became the `intrinsic` keyword, which takes its
+        // name from the declaration instead of repeating it in a string.
+        EmitError(nameLoc, name == "Intrinsic"
+                               ? "the '#Intrinsic' attribute has been removed; write 'intrinsic const name: Type;' "
+                                 "or 'intrinsic func Name(...);'"
+                               : std::format("unknown attribute call '#{}'", name));
         // Skip a parenthesized argument list, if any, so the declaration that
         // follows still parses.
         if (Match(TokenKind::LeftParen)) {
@@ -112,30 +117,6 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     }
 
     Expect(TokenKind::LeftParen, std::format("expected '(' after '#{}'", name));
-    if (name == "Intrinsic") {
-        if (attrs.usedIntrinsic) {
-            EmitError(nameLoc, "duplicate '#Intrinsic' attribute");
-        }
-        attrs.usedIntrinsic = true;
-        attrs.intrinsicLocation = attributeLoc;
-        if (Check(TokenKind::StringLiteral)) {
-            attrs.intrinsicName = DecodeStringLiteralText(Advance().text);
-            if (attrs.intrinsicName.empty()) {
-                EmitError(nameLoc, "'#Intrinsic' name cannot be empty");
-            }
-        }
-        else {
-            EmitError(CurrentLocation(), "'#Intrinsic' takes exactly one name string");
-        }
-        if (!Check(TokenKind::RightParen)) {
-            EmitError(CurrentLocation(), "'#Intrinsic' accepts exactly one argument");
-            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-                Advance();
-            }
-        }
-        Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
-        return;
-    }
     if (name == "NoReturn") {
         if (attrs.usedNoReturn) {
             EmitError(nameLoc, "duplicate '#NoReturn' attribute");
@@ -238,24 +219,6 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
         return;
     }
 
-    if (name == "When") {
-        if (Check(TokenKind::RightParen)) {
-            EmitError(CurrentLocation(), "'#When' requires a compile-time condition");
-        }
-        else {
-            ExprPtr condition = ParseExpr();
-            if (attrs.whenCondition) {
-                EmitError(nameLoc, "duplicate '#When' attribute");
-            }
-            else {
-                attrs.whenCondition = std::move(condition);
-                attrs.whenLocation = attributeLoc;
-            }
-        }
-        Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
-        return;
-    }
-
     if (Check(TokenKind::StringLiteral)) {
         std::string value = DecodeStringLiteralText(Advance().text);
         if (name == "Error") {
@@ -332,20 +295,6 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
     if (decl->errorMessage.empty()) {
         decl->errorMessage = attrs.errorMessage;
     }
-    decl->intrinsicName = attrs.intrinsicName;
-
-    if (attrs.usedIntrinsic && !dynamic_cast<FuncDecl *>(decl.get()) && !dynamic_cast<ConstDecl *>(decl.get())) {
-        EmitError(attrs.intrinsicLocation, "'#Intrinsic' can only be applied to a function or constant");
-    }
-    if (auto *constant = dynamic_cast<ConstDecl *>(decl.get()); constant && constant->isCompilerInitialized) {
-        if (!attrs.usedIntrinsic) {
-            EmitError(constant->location, "compiler-initialized constant requires an '#Intrinsic' attribute");
-        }
-    }
-    else if (attrs.usedIntrinsic && dynamic_cast<ConstDecl *>(decl.get())) {
-        EmitError(attrs.intrinsicLocation, "intrinsic constant must use a compiler-initialized '$' declaration");
-    }
-
     if (attrs.usedLink && !dynamic_cast<ExternFuncDecl *>(decl.get()) && !dynamic_cast<ExternBlockDecl *>(decl.get())) {
         EmitError(attrs.linkLocation, "'#Link' can only be applied to an extern function or extern block");
     }
@@ -373,30 +322,92 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
         EmitError(attrs.abiLocation, "'#Abi' can only be applied to a function or extern block");
     }
 
-    if (!attrs.whenCondition) {
-        return decl;
+    return decl;
+}
+
+// The constant or function after an `intrinsic`. Its name is the intrinsic's:
+// a constant takes its type (`Target`), a free function its own name (`Assert`).
+// A method is namespaced by the type it extends, and is keyed in ParseImplDecl.
+DeclPtr Parser::ParseIntrinsicDecl(const bool isPublic, ParsedAttrs &attrs, const SourceLocation intrinsicLoc) {
+    if (Check(TokenKind::ConstKeyword)) {
+        return ApplyAttrs(ParseConstDecl(isPublic, true), attrs);
     }
-
-    auto conditional = std::make_unique<CompileTimeIfDecl>();
-    conditional->location = attrs.whenLocation;
-    conditional->isWhen = true;
-
-    CompileTimeIfDecl::Branch branch;
-    branch.location = attrs.whenLocation;
-    branch.condition = std::move(attrs.whenCondition);
-    branch.items.push_back(std::move(decl));
-    conditional->branches.push_back(std::move(branch));
-    return conditional;
+    if (Check(TokenKind::FuncKeyword)) {
+        auto func = ParseFuncDecl(isPublic, false, attrs.callConv);
+        if (func) {
+            func->intrinsicName = func->name;
+            if (func->body) {
+                EmitError(intrinsicLoc, "'intrinsic' function cannot have a body");
+            }
+        }
+        return ApplyAttrs(std::move(func), attrs);
+    }
+    EmitError(intrinsicLoc, "'intrinsic' can only be applied to a constant or function");
+    Recover();
+    return nullptr;
 }
 
 // Top-level declarations
 DeclPtr Parser::ParseDecl() {
     const auto loc = CurrentLocation();
 
-    // Conditional compilation. Checked before ParseAttrs so `#if` is not
-    // mistaken for an attribute call.
+    // Conditional compilation.
+    if (Check(TokenKind::WhenKeyword)) {
+        return ParseWhenDecl();
+    }
+    // The forms `when` replaced. Both are diagnosed here rather than left to the
+    // attribute parser, which would only report that '#' wants a name.
     if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::IfKeyword)) {
-        return ParseCompileTimeIfDecl();
+        EmitError(loc, "'#if' is no longer conditional compilation; write 'when <condition> { ... }'");
+        Advance(); // '#'
+        Advance(); // 'if'
+        // Parse it as the `when` it meant, so the chain reports only its spelling.
+        return ParseWhenBody(loc);
+    }
+    if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident) && Peek(1).text == "When") {
+        EmitError(loc, "the '#When' attribute has been removed; wrap the declaration in "
+                       "'when <condition> { ... }' instead");
+        Advance(); // '#'
+        Advance(); // 'When'
+        // Drop the condition and keep the declaration it guarded: reporting the
+        // rewrite once beats burying it under errors from the tokens that follow.
+        if (Match(TokenKind::LeftParen)) {
+            for (int depth = 1; depth > 0 && !IsAtEnd();) {
+                if (Check(TokenKind::LeftParen)) {
+                    ++depth;
+                }
+                else if (Check(TokenKind::RightParen)) {
+                    --depth;
+                }
+                Advance();
+            }
+        }
+        return ParseDecl();
+    }
+
+    // The form `intrinsic` replaced. Caught before ParseAttrs, which would
+    // otherwise consume it as an attribute and leave the constant that follows
+    // looking like an ordinary one that forgot its value. Recovered as the
+    // keyword it meant, so it reports only its spelling.
+    if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident) && Peek(1).text == "Intrinsic") {
+        EmitError(loc, "the '#Intrinsic' attribute has been removed; write 'intrinsic const name: Type;' "
+                       "or 'intrinsic func Name(...);'");
+        Advance(); // '#'
+        Advance(); // 'Intrinsic'
+        if (Match(TokenKind::LeftParen)) {
+            for (int depth = 1; depth > 0 && !IsAtEnd();) {
+                if (Check(TokenKind::LeftParen)) {
+                    ++depth;
+                }
+                else if (Check(TokenKind::RightParen)) {
+                    --depth;
+                }
+                Advance();
+            }
+        }
+        ParsedAttrs rest = ParseAttrs();
+        const bool pub = Match(TokenKind::PubKeyword);
+        return ParseIntrinsicDecl(pub, rest, loc);
     }
 
     ParsedAttrs attrs = ParseAttrs();
@@ -404,6 +415,12 @@ DeclPtr Parser::ParseDecl() {
     bool isPublic = false;
     if (Match(TokenKind::PubKeyword)) {
         isPublic = true;
+    }
+
+    // intrinsic const/func: the compiler supplies the value or the body. The
+    // declaration itself names the intrinsic, so there is nothing to write twice.
+    if (Match(TokenKind::IntrinsicKeyword)) {
+        return ParseIntrinsicDecl(isPublic, attrs, Previous().location);
     }
 
     // asm func
@@ -1020,29 +1037,35 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
         // Methods can be conditionally compiled like any other declaration.
         // Conditional compilation later moves those of the taken branch into
         // `methods`.
-        if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::IfKeyword)) {
-            if (auto conditional = ParseCompileTimeIfDecl()) {
+        if (Check(TokenKind::WhenKeyword)) {
+            if (auto conditional = ParseWhenDecl()) {
                 decl->conditionals.push_back(std::move(conditional));
             }
             continue;
         }
         ParsedAttrs attrs = ParseAttrs();
         bool pub = Match(TokenKind::PubKeyword);
+        const bool isIntrinsic = Match(TokenKind::IntrinsicKeyword);
+        const auto intrinsicLoc = Previous().location;
         if (!Check(TokenKind::FuncKeyword)) {
-            EmitError(CurrentLocation(), "expected 'func' in extend body");
+            EmitError(CurrentLocation(), isIntrinsic ? "expected 'func' after 'intrinsic' in extend body"
+                                                     : "expected 'func' in extend body");
             Recover();
             continue;
         }
         if (auto method = ParseFuncDecl(pub, false, attrs.callConv)) {
+            if (isIntrinsic) {
+                // A method's intrinsic is namespaced by the type it extends, so
+                // `extend Target { intrinsic func HasFeature }` is
+                // `Target.HasFeature`.
+                method->intrinsicName = decl->typeName + "." + method->name;
+                if (method->body) {
+                    EmitError(intrinsicLoc, "'intrinsic' function cannot have a body");
+                }
+            }
             DeclPtr attributed = ApplyAttrs(std::move(method), attrs);
-            if (auto *conditional = dynamic_cast<CompileTimeIfDecl *>(attributed.get())) {
-                attributed.release();
-                decl->conditionals.emplace_back(conditional);
-            }
-            else {
-                auto *methodDecl = static_cast<FuncDecl *>(attributed.release());
-                decl->methods.emplace_back(methodDecl);
-            }
+            auto *methodDecl = static_cast<FuncDecl *>(attributed.release());
+            decl->methods.emplace_back(methodDecl);
         }
     }
     Expect(TokenKind::RightBrace, "expected '}'");
@@ -1140,26 +1163,31 @@ std::unique_ptr<UseDecl> Parser::ParseUseDecl() {
 }
 
 // const
-std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic) {
+std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic, bool isIntrinsic) {
     const auto loc = CurrentLocation();
     Expect(TokenKind::ConstKeyword, "expected 'const'");
 
     auto decl = std::make_unique<ConstDecl>();
     decl->location = loc;
     decl->isPublic = isPublic;
-    decl->isCompilerInitialized = Match(TokenKind::Dollar);
     decl->name = Expect(TokenKind::Ident, "expected constant name").text;
 
     if (Match(TokenKind::Colon)) {
         decl->type = ParseType();
     }
 
-    if (decl->isCompilerInitialized) {
-        if (!decl->type) {
-            EmitError(decl->location, "compiler-initialized constant requires an explicit type");
+    if (isIntrinsic) {
+        // The type names the intrinsic: `intrinsic const target: Target;` binds
+        // the compiler's `Target`. The constant is only a name for it, so it can
+        // be renamed without rebinding.
+        if (decl->type) {
+            decl->intrinsicName = ImplTypeName(**decl->type);
+        }
+        else {
+            EmitError(decl->location, "'intrinsic' constant requires an explicit type, which names the intrinsic");
         }
         if (Match(TokenKind::Assign)) {
-            EmitError(decl->location, "compiler-initialized constant cannot have a source initializer");
+            EmitError(decl->location, "'intrinsic' constant cannot have a source initializer");
             decl->value = ParseExpr();
         }
     }
@@ -1172,13 +1200,17 @@ std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic) {
     return decl;
 }
 
-// #if cond { decls } else if cond { decls } else { decls }
-std::unique_ptr<CompileTimeIfDecl> Parser::ParseCompileTimeIfDecl() {
+// when cond { decls } else when cond { decls } else { decls }
+std::unique_ptr<WhenDecl> Parser::ParseWhenDecl() {
     const auto loc = CurrentLocation();
-    Expect(TokenKind::Hash, "expected '#'");
-    Expect(TokenKind::IfKeyword, "expected 'if'");
+    Expect(TokenKind::WhenKeyword, "expected 'when'");
+    return ParseWhenBody(loc);
+}
 
-    auto decl = std::make_unique<CompileTimeIfDecl>();
+// The chain after its opening keyword, so that a rejected `#if` can still be
+// parsed as the `when` it should have been and report only its own error.
+std::unique_ptr<WhenDecl> Parser::ParseWhenBody(const SourceLocation loc) {
+    auto decl = std::make_unique<WhenDecl>();
     decl->location = loc;
 
     auto parseItems = [&] {
@@ -1203,23 +1235,33 @@ std::unique_ptr<CompileTimeIfDecl> Parser::ParseCompileTimeIfDecl() {
         return condition;
     };
 
-    CompileTimeIfDecl::Branch first;
+    WhenDecl::Branch first;
     first.location = loc;
     first.condition = parseCondition();
     first.items = parseItems();
     decl->branches.push_back(std::move(first));
 
     while (Check(TokenKind::ElseKeyword)) {
-        CompileTimeIfDecl::Branch branch;
+        WhenDecl::Branch branch;
         branch.location = CurrentLocation();
         Advance(); // consume 'else'
-        const bool isElseIf = Match(TokenKind::IfKeyword);
+        // A `when` chain is compile-time throughout, so its arms are `else when`;
+        // `else if` would read as a run-time test of a branch that was already
+        // selected during compilation. It is still parsed as the `else when` it
+        // meant, so the rest of the chain reports nothing further.
+        const bool isElseIf = Check(TokenKind::IfKeyword);
         if (isElseIf) {
+            EmitError(CurrentLocation(), "expected 'when' after 'else' in a compile-time 'when' chain; "
+                                         "'if' is the run-time conditional");
+            Advance();
+        }
+        const bool isElseWhen = Match(TokenKind::WhenKeyword) || isElseIf;
+        if (isElseWhen) {
             branch.condition = parseCondition();
         }
         branch.items = parseItems();
         decl->branches.push_back(std::move(branch));
-        if (!isElseIf) {
+        if (!isElseWhen) {
             break; // a bare `else` ends the chain
         }
     }

@@ -1,0 +1,9 @@
+// `$` marked a compiler-initialized constant and is now nothing at all. The
+// lexer stops the pipeline, so this case stands alone.
+struct Target { pointerBits: uint; }
+
+intrinsic const $target: Target;
+
+func Main() -> int {
+    return 0;
+}

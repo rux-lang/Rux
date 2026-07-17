@@ -2244,7 +2244,9 @@ private:
             hmod.impls.push_back(LowerImpl(*implDecl));
         }
         else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
-            if (!constDecl->isCompilerInitialized) {
+            // An intrinsic constant has no value to lower; uses of it become the
+            // compiler's own object instead.
+            if (constDecl->intrinsicName.empty()) {
                 hmod.consts.push_back(LowerConst(*constDecl));
             }
         }
@@ -2951,15 +2953,17 @@ private:
         if (!argument) {
             return nullptr;
         }
-        if (root == "Target" && member == "hasFeature")
+        // These match the method names the Rux package declares, which are
+        // functions and so PascalCase; only the fields are lowerCamelCase.
+        if (root == "Target" && member == "HasFeature")
             return CompilerParamLiteral(call.location, TypeRef::MakeBool(), TargetHasFeature(*argument));
-        if (root == "Compiler" && member == "hasFeature")
+        if (root == "Compiler" && member == "HasFeature")
             return CompilerParamLiteral(call.location, TypeRef::MakeBool(), CompilerHasFeature(*argument));
-        if (root == "Config" && member == "get") {
+        if (root == "Config" && member == "Get") {
             const auto it = context.config.find(*argument);
             return CompilerParamString(call.location, it == context.config.end() ? std::string{} : it->second);
         }
-        if (root == "Config" && member == "has")
+        if (root == "Config" && member == "Has")
             return CompilerParamLiteral(call.location, TypeRef::MakeBool(), context.config.contains(*argument));
         return nullptr;
     }

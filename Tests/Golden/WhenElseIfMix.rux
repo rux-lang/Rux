@@ -1,0 +1,21 @@
+// A chain keeps the keyword it opened with. Each mixed arm reports the rewrite
+// once and is then parsed as the arm it meant, so the chain that follows — and
+// the branch selection itself — still resolve.
+const Level = 3;
+
+when Level > 3 {
+    func Pick() -> int { return 1; }
+} else if Level == 3 {
+    func Pick() -> int { return 2; }
+} else {
+    func Pick() -> int { return 3; }
+}
+
+func Main() -> int {
+    when Level > 3 {
+        return 1;
+    } else if Level == 3 {
+        return Pick() - 2;
+    }
+    return 1;
+}

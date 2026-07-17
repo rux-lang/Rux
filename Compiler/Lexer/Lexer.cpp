@@ -746,8 +746,6 @@ Token Lexer::ScanSymbol(const SourceLocation start) {
         return MakeToken(TokenKind::At, start, tokenStart);
     case '#':
         return MakeToken(TokenKind::Hash, start, tokenStart);
-    case '$':
-        return MakeToken(TokenKind::Dollar, start, tokenStart);
     case '?':
         return MakeToken(TokenKind::Question, start, tokenStart);
     case '~':
@@ -863,7 +861,14 @@ Token Lexer::ScanSymbol(const SourceLocation start) {
 
 Token Lexer::ScanUnknown(const SourceLocation start) {
     const std::size_t tokenStart = pos - 1; // already advanced past the char
-    EmitError(start, std::string("unexpected character '") + source[tokenStart] + "'");
+    // '$' used to mark a compiler-initialized constant, so point at its
+    // replacement rather than report it as line noise.
+    if (source[tokenStart] == '$') {
+        EmitError(start, "'$' is no longer part of a declaration; write 'intrinsic const name: Type;'");
+    }
+    else {
+        EmitError(start, std::string("unexpected character '") + source[tokenStart] + "'");
+    }
     return Token{TokenKind::Unknown, source.substr(tokenStart, 1), start};
 }
 

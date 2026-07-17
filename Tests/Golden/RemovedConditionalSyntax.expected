@@ -1,0 +1,3 @@
+6:1: error: '#if' is no longer conditional compilation; write 'when <condition> { ... }'
+12:1: error: the '#When' attribute has been removed; wrap the declaration in 'when <condition> { ... }' instead
+16:5: error: '#if' is no longer conditional compilation; write 'when <condition> { ... }'

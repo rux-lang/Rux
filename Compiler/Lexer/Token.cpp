@@ -8,6 +8,7 @@ TokenKind KeywordKind(const std::string_view text) noexcept {
     // string literals they point to have static storage duration.
     static const std::unordered_map<std::string_view, TokenKind> kTable = {
         {"if", TokenKind::IfKeyword},
+        {"when", TokenKind::WhenKeyword},
         {"else", TokenKind::ElseKeyword},
         {"while", TokenKind::WhileKeyword},
         {"do", TokenKind::DoKeyword},
@@ -18,6 +19,7 @@ TokenKind KeywordKind(const std::string_view text) noexcept {
         {"continue", TokenKind::ContinueKeyword},
         {"return", TokenKind::ReturnKeyword},
         {"match", TokenKind::MatchKeyword},
+        {"intrinsic", TokenKind::IntrinsicKeyword},
         {"func", TokenKind::FuncKeyword},
         {"let", TokenKind::LetKeyword},
         {"var", TokenKind::VarKeyword},
@@ -62,6 +64,8 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "Identifier";
     case TokenKind::IfKeyword:
         return "IfKeyword";
+    case TokenKind::WhenKeyword:
+        return "WhenKeyword";
     case TokenKind::ElseKeyword:
         return "ElseKeyword";
     case TokenKind::WhileKeyword:
@@ -156,8 +160,6 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "At";
     case TokenKind::Hash:
         return "Hash";
-    case TokenKind::Dollar:
-        return "Dollar";
     case TokenKind::Question:
         return "Question";
     case TokenKind::Plus:

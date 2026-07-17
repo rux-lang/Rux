@@ -3,7 +3,7 @@ import Rux::{ OperatingSystem, target };
 // The Linux ABI check only exists on Linux: its inline assembly uses the System
 // V argument registers and the Linux getpid syscall, neither of which means
 // anything elsewhere. On every other system the check trivially passes.
-#if target.os == OperatingSystem::Linux {
+when target.os == OperatingSystem::Linux {
     asm func LinuxAdd(a: int64, b: int64) -> int64 {
         mov rax, rdi
         add rax, rsi

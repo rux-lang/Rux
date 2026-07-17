@@ -1,6 +1,0 @@
-6:5: error: '#if' condition must be a compile-time constant expression
-11:5: error: '#if' condition must be of type 'bool'
-16:5: error: '#if' condition must be a compile-time constant expression
-22:9: error: unknown identifier 'target'
-27:17: error: '.Three' must be written in full, as in 'Enum::Three'
-27:5: warning: cannot infer type of 'level'
