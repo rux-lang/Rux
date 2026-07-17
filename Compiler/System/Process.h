@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Rux::System {
 // Outcome of a captured subprocess run.
@@ -45,24 +46,15 @@ inline constexpr std::string_view kRegistryUrl = "https://api.rux-lang.dev/packa
 // Convenience wrapper for the "repository" field. See JsonFindPackageField.
 [[nodiscard]] std::string JsonFindPackageRepository(std::string_view json, std::string_view name);
 
+// Return every path whose object in a GitHub tree response has type "blob".
+[[nodiscard]] std::vector<std::string> JsonFindGitBlobPaths(std::string_view json);
+
 // Fetch the body of an HTTPS URL. Returns nullopt on failure.
-//
-// NOTE: this shells out to `curl` (and falls back to `wget` on Unix) rather than
-// linking an HTTP client, so those tools must be on PATH.
 [[nodiscard]] std::optional<std::string> FetchUrl(const std::string &url);
 
-// Clone a git repository into `dest`. Pass devBranch=true to clone the `dev`
-// branch. Returns true on success.
-[[nodiscard]] bool GitClone(const std::string &repoUrl, const std::filesystem::path &dest, bool devBranch);
-
-// Install a single package that lives in the `folder` subdirectory of a monorepo
-// at `repoUrl`. Clones the repository to a temporary location and copies only
-// that package's `Rux.toml` and `Src/` into `dest`, leaving `Tests/` and every
-// other package in the repository behind. Pass devBranch=true for the `dev`
-// branch. Returns true on success.
-[[nodiscard]] bool GitCloneSubdir(const std::string &repoUrl, const std::string &folder,
-                                  const std::filesystem::path &dest, bool devBranch);
-
-// Pull the latest changes in an existing git repository. Returns true on success.
-[[nodiscard]] bool GitPull(const std::filesystem::path &repoDir);
+// Download Rux.toml and Src/ from a package repository into dest. A non-empty
+// folder selects a package inside a monorepo. Existing contents are replaced
+// atomically after the complete package has been downloaded.
+[[nodiscard]] bool DownloadPackage(const std::string &repoUrl, const std::string &folder,
+                                   const std::filesystem::path &dest, bool devBranch);
 } // namespace Rux::System

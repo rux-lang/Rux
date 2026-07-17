@@ -113,10 +113,8 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
             if (!opts.quiet) {
                 std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
             }
-            const bool cloned = folder.empty() ? GitClone(repoUrl, pkgDir, packageFromDev)
-                                               : GitCloneSubdir(repoUrl, folder, pkgDir, packageFromDev);
-            if (!cloned) {
-                std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
+            if (!DownloadPackage(repoUrl, folder, pkgDir, packageFromDev)) {
+                std::print(stderr, "error: failed to download '{}'\n", repoUrl);
                 return 1;
             }
             if (!opts.quiet) {
@@ -489,13 +487,27 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
             }
             return 0;
         }
+        if (!opts.quiet) {
+            std::print("     Fetching registry...\n");
+        }
+        const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
+        if (!jsonOpt) {
+            std::print(stderr, "error: failed to fetch package registry\n");
+            return 1;
+        }
         int updated = 0;
         for (const auto &pkgDir : pkgDirs) {
             const std::string pkgName = pkgDir.filename().string();
+            const std::string repoUrl = JsonFindPackageRepository(*jsonOpt, pkgName);
+            if (repoUrl.empty()) {
+                std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
+                return 1;
+            }
+            const std::string folder = JsonFindPackageField(*jsonOpt, pkgName, "folder");
             if (!opts.quiet) {
                 std::print("    Updating {}...\n", pkgName);
             }
-            if (!GitPull(pkgDir)) {
+            if (!DownloadPackage(repoUrl, folder, pkgDir, false)) {
                 std::print(stderr, "error: failed to update '{}'\n", pkgName);
                 return 1;
             }
@@ -546,9 +558,6 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
             std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
             return 1;
         }
-        // A non-empty folder means the package lives in a subdirectory of a
-        // monorepo; those are installed by copying files (no .git to pull), so
-        // updating re-fetches the subdirectory instead.
         const std::string folder = JsonFindPackageField(*jsonOpt, pkgName, "folder");
         const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
         std::error_code ec;
@@ -558,15 +567,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
             if (!opts.quiet) {
                 std::print("    Updating {}...\n", pkgName);
             }
-            bool refreshed;
-            if (folder.empty()) {
-                refreshed = GitPull(pkgDir);
-            }
-            else {
-                std::filesystem::remove_all(pkgDir, ec);
-                refreshed = GitCloneSubdir(repoUrl, folder, pkgDir, false);
-            }
-            if (!refreshed) {
+            if (!DownloadPackage(repoUrl, folder, pkgDir, false)) {
                 std::print(stderr, "error: failed to update '{}'\n", pkgName);
                 return 1;
             }
@@ -576,10 +577,8 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
             if (!opts.quiet) {
                 std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
             }
-            const bool cloned =
-                folder.empty() ? GitClone(repoUrl, pkgDir, false) : GitCloneSubdir(repoUrl, folder, pkgDir, false);
-            if (!cloned) {
-                std::print(stderr, "error: failed to clone '{}'\n", repoUrl);
+            if (!DownloadPackage(repoUrl, folder, pkgDir, false)) {
+                std::print(stderr, "error: failed to download '{}'\n", repoUrl);
                 return 1;
             }
             if (!opts.quiet) {
@@ -667,7 +666,11 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
             std::print("  \"description\": \"{}\",\n", manifest->package.description);
         }
         if (!manifest->package.authors.empty()) {
-            std::print("  \"authors\": \"{}\",\n", manifest->package.authors);
+            std::print("  \"authors\": [");
+            for (std::size_t i = 0; i < manifest->package.authors.size(); ++i) {
+                std::print("{}\"{}\"", i == 0 ? "" : ", ", manifest->package.authors[i]);
+            }
+            std::print("],\n");
         }
         if (!manifest->package.license.empty()) {
             std::print("  \"license\": \"{}\",\n", manifest->package.license);
@@ -710,7 +713,11 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
             std::print("Description: {}\n", manifest->package.description);
         }
         if (!manifest->package.authors.empty()) {
-            std::print("Authors:     {}\n", manifest->package.authors);
+            std::print("Authors:     ");
+            for (std::size_t i = 0; i < manifest->package.authors.size(); ++i) {
+                std::print("{}{}", i == 0 ? "" : ", ", manifest->package.authors[i]);
+            }
+            std::print("\n");
         }
         if (!manifest->package.license.empty()) {
             std::print("License:     {}\n", manifest->package.license);

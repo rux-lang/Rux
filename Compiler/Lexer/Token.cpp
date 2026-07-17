@@ -86,6 +86,8 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "ReturnKeyword";
     case TokenKind::MatchKeyword:
         return "MatchKeyword";
+    case TokenKind::IntrinsicKeyword:
+        return "IntrinsicKeyword";
     case TokenKind::FuncKeyword:
         return "FuncKeyword";
     case TokenKind::LetKeyword:

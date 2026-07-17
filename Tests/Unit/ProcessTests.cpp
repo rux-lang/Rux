@@ -35,3 +35,16 @@ TEST_CASE("JsonFindPackageRepository is not confused by braces inside strings") 
     ])";
     CHECK(JsonFindPackageRepository(index, "Weird") == "https://example.com/weird");
 }
+
+TEST_CASE("JsonFindGitBlobPaths selects files from a GitHub tree response") {
+    constexpr const char *tree = R"({
+        "sha": "root",
+        "tree": [
+            { "path": "Rux.toml", "type": "blob", "sha": "manifest" },
+            { "path": "Src/Main.rux", "type": "blob", "sha": "source" },
+            { "path": "Src", "type": "tree", "sha": "directory" }
+        ],
+        "truncated": false
+    })";
+    CHECK(JsonFindGitBlobPaths(tree) == std::vector<std::string>{"Rux.toml", "Src/Main.rux"});
+}

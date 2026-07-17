@@ -3,11 +3,16 @@
 #include "System/WinApi.h"
 #include "Target/Platform.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
+#include <fstream>
+#include <system_error>
 #include <vector>
 
-#if !RUX_OS_WINDOWS
+#if RUX_OS_WINDOWS
+    #include <winhttp.h>
+#else
     #include <fcntl.h>
     #include <sys/wait.h>
     #include <unistd.h>
@@ -88,97 +93,372 @@ std::string JsonFindPackageRepository(std::string_view json, std::string_view na
     return JsonFindPackageField(json, name, "repository");
 }
 
-bool GitCloneSubdir(const std::string &repoUrl, const std::string &folder, const std::filesystem::path &dest,
-                    bool devBranch) {
-    // Git has no single command to clone one subdirectory, so clone the whole
-    // repository next to `dest` and copy just this package's files out of it.
-    // Only Rux.toml and Src/ are taken, so Tests/ and the repository's other
-    // packages never land in the installed package.
-    std::error_code ec;
-    std::filesystem::path tmp = dest;
-    tmp += ".tmp";
-    std::filesystem::remove_all(tmp, ec);
-    if (!GitClone(repoUrl, tmp, devBranch)) {
-        std::filesystem::remove_all(tmp, ec);
-        return false;
-    }
-    const std::filesystem::path src = tmp / folder;
-    bool ok = false;
-    if (std::filesystem::exists(src / "Rux.toml", ec)) {
-        std::filesystem::create_directories(dest, ec);
-        std::filesystem::copy_file(src / "Rux.toml", dest / "Rux.toml",
-                                   std::filesystem::copy_options::overwrite_existing, ec);
-        ok = !ec;
-        if (ok && std::filesystem::exists(src / "Src", ec)) {
-            std::filesystem::copy(
-                src / "Src", dest / "Src",
-                std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
-            ok = !ec;
+std::vector<std::string> JsonFindGitBlobPaths(const std::string_view json) {
+    std::vector<std::string> paths;
+    std::size_t pos = 0;
+    while ((pos = json.find('{', pos)) != std::string_view::npos) {
+        const std::size_t objectStart = pos++;
+        std::size_t depth = 0;
+        bool inString = false;
+        bool escaped = false;
+        std::size_t end = objectStart;
+        for (; end < json.size(); ++end) {
+            const char c = json[end];
+            if (escaped) {
+                escaped = false;
+            }
+            else if (c == '\\' && inString) {
+                escaped = true;
+            }
+            else if (c == '"') {
+                inString = !inString;
+            }
+            else if (!inString && c == '{') {
+                ++depth;
+            }
+            else if (!inString && c == '}' && --depth == 0) {
+                break;
+            }
+        }
+        if (end >= json.size()) {
+            break;
+        }
+
+        const std::string_view object = json.substr(objectStart, end - objectStart + 1);
+        // Git tree entries are flat objects. Ignoring enclosing objects avoids
+        // treating a nested entry as a field of the response object itself.
+        if (object.find('{', 1) == std::string_view::npos && JsonLookupString(object, "type") == "blob") {
+            if (std::string path = JsonLookupString(object, "path"); !path.empty()) {
+                paths.push_back(std::move(path));
+            }
         }
     }
-    std::filesystem::remove_all(tmp, ec);
-    if (!ok) {
-        std::filesystem::remove_all(dest, ec);
-    }
-    return ok;
+    return paths;
 }
+
+namespace {
+bool CommitDownloadedPackage(const std::filesystem::path &staging, const std::filesystem::path &dest) {
+    std::error_code ec;
+    std::filesystem::path backup = dest;
+    backup += ".previous";
+    std::filesystem::remove_all(backup, ec);
+    ec.clear();
+
+    const bool hadExisting = std::filesystem::exists(dest, ec);
+    if (ec) {
+        return false;
+    }
+    if (hadExisting) {
+        std::filesystem::rename(dest, backup, ec);
+        if (ec) {
+            return false;
+        }
+    }
+
+    std::filesystem::rename(staging, dest, ec);
+    if (ec) {
+        if (hadExisting) {
+            std::error_code restoreError;
+            std::filesystem::rename(backup, dest, restoreError);
+        }
+        return false;
+    }
+    std::filesystem::remove_all(backup, ec);
+    return true;
+}
+} // namespace
 
 #if RUX_OS_WINDOWS
 
-std::optional<std::string> FetchUrl(const std::string &url) {
-    const std::string cmd = "curl -s " + url;
-    std::array<char, 4096> buffer{};
-    std::string result;
-
-    FILE *pipe = _popen(cmd.c_str(), "r");
-    if (!pipe) {
-        return std::nullopt;
+namespace {
+class WinHttpHandle {
+public:
+    explicit WinHttpHandle(HINTERNET value = nullptr)
+        : value_(value) {
     }
 
-    while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
-        result += buffer.data();
+    ~WinHttpHandle() {
+        if (value_) {
+            WinHttpCloseHandle(value_);
+        }
     }
 
-    _pclose(pipe);
+    WinHttpHandle(const WinHttpHandle &) = delete;
+    WinHttpHandle &operator=(const WinHttpHandle &) = delete;
+
+    [[nodiscard]] HINTERNET Get() const noexcept {
+        return value_;
+    }
+
+private:
+    HINTERNET value_;
+};
+
+std::wstring Utf8ToWide(const std::string_view text) {
+    if (text.empty()) {
+        return {};
+    }
+    const int size =
+        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0);
+    if (size <= 0) {
+        return {};
+    }
+    std::wstring result(static_cast<std::size_t>(size), L'\0');
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), result.data(),
+                            size) != size) {
+        return {};
+    }
     return result;
 }
 
-bool GitClone(const std::string &repoUrl, const std::filesystem::path &dest, bool devBranch) {
-    std::wstring cmd = L"git clone ";
-    if (devBranch) {
-        cmd += L"--branch dev ";
+std::string UrlEncode(const std::string_view text, const bool preserveSlashes = false) {
+    constexpr char hex[] = "0123456789ABCDEF";
+    std::string encoded;
+    encoded.reserve(text.size());
+    for (const unsigned char c : text) {
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+            c == '.' || c == '~' || (preserveSlashes && c == '/')) {
+            encoded += static_cast<char>(c);
+        }
+        else {
+            encoded += '%';
+            encoded += hex[c >> 4];
+            encoded += hex[c & 0x0f];
+        }
     }
-    cmd += std::wstring(repoUrl.begin(), repoUrl.end()) + L" \"" + dest.wstring() + L"\"";
-
-    STARTUPINFOW si{};
-    si.cb = sizeof(si);
-    PROCESS_INFORMATION pi{};
-    if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
-        return false;
-    }
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD exitCode = 1;
-    GetExitCodeProcess(pi.hProcess, &exitCode);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-    return exitCode == 0;
+    return encoded;
 }
 
-bool GitPull(const std::filesystem::path &repoDir) {
-    std::wstring cmd = L"git -C \"" + repoDir.wstring() + L"\" pull";
+struct GitHubRepository {
+    std::string owner;
+    std::string name;
+};
 
-    STARTUPINFOW si{};
-    si.cb = sizeof(si);
-    PROCESS_INFORMATION pi{};
-    if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+std::optional<GitHubRepository> ParseGitHubRepository(std::string_view url) {
+    constexpr std::string_view prefix = "https://github.com/";
+    if (!url.starts_with(prefix)) {
+        return std::nullopt;
+    }
+    url.remove_prefix(prefix.size());
+    while (url.ends_with('/')) {
+        url.remove_suffix(1);
+    }
+    const auto slash = url.find('/');
+    if (slash == std::string_view::npos || slash == 0 || slash + 1 == url.size() ||
+        url.find('/', slash + 1) != std::string_view::npos) {
+        return std::nullopt;
+    }
+    std::string_view name = url.substr(slash + 1);
+    if (name.ends_with(".git")) {
+        name.remove_suffix(4);
+    }
+    if (name.empty()) {
+        return std::nullopt;
+    }
+    return GitHubRepository{std::string(url.substr(0, slash)), std::string(name)};
+}
+
+bool IsTrueJsonField(const std::string_view json, const std::string_view key) {
+    const std::string needle = "\"" + std::string(key) + "\"";
+    auto pos = json.find(needle);
+    if (pos == std::string_view::npos) {
         return false;
     }
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD exitCode = 1;
-    GetExitCodeProcess(pi.hProcess, &exitCode);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-    return exitCode == 0;
+    pos = json.find(':', pos + needle.size());
+    if (pos == std::string_view::npos) {
+        return false;
+    }
+    do {
+        ++pos;
+    }
+    while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\r' || json[pos] == '\n'));
+    return json.substr(pos).starts_with("true");
+}
+
+bool IsSafePackagePath(const std::string_view path) {
+    if (path.empty() || path.starts_with('/') || path.find('\\') != std::string_view::npos ||
+        path.find(':') != std::string_view::npos) {
+        return false;
+    }
+    std::size_t start = 0;
+    while (start < path.size()) {
+        const auto slash = path.find('/', start);
+        const auto part = path.substr(start, slash == std::string_view::npos ? path.size() - start : slash - start);
+        if (part.empty() || part == "." || part == "..") {
+            return false;
+        }
+        if (slash == std::string_view::npos) {
+            break;
+        }
+        start = slash + 1;
+    }
+    return true;
+}
+} // namespace
+
+std::optional<std::string> FetchUrl(const std::string &url) {
+    const std::wstring wideUrl = Utf8ToWide(url);
+    if (wideUrl.empty()) {
+        return std::nullopt;
+    }
+
+    URL_COMPONENTSW components{};
+    components.dwStructSize = sizeof(components);
+    components.dwHostNameLength = static_cast<DWORD>(-1);
+    components.dwUrlPathLength = static_cast<DWORD>(-1);
+    components.dwExtraInfoLength = static_cast<DWORD>(-1);
+    if (!WinHttpCrackUrl(wideUrl.c_str(), 0, 0, &components) ||
+        (components.nScheme != INTERNET_SCHEME_HTTP && components.nScheme != INTERNET_SCHEME_HTTPS)) {
+        return std::nullopt;
+    }
+
+    const std::wstring host(components.lpszHostName, components.dwHostNameLength);
+    std::wstring path(components.lpszUrlPath, components.dwUrlPathLength);
+    if (components.dwExtraInfoLength != 0) {
+        path.append(components.lpszExtraInfo, components.dwExtraInfoLength);
+    }
+    if (path.empty()) {
+        path = L"/";
+    }
+
+    WinHttpHandle session(WinHttpOpen(L"Rux package manager", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+                                      WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+    if (!session.Get()) {
+        return std::nullopt;
+    }
+    WinHttpSetTimeouts(session.Get(), 30'000, 30'000, 30'000, 30'000);
+
+    WinHttpHandle connection(WinHttpConnect(session.Get(), host.c_str(), components.nPort, 0));
+    if (!connection.Get()) {
+        return std::nullopt;
+    }
+    const DWORD flags = components.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
+    const wchar_t *acceptTypes[] = {L"application/json", L"text/plain", L"*/*", nullptr};
+    WinHttpHandle request(
+        WinHttpOpenRequest(connection.Get(), L"GET", path.c_str(), nullptr, WINHTTP_NO_REFERER, acceptTypes, flags));
+    if (!request.Get() ||
+        !WinHttpSendRequest(request.Get(), WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+        !WinHttpReceiveResponse(request.Get(), nullptr)) {
+        return std::nullopt;
+    }
+
+    DWORD status = 0;
+    DWORD statusSize = sizeof(status);
+    if (!WinHttpQueryHeaders(request.Get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                             WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize, WINHTTP_NO_HEADER_INDEX) ||
+        status < 200 || status >= 300) {
+        return std::nullopt;
+    }
+
+    constexpr std::size_t maxResponseSize = 128 * 1024 * 1024;
+    std::string result;
+    while (true) {
+        DWORD available = 0;
+        if (!WinHttpQueryDataAvailable(request.Get(), &available)) {
+            return std::nullopt;
+        }
+        if (available == 0) {
+            break;
+        }
+        if (available > maxResponseSize - result.size()) {
+            return std::nullopt;
+        }
+        const std::size_t offset = result.size();
+        result.resize(offset + available);
+        DWORD read = 0;
+        if (!WinHttpReadData(request.Get(), result.data() + offset, available, &read)) {
+            return std::nullopt;
+        }
+        result.resize(offset + read);
+    }
+    return result;
+}
+
+bool DownloadPackage(const std::string &repoUrl, const std::string &folder, const std::filesystem::path &dest,
+                     const bool devBranch) {
+    const auto repository = ParseGitHubRepository(repoUrl);
+    if (!repository) {
+        return false;
+    }
+
+    const std::string apiBase =
+        "https://api.github.com/repos/" + UrlEncode(repository->owner) + "/" + UrlEncode(repository->name);
+    std::string branch = "dev";
+    if (!devBranch) {
+        const auto metadata = FetchUrl(apiBase);
+        if (!metadata || (branch = JsonLookupString(*metadata, "default_branch")).empty()) {
+            return false;
+        }
+    }
+    const auto tree = FetchUrl(apiBase + "/git/trees/" + UrlEncode(branch) + "?recursive=1");
+    if (!tree || IsTrueJsonField(*tree, "truncated")) {
+        return false;
+    }
+
+    std::string packageRoot = folder;
+    std::replace(packageRoot.begin(), packageRoot.end(), '\\', '/');
+    while (packageRoot.starts_with('/')) {
+        packageRoot.erase(packageRoot.begin());
+    }
+    while (packageRoot.ends_with('/')) {
+        packageRoot.pop_back();
+    }
+    const std::string prefix = packageRoot.empty() ? std::string{} : packageRoot + "/";
+
+    std::filesystem::path staging = dest;
+    staging += ".download";
+    std::error_code ec;
+    std::filesystem::remove_all(staging, ec);
+    std::filesystem::create_directories(staging, ec);
+    if (ec) {
+        return false;
+    }
+
+    bool foundManifest = false;
+    for (const std::string &remotePath : JsonFindGitBlobPaths(*tree)) {
+        if (!prefix.empty() && !std::string_view(remotePath).starts_with(prefix)) {
+            continue;
+        }
+        const std::string_view relative =
+            prefix.empty() ? std::string_view(remotePath) : std::string_view(remotePath).substr(prefix.size());
+        if (relative != "Rux.toml" && !relative.starts_with("Src/")) {
+            continue;
+        }
+        if (!IsSafePackagePath(relative)) {
+            std::filesystem::remove_all(staging, ec);
+            return false;
+        }
+
+        const std::string rawUrl = "https://raw.githubusercontent.com/" + UrlEncode(repository->owner) + "/" +
+                                   UrlEncode(repository->name) + "/" + UrlEncode(branch) + "/" +
+                                   UrlEncode(remotePath, true);
+        const auto contents = FetchUrl(rawUrl);
+        if (!contents) {
+            std::filesystem::remove_all(staging, ec);
+            return false;
+        }
+
+        const std::filesystem::path output = staging / std::filesystem::path(relative);
+        std::filesystem::create_directories(output.parent_path(), ec);
+        if (ec) {
+            std::filesystem::remove_all(staging, ec);
+            return false;
+        }
+        std::ofstream file(output, std::ios::binary | std::ios::trunc);
+        file.write(contents->data(), static_cast<std::streamsize>(contents->size()));
+        if (!file) {
+            file.close();
+            std::filesystem::remove_all(staging, ec);
+            return false;
+        }
+        foundManifest |= relative == "Rux.toml";
+    }
+
+    if (!foundManifest || !CommitDownloadedPackage(staging, dest)) {
+        std::filesystem::remove_all(staging, ec);
+        return false;
+    }
+    return true;
 }
 
 std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<const std::string_view> args) {
@@ -306,15 +586,43 @@ std::optional<std::string> FetchUrl(const std::string &url) {
     return RunCommandCapture("wget -qO- " + quotedUrl);
 }
 
-bool GitClone(const std::string &repoUrl, const std::filesystem::path &dest, bool devBranch) {
-    const std::string cmd = devBranch ? "git clone -b dev " + repoUrl + " \"" + dest.string() + "\""
-                                      : "git clone " + repoUrl + " \"" + dest.string() + "\"";
-    return std::system(cmd.c_str()) == 0;
-}
+bool DownloadPackage(const std::string &repoUrl, const std::string &folder, const std::filesystem::path &dest,
+                     const bool devBranch) {
+    std::filesystem::path repository = dest;
+    repository += ".repository";
+    std::filesystem::path staging = dest;
+    staging += ".download";
+    std::error_code ec;
+    std::filesystem::remove_all(repository, ec);
+    std::filesystem::remove_all(staging, ec);
 
-bool GitPull(const std::filesystem::path &repoDir) {
-    const std::string cmd = "git -C \"" + repoDir.string() + "\" pull";
-    return std::system(cmd.c_str()) == 0;
+    const std::string branch = devBranch ? " -b dev" : "";
+    const std::string command =
+        "git clone" + branch + " " + ShellQuote(repoUrl) + " " + ShellQuote(repository.string());
+    if (std::system(command.c_str()) != 0) {
+        std::filesystem::remove_all(repository, ec);
+        return false;
+    }
+
+    const std::filesystem::path source = folder.empty() ? repository : repository / folder;
+    std::filesystem::create_directories(staging, ec);
+    if (!ec && std::filesystem::exists(source / "Rux.toml", ec)) {
+        std::filesystem::copy_file(source / "Rux.toml", staging / "Rux.toml",
+                                   std::filesystem::copy_options::overwrite_existing, ec);
+    }
+    if (!ec && std::filesystem::exists(source / "Src", ec)) {
+        std::filesystem::copy(
+            source / "Src", staging / "Src",
+            std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
+    }
+    const bool packageReady = !ec && std::filesystem::exists(staging / "Rux.toml", ec) && !ec;
+    std::error_code cleanupError;
+    std::filesystem::remove_all(repository, cleanupError);
+    if (!packageReady || !CommitDownloadedPackage(staging, dest)) {
+        std::filesystem::remove_all(staging, ec);
+        return false;
+    }
+    return true;
 }
 
 std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<const std::string_view> args) {

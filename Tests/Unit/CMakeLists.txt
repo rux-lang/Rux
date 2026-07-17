@@ -13,6 +13,7 @@ set(RUX_TEST_SOURCES
     GoldenDiagnosticsTests.cpp
     LexerTests.cpp
     LinkerTests.cpp
+    ManifestTests.cpp
     OptimizerTests.cpp
     OsTests.cpp
     ProcessTests.cpp

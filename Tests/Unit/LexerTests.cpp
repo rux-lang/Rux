@@ -136,6 +136,8 @@ TEST_CASE("DecodeCharLiteralCodePoint decodes plain and escaped characters") {
 }
 
 TEST_CASE("KeywordKind distinguishes keywords from identifiers") {
+    CHECK(KeywordKind("intrinsic") == TokenKind::IntrinsicKeyword);
+    CHECK(TokenKindName(TokenKind::IntrinsicKeyword) == "IntrinsicKeyword");
     CHECK(KeywordKind("func") == TokenKind::FuncKeyword);
     CHECK(KeywordKind("while") == TokenKind::WhileKeyword);
     CHECK(KeywordKind("if") == TokenKind::IfKeyword);

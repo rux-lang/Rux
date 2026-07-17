@@ -148,7 +148,19 @@ std::optional<Manifest> Manifest::Load(const std::filesystem::path &path) {
                 m.package.description = value;
             }
             else if (key == "Authors") {
-                m.package.authors = value;
+                std::string authorsText(Trim(trimmed.substr(eq + 1)));
+                if (authorsText.starts_with('[')) {
+                    while (authorsText.find(']') == std::string::npos && std::getline(file, line)) {
+                        authorsText.push_back(' ');
+                        authorsText.append(Trim(line));
+                    }
+                    ParseStringArray(authorsText, m.package.authors);
+                }
+                else if (!value.empty()) {
+                    // Accept legacy scalar manifests and normalize them to an
+                    // array the next time the manifest is saved.
+                    m.package.authors.emplace_back(value);
+                }
             }
             else if (key == "License") {
                 m.package.license = value;
@@ -200,14 +212,21 @@ bool Manifest::Save(const std::filesystem::path &path) const {
     }
 
     file << "[Package]\n"
-         << "Name    = \"" << package.name << "\"\n"
+         << "Name = \"" << package.name << "\"\n"
          << "Version = \"" << package.version << "\"\n"
-         << "Type    = \"" << package.type << "\"\n";
+         << "Type = \"" << package.type << "\"\n";
     if (!package.description.empty()) {
         file << "Description = \"" << package.description << "\"\n";
     }
     if (!package.authors.empty()) {
-        file << "Authors = \"" << package.authors << "\"\n";
+        file << "Authors = [";
+        for (std::size_t i = 0; i < package.authors.size(); ++i) {
+            if (i != 0) {
+                file << ", ";
+            }
+            file << '"' << package.authors[i] << '"';
+        }
+        file << "]\n";
     }
     if (!package.license.empty()) {
         file << "License = \"" << package.license << "\"\n";
@@ -217,16 +236,6 @@ bool Manifest::Save(const std::filesystem::path &path) const {
     }
     if (!package.homepage.empty()) {
         file << "Homepage = \"" << package.homepage << "\"\n";
-    }
-
-    file << "\n[Build]\n"
-         << "Output  = \"" << build.output << "\"\n";
-
-    if (!build.defines.empty()) {
-        file << "\n[Build.Defines]\n";
-        for (const auto &[name, value] : build.defines) {
-            file << name << " = \"" << value << "\"\n";
-        }
     }
 
     if (!dependencies.empty()) {
@@ -252,6 +261,16 @@ bool Manifest::Save(const std::filesystem::path &path) const {
                 std::string ver = dep.version.empty() ? "*" : dep.version;
                 file << dep.name << " = \"" << ver << "\"\n";
             }
+        }
+    }
+
+    file << "\n[Build]\n"
+         << "Output = \"" << build.output << "\"\n";
+
+    if (!build.defines.empty()) {
+        file << "\n[Build.Defines]\n";
+        for (const auto &[name, value] : build.defines) {
+            file << name << " = \"" << value << "\"\n";
         }
     }
     return file.good();

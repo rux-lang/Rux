@@ -41,6 +41,9 @@ rux_add_component(RuxSystem
     System/Host.cpp
     System/Os.cpp
     System/Process.cpp)
+if (WIN32)
+    target_link_libraries(RuxSystem PRIVATE winhttp)
+endif ()
 
 rux_add_component(RuxPackage
     Package/Manifest.cpp
