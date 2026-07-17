@@ -38,7 +38,7 @@ inline constexpr std::string_view kRegistryUrl = "https://api.rux-lang.dev/packa
 // fields (e.g. "repository" or "folder").
 //
 // The index is a JSON array of flat package objects, e.g.
-//   [ { "name": "Std", "repository": "https://github.com/...", "folder": "", ... }, ... ]
+//   [ { "name": "Rux", "repository": "https://github.com/...", "folder": "Rux", ... }, ... ]
 // Returns an empty string if no package with that name (or no such field) exists.
 [[nodiscard]] std::string JsonFindPackageField(std::string_view json, std::string_view name, std::string_view field);
 

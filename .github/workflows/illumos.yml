@@ -77,5 +77,7 @@ jobs:
           run: |
             set -e
             chmod +x Bin/Release/rux
-            ./Bin/Release/rux install Std
+            for pkg in Rux Format Io Memory Text; do
+              ./Bin/Release/rux install "$pkg"
+            done
             ./Bin/Release/rux test --release

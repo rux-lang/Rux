@@ -1,5 +1,5 @@
-import Std::Assert;
-import Std::Memory::{ Alloc, Free };
+import Rux::Assert;
+import Memory::{ Alloc, Free };
 
 func Main() -> int {
     let size: uint = 1024;

@@ -1,5 +1,4 @@
-import Std::Io::{ Print, PrintLine };
-import Std::Display;
+import Io::{ Print, PrintLine };
 
 func Add(a: float, b: float) -> float {
     return a + b;

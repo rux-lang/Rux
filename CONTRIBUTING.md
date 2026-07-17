@@ -18,10 +18,10 @@ Thanks for your interest in contributing to the Rux programming language! This p
    git checkout dev
    git checkout -b my-feature
    ```
-3. Make your change, add a test, and run the suite — the test packages depend
-   on `Std`, so install it once first:
+3. Make your change, add a test, and run the suite — install the packages the
+   test suite depends on once first:
    ```sh
-   ./Bin/Release/rux install Std
+   for pkg in Rux Format Io Memory Text; do ./Bin/Release/rux install $pkg; done
    ./Bin/Release/rux test
    ```
 4. Format touched files with `clang-format -i <files>`.

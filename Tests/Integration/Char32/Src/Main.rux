@@ -1,4 +1,4 @@
-import Std::Assert;
+import Rux::Assert;
 
 func Main() -> int {
     // Literals. The c32 prefix gives one code point, which is what a char32 holds.

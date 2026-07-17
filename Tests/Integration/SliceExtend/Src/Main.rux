@@ -1,4 +1,4 @@
-import Std::Assert;
+import Rux::Assert;
 
 // Extension methods on a built-in slice type. `self` is the slice value, so it
 // can be iterated and indexed directly.

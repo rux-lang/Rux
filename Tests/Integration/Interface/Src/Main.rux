@@ -3,7 +3,7 @@
     Copyright © 2026 Rux Contributors
     Licensed under the MIT License
 */
-import Std::Assert;
+import Rux::Assert;
 
 interface Figure {
     func Area() -> int;

@@ -1,4 +1,4 @@
-import Std::Assert;
+import Rux::Assert;
 
 func Main() -> int {
     let a: int16 = 1000;

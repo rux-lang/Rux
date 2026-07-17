@@ -1,4 +1,4 @@
-import Std::Assert;
+import Rux::Assert;
 
 func Max<T>(a: T, b: T) -> T {
     if (a > b) {

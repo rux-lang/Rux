@@ -130,8 +130,8 @@ struct Manifest {
  *
  * Examples:
  * @code
- * "Std"       -> { "Std", "" }
- * "Std@1.2.0" -> { "Std", "1.2.0" }
+ * "Rux"       -> { "Rux", "" }
+ * "Rux@1.2.0" -> { "Rux", "1.2.0" }
  * @endcode
  *
  * @param spec Package spec string

@@ -1,4 +1,5 @@
-import Std::{ String, Assert };
+import Rux::Assert;
+import Text::String;
 
 func Main() -> int {
     var str1 = String::From("One");

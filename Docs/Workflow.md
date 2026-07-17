@@ -133,7 +133,7 @@ unit tests for the compiler internals (run with `ctest`).
 Run the full suite from the repo root:
 
 ```sh
-./Bin/Release/rux install Std     # test packages depend on Std
+for pkg in Rux Format Io Memory Text; do ./Bin/Release/rux install $pkg; done   # test dependencies
 ./Bin/Release/rux test            # add --release to test the optimized build, --verbose for paths
 ```
 

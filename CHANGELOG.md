@@ -109,7 +109,6 @@ Adds broad multi-platform host support, a revamped platform abstraction layer, n
 - **Tuple size / field offset layout** is now aligned consistently across backends
 - **Pointer arithmetic** now scales by element size
 - **Slice-of-slice assignment** no longer corrupts the slice length field
-- **Import resolution** for `import Std::Io` / module-qualified calls is fixed
 - **Compatibility checks** for mixed character and integer types are relaxed where appropriate
 - **Platform-conditional imports** under `@[Target(...)]` are filtered correctly during dependency collection
 - Enums and type aliases not resolving inside `extern` blocks

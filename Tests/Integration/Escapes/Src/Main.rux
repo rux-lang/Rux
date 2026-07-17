@@ -1,4 +1,4 @@
-import Std::Assert;
+import Rux::Assert;
 
 // Verify the \a \b \f \v escape sequences: each byte of the string literal
 // (decoded via the string-literal path) must equal the matching char literal

@@ -1,4 +1,4 @@
-import Std::Assert;
+import Rux::Assert;
 
 func Sum(args: float...) -> float {
     var sum: float = 0.0;

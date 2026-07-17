@@ -1126,7 +1126,7 @@ std::unique_ptr<UseDecl> Parser::ParseUseDecl() {
     while (!IsAtEnd()) {
         if (Match(TokenKind::Dot)) {
             if (Match(TokenKind::Star)) {
-                // import Std.Io.*;
+                // import Rux.Primitives.*;
                 decl->kind = UseDecl::Kind::Glob;
                 break;
             }
@@ -1147,7 +1147,6 @@ std::unique_ptr<UseDecl> Parser::ParseUseDecl() {
                 break;
             }
             if (Match(TokenKind::Star)) {
-                // import Std::Io::*
                 decl->kind = UseDecl::Kind::Glob;
                 break;
             }

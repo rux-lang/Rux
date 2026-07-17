@@ -1,4 +1,4 @@
-import Std::Assert;
+import Rux::Assert;
 
 func Main() -> int {
     // Basic arithmetic. An unsuffixed float literal is a float64.

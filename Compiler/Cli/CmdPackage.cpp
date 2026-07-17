@@ -88,7 +88,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
     int upToDate = 0;
     // Breadth-first install: each downloaded package's own dependencies are
     // appended to the queue, so the whole transitive graph is resolved
-    // (e.g. installing Std also pulls in its platform packages).
+    // (e.g. installing Io also pulls in its platform packages).
     for (std::size_t i = 0; i < queue.size(); ++i) {
         const std::string &pkgName = queue[i];
         const std::string repoUrl = JsonFindPackageRepository(*jsonOptInstall, pkgName);

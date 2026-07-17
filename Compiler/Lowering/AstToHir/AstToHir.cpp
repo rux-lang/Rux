@@ -292,9 +292,7 @@ private:
         }
     }
 
-    // The module a bare `import` makes visible: `import Std::Io::Print` names
-    // module Std::Io, `import Std::{ Assert }` and `import Std.Io.*` name the
-    // module they are rooted at. Mirrors SemanticAnalyzer::LogicalModulePathForImport.
+    // The module a bare `import` makes visible: `import Io::Print` names
     static std::string ImportedModulePath(const UseDecl &d) {
         if (d.path.empty()) {
             return "";
@@ -2138,7 +2136,7 @@ private:
         return out;
     }
 
-    // Derives the Rux module path (e.g. "Std::Io") from a source file path.
+    // Derives the Rux module path (e.g. "Primitives::Bool") from a source file path.
     // Finds the "Src" directory component and uses the relative path below
     // it.
     static std::string FilePathToModulePath(const std::string &filePath) {

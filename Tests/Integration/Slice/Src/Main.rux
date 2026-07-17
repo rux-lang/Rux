@@ -1,4 +1,4 @@
-import Std::Assert;
+import Rux::Assert;
 
 func PlatformName() -> char8[] {
     return "Windows";

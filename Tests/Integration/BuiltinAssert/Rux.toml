@@ -3,5 +3,8 @@ Name = "BuiltinAssert"
 Version = "0.1.0"
 Description = "Built-in assertions integration test"
 
+[Dependencies]
+Rux = "*"
+
 [Build]
 Output = "../Bin"

@@ -37,7 +37,7 @@ struct NamedTypeExpr : TypeExpr {
     std::vector<TypeExprPtr> typeArgs;
 };
 
-// Std::Io::Reader
+// Text::String, Rux::Primitives::Bool
 struct PathTypeExpr : TypeExpr {
     std::vector<std::string> segments;
 };

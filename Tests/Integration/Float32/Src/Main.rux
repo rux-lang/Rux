@@ -1,4 +1,4 @@
-import Std::Assert;
+import Rux::Assert;
 
 func Main() -> int {
     // Basic arithmetic. Every literal carries the f32 suffix: an unsuffixed one

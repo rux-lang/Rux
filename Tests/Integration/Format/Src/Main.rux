@@ -1,4 +1,5 @@
-import Std::{ Assert, Format };
+import Rux::Assert;
+import Format::Format;
 
 func Main() -> int {
     let str = Format("Integer: {}, Float: {}\n", 255, 3.141592653589793);

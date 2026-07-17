@@ -21,7 +21,7 @@ static constexpr std::string_view Unquote(std::string_view s) noexcept {
 }
 
 // Parse a string value out of an inline table like { Path =
-// "../../Packages/Std" }.
+// "../../Packages/Rux" }.
 static std::string ParseInlineTableString(std::string_view val, std::string_view keyName) {
     const auto open = val.find('{');
     const auto close = val.rfind('}');

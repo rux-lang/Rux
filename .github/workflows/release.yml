@@ -67,7 +67,9 @@ jobs:
 
       - name: Test
         run: |
-          ./Bin/Release/rux install Std
+          for pkg in Rux Format Io Memory Text; do
+            ./Bin/Release/rux install "$pkg"
+          done
           ./Bin/Release/rux test --release
 
       - name: Upload binary artifact
@@ -111,8 +113,12 @@ jobs:
           cmake --build build --config Release
 
       - name: Test
+        shell: pwsh
         run: |
-          ./Bin/Release/rux.exe install Std
+          foreach ($pkg in "Rux", "Format", "Io", "Memory", "Text") {
+              ./Bin/Release/rux.exe install $pkg
+              if ($LASTEXITCODE -ne 0) { throw "failed to install $pkg" }
+          }
           ./Bin/Release/rux.exe test --release
 
       - name: Upload binary artifact

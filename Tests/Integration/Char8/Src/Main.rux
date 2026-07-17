@@ -1,4 +1,4 @@
-import Std::Assert;
+import Rux::Assert;
 
 func Main() -> int {
     // Literals. A bare quote is a char8, and the c8 prefix says so explicitly.

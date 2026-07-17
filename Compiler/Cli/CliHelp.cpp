@@ -196,7 +196,7 @@ namespace Data {
 // Add
 constexpr std::array add_usage = {"[package]"sv, "[package]@[version]"sv, "[package] --path [path]"sv};
 constexpr std::array add_opts = {OptionDoc{.flags = "--path <path>"sv, .desc = "Add a local path-based dependency"sv}};
-constexpr std::array add_exs = {"Std"sv, "Std@0.1.0"sv, "Json --path ../Json"sv};
+constexpr std::array add_exs = {"Rux"sv, "Rux@0.1.0"sv, "Json --path ../Json"sv};
 
 // Build
 constexpr std::array build_usage = {"[options]"sv};
@@ -255,7 +255,7 @@ constexpr std::array lint_exs = {""sv, "--verbose"sv};
 // Info
 constexpr std::array info_usage = {"[package name]"sv};
 constexpr std::array info_opts = {OptionDoc{.flags = "--json"sv, .desc = "Output package metadata in JSON format"sv}};
-constexpr std::array info_exs = {"Std"sv, "Windows"sv};
+constexpr std::array info_exs = {"Rux"sv, "Windows"sv};
 
 // Init
 constexpr std::array init_usage = {"[options]"sv};
@@ -268,7 +268,7 @@ constexpr std::array init_exs = {""sv, "--bin"sv};
 constexpr std::array install_usage = {""sv, "[package]"sv, "[package]@[version]"sv, "--dev [package]"sv};
 constexpr std::array install_opts = {
     OptionDoc{.flags = "--dev"sv, .desc = "Clone the package repository's development branch"sv}};
-constexpr std::array install_exs = {""sv, "Std"sv, "Std@0.1.0"sv, "--dev Std"sv, "--dev Windows"sv};
+constexpr std::array install_exs = {""sv, "Rux"sv, "Rux@0.1.0"sv, "--dev Rux"sv, "--dev Windows"sv};
 
 // List
 constexpr std::array list_usage = {"[options]"sv};

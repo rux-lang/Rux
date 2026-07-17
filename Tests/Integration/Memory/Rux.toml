@@ -1,10 +1,11 @@
 [Package]
-Name = "Memory"
+Name = "MemoryTest"
 Version = "0.1.0"
 Description = "Test for Rux compiler"
 
 [Dependencies]
-Std = "*"
+Memory = "*"
+Rux = "*"
 
 [Build]
 Output = "../Bin"

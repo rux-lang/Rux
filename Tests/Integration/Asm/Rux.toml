@@ -3,5 +3,8 @@ Name = "Asm"
 Version = "0.1.0"
 Description = "Test for Rux compiler"
 
+[Dependencies]
+Rux = "*"
+
 [Build]
 Output = "../Bin"
