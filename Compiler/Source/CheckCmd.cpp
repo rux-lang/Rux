@@ -9,6 +9,7 @@
 #include "Rux/Platform.h"
 #include "Rux/Process.h"
 #include "Rux/Sema.h"
+#include "Rux/SourceLoader.h"
 #include "Rux/Target.h"
 #include "Rux/Terminal.h"
 #include "Rux/Version.h"
@@ -27,33 +28,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-/*
- * This is separate from the other ifdef because otherwise clang-format attempts
- * to change the order, which makes MSVC cry.
- */
-
-#if RUX_OS_WINDOWS
-    #ifndef WIN32_LEAN_AND_MEAN
-        #define WIN32_LEAN_AND_MEAN
-    #endif
-
-    #ifndef NOMINMAX
-        #define NOMINMAX
-    #endif
-
-    #include <windows.h>
-#endif
-
-#if RUX_OS_WINDOWS
-    #include <psapi.h>
-#else
-    #include <sys/resource.h>
-    #include <sys/wait.h>
-    #include <unistd.h>
-#endif
-
-#include "Rux/SourceLoader.h"
 
 using namespace Rux;
 using namespace Platform;
