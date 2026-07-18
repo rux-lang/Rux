@@ -14,7 +14,7 @@ concurrency:
 jobs:
   build:
     name: Build
-    runs-on: macos-26
+    runs-on: macos-26-intel
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -50,7 +50,7 @@ jobs:
   test:
     name: Test
     needs: build
-    runs-on: macos-26
+    runs-on: macos-26-intel
     steps:
       - name: Checkout
         uses: actions/checkout@v7

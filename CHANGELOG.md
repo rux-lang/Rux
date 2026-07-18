@@ -82,9 +82,8 @@ Adds broad multi-platform host support, a revamped platform abstraction layer, n
 - **OpenBSD x86-64 host** — native compilation and execution on OpenBSD x86-64
 - **NetBSD x86-64 host** — native compilation and execution on NetBSD x86-64
 - **DragonFly BSD x86-64 host** — native compilation and execution on DragonFly BSD x86-64
-- **Illumos x86-64 host** — native compilation and execution on Illumos/OmniOS x86-64
 - **Platform abstraction layer** — revamped `Platform` implementation with platform macros and CPU feature detection at runtime
-- **BSD and Illumos ELF target support** — correct ELF OSABI, `PT_NOTE`, `ET_DYN` per target
+- **BSD ELF target support** — correct ELF OSABI, `PT_NOTE`, `ET_DYN` per target
 - **Target-specific platform dependencies** — `[Target.<Platform>.Dependencies]` in `Rux.toml`
 
 #### Syscall Thunks

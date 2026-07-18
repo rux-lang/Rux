@@ -1,6 +1,6 @@
 # Release Pipeline
 
-How a version tag becomes a published, multi-platform GitHub Release. The pipeline is defined in [`.github/workflows/release.yml`](../.github/workflows/release.yml) and is independent of the per-push CI in [CI/CD Flow](CI-CD.md).
+How a version tag becomes a published, multi-platform GitHub Release. The pipeline is defined in [`.github/workflows/Release.yml`](../.github/workflows/Release.yml) and is independent of the per-push CI in [CI/CD Flow](CI-CD.md).
 
 ## Trigger
 

@@ -6,12 +6,11 @@
 
 # Rux Programming Language
 
-[![BSD](https://github.com/rux-lang/Rux/actions/workflows/bsd.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/bsd.yml)
-[![Illumos](https://github.com/rux-lang/Rux/actions/workflows/illumos.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/illumos.yml)
-[![Linux](https://github.com/rux-lang/Rux/actions/workflows/linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/linux.yml)
-[![macOS](https://github.com/rux-lang/Rux/actions/workflows/macos.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/macos.yml)
-[![Windows](https://github.com/rux-lang/Rux/actions/workflows/windows.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/windows.yml)
-[![Lint](https://github.com/rux-lang/Rux/actions/workflows/lint.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/lint.yml)
+[![FreeBSD](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml)
+[![Linux](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml)
+[![macOS](https://github.com/rux-lang/Rux/actions/workflows/macOS.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/macOS.yml)
+[![Windows](https://github.com/rux-lang/Rux/actions/workflows/Windows.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/Windows.yml)
+[![Lint](https://github.com/rux-lang/Rux/actions/workflows/Lint.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/Lint.yml)
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](LICENSE.md)
 
@@ -144,16 +143,6 @@ cmake -S . -B build -G Ninja \
 
 ```sh
 sudo pkgin -y install clang cmake ninja-build git
-cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
-```
-
-</details>
-
-<details>
-<summary><b>OmniOS</b></summary>
-
-```sh
-pfexec pkg install clang cmake ninja git
 cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
 ```
 

@@ -28,8 +28,8 @@ Opening or updating a PR triggers the full per-OS CI matrix — every supported 
 
 Not every workflow blocks merging. The **required** checks are:
 
-- **Linux** (`linux.yml`)
-- **Windows** (`windows.yml`)
+- **Linux** (`Linux.yml`)
+- **Windows** (`Windows.yml`)
 
 The macOS, BSD, and Illumos workflows run too and are worth watching, but they are **informational** — they won't block the merge button. Both required checks must be green before a PR is eligible to merge.
 

@@ -46,4 +46,4 @@ Delete the installation directory, then remove that directory from the user PATH
 
 ## Release integration
 
-The script consumes the `rux-windows.zip` asset created by the [release workflow](../../../.github/workflows/release.yml). Without `-Version`, GitHub's latest-release redirect selects the asset; a pinned version downloads from its matching `v*` tag.
+The script consumes the `rux-windows.zip` asset created by the [release workflow](../../../.github/workflows/Release.yml). Without `-Version`, GitHub's latest-release redirect selects the asset; a pinned version downloads from its matching `v*` tag.

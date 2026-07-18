@@ -70,4 +70,4 @@ Upgrades use the same commands: the MSI's stable upgrade code replaces an older 
 
 ## CI
 
-The [release workflow](../../../.github/workflows/release.yml) builds this MSI in the `windows` job and attaches `rux-windows.msi` to the draft GitHub Release.
+The [release workflow](../../../.github/workflows/Release.yml) builds this MSI in the `windows` job and attaches `rux-windows.msi` to the draft GitHub Release.

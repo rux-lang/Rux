@@ -1,4 +1,4 @@
-name: Illumos
+name: FreeBSD
 
 on:
   push:
@@ -11,12 +11,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# GitHub has no native illumos runner, so each job runs an OmniOS VM (an
-# illumos distribution, via QEMU) on an Ubuntu host. Build and Test are
-# separate jobs: the Build VM compiles rux and the binary is synced back to
-# the host and uploaded as an artifact; the Test VM downloads it and runs the
-# suite. Each job boots its own VM, so the toolchain is installed in both (the
-# Test VM also needs the Clang runtime libraries the binary links against).
+# GitHub has no native FreeBSD runner, so each job runs a FreeBSD VM (via
+# QEMU) on an Ubuntu host. Build and Test are separate jobs: the Build VM
+# compiles rux and the binary is synced back to the host and uploaded as an
+# artifact; the Test VM downloads it and runs the suite. Each job boots its
+# own VM, so the toolchain is installed in both (the Test VM also needs the
+# Clang runtime libraries the binary links against).
 jobs:
   build:
     name: Build
@@ -25,28 +25,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Build in OmniOS VM
-        uses: vmactions/omnios-vm@v1
+      - name: Build in FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
         with:
-          release: "r151052"
+          release: "14.2"
           usesh: true
-          # Installs the toolchain via IPS from the OmniOS extra (ooce) repo.
-          # The clang package is unversioned in FMRI terms here, so we use
-          # plain clang++.
+          # llvm22 provides clang++22, matching the Clang 22 used elsewhere.
           prepare: |
-            pkg install clang cmake ninja
+            pkg install -y llvm22 cmake ninja
           run: |
             set -e
             cmake -S . -B build -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_CXX_COMPILER=clang++ \
+              -DCMAKE_CXX_COMPILER=clang++22 \
               -DRUX_WERROR=ON
             cmake --build build --config Release
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-omnios
+          name: rux-freebsd
           path: Bin/Release/rux
           if-no-files-found: error
 
@@ -61,17 +59,19 @@ jobs:
       - name: Download binary artifact
         uses: actions/download-artifact@v8
         with:
-          name: rux-omnios
+          name: rux-freebsd
           path: Bin/Release
 
-      - name: Test in OmniOS VM
-        uses: vmactions/omnios-vm@v1
+      - name: Test in FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
         with:
-          release: "r151052"
+          release: "14.2"
           usesh: true
-          # Installs the Clang runtime libraries the prebuilt binary needs.
+          # The prebuilt binary needs the Clang runtime libraries. Package
+          # installation also fetches the registry with curl and clones
+          # package repositories with git.
           prepare: |
-            pkg install clang
+            pkg install -y llvm22 curl git
           # Manifest-less workspace mode discovers test dependencies before
           # running the suite from the repository root.
           run: |
