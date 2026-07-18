@@ -70,15 +70,10 @@ jobs:
           name: rux-windows-x64.exe
           path: Bin/Release
 
-      # The test packages depend on these packages, so install them first.
-      # Each install resolves its own transitive dependencies.
+      # Manifest-less workspace mode discovers dependencies from test packages.
       - name: Install test dependencies
         shell: pwsh
-        run: |
-          foreach ($pkg in "Rux", "Format", "Io", "Memory", "Text") {
-              ./Bin/Release/rux.exe install $pkg
-              if ($LASTEXITCODE -ne 0) { throw "failed to install $pkg" }
-          }
+        run: ./Bin/Release/rux.exe install
 
       # Workspace mode: run from the repo root so `rux test` discovers Tests/.
       - name: Test

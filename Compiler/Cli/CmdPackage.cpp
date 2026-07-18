@@ -45,6 +45,15 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
     }
     std::vector<std::string> queue;
     std::unordered_set<std::string> queued;
+    auto QueueDependencies = [&](const Manifest &packageManifest) {
+        for (const auto &dep : packageManifest.dependencies) {
+            if (const std::string packageName = DependencyPackageName(dep);
+                dep.path.empty() && !queued.contains(packageName)) {
+                queue.push_back(packageName);
+                queued.insert(packageName);
+            }
+        }
+    };
     // Seed the work queue: either the explicitly named package, or every
     // registry dependency declared by the current project's manifest. From
     // here both cases share the same transitive resolution loop below.
@@ -54,48 +63,70 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
         queued.insert(pkgName);
     }
     else {
-        const auto manifestPath = RequireManifest(opts.manifest);
-        if (!manifestPath) {
-            return 1;
-        }
-        auto manifest = LoadManifest(*manifestPath);
-        if (!manifest) {
-            return 1;
-        }
-        auto QueueDependencies = [&](const Manifest &packageManifest) {
-            for (const auto &dep : packageManifest.dependencies) {
-                if (const std::string packageName = DependencyPackageName(dep);
-                    dep.path.empty() && !queued.contains(packageName)) {
-                    queue.push_back(packageName);
-                    queued.insert(packageName);
-                }
-            }
-        };
-        if (manifest->IsWorkspace()) {
-            if (!opts.quiet) {
-                std::print("Installing workspace\n");
-            }
-            const auto workspaceRoot = manifestPath->parent_path();
-            for (const auto &member : manifest->workspace.packages) {
-                const auto memberManifestPath = (workspaceRoot / member / "Rux.toml").lexically_normal();
-                std::error_code ec;
-                if (!std::filesystem::exists(memberManifestPath, ec)) {
-                    std::print(stderr, "error: workspace member '{}' has no Rux.toml\n", member);
-                    return 1;
-                }
-                auto memberManifest = LoadManifest(memberManifestPath);
-                if (!memberManifest) {
-                    return 1;
-                }
-                if (memberManifest->IsWorkspace() || memberManifest->package.name.empty()) {
-                    std::print(stderr, "error: workspace member '{}' is not a package\n", member);
-                    return 1;
-                }
-                QueueDependencies(*memberManifest);
+        std::optional<std::filesystem::path> manifestPath;
+        if (!opts.manifest.empty()) {
+            manifestPath = RequireManifest(opts.manifest);
+            if (!manifestPath) {
+                return 1;
             }
         }
         else {
-            QueueDependencies(*manifest);
+            manifestPath = Manifest::Find();
+        }
+
+        if (!manifestPath) {
+            const auto workspaceManifests = DiscoverManifestlessWorkspaceManifests();
+            if (workspaceManifests.empty()) {
+                static_cast<void>(RequireManifest()); // Print the standard missing-manifest error.
+                return 1;
+            }
+            if (!opts.quiet) {
+                std::print("Installing workspace\n");
+            }
+            for (const auto &packageManifestPath : workspaceManifests) {
+                auto packageManifest = LoadManifest(packageManifestPath);
+                if (!packageManifest) {
+                    return 1;
+                }
+                if (packageManifest->IsWorkspace() || packageManifest->package.name.empty()) {
+                    std::print(stderr, "error: workspace member '{}' is not a package\n",
+                               packageManifestPath.parent_path().string());
+                    return 1;
+                }
+                QueueDependencies(*packageManifest);
+            }
+        }
+        else {
+            auto manifest = LoadManifest(*manifestPath);
+            if (!manifest) {
+                return 1;
+            }
+            if (manifest->IsWorkspace()) {
+                if (!opts.quiet) {
+                    std::print("Installing workspace\n");
+                }
+                const auto workspaceRoot = manifestPath->parent_path();
+                for (const auto &member : manifest->workspace.packages) {
+                    const auto memberManifestPath = (workspaceRoot / member / "Rux.toml").lexically_normal();
+                    std::error_code ec;
+                    if (!std::filesystem::exists(memberManifestPath, ec)) {
+                        std::print(stderr, "error: workspace member '{}' has no Rux.toml\n", member);
+                        return 1;
+                    }
+                    auto memberManifest = LoadManifest(memberManifestPath);
+                    if (!memberManifest) {
+                        return 1;
+                    }
+                    if (memberManifest->IsWorkspace() || memberManifest->package.name.empty()) {
+                        std::print(stderr, "error: workspace member '{}' is not a package\n", member);
+                        return 1;
+                    }
+                    QueueDependencies(*memberManifest);
+                }
+            }
+            else {
+                QueueDependencies(*manifest);
+            }
         }
         if (queue.empty()) {
             if (!opts.quiet) {

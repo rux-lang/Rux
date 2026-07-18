@@ -1,6 +1,7 @@
 #include "Package/Manifest.h"
 #include "System/Os.h"
 
+#include <algorithm>
 #include <chrono>
 #include <doctest.h>
 #include <filesystem>
@@ -55,6 +56,42 @@ Io = "*"
 Output = "Bin"
 )";
     CHECK(contents.str() == expected);
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("Manifest-less workspace discovery finds members and test packages") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const std::filesystem::path root = TempDirectory() / ("rux-workspace-discovery-test-" + std::to_string(nonce));
+
+    const std::vector<std::filesystem::path> expected = {
+        root / "Member" / "Rux.toml",
+        root / "Member" / "Tests" / "MemberTest" / "Rux.toml",
+        root / "Tests" / "Direct" / "Rux.toml",
+        root / "Tests" / "Integration" / "Nested" / "Rux.toml",
+    };
+    for (const auto &manifestPath : expected) {
+        std::filesystem::create_directories(manifestPath.parent_path());
+        std::ofstream manifest(manifestPath);
+        manifest << "[Package]\nName = \"Fixture\"\n";
+        REQUIRE(manifest.good());
+    }
+
+    // Package roots are terminal: manifests nested inside a discovered package
+    // do not become additional workspace members.
+    const auto hiddenNestedManifest = root / "Tests" / "Direct" / "Nested" / "Rux.toml";
+    std::filesystem::create_directories(hiddenNestedManifest.parent_path());
+    {
+        std::ofstream manifest(hiddenNestedManifest);
+        manifest << "[Package]\nName = \"Hidden\"\n";
+        REQUIRE(manifest.good());
+    }
+
+    auto actual = DiscoverManifestlessWorkspaceManifests(root);
+    auto sortedExpected = expected;
+    std::ranges::sort(sortedExpected);
+    CHECK(actual == sortedExpected);
 
     std::error_code error;
     std::filesystem::remove_all(root, error);

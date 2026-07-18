@@ -322,4 +322,58 @@ std::optional<std::filesystem::path> Manifest::Find(const std::filesystem::path 
 
     return std::nullopt;
 }
+
+std::vector<std::filesystem::path> DiscoverManifestlessWorkspaceManifests(const std::filesystem::path &root) {
+    std::vector<std::filesystem::path> manifests;
+
+    // Match `rux test`: directories without a manifest are grouping
+    // directories, searched only a few levels deep so output trees and other
+    // unrelated directory hierarchies are not walked indefinitely.
+    auto DiscoverTests = [&](const std::filesystem::path &testsRoot) {
+        std::error_code ec;
+        if (!std::filesystem::exists(testsRoot, ec)) {
+            return;
+        }
+        constexpr int maxGroupDepth = 3;
+        std::vector<std::pair<std::filesystem::path, int>> pending;
+        pending.emplace_back(testsRoot, 0);
+        while (!pending.empty()) {
+            const auto [dir, depth] = std::move(pending.back());
+            pending.pop_back();
+            for (const auto &entry : std::filesystem::directory_iterator(dir, ec)) {
+                if (!entry.is_directory()) {
+                    continue;
+                }
+                const auto manifestPath = entry.path() / "Rux.toml";
+                if (std::filesystem::exists(manifestPath, ec)) {
+                    manifests.push_back(manifestPath.lexically_normal());
+                }
+                else if (depth + 1 < maxGroupDepth) {
+                    pending.emplace_back(entry.path(), depth + 1);
+                }
+            }
+        }
+    };
+
+    const auto workspaceRoot = std::filesystem::absolute(root).lexically_normal();
+    DiscoverTests(workspaceRoot / "Tests");
+
+    std::error_code ec;
+    for (const auto &entry : std::filesystem::directory_iterator(workspaceRoot, ec)) {
+        if (!entry.is_directory()) {
+            continue;
+        }
+        const auto memberManifest = entry.path() / "Rux.toml";
+        if (!std::filesystem::exists(memberManifest, ec)) {
+            continue;
+        }
+        manifests.push_back(memberManifest.lexically_normal());
+        DiscoverTests(entry.path() / "Tests");
+    }
+
+    std::ranges::sort(manifests);
+    const auto duplicates = std::ranges::unique(manifests);
+    manifests.erase(duplicates.begin(), duplicates.end());
+    return manifests;
+}
 } // namespace Rux

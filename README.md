@@ -13,7 +13,7 @@
 [![Windows](https://github.com/rux-lang/Rux/actions/workflows/windows.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/windows.yml)
 [![Lint](https://github.com/rux-lang/Rux/actions/workflows/lint.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/lint.yml)
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
-[![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](https://github.com/rux-lang/Rux/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](LICENSE.md)
 
 [![GitHub stars](https://img.shields.io/github/stars/rux-lang/Rux?style=flat&logo=github&label=Stars&logoColor=white&color=blue)](https://github.com/rux-lang)
 [![GitHub followers](https://img.shields.io/github/followers/rux-lang?style=flat&logo=github&label=Followers&logoColor=white&color=blue)](https://github.com/rux-lang)
@@ -22,16 +22,16 @@
 [![Discord](https://img.shields.io/discord/1321469752811585576?style=flat&logo=discord&logoColor=white&label=Discord&color=blue)](https://discord.com/invite/uvSHjtZSVG)
 [![Reddit](https://img.shields.io/reddit/subreddit-subscribers/ruxlang?style=flat&logo=reddit&logoColor=white&label=Reddit&color=blue)](https://www.reddit.com/r/ruxlang)
 [![YouTube](https://img.shields.io/youtube/channel/subscribers/UCNqQ7NIA5pBl3ZO--nOyvDA?style=flat&logo=youtube&logoColor=white&label=YouTube&color=blue)](https://www.youtube.com/@ruxlang)
-[![X](https://img.shields.io/badge/98-gray?logo=x&style=flat&logoColor=white&label=Twitter&color=blue)](https://x.com/ruxlang)
+[![X](https://img.shields.io/badge/102-gray?logo=x&style=flat&logoColor=white&label=Twitter&color=blue)](https://x.com/ruxlang)
 [![Bluesky](https://img.shields.io/bluesky/followers/rux-lang.dev?style=flat&logo=Bluesky&logoColor=white&label=Bluesky&color=blue)](https://bsky.app/profile/rux-lang.dev)
 [![Mastodon](https://img.shields.io/mastodon/follow/113727153489087809?domain=mastodon.social&style=flat&logo=mastodon&logoColor=white&label=Mastodon&color=blue)](https://mastodon.social/@ruxlang)
-[![Telegram](https://img.shields.io/badge/78-gray?style=flat&logo=telegram&logoColor=white&label=Telegram&color=blue)](https://t.me/ruxlang)
+[![Telegram](https://img.shields.io/badge/77-gray?style=flat&logo=telegram&logoColor=white&label=Telegram&color=blue)](https://t.me/ruxlang)
 
 Rux is a fast, compiled, strongly typed, multi-paradigm programming language.
 
 ## Project Status
 
-Currently under development.
+Rux is under active, pre-1.0 development. Language features, compiler behavior, and package-manager formats may change between minor releases. Use the latest release and consult the [changelog](CHANGELOG.md) when upgrading.
 
 ## Documentation
 
@@ -39,6 +39,43 @@ Currently under development.
 - [Rux Reference](https://rux-lang.dev/docs)
 - [API Reference](https://rux-lang.dev/api)
 - [CLI Reference](https://rux-lang.dev/cli)
+
+Contributor and compiler-internals documentation lives in [`Docs/`](Docs/README.md).
+
+## Install a Release
+
+Prebuilt releases are currently published for x86-64 Linux and Windows.
+
+### Linux
+
+```sh
+curl -fsSL https://rux-lang.dev/install.sh | sh
+```
+
+The installer places `rux` in `~/.local/bin` without requiring root access. See the [Linux installer guide](Packaging/Linux/README.md) for version pinning, custom installation directories, upgrades, and uninstall instructions.
+
+### Windows
+
+From PowerShell:
+
+```powershell
+irm https://rux-lang.dev/install.ps1 | iex
+```
+
+Scoop users can install from the official bucket:
+
+```powershell
+scoop bucket add rux-lang https://github.com/rux-lang/Scoop
+scoop install rux
+```
+
+Alternatively, download `rux-windows.msi` from the [latest GitHub release](https://github.com/rux-lang/Rux/releases/latest). Both methods install for the current user without requiring administrator access. See the [Windows installer guide](Packaging/Windows/README.md) for details.
+
+After installation, open a new terminal and verify the compiler:
+
+```sh
+rux version
+```
 
 ## Building from Source
 
@@ -51,9 +88,9 @@ You need the following tools, all in a recent version:
 | Tool                              | Version | Description                 |
 | --------------------------------- | ------- | --------------------------- |
 | [Clang](https://clang.llvm.org/)  | 22.1+   | The C++26 compiler          |
-| [CMake](https://cmake.org/)       | 4.2+    | Generates the build files   |
+| [CMake](https://cmake.org/)       | 3.31+   | Generates the build files   |
 | [Ninja](https://ninja-build.org/) | 1.13+   | Runs the actual build, fast |
-| [Git](https://git-scm.com/)       | 2.52+   | Downloads the source code   |
+| [Git](https://git-scm.com/)       | Recent  | Downloads the source code   |
 
 > **Note**
 > GCC and MSVC will be supported later — please build with Clang.
@@ -153,7 +190,7 @@ cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++-22
 <details>
 <summary><b>Windows</b></summary>
 
-1. Install **Visual Studio 2026** (the free Community edition is fine) with the **"Desktop development with C++"** workload. This provides the Windows SDK and C runtime that Clang links against.
+1. Install a current **Visual Studio** or **Visual Studio Build Tools** release with the **Desktop development with C++** workload. This provides the Windows SDK and C runtime that Clang links against.
 2. Install the latest Clang, CMake, and Ninja with [Scoop](https://scoop.sh/). If you don't have Scoop yet, install it from a regular (non-admin) PowerShell:
 
    ```powershell
@@ -164,10 +201,10 @@ cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++-22
    Then install the tools (all from Scoop's main bucket):
 
    ```powershell
-   scoop install llvm cmake ninja
+   scoop install git llvm cmake ninja
    ```
 
-3. Open the **"x64 Native Tools Command Prompt for VS 2026"** from the Start menu. This sets up the Windows SDK and C runtime environment that Clang needs to compile and link.
+3. Open the **x64 Native Tools Command Prompt** for the installed Visual Studio release. This sets up the Windows SDK and C runtime environment that Clang needs to compile and link.
 
    Prefer your own terminal? Any PowerShell window works too — just initialize the build environment once per session first:
 
@@ -211,14 +248,15 @@ Run the binary to confirm it works:
 
 To use `rux` from anywhere, copy it to a directory on your `PATH` (for example `/usr/local/bin` on Unix-like systems), or add the `Bin/Release` directory to your `PATH`.
 
+If you are building Rux to contribute, continue with the [contributor quick start](CONTRIBUTING.md#quick-start), which enables the C++ unit tests, installs the language-test dependencies, and runs both suites.
+
 ## Community
 
 Here’s how you can get [involved](https://rux-lang.dev/community).
 
 ## Contributing
 
-The Rux repository is hosted at [rux-lang/Rux](https://github.com/rux-lang/Rux) on GitHub.
-Read the [Contributing guide](CONTRIBUTING.md) to get started.
+The Rux repository is hosted at [rux-lang/Rux](https://github.com/rux-lang/Rux) on GitHub. Read the [Contributing guide](CONTRIBUTING.md) to get started.
 
 ## License
 

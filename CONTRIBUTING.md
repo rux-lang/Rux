@@ -7,23 +7,29 @@ Thanks for your interest in contributing to the Rux programming language! This p
 - Report bugs via [GitHub Issues](https://github.com/rux-lang/Rux/issues)
 - Propose language features in [GitHub Discussions](https://github.com/rux-lang/Rux/discussions)
 - Submit pull requests for bug fixes or approved features
-- Improve [documentation](https://github.com/rux-lang/Web)
+- Improve compiler and contributor documentation in this repository, or language documentation in [rux-lang/Web](https://github.com/rux-lang/Web)
 - [Donate](https://rux-lang.dev/support) to support the project
 
 ## Quick Start
 
-1. Build the compiler and run the tests by following [Building from Source](README.md#building-from-source) in the README.
+1. Build the compiler by following [Building from Source](README.md#building-from-source) in the README, then enable the C++ test target in the same build directory:
+   ```sh
+   cmake -S . -B build -DRUX_BUILD_TESTS=ON
+   cmake --build build --config Release
+   ```
 2. [Fork](https://github.com/rux-lang/Rux/fork) the repo and branch off `dev`:
    ```sh
-   git checkout dev
-   git checkout -b my-feature
+   git switch dev
+   git pull --ff-only
+   git switch -c my-feature
    ```
-3. Make your change, add a test, and run the suite — install the packages the
-   test suite depends on once first:
+3. Make your change, add a test, and run both suites. Bare `rux install` discovers dependencies from the manifest-less test workspace:
    ```sh
-   for pkg in Rux Format Io Memory Text; do ./Bin/Release/rux install $pkg; done
-   ./Bin/Release/rux test
+   ./Bin/Release/rux install
+   ./Bin/Release/rux test --release
+   ctest --test-dir build --output-on-failure -C Release
    ```
+   On Windows, use `.\Bin\Release\rux.exe`; the CMake and CTest commands are the same.
 4. Format touched files with `clang-format -i <files>`.
 5. Push your branch and open a Pull Request **against `dev`**.
 
@@ -53,6 +59,12 @@ Or format every source file at once:
 clang-format -i $(git ls-files '*.cpp' '*.h')
 ```
 
+PowerShell equivalent:
+
+```powershell
+git ls-files '*.cpp' '*.h' | ForEach-Object { clang-format -i $_ }
+```
+
 Otherwise, match the conventions already in the codebase — consistency matters more than personal preference.
 
 ## Reporting Bugs
@@ -62,6 +74,7 @@ Include:
 - Rux version / commit hash (`rux version`)
 - A minimal reproducer (source file or snippet)
 - Expected vs. actual behavior
+- Whether the problem reproduces on the latest `dev` branch
 
 ## Community
 
@@ -69,4 +82,4 @@ Have questions before diving in? Join us on [Discord](https://discord.com/invite
 
 ## License
 
-By contributing you agree that your work will be licensed under the [MIT License](LICENSE).
+By contributing you agree that your work will be licensed under the [MIT License](LICENSE.md).

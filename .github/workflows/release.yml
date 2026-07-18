@@ -67,9 +67,7 @@ jobs:
 
       - name: Test
         run: |
-          for pkg in Rux Format Io Memory Text; do
-            ./Bin/Release/rux install "$pkg"
-          done
+          ./Bin/Release/rux install
           ./Bin/Release/rux test --release
 
       - name: Upload binary artifact
@@ -115,10 +113,7 @@ jobs:
       - name: Test
         shell: pwsh
         run: |
-          foreach ($pkg in "Rux", "Format", "Io", "Memory", "Text") {
-              ./Bin/Release/rux.exe install $pkg
-              if ($LASTEXITCODE -ne 0) { throw "failed to install $pkg" }
-          }
+          ./Bin/Release/rux.exe install
           ./Bin/Release/rux.exe test --release
 
       - name: Upload binary artifact

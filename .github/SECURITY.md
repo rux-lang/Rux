@@ -4,7 +4,18 @@ The Rux team takes the security of the compiler and its toolchain seriously. Tha
 
 ## Supported Versions
 
-Rux is under active development. Security fixes are applied to the latest released minor version only. We recommend always running the most recent release.
+Rux is under active pre-1.0 development. Security fixes are applied to the latest released minor line only; older minor lines are not maintained.
+
+| Version                                  | Security fixes |
+| ---------------------------------------- | -------------- |
+| Latest release                           | Supported      |
+| Older releases and development snapshots | Not supported  |
+
+We recommend reproducing reports against the latest release when it is safe to do so, while still identifying the originally affected version.
+
+## Scope
+
+This policy covers the compiler, linker, CLI and package manager, release artifacts, and installer scripts maintained in this repository. Reports about the website or hosted services should still use the private channels below so the maintainers can route them without public disclosure.
 
 ## Reporting a Vulnerability
 
@@ -13,20 +24,21 @@ Rux is under active development. Security fixes are applied to the latest releas
 Instead, report them privately using one of the following channels:
 
 - **Email:** [info@rux-lang.dev](mailto:info@rux-lang.dev)
-- **GitHub:**
-  Use [private vulnerability reporting](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately)
-  via the repository's **Security** tab → **Report a vulnerability**.
+- **GitHub:** Use the repository's **Security** tab → **Report a vulnerability** to open a [private report](https://github.com/rux-lang/Rux/security/advisories/new).
 
 To help us triage quickly, please include as much of the following as you can:
 
 - The type of issue (e.g. memory corruption, code injection via crafted source, path traversal in the package manager, etc.)
 - The affected component (lexer, parser, codegen, linker, CLI, package manager)
 - Rux version and host platform (OS, architecture, compiler)
+- Whether the issue affects source compilation, produced binaries, package installation, or the installer itself
 - Step-by-step instructions to reproduce, including any minimal source input
 - Proof-of-concept or exploit code, if available
 - The impact of the issue and how an attacker might exploit it
 
 Reports written in English are preferred.
+
+Do not include secrets or personal data that are not required to demonstrate the issue. If a report needs a large or sensitive attachment, contact us first and arrange a private transfer method.
 
 ## Our Commitment
 

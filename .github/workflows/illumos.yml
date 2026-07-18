@@ -72,12 +72,10 @@ jobs:
           # Installs the Clang runtime libraries the prebuilt binary needs.
           prepare: |
             pkg install clang
-          # The test packages depend on Std, so install it first, then run
-          # the suite in workspace mode from the repo root.
+          # Manifest-less workspace mode discovers test dependencies before
+          # running the suite from the repository root.
           run: |
             set -e
             chmod +x Bin/Release/rux
-            for pkg in Rux Format Io Memory Text; do
-              ./Bin/Release/rux install "$pkg"
-            done
+            ./Bin/Release/rux install
             ./Bin/Release/rux test --release

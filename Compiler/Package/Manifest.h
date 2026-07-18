@@ -126,6 +126,20 @@ struct Manifest {
 };
 
 /**
+ * @brief Discover package manifests owned by a workspace without a root manifest.
+ *
+ * A manifest-less workspace
+ * may keep test packages below Tests/ and package
+ * members in immediate child directories. Member test packages are
+ * discovered
+ * below each member's Tests/ directory as well. Group directories below a
+ * Tests/ root are searched to
+ * the same bounded depth used by `rux test`.
+ */
+[[nodiscard]] std::vector<std::filesystem::path>
+DiscoverManifestlessWorkspaceManifests(const std::filesystem::path &root = std::filesystem::current_path());
+
+/**
  * @brief Parse a package specification string.
  *
  * Examples:

@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### CLI / Package Manager
 
 - **Compile-time configuration** — `[Build.Defines]` supplies string values to `config`, and `--define NAME[=VALUE]` overrides them for `build`, `check`, `run`, and `test`. Date/time compiler parameters share one UTC build timestamp and honor `SOURCE_DATE_EPOCH` for reproducible builds.
+- **Manifest-less workspace installation** — bare `rux install` now discovers package manifests below the root `Tests/` tree, immediate member packages, and member `Tests/` trees when no root `Rux.toml` exists. Registry dependencies are deduplicated and installed through the existing transitive resolver, so repository test setup no longer needs a hard-coded package list.
 
 - `rux uninstall --global` — remove every package from the global cache, whether or not the current `Rux.toml` declares it. Completes the `--global` set alongside `rux list --global` and `rux update --global`.
 
@@ -141,8 +142,6 @@ Adds broad multi-platform host support, a revamped platform abstraction layer, n
 - Windows `std::max` macro conflict with compiler internals
 - UB in `gitclone` due to missing `return`
 
----
-
 ## [0.2.2] - 2026-05-28
 
 Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes several compiler bugs.
@@ -169,8 +168,6 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 - Compiler bugs with `const` declarations, `import` statements, and calling conventions
 - Incorrect handling of integer literals with suffixes (`10i`, `10u`) and range expressions (`0..10u`)
 - `rux add` crash when specifying an unknown package name
-
----
 
 ## [0.2.0] - 2026-05-10
 
@@ -201,8 +198,6 @@ Expands the compiler with control flow, composite types, modules, and a richer t
 - Dependency resolution error when packages referenced each other
 - Incorrect code generation for `if` conditions
 - Type checking regressions in slices, function calls, and pointer arithmetic
-
----
 
 ## [0.1.0] - 2026-04-30
 

@@ -418,8 +418,10 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .description = {} /* Fallback */,
                .usage = Data::install_usage,
                .postUsage = "Without a package name, downloads all registry dependencies listed in Rux.toml. For a "
-                            "workspace, dependencies from every member package are installed in one pass.\nWith a "
-                            "package name, adds it to Rux.toml and downloads it to the local cache."sv,
+                            "workspace, dependencies from every member package are installed in one pass. If no "
+                            "manifest exists, packages are discovered from Tests/ and immediate member directories.\n"
+                            "With a package name, downloads it and its transitive dependencies to the package cache; "
+                            "use 'rux add' to declare it in Rux.toml."sv,
                .footer = {},
                .examples = Data::install_exs,
                .options = Data::install_opts},

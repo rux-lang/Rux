@@ -65,13 +65,9 @@ jobs:
       - name: Make binary executable
         run: chmod +x Bin/Release/rux
 
-      # The test packages depend on these packages, so install them first.
-      # Each install resolves its own transitive dependencies.
+      # Manifest-less workspace mode discovers dependencies from test packages.
       - name: Install test dependencies
-        run: |
-          for pkg in Rux Format Io Memory Text; do
-            ./Bin/Release/rux install "$pkg"
-          done
+        run: ./Bin/Release/rux install
 
       # Workspace mode: run from the repo root so `rux test` discovers Tests/.
       - name: Test
