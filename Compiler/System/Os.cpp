@@ -14,6 +14,10 @@
 #else
     #include <sys/ioctl.h>
     #include <sys/resource.h>
+    #if RUX_OS_FREEBSD
+        #include <sys/sysctl.h>
+        #include <sys/user.h>
+    #endif
     #include <unistd.h>
     #if defined(__has_include)
         #if __has_include(<termios.h>)
@@ -151,8 +155,22 @@ std::uintmax_t PeakMemoryBytes() noexcept {
     if (getrusage(RUSAGE_SELF, &usage) == 0) {
         // macOS reports bytes directly; other Unices report in KB.
         constexpr std::uintmax_t unitMultiplier = (HostOS == OS::MacOS) ? 1ULL : 1024ULL;
-        return static_cast<std::uintmax_t>(usage.ru_maxrss) * unitMultiplier;
+        const auto peakBytes = static_cast<std::uintmax_t>(usage.ru_maxrss) * unitMultiplier;
+        if (peakBytes != 0) {
+            return peakBytes;
+        }
     }
+    #if RUX_OS_FREEBSD
+    kinfo_proc proc{};
+    std::size_t procLen = sizeof(proc);
+    int mib[] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()};
+    if (sysctl(mib, 4, &proc, &procLen, nullptr, 0) == 0 && procLen >= sizeof(proc) && proc.ki_rssize > 0) {
+        const auto pageSize = sysconf(_SC_PAGESIZE);
+        if (pageSize > 0) {
+            return static_cast<std::uintmax_t>(proc.ki_rssize) * static_cast<std::uintmax_t>(pageSize);
+        }
+    }
+    #endif
 #endif
     return 0;
 }

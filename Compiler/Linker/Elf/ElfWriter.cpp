@@ -35,7 +35,7 @@ static constexpr const char *kElfInterp = "/libexec/ld-elf.so.2";
 static constexpr const char *kDefaultLib = "libc.so.8";
 #elif RUX_OS_OPENBSD
 static constexpr const char *kElfInterp = "/usr/libexec/ld.so";
-static constexpr const char *kDefaultLib = "libc.so";
+static constexpr const char *kDefaultLib = "libc.so.103.0";
 #elif RUX_OS_NETBSD
 static constexpr const char *kElfInterp = "/libexec/ld.elf_so";
 static constexpr const char *kDefaultLib = "libc.so.12";
@@ -509,10 +509,30 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     // --- Dynamically linked executable importing from shared libraries. ---
     const size_t n = importNames.size();
-    std::unordered_map<std::string, size_t> importIdx;
-    for (size_t i = 0; i < n; ++i) {
-        importIdx[importNames[i]] = i;
-    }
+
+    struct ExportedDataSymbol {
+        std::string name;
+        uint32_t dataOffset;
+        uint32_t dynsymValueOffset;
+    };
+
+    std::vector<ExportedDataSymbol> exportedDataSymbols;
+
+#if RUX_IS_BSD
+    const auto exportPointerDataSymbol = [&](std::string name) {
+        while (mergedData.size() % 8) {
+            mergedData.push_back(0);
+        }
+        const auto dataOffset = static_cast<uint32_t>(mergedData.size());
+        WriteU64(mergedData, 0);
+        exportedDataSymbols.push_back({std::move(name), dataOffset, 0});
+    };
+    // BSD libc is normally entered through crt1, which provides these
+    // process globals. Rux dynamic ET_EXEC output starts directly at Main, so
+    // export null-initialized definitions for libc to bind against.
+    exportPointerDataSymbol("environ");
+    exportPointerDataSymbol("__progname");
+#endif
 
     // Deterministic set of needed libraries.
     std::vector<std::string> neededLibs;
@@ -542,13 +562,18 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     for (size_t i = 0; i < n; ++i) {
         nameStrOff[i] = internStr(importNames[i]);
     }
+    std::vector<uint32_t> exportedNameStrOff(exportedDataSymbols.size());
+    for (size_t i = 0; i < exportedDataSymbols.size(); ++i) {
+        exportedNameStrOff[i] = internStr(exportedDataSymbols[i].name);
+    }
     std::vector<uint32_t> libStrOff(neededLibs.size());
     for (size_t i = 0; i < neededLibs.size(); ++i) {
         libStrOff[i] = internStr(neededLibs[i]);
     }
 
-    // .dynsym: index 0 is STN_UNDEF; then one undefined STT_FUNC per import.
-    const size_t nsym = n + 1;
+    // .dynsym: index 0 is STN_UNDEF, followed by undefined STT_FUNC imports
+    // and any executable-defined symbols needed by the runtime loader.
+    const size_t nsym = n + 1 + exportedDataSymbols.size();
     Buf dynsym;
     WriteZeros(dynsym, 24); // null symbol
     for (size_t i = 0; i < n; ++i) {
@@ -559,14 +584,27 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         WriteU64(dynsym, 0);             // st_value
         WriteU64(dynsym, 0);             // st_size
     }
+    for (size_t i = 0; i < exportedDataSymbols.size(); ++i) {
+        WriteU32(dynsym, exportedNameStrOff[i]); // st_name
+        WriteU8(dynsym, 0x11);                   // st_info: STB_GLOBAL | STT_OBJECT
+        WriteU8(dynsym, 0);                      // st_other
+        WriteU16(dynsym, 0xFFF1);                // st_shndx: SHN_ABS
+        exportedDataSymbols[i].dynsymValueOffset = static_cast<uint32_t>(dynsym.size());
+        WriteU64(dynsym, 0); // st_value, patched once dataVA is known
+        WriteU64(dynsym, 8); // st_size
+    }
 
     // .hash (SysV): distribute all dynsym entries across buckets by ElfHash.
     const uint32_t nbucket = static_cast<uint32_t>(std::max<size_t>(1, nsym));
     std::vector<uint32_t> bucket(nbucket, 0);
     std::vector<uint32_t> chain(nsym, 0);
-    for (size_t i = n; i >= 1; --i) {
+    std::vector<std::string> dynSymbolNames = importNames;
+    for (const auto &symbol : exportedDataSymbols) {
+        dynSymbolNames.push_back(symbol.name);
+    }
+    for (size_t i = dynSymbolNames.size(); i >= 1; --i) {
         // walk backwards so lower indices head the chain
-        const uint32_t b = ElfHash(importNames[i - 1]) % nbucket;
+        const uint32_t b = ElfHash(dynSymbolNames[i - 1]) % nbucket;
         chain[i] = bucket[b];
         bucket[b] = static_cast<uint32_t>(i);
     }
@@ -643,6 +681,10 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     const uint64_t dynamicVA = kBase + dynamicOff;
     const uint64_t gotVA = kBase + gotOff;
     const uint64_t dataVA = kBase + dataOff;
+
+    for (const auto &symbol : exportedDataSymbols) {
+        Patch64(dynsym, symbol.dynsymValueOffset, dataVA + symbol.dataOffset);
+    }
 
     // 6. .plt — PLT[0] is the resolver trampoline; PLT[k] (k>=1) binds import
     //    k-1 lazily through its GOT slot.

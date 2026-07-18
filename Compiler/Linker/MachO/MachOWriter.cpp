@@ -190,47 +190,37 @@ static std::optional<Buf> MacCompatThunk(const std::string &name) {
         // so we negate the result to match the Linux convention (negative errno).
         // The common tail (jnc +3; neg rax; ret) is appended by MacSyscallThunk.
         {"__rux_macos_syscall0", MacSyscallThunk({
-                                     0x48,
-                                     0x89,
+                                     0x48, 0x89,
                                      0xC8, // mov rax, rcx
                                      0x0F,
                                      0x05, // syscall
                                  })},
         {"__rux_macos_syscall1", MacSyscallThunk({
-                                     0x48,
-                                     0x89,
+                                     0x48, 0x89,
                                      0xC8, // mov rax, rcx
-                                     0x48,
-                                     0x89,
+                                     0x48, 0x89,
                                      0xD7, // mov rdi, rdx
                                      0x0F,
                                      0x05, // syscall
                                  })},
         {"__rux_macos_syscall2", MacSyscallThunk({
-                                     0x48,
-                                     0x89,
+                                     0x48, 0x89,
                                      0xC8, // mov rax, rcx
-                                     0x48,
-                                     0x89,
+                                     0x48, 0x89,
                                      0xD7, // mov rdi, rdx
-                                     0x4C,
-                                     0x89,
+                                     0x4C, 0x89,
                                      0xC6, // mov rsi, r8
                                      0x0F,
                                      0x05, // syscall
                                  })},
         {"__rux_macos_syscall3", MacSyscallThunk({
-                                     0x48,
-                                     0x89,
+                                     0x48, 0x89,
                                      0xC8, // mov rax, rcx
-                                     0x48,
-                                     0x89,
+                                     0x48, 0x89,
                                      0xD7, // mov rdi, rdx
-                                     0x4C,
-                                     0x89,
+                                     0x4C, 0x89,
                                      0xC6, // mov rsi, r8
-                                     0x4C,
-                                     0x89,
+                                     0x4C, 0x89,
                                      0xCA, // mov rdx, r9
                                      0x0F,
                                      0x05, // syscall
