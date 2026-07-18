@@ -67,9 +67,11 @@ jobs:
         with:
           release: "14.2"
           usesh: true
-          # Installs the Clang runtime libraries the prebuilt binary needs.
+          # The prebuilt binary needs the Clang runtime libraries. Package
+          # installation also fetches the registry with curl and clones
+          # package repositories with git.
           prepare: |
-            pkg install -y llvm22
+            pkg install -y llvm22 curl git
           # Manifest-less workspace mode discovers test dependencies before
           # running the suite from the repository root.
           run: |
