@@ -451,7 +451,7 @@ private:
             enc.Byte(0xF2); // mov rdx, rsi
         }
         // clang-format off
-                static constexpr std::uint8_t kThunk[] = {
+                static constexpr std::uint8_t kBody[] = {
                     0x48, 0x85, 0xD2,                         // test rdx, rdx    ; exponent
                     0x78, 0x20,                               // js   .negative   ; exp < 0 -> 0
                     0xB8, 0x01, 0x00, 0x00, 0x00,             // mov  eax, 1      ; result = 1
@@ -471,7 +471,7 @@ private:
                     0xC3,                                     // ret
                 };
         // clang-format on
-        for (const std::uint8_t b : kThunk) {
+        for (const std::uint8_t b : kBody) {
             enc.Byte(b);
         }
     }

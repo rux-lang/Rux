@@ -74,9 +74,8 @@ std::string_view PtrSize(const int bytes) {
 }
 
 // The --dump-asm text output reflects the host ABI's default calling
-// convention. (The RCU object path always emits Win64 and relies on the
-// Unix linker's compat thunks to translate; this constant only affects the
-// human-readable dump.)
+// convention. This constant only affects the human-readable dump; the RCU
+// object path resolves calling conventions from the target metadata.
 constexpr bool kDefaultCallIsWin64 = RUX_OS_WINDOWS;
 
 // `.C` stands for the target's C ABI, so it has to be collapsed before the

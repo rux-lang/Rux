@@ -25,8 +25,7 @@ constexpr CallingConvention PlatformCConvention() {
 }
 
 // Rux functions use the native ABI on Linux. Other targets retain their
-// existing internal ABI until their entry points and compatibility thunks are
-// migrated as a unit.
+// existing internal ABI; explicit `.C` declarations use the platform C ABI.
 constexpr CallingConvention PlatformDefaultConvention() {
 #if RUX_OS_LINUX
     return CallingConvention::SysV;
