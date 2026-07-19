@@ -10,11 +10,32 @@ A native FreeBSD release is not currently published. Build Rux from source using
 
 Rux currently requires Clang 22.1 or newer, CMake 4.3 or newer, Ninja 1.11 or newer, and a recent Git installation.
 
-Install the toolchain on FreeBSD 15.1:
+FreeBSD currently packages CMake 3.31, so install it as a bootstrap compiler and
+build the pinned CMake 4.3.3 release from source:
 
 ```sh
 sudo pkg install -y llvm22 cmake ninja git
+cmake_version=4.3.3
+cmake_archive="/tmp/cmake-${cmake_version}.tar.gz"
+cmake_prefix="$HOME/.local/cmake-${cmake_version}"
+fetch -o "$cmake_archive" \
+  "https://github.com/Kitware/CMake/releases/download/v${cmake_version}/cmake-${cmake_version}.tar.gz"
+test "$(sha256 -q "$cmake_archive")" = \
+  "cba4bb7a44edf2877bb6f059932896383babe435b3a8c3b5df48b4aa41c9bb85"
+tar -xzf "$cmake_archive" -C /tmp
+cmake -S "/tmp/cmake-${cmake_version}" -B /tmp/cmake-build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_COMPILER=clang22 \
+  -DCMAKE_CXX_COMPILER=clang++22 \
+  -DCMAKE_INSTALL_PREFIX="$cmake_prefix" \
+  -DBUILD_TESTING=OFF
+cmake --build /tmp/cmake-build --parallel
+cmake --install /tmp/cmake-build
+export PATH="$cmake_prefix/bin:$PATH"
 ```
+
+Add the final `PATH` export to your shell profile so later sessions use CMake
+4.3.3 instead of the bootstrap package.
 
 Clone and build Rux:
 
