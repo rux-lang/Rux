@@ -22,6 +22,10 @@ struct AnsiStyle {
         return enabled ? "\033[31m" : "";
     }
 
+    [[nodiscard]] std::string_view Yellow() const {
+        return enabled ? "\033[33m" : "";
+    }
+
     [[nodiscard]] std::string_view Bold() const {
         return enabled ? "\033[1m" : "";
     }

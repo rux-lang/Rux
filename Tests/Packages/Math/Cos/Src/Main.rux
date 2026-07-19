@@ -1,0 +1,112 @@
+import Rux::Assert;
+import Math::Cos;
+
+// Both the Win64 and System V ABIs pass the first float argument in xmm0 and
+// return an integer in rax.
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+// Every expected value below is the correctly rounded cosine of the same double.
+// Comparing the bit patterns rather than the difference measures the error in
+// ulps, so the tolerance stays meaningful for results near a zero of the cosine,
+// where an absolute tolerance would accept any answer at all.
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 1i64;
+}
+
+func Main() -> int {
+    // Cosine is one at zero, and even, so the sign of the zero is dropped.
+    Assert(Cos(0.0) == 1.0, "Cos(0.0) is one");
+    Assert(Cos(-0.0) == 1.0, "Cos(-0.0) is one");
+
+    // Below 2^-27 the result is exactly one.
+    Assert(Cos(1e-8) == 1.0, "Cos(1e-8) is one");
+
+    // Inside the kernel's own range, where nothing is reduced.
+    Assert(Close(Cos(0.5), 0.8775825618903728), "Cos(0.5)");
+    Assert(Close(Cos(-0.25), 0.9689124217106447), "Cos(-0.25)");
+    Assert(Close(Cos(0.7853981633974483), 0.7071067811865476), "Cos(Pi/4)");
+
+    // Even symmetry: cos(-x) = cos(x).
+    Assert(Close(Cos(1.0), 0.5403023058681398), "Cos(1.0)");
+    Assert(Close(Cos(-1.0), 0.5403023058681398), "Cos(-1.0)");
+
+    // Each of the four quadrants of the reduction.
+    Assert(Close(Cos(2.0), -0.4161468365471424), "Cos(2.0)");
+    Assert(Close(Cos(3.0), -0.9899924966004454), "Cos(3.0)");
+    Assert(Close(Cos(4.0), -0.6536436208636119), "Cos(4.0)");
+
+    // The extremes of the cosine round to exactly +-1.0.
+    Assert(Cos(3.141592653589793) == -1.0, "Cos(Pi) is -1.0");
+    Assert(Cos(6.283185307179586) == 1.0, "Cos(2*Pi) is 1.0");
+
+    // At the nearest double to Pi/2 the result is the reduction error itself,
+    // so this is the value a sloppy range reduction gets wrong.
+    Assert(Close(Cos(1.5707963267948966), 6.123233995736766e-17), "Cos(Pi/2)");
+
+    // Arguments needing many quadrants of reduction.
+    Assert(Close(Cos(100.0), 0.8623188722876839), "Cos(100.0)");
+    Assert(Close(Cos(1e6), 0.9367521275331447), "Cos(1e6)");
+
+    // Landing just short of an extreme of the cosine, where the reduced
+    // argument is all that survives.
+    Assert(Close(Cos(94.24777970194157), 0.9999999999999956), "Cos near 30*Pi");
+    Assert(Close(Cos(204.20352268754007), -0.9999999999999791), "Cos near 65*Pi");
+    Assert(Close(Cos(81.73383253581802), 0.9986262007660881), "Cos(81.73383253581802)");
+
+    // Past 2^22 * Pi/2 a Cody-Waite reduction runs out of bits and the result
+    // silently drifts. These are where Payne-Hanek reduction earns its keep.
+    Assert(Close(Cos(2e7), 0.6462791072847257), "Cos(2e7)");
+    Assert(Close(Cos(1e15), -0.5131937377869703), "Cos(1e15)");
+    Assert(Close(Cos(1e300), -0.5753861119575491), "Cos(1e300)");
+    Assert(Close(Cos(1.7976931348623157e308), -0.9999876894265599), "Cos(DBL_MAX)");
+
+    // The double whose reduced argument is the smallest of any: 6381956970095103 * 2^797.
+    // Every bit of the reduction has to be right for this one.
+    Assert(Close(Cos(5.319372648326541e255), -4.687165924254628e-19), "Cos(worst case reduction)");
+
+    // NaN propagates and the infinities have no cosine.
+    var zero = 0.0;
+    var one = 1.0;
+    let nan = zero / zero;
+    let nanCos = Cos(nan);
+    Assert(nanCos != nanCos, "Cos(NaN) is NaN");
+
+    let inf = one / zero;
+    let infCos = Cos(inf);
+    Assert(infCos != infCos, "Cos(+Inf) is NaN");
+    let negInfCos = Cos(-inf);
+    Assert(negInfCos != negInfCos, "Cos(-Inf) is NaN");
+
+    // The float32 overload is chosen by the argument type and returns float32.
+    Assert(Cos(0.0f32) == 1.0f32, "Cos(0.0f32)");
+    Assert(Cos(1.0f32) == 0.5403022766113281f32, "Cos(1.0f32)");
+    Assert(Cos(0.5f32) == 0.8775825500488281f32, "Cos(0.5f32)");
+    Assert(Cos(2.0f32) == -0.416146844625473f32, "Cos(2.0f32)");
+    Assert(Cos(100.0f32) == 0.8623188734054565f32, "Cos(100.0f32)");
+    Assert(Cos(1e6f32) == 0.9367521405220032f32, "Cos(1e6f32)");
+
+    let nan32 = Cos(-1.0f32 / 0.0f32);
+    Assert(nan32 != nan32, "Cos(-Inf32) is NaN");
+
+    return 0;
+}

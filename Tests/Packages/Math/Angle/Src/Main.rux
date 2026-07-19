@@ -1,0 +1,103 @@
+import Rux::Assert;
+import Math::DegToRad;
+import Math::RadToDeg;
+
+// Both the Win64 and System V ABIs pass the first float argument in xmm0 and
+// return an integer in rax.
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+// One rounding in the constant and one in the product leave the result within
+// an ulp of the exact conversion. Comparing bit patterns measures that gap
+// directly, and stays meaningful across the whole exponent range.
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 1i64;
+}
+
+func Main() -> int {
+    var one = 1.0;
+
+    // Zero keeps its sign under a multiplication.
+    Assert(DegToRad(0.0) == 0.0, "DegToRad(0.0) is zero");
+    let negZero = DegToRad(-0.0);
+    Assert(negZero == 0.0, "DegToRad(-0.0) is zero");
+    Assert(one / negZero < 0.0, "DegToRad(-0.0) keeps the sign of zero");
+
+    Assert(RadToDeg(0.0) == 0.0, "RadToDeg(0.0) is zero");
+    let negZeroDeg = RadToDeg(-0.0);
+    Assert(negZeroDeg == 0.0, "RadToDeg(-0.0) is zero");
+    Assert(one / negZeroDeg < 0.0, "RadToDeg(-0.0) keeps the sign of zero");
+
+    // The round angles land exactly on the nearest double to their radian
+    // value, which is what makes these constants worth their last bit.
+    Assert(DegToRad(180.0) == 3.141592653589793, "DegToRad(180.0) is Pi");
+    Assert(DegToRad(90.0) == 1.5707963267948966, "DegToRad(90.0) is Pi/2");
+    Assert(DegToRad(45.0) == 0.7853981633974483, "DegToRad(45.0) is Pi/4");
+    Assert(DegToRad(360.0) == 6.283185307179586, "DegToRad(360.0) is 2*Pi");
+    Assert(DegToRad(-180.0) == -3.141592653589793, "DegToRad(-180.0) is -Pi");
+
+    Assert(RadToDeg(3.141592653589793) == 180.0, "RadToDeg(Pi) is 180.0");
+    Assert(RadToDeg(1.5707963267948966) == 90.0, "RadToDeg(Pi/2) is 90.0");
+    Assert(RadToDeg(0.7853981633974483) == 45.0, "RadToDeg(Pi/4) is 45.0");
+    Assert(RadToDeg(6.283185307179586) == 360.0, "RadToDeg(2*Pi) is 360.0");
+
+    // One degree is the constant itself, and one radian its counterpart.
+    Assert(DegToRad(1.0) == 0.017453292519943295, "DegToRad(1.0) is Pi/180");
+    Assert(RadToDeg(1.0) == 57.29577951308232, "RadToDeg(1.0) is 180/Pi");
+
+    // Angles that do not land on a representable radian are still within an ulp.
+    Assert(Close(DegToRad(30.0), 0.5235987755982989), "DegToRad(30.0)");
+    Assert(Close(DegToRad(-30.0), -0.5235987755982989), "DegToRad(-30.0)");
+    Assert(Close(RadToDeg(57.29577951308232), 3282.8063500117437), "RadToDeg(180/Pi)");
+
+    // The conversions scale, so they stay exact at the ends of the range.
+    Assert(Close(DegToRad(1e300), 1.7453292519943297e298), "DegToRad(1e300)");
+    Assert(Close(DegToRad(1e-300), 1.7453292519943295e-302), "DegToRad(1e-300)");
+    Assert(Close(RadToDeg(1e-300), 5.729577951308232e-299), "RadToDeg(1e-300)");
+
+    // NaN propagates and the infinities scale to infinities.
+    var zero = 0.0;
+    let nan = zero / zero;
+    let nanRad = DegToRad(nan);
+    Assert(nanRad != nanRad, "DegToRad(NaN) is NaN");
+    let nanDeg = RadToDeg(nan);
+    Assert(nanDeg != nanDeg, "RadToDeg(NaN) is NaN");
+
+    let inf = one / zero;
+    Assert(DegToRad(inf) == inf, "DegToRad(+Inf) is +Inf");
+    Assert(RadToDeg(-inf) == -inf, "RadToDeg(-Inf) is -Inf");
+
+    // The float32 overloads are chosen by the argument type and return float32.
+    Assert(DegToRad(0.0f32) == 0.0f32, "DegToRad(0.0f32)");
+    Assert(DegToRad(180.0f32) == 3.1415927410125732f32, "DegToRad(180.0f32) is Pi");
+    Assert(DegToRad(90.0f32) == 1.5707963705062866f32, "DegToRad(90.0f32)");
+    Assert(DegToRad(1.0f32) == 0.01745329238474369f32, "DegToRad(1.0f32)");
+
+    Assert(RadToDeg(0.0f32) == 0.0f32, "RadToDeg(0.0f32)");
+    Assert(RadToDeg(3.1415927410125732f32) == 180.0f32, "RadToDeg(Pi f32) is 180.0f32");
+    Assert(RadToDeg(1.0f32) == 57.295780181884766f32, "RadToDeg(1.0f32)");
+
+    let nan32 = DegToRad(0.0f32 / 0.0f32);
+    Assert(nan32 != nan32, "DegToRad(NaN32) is NaN");
+
+    return 0;
+}

@@ -1,0 +1,11 @@
+[Package]
+Name = "Uint8"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: Uint8"
+
+[Dependencies]
+Rux = { Path = "../../../Packages/Rux" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

@@ -1,0 +1,22 @@
+import Rux::Assert;
+import Memory::{ Alloc, Free, Realloc };
+
+func Main() -> int {
+    // Freeing null is documented as a no-op, so callers need no guard.
+    Free(null);
+
+    let buffer = Alloc(256);
+    Assert(buffer != null, "Alloc(256)");
+    Free(buffer);
+
+    // A block that moved through Realloc is still owned by the caller.
+    let grown = Realloc(Alloc(16), 512);
+    Assert(grown != null, "Realloc before Free");
+    Free(grown);
+
+    // The heap stays usable after a release.
+    let reused = Alloc(256);
+    Assert(reused != null, "Alloc after Free");
+    Free(reused);
+    return 0;
+}

@@ -1,0 +1,52 @@
+import Rux::Assert;
+import Math::Log;
+
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 2i64;
+}
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(Log(1.0) == 0.0, "Log(1)");
+    Assert(Close(Log(2.0), 0.6931471805599453), "Log(2)");
+    Assert(Close(Log(0.5), -0.6931471805599453), "Log(0.5)");
+    Assert(Close(Log(1.5), 0.4054651081081644), "Log(1.5)");
+
+    Assert(Log(0.0) == -inf, "Log(+0)");
+    Assert(Log(-0.0) == -inf, "Log(-0)");
+    let negative = Log(-1.0);
+    Assert(negative != negative, "Log(negative)");
+    Assert(Log(inf) == inf, "Log(+Inf)");
+
+    let nan = zero / zero;
+    let nanLog = Log(nan);
+    Assert(nanLog != nanLog, "Log(NaN)");
+
+    Assert(Log(2.0f32) == 0.6931471824645996f32, "Log(2f32)");
+    return 0;
+}

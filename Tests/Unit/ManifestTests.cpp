@@ -96,3 +96,50 @@ TEST_CASE("Manifest-less workspace discovery finds members and test packages") {
     std::error_code error;
     std::filesystem::remove_all(root, error);
 }
+
+TEST_CASE("repository Rux tests use canonical local manifests") {
+    const auto testsRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_TESTS_DIR));
+    const auto packagesRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_PACKAGES_DIR));
+    const auto binariesRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_TEST_BIN_DIR));
+    std::size_t manifestCount = 0;
+
+    for (const auto &entry : std::filesystem::recursive_directory_iterator(testsRoot)) {
+        if (!entry.is_regular_file() || entry.path().filename() != "Rux.toml") {
+            continue;
+        }
+        ++manifestCount;
+        const auto manifest = Manifest::Load(entry.path());
+        REQUIRE_MESSAGE(manifest.has_value(), "invalid test manifest: ", entry.path().string());
+        CHECK_MESSAGE(manifest->package.type == "bin",
+                      "test package must explicitly use Type = \"bin\": ", entry.path().string());
+        CHECK_MESSAGE(!manifest->package.description.empty(),
+                      "test package needs a description: ", entry.path().string());
+        CHECK_MESSAGE(std::filesystem::is_regular_file(entry.path().parent_path() / "Src" / "Main.rux"),
+                      "test package needs Src/Main.rux: ", entry.path().string());
+
+        const auto output = std::filesystem::weakly_canonical(entry.path().parent_path() / manifest->build.output);
+        const auto outputRelative = output.lexically_relative(binariesRoot);
+        const bool outputIsCentralized = !outputRelative.empty() && *outputRelative.begin() != "..";
+        CHECK_MESSAGE(outputIsCentralized, "test output must stay below Bin/Tests: ", entry.path().string());
+
+        for (const auto &dependency : manifest->dependencies) {
+            REQUIRE_MESSAGE(!dependency.path.empty(),
+                            "test dependencies must use local Path entries: ", entry.path().string(), " -> ",
+                            dependency.name);
+            const auto dependencyRoot = std::filesystem::weakly_canonical(entry.path().parent_path() / dependency.path);
+            const auto dependencyRelative = dependencyRoot.lexically_relative(packagesRoot);
+            const bool dependencyIsLocal = !dependencyRelative.empty() && *dependencyRelative.begin() != "..";
+            CHECK_MESSAGE(dependencyIsLocal, "test dependency must resolve below Packages: ", entry.path().string(),
+                          " -> ", dependency.name);
+            const auto dependencyManifest = Manifest::Load(dependencyRoot / "Rux.toml");
+            REQUIRE_MESSAGE(dependencyManifest.has_value(),
+                            "local dependency has no valid manifest: ", dependencyRoot.string());
+            const auto expectedName = dependency.package.empty() ? dependency.name : dependency.package;
+            CHECK_MESSAGE(dependencyManifest->package.name == expectedName, "dependency name/path mismatch in ",
+                          entry.path().string(), ": expected ", expectedName, ", found ",
+                          dependencyManifest->package.name);
+        }
+    }
+
+    CHECK_MESSAGE(manifestCount > 0, "no Rux test manifests found below ", testsRoot.string());
+}

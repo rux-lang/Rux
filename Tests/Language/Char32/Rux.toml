@@ -1,0 +1,11 @@
+[Package]
+Name = "Char32"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: Char32"
+
+[Dependencies]
+Rux = { Path = "../../../Packages/Rux" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

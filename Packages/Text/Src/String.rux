@@ -1,0 +1,291 @@
+import Memory::{ Alloc, Compare, Copy, Free };
+
+// A String owns the heap block behind `data` and never writes to it again:
+// every transform below returns a fresh String and leaves the receiver
+// untouched. Immutability is what makes the value semantics safe, since a
+// literal-backed buffer would otherwise be written through a read-only page.
+// Assignment copies the struct, not the block, so two Strings can name the
+// same allocation. Clone when both have to be freed; Free exactly once.
+struct String {
+    data: *char8;
+    length: uint;
+}
+
+extend String {
+    // The empty String. It owns no block, so this allocates nothing, and
+    // every operation below treats it as a String of length zero rather than
+    // as a missing value.
+    func New() -> String {
+        return String { data: null, length: 0 };
+    }
+
+    // The raw entry point: the caller vouches that `length` bytes are really
+    // there. The bytes are copied, so the block behind `str` is the caller's
+    // to keep or release, and the String that comes back owns a block of its
+    // own. A length of zero allocates nothing.
+    func From(str: *const char8, length: uint) -> String {
+        if length == 0 {
+            return String::New();
+        }
+
+        let ptr = Alloc(length) as *char8;
+        Copy(ptr, str, length);
+        return String { data: ptr, length: length };
+    }
+
+    // Copies the bytes of a slice, which is how a string literal becomes a
+    // String. The literal itself is left alone on its read-only page.
+    func From(str: char8[]) -> String {
+        return String::From(str.data, str.length);
+    }
+
+    // An independent copy, with a block of its own. Assignment shares a
+    // block between two Strings; this is what to reach for when both of them
+    // have to be freed.
+    func Clone(self) -> String {
+        return String::From(self.data, self.length);
+    }
+
+    // There are no destructors, so ownership is released by hand. The empty
+    // String holds a null block and Memory::Free ignores null, which makes
+    // this safe to call on any String this package returns. It leaves an
+    // empty String behind, so a second call is a no-op rather than a double
+    // free.
+    func Free(self) {
+        Free(self.data);
+        self.data = null;
+        self.length = 0;
+    }
+
+    // The block itself, for handing the bytes to something that reads them
+    // directly. It stays the String's to free, and it carries no terminator:
+    // pair it with Length rather than scanning for a null.
+    func Data(self) -> *char8 {
+        return self.data;
+    }
+
+    // The number of bytes, which for UTF-8 content is not the number of
+    // characters.
+    func Length(self) -> uint {
+        return self.length;
+    }
+
+    // Whether the String holds no bytes. True of String::New and of anything
+    // that has been freed.
+    func IsEmpty(self) -> bool {
+        return self.length == 0;
+    }
+
+    // The byte at an index. Out of range reads report the null character
+    // rather than running off the end of the block.
+    func At(self, index: uint) -> char8 {
+        if index >= self.length {
+            return c8'\0';
+        }
+        return self.data[index];
+    }
+
+    // Compares contents, not addresses: two Strings holding the same bytes in
+    // separate blocks are equal, and so are two empty Strings.
+    func Equals(self, other: String) -> bool {
+        if self.length != other.length {
+            return false;
+        }
+        if self.length == 0 {
+            return true;
+        }
+        // Compare reports the offset of the first difference, so an equal
+        // pair reports the full length.
+        return Compare(self.data, other.data, self.length) == self.length;
+    }
+
+    // Equality by contents. Routes to Equals.
+    func ==(self, other: String) -> bool {
+        return self.Equals(other);
+    }
+
+    // Inequality by contents. Routes to Equals.
+    func !=(self, other: String) -> bool {
+        return !self.Equals(other);
+    }
+
+    // Joins two Strings into a new block, leaving both operands as they were.
+    // The result owns that block and has to be freed, which makes `+` in a
+    // loop a chain of allocations: build with a StringBuilder instead.
+    func +(self, other: String) -> String {
+        let length = self.length + other.length;
+        if length == 0 {
+            return String::New();
+        }
+
+        let ptr = Alloc(length) as *char8;
+        Copy(ptr, self.data, self.length);
+        Copy(ptr + self.length, other.data, other.length);
+        return String { data: ptr, length: length };
+    }
+
+    // Appends a slice, so a literal can be joined on without wrapping it in a
+    // String first. Allocates on the same terms as the overload above.
+    func +(self, other: char8[]) -> String {
+        let length = self.length + other.length;
+        if length == 0 {
+            return String::New();
+        }
+
+        let ptr = Alloc(length) as *char8;
+        Copy(ptr, self.data, self.length);
+        Copy(ptr + self.length, other.data, other.length);
+        return String { data: ptr, length: length };
+    }
+
+    // Whether the String opens with the given bytes. Every String starts with
+    // the empty one, and none starts with a prefix longer than itself.
+    func StartsWith(self, prefix: String) -> bool {
+        if prefix.length > self.length {
+            return false;
+        }
+        if prefix.length == 0 {
+            return true;
+        }
+        return Compare(self.data, prefix.data, prefix.length) == prefix.length;
+    }
+
+    // Whether the String closes with the given bytes, on the same terms as
+    // StartsWith.
+    func EndsWith(self, suffix: String) -> bool {
+        if suffix.length > self.length {
+            return false;
+        }
+        if suffix.length == 0 {
+            return true;
+        }
+
+        let offset = self.length - suffix.length;
+        return Compare(self.data + offset, suffix.data, suffix.length) == suffix.length;
+    }
+
+    // The offset of the first match, or -1 when there is none. The empty
+    // needle matches at the front. The scan is the plain one, so the cost is
+    // the product of the two lengths in the worst case.
+    func IndexOf(self, needle: String) -> int {
+        if needle.length == 0 {
+            return 0;
+        }
+        if needle.length > self.length {
+            return -1;
+        }
+
+        let last = self.length - needle.length;
+        var start: uint = 0;
+        while start <= last {
+            if Compare(self.data + start, needle.data, needle.length) == needle.length {
+                return start as int;
+            }
+            start++;
+        }
+        return -1;
+    }
+
+    // Whether the needle occurs anywhere. Ask IndexOf instead when the
+    // position matters.
+    func Contains(self, needle: String) -> bool {
+        return self.IndexOf(needle) >= 0;
+    }
+
+    // A copy of the bytes in a range, in a block of its own. A range that
+    // runs past the end is clamped to what is there, so the result is never
+    // longer than the receiver, and a start at or past the end yields the
+    // empty String.
+    func Substring(self, start: uint, length: uint) -> String {
+        if start >= self.length {
+            return String::New();
+        }
+
+        var count = length;
+        let available = self.length - start;
+        if count > available {
+            count = available;
+        }
+        return String::From(self.data + start, count);
+    }
+
+    // An upper-cased copy, leaving the receiver alone. ASCII only: bytes
+    // outside a-z are copied through untouched, so the multi-byte sequences
+    // of a UTF-8 string survive but do not case fold.
+    func ToUpper(self) -> String {
+        if self.length == 0 {
+            return String::New();
+        }
+
+        let ptr = Alloc(self.length) as *char8;
+        for i in 0..self.length {
+            let ch = self.data[i];
+            if ch >= c8'a' && ch <= c8'z' {
+                ptr[i] = ((ch as int8) - 32) as char8;
+            } else {
+                ptr[i] = ch;
+            }
+        }
+        return String { data: ptr, length: self.length };
+    }
+
+    // A lower-cased copy, ASCII only, on the same terms as ToUpper.
+    func ToLower(self) -> String {
+        if self.length == 0 {
+            return String::New();
+        }
+
+        let ptr = Alloc(self.length) as *char8;
+        for i in 0..self.length {
+            let ch = self.data[i];
+            if ch >= c8'A' && ch <= c8'Z' {
+                ptr[i] = ((ch as int8) + 32) as char8;
+            } else {
+                ptr[i] = ch;
+            }
+        }
+        return String { data: ptr, length: self.length };
+    }
+
+    // A copy with the leading and trailing whitespace dropped, leaving the
+    // receiver alone. Whitespace that is all there is trims down to the empty
+    // String. See IsSpace for which bytes count.
+    func Trim(self) -> String {
+        var start: uint = 0;
+        while start < self.length && IsSpace(self.data[start]) {
+            start++;
+        }
+
+        if start == self.length {
+            return String::New();
+        }
+
+        var end = self.length;
+        while end > start && IsSpace(self.data[end - 1]) {
+            end--;
+        }
+        return String::From(self.data + start, end - start);
+    }
+
+    // The contents laid down count times in one block. Repeating nothing, or
+    // repeating zero times, yields the empty String. The block is sized up
+    // front, so this costs one allocation rather than one per round.
+    func Repeat(self, count: uint) -> String {
+        if count == 0 || self.length == 0 {
+            return String::New();
+        }
+
+        var builder = StringBuilder::WithCapacity(self.length * count);
+        var i: uint = 0;
+        while i < count {
+            builder.Append(*self);
+            i++;
+        }
+        return builder.IntoString();
+    }
+}
+
+// The bytes Trim treats as whitespace: space, tab, newline, carriage return.
+func IsSpace(ch: char8) -> bool {
+    return ch == c8' ' || ch == c8'\t' || ch == c8'\n' || ch == c8'\r';
+}

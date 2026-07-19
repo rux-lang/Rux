@@ -1,0 +1,12 @@
+[Package]
+Name = "FormatTest"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: FormatTest"
+
+[Dependencies]
+Format = { Path = "../../../Packages/Format" }
+Rux = { Path = "../../../Packages/Rux" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

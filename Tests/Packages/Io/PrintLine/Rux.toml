@@ -1,0 +1,12 @@
+[Package]
+Name = "PrintLine"
+Version = "0.1.0"
+Type = "bin"
+Description = "Package test for Io: PrintLine"
+
+[Dependencies]
+Io = { Path = "../../../../Packages/Io" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Io"

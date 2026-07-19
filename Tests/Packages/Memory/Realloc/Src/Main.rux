@@ -1,0 +1,38 @@
+import Rux::Assert;
+import Memory::{ Alloc, Compare, Free, Realloc, Set };
+
+func Main() -> int {
+    // A null pointer makes Realloc behave like Alloc.
+    let fresh = Realloc(null, 32);
+    Assert(fresh != null, "Realloc(null, 32)");
+    Free(fresh);
+
+    // A zero size releases the block and yields null.
+    Assert(Realloc(Alloc(32), 0) == null, "Realloc(ptr, 0)");
+
+    // Growing preserves every byte of the old block.
+    var buffer = Alloc(8);
+    Assert(buffer != null, "Alloc(8)");
+    Set(buffer, 8, 0xAB);
+
+    buffer = Realloc(buffer, 64);
+    Assert(buffer != null, "Realloc(ptr, 64)");
+
+    var expected = Alloc(8);
+    Set(expected, 8, 0xAB);
+    Assert(Compare(buffer, expected, 8) == 8, "grown block keeps its bytes");
+    Free(expected);
+
+    // Shrinking preserves the surviving prefix.
+    Set(buffer, 64, 0xCD);
+    buffer = Realloc(buffer, 16);
+    Assert(buffer != null, "Realloc(ptr, 16)");
+
+    var prefix = Alloc(16);
+    Set(prefix, 16, 0xCD);
+    Assert(Compare(buffer, prefix, 16) == 16, "shrunk block keeps its prefix");
+    Free(prefix);
+
+    Free(buffer);
+    return 0;
+}

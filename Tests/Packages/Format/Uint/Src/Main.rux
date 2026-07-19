@@ -1,0 +1,52 @@
+import Format::ToString;
+import Text::String;
+
+// Std stays out of the dependencies, and a failed check reports itself through
+// the exit code. See the Int8 test for why.
+func Check(actual: String, expected: char8[], code: int) -> int {
+    var text = actual;
+    var wanted = String::From(expected);
+    let ok = text == wanted;
+    text.Free();
+    wanted.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+func Main() -> int {
+    // uint is the unsigned integer as wide as a pointer. As with int, it is a
+    // type of its own rather than another name for uint64, so it has a
+    // conversion of its own -- and reaching that conversion through a variable
+    // of the type is what proves the two overloads do not collide, which is the
+    // whole point of this test.
+    let zero: uint = 0;
+    var code = Check(ToString(zero), "0", 10);
+    if code != 0 { return code; }
+
+    let value: uint = 1000;
+    code = Check(ToString(value), "1000", 11);
+    if code != 0 { return code; }
+
+    // A value past the range of a uint32, which a uint holds on every target the
+    // package supports.
+    let large: uint = 4294967296;
+    code = Check(ToString(large), "4294967296", 20);
+    if code != 0 { return code; }
+
+    // A String reports its length as a uint, so this is the overload a caller
+    // lands on when printing one, with no annotation anywhere to steer it.
+    var text = String::From("Hello");
+    let length = text.Length();
+    text.Free();
+    code = Check(ToString(length), "5", 21);
+    if code != 0 { return code; }
+
+    // The method the Stringable extension provides.
+    code = Check(value.ToString(), "1000", 30);
+    if code != 0 { return code; }
+
+    return 0;
+}

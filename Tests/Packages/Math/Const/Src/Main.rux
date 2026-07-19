@@ -1,0 +1,44 @@
+import Rux::Assert;
+import Math::E;
+import Math::Log2E;
+import Math::Log10E;
+import Math::Ln2;
+import Math::Ln10;
+import Math::Pi;
+import Math::Tau;
+import Math::HalfPi;
+import Math::QuarterPi;
+import Math::InvPi;
+import Math::InvTau;
+import Math::Sqrt2;
+import Math::InvSqrt2;
+import Math::RadPerDeg;
+import Math::DegPerRad;
+
+func Main() -> int {
+    Assert(E == 2.718281828459045, "E");
+    Assert(Log2E == 1.4426950408889634, "Log2E");
+    Assert(Log10E == 0.4342944819032518, "Log10E");
+    Assert(Ln2 == 0.6931471805599453, "Ln2");
+    Assert(Ln10 == 2.302585092994046, "Ln10");
+
+    Assert(Pi == 3.141592653589793, "Pi");
+    Assert(Tau == 6.283185307179586, "Tau");
+    Assert(HalfPi == 1.5707963267948966, "HalfPi");
+    Assert(QuarterPi == 0.7853981633974483, "QuarterPi");
+    Assert(InvPi == 0.3183098861837907, "InvPi");
+    Assert(InvTau == 0.15915494309189535, "InvTau");
+
+    Assert(Sqrt2 == 1.4142135623730951, "Sqrt2");
+    Assert(InvSqrt2 == 0.7071067811865476, "InvSqrt2");
+
+    Assert(RadPerDeg == 0.017453292519943295, "RadPerDeg");
+    Assert(DegPerRad == 57.29577951308232, "DegPerRad");
+
+    Assert(Tau == 2.0 * Pi, "Tau relation");
+    Assert(HalfPi == Pi / 2.0, "HalfPi relation");
+    Assert(QuarterPi == Pi / 4.0, "QuarterPi relation");
+    Assert(RadPerDeg == Pi / 180.0, "RadPerDeg relation");
+    Assert(DegPerRad == 180.0 / Pi, "DegPerRad relation");
+    return 0;
+}

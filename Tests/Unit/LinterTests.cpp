@@ -51,6 +51,18 @@ TEST_CASE("linter warns on bad function name") {
     CHECK(result.diagnostics[0].message == "function name 'bad_name' should be PascalCase");
 }
 
+TEST_CASE("linter accepts symbolic operator function names") {
+    auto result = Rux::Linting::Lint(R"(
+        extend Number {
+            func +(self, other: Number) -> Number;
+            func ==(self, other: Number) -> bool;
+        }
+    )",
+                                     "operators.rux");
+    CHECK_FALSE(result.HasErrors());
+    CHECK(result.diagnostics.empty());
+}
+
 TEST_CASE("linter warns on bad function parameter name") {
     auto result = Rux::Linting::Lint("func Test(BadParam: int) {}", "param_bad.rux");
     REQUIRE(result.diagnostics.size() == 1);
@@ -133,6 +145,38 @@ TEST_CASE("linter warns on bad type alias name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "type alias name 'badAlias' should be PascalCase");
+}
+
+TEST_CASE("naming.type allows foreign type and member names") {
+    auto result = Rux::Linting::Lint(R"(
+        #Allow("naming.type")
+        type time_t = int64;
+
+        #Allow("naming.type")
+        struct timespec {
+            tv_sec: time_t;
+            tv_nsec: int64;
+        }
+    )",
+                                     "foreign_types.rux");
+    CHECK_FALSE(result.HasErrors());
+    CHECK(result.diagnostics.empty());
+}
+
+TEST_CASE("naming.type rejects unknown rules and non-type declarations") {
+    auto unknown = Rux::Linting::Lint(R"(
+        #Allow("naming.unknown")
+        type time_t = int64;
+    )",
+                                      "unknown_allow.rux");
+    CHECK(unknown.HasErrors());
+
+    auto nonType = Rux::Linting::Lint(R"(
+        #Allow("naming.type")
+        func bad_name() {}
+    )",
+                                      "invalid_allow_target.rux");
+    CHECK(nonType.HasErrors());
 }
 
 TEST_CASE("linter warns on bad local variable name") {

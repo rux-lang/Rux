@@ -286,16 +286,25 @@ bool CompilerDriver::LoadDependencies() {
             return false;
         }
         std::filesystem::path depRoot;
-        if (dep->path.empty()) {
+        if (!dep->path.empty()) {
+            depRoot = (ownerRoot / dep->path).lexically_normal();
+        }
+        else if (const auto local = opts.localPackageRoots.find(DependencyPackageName(*dep));
+                 local != opts.localPackageRoots.end()) {
+            depRoot = local->second;
+        }
+        else {
+            if (opts.localDependenciesOnly) {
+                Emit(ErrorDiagnostic("package '" + DependencyPackageName(*dep) +
+                                     "' is not a local workspace member; registry dependencies are disabled"));
+                return false;
+            }
             depRoot = RegistryPackagesDir() / DependencyPackageName(*dep);
             if (!std::filesystem::exists(depRoot)) {
                 Emit(ErrorDiagnostic("package '" + DependencyPackageName(*dep) +
                                      "' is not installed — run 'rux install'"));
                 return false;
             }
-        }
-        else {
-            depRoot = (ownerRoot / dep->path).lexically_normal();
         }
         auto depManifest = Manifest::Load(depRoot / "Rux.toml");
         if (!depManifest) {
@@ -533,7 +542,7 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     if (opts.verbose) {
         std::print("   Linking {}\n", opts.manifest.package.name);
     }
-    const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName);
+    const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, !opts.isTest);
     const bool buildDll = (opts.manifest.package.type == "Dll" || opts.manifest.package.type == "dll");
     const OS targetOs = TargetTripleOs(opts.targetName);
     const std::string outputName = buildDll ? SharedLibraryFileName(opts.manifest.package.name, targetOs)

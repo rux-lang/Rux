@@ -1,0 +1,48 @@
+import Text::String;
+
+// See Tests/Packages/Text/String for why Std is not a dependency and a failed check reports
+// itself through the exit code.
+func Main() -> int {
+    var hello = String::From("Hello");
+    var same = String::From("Hello");
+    var other = String::From("World");
+    var shorter = String::From("Hell");
+    var empty = String::New();
+
+    // Equal contents in separate blocks compare equal, so equality is by value
+    // rather than by address.
+    if !hello.Equals(same) { return 10; }
+    if hello.Data() == same.Data() { return 11; }
+    if hello.Equals(other) { return 12; }
+
+    // A prefix of the same bytes is still a different String.
+    if hello.Equals(shorter) { return 13; }
+    if shorter.Equals(hello) { return 14; }
+
+    // The operators route to Equals.
+    if !(hello == same) { return 20; }
+    if hello == other { return 21; }
+    if hello != same { return 22; }
+    if !(hello != other) { return 23; }
+
+    // The empty String equals only itself. It owns no block, so the comparison
+    // must not reach into its null data.
+    var alsoEmpty = String::New();
+    if !empty.Equals(alsoEmpty) { return 30; }
+    if empty.Equals(hello) { return 31; }
+    if hello.Equals(empty) { return 32; }
+    alsoEmpty.Free();
+
+    // Equality is reflexive over a clone, which is the case Free has to keep
+    // working after.
+    var copy = hello.Clone();
+    if !(copy == hello) { return 40; }
+    copy.Free();
+
+    empty.Free();
+    shorter.Free();
+    other.Free();
+    same.Free();
+    hello.Free();
+    return 0;
+}

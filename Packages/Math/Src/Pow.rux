@@ -1,0 +1,364 @@
+// log2 of the argument, as an unevaluated sum hi + lo of two doubles.
+struct Log2Pair {
+    hi: float64;
+    lo: float64;
+}
+
+// log2(ax) for a finite positive ax, to about twice double precision. The
+// interval is folded around either 1 or 1.5, whichever leaves the ratio
+// (ax - bp)/(ax + bp) smaller, and the series in that ratio converges fast
+// enough that six terms carry it. Every TruncLow makes some product exact.
+func PowLog2(ax: float64) -> Log2Pair {
+    let dpH1 = 5.84962487220764160156e-01; // log2(1.5), high part
+    let dpL1 = 1.35003920212974897128e-08; // log2(1.5), low part
+
+    // Coefficients of (3/2)*(log(x) - 2s - (2/3)s^3) in s^2.
+    let l1 = 5.99999999999994648725e-01;
+    let l2 = 4.28571428578550184252e-01;
+    let l3 = 3.33333329818377432918e-01;
+    let l4 = 2.72728123808534006489e-01;
+    let l5 = 2.30660745775561754067e-01;
+    let l6 = 2.06975017800338417784e-01;
+
+    let cp = 9.61796693925975554329e-01; // 2/(3*ln2)
+    let cpH = 9.61796700954437255859e-01;
+    let cpL = -7.02846165095275826516e-09;
+
+    var a = ax;
+    var n = 0i64;
+    var ix = (FloatBits(a) >> 32u64) & 0x7FFFFFFFu64;
+
+    // A subnormal has no leading one; scale it into the normals.
+    if ix < 0x00100000u64 {
+        a *= 9007199254740992.0; // 2^53
+        n -= 53i64;
+        ix = (FloatBits(a) >> 32u64) & 0x7FFFFFFFu64;
+    }
+    n += ((ix >> 20u64) as int64) - 0x3FFi64;
+    let j = ix & 0xFFFFFu64;
+
+    // 0x3988E and 0xBB67A are sqrt(3/2) and sqrt(3) in the top 20 bits.
+    var ixn = j | 0x3FF00000u64;
+    var k = 0i64;
+    if j <= 0x3988Eu64 {
+        k = 0i64;
+    } else if j < 0xBB67Au64 {
+        k = 1i64;
+    } else {
+        k = 0i64;
+        n += 1i64;
+        ixn -= 0x100000u64;
+    }
+    a = WithHighWord(a, ixn);
+
+    let bp = k == 0i64 ? 1.0 : 1.5;
+    let dpH = k == 0i64 ? 0.0 : dpH1;
+    let dpL = k == 0i64 ? 0.0 : dpL1;
+
+    // ss = sH + sL = (a - bp) / (a + bp), to twice double precision.
+    let u = a - bp;
+    let v = 1.0 / (a + bp);
+    let ss = u * v;
+    let sH = TruncLow(ss);
+
+    // The high half of a + bp, built directly rather than rounded.
+    var tH = FromHighWord(((ixn >> 1u64) | 0x20000000u64) + 0x80000u64 + ((k as uint64) << 18u64));
+    let tL = a - (tH - bp);
+    let sL = v * ((u - sH * tH) - sH * tL);
+
+    var s2 = ss * ss;
+    var r = s2 * s2 * (l1 + s2 * (l2 + s2 * (l3 + s2 * (l4 + s2 * (l5 + s2 * l6)))));
+    r += sL * (sH + ss);
+    s2 = sH * sH;
+    tH = TruncLow(3.0 + s2 + r);
+    let tL2 = r - ((tH - 3.0) - s2);
+
+    let u2 = sH * tH;
+    let v2 = sL * tH + tL2 * ss;
+
+    // Multiply by 2/(3*ln2) to turn the natural log into a base-two one.
+    let pH = TruncLow(u2 + v2);
+    let pL = v2 - (pH - u2);
+    let zH = cpH * pH;
+    let zL = cpL * pH + pL * cp + dpL;
+
+    // log2(a) = n + dpH + zH + zL, split once more.
+    let t = n as float64;
+    var out: Log2Pair;
+    out.hi = TruncLow(((zH + zL) + dpH) + t);
+    out.lo = zL - (((out.hi - t) - dpH) - zH);
+    return out;
+}
+
+// log2(ax) when |1 - ax| is under 2^-20, where four terms of the series for
+// log(1 + t) already reach full precision and the reduction above would only
+// lose bits to cancellation.
+func PowLog2NearOne(ax: float64) -> Log2Pair {
+    let ivln2 = 1.44269504088896338700e+00;
+    let ivln2H = 1.44269502162933349609e+00;
+    let ivln2L = 1.92596299112661746887e-08;
+
+    let t = ax - 1.0; // exact: t has 20 trailing zeros
+    let w = (t * t) * (0.5 - t * (0.3333333333333333333333 - t * 0.25));
+    let u = ivln2H * t; // ivln2H has 21 significant bits, so this is exact
+    let v = t * ivln2L - w * ivln2;
+
+    var out: Log2Pair;
+    out.hi = TruncLow(u + v);
+    out.lo = v - (out.hi - u);
+    return out;
+}
+
+// 2^(pHigh + pLow), for a sum the caller has already checked to be inside the
+// exponent range. z is that sum, rounded. The integer part is lifted out of
+// the exponent field directly and the fraction goes through the polynomial
+// the exponential uses.
+func Pow2(pHigh: float64, pLow: float64, z: float64) -> float64 {
+    let p1 = 1.66666666666666019037e-01;
+    let p2 = -2.77777777770155933842e-03;
+    let p3 = 6.61375632143793436117e-05;
+    let p4 = -1.65339022054652515390e-06;
+    let p5 = 4.13813679705723846039e-08;
+
+    let lg2 = 6.93147180559945286227e-01;
+    let lg2H = 6.93147182464599609375e-01;
+    let lg2L = -1.90465429995776804525e-09;
+
+    var pH = pHigh;
+    let jz = (FloatBits(z) >> 32u64) & 0xFFFFFFFFu64;
+    let izz = jz & 0x7FFFFFFFu64;
+    var kk = ((izz >> 20u64) as int64) - 0x3FFi64;
+    var nn = 0i64;
+
+    if izz > 0x3FE00000u64 { // |z| > 0.5, so there is an integer part
+        let nBits = (jz + (0x100000u64 >> ((kk + 1i64) as uint64))) & 0xFFFFFFFFu64;
+        kk = (((nBits & 0x7FFFFFFFu64) >> 20u64) as int64) - 0x3FFi64;
+        let cut = FromHighWord(nBits & ~(0xFFFFFu64 >> (kk as uint64)));
+        nn = (((nBits & 0xFFFFFu64) | 0x100000u64) >> ((20i64 - kk) as uint64)) as int64;
+        if (jz >> 31u64) == 1u64 {
+            nn = -nn;
+        }
+        pH -= cut;
+    }
+
+    let t = TruncLow(pLow + pH);
+    let u = t * lg2H; // exact: both have few enough significant bits
+    let v = (pLow - (t - pH)) * lg2 + t * lg2L;
+    var e = u + v;
+    let w = v - (e - u);
+
+    let e2 = e * e;
+    let poly = e - e2 * (p1 + e2 * (p2 + e2 * (p3 + e2 * (p4 + e2 * p5))));
+    let r = (e * poly) / (poly - 2.0) - (w + e * w);
+    e = 1.0 - (r - e);
+
+    // Put the integer part back into the exponent field, or fall back on a
+    // scaling when the answer is subnormal and the field has no room for it.
+    let jj = (((FloatBits(e) >> 32u64) & 0xFFFFFFFFu64) as int64) + (nn << 20i64);
+    if (jj >> 20i64) <= 0i64 {
+        return Scalb(e, nn);
+    }
+    return WithHighWord(e, jj as uint64);
+}
+
+// x^y.
+//
+// The shape of the problem is that y * log2(x) has to be known to more than
+// double precision before it is exponentiated: an error of one ulp in the
+// product becomes an error of 2^1024 ulps in the answer when y is large. So
+// log2(|x|) is built as an unevaluated sum, y is split the same way, and the
+// product is accumulated in that form before 2^z is taken.
+//
+// The special cases come first and there are many, because x^y has an answer
+// for almost every pair -- including several where one argument is a NaN.
+func Pow(x: float64, y: float64) -> float64 {
+    let ovt = 8.008566259537294e-17; // 1024 - log2(overflow + half an ulp)
+    let huge = 1.0e300;
+    let tiny = 1.0e-300;
+
+    let xbits = FloatBits(x);
+    let ybits = FloatBits(y);
+    let hx = (xbits >> 32u64) & 0xFFFFFFFFu64;
+    let lx = xbits & 0xFFFFFFFFu64;
+    let hy = (ybits >> 32u64) & 0xFFFFFFFFu64;
+    let ly = ybits & 0xFFFFFFFFu64;
+    let ix = hx & 0x7FFFFFFFu64;
+    let iy = hy & 0x7FFFFFFFu64;
+    let xNegative = (hx >> 31u64) == 1u64;
+    let yNegative = (hy >> 31u64) == 1u64;
+
+    // x^0 is 1 for every x, a NaN included.
+    if (iy | ly) == 0u64 {
+        return 1.0;
+    }
+
+    // 1^y is 1 for every y, a NaN included.
+    if hx == 0x3FF00000u64 && lx == 0u64 {
+        return 1.0;
+    }
+
+    // With those out of the way, a NaN anywhere gives a NaN.
+    if ix > 0x7FF00000u64 || (ix == 0x7FF00000u64 && lx != 0u64) ||
+        iy > 0x7FF00000u64 || (iy == 0x7FF00000u64 && ly != 0u64) {
+        return (x + 0.0) + (y + 0.0);
+    }
+
+    // Whether y is an integer, and whether it is odd, decides the sign of the
+    // result and whether it exists at all when x is negative.
+    //   0 = not an integer, 1 = an odd integer, 2 = an even integer
+    var yisint = 0i64;
+    if xNegative {
+        if iy >= 0x43400000u64 {
+            // |y| >= 2^53: every significand bit is above the binary point,
+            // and the lowest of them is a multiple of two.
+            yisint = 2i64;
+        } else if iy >= 0x3FF00000u64 {
+            let k = ((iy >> 20u64) as int64) - 0x3FFi64;
+            if k > 20i64 {
+                let j = ly >> ((52i64 - k) as uint64);
+                if (j << ((52i64 - k) as uint64)) == ly {
+                    yisint = 2i64 - ((j & 1u64) as int64);
+                }
+            } else if ly == 0u64 {
+                let j = iy >> ((20i64 - k) as uint64);
+                if (j << ((20i64 - k) as uint64)) == iy {
+                    yisint = 2i64 - ((j & 1u64) as int64);
+                }
+            }
+        }
+    }
+
+    // Special values of y.
+    if ly == 0u64 {
+        if iy == 0x7FF00000u64 { // y is +-Inf
+            if ix == 0x3FF00000u64 && lx == 0u64 {
+                return 1.0; // (-1)^(+-Inf) is 1
+            }
+            if ix >= 0x3FF00000u64 { // |x| > 1
+                if yNegative { return 0.0; }
+                return y;
+            }
+            if yNegative { return -y; }
+            return 0.0; // |x| < 1
+        }
+        if iy == 0x3FF00000u64 { // y is +-1
+            if yNegative {
+                return 1.0 / x;
+            }
+            return x;
+        }
+        if hy == 0x40000000u64 {
+            return x * x; // y is 2
+        }
+        if hy == 0x3FE00000u64 && !xNegative {
+            return Sqrt(x); // y is 0.5 and x is not negative
+        }
+    }
+
+    let ax = Abs(x);
+
+    // Special values of x: +-0, +-Inf, +-1.
+    if lx == 0u64 && (ix == 0x7FF00000u64 || ix == 0u64 || ix == 0x3FF00000u64) {
+        if ix == 0u64 {
+            if xNegative && yisint == 1i64 {
+                let negZero = FromBits(0x8000000000000000u64);
+                if yNegative {
+                    return 1.0 / negZero;
+                }
+                return negZero;
+            }
+            var z0 = ax;
+            if yNegative {
+                z0 = 1.0 / z0;
+            }
+            return z0;
+        }
+
+        var z = ax;
+        if yNegative {
+            z = 1.0 / z;
+        }
+        if xNegative {
+            if ix == 0x3FF00000u64 && yisint == 0i64 {
+                // (-1) to a non-integer power has no real value.
+                var q = z - z;
+                return q / q;
+            }
+            if yisint == 1i64 {
+                z = -z;
+            }
+        }
+        return z;
+    }
+
+    // Nor does any other negative x to a non-integer power.
+    if xNegative && yisint == 0i64 {
+        var q = x - x;
+        return q / q;
+    }
+
+    // The sign of the result: negative only for a negative x raised to an odd
+    // integer power.
+    var s = 1.0;
+    if xNegative && yisint == 1i64 {
+        s = -1.0;
+    }
+
+    var lg: Log2Pair;
+
+    if iy > 0x41E00000u64 { // |y| > 2^31
+        if iy > 0x43F00000u64 { // |y| > 2^64: the answer must over- or underflow
+            if ix <= 0x3FEFFFFFu64 {
+                if yNegative { return huge * huge; }
+                return tiny * tiny;
+            }
+            if ix >= 0x3FF00000u64 {
+                if yNegative { return tiny * tiny; }
+                return huge * huge;
+            }
+        }
+        // Over- or underflow unless x is very close to one.
+        if ix < 0x3FEFFFFFu64 {
+            if yNegative { return s * huge * huge; }
+            return s * tiny * tiny;
+        }
+        if ix > 0x3FF00000u64 {
+            if yNegative { return s * tiny * tiny; }
+            return s * huge * huge;
+        }
+        lg = PowLog2NearOne(ax);
+    } else {
+        lg = PowLog2(ax);
+    }
+
+    // z = (y1 + y2) * (lg.hi + lg.lo), the exponent of the answer in base two.
+    let y1 = TruncLow(y);
+    let pLow = (y - y1) * lg.hi + y * lg.lo;
+    let pHigh = y1 * lg.hi;
+    let z = pLow + pHigh;
+
+    let jz = (FloatBits(z) >> 32u64) & 0xFFFFFFFFu64;
+    let iz = FloatBits(z) & 0xFFFFFFFFu64;
+
+    if (jz >> 31u64) == 0u64 && jz >= 0x40900000u64 { // z >= 1024
+        if jz != 0x40900000u64 || iz != 0u64 {
+            return s * huge * huge; // overflow
+        }
+        if pLow + ovt > z - pHigh {
+            return s * huge * huge; // overflow, decided by the low half
+        }
+    } else if (jz & 0x7FFFFFFFu64) >= 0x4090CC00u64 { // z <= -1075
+        if jz != 0xC090CC00u64 || iz != 0u64 {
+            return s * tiny * tiny; // underflow
+        }
+        if pLow <= z - pHigh {
+            return s * tiny * tiny; // underflow, decided by the low half
+        }
+    }
+
+    return s * Pow2(pHigh, pLow, z);
+}
+
+func Pow(x: float32, y: float32) -> float32 {
+    return Pow(x as float64, y as float64) as float32;
+}

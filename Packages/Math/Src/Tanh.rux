@@ -1,0 +1,31 @@
+func Tanh(x: float64) -> float64 {
+    if x != x {
+        return x;
+    }
+
+    let bits = FloatBits(x);
+    let negative = (bits >> 63u64) == 1u64;
+    let ax = Abs(x);
+
+    if ax == 0.0 {
+        return x;
+    }
+    if ax >= 22.0 {
+        return negative ? -1.0 : 1.0;
+    }
+
+    var y = 0.0;
+    if ax < 1.0 {
+        let t = Expm1(-2.0 * ax);
+        y = -t / (t + 2.0);
+    } else {
+        let t = Expm1(2.0 * ax);
+        y = 1.0 - 2.0 / (t + 2.0);
+    }
+
+    return negative ? -y : y;
+}
+
+func Tanh(x: float32) -> float32 {
+    return Tanh(x as float64) as float32;
+}

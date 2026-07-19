@@ -1,0 +1,6 @@
+[Package]
+Name = "Random"
+Version = "0.1.0"
+Type = "Source"
+Description = "Planned pseudorandom number generators and distributions"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]

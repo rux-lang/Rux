@@ -1,0 +1,168 @@
+import Memory::{ Alloc, Copy, Free, Realloc };
+
+// The mutable counterpart to String. Appending to a String would allocate on
+// every step, so accumulation happens here instead: the builder keeps spare
+// capacity and doubles it, which is what the extra field buys over String.
+// Hand the result over with IntoString once, or take a copy with ToString as
+// often as needed.
+struct StringBuilder {
+    data: *char8;
+    length: uint;
+    capacity: uint;
+}
+
+extend StringBuilder {
+    // An empty builder. It holds no block until the first append, so this
+    // allocates nothing.
+    func New() -> StringBuilder {
+        return StringBuilder { data: null, length: 0, capacity: 0 };
+    }
+
+    // An empty builder with room reserved up front. Appends that stay within
+    // that room do not reallocate, which is worth it when the final size is
+    // known: String::Repeat sizes its builder this way.
+    func WithCapacity(capacity: uint) -> StringBuilder {
+        if capacity == 0 {
+            return StringBuilder::New();
+        }
+
+        let ptr = Alloc(capacity) as *char8;
+        return StringBuilder { data: ptr, length: 0, capacity: capacity };
+    }
+
+    // Releases the block by hand, as String::Free does, and leaves an empty
+    // builder behind. Safe on a builder that owns nothing, so it can follow
+    // an IntoString that already gave the block away, and the builder stays
+    // usable afterwards.
+    func Free(self) {
+        Free(self.data);
+        self.data = null;
+        self.length = 0;
+        self.capacity = 0;
+    }
+
+    // The block itself. Unlike String::Data this points at memory a later
+    // append may move, so do not hold onto it across one.
+    func Data(self) -> *char8 {
+        return self.data;
+    }
+
+    // The number of bytes written so far, which is not the capacity.
+    func Length(self) -> uint {
+        return self.length;
+    }
+
+    // The number of bytes the block can hold before it has to grow.
+    func Capacity(self) -> uint {
+        return self.capacity;
+    }
+
+    // Whether anything has been written. Says nothing about the capacity: a
+    // cleared builder is empty but still holds its block.
+    func IsEmpty(self) -> bool {
+        return self.length == 0;
+    }
+
+    // Makes room for `additional` more bytes on top of what is already
+    // written. Capacity only ever grows, so this leaves a builder that is
+    // already big enough alone; Shrink is what hands capacity back.
+    func Reserve(self, additional: uint) {
+        self.Grow(self.length + additional);
+    }
+
+    // Grows the block to hold at least `required` bytes. Doubling from a 16
+    // byte floor is what makes a run of appends cost an amortized constant
+    // rather than a reallocation each time.
+    func Grow(self, required: uint) {
+        if required <= self.capacity {
+            return;
+        }
+
+        var capacity = self.capacity;
+        if capacity == 0 {
+            capacity = 16;
+        }
+        while capacity < required {
+            capacity *= 2;
+        }
+
+        self.data = self.data == null
+            ? Alloc(capacity) as *char8
+            : Realloc(self.data, capacity) as *char8;
+        self.capacity = capacity;
+    }
+
+    // Drops the capacity the builder is not using. IntoString leans on this
+    // so the String it hands out owns a block sized to its contents rather
+    // than to the builder's high-water mark.
+    func Shrink(self) {
+        if self.capacity == self.length {
+            return;
+        }
+
+        if self.length == 0 {
+            self.Free();
+            return;
+        }
+
+        self.data = Realloc(self.data, self.length) as *char8;
+        self.capacity = self.length;
+    }
+
+    // Writes one byte, growing the block if it is full.
+    func Append(self, ch: char8) {
+        self.Grow(self.length + 1);
+        self.data[self.length] = ch;
+        self.length++;
+    }
+
+    // Writes the bytes of a slice, so a literal can be appended without
+    // wrapping it in a String first.
+    func Append(self, str: char8[]) {
+        if str.length == 0 {
+            return;
+        }
+
+        self.Grow(self.length + str.length);
+        Copy(self.data + self.length, str.data, str.length);
+        self.length += str.length;
+    }
+
+    // Writes the bytes of a String. They are copied, so the String is left
+    // untouched and is still the caller's to free.
+    func Append(self, str: String) {
+        if str.length == 0 {
+            return;
+        }
+
+        self.Grow(self.length + str.length);
+        Copy(self.data + self.length, str.data, str.length);
+        self.length += str.length;
+    }
+
+    // Forgets what was written but keeps the block, so the builder can be
+    // filled again without a fresh allocation. Free is what releases it.
+    func Clear(self) {
+        self.length = 0;
+    }
+
+    // Copies the contents out into a String. The builder keeps its own block
+    // and stays usable, so both it and the String have to be freed. Reach for
+    // IntoString instead once the builder is finished with.
+    func ToString(self) -> String {
+        return String::From(self.data, self.length);
+    }
+
+    // Hands the block itself to the String, which costs no copy. The builder
+    // is left empty and owning nothing, so only the String has to be freed.
+    // Draining an empty builder yields the empty String.
+    func IntoString(self) -> String {
+        self.Shrink();
+
+        let result = String { data: self.data, length: self.length };
+        self.data = null;
+        self.length = 0;
+        self.capacity = 0;
+        return result;
+    }
+}

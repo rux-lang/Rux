@@ -63,13 +63,14 @@
             "-DRUX_WERROR=ON"
           ];
 
-          # CTest covers the hermetic C++ unit suite. The Rux-language suite
-          # intentionally stays out of the sandbox because `rux install` must
-          # access the package registry before those tests can be compiled.
+          # CTest covers the hermetic C++ unit suite. Rux-language tests use
+          # local workspace packages and can be run separately without network
+          # access.
           doCheck = true;
           checkPhase = ''
             runHook preCheck
-            ctest --test-dir build --output-on-failure
+            # The Nix CMake hook has already entered its build directory.
+            ctest --output-on-failure
             runHook postCheck
           '';
 
@@ -125,7 +126,7 @@
           platform-isolation = pkgs.runCommand "rux-platform-isolation-check" {
             nativeBuildInputs = [ pkgs.gnugrep ];
           } ''
-            sh ${source}/Tools/PlatformIsolation/Check.sh
+            sh ${source}/Tests/Policy/PlatformIsolation/Check.sh
             touch "$out"
           '';
         }
@@ -158,10 +159,11 @@
             shellHook = ''
               echo "Rux development shell (${system})"
               echo "  compiler:  $(clang++ --version | head -n 1)"
-              echo "  configure: cmake -S . -B build -DRUX_BUILD_TESTS=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
-              echo "  build:     cmake --build build --config Release"
-              echo "  unit test: ctest --test-dir build --output-on-failure -C Release"
-              echo "  language:  ./Bin/Release/rux install && ./Bin/Release/rux test --release"
+              echo "  configure: cmake -S . -B Build -DRUX_BUILD_TESTS=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+              echo "  build:     cmake --build Build --config Release"
+              echo "  unit test: ctest --test-dir Build --output-on-failure -C Release"
+              echo "  format:    sh Format.sh"
+              echo "  verify:    sh Test.sh"
             '';
           };
         }

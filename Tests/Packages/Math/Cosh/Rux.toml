@@ -1,0 +1,12 @@
+[Package]
+Name = "Cosh"
+Version = "0.1.0"
+Type = "bin"
+Description = "Package test for Math: Cosh"
+
+[Dependencies]
+Math = { Path = "../../../../Packages/Math" }
+Rux = { Path = "../../../../Packages/Rux" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Math"

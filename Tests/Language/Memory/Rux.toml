@@ -1,0 +1,12 @@
+[Package]
+Name = "MemoryTest"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: MemoryTest"
+
+[Dependencies]
+Memory = { Path = "../../../Packages/Memory" }
+Rux = { Path = "../../../Packages/Rux" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

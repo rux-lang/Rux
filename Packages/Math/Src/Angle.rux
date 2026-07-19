@@ -1,0 +1,22 @@
+// The two conversions between degrees and radians. Each scales by the
+// nearest float64 to its exact ratio, so one rounding in the constant and
+// one in the product hold the result within an ulp. Both constants are
+// faithful enough that the round numbers come out exact: DegToRad(180.0) is
+// Pi and RadToDeg(Pi) is 180.0. Infinities, NaN and the sign of a zero all
+// fall out of the multiplication.
+
+func DegToRad(x: float64) -> float64 {
+    return x * 0.017453292519943295; // Pi/180
+}
+
+func DegToRad(x: float32) -> float32 {
+    return DegToRad(x as float64) as float32;
+}
+
+func RadToDeg(x: float64) -> float64 {
+    return x * 57.29577951308232; // 180/Pi
+}
+
+func RadToDeg(x: float32) -> float32 {
+    return RadToDeg(x as float64) as float32;
+}

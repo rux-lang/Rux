@@ -1,0 +1,54 @@
+import Rux::Assert;
+import Math::Cbrt;
+
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 2i64;
+}
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(Cbrt(0.0) == 0.0, "Cbrt(0.0)");
+    let negZero = Cbrt(-0.0);
+    Assert(negZero == 0.0, "Cbrt(-0.0)");
+    Assert(one / negZero < 0.0, "Cbrt(-0.0) keeps sign");
+
+    Assert(Close(Cbrt(1.0), 1.0), "Cbrt(1.0)");
+    Assert(Close(Cbrt(8.0), 2.0), "Cbrt(8.0)");
+    Assert(Close(Cbrt(-27.0), -3.0), "Cbrt(-27.0)");
+    Assert(Close(Cbrt(2.0), 1.2599210498948732), "Cbrt(2.0)");
+    Assert(Close(Cbrt(1e300), 1e100), "Cbrt(1e300)");
+
+    Assert(Cbrt(inf) == inf, "Cbrt(+Inf)");
+    Assert(Cbrt(-inf) == -inf, "Cbrt(-Inf)");
+    let nan = zero / zero;
+    let nanCbrt = Cbrt(nan);
+    Assert(nanCbrt != nanCbrt, "Cbrt(NaN)");
+
+    Assert(Cbrt(2.0f32) == 1.2599210739135742f32, "Cbrt(2f32)");
+    return 0;
+}

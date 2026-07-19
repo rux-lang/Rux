@@ -1,0 +1,30 @@
+import Rux::Assert;
+import Memory::{ Alloc, Free, Set, Zero };
+
+func Main() -> int {
+    let buffer = Alloc(32);
+    Assert(buffer != null, "Alloc(32)");
+    let bytes = buffer as *uint8;
+
+    Set(buffer, 32, 0xFF);
+    Zero(buffer, 32);
+
+    var i: uint = 0;
+    while i < 32 {
+        Assert(*(bytes + i) == 0, "Zero clears every byte");
+        i++;
+    }
+
+    // Only the first size bytes are cleared.
+    Set(buffer, 32, 0xFF);
+    Zero(buffer, 16);
+    Assert(*(bytes + 15) == 0, "Zero clears up to size");
+    Assert(*(bytes + 16) == 0xFF, "Zero stops at size");
+
+    // A size of zero clears nothing.
+    Zero(buffer, 0);
+    Assert(*bytes == 0, "Zero(ptr, 0)");
+
+    Free(buffer);
+    return 0;
+}

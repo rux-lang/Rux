@@ -46,7 +46,7 @@ The CMake target graph enforces these dependencies. Prefer adding a dependency t
 
 `Target` describes the output machine. `System` describes the host running the compiler. Code generation and linking must use target data rather than host preprocessor checks. For example, emitting a Linux executable while running on Windows is a target decision; locating `%LocalAppData%` is a host decision.
 
-Operating-system APIs are confined to `Compiler/System`; the CI isolation guard is `Tools/PlatformIsolation/Check.sh`. New uses of `getenv`, `<windows.h>`, `fork`, or similar APIs belong behind a `System` interface.
+Operating-system APIs are confined to `Compiler/System`; the CI isolation guard is `Tests/Policy/PlatformIsolation/Check.sh`. New uses of `getenv`, `<windows.h>`, `fork`, or similar APIs belong behind a `System` interface.
 
 ## Namespaces and public boundaries
 
@@ -71,7 +71,7 @@ Package commands use `Package/Manifest` for manifest parsing and `System/Process
 - Windows: `%LocalAppData%\Rux\Packages`
 - Unix-like hosts: `~/.rux/packages`
 
-An explicit `[Workspace]` manifest names its member packages. For the compiler repository and similar test workspaces with no root manifest, `rux install` discovers the root `Tests/` tree, immediate member manifests, and member test trees. `rux test` discovers runnable packages in the root and member `Tests/` trees. Keep their shared test-tree rules aligned when either command changes.
+An explicit `[Workspace]` manifest names its member packages. Workspace checks resolve dependencies matching member package names from the local source tree. `rux test` discovers runnable packages below the root `Tests/` tree, requires their direct dependencies to use local path entries, resolves transitive first-party dependencies from workspace members, and disables registry fallback. Publishable package manifests can therefore retain registry-compatible dependency declarations without making repository tests depend on the network or shared package cache.
 
 ## Failure and diagnostic contracts
 

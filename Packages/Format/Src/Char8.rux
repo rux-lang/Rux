@@ -1,0 +1,24 @@
+import Text::{ String, StringBuilder };
+
+// A char8 is one byte of UTF-8, not one character: the String it becomes is
+// one byte long, and for a byte out of the middle of a multi-byte sequence
+// that String holds a fragment rather than a letter. Nothing is encoded or
+// validated here, since there is nothing to encode -- the byte is passed
+// through as it stands.
+func ToString(value: char8) -> String {
+    var buffer: char8[1];
+    buffer[0] = value;
+    return String::From(buffer.data, 1u);
+}
+
+extend char8 : Stringable {
+    func ToString(self) -> String {
+        return ToString(*self);
+    }
+}
+
+extend char8[] : Stringable {
+    func ToString(self) -> String {
+        return String::From(self);
+    }
+}

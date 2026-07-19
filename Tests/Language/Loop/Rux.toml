@@ -1,0 +1,11 @@
+[Package]
+Name = "Loop"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: Loop"
+
+[Dependencies]
+Rux = { Path = "../../../Packages/Rux" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

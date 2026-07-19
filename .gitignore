@@ -3,9 +3,11 @@ Bin/
 bin/
 Build/
 build/
-cmake-build-*/
+Out/
 out/
 Temp/
+temp/
+cmake-build-*/
 
 # CMake
 CMakeCache.txt

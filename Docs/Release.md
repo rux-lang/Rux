@@ -30,12 +30,12 @@ Parses `VERSION` from `CMakeLists.txt` and compares it to the pushed tag (minus 
 
 Each `needs: verify-version`, then builds Release **and runs the test suite** — a broken build or failing test blocks the release. Each uploads its binary as an artifact; the Windows job additionally packages the freshly built binary into a per-user MSI installer (`Packaging/Windows/Msi/Build.ps1`):
 
-| Job       | Runner       | Artifacts                                    |
-| --------- | ------------ | -------------------------------------------- |
-| `linux`   | ubuntu-24.04 | `rux-linux` (the `rux` binary)               |
-| `windows` | windows-2025 | `rux-windows` (`rux.exe`), `rux-windows-msi` |
+| Job       | Runner       | Artifacts                                        |
+| --------- | ------------ | ------------------------------------------------ |
+| `linux`   | ubuntu-24.04 | `rux-linux-x64` (the `rux` binary)               |
+| `windows` | windows-2025 | `rux-windows-x64` (`rux.exe`), `rux-windows-msi` |
 
-Before running language tests, each job executes bare `rux install` from the repository root. Manifest-less workspace discovery derives test dependencies from their manifests, so release validation uses the same dependency graph as normal CI and local development.
+Each job runs language tests from the repository root. Test manifests use local path dependencies, and transitive first-party dependencies resolve from workspace members with registry fallback disabled, so release validation is deterministic and network-independent. The Linux job also checks every maintained Rux source with `rux fmt --check` before packaging.
 
 ### 3. `release` (publish)
 
@@ -46,7 +46,8 @@ Before running language tests, each job executes bare `rux install` from the rep
    - `rux-linux.tar.gz` (preserves the executable bit)
    - `rux-windows.zip`
    - `rux-windows.msi` (attached as-is)
-3. Create a **draft** GitHub Release with auto-generated release notes and the archives attached.
+   - `SHA256SUMS` (integrity hashes for all three packages)
+3. Create a **draft** GitHub Release with auto-generated release notes and every package attached.
 
 ## Cutting a release — checklist
 
@@ -63,7 +64,7 @@ Before running language tests, each job executes bare `rux install` from the rep
 7. Wait for `verify-version`, `linux`, and `windows` to succeed.
 8. A repository owner or maintainer with release permission reviews the draft:
    - Confirm the generated notes cover the intended changelog entries.
-   - Download each asset and verify its filename and size.
+   - Download each asset and verify its filename and SHA-256 hash against `SHA256SUMS`.
    - Smoke-test the Linux archive and at least one Windows installer.
 9. Edit the generated notes if needed, then **publish the draft release**.
 
@@ -81,13 +82,14 @@ Do not move or reuse a published tag. If a released artifact is defective, prepa
 
 ## Distribution
 
-The release workflow publishes three user-facing assets:
+The release workflow publishes three installable assets plus a checksum manifest:
 
 | Asset              | Consumer                                                           |
 | ------------------ | ------------------------------------------------------------------ |
 | `rux-linux.tar.gz` | Linux installer script in `Packaging/Linux/install.sh`             |
 | `rux-windows.zip`  | PowerShell installer in `Packaging/Windows/PowerShell/install.ps1` |
 | `rux-windows.msi`  | Direct Windows MSI installation                                    |
+| `SHA256SUMS`       | SHA-256 verification for all three installable assets              |
 
 The Linux and PowerShell installers use GitHub's `releases/latest/download/<asset>` redirect unless the user pins a version. Publishing the draft therefore makes the new release available to those installers without another repository change. The website's install endpoints serve the scripts; they do not host the release binaries themselves.
 

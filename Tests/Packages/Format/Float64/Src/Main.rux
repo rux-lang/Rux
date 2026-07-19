@@ -1,0 +1,112 @@
+import Format::{ ToString, IsNan, IsInfinite, IsFinite };
+import Text::String;
+
+// Std is deliberately absent from the dependencies: it exports conversions of
+// the same name, and the compiler pools the overloads of two same-named symbols,
+// so Std's would win over this package's and the code under test would never
+// run. That rules out Std::Assert, so a failed check reports itself through the
+// exit code instead: each one below is numbered, and `rux test` prints the
+// number of the first that fails.
+func Check(value: float64, expected: char8[], code: int) -> int {
+    var actual = ToString(value);
+    var wanted = String::From(expected);
+    let ok = actual == wanted;
+    actual.Free();
+    wanted.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+func Main() -> int {
+    // Zero always shows a fractional part, so the text reads as a float. The
+    // negative zero keeps its sign, which arithmetic alone cannot see.
+    var code = Check(0.0, "0.0", 10);
+    if code != 0 { return code; }
+    code = Check(-0.0, "-0.0", 11);
+    if code != 0 { return code; }
+
+    // Whole numbers, with the zero fraction spelled out.
+    code = Check(1.0, "1.0", 20);
+    if code != 0 { return code; }
+    code = Check(-1.0, "-1.0", 21);
+    if code != 0 { return code; }
+    code = Check(42.0, "42.0", 22);
+    if code != 0 { return code; }
+    code = Check(12000.0, "12000.0", 23);
+    if code != 0 { return code; }
+
+    // The digits stop at fifteen, which is what keeps the noise of the binary
+    // representation out of the text: 0.1 is really 0.1000000000000000055.
+    code = Check(0.1, "0.1", 30);
+    if code != 0 { return code; }
+    code = Check(0.5, "0.5", 31);
+    if code != 0 { return code; }
+    code = Check(-2.25, "-2.25", 32);
+    if code != 0 { return code; }
+    code = Check(3.14159265358979, "3.14159265358979", 33);
+    if code != 0 { return code; }
+    code = Check(1.0 / 3.0, "0.333333333333333", 34);
+    if code != 0 { return code; }
+
+    // Fixed notation holds down to an exponent of -4.
+    code = Check(0.001, "0.001", 40);
+    if code != 0 { return code; }
+    code = Check(0.0001, "0.0001", 41);
+    if code != 0 { return code; }
+
+    // Below that, and at fifteen digits of magnitude and up, the exponent form
+    // takes over rather than spending the width on zeros.
+    code = Check(0.00001, "1.0e-05", 50);
+    if code != 0 { return code; }
+    code = Check(2.5e-7, "2.5e-07", 51);
+    if code != 0 { return code; }
+    code = Check(1.0e15, "1.0e+15", 52);
+    if code != 0 { return code; }
+    code = Check(-1.5e20, "-1.5e+20", 53);
+    if code != 0 { return code; }
+    code = Check(1.0e300, "1.0e+300", 54);
+    if code != 0 { return code; }
+
+    // The ends of the range: the largest finite value, and the smallest
+    // subnormal, which a single 10^exp scaling would have flushed to zero.
+    code = Check(1.7976931348623157e308, "1.79769313486232e+308", 60);
+    if code != 0 { return code; }
+    code = Check(5.0e-324, "4.94065645841247e-324", 61);
+    if code != 0 { return code; }
+
+    // Values that are not numbers at all.
+    let nan = 0.0 / 0.0;
+    let inf = 1.0 / 0.0;
+    code = Check(nan, "NaN", 70);
+    if code != 0 { return code; }
+    code = Check(inf, "Inf", 71);
+    if code != 0 { return code; }
+    code = Check(-inf, "-Inf", 72);
+    if code != 0 { return code; }
+
+    // The classification the conversion leans on. A NaN is not infinite and not
+    // finite; an infinity is not a NaN.
+    if !IsNan(nan) { return 80; }
+    if IsNan(1.0) { return 81; }
+    if !IsInfinite(inf) { return 82; }
+    if !IsInfinite(-inf) { return 83; }
+    if IsInfinite(nan) { return 84; }
+    if IsFinite(nan) { return 85; }
+    if IsFinite(inf) { return 86; }
+    if !IsFinite(0.0) { return 87; }
+    if !IsFinite(1.7976931348623157e308) { return 88; }
+
+    // The method the Stringable extension provides, which is the same
+    // conversion reached through the interface.
+    var text = 2.5.ToString();
+    var wanted = String::From("2.5");
+    let ok = text == wanted;
+    text.Free();
+    wanted.Free();
+    if !ok { return 90; }
+
+    return 0;
+}

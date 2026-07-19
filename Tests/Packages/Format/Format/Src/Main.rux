@@ -1,0 +1,105 @@
+import Format::{ Format, Stringable, ToString };
+import Text::String;
+
+// Std stays out of the dependencies, and a failed check reports itself through
+// the exit code. See the Int8 test for why.
+func Check(actual: String, expected: char8[], code: int) -> int {
+    var text = actual;
+    var wanted = String::From(expected);
+    let ok = text == wanted;
+    text.Free();
+    wanted.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+// A type of the caller's own, to check that an argument reaches Format through
+// the interface rather than through an overload the package already knows.
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+extend Point : Stringable {
+    func ToString(self) -> String {
+        return Format("({}, {})", self.x, self.y);
+    }
+}
+
+// An argument whose text is longer than any fixed buffer would be, for the
+// growth check below.
+struct Filler {
+    count: uint;
+}
+
+extend Filler : Stringable {
+    func ToString(self) -> String {
+        var unit = String::From("0123456789abcdef");
+        let text = unit.Repeat(self.count);
+        unit.Free();
+        return text;
+    }
+}
+
+func Main() -> int {
+    // Text outside a placeholder is copied through, and a format with nothing to
+    // substitute is copied through entire.
+    var code = Check(Format(""), "", 10);
+    if code != 0 { return code; }
+    code = Check(Format("hello"), "hello", 11);
+    if code != 0 { return code; }
+
+    // Each placeholder takes the next argument, in the order they are written.
+    code = Check(Format("point = ({}, {})", 3, 4), "point = (3, 4)", 20);
+    if code != 0 { return code; }
+    code = Check(Format("{}{}{}", 1, 2, 3), "123", 21);
+    if code != 0 { return code; }
+
+    // Every primitive is Stringable, so the arguments of one call need not share
+    // a type, and each is rendered the way its own ToString renders it.
+    code = Check(Format("{} {} {} {}", 42, 0.5, true, c8'A'), "42 0.5 true A", 22);
+    if code != 0 { return code; }
+
+    // Arguments past the last placeholder go unused, and placeholders past the
+    // last argument put nothing in their place. Neither is an error.
+    code = Check(Format("{}", 1, 2), "1", 30);
+    if code != 0 { return code; }
+    code = Check(Format("[{}][{}]", 1), "[1][]", 31);
+    if code != 0 { return code; }
+    code = Check(Format("{}"), "", 32);
+    if code != 0 { return code; }
+
+    // A brace written twice stands for itself, which is what leaves a literal
+    // brace reachable in a string whose single braces are placeholders.
+    code = Check(Format("{{}}"), "{}", 40);
+    if code != 0 { return code; }
+    code = Check(Format("{{{}}}", 7), "{7}", 41);
+    if code != 0 { return code; }
+
+    // A brace that opens no placeholder is text, and is copied as text.
+    code = Check(Format("{"), "{", 50);
+    if code != 0 { return code; }
+    code = Check(Format("}"), "}", 51);
+    if code != 0 { return code; }
+    code = Check(Format("{x} {}", 1), "{x} 1", 52);
+    if code != 0 { return code; }
+
+    // The result is not held to a fixed buffer: it grows to whatever the
+    // arguments make of it. The old Std::Format truncated at 1024 bytes, and
+    // this is the case that caught it.
+    let filler = Filler { count: 100 };
+    var long = Format("<{}>", filler);
+    let grown = long.Length() == 1602;
+    long.Free();
+    if !grown { return 60; }
+
+    // A type of the caller's own, reached through Stringable.
+    let point = Point { x: -1, y: 2 };
+    code = Check(Format("at {}", point), "at (-1, 2)", 70);
+    if code != 0 { return code; }
+
+    return 0;
+}

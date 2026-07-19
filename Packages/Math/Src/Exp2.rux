@@ -1,0 +1,49 @@
+func Exp2(x: float64) -> float64 {
+    if x != x {
+        return x;
+    }
+
+    // 2^1024 overflows, and 2^-1075 sits exactly halfway to zero, so it and
+    // everything below it round to zero. Both tests also swallow an infinity.
+    if x >= 1024.0 {
+        let huge = 1.0e300;
+        return huge * huge;
+    }
+    if x < -1075.0 {
+        return 0.0;
+    }
+
+    // x = k + r with |r| <= 0.5, so 2^x = 2^k * exp(r*ln2) and the reduced
+    // argument |r*ln2| never leaves the exponential kernel's range.
+    let k = Round(x);
+    let r = x - k; // exact: k is an integer within one of x
+
+    // r*ln2 has to be carried to twice double precision. The rounded product
+    // alone is short by up to half an ulp of the reduced argument, which is
+    // a whole ulp of the answer once it comes back through the exponential.
+    // Dekker's splitting recovers the dropped bits exactly.
+    let ln2 = 0.6931471805599453;
+    let ln2Tail = 2.3190468138462996e-17; // ln2 - the double above
+    let split = 134217729.0; // 2^27 + 1
+
+    let p = r * ln2;
+
+    let ra = r * split;
+    let rHi = ra - (ra - r);
+    let rLo = r - rHi;
+    let la = ln2 * split;
+    let lHi = la - (la - ln2);
+    let lLo = ln2 - lHi;
+    let pError = ((rHi * lHi - p) + rHi * lLo + rLo * lHi) + rLo * lLo;
+
+    let tail = pError + r * ln2Tail;
+
+    // ExpScaled reads its argument as hi - lo, so the tail goes in negated.
+    return ExpScaled(p, -tail, k as int64);
+}
+
+// float32 has fewer bits than the float64 result is accurate to, so the
+// double-precision result rounded once to float32 is faithful.
+func Exp2(x: float32) -> float32 {
+    return Exp2(x as float64) as float32;
+}

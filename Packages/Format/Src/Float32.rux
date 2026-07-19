@@ -1,0 +1,67 @@
+import Text::{ String, StringBuilder };
+
+// The largest finite float32, held here as the float64 it widens to exactly.
+const MaxFinite32 = 3.4028234663852886e38;
+
+// How many significant digits a float32 is printed to. A float32 widens to a
+// float64 exactly, but what it widens to is the full binary value -- 0.1f is
+// 0.100000001490116119384765625 -- so printing it to the fifteen digits a
+// float64 earns would print noise the float32 never carried. Seven is what
+// it does carry, and it renders 0.1f as 0.1.
+const Digits32 = 7u;
+
+// Whether the value is a NaN, on the same terms as the float64 overload: a
+// NaN is the only value not equal to itself.
+func IsNan(value: float32) -> bool {
+    return value != value;
+}
+
+// Whether the value is one of the two infinities.
+func IsInfinite(value: float32) -> bool {
+    return value as float64 > MaxFinite32 || (value as float64) < -MaxFinite32;
+}
+
+// Whether the value is an ordinary number: neither a NaN nor an infinity.
+func IsFinite(value: float32) -> bool {
+    return value as float64 >= -MaxFinite32 && value as float64 <= MaxFinite32;
+}
+
+// The decimal text of a float32, in a String the caller owns and frees.
+// Fixed notation while the exponent stays in [-4, 7), scientific outside it.
+func ToString(value: float32) -> String {
+    var builder = StringBuilder::WithCapacity(16);
+    WriteFloat(@builder, value);
+    return builder.IntoString();
+}
+
+extend float32 : Stringable {
+    func ToString(self) -> String {
+        return ToString(*self);
+    }
+}
+
+// Appends the text of a float32 to a builder. The conversion runs in float64,
+// which the value reaches exactly, and only the digit count says which type
+// it came from.
+func WriteFloat(builder: *StringBuilder, value: float32) {
+    if IsNan(value) {
+        builder.Append("NaN");
+        return;
+    }
+    if IsInfinite(value) {
+        if value < 0.0 {
+            builder.Append("-Inf");
+        } else {
+            builder.Append("Inf");
+        }
+        return;
+    }
+    if value == 0.0 {
+        if 1.0 / (value as float64) < 0.0 {
+            builder.Append(c8'-');
+        }
+        builder.Append("0.0");
+        return;
+    }
+    WriteDecimal(builder, value as float64, Digits32);
+}

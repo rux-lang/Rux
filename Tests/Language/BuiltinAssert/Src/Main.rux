@@ -1,0 +1,18 @@
+import Rux::{ Assert, CurrentBuild, DebugAssert };
+
+func MustNotRun() -> bool {
+    var zero = 0;
+    let failure = 1 / zero;
+    return false;
+}
+
+func Main() -> int {
+    var condition = true;
+    Assert(condition, "Assert intrinsic works");
+    when CurrentBuild.debugAssertions {
+        DebugAssert(condition, "DebugAssert is active in debug builds");
+    } else {
+        DebugAssert(MustNotRun(), "DebugAssert does not evaluate arguments in release builds");
+    }
+    return 0;
+}

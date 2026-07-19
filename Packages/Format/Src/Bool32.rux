@@ -1,0 +1,12 @@
+import Text::{ String, StringBuilder };
+
+// As bool16: the same two words, in a wider box.
+func ToString(value: bool32) -> String {
+    return value ? String::From("true") : String::From("false");
+}
+
+extend bool32 : Stringable {
+    func ToString(self) -> String {
+        return ToString(*self);
+    }
+}

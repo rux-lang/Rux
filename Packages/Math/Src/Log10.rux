@@ -1,0 +1,45 @@
+func Log10(x: float64) -> float64 {
+    let ivln10Hi = 4.34294481878168880939e-01;
+    let ivln10Lo = 2.50829467116452752298e-11;
+    let log10Of2Hi = 3.01029995663611771306e-01;
+    let log10Of2Lo = 3.69423907715893089906e-13;
+
+    var zero = 0.0;
+    let bits = FloatBits(x);
+
+    if (bits & 0x7FFFFFFFFFFFFFFFu64) == 0u64 {
+        return -1.0 / zero;
+    }
+    if (bits >> 63u64) == 1u64 {
+        return (x - x) / zero;
+    }
+    if ((bits >> 32u64) & 0x7FFFFFFFu64) >= 0x7FF00000u64 {
+        return x + x;
+    }
+
+    let red = LogNormalize(x);
+    let f = red.m - 1.0;
+    let hfsq = 0.5 * f * f;
+    let r = LogPoly(f);
+
+    // As in Log2: f - hfsq nearly cancels near sqrt(2), so it is split, and
+    // clearing the low bits of hi makes hi*ivln10Hi exact. Both the
+    // reciprocal of ln(10) and log10(2) need their own low halves.
+    let hi = TruncLow(f - hfsq);
+    let lo = (f - hi) - hfsq + r;
+
+    let y = red.k as float64;
+    var valHi = hi * ivln10Hi;
+    let y2 = y * log10Of2Hi;
+    var valLo = y * log10Of2Lo + (lo + hi) * ivln10Lo + lo * ivln10Hi;
+
+    let w = y2 + valHi;
+    valLo += (y2 - w) + valHi;
+    valHi = w;
+
+    return valLo + valHi;
+}
+
+func Log10(x: float32) -> float32 {
+    return Log10(x as float64) as float32;
+}

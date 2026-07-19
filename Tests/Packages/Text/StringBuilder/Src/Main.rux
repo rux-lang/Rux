@@ -1,0 +1,119 @@
+import Text::{ String, StringBuilder };
+
+// See Tests/Packages/Text/String for why Std is not a dependency and a failed check reports
+// itself through the exit code.
+func Matches(value: String, expected: char8[]) -> bool {
+    var want = String::From(expected);
+    let result = value.Equals(want);
+    want.Free();
+    return result;
+}
+
+func Main() -> int {
+    // A fresh builder holds no block until something is appended.
+    var builder = StringBuilder::New();
+    if builder.Length() != 0 { return 10; }
+    if builder.Capacity() != 0 { return 11; }
+    if !builder.IsEmpty() { return 12; }
+    if builder.Data() != null { return 13; }
+
+    // The three Append overloads all write to the same buffer.
+    builder.Append(c8'H');
+    builder.Append("ello");
+    var world = String::From(", World");
+    builder.Append(world);
+    world.Free();
+
+    if builder.Length() != 12 { return 20; }
+    if builder.IsEmpty() { return 21; }
+
+    // Growth starts at a 16 byte floor, so 12 bytes fit without a second
+    // allocation.
+    if builder.Capacity() != 16 { return 22; }
+
+    // ToString copies, so the builder keeps its own block and both have to be
+    // freed.
+    var text = builder.ToString();
+    if !Matches(text, "Hello, World") { return 30; }
+    if text.Data() == builder.Data() { return 31; }
+    if builder.Length() != 12 { return 32; }
+    text.Free();
+
+    // Clear keeps the capacity so the builder can be refilled without
+    // reallocating.
+    let capacity = builder.Capacity();
+    builder.Clear();
+    if !builder.IsEmpty() { return 40; }
+    if builder.Capacity() != capacity { return 41; }
+
+    // Crossing the current capacity doubles it rather than growing by one.
+    var i: uint = 0;
+    while i < 20 {
+        builder.Append(c8'x');
+        i++;
+    }
+    if builder.Length() != 20 { return 50; }
+    if builder.Capacity() != 32 { return 51; }
+
+    // Reserve asks for room on top of what is written, and only ever grows.
+    builder.Reserve(100);
+    if builder.Capacity() < 120 { return 52; }
+    if builder.Length() != 20 { return 53; }
+
+    let grown = builder.Capacity();
+    builder.Reserve(1);
+    if builder.Capacity() != grown { return 54; }
+
+    // Shrink hands back the capacity that is not in use.
+    builder.Shrink();
+    if builder.Capacity() != 20 { return 55; }
+    if builder.Length() != 20 { return 56; }
+    builder.Free();
+
+    // WithCapacity takes the block up front, so appends up to that size do not
+    // reallocate.
+    var sized = StringBuilder::WithCapacity(64);
+    if sized.Capacity() != 64 { return 60; }
+    if !sized.IsEmpty() { return 61; }
+    if sized.Data() == null { return 62; }
+
+    sized.Append("Hello");
+    let block = sized.Data();
+    sized.Append(", World");
+    if sized.Data() != block { return 63; }
+    if sized.Capacity() != 64 { return 64; }
+
+    // IntoString hands the block over instead of copying it, and leaves the
+    // builder empty and owning nothing.
+    var moved = sized.IntoString();
+    if !Matches(moved, "Hello, World") { return 70; }
+    if moved.Length() != 12 { return 71; }
+    if sized.Length() != 0 { return 72; }
+    if sized.Capacity() != 0 { return 73; }
+    if sized.Data() != null { return 74; }
+
+    // Only the String owns a block now, so freeing the drained builder is a
+    // no-op and freeing the String is what actually releases the memory.
+    sized.Free();
+    moved.Free();
+
+    // Draining an empty builder yields the empty String and allocates nothing.
+    var blank = StringBuilder::New();
+    var nothing = blank.IntoString();
+    if !nothing.IsEmpty() { return 80; }
+    if nothing.Data() != null { return 81; }
+    nothing.Free();
+    blank.Free();
+
+    // A builder that is freed outright can be filled again from scratch.
+    var reused = StringBuilder::WithCapacity(8);
+    reused.Free();
+    if reused.Capacity() != 0 { return 90; }
+    reused.Append("again");
+    if reused.Length() != 5 { return 91; }
+    var final = reused.IntoString();
+    if !Matches(final, "again") { return 92; }
+    final.Free();
+    reused.Free();
+    return 0;
+}

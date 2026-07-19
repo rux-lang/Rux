@@ -1,0 +1,105 @@
+import Rux::{ CurrentTarget, OperatingSystem };
+
+when CurrentTarget.os == OperatingSystem::Windows {
+    import Windows::{
+        GetProcessHeap,
+        HeapAlloc,
+        HeapFree,
+        HeapReAlloc
+    };
+
+    // Resizes a block of memory, preserving the bytes that still fit
+    // https://rux-lang.dev/api/memory/realloc
+    func Realloc(ptr: *opaque, size: uint) -> *opaque {
+        let heap = GetProcessHeap();
+        if ptr == null {
+            return HeapAlloc(heap, 0, size);
+        }
+        if size == 0 {
+            HeapFree(heap, 0, ptr);
+            return null;
+        }
+        return HeapReAlloc(heap, 0, ptr, size);
+    }
+}
+
+when CurrentTarget.os == OperatingSystem::Linux {
+    // Resizes a block of memory, preserving the bytes that still fit
+    // https://rux-lang.dev/api/memory/realloc
+    func Realloc(ptr: *opaque, size: uint) -> *opaque {
+        if ptr == null {
+            return Alloc(size);
+        }
+        if size == 0 {
+            Free(ptr);
+            return null;
+        }
+
+        let header = (ptr as *uint) - 2;
+        let oldSize = *header;
+        let resized = Alloc(size);
+        if resized == null {
+            return null;
+        }
+
+        let copySize = oldSize < size ? oldSize : size;
+        Copy(resized, ptr, copySize);
+        Free(ptr);
+        return resized;
+    }
+}
+
+when CurrentTarget.os == OperatingSystem::MacOS {
+    // Resizes a block of memory, preserving the bytes that still fit
+    // https://rux-lang.dev/api/memory/realloc
+    func Realloc(ptr: *opaque, size: uint) -> *opaque {
+        if ptr == null {
+            return Alloc(size);
+        }
+        if size == 0 {
+            Free(ptr);
+            return null;
+        }
+
+        let header = (ptr as *uint) - 2;
+        let oldSize = *header;
+        let resized = Alloc(size);
+        if resized == null {
+            return null;
+        }
+
+        let copySize = oldSize < size ? oldSize : size;
+        Copy(resized, ptr, copySize);
+        Free(ptr);
+        return resized;
+    }
+}
+
+when CurrentTarget.os == OperatingSystem::FreeBSD ||
+     CurrentTarget.os == OperatingSystem::OpenBSD ||
+     CurrentTarget.os == OperatingSystem::NetBSD ||
+     CurrentTarget.os == OperatingSystem::DragonFlyBSD {
+    // Resizes a block of memory, preserving the bytes that still fit
+    // https://rux-lang.dev/api/memory/realloc
+    func Realloc(ptr: *opaque, size: uint) -> *opaque {
+        if ptr == null {
+            return Alloc(size);
+        }
+        if size == 0 {
+            Free(ptr);
+            return null;
+        }
+
+        let header = (ptr as *uint) - 2;
+        let oldSize = *header;
+        let resized = Alloc(size);
+        if resized == null {
+            return null;
+        }
+
+        let copySize = oldSize < size ? oldSize : size;
+        Copy(resized, ptr, copySize);
+        Free(ptr);
+        return resized;
+    }
+}

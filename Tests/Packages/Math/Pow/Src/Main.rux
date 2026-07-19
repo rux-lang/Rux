@@ -1,0 +1,62 @@
+import Rux::Assert;
+import Math::Pow;
+
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 2i64;
+}
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(Close(Pow(2.0, 10.0), 1024.0), "Pow(2, 10)");
+    Assert(Close(Pow(9.0, 0.5), 3.0), "Pow(9, 0.5)");
+    Assert(Close(Pow(2.0, -3.0), 0.125), "Pow(2, -3)");
+    Assert(Close(Pow(2.0, 0.5), 1.4142135623730951), "Pow(2, 0.5)");
+
+    Assert(Close(Pow(-2.0, 3.0), -8.0), "Pow(-2, 3)");
+    Assert(Close(Pow(-2.0, 4.0), 16.0), "Pow(-2, 4)");
+    let nonIntegerNegative = Pow(-2.0, 0.5);
+    Assert(nonIntegerNegative != nonIntegerNegative, "Pow(negative, non-integer) is NaN");
+
+    Assert(Pow(0.0, 2.0) == 0.0, "Pow(+0, positive)");
+    Assert(Pow(0.0, -2.0) == inf, "Pow(+0, negative)");
+    let negZeroOdd = Pow(-0.0, 3.0);
+    Assert(negZeroOdd == 0.0, "Pow(-0, odd positive)");
+    Assert(one / negZeroOdd < 0.0, "Pow(-0, odd positive) keeps sign");
+    Assert(Pow(-0.0, -3.0) == -inf, "Pow(-0, odd negative)");
+
+    Assert(Pow(inf, 2.0) == inf, "Pow(+Inf, positive)");
+    Assert(Pow(inf, -2.0) == 0.0, "Pow(+Inf, negative)");
+    Assert(Pow(-inf, 3.0) == -inf, "Pow(-Inf, odd positive)");
+    Assert(Pow(-inf, -4.0) == 0.0, "Pow(-Inf, even negative)");
+
+    let nanPow = Pow(zero / zero, 1.0);
+    Assert(nanPow != nanPow, "Pow(NaN, 1)");
+
+    Assert(Pow(2.0f32, 0.5f32) == 1.4142135381698608f32, "Pow(2f32, 0.5f32)");
+    return 0;
+}

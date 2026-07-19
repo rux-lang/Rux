@@ -23,9 +23,9 @@
 
 namespace Rux {
 namespace {
-// The operating systems `target.os` can name. Each is a real system, not a
+// The operating systems `CurrentTarget.os` can name. Each is a real system, not a
 // family, so FreeBSD and OpenBSD remain distinct. `buildable` marks the ones a build can currently produce;
-// the rest are accepted so that code can name them, and comparing `target.os` against
+// the rest are accepted so that code can name them, and comparing `CurrentTarget.os` against
 // one warns rather than quietly never running.
 struct OsVariant {
     std::string_view name;
@@ -34,7 +34,7 @@ struct OsVariant {
 
 constexpr OsVariant OsVariants[] = {
     {"AIX", false},     {"Android", false}, {"DragonFlyBSD", true}, {"FreeBSD", true},
-    {"Fuchsia", false}, {"Haiku", false},   {"Illumos", true},      {"iOS", false},
+    {"Fuchsia", false}, {"Haiku", false},   {"Illumos", true},      {"IOS", false},
     {"Linux", true},    {"MacOS", true},    {"NetBSD", true},       {"OpenBSD", true},
     {"QNX", false},     {"Redox", false},   {"Solaris", true},      {"Windows", true},
 };
@@ -43,7 +43,7 @@ constexpr OsVariant OsVariants[] = {
 // what a target triple is called.
 constexpr std::pair<std::string_view, std::string_view> OsAliases[] = {
     {"macos", "MacOS"},     {"osx", "MacOS"}, {"darwin", "MacOS"}, {"dragonfly", "DragonFlyBSD"},
-    {"illumos", "Illumos"}, {"ios", "iOS"},
+    {"illumos", "Illumos"}, {"ios", "IOS"},
 };
 
 // An enum value. `variant` is the name after the dot; `type` is the enum it
@@ -58,7 +58,7 @@ struct EnumValue {
 
 // A compile-time value. `when` conditions must evaluate to a bool; the other
 // alternatives exist so that comparisons such as `Version >= 2`, `Name == "x"`
-// and `target.os == .Windows` can produce one.
+// and `CurrentTarget.os == .Windows` can produce one.
 using Value = std::variant<bool, std::int64_t, std::uint64_t, double, std::string, EnumValue>;
 
 bool EqualsIgnoringCase(const std::string_view a, const std::string_view b) {
@@ -88,9 +88,8 @@ bool IsBuildableOs(const std::string_view variant) {
     return it != std::end(OsVariants) && it->buildable;
 }
 
-constexpr std::array ArchVariants{"ARM32", "ARM64", "RISCV32", "RISCV64", "X86_32", "X86_64"};
-constexpr std::array AbiVariants{"AAPCS",   "AAPCS64",    "RISCV_ILP32", "RISCV_LP64",
-                                 "SystemV", "WindowsX64", "WindowsX86"};
+constexpr std::array ArchVariants{"ARM32", "ARM64", "RISCV32", "RISCV64", "X86Bit32", "X86Bit64"};
+constexpr std::array AbiVariants{"AAPCS", "AAPCS64", "RiscvIlp32", "RiscvLp64", "SystemV", "WindowsX64", "WindowsX86"};
 constexpr std::array EndianVariants{"Big", "Little"};
 constexpr std::array DataModelVariants{"ILP32", "LLP64", "LP64"};
 constexpr std::array ObjectFormatVariants{"COFF", "ELF", "MachO", "Wasm"};
@@ -116,9 +115,9 @@ void RegisterVariants(std::unordered_map<std::string, std::vector<std::string>> 
 std::string ArchVariant(const Target::Arch arch) {
     switch (arch) {
     case Target::Arch::X86_32:
-        return "X86_32";
+        return "X86Bit32";
     case Target::Arch::X86_64:
-        return "X86_64";
+        return "X86Bit64";
     case Target::Arch::ARM32:
         return "ARM32";
     case Target::Arch::ARM64:
@@ -145,9 +144,9 @@ std::string AbiVariant(const Target::ABI abi) {
     case Target::ABI::AAPCS64:
         return "AAPCS64";
     case Target::ABI::RISCV_ILP32:
-        return "RISCV_ILP32";
+        return "RiscvIlp32";
     case Target::ABI::RISCV_LP64:
-        return "RISCV_LP64";
+        return "RiscvLp64";
     default:
         return "Unknown";
     }
@@ -498,7 +497,7 @@ private:
                 continue;
             }
             if (const auto *constDecl = dynamic_cast<const ConstDecl *>(decl.get())) {
-                // An `intrinsic const target: Target;` brings the intrinsic into
+                // An `intrinsic const CurrentTarget: Target;` brings the intrinsic into
                 // scope locally, just as importing it from Rux would.
                 if (!constDecl->intrinsicName.empty()) {
                     localIntrinsics.insert(constDecl->name);
@@ -624,15 +623,15 @@ private:
         if (!ident) {
             return std::nullopt;
         }
-        if (ident->name == "target")
+        if (ident->name == "CurrentTarget")
             return "Target";
-        if (ident->name == "build")
+        if (ident->name == "CurrentBuild")
             return "Build";
-        if (ident->name == "compiler")
+        if (ident->name == "CurrentCompiler")
             return "Compiler";
-        if (ident->name == "source")
+        if (ident->name == "CurrentSource")
             return "Source";
-        if (ident->name == "config")
+        if (ident->name == "CurrentConfig")
             return "Config";
         return std::nullopt;
     }
@@ -987,7 +986,7 @@ private:
         return std::nullopt;
     }
 
-    // `target.os == .Windows`. Enum values compare by variant, and only for equality;
+    // `CurrentTarget.os == .Windows`. Enum values compare by variant, and only for equality;
     // a shorthand takes its enum from the value on the other side.
     std::optional<Value> EvalEnumComparison(const BinaryExpr &e, const EnumValue &left, const EnumValue &right) {
         if (e.op != TokenKind::Equal && e.op != TokenKind::BangEqual) {
@@ -1036,8 +1035,8 @@ private:
     }
 
     // Alphabetical, so a reader scanning the list for the name they meant to
-    // type can find it. Case-insensitive, so `.iOS` sorts with the letter it
-    // starts with rather than ahead of every capitalized variant.
+    // type can find it. Comparison is case-insensitive so technical initialisms
+    // sort with the same rule as other names.
     static std::string JoinVariants(const std::vector<std::string> &variants) {
         std::vector<std::string> sorted = variants;
         std::ranges::sort(sorted, [](const std::string_view a, const std::string_view b) {

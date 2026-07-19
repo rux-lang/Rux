@@ -1,0 +1,238 @@
+import Format::{ Format, Stringable, ToString };
+import Memory::{ Alloc, Free };
+import Rux::{ OperatingSystem, CurrentTarget };
+import Text::String;
+
+when CurrentTarget.os == OperatingSystem::Windows {
+    import Windows::{
+        CodePage,
+        GetConsoleMode,
+        GetStdHandle,
+        MultiByteToWideChar,
+        StdOutputHandle,
+        WriteConsoleW,
+        WriteFile
+    };
+
+    // Write raw bytes to a redirected stdout (a file or pipe), where the UTF-8
+    // encoding of `data` is already exactly what should land on disk.
+    func WriteBytes(handle: *opaque, data: *const char8, length: uint) {
+        const MaxWriteLength: uint = 4096;
+        var offset: uint = 0;
+        while offset < length {
+            var written: uint32 = 0;
+            let remaining = length - offset;
+            let count = remaining > MaxWriteLength ? MaxWriteLength : remaining;
+            let ok = WriteFile(
+                handle,
+                (data + offset) as *const opaque,
+                count as uint32,
+                @written,
+                null
+            );
+            if !ok || written == 0 { return; }
+            offset += written as uint;
+        }
+    }
+
+    // Write UTF-16 code units to a console. WriteConsoleW hands the characters
+    // to the console as Unicode, so they render correctly no matter what the
+    // console's output code page is.
+    func WriteWide(handle: *opaque, data: *const char16, length: uint) {
+        var offset: uint = 0;
+        while offset < length {
+            var written: uint32 = 0;
+            let ok = WriteConsoleW(
+                handle,
+                data + offset,
+                (length - offset) as uint32,
+                @written,
+                null
+            );
+            if !ok || written == 0 { return; }
+            offset += written as uint;
+        }
+    }
+}
+
+when CurrentTarget.os == OperatingSystem::Linux {
+    import Linux::{ StdOut, Write };
+}
+
+when CurrentTarget.os == OperatingSystem::MacOS {
+    import MacOS::{ StdOut, Write };
+}
+
+when CurrentTarget.os == OperatingSystem::FreeBSD ||
+     CurrentTarget.os == OperatingSystem::OpenBSD ||
+     CurrentTarget.os == OperatingSystem::NetBSD ||
+     CurrentTarget.os == OperatingSystem::DragonFlyBSD {
+    import Bsd::{ StdOut, Write };
+}
+
+func Print(data: *const char8, length: uint) {
+    if length == 0 { return; }
+
+    when CurrentTarget.os == OperatingSystem::Windows {
+        let handle = GetStdHandle(StdOutputHandle);
+        // Only a console needs the UTF-16 path. GetConsoleMode succeeds for a
+        // console handle and fails when stdout is redirected to a file or pipe,
+        // where the raw UTF-8 bytes are the correct output. Writing UTF-8 bytes
+        // to a console would instead be decoded with its code page and turn any
+        // non-ASCII text (such as "Привіт світ!") into mojibake.
+        var mode: uint32 = 0;
+        if !GetConsoleMode(handle, @mode) {
+            WriteBytes(handle, data, length);
+            return;
+        }
+        // A UTF-8 sequence never expands to more UTF-16 code units than it has
+        // bytes, so `length` units is a safe upper bound for the buffer.
+        let wide = Alloc(length * 2) as *char16;
+        if wide == null {
+            WriteBytes(handle, data, length);
+            return;
+        }
+        let wideLength = MultiByteToWideChar(CodePage::Utf8 as uint32,
+            0, data, length as int32, wide, length as int32);
+        if wideLength > 0 {
+            WriteWide(handle, wide, wideLength as uint);
+        }
+        Free(wide as *opaque);
+    } else {
+        var offset: uint = 0;
+        while offset < length {
+            let written = Write(
+                StdOut,
+                (data + offset) as *const opaque,
+                length - offset
+            );
+            // EINTR means no bytes were written and the operation can be
+            // retried without advancing the buffer.
+            if written == -4 { continue; }
+            if written <= 0 { return; }
+            offset += written as uint;
+        }
+    }
+}
+
+func Print(value: String) {
+    Print(value.data, value.length);
+}
+
+func Print(value: char8[]) {
+    Print(value.data, value.length);
+}
+
+func Print(format: char8[], args: Stringable...) {
+    var text = Format(format, args...);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: bool8) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: bool16) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: bool32) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: char8) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: char16) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: char32) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: int8) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: int16) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: int32) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: int64) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: uint8) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: uint16) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: uint32) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: uint64) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: int) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: uint) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: float32) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}
+
+func Print(value: float64) {
+    var text = ToString(value);
+    Print(text);
+    text.Free();
+}

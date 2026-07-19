@@ -1,0 +1,5 @@
+// Primitive constants are supplied directly by the compiler
+// char::Min
+// char::Max
+// char::Bits
+// char::Bytes

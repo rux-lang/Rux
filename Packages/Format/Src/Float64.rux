@@ -1,0 +1,77 @@
+import Text::{ String, StringBuilder };
+
+// The largest finite float64. Anything past it is an infinity, which is how
+// the tests below classify a value without reading its bits.
+const MaxFinite64 = 1.7976931348623157e308;
+
+// How many significant digits a float64 is printed to. Fifteen is the most
+// it always carries without the noise of the binary representation showing
+// through: seventeen would print 0.1 as 0.10000000000000001, which is what
+// the value really is. The cost of stopping at fifteen is that the text is
+// not a round trip -- two values that differ only past the fifteenth digit
+// print the same.
+const Digits64 = 15u;
+
+// Whether the value is a NaN. A NaN is the only value not equal to itself,
+// so this needs no bit pattern to recognise one.
+func IsNan(value: float64) -> bool {
+    return value != value;
+}
+
+// Whether the value is one of the two infinities. Every comparison against a
+// NaN is false, so a NaN answers false here rather than being mistaken for
+// an infinity.
+func IsInfinite(value: float64) -> bool {
+    return value > MaxFinite64 || value < -MaxFinite64;
+}
+
+// Whether the value is an ordinary number: neither a NaN nor an infinity.
+func IsFinite(value: float64) -> bool {
+    return value >= -MaxFinite64 && value <= MaxFinite64;
+}
+
+// The decimal text of a float64, in a String the caller owns and frees.
+// Fixed notation while the exponent stays in [-4, 15), scientific outside
+// it, where fixed notation would be mostly zeros. See Digits64 for what the
+// digits are worth.
+func ToString(value: float64) -> String {
+    var builder = StringBuilder::WithCapacity(24);
+    WriteFloat(@builder, value);
+    return builder.IntoString();
+}
+
+extend float64 : Stringable {
+    func ToString(self) -> String {
+        return ToString(*self);
+    }
+}
+
+// Appends the text of a float64 to a builder. This is what ToString is built
+// on, and what a caller who is already accumulating should reach for: it
+// costs no String of its own.
+func WriteFloat(builder: *StringBuilder, value: float64) {
+    if IsNan(value) {
+        builder.Append("NaN");
+        return;
+    }
+    if IsInfinite(value) {
+        if value < 0.0 {
+            builder.Append("-Inf");
+        } else {
+            builder.Append("Inf");
+        }
+        return;
+    }
+    if value == 0.0 {
+        // A negative zero compares equal to a positive one, so its sign has
+        // to be found another way: 1.0 / -0.0 is the negative infinity, and
+        // that is the one place in arithmetic where the two zeros part
+        // company.
+        if 1.0 / value < 0.0 {
+            builder.Append(c8'-');
+        }
+        builder.Append("0.0");
+        return;
+    }
+    WriteDecimal(builder, value, Digits64);
+}

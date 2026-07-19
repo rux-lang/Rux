@@ -1,0 +1,9 @@
+[Package]
+Name = "Text"
+Version = "0.1.0"
+Type = "Source"
+Description = "Strings and fundamental text manipulation"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]
+
+[Dependencies]
+Memory = "*"

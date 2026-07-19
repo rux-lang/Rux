@@ -1,0 +1,22 @@
+import Text::{ String, StringBuilder };
+
+// A char32 holds one code point, which becomes one to four bytes of UTF-8.
+// A value past U+10FFFF, or one in the surrogate range that UTF-16 reserves
+// and UTF-8 has no use for, is not a code point at all and comes out as the
+// replacement character.
+func ToString(value: char32) -> String {
+    var builder = StringBuilder::WithCapacity(4);
+    WriteChar(@builder, value);
+    return builder.IntoString();
+}
+
+extend char32 : Stringable {
+    func ToString(self) -> String {
+        return ToString(*self);
+    }
+}
+
+// Appends the UTF-8 bytes of a char32 to a builder.
+func WriteChar(builder: *StringBuilder, value: char32) {
+    WriteUtf8(builder, value as uint32);
+}

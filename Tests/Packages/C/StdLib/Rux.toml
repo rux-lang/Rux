@@ -1,0 +1,12 @@
+[Package]
+Name = "StdLib"
+Version = "0.1.0"
+Type = "bin"
+Description = "Package test for C: StdLib"
+
+[Dependencies]
+C = { Path = "../../../../Packages/C" }
+Rux = { Path = "../../../../Packages/Rux" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/C"

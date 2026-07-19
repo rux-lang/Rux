@@ -1,0 +1,88 @@
+import Rux::{ Architecture, OperatingSystem, CurrentTarget };
+
+when CurrentTarget.os == OperatingSystem::MacOS &&
+     CurrentTarget.arch == Architecture::X86Bit64 {
+    import MacOS::{
+        Errno,
+        GetPid,
+        GetTimeOfDay,
+        IsError,
+        MapAnonymous,
+        MapPrivate,
+        Mmap,
+        Munmap,
+        ProtectionRead,
+        ProtectionWrite,
+        Read,
+        Syscall0,
+        Syscall6,
+        SysGetPid,
+        SysMmap,
+        Timeval,
+        Write
+    };
+
+    func Main() -> int {
+        if GetPid() <= 0 {
+            return 1;
+        }
+        if Syscall0(SysGetPid) != GetPid() {
+            return 2;
+        }
+
+        let readError = Read(-1, null, 0);
+        if !IsError(readError) || Errno(readError) == 0 {
+            return 3;
+        }
+
+        let writeError = Write(-1, null, 0);
+        if !IsError(writeError) || Errno(writeError) == 0 {
+            return 4;
+        }
+
+        var time: Timeval;
+        if GetTimeOfDay(@time) != 0 || time.seconds <= 0 ||
+            time.microseconds < 0 || time.microseconds >= 1000000 {
+            return 5;
+        }
+
+        const PageSize: uint = 4096;
+        let mapping = Mmap(null, PageSize, ProtectionRead | ProtectionWrite,
+            MapPrivate | MapAnonymous, -1, 0);
+        if IsError(mapping) {
+            return 6;
+        }
+
+        let bytes = mapping as *char8;
+        *bytes = 42 as char8;
+        if *bytes != 42 as char8 {
+            return 7;
+        }
+
+        if Munmap(mapping as *opaque, PageSize) != 0 {
+            return 8;
+        }
+
+        let rawMapping = Syscall6(
+            SysMmap,
+            0,
+            PageSize as uint64,
+            (ProtectionRead | ProtectionWrite) as uint64,
+            (MapPrivate | MapAnonymous) as uint64,
+            0xFFFFFFFFFFFFFFFF,
+            0
+        );
+        if IsError(rawMapping) {
+            return 9;
+        }
+        if Munmap(rawMapping as *opaque, PageSize) != 0 {
+            return 10;
+        }
+
+        return 0;
+    }
+} else {
+    func Main() -> int {
+        return 0;
+    }
+}

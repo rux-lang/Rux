@@ -1,0 +1,11 @@
+[Package]
+Name = "Asm"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: Asm"
+
+[Dependencies]
+Rux = { Path = "../../../Packages/Rux" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

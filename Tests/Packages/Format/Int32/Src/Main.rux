@@ -1,0 +1,47 @@
+import Format::ToString;
+import Text::String;
+
+// Std stays out of the dependencies, and a failed check reports itself through
+// the exit code. See the Int8 test for why.
+func Check(actual: String, expected: char8[], code: int) -> int {
+    var text = actual;
+    var wanted = String::From(expected);
+    let ok = text == wanted;
+    text.Free();
+    wanted.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+func Main() -> int {
+    let zero: int32 = 0;
+    var code = Check(ToString(zero), "0", 10);
+    if code != 0 { return code; }
+
+    let negative: int32 = -1000000;
+    code = Check(ToString(negative), "-1000000", 11);
+    if code != 0 { return code; }
+
+    let positive: int32 = 1000000;
+    code = Check(ToString(positive), "1000000", 12);
+    if code != 0 { return code; }
+
+    // The ends of the range. The most negative value is written as one less than
+    // the negated maximum, because -2147483648 is not a literal the type can
+    // hold on its own: the minus sign applies to a positive 2147483648.
+    let min: int32 = -2147483647 - 1;
+    let max: int32 = 2147483647;
+    code = Check(ToString(min), "-2147483648", 20);
+    if code != 0 { return code; }
+    code = Check(ToString(max), "2147483647", 21);
+    if code != 0 { return code; }
+
+    // The method the Stringable extension provides.
+    code = Check(max.ToString(), "2147483647", 30);
+    if code != 0 { return code; }
+
+    return 0;
+}

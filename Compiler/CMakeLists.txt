@@ -146,12 +146,15 @@ add_executable(rux
 
 target_link_libraries(rux PRIVATE RuxCore RuxFormatter RuxLinter)
 
-# Emit the binary to Bin/<Config>/ (e.g. Bin/Release/rux) in the source tree,
-# keeping CMake intermediates in the build directory. $<CONFIG> resolves to the
-# build type for both single- and multi-config generators. CMAKE_SOURCE_DIR is
-# the repository root, so the binary lands in <repo>/Bin, not <repo>/Compiler.
+# Emit the compiler directly to Bin/ in the source tree while keeping CMake
+# intermediates in the build directory. Configuration-specific properties keep
+# multi-config generators from appending Debug/ or Release/ subdirectories.
 set_target_properties(rux PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Bin/$<CONFIG>)
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Bin
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/Bin
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/Bin
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_SOURCE_DIR}/Bin
+    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_SOURCE_DIR}/Bin)
 
 if (MSVC OR (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
     set_property(TARGET rux RuxDiagnostics RuxSource RuxSystem RuxPackage

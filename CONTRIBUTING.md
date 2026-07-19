@@ -14,8 +14,8 @@ Thanks for your interest in contributing to the Rux programming language! This p
 
 1. Build the compiler by following [Building from Source](README.md#building-from-source) in the README, then enable the C++ test target in the same build directory:
    ```sh
-   cmake -S . -B build -DRUX_BUILD_TESTS=ON
-   cmake --build build --config Release
+   cmake -S . -B Build -DRUX_BUILD_TESTS=ON
+   cmake --build Build --config Release
    ```
 2. [Fork](https://github.com/rux-lang/Rux/fork) the repo and branch off `dev`:
    ```sh
@@ -23,14 +23,18 @@ Thanks for your interest in contributing to the Rux programming language! This p
    git pull --ff-only
    git switch -c my-feature
    ```
-3. Make your change, add a test, and run both suites. Bare `rux install` discovers dependencies from the manifest-less test workspace:
+3. Make your change, add a test, and run both suites. Repository tests resolve every dependency from the local workspace, so no registry installation is needed:
+
    ```sh
-   ./Bin/Release/rux install
-   ./Bin/Release/rux test --release
-   ctest --test-dir build --output-on-failure -C Release
+   ./Bin/rux test --release
+   ctest --test-dir Build --output-on-failure -C Release
    ```
-   On Windows, use `.\Bin\Release\rux.exe`; the CMake and CTest commands are the same.
-4. Format touched files with `clang-format -i <files>`.
+
+   On Windows, use `.\Bin\rux.exe`; the CMake and CTest commands are the same.
+
+   PowerShell users can run `./Test.ps1` for the complete build-and-test workflow, or `./Test.ps1 -SkipBuild` after an existing build. Linux, macOS, and FreeBSD users can run `sh Test.sh`, or `sh Test.sh --skip-build` after an existing build. Add `-ClangTidy` or `--clang-tidy` before submitting compiler changes to run the slower static-analysis pass locally; CI always enforces it.
+
+4. Format all maintained C++ and Rux source files with `./Format.ps1` on PowerShell or `sh Format.sh` on Linux, macOS, and FreeBSD.
 5. Push your branch and open a Pull Request **against `dev`**.
 
 ## Process Documentation
@@ -47,25 +51,29 @@ For anything beyond the quick start, see the detailed guides:
 
 ## Code Style
 
-Formatting is enforced by [`.clang-format`](.clang-format) (LLVM base, 4-space indent, west const, 120-column limit). Format the files you changed before committing:
+Formatting is enforced by [`.clang-format`](.clang-format) for C++ (LLVM base, 4-space indent, west const, 120-column limit) and by `rux fmt` for Rux sources. Format all maintained source files before committing:
 
 ```sh
-clang-format -i <files>
-```
-
-Or format every source file at once:
-
-```sh
-clang-format -i $(git ls-files '*.cpp' '*.h')
+sh Format.sh
 ```
 
 PowerShell equivalent:
 
 ```powershell
-git ls-files '*.cpp' '*.h' | ForEach-Object { clang-format -i $_ }
+./Format.ps1
 ```
 
-Otherwise, match the conventions already in the codebase — consistency matters more than personal preference.
+To check formatting without modifying files:
+
+```sh
+sh Format.sh --check
+```
+
+```powershell
+./Format.ps1 -Check
+```
+
+The scripts cover `Compiler/`, maintained C++ unit-test code, and every Rux package and executable-test source tree. Vendored C++ and intentionally malformed golden diagnostic fixtures are excluded. With `-ClangTidy` or `--clang-tidy`, Clang 22's `clang-tidy` additionally checks every maintained translation unit in the CMake compilation database. Otherwise, match the conventions already in the codebase — consistency matters more than personal preference.
 
 ## Reporting Bugs
 

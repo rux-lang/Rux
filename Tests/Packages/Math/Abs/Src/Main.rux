@@ -1,0 +1,23 @@
+import Rux::Assert;
+import Math::Abs;
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(Abs(0.0) == 0.0, "Abs(0.0)");
+    let negZero = Abs(-0.0);
+    Assert(negZero == 0.0, "Abs(-0.0)");
+    Assert(one / negZero > 0.0, "Abs(-0.0) is +0");
+    Assert(Abs(3.5) == 3.5, "Abs(3.5)");
+    Assert(Abs(-3.5) == 3.5, "Abs(-3.5)");
+    Assert(Abs(inf) == inf, "Abs(+Inf)");
+    Assert(Abs(-inf) == inf, "Abs(-Inf)");
+
+    let nanAbs = Abs(zero / zero);
+    Assert(nanAbs != nanAbs, "Abs(NaN)");
+
+    Assert(Abs(-3.5f32) == 3.5f32, "Abs(-3.5f32)");
+    return 0;
+}

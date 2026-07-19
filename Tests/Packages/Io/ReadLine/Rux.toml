@@ -1,0 +1,11 @@
+[Package]
+Name = "ReadLine"
+Version = "0.1.0"
+Type = "bin"
+Description = "Package test for Io: ReadLine"
+
+[Dependencies]
+Io = { Path = "../../../../Packages/Io" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Io"

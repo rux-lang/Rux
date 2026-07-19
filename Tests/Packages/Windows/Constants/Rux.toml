@@ -1,0 +1,12 @@
+[Package]
+Name = "Constants"
+Version = "0.1.0"
+Type = "bin"
+Description = "Package test for Windows: constants and enum values"
+
+[Dependencies]
+Rux = { Path = "../../../../Packages/Rux" }
+Windows = { Path = "../../../../Packages/Windows" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Windows"

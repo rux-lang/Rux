@@ -1,0 +1,27 @@
+// The nearest integer to x, with a tie going away from zero: Round(2.5) is
+// 3.0 and Round(-2.5) is -3.0.
+//
+// Adding 0.5 and flooring would be shorter and wrong. The largest double
+// below 0.5 is 0.49999999999999994, and adding 0.5 to it rounds up to
+// exactly 1.0, so that argument would round to one instead of to zero.
+// Taking the fractional part first avoids the question: x - Trunc(x) is
+// exact, because both are representable and their difference is under one.
+func Round(x: float64) -> float64 {
+    let t = Trunc(x);
+    let frac = x - t;
+
+    if frac >= 0.5 {
+        return t + 1.0;
+    }
+    if frac <= -0.5 {
+        return t - 1.0;
+    }
+
+    // Also the path for the infinities and the NaNs, whose frac is a NaN and
+    // so compares false against both halves.
+    return t;
+}
+
+func Round(x: float32) -> float32 {
+    return Round(x as float64) as float32;
+}

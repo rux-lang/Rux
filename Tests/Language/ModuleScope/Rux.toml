@@ -1,0 +1,8 @@
+[Package]
+Name = "ModuleScope"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: ModuleScope"
+
+[Build]
+Output = "../../../Bin/Tests/Language"

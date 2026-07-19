@@ -56,9 +56,10 @@ namespace Rux::Driver {
 // Parse a manifest, printing an error on failure.
 [[nodiscard]] std::optional<Manifest> LoadManifest(const std::filesystem::path &path);
 
-// Resolve the build output directory for a given profile (defaults to "Bin").
+// Resolve the build output directory (defaults to "Bin"), optionally appending
+// the selected profile. Test runs use a profile-independent output directory.
 [[nodiscard]] std::filesystem::path ResolveBuildOutputDir(const std::filesystem::path &root, const Manifest &manifest,
-                                                          std::string_view profileName);
+                                                          std::string_view profileName, bool includeProfile = true);
 
 // Per-user directory where installed registry packages are cached.
 [[nodiscard]] std::filesystem::path RegistryPackagesDir();

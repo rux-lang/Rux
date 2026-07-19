@@ -1,0 +1,5 @@
+// Primitive constants are supplied directly by the compiler
+// uint64::Min
+// uint64::Max
+// uint64::Bits
+// uint64::Bytes

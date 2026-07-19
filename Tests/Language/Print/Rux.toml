@@ -1,0 +1,11 @@
+[Package]
+Name = "Print"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: Print"
+
+[Dependencies]
+Io = { Path = "../../../Packages/Io" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

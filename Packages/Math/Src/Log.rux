@@ -1,0 +1,96 @@
+// x = m * 2^k with m in [sqrt(2)/2, sqrt(2)).
+struct LogReduction {
+    k: int64;
+    m: float64;
+}
+
+// The correction s*(hfsq + R) that turns f - f^2/2 into log(1 + f), for
+// |f| < sqrt(2) - 1. Log, Log2 and Log10 all reduce to this same series in
+// s = f/(2+f); they differ only in the base they scale by and in how they
+// add the exponent back.
+func LogPoly(f: float64) -> float64 {
+    let lg1 = 6.666666666666735130e-01;
+    let lg2 = 3.999999999940941908e-01;
+    let lg3 = 2.857142874366239149e-01;
+    let lg4 = 2.222219843214978396e-01;
+    let lg5 = 1.818357216161805012e-01;
+    let lg6 = 1.531383769920937332e-01;
+    let lg7 = 1.479819860511658591e-01;
+
+    let s = f / (2.0 + f);
+    let z = s * s;
+    let w = z * z;
+
+    // The odd and even coefficients ride separate Horner chains in w = z^2.
+    let t1 = w * (lg2 + w * (lg4 + w * lg6));
+    let t2 = z * (lg1 + w * (lg3 + w * (lg5 + w * lg7)));
+
+    let hfsq = 0.5 * f * f;
+    return s * (hfsq + t2 + t1);
+}
+
+// Split a finite positive x into m * 2^k. The caller must already have ruled
+// out zero, the negatives, the infinities and the NaNs. Picking m nearest to
+// one, rather than simply in [1, 2), halves the range the series has to
+// cover and keeps |f| below sqrt(2) - 1.
+func LogNormalize(x: float64) -> LogReduction {
+    var k = 0i64;
+    var bits = FloatBits(x);
+
+    // A subnormal has no leading one in place; scale it into the normals.
+    if (bits >> 52u64) == 0u64 {
+        k -= 54i64;
+        bits = FloatBits(x * 1.8014398509481984e16); // 2^54
+    }
+
+    var hx = bits >> 32u64;
+    k += ((hx >> 20u64) as int64) - 1023i64;
+    hx &= 0xFFFFFu64;
+
+    // 0x95F64 is (sqrt(2) - 1) in the top 20 mantissa bits, so this carry
+    // out of bit 20 is set exactly when m would otherwise exceed sqrt(2).
+    let i = (hx + 0x95F64u64) & 0x100000u64;
+    k += (i >> 20u64) as int64;
+
+    var out: LogReduction;
+    out.k = k;
+    out.m = FromBits(((hx | (i ^ 0x3FF00000u64)) << 32u64) | (bits & 0xFFFFFFFFu64));
+    return out;
+}
+
+func Log(x: float64) -> float64 {
+    let ln2Hi = 6.93147180369123816490e-01;
+    let ln2Lo = 1.90821492927058770002e-10;
+
+    var zero = 0.0;
+    let bits = FloatBits(x);
+
+    // log(+-0) is -Inf.
+    if (bits & 0x7FFFFFFFFFFFFFFFu64) == 0u64 {
+        return -1.0 / zero;
+    }
+    // log of a negative has no value, and a negative NaN falls here too.
+    if (bits >> 63u64) == 1u64 {
+        return (x - x) / zero;
+    }
+    // log(+Inf) is +Inf, and a NaN propagates.
+    if ((bits >> 32u64) & 0x7FFFFFFFu64) >= 0x7FF00000u64 {
+        return x + x;
+    }
+
+    let red = LogNormalize(x);
+    let f = red.m - 1.0;
+    let hfsq = 0.5 * f * f;
+    let r = LogPoly(f);
+    let dk = red.k as float64;
+
+    // dk*ln2Hi is exact, and the rest is grouped so that the small terms
+    // meet each other before they meet it.
+    return dk * ln2Hi - ((hfsq - (r + dk * ln2Lo)) - f);
+}
+
+// float32 has fewer bits than the float64 result is accurate to, so the
+// double-precision logarithm rounded once to float32 is faithful.
+func Log(x: float32) -> float32 {
+    return Log(x as float64) as float32;
+}

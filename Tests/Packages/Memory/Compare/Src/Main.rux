@@ -1,0 +1,38 @@
+import Rux::Assert;
+import Memory::{ Alloc, Compare, Free, Set };
+
+func Main() -> int {
+    let lhs = Alloc(16);
+    let rhs = Alloc(16);
+    Assert(lhs != null && rhs != null, "Alloc(16)");
+
+    // Equal blocks report the full length rather than a sign, unlike memcmp.
+    Set(lhs, 16, 0x5A);
+    Set(rhs, 16, 0x5A);
+    Assert(Compare(lhs, rhs, 16) == 16, "equal blocks report length");
+
+    // A shorter run of the same bytes still matches.
+    Assert(Compare(lhs, rhs, 8) == 8, "equal prefix reports length");
+
+    // A difference reports the offset where the blocks first diverge.
+    let bytes = rhs as *uint8;
+    *(bytes + 5) = 0x00;
+    Assert(Compare(lhs, rhs, 16) == 5, "first mismatch at index 5");
+
+    // A mismatch past the compared range is invisible.
+    Assert(Compare(lhs, rhs, 5) == 5, "mismatch beyond length is ignored");
+
+    // Two blocks that differ in the very first byte report 0.
+    *bytes = 0x00;
+    Assert(Compare(lhs, rhs, 16) == 0, "first mismatch at index 0");
+
+    // A length of zero compares nothing, so the blocks are trivially equal.
+    Assert(Compare(lhs, rhs, 0) == 0, "Compare(lhs, rhs, 0)");
+
+    // A block always matches itself.
+    Assert(Compare(lhs, lhs, 16) == 16, "block equals itself");
+
+    Free(rhs);
+    Free(lhs);
+    return 0;
+}

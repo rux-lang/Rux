@@ -1,0 +1,16 @@
+import Text::{ String, StringBuilder };
+
+// The decimal text of an int, the signed integer that is as wide as a
+// pointer. It is a type of its own rather than a name for int64, so it needs
+// its own conversion even where the two happen to be the same width.
+func ToString(value: int) -> String {
+    var builder = StringBuilder::WithCapacity(20);
+    WriteInt(@builder, value as int64);
+    return builder.IntoString();
+}
+
+extend int : Stringable {
+    func ToString(self) -> String {
+        return ToString(*self);
+    }
+}

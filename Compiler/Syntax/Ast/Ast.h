@@ -182,7 +182,7 @@ struct EnumShorthandExpr : Expr {
     std::string variant;
 };
 
-// A compiler-provided value such as source.line, target.arch or config.get("name").
+// A compiler-provided value such as CurrentSource.line, CurrentTarget.arch or CurrentConfig.Get("name").
 struct IntrinsicExpr : Expr {
     enum class Kind {
         Line,
@@ -451,6 +451,9 @@ struct Decl {
     std::string intrinsicName;
     std::string warnMessage;  // non-empty = emit this warning at each call site
     std::string errorMessage; // non-empty = emit this error at each call site
+    // Lint rules explicitly suppressed for this declaration. A type-level
+    // suppression also covers the fields and variants owned by that type.
+    std::vector<std::string> allowedLints;
     virtual ~Decl() = default;
 };
 

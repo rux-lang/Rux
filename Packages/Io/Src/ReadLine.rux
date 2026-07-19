@@ -1,0 +1,67 @@
+import Rux::{ OperatingSystem, CurrentTarget };
+import Text::{ String, StringBuilder };
+
+when CurrentTarget.os == OperatingSystem::Windows {
+    import Windows::{ GetStdHandle, ReadFile, StdInputHandle };
+}
+
+when CurrentTarget.os == OperatingSystem::Linux {
+    import Linux::{ Read, StdIn };
+}
+
+when CurrentTarget.os == OperatingSystem::MacOS {
+    import MacOS::{ Read, StdIn };
+}
+
+when CurrentTarget.os == OperatingSystem::FreeBSD ||
+     CurrentTarget.os == OperatingSystem::OpenBSD ||
+     CurrentTarget.os == OperatingSystem::NetBSD ||
+     CurrentTarget.os == OperatingSystem::DragonFlyBSD {
+    import Bsd::{ Read, StdIn };
+}
+
+func ReadStdinByte(buffer: *char8) -> int64 {
+    when CurrentTarget.os == OperatingSystem::Windows {
+        let handle = GetStdHandle(StdInputHandle);
+        var bytesRead: uint32 = 0;
+        if !ReadFile(handle, buffer, 1, @bytesRead, null) {
+            return -1;
+        }
+        return bytesRead as int64;
+    } else {
+        while true {
+            let result = Read(StdIn, buffer as *opaque, 1);
+            if result != -4 {
+                return result;
+            }
+        }
+    }
+}
+
+func ReadLine() -> String {
+    var builder = StringBuilder::New();
+    var byte: char8[1];
+    var pendingCarriageReturn = false;
+    while true {
+        let count = ReadStdinByte(byte.data);
+        if count <= 0 {
+            if pendingCarriageReturn {
+                builder.Append(c8'\r');
+            }
+            return builder.IntoString();
+        }
+        let ch = byte[0];
+        if ch == c8'\n' {
+            return builder.IntoString();
+        }
+        if pendingCarriageReturn {
+            builder.Append(c8'\r');
+            pendingCarriageReturn = false;
+        }
+        if ch == c8'\r' {
+            pendingCarriageReturn = true;
+        } else {
+            builder.Append(ch);
+        }
+    }
+}

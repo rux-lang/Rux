@@ -1,0 +1,50 @@
+import Rux::Assert;
+import Math::Exp;
+
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 2i64;
+}
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(Exp(0.0) == 1.0, "Exp(0.0)");
+    Assert(Exp(-0.0) == 1.0, "Exp(-0.0)");
+    Assert(Close(Exp(1.0), 2.718281828459045), "Exp(1.0)");
+    Assert(Close(Exp(-1.0), 0.36787944117144233), "Exp(-1.0)");
+    Assert(Close(Exp(10.0), 22026.465794806718), "Exp(10.0)");
+    Assert(Exp(710.0) == inf, "Exp overflow");
+    Assert(Exp(-746.0) == 0.0, "Exp underflow");
+    Assert(Exp(inf) == inf, "Exp(+Inf)");
+    Assert(Exp(-inf) == 0.0, "Exp(-Inf)");
+
+    let nanExp = Exp(zero / zero);
+    Assert(nanExp != nanExp, "Exp(NaN)");
+
+    Assert(Exp(1.0f32) == 2.7182817459106445f32, "Exp(1.0f32)");
+    return 0;
+}

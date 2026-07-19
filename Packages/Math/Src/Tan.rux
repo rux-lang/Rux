@@ -1,0 +1,36 @@
+func Tan(x: float64) -> float64 {
+    // NaN is the only value that differs from itself, and it propagates.
+    if x != x {
+        return x;
+    }
+    var zero = 0.0;
+    // x - x is NaN for an infinity and 0.0 for anything else finite. The
+    // tangent has no limit at infinity, so the result is NaN.
+    if x - x != 0.0 {
+        return zero / zero;
+    }
+    // Below 2^-28 the cubic term is under half an ulp of x, so tan(x) is x.
+    // Returning x also keeps the sign of a zero: tan(-0.0) is -0.0.
+    if x < 3.725290298461914e-9 && x > -3.725290298461914e-9 {
+        return x;
+    }
+    let negative = x < 0.0;
+    let ax = negative ? -x : x;
+    var result = 0.0;
+    if ax <= 0.7853981633974483 {
+        // Already inside the kernel's range, so nothing to reduce.
+        result = KernelTan(ax, 0.0, false);
+    } else {
+        let red = RemPio2(ax);
+        // An odd quadrant lands on tan(r + Pi/2), which is -1/tan(r).
+        result = KernelTan(red.hi, red.lo, (red.quadrant & 1i64) == 1i64);
+    }
+    // The tangent is odd.
+    return negative ? -result : result;
+}
+
+// float32 has fewer bits than the float64 result is accurate to, so the
+// double-precision tangent rounded once to float32 is faithful.
+func Tan(x: float32) -> float32 {
+    return Tan(x as float64) as float32;
+}

@@ -1,0 +1,39 @@
+import Rux::{ Assert, OperatingSystem, CurrentTarget };
+import C::{ time, clock, difftime, gmtime, localtime, mktime, malloc, free };
+
+func Main() -> int {
+    // difftime is the plain numeric difference of two calendar times.
+    Assert(difftime(100, 40) == 60.0, "difftime(100, 40)");
+    Assert(difftime(40, 100) == -60.0, "difftime(40, 100)");
+
+    // The processor clock never reports a negative tick count.
+    Assert(clock() >= 0, "clock() is non-negative");
+
+    // The current time is well past the epoch, and passing a pointer stores the
+    // same value that is returned.
+    let slot = malloc(8) as *int64;
+    let now = time(slot);
+    Assert(now > 0, "time is after the epoch");
+    Assert(*slot == now, "time stores the returned value");
+
+    // Converting current local time back to time_t recovers the same second.
+    let local = localtime(slot);
+    Assert(mktime(local) == now, "localtime and mktime round-trip");
+    when CurrentTarget.os == OperatingSystem::Linux {
+        Assert(local.tm_zone != null as *const char8, "localtime provides a timezone");
+    }
+
+    // Break the epoch itself down as UTC: second zero is 1970-01-01 00:00:00,
+    // a Thursday (tm_wday 4).
+    *slot = 0;
+    let utc = gmtime(slot);
+    Assert(utc.tm_year == 70, "gmtime(0) year is 1970");
+    Assert(utc.tm_mon == 0, "gmtime(0) month is January");
+    Assert(utc.tm_mday == 1, "gmtime(0) day is the first");
+    Assert(utc.tm_hour == 0, "gmtime(0) hour is midnight");
+    Assert(utc.tm_min == 0, "gmtime(0) minute is zero");
+    Assert(utc.tm_sec == 0, "gmtime(0) second is zero");
+    Assert(utc.tm_wday == 4, "gmtime(0) is a Thursday");
+    free(slot as *opaque);
+    return 0;
+}

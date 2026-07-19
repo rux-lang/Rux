@@ -4,19 +4,20 @@ The day-to-day loop for changing the Rux compiler. For where your branch should 
 
 ## 1. Prerequisites
 
-Install the toolchain (Clang 22.1+, CMake 3.31+, Ninja 1.13+, and a recent Git) for your OS — see [Building from Source](../README.md#building-from-source).
+Install the toolchain (Clang 22.1+ including `clang-format`, CMake 3.31+, Ninja 1.11+, and a recent Git) for your OS — see [Building from Source](../README.md#building-from-source). Install `clang-tidy` from the same LLVM 22 release when you want to run static analysis locally.
 
-Beyond that build toolchain you need **`clang-format`** (ships with LLVM/Clang) to format your changes — CI and reviewers expect formatted diffs. No other tool is required:
+The LLVM tools have distinct roles:
 
-- **`clang-tidy`** is _not_ used; there is no `.clang-tidy` in the repo.
-- **Editor / IDE** setup is optional. Pass `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON` when configuring (as shown below) to generate `build/compile_commands.json` for `clangd` and other LSP clients.
+- **`clang-format`** enforces C++ layout.
+- **`clang-tidy`** enforces the static-analysis baseline in [`.clang-tidy`](../.clang-tidy).
+- **Editor / IDE** setup is optional. The build scripts enable `CMAKE_EXPORT_COMPILE_COMMANDS`, producing `Build/compile_commands.json` for clang-tidy, clangd, and other tools.
 
 ## 2. Get the source and configure
 
 ```sh
 git clone https://github.com/rux-lang/Rux.git
 cd Rux
-cmake -S . -B build -G Ninja \
+cmake -S . -B Build -G Ninja \
   -DCMAKE_CXX_COMPILER=clang++ \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
   -DRUX_BUILD_TESTS=ON
@@ -30,56 +31,57 @@ With no `-DCMAKE_BUILD_TYPE`, the project defaults to a **Release** build (set i
 2. **Edit** sources under `Compiler/<Component>/` (e.g. `Compiler/Syntax/`, `Compiler/Semantic/`, or `Compiler/CodeGen/`); headers live next to their `.cpp` files.
 3. **Build** the incremental build:
    ```sh
-   cmake --build build --config Release
+   cmake --build Build --config Release
    ```
 4. **Run / debug** the compiler you just built:
    ```sh
-   ./Bin/Release/rux help        # Windows: .\Bin\Release\rux.exe help
+   ./Bin/rux help        # Windows: .\Bin\rux.exe help
    ```
-5. **Install test dependencies and test** (see below):
+5. **Test** against the local workspace packages (see below):
    ```sh
-   ./Bin/Release/rux install
-   ./Bin/Release/rux test --release
-   ctest --test-dir build --output-on-failure
+   ./Bin/rux test --release
+   ctest --test-dir Build --output-on-failure
    ```
-6. **Format** touched files: `clang-format -i <files>`.
+6. **Format** all maintained C++ and Rux sources: `sh Format.sh` (PowerShell: `./Format.ps1`).
+
+The repository provides matching platform entry points. PowerShell users can run `./Build.ps1`, `./Format.ps1`, and `./Test.ps1`; Linux, macOS, and FreeBSD users can run `sh Build.sh`, `sh Format.sh`, and `sh Test.sh`. The build scripts configure and build the compiler and C++ test target while generating the compilation database. The format scripts handle maintained C++ and Rux sources. The test scripts run the policy, formatting, build, CTest, lint, and Rux-test workflow. Use `./Test.ps1 -SkipBuild` or `sh Test.sh --skip-build` to reuse an existing build. Add `-ClangTidy` or `--clang-tidy` for the slower static-analysis pass; the Code Quality workflow always runs it.
 
 ### Debug vs. Release builds
 
 - **Release** (default) — optimized; this is what CI builds and tests, and what ships. Use it for normal development and before pushing.
-- **Debug** — configure a _separate_ build directory with `-DCMAKE_BUILD_TYPE=Debug` (e.g. `cmake -S . -B build-debug -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DRUX_BUILD_TESTS=ON`). It is unoptimized and includes debug information, so breakpoints and stepping in a debugger (LLDB/GDB) behave predictably.
+- **Debug** — configure a _separate_ build directory with `-DCMAKE_BUILD_TYPE=Debug` (e.g. `cmake -S . -B Build-Debug -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DRUX_BUILD_TESTS=ON`). It is unoptimized and includes debug information, so breakpoints and stepping in a debugger (LLDB/GDB) behave predictably.
 
 There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan/UBSan, pass the flags yourself on a throwaway build dir, e.g. `-DCMAKE_CXX_FLAGS="-fsanitize=address,undefined"`.
 
 ## 4. Repository layout
 
-| Path                  | Purpose                                                                              |
-| --------------------- | ------------------------------------------------------------------------------------ |
-| `Compiler/Cli/`       | Command-line interface and terminal presentation                                     |
-| `Compiler/Driver/`    | Compilation orchestration, targets, and build reports                                |
-| `Compiler/Source/`    | Source discovery, loading, and locations                                             |
-| `Compiler/Lexer/`     | Tokens and lexical analysis                                                          |
-| `Compiler/Syntax/`    | AST and parser                                                                       |
-| `Compiler/Semantic/`  | Types, symbols, analysis, and the persistent semantic model                          |
-| `Compiler/Ir/`        | HIR/LIR models, printers, and IR-local passes                                        |
-| `Compiler/Lowering/`  | Explicit AST-to-HIR and HIR-to-LIR transformations                                   |
-| `Compiler/CodeGen/`   | Target-specific code generation                                                      |
-| `Compiler/Object/`    | Object formats and serialization                                                     |
-| `Compiler/Linker/`    | PE, ELF, and Mach-O executable writers                                               |
-| `Compiler/Target/`    | Compilation target, ABI, data-layout, and architecture model                         |
-| `Compiler/System/`    | Host OS, hardware, filesystem, and process services                                  |
-| `Compiler/Package/`   | Manifest parsing and package management                                              |
-| `Compiler/Formatter/` | Formatting engine used by `rux fmt`                                                  |
-| `Compiler/Linter/`    | Lint engine and rules used by `rux lint`                                             |
-| `Tests/Integration/`  | Rux language test packages, one per subdirectory (`rux test`)                        |
-| `Tests/Unit/`         | C++ unit tests for compiler internals (doctest + CTest)                              |
-| `Tests/Golden/`       | Golden diagnostics cases: `<Case>.rux` + `<Case>.expected`                           |
-| `Tools/`              | Repo maintenance scripts (e.g. the platform-isolation guard)                         |
-| `Packaging/`          | Linux and Windows installer scripts plus the Windows MSI project                     |
-| `Bin/`                | Output for the compiler (`Bin/<Config>/`) and compiled Rux packages; **git-ignored** |
-| `CMakeLists.txt`      | Top-level build entry: project `VERSION` + `add_subdirectory(Compiler)`              |
+| Path                        | Purpose                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------ |
+| `Compiler/Cli/`             | Command-line interface and terminal presentation                                     |
+| `Compiler/Driver/`          | Compilation orchestration, targets, and build reports                                |
+| `Compiler/Source/`          | Source discovery, loading, and locations                                             |
+| `Compiler/Lexer/`           | Tokens and lexical analysis                                                          |
+| `Compiler/Syntax/`          | AST and parser                                                                       |
+| `Compiler/Semantic/`        | Types, symbols, analysis, and the persistent semantic model                          |
+| `Compiler/Ir/`              | HIR/LIR models, printers, and IR-local passes                                        |
+| `Compiler/Lowering/`        | Explicit AST-to-HIR and HIR-to-LIR transformations                                   |
+| `Compiler/CodeGen/`         | Target-specific code generation                                                      |
+| `Compiler/Object/`          | Object formats and serialization                                                     |
+| `Compiler/Linker/`          | PE, ELF, and Mach-O executable writers                                               |
+| `Compiler/Target/`          | Compilation target, ABI, data-layout, and architecture model                         |
+| `Compiler/System/`          | Host OS, hardware, filesystem, and process services                                  |
+| `Compiler/Package/`         | Manifest parsing and package management                                              |
+| `Compiler/Formatter/`       | Formatting engine used by `rux fmt`                                                  |
+| `Compiler/Linter/`          | Lint engine and rules used by `rux lint`                                             |
+| `Tests/Language/`           | Executable Rux language and compiler-behavior tests (`rux test`)                     |
+| `Tests/Packages/`           | Executable first-party package tests grouped as `<Package>/<Test>` (`rux test`)      |
+| `Tests/Unit/`               | C++ unit tests and their `Golden/` diagnostic fixtures (doctest + CTest)             |
+| `Tests/Policy/`             | Repository-policy checks, including platform isolation                              |
+| `Packaging/`                | Linux and Windows installer scripts plus the Windows MSI project                     |
+| `Bin/`                      | Compiler and centralized test executables; **git-ignored**                           |
+| `CMakeLists.txt`            | Top-level build entry: project `VERSION` + `add_subdirectory(Compiler)`              |
 
-`Bin/` is where `rux` drops the binaries it produces. Test packages set `[Build] Output = "../Bin"` in their manifest, so `rux test` writes their binaries to `Tests/Integration/Bin/` (git-ignored, like every `Bin/` directory). The Rux compiler itself builds to `Bin/<Config>/` (e.g. `Bin/Release/rux`); the CMake intermediates stay in the `build/` directory you pass to `-B`. `Bin/` is listed in `.gitignore`; nothing under it is tracked.
+`Bin/` contains every repository executable. The compiler builds directly to `Bin/rux` (`Bin\rux.exe` on Windows), the C++ unit runner to `Bin/Tests/Unit/rux-tests`, language tests to `Bin/Tests/Language/`, and package tests to `Bin/Tests/Packages/<Package>/`. Test executables are written directly to those corresponding directories without `Debug` or `Release` subdirectories. CMake intermediates stay in the build directory passed to `-B`. `Bin/` is listed in `.gitignore`; nothing under it is tracked.
 
 ### Compiler pipeline
 
@@ -103,27 +105,25 @@ Supporting layers around the pipeline:
 - **CLI & driver** — `Main.cpp`, `Cli/`, `Driver/CompilerDriver.cpp`, build reports, and target selection.
 - **Packages & manifests** — `Package/Package.cpp`, `Package/Manifest.cpp` (parse `Rux.toml`, resolve dependencies).
 - **Target and system layers** — `Target/` models the machine being compiled for; `System/` isolates services of the host running the compiler. Direct OS
-  API calls (`getenv`, `<windows.h>`, `fork`, ...) are allowed only in `System/`; CI enforces this with `Tools/PlatformIsolation/Check.sh`.
+  API calls (`getenv`, `<windows.h>`, `fork`, ...) are allowed only in `System/`; CI enforces this with `Tests/Policy/PlatformIsolation/Check.sh`.
 
 ## 5. Testing
 
 There are two suites: Rux-language test packages (run with `rux test`) and C++ unit tests for the compiler internals (run with `ctest`).
 
-### Language tests (`Tests/Integration/`)
+### Language and package tests (`Tests/Language/`, `Tests/Packages/`)
 
-Run the full suite from the repo root. Installation is idempotent, so it is safe to run after pulling changes or editing a test manifest:
+Run the full suite from the repository root:
 
 ```sh
-./Bin/Release/rux install         # discover and install test dependencies
-./Bin/Release/rux test --release  # omit --release for a Debug-profile test build
+./Bin/rux test --release  # omit --release for a Debug-profile test build
 ```
 
-Because this repository intentionally has no root `Rux.toml`, bare `rux install` uses manifest-less workspace discovery. It scans package manifests below the root `Tests/`, immediate member directories, and each member's `Tests/`; deduplicates their registry dependencies; and installs the complete transitive graph. Path dependencies are local and are not downloaded. On Windows the shared package cache is `%LocalAppData%\Rux\Packages`; on Unix-like hosts it is `~/.rux/packages`.
+The root `Rux.toml` declares every first-party package as a workspace member. Every dependency in a test manifest must use a local `Path` into `Packages/`; the C++ manifest-policy test enforces this across the whole tree. While running tests, transitive dependencies declared by publishable package manifests are overridden by matching local workspace members, and registry fallback is disabled. The repository test suite therefore requires no package-cache setup or network access.
 
-`rux test` walks `Tests/` recursively: a directory with a `Rux.toml` is a test package; a directory without one (like `Tests/Integration/`) is a group and is searched further. Each package is built and run, and per-package results plus a summary are reported.
+`rux test` walks `Tests/` recursively: a directory with a `Rux.toml` is a test package; a directory without one (like `Tests/Language/` or `Tests/Packages/`) is a group and is searched further. Each package is built and run, and per-package results plus a summary are reported.
 
-Run from a package directory, it tests that package alone (its own `Tests/`). Run from a workspace root — a directory with no `Rux.toml` of its own — it discovers the root `Tests/` **and** each member package's `Tests/`, so tests may
-live centrally or beside the code they cover. A test under a member is labeled with the member's name, so `Text/Tests/Compare` reports as `Text/Compare`.
+All repository tests are centralized under the root `Tests/` tree. Language tests are labeled `Language/<Test>`; package tests are labeled `Packages/<Package>/<Test>`. See [`Tests/README.md`](../Tests/README.md) for the concise ownership and authoring rules.
 
 A test package is a normal binary package whose **exit code is the only signal: `0` = pass, anything else = fail** — no framework required:
 
@@ -136,51 +136,58 @@ func Main() -> int {
 }
 ```
 
-Each package lives at `Tests/Integration/<Name>/` with a `Rux.toml` manifest and `Src/Main.rux`:
+Each language test lives at `Tests/Language/<Name>/` with a `Rux.toml` manifest and `Src/Main.rux`:
 
 ```toml
 [Package]
 Name = "Arithmetic"
 Version = "0.1.0"
-Description = "Test for Rux compiler"
+Type = "bin"
+Description = "Language test: Arithmetic"
 
 [Build]
-Output = "../Bin"
+Output = "../../../Bin/Tests/Language"
 ```
 
-**When you add a language feature, add a matching test package under `Tests/Integration/`.**
+**When you add a language feature, add a matching test package under `Tests/Language/`.**
+
+Package tests live at `Tests/Packages/<Package>/<Test>/`. Their manifests use local path dependencies back to the package they cover and direct output to the corresponding central binary folder. For example, a Math test uses `Math = { Path = "../../../../Packages/Math" }` and `Output = "../../../../Bin/Tests/Packages/Math"`.
 
 ### Unit tests (`Tests/Unit/`)
 
 C++ tests against `RuxCore` using the vendored [doctest](https://github.com/doctest/doctest) header. Build and run them with:
 
 ```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DRUX_BUILD_TESTS=ON
-cmake --build build --config Release
-ctest --test-dir build --output-on-failure -C Release
+cmake -S . -B Build -G Ninja -DCMAKE_BUILD_TYPE=Release -DRUX_BUILD_TESTS=ON
+cmake --build Build --config Release
+ctest --test-dir Build --output-on-failure -C Release
 ```
 
-(The test binary is `build/Tests/Unit/rux-tests`; run it directly for doctest's filtering options, e.g. `rux-tests -ts="Lexer*"`. On Windows it has an `.exe` suffix.)
+The unit-test executable is written to `Bin/Tests/Unit/rux-tests` (`rux-tests.exe` on Windows); CTest resolves that path automatically.
 
-### Golden diagnostics (`Tests/Golden/`)
+Run the centralized binary directly for doctest filtering, for example `Bin/Tests/Unit/rux-tests -ts="Lexer*"` (with `.exe` on Windows).
 
-Part of the unit-test binary: every `Tests/Golden/<Case>.rux` is compiled through the frontend (lex → parse → sema), the diagnostics are rendered one per line as `line:column: severity: message`, and compared against `<Case>.expected`. To add a case, drop a `.rux` file in `Tests/Golden/`, run the test binary once with `RUX_UPDATE_GOLDEN=1` to generate the `.expected` file, and review it before committing. **When you change or add a diagnostic, add or regenerate the affected golden cases.**
+### Golden diagnostics (`Tests/Unit/Golden/`)
+
+Part of the unit-test binary: every `Tests/Unit/Golden/<Case>.rux` is compiled through the frontend (lex → parse → sema), the diagnostics are rendered one per line as `line:column: severity: message`, and compared against `<Case>.expected`. To add a case, drop a `.rux` file in `Tests/Unit/Golden/`, run the test binary once with `RUX_UPDATE_GOLDEN=1` to generate the `.expected` file, and review it before committing. **When you change or add a diagnostic, add or regenerate the affected golden cases.**
 
 ## 6. Code style
 
-Formatting is enforced by [`.clang-format`](../.clang-format) (LLVM base, 4-space indent, west const, 120-column limit).
+Formatting is enforced by [`.clang-format`](../.clang-format) for C++ (LLVM base, 4-space indent, west const, 120-column limit) and by `rux fmt` for Rux sources. The repository scripts format all maintained sources:
 
 ```sh
-clang-format -i $(git ls-files '*.cpp' '*.h')
+sh Format.sh
 ```
 
 PowerShell equivalent:
 
 ```powershell
-git ls-files '*.cpp' '*.h' | ForEach-Object { clang-format -i $_ }
+./Format.ps1
 ```
 
-`clang-format` handles layout; the conventions it can't enforce, observed
+Use `sh Format.sh --check` or `./Format.ps1 -Check` to verify formatting without changing files. Vendored C++ under `Tests/Unit/ThirdParty/` and intentionally malformed Rux diagnostic fixtures under `Tests/Unit/Golden/` are excluded.
+
+The formatters handle layout; the conventions they can't enforce, observed
 throughout the codebase:
 
 - **Naming**

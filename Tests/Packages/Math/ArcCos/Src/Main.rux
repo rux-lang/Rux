@@ -1,0 +1,45 @@
+import Rux::Assert;
+import Math::ArcCos;
+
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        return false;
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 4i64;
+}
+
+func Main() -> int {
+    let pi = 3.141592653589793;
+    let pio2 = 1.5707963267948966;
+    var zero = 0.0;
+
+    Assert(ArcCos(1.0) == 0.0, "ArcCos(1.0)");
+    Assert(ArcCos(-1.0) == pi, "ArcCos(-1.0)");
+    Assert(ArcCos(0.0) == pio2, "ArcCos(0.0)");
+    Assert(ArcCos(-0.0) == pio2, "ArcCos(-0.0)");
+
+    Assert(Close(ArcCos(0.5), 1.0471975511965979), "ArcCos(0.5)");
+    Assert(Close(ArcCos(-0.25), 1.8234765819369754), "ArcCos(-0.25)");
+
+    let outside = ArcCos(2.0);
+    Assert(outside != outside, "ArcCos outside domain");
+
+    let nan = zero / zero;
+    let nanAcos = ArcCos(nan);
+    Assert(nanAcos != nanAcos, "ArcCos(NaN)");
+
+    Assert(ArcCos(0.5f32) == 1.0471975803375244f32, "ArcCos(0.5f32)");
+    return 0;
+}

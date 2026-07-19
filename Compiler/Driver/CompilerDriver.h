@@ -28,6 +28,13 @@ struct CompileOptions {
     std::string profileName;                    // "Release", "Debug", or a custom profile
     std::map<std::string, std::string> defines; // --define overrides
 
+    // Workspace members that override registry dependencies by package name.
+    // Repository checks and tests use this map to compile against the local
+    // source tree while publishable package manifests retain version-based
+    // dependencies.
+    std::map<std::string, std::filesystem::path> localPackageRoots;
+    bool localDependenciesOnly = false;
+
     bool quiet = false;
     bool verbose = false; // print per-phase progress lines to stdout
     bool isTest = false;
@@ -69,7 +76,7 @@ private:
     bool EmitAll(std::span<const Diagnostic> diags) const;
 
     // The operating system of the build target, named exactly ("FreeBSD", not
-    // the "BSD" family). This is what `target.os` reports.
+    // the "BSD" family). This is what `CurrentTarget.os` reports.
     [[nodiscard]] std::string TargetSystemName() const;
     void InitializeCompileTimeContext();
 

@@ -1,0 +1,44 @@
+import Rux::Assert;
+import Math::ArcCot;
+
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        return false;
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 2i64;
+}
+
+func Main() -> int {
+    let pi = 3.141592653589793;
+    let pio2 = 1.5707963267948966;
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(ArcCot(0.0) == pio2, "ArcCot(0.0)");
+    Assert(ArcCot(-0.0) == pio2, "ArcCot(-0.0)");
+    Assert(Close(ArcCot(1.0), 0.7853981633974483), "ArcCot(1.0)");
+    Assert(Close(ArcCot(-1.0), 2.356194490192345), "ArcCot(-1.0)");
+
+    Assert(ArcCot(inf) == 0.0, "ArcCot(+Inf)");
+    Assert(ArcCot(-inf) == pi, "ArcCot(-Inf)");
+
+    let nan = zero / zero;
+    let nanAcot = ArcCot(nan);
+    Assert(nanAcot != nanAcot, "ArcCot(NaN)");
+
+    Assert(ArcCot(1.0f32) == 0.7853981852531433f32, "ArcCot(1.0f32)");
+    return 0;
+}

@@ -1,0 +1,9 @@
+// Primitive constants are supplied directly by the compiler
+// float64::Lowest
+// float64::Max
+// float64::MinPositive
+// float64::Epsilon
+// float64::Infinity
+// float64::NaN
+// float64::Bits
+// float64::Bytes

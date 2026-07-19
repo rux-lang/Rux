@@ -1,0 +1,49 @@
+// Cotan is not 1 / Tan(x): that would round the tangent, then round its
+// reciprocal, and near a pole the first rounding is the whole answer. It is
+// instead the same kernel asked for the reciprocal directly.
+func Cotan(x: float64) -> float64 {
+    // NaN is the only value that differs from itself, and it propagates.
+    if x != x {
+        return x;
+    }
+
+    var zero = 0.0;
+
+    // x - x is NaN for an infinity and 0.0 for anything else finite. The
+    // cotangent has no limit at infinity, so the result is NaN.
+    if x - x != 0.0 {
+        return zero / zero;
+    }
+
+    // cot(x) = 1/x - x/3 - ..., and below 2^-28 the second term is under
+    // half an ulp of the first. The reciprocal also carries the pole at
+    // zero with the right sign: Cotan(0.0) is +Inf, Cotan(-0.0) is -Inf.
+    // Stopping here is what keeps NegRecip's argument away from overflow.
+    if x < 3.725290298461914e-9 && x > -3.725290298461914e-9 {
+        return 1.0 / x;
+    }
+
+    let negative = x < 0.0;
+    let ax = negative ? -x : x;
+
+    var result = 0.0;
+    if ax <= 0.7853981633974483 {
+        // Already inside the kernel's range, so nothing to reduce.
+        result = -KernelTan(ax, 0.0, true);
+    } else {
+        let red = RemPio2(ax);
+        // An even quadrant leaves cot(r), which is 1/tan(r); an odd one
+        // lands on cot(r + Pi/2), which is -tan(r). The kernel returns the
+        // negative of each, so one negation covers both.
+        result = -KernelTan(red.hi, red.lo, (red.quadrant & 1i64) == 0i64);
+    }
+
+    // The cotangent is odd.
+    return negative ? -result : result;
+}
+
+// float32 has fewer bits than the float64 result is accurate to, so the
+// double-precision cotangent rounded once to float32 is faithful.
+func Cotan(x: float32) -> float32 {
+    return Cotan(x as float64) as float32;
+}

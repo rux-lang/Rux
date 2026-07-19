@@ -1,0 +1,93 @@
+name: Code Quality
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+# Allow cancelling superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CMAKE_VERSION: "4.3.4"
+  NINJA_VERSION: "1.13.2"
+
+jobs:
+  platform-isolation:
+    name: Platform isolation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Direct OS API usage must stay inside Compiler/System/.
+      - name: Check platform isolation
+        run: sh Tests/Policy/PlatformIsolation/Check.sh
+
+  format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Match the LLVM major used by the build jobs so formatting is stable.
+      - name: Install clang-format 22
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSLo /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 22
+          sudo apt-get install -y clang-format-22
+
+      - name: Check formatting
+        run: |
+          find Compiler Tests/Unit \( -name '*.cpp' -o -name '*.h' \) -not -path '*ThirdParty*' -print0 \
+            | xargs -0 clang-format-22 --dry-run -Werror
+
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Clang 22
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSLo /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 22
+          sudo apt-get install -y clang-tidy-22
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@v4.3.3
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: ${{ env.NINJA_VERSION }}
+
+      - name: Configure compilation database
+        run: |
+          cmake -S . -B Build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=clang++-22 \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DRUX_WERROR=ON \
+            -DRUX_BUILD_TESTS=ON
+
+      - name: Analyze C++ sources
+        run: run-clang-tidy-22 -quiet -j 4 -clang-tidy-binary clang-tidy-22 -config-file .clang-tidy -p Build

@@ -28,4 +28,4 @@ Issues:       https://github.com/rux-lang/Rux/issues
 
 License
 -------
-Rux is released under the MIT License. See the LICENSE file in this folder.
+Rux is released under the MIT License. See the LICENSE.md file in this folder.

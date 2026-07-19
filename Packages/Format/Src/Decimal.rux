@@ -1,0 +1,226 @@
+import Text::StringBuilder;
+
+// The float conversions all funnel through here. What separates a float32
+// from a float64 is only how many digits it can carry before the noise of
+// the binary representation shows through, so that count is a parameter and
+// the machinery below is shared.
+
+// The digits of a finite, non-zero magnitude, and the point placed by the
+// decimal exponent. `significant` is how many digits to generate before
+// rounding: fifteen for a float64, seven for a float32.
+func WriteDecimal(builder: *StringBuilder, value: float64, significant: uint) {
+    var abs = value;
+    if value < 0.0 {
+        builder.Append(c8'-');
+        abs = -value;
+    }
+
+    // A first guess at the decimal exponent, walking the value into
+    // [1, 10). Every step rounds, so what this settles on is an estimate,
+    // and the mantissa it leaves behind is thrown away.
+    var exp10: int = 0;
+    var mantissa = abs;
+    while mantissa >= 10.0 {
+        mantissa /= 10.0;
+        exp10++;
+    }
+    while mantissa < 1.0 {
+        mantissa *= 10.0;
+        exp10--;
+    }
+
+    // The mantissa the digits really come from, rebuilt from the original
+    // value in exactly representable steps. The bounds are checked once more
+    // because the drift above may have left the estimate one out.
+    mantissa = ScaleByPow10(abs, -exp10);
+    if mantissa >= 10.0 {
+        mantissa /= 10.0;
+        exp10++;
+    }
+    if mantissa < 1.0 {
+        mantissa *= 10.0;
+        exp10--;
+    }
+
+    // Every digit at once, as an integer. Peeling them off one at a time in
+    // floating point would feed the rounding error of each step into every
+    // digit after it. The mantissa is in [1, 10), so the scaled value is in
+    // [10^(n-1), 10^n) and sits far inside a uint64 for any n this is asked
+    // for.
+    let scale = Pow10(significant - 1);
+    var scaled = (mantissa * scale + 0.5) as uint64;
+
+    // Rounding up can carry the whole way: 9.999... scales to 10^n, one digit
+    // too many. Dropping the zero the carry created puts it right.
+    let limit = (scale * 10.0) as uint64;
+    if scaled >= limit {
+        scaled /= 10u64;
+        exp10++;
+    }
+
+    var digits: char8[20];
+    var count = significant;
+    var index = count;
+    var rest = scaled;
+    while index > 0 {
+        index--;
+        digits[index] = (rest % 10u64 + 48u64) as char8;
+        rest /= 10u64;
+    }
+
+    // Trailing zeros carry nothing: half comes out of the loop as
+    // 5.00000000000000e-1, and what should be printed is 0.5. At least one
+    // digit always survives.
+    while count > 1 && digits[count - 1] == c8'0' {
+        count--;
+    }
+
+    // Fixed notation while it stays readable, which is the rule the printf
+    // %g family follows: an exponent below -4 would spend more width on
+    // leading zeros than on digits, and one at or above the digit count
+    // would spend it on trailing ones.
+    if exp10 < -4 || exp10 >= significant as int {
+        WriteScientific(builder, digits, count, exp10);
+    } else {
+        WriteFixed(builder, digits, count, exp10);
+    }
+}
+
+// The digits with the point dropped in where the exponent puts it, and no
+// exponent marker: 1.25, 0.001, 12000.0. A fractional part is always
+// written, so the text still reads as a float when the value has no fraction
+// of its own to show.
+func WriteFixed(builder: *StringBuilder, digits: char8[], count: uint, exp10: int) {
+    if exp10 < 0 {
+        // Below one, so the text opens with a zero and the point, then as
+        // many more zeros as the exponent calls for: -1 puts the first digit
+        // straight after the point, -3 leaves two zeros in front of it.
+        builder.Append("0.");
+        var pad = exp10 + 1;
+        while pad < 0 {
+            builder.Append(c8'0');
+            pad++;
+        }
+
+        for i in 0..count {
+            builder.Append(digits[i]);
+        }
+        return;
+    }
+
+    // The integer part is the leading exp10 + 1 digits, padded with zeros
+    // when the value has more magnitude than it has digits to fill it with:
+    // 1.2e4 holds two digits and five places, and prints as 12000.
+    let length = (exp10 as uint) + 1;
+    var i: uint = 0;
+    while i < length {
+        if i < count {
+            builder.Append(digits[i]);
+        } else {
+            builder.Append(c8'0');
+        }
+        i++;
+    }
+
+    builder.Append(c8'.');
+    if count <= length {
+        builder.Append(c8'0');
+        return;
+    }
+
+    var j = length;
+    while j < count {
+        builder.Append(digits[j]);
+        j++;
+    }
+}
+
+// One digit, the point, the rest, and the exponent: 1.5e+20, 2.5e-07. The
+// exponent carries a sign and at least two digits, so the tail keeps a
+// steady width across the range.
+func WriteScientific(builder: *StringBuilder, digits: char8[], count: uint, exp10: int) {
+    builder.Append(digits[0]);
+    builder.Append(c8'.');
+    if count == 1 {
+        builder.Append(c8'0');
+    } else {
+        var i: uint = 1;
+        while i < count {
+            builder.Append(digits[i]);
+            i++;
+        }
+    }
+
+    builder.Append(c8'e');
+    var exp = exp10;
+    if exp < 0 {
+        builder.Append(c8'-');
+        exp = -exp;
+    } else {
+        builder.Append(c8'+');
+    }
+
+    // The digits come out least significant first and go back reversed.
+    // Three of them are enough, since the exponent of a float64 reaches 308,
+    // and it never reaches zero: this notation is only chosen for a value
+    // whose exponent falls outside [-4, significant).
+    var expDigits: char8[4];
+    var length: uint = 0;
+    var rest = exp as uint;
+    while rest > 0 {
+        expDigits[length] = (rest % 10u + 48u) as char8;
+        length++;
+        rest /= 10u;
+    }
+
+    if length < 2 {
+        builder.Append(c8'0');
+    }
+
+    var i = length;
+    while i > 0 {
+        i--;
+        builder.Append(expDigits[i]);
+    }
+}
+
+// 10^exp. The powers of ten up to 10^22 are the ones a float64 holds without
+// rounding, and each is reached here by a chain of exact multiplications, so
+// within that range this is exact. It is never asked for more.
+func Pow10(exp: uint) -> float64 {
+    var result = 1.0;
+    var i: uint = 0;
+    while i < exp {
+        result *= 10.0;
+        i++;
+    }
+    return result;
+}
+
+// value * 10^exp, for a value on its way into [1, 10). The scaling walks in
+// steps of the exactly representable 10^22 rather than going through a single
+// 10^exp, which would be rounded once when it was built and again when it was
+// applied -- and which, for the exponent a subnormal needs, would have
+// overflowed to infinity before it could be used at all.
+func ScaleByPow10(value: float64, exp: int) -> float64 {
+    let step = Pow10(22u);
+    var result = value;
+    var rest = exp;
+
+    while rest >= 22 {
+        result *= step;
+        rest -= 22;
+    }
+    while rest <= -22 {
+        result /= step;
+        rest += 22;
+    }
+
+    if rest > 0 {
+        result *= Pow10(rest as uint);
+    }
+    if rest < 0 {
+        result /= Pow10((-rest) as uint);
+    }
+    return result;
+}

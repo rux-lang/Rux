@@ -1,20 +1,25 @@
 // `rux lint`: run source-level lint checks for the current package.
 
 #include "Cli/Cli.h"
+#include "Cli/TerminalStyle.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
 #include "Linter/Linter.h"
 #include "Source/SourceLoader.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
+#include <optional>
 #include <print>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 using namespace Rux;
+using namespace CliSupport;
 using namespace Driver;
 
 int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &opts) {
@@ -31,31 +36,44 @@ int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &op
     if (!manifestPath) {
         return 1;
     }
-    auto manifest = LoadManifest(*manifestPath);
-    if (!manifest) {
+    auto rootManifest = LoadManifest(*manifestPath);
+    if (!rootManifest) {
         return 1;
     }
 
+    struct LintOutcome {
+        std::size_t files = 0;
+        std::size_t warnings = 0;
+        std::size_t errors = 0;
+
+        [[nodiscard]] bool Failed() const noexcept {
+            return errors > 0;
+        }
+    };
+
     auto LintPackage = [&](const std::filesystem::path &packageManifestPath, const Manifest &packageManifest,
-                           const bool showPackage) {
+                           const bool manifestValid = true) {
+        LintOutcome outcome;
+        if (!manifestValid) {
+            outcome.errors = 1;
+            return outcome;
+        }
         if (packageManifest.IsWorkspace() || packageManifest.package.name.empty()) {
             std::print(stderr, "error: workspace member '{}' is not a package\n",
                        packageManifestPath.parent_path().string());
-            return true;
-        }
-        if (showPackage && !opts.quiet) {
-            std::println("Linting {} v{} [{}]", packageManifest.package.name, packageManifest.package.version,
-                         packageManifestPath.parent_path().string());
+            outcome.errors = 1;
+            return outcome;
         }
         const auto sources = SourceLoader::Load(packageManifestPath.parent_path());
         if (!sources) {
-            return true;
+            outcome.errors = 1;
+            return outcome;
         }
 
-        bool packageFailed = false;
+        outcome.files = sources->files.size();
         for (const auto &error : sources->errors) {
             std::print(stderr, "{}", error);
-            packageFailed = true;
+            ++outcome.errors;
         }
         for (const auto &file : sources->files) {
             if (opts.verbose) {
@@ -64,45 +82,122 @@ int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &op
             auto result = Linting::Lint(file.source, file.path.string());
             for (const auto &diagnostic : result.diagnostics) {
                 PrintDiagnostic(diagnostic);
+                if (diagnostic.IsError()) {
+                    ++outcome.errors;
+                }
+                else {
+                    ++outcome.warnings;
+                }
             }
-            packageFailed |= result.HasErrors();
         }
-
-        if (!packageFailed && !opts.quiet) {
-            std::println("  Lint passed: {} file(s)", sources->files.size());
-        }
-        return packageFailed;
+        return outcome;
     };
 
-    bool failed = false;
-    if (manifest->IsWorkspace()) {
+    struct LintJob {
+        std::filesystem::path manifestPath;
+        std::string label;
+        std::optional<Manifest> manifest;
+    };
+
+    std::vector<LintJob> jobs;
+    if (rootManifest->IsWorkspace()) {
         if (!opts.quiet) {
             std::println("Linting workspace");
         }
         const auto workspaceRoot = manifestPath->parent_path();
         const auto targetName = HostTargetTriple();
-        for (const auto &member : manifest->workspace.packages) {
+        for (const auto &member : rootManifest->workspace.packages) {
             const auto memberManifestPath = (workspaceRoot / member / "Rux.toml").lexically_normal();
+            const auto label = std::filesystem::path(member).lexically_normal().generic_string();
             std::error_code ec;
             if (!std::filesystem::exists(memberManifestPath, ec)) {
                 std::print(stderr, "error: workspace member '{}' has no Rux.toml\n", member);
-                failed = true;
+                jobs.push_back({memberManifestPath, label, std::nullopt});
                 continue;
             }
             auto memberManifest = LoadManifest(memberManifestPath);
             if (!memberManifest) {
-                failed = true;
+                jobs.push_back({memberManifestPath, label, std::nullopt});
                 continue;
             }
             if (IsPlatformPackageName(memberManifest->package.name) &&
                 !PlatformPackageMatchesTarget(memberManifest->package.name, targetName)) {
                 continue;
             }
-            failed |= LintPackage(memberManifestPath, *memberManifest, true);
+            jobs.push_back({memberManifestPath, label, std::move(*memberManifest)});
         }
     }
     else {
-        failed = LintPackage(*manifestPath, *manifest, false);
+        if (!opts.quiet) {
+            std::println("Linting {} v{}", rootManifest->package.name, rootManifest->package.version);
+        }
+        jobs.push_back({*manifestPath, rootManifest->package.name, std::move(*rootManifest)});
     }
-    return failed ? 1 : 0;
+
+    const AnsiStyle style{ColorEnabled(opts.color)};
+    if (!opts.quiet) {
+        std::println("Linting {} {}\n", jobs.size(), jobs.size() == 1 ? "package" : "packages");
+    }
+
+    std::size_t labelWidth = 0;
+    for (const auto &job : jobs) {
+        labelWidth = std::max(labelWidth, job.label.size());
+    }
+
+    std::size_t passed = 0;
+    std::size_t warned = 0;
+    std::size_t failed = 0;
+    for (const auto &job : jobs) {
+        const Manifest emptyManifest;
+        const auto outcome =
+            LintPackage(job.manifestPath, job.manifest ? *job.manifest : emptyManifest, job.manifest.has_value());
+        std::string paddedLabel = job.label;
+        paddedLabel.resize(labelWidth, ' ');
+
+        std::string detail = std::format("{} {}", outcome.files, outcome.files == 1 ? "file" : "files");
+        if (outcome.warnings > 0) {
+            detail += std::format(", {} {}", outcome.warnings, outcome.warnings == 1 ? "warning" : "warnings");
+        }
+        if (outcome.errors > 0) {
+            detail += std::format(", {} {}", outcome.errors, outcome.errors == 1 ? "error" : "errors");
+        }
+
+        if (outcome.Failed()) {
+            ++failed;
+            if (!opts.quiet) {
+                std::println("{}[FAILED]{} {} ({})", style.Red(), style.Reset(), paddedLabel, detail);
+            }
+        }
+        else if (outcome.warnings > 0) {
+            ++warned;
+            if (!opts.quiet) {
+                std::println("{}[WARNING]{} {} ({})", style.Yellow(), style.Reset(), paddedLabel, detail);
+            }
+        }
+        else {
+            ++passed;
+            if (!opts.quiet) {
+                std::println("{}[PASSED]{} {} ({})", style.Green(), style.Reset(), paddedLabel, detail);
+            }
+        }
+    }
+
+    if (!opts.quiet || failed > 0) {
+        std::println("\nLint Result:");
+        std::println("  Passed  : {}{}{}", style.Green(), passed, style.Reset());
+        if (warned > 0) {
+            std::println("  Warnings: {}{}{}", style.Yellow(), warned, style.Reset());
+        }
+        else {
+            std::println("  Warnings: {}", warned);
+        }
+        if (failed > 0) {
+            std::println("  Failed  : {}{}{}", style.Red(), failed, style.Reset());
+        }
+        else {
+            std::println("  Failed  : {}", failed);
+        }
+        std::println("  Total   : {}", passed + warned + failed);
+    }
+    return failed == 0 ? 0 : 1;
 }

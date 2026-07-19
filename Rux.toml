@@ -1,0 +1,21 @@
+[Workspace]
+Packages = [
+    "Packages/Algorithms",
+    "Packages/Bsd",
+    "Packages/C",
+    "Packages/Collections",
+    "Packages/Format",
+    "Packages/Hash",
+    "Packages/Io",
+    "Packages/Json",
+    "Packages/Linux",
+    "Packages/MacOS",
+    "Packages/Math",
+    "Packages/Memory",
+    "Packages/Random",
+    "Packages/Rux",
+    "Packages/Text",
+    "Packages/Time",
+    "Packages/Uuid",
+    "Packages/Windows",
+]

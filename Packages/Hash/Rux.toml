@@ -1,0 +1,6 @@
+[Package]
+Name = "Hash"
+Version = "0.1.0"
+Type = "Source"
+Description = "Hash functions and checksums"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]

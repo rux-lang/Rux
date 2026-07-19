@@ -1,0 +1,32 @@
+import Rux::Assert;
+import Math::Ceil;
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(Ceil(0.0) == 0.0, "Ceil(0.0)");
+    let negZero = Ceil(-0.0);
+    Assert(negZero == 0.0, "Ceil(-0.0)");
+    Assert(one / negZero < 0.0, "Ceil(-0.0) keeps sign");
+
+    Assert(Ceil(1.2) == 2.0, "Ceil(1.2)");
+    Assert(Ceil(1.0) == 1.0, "Ceil(1.0)");
+    Assert(Ceil(-1.2) == -1.0, "Ceil(-1.2)");
+    Assert(Ceil(-1.0) == -1.0, "Ceil(-1.0)");
+    let negSmall = Ceil(-0.5);
+    Assert(negSmall == 0.0, "Ceil(-0.5)");
+    Assert(one / negSmall < 0.0, "Ceil(-0.5) is -0.0");
+    Assert(Ceil(4503599627370496.5) == 4503599627370496.0, "Ceil(2^52)");
+
+    Assert(Ceil(inf) == inf, "Ceil(+Inf)");
+    Assert(Ceil(-inf) == -inf, "Ceil(-Inf)");
+    let nan = zero / zero;
+    let nanCeil = Ceil(nan);
+    Assert(nanCeil != nanCeil, "Ceil(NaN)");
+
+    Assert(Ceil(1.2f32) == 2.0f32, "Ceil(1.2f32)");
+    Assert(Ceil(-1.2f32) == -1.0f32, "Ceil(-1.2f32)");
+    return 0;
+}

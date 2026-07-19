@@ -1,0 +1,54 @@
+import Rux::Assert;
+import Math::Tanh;
+
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 2i64;
+}
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(Tanh(0.0) == 0.0, "Tanh(0.0)");
+    let negZero = Tanh(-0.0);
+    Assert(negZero == 0.0, "Tanh(-0.0)");
+    Assert(one / negZero < 0.0, "Tanh(-0.0) keeps the sign of zero");
+
+    Assert(Close(Tanh(0.5), 0.46211715726000974), "Tanh(0.5)");
+    Assert(Close(Tanh(-2.0), -0.9640275800758169), "Tanh(-2.0)");
+    Assert(Tanh(22.0) == 1.0, "Tanh(22.0)");
+    Assert(Tanh(-22.0) == -1.0, "Tanh(-22.0)");
+
+    Assert(Tanh(inf) == 1.0, "Tanh(+Inf)");
+    Assert(Tanh(-inf) == -1.0, "Tanh(-Inf)");
+
+    let nan = zero / zero;
+    let nanTanh = Tanh(nan);
+    Assert(nanTanh != nanTanh, "Tanh(NaN)");
+
+    Assert(Tanh(0.5f32) == 0.46211716532707214f32, "Tanh(0.5f32)");
+    return 0;
+}

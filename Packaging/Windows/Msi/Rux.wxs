@@ -5,12 +5,12 @@
 
   Build it with the WiX .NET tool (see Build.ps1), e.g.:
     wix build Rux.wxs -arch x64 -ext WixToolset.UI.wixext `
-      -d Version=0.3.0 -d RuxExe=..\..\..\Bin\Release\rux.exe -o rux-windows.msi
+      -d Version=0.3.0 -d RuxExe=..\..\..\Bin\rux.exe -o rux-windows.msi
 
   Overridable preprocessor variables (passed via -d Name=Value):
     Version  - product version           (default 0.3.0)
-    RuxExe   - path to the built rux.exe  (default ..\..\..\Bin\Release\rux.exe,
-               i.e. the repo's Bin/Release output relative to this file)
+    RuxExe   - path to the built rux.exe  (default ..\..\..\Bin\rux.exe,
+               i.e. the repo's Bin output relative to this file)
 -->
 
 <?ifndef Version ?>
@@ -18,7 +18,7 @@
 <?endif?>
 
 <?ifndef RuxExe ?>
-  <?define RuxExe = "..\..\..\Bin\Release\rux.exe" ?>
+  <?define RuxExe = "..\..\..\Bin\rux.exe" ?>
 <?endif?>
 
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
@@ -55,7 +55,7 @@
       </Component>
 
       <Component Id="LicenseFile">
-        <File Id="LicenseFile" Name="LICENSE" Source="..\..\..\LICENSE" KeyPath="yes" />
+        <File Id="LicenseFile" Name="LICENSE.md" Source="..\..\..\LICENSE.md" KeyPath="yes" />
       </Component>
 
       <Component Id="ReadmeFile">

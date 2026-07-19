@@ -1,0 +1,40 @@
+import Rux::{ Assert, CurrentSource };
+
+// A dependency-free slice comparison, so the test can check the exact strings
+// the compiler fills in without pulling in Text for its String type.
+func SliceEquals(a: char8[], b: char8[]) -> bool {
+    if a.length != b.length {
+        return false;
+    }
+    var i: uint = 0;
+    while i < a.length {
+        if a.data[i] != b.data[i] {
+            return false;
+        }
+        i++;
+    }
+    return true;
+}
+
+func Main() -> int {
+    // The location is one-based, so both coordinates sit past zero.
+    Assert(CurrentSource.line > 0, "line");
+    Assert(CurrentSource.column > 0, "column");
+
+    // The file name and the name of the function reading the value are what the
+    // compiler reports, exactly.
+    Assert(SliceEquals(CurrentSource.fileName, "Main.rux"), "fileName");
+    Assert(SliceEquals(CurrentSource.function, "Main"), "function");
+
+    // The full paths and the module name are populated.
+    Assert(CurrentSource.file.length > 0, "file");
+    Assert(CurrentSource.filePath.length > 0, "filePath");
+    Assert(CurrentSource.module.length > 0, "module");
+
+    // The value tracks the line it is read on: a read further down the file
+    // reports a greater line than one above it.
+    let first = CurrentSource.line;
+    let second = CurrentSource.line;
+    Assert(second > first, "line advances down the file");
+    return 0;
+}

@@ -1,0 +1,5 @@
+// Primitive constants are supplied directly by the compiler
+// uint8::Min
+// uint8::Max
+// uint8::Bits
+// uint8::Bytes

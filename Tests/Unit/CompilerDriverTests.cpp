@@ -23,9 +23,11 @@ public:
         root = TempDirectory() / ("rux-dependency-test-" + std::to_string(nonce));
         appRoot = root / "App";
         depRoot = root / "Dependency";
+        transitiveRoot = root / "Transitive";
 
         std::filesystem::create_directories(appRoot / "Src");
         std::filesystem::create_directories(depRoot / "Src");
+        std::filesystem::create_directories(transitiveRoot / "Src");
 
         dependency.package.name = "Dependency";
         dependency.package.type = "source";
@@ -67,6 +69,37 @@ func Main() -> int {
         application.build.defines[std::move(name)] = std::move(value);
     }
 
+    void UseRegistryDeclaredTransitiveDependency() {
+        Manifest transitive;
+        transitive.package.name = "Transitive";
+        transitive.package.type = "source";
+        REQUIRE(transitive.Save(transitiveRoot / "Rux.toml"));
+        REQUIRE(WriteFile(transitiveRoot / "Src" / "Api.rux", R"(
+module Api {
+    pub func Value() -> int {
+        return 42;
+    }
+}
+)"));
+
+        dependency.dependencies.push_back({"Transitive", {}, "*", {}});
+        REQUIRE(dependency.Save(depRoot / "Rux.toml"));
+        REQUIRE(WriteFile(depRoot / "Src" / "Api.rux", R"(
+import Transitive::Api::Value;
+
+module Api {
+    pub func Answer() -> int {
+        return Value();
+    }
+}
+)"));
+    }
+
+    void ConfigureLocalWorkspace(CompileOptions &options) const {
+        options.localPackageRoots.emplace("Transitive", transitiveRoot);
+        options.localDependenciesOnly = true;
+    }
+
     [[nodiscard]] CompileOptions Options(const bool checkOnly, std::vector<Diagnostic> &diagnostics) const {
         CompileOptions options;
         options.manifestPath = appRoot / "Rux.toml";
@@ -92,11 +125,21 @@ private:
     std::filesystem::path root;
     std::filesystem::path appRoot;
     std::filesystem::path depRoot;
+    std::filesystem::path transitiveRoot;
     Manifest application;
     Manifest dependency;
 };
 
 } // namespace
+
+TEST_CASE("test output directories omit the build profile") {
+    Manifest manifest;
+    manifest.build.output = "Artifacts";
+    const std::filesystem::path root = "Workspace";
+
+    CHECK(ResolveBuildOutputDir(root, manifest, "Release") == root / "Artifacts" / "Release");
+    CHECK(ResolveBuildOutputDir(root, manifest, "Release", false) == root / "Artifacts");
+}
 
 TEST_CASE("compiler driver loads path dependencies when checking") {
     DependencyFixture fixture;
@@ -121,6 +164,20 @@ TEST_CASE("compiler driver loads path dependencies when building") {
     CHECK(std::filesystem::is_regular_file(result.executablePath));
 }
 
+TEST_CASE("compiler driver resolves transitive dependencies from local workspace members") {
+    DependencyFixture fixture;
+    fixture.UseRegistryDeclaredTransitiveDependency();
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(true, diagnostics);
+    fixture.ConfigureLocalWorkspace(options);
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.stats.dependencyFiles == 2);
+}
+
 TEST_CASE("compiler driver supplies manifest and command-line build context") {
     DependencyFixture fixture;
     fixture.SetManifestDefine("allocator", "system");
@@ -131,25 +188,25 @@ struct Build {
     time: char8[];
 }
 
-intrinsic const build: Build;
+intrinsic const CurrentBuild: Build;
 
 struct Config {}
-intrinsic const config: Config;
+intrinsic const CurrentConfig: Config;
 
 struct Compiler {}
-intrinsic const compiler: Compiler;
+intrinsic const CurrentCompiler: Compiler;
 
 enum BuildMode { Debug }
 
-when config.Has("allocator") &&
-     config.Get("allocator") == "mimalloc" &&
-     build.isTest &&
-     build.mode == BuildMode::Debug &&
-     compiler.HasFeature("namespaced-intrinsics") {
+when CurrentConfig.Has("allocator") &&
+     CurrentConfig.Get("allocator") == "mimalloc" &&
+     CurrentBuild.isTest &&
+     CurrentBuild.mode == BuildMode::Debug &&
+     CurrentCompiler.HasFeature("namespaced-intrinsics") {
     func Main() -> int {
-        let timestamp = build.timestamp;
-        let date = build.date;
-        let time = build.time;
+        let timestamp = CurrentBuild.timestamp;
+        let date = CurrentBuild.date;
+        let time = CurrentBuild.time;
         return 0;
     }
 } else {

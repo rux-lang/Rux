@@ -1,0 +1,13 @@
+// Location of the expression that reads this compiler-provided value
+struct Source {
+    line: uint;
+    column: uint;
+    file: char8[];
+    fileName: char8[];
+    filePath: char8[];
+    function: char8[];
+    module: char8[];
+}
+
+// Compile-time property
+intrinsic const CurrentSource: Source;

@@ -1,6 +1,7 @@
 name: macOS
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main, dev ]
   pull_request:
@@ -11,13 +12,23 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
+env:
+  CMAKE_VERSION: "4.3.4"
+  NINJA_VERSION: "1.13.2"
+
 jobs:
   build:
     name: Build
     runs-on: macos-26-intel
+    timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       # macOS ships Apple Clang, which lags upstream and lacks full C++26
       # support, so install LLVM Clang 22 from Homebrew to match Linux.
@@ -29,46 +40,52 @@ jobs:
       - name: Install CMake and Ninja
         uses: lukka/get-cmake@v4.3.3
         with:
-          cmakeVersion: "4.2.0"
-          ninjaVersion: latest
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: ${{ env.NINJA_VERSION }}
 
       - name: Configure and build
         run: |
-          cmake -S . -B build -G Ninja \
+          cmake -S . -B Build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@22)/bin/clang++" \
-            -DRUX_WERROR=ON
-          cmake --build build --config Release
+            -DRUX_WERROR=ON \
+            -DRUX_BUILD_TESTS=ON
+          cmake --build Build --config Release --parallel
+
+      - name: Unit tests
+        run: ctest --test-dir Build --output-on-failure -C Release
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-macos-arm64
-          path: Bin/Release/rux
+          name: rux-macos-x64
+          path: Bin/rux
           if-no-files-found: error
+          retention-days: 7
 
   test:
     name: Test
     needs: build
     runs-on: macos-26-intel
+    timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Download binary artifact
         uses: actions/download-artifact@v8
         with:
-          name: rux-macos-arm64
-          path: Bin/Release
+          name: rux-macos-x64
+          path: Bin
 
       # Restore the executable bit (artifacts don't preserve permissions).
       - name: Make binary executable
-        run: chmod +x Bin/Release/rux
+        run: chmod +x Bin/rux
 
-      # Manifest-less workspace mode discovers dependencies from test packages.
-      - name: Install test dependencies
-        run: ./Bin/Release/rux install
-
-      # Workspace mode: run from the repo root so `rux test` discovers Tests/.
-      - name: Test
-        run: ./Bin/Release/rux test --release
+      - name: Verify Rux workspace
+        run: |
+          ./Bin/rux check
+          ./Bin/rux lint
+          ./Bin/rux test --release

@@ -1,0 +1,20 @@
+import Rux::{ CurrentTarget, OperatingSystem };
+
+when CurrentTarget.os == OperatingSystem::Windows {
+    import Windows::RtlFillMemory;
+}
+
+// Fills a block of memory with a repeated byte
+// https://rux-lang.dev/api/memory/set
+func Set(ptr: *opaque, size: uint, value: int32) {
+    when CurrentTarget.os == OperatingSystem::Windows {
+        RtlFillMemory(ptr, size, value);
+    } else {
+        let bytes = ptr as *char8;
+        var offset: uint = 0;
+        while offset < size {
+            *(bytes + offset) = value as char8;
+            offset++;
+        }
+    }
+}

@@ -1,0 +1,47 @@
+func Log2(x: float64) -> float64 {
+    let ivln2Hi = 1.44269504072144627571e+00;
+    let ivln2Lo = 1.67517131648865118353e-10;
+
+    var zero = 0.0;
+    let bits = FloatBits(x);
+
+    if (bits & 0x7FFFFFFFFFFFFFFFu64) == 0u64 {
+        return -1.0 / zero;
+    }
+    if (bits >> 63u64) == 1u64 {
+        return (x - x) / zero;
+    }
+    if ((bits >> 32u64) & 0x7FFFFFFFu64) >= 0x7FF00000u64 {
+        return x + x;
+    }
+    if x == 1.0 {
+        return 0.0;
+    }
+
+    let red = LogNormalize(x);
+    let f = red.m - 1.0;
+    let hfsq = 0.5 * f * f;
+    let r = LogPoly(f);
+
+    // f - hfsq has to be carried in extra precision. When x sits near
+    // sqrt(2) or its reciprocal the two terms very nearly cancel, and the
+    // exponent k that gets added afterwards is large enough to expose it.
+    // Clearing the low bits of hi makes hi*ivln2Hi exact.
+    let hi = TruncLow(f - hfsq);
+    let lo = (f - hi) - hfsq + r;
+
+    var valHi = hi * ivln2Hi;
+    var valLo = (lo + hi) * ivln2Lo + lo * ivln2Hi;
+
+    // Add the exponent last, tracking what the addition rounds away.
+    let y = red.k as float64;
+    let w = y + valHi;
+    valLo += (y - w) + valHi;
+    valHi = w;
+
+    return valLo + valHi;
+}
+
+func Log2(x: float32) -> float32 {
+    return Log2(x as float64) as float32;
+}

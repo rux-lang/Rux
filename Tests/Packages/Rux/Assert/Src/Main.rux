@@ -1,0 +1,23 @@
+import Rux::{ Assert, DebugAssert };
+
+// Assert and DebugAssert both let execution continue when the condition holds;
+// a false condition would abort the process with a nonzero status. This test
+// exercises only the passing path -- reaching the end and returning 0 is the
+// proof that none of the checks tripped.
+func Main() -> int {
+    Assert(true, "literal true");
+    Assert(1 + 1 == 2, "arithmetic");
+    Assert(!false, "negation");
+
+    // A condition that comes out of a comparison rather than a literal, which is
+    // where most real assertions come from.
+    let value = 42;
+    Assert(value > 0, "comparison");
+    Assert(value == 42, "equality");
+
+    // DebugAssert shares the passing behavior. Whether or not it is compiled out
+    // in a release profile, a true condition never aborts.
+    DebugAssert(true, "debug literal true");
+    DebugAssert(value == 42, "debug comparison");
+    return 0;
+}

@@ -1,0 +1,12 @@
+[Package]
+Name = "Bool8"
+Version = "0.1.0"
+Type = "bin"
+Description = "Package test for Format: Bool8"
+
+[Dependencies]
+Format = { Path = "../../../../Packages/Format" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Format"

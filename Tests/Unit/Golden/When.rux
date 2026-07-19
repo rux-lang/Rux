@@ -1,0 +1,30 @@
+const Level = 3;
+
+func Main() -> int {
+    // A `when` condition must be known while compiling.
+    var runtime = 1;
+    when runtime > 0 {
+        return 1;
+    }
+
+    // ... and it must be a bool, not merely a constant.
+    when Level {
+        return 2;
+    }
+
+    // An undefined name is not a compile-time constant either.
+    when Missing {
+        return 3;
+    }
+
+    // Build intrinsics such as `CurrentTarget` must be imported from the Rux package
+    // before a condition may name them.
+    when CurrentTarget.os == OperatingSystem::Windows {
+        return 4;
+    }
+
+    // The enum shorthand is never a substitute for the full name.
+    let level = .Three;
+
+    return 0;
+}

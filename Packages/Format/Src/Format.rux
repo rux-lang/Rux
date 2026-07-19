@@ -1,0 +1,62 @@
+import Text::{ String, StringBuilder };
+
+// Substitution into a format string: each `{}` takes the next argument,
+// rendered through the Stringable implementation its type carries, and
+// everything outside a placeholder is copied through as it stands. The
+// result grows to whatever it needs, so nothing is truncated.
+// A brace is written twice to mean itself -- `{{` for a `{` and `}}` for a
+// `}` -- which is what leaves a literal brace reachable in a string whose
+// single braces are placeholders. There is nothing else inside a `{}`: the
+// width, the padding and the base a printf-style spec would carry have
+// nowhere to go, and a value is rendered the one way its ToString renders
+// it.
+// Nothing about a call is an error. A stray `{` or `}` that opens no
+// placeholder is text and is copied as text, arguments past the last
+// placeholder go unused, and placeholders past the last argument put
+// nothing in their place.
+// The String that comes back is the caller's to free, on the terms Text
+// sets out. One String per argument is allocated along the way, but those
+// are this function's to release: an argument arrives as an interface, and
+// the only thing the interface offers is a ToString that allocates. The
+// Write functions are the way around that for a value whose type is known.
+func Format(format: char8[], args: Stringable...) -> String {
+    // The literal text, plus a little for each argument. It is a guess, and
+    // too small a one only costs a reallocation, which is what the builder
+    // is there to handle: the short calls that most of them are fill in
+    // without one.
+    var builder = StringBuilder::WithCapacity(format.length + args.length * 8);
+    // The argument the next placeholder takes. Placeholders are filled in
+    // the order they are written, so this only ever moves forward.
+    var next: uint = 0;
+    var i: uint = 0;
+    while i < format.length {
+        let ch = format[i];
+        let paired = i + 1 < format.length;
+        if ch == c8'{' && paired && format[i + 1] == c8'{' {
+            builder.Append(c8'{');
+            i += 2;
+            continue;
+        }
+        if ch == c8'}' && paired && format[i + 1] == c8'}' {
+            builder.Append(c8'}');
+            i += 2;
+            continue;
+        }
+        if ch == c8'{' && paired && format[i + 1] == c8'}' {
+            if next < args.length {
+                // The String an argument renders itself into is freed as
+                // soon as its bytes are in the builder, so a call holds one
+                // of them at a time rather than one for every argument.
+                var text = args[next].ToString();
+                builder.Append(text);
+                text.Free();
+                next++;
+            }
+            i += 2;
+            continue;
+        }
+        builder.Append(ch);
+        i++;
+    }
+    return builder.IntoString();
+}

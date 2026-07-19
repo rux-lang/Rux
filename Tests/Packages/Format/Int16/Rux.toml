@@ -1,0 +1,12 @@
+[Package]
+Name = "Int16"
+Version = "0.1.0"
+Type = "bin"
+Description = "Package test for Format: Int16"
+
+[Dependencies]
+Format = { Path = "../../../../Packages/Format" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Format"

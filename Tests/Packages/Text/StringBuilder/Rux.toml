@@ -1,0 +1,11 @@
+[Package]
+Name = "StringBuilder"
+Version = "0.1.0"
+Type = "bin"
+Description = "Package test for Text: StringBuilder"
+
+[Dependencies]
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Text"

@@ -1,0 +1,34 @@
+import Rux::{ CurrentTarget, OperatingSystem };
+
+when CurrentTarget.os == OperatingSystem::Windows {
+    import Windows::{
+        CodePage,
+        CreationDisposition,
+        StdErrorHandle,
+        StdInputHandle,
+        StdOutputHandle
+    };
+
+    func Main() -> int {
+        if CodePage::Utf8 as uint32 != 65001 ||
+            CodePage::Utf16Le as uint32 != 1200 ||
+            CodePage::Windows1252 as uint32 != 1252 {
+            return 1;
+        }
+        if CreationDisposition::CreateNew as uint32 != 1 ||
+            CreationDisposition::OpenExisting as uint32 != 3 ||
+            CreationDisposition::TruncateExisting as uint32 != 5 {
+            return 2;
+        }
+        if StdInputHandle != 0xFFFFFFF6 ||
+            StdOutputHandle != 0xFFFFFFF5 ||
+            StdErrorHandle != 0xFFFFFFF4 {
+            return 3;
+        }
+        return 0;
+    }
+} else {
+    func Main() -> int {
+        return 0;
+    }
+}

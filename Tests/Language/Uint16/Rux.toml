@@ -1,0 +1,11 @@
+[Package]
+Name = "Uint16"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: Uint16"
+
+[Dependencies]
+Rux = { Path = "../../../Packages/Rux" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

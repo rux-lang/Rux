@@ -1,0 +1,264 @@
+// The argument reduction and the polynomial kernels behind Sin, Cos, Tan and
+// Cotan. Nothing here is meant to be called from outside the package: every
+// kernel carries a precondition on its argument that only the reduction can
+// establish.
+
+// The reduced argument: x = hi + lo + quadrant * (Pi/2), with |hi| <= Pi/4.
+// hi alone cannot hold the reduced value to full precision when x is close
+// to a multiple of Pi/2, so the kernels below take the low part as well.
+struct Reduction {
+    quadrant: int64;
+    hi: float64;
+    lo: float64;
+}
+
+// sin(x + y) for |x| <= Pi/4 and |y| far below |x|, from the minimax
+// polynomial used by fdlibm. Keeping the leading x out of the polynomial is
+// what carries the last bits of accuracy.
+func KernelSin(x: float64, y: float64) -> float64 {
+    let s1 = -1.66666666666666324348e-01;
+    let s2 = 8.33333333332248946124e-03;
+    let s3 = -1.98412698298579493134e-04;
+    let s4 = 2.75573137070700676789e-06;
+    let s5 = -2.50507602534068634195e-08;
+    let s6 = 1.58969099521155010221e-10;
+    let z = x * x;
+    let v = z * x;
+    let r = s2 + z * (s3 + z * (s4 + z * (s5 + z * s6)));
+    if y == 0.0 {
+        return x + v * (s1 + z * r);
+    }
+    return x - ((z * (0.5 * y - v * r) - y) - v * s1);
+}
+
+// cos(x + y) for |x| <= Pi/4. Splitting the result as (1 - z/2) + correction
+// keeps the leading cancellation exact; a plain Horner sum would lose bits
+// near x = Pi/4.
+func KernelCos(x: float64, y: float64) -> float64 {
+    let c1 = 4.16666666666666019037e-02;
+    let c2 = -1.38888888888741095749e-03;
+    let c3 = 2.48015872894767294178e-05;
+    let c4 = -2.75573143513906633035e-07;
+    let c5 = 2.08757232129817482790e-09;
+    let c6 = -1.13596475577881948265e-11;
+    let z = x * x;
+    let r = z * (c1 + z * (c2 + z * (c3 + z * (c4 + z * (c5 + z * c6)))));
+    let hz = 0.5 * z;
+    let w = 1.0 - hz;
+    return w + (((1.0 - w) - hz) + (z * r - x * y));
+}
+
+// -1 / (x + r), where w is the already rounded sum x + r. Dividing into w
+// alone would throw away the bits of x + r that the rounding dropped, and
+// near a pole of the cotangent those bits are the whole answer. Cutting
+// both factors down to 26-bit halves makes their product exact, so one
+// Newton step puts the lost bits back.
+//
+// Every caller keeps |w| at or above 2^-62: the unreduced paths stop at
+// 2^-28, and no float64 lands nearer than 4.68e-19 to a nonzero multiple of
+// Pi/2. So neither the reciprocal nor the splitting below can overflow.
+func NegRecip(x: float64, r: float64, w: float64) -> float64 {
+    let split = 134217729.0; // 2^27 + 1
+    let wa = w * split;
+    let wHigh = wa - (wa - w);
+    let v = r - (wHigh - x); // wHigh + v = x + r
+    let a = -1.0 / w;
+    let aa = a * split;
+    let aHigh = aa - (aa - a);
+    // aHigh * wHigh spans at most 52 bits, so it is exact, and it lands so
+    // close to -1 that adding one is exact as well.
+    let s = 1.0 + aHigh * wHigh;
+    return aHigh + a * (s + aHigh * v);
+}
+
+// tan(x + y) for |x| <= Pi/4 and |y| far below |x|, or -1 / tan(x + y) when
+// `reciprocal` is set. The reciprocal is a case of its own rather than a
+// division of the returned tangent, because that tangent has already been
+// rounded and the cotangent needs the bits the rounding lost.
+func KernelTan(x: float64, y: float64, reciprocal: bool) -> float64 {
+    let t0 = 3.33333333333334091986e-01;
+    let t1 = 1.33333333333201242699e-01;
+    let t2 = 5.39682539762260521377e-02;
+    let t3 = 2.18694882948595424599e-02;
+    let t4 = 8.86323982359930005737e-03;
+    let t5 = 3.59207910759131235356e-03;
+    let t6 = 1.45620945432529025516e-03;
+    let t7 = 5.88041240820264096874e-04;
+    let t8 = 2.46463134818469906812e-04;
+    let t9 = 7.81794442939557092300e-05;
+    let t10 = 7.14072491382608190305e-05;
+    let t11 = -1.85586374855275456654e-05;
+    let t12 = 2.59073051863633712884e-05;
+    let pio4 = 7.85398163397448278999e-01;
+    let pio4Lo = 3.06161699786838301793e-17;
+    let negative = x < 0.0;
+    let ax = negative ? -x : x;
+    // The polynomial is only fitted on [0, 0.6743]. Past that the argument
+    // is folded to Pi/4 - |x|, a subtraction that is exact there, and the
+    // tangent is rebuilt from the fold at the end.
+    let folded = ax >= 0.6743354797363281;
+    var a = x;
+    var b = y;
+    if folded {
+        let ay = negative ? -y : y;
+        a = (pio4 - ax) + (pio4Lo - ay);
+        b = 0.0;
+    }
+    let z = a * a;
+    let w = z * z;
+    // tan(a) - a = a^3 * (t0 + t1*a^2 + ... + t12*a^24). The odd and the
+    // even coefficients ride separate Horner chains in w = a^4, which halves
+    // the dependent chain without costing accuracy.
+    let odd = t1 + w * (t3 + w * (t5 + w * (t7 + w * (t9 + w * t11))));
+    let even = z * (t2 + w * (t4 + w * (t6 + w * (t8 + w * (t10 + w * t12)))));
+    let s = z * a;
+    var r = b + z * (s * (odd + even) + b);
+    r += t0 * s;
+    // tan(a + b), before the fold is undone.
+    let sum = a + r;
+    if folded {
+        // With t = tan(Pi/4 - |x|), tan(x) = (1 - t) / (1 + t), rearranged
+        // to 1 - 2*(t - t^2/(1 + t)) so that the leading 1 stays exact. The
+        // same rearrangement with v = -1 yields -1/tan(x).
+        let v = reciprocal ? -1.0 : 1.0;
+        let result = v - 2.0 * (a - (sum * sum / (sum + v) - r));
+        return negative ? -result : result;
+    }
+    if reciprocal {
+        return NegRecip(a, r, sum);
+    }
+    return sum;
+}
+
+// The binary fraction of 2/Pi, 32 bits per limb: limb j holds the bits at
+// positions 32j+1 through 32j+32 after the point. The largest float64
+// exponent reaches limb 38, so 40 limbs cover every argument.
+const TwoOverPi: uint32[40] = [
+    0xA2F9836Eu32, 0x4E441529u32, 0xFC2757D1u32, 0xF534DDC0u32,
+    0xDB629599u32, 0x3C439041u32, 0xFE5163ABu32, 0xDEBBC561u32,
+    0xB7246E3Au32, 0x424DD2E0u32, 0x06492EEAu32, 0x09D1921Cu32,
+    0xFE1DEB1Cu32, 0xB129A73Eu32, 0xE88235F5u32, 0x2EBB4484u32,
+    0xE99C7026u32, 0xB45F7E41u32, 0x3991D639u32, 0x835339F4u32,
+    0x9C845F8Bu32, 0xBDF9283Bu32, 0x1FF897FFu32, 0xDE05980Fu32,
+    0xEF2F118Bu32, 0x5A0A6D1Fu32, 0x6D367ECFu32, 0x27CB09B7u32,
+    0x4F463F66u32, 0x9E5FEA2Du32, 0x7527BAC7u32, 0xEBE5F17Bu32,
+    0x3D0739F7u32, 0x8A5292EAu32, 0x6BFB5FB1u32, 0x1F8D5D08u32,
+    0x56033046u32, 0xFC7B6BABu32, 0xF0CFBC20u32, 0x9AF4361Du32
+];
+
+// Payne-Hanek reduction of a positive x. Subtracting n*(Pi/2) in double
+// arithmetic loses every bit of the result once n is large, because the
+// product rounds. Instead the quadrant and the fraction are read straight
+// out of the exact product of x's mantissa with the bits of 2/Pi, so the
+// reduction stays exact for arguments of any size.
+func RemPio2(x: float64) -> Reduction {
+    let bits = FloatBits(x);
+    let biased = ((bits >> 52u64) & 0x7FFu64) as int64;
+    let mantissa = (bits & 0xFFFFFFFFFFFFFu64) | 0x10000000000000u64;
+    // x = mantissa * 2^shift, with mantissa a 53-bit integer.
+    let shift = biased - 1075i64;
+    let mantLow = mantissa & 0xFFFFFFFFu64;
+    let mantHigh = mantissa >> 32u64;
+    // Gather the 256 bits of 2/Pi starting at bit (shift - 1). Bits at or
+    // before the point are zero, which is what the range check produces for
+    // a negative limb index. The window is stored least significant first.
+    var window: uint32[8];
+    for k in 0..8 {
+        let offset = shift - 2i64 + 32i64 * (7i64 - (k as int64));
+        let limb = offset >> 5i64;
+        let bit = offset - (limb << 5i64);
+
+        var first = 0u32;
+        var second = 0u32;
+        if limb >= 0i64 && limb < 40i64 {
+            first = TwoOverPi[limb as uint];
+        }
+        if limb + 1i64 >= 0i64 && limb + 1i64 < 40i64 {
+            second = TwoOverPi[(limb + 1i64) as uint];
+        }
+
+        if bit == 0i64 {
+            window[k] = first;
+        } else {
+            let s = bit as uint32;
+            window[k] = (first << s) | (second >> (32u32 - s));
+        }
+    }
+    // product = mantissa * window, keeping only the low 256 bits. Anything
+    // above them is a multiple of four quadrants and cannot affect the sine.
+    var product: uint32[8];
+    var carry = 0u64;
+    for i in 0..8 {
+        let t = mantLow * (window[i] as uint64) + carry;
+        product[i] = (t & 0xFFFFFFFFu64) as uint32;
+        carry = t >> 32u64;
+    }
+    carry = 0u64;
+    for i in 0..7 {
+        let t = mantHigh * (window[i] as uint64) + (product[i + 1] as uint64) + carry;
+        product[i + 1] = (t & 0xFFFFFFFFu64) as uint32;
+        carry = t >> 32u64;
+    }
+    // The two bits above the point are the quadrant; the 254 below it are
+    // the fraction of x / (Pi/2).
+    var quadrant = ((product[7] >> 30u32) & 3u32) as int64;
+    product[7] = product[7] & 0x3FFFFFFFu32;
+    // A fraction past one half belongs to the next quadrant, and its
+    // complement is the reduced argument, now negative.
+    var sign = 1.0;
+    if ((product[7] >> 29u32) & 1u32) == 1u32 {
+        quadrant = quadrant + 1i64;
+        for i in 0..8 {
+            product[i] = ~product[i];
+        }
+        var borrow = 1u64;
+        for i in 0..8 {
+            let t = (product[i] as uint64) + borrow;
+            product[i] = (t & 0xFFFFFFFFu64) as uint32;
+            borrow = t >> 32u64;
+        }
+        product[7] = product[7] & 0x3FFFFFFFu32;
+        sign = -1.0;
+    }
+    // Sum the limbs smallest first, tracking the rounding each addition
+    // discards, so the fraction survives as a double pair even when the
+    // leading limbs are zero and x sits almost exactly on a quadrant.
+    var sum = 0.0;
+    var compensation = 0.0;
+    var scale = 3.454467422037778e-77; // 2^-254
+    for k in 0..8 {
+        let term = (product[k] as float64) * scale;
+        let t = sum + term;
+        if sum >= term {
+            compensation += (sum - t) + term;
+        } else {
+            compensation += (term - t) + sum;
+        }
+        sum = t;
+        scale *= 4294967296.0; // 2^32
+    }
+    let fracHi = sign * sum;
+    let fracLo = sign * compensation;
+    // Multiply the fraction by Pi/2, keeping the product to twice double
+    // precision. Dekker's splitting recovers the error of fracHi * pio2Hi
+    // exactly, which is the bit the kernels need in `lo`.
+    let pio2Hi = 1.5707963267948966;
+    let pio2Lo = 6.123233995736766e-17;
+    let pio2Lo2 = -1.4973849048591698e-33;
+    let split = 134217729.0; // 2^27 + 1
+    let head = fracHi * pio2Hi;
+    let fa = fracHi * split;
+    let fracHiHigh = fa - (fa - fracHi);
+    let fracHiLow = fracHi - fracHiHigh;
+    let pa = pio2Hi * split;
+    let pio2HiHigh = pa - (pa - pio2Hi);
+    let pio2HiLow = pio2Hi - pio2HiHigh;
+    let headError = ((fracHiHigh * pio2HiHigh - head) + fracHiHigh * pio2HiLow + fracHiLow * pio2HiHigh) +
+                    fracHiLow * pio2HiLow;
+    let tail = ((headError + fracHi * pio2Lo) + fracLo * pio2Hi) + fracHi * pio2Lo2;
+    var out: Reduction;
+    out.quadrant = quadrant & 3i64;
+    out.hi = head + tail;
+    out.lo = tail - (out.hi - head);
+    return out;
+}

@@ -1,0 +1,14 @@
+// The smallest integer at or above x, the mirror of Floor. Note that
+// Ceil(-0.5) is -0.0 rather than 0.0: truncation carries the sign across,
+// and that is the answer IEEE-754 asks for.
+func Ceil(x: float64) -> float64 {
+    let t = Trunc(x);
+    if x > 0.0 && t != x {
+        return t + 1.0;
+    }
+    return t;
+}
+
+func Ceil(x: float32) -> float32 {
+    return Ceil(x as float64) as float32;
+}

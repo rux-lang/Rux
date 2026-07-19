@@ -194,13 +194,16 @@ std::optional<Manifest> LoadManifest(const std::filesystem::path &path) {
 }
 
 std::filesystem::path ResolveBuildOutputDir(const std::filesystem::path &root, const Manifest &manifest,
-                                            std::string_view profileName) {
+                                            std::string_view profileName, const bool includeProfile) {
     std::filesystem::path output =
         manifest.build.output.empty() ? std::filesystem::path("Bin") : std::filesystem::path(manifest.build.output);
     if (output.is_relative()) {
         output = root / output;
     }
-    return (output / std::string(profileName)).lexically_normal();
+    if (includeProfile) {
+        output /= profileName;
+    }
+    return output.lexically_normal();
 }
 
 std::filesystem::path RegistryPackagesDir() {

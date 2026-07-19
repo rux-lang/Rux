@@ -1,0 +1,8 @@
+[Package]
+Name = "Arithmetic"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: Arithmetic"
+
+[Build]
+Output = "../../../Bin/Tests/Language"

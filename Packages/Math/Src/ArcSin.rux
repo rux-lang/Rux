@@ -1,0 +1,29 @@
+// Returns the inverse sine, in radians
+// https://rux-lang.dev/api/math/arcsin
+func ArcSin(x: float64) -> float64 {
+    let pio2 = 1.5707963267948966;
+    if x != x {
+        return x;
+    }
+    if x == 1.0 {
+        return pio2;
+    }
+    if x == -1.0 {
+        return -pio2;
+    }
+    if x > 1.0 || x < -1.0 {
+        var zero = 0.0;
+        return zero / zero;
+    }
+    if x == 0.0 {
+        return x;
+    }
+    let root = Sqrt((1.0 - Abs(x)) * (1.0 + Abs(x)));
+    return ArcTan(x / root);
+}
+
+// Returns the inverse sine, in radians
+// https://rux-lang.dev/api/math/arcsin
+func ArcSin(x: float32) -> float32 {
+    return ArcSin(x as float64) as float32;
+}

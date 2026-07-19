@@ -1,0 +1,123 @@
+import Rux::Assert;
+import Math::Cotan;
+
+// Both the Win64 and System V ABIs pass the first float argument in xmm0 and
+// return an integer in rax.
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+// Every expected value below is the correctly rounded cotangent of the same
+// double. Comparing the bit patterns rather than the difference measures the
+// error in ulps, so the tolerance stays meaningful both near a zero of the
+// cotangent and near a pole, where an absolute tolerance would be useless.
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 1i64;
+}
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    // The pole at zero. Both sides are infinite, and each keeps the sign of the
+    // zero it came from.
+    Assert(Cotan(0.0) == inf, "Cotan(0.0) is +Inf");
+    Assert(Cotan(-0.0) == -inf, "Cotan(-0.0) is -Inf");
+
+    // Below 2^-28 the result is the reciprocal of the argument.
+    Assert(Cotan(1e-8) == 1e8, "Cotan(1e-8) is 1e8");
+    Assert(Cotan(-1e-8) == -1e8, "Cotan(-1e-8) is -1e8");
+
+    // Inside the kernel's own range, where nothing is reduced. Quadrant zero
+    // takes the -1/tan(r) path, so these already exercise the reciprocal.
+    Assert(Close(Cotan(0.5), 1.830487721712452), "Cotan(0.5)");
+    Assert(Close(Cotan(-0.25), -3.91631736464594), "Cotan(-0.25)");
+
+    // Either side of 0.6743354797363281, where the kernel folds the argument
+    // through Pi/4 - |x| rather than trusting the polynomial.
+    Assert(Close(Cotan(0.6743), 1.2511305376483544), "Cotan just below the fold");
+    Assert(Close(Cotan(0.6743354797363281), 1.251039524540736), "Cotan at the fold");
+    Assert(Close(Cotan(0.78), 1.0108550294569216), "Cotan(0.78)");
+    Assert(Cotan(0.7853981633974483) == 1.0, "Cotan(Pi/4) is 1.0");
+
+    // Odd symmetry: cot(-x) = -cot(x).
+    Assert(Close(Cotan(1.0), 0.6420926159343308), "Cotan(1.0)");
+    Assert(Close(Cotan(-1.0), -0.6420926159343308), "Cotan(-1.0)");
+
+    // Each of the four quadrants of the reduction.
+    Assert(Close(Cotan(2.0), -0.45765755436028577), "Cotan(2.0)");
+    Assert(Close(Cotan(3.0), -7.015252551434534), "Cotan(3.0)");
+    Assert(Close(Cotan(4.0), 0.8636911544506166), "Cotan(4.0)");
+
+    // Near the zeros of the cotangent, at the odd multiples of Pi/2.
+    Assert(Close(Cotan(1.5707963267948966), 6.123233995736766e-17), "Cotan(Pi/2)");
+
+    // The poles at the multiples of Pi. The nearest double misses each pole by
+    // the reduction error, and the result is its reciprocal, so nothing but an
+    // exact reduction gets these right.
+    Assert(Close(Cotan(3.141592653589793), -8165619676597685.0), "Cotan(Pi)");
+    Assert(Close(Cotan(6.283185307179586), -4082809838298842.5), "Cotan(2*Pi)");
+
+    // Arguments needing many quadrants of reduction.
+    Assert(Close(Cotan(100.0), -1.7029569194264693), "Cotan(100.0)");
+    Assert(Close(Cotan(1e6), -2.6764843396283453), "Cotan(1e6)");
+
+    // Landing just short of a pole of the cotangent, where the reduced argument
+    // is all that survives.
+    Assert(Close(Cotan(94.24777970194157), 10610330.581050508), "Cotan near 30*Pi");
+    Assert(Close(Cotan(204.20352268754007), 4897075.425595513), "Cotan near 65*Pi");
+    Assert(Close(Cotan(81.73383253581802), 19.05792147674669), "Cotan(81.73383253581802)");
+
+    // Past 2^22 * Pi/2 a Cody-Waite reduction runs out of bits and the result
+    // silently drifts. These are where Payne-Hanek reduction earns its keep.
+    Assert(Close(Cotan(2e7), -0.8469114937553534), "Cotan(2e7)");
+    Assert(Close(Cotan(1e15), -0.597937790724283), "Cotan(1e15)");
+    Assert(Close(Cotan(1e300), 0.7035075643976418), "Cotan(1e300)");
+    Assert(Close(Cotan(1.7976931348623157e308), -201.53099572900317), "Cotan(DBL_MAX)");
+
+    // The double whose reduced argument is the smallest of any: 6381956970095103 * 2^797.
+    // Its cotangent is that argument, the closest any double comes to a pole.
+    Assert(Close(Cotan(5.319372648326541e255), -4.687165924254628e-19), "Cotan(worst case reduction)");
+
+    // NaN propagates and the infinities have no cotangent.
+    let nan = zero / zero;
+    let nanCotan = Cotan(nan);
+    Assert(nanCotan != nanCotan, "Cotan(NaN) is NaN");
+
+    let infCotan = Cotan(inf);
+    Assert(infCotan != infCotan, "Cotan(+Inf) is NaN");
+    let negInfCotan = Cotan(-inf);
+    Assert(negInfCotan != negInfCotan, "Cotan(-Inf) is NaN");
+
+    // The float32 overload is chosen by the argument type and returns float32.
+    Assert(Cotan(0.0f32) == 1.0f32 / 0.0f32, "Cotan(0.0f32) is +Inf");
+    Assert(Cotan(1.0f32) == 0.6420926451683044f32, "Cotan(1.0f32)");
+    Assert(Cotan(0.5f32) == 1.8304877281188965f32, "Cotan(0.5f32)");
+    Assert(Cotan(2.0f32) == -0.4576575458049774f32, "Cotan(2.0f32)");
+    Assert(Cotan(100.0f32) == -1.7029569149017334f32, "Cotan(100.0f32)");
+    Assert(Cotan(1e6f32) == -2.6764843463897705f32, "Cotan(1e6f32)");
+
+    let nan32 = Cotan(-1.0f32 / 0.0f32);
+    Assert(nan32 != nan32, "Cotan(-Inf32) is NaN");
+
+    return 0;
+}

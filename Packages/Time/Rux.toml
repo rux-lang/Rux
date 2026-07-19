@@ -1,0 +1,6 @@
+[Package]
+Name = "Time"
+Version = "0.1.0"
+Type = "Source"
+Description = "Durations, monotonic clocks, and wall clocks"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]

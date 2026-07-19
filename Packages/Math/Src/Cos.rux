@@ -1,0 +1,43 @@
+func Cos(x: float64) -> float64 {
+    // NaN is the only value that differs from itself, and it propagates.
+    if x != x {
+        return x;
+    }
+
+    var zero = 0.0;
+
+    // x - x is NaN for an infinity and 0.0 for anything else finite. Cosine
+    // has no limit at infinity, so the result is NaN.
+    if x - x != 0.0 {
+        return zero / zero;
+    }
+
+    // Below 2^-27 the quadratic term is under half an ulp of 1.
+    if x < 7.450580596923828e-9 && x > -7.450580596923828e-9 {
+        return 1.0;
+    }
+
+    // Cosine is even, so the sign of the argument never reaches the result.
+    let ax = x < 0.0 ? -x : x;
+
+    if ax <= 0.7853981633974483 {
+        // Already inside the kernel's range, so nothing to reduce.
+        return KernelCos(ax, 0.0);
+    }
+
+    let red = RemPio2(ax);
+    if red.quadrant == 0i64 {
+        return KernelCos(red.hi, red.lo);
+    } else if red.quadrant == 1i64 {
+        return -KernelSin(red.hi, red.lo);
+    } else if red.quadrant == 2i64 {
+        return -KernelCos(red.hi, red.lo);
+    }
+    return KernelSin(red.hi, red.lo);
+}
+
+// float32 has fewer bits than the float64 result is accurate to, so the
+// double-precision cosine rounded once to float32 is faithful.
+func Cos(x: float32) -> float32 {
+    return Cos(x as float64) as float32;
+}

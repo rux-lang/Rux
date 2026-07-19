@@ -1,0 +1,267 @@
+import Rux::{ OperatingSystem, CurrentTarget };
+
+when CurrentTarget.os == OperatingSystem::FreeBSD ||
+     CurrentTarget.os == OperatingSystem::OpenBSD ||
+     CurrentTarget.os == OperatingSystem::NetBSD ||
+     CurrentTarget.os == OperatingSystem::DragonFlyBSD {
+    // Standard file descriptors.
+    const StdIn: int32 = 0;
+    const StdOut: int32 = 1;
+    const StdErr: int32 = 2;
+
+    when CurrentTarget.os == OperatingSystem::FreeBSD {
+        const SysExit: uint64 = 1;
+        const SysRead: uint64 = 3;
+        const SysWrite: uint64 = 4;
+        const SysClose: uint64 = 6;
+        const SysBrk: uint64 = 17;
+        const SysGetPid: uint64 = 20;
+        const SysMunmap: uint64 = 73;
+        const SysClockGetTime: uint64 = 232;
+        const SysNanosleep: uint64 = 240;
+        const SysMmap: uint64 = 477;
+
+        const ClockRealtime: int32 = 0;
+        const ClockMonotonic: int32 = 4;
+    }
+
+    when CurrentTarget.os == OperatingSystem::OpenBSD {
+        const SysExit: uint64 = 1;
+        const SysRead: uint64 = 3;
+        const SysWrite: uint64 = 4;
+        const SysClose: uint64 = 6;
+        const SysBrk: uint64 = 17;
+        const SysGetPid: uint64 = 20;
+        const SysMmap: uint64 = 49;
+        const SysMunmap: uint64 = 73;
+        const SysClockGetTime: uint64 = 87;
+        const SysNanosleep: uint64 = 91;
+
+        const ClockRealtime: int32 = 0;
+        const ClockMonotonic: int32 = 3;
+    }
+
+    when CurrentTarget.os == OperatingSystem::NetBSD {
+        const SysExit: uint64 = 1;
+        const SysRead: uint64 = 3;
+        const SysWrite: uint64 = 4;
+        const SysClose: uint64 = 6;
+        const SysBrk: uint64 = 17;
+        const SysGetPid: uint64 = 20;
+        const SysMunmap: uint64 = 73;
+        const SysMmap: uint64 = 197;
+        const SysClockGetTime: uint64 = 427;
+        const SysNanosleep: uint64 = 430;
+
+        const ClockRealtime: int32 = 0;
+        const ClockMonotonic: int32 = 3;
+    }
+
+    when CurrentTarget.os == OperatingSystem::DragonFlyBSD {
+        const SysExit: uint64 = 1;
+        const SysRead: uint64 = 3;
+        const SysWrite: uint64 = 4;
+        const SysClose: uint64 = 6;
+        const SysBrk: uint64 = 17;
+        const SysGetPid: uint64 = 20;
+        const SysMunmap: uint64 = 73;
+        const SysMmap: uint64 = 197;
+        const SysClockGetTime: uint64 = 232;
+        const SysNanosleep: uint64 = 240;
+
+        const ClockRealtime: int32 = 0;
+        const ClockMonotonic: int32 = 4;
+    }
+
+    // These mmap/protection values match FreeBSD, OpenBSD, NetBSD, and DragonFlyBSD.
+    const ProtectionNone: int32 = 0x00;
+    const ProtectionRead: int32 = 0x01;
+    const ProtectionWrite: int32 = 0x02;
+    const ProtectionExecute: int32 = 0x04;
+
+    const MapShared: int32 = 0x0001;
+    const MapPrivate: int32 = 0x0002;
+    const MapFixed: int32 = 0x0010;
+    const MapAnonymous: int32 = 0x1000;
+
+    struct Timespec {
+        seconds: int64;
+        nanoseconds: int64;
+    }
+
+    // Rux functions use the System V ABI on x86-64 BSD targets. The syscall
+    // instruction keeps the first three argument registers and takes the fourth
+    // argument in r10. BSD kernels report syscall errors by setting carry with
+    // positive errno in rax; these wrappers return Linux-style -errno values for
+    // parity.
+
+    // Executes a raw BSD system call without arguments.
+    #Abi(.SysV)
+    asm func Syscall0(number: uint64) -> int64 {
+        mov rax, rdi
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    // Executes a raw BSD system call with one argument.
+    #Abi(.SysV)
+    asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
+        mov rax, rdi
+        mov rdi, rsi
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    // Executes a raw BSD system call with two arguments.
+    #Abi(.SysV)
+    asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
+        mov rax, rdi
+        mov rdi, rsi
+        mov rsi, rdx
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    // Executes a raw BSD system call with three arguments.
+    #Abi(.SysV)
+    asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
+        mov rax, rdi
+        mov rdi, rsi
+        mov rsi, rdx
+        mov rdx, rcx
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    // Executes a raw BSD system call with four arguments.
+    #Abi(.SysV)
+    asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
+        mov rax, rdi
+        mov rdi, rsi
+        mov rsi, rdx
+        mov rdx, rcx
+        mov r10, r8
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    // Executes a raw BSD system call with five arguments.
+    #Abi(.SysV)
+    asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
+        mov rax, rdi
+        mov rdi, rsi
+        mov rsi, rdx
+        mov rdx, rcx
+        mov r10, r8
+        mov r8, r9
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    // Executes a raw BSD system call with six arguments.
+    #Abi(.SysV)
+    asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
+        mov rax, rdi
+        mov rdi, rsi
+        mov rsi, rdx
+        mov rdx, rcx
+        mov r10, r8
+        mov r8, r9
+        mov r9, qword [rsp + 8]
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    func SignExtendFd(fd: int32) -> uint64 {
+        return (fd as int64) as uint64;
+    }
+
+    // Reads up to count bytes from a file descriptor into buffer.
+    func Read(fd: int32, buffer: *opaque, count: uint) -> int64 {
+        return Syscall3(SysRead, SignExtendFd(fd), buffer as uint64, count as uint64);
+    }
+
+    // Writes up to count bytes from buffer to a file descriptor.
+    func Write(fd: int32, buffer: *const opaque, count: uint) -> int64 {
+        return Syscall3(SysWrite, SignExtendFd(fd), buffer as uint64, count as uint64);
+    }
+
+    // Closes a file descriptor and releases its kernel resources.
+    func Close(fd: int32) -> int64 {
+        return Syscall1(SysClose, SignExtendFd(fd));
+    }
+
+    // Terminates the current process with code; returns only if the syscall fails.
+    func Exit(code: int32) {
+        Syscall1(SysExit, (code as int64) as uint64);
+    }
+
+    // Returns the process identifier of the calling process.
+    func GetPid() -> int64 {
+        return Syscall0(SysGetPid);
+    }
+
+    // Creates a memory mapping and returns its address or a negative errno value.
+    func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32, offset: uint64) -> int64 {
+        return Syscall6(
+            SysMmap,
+            address as uint64,
+            length as uint64,
+            protection as uint64,
+            flags as uint64,
+            SignExtendFd(fd),
+            offset
+        );
+    }
+
+    // Removes a memory mapping that begins at address and spans length bytes.
+    func Munmap(address: *opaque, length: uint) -> int64 {
+        return Syscall2(SysMunmap, address as uint64, length as uint64);
+    }
+
+    // Sets the process data-segment break and returns zero or a negative errno value.
+    func Brk(address: *opaque) -> int64 {
+        return Syscall1(SysBrk, address as uint64);
+    }
+
+    // Suspends execution for the requested duration and optionally reports time remaining.
+    func Nanosleep(request: *const Timespec, remaining: *Timespec) -> int64 {
+        return Syscall2(SysNanosleep, request as uint64, remaining as uint64);
+    }
+
+    // Reads a BSD clock into time and returns zero or a negative errno value.
+    func ClockGetTime(clockId: int32, time: *Timespec) -> int64 {
+        return Syscall2(SysClockGetTime, (clockId as int64) as uint64, time as uint64);
+    }
+
+    // Reports whether a raw result is in the normalized -4095 through -1 error range.
+    func IsError(result: int64) -> bool {
+        return result < 0 && result >= -4095;
+    }
+
+    // Extracts a positive errno from a raw syscall result, or zero on success.
+    func Errno(result: int64) -> int64 {
+        return IsError(result) ? -result : 0;
+    }
+}

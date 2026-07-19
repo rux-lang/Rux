@@ -1,0 +1,45 @@
+import Rux::Assert;
+import Math::Cosh;
+
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        return false;
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 2i64;
+}
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(Cosh(0.0) == 1.0, "Cosh(0.0)");
+    Assert(Cosh(-0.0) == 1.0, "Cosh(-0.0)");
+
+    Assert(Close(Cosh(0.5), 1.1276259652063807), "Cosh(0.5)");
+    Assert(Close(Cosh(-0.5), 1.1276259652063807), "Cosh(-0.5)");
+    Assert(Close(Cosh(2.0), 3.7621956910836314), "Cosh(2.0)");
+    Assert(Close(Cosh(20.0), 242582597.70489514), "Cosh(20.0)");
+
+    Assert(Cosh(inf) == inf, "Cosh(+Inf)");
+    Assert(Cosh(-inf) == inf, "Cosh(-Inf)");
+
+    let nan = zero / zero;
+    let nanCosh = Cosh(nan);
+    Assert(nanCosh != nanCosh, "Cosh(NaN)");
+
+    Assert(Cosh(0.5f32) == 1.1276259422302246f32, "Cosh(0.5f32)");
+    return 0;
+}

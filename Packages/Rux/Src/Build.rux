@@ -1,0 +1,36 @@
+// High-level mode of the active build profile
+enum BuildMode: uint8 {
+    Debug = 0,
+    Release = 1
+}
+
+// Optimization preference of the active build profile
+enum OptimizationMode: uint8 {
+    None = 0,
+    Size = 1,
+    Speed = 2
+}
+
+// Artifact produced by the active build
+enum OutputKind: uint8 {
+    Executable = 0,
+    SharedLibrary = 1,
+    StaticLibrary = 2
+}
+
+// Properties of the active build profile and output.
+struct Build {
+    profile: char8[];
+    mode: BuildMode;
+    optimization: OptimizationMode;
+    debugAssertions: bool;
+    debugInfo: bool;
+    isTest: bool;
+    outputKind: OutputKind;
+    timestamp: uint64;
+    date: char8[];
+    time: char8[];
+}
+
+// Compile-time property
+intrinsic const CurrentBuild: Build;

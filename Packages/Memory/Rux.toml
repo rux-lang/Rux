@@ -1,0 +1,13 @@
+[Package]
+Name = "Memory"
+Version = "0.1.0"
+Type = "Source"
+Description = "Memory management functions"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]
+
+[Dependencies]
+Bsd = "*"
+Linux = "*"
+MacOS = "*"
+Rux = "*"
+Windows = "*"

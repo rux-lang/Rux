@@ -1,0 +1,8 @@
+[Package]
+Name = "Union"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: Union"
+
+[Build]
+Output = "../../../Bin/Tests/Language"

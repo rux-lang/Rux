@@ -1,0 +1,53 @@
+import Format::ToString;
+import Text::String;
+
+// Std stays out of the dependencies, and a failed check reports itself through
+// the exit code. See the Int8 test for why.
+func Check(actual: String, expected: char8[], code: int) -> int {
+    var text = actual;
+    var wanted = String::From(expected);
+    let ok = text == wanted;
+    text.Free();
+    wanted.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+func Main() -> int {
+    // int is the signed integer as wide as a pointer. It is a type of its own
+    // rather than another name for int64, so it has a conversion of its own --
+    // and reaching that conversion through a variable of the type is what proves
+    // the two overloads do not collide, which is the whole point of this test.
+    let zero: int = 0;
+    var code = Check(ToString(zero), "0", 10);
+    if code != 0 { return code; }
+
+    let negative: int = -42;
+    code = Check(ToString(negative), "-42", 11);
+    if code != 0 { return code; }
+
+    let positive: int = 42;
+    code = Check(ToString(positive), "42", 12);
+    if code != 0 { return code; }
+
+    // A value past the range of an int32, which an int holds on every target the
+    // package supports.
+    let large: int = 4294967296;
+    code = Check(ToString(large), "4294967296", 20);
+    if code != 0 { return code; }
+
+    // An untyped literal is an int, so this is the overload it lands on with no
+    // annotation anywhere to steer it.
+    code = Check(ToString(-7), "-7", 21);
+    if code != 0 { return code; }
+
+    // The method the Stringable extension provides, which is the same conversion
+    // reached through the interface.
+    code = Check(positive.ToString(), "42", 30);
+    if code != 0 { return code; }
+
+    return 0;
+}

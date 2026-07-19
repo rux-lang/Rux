@@ -1,0 +1,38 @@
+import Format::ToString;
+import Text::String;
+
+// Std stays out of the dependencies, and a failed check reports itself through
+// the exit code. See the Int8 test for why.
+func Check(actual: String, expected: char8[], code: int) -> int {
+    var text = actual;
+    var wanted = String::From(expected);
+    let ok = text == wanted;
+    text.Free();
+    wanted.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+func Main() -> int {
+    // The wider bools say exactly what bool8 says: what differs between them is
+    // how much room they take, not what they can mean.
+    let yes: bool16 = true;
+    let no: bool16 = false;
+
+    var code = Check(ToString(yes), "true", 10);
+    if code != 0 { return code; }
+    code = Check(ToString(no), "false", 11);
+    if code != 0 { return code; }
+
+    // The method the Stringable extension provides, which is the same conversion
+    // reached through the interface.
+    code = Check(yes.ToString(), "true", 20);
+    if code != 0 { return code; }
+    code = Check(no.ToString(), "false", 21);
+    if code != 0 { return code; }
+
+    return 0;
+}

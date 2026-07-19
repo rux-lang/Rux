@@ -1,0 +1,196 @@
+// Standard file descriptors.
+const StdIn: int32 = 0;
+const StdOut: int32 = 1;
+const StdErr: int32 = 2;
+
+// Linux x86-64 syscall numbers.
+const SysRead: uint64 = 0;
+const SysWrite: uint64 = 1;
+const SysClose: uint64 = 3;
+const SysMmap: uint64 = 9;
+const SysMunmap: uint64 = 11;
+const SysBrk: uint64 = 12;
+const SysNanosleep: uint64 = 35;
+const SysGetPid: uint64 = 39;
+const SysExit: uint64 = 60;
+const SysClockGetTime: uint64 = 228;
+
+const ClockRealtime: int32 = 0;
+const ClockMonotonic: int32 = 1;
+
+const ProtectionNone: int32 = 0;
+const ProtectionRead: int32 = 1;
+const ProtectionWrite: int32 = 2;
+const ProtectionExecute: int32 = 4;
+
+const MapShared: int32 = 1;
+const MapPrivate: int32 = 2;
+const MapFixed: int32 = 16;
+const MapAnonymous: int32 = 32;
+
+struct Timespec {
+    seconds: int64;
+    nanoseconds: int64;
+}
+
+// Rux functions use the System V ABI on Linux. The kernel keeps the first
+// three argument registers, but takes its fourth argument in r10 instead of
+// rcx. A seventh function argument is passed at [rsp + 8], after the return
+// address. Linux returns either a non-negative result or -errno in rax.
+// Executes a raw Linux system call without arguments.
+asm func Syscall0(number: uint64) -> int64 {
+    mov rax, rdi
+    syscall
+    ret
+}
+
+// Executes a raw Linux system call with one argument.
+asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
+    mov rax, rdi
+    mov rdi, rsi
+    syscall
+    ret
+}
+
+// Executes a raw Linux system call with two arguments.
+asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
+    mov rax, rdi
+    mov rdi, rsi
+    mov rsi, rdx
+    syscall
+    ret
+}
+
+// Executes a raw Linux system call with three arguments.
+asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
+    mov rax, rdi
+    mov rdi, rsi
+    mov rsi, rdx
+    mov rdx, rcx
+    syscall
+    ret
+}
+
+// Executes a raw Linux system call with four arguments.
+asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
+    mov rax, rdi
+    mov rdi, rsi
+    mov rsi, rdx
+    mov rdx, rcx
+    mov r10, r8
+    syscall
+    ret
+}
+
+// Executes a raw Linux system call with five arguments.
+asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
+    mov rax, rdi
+    mov rdi, rsi
+    mov rsi, rdx
+    mov rdx, rcx
+    mov r10, r8
+    mov r8, r9
+    syscall
+    ret
+}
+
+// Executes a raw Linux system call with six arguments.
+asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
+    mov rax, rdi
+    mov rdi, rsi
+    mov rsi, rdx
+    mov rdx, rcx
+    mov r10, r8
+    mov r8, r9
+    mov r9, qword [rsp + 8]
+    syscall
+    ret
+}
+
+// Reads up to count bytes from a file descriptor into buffer.
+asm func Read(fd: int32, buffer: *opaque, count: uint) -> int64 {
+    mov rax, 0
+    movsxd rdi, edi
+    syscall
+    ret
+}
+
+// Writes up to count bytes from buffer to a file descriptor.
+asm func Write(fd: int32, buffer: *const opaque, count: uint) -> int64 {
+    mov rax, 1
+    movsxd rdi, edi
+    syscall
+    ret
+}
+
+// Closes a file descriptor and releases its kernel resources.
+asm func Close(fd: int32) -> int64 {
+    mov rax, 3
+    movsxd rdi, edi
+    syscall
+    ret
+}
+
+// Terminates the current process with code; returns only if the syscall fails.
+asm func Exit(code: int32) {
+    mov rax, 60
+    mov edi, edi
+    syscall
+    ret
+}
+
+// Returns the process identifier of the calling process.
+asm func GetPid() -> int64 {
+    mov rax, 39
+    syscall
+    ret
+}
+
+// Creates a memory mapping and returns its address or a negative errno value.
+asm func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32, offset: uint64) -> int64 {
+    mov rax, 9
+    mov edx, edx
+    mov r10d, ecx
+    movsxd r8, r8d
+    syscall
+    ret
+}
+
+// Removes a memory mapping that begins at address and spans length bytes.
+asm func Munmap(address: *opaque, length: uint) -> int64 {
+    mov rax, 11
+    syscall
+    ret
+}
+
+// Sets the process data-segment break and returns the resulting break address.
+asm func Brk(address: *opaque) -> int64 {
+    mov rax, 12
+    syscall
+    ret
+}
+
+// Suspends execution for the requested duration and optionally reports time remaining.
+asm func Nanosleep(request: *const Timespec, remaining: *Timespec) -> int64 {
+    mov rax, 35
+    syscall
+    ret
+}
+
+// Reads a Linux clock into time and returns zero or a negative errno value.
+asm func ClockGetTime(clockId: int32, time: *Timespec) -> int64 {
+    mov rax, 228
+    mov edi, edi
+    syscall
+    ret
+}
+
+// Reports whether a raw result is in Linux's reserved -4095 through -1 error range.
+func IsError(result: int64) -> bool {
+    return result < 0 && result >= -4095;
+}
+
+// Extracts a positive errno from a raw syscall result, or zero on success.
+func Errno(result: int64) -> int64 {
+    return IsError(result) ? -result : 0;
+}

@@ -1,0 +1,110 @@
+import Rux::Assert;
+import Math::Sin;
+
+// Both the Win64 and System V ABIs pass the first float argument in xmm0 and
+// return an integer in rax.
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+// Every expected value below is what the C library returns for the same double.
+// Comparing the bit patterns rather than the difference measures the error in
+// ulps, so the tolerance stays meaningful for results near a zero of the sine,
+// where an absolute tolerance would accept any answer at all.
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 1i64;
+}
+
+func Main() -> int {
+    // Zero keeps its sign, which the argument reduction would otherwise lose.
+    var one = 1.0;
+    Assert(Sin(0.0) == 0.0, "Sin(0.0) is zero");
+    let negZero = Sin(-0.0);
+    Assert(negZero == 0.0, "Sin(-0.0) is zero");
+    Assert(one / negZero < 0.0, "Sin(-0.0) keeps the sign of zero");
+
+    // Below 2^-27 the result is the argument itself.
+    Assert(Sin(1e-8) == 1e-8, "Sin(1e-8) is 1e-8");
+
+    // Inside the kernel's own range, where nothing is reduced.
+    Assert(Close(Sin(0.5), 0.479425538604203), "Sin(0.5)");
+    Assert(Close(Sin(-0.25), -0.24740395925452294), "Sin(-0.25)");
+
+    // Odd symmetry: sin(-x) = -sin(x).
+    Assert(Close(Sin(1.0), 0.8414709848078965), "Sin(1.0)");
+    Assert(Close(Sin(-1.0), -0.8414709848078965), "Sin(-1.0)");
+
+    // Each of the four quadrants of the reduction.
+    Assert(Close(Sin(2.0), 0.9092974268256817), "Sin(2.0)");
+    Assert(Close(Sin(3.0), 0.1411200080598672), "Sin(3.0)");
+    Assert(Close(Sin(4.0), -0.7568024953079282), "Sin(4.0)");
+
+    // The peak of the sine rounds to exactly 1.0 at the nearest double to Pi/2.
+    Assert(Sin(1.5707963267948966) == 1.0, "Sin(Pi/2) is 1.0");
+
+    // Near the zeros of sine the result is the reduction error itself, so these
+    // are the values a sloppy range reduction gets wrong.
+    Assert(Close(Sin(3.141592653589793), 1.2246467991473532e-16), "Sin(Pi)");
+    Assert(Close(Sin(6.283185307179586), -2.4492935982947064e-16), "Sin(2*Pi)");
+
+    // Arguments needing many quadrants of reduction.
+    Assert(Close(Sin(100.0), -0.5063656411097588), "Sin(100.0)");
+    Assert(Close(Sin(1e6), -0.34999350217129294), "Sin(1e6)");
+
+    // Landing just short of a zero of the sine, where the reduced argument is
+    // all that survives. These need the reduction carried to twice double
+    // precision; rounding it to a single double costs two ulps here.
+    Assert(Close(Sin(94.24777970194157), 9.424777035561389e-08), "Sin near 30*Pi");
+    Assert(Close(Sin(204.20352268754007), -2.0420351191106545e-07), "Sin near 65*Pi");
+    Assert(Close(Sin(81.73383253581802), 0.05239953380984127), "Sin(81.73383253581802)");
+
+    // Past 2^22 * Pi/2 a Cody-Waite reduction runs out of bits and the result
+    // silently drifts. These are where Payne-Hanek reduction earns its keep.
+    Assert(Close(Sin(2e7), -0.7631011174721591), "Sin(2e7)");
+    Assert(Close(Sin(1e15), 0.8582727931702359), "Sin(1e15)");
+    Assert(Close(Sin(1e300), -0.8178819121159085), "Sin(1e300)");
+    Assert(Close(Sin(1.7976931348623157e308), 0.004961954789184062), "Sin(DBL_MAX)");
+
+    // NaN propagates and the infinities have no sine.
+    var zero = 0.0;
+    let nan = zero / zero;
+    let nanSin = Sin(nan);
+    Assert(nanSin != nanSin, "Sin(NaN) is NaN");
+
+    let inf = one / zero;
+    let infSin = Sin(inf);
+    Assert(infSin != infSin, "Sin(+Inf) is NaN");
+    let negInfSin = Sin(-inf);
+    Assert(negInfSin != negInfSin, "Sin(-Inf) is NaN");
+
+    // The float32 overload is chosen by the argument type and returns float32.
+    Assert(Sin(0.0f32) == 0.0f32, "Sin(0.0f32)");
+    Assert(Sin(1.0f32) == 0.8414709568023682f32, "Sin(1.0f32)");
+    Assert(Sin(0.5f32) == 0.4794255495071411f32, "Sin(0.5f32)");
+    Assert(Sin(2.0f32) == 0.9092974066734314f32, "Sin(2.0f32)");
+    Assert(Sin(100.0f32) == -0.5063656568527222f32, "Sin(100.0f32)");
+    Assert(Sin(1e6f32) == -0.349993497133255f32, "Sin(1e6f32)");
+
+    let nan32 = Sin(-1.0f32 / 0.0f32);
+    Assert(nan32 != nan32, "Sin(-Inf32) is NaN");
+
+    return 0;
+}

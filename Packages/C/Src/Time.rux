@@ -1,0 +1,118 @@
+import Rux::{ OperatingSystem, CurrentTarget };
+
+/// Arithmetic type capable of representing a calendar time
+/// https://en.cppreference.com/c/chrono/time_t
+#Allow("naming.type")
+type time_t = int64;
+
+/// Arithmetic type capable of representing processor time
+/// https://en.cppreference.com/c/chrono/clock_t
+#Allow("naming.type")
+type clock_t = int64;
+
+/// Calendar time broken down into its components
+/// https://en.cppreference.com/c/chrono/tm
+when CurrentTarget.os == OperatingSystem::Windows {
+    #Allow("naming.type")
+    struct tm {
+        tm_sec: int32;   // seconds after the minute [0, 60]
+        tm_min: int32;   // minutes after the hour [0, 59]
+        tm_hour: int32;  // hours since midnight [0, 23]
+        tm_mday: int32;  // day of the month [1, 31]
+        tm_mon: int32;   // months since January [0, 11]
+        tm_year: int32;  // years since 1900
+        tm_wday: int32;  // days since Sunday [0, 6]
+        tm_yday: int32;  // days since January 1 [0, 365]
+        tm_isdst: int32; // daylight saving time flag
+    }
+} else {
+    #Allow("naming.type")
+    struct tm {
+        tm_sec: int32;          // seconds after the minute [0, 60]
+        tm_min: int32;          // minutes after the hour [0, 59]
+        tm_hour: int32;         // hours since midnight [0, 23]
+        tm_mday: int32;         // day of the month [1, 31]
+        tm_mon: int32;          // months since January [0, 11]
+        tm_year: int32;         // years since 1900
+        tm_wday: int32;         // days since Sunday [0, 6]
+        tm_yday: int32;         // days since January 1 [0, 365]
+        tm_isdst: int32;        // daylight saving time flag
+        tm_gmtoff: int64;       // seconds east of UTC
+        tm_zone: *const char8;  // timezone abbreviation
+    }
+}
+
+/// Time in seconds and nanoseconds
+/// https://en.cppreference.com/c/chrono/timespec
+#Allow("naming.type")
+struct timespec {
+    tv_sec: time_t; // whole seconds
+    tv_nsec: int64; // nanoseconds [0, 999999999]
+}
+
+when CurrentTarget.os == OperatingSystem::Windows {
+    const TimeLib = "msvcrt.dll";
+}
+
+when CurrentTarget.os == OperatingSystem::Linux {
+    const TimeLib = "libc.so.6";
+}
+
+when CurrentTarget.os == OperatingSystem::MacOS {
+    const TimeLib = "libSystem.B.dylib";
+}
+
+when CurrentTarget.os == OperatingSystem::FreeBSD {
+    const TimeLib = "libc.so.7";
+}
+
+when CurrentTarget.os == OperatingSystem::OpenBSD {
+    const TimeLib = "libc.so.103.0";
+}
+
+when CurrentTarget.os == OperatingSystem::NetBSD {
+    const TimeLib = "libc.so.12";
+}
+
+when CurrentTarget.os == OperatingSystem::DragonFlyBSD {
+    const TimeLib = "libc.so.8";
+}
+
+#Link(TimeLib)
+extern {
+    /// Converts a tm object to a textual representation
+    /// https://en.cppreference.com/c/chrono/asctime
+    func asctime(time_ptr: *const tm) -> *char8;
+
+    /// Returns the approximate processor time used by the program
+    /// https://en.cppreference.com/c/chrono/clock
+    func clock() -> clock_t;
+
+    /// Converts a time_t object to a textual representation
+    /// https://en.cppreference.com/c/chrono/ctime
+    func ctime(timer: *const time_t) -> *char8;
+
+    /// Computes the difference in seconds between two calendar times
+    /// https://en.cppreference.com/c/chrono/difftime
+    func difftime(time_end: time_t, time_beg: time_t) -> float64;
+
+    /// Converts a time_t object to calendar time expressed as UTC
+    /// https://en.cppreference.com/c/chrono/gmtime
+    func gmtime(timer: *const time_t) -> *tm;
+
+    /// Converts a time_t object to calendar time expressed as local time
+    /// https://en.cppreference.com/c/chrono/localtime
+    func localtime(timer: *const time_t) -> *tm;
+
+    /// Converts calendar time to a time_t object, normalizing the tm structure
+    /// https://en.cppreference.com/c/chrono/mktime
+    func mktime(time_ptr: *tm) -> time_t;
+
+    /// Converts a tm object to a custom textual representation
+    /// https://en.cppreference.com/c/chrono/strftime
+    func strftime(str: *char8, count: uint, format: *const char8, time_ptr: *const tm) -> uint;
+
+    /// Returns the current calendar time since the epoch
+    /// https://en.cppreference.com/c/chrono/time
+    func time(timer: *time_t) -> time_t;
+}

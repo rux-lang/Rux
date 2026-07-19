@@ -1,0 +1,14 @@
+import Text::{ String, StringBuilder };
+
+// The decimal text of a uint32, widened to uint64 for the digit loop.
+func ToString(value: uint32) -> String {
+    var builder = StringBuilder::WithCapacity(12);
+    WriteUint(@builder, value as uint64);
+    return builder.IntoString();
+}
+
+extend uint32 : Stringable {
+    func ToString(self) -> String {
+        return ToString(*self);
+    }
+}

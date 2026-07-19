@@ -1,0 +1,43 @@
+import Rux::Assert;
+
+// The compiler supplies Min, Max, Bits and Bytes on every primitive type. These
+// are the invariants that hold on every target the package supports.
+func Main() -> int {
+    // Bit and byte widths agree, and the byte count is the bit count over eight.
+    Assert(int8::Bits == 8 && int8::Bytes == 1, "int8 width");
+    Assert(int16::Bits == 16 && int16::Bytes == 2, "int16 width");
+    Assert(int32::Bits == 32 && int32::Bytes == 4, "int32 width");
+    Assert(int64::Bits == 64 && int64::Bytes == 8, "int64 width");
+    Assert(uint8::Bits == 8 && uint8::Bytes == 1, "uint8 width");
+    Assert(uint16::Bits == 16 && uint16::Bytes == 2, "uint16 width");
+    Assert(uint32::Bits == 32 && uint32::Bytes == 4, "uint32 width");
+    Assert(uint64::Bits == 64 && uint64::Bytes == 8, "uint64 width");
+
+    // Signed ranges are the two's-complement bounds for the width.
+    Assert(int8::Min as int64 == -128 && int8::Max as int64 == 127, "int8 range");
+    Assert(int16::Min as int64 == -32768 && int16::Max as int64 == 32767, "int16 range");
+    Assert(int32::Min as int64 == -2147483648 && int32::Max as int64 == 2147483647, "int32 range");
+
+    // Unsigned ranges start at zero and reach the all-ones value.
+    Assert(uint8::Min as uint64 == 0 && uint8::Max as uint64 == 255, "uint8 range");
+    Assert(uint16::Max as uint64 == 65535, "uint16 max");
+    Assert(uint32::Max as uint64 == 4294967295, "uint32 max");
+
+    // The pointer-wide types agree with themselves and with each other in width.
+    Assert(int::Bits == int::Bytes * 8, "int width relation");
+    Assert(int::Bits == uint::Bits, "int and uint same width");
+    Assert(int::Bits == 32 || int::Bits == 64, "int width value");
+
+    // A boolean and a byte-wide character each occupy one byte.
+    Assert(bool8::Bytes == 1, "bool8 bytes");
+    Assert(char8::Bytes == 1, "char8 bytes");
+
+    // The float extremes: infinity outruns the largest finite value, and NaN is
+    // the value equal to nothing, itself included.
+    Assert(float64::Infinity > float64::Max, "float64 infinity");
+    Assert(float64::NaN != float64::NaN, "float64 NaN");
+    Assert(float64::Epsilon > 0.0, "float64 epsilon");
+    Assert(float32::Infinity > float32::Max, "float32 infinity");
+    Assert(float32::NaN != float32::NaN, "float32 NaN");
+    return 0;
+}

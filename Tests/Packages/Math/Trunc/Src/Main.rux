@@ -1,0 +1,32 @@
+import Rux::Assert;
+import Math::Trunc;
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(Trunc(0.0) == 0.0, "Trunc(0.0)");
+    let negZero = Trunc(-0.0);
+    Assert(negZero == 0.0, "Trunc(-0.0)");
+    Assert(one / negZero < 0.0, "Trunc(-0.0) keeps sign");
+
+    Assert(Trunc(1.9) == 1.0, "Trunc(1.9)");
+    Assert(Trunc(-1.9) == -1.0, "Trunc(-1.9)");
+    Assert(Trunc(1.0) == 1.0, "Trunc(1.0)");
+    Assert(Trunc(-1.0) == -1.0, "Trunc(-1.0)");
+    let negSmall = Trunc(-0.4);
+    Assert(negSmall == 0.0, "Trunc(-0.4)");
+    Assert(one / negSmall < 0.0, "Trunc(-0.4) is -0.0");
+    Assert(Trunc(4503599627370496.5) == 4503599627370496.0, "Trunc(2^52)");
+
+    Assert(Trunc(inf) == inf, "Trunc(+Inf)");
+    Assert(Trunc(-inf) == -inf, "Trunc(-Inf)");
+    let nan = zero / zero;
+    let nanTrunc = Trunc(nan);
+    Assert(nanTrunc != nanTrunc, "Trunc(NaN)");
+
+    Assert(Trunc(1.9f32) == 1.0f32, "Trunc(1.9f32)");
+    Assert(Trunc(-1.9f32) == -1.0f32, "Trunc(-1.9f32)");
+    return 0;
+}

@@ -1,0 +1,51 @@
+import Io::PrintLine;
+import Text::String;
+
+func Main() -> int {
+    PrintLine();
+
+    let int8Value: int8 = -128;
+    let int16Value: int16 = -32768;
+    let int32Value: int32 = -2147483648;
+    let int64Value: int64 = -9223372036854775808;
+    PrintLine(int8Value);
+    PrintLine(int16Value);
+    PrintLine(int32Value);
+    PrintLine(int64Value);
+
+    let uint8Value: uint8 = 255;
+    let uint16Value: uint16 = 65535;
+    let uint32Value: uint32 = 4294967295;
+    let uint64Value: uint64 = 18446744073709551615;
+    PrintLine(uint8Value);
+    PrintLine(uint16Value);
+    PrintLine(uint32Value);
+    PrintLine(uint64Value);
+
+    let intValue: int = -42;
+    let uintValue: uint = 42;
+    let float32Value: float32 = 1.5f32;
+    let float64Value: float64 = -2.25;
+    PrintLine(intValue);
+    PrintLine(uintValue);
+    PrintLine(float32Value);
+    PrintLine(float64Value);
+
+    let bool8Value: bool8 = true;
+    let bool16Value: bool16 = false;
+    let bool32Value: bool32 = true;
+    PrintLine(bool8Value);
+    PrintLine(bool16Value);
+    PrintLine(bool32Value);
+
+    PrintLine(c8'A');
+    PrintLine(c16'B');
+    PrintLine(c32'C');
+
+    var text = String::From("string-value");
+    PrintLine(text);
+    text.Free();
+    PrintLine("slice-value");
+    PrintLine("formatted {} {} {{ok}}", 7, 2.5);
+    return 0;
+}

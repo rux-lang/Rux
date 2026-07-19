@@ -1,0 +1,87 @@
+import Format::ToString;
+import Text::String;
+
+// Std stays out of the dependencies, and a failed check reports itself through
+// the exit code. See the Int8 test for why.
+//
+// The characters are checked byte by byte rather than against a literal, so that
+// what is under test is the UTF-8 the package encodes and not the encoding this
+// file happens to be saved in.
+
+// The bytes of a String as one number, most significant first. Three bytes need
+// 24 bits, so a uint64 holds any of them, and the length is checked alongside it
+// because 0x41 and 0x0041 pack the same.
+func Bytes(text: String) -> uint64 {
+    var packed: uint64 = 0;
+    var i: uint = 0;
+    while i < text.Length() {
+        packed = (packed << 8u64) | (text.At(i) as uint64);
+        i++;
+    }
+    return packed;
+}
+
+func Check(actual: String, length: uint, bytes: uint64, code: int) -> int {
+    var text = actual;
+    let ok = text.Length() == length && Bytes(text) == bytes;
+    text.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+func Main() -> int {
+    // A char16 holds one UTF-16 code unit, which becomes one to three bytes of
+    // UTF-8. Below U+0080 the byte is the code point itself.
+    var code = Check(ToString(c16'A'), 1u, 0x41u64, 10);
+    if code != 0 { return code; }
+    code = Check(ToString(c16'\0'), 1u, 0x00u64, 11);
+    if code != 0 { return code; }
+
+    // U+0080, the first code point that does not fit in a byte, and U+00E9, e
+    // with an acute accent: two bytes each.
+    code = Check(ToString(c16'\u{80}'), 2u, 0xC280u64, 20);
+    if code != 0 { return code; }
+    code = Check(ToString(c16'é'), 2u, 0xC3A9u64, 21);
+    if code != 0 { return code; }
+
+    // U+0800, where the three byte sequences begin, and U+20AC, the euro sign.
+    code = Check(ToString(c16'\u{800}'), 3u, 0xE0A080u64, 30);
+    if code != 0 { return code; }
+    code = Check(ToString(c16'€'), 3u, 0xE282ACu64, 31);
+    if code != 0 { return code; }
+
+    // The last code unit a char16 can hold, U+FFFF.
+    code = Check(ToString(c16'\u{FFFF}'), 3u, 0xEFBFBFu64, 32);
+    if code != 0 { return code; }
+
+    // A lone half of a surrogate pair says nothing outside UTF-16: the character
+    // it belongs to is spread across two code units, and this conversion sees
+    // only one. The compiler rejects a surrogate as a constant, so it can only
+    // arrive through a cast at run time -- which is exactly where the encoder
+    // has to defend itself. It comes out as U+FFFD, the replacement character,
+    // rather than as an ill-formed sequence.
+    var high: uint32 = 0xD800;
+    code = Check(ToString(high as char16), 3u, 0xEFBFBDu64, 40);
+    if code != 0 { return code; }
+
+    var low: uint32 = 0xDFFF;
+    code = Check(ToString(low as char16), 3u, 0xEFBFBDu64, 41);
+    if code != 0 { return code; }
+
+    // The code points on either side of the surrogate range are ordinary and
+    // survive untouched, which is what says the guard is not too wide.
+    code = Check(ToString(c16'\u{D7FF}'), 3u, 0xED9FBFu64, 42);
+    if code != 0 { return code; }
+    code = Check(ToString(c16'\u{E000}'), 3u, 0xEE8080u64, 43);
+    if code != 0 { return code; }
+
+    // The method the Stringable extension provides, which is the same conversion
+    // reached through the interface.
+    code = Check(c16'€'.ToString(), 3u, 0xE282ACu64, 50);
+    if code != 0 { return code; }
+
+    return 0;
+}

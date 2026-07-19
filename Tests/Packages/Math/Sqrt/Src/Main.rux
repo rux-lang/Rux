@@ -1,0 +1,44 @@
+import Rux::Assert;
+import Math::Sqrt;
+
+func Main() -> int {
+    // Exactly representable results.
+    Assert(Sqrt(0.0) == 0.0, "Sqrt(0.0)");
+    Assert(Sqrt(1.0) == 1.0, "Sqrt(1.0)");
+    Assert(Sqrt(4.0) == 2.0, "Sqrt(4.0)");
+    Assert(Sqrt(9.0) == 3.0, "Sqrt(9.0)");
+    Assert(Sqrt(16.0) == 4.0, "Sqrt(16.0)");
+    Assert(Sqrt(1e300) == 1e150, "Sqrt(1e300)");
+
+    // Correctly rounded to the last bit, which a Newton iteration is not.
+    Assert(Sqrt(2.0) == 1.4142135623730951, "Sqrt(2.0) is correctly rounded");
+
+    // Negative input yields NaN, the only value not equal to itself.
+    let negative = Sqrt(-1.0);
+    Assert(negative != negative, "Sqrt(-1.0) is NaN");
+
+    var zero = 0.0;
+    var one = 1.0;
+
+    let inf = one / zero;
+    Assert(Sqrt(inf) == inf, "Sqrt(+Inf) is +Inf");
+
+    let nan = zero / zero;
+    let nanRoot = Sqrt(nan);
+    Assert(nanRoot != nanRoot, "Sqrt(NaN) is NaN");
+
+    // Sqrt(-0.0) is -0.0. It compares equal to 0.0, so the sign shows in 1/x.
+    let negZero = Sqrt(-0.0);
+    Assert(negZero == 0.0, "Sqrt(-0.0) is zero");
+    Assert(one / negZero < 0.0, "Sqrt(-0.0) keeps the sign of zero");
+
+    // The float32 overload is chosen by the argument type and returns float32.
+    Assert(Sqrt(0.0f32) == 0.0f32, "Sqrt(0.0f32)");
+    Assert(Sqrt(16.0f32) == 4.0f32, "Sqrt(16.0f32)");
+    Assert(Sqrt(2.0f32) == 1.4142135f32, "Sqrt(2.0f32) is correctly rounded");
+
+    let negative32 = Sqrt(-1.0f32);
+    Assert(negative32 != negative32, "Sqrt(-1.0f32) is NaN");
+
+    return 0;
+}

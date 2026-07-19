@@ -1,0 +1,9 @@
+// Primitive constants are supplied directly by the compiler
+// float::Lowest
+// float::Max
+// float::MinPositive
+// float::Epsilon
+// float::Infinity
+// float::NaN
+// float::Bits
+// float::Bytes

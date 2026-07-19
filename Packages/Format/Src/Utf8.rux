@@ -1,0 +1,38 @@
+import Text::StringBuilder;
+
+// A String is a run of bytes and its contents are UTF-8, so a char16 or a
+// char32 has to be encoded on the way in rather than copied. This is where
+// that happens; a char8 is already a byte and needs none of it.
+
+// The code point that stands in for anything that cannot be encoded: a half
+// of a surrogate pair, which only means something inside UTF-16, and any
+// value past the last code point there is.
+const Replacement = 0xFFFDu32;
+
+// The UTF-8 bytes of a code point: one byte below U+0080, and up to four
+// above it, each continuation byte carrying six more bits of the value.
+func WriteUtf8(builder: *StringBuilder, code: uint32) {
+    var value = code;
+    if value > 0x10FFFFu32 || (value >= 0xD800u32 && value <= 0xDFFFu32) {
+        value = Replacement;
+    }
+    if value < 0x80u32 {
+        builder.Append(value as char8);
+        return;
+    }
+    if value < 0x800u32 {
+        builder.Append((0xC0u32 | (value >> 6u32)) as char8);
+        builder.Append((0x80u32 | (value & 0x3Fu32)) as char8);
+        return;
+    }
+    if value < 0x10000u32 {
+        builder.Append((0xE0u32 | (value >> 12u32)) as char8);
+        builder.Append((0x80u32 | ((value >> 6u32) & 0x3Fu32)) as char8);
+        builder.Append((0x80u32 | (value & 0x3Fu32)) as char8);
+        return;
+    }
+    builder.Append((0xF0u32 | (value >> 18u32)) as char8);
+    builder.Append((0x80u32 | ((value >> 12u32) & 0x3Fu32)) as char8);
+    builder.Append((0x80u32 | ((value >> 6u32) & 0x3Fu32)) as char8);
+    builder.Append((0x80u32 | (value & 0x3Fu32)) as char8);
+}

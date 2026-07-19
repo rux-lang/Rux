@@ -1,0 +1,11 @@
+// User-defined values from [Build.Defines] and --define.
+struct Config {}
+
+extend Config {
+    intrinsic func Get(self, name: char8[]) -> char8[];
+
+    intrinsic func Has(self, name: char8[]) -> bool;
+}
+
+// Compile-time property
+intrinsic const CurrentConfig: Config;

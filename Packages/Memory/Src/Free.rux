@@ -1,0 +1,60 @@
+import Rux::{ CurrentTarget, OperatingSystem };
+
+when CurrentTarget.os == OperatingSystem::Windows {
+    import Windows::{ GetProcessHeap, HeapFree };
+
+    // Releases a block of memory back to the platform
+    // https://rux-lang.dev/api/memory/free
+    func Free(ptr: *opaque) {
+        let heap = GetProcessHeap();
+        HeapFree(heap, 0, ptr);
+    }
+}
+
+when CurrentTarget.os == OperatingSystem::Linux {
+    import Linux::Munmap;
+
+    // Releases a block of memory back to the platform
+    // https://rux-lang.dev/api/memory/free
+    func Free(ptr: *opaque) {
+        if ptr == null {
+            return;
+        }
+        const HeaderSize: uint = 16;
+        let header = (ptr as *uint) - 2;
+        Munmap(header as *opaque, *header + HeaderSize);
+    }
+}
+
+when CurrentTarget.os == OperatingSystem::MacOS {
+    import MacOS::Munmap;
+
+    // Releases a block of memory back to the platform
+    // https://rux-lang.dev/api/memory/free
+    func Free(ptr: *opaque) {
+        if ptr == null {
+            return;
+        }
+        const HeaderSize: uint = 16;
+        let header = (ptr as *uint) - 2;
+        Munmap(header as *opaque, *header + HeaderSize);
+    }
+}
+
+when CurrentTarget.os == OperatingSystem::FreeBSD ||
+     CurrentTarget.os == OperatingSystem::OpenBSD ||
+     CurrentTarget.os == OperatingSystem::NetBSD ||
+     CurrentTarget.os == OperatingSystem::DragonFlyBSD {
+    import Bsd::Munmap;
+
+    // Releases a block of memory back to the platform
+    // https://rux-lang.dev/api/memory/free
+    func Free(ptr: *opaque) {
+        if ptr == null {
+            return;
+        }
+        const HeaderSize: uint = 16;
+        let header = (ptr as *uint) - 2;
+        Munmap(header as *opaque, *header + HeaderSize);
+    }
+}

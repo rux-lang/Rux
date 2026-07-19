@@ -2,12 +2,17 @@
 
 #include "Cli/Cli.h"
 #include "Cli/DefineOption.h"
+#include "Cli/TerminalStyle.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 
+#include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <map>
+#include <optional>
 #include <print>
 #include <span>
 #include <string>
@@ -109,14 +114,12 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         }
         return 1;
     }
+    std::map<std::string, std::filesystem::path> localPackageRoots;
+    bool localDependenciesOnly = false;
     auto CheckPackage = [&](const std::filesystem::path &packageManifestPath, Manifest packageManifest) {
         if (packageManifest.IsWorkspace() || packageManifest.package.name.empty()) {
             EmitFatal("workspace member '" + packageManifestPath.parent_path().string() + "' is not a package");
-            return;
-        }
-        if (!opts.quiet && !jsonOutput) {
-            std::print("Checking {} v{} [{}]\n", packageManifest.package.name, packageManifest.package.version,
-                       packageManifestPath.parent_path().string());
+            return false;
         }
         CompileOptions copts;
         copts.manifestPath = packageManifestPath;
@@ -124,6 +127,8 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         copts.targetName = targetName;
         copts.profileName = "Debug";
         copts.defines = defines;
+        copts.localPackageRoots = localPackageRoots;
+        copts.localDependenciesOnly = localDependenciesOnly;
         copts.quiet = opts.quiet;
         copts.verbose = opts.verbose && !jsonOutput;
         copts.checkOnly = true;
@@ -137,10 +142,20 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
             }
         };
         CompilerDriver driver(std::move(copts));
-        if (!driver.Compile().ok) {
+        const bool passed = driver.Compile().ok;
+        if (!passed) {
             hadErrors = true;
         }
+        return passed;
     };
+
+    struct CheckJob {
+        std::filesystem::path manifestPath;
+        std::string label;
+        std::optional<Manifest> manifest;
+    };
+
+    std::vector<CheckJob> jobs;
 
     if (manifest->IsWorkspace()) {
         if (!opts.quiet && !jsonOutput) {
@@ -149,25 +164,93 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         const auto workspaceRoot = manifestPath->parent_path();
         for (const auto &member : manifest->workspace.packages) {
             const auto memberManifestPath = (workspaceRoot / member / "Rux.toml").lexically_normal();
+            const auto label = std::filesystem::path(member).lexically_normal().generic_string();
             std::error_code ec;
             if (!std::filesystem::exists(memberManifestPath, ec)) {
                 EmitFatal("workspace member '" + member + "' has no Rux.toml");
+                jobs.push_back({memberManifestPath, label, std::nullopt});
                 continue;
             }
             auto memberManifest = Manifest::Load(memberManifestPath);
             if (!memberManifest) {
                 EmitFatal("failed to parse '" + memberManifestPath.string() + "'");
+                jobs.push_back({memberManifestPath, label, std::nullopt});
+                continue;
+            }
+            if (memberManifest->IsWorkspace() || memberManifest->package.name.empty()) {
+                EmitFatal("workspace member '" + member + "' is not a package");
+                jobs.push_back({memberManifestPath, label, std::nullopt});
+                continue;
+            }
+            const auto [existing, inserted] =
+                localPackageRoots.emplace(memberManifest->package.name, memberManifestPath.parent_path());
+            if (!inserted && existing->second != memberManifestPath.parent_path()) {
+                EmitFatal("duplicate workspace package name '" + memberManifest->package.name + "'");
+                jobs.push_back({memberManifestPath, label, std::nullopt});
                 continue;
             }
             if (IsPlatformPackageName(memberManifest->package.name) &&
                 !PlatformPackageMatchesTarget(memberManifest->package.name, targetName)) {
                 continue;
             }
-            CheckPackage(memberManifestPath, std::move(*memberManifest));
+            jobs.push_back({memberManifestPath, label, std::move(*memberManifest)});
         }
+        localDependenciesOnly = true;
     }
     else {
-        CheckPackage(*manifestPath, std::move(*manifest));
+        if (!opts.quiet && !jsonOutput) {
+            std::println("Checking {} v{}", manifest->package.name, manifest->package.version);
+        }
+        jobs.push_back({*manifestPath, manifest->package.name, std::move(*manifest)});
+    }
+
+    const AnsiStyle style{ColorEnabled(opts.color)};
+    if (!opts.quiet && !jsonOutput) {
+        std::println("Checking {} {}\n", jobs.size(), jobs.size() == 1 ? "package" : "packages");
+    }
+
+    std::size_t labelWidth = 0;
+    for (const auto &job : jobs) {
+        labelWidth = std::max(labelWidth, job.label.size());
+    }
+
+    std::size_t passed = 0;
+    std::size_t failed = 0;
+    const auto suiteStart = std::chrono::steady_clock::now();
+    for (auto &job : jobs) {
+        const auto start = std::chrono::steady_clock::now();
+        const bool packagePassed = job.manifest && CheckPackage(job.manifestPath, std::move(*job.manifest));
+        const auto duration = ElapsedMs(start);
+
+        std::string paddedLabel = job.label;
+        paddedLabel.resize(labelWidth, ' ');
+        if (packagePassed) {
+            ++passed;
+            if (!opts.quiet && !jsonOutput) {
+                std::println("{}[PASSED]{} {} ({} ms)", style.Green(), style.Reset(), paddedLabel, duration.count());
+            }
+        }
+        else {
+            ++failed;
+            hadErrors = true;
+            if (!opts.quiet && !jsonOutput) {
+                std::println("{}[FAILED]{} {} ({} ms)", style.Red(), style.Reset(), paddedLabel, duration.count());
+            }
+        }
+    }
+    const double elapsed = ElapsedSeconds(suiteStart);
+
+    if ((!opts.quiet || failed > 0) && !jsonOutput) {
+        std::println("\nCheck Result:");
+        std::println("  Passed: {}{}{}", style.Green(), passed, style.Reset());
+        if (failed > 0) {
+            std::println("  Failed: {}{}{}", style.Red(), failed, style.Reset());
+        }
+        else {
+            std::println("  Failed: {}", failed);
+        }
+        std::println("  Total : {}", passed + failed);
+        std::println("  Time  : {:.2f}s", elapsed);
     }
     if (jsonOutput) {
         PrintDiagnosticsJson(jsonDiags, !hadErrors);

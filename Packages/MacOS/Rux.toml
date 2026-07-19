@@ -1,0 +1,9 @@
+[Package]
+Name = "MacOS"
+Version = "0.1.0"
+Type = "Source"
+Description = "macOS platform bindings"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]
+
+[Dependencies]
+Rux = "*"

@@ -1,0 +1,12 @@
+// Clearing the sign bit is the whole operation. A comparison against zero
+// would get two cases wrong: it leaves Abs(-0.0) as -0.0, and it has no
+// answer at all for a NaN, which compares false against everything.
+func Abs(x: float64) -> float64 {
+    return FromBits(FloatBits(x) & 0x7FFFFFFFFFFFFFFFu64);
+}
+
+// Widening to float64 and back is exact here: the magnitude of a float32 is
+// a float32.
+func Abs(x: float32) -> float32 {
+    return Abs(x as float64) as float32;
+}

@@ -1,0 +1,16 @@
+[Package]
+Name = "Io"
+Version = "0.1.0"
+Type = "Source"
+Description = "Streams, console I/O, readers, and writers"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]
+
+[Dependencies]
+Bsd = "*"
+Format = "*"
+Linux = "*"
+MacOS = "*"
+Memory = "*"
+Rux = "*"
+Text = "*"
+Windows = "*"

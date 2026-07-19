@@ -3435,7 +3435,7 @@ private:
                     EmitError(e->location, "compile-time intrinsic expects exactly one argument");
                 }
                 else if (e->kind == K::TargetFeature && dynamic_cast<const EnumShorthandExpr *>(e->args[0].get())) {
-                    // `.AVX2` is given its meaning by target.hasFeature.
+                    // `.AVX2` is given its meaning by CurrentTarget.HasFeature.
                 }
                 else {
                     const TypeRef argType = CheckExpr(*e->args[0]);
@@ -3459,15 +3459,15 @@ private:
             if (e->kind == K::Os || e->kind == K::Arch || e->kind == K::Abi || e->kind == K::Endian ||
                 e->kind == K::DataModel || e->kind == K::ObjectFormat || e->kind == K::BuildMode ||
                 e->kind == K::Optimization || e->kind == K::OutputKind) {
-                const char *name = e->kind == K::Os           ? "target.os"
-                                 : e->kind == K::Arch         ? "target.arch"
-                                 : e->kind == K::Abi          ? "target.abi"
-                                 : e->kind == K::Endian       ? "target.endian"
-                                 : e->kind == K::DataModel    ? "target.dataModel"
-                                 : e->kind == K::ObjectFormat ? "target.objectFormat"
-                                 : e->kind == K::BuildMode    ? "build.mode"
-                                 : e->kind == K::Optimization ? "build.optimization"
-                                                              : "build.outputKind";
+                const char *name = e->kind == K::Os           ? "CurrentTarget.os"
+                                 : e->kind == K::Arch         ? "CurrentTarget.arch"
+                                 : e->kind == K::Abi          ? "CurrentTarget.abi"
+                                 : e->kind == K::Endian       ? "CurrentTarget.endian"
+                                 : e->kind == K::DataModel    ? "CurrentTarget.dataModel"
+                                 : e->kind == K::ObjectFormat ? "CurrentTarget.objectFormat"
+                                 : e->kind == K::BuildMode    ? "CurrentBuild.mode"
+                                 : e->kind == K::Optimization ? "CurrentBuild.optimization"
+                                                              : "CurrentBuild.outputKind";
                 EmitError(e->location, std::string("'") + name + "' can only be used in a 'when' condition");
                 return TypeRef::MakeUnknown();
             }

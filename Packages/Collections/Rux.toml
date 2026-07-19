@@ -1,0 +1,6 @@
+[Package]
+Name = "Collections"
+Version = "0.1.0"
+Type = "Source"
+Description = "Generic data structures"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]

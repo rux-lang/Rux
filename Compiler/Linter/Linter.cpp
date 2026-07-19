@@ -41,6 +41,17 @@ bool IsCamelCase(std::string_view name) {
     return true;
 }
 
+bool Allows(const Decl &decl, const std::string_view rule) {
+    return std::ranges::find(decl.allowedLints, rule) != decl.allowedLints.end();
+}
+
+bool IsSymbolicOperatorName(const std::string_view name) {
+    return !name.empty() && std::ranges::none_of(name, [](const char c) {
+        const auto value = static_cast<unsigned char>(c);
+        return std::isalnum(value) || c == '_';
+    });
+}
+
 class LinterVisitor {
 public:
     explicit LinterVisitor(std::string inputSourceName)
@@ -71,7 +82,7 @@ private:
 
     void VisitDecl(const Decl &decl) {
         if (const auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
-            if (!IsPascalCase(fn->name)) {
+            if (!IsSymbolicOperatorName(fn->name) && !IsPascalCase(fn->name)) {
                 Warn(fn->location, std::format("function name '{}' should be PascalCase", fn->name));
             }
             for (const auto &p : fn->params) {
@@ -84,36 +95,39 @@ private:
             }
         }
         else if (const auto *st = dynamic_cast<const StructDecl *>(&decl)) {
-            if (!IsPascalCase(st->name)) {
+            const bool allowTypeNaming = Allows(decl, "naming.type");
+            if (!allowTypeNaming && !IsPascalCase(st->name)) {
                 Warn(st->location, std::format("struct name '{}' should be PascalCase", st->name));
             }
             for (const auto &f : st->fields) {
-                if (!IsCamelCase(f.name)) {
+                if (!allowTypeNaming && !IsCamelCase(f.name)) {
                     Warn(f.location, std::format("struct field name '{}' should be camelCase", f.name));
                 }
             }
         }
         else if (const auto *en = dynamic_cast<const EnumDecl *>(&decl)) {
-            if (!IsPascalCase(en->name)) {
+            const bool allowTypeNaming = Allows(decl, "naming.type");
+            if (!allowTypeNaming && !IsPascalCase(en->name)) {
                 Warn(en->location, std::format("enum name '{}' should be PascalCase", en->name));
             }
             for (const auto &v : en->variants) {
-                if (!IsPascalCase(v.name)) {
+                if (!allowTypeNaming && !IsPascalCase(v.name)) {
                     Warn(v.location, std::format("enum variant name '{}' should be PascalCase", v.name));
                 }
                 for (const auto &nf : v.namedFields) {
-                    if (!IsCamelCase(nf.name)) {
+                    if (!allowTypeNaming && !IsCamelCase(nf.name)) {
                         Warn(nf.location, std::format("enum variant field name '{}' should be camelCase", nf.name));
                     }
                 }
             }
         }
         else if (const auto *un = dynamic_cast<const UnionDecl *>(&decl)) {
-            if (!IsPascalCase(un->name)) {
+            const bool allowTypeNaming = Allows(decl, "naming.type");
+            if (!allowTypeNaming && !IsPascalCase(un->name)) {
                 Warn(un->location, std::format("union name '{}' should be PascalCase", un->name));
             }
             for (const auto &f : un->fields) {
-                if (!IsCamelCase(f.name)) {
+                if (!allowTypeNaming && !IsCamelCase(f.name)) {
                     Warn(f.location, std::format("union field name '{}' should be camelCase", f.name));
                 }
             }
@@ -154,7 +168,7 @@ private:
             }
         }
         else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
-            if (!IsPascalCase(alias->name)) {
+            if (!Allows(decl, "naming.type") && !IsPascalCase(alias->name)) {
                 Warn(alias->location, std::format("type alias name '{}' should be PascalCase", alias->name));
             }
         }

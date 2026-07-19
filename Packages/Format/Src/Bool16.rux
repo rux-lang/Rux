@@ -1,0 +1,13 @@
+import Text::{ String, StringBuilder };
+
+// The wider bools print the same two words as bool8: what differs between
+// them is how much room they take, not what they can say.
+func ToString(value: bool16) -> String {
+    return value ? String::From("true") : String::From("false");
+}
+
+extend bool16 : Stringable {
+    func ToString(self) -> String {
+        return ToString(*self);
+    }
+}

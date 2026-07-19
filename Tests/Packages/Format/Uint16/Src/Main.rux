@@ -1,0 +1,37 @@
+import Format::ToString;
+import Text::String;
+
+// Std stays out of the dependencies, and a failed check reports itself through
+// the exit code. See the Int8 test for why.
+func Check(actual: String, expected: char8[], code: int) -> int {
+    var text = actual;
+    var wanted = String::From(expected);
+    let ok = text == wanted;
+    text.Free();
+    wanted.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+func Main() -> int {
+    let zero: uint16 = 0;
+    var code = Check(ToString(zero), "0", 10);
+    if code != 0 { return code; }
+
+    let value: uint16 = 512;
+    code = Check(ToString(value), "512", 11);
+    if code != 0 { return code; }
+
+    let max: uint16 = 65535;
+    code = Check(ToString(max), "65535", 20);
+    if code != 0 { return code; }
+
+    // The method the Stringable extension provides.
+    code = Check(max.ToString(), "65535", 30);
+    if code != 0 { return code; }
+
+    return 0;
+}

@@ -1,0 +1,9 @@
+[Package]
+Name = "Bsd"
+Version = "0.1.0"
+Type = "Source"
+Description = "BSD platform bindings"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]
+
+[Dependencies]
+Rux = "*"

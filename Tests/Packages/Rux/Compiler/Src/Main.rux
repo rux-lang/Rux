@@ -1,0 +1,21 @@
+import Rux::{ Assert, CurrentCompiler };
+
+func Main() -> int {
+    // The compiler always reports a version string.
+    Assert(CurrentCompiler.version.length > 0, "version");
+
+    // TODO: the Compiler.HasFeature intrinsic is not yet implemented in the
+    // compiler -- calling it crashes at load with STATUS_ENTRYPOINT_NOT_FOUND
+    // (0xC0000139). Re-enable these once the intrinsic links. Reading the plain
+    // fields of CurrentCompiler above already works.
+    //
+    // // A feature name the compiler does not recognize is reported absent rather
+    // // than raising anything.
+    // Assert(!CurrentCompiler.HasFeature("no-such-compiler-feature"), "unknown feature is absent");
+    //
+    // // The query is a pure function of its argument: asking the same thing twice
+    // // gives the same answer.
+    // Assert(CurrentCompiler.HasFeature("no-such-compiler-feature")
+    //     == CurrentCompiler.HasFeature("no-such-compiler-feature"), "deterministic");
+    return 0;
+}

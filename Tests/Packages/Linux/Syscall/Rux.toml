@@ -1,0 +1,12 @@
+[Package]
+Name = "Syscall"
+Version = "0.1.0"
+Type = "bin"
+Description = "Package test for Linux: Syscall"
+
+[Dependencies]
+Linux = { Path = "../../../../Packages/Linux" }
+Rux = { Path = "../../../../Packages/Rux" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Linux"

@@ -1,0 +1,98 @@
+// sqrt(x*x + y*y), without the overflow that squaring a large argument would
+// cause, without the underflow that squaring a small one would, and without
+// the extra rounding of forming the sum directly.
+//
+// The trick in the last step is that a*a is re-associated around the high
+// half of a, whose square is exact, so the sum handed to Sqrt has almost
+// twice the precision of a plain x*x + y*y.
+func Hypot(x: float64, y: float64) -> float64 {
+    var a = Abs(x);
+    var b = Abs(y);
+    var ha = FloatBits(a) >> 32u64;
+    var hb = FloatBits(b) >> 32u64;
+
+    // Order them so a is the larger.
+    if hb > ha {
+        let ta = a;
+        a = b;
+        b = ta;
+        let th = ha;
+        ha = hb;
+        hb = th;
+    }
+
+    // a is more than 2^60 times b, so b is lost in the rounding of a. This
+    // also carries every infinity and NaN whose partner is finite.
+    if (ha - hb) > 0x3C00000u64 {
+        return a + b;
+    }
+
+    var k = 0i64;
+
+    if ha > 0x5F300000u64 { // a > 2^500
+        if ha >= 0x7FF00000u64 {
+            // Hypot is infinite if either argument is, even if the other is
+            // a NaN; otherwise the NaN propagates through a + b.
+            var w = a + b;
+            if (ha & 0xFFFFFu64) == 0u64 && (FloatBits(a) & 0xFFFFFFFFu64) == 0u64 {
+                w = a;
+            }
+            if hb == 0x7FF00000u64 && (FloatBits(b) & 0xFFFFFFFFu64) == 0u64 {
+                w = b;
+            }
+            return w;
+        }
+        // Scale both down by 2^600. The early return above guarantees b is
+        // large enough that its exponent survives.
+        ha -= 0x25800000u64;
+        hb -= 0x25800000u64;
+        k += 600i64;
+        a = WithHighWord(a, ha);
+        b = WithHighWord(b, hb);
+    }
+
+    if hb < 0x20B00000u64 { // b < 2^-500
+        if hb <= 0xFFFFFu64 { // b is subnormal or zero
+            if (hb | (FloatBits(b) & 0xFFFFFFFFu64)) == 0u64 {
+                return a;
+            }
+            let scale = FromHighWord(0x7FD00000u64); // 2^1022
+            a *= scale;
+            b *= scale;
+            k -= 1022i64;
+        } else {
+            ha += 0x25800000u64;
+            hb += 0x25800000u64;
+            k -= 600i64;
+            a = WithHighWord(a, ha);
+            b = WithHighWord(b, hb);
+        }
+    }
+
+    // Both are now of a size that squares safely.
+    var w = a - b;
+    if w > b {
+        // a is the dominant term, so split it and square the high half exactly.
+        let t1 = FromHighWord(ha);
+        let t2 = a - t1;
+        w = Sqrt(t1 * t1 - (b * (-b) - t2 * (a + t1)));
+    } else {
+        // a and b are within a factor of two, and a - b has cancelled, so the
+        // identity a^2 + b^2 = 2a*b + (a - b)^2 keeps the lost bits.
+        a = a + a;
+        let y1 = FromHighWord(hb);
+        let y2 = b - y1;
+        let t1 = FromHighWord(ha + 0x100000u64);
+        let t2 = a - t1;
+        w = Sqrt(t1 * y1 - (w * (-w) - (t1 * y2 + t2 * b)));
+    }
+
+    if k != 0i64 {
+        return Scalb(w, k);
+    }
+    return w;
+}
+
+func Hypot(x: float32, y: float32) -> float32 {
+    return Hypot(x as float64, y as float64) as float32;
+}

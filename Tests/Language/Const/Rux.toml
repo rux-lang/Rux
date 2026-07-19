@@ -1,0 +1,8 @@
+[Package]
+Name = "Const"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: Const"
+
+[Build]
+Output = "../../../Bin/Tests/Language"

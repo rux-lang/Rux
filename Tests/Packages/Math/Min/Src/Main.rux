@@ -1,0 +1,30 @@
+import Rux::Assert;
+import Math::Min;
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+    let nan = zero / zero;
+
+    Assert(Min(1.0, 2.0) == 1.0, "Min(1, 2)");
+    Assert(Min(2.0, 1.0) == 1.0, "Min(2, 1)");
+    Assert(Min(-3.0, -4.0) == -4.0, "Min negatives");
+    Assert(Min(-inf, 1.0) == -inf, "Min(-Inf, finite)");
+    Assert(Min(inf, 1.0) == 1.0, "Min(+Inf, finite)");
+
+    Assert(Min(nan, 2.0) == 2.0, "Min(NaN, 2)");
+    Assert(Min(2.0, nan) == 2.0, "Min(2, NaN)");
+    let bothNan = Min(nan, nan);
+    Assert(bothNan != bothNan, "Min(NaN, NaN)");
+
+    let zeroMin = Min(0.0, -0.0);
+    Assert(zeroMin == 0.0, "Min(+0, -0)");
+    Assert(one / zeroMin < 0.0, "Min(+0, -0) is -0");
+    let zeroMin2 = Min(-0.0, 0.0);
+    Assert(zeroMin2 == 0.0, "Min(-0, +0)");
+    Assert(one / zeroMin2 < 0.0, "Min(-0, +0) is -0");
+
+    Assert(Min(1.0f32, 2.0f32) == 1.0f32, "Min f32");
+    return 0;
+}

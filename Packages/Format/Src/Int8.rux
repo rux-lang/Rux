@@ -1,0 +1,15 @@
+import Text::{ String, StringBuilder };
+
+// The decimal text of an int8. The value widens to int64 first, which loses
+// nothing, so the digits come from the one loop the package keeps.
+func ToString(value: int8) -> String {
+    var builder = StringBuilder::WithCapacity(4);
+    WriteInt(@builder, value as int64);
+    return builder.IntoString();
+}
+
+extend int8 : Stringable {
+    func ToString(self) -> String {
+        return ToString(*self);
+    }
+}

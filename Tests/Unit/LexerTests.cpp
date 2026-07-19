@@ -78,24 +78,24 @@ TEST_CASE("Lexer does not recognize flat compile-time intrinsic aliases") {
 }
 
 TEST_CASE("Lexer treats compiler parameter roots as ordinary identifiers") {
-    const auto result = Lex("#target.os target.os");
+    const auto result = Lex("#CurrentTarget.os CurrentTarget.os");
     REQUIRE(result.diagnostics.empty());
     REQUIRE(result.tokens.size() == 8);
     CHECK(result.tokens[0].Is(TokenKind::Hash));
     CHECK(result.tokens[1].Is(TokenKind::Ident));
-    CHECK(result.tokens[1].text == "target");
+    CHECK(result.tokens[1].text == "CurrentTarget");
     CHECK(result.tokens[4].Is(TokenKind::Ident));
-    CHECK(result.tokens[4].text == "target");
+    CHECK(result.tokens[4].text == "CurrentTarget");
 }
 
 TEST_CASE("Lexer recognizes intrinsic constant declarations") {
-    const auto result = Lex("intrinsic const target: Target;");
+    const auto result = Lex("intrinsic const CurrentTarget: Target;");
     REQUIRE(result.diagnostics.empty());
     REQUIRE(result.tokens.size() == 7);
     CHECK(result.tokens[0].Is(TokenKind::IntrinsicKeyword));
     CHECK(result.tokens[1].Is(TokenKind::ConstKeyword));
     CHECK(result.tokens[2].Is(TokenKind::Ident));
-    CHECK(result.tokens[2].text == "target");
+    CHECK(result.tokens[2].text == "CurrentTarget");
 }
 
 // '$' carried the old compiler-initialized marker and now has no meaning.

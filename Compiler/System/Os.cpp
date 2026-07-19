@@ -112,7 +112,8 @@ std::size_t TerminalWidth() {
 #if RUX_OS_WINDOWS
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi) == TRUE) {
-        return static_cast<std::size_t>(csbi.srWindow.Right - csbi.srWindow.Left + 1);
+        const long width = static_cast<long>(csbi.srWindow.Right) - static_cast<long>(csbi.srWindow.Left) + 1;
+        return static_cast<std::size_t>(width);
     }
 #else
     winsize w{};

@@ -1,0 +1,89 @@
+import Format::{ ToString, IsNan, IsInfinite, IsFinite };
+import Text::String;
+
+// Std stays out of the dependencies, and a failed check reports itself through
+// the exit code. See the Int test for why.
+//
+// Every literal below carries the f32 suffix: an unsuffixed one is a float64,
+// and a float64 does not narrow to a float32 on its own.
+func Check(value: float32, expected: char8[], code: int) -> int {
+    var actual = ToString(value);
+    var wanted = String::From(expected);
+    let ok = actual == wanted;
+    actual.Free();
+    wanted.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+func Main() -> int {
+    var code = Check(0.0f32, "0.0", 10);
+    if code != 0 { return code; }
+    code = Check(1.0f32, "1.0", 11);
+    if code != 0 { return code; }
+    code = Check(-2.25f32, "-2.25", 12);
+    if code != 0 { return code; }
+
+    // The point of the seven digit cutoff: a float32 widens to the float64 that
+    // holds its full binary value, and 0.1f is really 0.100000001490116119, so
+    // printing it to the fifteen digits a float64 earns would print noise this
+    // value never carried.
+    code = Check(0.1f32, "0.1", 20);
+    if code != 0 { return code; }
+    code = Check(0.2f32, "0.2", 21);
+    if code != 0 { return code; }
+    code = Check(1.0f32 / 3.0f32, "0.3333333", 22);
+    if code != 0 { return code; }
+
+    // Scientific notation takes over at an exponent of 7, where the digits run
+    // out, and below -4.
+    code = Check(1000000.0f32, "1000000.0", 30);
+    if code != 0 { return code; }
+    code = Check(10000000.0f32, "1.0e+07", 31);
+    if code != 0 { return code; }
+    code = Check(0.0001f32, "0.0001", 32);
+    if code != 0 { return code; }
+    code = Check(0.00001f32, "1.0e-05", 33);
+    if code != 0 { return code; }
+
+    // The ends of the float32 range: the largest finite value and the smallest
+    // normal one.
+    code = Check(3.4028235e38f32, "3.402823e+38", 40);
+    if code != 0 { return code; }
+    code = Check(1.1754944e-38f32, "1.175494e-38", 41);
+    if code != 0 { return code; }
+
+    // Values that are not numbers at all. The classification is by float32
+    // overload, so an infinity of this width is recognised as one rather than
+    // being measured against the float64 range and found finite.
+    let nan = 0.0f32 / 0.0f32;
+    let inf = 1.0f32 / 0.0f32;
+    code = Check(nan, "NaN", 50);
+    if code != 0 { return code; }
+    code = Check(inf, "Inf", 51);
+    if code != 0 { return code; }
+    code = Check(-inf, "-Inf", 52);
+    if code != 0 { return code; }
+
+    if !IsNan(nan) { return 60; }
+    if IsNan(1.0f32) { return 61; }
+    if !IsInfinite(inf) { return 62; }
+    if IsInfinite(nan) { return 63; }
+    if IsFinite(inf) { return 64; }
+    if !IsFinite(3.4028235e38f32) { return 65; }
+
+    // The method the Stringable extension provides, which is the same conversion
+    // reached through the interface.
+    let value = 2.5f32;
+    var text = value.ToString();
+    var wanted = String::From("2.5");
+    let ok = text == wanted;
+    text.Free();
+    wanted.Free();
+    if !ok { return 70; }
+
+    return 0;
+}

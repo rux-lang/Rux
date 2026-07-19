@@ -1,0 +1,8 @@
+[Package]
+Name = "BoolMethod"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: BoolMethod"
+
+[Build]
+Output = "../../../Bin/Tests/Language"

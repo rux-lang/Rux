@@ -1,0 +1,53 @@
+import Io::Print;
+import Text::String;
+
+func Separator() {
+    Print("|");
+}
+
+func Main() -> int {
+    let int8Value: int8 = -128;
+    let int16Value: int16 = -32768;
+    let int32Value: int32 = -2147483648;
+    let int64Value: int64 = -9223372036854775808;
+    Print(int8Value); Separator();
+    Print(int16Value); Separator();
+    Print(int32Value); Separator();
+    Print(int64Value); Separator();
+
+    let uint8Value: uint8 = 255;
+    let uint16Value: uint16 = 65535;
+    let uint32Value: uint32 = 4294967295;
+    let uint64Value: uint64 = 18446744073709551615;
+    Print(uint8Value); Separator();
+    Print(uint16Value); Separator();
+    Print(uint32Value); Separator();
+    Print(uint64Value); Separator();
+
+    let intValue: int = -42;
+    let uintValue: uint = 42;
+    let float32Value: float32 = 1.5f32;
+    let float64Value: float64 = -2.25;
+    Print(intValue); Separator();
+    Print(uintValue); Separator();
+    Print(float32Value); Separator();
+    Print(float64Value); Separator();
+
+    let bool8Value: bool8 = true;
+    let bool16Value: bool16 = false;
+    let bool32Value: bool32 = true;
+    Print(bool8Value); Separator();
+    Print(bool16Value); Separator();
+    Print(bool32Value); Separator();
+
+    Print(c8'A'); Separator();
+    Print(c16'B'); Separator();
+    Print(c32'C'); Separator();
+
+    var text = String::From("string-value");
+    Print(text); Separator();
+    text.Free();
+    Print("slice-value"); Separator();
+    Print("formatted {} {} {{ok}}", 7, 2.5);
+    return 0;
+}

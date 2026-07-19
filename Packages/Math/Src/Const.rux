@@ -1,0 +1,16 @@
+// Common mathematical constants, rounded to nearest float64.
+const E = 2.718281828459045;
+const Log2E = 1.4426950408889634;
+const Log10E = 0.4342944819032518;
+const Ln2 = 0.6931471805599453;
+const Ln10 = 2.302585092994046;
+const Pi = 3.141592653589793;
+const Tau = 6.283185307179586;
+const HalfPi = 1.5707963267948966;
+const QuarterPi = 0.7853981633974483;
+const InvPi = 0.3183098861837907;
+const InvTau = 0.15915494309189535;
+const Sqrt2 = 1.4142135623730951;
+const InvSqrt2 = 0.7071067811865476;
+const RadPerDeg = 0.017453292519943295;
+const DegPerRad = 57.29577951308232;

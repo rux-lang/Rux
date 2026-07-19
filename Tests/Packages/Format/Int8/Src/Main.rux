@@ -1,0 +1,53 @@
+import Format::ToString;
+import Text::String;
+
+// Std is deliberately absent from the dependencies: it exports conversions of
+// the same name, and the compiler pools the overloads of two same-named symbols,
+// so Std's would win over this package's and the code under test would never
+// run. That rules out Std::Assert, so a failed check reports itself through the
+// exit code instead: each one below is numbered, and `rux test` prints the
+// number of the first that fails.
+func Check(actual: String, expected: char8[], code: int) -> int {
+    var text = actual;
+    var wanted = String::From(expected);
+    let ok = text == wanted;
+    text.Free();
+    wanted.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+func Main() -> int {
+    let zero: int8 = 0;
+    var code = Check(ToString(zero), "0", 10);
+    if code != 0 { return code; }
+
+    let one: int8 = 1;
+    code = Check(ToString(one), "1", 11);
+    if code != 0 { return code; }
+
+    // A negative value opens with a minus sign; a positive one carries no plus.
+    let negative: int8 = -7;
+    code = Check(ToString(negative), "-7", 12);
+    if code != 0 { return code; }
+
+    // The ends of the range. The most negative value of a signed type is the one
+    // with no positive counterpart, which is why the digits come from the
+    // magnitude taken in unsigned rather than from a negation.
+    let min: int8 = -128;
+    let max: int8 = 127;
+    code = Check(ToString(min), "-128", 20);
+    if code != 0 { return code; }
+    code = Check(ToString(max), "127", 21);
+    if code != 0 { return code; }
+
+    // The method the Stringable extension provides, which is the same conversion
+    // reached through the interface.
+    code = Check(max.ToString(), "127", 30);
+    if code != 0 { return code; }
+
+    return 0;
+}

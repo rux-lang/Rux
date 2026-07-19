@@ -1,252 +1,75 @@
 <p align="center">
-  <a href="https://rux-lang.dev" target="_blank">
-    <img src="https://rux-lang.dev/logo.svg" alt="Rux Logo" width="150"/>
+  <a href="https://rux-lang.dev">
+    <img src="https://rux-lang.dev/logo.svg" alt="Rux logo" width="150">
   </a>
 </p>
 
 # Rux Programming Language
 
+Rux is a fast, compiled, strongly typed, multi-paradigm programming language.
+
 [![FreeBSD](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml)
 [![Linux](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml)
 [![macOS](https://github.com/rux-lang/Rux/actions/workflows/macOS.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/macOS.yml)
 [![Windows](https://github.com/rux-lang/Rux/actions/workflows/Windows.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/Windows.yml)
-[![Lint](https://github.com/rux-lang/Rux/actions/workflows/Lint.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/Lint.yml)
+[![Code Quality](https://github.com/rux-lang/Rux/actions/workflows/CodeQuality.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/CodeQuality.yml)
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](LICENSE.md)
 
-[![GitHub stars](https://img.shields.io/github/stars/rux-lang/Rux?style=flat&logo=github&label=Stars&logoColor=white&color=blue)](https://github.com/rux-lang)
-[![GitHub followers](https://img.shields.io/github/followers/rux-lang?style=flat&logo=github&label=Followers&logoColor=white&color=blue)](https://github.com/rux-lang)
-[![GitHub forks](https://img.shields.io/github/forks/rux-lang/Rux?style=flat&logo=github&logoColor=white&label=Forks&color=blue)](https://github.com/rux-lang)
-[![Discussion](https://img.shields.io/badge/16-gray?style=flat&logo=github&logoColor=white&label=Discussions&color=blue)](https://github.com/rux-lang/Rux/discussions)
-[![Discord](https://img.shields.io/discord/1321469752811585576?style=flat&logo=discord&logoColor=white&label=Discord&color=blue)](https://discord.com/invite/uvSHjtZSVG)
-[![Reddit](https://img.shields.io/reddit/subreddit-subscribers/ruxlang?style=flat&logo=reddit&logoColor=white&label=Reddit&color=blue)](https://www.reddit.com/r/ruxlang)
-[![YouTube](https://img.shields.io/youtube/channel/subscribers/UCNqQ7NIA5pBl3ZO--nOyvDA?style=flat&logo=youtube&logoColor=white&label=YouTube&color=blue)](https://www.youtube.com/@ruxlang)
-[![X](https://img.shields.io/badge/102-gray?logo=x&style=flat&logoColor=white&label=Twitter&color=blue)](https://x.com/ruxlang)
-[![Bluesky](https://img.shields.io/bluesky/followers/rux-lang.dev?style=flat&logo=Bluesky&logoColor=white&label=Bluesky&color=blue)](https://bsky.app/profile/rux-lang.dev)
-[![Mastodon](https://img.shields.io/mastodon/follow/113727153489087809?domain=mastodon.social&style=flat&logo=mastodon&logoColor=white&label=Mastodon&color=blue)](https://mastodon.social/@ruxlang)
-[![Telegram](https://img.shields.io/badge/77-gray?style=flat&logo=telegram&logoColor=white&label=Telegram&color=blue)](https://t.me/ruxlang)
-
-Rux is a fast, compiled, strongly typed, multi-paradigm programming language.
-
-## Project Status
-
-Rux is under active, pre-1.0 development. Language features, compiler behavior, and package-manager formats may change between minor releases. Use the latest release and consult the [changelog](CHANGELOG.md) when upgrading.
+> [!IMPORTANT]
+> Rux is under active, pre-1.0 development. Language features, compiler behavior, and package formats may change between minor releases. Check the [changelog](CHANGELOG.md) when upgrading.
 
 ## Documentation
 
-- [Get Started](https://rux-lang.dev/start)
-- [Rux Reference](https://rux-lang.dev/docs)
-- [API Reference](https://rux-lang.dev/api)
-- [CLI Reference](https://rux-lang.dev/cli)
+- [Get started](https://rux-lang.dev/start)
+- [Language reference](https://rux-lang.dev/docs)
+- [API reference](https://rux-lang.dev/api)
+- [CLI reference](https://rux-lang.dev/cli)
 
-Contributor and compiler-internals documentation lives in [`Docs/`](Docs/README.md).
+Platform installation and source-build guides are indexed in the next two sections. For work on the compiler and repository, use the guide that matches the task:
 
-## Install a Release
+- [Contributing](CONTRIBUTING.md) — prepare a change and understand the contribution requirements.
+- [Development Workflow](Docs/Workflow.md) — configure a development build, run tests, format code, or find a component.
+- [Compiler Architecture](Docs/Architecture.md) — understand component ownership, dependency direction, or the compilation pipeline.
+- [First-Party Packages](Docs/Packages.md) — review package status, layout, dependencies, and centralized tests.
+- [Branch Architecture](Docs/Branches.md) — create a topic branch or understand how changes reach a release.
+- [Pull Request Lifecycle](Docs/PullRequest.md) — prepare, review, update, or merge a pull request.
+- [CI/CD Flow](Docs/CI-CD.md) — reproduce a required check or understand platform-specific CI.
+- [Release Pipeline](Docs/Release.md) — prepare a version, tag it, verify artifacts, and publish a release.
 
-Prebuilt releases are currently published for x86-64 Linux and Windows.
+Installer implementation and maintenance documentation lives beside its source code:
 
-### Linux
+- [Linux installer](Packaging/Linux/README.md)
+- [Windows installers](Packaging/Windows/README.md)
 
-```sh
-curl -fsSL https://rux-lang.dev/install.sh | sh
-```
+These are living documents. Update the relevant page in the same pull request whenever a process, branch rule, installer, or workflow changes. Commands use POSIX shell syntax unless a PowerShell example is provided; on Windows, replace `./Bin/rux` with `.\Bin\rux.exe`.
 
-The installer places `rux` in `~/.local/bin` without requiring root access. See the [Linux installer guide](Packaging/Linux/README.md) for version pinning, custom installation directories, upgrades, and uninstall instructions.
+## Installing a Release
 
-### Windows
+Prebuilt x86-64 releases are currently published for Linux and Windows. Choose your operating system for installation, upgrade, removal, and verification instructions:
 
-From PowerShell:
-
-```powershell
-irm https://rux-lang.dev/install.ps1 | iex
-```
-
-Scoop users can install from the official bucket:
-
-```powershell
-scoop bucket add rux-lang https://github.com/rux-lang/Scoop
-scoop install rux
-```
-
-Alternatively, download `rux-windows.msi` from the [latest GitHub release](https://github.com/rux-lang/Rux/releases/latest). Both methods install for the current user without requiring administrator access. See the [Windows installer guide](Packaging/Windows/README.md) for details.
-
-After installation, open a new terminal and verify the compiler:
-
-```sh
-rux version
-```
+- [FreeBSD](Docs/Platforms/FreeBSD.md#installing-a-release) — build from source; a native release is not published yet.
+- [Linux](Docs/Platforms/Linux.md#installing-a-release) — install with the shell installer.
+- [macOS](Docs/Platforms/macOS.md#installing-a-release) — build from source; a native release is not published yet.
+- [Windows](Docs/Platforms/Windows.md#installing-a-release) — install with PowerShell, Scoop, or MSI.
 
 ## Building from Source
 
-Rux is written in modern **C++26**, so it needs an up-to-date toolchain. If you are new to building C/C++ projects, just follow the steps for your operating system top to bottom — every command can be copied and pasted.
+Rux is written in C++26 and currently builds with Clang. GCC and MSVC support is planned but not yet available. Choose your operating system for prerequisites, build commands, and verification steps:
 
-### Prerequisites
-
-You need the following tools, all in a recent version:
-
-| Tool                              | Version | Description                 |
-| --------------------------------- | ------- | --------------------------- |
-| [Clang](https://clang.llvm.org/)  | 22.1+   | The C++26 compiler          |
-| [CMake](https://cmake.org/)       | 3.31+   | Generates the build files   |
-| [Ninja](https://ninja-build.org/) | 1.13+   | Runs the actual build, fast |
-| [Git](https://git-scm.com/)       | Recent  | Downloads the source code   |
-
-> **Note**
-> GCC and MSVC will be supported later — please build with Clang.
-
-### 1. Get the source
-
-```sh
-git clone https://github.com/rux-lang/Rux.git
-cd Rux
-```
-
-### 2. Install the toolchain and configure
-
-Expand the section for your operating system. Each one installs the tools and then runs CMake to prepare a `build` directory.
-
-<details>
-<summary><b>DragonFly BSD</b></summary>
-
-```sh
-sudo pkg install -y llvm cmake ninja git
-cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
-```
-
-</details>
-
-<details>
-<summary><b>FreeBSD</b></summary>
-
-```sh
-sudo pkg install -y llvm22 cmake ninja git
-cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++22
-```
-
-</details>
-
-<details>
-<summary><b>macOS</b></summary>
-
-Apple's built-in Clang lags behind and lacks full C++26 support, so install the latest LLVM with [Homebrew](https://brew.sh/):
-
-```sh
-brew install llvm cmake ninja git
-cmake -S . -B build -G Ninja \
-  -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++"
-```
-
-</details>
-
-<details>
-<summary><b>NetBSD</b></summary>
-
-```sh
-sudo pkgin -y install clang cmake ninja-build git
-cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
-```
-
-</details>
-
-<details>
-<summary><b>OpenBSD</b></summary>
-
-```sh
-doas pkg_add llvm%22 cmake ninja git
-cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
-```
-
-</details>
-
-<details>
-<summary><b>Ubuntu / Debian</b></summary>
-
-```sh
-# Clang (latest) from the official LLVM apt repository
-wget https://apt.llvm.org/llvm.sh
-chmod +x llvm.sh
-sudo ./llvm.sh 22                 # installs clang++-22
-
-# CMake (latest) and Ninja
-sudo snap install cmake --classic
-sudo apt install -y ninja-build git
-
-cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++-22
-```
-
-</details>
-
-<details>
-<summary><b>Windows</b></summary>
-
-1. Install a current **Visual Studio** or **Visual Studio Build Tools** release with the **Desktop development with C++** workload. This provides the Windows SDK and C runtime that Clang links against.
-2. Install the latest Clang, CMake, and Ninja with [Scoop](https://scoop.sh/). If you don't have Scoop yet, install it from a regular (non-admin) PowerShell:
-
-   ```powershell
-   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-   Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
-   ```
-
-   Then install the tools (all from Scoop's main bucket):
-
-   ```powershell
-   scoop install git llvm cmake ninja
-   ```
-
-3. Open the **x64 Native Tools Command Prompt** for the installed Visual Studio release. This sets up the Windows SDK and C runtime environment that Clang needs to compile and link.
-
-   Prefer your own terminal? Any PowerShell window works too — just initialize the build environment once per session first:
-
-   ```powershell
-   $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-   & "$vs\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64
-   ```
-
-4. Configure the build:
-
-   ```powershell
-   cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
-   ```
-
-</details>
-
-> **Tip**
-> Depending on how Clang is packaged, the compiler may be named `clang++` or
-> carry a version suffix such as `clang++-22` or `clang++22`. Use whichever
-> name your system installed in the `-DCMAKE_CXX_COMPILER=` argument above.
-
-### 3. Compile
-
-```sh
-cmake --build build --config Release
-```
-
-The compiled `rux` binary is written to the `Bin/Release` directory (`Bin/Release/rux`, or `Bin\Release\rux.exe` on Windows).
-
-### 4. Verify
-
-Run the binary to confirm it works:
-
-```sh
-./Bin/Release/rux version
-```
-
-```powershell
-.\Bin\Release\rux.exe version
-```
-
-To use `rux` from anywhere, copy it to a directory on your `PATH` (for example `/usr/local/bin` on Unix-like systems), or add the `Bin/Release` directory to your `PATH`.
-
-If you are building Rux to contribute, continue with the [contributor quick start](CONTRIBUTING.md#quick-start), which enables the C++ unit tests, installs the language-test dependencies, and runs both suites.
-
-## Community
-
-Here’s how you can get [involved](https://rux-lang.dev/community).
+- [FreeBSD](Docs/Platforms/FreeBSD.md#building-from-source)
+- [Linux](Docs/Platforms/Linux.md#building-from-source)
+- [macOS](Docs/Platforms/macOS.md#building-from-source)
+- [Windows](Docs/Platforms/Windows.md#building-from-source)
 
 ## Contributing
 
-The Rux repository is hosted at [rux-lang/Rux](https://github.com/rux-lang/Rux) on GitHub. Read the [Contributing guide](CONTRIBUTING.md) to get started.
+Contributions are welcome. Start with the [contributing guide](CONTRIBUTING.md) and open pull requests against the `dev` branch. The [development workflow](Docs/Workflow.md) explains the compiler layout, tests, formatting, and static analysis in detail.
+
+## Community
+
+Join the project on [GitHub Discussions](https://github.com/rux-lang/Rux/discussions), [Discord](https://discord.com/invite/uvSHjtZSVG), [Reddit](https://www.reddit.com/r/ruxlang), [YouTube](https://www.youtube.com/@ruxlang), [Bluesky](https://bsky.app/profile/rux-lang.dev), [Mastodon](https://mastodon.social/@ruxlang), or [Telegram](https://t.me/ruxlang). More links are available on the [community page](https://rux-lang.dev/community).
 
 ## License
 
-Licensed under the [MIT License](LICENSE.md).
+Rux is available under the [MIT License](LICENSE.md).

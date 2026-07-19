@@ -33,13 +33,13 @@ ParseResult ParseSource(const std::string &source) {
 // fold uses its own built-in variant tables, so the enum bodies here only need
 // to exist, not to be complete.
 constexpr std::string_view kRuxPackageSource = R"(
-const target = 0;
-const build = 0;
-const compiler = 0;
-const source = 0;
-const config = 0;
+const CurrentTarget = 0;
+const CurrentBuild = 0;
+const CurrentCompiler = 0;
+const CurrentSource = 0;
+const CurrentConfig = 0;
 enum OperatingSystem { Windows }
-enum Architecture { X86_64 }
+enum Architecture { X86Bit64 }
 enum ApplicationBinaryInterface { WindowsX64 }
 enum Endianness { Little }
 enum DataModel { LLP64 }
@@ -241,12 +241,12 @@ when Debug {
 
 TEST_CASE("when selects methods inside an extend block") {
     auto parsed = ParseSource(R"(
-import Rux::{ target, OperatingSystem };
+import Rux::{ CurrentTarget, OperatingSystem };
 
 struct Animal {}
 
 extend Animal {
-    when target.os == OperatingSystem::Windows {
+    when CurrentTarget.os == OperatingSystem::Windows {
         func Sound(self) -> int { return 1; }
     } else {
         func Sound(self) -> int { return 2; }
@@ -280,12 +280,12 @@ extend Animal {
     CHECK(ReturnedLiteral(*sound) == "2");
 }
 
-TEST_CASE("when tests the target OS through target.os") {
+TEST_CASE("when tests the target OS through CurrentTarget.os") {
     const std::string source = R"(
-import Rux::{ target, OperatingSystem };
+import Rux::{ CurrentTarget, OperatingSystem };
 
 func Do() -> int {
-    when target.os == OperatingSystem::Windows {
+    when CurrentTarget.os == OperatingSystem::Windows {
         return 1;
     } else {
         return 2;
@@ -306,12 +306,12 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*linuxFunc) == "2");
 }
 
-TEST_CASE("target.os compares against the OperatingSystem enum") {
+TEST_CASE("CurrentTarget.os compares against the OperatingSystem enum") {
     auto parsed = ParseSource(R"(
-import Rux::{ target, OperatingSystem };
+import Rux::{ CurrentTarget, OperatingSystem };
 
 func Do() -> int {
-    when target.os != OperatingSystem::Linux {
+    when CurrentTarget.os != OperatingSystem::Linux {
         return 1;
     } else {
         return 2;
@@ -327,10 +327,10 @@ func Do() -> int {
 
 TEST_CASE("an enum shorthand is rejected in a when condition") {
     auto parsed = ParseSource(R"(
-import Rux::{ target };
+import Rux::{ CurrentTarget };
 
 func Do() -> int {
-    when target.os == .Windows {
+    when CurrentTarget.os == .Windows {
         return 1;
     }
     return 0;
@@ -345,10 +345,10 @@ func Do() -> int {
 
 TEST_CASE("the dropped OS alias no longer names the OperatingSystem enum") {
     auto parsed = ParseSource(R"(
-import Rux::{ target };
+import Rux::{ CurrentTarget };
 
 func Do() -> int {
-    when target.os == OS::Windows {
+    when CurrentTarget.os == OS::Windows {
         return 1;
     }
     return 0;
@@ -361,10 +361,10 @@ func Do() -> int {
 
 TEST_CASE("a built-in enum named in a condition must be imported from Rux") {
     auto parsed = ParseSource(R"(
-import Rux::{ target };
+import Rux::{ CurrentTarget };
 
 func Do() -> int {
-    when target.os == OperatingSystem::Windows {
+    when CurrentTarget.os == OperatingSystem::Windows {
         return 1;
     }
     return 0;
@@ -378,7 +378,7 @@ func Do() -> int {
 TEST_CASE("a build intrinsic used in a condition must be imported from Rux") {
     auto parsed = ParseSource(R"(
 func Do() -> int {
-    when target.os == OperatingSystem::Windows {
+    when CurrentTarget.os == OperatingSystem::Windows {
         return 1;
     }
     return 0;
@@ -386,7 +386,7 @@ func Do() -> int {
 )");
     const auto model = Analyze(parsed.module, "Windows");
     REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message == "unknown identifier 'target'");
+    CHECK(model.diagnostics[0].message == "unknown identifier 'CurrentTarget'");
 }
 
 TEST_CASE("the program's own enums compare by their qualified name") {
@@ -410,16 +410,16 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*func) == "2");
 }
 
-TEST_CASE("target.os tells the BSDs apart") {
+TEST_CASE("CurrentTarget.os tells the BSDs apart") {
     const std::string source = R"(
-import Rux::{ target, OperatingSystem };
+import Rux::{ CurrentTarget, OperatingSystem };
 
 func Do() -> int {
-    when target.os == OperatingSystem::FreeBSD {
+    when CurrentTarget.os == OperatingSystem::FreeBSD {
         return 1;
-    } else when target.os == OperatingSystem::OpenBSD {
+    } else when CurrentTarget.os == OperatingSystem::OpenBSD {
         return 2;
-    } else when target.os == OperatingSystem::DragonFlyBSD {
+    } else when CurrentTarget.os == OperatingSystem::DragonFlyBSD {
         return 3;
     } else {
         return 4;
@@ -447,10 +447,10 @@ func Do() -> int {
 
 TEST_CASE("an OS no build target produces warns instead of quietly never running") {
     auto parsed = ParseSource(R"(
-import Rux::{ target, OperatingSystem };
+import Rux::{ CurrentTarget, OperatingSystem };
 
 func Do() -> int {
-    when target.os == OperatingSystem::Haiku {
+    when CurrentTarget.os == OperatingSystem::Haiku {
         return 1;
     }
     return 0;
@@ -468,10 +468,10 @@ func Do() -> int {
 
 TEST_CASE("a misspelled OS variant is an error, not a silently false branch") {
     auto parsed = ParseSource(R"(
-import Rux::{ target, OperatingSystem };
+import Rux::{ CurrentTarget, OperatingSystem };
 
 func Do() -> int {
-    when target.os == OperatingSystem::Wndows {
+    when CurrentTarget.os == OperatingSystem::Wndows {
         return 1;
     }
     return 0;
@@ -482,7 +482,7 @@ func Do() -> int {
     CHECK(model.diagnostics[0].message ==
           "'.Wndows' is not a variant of 'OperatingSystem'; the variants are: .AIX, .Android, .DragonFlyBSD, .FreeBSD, "
           ".Fuchsia, "
-          ".Haiku, .Illumos, .iOS, .Linux, .MacOS, .NetBSD, .OpenBSD, .QNX, .Redox, .Solaris, .Windows");
+          ".Haiku, .Illumos, .IOS, .Linux, .MacOS, .NetBSD, .OpenBSD, .QNX, .Redox, .Solaris, .Windows");
 }
 
 TEST_CASE("compiler-initialized constants are ordinary expressions outside a when condition") {
@@ -491,10 +491,10 @@ struct Target {
     pointerBits: uint;
 }
 
-intrinsic const target: Target;
+intrinsic const CurrentTarget: Target;
 
 func Do() -> int {
-    let bits = target.pointerBits;
+    let bits = CurrentTarget.pointerBits;
     return 0;
 }
 )");
@@ -560,26 +560,26 @@ func Do() -> int {
 
 TEST_CASE("target and build intrinsics expose the full compile-time context") {
     auto parsed = ParseSource(R"(
-import Rux::{ target, build, compiler, OperatingSystem, Architecture, ApplicationBinaryInterface, Endianness,
+import Rux::{ CurrentTarget, CurrentBuild, CurrentCompiler, OperatingSystem, Architecture, ApplicationBinaryInterface, Endianness,
              DataModel, ObjectFormat, BuildMode, OptimizationMode, OutputKind };
 
 func Selected() -> int {
-    when target.os == OperatingSystem::Windows &&
-        target.arch == Architecture::X86_64 &&
-        target.abi == ApplicationBinaryInterface::WindowsX64 &&
-        target.endian == Endianness::Little &&
-        target.pointerBits == 64 &&
-        target.dataModel == DataModel::LLP64 &&
-        target.objectFormat == ObjectFormat::COFF &&
-        target.triple == "windows-x64" &&
-        target.HasFeature(.AVX2) &&
-        build.profile == "Production" &&
-        build.mode == BuildMode::Release &&
-        build.optimization == OptimizationMode::Speed &&
-        !build.debugAssertions &&
-        build.debugInfo &&
-        build.isTest &&
-        build.outputKind == OutputKind::SharedLibrary {
+    when CurrentTarget.os == OperatingSystem::Windows &&
+        CurrentTarget.arch == Architecture::X86Bit64 &&
+        CurrentTarget.abi == ApplicationBinaryInterface::WindowsX64 &&
+        CurrentTarget.endian == Endianness::Little &&
+        CurrentTarget.pointerBits == 64 &&
+        CurrentTarget.dataModel == DataModel::LLP64 &&
+        CurrentTarget.objectFormat == ObjectFormat::COFF &&
+        CurrentTarget.triple == "windows-x64" &&
+        CurrentTarget.HasFeature(.AVX2) &&
+        CurrentBuild.profile == "Production" &&
+        CurrentBuild.mode == BuildMode::Release &&
+        CurrentBuild.optimization == OptimizationMode::Speed &&
+        !CurrentBuild.debugAssertions &&
+        CurrentBuild.debugInfo &&
+        CurrentBuild.isTest &&
+        CurrentBuild.outputKind == OutputKind::SharedLibrary {
         return 1;
     } else {
         return 0;
@@ -612,16 +612,16 @@ func Selected() -> int {
 
 TEST_CASE("configuration and compiler feature intrinsics are queryable") {
     auto parsed = ParseSource(R"(
-import Rux::{ config, compiler, source };
+import Rux::{ CurrentConfig, CurrentCompiler, CurrentSource };
 
 func Selected() -> int {
-    when config.Has("sqlite") &&
-        config.Get("allocator") == "mimalloc" &&
-        compiler.HasFeature("conditional-compilation") &&
-        !compiler.HasFeature("imaginary-feature") &&
-        compiler.version == "1.2.3" &&
-        source.function == "Selected" &&
-        source.module == "test" {
+    when CurrentConfig.Has("sqlite") &&
+        CurrentConfig.Get("allocator") == "mimalloc" &&
+        CurrentCompiler.HasFeature("conditional-compilation") &&
+        !CurrentCompiler.HasFeature("imaginary-feature") &&
+        CurrentCompiler.version == "1.2.3" &&
+        CurrentSource.function == "Selected" &&
+        CurrentSource.module == "test" {
         return 1;
     } else {
         return 0;
@@ -657,12 +657,12 @@ TEST_CASE("intrinsic declares a compiler-initialized ordinary constant") {
     auto parsed = ParseSource(R"(
 struct Target { pointerBits: uint; }
 
-intrinsic const target: Target;
+intrinsic const CurrentTarget: Target;
 )");
     REQUIRE(parsed.module.items.size() == 2);
     const auto *decl = dynamic_cast<const ConstDecl *>(parsed.module.items[1].get());
     REQUIRE(decl != nullptr);
-    CHECK(decl->name == "target");
+    CHECK(decl->name == "CurrentTarget");
     // The type names the intrinsic, so the constant can be renamed freely.
     CHECK(decl->intrinsicName == "Target");
     CHECK(decl->value == nullptr);
@@ -711,35 +711,35 @@ extend Config {
     intrinsic func Has(self, name: char8[]) -> bool;
 }
 
-intrinsic const target: Target;
-intrinsic const build: Build;
-intrinsic const compiler: Compiler;
-intrinsic const source: Source;
-intrinsic const config: Config;
+intrinsic const CurrentTarget: Target;
+intrinsic const CurrentBuild: Build;
+intrinsic const CurrentCompiler: Compiler;
+intrinsic const CurrentSource: Source;
+intrinsic const CurrentConfig: Config;
 
 module Demo {
     func Values() {
-        let line = source.line;
-        let column = source.column;
-        let fileName = source.fileName;
-        let filePath = source.filePath;
-        let function = source.function;
-        let moduleName = source.module;
-        let date = build.date;
-        let time = build.time;
-        let timestamp = build.timestamp;
-        let pointerBits = target.pointerBits;
-        let targetTriple = target.triple;
-        let feature = target.HasFeature(TargetFeature::AVX2);
-        let profile = build.profile;
-        let debugAssertions = build.debugAssertions;
-        let debugInfo = build.debugInfo;
-        let isTest = build.isTest;
-        let configValue = config.Get("allocator");
-        let hasConfig = config.Has("allocator");
-        let version = compiler.version;
-        let compilerFeature = compiler.HasFeature("namespaced-intrinsics");
-        let currentTarget = target;
+        let line = CurrentSource.line;
+        let column = CurrentSource.column;
+        let fileName = CurrentSource.fileName;
+        let filePath = CurrentSource.filePath;
+        let function = CurrentSource.function;
+        let moduleName = CurrentSource.module;
+        let date = CurrentBuild.date;
+        let time = CurrentBuild.time;
+        let timestamp = CurrentBuild.timestamp;
+        let pointerBits = CurrentTarget.pointerBits;
+        let targetTriple = CurrentTarget.triple;
+        let feature = CurrentTarget.HasFeature(TargetFeature::AVX2);
+        let profile = CurrentBuild.profile;
+        let debugAssertions = CurrentBuild.debugAssertions;
+        let debugInfo = CurrentBuild.debugInfo;
+        let isTest = CurrentBuild.isTest;
+        let configValue = CurrentConfig.Get("allocator");
+        let hasConfig = CurrentConfig.Has("allocator");
+        let version = CurrentCompiler.version;
+        let compilerFeature = CurrentCompiler.HasFeature("namespaced-intrinsics");
+        let currentTarget = CurrentTarget;
     }
 }
 )");
@@ -807,11 +807,11 @@ module Demo {
 
 TEST_CASE("when includes true declarations and removes false declarations and imports") {
     auto parsed = ParseSource(R"(
-import Rux::{ compiler };
+import Rux::{ CurrentCompiler };
 
 const Enabled = true;
 
-when Enabled && compiler.HasFeature("conditional-compilation") {
+when Enabled && CurrentCompiler.HasFeature("conditional-compilation") {
     func Kept() -> int { return 1; }
 
     #Link("Kernel32.dll", "Beep")
@@ -846,9 +846,9 @@ when false {
 
 TEST_CASE("Link resolves a target-selected compile-time string constant") {
     auto parsed = ParseSource(R"(
-import Rux::{ OperatingSystem, target };
+import Rux::{ OperatingSystem, CurrentTarget };
 
-when target.os == OperatingSystem::Windows {
+when CurrentTarget.os == OperatingSystem::Windows {
     const LibName = "ucrtbase.dll";
 } else {
     const LibName = "libm.so.6";

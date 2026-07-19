@@ -1,0 +1,25 @@
+import Rux::Assert;
+import Memory::{ Alloc, Free, Set };
+
+func Main() -> int {
+    let buffer = Alloc(1024);
+    Assert(buffer != null, "Alloc(1024)");
+
+    // Every byte of the block must be writable and read back what was written.
+    Set(buffer, 1024, 0xA5);
+    let bytes = buffer as *uint8;
+    Assert(*bytes == 0xA5, "Alloc(1024) first byte");
+    Assert(*(bytes + 1023) == 0xA5, "Alloc(1024) last byte");
+
+    let other = Alloc(1024);
+    Assert(other != null, "second Alloc(1024)");
+    Assert(other != buffer, "distinct allocations");
+
+    Free(other);
+    Free(buffer);
+
+    let small = Alloc(1);
+    Assert(small != null, "Alloc(1)");
+    Free(small);
+    return 0;
+}

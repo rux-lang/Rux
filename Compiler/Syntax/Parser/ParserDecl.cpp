@@ -2,6 +2,7 @@
 
 #include "Syntax/Parser/Parser.h"
 
+#include <algorithm>
 #include <cctype>
 #include <charconv>
 #include <format>
@@ -87,7 +88,8 @@ static std::string DecodeStringLiteralText(const std::string &text) {
 }
 
 // Parses one `#Name(...)` attribute call, with the '#' already consumed.
-// `#Error` and `#Warn` act at each use of the declaration, `#Link` describes
+// `#Error` and `#Warn` act at each use of the declaration, `#Allow` suppresses
+// a named lint rule for one declaration, `#Link` describes
 // how an extern declaration is imported (`#Library` and `#Symbol` are retained
 // as compatibility spellings), and `#When` conditionally includes the
 // declaration at compile time, `#Abi(...)` selects a calling convention, and
@@ -97,8 +99,8 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     const SourceLocation nameLoc = CurrentLocation();
     const std::string name = Advance().text;
 
-    if (name != "Error" && name != "Warn" && name != "Link" && name != "Library" && name != "Symbol" &&
-        name != "NoReturn" && name != "Abi") {
+    if (name != "Error" && name != "Warn" && name != "Allow" && name != "Link" && name != "Library" &&
+        name != "Symbol" && name != "NoReturn" && name != "Abi") {
         // `#Intrinsic("Name")` became the `intrinsic` keyword, which takes its
         // name from the declaration instead of repeating it in a string.
         EmitError(nameLoc, name == "Intrinsic"
@@ -165,6 +167,34 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
 
         if (!Check(TokenKind::RightParen)) {
             EmitError(CurrentLocation(), "'#Abi' accepts exactly one argument");
+            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                Advance();
+            }
+        }
+        Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+        return;
+    }
+
+    if (name == "Allow") {
+        attrs.allowLocation = attributeLoc;
+        if (!Check(TokenKind::StringLiteral)) {
+            EmitError(CurrentLocation(), "'#Allow' takes a lint rule string");
+        }
+        else {
+            std::string rule = DecodeStringLiteralText(Advance().text);
+            if (rule != "naming.type") {
+                EmitError(nameLoc, std::format("unknown lint rule '{}'; valid rules are: naming.type", rule));
+            }
+            else if (std::find(attrs.allowedLints.begin(), attrs.allowedLints.end(), rule) !=
+                     attrs.allowedLints.end()) {
+                EmitError(nameLoc, std::format("duplicate '#Allow(\"{}\")' attribute", rule));
+            }
+            else {
+                attrs.allowedLints.push_back(std::move(rule));
+            }
+        }
+        if (!Check(TokenKind::RightParen)) {
+            EmitError(CurrentLocation(), "'#Allow' accepts exactly one argument");
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                 Advance();
             }
@@ -307,6 +337,13 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
     }
     if (decl->errorMessage.empty()) {
         decl->errorMessage = attrs.errorMessage;
+    }
+    decl->allowedLints.insert(decl->allowedLints.end(), attrs.allowedLints.begin(), attrs.allowedLints.end());
+
+    if (!attrs.allowedLints.empty() && !dynamic_cast<TypeAliasDecl *>(decl.get()) &&
+        !dynamic_cast<StructDecl *>(decl.get()) && !dynamic_cast<EnumDecl *>(decl.get()) &&
+        !dynamic_cast<UnionDecl *>(decl.get())) {
+        EmitError(attrs.allowLocation, "'#Allow(\"naming.type\")' can only be applied to a type declaration");
     }
     if (attrs.usedLink && !dynamic_cast<ExternFuncDecl *>(decl.get()) && !dynamic_cast<ExternBlockDecl *>(decl.get())) {
         EmitError(attrs.linkLocation, "'#Link' can only be applied to an extern function or extern block");
@@ -848,7 +885,7 @@ std::unique_ptr<StructDecl> Parser::ParseStructDecl(bool isPublic) {
         }
 
         // Keywords are contextual after a field declaration starts. This lets
-        // ordinary package APIs expose members such as `source.module`.
+        // ordinary package APIs expose members such as `CurrentSource.module`.
         field.name =
             Check(TokenKind::ModuleKeyword) ? Advance().text : Expect(TokenKind::Ident, "expected field name").text;
         Expect(TokenKind::Colon, "expected ':'");
@@ -1108,18 +1145,18 @@ std::unique_ptr<ModuleDecl> Parser::ParseModuleDecl(bool isPublic) {
     }
     Expect(TokenKind::RightBrace, "expected '}'");
 
-    std::unique_ptr<ModuleDecl> nested;
-    for (std::size_t i = path.size(); i-- > 0;) {
+    auto nested = std::make_unique<ModuleDecl>();
+    nested->location = loc;
+    nested->isPublic = path.size() == 1 ? isPublic : false;
+    nested->name = std::move(path.back());
+    nested->items = std::move(items);
+
+    for (std::size_t i = path.size() - 1; i-- > 0;) {
         auto decl = std::make_unique<ModuleDecl>();
         decl->location = loc;
         decl->isPublic = (i == 0) ? isPublic : false;
         decl->name = std::move(path[i]);
-        if (nested) {
-            decl->items.push_back(std::move(nested));
-        }
-        else {
-            decl->items = std::move(items);
-        }
+        decl->items.push_back(std::move(nested));
         nested = std::move(decl);
     }
     return nested;
@@ -1189,7 +1226,7 @@ std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic, bool isIntrinsi
     }
 
     if (isIntrinsic) {
-        // The type names the intrinsic: `intrinsic const target: Target;` binds
+        // The type names the intrinsic: `intrinsic const CurrentTarget: Target;` binds
         // the compiler's `Target`. The constant is only a name for it, so it can
         // be renamed without rebinding.
         if (decl->type) {

@@ -1,0 +1,37 @@
+import Rux::Assert;
+import Memory::{ Alloc, Compare, Copy, Free, Set, Zero };
+
+func Main() -> int {
+    let src = Alloc(64);
+    let dst = Alloc(64);
+    Assert(src != null && dst != null, "Alloc(64)");
+
+    // A distinct byte per position catches a copy that gets the order wrong.
+    let source = src as *uint8;
+    var i: uint = 0;
+    while i < 64 {
+        *(source + i) = i as uint8;
+        i++;
+    }
+
+    Zero(dst, 64);
+    Copy(dst, src, 64);
+    Assert(Compare(dst, src, 64) == 64, "Copy duplicates the block");
+
+    // Only the first length bytes are written.
+    Set(dst, 64, 0xEE);
+    Copy(dst, src, 32);
+    Assert(Compare(dst, src, 32) == 32, "Copy writes up to length");
+
+    let tail = dst as *uint8;
+    Assert(*(tail + 32) == 0xEE, "Copy stops at length");
+
+    // A length of zero copies nothing.
+    Set(dst, 64, 0x11);
+    Copy(dst, src, 0);
+    Assert(*tail == 0x11, "Copy(dest, src, 0)");
+
+    Free(dst);
+    Free(src);
+    return 0;
+}

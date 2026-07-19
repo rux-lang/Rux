@@ -1,0 +1,123 @@
+import Rux::Assert;
+import Math::Tan;
+
+// Both the Win64 and System V ABIs pass the first float argument in xmm0 and
+// return an integer in rax.
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+// Every expected value below is the correctly rounded tangent of the same
+// double. Comparing the bit patterns rather than the difference measures the
+// error in ulps, so the tolerance stays meaningful both near a zero of the
+// tangent and near a pole, where an absolute tolerance would be useless.
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 1i64;
+}
+
+func Main() -> int {
+    // Zero keeps its sign, which the argument reduction would otherwise lose.
+    var one = 1.0;
+    Assert(Tan(0.0) == 0.0, "Tan(0.0) is zero");
+    let negZero = Tan(-0.0);
+    Assert(negZero == 0.0, "Tan(-0.0) is zero");
+    Assert(one / negZero < 0.0, "Tan(-0.0) keeps the sign of zero");
+
+    // Below 2^-28 the result is the argument itself.
+    Assert(Tan(1e-8) == 1e-8, "Tan(1e-8) is 1e-8");
+
+    // Inside the kernel's own range, where nothing is reduced.
+    Assert(Close(Tan(0.5), 0.5463024898437905), "Tan(0.5)");
+    Assert(Close(Tan(-0.25), -0.25534192122103627), "Tan(-0.25)");
+
+    // Either side of 0.6743354797363281, where the kernel folds the argument
+    // through Pi/4 - |x| rather than trusting the polynomial.
+    Assert(Close(Tan(0.6743), 0.7992771097088051), "Tan just below the fold");
+    Assert(Close(Tan(0.6743354797363281), 0.7993352571071692), "Tan at the fold");
+    Assert(Close(Tan(0.78), 0.989261536876605), "Tan(0.78)");
+    Assert(Close(Tan(0.7853981633974483), 0.9999999999999999), "Tan(Pi/4)");
+
+    // Odd symmetry: tan(-x) = -tan(x).
+    Assert(Close(Tan(1.0), 1.5574077246549023), "Tan(1.0)");
+    Assert(Close(Tan(-1.0), -1.5574077246549023), "Tan(-1.0)");
+
+    // Each of the four quadrants of the reduction.
+    Assert(Close(Tan(2.0), -2.185039863261519), "Tan(2.0)");
+    Assert(Close(Tan(3.0), -0.1425465430742778), "Tan(3.0)");
+    Assert(Close(Tan(4.0), 1.1578212823495775), "Tan(4.0)");
+
+    // The nearest double to Pi/2 misses the pole, and what is left is the
+    // reciprocal of the reduction error. An odd quadrant takes the -1/tan(r)
+    // path through the kernel, so this is the value that exercises it.
+    Assert(Close(Tan(1.5707963267948966), 1.633123935319537e16), "Tan(Pi/2)");
+
+    // Near the zeros of the tangent the result is the reduction error itself,
+    // so these are the values a sloppy range reduction gets wrong.
+    Assert(Close(Tan(3.141592653589793), -1.2246467991473532e-16), "Tan(Pi)");
+    Assert(Close(Tan(6.283185307179586), -2.4492935982947064e-16), "Tan(2*Pi)");
+
+    // Arguments needing many quadrants of reduction.
+    Assert(Close(Tan(100.0), -0.5872139151569291), "Tan(100.0)");
+    Assert(Close(Tan(1e6), -0.373624453987599), "Tan(1e6)");
+
+    // Landing just short of a zero of the tangent, where the reduced argument
+    // is all that survives.
+    Assert(Close(Tan(94.24777970194157), 9.42477703556143e-08), "Tan near 30*Pi");
+    Assert(Close(Tan(204.20352268754007), 2.042035119110697e-07), "Tan near 65*Pi");
+    Assert(Close(Tan(81.73383253581802), 0.05247161928021053), "Tan(81.73383253581802)");
+
+    // Past 2^22 * Pi/2 a Cody-Waite reduction runs out of bits and the result
+    // silently drifts. These are where Payne-Hanek reduction earns its keep.
+    Assert(Close(Tan(2e7), -1.1807609264644945), "Tan(2e7)");
+    Assert(Close(Tan(1e15), -1.672414782127583), "Tan(1e15)");
+    Assert(Close(Tan(1e300), 1.4214488238747245), "Tan(1e300)");
+    Assert(Close(Tan(1.7976931348623157e308), -0.004962015874444895), "Tan(DBL_MAX)");
+
+    // The double whose reduced argument is the smallest of any: 6381956970095103 * 2^797.
+    // Its tangent is the reciprocal of that argument, so every bit of the
+    // reduction has to be right.
+    Assert(Close(Tan(5.319372648326541e255), -2.133485385753704e18), "Tan(worst case reduction)");
+
+    // NaN propagates and the infinities have no tangent.
+    var zero = 0.0;
+    let nan = zero / zero;
+    let nanTan = Tan(nan);
+    Assert(nanTan != nanTan, "Tan(NaN) is NaN");
+
+    let inf = one / zero;
+    let infTan = Tan(inf);
+    Assert(infTan != infTan, "Tan(+Inf) is NaN");
+    let negInfTan = Tan(-inf);
+    Assert(negInfTan != negInfTan, "Tan(-Inf) is NaN");
+
+    // The float32 overload is chosen by the argument type and returns float32.
+    Assert(Tan(0.0f32) == 0.0f32, "Tan(0.0f32)");
+    Assert(Tan(1.0f32) == 1.5574077367782593f32, "Tan(1.0f32)");
+    Assert(Tan(0.5f32) == 0.5463024973869324f32, "Tan(0.5f32)");
+    Assert(Tan(2.0f32) == -2.185039758682251f32, "Tan(2.0f32)");
+    Assert(Tan(100.0f32) == -0.587213933467865f32, "Tan(100.0f32)");
+    Assert(Tan(1e6f32) == -0.37362444400787354f32, "Tan(1e6f32)");
+
+    let nan32 = Tan(-1.0f32 / 0.0f32);
+    Assert(nan32 != nan32, "Tan(-Inf32) is NaN");
+
+    return 0;
+}

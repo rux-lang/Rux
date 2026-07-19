@@ -1,0 +1,15 @@
+// The largest integer at or below x. Truncation already gives it for x >= 0;
+// below zero it rounds the wrong way, and only by a whole one when x had a
+// fractional part to lose. Floor(-0.0) is -0.0 and Floor(-Inf) is -Inf,
+// because neither has one.
+func Floor(x: float64) -> float64 {
+    let t = Trunc(x);
+    if x < 0.0 && t != x {
+        return t - 1.0;
+    }
+    return t;
+}
+
+func Floor(x: float32) -> float32 {
+    return Floor(x as float64) as float32;
+}

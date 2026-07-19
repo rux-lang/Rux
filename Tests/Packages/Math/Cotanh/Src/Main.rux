@@ -1,0 +1,54 @@
+import Rux::Assert;
+import Math::Cotanh;
+
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 2i64;
+}
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(Cotanh(0.0) == inf, "Cotanh(0.0) is +Inf");
+    Assert(Cotanh(-0.0) == -inf, "Cotanh(-0.0) is -Inf");
+    Assert(Close(Cotanh(1e-8), 100000000.0), "Cotanh(1e-8)");
+    Assert(Close(Cotanh(-1e-8), -100000000.0), "Cotanh(-1e-8)");
+
+    Assert(Close(Cotanh(0.5), 2.163953413738653), "Cotanh(0.5)");
+    Assert(Close(Cotanh(-2.0), -1.0373147207275482), "Cotanh(-2.0)");
+    Assert(Cotanh(22.0) == 1.0, "Cotanh(22.0)");
+    Assert(Cotanh(-22.0) == -1.0, "Cotanh(-22.0)");
+
+    Assert(Cotanh(inf) == 1.0, "Cotanh(+Inf)");
+    Assert(Cotanh(-inf) == -1.0, "Cotanh(-Inf)");
+
+    let nan = zero / zero;
+    let nanCotanh = Cotanh(nan);
+    Assert(nanCotanh != nanCotanh, "Cotanh(NaN)");
+
+    Assert(Cotanh(0.5f32) == 2.1639533042907715f32, "Cotanh(0.5f32)");
+    return 0;
+}

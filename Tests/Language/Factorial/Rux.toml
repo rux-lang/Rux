@@ -1,0 +1,11 @@
+[Package]
+Name = "Factorial"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: Factorial"
+
+[Dependencies]
+Rux = { Path = "../../../Packages/Rux" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

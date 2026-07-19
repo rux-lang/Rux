@@ -1,0 +1,11 @@
+[Package]
+Name = "Bool"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: Bool"
+
+[Dependencies]
+Rux = { Path = "../../../Packages/Rux" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

@@ -1,0 +1,42 @@
+import Rux::Assert;
+import C::{ sprintf, sscanf, malloc, free, puts, putchar };
+
+func Main() -> int {
+    let buf = malloc(64) as *char8;
+
+    // sprintf formats into the buffer and returns the number of characters
+    // written, not counting the terminating null.
+    let n = sprintf(buf, "%d".data, 42);
+    Assert(n == 2, "sprintf returns written length");
+    Assert(*buf == '4', "sprintf digit one");
+    Assert(*(buf + 1) == '2', "sprintf digit two");
+    Assert(*(buf + 2) == '\0', "sprintf null-terminates");
+
+    // A format that mixes a string and an integer.
+    let m = sprintf(buf, "%s=%d".data, "x".data, 7);
+    Assert(m == 3, "sprintf mixed length");
+    Assert(*buf == 'x', "sprintf string part");
+    Assert(*(buf + 1) == '=', "sprintf literal part");
+    Assert(*(buf + 2) == '7', "sprintf number part");
+
+    // Hexadecimal formatting.
+    sprintf(buf, "%x".data, 255);
+    Assert(*buf == 'f' && *(buf + 1) == 'f', "sprintf hex");
+
+    // sscanf reads formatted input back out of a string.
+    let a = malloc(4) as *int32;
+    let b = malloc(4) as *int32;
+    let count = sscanf("100 200".data, "%d %d".data, a, b);
+    Assert(count == 2, "sscanf assigns two fields");
+    Assert(*a == 100, "sscanf first value");
+    Assert(*b == 200, "sscanf second value");
+
+    // puts and putchar report success by returning a non-negative value.
+    Assert(puts("StdIo test output".data) >= 0, "puts succeeds");
+    Assert(putchar('\n' as int32) == '\n' as int32, "putchar echoes the character");
+
+    free(a as *opaque);
+    free(b as *opaque);
+    free(buf as *opaque);
+    return 0;
+}

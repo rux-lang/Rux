@@ -1,0 +1,11 @@
+[Package]
+Name = "Assert"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: Assert"
+
+[Dependencies]
+Rux = { Path = "../../../Packages/Rux" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

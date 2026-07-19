@@ -1,0 +1,54 @@
+import Rux::Assert;
+import Math::ArcSin;
+
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 4i64;
+}
+
+func Main() -> int {
+    let pio2 = 1.5707963267948966;
+    var zero = 0.0;
+    var one = 1.0;
+
+    Assert(ArcSin(0.0) == 0.0, "ArcSin(0.0)");
+    let negZero = ArcSin(-0.0);
+    Assert(negZero == 0.0, "ArcSin(-0.0)");
+    Assert(one / negZero < 0.0, "ArcSin(-0.0) keeps the sign of zero");
+
+    Assert(Close(ArcSin(0.5), 0.5235987755982989), "ArcSin(0.5)");
+    Assert(Close(ArcSin(-0.25), -0.25268025514207865), "ArcSin(-0.25)");
+    Assert(ArcSin(1.0) == pio2, "ArcSin(1.0)");
+    Assert(ArcSin(-1.0) == -pio2, "ArcSin(-1.0)");
+
+    let outside = ArcSin(2.0);
+    Assert(outside != outside, "ArcSin outside domain");
+
+    let nan = zero / zero;
+    let nanAsin = ArcSin(nan);
+    Assert(nanAsin != nanAsin, "ArcSin(NaN)");
+
+    Assert(ArcSin(0.5f32) == 0.5235987901687622f32, "ArcSin(0.5f32)");
+    return 0;
+}

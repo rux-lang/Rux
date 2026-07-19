@@ -1,0 +1,21 @@
+import Text::{ String, StringBuilder };
+
+// A bool prints as one of the two words it can name, never as 0 or 1.
+func ToString(value: bool8) -> String {
+    return value ? String::From("true") : String::From("false");
+}
+
+extend bool8 : Stringable {
+    func ToString(self) -> String {
+        return ToString(*self);
+    }
+}
+
+// Appends the word to a builder, for a caller who is already accumulating.
+func WriteBool(builder: *StringBuilder, value: bool8) {
+    if value {
+        builder.Append("true");
+        return;
+    }
+    builder.Append("false");
+}

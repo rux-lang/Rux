@@ -1,0 +1,48 @@
+import Format::ToString;
+import Text::String;
+
+// Std stays out of the dependencies, and a failed check reports itself through
+// the exit code. See the Int8 test for why.
+func Check(actual: String, expected: char8[], code: int) -> int {
+    var text = actual;
+    var wanted = String::From(expected);
+    let ok = text == wanted;
+    text.Free();
+    wanted.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+func Main() -> int {
+    let zero: int64 = 0;
+    var code = Check(ToString(zero), "0", 10);
+    if code != 0 { return code; }
+
+    let negative: int64 = -9876543210;
+    code = Check(ToString(negative), "-9876543210", 11);
+    if code != 0 { return code; }
+
+    let positive: int64 = 9876543210;
+    code = Check(ToString(positive), "9876543210", 12);
+    if code != 0 { return code; }
+
+    // int64 is the type every signed conversion widens to, so its ends are the
+    // ones the digit loop is really sized for. The most negative value is the
+    // reason the magnitude is taken in uint64: negating it within int64 would
+    // overflow straight back to itself.
+    let min: int64 = -9223372036854775807 - 1;
+    let max: int64 = 9223372036854775807;
+    code = Check(ToString(min), "-9223372036854775808", 20);
+    if code != 0 { return code; }
+    code = Check(ToString(max), "9223372036854775807", 21);
+    if code != 0 { return code; }
+
+    // The method the Stringable extension provides.
+    code = Check(max.ToString(), "9223372036854775807", 30);
+    if code != 0 { return code; }
+
+    return 0;
+}

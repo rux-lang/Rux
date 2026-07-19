@@ -1,0 +1,108 @@
+// The remainder of x/y carrying the sign of x, exactly as C's fmod: it is
+// x - n*y for the integer n that truncates x/y.
+//
+// The result is exact, and it has to be computed that way. Subtracting
+// n*y in float64 would round the product long before the subtraction, and
+// for a large x and a small y almost nothing of the answer would survive.
+// So the reduction runs on the significands as integers -- shift, compare,
+// subtract -- which is the long division you would do by hand, and the only
+// rounding left is the one that packs the answer back into a float64.
+func Mod(x: float64, y: float64) -> float64 {
+    var uxi = FloatBits(x);
+    let uyi = FloatBits(y);
+    var ex = ((uxi >> 52u64) & 0x7FFu64) as int64;
+    var ey = ((uyi >> 52u64) & 0x7FFu64) as int64;
+    let sx = uxi & 0x8000000000000000u64;
+
+    let ax = uxi & 0x7FFFFFFFFFFFFFFFu64;
+    let ay = uyi & 0x7FFFFFFFFFFFFFFFu64;
+
+    // There is no remainder when y is zero, when y is a NaN, or when x is an
+    // infinity or a NaN. Every one of those cases is a NaN, and x*y/(x*y)
+    // produces it while propagating whichever NaN came in.
+    if ay == 0u64 || y != y || ex == 0x7FFi64 {
+        let p = x * y;
+        return p / p;
+    }
+
+    // |x| < |y| leaves x untouched; |x| == |y| leaves a zero signed like x.
+    if ax <= ay {
+        if ax == ay {
+            return 0.0 * x;
+        }
+        return x;
+    }
+
+    // Strip both down to bare significands. A subnormal has no implicit
+    // leading one, so its leading bit has to be found and shifted up, which
+    // is what drives its exponent below zero.
+    if ex == 0i64 {
+        var t = uxi << 12u64;
+        while (t >> 63u64) == 0u64 {
+            ex -= 1i64;
+            t <<= 1u64;
+        }
+        uxi <<= ((1i64 - ex) as uint64);
+    } else {
+        uxi &= 0xFFFFFFFFFFFFFu64;
+        uxi |= 0x10000000000000u64;
+    }
+
+    var uy = uyi;
+    if ey == 0i64 {
+        var t = uyi << 12u64;
+        while (t >> 63u64) == 0u64 {
+            ey -= 1i64;
+            t <<= 1u64;
+        }
+        uy <<= ((1i64 - ey) as uint64);
+    } else {
+        uy &= 0xFFFFFFFFFFFFFu64;
+        uy |= 0x10000000000000u64;
+    }
+
+    // x mod y, one bit of quotient at a time. A borrow out of the top means
+    // the divisor did not fit, and the subtraction is thrown away.
+    while ex > ey {
+        let d = uxi - uy;
+        if (d >> 63u64) == 0u64 {
+            if d == 0u64 {
+                return 0.0 * x;
+            }
+            uxi = d;
+        }
+        uxi <<= 1u64;
+        ex -= 1i64;
+    }
+
+    let d = uxi - uy;
+    if (d >> 63u64) == 0u64 {
+        if d == 0u64 {
+            return 0.0 * x;
+        }
+        uxi = d;
+    }
+
+    // Renormalize: the remainder is smaller than y, so its leading one has
+    // slipped below bit 52.
+    while (uxi >> 52u64) == 0u64 {
+        uxi <<= 1u64;
+        ex -= 1i64;
+    }
+
+    // Put the exponent back on, or shift the significand down into the
+    // subnormals when the exponent ran out of room below one.
+    if ex > 0i64 {
+        uxi -= 0x10000000000000u64;
+        uxi |= (ex as uint64) << 52u64;
+    } else {
+        uxi >>= ((1i64 - ex) as uint64);
+    }
+    return FromBits(uxi | sx);
+}
+
+// The exact remainder of two float32 values is a float32, so computing it in
+// float64 and rounding once gives it back unchanged.
+func Mod(x: float32, y: float32) -> float32 {
+    return Mod(x as float64, y as float64) as float32;
+}

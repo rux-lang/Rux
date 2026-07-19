@@ -1,0 +1,100 @@
+// Operating systems that can be selected by compile-time target values
+enum OperatingSystem: uint8 {
+    Unknown = 0,
+    AIX = 1,
+    Android = 2,
+    DragonFlyBSD = 3,
+    FreeBSD = 4,
+    Fuchsia = 5,
+    Haiku = 6,
+    Illumos = 7,
+    IOS = 8,
+    Linux = 9,
+    MacOS = 10,
+    NetBSD = 11,
+    OpenBSD = 12,
+    QNX = 13,
+    Redox = 14,
+    Solaris = 15,
+    Windows = 16
+}
+
+// Processor architectures that can be selected by compile-time target values
+enum Architecture: uint8 {
+    Unknown = 0,
+    ARM32 = 1,
+    ARM64 = 2,
+    RISCV32 = 3,
+    RISCV64 = 4,
+    X86Bit32 = 5,
+    X86Bit64 = 6
+}
+
+// Application binary interfaces used by compilation targets
+enum ApplicationBinaryInterface: uint8 {
+    Unknown = 0,
+    AAPCS = 1,
+    AAPCS64 = 2,
+    RiscvIlp32 = 3,
+    RiscvLp64 = 4,
+    SystemV = 5,
+    WindowsX64 = 6,
+    WindowsX86 = 7
+}
+
+// CPU features recognized by compile-time target feature checks
+enum TargetFeature: uint8 {
+    AVX = 0,
+    AVX2 = 1,
+    AVX512 = 2,
+    NEON = 3,
+    RVV = 4,
+    SSE2 = 5,
+    SSE3 = 6,
+    SSE41 = 7,
+    SSE42 = 8,
+    SSSE3 = 9,
+    SVE = 10
+}
+
+// Byte order used by a compilation target
+enum Endianness: uint8 {
+    Big = 0,
+    Little = 1
+}
+
+// Sizes assigned to the fundamental integer and pointer types
+enum DataModel: uint8 {
+    Unknown = 0,
+    ILP32 = 1,
+    LLP64 = 2,
+    LP64 = 3
+}
+
+// Object-file format emitted for a compilation target
+enum ObjectFormat: uint8 {
+    Unknown = 0,
+    COFF = 1,
+    ELF = 2,
+    MachO = 3,
+    Wasm = 4
+}
+
+// Properties of the active compilation target
+struct Target {
+    os: OperatingSystem;
+    arch: Architecture;
+    abi: ApplicationBinaryInterface;
+    endian: Endianness;
+    pointerBits: uint;
+    dataModel: DataModel;
+    objectFormat: ObjectFormat;
+    triple: char8[];
+}
+
+extend Target {
+    intrinsic func HasFeature(self, feature: TargetFeature) -> bool;
+}
+
+// Compile-time property
+intrinsic const CurrentTarget: Target;

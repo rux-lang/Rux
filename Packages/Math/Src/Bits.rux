@@ -1,0 +1,84 @@
+// The bit-level primitives the rest of the package is built on. Nothing here is
+// meant to be called from outside it.
+
+// Reading the bits of a float is portable: both the Win64 and System V ABIs
+// pass the first float argument in xmm0 and return an integer in rax.
+asm func FloatBits(x: float64) -> uint64 {
+    movq rax, xmm0
+    ret
+}
+
+// Writing them back is not, because the integer arrives in rcx under Win64
+// and in rdi under System V. Pinning the convention keeps one body for every
+// target, at the cost of the one #Abi override in the package.
+#Abi(.Win64)
+asm func FromBits(bits: uint64) -> float64 {
+    movq xmm0, rcx
+    ret
+}
+
+// The halves of the bit pattern, the way fdlibm reads them. The high word
+// carries the sign, the exponent and the leading 20 bits of the significand,
+// which is enough to decide almost every branch below without touching the
+// rest.
+func HighWord(x: float64) -> uint64 {
+    return FloatBits(x) >> 32u64;
+}
+
+func LowWord(x: float64) -> uint64 {
+    return FloatBits(x) & 0xFFFFFFFFu64;
+}
+
+// x with its high word replaced, and the double built from a high word alone.
+func WithHighWord(x: float64, high: uint64) -> float64 {
+    return FromBits((high << 32u64) | (FloatBits(x) & 0xFFFFFFFFu64));
+}
+
+func FromHighWord(high: uint64) -> float64 {
+    return FromBits(high << 32u64);
+}
+
+// x with the low 32 bits of its significand cleared. What survives has at
+// most 21 significant bits, so the product of two such values is exact --
+// that is the whole reason the double-double steps below can split a number
+// and multiply the pieces without losing anything.
+func TruncLow(x: float64) -> float64 {
+    return FromBits(FloatBits(x) & 0xFFFFFFFF00000000u64);
+}
+
+// x * 2^k. The power of two is built straight into an exponent field, so the
+// only rounding is the single multiplication. Stepping through 2^1023 keeps
+// that true when k would otherwise overflow the field, and stepping through
+// 2^-1022 * 2^53 keeps it true when the answer lands in the subnormals,
+// where a naive scaling would round twice.
+func Scalb(x: float64, k: int64) -> float64 {
+    let big = 8.98846567431158e307; // 2^1023
+    let small = 2.2250738585072014e-308 * 9007199254740992.0; // 2^-969
+
+    var y = x;
+    var n = k;
+
+    if n > 1023i64 {
+        y *= big;
+        n -= 1023i64;
+        if n > 1023i64 {
+            y *= big;
+            n -= 1023i64;
+            if n > 1023i64 {
+                n = 1023i64;
+            }
+        }
+    } else if n < -1022i64 {
+        y *= small;
+        n += 969i64;
+        if n < -1022i64 {
+            y *= small;
+            n += 969i64;
+            if n < -1022i64 {
+                n = -1022i64;
+            }
+        }
+    }
+
+    return y * FromBits(((1023i64 + n) as uint64) << 52u64);
+}

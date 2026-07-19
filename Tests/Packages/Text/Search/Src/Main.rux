@@ -1,0 +1,67 @@
+import Text::String;
+
+// See Tests/Packages/Text/String for why Std is not a dependency and a failed check reports
+// itself through the exit code.
+func Main() -> int {
+    var haystack = String::From("Hello, World");
+    var hello = String::From("Hello");
+    var world = String::From("World");
+    var comma = String::From(", ");
+    var absent = String::From("Goodbye");
+    var longer = String::From("Hello, World and more");
+    var empty = String::New();
+
+    if !haystack.StartsWith(hello) { return 10; }
+    if haystack.StartsWith(world) { return 11; }
+
+    // A needle longer than the haystack cannot match either end.
+    if haystack.StartsWith(longer) { return 12; }
+    if haystack.EndsWith(longer) { return 13; }
+
+    if !haystack.EndsWith(world) { return 20; }
+    if haystack.EndsWith(hello) { return 21; }
+
+    // Every String starts and ends with nothing.
+    if !haystack.StartsWith(empty) { return 30; }
+    if !haystack.EndsWith(empty) { return 31; }
+    if !empty.StartsWith(empty) { return 32; }
+
+    // IndexOf reports the offset of the first match.
+    if haystack.IndexOf(hello) != 0 { return 40; }
+    if haystack.IndexOf(comma) != 5 { return 41; }
+    if haystack.IndexOf(world) != 7 { return 42; }
+
+    // A needle that is not there reports -1, including one too long to fit.
+    if haystack.IndexOf(absent) != -1 { return 43; }
+    if haystack.IndexOf(longer) != -1 { return 44; }
+
+    // The empty needle matches at the front.
+    if haystack.IndexOf(empty) != 0 { return 45; }
+
+    // A match that runs to the very end is still found, which is the bound the
+    // scan is easiest to get wrong at.
+    var tail = String::From("d");
+    if haystack.IndexOf(tail) != 11 { return 46; }
+    tail.Free();
+
+    // The first of several matches wins.
+    var repeated = String::From("abcabc");
+    var needle = String::From("abc");
+    if repeated.IndexOf(needle) != 0 { return 47; }
+    needle.Free();
+    repeated.Free();
+
+    if !haystack.Contains(world) { return 50; }
+    if !haystack.Contains(comma) { return 51; }
+    if haystack.Contains(absent) { return 52; }
+    if !haystack.Contains(empty) { return 53; }
+
+    empty.Free();
+    longer.Free();
+    absent.Free();
+    comma.Free();
+    world.Free();
+    hello.Free();
+    haystack.Free();
+    return 0;
+}

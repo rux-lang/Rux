@@ -1,0 +1,207 @@
+import Rux::{ Architecture, OperatingSystem, CurrentTarget };
+
+when CurrentTarget.os == OperatingSystem::MacOS &&
+     CurrentTarget.arch == Architecture::X86Bit64 {
+    // Standard file descriptors.
+    const StdIn: int32 = 0;
+    const StdOut: int32 = 1;
+    const StdErr: int32 = 2;
+
+    // Darwin x86-64 partitions syscall numbers by class. Unix/BSD calls use
+    // class 2 in bits 24-31, so callers of Syscall0 through Syscall6 must pass
+    // these complete, class-qualified values rather than the bare ordinals.
+    const UnixSyscallClass: uint64 = 0x02000000;
+
+    const SysExit: uint64 = UnixSyscallClass | 1;
+    const SysRead: uint64 = UnixSyscallClass | 3;
+    const SysWrite: uint64 = UnixSyscallClass | 4;
+    const SysClose: uint64 = UnixSyscallClass | 6;
+    const SysGetPid: uint64 = UnixSyscallClass | 20;
+    const SysMunmap: uint64 = UnixSyscallClass | 73;
+    const SysGetTimeOfDay: uint64 = UnixSyscallClass | 116;
+    const SysMmap: uint64 = UnixSyscallClass | 197;
+
+    const ProtectionNone: int32 = 0x00;
+    const ProtectionRead: int32 = 0x01;
+    const ProtectionWrite: int32 = 0x02;
+    const ProtectionExecute: int32 = 0x04;
+
+    const MapShared: int32 = 0x0001;
+    const MapPrivate: int32 = 0x0002;
+    const MapFixed: int32 = 0x0010;
+    const MapAnonymous: int32 = 0x1000;
+
+    // Darwin's x86-64 timeval layout is an eight-byte time_t followed by a
+    // four-byte suseconds_t (and four bytes of trailing structure padding).
+    struct Timeval {
+        seconds: int64;
+        microseconds: int32;
+    }
+
+    // Rux functions use the System V ABI on x86-64 macOS. The syscall
+    // instruction keeps the first three argument registers and takes the
+    // fourth argument in r10. Darwin reports errors by setting carry with a
+    // positive errno in rax; these wrappers normalize errors to -errno for
+    // parity with the Linux and BSD packages.
+
+    // Executes a raw Darwin system call without arguments.
+    #Abi(.SysV)
+    asm func Syscall0(number: uint64) -> int64 {
+        mov rax, rdi
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    // Executes a raw Darwin system call with one argument.
+    #Abi(.SysV)
+    asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
+        mov rax, rdi
+        mov rdi, rsi
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    // Executes a raw Darwin system call with two arguments.
+    #Abi(.SysV)
+    asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
+        mov rax, rdi
+        mov rdi, rsi
+        mov rsi, rdx
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    // Executes a raw Darwin system call with three arguments.
+    #Abi(.SysV)
+    asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
+        mov rax, rdi
+        mov rdi, rsi
+        mov rsi, rdx
+        mov rdx, rcx
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    // Executes a raw Darwin system call with four arguments.
+    #Abi(.SysV)
+    asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
+        mov rax, rdi
+        mov rdi, rsi
+        mov rsi, rdx
+        mov rdx, rcx
+        mov r10, r8
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    // Executes a raw Darwin system call with five arguments.
+    #Abi(.SysV)
+    asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
+        mov rax, rdi
+        mov rdi, rsi
+        mov rsi, rdx
+        mov rdx, rcx
+        mov r10, r8
+        mov r8, r9
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    // Executes a raw Darwin system call with six arguments.
+    #Abi(.SysV)
+    asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
+        mov rax, rdi
+        mov rdi, rsi
+        mov rsi, rdx
+        mov rdx, rcx
+        mov r10, r8
+        mov r8, r9
+        mov r9, qword [rsp + 8]
+        syscall
+        jnc done
+        neg rax
+    done:
+        ret
+    }
+
+    func SignExtendFd(fd: int32) -> uint64 {
+        return (fd as int64) as uint64;
+    }
+
+    // Reads up to count bytes from a file descriptor into buffer.
+    func Read(fd: int32, buffer: *opaque, count: uint) -> int64 {
+        return Syscall3(SysRead, SignExtendFd(fd), buffer as uint64, count as uint64);
+    }
+
+    // Writes up to count bytes from buffer to a file descriptor.
+    func Write(fd: int32, buffer: *const opaque, count: uint) -> int64 {
+        return Syscall3(SysWrite, SignExtendFd(fd), buffer as uint64, count as uint64);
+    }
+
+    // Closes a file descriptor and releases its kernel resources.
+    func Close(fd: int32) -> int64 {
+        return Syscall1(SysClose, SignExtendFd(fd));
+    }
+
+    // Terminates the current process with code; returns only if the syscall fails.
+    func Exit(code: int32) {
+        Syscall1(SysExit, (code as int64) as uint64);
+    }
+
+    // Returns the process identifier of the calling process.
+    func GetPid() -> int64 {
+        return Syscall0(SysGetPid);
+    }
+
+    // Creates a memory mapping and returns its address or a negative errno value.
+    func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32, offset: uint64) -> int64 {
+        return Syscall6(
+            SysMmap,
+            address as uint64,
+            length as uint64,
+            protection as uint64,
+            flags as uint64,
+            SignExtendFd(fd),
+            offset
+        );
+    }
+
+    // Removes a memory mapping that begins at address and spans length bytes.
+    func Munmap(address: *opaque, length: uint) -> int64 {
+        return Syscall2(SysMunmap, address as uint64, length as uint64);
+    }
+
+    // Reads the current wall-clock time. The raw Darwin entry has an optional
+    // third mach_absolute_time output; this wrapper intentionally leaves it null.
+    func GetTimeOfDay(time: *Timeval) -> int64 {
+        return Syscall3(SysGetTimeOfDay, time as uint64, 0, 0);
+    }
+
+    // Reports whether a raw result is in the normalized -4095 through -1 error range.
+    func IsError(result: int64) -> bool {
+        return result < 0 && result >= -4095;
+    }
+
+    // Extracts a positive errno from a raw syscall result, or zero on success.
+    func Errno(result: int64) -> int64 {
+        return IsError(result) ? -result : 0;
+    }
+}

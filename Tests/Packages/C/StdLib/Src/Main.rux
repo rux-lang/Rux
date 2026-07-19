@@ -1,0 +1,59 @@
+import Rux::Assert;
+import C::{
+    malloc, free, calloc, realloc,
+    abs, labs, llabs, atoi, atol, atoll, atof,
+    rand, srand
+};
+
+func Main() -> int {
+    // malloc hands back a writable block; every byte reads back what was written.
+    let block = malloc(64) as *uint8;
+    Assert(block != null as *uint8, "malloc(64)");
+    *block = 0x5A;
+    *(block + 63) = 0xC3;
+    Assert(*block == 0x5A, "malloc first byte");
+    Assert(*(block + 63) == 0xC3, "malloc last byte");
+    free(block as *opaque);
+
+    // calloc zero-initializes the whole array of num * size bytes.
+    let zeroed = calloc(4, 8) as *uint8;
+    Assert(zeroed != null as *uint8, "calloc(4, 8)");
+    Assert(*zeroed == 0, "calloc first byte is zero");
+    Assert(*(zeroed + 31) == 0, "calloc last byte is zero");
+    free(zeroed as *opaque);
+
+    // realloc grows a block while preserving the bytes already stored in it.
+    let grow = malloc(8) as *uint8;
+    *grow = 0x11;
+    *(grow + 7) = 0x22;
+    let bigger = realloc(grow as *opaque, 32) as *uint8;
+    Assert(bigger != null as *uint8, "realloc(32)");
+    Assert(*bigger == 0x11, "realloc preserves first byte");
+    Assert(*(bigger + 7) == 0x22, "realloc preserves last byte");
+    free(bigger as *opaque);
+
+    // Integer absolute value across the three widths.
+    Assert(abs(-7) == 7, "abs(-7)");
+    Assert(abs(7) == 7, "abs(7)");
+    Assert(labs(-100000) == 100000, "labs(-100000)");
+    Assert(llabs(-5000000000) == 5000000000, "llabs(-5000000000)");
+
+    // String-to-number conversion for each width.
+    Assert(atoi("12345".data) == 12345, "atoi(\"12345\")");
+    Assert(atoi("-42".data) == -42, "atoi(\"-42\")");
+    Assert(atol("2000000000".data) == 2000000000, "atol(\"2000000000\")");
+    Assert(atoll("9000000000".data) == 9000000000, "atoll(\"9000000000\")");
+
+    // atof parses a value that is exact in binary floating point.
+    Assert(atof("2.5".data) == 2.5, "atof(\"2.5\")");
+
+    // rand stays within its non-negative range, and seeding with the same value
+    // reproduces the same sequence.
+    Assert(rand() >= 0, "rand() is non-negative");
+    srand(1);
+    let first = rand();
+    srand(1);
+    let second = rand();
+    Assert(first == second, "srand reseeds a reproducible sequence");
+    return 0;
+}

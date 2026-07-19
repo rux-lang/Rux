@@ -1,6 +1,7 @@
 name: FreeBSD
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main, dev ]
   pull_request:
@@ -10,6 +11,9 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 # GitHub has no native FreeBSD runner, so each job runs a FreeBSD VM (via
 # QEMU) on an Ubuntu host. Build and Test are separate jobs: the Build VM
@@ -21,61 +25,69 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Build in FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.2"
+          release: "14.4"
           usesh: true
           # llvm22 provides clang++22, matching the Clang 22 used elsewhere.
           prepare: |
             pkg install -y llvm22 cmake ninja
           run: |
             set -e
-            cmake -S . -B build -G Ninja \
+            cmake -S . -B Build -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_CXX_COMPILER=clang++22 \
-              -DRUX_WERROR=ON
-            cmake --build build --config Release
+              -DRUX_WERROR=ON \
+              -DRUX_BUILD_TESTS=ON
+            cmake --build Build --config Release --parallel
+            ctest --test-dir Build --output-on-failure -C Release
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-freebsd
-          path: Bin/Release/rux
+          name: rux-freebsd-x64
+          path: Bin/rux
           if-no-files-found: error
+          retention-days: 7
 
   test:
     name: Test
     needs: build
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Download binary artifact
         uses: actions/download-artifact@v8
         with:
-          name: rux-freebsd
-          path: Bin/Release
+          name: rux-freebsd-x64
+          path: Bin
 
       - name: Test in FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.2"
+          release: "14.4"
           usesh: true
-          # The prebuilt binary needs the Clang runtime libraries. Package
-          # installation also fetches the registry with curl and clones
-          # package repositories with git.
+          # The prebuilt binary needs the Clang runtime libraries. The
+          # workspace and test manifests resolve first-party packages
+          # locally, so no registry or Git client is needed.
           prepare: |
-            pkg install -y llvm22 curl git
-          # Manifest-less workspace mode discovers test dependencies before
-          # running the suite from the repository root.
+            pkg install -y llvm22
           run: |
             set -e
-            chmod +x Bin/Release/rux
-            ./Bin/Release/rux install
-            ./Bin/Release/rux test --release
+            chmod +x Bin/rux
+            ./Bin/rux check
+            ./Bin/rux lint
+            ./Bin/rux test --release

@@ -1,0 +1,31 @@
+// The integer part of x, rounded toward zero. Masking away the bits below
+// the binary point does it in one step, and it costs nothing to be right on
+// the awkward inputs: Trunc(-0.4) keeps its sign and is -0.0, and an
+// infinity or a NaN falls out of the first test untouched.
+func Trunc(x: float64) -> float64 {
+    let bits = FloatBits(x);
+    let e = (((bits >> 52u64) & 0x7FFu64) as int64) - 1023i64;
+
+    // An exponent of 52 or more leaves no fractional bits at all. The
+    // infinities and the NaNs have an exponent of 1024 and land here too.
+    if e >= 52i64 {
+        return x;
+    }
+
+    // |x| < 1, so nothing survives but the sign.
+    if e < 0i64 {
+        return FromBits(bits & 0x8000000000000000u64);
+    }
+
+    let mask = 0xFFFFFFFFFFFFFu64 >> (e as uint64);
+    if (bits & mask) == 0u64 {
+        return x;
+    }
+    return FromBits(bits & ~mask);
+}
+
+// The result is an integer no larger in magnitude than x, so rounding it
+// once to float32 is exact.
+func Trunc(x: float32) -> float32 {
+    return Trunc(x as float64) as float32;
+}

@@ -1,0 +1,90 @@
+import Format::ToString;
+import Text::String;
+
+// Std stays out of the dependencies, and a failed check reports itself through
+// the exit code. See the Int8 test for why.
+//
+// The characters are checked byte by byte rather than against a literal, so that
+// what is under test is the UTF-8 the package encodes and not the encoding this
+// file happens to be saved in.
+
+// The bytes of a String as one number, most significant first. A four byte
+// sequence needs 32 bits, so a uint64 holds any of them, and the length is
+// checked alongside it because 0x41 and 0x0041 pack the same.
+func Bytes(text: String) -> uint64 {
+    var packed: uint64 = 0;
+    var i: uint = 0;
+    while i < text.Length() {
+        packed = (packed << 8u64) | (text.At(i) as uint64);
+        i++;
+    }
+    return packed;
+}
+
+func Check(actual: String, length: uint, bytes: uint64, code: int) -> int {
+    var text = actual;
+    let ok = text.Length() == length && Bytes(text) == bytes;
+    text.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+func Main() -> int {
+    // A char32 holds one code point, which becomes one to four bytes of UTF-8.
+    // The first three widths are the ones a char16 could reach as well.
+    var code = Check(ToString(c32'A'), 1u, 0x41u64, 10);
+    if code != 0 { return code; }
+    code = Check(ToString(c32'é'), 2u, 0xC3A9u64, 11);
+    if code != 0 { return code; }
+    code = Check(ToString(c32'€'), 3u, 0xE282ACu64, 12);
+    if code != 0 { return code; }
+
+    // The fourth is what only a char32 reaches: the planes above the first.
+    // U+10000, where those sequences begin, and U+1F600, the grinning face.
+    code = Check(ToString(c32'\u{10000}'), 4u, 0xF0908080u64, 20);
+    if code != 0 { return code; }
+    code = Check(ToString(c32'\u{1F600}'), 4u, 0xF09F9880u64, 21);
+    if code != 0 { return code; }
+
+    // The last code point there is, U+10FFFF.
+    code = Check(ToString(c32'\u{10FFFF}'), 4u, 0xF48FBFBFu64, 22);
+    if code != 0 { return code; }
+
+    // The values that are not code points at all. The compiler rejects them as
+    // constants, so they can only arrive through a cast at run time, which is
+    // where the encoder has to defend itself: each comes out as U+FFFD, the
+    // replacement character.
+    //
+    // The surrogate range is reserved by UTF-16 and means nothing in UTF-8.
+    var surrogate: uint32 = 0xD800;
+    code = Check(ToString(surrogate as char32), 3u, 0xEFBFBDu64, 30);
+    if code != 0 { return code; }
+
+    var reserved: uint32 = 0xDFFF;
+    code = Check(ToString(reserved as char32), 3u, 0xEFBFBDu64, 31);
+    if code != 0 { return code; }
+
+    // The first value past the last code point, and one far beyond it.
+    var past: uint32 = 0x110000;
+    code = Check(ToString(past as char32), 3u, 0xEFBFBDu64, 32);
+    if code != 0 { return code; }
+
+    var far: uint32 = 0xFFFFFFFF;
+    code = Check(ToString(far as char32), 3u, 0xEFBFBDu64, 33);
+    if code != 0 { return code; }
+
+    // U+FFFD itself encodes as what it stands in for, which is what says the
+    // replacement is an encoding and not a special case.
+    code = Check(ToString(c32'\u{FFFD}'), 3u, 0xEFBFBDu64, 34);
+    if code != 0 { return code; }
+
+    // The method the Stringable extension provides, which is the same conversion
+    // reached through the interface.
+    code = Check(c32'\u{1F600}'.ToString(), 4u, 0xF09F9880u64, 40);
+    if code != 0 { return code; }
+
+    return 0;
+}

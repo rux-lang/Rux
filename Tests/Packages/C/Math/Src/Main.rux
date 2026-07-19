@@ -1,0 +1,73 @@
+import Rux::Assert;
+import C::{
+    sqrt, sqrtf, cbrt, fabs, floor, ceil, trunc, round,
+    pow, fmax, fmin, fmod, copysign, fdim, hypot,
+    exp, log, log2, sin, cos, tan, ldexp
+};
+
+// A tolerance check for the results that are not exact in binary floating point.
+func Close(actual: float64, expected: float64) -> bool {
+    let diff = actual - expected;
+    return (diff < 0.0 ? -diff : diff) < 0.000000001;
+}
+
+func Main() -> int {
+    // Square and cube roots are exact for perfect powers.
+    Assert(sqrt(4.0) == 2.0, "sqrt(4)");
+    Assert(sqrt(9.0) == 3.0, "sqrt(9)");
+    Assert(sqrt(2.25) == 1.5, "sqrt(2.25)");
+    Assert(sqrtf(16.0f32) == 4.0f32, "sqrtf(16)");
+    Assert(Close(cbrt(27.0), 3.0), "cbrt(27)");
+
+    // Absolute value drops the sign.
+    Assert(fabs(-5.0) == 5.0, "fabs(-5)");
+    Assert(fabs(2.5) == 2.5, "fabs(2.5)");
+
+    // Rounding: floor and ceil go toward the infinities, trunc toward zero,
+    // and round breaks halfway cases away from zero.
+    Assert(floor(2.7) == 2.0, "floor(2.7)");
+    Assert(floor(-2.1) == -3.0, "floor(-2.1)");
+    Assert(ceil(2.1) == 3.0, "ceil(2.1)");
+    Assert(ceil(-2.7) == -2.0, "ceil(-2.7)");
+    Assert(trunc(2.7) == 2.0, "trunc(2.7)");
+    Assert(trunc(-2.7) == -2.0, "trunc(-2.7)");
+    Assert(round(2.5) == 3.0, "round(2.5)");
+    Assert(round(-2.5) == -3.0, "round(-2.5)");
+
+    // Power raises a base to an exponent; small integer powers are exact.
+    Assert(pow(2.0, 10.0) == 1024.0, "pow(2, 10)");
+    Assert(pow(5.0, 3.0) == 125.0, "pow(5, 3)");
+
+    // Larger and smaller of a pair.
+    Assert(fmax(3.0, 7.0) == 7.0, "fmax(3, 7)");
+    Assert(fmin(3.0, 7.0) == 3.0, "fmin(3, 7)");
+
+    // Remainder keeps the sign of the dividend.
+    Assert(fmod(10.0, 3.0) == 1.0, "fmod(10, 3)");
+    Assert(fmod(-10.0, 3.0) == -1.0, "fmod(-10, 3)");
+
+    // copysign takes the magnitude of the first and the sign of the second.
+    Assert(copysign(3.0, -1.0) == -3.0, "copysign(3, -1)");
+    Assert(copysign(-3.0, 1.0) == 3.0, "copysign(-3, 1)");
+
+    // Positive difference clamps at zero.
+    Assert(fdim(7.0, 3.0) == 4.0, "fdim(7, 3)");
+    Assert(fdim(3.0, 7.0) == 0.0, "fdim(3, 7)");
+
+    // The classic 3-4-5 right triangle.
+    Assert(Close(hypot(3.0, 4.0), 5.0), "hypot(3, 4)");
+
+    // ldexp scales by a power of two.
+    Assert(ldexp(1.5, 3) == 12.0, "ldexp(1.5, 3)");
+
+    // Exponentials and logarithms at their fixed points.
+    Assert(exp(0.0) == 1.0, "exp(0)");
+    Assert(log(1.0) == 0.0, "log(1)");
+    Assert(Close(log2(8.0), 3.0), "log2(8)");
+
+    // Trigonometric functions at zero.
+    Assert(cos(0.0) == 1.0, "cos(0)");
+    Assert(sin(0.0) == 0.0, "sin(0)");
+    Assert(tan(0.0) == 0.0, "tan(0)");
+    return 0;
+}

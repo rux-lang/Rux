@@ -1,6 +1,6 @@
 // Golden diagnostics runner.
 //
-// Every Tests/Golden/<Case>.rux file is compiled through the frontend
+// Every Tests/Unit/Golden/<Case>.rux file is compiled through the frontend
 // (lex -> parse -> sema, mirroring `rux check`), its diagnostics are rendered
 // one per line as "line:column: severity: message", and the result is compared
 // against the sibling <Case>.expected file.

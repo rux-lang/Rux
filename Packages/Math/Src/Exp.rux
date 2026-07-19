@@ -1,0 +1,99 @@
+// exp(hi - lo) * 2^k, for a reduced argument |hi - lo| <= 0.5*ln2 whose
+// leading part is hi. Keeping hi and lo apart rather than passing their sum
+// is what carries the last bits: the sum has already rounded, and near the
+// ends of the reduction that rounding is the whole error.
+//
+// Exp2 reaches the same reduced form by a different route and shares this.
+func ExpScaled(hi: float64, lo: float64, k: int64) -> float64 {
+    let p1 = 1.66666666666666019037e-01;
+    let p2 = -2.77777777770155933842e-03;
+    let p3 = 6.61375632143793436117e-05;
+    let p4 = -1.65339022054652515390e-06;
+    let p5 = 4.13813679705723846039e-08;
+
+    let x = hi - lo;
+    let t = x * x;
+
+    // exp(x) = 1 + 2x / (c - x*c/(2 - c)) rearranged, with c the remainder of
+    // x against the even polynomial. The division keeps the leading 1 exact.
+    let c = x - t * (p1 + t * (p2 + t * (p3 + t * (p4 + t * p5))));
+    let y = 1.0 - ((lo - (x * c) / (2.0 - c)) - hi);
+
+    if k >= -1021i64 {
+        // 2^1024 has no exponent field of its own, so it is reached in two steps.
+        if k == 1024i64 {
+            return y * 2.0 * 8.98846567431158e307;
+        }
+        return y * FromBits(((1023i64 + k) as uint64) << 52u64);
+    }
+
+    // The answer is subnormal. Scaling in two steps leaves the single
+    // rounding at the end, where it belongs.
+    return y * FromBits(((2023i64 + k) as uint64) << 52u64) * 9.332636185032189e-302;
+}
+
+func Exp(x: float64) -> float64 {
+    let ln2Hi = 6.93147180369123816490e-01;
+    let ln2Lo = 1.90821492927058770002e-10;
+    let invln2 = 1.44269504088896338700e+00;
+
+    let bits = FloatBits(x);
+    let hx = (bits >> 32u64) & 0x7FFFFFFFu64; // high word of |x|
+    let negative = (bits >> 63u64) == 1u64;
+
+    if hx >= 0x40862E42u64 { // |x| >= 709.78...
+        if hx >= 0x7FF00000u64 {
+            // A NaN propagates; exp(+Inf) is +Inf and exp(-Inf) is +0.0.
+            if ((hx & 0xFFFFFu64) | (bits & 0xFFFFFFFFu64)) != 0u64 {
+                return x + x;
+            }
+            return negative ? 0.0 : x;
+        }
+        if x > 709.782712893384 {
+            let huge = 1.0e300;
+            return huge * huge; // overflow to +Inf
+        }
+        if x < -745.1332191019411 {
+            let tiny = 9.332636185032189e-302;
+            return tiny * tiny; // underflow to +0.0
+        }
+    }
+
+    var hi = 0.0;
+    var lo = 0.0;
+    var k = 0i64;
+
+    if hx > 0x3FD62E42u64 { // |x| > 0.5*ln2, so a multiple of ln2 comes off
+        if hx < 0x3FF0A2B2u64 { // and |x| < 1.5*ln2, so that multiple is one
+            if negative {
+                hi = x + ln2Hi;
+                lo = -ln2Lo;
+                k = -1i64;
+            } else {
+                hi = x - ln2Hi;
+                lo = ln2Lo;
+                k = 1i64;
+            }
+        } else {
+            k = (invln2 * x + (negative ? -0.5 : 0.5)) as int64;
+            let t = k as float64;
+            // ln2Hi has 21 significant bits and |t| < 2^11, so t*ln2Hi is exact.
+            hi = x - t * ln2Hi;
+            lo = t * ln2Lo;
+        }
+    } else if hx < 0x3E300000u64 {
+        // Below 2^-28 the quadratic term is under half an ulp of 1 + x.
+        return 1.0 + x;
+    } else {
+        hi = x;
+        lo = 0.0;
+    }
+
+    return ExpScaled(hi, lo, k);
+}
+
+// float32 has fewer bits than the float64 result is accurate to, so the
+// double-precision exponential rounded once to float32 is faithful.
+func Exp(x: float32) -> float32 {
+    return Exp(x as float64) as float32;
+}

@@ -7,7 +7,7 @@
 // All direct use of these OS facilities (std::getenv, <windows.h> console and
 // environment calls, isatty/ioctl, getrusage, ...) must stay inside
 // Compiler/System/ so the rest of the compiler is platform-agnostic; CI
-// greps for strays (see Tools/PlatformIsolation/Check.sh).
+// greps for strays (see Tests/Policy/PlatformIsolation/Check.sh).
 
 #include "Target/Target.h"
 

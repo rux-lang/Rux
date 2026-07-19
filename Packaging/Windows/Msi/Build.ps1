@@ -9,7 +9,7 @@
     overridden), and produces an .msi in the output directory.
 
 .PARAMETER RuxExe
-    Path to the rux.exe to package. Defaults to <repo>\Bin\Release\rux.exe.
+    Path to the rux.exe to package. Defaults to <repo>\Bin\rux.exe.
 
 .PARAMETER Version
     Product version. Defaults to the VERSION parsed from CMakeLists.txt.
@@ -19,10 +19,10 @@
 
 .EXAMPLE
     ./Build.ps1
-    # Builds rux-windows.msi from Bin\Release\rux.exe.
+    # Builds rux-windows.msi from Bin\rux.exe.
 
 .EXAMPLE
-    ./Build.ps1 -RuxExe Bin\Release\rux.exe -Version 0.3.0
+    ./Build.ps1 -RuxExe Bin\rux.exe -Version 0.3.0
 #>
 [CmdletBinding()]
 param(
@@ -36,11 +36,11 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 
 # --- Resolve the rux.exe to package ---------------------------------------
 if (-not $RuxExe) {
-    $RuxExe = Join-Path $repoRoot 'Bin\Release\rux.exe'
+    $RuxExe = Join-Path $repoRoot 'Bin\rux.exe'
 }
 if (-not (Test-Path $RuxExe)) {
     throw "rux.exe not found at '$RuxExe'. Build it first " +
-          "(cmake --build build --config Release) or pass -RuxExe."
+          "(cmake --build Build --config Release) or pass -RuxExe."
 }
 $RuxExe = (Resolve-Path $RuxExe).Path
 
@@ -62,6 +62,9 @@ $WixVersion = '6.*'
 if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
     Write-Host "Installing the WiX .NET global tool (v$WixVersion)..."
     dotnet tool install --global wix --version $WixVersion
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to install the WiX .NET global tool (exit code $LASTEXITCODE)."
+    }
     $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
 }
 
@@ -69,7 +72,10 @@ if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
 # mismatched extension major version is rejected). Idempotent: re-adding an
 # already-registered extension is a no-op.
 $wixVer = (wix --version) -replace '\+.*$', ''   # e.g. "6.0.2+hash" -> "6.0.2"
-wix extension add -g "WixToolset.UI.wixext/$wixVer" | Out-Null
+$extensionOutput = wix extension add -g "WixToolset.UI.wixext/$wixVer" 2>&1
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to install WixToolset.UI.wixext/$wixVer (exit code $LASTEXITCODE): $extensionOutput"
+}
 
 # --- Build -----------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
@@ -79,7 +85,7 @@ Write-Host "Building $msi"
 Write-Host "  version: $Version"
 Write-Host "  rux.exe: $RuxExe"
 
-# wix resolves relative Source paths (LICENSE, License.rtf, Readme.txt) against
+# wix resolves relative source paths (LICENSE.md, License.rtf, Readme.txt) against
 # the working directory, so run from this script's folder. RuxExe/OutDir were
 # already resolved to absolute paths above, so they stay correct.
 Push-Location $PSScriptRoot

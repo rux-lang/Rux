@@ -1,0 +1,11 @@
+[Package]
+Name = "Transform"
+Version = "0.1.0"
+Type = "bin"
+Description = "Package test for Text: Transform"
+
+[Dependencies]
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Text"

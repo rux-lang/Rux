@@ -6,9 +6,18 @@ on:
   push:
     tags: [ 'v*' ]
 
-# The publish job needs write access to create the GitHub Release.
+# Build jobs only need to read the repository. The publish job elevates this
+# permission narrowly when it creates the draft GitHub Release.
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CMAKE_VERSION: "4.3.4"
+  NINJA_VERSION: "1.13.2"
 
 jobs:
   # Fail fast if the pushed tag doesn't match the version in CMakeLists.txt,
@@ -16,9 +25,12 @@ jobs:
   verify-version:
     name: Verify version
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Check tag matches project version
         run: |
@@ -42,9 +54,12 @@ jobs:
     name: Linux
     needs: verify-version
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Install Clang 22
         run: |
@@ -55,45 +70,64 @@ jobs:
       - name: Install CMake and Ninja
         uses: lukka/get-cmake@v4.3.3
         with:
-          cmakeVersion: "4.2.0"
-          ninjaVersion: latest
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: ${{ env.NINJA_VERSION }}
 
       - name: Configure and build
         run: |
-          cmake -S . -B build -G Ninja \
+          cmake -S . -B Build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=clang++-22
-          cmake --build build --config Release
+            -DCMAKE_CXX_COMPILER=clang++-22 \
+            -DRUX_WERROR=ON \
+            -DRUX_BUILD_TESTS=ON
+          cmake --build Build --config Release --parallel
 
-      - name: Test
+      - name: Unit tests
+        run: ctest --test-dir Build --output-on-failure -C Release
+
+      - name: Check Rux formatting
         run: |
-          ./Bin/Release/rux install
-          ./Bin/Release/rux test --release
+          set -e
+          manifest_count=$(find Packages Tests -type f -name Rux.toml -print | wc -l | tr -d '[:space:]')
+          find Packages Tests -type f -name Rux.toml -print | while IFS= read -r manifest; do
+            ./Bin/rux --manifest "$manifest" fmt --check
+          done
+          printf '[PASSED] Rux formatting (%s packages)\n' "$manifest_count"
+
+      - name: Verify Rux workspace
+        run: |
+          ./Bin/rux check
+          ./Bin/rux lint
+          ./Bin/rux test --release
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-linux
-          path: Bin/Release/rux
+          name: rux-linux-x64
+          path: Bin/rux
           if-no-files-found: error
+          retention-days: 7
 
   windows:
     name: Windows
     needs: verify-version
     runs-on: windows-2025
+    timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Install CMake and Ninja
         uses: lukka/get-cmake@v4.3.3
         with:
-          cmakeVersion: "4.2.0"
-          ninjaVersion: latest
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: ${{ env.NINJA_VERSION }}
 
       # Initialize the bundled Visual Studio environment so Clang can find
       # the Windows SDK, CRT headers, and import libraries.
-      - name: Configure and build
+      - name: Configure, build, and run unit tests
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -105,28 +139,33 @@ jobs:
           $devShell = Join-Path $vsPath "Common7\Tools\Launch-VsDevShell.ps1"
           & $devShell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
 
-          cmake -S . -B build -G Ninja `
+          cmake -S . -B Build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_CXX_COMPILER=clang++
-          cmake --build build --config Release
+            -DCMAKE_CXX_COMPILER=clang++ `
+            -DRUX_WERROR=ON `
+            -DRUX_BUILD_TESTS=ON
+          cmake --build Build --config Release --parallel
+          ctest --test-dir Build --output-on-failure -C Release
 
-      - name: Test
+      - name: Verify Rux workspace
         shell: pwsh
         run: |
-          ./Bin/Release/rux.exe install
-          ./Bin/Release/rux.exe test --release
+          ./Bin/rux.exe check
+          ./Bin/rux.exe lint
+          ./Bin/rux.exe test --release
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-windows
-          path: Bin/Release/rux.exe
+          name: rux-windows-x64
+          path: Bin/rux.exe
           if-no-files-found: error
+          retention-days: 7
 
       # Package the freshly built binary into a per-user MSI installer.
       - name: Build MSI installer
         shell: pwsh
-        run: ./Packaging/Windows/Msi/Build.ps1 -RuxExe Bin/Release/rux.exe
+        run: ./Packaging/Windows/Msi/Build.ps1 -RuxExe Bin/rux.exe
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v7
@@ -134,11 +173,15 @@ jobs:
           name: rux-windows-msi
           path: Packaging/Windows/Msi/out/rux-windows.msi
           if-no-files-found: error
+          retention-days: 7
 
   release:
     name: Publish release
     needs: [ linux, windows ]
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
       # Collect every artifact uploaded by the build jobs in this run.
       - name: Download all artifacts
@@ -156,10 +199,12 @@ jobs:
           tar -czf "out/rux-linux.tar.gz" -C dist rux
           zip -j   "out/rux-windows.zip"     dist/rux.exe
           cp dist/rux-windows.msi out/
+          (cd out && sha256sum rux-linux.tar.gz rux-windows.zip rux-windows.msi > SHA256SUMS)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           files: out/*
+          fail_on_unmatched_files: true
           generate_release_notes: true
           draft: true

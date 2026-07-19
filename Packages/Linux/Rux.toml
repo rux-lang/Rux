@@ -1,0 +1,6 @@
+[Package]
+Name = "Linux"
+Version = "0.1.0"
+Type = "Source"
+Description = "Linux platform bindings"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]

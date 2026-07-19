@@ -1,0 +1,479 @@
+// Code page identifiers
+// https://learn.microsoft.com/en-us/windows/win32/Intl/code-page-identifiers
+enum CodePage: uint32 {
+    IbmEbcdicUsCanada = 37,
+    OemUnitedStates = 437,
+    IbmEbcdicInternational = 500,
+    OemArabic = 708,
+    OemArabicAsmo720 = 720,
+    OemGreek = 737,
+    OemBaltic = 775,
+    OemWesternEuropean = 850,
+    OemCentralEuropean = 852,
+    OemCyrillicRussian = 855,
+    OemTurkish = 857,
+    OemWesternEuropeanEuro = 858,
+    OemPortuguese = 860,
+    OemIcelandic = 861,
+    OemHebrew = 862,
+    OemFrenchCanadian = 863,
+    OemArabic864 = 864,
+    OemNordic = 865,
+    OemCyrillicDos = 866,
+    OemModernGreek = 869,
+    IbmEbcdicMultilingualLatin2 = 870,
+    Windows874 = 874,
+    IbmEbcdicGreekModern = 875,
+    ShiftJis = 932,
+    Gb2312 = 936,
+    KsC5601 = 949,
+    Big5 = 950,
+    IbmEbcdicLatinOpen = 1047,
+    IbmEbcdicUsCanadaEuro = 1140,
+    IbmEbcdicGermanyEuro = 1141,
+    IbmEbcdicDenmarkNorwayEuro = 1142,
+    IbmEbcdicFinlandSwedenEuro = 1143,
+    IbmEbcdicItalyEuro = 1144,
+    IbmEbcdicSpainEuro = 1145,
+    IbmEbcdicUkEuro = 1146,
+    IbmEbcdicFranceEuro = 1147,
+    IbmEbcdicInternationalEuro = 1148,
+    IbmEbcdicIcelandicEuro = 1149,
+    Utf16Le = 1200,
+    Utf16Be = 1201,
+    Windows1250 = 1250,
+    Windows1251 = 1251,
+    Windows1252 = 1252,
+    Windows1253 = 1253,
+    Windows1254 = 1254,
+    Windows1255 = 1255,
+    Windows1256 = 1256,
+    Windows1257 = 1257,
+    Windows1258 = 1258,
+    Johab = 1361,
+    MacRoman = 10000,
+    MacJapanese = 10001,
+    MacChineseTraditional = 10002,
+    MacKorean = 10003,
+    MacArabic = 10004,
+    MacHebrew = 10005,
+    MacGreek = 10006,
+    MacCyrillic = 10007,
+    MacChineseSimplified = 10008,
+    MacRomanian = 10010,
+    MacUkrainian = 10017,
+    MacThai = 10021,
+    MacCentralEuropean = 10029,
+    MacIcelandic = 10079,
+    MacTurkish = 10081,
+    MacCroatian = 10082,
+    Utf32Le = 12000,
+    Utf32Be = 12001,
+    CnsTraditionalChinese = 20000,
+    TcaTaiwan = 20001,
+    EtenTraditionalChinese = 20002,
+    Ibm5550Taiwan = 20003,
+    TeleTextTaiwan = 20004,
+    WangTaiwan = 20005,
+    Ia5 = 20105,
+    Ia5German = 20106,
+    Ia5Swedish = 20107,
+    Ia5Norwegian = 20108,
+    UsAscii = 20127,
+    T61 = 20261,
+    Iso6937 = 20269,
+    IbmEbcdicGermany = 20273,
+    IbmEbcdicDenmarkNorway = 20277,
+    IbmEbcdicFinlandSweden = 20278,
+    IbmEbcdicItaly = 20280,
+    IbmEbcdicLatinAmericaSpain = 20284,
+    IbmEbcdicUnitedKingdom = 20285,
+    IbmEbcdicJapaneseKatakana = 20290,
+    IbmEbcdicFrance = 20297,
+    IbmEbcdicArabic = 20420,
+    IbmEbcdicGreek = 20423,
+    IbmEbcdicHebrew = 20424,
+    IbmEbcdicKoreanExtended = 20833,
+    IbmEbcdicThai = 20838,
+    Koi8R = 20866,
+    IbmEbcdicIcelandic = 20871,
+    IbmEbcdicCyrillicRussian = 20880,
+    IbmEbcdicTurkish = 20905,
+    IbmEbcdicLatinOpenEuro = 20924,
+    EucJpJis = 20932,
+    SimplifiedChineseGb2312 = 20936,
+    KoreanWansung = 20949,
+    IbmEbcdicCyrillicSerbianBulgarian = 21025,
+    Koi8U = 21866,
+    Iso8859Part1 = 28591,
+    Iso8859Part2 = 28592,
+    Iso8859Part3 = 28593,
+    Iso8859Part4 = 28594,
+    Iso8859Part5 = 28595,
+    Iso8859Part6 = 28596,
+    Iso8859Part7 = 28597,
+    Iso8859Part8 = 28598,
+    Iso8859Part9 = 28599,
+    Iso8859Part13 = 28603,
+    Iso8859Part15 = 28605,
+    Europa3 = 29001,
+    Iso8859Part8Logical = 38598,
+    Iso2022Jp = 50220,
+    Iso2022JpKana = 50221,
+    Iso2022JpKanaSoSi = 50222,
+    Iso2022Kr = 50225,
+    Iso2022SimplifiedChinese = 50227,
+    EucJp = 51932,
+    EucCn = 51936,
+    EucKr = 51949,
+    HzGb2312 = 52936,
+    Gb18030 = 54936,
+    IsciiDevanagari = 57002,
+    IsciiBangla = 57003,
+    IsciiTamil = 57004,
+    IsciiTelugu = 57005,
+    IsciiAssamese = 57006,
+    IsciiOdia = 57007,
+    IsciiKannada = 57008,
+    IsciiMalayalam = 57009,
+    IsciiGujarati = 57010,
+    IsciiPunjabi = 57011,
+    Utf7 = 65000,
+    Utf8 = 65001
+}
+
+// An action to take on a file or device that exists or does not exist.
+// https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
+enum CreationDisposition: uint32 {
+    CreateNew = 1,
+    CreateAlways = 2,
+    OpenExisting = 3,
+    OpenAlways = 4,
+    TruncateExisting = 5
+}
+
+// Contains a 64-bit value representing the number of 100-nanosecond intervals since January 1, 1601 (UTC).
+// https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
+struct FileTime {
+    lowDateTime: uint32;
+    highDateTime: uint32;
+}
+
+// The standard input device. Initially, this is the console input buffer
+// https://learn.microsoft.com/en-us/windows/console/getstdhandle
+const StdInputHandle: uint32 = 0xFFFFFFF6;
+
+// The standard output device. Initially, this is the active console screen buffer
+// https://learn.microsoft.com/en-us/windows/console/getstdhandle
+const StdOutputHandle: uint32 = 0xFFFFFFF5;
+
+// The standard error device. Initially, this is the active console screen buffer
+// https://learn.microsoft.com/en-us/windows/console/getstdhandle
+const StdErrorHandle: uint32 = 0xFFFFFFF4;
+
+// Specifies a date and time, using individual members for the month, day, year, weekday, hour, minute, second, and millisecond.
+// The time is either in coordinated universal time (UTC) or local time, depending on the function that is being called.
+// https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-systemtime
+struct SystemTime {
+    year: uint16;
+    month: uint16;
+    dayOfWeek: uint16;
+    day: uint16;
+    hour: uint16;
+    minute: uint16;
+    second: uint16;
+    milliseconds: uint16;
+}
+
+// Contains information about the file that is found by the FindFirstFile, FindFirstFileEx, or FindNextFile function.
+// https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-win32_find_dataa
+struct Win32FindDataA {
+    fileAttributes: uint32;
+    creationTime: FileTime;
+    lastAccessTime: FileTime;
+    lastWriteTime: FileTime;
+    fileSizeHigh: uint32;
+    fileSizeLow: uint32;
+    reserved0: uint32;
+    reserved1: uint32;
+    fileName: char8[260];
+    alternateFileName: char8[14];
+}
+
+#Link("Kernel32.dll")
+extern {
+    // Allocates a new console for the calling process
+    // https://learn.microsoft.com/en-us/windows/console/allocconsole
+    func AllocConsole() -> bool32;
+
+    // Generates simple tones on the speaker
+    // https://learn.microsoft.com/en-us/windows/win32/api/utilapiset/nf-utilapiset-beep
+    func Beep(freq: uint32, duration: uint32) -> bool32;
+
+    // Closes an open object handle.
+    // https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle
+    func CloseHandle(handle: *opaque) -> bool32;
+
+    // Copies an existing file to a new file.
+    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-copyfilea
+    func CopyFileA(
+        existingFileName: *const char8,
+        newFileName: *const char8,
+        failIfExists: bool32
+    ) -> bool32;
+
+    // Creates a new directory.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectorya
+    func CreateDirectoryA(pathName: *const char8, securityAttributes: *opaque) -> bool32;
+
+    // Creates or opens a file or I/O device.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
+    func CreateFileA(
+        fileName: *const char8,
+        desiredAccess: uint32,
+        shareMode: uint32,
+        securityAttributes: *opaque,
+        creationDisposition: uint32,
+        flagsAndAttributes: uint32,
+        templateFile: *opaque
+    ) -> *opaque;
+
+    func CreateFileA(
+        fileName: *const char8,
+        desiredAccess: uint32,
+        shareMode: uint32,
+        securityAttributes: *opaque,
+        creationDisposition: uint32,
+        flagsAndAttributes: uint32,
+        templateFile: *opaque
+    ) -> *opaque;
+
+    // Deletes an existing file.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilea
+    func DeleteFileA(fileName: *const char8) -> bool32;
+
+    // Ends the calling process and all its threads
+    // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-exitprocess
+    func ExitProcess(exitCode: uint32);
+
+    // Closes a file search handle opened by the FindFirstFile, FindFirstFileEx, FindFirstFileNameW, FindFirstFileNameTransactedW, FindFirstFileTransacted, FindFirstStreamTransactedW, or FindFirstStreamW functions.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findclose
+    func FindClose(findFile: *opaque) -> bool32;
+
+    // Searches a directory for a file or subdirectory with a name that matches a specific name (or partial name if wildcards are used).
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfilea
+    func FindFirstFileA(
+        fileName: *const char8,
+        findFileData: *Win32FindDataA
+    ) -> *opaque;
+
+    // Continues a file search from a previous call to the FindFirstFile, FindFirstFileEx, or FindFirstFileTransacted functions.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findnextfilea
+    func FindNextFileA(
+        findFile: *opaque,
+        findFileData: *Win32FindDataA
+    ) -> bool32;
+
+    // Frees the loaded dynamic-link library (DLL) module and, if necessary, decrements its reference count.
+    // When the reference count reaches zero, the module is unloaded from the address space of the calling process and the handle is no longer valid
+    // https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-freelibrary
+    func FreeLibrary(libModule: *opaque) -> bool32;
+
+    // Retrieves the current input or output mode of a console screen buffer
+    // https://learn.microsoft.com/en-us/windows/console/getconsolemode
+    func GetConsoleMode(consoleHandle: *opaque, mode: *uint32) -> bool32;
+
+    // Retrieves the current directory
+    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getcurrentdirectory
+    func GetCurrentDirectoryA(bufferLength: uint32, buffer: *char8) -> uint32;
+
+    // Retrieves the process identifier of the calling process
+    // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocessid
+    func GetCurrentProcessId() -> uint32;
+
+    // Retrieves the thread identifier of the calling thread
+    // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadid
+    func GetCurrentThreadId() -> uint32;
+
+    // Retrieves file attributes
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileattributesa
+    func GetFileAttributesA(fileName: *const char8) -> uint32;
+
+    // Retrieves the size of the specified file.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfilesizeex
+    func GetFileSizeEx(file: *opaque, size: *int64) -> bool32;
+
+    // Retrieves the calling thread's last-error code value
+    // https://learn.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-getlasterror
+    func GetLastError() -> uint32;
+
+    // Retrieves the current local date and time.
+    // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getlocaltime
+    func GetLocalTime(time: *SystemTime);
+
+    // Retrieves the address of an exported symbol.
+    // https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress
+    func GetProcAddress(libModule: *opaque, procName: *const char8) -> *opaque;
+
+    // Retrieves a handle to the default heap of the calling process
+    // https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-getprocessheap
+    func GetProcessHeap() -> *opaque;
+
+    // Retrieves a handle to the specified standard device (standard input, standard output, or standard error)
+    // https://learn.microsoft.com/en-us/windows/console/getstdhandle
+    func GetStdHandle(stdHandle: uint32) -> *opaque;
+
+    // Retrieves the current system date and time in Coordinated Universal Time (UTC) format.
+    // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtime
+    func GetSystemTime(time: *SystemTime);
+
+    // Retrieves the number of milliseconds that have elapsed since the system was started.
+    // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-gettickcount64
+    func GetTickCount64() -> uint64;
+
+    // Allocates a block of memory from a heap. The allocated memory is not movable
+    // https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapalloc
+    func HeapAlloc(heap: *opaque, flags: uint32, bytes: uint) -> *opaque;
+
+    // Frees a memory block allocated from a heap by the HeapAlloc or HeapReAlloc function
+    // https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapfree
+    func HeapFree(heap: *opaque, flags: uint32, mem: *opaque) -> bool32;
+
+    // Reallocates a block of memory from a heap
+    // https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heaprealloc
+    func HeapReAlloc(heap: *opaque, flags: uint32, mem: *opaque, bytes: uint) -> *opaque;
+
+    // Loads a DLL into the calling process.
+    // https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya
+    func LoadLibraryA(libFileName: *const char8) -> *opaque;
+
+    // Moves an existing file or directory.
+    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefilea
+    func MoveFileA(existingFileName: *const char8, newFileName: *const char8) -> bool32;
+
+    // Maps a character string to a UTF-16 wide character string
+    // https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar
+    func MultiByteToWideChar(
+        codePage: CodePage,
+        flags: uint32,
+        multiByteStr: *const char8,
+        multiByte: int32,
+        wideCharStr: *char16,
+        wideChar: int32
+    ) -> int32;
+
+    // Maps a character string to a UTF-16 wide character string
+    // https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar
+    func MultiByteToWideChar(
+        codePage: uint32,
+        flags: uint32,
+        multiByteStr: *const char8,
+        multiByte: int32,
+        wideCharStr: *char16,
+        wideChar: int32
+    ) -> int32;
+
+    // Reads characters from a console input buffer.
+    // https://learn.microsoft.com/en-us/windows/console/readconsole
+    func ReadConsoleA(
+        consoleInput: *opaque,
+        buffer: *opaque,
+        numberOfCharsToRead: uint32,
+        numberOfCharsRead: *uint32,
+        inputControl: *opaque
+    ) -> bool32;
+
+    // Reads data from the specified file or input/output (I/O) device
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-readfile
+    func ReadFile(
+        file: *opaque,
+        buffer: *opaque,
+        numberOfBytesToRead: uint32,
+        numberOfBytesRead: *uint32,
+        overlapped: *opaque
+    ) -> bool32;
+
+    // Deletes an existing empty directory.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya
+    func RemoveDirectoryA(pathName: *const char8) -> bool32;
+
+    // Compares two blocks of memory and returns the number of bytes that match until the first difference
+    // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlcomparememory
+    func RtlCompareMemory(source1: *const opaque, source2: *const opaque, length: uint) -> uint;
+
+    // Copies a block of memory from one location to another
+    // https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa366535(v=vs.85)
+    func RtlCopyMemory(destination: *opaque, source: *const opaque, length: uint);
+
+    // Fills a block of memory with the specified fill value
+    // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlfillmemory
+    func RtlFillMemory(destination: *opaque, length: uint, fill: int32);
+
+    // Fills a block of memory with zeros, given a pointer to the block and the length in bytes
+    // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlzeromemory
+    func RtlZeroMemory(destination: *opaque, length: uint);
+
+    // Changes the current directory.
+    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory
+    func SetCurrentDirectoryA(pathName: *const char8) -> bool32;
+
+    // Sets file attributes.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileattributesa
+    func SetFileAttributesA(fileName: *const char8, fileAttributes: uint32) -> bool32;
+
+    // Moves the file pointer of the specified file.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfilepointerex
+    func SetFilePointerEx(
+        file: *opaque,
+        distanceToMov: int64,
+        newFilePointer: *int64,
+        moveMethod: uint32
+    ) -> bool32;
+
+    // Suspends the execution of the current thread until the time-out interval elapses
+    // https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-sleep
+    func Sleep(milliseconds: uint32);
+
+    // Converts UTF-16 text to another code page.
+    // https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-widechartomultibyte
+    func WideCharToMultiByte(
+        codePage: uint32,
+        flags: uint32,
+        wideCharStr: *const char16,
+        wideChar: int32,
+        multiByteStr: *char8,
+        multiByte: int32,
+        defaultChar: *const char8,
+        usedDefaultChar: *bool32
+    ) -> int32;
+
+    // Writes a character string to a console screen buffer beginning at the current cursor location
+    // https://learn.microsoft.com/en-us/windows/console/writeconsole
+    func WriteConsoleA(
+        consoleOutput: *opaque,
+        buffer: *const char8,
+        numberOfCharsToWrite: uint32,
+        numberOfCharsWritten: *uint32,
+        reserved: *opaque
+    ) -> bool32;
+
+    // Writes a character string to a console screen buffer beginning at the current cursor location
+    // https://learn.microsoft.com/en-us/windows/console/writeconsole
+    func WriteConsoleW(
+        consoleOutput: *opaque,
+        buffer: *const char16,
+        numberOfCharsToWrite: uint32,
+        numberOfCharsWritten: *uint32,
+        reserved: *opaque
+    ) -> bool32;
+
+    // Writes data to the specified file or input/output (I/O) device.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile
+    func WriteFile(
+        file: *opaque,
+        buffer: *const opaque,
+        bytesToWrite: uint32,
+        bytesWritten: *uint32,
+        overlapped: *opaque
+    ) -> bool32;
+}

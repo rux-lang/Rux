@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <format>
+#include <map>
 #include <optional>
 #include <print>
 #include <span>
@@ -73,6 +74,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
 
     std::filesystem::path projectRoot;
     std::vector<TestRoot> testRoots;
+    std::map<std::string, std::filesystem::path> localPackageRoots;
     if (manifestPath) {
         auto manifest = LoadManifest(*manifestPath);
         if (!manifest) {
@@ -92,9 +94,20 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             }
             for (const auto &member : manifest->workspace.packages) {
                 const auto memberDir = (projectRoot / member).lexically_normal();
-                if (!std::filesystem::exists(memberDir / "Rux.toml", ec)) {
+                const auto memberManifestPath = memberDir / "Rux.toml";
+                if (!std::filesystem::exists(memberManifestPath, ec)) {
                     std::print(stderr, "warning: workspace member '{}' has no Rux.toml — skipping\n", member);
                     continue;
+                }
+                auto memberManifest = Manifest::Load(memberManifestPath);
+                if (!memberManifest || memberManifest->package.name.empty()) {
+                    std::print(stderr, "error: workspace member '{}' is not a package\n", member);
+                    return 1;
+                }
+                const auto [existing, inserted] = localPackageRoots.emplace(memberManifest->package.name, memberDir);
+                if (!inserted && existing->second != memberDir) {
+                    std::print(stderr, "error: duplicate workspace package name '{}'\n", memberManifest->package.name);
+                    return 1;
                 }
                 if (auto memberTests = memberDir / "Tests"; std::filesystem::exists(memberTests, ec)) {
                     testRoots.push_back({std::move(memberTests), std::filesystem::path(member).generic_string()});
@@ -141,7 +154,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
 
     // Collect test package directories: any directory under a test root that
     // contains a Rux.toml with Type = "bin". A directory without a manifest is
-    // a group (e.g. Tests/Integration/) and is searched recursively, a few levels
+    // a group (e.g. Tests/Language/) and is searched recursively, a few levels
     // deep so build-output trees don't get walked.
     struct TestPackage {
         std::filesystem::path dir;
@@ -236,6 +249,16 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             outcome.status = TestStatus::BuildError;
             return outcome;
         }
+        for (const auto &dependency : pkgManifest->dependencies) {
+            if (dependency.path.empty()) {
+                outcome.status = TestStatus::BuildError;
+                outcome.output = std::format(
+                    "error: test dependency '{}' must use a local Path entry in '{}'; registry dependencies are "
+                    "not allowed\n",
+                    dependency.name, (pkgDir / "Rux.toml").string());
+                return outcome;
+            }
+        }
 
         // Build the package quietly (suppress per-file build output for tests).
         CompileOptions copts;
@@ -244,6 +267,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         copts.targetName = HostTargetTriple();
         copts.profileName = std::string(profileName);
         copts.defines = defines;
+        copts.localPackageRoots = localPackageRoots;
+        copts.localDependenciesOnly = true;
         copts.isTest = true;
         copts.quiet = true;
         CompilerDriver driver(std::move(copts));

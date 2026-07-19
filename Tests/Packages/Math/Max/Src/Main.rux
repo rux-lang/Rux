@@ -1,0 +1,30 @@
+import Rux::Assert;
+import Math::Max;
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+    let nan = zero / zero;
+
+    Assert(Max(1.0, 2.0) == 2.0, "Max(1, 2)");
+    Assert(Max(2.0, 1.0) == 2.0, "Max(2, 1)");
+    Assert(Max(-3.0, -4.0) == -3.0, "Max negatives");
+    Assert(Max(inf, 1.0) == inf, "Max(+Inf, finite)");
+    Assert(Max(-inf, 1.0) == 1.0, "Max(-Inf, finite)");
+
+    Assert(Max(nan, 2.0) == 2.0, "Max(NaN, 2)");
+    Assert(Max(2.0, nan) == 2.0, "Max(2, NaN)");
+    let bothNan = Max(nan, nan);
+    Assert(bothNan != bothNan, "Max(NaN, NaN)");
+
+    let zeroMax = Max(0.0, -0.0);
+    Assert(zeroMax == 0.0, "Max(+0, -0)");
+    Assert(one / zeroMax > 0.0, "Max(+0, -0) is +0");
+    let zeroMax2 = Max(-0.0, 0.0);
+    Assert(zeroMax2 == 0.0, "Max(-0, +0)");
+    Assert(one / zeroMax2 > 0.0, "Max(-0, +0) is +0");
+
+    Assert(Max(1.0f32, 2.0f32) == 2.0f32, "Max f32");
+    return 0;
+}

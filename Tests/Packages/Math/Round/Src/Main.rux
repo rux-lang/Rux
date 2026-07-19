@@ -1,0 +1,31 @@
+import Rux::Assert;
+import Math::Round;
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(Round(0.0) == 0.0, "Round(0.0)");
+    let negZero = Round(-0.0);
+    Assert(negZero == 0.0, "Round(-0.0)");
+    Assert(one / negZero < 0.0, "Round(-0.0) keeps sign");
+
+    Assert(Round(1.4) == 1.0, "Round(1.4)");
+    Assert(Round(1.5) == 2.0, "Round(1.5)");
+    Assert(Round(2.5) == 3.0, "Round(2.5)");
+    Assert(Round(-1.4) == -1.0, "Round(-1.4)");
+    Assert(Round(-1.5) == -2.0, "Round(-1.5)");
+    Assert(Round(-2.5) == -3.0, "Round(-2.5)");
+    Assert(Round(0.49999999999999994) == 0.0, "Round(next below 0.5)");
+
+    Assert(Round(inf) == inf, "Round(+Inf)");
+    Assert(Round(-inf) == -inf, "Round(-Inf)");
+    let nan = zero / zero;
+    let nanRound = Round(nan);
+    Assert(nanRound != nanRound, "Round(NaN)");
+
+    Assert(Round(1.5f32) == 2.0f32, "Round(1.5f32)");
+    Assert(Round(-1.5f32) == -2.0f32, "Round(-1.5f32)");
+    return 0;
+}

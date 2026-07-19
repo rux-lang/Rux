@@ -1,0 +1,109 @@
+func PrintLine() {
+    let newline = c8"\n";
+    Print(newline.data, newline.length);
+}
+
+func PrintLine(value: String) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: char8[]) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(format: char8[], args: Stringable...) {
+    Print(format, args...);
+    PrintLine();
+}
+
+func PrintLine(value: bool8) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: bool16) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: bool32) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: char8) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: char16) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: char32) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: int8) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: int16) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: int32) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: int64) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: uint8) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: uint16) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: uint32) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: uint64) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: int) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: uint) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: float32) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(value: float64) {
+    Print(value);
+    PrintLine();
+}

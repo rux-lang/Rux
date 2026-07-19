@@ -1,0 +1,45 @@
+import Format::ToString;
+import Text::String;
+
+// Std stays out of the dependencies, and a failed check reports itself through
+// the exit code. See the Int8 test for why.
+func Check(actual: String, expected: char8[], code: int) -> int {
+    var text = actual;
+    var wanted = String::From(expected);
+    let ok = text == wanted;
+    text.Free();
+    wanted.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+func Main() -> int {
+    // Zero is the one value the digit loop cannot produce, since it runs only
+    // while there is something left to divide, so it is written out ahead of the
+    // loop. There is no sign to write for any value of an unsigned type.
+    let zero: uint8 = 0;
+    var code = Check(ToString(zero), "0", 10);
+    if code != 0 { return code; }
+
+    let one: uint8 = 1;
+    code = Check(ToString(one), "1", 11);
+    if code != 0 { return code; }
+
+    let value: uint8 = 42;
+    code = Check(ToString(value), "42", 12);
+    if code != 0 { return code; }
+
+    let max: uint8 = 255;
+    code = Check(ToString(max), "255", 20);
+    if code != 0 { return code; }
+
+    // The method the Stringable extension provides, which is the same conversion
+    // reached through the interface.
+    code = Check(max.ToString(), "255", 30);
+    if code != 0 { return code; }
+
+    return 0;
+}

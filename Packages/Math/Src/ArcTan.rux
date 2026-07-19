@@ -1,0 +1,84 @@
+// Returns the inverse tangent, in radians
+// https://rux-lang.dev/api/math/arctan
+func ArcTan(x: float64) -> float64 {
+    let atanhi0 = 4.63647609000806093515e-01; // atan(0.5), high
+    let atanhi1 = 7.85398163397448278999e-01; // atan(1.0), high
+    let atanhi2 = 9.82793723247329054082e-01; // atan(1.5), high
+    let atanhi3 = 1.57079632679489655800e+00; // atan(inf), high
+    let atanlo0 = 2.26987774529616870924e-17;
+    let atanlo1 = 3.06161699786838301793e-17;
+    let atanlo2 = 1.39033110312309984516e-17;
+    let atanlo3 = 6.12323399573676603587e-17;
+    let aT0 = 3.33333333333329318027e-01;
+    let aT1 = -1.99999999998764832476e-01;
+    let aT2 = 1.42857142725034663711e-01;
+    let aT3 = -1.11111104054623557880e-01;
+    let aT4 = 9.09088713343650656196e-02;
+    let aT5 = -7.69187620504482999495e-02;
+    let aT6 = 6.66107313738753120669e-02;
+    let aT7 = -5.83357013379057348645e-02;
+    let aT8 = 4.97687799461593236017e-02;
+    let aT9 = -3.65315727442169155270e-02;
+    let aT10 = 1.62858201153657823623e-02;
+    if x != x {
+        return x;
+    }
+    let bits = FloatBits(x);
+    let negative = (bits >> 63u64) == 1u64;
+    var ax = Abs(x);
+    if ax >= 4.722366482869645e21 { // 2^72, including infinity
+        let y = atanhi3 + atanlo3;
+        return negative ? -y : y;
+    }
+    if ax < 1.862645149230957e-9 {
+        return x;
+    }
+    var id = -1i64;
+    if ax < 0.4375 {
+        id = -1i64;
+    } else if ax < 1.1875 {
+        if ax < 0.6875 {
+            id = 0i64;
+            ax = (2.0 * ax - 1.0) / (2.0 + ax);
+        } else {
+            id = 1i64;
+            ax = (ax - 1.0) / (ax + 1.0);
+        }
+    } else if ax < 2.4375 {
+        id = 2i64;
+        ax = (ax - 1.5) / (1.0 + 1.5 * ax);
+    } else {
+        id = 3i64;
+        ax = -1.0 / ax;
+    }
+    let z = ax * ax;
+    let w = z * z;
+    let s1 = z * (aT0 + w * (aT2 + w * (aT4 + w * (aT6 + w * (aT8 + w * aT10)))));
+    let s2 = w * (aT1 + w * (aT3 + w * (aT5 + w * (aT7 + w * aT9))));
+    let correction = ax * (s1 + s2);
+    var y = 0.0;
+    if id < 0i64 {
+        y = ax - correction;
+    } else {
+        var hi = atanhi0;
+        var lo = atanlo0;
+        if id == 1i64 {
+            hi = atanhi1;
+            lo = atanlo1;
+        } else if id == 2i64 {
+            hi = atanhi2;
+            lo = atanlo2;
+        } else if id == 3i64 {
+            hi = atanhi3;
+            lo = atanlo3;
+        }
+        y = hi - ((correction - lo) - ax);
+    }
+    return negative ? -y : y;
+}
+
+// Returns the inverse tangent, in radians
+// https://rux-lang.dev/api/math/arctan
+func ArcTan(x: float32) -> float32 {
+    return ArcTan(x as float64) as float32;
+}

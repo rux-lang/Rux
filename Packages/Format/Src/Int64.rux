@@ -1,0 +1,16 @@
+import Text::{ String, StringBuilder };
+
+// The decimal text of an int64, in a String the caller owns and frees. A
+// negative value opens with a minus sign; there is no plus sign on a
+// positive one.
+func ToString(value: int64) -> String {
+    var builder = StringBuilder::WithCapacity(20);
+    WriteInt(@builder, value);
+    return builder.IntoString();
+}
+
+extend int64 : Stringable {
+    func ToString(self) -> String {
+        return ToString(*self);
+    }
+}

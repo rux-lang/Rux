@@ -1,0 +1,29 @@
+func Cosh(x: float64) -> float64 {
+    let ln2 = 0.6931471805599453;
+    let halfLn2 = 0.34657359027997264;
+    let overflow = 710.4758600739439; // ln(2 * maxfloat)
+    if x != x {
+        return x;
+    }
+    let ax = Abs(x);
+    if ax == 1.0 / 0.0 {
+        return ax;
+    }
+    if ax > overflow {
+        let huge = 1.0e300;
+        return huge * huge;
+    }
+    if ax < halfLn2 {
+        let t = Expm1(ax);
+        return 1.0 + (t * t) / (2.0 * (1.0 + t));
+    }
+    if ax < 22.0 {
+        let t = Exp(ax);
+        return 0.5 * (t + 1.0 / t);
+    }
+    return Exp(ax - ln2);
+}
+
+func Cosh(x: float32) -> float32 {
+    return Cosh(x as float64) as float32;
+}

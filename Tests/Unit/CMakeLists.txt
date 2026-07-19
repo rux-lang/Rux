@@ -30,6 +30,16 @@ endif ()
 
 add_executable(rux-tests ${RUX_TEST_SOURCES})
 
+# Keep the unit-test executable with the other repository binaries. Explicit
+# per-config properties prevent multi-config generators from adding profile
+# subdirectories below Bin/Tests/Unit.
+set_target_properties(rux-tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Bin/Tests/Unit
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/Bin/Tests/Unit
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/Bin/Tests/Unit
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_SOURCE_DIR}/Bin/Tests/Unit
+    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_SOURCE_DIR}/Bin/Tests/Unit)
+
 target_link_libraries(rux-tests PRIVATE RuxCore)
 if (TARGET RuxFormatter)
     target_link_libraries(rux-tests PRIVATE RuxFormatter)
@@ -51,7 +61,10 @@ set_source_files_properties(${RUX_TEST_SOURCES} PROPERTIES
 
 # The golden diagnostics runner reads its cases from the source tree.
 target_compile_definitions(rux-tests PRIVATE
-    RUX_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/Tests/Golden")
+    RUX_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/Tests/Unit/Golden"
+    RUX_TESTS_DIR="${CMAKE_SOURCE_DIR}/Tests"
+    RUX_PACKAGES_DIR="${CMAKE_SOURCE_DIR}/Packages"
+    RUX_TEST_BIN_DIR="${CMAKE_SOURCE_DIR}/Bin/Tests")
 
 # Match the static-CRT choice made for rux/RuxCore in Compiler/CMakeLists.txt;
 # mixing runtimes across the RuxCore boundary breaks the link.

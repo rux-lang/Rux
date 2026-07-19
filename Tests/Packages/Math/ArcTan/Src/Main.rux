@@ -1,0 +1,55 @@
+import Rux::Assert;
+import Math::ArcTan;
+
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 2i64;
+}
+
+func Main() -> int {
+    let pio2 = 1.5707963267948966;
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(ArcTan(0.0) == 0.0, "ArcTan(0.0)");
+    let negZero = ArcTan(-0.0);
+    Assert(negZero == 0.0, "ArcTan(-0.0)");
+    Assert(one / negZero < 0.0, "ArcTan(-0.0) keeps the sign of zero");
+
+    Assert(Close(ArcTan(0.5), 0.4636476090008061), "ArcTan(0.5)");
+    Assert(Close(ArcTan(1.0), 0.7853981633974483), "ArcTan(1.0)");
+    Assert(Close(ArcTan(2.0), 1.1071487177940904), "ArcTan(2.0)");
+    Assert(Close(ArcTan(-2.0), -1.1071487177940904), "ArcTan(-2.0)");
+
+    Assert(ArcTan(inf) == pio2, "ArcTan(+Inf)");
+    Assert(ArcTan(-inf) == -pio2, "ArcTan(-Inf)");
+
+    let nan = zero / zero;
+    let nanAtan = ArcTan(nan);
+    Assert(nanAtan != nanAtan, "ArcTan(NaN)");
+
+    Assert(ArcTan(1.0f32) == 0.7853981852531433f32, "ArcTan(1.0f32)");
+    return 0;
+}

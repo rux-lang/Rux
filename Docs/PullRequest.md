@@ -6,9 +6,10 @@ What happens to a change from the moment you open a pull request until it merges
 
 - Your branch is based on `dev` and targets `dev` (see [Branch Architecture](Branches.md)).
 - The release build passes locally.
-- Bare `rux install` and `rux test --release` pass from the repository root.
-- C++ unit tests pass with `ctest --test-dir build --output-on-failure` when the change touches compiler internals.
+- `rux test --release` passes from the repository root using only local workspace packages.
+- C++ unit tests pass with `ctest --test-dir Build --output-on-failure` when the change touches compiler internals.
 - Touched files are `clang-format`-clean.
+- `clang-tidy` passes for every maintained C++ translation unit.
 - User-visible behavior has an integration or golden test; internal behavior has focused C++ unit coverage.
 - Documentation and `CHANGELOG.md` are updated when behavior or workflow changes.
 
@@ -31,15 +32,14 @@ Not every workflow blocks merging. The **required** checks are:
 - **Linux** (`Linux.yml`)
 - **Windows** (`Windows.yml`)
 
-The macOS, BSD, and Illumos workflows run too and are worth watching, but they are **informational** — they won't block the merge button. Both required checks must be green before a PR is eligible to merge.
+The macOS and FreeBSD workflows run too and are worth watching, but they are **informational** — they won't block the merge button. Both required checks must be green before a PR is eligible to merge.
 
 ## 3. Review
 
 - **At least one approving review** is required before a PR can merge.
 - **Any maintainer** can review, approve, and merge — there is no `CODEOWNERS` file routing specific paths to specific people.
 - Anyone is welcome to review and comment; only a maintainer's approval counts toward the requirement.
-- Address feedback by pushing follow-up commits and re-requesting review, rather than force-pushing over the discussion (see [Etiquette](#etiquette)). If a review stalls, a polite nudge on the PR or in
-  [Discord](https://discord.com/invite/uvSHjtZSVG) is fine.
+- Address feedback by pushing follow-up commits and re-requesting review, rather than force-pushing over the discussion (see [Etiquette](#etiquette)). If a review stalls, a polite nudge on the PR or in [Discord](https://discord.com/invite/uvSHjtZSVG) is fine.
 
 Reviewers should check ownership boundaries as well as behavior: package and host operations belong in their dedicated components, new user-facing failures should use the diagnostic/CLI conventions, and platform changes need coverage beyond the author's host where practical.
 

@@ -227,7 +227,7 @@ private:
     std::unordered_map<std::string, std::vector<std::string>> fileImports;
     // Declared module path of the enclosing `module`, during collection and
     // during lowering respectively. Distinct from currentModulePath, which is
-    // derived from the file name for the `source.module` intrinsic.
+    // derived from the file name for the `CurrentSource.module` intrinsic.
     std::string collectModulePath;
     std::string declModulePath;
 
@@ -2787,7 +2787,7 @@ private:
 
     // Like LowerExprAs but, for intrinsic defaults, evaluates at
     // callSiteLoc rather than at the declaration site (call-site builtins:
-    // source.line, source.column, source.file, compiler.version, etc.).
+    // CurrentSource.line, CurrentSource.column, CurrentSource.file, CurrentCompiler.version, etc.).
     HirExprPtr LowerDefaultArg(const Expr &defaultExpr, const TypeRef &targetType, const SourceLocation &callSiteLoc) {
         if (const auto *intr = dynamic_cast<const IntrinsicExpr *>(&defaultExpr); intr && intr->args.empty()) {
             IntrinsicExpr tmp;

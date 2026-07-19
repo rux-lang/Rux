@@ -1,0 +1,32 @@
+import Rux::Assert;
+import Memory::{ Alloc, Free, Set, Zero };
+
+func Main() -> int {
+    let buffer = Alloc(16);
+    Assert(buffer != null, "Alloc(16)");
+    let bytes = buffer as *uint8;
+
+    Set(buffer, 16, 0xFF);
+    var i: uint = 0;
+    while i < 16 {
+        Assert(*(bytes + i) == 0xFF, "Set fills every byte");
+        i++;
+    }
+
+    // Only the first size bytes are written; the tail must survive untouched.
+    Zero(buffer, 16);
+    Set(buffer, 8, 0x42);
+    Assert(*(bytes + 7) == 0x42, "Set writes up to size");
+    Assert(*(bytes + 8) == 0, "Set stops at size");
+
+    // A size of zero writes nothing at all.
+    Set(buffer, 0, 0x7E);
+    Assert(*bytes == 0x42, "Set(ptr, 0, value)");
+
+    // The value is a byte: anything above the low 8 bits is discarded.
+    Set(buffer, 4, 0x1FF);
+    Assert(*bytes == 0xFF, "Set truncates value to a byte");
+
+    Free(buffer);
+    return 0;
+}

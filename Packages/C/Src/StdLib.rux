@@ -1,0 +1,100 @@
+import Rux::{ OperatingSystem, CurrentTarget };
+
+when CurrentTarget.os == OperatingSystem::Windows {
+    const StdLib = "ucrtbase.dll";
+}
+
+when CurrentTarget.os == OperatingSystem::Linux {
+    const StdLib = "libc.so.6";
+}
+
+when CurrentTarget.os == OperatingSystem::MacOS {
+    const StdLib = "libSystem.B.dylib";
+}
+
+when CurrentTarget.os == OperatingSystem::FreeBSD {
+    const StdLib = "libc.so.7";
+}
+
+when CurrentTarget.os == OperatingSystem::OpenBSD {
+    const StdLib = "libc.so.103.0";
+}
+
+when CurrentTarget.os == OperatingSystem::NetBSD {
+    const StdLib = "libc.so.12";
+}
+
+when CurrentTarget.os == OperatingSystem::DragonFlyBSD {
+    const StdLib = "libc.so.8";
+}
+
+#Link(StdLib)
+extern {
+    /// Causes abnormal program termination without cleaning up
+    /// https://en.cppreference.com/c/program/abort
+    func abort();
+
+    /// Computes the absolute value of an integer value
+    /// https://en.cppreference.com/c/numeric/math/abs
+    func abs(n: int32) -> int32;
+
+    /// Converts a byte string to a floating point value
+    /// https://en.cppreference.com/c/string/byte/atof
+    func atof(str: *const char8) -> float64;
+
+    /// Converts a byte string to an integer value
+    /// https://en.cppreference.com/c/string/byte/atoi
+    func atoi(str: *const char8) -> int32;
+
+    /// Converts a byte string to a long integer value
+    /// https://en.cppreference.com/c/string/byte/atoi
+    func atol(str: *const char8) -> int64;
+
+    /// Converts a byte string to a long long integer value
+    /// https://en.cppreference.com/c/string/byte/atoi
+    func atoll(str: *const char8) -> int64;
+
+    /// Allocates memory for an array of num objects of size and zero-initializes it
+    /// https://en.cppreference.com/c/memory/calloc
+    func calloc(num: uint, size: uint) -> *opaque;
+
+    /// Causes normal program termination with cleanup
+    /// https://en.cppreference.com/c/program/exit
+    func exit(status: int32);
+
+    /// Deallocates the memory previously allocated by malloc, calloc or realloc
+    /// https://en.cppreference.com/c/memory/free
+    func free(ptr: *opaque);
+
+    /// Returns the value of an environment variable
+    /// https://en.cppreference.com/c/program/getenv
+    func getenv(name: *const char8) -> *char8;
+
+    /// Computes the absolute value of a long integer value
+    /// https://en.cppreference.com/c/numeric/math/abs
+    func labs(n: int64) -> int64;
+
+    /// Computes the absolute value of a long long integer value
+    /// https://en.cppreference.com/c/numeric/math/abs
+    func llabs(n: int64) -> int64;
+
+    /// Allocates size bytes of uninitialized memory
+    /// https://en.cppreference.com/c/memory/malloc
+    func malloc(size: uint) -> *opaque;
+
+    /// Returns a pseudo-random integer value between 0 and RAND_MAX
+    /// https://en.cppreference.com/c/numeric/random/rand
+    func rand() -> int32;
+
+    /// Changes the size of the memory block pointed to by ptr to size bytes
+    /// https://en.cppreference.com/c/memory/realloc
+    func realloc(ptr: *opaque, size: uint) -> *opaque;
+
+    /// Seeds the pseudo-random number generator used by rand
+    /// https://en.cppreference.com/c/numeric/random/srand
+    func srand(seed: uint32);
+
+    /// Calls the host environment's command processor
+    /// https://en.cppreference.com/c/program/system
+    func system(command: *const char8) -> int32;
+}

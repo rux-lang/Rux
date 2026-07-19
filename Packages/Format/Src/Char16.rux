@@ -1,0 +1,23 @@
+import Text::{ String, StringBuilder };
+
+// A char16 holds one UTF-16 code unit, which becomes one to three bytes of
+// UTF-8. A code unit that is half of a surrogate pair says nothing on its
+// own -- the character it belongs to is spread across two of them, and this
+// conversion only sees one -- so it comes out as the replacement character
+// rather than as an ill-formed sequence.
+func ToString(value: char16) -> String {
+    var builder = StringBuilder::WithCapacity(3);
+    WriteChar(@builder, value);
+    return builder.IntoString();
+}
+
+extend char16 : Stringable {
+    func ToString(self) -> String {
+        return ToString(*self);
+    }
+}
+
+// Appends the UTF-8 bytes of a char16 to a builder.
+func WriteChar(builder: *StringBuilder, value: char16) {
+    WriteUtf8(builder, value as uint32);
+}

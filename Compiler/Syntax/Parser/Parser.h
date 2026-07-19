@@ -72,6 +72,7 @@ private:
         CallingConvention callConv = CallingConvention::Default;
         std::string warnMessage;
         std::string errorMessage;
+        std::vector<std::string> allowedLints;
         bool usedLink = false;
         bool usedLibrary = false;
         bool usedSymbol = false;
@@ -80,6 +81,7 @@ private:
         SourceLocation linkLocation;
         SourceLocation noReturnLocation;
         SourceLocation abiLocation;
+        SourceLocation allowLocation;
     };
 
     // Parses `#Name(...)` attribute calls before a declaration. The former

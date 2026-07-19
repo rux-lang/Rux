@@ -1,0 +1,53 @@
+import Rux::Assert;
+import Math::Sinh;
+
+asm func BitsOf(x: float64) -> int64 {
+    movq rax, xmm0
+    ret
+}
+
+func Close(actual: float64, expected: float64) -> bool {
+    if actual != actual {
+        return false;
+    }
+    if actual < 0.0 {
+        if expected >= 0.0 {
+            return false;
+        }
+    }
+    if actual >= 0.0 {
+        if expected < 0.0 {
+            return false;
+        }
+    }
+    var gap = BitsOf(actual) - BitsOf(expected);
+    if gap < 0i64 {
+        gap = -gap;
+    }
+    return gap <= 2i64;
+}
+
+func Main() -> int {
+    var zero = 0.0;
+    var one = 1.0;
+    let inf = one / zero;
+
+    Assert(Sinh(0.0) == 0.0, "Sinh(0.0)");
+    let negZero = Sinh(-0.0);
+    Assert(negZero == 0.0, "Sinh(-0.0)");
+    Assert(one / negZero < 0.0, "Sinh(-0.0) keeps the sign of zero");
+
+    Assert(Close(Sinh(0.5), 0.5210953054937474), "Sinh(0.5)");
+    Assert(Close(Sinh(-1.0), -1.1752011936438014), "Sinh(-1.0)");
+    Assert(Close(Sinh(20.0), 242582597.70489514), "Sinh(20.0)");
+
+    Assert(Sinh(inf) == inf, "Sinh(+Inf)");
+    Assert(Sinh(-inf) == -inf, "Sinh(-Inf)");
+
+    let nan = zero / zero;
+    let nanSinh = Sinh(nan);
+    Assert(nanSinh != nanSinh, "Sinh(NaN)");
+
+    Assert(Sinh(0.5f32) == 0.52109527587890625f32, "Sinh(0.5f32)");
+    return 0;
+}

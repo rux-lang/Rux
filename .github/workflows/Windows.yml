@@ -1,6 +1,7 @@
 name: Windows
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main, dev ]
   pull_request:
@@ -11,19 +12,29 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
+env:
+  CMAKE_VERSION: "4.3.4"
+  NINJA_VERSION: "1.13.2"
+
 jobs:
   build:
     name: Build
     runs-on: windows-2025
+    timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Install CMake and Ninja
         uses: lukka/get-cmake@v4.3.3
         with:
-          cmakeVersion: "4.2.0"
-          ninjaVersion: latest
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: ${{ env.NINJA_VERSION }}
 
       # Initialize the bundled Visual Studio environment so Clang can find
       # the Windows SDK, CRT headers, and import libraries.
@@ -39,42 +50,43 @@ jobs:
           $devShell = Join-Path $vsPath "Common7\Tools\Launch-VsDevShell.ps1"
           & $devShell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
 
-          cmake -S . -B build -G Ninja `
+          cmake -S . -B Build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_CXX_COMPILER=clang++ `
             -DRUX_WERROR=ON `
             -DRUX_BUILD_TESTS=ON
-          cmake --build build --config Release
+          cmake --build Build --config Release --parallel
 
       - name: Unit tests
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir Build --output-on-failure -C Release
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-windows-x64.exe
-          path: Bin/Release/rux.exe
+          name: rux-windows-x64
+          path: Bin/rux.exe
           if-no-files-found: error
+          retention-days: 7
 
   test:
     name: Test
     needs: build
     runs-on: windows-2025
+    timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Download binary artifact
         uses: actions/download-artifact@v8
         with:
-          name: rux-windows-x64.exe
-          path: Bin/Release
+          name: rux-windows-x64
+          path: Bin
 
-      # Manifest-less workspace mode discovers dependencies from test packages.
-      - name: Install test dependencies
-        shell: pwsh
-        run: ./Bin/Release/rux.exe install
-
-      # Workspace mode: run from the repo root so `rux test` discovers Tests/.
-      - name: Test
-        run: ./Bin/Release/rux.exe test --release
+      - name: Verify Rux workspace
+        run: |
+          ./Bin/rux.exe check
+          ./Bin/rux.exe lint
+          ./Bin/rux.exe test --release

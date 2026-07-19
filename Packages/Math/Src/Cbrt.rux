@@ -1,0 +1,64 @@
+// The real cube root, in three steps: a seed pulled straight out of the
+// exponent that is good to five bits, a polynomial that lifts it to
+// twenty-three, and one Newton step that doubles that to the full
+// significand. Unlike Sqrt there is no hardware instruction to lean on, but
+// unlike Sqrt the answer is defined for a negative argument.
+func Cbrt(x: float64) -> float64 {
+    // 1023 - 1023/3 - 0.03306235651, in the top 20 bits of the significand.
+    let b1 = 715094163u64;
+    // The same, less 54/3 octaves, for a subnormal scaled up by 2^54.
+    let b2 = 696219795u64;
+
+    let p0 = 1.87595182427177009643;
+    let p1 = -1.88497979543377169875;
+    let p2 = 1.621429720105354466140;
+    let p3 = -0.758397934778766047437;
+    let p4 = 0.145996192886612446982;
+
+    let bits = FloatBits(x);
+    let signHigh = (bits >> 32u64) & 0x80000000u64;
+    let hx = (bits >> 32u64) & 0x7FFFFFFFu64;
+
+    // Cbrt(NaN) and Cbrt(+-Inf) are themselves.
+    if hx >= 0x7FF00000u64 {
+        return x + x;
+    }
+
+    var t = 0.0;
+    if hx < 0x00100000u64 {
+        // Cbrt(+-0) is +-0, sign and all.
+        if (hx | (bits & 0xFFFFFFFFu64)) == 0u64 {
+            return x;
+        }
+        // A subnormal has no leading one, so scale it into the normals and
+        // pay for it with a shifted seed constant.
+        let scaled = x * 1.8014398509481984e16; // 2^54
+        let high = (FloatBits(scaled) >> 32u64) & 0x7FFFFFFFu64;
+        t = FromHighWord(signHigh | (high / 3u64 + b2));
+    } else {
+        // Dividing the biased exponent by three is a cube root to five bits:
+        // cbrt(2^e * (1+m)) ~ 2^(e/3) * (1 + (e%3 + m)/3).
+        t = FromHighWord(signHigh | (hx / 3u64 + b1));
+    }
+
+    // Lift the seed to 23 bits: cbrt(x) = t * cbrt(x/t^3) ~ t * P(t^3/x).
+    var r = (t * t) * (t / x);
+    t = t * ((p0 + r * (p1 + r * p2)) + ((r * r) * r) * (p3 + r * p4));
+
+    // Round t away from zero to 23 bits. That makes t*t exact below, and it
+    // puts t on the far side of the root so the Newton step closes in from a
+    // known direction.
+    t = FromBits((FloatBits(t) + 0x80000000u64) & 0xFFFFFFFFC0000000u64);
+
+    // One Newton step, to within 0.667 ulp. Each cancellation here is exact:
+    // t*t and t+t by construction, and r - t because the two are close.
+    let s = t * t;
+    r = x / s;
+    let w = t + t;
+    r = (r - t) / (w + r);
+    return t + t * r;
+}
+
+func Cbrt(x: float32) -> float32 {
+    return Cbrt(x as float64) as float32;
+}

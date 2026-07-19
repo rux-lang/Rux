@@ -1,0 +1,21 @@
+import Io::{
+    Print,
+    PrintLine,
+    ReadLine
+};
+
+func EchoLine() {
+    var line = ReadLine();
+    Print("[");
+    Print(line);
+    PrintLine("]");
+    line.Free();
+}
+
+func Main() -> int {
+    EchoLine();
+    EchoLine();
+    EchoLine();
+    EchoLine();
+    return 0;
+}

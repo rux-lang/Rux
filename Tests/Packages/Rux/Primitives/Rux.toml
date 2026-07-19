@@ -1,0 +1,11 @@
+[Package]
+Name = "Primitives"
+Version = "0.1.0"
+Type = "bin"
+Description = "Package test for Rux: Primitives"
+
+[Dependencies]
+Rux = { Path = "../../../../Packages/Rux" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Rux"

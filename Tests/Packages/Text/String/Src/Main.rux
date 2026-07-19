@@ -1,0 +1,64 @@
+import Text::String;
+
+// Std is deliberately absent from the dependencies. It still exports a String of
+// its own, and the compiler pools the overloads of two same-named symbols, so
+// Std::String's identically shaped methods win over this package's and the code
+// under test never runs. That rules out Std::Assert, so a failed check reports
+// itself through the exit code instead: each one below is numbered, and `rux
+// test` prints the number of the first that fails.
+func Main() -> int {
+    // The empty String owns nothing, so it can still be freed like any other.
+    var empty = String::New();
+    if empty.Length() != 0 { return 10; }
+    if !empty.IsEmpty() { return 11; }
+    if empty.Data() != null { return 12; }
+    empty.Free();
+
+    let literal: char8[] = "Hello";
+    var hello = String::From(literal);
+    if hello.Length() != 5 { return 20; }
+    if hello.IsEmpty() { return 21; }
+
+    // From copies. A String left pointing into the literal would sit on a
+    // read-only page, which is the reason the type is immutable at all.
+    if hello.Data() == literal.data { return 22; }
+    if hello.At(0) != c8'H' { return 23; }
+    if hello.At(4) != c8'o' { return 24; }
+
+    // Reads past the end report the null character rather than running off the
+    // end of the block.
+    if hello.At(5) != c8'\0' { return 25; }
+
+    let raw: char8[] = "ab";
+    var pair = String::From(raw.data, 2);
+    if pair.Length() != 2 { return 30; }
+    if pair.At(0) != c8'a' { return 31; }
+    if pair.At(1) != c8'b' { return 32; }
+    pair.Free();
+
+    // A zero length allocates nothing.
+    var none = String::From(raw.data, 0);
+    if !none.IsEmpty() { return 40; }
+    if none.Data() != null { return 41; }
+    none.Free();
+
+    // Clone gives an independent block, so both copies can be freed.
+    var copy = hello.Clone();
+    if !copy.Equals(hello) { return 50; }
+    if copy.Data() == hello.Data() { return 51; }
+    copy.Free();
+
+    // Cloning the empty String stays empty rather than allocating.
+    var emptyCopy = String::New().Clone();
+    if !emptyCopy.IsEmpty() { return 52; }
+    if emptyCopy.Data() != null { return 53; }
+    emptyCopy.Free();
+
+    // Free releases the block and leaves an empty String behind, so a second
+    // call is a no-op rather than a double free.
+    hello.Free();
+    if !hello.IsEmpty() { return 60; }
+    if hello.Data() != null { return 61; }
+    hello.Free();
+    return 0;
+}

@@ -1,0 +1,11 @@
+[Package]
+Name = "Compiler"
+Version = "0.1.0"
+Type = "bin"
+Description = "Package test for Rux: Compiler"
+
+[Dependencies]
+Rux = { Path = "../../../../Packages/Rux" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Rux"

@@ -1,0 +1,46 @@
+import Text::StringBuilder;
+
+// The integer conversions all funnel through here, so the digit loop is
+// written once rather than once per width: every signed type widens to
+// int64 on the way in and every unsigned one to uint64, neither of which
+// loses anything.
+
+// The digits of an unsigned value. A division loop hands them over least
+// significant first, so they land in a stack buffer and go back reversed.
+// Twenty is the most a uint64 ever needs, for 18446744073709551615.
+func WriteUint(builder: *StringBuilder, value: uint64) {
+    if value == 0u64 {
+        builder.Append(c8'0');
+        return;
+    }
+
+    var digits: char8[20];
+    var length: uint = 0;
+    var rest = value;
+    while rest > 0u64 {
+        digits[length] = (rest % 10u64 + 48u64) as char8;
+        length++;
+        rest /= 10u64;
+    }
+
+    var i = length;
+    while i > 0 {
+        i--;
+        builder.Append(digits[i]);
+    }
+}
+
+// The sign, then the magnitude as an unsigned. The magnitude is taken in
+// uint64 rather than by negating within int64, because the most negative
+// int64 has no positive counterpart there: -(-9223372036854775808) overflows
+// straight back to itself. Two's complement gives the right answer for that
+// value and for every other one.
+func WriteInt(builder: *StringBuilder, value: int64) {
+    if value < 0i64 {
+        builder.Append(c8'-');
+        WriteUint(builder, ~(value as uint64) + 1u64);
+        return;
+    }
+
+    WriteUint(builder, value as uint64);
+}

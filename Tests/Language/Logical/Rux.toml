@@ -1,0 +1,8 @@
+[Package]
+Name = "Logical"
+Version = "0.1.0"
+Type = "bin"
+Description = "Language test: Logical"
+
+[Build]
+Output = "../../../Bin/Tests/Language"
