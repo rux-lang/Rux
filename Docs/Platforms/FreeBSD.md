@@ -8,7 +8,7 @@ A native FreeBSD release is not currently published. Build Rux from source using
 
 ## Building from Source
 
-Rux currently requires Clang 22.1 or newer, CMake 3.31 or newer, Ninja 1.11 or newer, and a recent Git installation.
+Rux currently requires Clang 22.1 or newer, CMake 4.3 or newer, Ninja 1.11 or newer, and a recent Git installation.
 
 Install the toolchain on FreeBSD 15.1:
 

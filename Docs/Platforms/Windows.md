@@ -31,7 +31,7 @@ Use the same installation method again to upgrade. The [Windows installer guide]
 
 ## Building from Source
 
-Rux currently requires Clang 22.1 or newer, CMake 3.31 or newer, Ninja 1.11 or newer, a recent Git installation, and the Windows SDK and C runtime supplied by Visual Studio.
+Rux currently requires Clang 22.1 or newer, CMake 4.3 or newer, Ninja 1.11 or newer, a recent Git installation, and the Windows SDK and C runtime supplied by Visual Studio.
 
 1. Install Visual Studio or Visual Studio Build Tools with the **Desktop development with C++** workload.
 

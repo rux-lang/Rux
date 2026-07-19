@@ -20,7 +20,7 @@ Run the installer again to upgrade. The [Linux installer guide](../../Packaging/
 
 ## Building from Source
 
-Rux currently requires Clang 22.1 or newer, CMake 3.31 or newer, Ninja 1.11 or newer, and a recent Git installation.
+Rux currently requires Clang 22.1 or newer, CMake 4.3 or newer, Ninja 1.11 or newer, and a recent Git installation.
 
 On Ubuntu 26.04, install Clang 22 from the LLVM apt repository, CMake from Snap, and the remaining tools from Ubuntu:
 

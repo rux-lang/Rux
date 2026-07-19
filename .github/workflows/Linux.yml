@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 env:
-  CMAKE_VERSION: "4.3.4"
+  CMAKE_VERSION: "4.3.3"
   NINJA_VERSION: "1.13.2"
 
 jobs:

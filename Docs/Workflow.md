@@ -4,7 +4,7 @@ The day-to-day loop for changing the Rux compiler. For where your branch should 
 
 ## 1. Prerequisites
 
-Install the toolchain (Clang 22.1+ including `clang-format`, CMake 3.31+, Ninja 1.11+, and a recent Git) for your OS — see [Building from Source](../README.md#building-from-source). Install `clang-tidy` from the same LLVM 22 release when you want to run static analysis locally.
+Install the toolchain (Clang 22.1+ including `clang-format`, CMake 4.3+, Ninja 1.11+, and a recent Git) for your OS — see [Building from Source](../README.md#building-from-source). Install `clang-tidy` from the same LLVM 22 release when you want to run static analysis locally.
 
 The LLVM tools have distinct roles:
 

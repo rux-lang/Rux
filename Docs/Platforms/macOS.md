@@ -8,7 +8,7 @@ A native macOS release is not currently published. Build Rux from source using t
 
 ## Building from Source
 
-Rux currently requires Clang 22.1 or newer, CMake 3.31 or newer, Ninja 1.11 or newer, and a recent Git installation. Apple Clang does not yet provide all C++26 features used by Rux, so install upstream LLVM 22 and the build tools with [Homebrew](https://brew.sh/):
+Rux currently requires Clang 22.1 or newer, CMake 4.3 or newer, Ninja 1.11 or newer, and a recent Git installation. Apple Clang does not yet provide all C++26 features used by Rux, so install upstream LLVM 22 and the build tools with [Homebrew](https://brew.sh/):
 
 ```sh
 brew install llvm@22 cmake ninja git

@@ -22,9 +22,9 @@ Rux is a fast, compiled, strongly typed, multi-paradigm programming language.
 ## Documentation
 
 - [Get started](https://rux-lang.dev/start)
-- [Language reference](https://rux-lang.dev/docs)
-- [API reference](https://rux-lang.dev/api)
+- [Rux reference](https://rux-lang.dev/docs)
 - [CLI reference](https://rux-lang.dev/cli)
+- [API reference](https://rux-lang.dev/api)
 
 Platform installation and source-build guides are indexed in the next two sections. For work on the compiler and repository, use the guide that matches the task:
 
