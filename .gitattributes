@@ -1,3 +1,2 @@
-# Shell scripts must use LF endings so they run under POSIX sh / `curl | sh`,
-# even when checked out on Windows.
-*.sh text eol=lf
+# Use canonical LF endings for every text file on every platform.
+* text=auto eol=lf
