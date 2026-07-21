@@ -96,5 +96,5 @@ extend Target {
     intrinsic func HasFeature(self, feature: TargetFeature) -> bool;
 }
 
-// Compile-time property
-intrinsic const CurrentTarget: Target;
+// Compile-time value
+intrinsic #target: Target;

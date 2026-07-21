@@ -1,27 +1,15 @@
-import Rux::{ OperatingSystem, CurrentTarget };
+import Rux::{ #target };
 import Text::{ String, StringBuilder };
 
-when CurrentTarget.os == OperatingSystem::Windows {
-    import Windows::{ GetStdHandle, ReadFile, StdInputHandle };
-}
-
-when CurrentTarget.os == OperatingSystem::Linux {
-    import Linux::{ Read, StdIn };
-}
-
-when CurrentTarget.os == OperatingSystem::MacOS {
-    import MacOS::{ Read, StdIn };
-}
-
-when CurrentTarget.os == OperatingSystem::FreeBSD ||
-     CurrentTarget.os == OperatingSystem::OpenBSD ||
-     CurrentTarget.os == OperatingSystem::NetBSD ||
-     CurrentTarget.os == OperatingSystem::DragonFlyBSD {
-    import Bsd::{ Read, StdIn };
+when #target.os {
+    .DragonFlyBSD, .FreeBSD, .NetBSD, .OpenBSD => import Bsd::{ Read, StdIn },
+    .Linux => import Linux::{ Read, StdIn },
+    .MacOS => import MacOS::{ Read, StdIn },
+    .Windows => import Windows::{ GetStdHandle, ReadFile, StdInputHandle }
 }
 
 func ReadStdinByte(buffer: *char8) -> int64 {
-    when CurrentTarget.os == OperatingSystem::Windows {
+    when #target.os == .Windows {
         let handle = GetStdHandle(StdInputHandle);
         var bytesRead: uint32 = 0;
         if !ReadFile(handle, buffer, 1, @bytesRead, null) {

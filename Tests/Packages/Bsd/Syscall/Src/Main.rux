@@ -1,6 +1,6 @@
-import Rux::{ OperatingSystem, CurrentTarget };
+import Rux::{ OperatingSystem, #target };
 
-when CurrentTarget.os == OperatingSystem::FreeBSD {
+when #target.os == OperatingSystem::FreeBSD {
     import Bsd::{
         ClockGetTime,
         ClockMonotonic,

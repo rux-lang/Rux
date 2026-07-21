@@ -1,10 +1,13 @@
 import Format::{ Format, Stringable, ToString };
 import Memory::{ Alloc, Free };
-import Rux::{ OperatingSystem, CurrentTarget };
+import Rux::{ #target };
 import Text::String;
 
-when CurrentTarget.os == OperatingSystem::Windows {
-    import Windows::{
+when #target.os {
+    .DragonFlyBSD, .FreeBSD, .NetBSD, .OpenBSD => import Bsd::{ StdOut, Write },
+    .Linux => import Linux::{ StdOut, Write },
+    .MacOS => import MacOS::{ StdOut, Write },
+    .Windows => import Windows::{
         CodePage,
         GetConsoleMode,
         GetStdHandle,
@@ -12,8 +15,10 @@ when CurrentTarget.os == OperatingSystem::Windows {
         StdOutputHandle,
         WriteConsoleW,
         WriteFile
-    };
+    }
+}
 
+when #target.os == .Windows {
     // Write raw bytes to a redirected stdout (a file or pipe), where the UTF-8
     // encoding of `data` is already exactly what should land on disk.
     func WriteBytes(handle: *opaque, data: *const char8, length: uint) {
@@ -55,25 +60,10 @@ when CurrentTarget.os == OperatingSystem::Windows {
     }
 }
 
-when CurrentTarget.os == OperatingSystem::Linux {
-    import Linux::{ StdOut, Write };
-}
-
-when CurrentTarget.os == OperatingSystem::MacOS {
-    import MacOS::{ StdOut, Write };
-}
-
-when CurrentTarget.os == OperatingSystem::FreeBSD ||
-     CurrentTarget.os == OperatingSystem::OpenBSD ||
-     CurrentTarget.os == OperatingSystem::NetBSD ||
-     CurrentTarget.os == OperatingSystem::DragonFlyBSD {
-    import Bsd::{ StdOut, Write };
-}
-
 func Print(data: *const char8, length: uint) {
     if length == 0 { return; }
 
-    when CurrentTarget.os == OperatingSystem::Windows {
+    when #target.os == .Windows {
         let handle = GetStdHandle(StdOutputHandle);
         // Only a console needs the UTF-16 path. GetConsoleMode succeeds for a
         // console handle and fails when stdout is redirected to a file or pipe,

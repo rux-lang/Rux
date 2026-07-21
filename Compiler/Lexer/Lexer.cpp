@@ -864,7 +864,7 @@ Token Lexer::ScanUnknown(const SourceLocation start) {
     // '$' used to mark a compiler-initialized constant, so point at its
     // replacement rather than report it as line noise.
     if (source[tokenStart] == '$') {
-        EmitError(start, "'$' is no longer part of a declaration; write 'intrinsic const name: Type;'");
+        EmitError(start, "'$' is no longer part of a declaration; write 'intrinsic #name: Type;'");
     }
     else {
         EmitError(start, std::string("unexpected character '") + source[tokenStart] + "'");

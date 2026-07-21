@@ -1,0 +1,2 @@
+// Emits compilation error
+intrinsic func #Error(message: char8[]);

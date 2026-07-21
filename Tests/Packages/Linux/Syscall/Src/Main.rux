@@ -1,4 +1,4 @@
-import Rux::{ OperatingSystem, CurrentTarget };
+import Rux::{ OperatingSystem, #target };
 import Linux::{
     ClockGetTime,
     ClockMonotonic,
@@ -20,7 +20,7 @@ import Linux::{
     Write
 };
 
-when CurrentTarget.os == OperatingSystem::Linux {
+when #target.os == OperatingSystem::Linux {
 func Main() -> int {
     if GetPid() <= 0 {
         return 1;

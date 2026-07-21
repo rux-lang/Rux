@@ -1,13 +1,13 @@
-import Rux::{ CurrentTarget, OperatingSystem };
+import Rux::{ #target };
 
-when CurrentTarget.os == OperatingSystem::Windows {
+when #target.os == .Windows {
     import Windows::RtlCompareMemory;
 }
 
 // Finds the offset at which two blocks of memory first differ
 // https://rux-lang.dev/api/memory/compare
 func Compare(lhs: *const opaque, rhs: *const opaque, length: uint) -> uint {
-    when CurrentTarget.os == OperatingSystem::Windows {
+    when #target.os == .Windows {
         return RtlCompareMemory(lhs, rhs, length);
     } else {
         let left = lhs as *const uint8;

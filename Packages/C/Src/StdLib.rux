@@ -1,31 +1,15 @@
-import Rux::{ OperatingSystem, CurrentTarget };
+import Rux::{ #target, #Error };
 
-when CurrentTarget.os == OperatingSystem::Windows {
-    const StdLib = "ucrtbase.dll";
-}
-
-when CurrentTarget.os == OperatingSystem::Linux {
-    const StdLib = "libc.so.6";
-}
-
-when CurrentTarget.os == OperatingSystem::MacOS {
-    const StdLib = "libSystem.B.dylib";
-}
-
-when CurrentTarget.os == OperatingSystem::FreeBSD {
-    const StdLib = "libc.so.7";
-}
-
-when CurrentTarget.os == OperatingSystem::OpenBSD {
-    const StdLib = "libc.so.103.0";
-}
-
-when CurrentTarget.os == OperatingSystem::NetBSD {
-    const StdLib = "libc.so.12";
-}
-
-when CurrentTarget.os == OperatingSystem::DragonFlyBSD {
-    const StdLib = "libc.so.8";
+// The C standard library's shared object differs by platform.
+when #target.os {
+    .DragonFlyBSD => const StdLib = "libc.so.8";
+    .FreeBSD => const StdLib = "libc.so.7";
+    .Linux => const StdLib = "libc.so.6";
+    .MacOS => const StdLib = "libSystem.B.dylib";
+    .NetBSD => const StdLib = "libc.so.12";
+    .OpenBSD => const StdLib = "libc.so.103.0";
+    .Windows => const StdLib = "ucrtbase.dll";
+    else => #Error("Unsupported operating system")
 }
 
 #Link(StdLib)

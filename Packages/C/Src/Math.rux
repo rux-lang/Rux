@@ -1,31 +1,15 @@
-import Rux::{ OperatingSystem, CurrentTarget };
+import Rux::{ #target, #Error };
 
-when CurrentTarget.os == OperatingSystem::Windows {
-    const MathLib = "ucrtbase.dll";
-}
-
-when CurrentTarget.os == OperatingSystem::Linux {
-    const MathLib = "libm.so.6";
-}
-
-when CurrentTarget.os == OperatingSystem::MacOS {
-    const MathLib = "libSystem.B.dylib";
-}
-
-when CurrentTarget.os == OperatingSystem::FreeBSD {
-    const MathLib = "libm.so.5";
-}
-
-when CurrentTarget.os == OperatingSystem::OpenBSD {
-    const MathLib = "libm.so.10.1";
-}
-
-when CurrentTarget.os == OperatingSystem::NetBSD {
-    const MathLib = "libm.so.0";
-}
-
-when CurrentTarget.os == OperatingSystem::DragonFlyBSD {
-    const MathLib = "libm.so.4";
+// The C math library's shared object differs by platform.
+when #target.os {
+    .DragonFlyBSD => const MathLib = "libm.so.4";
+    .FreeBSD => const MathLib = "libm.so.5";
+    .Linux => const MathLib = "libm.so.6";
+    .MacOS => const MathLib = "libSystem.B.dylib";
+    .NetBSD => const MathLib = "libm.so.0";
+    .OpenBSD => const MathLib = "libm.so.10.1";
+    .Windows => const MathLib = "ucrtbase.dll";
+    else => #Error("Unsupported operating system")
 }
 
 #Link(MathLib)

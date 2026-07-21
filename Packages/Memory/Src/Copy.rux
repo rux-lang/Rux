@@ -1,13 +1,13 @@
-import Rux::{ CurrentTarget, OperatingSystem };
+import Rux::{ #target };
 
-when CurrentTarget.os == OperatingSystem::Windows {
+when #target.os == .Windows {
     import Windows::RtlCopyMemory;
 }
 
 // Copies bytes from one block of memory to another
 // https://rux-lang.dev/api/memory/copy
 func Copy(dest: *opaque, src: *const opaque, length: uint) {
-    when CurrentTarget.os == OperatingSystem::Windows {
+    when #target.os == .Windows {
         RtlCopyMemory(dest, src, length);
     } else {
         let destination = dest as *uint8;

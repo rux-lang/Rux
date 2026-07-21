@@ -227,7 +227,7 @@ private:
     std::unordered_map<std::string, std::vector<std::string>> fileImports;
     // Declared module path of the enclosing `module`, during collection and
     // during lowering respectively. Distinct from currentModulePath, which is
-    // derived from the file name for the `CurrentSource.module` intrinsic.
+    // derived from the file name for the `#source.module` intrinsic.
     std::string collectModulePath;
     std::string declModulePath;
 
@@ -2242,7 +2242,7 @@ private:
             hmod.impls.push_back(LowerImpl(*implDecl));
         }
         else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
-            // An intrinsic constant has no value to lower; uses of it become the
+            // An intrinsic value has no value to lower; uses of it become the
             // compiler's own object instead.
             if (constDecl->intrinsicName.empty()) {
                 hmod.consts.push_back(LowerConst(*constDecl));
@@ -2533,11 +2533,30 @@ private:
 
     // Block & statement lowering
 
+    // `#Error`/`#Warn` are compile-time directives: semantic analysis already
+    // emitted their diagnostic, so at lowering they contribute no runtime code.
+    bool IsDiagnosticIntrinsicCall(const Expr &expr) const {
+        const auto *call = dynamic_cast<const CallExpr *>(&expr);
+        if (!call) {
+            return false;
+        }
+        const auto *ident = dynamic_cast<const IdentExpr *>(call->callee.get());
+        if (!ident) {
+            return false;
+        }
+        const HirSymbol *sym = currentScope->Lookup(ident->name);
+        return sym && (sym->intrinsicName == "#Error" || sym->intrinsicName == "#Warn");
+    }
+
     HirBlock LowerBlock(const Block &block) {
         HirBlock hb;
         hb.location = block.location;
         PushScope();
         for (const auto &stmt : block.stmts) {
+            if (const auto *exprStmt = dynamic_cast<const ExprStmt *>(stmt.get());
+                exprStmt && IsDiagnosticIntrinsicCall(*exprStmt->expr)) {
+                continue;
+            }
             hb.stmts.push_back(LowerStmt(*stmt));
         }
         PopScope();
@@ -2787,7 +2806,7 @@ private:
 
     // Like LowerExprAs but, for intrinsic defaults, evaluates at
     // callSiteLoc rather than at the declaration site (call-site builtins:
-    // CurrentSource.line, CurrentSource.column, CurrentSource.file, CurrentCompiler.version, etc.).
+    // #source.line, #source.column, #source.file, #compiler.version, etc.).
     HirExprPtr LowerDefaultArg(const Expr &defaultExpr, const TypeRef &targetType, const SourceLocation &callSiteLoc) {
         if (const auto *intr = dynamic_cast<const IntrinsicExpr *>(&defaultExpr); intr && intr->args.empty()) {
             IntrinsicExpr tmp;

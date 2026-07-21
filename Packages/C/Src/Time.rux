@@ -1,4 +1,4 @@
-import Rux::{ OperatingSystem, CurrentTarget };
+import Rux::{ #target, #Error };
 
 /// Arithmetic type capable of representing a calendar time
 /// https://en.cppreference.com/c/chrono/time_t
@@ -12,33 +12,36 @@ type clock_t = int64;
 
 /// Calendar time broken down into its components
 /// https://en.cppreference.com/c/chrono/tm
-when CurrentTarget.os == OperatingSystem::Windows {
-    #Allow("naming.type")
-    struct tm {
-        tm_sec: int32;   // seconds after the minute [0, 60]
-        tm_min: int32;   // minutes after the hour [0, 59]
-        tm_hour: int32;  // hours since midnight [0, 23]
-        tm_mday: int32;  // day of the month [1, 31]
-        tm_mon: int32;   // months since January [0, 11]
-        tm_year: int32;  // years since 1900
-        tm_wday: int32;  // days since Sunday [0, 6]
-        tm_yday: int32;  // days since January 1 [0, 365]
-        tm_isdst: int32; // daylight saving time flag
+when #target.os {
+    .Windows => {
+        #Allow("naming.type")
+        struct tm {
+            tm_sec: int32;   // seconds after the minute [0, 60]
+            tm_min: int32;   // minutes after the hour [0, 59]
+            tm_hour: int32;  // hours since midnight [0, 23]
+            tm_mday: int32;  // day of the month [1, 31]
+            tm_mon: int32;   // months since January [0, 11]
+            tm_year: int32;  // years since 1900
+            tm_wday: int32;  // days since Sunday [0, 6]
+            tm_yday: int32;  // days since January 1 [0, 365]
+            tm_isdst: int32; // daylight saving time flag
+        }
     }
-} else {
-    #Allow("naming.type")
-    struct tm {
-        tm_sec: int32;          // seconds after the minute [0, 60]
-        tm_min: int32;          // minutes after the hour [0, 59]
-        tm_hour: int32;         // hours since midnight [0, 23]
-        tm_mday: int32;         // day of the month [1, 31]
-        tm_mon: int32;          // months since January [0, 11]
-        tm_year: int32;         // years since 1900
-        tm_wday: int32;         // days since Sunday [0, 6]
-        tm_yday: int32;         // days since January 1 [0, 365]
-        tm_isdst: int32;        // daylight saving time flag
-        tm_gmtoff: int64;       // seconds east of UTC
-        tm_zone: *const char8;  // timezone abbreviation
+    else => {
+        #Allow("naming.type")
+        struct tm {
+            tm_sec: int32;          // seconds after the minute [0, 60]
+            tm_min: int32;          // minutes after the hour [0, 59]
+            tm_hour: int32;         // hours since midnight [0, 23]
+            tm_mday: int32;         // day of the month [1, 31]
+            tm_mon: int32;          // months since January [0, 11]
+            tm_year: int32;         // years since 1900
+            tm_wday: int32;         // days since Sunday [0, 6]
+            tm_yday: int32;         // days since January 1 [0, 365]
+            tm_isdst: int32;        // daylight saving time flag
+            tm_gmtoff: int64;       // seconds east of UTC
+            tm_zone: *const char8;  // timezone abbreviation
+        }
     }
 }
 
@@ -50,32 +53,16 @@ struct timespec {
     tv_nsec: int64; // nanoseconds [0, 999999999]
 }
 
-when CurrentTarget.os == OperatingSystem::Windows {
-    const TimeLib = "msvcrt.dll";
-}
-
-when CurrentTarget.os == OperatingSystem::Linux {
-    const TimeLib = "libc.so.6";
-}
-
-when CurrentTarget.os == OperatingSystem::MacOS {
-    const TimeLib = "libSystem.B.dylib";
-}
-
-when CurrentTarget.os == OperatingSystem::FreeBSD {
-    const TimeLib = "libc.so.7";
-}
-
-when CurrentTarget.os == OperatingSystem::OpenBSD {
-    const TimeLib = "libc.so.103.0";
-}
-
-when CurrentTarget.os == OperatingSystem::NetBSD {
-    const TimeLib = "libc.so.12";
-}
-
-when CurrentTarget.os == OperatingSystem::DragonFlyBSD {
-    const TimeLib = "libc.so.8";
+// The C time functions live in the standard C library, which differs by platform.
+when #target.os {
+    .DragonFlyBSD => const TimeLib = "libc.so.8";
+    .FreeBSD => const TimeLib = "libc.so.7";
+    .Linux => const TimeLib = "libc.so.6";
+    .MacOS => const TimeLib = "libSystem.B.dylib";
+    .NetBSD => const TimeLib = "libc.so.12";
+    .OpenBSD => const TimeLib = "libc.so.103.0";
+    .Windows => const TimeLib = "msvcrt.dll";
+    else => #Error("Unsupported operating system")
 }
 
 #Link(TimeLib)

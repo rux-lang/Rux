@@ -11,6 +11,13 @@
 
 namespace Rux::Linting {
 namespace {
+// A compiler-injected intrinsic such as `#target` or `#Error`. Its spelling is
+// dictated by the compiler, not the source's naming conventions, so the naming
+// lints leave it alone.
+bool IsIntrinsicName(std::string_view name) {
+    return !name.empty() && name.front() == '#';
+}
+
 bool IsPascalCase(std::string_view name) {
     if (name.empty()) {
         return false;
@@ -82,7 +89,7 @@ private:
 
     void VisitDecl(const Decl &decl) {
         if (const auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
-            if (!IsSymbolicOperatorName(fn->name) && !IsPascalCase(fn->name)) {
+            if (!IsIntrinsicName(fn->name) && !IsSymbolicOperatorName(fn->name) && !IsPascalCase(fn->name)) {
                 Warn(fn->location, std::format("function name '{}' should be PascalCase", fn->name));
             }
             for (const auto &p : fn->params) {
@@ -160,7 +167,7 @@ private:
             }
         }
         else if (const auto *cnst = dynamic_cast<const ConstDecl *>(&decl)) {
-            if (!IsPascalCase(cnst->name)) {
+            if (!IsIntrinsicName(cnst->name) && !IsPascalCase(cnst->name)) {
                 Warn(cnst->location, std::format("constant name '{}' should be PascalCase", cnst->name));
             }
             if (cnst->value) {

@@ -825,6 +825,78 @@ private:
         return TypeRef::MakeNamed(SliceTypeName(StringLiteralElementType(tok)));
     }
 
+    // The text of a string-literal token, with the surrounding quotes and any
+    // encoding prefix removed and the common escapes decoded, for use as a
+    // human-readable diagnostic message.
+    static std::string DecodeStringMessage(const std::string &text) {
+        const std::size_t open = text.find('"');
+        if (open == std::string::npos || text.size() < open + 2 || text.back() != '"') {
+            return {};
+        }
+        const std::string_view body(text.data() + open + 1, text.size() - open - 2);
+        std::string out;
+        out.reserve(body.size());
+        for (std::size_t i = 0; i < body.size(); ++i) {
+            if (body[i] != '\\' || i + 1 == body.size()) {
+                out.push_back(body[i]);
+                continue;
+            }
+            switch (body[++i]) {
+            case 'n':
+                out.push_back('\n');
+                break;
+            case 't':
+                out.push_back('\t');
+                break;
+            case 'r':
+                out.push_back('\r');
+                break;
+            case '0':
+                out.push_back('\0');
+                break;
+            case '\\':
+                out.push_back('\\');
+                break;
+            case '"':
+                out.push_back('"');
+                break;
+            default:
+                out.push_back('\\');
+                out.push_back(body[i]);
+                break;
+            }
+        }
+        return out;
+    }
+
+    // `#Error(message)` and `#Warn(message)` are compile-time directives: at each
+    // live call site they emit a diagnostic with their message and produce no
+    // runtime code. A live call is one the `when` fold kept, so a directive in a
+    // branch that is not taken never fires. The message must be a string literal.
+    void EmitDiagnosticIntrinsic(const std::string &intrinsicName, const CallExpr &call) {
+        const bool isError = intrinsicName == "#Error";
+        if (call.args.size() != 1 || !call.args[0]) {
+            EmitError(call.location, std::format("'{}' expects exactly one string argument", intrinsicName));
+            return;
+        }
+        const auto *literal = dynamic_cast<const LiteralExpr *>(call.args[0].get());
+        if (!literal || literal->token.kind != TokenKind::StringLiteral) {
+            EmitError(call.args[0]->location, std::format("'{}' message must be a string literal", intrinsicName));
+            return;
+        }
+        std::string message = DecodeStringMessage(literal->token.text);
+        if (isError) {
+            EmitError(call.location, std::move(message));
+        }
+        else {
+            EmitWarning(call.location, std::move(message));
+        }
+    }
+
+    static bool IsDiagnosticIntrinsic(const Symbol *sym) {
+        return sym && (sym->intrinsicName == "#Error" || sym->intrinsicName == "#Warn");
+    }
+
     static TypeRef CharLiteralType(const Token &tok) {
         if (tok.text.starts_with("c8'")) {
             return TypeRef::MakeChar8();
@@ -3435,7 +3507,7 @@ private:
                     EmitError(e->location, "compile-time intrinsic expects exactly one argument");
                 }
                 else if (e->kind == K::TargetFeature && dynamic_cast<const EnumShorthandExpr *>(e->args[0].get())) {
-                    // `.AVX2` is given its meaning by CurrentTarget.HasFeature.
+                    // `.AVX2` is given its meaning by #target.HasFeature.
                 }
                 else {
                     const TypeRef argType = CheckExpr(*e->args[0]);
@@ -3459,15 +3531,15 @@ private:
             if (e->kind == K::Os || e->kind == K::Arch || e->kind == K::Abi || e->kind == K::Endian ||
                 e->kind == K::DataModel || e->kind == K::ObjectFormat || e->kind == K::BuildMode ||
                 e->kind == K::Optimization || e->kind == K::OutputKind) {
-                const char *name = e->kind == K::Os           ? "CurrentTarget.os"
-                                 : e->kind == K::Arch         ? "CurrentTarget.arch"
-                                 : e->kind == K::Abi          ? "CurrentTarget.abi"
-                                 : e->kind == K::Endian       ? "CurrentTarget.endian"
-                                 : e->kind == K::DataModel    ? "CurrentTarget.dataModel"
-                                 : e->kind == K::ObjectFormat ? "CurrentTarget.objectFormat"
-                                 : e->kind == K::BuildMode    ? "CurrentBuild.mode"
-                                 : e->kind == K::Optimization ? "CurrentBuild.optimization"
-                                                              : "CurrentBuild.outputKind";
+                const char *name = e->kind == K::Os           ? "#target.os"
+                                 : e->kind == K::Arch         ? "#target.arch"
+                                 : e->kind == K::Abi          ? "#target.abi"
+                                 : e->kind == K::Endian       ? "#target.endian"
+                                 : e->kind == K::DataModel    ? "#target.dataModel"
+                                 : e->kind == K::ObjectFormat ? "#target.objectFormat"
+                                 : e->kind == K::BuildMode    ? "#build.mode"
+                                 : e->kind == K::Optimization ? "#build.optimization"
+                                                              : "#build.outputKind";
                 EmitError(e->location, std::string("'") + name + "' can only be used in a 'when' condition");
                 return TypeRef::MakeUnknown();
             }
@@ -3554,6 +3626,13 @@ private:
                 argTypes.reserve(e->args.size());
                 for (const auto &arg : e->args) {
                     argTypes.push_back(CheckExpr(*arg));
+                }
+
+                // `#Error`/`#Warn` emit a diagnostic here rather than resolving as
+                // an ordinary call; they contribute no value and no runtime code.
+                if (Symbol *sym = currentScope->Lookup(ident->name); IsDiagnosticIntrinsic(sym)) {
+                    EmitDiagnosticIntrinsic(sym->intrinsicName, *e);
+                    return TypeRef::MakeOpaque();
                 }
 
                 if (Symbol *sym = currentScope->Lookup(ident->name);

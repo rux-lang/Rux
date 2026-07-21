@@ -1,60 +1,27 @@
-import Rux::{ CurrentTarget, OperatingSystem };
+import Rux::{ #target };
 
-when CurrentTarget.os == OperatingSystem::Windows {
-    import Windows::{ GetProcessHeap, HeapFree };
-
-    // Releases a block of memory back to the platform
-    // https://rux-lang.dev/api/memory/free
-    func Free(ptr: *opaque) {
-        let heap = GetProcessHeap();
-        HeapFree(heap, 0, ptr);
-    }
+when #target.os {
+    .DragonFlyBSD, .FreeBSD, .NetBSD, .OpenBSD => import Bsd::Munmap,
+    .Linux => import Linux::Munmap,
+    .MacOS => import MacOS::Munmap,
+    .Windows => import Windows::{ GetProcessHeap, HeapFree }
 }
 
-when CurrentTarget.os == OperatingSystem::Linux {
-    import Linux::Munmap;
-
-    // Releases a block of memory back to the platform
-    // https://rux-lang.dev/api/memory/free
-    func Free(ptr: *opaque) {
-        if ptr == null {
-            return;
+// Releases a block of memory back to the operating system
+// https://rux-lang.dev/api/memory/free
+func Free(ptr: *opaque) {
+    when #target.os {
+        .DragonFlyBSD, .FreeBSD, .Linux, .MacOS, .NetBSD, .OpenBSD => {
+            if ptr == null {
+                return;
+            }
+            const HeaderSize: uint = 16;
+            let header = (ptr as *uint) - 2;
+            Munmap(header as *opaque, *header + HeaderSize);
+        },
+        .Windows => {
+            let heap = GetProcessHeap();
+            HeapFree(heap, 0, ptr);
         }
-        const HeaderSize: uint = 16;
-        let header = (ptr as *uint) - 2;
-        Munmap(header as *opaque, *header + HeaderSize);
-    }
-}
-
-when CurrentTarget.os == OperatingSystem::MacOS {
-    import MacOS::Munmap;
-
-    // Releases a block of memory back to the platform
-    // https://rux-lang.dev/api/memory/free
-    func Free(ptr: *opaque) {
-        if ptr == null {
-            return;
-        }
-        const HeaderSize: uint = 16;
-        let header = (ptr as *uint) - 2;
-        Munmap(header as *opaque, *header + HeaderSize);
-    }
-}
-
-when CurrentTarget.os == OperatingSystem::FreeBSD ||
-     CurrentTarget.os == OperatingSystem::OpenBSD ||
-     CurrentTarget.os == OperatingSystem::NetBSD ||
-     CurrentTarget.os == OperatingSystem::DragonFlyBSD {
-    import Bsd::Munmap;
-
-    // Releases a block of memory back to the platform
-    // https://rux-lang.dev/api/memory/free
-    func Free(ptr: *opaque) {
-        if ptr == null {
-            return;
-        }
-        const HeaderSize: uint = 16;
-        let header = (ptr as *uint) - 2;
-        Munmap(header as *opaque, *header + HeaderSize);
     }
 }

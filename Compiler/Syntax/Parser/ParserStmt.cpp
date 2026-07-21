@@ -177,8 +177,60 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
     s->location = loc;
     s->isCompileTime = isCompileTime;
     structInitAllowed = false;
-    s->condition = ParseExpr();
+    auto subject = ParseExpr();
     structInitAllowed = true;
+
+    // Compile-time match: `when subject { pattern, ... => body, ... else => body }`.
+    // An arm names one or more comma-separated patterns before `=>` (it is taken
+    // when any matches); its body becomes a block spliced in when selected, and a
+    // bare-expression body is wrapped as a one-statement block.
+    if (isCompileTime && Check(TokenKind::LeftBrace) && NextBraceIsMatchArms()) {
+        s->matchSubject = std::move(subject);
+
+        auto parseArmBody = [&]() -> std::unique_ptr<Block> {
+            if (Check(TokenKind::LeftBrace)) {
+                return ParseBlock();
+            }
+            auto block = std::make_unique<Block>();
+            block->location = CurrentLocation();
+            auto exprStmt = std::make_unique<ExprStmt>();
+            exprStmt->location = CurrentLocation();
+            exprStmt->expr = ParseExpr();
+            block->stmts.push_back(std::move(exprStmt));
+            return block;
+        };
+
+        Expect(TokenKind::LeftBrace, "expected '{'");
+        bool sawElse = false;
+        while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+            IfStmt::MatchArm arm;
+            arm.location = CurrentLocation();
+            if (Match(TokenKind::ElseKeyword)) {
+                sawElse = true;
+            }
+            else {
+                structInitAllowed = false;
+                arm.patterns.push_back(ParseExpr());
+                // Commas before `=>` separate patterns that share this arm's body.
+                while (Match(TokenKind::Comma) && !Check(TokenKind::FatArrow)) {
+                    arm.patterns.push_back(ParseExpr());
+                }
+                structInitAllowed = true;
+            }
+            Expect(TokenKind::FatArrow, "expected '=>' after a 'when' arm pattern");
+            arm.block = parseArmBody();
+            s->matchArms.push_back(std::move(arm));
+
+            Match(TokenKind::Comma); // optional separator; required only to end a bare-expression arm
+            if (sawElse && !Check(TokenKind::RightBrace)) {
+                EmitError(CurrentLocation(), "the 'else' arm must be last in a 'when' match");
+            }
+        }
+        Expect(TokenKind::RightBrace, "expected '}' to close the 'when' match");
+        return s;
+    }
+
+    s->condition = std::move(subject);
     s->thenBlock = ParseBlock();
 
     // A chain keeps the keyword it opened with: `if`/`else if` throughout, or

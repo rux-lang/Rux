@@ -1,4 +1,4 @@
-import Rux::{ Assert, OperatingSystem, CurrentTarget };
+import Rux::{ Assert, OperatingSystem, #target };
 import C::{ time, clock, difftime, gmtime, localtime, mktime, malloc, free };
 
 func Main() -> int {
@@ -19,7 +19,7 @@ func Main() -> int {
     // Converting current local time back to time_t recovers the same second.
     let local = localtime(slot);
     Assert(mktime(local) == now, "localtime and mktime round-trip");
-    when CurrentTarget.os == OperatingSystem::Linux {
+    when #target.os == OperatingSystem::Linux {
         Assert(local.tm_zone != null as *const char8, "localtime provides a timezone");
     }
 

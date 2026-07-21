@@ -33,11 +33,18 @@ ParseResult ParseSource(const std::string &source) {
 // fold uses its own built-in variant tables, so the enum bodies here only need
 // to exist, not to be complete.
 constexpr std::string_view kRuxPackageSource = R"(
-const CurrentTarget = 0;
-const CurrentBuild = 0;
-const CurrentCompiler = 0;
-const CurrentSource = 0;
-const CurrentConfig = 0;
+struct Target {}
+struct Build {}
+struct Compiler {}
+struct Source {}
+struct Config {}
+intrinsic #target: Target;
+intrinsic #build: Build;
+intrinsic #compiler: Compiler;
+intrinsic #source: Source;
+intrinsic #config: Config;
+intrinsic func #Error(message: char8[]);
+intrinsic func #Warn(message: char8[]);
 enum OperatingSystem { Windows }
 enum Architecture { X86Bit64 }
 enum ApplicationBinaryInterface { WindowsX64 }
@@ -241,12 +248,12 @@ when Debug {
 
 TEST_CASE("when selects methods inside an extend block") {
     auto parsed = ParseSource(R"(
-import Rux::{ CurrentTarget, OperatingSystem };
+import Rux::{ #target, OperatingSystem };
 
 struct Animal {}
 
 extend Animal {
-    when CurrentTarget.os == OperatingSystem::Windows {
+    when #target.os == OperatingSystem::Windows {
         func Sound(self) -> int { return 1; }
     } else {
         func Sound(self) -> int { return 2; }
@@ -280,12 +287,12 @@ extend Animal {
     CHECK(ReturnedLiteral(*sound) == "2");
 }
 
-TEST_CASE("when tests the target OS through CurrentTarget.os") {
+TEST_CASE("when tests the target OS through #target.os") {
     const std::string source = R"(
-import Rux::{ CurrentTarget, OperatingSystem };
+import Rux::{ #target, OperatingSystem };
 
 func Do() -> int {
-    when CurrentTarget.os == OperatingSystem::Windows {
+    when #target.os == OperatingSystem::Windows {
         return 1;
     } else {
         return 2;
@@ -306,12 +313,12 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*linuxFunc) == "2");
 }
 
-TEST_CASE("CurrentTarget.os compares against the OperatingSystem enum") {
+TEST_CASE("#target.os compares against the OperatingSystem enum") {
     auto parsed = ParseSource(R"(
-import Rux::{ CurrentTarget, OperatingSystem };
+import Rux::{ #target, OperatingSystem };
 
 func Do() -> int {
-    when CurrentTarget.os != OperatingSystem::Linux {
+    when #target.os != OperatingSystem::Linux {
         return 1;
     } else {
         return 2;
@@ -325,12 +332,37 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*func) == "1");
 }
 
-TEST_CASE("an enum shorthand is rejected in a when condition") {
-    auto parsed = ParseSource(R"(
-import Rux::{ CurrentTarget };
+TEST_CASE("an enum shorthand takes its enum from the other side of a when condition") {
+    const std::string source = R"(
+import Rux::{ #target };
 
 func Do() -> int {
-    when CurrentTarget.os == .Windows {
+    when #target.os == .Windows {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+)";
+
+    auto windows = ParseSource(source);
+    const auto windowsModel = Analyze(windows.module, "Windows");
+    CHECK_FALSE(windowsModel.HasErrors());
+    CHECK(ReturnedLiteral(*FindFunc(windows.module, "Do")) == "1");
+
+    // On another target the shorthand still resolves; the branch is just dropped.
+    auto linux = ParseSource(source);
+    const auto linuxModel = Analyze(linux.module, "Linux");
+    CHECK_FALSE(linuxModel.HasErrors());
+    CHECK(ReturnedLiteral(*FindFunc(linux.module, "Do")) == "0");
+}
+
+TEST_CASE("an enum shorthand in a when condition still validates the variant") {
+    auto parsed = ParseSource(R"(
+import Rux::{ #target };
+
+func Do() -> int {
+    when #target.os == .Wndows {
         return 1;
     }
     return 0;
@@ -339,16 +371,260 @@ func Do() -> int {
     const auto model = Analyze(parsed.module, "Windows");
     REQUIRE(model.HasErrors());
     CHECK(model.diagnostics[0].message ==
-          "enum shorthand '.Windows' is not allowed in a 'when' condition; write it in full, as in "
-          "'OperatingSystem::Windows'");
+          "'.Wndows' is not a variant of 'OperatingSystem'; the variants are: .AIX, .Android, .DragonFlyBSD, .FreeBSD, "
+          ".Fuchsia, .Haiku, .Illumos, .IOS, .Linux, .MacOS, .NetBSD, .OpenBSD, .QNX, .Redox, .Solaris, .Windows");
+}
+
+TEST_CASE("#Error in a taken branch emits its message as a compile-time error") {
+    auto parsed = ParseSource(R"(
+import Rux::{ #target, #Error };
+
+func Do() -> int {
+    when #target.os == .Windows {
+        #Error("Windows is not supported");
+    }
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module, "Windows");
+    REQUIRE(model.HasErrors());
+    CHECK(model.diagnostics[0].message == "Windows is not supported");
+}
+
+TEST_CASE("#Error in a branch that is not taken never fires") {
+    auto parsed = ParseSource(R"(
+import Rux::{ #target, #Error };
+
+func Do() -> int {
+    when #target.os == .Linux {
+        #Error("Linux is not supported");
+    }
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module, "Windows");
+    CHECK_FALSE(model.HasErrors());
+}
+
+TEST_CASE("#Warn emits a warning, not an error") {
+    auto parsed = ParseSource(R"(
+import Rux::{ #Warn };
+
+func Do() -> int {
+    #Warn("deprecated path");
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module);
+    CHECK_FALSE(model.HasErrors());
+    REQUIRE(model.diagnostics.size() == 1);
+    CHECK(model.diagnostics[0].severity == Diagnostic::Severity::Warning);
+    CHECK(model.diagnostics[0].message == "deprecated path");
+}
+
+TEST_CASE("a #Warn call leaves no runtime code behind") {
+    auto parsed = ParseSource(R"(
+intrinsic func #Warn(message: char8[]);
+
+func Do() {
+    #Warn("compile-time only");
+}
+)");
+    const auto model = AnalyzeNoDeps(parsed.module, CompileTimeContext{});
+    REQUIRE_FALSE(model.HasErrors());
+
+    AstToHirLowering lowering(model);
+    const HirPackage package = lowering.Generate();
+    REQUIRE(package.modules.size() == 1);
+    REQUIRE(package.modules[0].funcs.size() == 1);
+    REQUIRE(package.modules[0].funcs[0].body.has_value());
+    // The directive is dropped: the body has no statements to run.
+    CHECK(package.modules[0].funcs[0].body->stmts.empty());
+}
+
+TEST_CASE("#Error requires a string-literal message") {
+    auto parsed = ParseSource(R"(
+import Rux::{ #Error };
+
+const Message = "hi";
+
+func Do() -> int {
+    #Error(Message);
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module);
+    REQUIRE(model.HasErrors());
+    CHECK(model.diagnostics[0].message == "'#Error' message must be a string literal");
+}
+
+TEST_CASE("a compile-time match statement selects the arm for the target") {
+    const std::string source = R"(
+import Rux::{ #target };
+
+func Do() -> int {
+    when #target.os {
+        .Windows => { return 1; }
+        .Linux => { return 2; }
+        else => { return 3; }
+    }
+}
+)";
+    auto windows = ParseSource(source);
+    CHECK_FALSE(Analyze(windows.module, "Windows").HasErrors());
+    CHECK(ReturnedLiteral(*FindFunc(windows.module, "Do")) == "1");
+
+    auto linux = ParseSource(source);
+    CHECK_FALSE(Analyze(linux.module, "Linux").HasErrors());
+    CHECK(ReturnedLiteral(*FindFunc(linux.module, "Do")) == "2");
+
+    // No arm names macOS, so the `else` arm is taken.
+    auto mac = ParseSource(source);
+    CHECK_FALSE(Analyze(mac.module, "MacOS").HasErrors());
+    CHECK(ReturnedLiteral(*FindFunc(mac.module, "Do")) == "3");
+}
+
+TEST_CASE("a compile-time match arm may list several patterns") {
+    const std::string source = R"(
+import Rux::{ #target };
+
+func Do() -> int {
+    when #target.os {
+        .Windows, .Linux => { return 1; }
+        .MacOS => { return 2; }
+        else => { return 3; }
+    }
+}
+)";
+    // Either pattern of the grouped arm selects it.
+    auto windows = ParseSource(source);
+    CHECK_FALSE(Analyze(windows.module, "Windows").HasErrors());
+    CHECK(ReturnedLiteral(*FindFunc(windows.module, "Do")) == "1");
+
+    auto linux = ParseSource(source);
+    CHECK_FALSE(Analyze(linux.module, "Linux").HasErrors());
+    CHECK(ReturnedLiteral(*FindFunc(linux.module, "Do")) == "1");
+
+    auto mac = ParseSource(source);
+    CHECK_FALSE(Analyze(mac.module, "MacOS").HasErrors());
+    CHECK(ReturnedLiteral(*FindFunc(mac.module, "Do")) == "2");
+
+    auto freebsd = ParseSource(source);
+    CHECK_FALSE(Analyze(freebsd.module, "FreeBSD").HasErrors());
+    CHECK(ReturnedLiteral(*FindFunc(freebsd.module, "Do")) == "3");
+}
+
+TEST_CASE("a compile-time match accepts a bare-expression arm and the full enum form") {
+    auto parsed = ParseSource(R"(
+import Rux::{ #target, OperatingSystem };
+
+func Do() -> int {
+    when #target.os {
+        OperatingSystem::Windows => 1,
+        else => 2
+    }
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module, "Windows");
+    CHECK_FALSE(model.HasErrors());
+    // The taken arm's expression became a statement spliced before `return 0;`.
+    const auto *func = FindFunc(parsed.module, "Do");
+    REQUIRE(func != nullptr);
+    REQUIRE(func->body->stmts.size() == 2);
+    CHECK(dynamic_cast<const ExprStmt *>(func->body->stmts[0].get()) != nullptr);
+}
+
+TEST_CASE("a compile-time match with no matching arm and no else is an error") {
+    auto parsed = ParseSource(R"(
+import Rux::{ #target };
+
+func Do() -> int {
+    when #target.os {
+        .Linux => { return 1; }
+        .MacOS => { return 2; }
+    }
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module, "Windows");
+    REQUIRE(model.HasErrors());
+    CHECK(model.diagnostics[0].message == "no arm of this 'when' matches .Windows");
+}
+
+TEST_CASE("a compile-time match arm fires #Error only when it is the taken arm") {
+    const std::string source = R"(
+import Rux::{ #target, #Error };
+
+func Do() -> int {
+    when #target.os {
+        .Windows => { return 1; }
+        else => #Error("unsupported")
+    }
+    return 0;
+}
+)";
+    // Windows takes the first arm; the else's #Error never fires.
+    auto windows = ParseSource(source);
+    CHECK_FALSE(Analyze(windows.module, "Windows").HasErrors());
+
+    // Another target falls to the else arm and its #Error fires.
+    auto linux = ParseSource(source);
+    const auto model = Analyze(linux.module, "Linux");
+    REQUIRE(model.HasErrors());
+    CHECK(model.diagnostics[0].message == "unsupported");
+}
+
+TEST_CASE("a declaration-level match groups patterns and takes a semicolon-less import body") {
+    const std::string source = R"(
+import Rux::{ #target, #Error };
+
+when #target.os {
+    .Windows, .Linux => import Rux::{ OperatingSystem }
+    else => #Error("unsupported")
+}
+)";
+    // Either grouped pattern keeps the imported item, without a trailing ';'.
+    auto windows = ParseSource(source);
+    CHECK_FALSE(Analyze(windows.module, "Windows").HasErrors());
+
+    auto linux = ParseSource(source);
+    CHECK_FALSE(Analyze(linux.module, "Linux").HasErrors());
+
+    // A target named by no pattern falls to the else directive.
+    auto mac = ParseSource(source);
+    const auto macModel = Analyze(mac.module, "MacOS");
+    REQUIRE(macModel.HasErrors());
+    CHECK(macModel.diagnostics[0].message == "unsupported");
+}
+
+TEST_CASE("a declaration-level compile-time match splices the taken arm") {
+    const std::string source = R"(
+import Rux::{ #target, #Error };
+
+when #target.os {
+    .Windows => { func Tag() -> int { return 1; } }
+    else => #Error("unsupported")
+}
+)";
+    auto windows = ParseSource(source);
+    const auto windowsModel = Analyze(windows.module, "Windows");
+    CHECK_FALSE(windowsModel.HasErrors());
+    CHECK(FindFunc(windows.module, "Tag") != nullptr);
+
+    // The `else` directive fires on a target the arms do not name.
+    auto linux = ParseSource(source);
+    const auto linuxModel = Analyze(linux.module, "Linux");
+    REQUIRE(linuxModel.HasErrors());
+    CHECK(linuxModel.diagnostics[0].message == "unsupported");
 }
 
 TEST_CASE("the dropped OS alias no longer names the OperatingSystem enum") {
     auto parsed = ParseSource(R"(
-import Rux::{ CurrentTarget };
+import Rux::{ #target };
 
 func Do() -> int {
-    when CurrentTarget.os == OS::Windows {
+    when #target.os == OS::Windows {
         return 1;
     }
     return 0;
@@ -361,10 +637,10 @@ func Do() -> int {
 
 TEST_CASE("a built-in enum named in a condition must be imported from Rux") {
     auto parsed = ParseSource(R"(
-import Rux::{ CurrentTarget };
+import Rux::{ #target };
 
 func Do() -> int {
-    when CurrentTarget.os == OperatingSystem::Windows {
+    when #target.os == OperatingSystem::Windows {
         return 1;
     }
     return 0;
@@ -378,7 +654,7 @@ func Do() -> int {
 TEST_CASE("a build intrinsic used in a condition must be imported from Rux") {
     auto parsed = ParseSource(R"(
 func Do() -> int {
-    when CurrentTarget.os == OperatingSystem::Windows {
+    when #target.os == OperatingSystem::Windows {
         return 1;
     }
     return 0;
@@ -386,7 +662,7 @@ func Do() -> int {
 )");
     const auto model = Analyze(parsed.module, "Windows");
     REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message == "unknown identifier 'CurrentTarget'");
+    CHECK(model.diagnostics[0].message == "unknown identifier '#target'");
 }
 
 TEST_CASE("the program's own enums compare by their qualified name") {
@@ -410,16 +686,16 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*func) == "2");
 }
 
-TEST_CASE("CurrentTarget.os tells the BSDs apart") {
+TEST_CASE("#target.os tells the BSDs apart") {
     const std::string source = R"(
-import Rux::{ CurrentTarget, OperatingSystem };
+import Rux::{ #target, OperatingSystem };
 
 func Do() -> int {
-    when CurrentTarget.os == OperatingSystem::FreeBSD {
+    when #target.os == OperatingSystem::FreeBSD {
         return 1;
-    } else when CurrentTarget.os == OperatingSystem::OpenBSD {
+    } else when #target.os == OperatingSystem::OpenBSD {
         return 2;
-    } else when CurrentTarget.os == OperatingSystem::DragonFlyBSD {
+    } else when #target.os == OperatingSystem::DragonFlyBSD {
         return 3;
     } else {
         return 4;
@@ -447,10 +723,10 @@ func Do() -> int {
 
 TEST_CASE("an OS no build target produces warns instead of quietly never running") {
     auto parsed = ParseSource(R"(
-import Rux::{ CurrentTarget, OperatingSystem };
+import Rux::{ #target, OperatingSystem };
 
 func Do() -> int {
-    when CurrentTarget.os == OperatingSystem::Haiku {
+    when #target.os == OperatingSystem::Haiku {
         return 1;
     }
     return 0;
@@ -468,10 +744,10 @@ func Do() -> int {
 
 TEST_CASE("a misspelled OS variant is an error, not a silently false branch") {
     auto parsed = ParseSource(R"(
-import Rux::{ CurrentTarget, OperatingSystem };
+import Rux::{ #target, OperatingSystem };
 
 func Do() -> int {
-    when CurrentTarget.os == OperatingSystem::Wndows {
+    when #target.os == OperatingSystem::Wndows {
         return 1;
     }
     return 0;
@@ -491,10 +767,10 @@ struct Target {
     pointerBits: uint;
 }
 
-intrinsic const CurrentTarget: Target;
+intrinsic #target: Target;
 
 func Do() -> int {
-    let bits = CurrentTarget.pointerBits;
+    let bits = #target.pointerBits;
     return 0;
 }
 )");
@@ -560,26 +836,26 @@ func Do() -> int {
 
 TEST_CASE("target and build intrinsics expose the full compile-time context") {
     auto parsed = ParseSource(R"(
-import Rux::{ CurrentTarget, CurrentBuild, CurrentCompiler, OperatingSystem, Architecture, ApplicationBinaryInterface, Endianness,
+import Rux::{ #target, #build, #compiler, OperatingSystem, Architecture, ApplicationBinaryInterface, Endianness,
              DataModel, ObjectFormat, BuildMode, OptimizationMode, OutputKind };
 
 func Selected() -> int {
-    when CurrentTarget.os == OperatingSystem::Windows &&
-        CurrentTarget.arch == Architecture::X86Bit64 &&
-        CurrentTarget.abi == ApplicationBinaryInterface::WindowsX64 &&
-        CurrentTarget.endian == Endianness::Little &&
-        CurrentTarget.pointerBits == 64 &&
-        CurrentTarget.dataModel == DataModel::LLP64 &&
-        CurrentTarget.objectFormat == ObjectFormat::COFF &&
-        CurrentTarget.triple == "windows-x64" &&
-        CurrentTarget.HasFeature(.AVX2) &&
-        CurrentBuild.profile == "Production" &&
-        CurrentBuild.mode == BuildMode::Release &&
-        CurrentBuild.optimization == OptimizationMode::Speed &&
-        !CurrentBuild.debugAssertions &&
-        CurrentBuild.debugInfo &&
-        CurrentBuild.isTest &&
-        CurrentBuild.outputKind == OutputKind::SharedLibrary {
+    when #target.os == OperatingSystem::Windows &&
+        #target.arch == Architecture::X86Bit64 &&
+        #target.abi == ApplicationBinaryInterface::WindowsX64 &&
+        #target.endian == Endianness::Little &&
+        #target.pointerBits == 64 &&
+        #target.dataModel == DataModel::LLP64 &&
+        #target.objectFormat == ObjectFormat::COFF &&
+        #target.triple == "windows-x64" &&
+        #target.HasFeature(.AVX2) &&
+        #build.profile == "Production" &&
+        #build.mode == BuildMode::Release &&
+        #build.optimization == OptimizationMode::Speed &&
+        !#build.debugAssertions &&
+        #build.debugInfo &&
+        #build.isTest &&
+        #build.outputKind == OutputKind::SharedLibrary {
         return 1;
     } else {
         return 0;
@@ -612,16 +888,16 @@ func Selected() -> int {
 
 TEST_CASE("configuration and compiler feature intrinsics are queryable") {
     auto parsed = ParseSource(R"(
-import Rux::{ CurrentConfig, CurrentCompiler, CurrentSource };
+import Rux::{ #config, #compiler, #source };
 
 func Selected() -> int {
-    when CurrentConfig.Has("sqlite") &&
-        CurrentConfig.Get("allocator") == "mimalloc" &&
-        CurrentCompiler.HasFeature("conditional-compilation") &&
-        !CurrentCompiler.HasFeature("imaginary-feature") &&
-        CurrentCompiler.version == "1.2.3" &&
-        CurrentSource.function == "Selected" &&
-        CurrentSource.module == "test" {
+    when #config.Has("sqlite") &&
+        #config.Get("allocator") == "mimalloc" &&
+        #compiler.HasFeature("conditional-compilation") &&
+        !#compiler.HasFeature("imaginary-feature") &&
+        #compiler.version == "1.2.3" &&
+        #source.function == "Selected" &&
+        #source.module == "test" {
         return 1;
     } else {
         return 0;
@@ -638,31 +914,30 @@ func Selected() -> int {
     CHECK(ReturnedLiteral(*FindFunc(parsed.module, "Selected")) == "1");
 }
 
-TEST_CASE("flat intrinsic aliases are rejected") {
-    Lexer lexer(R"(
+TEST_CASE("an undeclared intrinsic name is rejected") {
+    // `#line` parses as a `#`-prefixed intrinsic value, but no such intrinsic
+    // exists (source facts live under `#source`), so it is caught in analysis.
+    auto parsed = ParseSource(R"(
 func Selected() -> int {
     return #line;
 }
-)",
-                "test.rux");
-    auto lexed = lexer.Tokenize();
-    REQUIRE_FALSE(lexed.HasErrors());
-
-    Parser parser(std::move(lexed.tokens), "test.rux");
-    const auto parsed = parser.Parse();
-    CHECK(parsed.HasErrors());
+)");
+    const auto model = Analyze(parsed.module);
+    REQUIRE(model.HasErrors());
+    CHECK(std::ranges::any_of(model.diagnostics,
+                              [](const auto &diagnostic) { return diagnostic.message == "undefined name '#line'"; }));
 }
 
 TEST_CASE("intrinsic declares a compiler-initialized ordinary constant") {
     auto parsed = ParseSource(R"(
 struct Target { pointerBits: uint; }
 
-intrinsic const CurrentTarget: Target;
+intrinsic #target: Target;
 )");
     REQUIRE(parsed.module.items.size() == 2);
     const auto *decl = dynamic_cast<const ConstDecl *>(parsed.module.items[1].get());
     REQUIRE(decl != nullptr);
-    CHECK(decl->name == "CurrentTarget");
+    CHECK(decl->name == "#target");
     // The type names the intrinsic, so the constant can be renamed freely.
     CHECK(decl->intrinsicName == "Target");
     CHECK(decl->value == nullptr);
@@ -711,35 +986,35 @@ extend Config {
     intrinsic func Has(self, name: char8[]) -> bool;
 }
 
-intrinsic const CurrentTarget: Target;
-intrinsic const CurrentBuild: Build;
-intrinsic const CurrentCompiler: Compiler;
-intrinsic const CurrentSource: Source;
-intrinsic const CurrentConfig: Config;
+intrinsic #target: Target;
+intrinsic #build: Build;
+intrinsic #compiler: Compiler;
+intrinsic #source: Source;
+intrinsic #config: Config;
 
 module Demo {
     func Values() {
-        let line = CurrentSource.line;
-        let column = CurrentSource.column;
-        let fileName = CurrentSource.fileName;
-        let filePath = CurrentSource.filePath;
-        let function = CurrentSource.function;
-        let moduleName = CurrentSource.module;
-        let date = CurrentBuild.date;
-        let time = CurrentBuild.time;
-        let timestamp = CurrentBuild.timestamp;
-        let pointerBits = CurrentTarget.pointerBits;
-        let targetTriple = CurrentTarget.triple;
-        let feature = CurrentTarget.HasFeature(TargetFeature::AVX2);
-        let profile = CurrentBuild.profile;
-        let debugAssertions = CurrentBuild.debugAssertions;
-        let debugInfo = CurrentBuild.debugInfo;
-        let isTest = CurrentBuild.isTest;
-        let configValue = CurrentConfig.Get("allocator");
-        let hasConfig = CurrentConfig.Has("allocator");
-        let version = CurrentCompiler.version;
-        let compilerFeature = CurrentCompiler.HasFeature("namespaced-intrinsics");
-        let currentTarget = CurrentTarget;
+        let line = #source.line;
+        let column = #source.column;
+        let fileName = #source.fileName;
+        let filePath = #source.filePath;
+        let function = #source.function;
+        let moduleName = #source.module;
+        let date = #build.date;
+        let time = #build.time;
+        let timestamp = #build.timestamp;
+        let pointerBits = #target.pointerBits;
+        let targetTriple = #target.triple;
+        let feature = #target.HasFeature(TargetFeature::AVX2);
+        let profile = #build.profile;
+        let debugAssertions = #build.debugAssertions;
+        let debugInfo = #build.debugInfo;
+        let isTest = #build.isTest;
+        let configValue = #config.Get("allocator");
+        let hasConfig = #config.Has("allocator");
+        let version = #compiler.version;
+        let compilerFeature = #compiler.HasFeature("namespaced-intrinsics");
+        let currentTarget = #target;
     }
 }
 )");
@@ -807,11 +1082,11 @@ module Demo {
 
 TEST_CASE("when includes true declarations and removes false declarations and imports") {
     auto parsed = ParseSource(R"(
-import Rux::{ CurrentCompiler };
+import Rux::{ #compiler };
 
 const Enabled = true;
 
-when Enabled && CurrentCompiler.HasFeature("conditional-compilation") {
+when Enabled && #compiler.HasFeature("conditional-compilation") {
     func Kept() -> int { return 1; }
 
     #Link("Kernel32.dll", "Beep")
@@ -846,9 +1121,9 @@ when false {
 
 TEST_CASE("Link resolves a target-selected compile-time string constant") {
     auto parsed = ParseSource(R"(
-import Rux::{ OperatingSystem, CurrentTarget };
+import Rux::{ OperatingSystem, #target };
 
-when CurrentTarget.os == OperatingSystem::Windows {
+when #target.os == OperatingSystem::Windows {
     const LibName = "ucrtbase.dll";
 } else {
     const LibName = "libm.so.6";

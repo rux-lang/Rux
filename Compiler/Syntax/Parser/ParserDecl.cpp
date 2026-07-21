@@ -14,6 +14,9 @@
 #include <vector>
 
 namespace Rux {
+// Canonical string key for a type used as an intrinsic's binding name; defined below.
+static std::string ImplTypeName(const TypeExpr &type);
+
 // Inside an asm body, any identifier-like token — a plain identifier or a
 // language keyword such as `loop` or `for` — may name a mnemonic, register,
 // symbol or label. The lexer has already classified keywords, so recover their
@@ -104,7 +107,7 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
         // `#Intrinsic("Name")` became the `intrinsic` keyword, which takes its
         // name from the declaration instead of repeating it in a string.
         EmitError(nameLoc, name == "Intrinsic"
-                               ? "the '#Intrinsic' attribute has been removed; write 'intrinsic const name: Type;' "
+                               ? "the '#Intrinsic' attribute has been removed; write 'intrinsic #name: Type;' "
                                  "or 'intrinsic func Name(...);'"
                                : std::format("unknown attribute call '#{}'", name));
         // Skip a parenthesized argument list, if any, so the declaration that
@@ -379,8 +382,27 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
 // a constant takes its type (`Target`), a free function its own name (`Assert`).
 // A method is namespaced by the type it extends, and is keyed in ParseImplDecl.
 DeclPtr Parser::ParseIntrinsicDecl(const bool isPublic, ParsedAttrs &attrs, const SourceLocation intrinsicLoc) {
-    if (Check(TokenKind::ConstKeyword)) {
-        return ApplyAttrs(ParseConstDecl(isPublic, true), attrs);
+    // A compiler-injected value: `intrinsic #target: Target;`. The '#' name is
+    // how the value is referred to; the type it is declared with names the
+    // intrinsic the compiler binds.
+    if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident)) {
+        const auto declLoc = CurrentLocation();
+        Advance(); // consume '#'
+        auto decl = std::make_unique<ConstDecl>();
+        decl->location = declLoc;
+        decl->isPublic = isPublic;
+        decl->name = "#" + Advance().text;
+        if (Match(TokenKind::Colon)) {
+            decl->type = ParseType();
+        }
+        if (decl->type) {
+            decl->intrinsicName = ImplTypeName(**decl->type);
+        }
+        else {
+            EmitError(decl->location, "'intrinsic' value requires an explicit type, which names the intrinsic");
+        }
+        Expect(TokenKind::Semicolon, "expected ';'");
+        return ApplyAttrs(std::move(decl), attrs);
     }
     if (Check(TokenKind::FuncKeyword)) {
         auto func = ParseFuncDecl(isPublic, false, attrs.callConv);
@@ -392,7 +414,7 @@ DeclPtr Parser::ParseIntrinsicDecl(const bool isPublic, ParsedAttrs &attrs, cons
         }
         return ApplyAttrs(std::move(func), attrs);
     }
-    EmitError(intrinsicLoc, "'intrinsic' can only be applied to a constant or function");
+    EmitError(intrinsicLoc, "'intrinsic' can only be applied to a '#'-prefixed value or a function");
     Recover();
     return nullptr;
 }
@@ -440,7 +462,7 @@ DeclPtr Parser::ParseDecl() {
     // looking like an ordinary one that forgot its value. Recovered as the
     // keyword it meant, so it reports only its spelling.
     if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident) && Peek(1).text == "Intrinsic") {
-        EmitError(loc, "the '#Intrinsic' attribute has been removed; write 'intrinsic const name: Type;' "
+        EmitError(loc, "the '#Intrinsic' attribute has been removed; write 'intrinsic #name: Type;' "
                        "or 'intrinsic func Name(...);'");
         Advance(); // '#'
         Advance(); // 'Intrinsic'
@@ -467,7 +489,7 @@ DeclPtr Parser::ParseDecl() {
         isPublic = true;
     }
 
-    // intrinsic const/func: the compiler supplies the value or the body. The
+    // intrinsic value/func: the compiler supplies the value or the body. The
     // declaration itself names the intrinsic, so there is nothing to write twice.
     if (Match(TokenKind::IntrinsicKeyword)) {
         return ParseIntrinsicDecl(isPublic, attrs, Previous().location);
@@ -599,7 +621,13 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(bool isPublic, bool isAsm, Calli
     decl->isPublic = isPublic;
     decl->isAsm = isAsm;
     decl->callConv = callConv;
-    if (Peek().IsOperator()) {
+    if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident)) {
+        // A compile-time intrinsic function: `intrinsic func #Error(...)`. The
+        // '#' is part of the name.
+        Advance(); // consume '#'
+        decl->name = "#" + Advance().text;
+    }
+    else if (Peek().IsOperator()) {
         decl->name = Advance().text;
     }
     else {
@@ -885,7 +913,7 @@ std::unique_ptr<StructDecl> Parser::ParseStructDecl(bool isPublic) {
         }
 
         // Keywords are contextual after a field declaration starts. This lets
-        // ordinary package APIs expose members such as `CurrentSource.module`.
+        // ordinary package APIs expose members such as `#source.module`.
         field.name =
             Check(TokenKind::ModuleKeyword) ? Advance().text : Expect(TokenKind::Ident, "expected field name").text;
         Expect(TokenKind::Colon, "expected ':'");
@@ -1163,7 +1191,7 @@ std::unique_ptr<ModuleDecl> Parser::ParseModuleDecl(bool isPublic) {
 }
 
 // import
-std::unique_ptr<UseDecl> Parser::ParseUseDecl() {
+std::unique_ptr<UseDecl> Parser::ParseUseDecl(const bool requireSemicolon) {
     const auto loc = CurrentLocation();
     Expect(TokenKind::ImportKeyword, "expected 'import'");
 
@@ -1188,7 +1216,14 @@ std::unique_ptr<UseDecl> Parser::ParseUseDecl() {
                 Advance(); // consume '{'
                 decl->kind = UseDecl::Kind::Multi;
                 while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
-                    decl->names.push_back(Expect(TokenKind::Ident, "expected name").text);
+                    // An intrinsic value is imported by its '#'-prefixed name.
+                    if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident)) {
+                        Advance(); // consume '#'
+                        decl->names.push_back("#" + Advance().text);
+                    }
+                    else {
+                        decl->names.push_back(Expect(TokenKind::Ident, "expected name").text);
+                    }
                     if (!Match(TokenKind::Comma)) {
                         break;
                     }
@@ -1207,12 +1242,19 @@ std::unique_ptr<UseDecl> Parser::ParseUseDecl() {
         }
     }
 
-    Expect(TokenKind::Semicolon, "expected ';'");
+    // As a compile-time match arm body (`.Linux => import Linux::{...}`) the
+    // trailing ';' is optional, since the arm is delimited by the next pattern.
+    if (requireSemicolon) {
+        Expect(TokenKind::Semicolon, "expected ';'");
+    }
+    else {
+        Match(TokenKind::Semicolon);
+    }
     return decl;
 }
 
 // const
-std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic, bool isIntrinsic) {
+std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic) {
     const auto loc = CurrentLocation();
     Expect(TokenKind::ConstKeyword, "expected 'const'");
 
@@ -1225,25 +1267,8 @@ std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic, bool isIntrinsi
         decl->type = ParseType();
     }
 
-    if (isIntrinsic) {
-        // The type names the intrinsic: `intrinsic const CurrentTarget: Target;` binds
-        // the compiler's `Target`. The constant is only a name for it, so it can
-        // be renamed without rebinding.
-        if (decl->type) {
-            decl->intrinsicName = ImplTypeName(**decl->type);
-        }
-        else {
-            EmitError(decl->location, "'intrinsic' constant requires an explicit type, which names the intrinsic");
-        }
-        if (Match(TokenKind::Assign)) {
-            EmitError(decl->location, "'intrinsic' constant cannot have a source initializer");
-            decl->value = ParseExpr();
-        }
-    }
-    else {
-        Expect(TokenKind::Assign, "expected '='");
-        decl->value = ParseExpr();
-    }
+    Expect(TokenKind::Assign, "expected '='");
+    decl->value = ParseExpr();
 
     Expect(TokenKind::Semicolon, "expected ';'");
     return decl;
@@ -1287,6 +1312,12 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenBody(const SourceLocation loc) {
     WhenDecl::Branch first;
     first.location = loc;
     first.condition = parseCondition();
+
+    // Compile-time match: `when subject { pattern => ..., else => ... }`.
+    if (Check(TokenKind::LeftBrace) && NextBraceIsMatchArms()) {
+        return ParseWhenMatchBody(loc, std::move(first.condition));
+    }
+
     first.items = parseItems();
     decl->branches.push_back(std::move(first));
 
@@ -1315,6 +1346,79 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenBody(const SourceLocation loc) {
         }
     }
 
+    return decl;
+}
+
+// `when subject { pattern => body, ... else => body }` at declaration level. An
+// arm body is a `#Error`/`#Warn` directive, a `{ decls }` block, or a single
+// declaration. Arms may be comma-separated, but declarations self-terminate so
+// the comma is optional.
+std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, ExprPtr subject) {
+    auto decl = std::make_unique<WhenDecl>();
+    decl->location = loc;
+    decl->matchSubject = std::move(subject);
+
+    Expect(TokenKind::LeftBrace, "expected '{'");
+    bool sawElse = false;
+    while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+        WhenDecl::Branch branch;
+        branch.location = CurrentLocation();
+        if (Match(TokenKind::ElseKeyword)) {
+            sawElse = true;
+        }
+        else {
+            structInitAllowed = false;
+            branch.patterns.push_back(ParseExpr());
+            // Commas before `=>` separate patterns that share this arm's body.
+            while (Match(TokenKind::Comma) && !Check(TokenKind::FatArrow)) {
+                branch.patterns.push_back(ParseExpr());
+            }
+            structInitAllowed = true;
+        }
+        Expect(TokenKind::FatArrow, "expected '=>' after a 'when' arm pattern");
+
+        if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident) &&
+            (Peek(1).text == "Error" || Peek(1).text == "Warn") && Peek(2).Is(TokenKind::LeftParen)) {
+            branch.directiveLocation = CurrentLocation();
+            Advance(); // '#'
+            const std::string name = Advance().text;
+            branch.directive = name == "Error" ? WhenDecl::Directive::Error : WhenDecl::Directive::Warn;
+            Expect(TokenKind::LeftParen, std::format("expected '(' after '#{}'", name));
+            if (Check(TokenKind::StringLiteral)) {
+                branch.directiveMessage = DecodeStringLiteralText(Advance().text);
+            }
+            else {
+                EmitError(CurrentLocation(), std::format("'#{}' message must be a string literal", name));
+            }
+            Expect(TokenKind::RightParen, "expected ')'");
+        }
+        else if (Check(TokenKind::LeftBrace)) {
+            Advance(); // '{'
+            while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+                if (auto item = ParseDecl()) {
+                    branch.items.push_back(std::move(item));
+                }
+                else {
+                    Recover();
+                }
+            }
+            Expect(TokenKind::RightBrace, "expected '}'");
+        }
+        else if (Check(TokenKind::ImportKeyword)) {
+            // A bare `import` arm body needs no trailing ';'.
+            branch.items.push_back(ParseUseDecl(false));
+        }
+        else if (auto item = ParseDecl()) {
+            branch.items.push_back(std::move(item));
+        }
+
+        decl->branches.push_back(std::move(branch));
+        Match(TokenKind::Comma); // optional separator
+        if (sawElse && !Check(TokenKind::RightBrace)) {
+            EmitError(CurrentLocation(), "the 'else' arm must be last in a 'when' match");
+        }
+    }
+    Expect(TokenKind::RightBrace, "expected '}' to close the 'when' match");
     return decl;
 }
 

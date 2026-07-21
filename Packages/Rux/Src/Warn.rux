@@ -1,0 +1,2 @@
+// Emits compilation warning
+intrinsic func #Warn(message: char8[]);

@@ -2,7 +2,7 @@
 // lexer stops the pipeline, so this case stands alone.
 struct Target { pointerBits: uint; }
 
-intrinsic const $target: Target;
+intrinsic $target: Target;
 
 func Main() -> int {
     return 0;

@@ -32,5 +32,5 @@ struct Build {
     time: char8[];
 }
 
-// Compile-time property
-intrinsic const CurrentBuild: Build;
+// Compile-time value
+intrinsic #build: Build;

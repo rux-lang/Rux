@@ -182,7 +182,7 @@ struct EnumShorthandExpr : Expr {
     std::string variant;
 };
 
-// A compiler-provided value such as CurrentSource.line, CurrentTarget.arch or CurrentConfig.Get("name").
+// A compiler-provided value such as #source.line, #target.arch or #config.Get("name").
 struct IntrinsicExpr : Expr {
     enum class Kind {
         Line,
@@ -378,6 +378,21 @@ struct IfStmt : Stmt {
 
     std::vector<ElseIf> elseIfs;
     std::unique_ptr<Block> elseBlock; // null if no else
+
+    // Compile-time match form `when subject { patterns => block, ... else =>
+    // block }` (always with isCompileTime). `matchSubject` is the value being
+    // matched, and `matchArms` replaces the if/else-if fields: each arm holds a
+    // list of pattern expressions (an arm is taken when any matches) and a block;
+    // an arm with no patterns is the `else`. If no arm matches and there is no
+    // `else`, the fold reports an error.
+    struct MatchArm {
+        SourceLocation location;
+        std::vector<ExprPtr> patterns; // empty = the `else` arm
+        std::unique_ptr<Block> block;
+    };
+
+    ExprPtr matchSubject;
+    std::vector<MatchArm> matchArms;
 };
 
 // while cond { }
@@ -470,13 +485,33 @@ struct Param {
 // spliced into the enclosing declaration list before semantic analysis, so no
 // later stage ever sees this node.
 struct WhenDecl : Decl {
+    // A `#Error`/`#Warn` directive used as a match arm body at declaration level
+    // (`else => #Error("...")`): it emits its diagnostic when the arm is taken.
+    enum class Directive {
+        None,
+        Error,
+        Warn
+    };
+
     struct Branch {
         SourceLocation location;
         ExprPtr condition; // null for the trailing `else`
         std::vector<DeclPtr> items;
+
+        // Match form only: the arm patterns compared against `matchSubject` (the
+        // arm is taken when any matches; empty for the `else` arm). `condition`
+        // is unused in that case.
+        std::vector<ExprPtr> patterns;
+        Directive directive = Directive::None;
+        std::string directiveMessage;
+        SourceLocation directiveLocation;
     };
 
     std::vector<Branch> branches;
+
+    // When set, this is the compile-time match form; each branch's `pattern`
+    // is compared against it. See IfStmt::matchSubject.
+    ExprPtr matchSubject;
 };
 
 // func [asm] Name<T>(params) -> Type { body }
@@ -586,7 +621,7 @@ struct UseDecl : Decl {
 };
 
 // const Name[: Type] = expr;
-// `intrinsic const name: Type;` has no value: `intrinsicName` names the
+// `intrinsic #name: Type;` has no value: `intrinsicName` names the
 // compiler-supplied one, and is the only thing marking it.
 struct ConstDecl : Decl {
     std::string name;

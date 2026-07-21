@@ -188,25 +188,25 @@ struct Build {
     time: char8[];
 }
 
-intrinsic const CurrentBuild: Build;
+intrinsic #build: Build;
 
 struct Config {}
-intrinsic const CurrentConfig: Config;
+intrinsic #config: Config;
 
 struct Compiler {}
-intrinsic const CurrentCompiler: Compiler;
+intrinsic #compiler: Compiler;
 
 enum BuildMode { Debug }
 
-when CurrentConfig.Has("allocator") &&
-     CurrentConfig.Get("allocator") == "mimalloc" &&
-     CurrentBuild.isTest &&
-     CurrentBuild.mode == BuildMode::Debug &&
-     CurrentCompiler.HasFeature("namespaced-intrinsics") {
+when #config.Has("allocator") &&
+     #config.Get("allocator") == "mimalloc" &&
+     #build.isTest &&
+     #build.mode == BuildMode::Debug &&
+     #compiler.HasFeature("namespaced-intrinsics") {
     func Main() -> int {
-        let timestamp = CurrentBuild.timestamp;
-        let date = CurrentBuild.date;
-        let time = CurrentBuild.time;
+        let timestamp = #build.timestamp;
+        let date = #build.date;
+        let time = #build.time;
         return 0;
     }
 } else {

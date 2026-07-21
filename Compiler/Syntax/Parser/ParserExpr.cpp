@@ -531,6 +531,16 @@ ExprPtr Parser::ParsePrimary() {
         Expect(TokenKind::RightParen, "expected ')' after sizeof type");
         return e;
     }
+    // Compiler-injected intrinsic value: #target, #build, #source, ... The
+    // leading '#' is part of the name, so it resolves like any other symbol
+    // once the intrinsic has been imported.
+    if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident)) {
+        Advance(); // consume '#'
+        auto e = std::make_unique<IdentExpr>();
+        e->location = loc;
+        e->name = "#" + Advance().text;
+        return e;
+    }
     // Enum variant without its type: .Windows
     if (Check(TokenKind::Dot) && Peek(1).Is(TokenKind::Ident)) {
         Advance(); // consume '.'

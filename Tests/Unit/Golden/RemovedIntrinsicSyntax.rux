@@ -1,9 +1,9 @@
-// The two spellings the `intrinsic` keyword replaced. `$` is caught by the
-// lexer, so it is kept on its own case below the attribute to let each report.
+// The attribute the `intrinsic` keyword replaced. The `$` sigil is caught by the
+// lexer, so it is kept on its own case in RemovedDollarSigil.
 struct Target { pointerBits: uint; }
 
-#Intrinsic("Target")
-const target: Target;
+#Intrinsic("Assert")
+func Assert(condition: bool, message: char8[]);
 
 func Main() -> int {
     return 0;

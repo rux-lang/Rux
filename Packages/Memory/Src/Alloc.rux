@@ -1,129 +1,44 @@
-import Rux::{ OperatingSystem, CurrentTarget };
+import Rux::{ #target, #Error };
 
-when CurrentTarget.os == OperatingSystem::Windows {
-    import Windows::{ GetProcessHeap, HeapAlloc };
-
-    // Allocates an uninitialized block of memory
-    // https://rux-lang.dev/api/memory/alloc
-    func Alloc(size: uint) -> *opaque {
-        let heap = GetProcessHeap();
-        return HeapAlloc(heap, 0, size);
+when #target.os {
+    .DragonFlyBSD, .FreeBSD, .NetBSD, .OpenBSD => import Bsd::{
+        IsError, Mmap, MapAnonymous, MapPrivate, ProtectionRead, ProtectionWrite
+    },
+    .Linux => import Linux::{
+        IsError, Mmap, MapAnonymous, MapPrivate, ProtectionRead, ProtectionWrite
+    },
+    .MacOS => import MacOS::{
+        IsError, Mmap, MapAnonymous, MapPrivate, ProtectionRead, ProtectionWrite
+    },
+    .Windows => import Windows::{
+        GetProcessHeap, HeapAlloc
     }
 }
 
-when CurrentTarget.os == OperatingSystem::Linux {
-    import Linux::{
-        IsError,
-        Mmap,
-        MapAnonymous,
-        MapPrivate,
-        ProtectionRead,
-        ProtectionWrite
-    };
-
-    // Allocates an uninitialized block of memory
-    // https://rux-lang.dev/api/memory/alloc
-    func Alloc(size: uint) -> *opaque {
-        // Two machine words keep the returned address aligned to 16 bytes.
-        const HeaderSize: uint = 16;
-        let total = size + HeaderSize;
-        if total < size {
-            return null;
-        }
-
-        let mapping = Mmap(
-            null,
-            total,
-            ProtectionRead | ProtectionWrite,
-            MapPrivate | MapAnonymous,
-            -1,
-            0
-        );
-        if IsError(mapping) {
-            return null;
-        }
-
-        let header = mapping as *uint;
-        *header = size;
-        return (header + 2) as *opaque;
-    }
-}
-
-when CurrentTarget.os == OperatingSystem::MacOS {
-    import MacOS::{
-        IsError,
-        Mmap,
-        MapAnonymous,
-        MapPrivate,
-        ProtectionRead,
-        ProtectionWrite
-    };
-
-    // Allocates an uninitialized block of memory
-    // https://rux-lang.dev/api/memory/alloc
-    func Alloc(size: uint) -> *opaque {
-        // Two machine words keep the returned address aligned to 16 bytes.
-        const HeaderSize: uint = 16;
-        let total = size + HeaderSize;
-        if total < size {
-            return null;
-        }
-
-        let mapping = Mmap(
-            null,
-            total,
-            ProtectionRead | ProtectionWrite,
-            MapPrivate | MapAnonymous,
-            -1,
-            0
-        );
-        if IsError(mapping) {
-            return null;
-        }
-
-        let header = mapping as *uint;
-        *header = size;
-        return (header + 2) as *opaque;
-    }
-}
-
-when CurrentTarget.os == OperatingSystem::FreeBSD ||
-     CurrentTarget.os == OperatingSystem::OpenBSD ||
-     CurrentTarget.os == OperatingSystem::NetBSD ||
-     CurrentTarget.os == OperatingSystem::DragonFlyBSD {
-    import Bsd::{
-        IsError,
-        Mmap,
-        MapAnonymous,
-        MapPrivate,
-        ProtectionRead,
-        ProtectionWrite
-    };
-
-    // Allocates an uninitialized block of memory
-    // https://rux-lang.dev/api/memory/alloc
-    func Alloc(size: uint) -> *opaque {
-        // Two machine words keep the returned address aligned to 16 bytes.
-        const HeaderSize: uint = 16;
-        let total = size + HeaderSize;
-        if total < size {
-            return null;
-        }
-
-        let mapping = Mmap(
-            null,
-            total,
-            ProtectionRead | ProtectionWrite,
-            MapPrivate | MapAnonymous,
-            -1,
-            0
-        );
-        if IsError(mapping) {
-            return null;
-        }
-
-        let header = mapping as *uint;
-        *header = size;
-        return (header + 2) as *opaque;
+// Allocates an uninitialized block of memory
+// https://rux-lang.dev/api/memory/alloc
+func Alloc(size: uint) -> *opaque {
+    when #target.os {
+        .DragonFlyBSD, .FreeBSD, .Linux, .MacOS, .NetBSD, .OpenBSD => {
+            // Two machine words keep the returned address aligned to 16 bytes.
+            const HeaderSize: uint = 16;
+            let total = size + HeaderSize;
+            if total < size {
+                return null;
+            }
+            let mapping = Mmap(null, total, ProtectionRead | ProtectionWrite,
+                MapPrivate | MapAnonymous, -1, 0);
+            if IsError(mapping) {
+                return null;
+            }
+            let header = mapping as *uint;
+            *header = size;
+            return (header + 2) as *opaque;
+        },
+        .Windows => {
+            let heap = GetProcessHeap();
+            return HeapAlloc(heap, 0, size);
+        },
+        else => #Error("Unsupported operating system")
     }
 }

@@ -48,6 +48,10 @@ private:
     [[nodiscard]] const Token &Previous() const noexcept;
     [[nodiscard]] SourceLocation CurrentLocation() const noexcept;
     [[nodiscard]] bool IsGenericStructInitAhead() const noexcept;
+    // Assumes the current token is '{'. True when the brace opens compile-time
+    // match arms (`pattern => ...`) rather than an ordinary `when`/block body,
+    // i.e. a top-level '=>' appears before any top-level ';' or the closing '}'.
+    [[nodiscard]] bool NextBraceIsMatchArms() const noexcept;
     [[nodiscard]] bool IsGenericCallAhead() const noexcept;
     [[nodiscard]] bool IsTypeArgListAhead() const noexcept;
 
@@ -101,10 +105,13 @@ private:
     std::unique_ptr<InterfaceDecl> ParseInterfaceDecl(bool isPublic);
     std::unique_ptr<ImplDecl> ParseImplDecl();
     std::unique_ptr<ModuleDecl> ParseModuleDecl(bool isPublic);
-    std::unique_ptr<UseDecl> ParseUseDecl();
-    std::unique_ptr<ConstDecl> ParseConstDecl(bool isPublic, bool isIntrinsic = false);
+    std::unique_ptr<UseDecl> ParseUseDecl(bool requireSemicolon = true);
+    std::unique_ptr<ConstDecl> ParseConstDecl(bool isPublic);
     std::unique_ptr<WhenDecl> ParseWhenDecl();
     std::unique_ptr<WhenDecl> ParseWhenBody(SourceLocation loc);
+    // Compile-time match forms `when subject { pattern => body, ... }`. The
+    // subject has already been parsed; the current token is its opening '{'.
+    std::unique_ptr<WhenDecl> ParseWhenMatchBody(SourceLocation loc, ExprPtr subject);
     std::unique_ptr<TypeAliasDecl> ParseTypeAliasDecl(bool isPublic);
 
     // Inline-assembly body parsing (asm func)

@@ -137,6 +137,46 @@ bool Parser::IsGenericStructInitAhead() const noexcept {
     }
 }
 
+bool Parser::NextBraceIsMatchArms() const noexcept {
+    // Peek(0) is '{'. Compile-time match arms have a top-level '=>' (an arm's
+    // `pattern => body`); an ordinary `when`/block body reaches a top-level ';'
+    // or its closing '}' first.
+    int depth = 0;
+    for (std::size_t ahead = 1;; ++ahead) {
+        switch (Peek(ahead).kind) {
+        case TokenKind::EndOfFile:
+            return false;
+        case TokenKind::LeftParen:
+        case TokenKind::LeftBracket:
+        case TokenKind::LeftBrace:
+            ++depth;
+            break;
+        case TokenKind::RightParen:
+        case TokenKind::RightBracket:
+            --depth;
+            break;
+        case TokenKind::RightBrace:
+            if (depth == 0) {
+                return false;
+            }
+            --depth;
+            break;
+        case TokenKind::FatArrow:
+            if (depth == 0) {
+                return true;
+            }
+            break;
+        case TokenKind::Semicolon:
+            if (depth == 0) {
+                return false;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+}
+
 bool Parser::IsGenericCallAhead() const noexcept {
     if (!Check(TokenKind::Less)) {
         return false;

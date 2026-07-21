@@ -77,25 +77,25 @@ TEST_CASE("Lexer does not recognize flat compile-time intrinsic aliases") {
     }
 }
 
-TEST_CASE("Lexer treats compiler parameter roots as ordinary identifiers") {
-    const auto result = Lex("#CurrentTarget.os CurrentTarget.os");
+TEST_CASE("Lexer treats an intrinsic value name as '#' plus an identifier") {
+    const auto result = Lex("#target.os");
     REQUIRE(result.diagnostics.empty());
-    REQUIRE(result.tokens.size() == 8);
+    REQUIRE(result.tokens.size() == 5);
     CHECK(result.tokens[0].Is(TokenKind::Hash));
     CHECK(result.tokens[1].Is(TokenKind::Ident));
-    CHECK(result.tokens[1].text == "CurrentTarget");
-    CHECK(result.tokens[4].Is(TokenKind::Ident));
-    CHECK(result.tokens[4].text == "CurrentTarget");
+    CHECK(result.tokens[1].text == "target");
+    CHECK(result.tokens[2].Is(TokenKind::Dot));
+    CHECK(result.tokens[3].text == "os");
 }
 
-TEST_CASE("Lexer recognizes intrinsic constant declarations") {
-    const auto result = Lex("intrinsic const CurrentTarget: Target;");
+TEST_CASE("Lexer recognizes intrinsic value declarations") {
+    const auto result = Lex("intrinsic #target: Target;");
     REQUIRE(result.diagnostics.empty());
     REQUIRE(result.tokens.size() == 7);
     CHECK(result.tokens[0].Is(TokenKind::IntrinsicKeyword));
-    CHECK(result.tokens[1].Is(TokenKind::ConstKeyword));
+    CHECK(result.tokens[1].Is(TokenKind::Hash));
     CHECK(result.tokens[2].Is(TokenKind::Ident));
-    CHECK(result.tokens[2].text == "CurrentTarget");
+    CHECK(result.tokens[2].text == "target");
 }
 
 // '$' carried the old compiler-initialized marker and now has no meaning.

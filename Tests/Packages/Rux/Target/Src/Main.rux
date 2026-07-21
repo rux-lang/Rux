@@ -1,36 +1,36 @@
 import Rux::{
-    Assert, CurrentTarget, OperatingSystem, Architecture, Endianness, DataModel,
+    Assert, #target, OperatingSystem, Architecture, Endianness, DataModel,
     ObjectFormat
 };
 // TargetFeature is imported by the commented-out HasFeature check at the end.
 
 func Main() -> int {
-    // The CurrentTarget is fully identified: OS, architecture, data model and object
+    // The #target is fully identified: OS, architecture, data model and object
     // format are all resolved rather than left Unknown.
-    Assert(CurrentTarget.os != OperatingSystem::Unknown, "os");
-    Assert(CurrentTarget.arch != Architecture::Unknown, "arch");
-    Assert(CurrentTarget.dataModel != DataModel::Unknown, "dataModel");
-    Assert(CurrentTarget.objectFormat != ObjectFormat::Unknown, "objectFormat");
-    Assert(CurrentTarget.triple.length > 0, "triple");
+    Assert(#target.os != OperatingSystem::Unknown, "os");
+    Assert(#target.arch != Architecture::Unknown, "arch");
+    Assert(#target.dataModel != DataModel::Unknown, "dataModel");
+    Assert(#target.objectFormat != ObjectFormat::Unknown, "objectFormat");
+    Assert(#target.triple.length > 0, "triple");
 
     // Endianness is one of the two the enum defines.
-    Assert(CurrentTarget.endian == Endianness::Little || CurrentTarget.endian == Endianness::Big, "endian");
+    Assert(#target.endian == Endianness::Little || #target.endian == Endianness::Big, "endian");
 
     // The pointer width is 32 or 64, and it agrees with the architecture: the
     // 64-bit instruction sets carry 64-bit pointers, the 32-bit sets 32-bit ones.
-    Assert(CurrentTarget.pointerBits == 32 || CurrentTarget.pointerBits == 64, "pointerBits");
+    Assert(#target.pointerBits == 32 || #target.pointerBits == 64, "pointerBits");
 
-    let is64 = CurrentTarget.arch == Architecture::ARM64
-        || CurrentTarget.arch == Architecture::RISCV64
-        || CurrentTarget.arch == Architecture::X86Bit64;
-    let is32 = CurrentTarget.arch == Architecture::ARM32
-        || CurrentTarget.arch == Architecture::RISCV32
-        || CurrentTarget.arch == Architecture::X86Bit32;
+    let is64 = #target.arch == Architecture::ARM64
+        || #target.arch == Architecture::RISCV64
+        || #target.arch == Architecture::X86Bit64;
+    let is32 = #target.arch == Architecture::ARM32
+        || #target.arch == Architecture::RISCV32
+        || #target.arch == Architecture::X86Bit32;
     if is64 {
-        Assert(CurrentTarget.pointerBits == 64, "64-bit arch has 64-bit pointers");
+        Assert(#target.pointerBits == 64, "64-bit arch has 64-bit pointers");
     }
     if is32 {
-        Assert(CurrentTarget.pointerBits == 32, "32-bit arch has 32-bit pointers");
+        Assert(#target.pointerBits == 32, "32-bit arch has 32-bit pointers");
     }
 
     // TODO: the Target.HasFeature intrinsic is not yet implemented in the
@@ -39,7 +39,7 @@ func Main() -> int {
     // The field-and-architecture invariants above already work.
     //
     // // The feature query is callable and a pure function of its argument.
-    // Assert(CurrentTarget.HasFeature(TargetFeature::SSE2) == CurrentTarget.HasFeature(TargetFeature::SSE2),
+    // Assert(#target.HasFeature(TargetFeature::SSE2) == #target.HasFeature(TargetFeature::SSE2),
     //     "HasFeature deterministic");
     return 0;
 }

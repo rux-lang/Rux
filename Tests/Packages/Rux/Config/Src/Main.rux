@@ -1,4 +1,4 @@
-// The commented-out body below imports Rux::{ Assert, CurrentConfig }; both are left
+// The commented-out body below imports Rux::{ Assert, #config }; both are left
 // out for now so the placeholder does not trip the unused-import lint.
 
 func Main() -> int {
@@ -10,13 +10,13 @@ func Main() -> int {
     //
     // // This test package defines no configuration values, so an arbitrary name
     // // is absent and its lookup comes back empty.
-    // Assert(!CurrentConfig.Has("UNDEFINED_CONFIG_NAME"), "undefined name is absent");
-    // Assert(CurrentConfig.Get("UNDEFINED_CONFIG_NAME").length == 0, "undefined name is empty");
+    // Assert(!#config.Has("UNDEFINED_CONFIG_NAME"), "undefined name is absent");
+    // Assert(#config.Get("UNDEFINED_CONFIG_NAME").length == 0, "undefined name is empty");
     //
     // // Has and Get agree with each other: a name Has reports absent has nothing
     // // for Get to return.
     // let name = "ANOTHER_UNDEFINED_NAME";
-    // Assert(!CurrentConfig.Has(name), "second undefined name is absent");
-    // Assert(CurrentConfig.Get(name).length == 0, "second undefined name is empty");
+    // Assert(!#config.Has(name), "second undefined name is absent");
+    // Assert(#config.Get(name).length == 0, "second undefined name is empty");
     return 0;
 }

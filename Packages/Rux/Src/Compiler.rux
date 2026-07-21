@@ -7,5 +7,5 @@ extend Compiler {
     intrinsic func HasFeature(self, feature: char8[]) -> bool;
 }
 
-// Compile-time property
-intrinsic const CurrentCompiler: Compiler;
+// Compile-time value
+intrinsic #compiler: Compiler;

@@ -9,5 +9,5 @@ struct Source {
     module: char8[];
 }
 
-// Compile-time property
-intrinsic const CurrentSource: Source;
+// Compile-time value
+intrinsic #source: Source;

@@ -23,9 +23,9 @@
 
 namespace Rux {
 namespace {
-// The operating systems `CurrentTarget.os` can name. Each is a real system, not a
+// The operating systems `#target.os` can name. Each is a real system, not a
 // family, so FreeBSD and OpenBSD remain distinct. `buildable` marks the ones a build can currently produce;
-// the rest are accepted so that code can name them, and comparing `CurrentTarget.os` against
+// the rest are accepted so that code can name them, and comparing `#target.os` against
 // one warns rather than quietly never running.
 struct OsVariant {
     std::string_view name;
@@ -58,7 +58,7 @@ struct EnumValue {
 
 // A compile-time value. `when` conditions must evaluate to a bool; the other
 // alternatives exist so that comparisons such as `Version >= 2`, `Name == "x"`
-// and `CurrentTarget.os == .Windows` can produce one.
+// and `#target.os == .Windows` can produce one.
 using Value = std::variant<bool, std::int64_t, std::uint64_t, double, std::string, EnumValue>;
 
 bool EqualsIgnoringCase(const std::string_view a, const std::string_view b) {
@@ -497,7 +497,7 @@ private:
                 continue;
             }
             if (const auto *constDecl = dynamic_cast<const ConstDecl *>(decl.get())) {
-                // An `intrinsic const CurrentTarget: Target;` brings the intrinsic into
+                // An `intrinsic #target: Target;` brings the intrinsic into
                 // scope locally, just as importing it from Rux would.
                 if (!constDecl->intrinsicName.empty()) {
                     localIntrinsics.insert(constDecl->name);
@@ -623,15 +623,15 @@ private:
         if (!ident) {
             return std::nullopt;
         }
-        if (ident->name == "CurrentTarget")
+        if (ident->name == "#target")
             return "Target";
-        if (ident->name == "CurrentBuild")
+        if (ident->name == "#build")
             return "Build";
-        if (ident->name == "CurrentCompiler")
+        if (ident->name == "#compiler")
             return "Compiler";
-        if (ident->name == "CurrentSource")
+        if (ident->name == "#source")
             return "Source";
-        if (ident->name == "CurrentConfig")
+        if (ident->name == "#config")
             return "Config";
         return std::nullopt;
     }
@@ -986,32 +986,20 @@ private:
         return std::nullopt;
     }
 
-    // `CurrentTarget.os == .Windows`. Enum values compare by variant, and only for equality;
-    // a shorthand takes its enum from the value on the other side.
-    std::optional<Value> EvalEnumComparison(const BinaryExpr &e, const EnumValue &left, const EnumValue &right) {
-        if (e.op != TokenKind::Equal && e.op != TokenKind::BangEqual) {
-            return std::nullopt;
-        }
+    // Whether two enum values name the same variant. A shorthand such as
+    // `.Windows` takes its enum from the value on the other side (`#target.os`,
+    // which is `OperatingSystem`); the variant is validated and an OS no build
+    // produces warns. Returns nullopt when the comparison is ill-formed (an
+    // error is reported).
+    std::optional<bool> EnumEquals(const EnumValue &left, const EnumValue &right, const SourceLocation location) {
         if (!left.type.empty() && !right.type.empty() && left.type != right.type) {
-            EmitError(e.location, std::format("cannot compare '{}' with '{}'", left.type, right.type));
+            EmitError(location, std::format("cannot compare '{}' with '{}'", left.type, right.type));
             reportedError = true;
             return std::nullopt;
         }
-
         const std::string &type = left.type.empty() ? right.type : left.type;
         if (type.empty()) {
             return std::nullopt; // two shorthands: nothing says which enum
-        }
-        // The enum shorthand is not accepted in a condition; the variant must be
-        // written in full, as in `OperatingSystem::Windows`.
-        for (const auto *side : {&left, &right}) {
-            if (side->type.empty()) {
-                EmitError(e.location, std::format("enum shorthand '.{}' is not allowed in a 'when' condition; "
-                                                  "write it in full, as in '{}::{}'",
-                                                  side->variant, type, side->variant));
-                reportedError = true;
-                return std::nullopt;
-            }
         }
         const auto variants = enumVariants.find(type);
         if (variants == enumVariants.end()) {
@@ -1019,19 +1007,30 @@ private:
         }
         for (const auto *side : {&left, &right}) {
             if (std::ranges::find(variants->second, side->variant) == variants->second.end()) {
-                EmitError(e.location, std::format("'.{}' is not a variant of '{}'; the variants are: .{}",
-                                                  side->variant, type, JoinVariants(variants->second)));
+                EmitError(location, std::format("'.{}' is not a variant of '{}'; the variants are: .{}", side->variant,
+                                                type, JoinVariants(variants->second)));
                 reportedError = true;
                 return std::nullopt;
             }
             if (type == "OperatingSystem" && !IsBuildableOs(side->variant)) {
-                EmitWarning(e.location, std::format("no build target produces '.{}', so this branch is never taken",
-                                                    side->variant));
+                EmitWarning(location, std::format("no build target produces '.{}', so this branch is never taken",
+                                                  side->variant));
             }
         }
+        return left.variant == right.variant;
+    }
 
-        const bool equal = left.variant == right.variant;
-        return Value{e.op == TokenKind::Equal ? equal : !equal};
+    // `#target.os == .Windows`. Enum values compare by variant, and only for equality;
+    // a shorthand takes its enum from the value on the other side.
+    std::optional<Value> EvalEnumComparison(const BinaryExpr &e, const EnumValue &left, const EnumValue &right) {
+        if (e.op != TokenKind::Equal && e.op != TokenKind::BangEqual) {
+            return std::nullopt;
+        }
+        const auto equal = EnumEquals(left, right, e.location);
+        if (!equal) {
+            return std::nullopt;
+        }
+        return Value{e.op == TokenKind::Equal ? *equal : !*equal};
     }
 
     // Alphabetical, so a reader scanning the list for the name they meant to
@@ -1296,6 +1295,101 @@ private:
         return false;
     }
 
+    // Compile-time match: `when subject { pattern => ..., else => ... }`
+
+    // The compile-time value against an arm pattern, for the no-match diagnostic.
+    static std::string FormatValue(const Value &value) {
+        if (const auto *e = std::get_if<EnumValue>(&value)) {
+            return "." + e->variant;
+        }
+        if (const auto *s = std::get_if<std::string>(&value)) {
+            return "\"" + *s + "\"";
+        }
+        if (const auto *b = std::get_if<bool>(&value)) {
+            return *b ? "true" : "false";
+        }
+        if (const auto *i = std::get_if<std::int64_t>(&value)) {
+            return std::to_string(*i);
+        }
+        if (const auto *u = std::get_if<std::uint64_t>(&value)) {
+            return std::to_string(*u);
+        }
+        if (const auto *d = std::get_if<double>(&value)) {
+            return std::to_string(*d);
+        }
+        return "the subject";
+    }
+
+    // Whether the subject value equals an arm pattern.
+    std::optional<bool> ArmMatches(const Value &subject, const Expr &pattern, const SourceLocation location) {
+        const auto patternValue = Eval(pattern);
+        if (!patternValue) {
+            return std::nullopt;
+        }
+        if (const auto *lhs = std::get_if<EnumValue>(&subject)) {
+            if (const auto *rhs = std::get_if<EnumValue>(&*patternValue)) {
+                return EnumEquals(*lhs, *rhs, location);
+            }
+            return std::nullopt;
+        }
+        if (subject.index() != patternValue->index()) {
+            return false;
+        }
+        return subject == *patternValue;
+    }
+
+    // Index of the first arm one of whose patterns matches the subject; an arm
+    // with no patterns is the `else`. Returns -1 (reporting an error) when
+    // nothing matches and there is no `else`.
+    int SelectMatchArm(const Expr &subject, const std::vector<std::vector<const Expr *>> &arms,
+                       const SourceLocation location) {
+        reportedError = false;
+        const auto subjectValue = Eval(subject);
+        if (!subjectValue) {
+            if (!reportedError) {
+                EmitError(location, "'when' match subject must be a compile-time constant expression");
+            }
+            return -1;
+        }
+        int elseIndex = -1;
+        for (std::size_t i = 0; i < arms.size(); ++i) {
+            if (arms[i].empty()) {
+                elseIndex = static_cast<int>(i);
+                continue;
+            }
+            for (const Expr *pattern : arms[i]) {
+                const auto matched = ArmMatches(*subjectValue, *pattern, pattern->location);
+                if (matched && *matched) {
+                    return static_cast<int>(i);
+                }
+            }
+        }
+        if (elseIndex >= 0) {
+            return elseIndex;
+        }
+        if (!reportedError) {
+            EmitError(location, std::format("no arm of this 'when' matches {}", FormatValue(*subjectValue)));
+        }
+        return -1;
+    }
+
+    // Borrows each branch/arm's pattern expressions into the shape SelectMatchArm
+    // expects (an empty inner list marks the `else` arm).
+    template <typename Arms>
+    static std::vector<std::vector<const Expr *>> BorrowArmPatterns(const Arms &arms) {
+        std::vector<std::vector<const Expr *>> out;
+        out.reserve(arms.size());
+        for (const auto &arm : arms) {
+            std::vector<const Expr *> patterns;
+            patterns.reserve(arm.patterns.size());
+            for (const auto &pattern : arm.patterns) {
+                patterns.push_back(pattern.get());
+            }
+            out.push_back(std::move(patterns));
+        }
+        return out;
+    }
+
     void ResolveLinkConstant(std::string &constantName, std::string &result, const SourceLocation location,
                              const std::string_view argumentName) {
         if (constantName.empty()) {
@@ -1353,6 +1447,26 @@ private:
                 continue;
             }
             auto *when = dynamic_cast<WhenDecl *>(decl.get());
+            if (when && when->matchSubject) {
+                const int idx = SelectMatchArm(*when->matchSubject, BorrowArmPatterns(when->branches), when->location);
+                if (idx >= 0) {
+                    auto &branch = when->branches[static_cast<std::size_t>(idx)];
+                    if (branch.directive == WhenDecl::Directive::Error) {
+                        EmitError(branch.directiveLocation, branch.directiveMessage);
+                    }
+                    else if (branch.directive == WhenDecl::Directive::Warn) {
+                        EmitWarning(branch.directiveLocation, branch.directiveMessage);
+                    }
+                    else {
+                        ResolveDecls(branch.items);
+                        CollectCompileTimeDecls(branch.items);
+                        for (auto &item : branch.items) {
+                            resolved.push_back(std::move(item));
+                        }
+                    }
+                }
+                continue;
+            }
             if (!when) {
                 if (auto *module = dynamic_cast<ModuleDecl *>(decl.get())) {
                     const std::string savedModule = currentModulePath;
@@ -1475,7 +1589,14 @@ private:
         auto *ifStmt = dynamic_cast<IfStmt *>(stmt.get());
         if (ifStmt && ifStmt->isCompileTime) {
             Block *taken = nullptr;
-            if (EvalCondition(ifStmt->condition.get(), ifStmt->location)) {
+            if (ifStmt->matchSubject) {
+                const int idx =
+                    SelectMatchArm(*ifStmt->matchSubject, BorrowArmPatterns(ifStmt->matchArms), ifStmt->location);
+                if (idx >= 0) {
+                    taken = ifStmt->matchArms[static_cast<std::size_t>(idx)].block.get();
+                }
+            }
+            else if (EvalCondition(ifStmt->condition.get(), ifStmt->location)) {
                 taken = ifStmt->thenBlock.get();
             }
             else {

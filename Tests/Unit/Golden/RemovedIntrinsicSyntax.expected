@@ -1,1 +1,1 @@
-5:1: error: the '#Intrinsic' attribute has been removed; write 'intrinsic const name: Type;' or 'intrinsic func Name(...);'
+5:1: error: the '#Intrinsic' attribute has been removed; write 'intrinsic #name: Type;' or 'intrinsic func Name(...);'

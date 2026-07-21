@@ -1,6 +1,6 @@
-import Rux::{ CurrentTarget, OperatingSystem };
+import Rux::{ #target, OperatingSystem };
 
-when CurrentTarget.os == OperatingSystem::Windows {
+when #target.os == OperatingSystem::Windows {
     import Windows::{
         CodePage,
         CreationDisposition,

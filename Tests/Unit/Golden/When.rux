@@ -17,9 +17,9 @@ func Main() -> int {
         return 3;
     }
 
-    // Build intrinsics such as `CurrentTarget` must be imported from the Rux package
+    // Build intrinsics such as `#target` must be imported from the Rux package
     // before a condition may name them.
-    when CurrentTarget.os == OperatingSystem::Windows {
+    when #target.os == OperatingSystem::Windows {
         return 4;
     }
 

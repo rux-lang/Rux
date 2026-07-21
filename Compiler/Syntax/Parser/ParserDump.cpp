@@ -806,21 +806,21 @@ private:
             out << "EnumShorthandExpr '." << shorthand->variant << "'\n";
         }
         else if (const auto *intr = dynamic_cast<const IntrinsicExpr *>(&expr)) {
-            static constexpr const char *names[] = {"CurrentSource.line",        "CurrentSource.column",
-                                                    "CurrentSource.file",        "CurrentSource.fileName",
-                                                    "CurrentSource.filePath",    "CurrentSource.function",
-                                                    "CurrentBuild.date",         "CurrentBuild.time",
-                                                    "CurrentSource.module",      "CurrentTarget.os",
-                                                    "CurrentTarget.arch",        "CurrentTarget.abi",
-                                                    "CurrentTarget.endian",      "CurrentTarget.pointerBits",
-                                                    "CurrentTarget.dataModel",   "CurrentTarget.objectFormat",
-                                                    "CurrentTarget.triple",      "CurrentTarget.HasFeature",
-                                                    "CurrentBuild.profile",      "CurrentBuild.mode",
-                                                    "CurrentBuild.optimization", "CurrentBuild.debugAssertions",
-                                                    "CurrentBuild.debugInfo",    "CurrentBuild.isTest",
-                                                    "CurrentBuild.outputKind",   "CurrentBuild.timestamp",
-                                                    "CurrentCompiler.version",   "CurrentCompiler.HasFeature",
-                                                    "CurrentConfig.Get",         "CurrentConfig.Has"};
+            static constexpr const char *names[] = {"#source.line",        "#source.column",
+                                                    "#source.file",        "#source.fileName",
+                                                    "#source.filePath",    "#source.function",
+                                                    "#build.date",         "#build.time",
+                                                    "#source.module",      "#target.os",
+                                                    "#target.arch",        "#target.abi",
+                                                    "#target.endian",      "#target.pointerBits",
+                                                    "#target.dataModel",   "#target.objectFormat",
+                                                    "#target.triple",      "#target.HasFeature",
+                                                    "#build.profile",      "#build.mode",
+                                                    "#build.optimization", "#build.debugAssertions",
+                                                    "#build.debugInfo",    "#build.isTest",
+                                                    "#build.outputKind",   "#build.timestamp",
+                                                    "#compiler.version",   "#compiler.HasFeature",
+                                                    "#config.Get",         "#config.Has"};
             Pad();
             out << "IntrinsicExpr " << names[static_cast<int>(intr->kind)] << '\n';
             ++indent;

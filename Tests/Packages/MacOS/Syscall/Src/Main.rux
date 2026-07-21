@@ -1,7 +1,7 @@
-import Rux::{ Architecture, OperatingSystem, CurrentTarget };
+import Rux::{ Architecture, OperatingSystem, #target };
 
-when CurrentTarget.os == OperatingSystem::MacOS &&
-     CurrentTarget.arch == Architecture::X86Bit64 {
+when #target.os == OperatingSystem::MacOS &&
+     #target.arch == Architecture::X86Bit64 {
     import MacOS::{
         Errno,
         GetPid,
