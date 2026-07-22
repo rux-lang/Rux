@@ -17,6 +17,7 @@ concurrency:
 
 env:
   CMAKE_VERSION: "4.3.3"
+  CMAKE_SHA256: "cba4bb7a44edf2877bb6f059932896383babe435b3a8c3b5df48b4aa41c9bb85"
   NINJA_VERSION: "1.13.2"
 
 jobs:
@@ -50,6 +51,72 @@ jobs:
   # Build, test, and upload one binary per target OS. Tests run here too, so a
   # broken build or failing suite blocks the release. Each job uploads its
   # binary under the basename the packaging step expects (rux / rux.exe).
+  # GitHub has no native FreeBSD runner, so build and test inside a FreeBSD
+  # VM and sync the resulting binary back to the Ubuntu host for upload.
+  freebsd:
+    name: FreeBSD
+    needs: verify-version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build and test in FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.4"
+          usesh: true
+          envs: 'CMAKE_VERSION CMAKE_SHA256'
+          cache-after-prepare: true
+          prepare: |
+            set -e
+            pkg install -y llvm22 cmake ninja
+            archive="/tmp/cmake-${CMAKE_VERSION}.tar.gz"
+            source="/tmp/cmake-${CMAKE_VERSION}"
+            build="/tmp/cmake-build"
+            prefix="/opt/cmake-${CMAKE_VERSION}"
+
+            fetch -o "$archive" \
+              "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz"
+            if [ "$(sha256 -q "$archive")" != "$CMAKE_SHA256" ]; then
+              echo "CMake source archive checksum mismatch" >&2
+              exit 1
+            fi
+
+            tar -xzf "$archive" -C /tmp
+            cmake -S "$source" -B "$build" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_C_COMPILER=clang22 \
+              -DCMAKE_CXX_COMPILER=clang++22 \
+              -DCMAKE_INSTALL_PREFIX="$prefix" \
+              -DBUILD_TESTING=OFF
+            cmake --build "$build" --parallel
+            cmake --install "$build"
+          run: |
+            set -e
+            export PATH="/opt/cmake-${CMAKE_VERSION}/bin:$PATH"
+            cmake -S . -B Build -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_CXX_COMPILER=clang++22 \
+              -DRUX_WERROR=ON \
+              -DRUX_BUILD_TESTS=ON
+            cmake --build Build --config Release --parallel
+            ctest --test-dir Build --output-on-failure -C Release
+            ./Bin/rux check
+            ./Bin/rux lint
+            ./Bin/rux test --release
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-freebsd-x64
+          path: Bin/rux
+          if-no-files-found: error
+          retention-days: 7
+
   linux:
     name: Linux
     needs: verify-version
@@ -104,6 +171,56 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: rux-linux-x64
+          path: Bin/rux
+          if-no-files-found: error
+          retention-days: 7
+
+  macos:
+    name: macOS
+    needs: verify-version
+    runs-on: macos-26-intel
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Apple Clang lacks the C++26 support Rux needs, so use the same
+      # upstream LLVM release as the Linux and FreeBSD builds.
+      - name: Install Clang 22
+        run: |
+          brew install llvm@22
+          echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@v4.3.3
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: ${{ env.NINJA_VERSION }}
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B Build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@22)/bin/clang++" \
+            -DRUX_WERROR=ON \
+            -DRUX_BUILD_TESTS=ON
+          cmake --build Build --config Release --parallel
+
+      - name: Unit tests
+        run: ctest --test-dir Build --output-on-failure -C Release
+
+      - name: Verify Rux workspace
+        run: |
+          ./Bin/rux check
+          ./Bin/rux lint
+          ./Bin/rux test --release
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-macos-x64
           path: Bin/rux
           if-no-files-found: error
           retention-days: 7
@@ -177,29 +294,61 @@ jobs:
 
   release:
     name: Publish release
-    needs: [ linux, windows ]
+    needs: [ freebsd, linux, macos, windows ]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      # Collect every artifact uploaded by the build jobs in this run.
-      - name: Download all artifacts
+      # Keep each Unix artifact in its own directory because all three
+      # binaries have the same basename.
+      - name: Download Linux artifact
         uses: actions/download-artifact@v8
         with:
-          path: dist
-          merge-multiple: true
+          name: rux-linux-x64
+          path: dist/linux
 
-      # Archive each binary: .tar.gz on Linux preserves the executable bit,
-      # .zip on Windows is the conventional, download-friendly format.
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-windows-x64
+          path: dist/windows
+
+      - name: Download Windows MSI artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-windows-msi
+          path: dist/windows-msi
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-macos-x64
+          path: dist/macos
+
+      - name: Download FreeBSD artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-freebsd-x64
+          path: dist/freebsd
+
+      # Unix archives preserve executable permissions; zip is conventional
+      # for the standalone Windows binary.
       - name: Package assets
         run: |
           mkdir -p out
-          chmod +x dist/rux
-          tar -czf "out/rux-linux.tar.gz" -C dist rux
-          zip -j   "out/rux-windows.zip"     dist/rux.exe
-          cp dist/rux-windows.msi out/
-          (cd out && sha256sum rux-linux.tar.gz rux-windows.zip rux-windows.msi > SHA256SUMS)
+          chmod +x dist/linux/rux dist/macos/rux dist/freebsd/rux
+          tar -czf "out/rux-linux.tar.gz"   -C dist/linux rux
+          tar -czf "out/rux-macos.tar.gz"   -C dist/macos rux
+          tar -czf "out/rux-freebsd.tar.gz" -C dist/freebsd rux
+          zip -j "out/rux-windows.zip" dist/windows/rux.exe
+          cp dist/windows-msi/rux-windows.msi out/
+          (cd out && sha256sum \
+            rux-linux.tar.gz \
+            rux-windows.zip \
+            rux-windows.msi \
+            rux-macos.tar.gz \
+            rux-freebsd.tar.gz > SHA256SUMS)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
