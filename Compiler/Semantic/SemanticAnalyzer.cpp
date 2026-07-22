@@ -1367,6 +1367,11 @@ private:
                     return std::nullopt;
                 }
                 return *l >> *r;
+            case TokenKind::GreaterGreaterGreater:
+                if (*r < 0 || *r >= 64) {
+                    return std::nullopt;
+                }
+                return static_cast<I>(lu >> static_cast<U>(*r));
             default:
                 return std::nullopt;
             }
@@ -1715,14 +1720,6 @@ private:
     }
 
     TypeRef ResolveType(const TypeExpr &expr) {
-        // Helper to resolve enums from the global declaration table
-        auto ResolveEnumType = [&](const std::string &name) -> TypeRef {
-            if (const auto it = enumDecls.find(name); it != enumDecls.end()) {
-                return EnumType(*it->second);
-            }
-            return TypeRef::MakeUnknown();
-        };
-
         if (const auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
             if (IsUnimplementedPrimitiveType(t->name)) {
                 EmitError(expr.location, std::format("primitive type '{}' is reserved but is not implemented in this "
@@ -1778,6 +1775,16 @@ private:
                 }
             }
 
+            if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end()) {
+                const auto &decl = *enumIt->second;
+                if (resolvedArgs.size() != decl.typeParams.size()) {
+                    EmitError(expr.location, std::format("enum '{}' expects {} type argument(s), got {}", t->name,
+                                                         decl.typeParams.size(), resolvedArgs.size()));
+                    return TypeRef::MakeUnknown();
+                }
+                return EnumType(decl, resolvedArgs);
+            }
+
             Symbol *sym = currentScope ? currentScope->Lookup(t->name) : nullptr;
             if (sym && (sym->kind == Symbol::Kind::Type || sym->kind == Symbol::Kind::Interface)) {
                 // Return base type if no generic arguments are provided
@@ -1795,15 +1802,6 @@ private:
                     }
                     return TypeRef::MakeNamed(GenericTypeName(*t));
                 }
-            }
-
-            TypeRef enumType = ResolveEnumType(t->name);
-            if (!enumType.IsUnknown()) {
-                if (!t->typeArgs.empty()) {
-                    EmitError(expr.location, std::format("Enum '{}' cannot take type arguments", t->name));
-                    return TypeRef::MakeUnknown();
-                }
-                return enumType;
             }
 
             if (structDecls.contains(t->name)) {
@@ -2252,6 +2250,9 @@ private:
             if (auto it = substitutions.find(type.name); it != substitutions.end()) {
                 return SizeOfTypeRef(it->second, substitutions);
             }
+            if (!type.inner.empty()) {
+                return SizeOfTypeRef(type.inner[0], substitutions);
+            }
             const std::string baseName = BaseTypeName(type.name);
             std::unordered_map<std::string, TypeRef> localSubs = substitutions;
             const auto structIt = structDecls.find(baseName);
@@ -2263,8 +2264,17 @@ private:
                     localSubs[params[i]] = typeArgs[i];
                 }
             }
+            const auto enumIt = enumDecls.find(baseName);
+            if (enumIt != enumDecls.end()) {
+                std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(type.name);
+                const auto &params = enumIt->second->typeParams;
+                const std::size_t count = std::min(params.size(), typeArgs.size());
+                for (std::size_t i = 0; i < count; ++i) {
+                    localSubs[params[i]] = typeArgs[i];
+                }
+            }
 
-            if (const auto enumIt = enumDecls.find(baseName); enumIt != enumDecls.end()) {
+            if (enumIt != enumDecls.end()) {
                 return SizeOfEnum(*enumIt->second, localSubs);
             }
             // Interface fat pointers are {data: *opaque, vtable: *opaque} =
@@ -2378,9 +2388,33 @@ private:
         return decl.baseType ? ResolveType(*decl.baseType) : TypeRef::MakeInt();
     }
 
-    TypeRef EnumType(const EnumDecl &decl) {
-        TypeRef type = TypeRef::MakeNamed(decl.name);
-        type.inner.push_back(EnumBaseType(decl));
+    TypeRef EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArgs = {}) {
+        std::string name = decl.name;
+        if (!typeArgs.empty()) {
+            name += '<';
+            for (std::size_t i = 0; i < typeArgs.size(); ++i) {
+                if (i) {
+                    name += ", ";
+                }
+                name += typeArgs[i].ToString();
+            }
+            name += '>';
+        }
+
+        TypeRef type = TypeRef::MakeNamed(std::move(name));
+        if (decl.typeParams.empty()) {
+            type.inner.push_back(EnumBaseType(decl));
+            return type;
+        }
+        if (typeArgs.size() == decl.typeParams.size()) {
+            std::unordered_map<std::string, TypeRef> substitutions;
+            for (std::size_t i = 0; i < typeArgs.size(); ++i) {
+                substitutions.emplace(decl.typeParams[i], typeArgs[i]);
+            }
+            if (const auto size = SizeOfEnum(decl, substitutions)) {
+                type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), *size));
+            }
+        }
         return type;
     }
 
@@ -2811,6 +2845,8 @@ private:
     }
 
     void CheckEnumDecl(const EnumDecl &d) {
+        const auto savedTypeParams = currentTypeParams;
+        currentTypeParams.insert(currentTypeParams.end(), d.typeParams.begin(), d.typeParams.end());
         const TypeRef baseType = EnumBaseType(d);
         if (!baseType.IsUnknown() && !baseType.IsInteger()) {
             EmitError(d.location, std::format("enum '{}' base type must be an integer type", d.name));
@@ -2839,6 +2875,7 @@ private:
                 ResolveType(*f.type);
             }
         }
+        currentTypeParams = savedTypeParams;
     }
 
     const EnumDecl::Variant *LookupEnumVariant(const std::string &enumName, const std::string &variantName) const {
@@ -2854,16 +2891,22 @@ private:
         return nullptr;
     }
 
-    TypeRef EnumVariantConstructorType(const EnumDecl &decl, const EnumDecl::Variant &variant) {
+    TypeRef EnumVariantConstructorType(const EnumDecl &decl, const EnumDecl::Variant &variant,
+                                       const std::vector<TypeRef> &typeArgs = {}) {
+        std::unordered_map<std::string, TypeRef> substitutions;
+        const std::size_t count = std::min(decl.typeParams.size(), typeArgs.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            substitutions.emplace(decl.typeParams[i], typeArgs[i]);
+        }
         std::vector<TypeRef> params;
         params.reserve(variant.fields.size() + variant.namedFields.size());
         for (const auto &field : variant.fields) {
-            params.push_back(ResolveType(*field));
+            params.push_back(ResolveTypeWithSubstitution(*field, substitutions));
         }
         for (const auto &field : variant.namedFields) {
-            params.push_back(ResolveType(*field.type));
+            params.push_back(ResolveTypeWithSubstitution(*field.type, substitutions));
         }
-        return TypeRef::MakeFunc(std::move(params), EnumType(decl));
+        return TypeRef::MakeFunc(std::move(params), EnumType(decl, typeArgs));
     }
 
     void CheckUnionDecl(const UnionDecl &d) {
@@ -3475,10 +3518,10 @@ private:
             PopScope();
         }
         else if (auto *matchStmt = dynamic_cast<const MatchStmt *>(&stmt)) {
-            CheckExpr(*matchStmt->subject);
+            const TypeRef subjectType = CheckExpr(*matchStmt->subject);
             for (const auto &arm : matchStmt->arms) {
                 PushScope(); // each arm has its own binding scope
-                CheckPattern(*arm.pattern);
+                CheckPattern(*arm.pattern, subjectType);
                 CheckExpr(*arm.body);
                 PopScope();
             }
@@ -3565,22 +3608,22 @@ private:
         }
         else {
             EmitError(pat.location, "unsupported pattern in let binding");
-            CheckPattern(pat);
+            CheckPattern(pat, type);
         }
     }
 
-    void CheckPattern(const Pattern &pat) {
+    void CheckPattern(const Pattern &pat, const TypeRef &subjectType = TypeRef::MakeUnknown()) {
         if (auto *identPat = dynamic_cast<const IdentPattern *>(&pat)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Var;
             sym.name = identPat->name;
             sym.location = identPat->location;
-            sym.type = TypeRef::MakeUnknown();
+            sym.type = subjectType;
             sym.isMut = false;
             Define(sym);
         }
         else if (auto *guardPat = dynamic_cast<const GuardedPattern *>(&pat)) {
-            CheckPattern(*guardPat->inner);
+            CheckPattern(*guardPat->inner, subjectType);
             CheckExpr(*guardPat->guard);
         }
         else if (auto *rangePat = dynamic_cast<const RangePattern *>(&pat)) {
@@ -3588,8 +3631,11 @@ private:
             CheckPattern(*rangePat->hi);
         }
         else if (auto *tuplePat = dynamic_cast<const TuplePattern *>(&pat)) {
-            for (const auto &e : tuplePat->elements) {
-                CheckPattern(*e);
+            for (std::size_t i = 0; i < tuplePat->elements.size(); ++i) {
+                const TypeRef elementType = subjectType.kind == TypeRef::Kind::Tuple && i < subjectType.inner.size()
+                                              ? subjectType.inner[i]
+                                              : TypeRef::MakeUnknown();
+                CheckPattern(*tuplePat->elements[i], elementType);
             }
         }
         else if (auto *structPat = dynamic_cast<const StructPattern *>(&pat)) {
@@ -3601,11 +3647,54 @@ private:
             }
         }
         else if (auto *enumPat = dynamic_cast<const EnumPattern *>(&pat)) {
-            if (!enumPat->path.empty() && !currentScope->Lookup(enumPat->path[0])) {
-                EmitError(enumPat->location, std::format("unknown name '{}' in enum pattern", enumPat->path[0]));
+            std::string enumName;
+            std::string variantName;
+            const EnumDecl *enumDecl = nullptr;
+
+            if (enumPat->path.size() == 1) {
+                variantName = enumPat->path[0];
+                if (subjectType.kind != TypeRef::Kind::Named) {
+                    EmitError(enumPat->location,
+                              std::format("cannot infer enum type for shorthand pattern '.{}' from subject type '{}'",
+                                          variantName, subjectType.ToString()));
+                }
+                else {
+                    enumName = BaseTypeName(subjectType.name);
+                    if (const auto enumIt = enumDecls.find(enumName); enumIt != enumDecls.end()) {
+                        enumDecl = enumIt->second;
+                    }
+                    else {
+                        EmitError(enumPat->location, std::format("type '{}' is not an enum in shorthand pattern '.{}'",
+                                                                 subjectType.ToString(), variantName));
+                    }
+                }
             }
+            else if (enumPat->path.size() >= 2) {
+                enumName = enumPat->path[0];
+                variantName = enumPat->path[1];
+                if (!currentScope->Lookup(enumName)) {
+                    EmitError(enumPat->location, std::format("unknown name '{}' in enum pattern", enumName));
+                }
+                if (const auto enumIt = enumDecls.find(enumName); enumIt != enumDecls.end()) {
+                    enumDecl = enumIt->second;
+                }
+            }
+
             const EnumDecl::Variant *variant =
-                enumPat->path.size() >= 2 ? LookupEnumVariant(enumPat->path[0], enumPat->path[1]) : nullptr;
+                enumName.empty() || variantName.empty() ? nullptr : LookupEnumVariant(enumName, variantName);
+            if (enumDecl && !variant) {
+                EmitError(enumPat->location, std::format("enum '{}' has no variant '{}'", enumName, variantName));
+            }
+
+            std::unordered_map<std::string, TypeRef> substitutions;
+            if (enumDecl) {
+                const auto typeArgs = ParseTypeArgsFromTypeName(subjectType.name);
+                const auto &params = enumDecl->typeParams;
+                const std::size_t count = std::min(params.size(), typeArgs.size());
+                for (std::size_t i = 0; i < count; ++i) {
+                    substitutions.emplace(params[i], typeArgs[i]);
+                }
+            }
             std::unordered_set<std::string> named;
             for (const auto &arg : enumPat->namedArgs) {
                 if (!named.insert(arg.name).second) {
@@ -3624,7 +3713,7 @@ private:
                 }
 
                 if (field) {
-                    CheckLetPattern(*arg.pattern, ResolveType(*field->type), false);
+                    CheckLetPattern(*arg.pattern, ResolveTypeWithSubstitution(*field->type, substitutions), false);
                 }
                 else {
                     if (variant) {
@@ -3635,11 +3724,14 @@ private:
             }
             for (std::size_t i = 0; i < enumPat->args.size(); ++i) {
                 if (variant && i < variant->fields.size()) {
-                    CheckLetPattern(*enumPat->args[i], ResolveType(*variant->fields[i]), false);
+                    CheckLetPattern(*enumPat->args[i], ResolveTypeWithSubstitution(*variant->fields[i], substitutions),
+                                    false);
                 }
                 else if (variant && i - variant->fields.size() < variant->namedFields.size()) {
                     CheckLetPattern(*enumPat->args[i],
-                                    ResolveType(*variant->namedFields[i - variant->fields.size()].type), false);
+                                    ResolveTypeWithSubstitution(*variant->namedFields[i - variant->fields.size()].type,
+                                                                substitutions),
+                                    false);
                 }
                 else {
                     CheckPattern(*enumPat->args[i]);
@@ -3874,6 +3966,16 @@ private:
             CheckMutability(*e->target);
             TypeRef tgt = CheckExpr(*e->target);
             TypeRef val = CheckExpr(*e->value);
+            if (e->op == TokenKind::GreaterGreaterGreaterAssign) {
+                if (!tgt.IsSigned()) {
+                    EmitError(e->location,
+                              std::format("'>>>=' requires a signed integer target, got '{}'", tgt.ToString()));
+                }
+                if (!val.IsInteger()) {
+                    EmitError(e->location,
+                              std::format("'>>>=' right operand must be an integer, got '{}'", val.ToString()));
+                }
+            }
             if (!tgt.IsUnknown() && !val.IsUnknown() && !CanAssignExprTo(*e->value, val, tgt)) {
                 EmitError(e->location, AssignmentErrorMessage(
                                            *e->value, tgt,
@@ -4111,6 +4213,47 @@ private:
                 if (path->segments.size() == 2) {
                     Symbol *first = currentScope->Lookup(path->segments[0]);
                     if (first && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
+                        if (const auto enumIt = enumDecls.find(path->segments[0]); enumIt != enumDecls.end()) {
+                            if (const EnumDecl::Variant *variant =
+                                    LookupEnumVariant(path->segments[0], path->segments[1])) {
+                                const EnumDecl &decl = *enumIt->second;
+                                if (e->typeArgs.size() != decl.typeParams.size()) {
+                                    EmitError(e->location,
+                                              std::format("enum variant '{}::{}' expects {} type argument(s), got {}",
+                                                          path->segments[0], path->segments[1], decl.typeParams.size(),
+                                                          e->typeArgs.size()));
+                                }
+                                std::vector<TypeRef> typeArgs;
+                                typeArgs.reserve(e->typeArgs.size());
+                                for (const auto &typeArg : e->typeArgs) {
+                                    typeArgs.push_back(ResolveType(*typeArg));
+                                }
+                                const TypeRef constructor = EnumVariantConstructorType(decl, *variant, typeArgs);
+                                const std::size_t paramCount =
+                                    constructor.inner.empty() ? 0 : constructor.inner.size() - 1;
+                                std::vector<TypeRef> argTypes;
+                                argTypes.reserve(e->args.size());
+                                for (const auto &arg : e->args) {
+                                    argTypes.push_back(CheckExpr(*arg));
+                                }
+                                if (argTypes.size() != paramCount) {
+                                    EmitError(e->location, std::format("function expects {} argument(s), got {}",
+                                                                       paramCount, argTypes.size()));
+                                }
+                                else {
+                                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                                        const TypeRef &paramType = constructor.inner[i];
+                                        if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
+                                            !CanAssignExprTo(*e->args[i], argTypes[i], paramType)) {
+                                            EmitError(e->args[i]->location,
+                                                      std::format("cannot pass '{}' to parameter of type '{}'",
+                                                                  argTypes[i].ToString(), paramType.ToString()));
+                                        }
+                                    }
+                                }
+                                return constructor.inner.empty() ? TypeRef::MakeUnknown() : constructor.inner.back();
+                            }
+                        }
                         TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
                         if (const auto structIt = structDecls.find(path->segments[0]);
                             structIt != structDecls.end() && !structIt->second->typeParams.empty() &&
@@ -4356,11 +4499,11 @@ private:
         }
 
         if (auto *e = dynamic_cast<const MatchExpr *>(&expr)) {
-            CheckExpr(*e->subject);
+            const TypeRef subjectType = CheckExpr(*e->subject);
             TypeRef resultType = TypeRef::MakeUnknown();
             for (const auto &arm : e->arms) {
                 PushScope();
-                CheckPattern(*arm.pattern);
+                CheckPattern(*arm.pattern, subjectType);
                 TypeRef armType = CheckExpr(*arm.body);
                 PopScope();
 
@@ -4474,6 +4617,8 @@ private:
             return "<<";
         case TK::GreaterGreater:
             return ">>";
+        case TK::GreaterGreaterGreater:
+            return ">>>";
         case TK::AmpAmp:
             return "&&";
         case TK::PipePipe:
@@ -4655,6 +4800,15 @@ private:
             }
             return l;
         }
+
+        case TK::GreaterGreaterGreater:
+            if (!l.IsSigned()) {
+                EmitError(loc, std::format("'>>>' requires a signed integer left operand, got '{}'", l.ToString()));
+            }
+            if (!r.IsInteger()) {
+                EmitError(loc, std::format("'>>>' right operand must be an integer, got '{}'", r.ToString()));
+            }
+            return l;
 
         case TK::AmpAmp:
         case TK::PipePipe:

@@ -37,6 +37,8 @@ static LirOpcode BinaryOpcode(TokenKind op) {
         return LirOpcode::Shl;
     case TK::GreaterGreater:
         return LirOpcode::Shr;
+    case TK::GreaterGreaterGreater:
+        return LirOpcode::Lshr;
     case TK::AmpAmp:
         return LirOpcode::And;
     case TK::PipePipe:
@@ -81,6 +83,8 @@ static LirOpcode CompoundOpcode(TokenKind op) {
         return LirOpcode::Shl;
     case TK::GreaterGreaterAssign:
         return LirOpcode::Shr;
+    case TK::GreaterGreaterGreaterAssign:
+        return LirOpcode::Lshr;
     default:
         return LirOpcode::Add;
     }
@@ -406,6 +410,11 @@ private:
         return type.kind == TypeRef::Kind::Array;
     }
 
+    static bool IsAggregateEnumType(const TypeRef &type) {
+        return type.kind == TypeRef::Kind::Named && !type.inner.empty() && type.inner[0].kind == TypeRef::Kind::Array &&
+               type.SizeInBytes().value_or(0) > 8;
+    }
+
     static bool IsStringSliceLiteral(const HirLiteralExpr &e) {
         return e.type.kind == TypeRef::Kind::Named &&
                (e.type.name == "Slice<char8>" || e.type.name == "Slice<char16>" || e.type.name == "Slice<char32>");
@@ -446,6 +455,7 @@ private:
             LirEnumDecl ed;
             ed.name = e.name;
             ed.isPublic = e.isPublic;
+            ed.typeParams = e.typeParams;
             ed.baseType = e.baseType;
             for (const auto &v : e.variants) {
                 ed.variants.push_back({v.name, v.fields, v.discriminant});
@@ -656,17 +666,53 @@ private:
     }
 
     void StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, const LirReg slot) {
+        if (!IsAggregateEnumType(e.type)) {
+            auto &payloadSlots = enumPayloadSlots[slot];
+            payloadSlots.clear();
+            payloadSlots.reserve(e.payloads.size());
+
+            LirReg packed = EmitConst(e.discriminant, TypeRef::MakeInt64());
+            for (std::size_t i = 0; i < e.payloads.size(); ++i) {
+                const auto &payloadExpr = e.payloads[i];
+                LirReg payload = LowerExpr(*payloadExpr);
+                const LirReg payloadSlot = EmitAlloca(payloadExpr->type);
+                EmitStore(payload, payloadSlot, payloadExpr->type);
+                payloadSlots.push_back(payloadSlot);
+
+                // The established compact enum representation has room for
+                // one payload in the upper 32 bits. Wider generic enums use
+                // the aggregate path below instead.
+                if (i == 0) {
+                    if (payloadExpr->type.kind != TypeRef::Kind::Int64 &&
+                        payloadExpr->type.kind != TypeRef::Kind::Int) {
+                        payload = EmitCast(payload, payloadExpr->type, TypeRef::MakeInt64());
+                    }
+                    const LirReg shift = EmitConst("32", TypeRef::MakeInt64());
+                    const LirReg shifted = EmitBinary(LirOpcode::Shl, payload, shift, TypeRef::MakeInt64());
+                    packed = EmitBinary(LirOpcode::Or, shifted, packed, TypeRef::MakeInt64());
+                }
+            }
+            EmitStore(packed, slot, e.type);
+            return;
+        }
+
         LirReg tag = EmitConst(e.discriminant, TypeRef::MakeInt64());
-        EmitStore(tag, slot, e.type);
+        EmitStore(tag, slot, TypeRef::MakeInt64());
 
         auto &payloadSlots = enumPayloadSlots[slot];
         payloadSlots.clear();
         payloadSlots.reserve(e.payloads.size());
+        std::uint64_t offset = 8;
         for (const auto &payloadExpr : e.payloads) {
-            const LirReg payloadSlot = EmitAlloca(payloadExpr->type);
+            const std::uint64_t size = payloadExpr->type.SizeInBytes().value_or(8);
+            const std::uint64_t align = size > 0 ? std::min<std::uint64_t>(size, 8) : 1;
+            offset = (offset + align - 1) / align * align;
+            const LirReg offsetReg = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
+            const LirReg payloadSlot = EmitIndexPtr(slot, offsetReg, TypeRef::MakeChar8());
             const LirReg payload = LowerExpr(*payloadExpr);
             EmitStore(payload, payloadSlot, payloadExpr->type);
             payloadSlots.push_back(payloadSlot);
+            offset += size;
         }
     }
 
@@ -1068,16 +1114,24 @@ private:
     }
 
     void LowerMatch(const HirMatchStmt &s) {
-        const LirReg subjectVal = LowerExpr(*s.subject);
+        LirReg subjectSlot = LirNoReg;
         const std::vector<LirReg> *subjectPayload = nullptr;
         if (auto *subjectVar = dynamic_cast<const HirVarExpr *>(s.subject.get())) {
             if (const auto localIt = locals.find(subjectVar->name); localIt != locals.end()) {
+                subjectSlot = localIt->second;
                 if (const auto payloadIt = enumPayloadSlots.find(localIt->second);
                     payloadIt != enumPayloadSlots.end()) {
                     subjectPayload = &payloadIt->second;
                 }
             }
         }
+        if (subjectSlot == LirNoReg && IsAggregateEnumType(s.subject->type)) {
+            subjectSlot = EmitAlloca(s.subject->type);
+            StoreExprIntoSlot(*s.subject, subjectSlot, s.subject->type);
+        }
+        const LirReg subjectVal = subjectSlot != LirNoReg && IsAggregateEnumType(s.subject->type)
+                                    ? EmitLoad(subjectSlot, TypeRef::MakeInt64())
+                                    : LowerExpr(*s.subject);
         const std::uint32_t mergeBlock = NewBlock("match.merge");
         if (s.arms.empty()) {
             if (!IsTerminated()) {
@@ -1091,7 +1145,7 @@ private:
             const bool isLast = (i + 1 == s.arms.size());
             std::uint32_t bodyBlock = NewBlock(std::format("match.arm{}", i));
             std::uint32_t nextBlock = isLast ? mergeBlock : NewBlock(std::format("match.next{}", i));
-            LirReg matched = LowerPattern(*arm.pattern, subjectVal, s.subject->type, subjectPayload);
+            LirReg matched = LowerPattern(*arm.pattern, subjectVal, s.subject->type, subjectPayload, subjectSlot);
             Branch(matched, bodyBlock, nextBlock);
             SetBlock(bodyBlock);
             LowerExpr(*arm.body);
@@ -1135,7 +1189,7 @@ private:
     }
 
     LirReg LowerPattern(const HirPattern &pat, LirReg subjectVal, const TypeRef &subjectType,
-                        const std::vector<LirReg> *enumPayload = nullptr) {
+                        const std::vector<LirReg> *enumPayload = nullptr, LirReg subjectSlot = LirNoReg) {
         if (dynamic_cast<const HirWildcardPattern *>(&pat)) {
             return EmitConst("1", TypeRef::MakeBool());
         }
@@ -1173,10 +1227,10 @@ private:
         // placeholder true. Full structural matching requires runtime
         // support beyond what this IR stage provides.
         if (auto *p = dynamic_cast<const HirEnumPattern *>(&pat)) {
-            LirReg tagValue = subjectVal;
+            LirReg tagValue = subjectSlot != LirNoReg ? EmitLoad(subjectSlot, TypeRef::MakeInt64()) : subjectVal;
             if (!p->unitDiscriminants.empty() || p->discriminant) {
                 LirReg mask = EmitConst("4294967295", TypeRef::MakeInt64());
-                tagValue = EmitBinary(LirOpcode::And, subjectVal, mask, TypeRef::MakeInt64());
+                tagValue = EmitBinary(LirOpcode::And, tagValue, mask, TypeRef::MakeInt64());
             }
             for (std::size_t i = 0; i < p->args.size(); ++i) {
                 const auto &arg = p->args[i];
@@ -1188,6 +1242,31 @@ private:
                     const std::size_t payloadIndex = i < p->argIndices.size() ? p->argIndices[i] : i;
                     if (enumPayload && payloadIndex < enumPayload->size()) {
                         payload = EmitLoad((*enumPayload)[payloadIndex], bindType);
+                    }
+                    else if (subjectSlot != LirNoReg) {
+                        std::uint64_t offset = 8;
+                        for (std::size_t fieldIndex = 0; fieldIndex < payloadIndex && fieldIndex < p->args.size();
+                             ++fieldIndex) {
+                            TypeRef fieldType = TypeRef::MakeUnknown();
+                            if (const auto *fieldBinding =
+                                    dynamic_cast<const HirBindingPattern *>(p->args[fieldIndex].get())) {
+                                fieldType = fieldBinding->type;
+                            }
+                            else if (const auto *fieldLiteral =
+                                         dynamic_cast<const HirLiteralPattern *>(p->args[fieldIndex].get())) {
+                                fieldType = fieldLiteral->type;
+                            }
+                            const std::uint64_t fieldSize = fieldType.SizeInBytes().value_or(8);
+                            const std::uint64_t fieldAlign = fieldSize > 0 ? std::min<std::uint64_t>(fieldSize, 8) : 1;
+                            offset = (offset + fieldAlign - 1) / fieldAlign * fieldAlign;
+                            offset += fieldSize;
+                        }
+                        const std::uint64_t bindSize = bindType.SizeInBytes().value_or(8);
+                        const std::uint64_t bindAlign = bindSize > 0 ? std::min<std::uint64_t>(bindSize, 8) : 1;
+                        offset = (offset + bindAlign - 1) / bindAlign * bindAlign;
+                        const LirReg offsetReg = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
+                        const LirReg payloadPtr = EmitIndexPtr(subjectSlot, offsetReg, TypeRef::MakeChar8());
+                        payload = EmitLoad(payloadPtr, bindType);
                     }
                     else {
                         LirReg shift = EmitConst("32", TypeRef::MakeInt64());
@@ -1231,7 +1310,7 @@ private:
         }
 
         if (auto *p = dynamic_cast<const HirGuardedPattern *>(&pat)) {
-            LirReg inner = LowerPattern(*p->inner, subjectVal, subjectType);
+            LirReg inner = LowerPattern(*p->inner, subjectVal, subjectType, enumPayload, subjectSlot);
             LirReg guard = LowerExpr(*p->guard);
             return EmitBinary(LirOpcode::And, inner, guard, TypeRef::MakeBool());
         }
@@ -1755,16 +1834,24 @@ private:
     }
 
     void StoreMatchInit(const HirMatchExpr &e, LirReg slot, const TypeRef &type) {
-        const LirReg subjectVal = LowerExpr(*e.subject);
+        LirReg subjectSlot = LirNoReg;
         const std::vector<LirReg> *subjectPayload = nullptr;
         if (auto *subjectVar = dynamic_cast<const HirVarExpr *>(e.subject.get())) {
             if (const auto localIt = locals.find(subjectVar->name); localIt != locals.end()) {
+                subjectSlot = localIt->second;
                 if (const auto payloadIt = enumPayloadSlots.find(localIt->second);
                     payloadIt != enumPayloadSlots.end()) {
                     subjectPayload = &payloadIt->second;
                 }
             }
         }
+        if (subjectSlot == LirNoReg && IsAggregateEnumType(e.subject->type)) {
+            subjectSlot = EmitAlloca(e.subject->type);
+            StoreExprIntoSlot(*e.subject, subjectSlot, e.subject->type);
+        }
+        const LirReg subjectVal = subjectSlot != LirNoReg && IsAggregateEnumType(e.subject->type)
+                                    ? EmitLoad(subjectSlot, TypeRef::MakeInt64())
+                                    : LowerExpr(*e.subject);
         const std::uint32_t mergeBlock = NewBlock("match.expr.store.merge");
         if (e.arms.empty()) {
             if (!IsTerminated()) {
@@ -1779,7 +1866,7 @@ private:
             const bool isLast = (i + 1 == e.arms.size());
             const std::uint32_t bodyBlock = NewBlock(std::format("match.expr.store.arm{}", i));
             const std::uint32_t nextBlock = isLast ? mergeBlock : NewBlock(std::format("match.expr.store.next{}", i));
-            const LirReg matched = LowerPattern(*arm.pattern, subjectVal, e.subject->type, subjectPayload);
+            const LirReg matched = LowerPattern(*arm.pattern, subjectVal, e.subject->type, subjectPayload, subjectSlot);
             Branch(matched, bodyBlock, nextBlock);
             SetBlock(bodyBlock);
             StoreExprIntoSlot(*arm.body, slot, type);
@@ -1885,17 +1972,9 @@ private:
     }
 
     LirReg LowerEnumConstruct(const HirEnumConstructExpr &e) {
-        if (e.payloads.empty()) {
-            return EmitConst(e.discriminant, TypeRef::MakeInt64());
-        }
-        LirReg payload = LowerExpr(*e.payloads[0]);
-        if (e.payloads[0]->type.kind != TypeRef::Kind::Int64 && e.payloads[0]->type.kind != TypeRef::Kind::Int) {
-            payload = EmitCast(payload, e.payloads[0]->type, TypeRef::MakeInt64());
-        }
-        LirReg shift = EmitConst("32", TypeRef::MakeInt64());
-        LirReg shifted = EmitBinary(LirOpcode::Shl, payload, shift, TypeRef::MakeInt64());
-        LirReg tag = EmitConst(e.discriminant, TypeRef::MakeInt64());
-        return EmitBinary(LirOpcode::Or, shifted, tag, TypeRef::MakeInt64());
+        const LirReg slot = EmitAlloca(e.type);
+        StoreEnumConstructIntoSlot(e, slot);
+        return EmitLoad(slot, e.type);
     }
 
     LirReg LowerCall(const HirCallExpr &e) {

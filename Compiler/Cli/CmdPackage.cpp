@@ -170,7 +170,12 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
         }
         else {
             if (!opts.quiet) {
-                std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+                if (folder.empty()) {
+                    std::print("  Downloading {} from {}\n", pkgName, repoUrl);
+                }
+                else {
+                    std::print("  Downloading {} from {} [{}]\n", pkgName, repoUrl, folder);
+                }
             }
             if (!DownloadPackage(repoUrl, folder, pkgDir, packageFromDev)) {
                 std::print(stderr, "error: failed to download '{}'\n", repoUrl);
@@ -634,7 +639,12 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
         }
         else {
             if (!opts.quiet) {
-                std::print("  Downloading {} from {}...\n", pkgName, repoUrl);
+                if (folder.empty()) {
+                    std::print("  Downloading {} from {}\n", pkgName, repoUrl);
+                }
+                else {
+                    std::print("  Downloading {} from {} [{}]\n", pkgName, repoUrl, folder);
+                }
             }
             if (!DownloadPackage(repoUrl, folder, pkgDir, false)) {
                 std::print(stderr, "error: failed to download '{}'\n", repoUrl);

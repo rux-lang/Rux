@@ -934,6 +934,9 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
     decl->location = loc;
     decl->isPublic = isPublic;
     decl->name = Expect(TokenKind::Ident, "expected enum name").text;
+    if (Check(TokenKind::Less)) {
+        decl->typeParams = ParseTypeParams();
+    }
     if (Match(TokenKind::Colon)) {
         decl->baseType = ParseType();
     }

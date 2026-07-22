@@ -18,6 +18,23 @@ using namespace Layout;
 
 // Type utilities
 namespace {
+TypeRef UnsignedIntegerType(const TypeRef &type) {
+    switch (type.kind) {
+    case TypeRef::Kind::Int8:
+        return TypeRef::MakeUInt8();
+    case TypeRef::Kind::Int16:
+        return TypeRef::MakeUInt16();
+    case TypeRef::Kind::Int32:
+        return TypeRef::MakeUInt32();
+    case TypeRef::Kind::Int64:
+        return TypeRef::MakeUInt64();
+    case TypeRef::Kind::Int:
+        return TypeRef::MakeUInt();
+    default:
+        return type;
+    }
+}
+
 // x86-64 register names sized for the rax family
 std::string_view GprA(int bytes) {
     switch (bytes) {
@@ -1382,13 +1399,15 @@ private:
         }
 
         case LirOpcode::Shl:
-        case LirOpcode::Shr: {
+        case LirOpcode::Shr:
+        case LirOpcode::Lshr: {
             const TypeRef &t = instr.type;
-            LoadA(instr.srcs[0], t);
+            LoadA(instr.srcs[0], instr.op == LirOpcode::Lshr ? UnsignedIntegerType(t) : t);
             // Shift count must be in cl
             TI(std::format("{:<8}r11, qword [rbp - {}]", "mov", slotMap.at(instr.srcs[1])));
             TI("mov     rcx, r11");
-            if (bool isShr = (instr.op == LirOpcode::Shr); isShr && t.IsSigned()) {
+            if (bool isShr = instr.op == LirOpcode::Shr || instr.op == LirOpcode::Lshr;
+                isShr && t.IsSigned() && instr.op != LirOpcode::Lshr) {
                 TI("sar     rax, cl");
             }
             else if (isShr) {

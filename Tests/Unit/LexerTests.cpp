@@ -33,6 +33,16 @@ TEST_CASE("Lexer keeps the original source spelling in token text") {
     CHECK(result.tokens[3].text == "0xFF");
 }
 
+TEST_CASE("Lexer uses maximal munch for logical right shift operators") {
+    const auto result = Lex("a >>> b; a >>>= b;");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.tokens.size() >= 8);
+    CHECK(result.tokens[1].Is(TokenKind::GreaterGreaterGreater));
+    CHECK(result.tokens[1].text == ">>>");
+    CHECK(result.tokens[5].Is(TokenKind::GreaterGreaterGreaterAssign));
+    CHECK(result.tokens[5].text == ">>>=");
+}
+
 TEST_CASE("Lexer does not recognize flat compile-time intrinsic aliases") {
     static constexpr const char *aliases[] = {
         "line",

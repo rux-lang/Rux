@@ -33,11 +33,17 @@ func Main() -> int {
            "Expected enum argument and return types to match");
     let shape = Shape::Rect { width: 10.0, height: 20.0 };
     let val = match shape {
-        Shape::Circle { radius } => radius,
-        Shape::Rect { width, height } => (width * height),
-        Shape::Point => 0.0
+        .Circle { radius } => radius,
+        .Rect { width, height } => (width * height),
+        .Point => 0.0
     };
     Assert(val == 200.0, "Expected 200.0");
+    let option = Option::Some(7);
+    let optionValue = match option {
+        .Some(value) => value,
+        .None => 0
+    };
+    Assert(optionValue == 7, "Expected contextual payload binding");
     let fallback = match 7 {
         0 => 1,
         else => 2

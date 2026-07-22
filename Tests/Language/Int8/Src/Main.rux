@@ -49,6 +49,8 @@ func Main() -> int {
     Assert((1 as int8 << 4) == 16, "int8 left shift");
     Assert((64 as int8 >> 2) == 16, "int8 positive right shift");
     Assert((-128 as int8 >> 3) == -16, "int8 right shift sign-extends");
+    Assert((-8 as int8 >>> 2) == 62, "int8 logical right shift zero-fills");
+    Assert((-8 as int8 >>> 0) == -8, "int8 logical right shift preserves bits for a zero count");
     Assert((1 as int8 << 7) == -128, "int8 left shift to sign bit");
 
     // Casting to wider signed types
@@ -94,6 +96,10 @@ func Main() -> int {
 
     x %= 3;
     Assert(x == 2, "int8 compound %= operator");
+
+    x = -8;
+    x >>>= 2;
+    Assert(x == 62, "int8 compound >>>= operator");
 
     // Implicit widening to int
     let small: int8 = -42;

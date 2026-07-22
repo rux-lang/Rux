@@ -41,6 +41,8 @@ static std::string_view OpcodeStr(LirOpcode op) {
         return "shl";
     case LirOpcode::Shr:
         return "shr";
+    case LirOpcode::Lshr:
+        return "lshr";
     case LirOpcode::Neg:
         return "neg";
     case LirOpcode::Not:
@@ -298,7 +300,18 @@ bool LirPrinter::Dump(const LirPackage &package, const std::filesystem::path &pa
         }
         for (const auto &e : mod.enums) {
             std::string pub = e.isPublic ? "pub " : "";
-            out << std::format("\n{}enum {}: {}\n", pub, e.name, e.baseType.ToString());
+            std::string typeParams;
+            if (!e.typeParams.empty()) {
+                typeParams = "<";
+                for (std::size_t i = 0; i < e.typeParams.size(); ++i) {
+                    if (i) {
+                        typeParams += ", ";
+                    }
+                    typeParams += e.typeParams[i];
+                }
+                typeParams += ">";
+            }
+            out << std::format("\n{}enum {}{}: {}\n", pub, e.name, typeParams, e.baseType.ToString());
             for (const auto &v : e.variants) {
                 if (v.fields.empty()) {
                     out << std::format("  {} = {}\n", v.name, v.discriminant.value_or("0"));

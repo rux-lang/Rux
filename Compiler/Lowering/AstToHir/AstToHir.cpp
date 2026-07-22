@@ -3,6 +3,7 @@
 #include "Driver/Version.h"
 #include "Ir/Hir/HirInternal.h"
 #include "Semantic/PrimitiveConstants.h"
+#include "Semantic/SemanticVersion.h"
 #include "Target/Layout.h"
 #include "Target/Platform.h"
 
@@ -126,6 +127,8 @@ std::string_view OpStr(TokenKind op) {
         return "<<";
     case TK::GreaterGreater:
         return ">>";
+    case TK::GreaterGreaterGreater:
+        return ">>>";
     case TK::AmpAmp:
         return "&&";
     case TK::PipePipe:
@@ -166,6 +169,8 @@ std::string_view OpStr(TokenKind op) {
         return "<<=";
     case TK::GreaterGreaterAssign:
         return ">>=";
+    case TK::GreaterGreaterGreaterAssign:
+        return ">>>=";
     default:
         return "?";
     }
@@ -1209,15 +1214,18 @@ private:
                     return TypeRef::MakeRange(std::move(elemType), false, true, true);
                 }
             }
+            if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end()) {
+                std::vector<TypeRef> typeArgs;
+                typeArgs.reserve(t->typeArgs.size());
+                for (const auto &typeArg : t->typeArgs) {
+                    typeArgs.push_back(ResolveType(*typeArg));
+                }
+                return EnumType(*enumIt->second, typeArgs);
+            }
             HirSymbol *sym = currentScope->Lookup(t->name);
             if (sym && (sym->kind == HirSymbol::Kind::Type || sym->kind == HirSymbol::Kind::Interface)) {
                 if (t->typeArgs.empty() && !sym->type.IsUnknown()) {
                     return sym->type;
-                }
-                if (t->typeArgs.empty()) {
-                    if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end()) {
-                        return EnumType(*enumIt->second);
-                    }
                 }
                 return TypeRef::MakeNamed(GenericTypeName(*t));
             }
@@ -1734,16 +1742,22 @@ private:
         return std::nullopt;
     }
 
-    TypeRef EnumVariantConstructorType(const EnumDecl &decl, const EnumDecl::Variant &variant) {
+    TypeRef EnumVariantConstructorType(const EnumDecl &decl, const EnumDecl::Variant &variant,
+                                       const std::vector<TypeRef> &typeArgs = {}) {
+        std::unordered_map<std::string, TypeRef> substitutions;
+        const std::size_t count = std::min(decl.typeParams.size(), typeArgs.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            substitutions.emplace(decl.typeParams[i], typeArgs[i]);
+        }
         std::vector<TypeRef> params;
         params.reserve(variant.fields.size() + variant.namedFields.size());
         for (const auto &field : variant.fields) {
-            params.push_back(ResolveType(*field));
+            params.push_back(ResolveTypeWithSubstitution(*field, substitutions));
         }
         for (const auto &field : variant.namedFields) {
-            params.push_back(ResolveType(*field.type));
+            params.push_back(ResolveTypeWithSubstitution(*field.type, substitutions));
         }
-        return TypeRef::MakeFunc(std::move(params), EnumType(decl));
+        return TypeRef::MakeFunc(std::move(params), EnumType(decl, typeArgs));
     }
 
     // Returns the mangled callee name: "Type::method__p1_p2" for overloads,
@@ -1913,6 +1927,9 @@ private:
             if (auto it = substitutions.find(type.name); it != substitutions.end()) {
                 return SizeOfTypeRef(it->second, substitutions);
             }
+            if (!type.inner.empty()) {
+                return SizeOfTypeRef(type.inner[0], substitutions);
+            }
             const std::string baseName = BaseTypeName(type.name);
             std::unordered_map<std::string, TypeRef> localSubs = substitutions;
             const auto structIt = structDecls.find(baseName);
@@ -1924,8 +1941,17 @@ private:
                     localSubs[params[i]] = typeArgs[i];
                 }
             }
+            const auto enumIt = enumDecls.find(baseName);
+            if (enumIt != enumDecls.end()) {
+                std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(type.name);
+                const auto &params = enumIt->second->typeParams;
+                const std::size_t count = std::min(params.size(), typeArgs.size());
+                for (std::size_t i = 0; i < count; ++i) {
+                    localSubs[params[i]] = typeArgs[i];
+                }
+            }
 
-            if (const auto enumIt = enumDecls.find(baseName); enumIt != enumDecls.end()) {
+            if (enumIt != enumDecls.end()) {
                 return SizeOfEnum(*enumIt->second, localSubs);
             }
             if (interfaceDecls.contains(baseName)) {
@@ -2032,9 +2058,33 @@ private:
         return decl.baseType ? ResolveType(*decl.baseType) : TypeRef::MakeInt();
     }
 
-    TypeRef EnumType(const EnumDecl &decl) {
-        TypeRef type = TypeRef::MakeNamed(decl.name);
-        type.inner.push_back(EnumBaseType(decl));
+    TypeRef EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArgs = {}) {
+        std::string name = decl.name;
+        if (!typeArgs.empty()) {
+            name += '<';
+            for (std::size_t i = 0; i < typeArgs.size(); ++i) {
+                if (i) {
+                    name += ", ";
+                }
+                name += typeArgs[i].ToString();
+            }
+            name += '>';
+        }
+
+        TypeRef type = TypeRef::MakeNamed(std::move(name));
+        if (decl.typeParams.empty()) {
+            type.inner.push_back(EnumBaseType(decl));
+            return type;
+        }
+        if (typeArgs.size() == decl.typeParams.size()) {
+            std::unordered_map<std::string, TypeRef> substitutions;
+            for (std::size_t i = 0; i < typeArgs.size(); ++i) {
+                substitutions.emplace(decl.typeParams[i], typeArgs[i]);
+            }
+            if (const auto size = SizeOfEnum(decl, substitutions)) {
+                type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), *size));
+            }
+        }
         return type;
     }
 
@@ -2574,9 +2624,12 @@ private:
     }
 
     HirEnum LowerEnum(const EnumDecl &d) {
+        const auto savedTypeParams = currentTypeParams;
+        currentTypeParams.insert(currentTypeParams.end(), d.typeParams.begin(), d.typeParams.end());
         HirEnum he;
         he.name = d.name;
         he.isPublic = d.isPublic;
+        he.typeParams = d.typeParams;
         he.baseType = EnumBaseType(d);
         he.location = d.location;
         std::int64_t next = 0;
@@ -2599,6 +2652,7 @@ private:
             }
             he.variants.push_back(std::move(hv));
         }
+        currentTypeParams = savedTypeParams;
         return he;
     }
 
@@ -2871,7 +2925,7 @@ private:
                 HirMatchArm ha;
                 ha.location = arm.location;
                 PushScope();
-                ha.pattern = LowerPattern(*arm.pattern);
+                ha.pattern = LowerPattern(*arm.pattern, hs->subject->type);
                 ha.body = LowerExpr(*arm.body);
                 PopScope();
                 hs->arms.push_back(std::move(ha));
@@ -3142,9 +3196,26 @@ private:
             if (field == "time")
                 return CompilerParamString(location, FormatBuildTime("%H:%M:%S"));
         }
-        if (root == "Compiler" && field == "version")
-            return CompilerParamString(location,
-                                       context.compilerVersion.empty() ? RUX_VERSION : context.compilerVersion);
+        if (root == "Compiler" && field == "version") {
+            const std::string &text =
+                context.compilerVersion.empty() ? std::string{RUX_VERSION} : context.compilerVersion;
+            const ParsedSemanticVersion version = ParseSemanticVersion(text).value_or(ParsedSemanticVersion{});
+            auto object = std::make_unique<HirStructInitExpr>();
+            object->location = location;
+            object->type = TypeRef::MakeNamed("SemanticVersion");
+            object->typeName = "SemanticVersion";
+
+            auto addField = [&](std::string name, HirExprPtr value) {
+                HirStructInitField fieldValue;
+                fieldValue.name = std::move(name);
+                fieldValue.value = std::move(value);
+                object->fields.push_back(std::move(fieldValue));
+            };
+            addField("major", CompilerParamLiteral(location, TypeRef::MakeUInt(), version.major));
+            addField("minor", CompilerParamLiteral(location, TypeRef::MakeUInt(), version.minor));
+            addField("patch", CompilerParamLiteral(location, TypeRef::MakeUInt(), version.patch));
+            return object;
+        }
         if (root == "Source") {
             if (field == "line")
                 return CompilerParamLiteral(location, TypeRef::MakeUInt(), location.line);
@@ -3682,19 +3753,21 @@ private:
             if (auto *path = dynamic_cast<const PathExpr *>(e->callee.get()); path && path->segments.size() == 2) {
                 const auto *variant = LookupEnumVariant(path->segments[0], path->segments[1]);
                 if (variant && (!variant->fields.empty() || !variant->namedFields.empty())) {
-                    const TypeExpr *singlePayloadType = nullptr;
-                    if (variant->fields.size() == 1 && variant->namedFields.empty()) {
-                        singlePayloadType = variant->fields[0].get();
+                    const EnumDecl &decl = *enumDecls.at(path->segments[0]);
+                    std::vector<TypeRef> typeArgs;
+                    typeArgs.reserve(e->typeArgs.size());
+                    for (const auto &typeArg : e->typeArgs) {
+                        typeArgs.push_back(ResolveType(*typeArg));
                     }
-                    else if (variant->fields.empty() && variant->namedFields.size() == 1) {
-                        singlePayloadType = variant->namedFields[0].type.get();
-                    }
-
-                    if (singlePayloadType && e->args.size() == 1) {
+                    const TypeRef constructor = EnumVariantConstructorType(decl, *variant, typeArgs);
+                    const std::size_t paramCount = constructor.inner.empty() ? 0 : constructor.inner.size() - 1;
+                    if (e->args.size() == paramCount) {
                         auto he = std::make_unique<HirEnumConstructExpr>();
                         he->location = e->location;
-                        he->type = EnumType(*enumDecls.at(path->segments[0]));
-                        he->payloads.push_back(LowerExprAs(*e->args[0], ResolveType(*singlePayloadType)));
+                        he->type = constructor.inner.back();
+                        for (std::size_t i = 0; i < e->args.size(); ++i) {
+                            he->payloads.push_back(LowerExprAs(*e->args[i], constructor.inner[i]));
+                        }
                         he->discriminant =
                             LookupEnumVariantDiscriminant(path->segments[0], path->segments[1]).value_or("0");
                         return he;
@@ -3702,7 +3775,7 @@ private:
 
                     auto he = std::make_unique<HirLiteralExpr>();
                     he->location = e->location;
-                    he->type = EnumType(*enumDecls.at(path->segments[0]));
+                    he->type = EnumType(decl, typeArgs);
                     he->value = LookupEnumVariantDiscriminant(path->segments[0], path->segments[1]).value_or("0");
                     return he;
                 }
@@ -4216,7 +4289,7 @@ private:
                 HirMatchArm ha;
                 ha.location = arm.location;
                 PushScope();
-                ha.pattern = LowerPattern(*arm.pattern);
+                ha.pattern = LowerPattern(*arm.pattern, he->subject->type);
                 ha.body = LowerExpr(*arm.body);
                 PopScope();
                 if (he->type.IsUnknown()) {
@@ -4322,7 +4395,7 @@ private:
     }
 
     // Pattern lowering
-    HirPatternPtr LowerPattern(const Pattern &pat) {
+    HirPatternPtr LowerPattern(const Pattern &pat, const TypeRef &subjectType = TypeRef::MakeUnknown()) {
         if (dynamic_cast<const WildcardPattern *>(&pat)) {
             auto hp = std::make_unique<HirWildcardPattern>();
             hp->location = pat.location;
@@ -4344,10 +4417,11 @@ private:
             auto hp = std::make_unique<HirBindingPattern>();
             hp->location = p->location;
             hp->name = p->name;
+            hp->type = subjectType;
             HirSymbol sym;
             sym.kind = HirSymbol::Kind::Var;
             sym.name = p->name;
-            sym.type = TypeRef::MakeUnknown();
+            sym.type = subjectType;
             Define(sym);
             return hp;
         }
@@ -4364,22 +4438,40 @@ private:
             hp->location = p->location;
             hp->path = p->path;
             const EnumDecl::Variant *variant = nullptr;
-            if (!p->path.empty()) {
-                if (HirSymbol *sym = currentScope->Lookup(p->path[0])) {
+            std::unordered_map<std::string, TypeRef> substitutions;
+            std::string enumName;
+            std::string variantName;
+            if (p->path.size() == 1 && subjectType.kind == TypeRef::Kind::Named) {
+                enumName = BaseTypeName(subjectType.name);
+                variantName = p->path[0];
+                hp->path = {enumName, variantName};
+                hp->resolvedType = subjectType;
+            }
+            else if (p->path.size() >= 2) {
+                enumName = p->path[0];
+                variantName = p->path[1];
+                if (HirSymbol *sym = currentScope->Lookup(enumName)) {
                     hp->resolvedType = sym->type;
                 }
-                if (p->path.size() >= 2) {
-                    hp->discriminant = LookupEnumVariantDiscriminant(p->path[0], p->path[1]);
-                    variant = LookupEnumVariant(p->path[0], p->path[1]);
-                    if (variant) {
-                        hp->hasPayload = !variant->fields.empty() || !variant->namedFields.empty();
+            }
+
+            if (!enumName.empty() && !variantName.empty()) {
+                hp->discriminant = LookupEnumVariantDiscriminant(enumName, variantName);
+                variant = LookupEnumVariant(enumName, variantName);
+                if (variant) {
+                    hp->hasPayload = !variant->fields.empty() || !variant->namedFields.empty();
+                }
+                if (const auto enumIt = enumDecls.find(enumName); enumIt != enumDecls.end()) {
+                    const auto typeArgs = ParseTypeArgsFromTypeName(subjectType.name);
+                    const auto &params = enumIt->second->typeParams;
+                    const std::size_t count = std::min(params.size(), typeArgs.size());
+                    for (std::size_t i = 0; i < count; ++i) {
+                        substitutions.emplace(params[i], typeArgs[i]);
                     }
-                    if (const auto enumIt = enumDecls.find(p->path[0]); enumIt != enumDecls.end()) {
-                        for (const auto &unitVariant : enumIt->second->variants) {
-                            if (unitVariant.fields.empty() && unitVariant.namedFields.empty()) {
-                                if (auto disc = LookupEnumVariantDiscriminant(p->path[0], unitVariant.name)) {
-                                    hp->unitDiscriminants.push_back(*disc);
-                                }
+                    for (const auto &unitVariant : enumIt->second->variants) {
+                        if (unitVariant.fields.empty() && unitVariant.namedFields.empty()) {
+                            if (auto disc = LookupEnumVariantDiscriminant(enumName, unitVariant.name)) {
+                                hp->unitDiscriminants.push_back(*disc);
                             }
                         }
                     }
@@ -4393,7 +4485,8 @@ private:
                 for (const auto &field : variant->namedFields) {
                     if (const auto it = namedArgs.find(field.name); it != namedArgs.end()) {
                         hp->argIndices.push_back(&field - variant->namedFields.data());
-                        hp->args.push_back(LowerLetPattern(*it->second, ResolveType(*field.type), false));
+                        hp->args.push_back(LowerLetPattern(
+                            *it->second, ResolveTypeWithSubstitution(*field.type, substitutions), false));
                     }
                 }
             }
@@ -4405,12 +4498,16 @@ private:
             for (std::size_t i = 0; i < p->args.size(); ++i) {
                 if (variant && i < variant->fields.size()) {
                     hp->argIndices.push_back(i);
-                    hp->args.push_back(LowerLetPattern(*p->args[i], ResolveType(*variant->fields[i]), false));
+                    hp->args.push_back(LowerLetPattern(
+                        *p->args[i], ResolveTypeWithSubstitution(*variant->fields[i], substitutions), false));
                 }
                 else if (variant && i - variant->fields.size() < variant->namedFields.size()) {
                     hp->argIndices.push_back(i);
-                    hp->args.push_back(LowerLetPattern(
-                        *p->args[i], ResolveType(*variant->namedFields[i - variant->fields.size()].type), false));
+                    hp->args.push_back(
+                        LowerLetPattern(*p->args[i],
+                                        ResolveTypeWithSubstitution(
+                                            *variant->namedFields[i - variant->fields.size()].type, substitutions),
+                                        false));
                 }
                 else {
                     hp->args.push_back(LowerPattern(*p->args[i]));
@@ -4436,15 +4533,18 @@ private:
         if (auto *p = dynamic_cast<const TuplePattern *>(&pat)) {
             auto hp = std::make_unique<HirTuplePattern>();
             hp->location = p->location;
-            for (const auto &e : p->elements) {
-                hp->elements.push_back(LowerPattern(*e));
+            for (std::size_t i = 0; i < p->elements.size(); ++i) {
+                const TypeRef elementType = subjectType.kind == TypeRef::Kind::Tuple && i < subjectType.inner.size()
+                                              ? subjectType.inner[i]
+                                              : TypeRef::MakeUnknown();
+                hp->elements.push_back(LowerPattern(*p->elements[i], elementType));
             }
             return hp;
         }
         if (auto *p = dynamic_cast<const GuardedPattern *>(&pat)) {
             auto hp = std::make_unique<HirGuardedPattern>();
             hp->location = p->location;
-            hp->inner = LowerPattern(*p->inner);
+            hp->inner = LowerPattern(*p->inner, subjectType);
             hp->guard = LowerExpr(*p->guard);
             return hp;
         }

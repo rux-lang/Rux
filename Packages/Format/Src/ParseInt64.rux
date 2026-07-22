@@ -1,0 +1,73 @@
+import Rux::Result;
+import Text::String;
+
+// Parses a base-10 signed integer with an optional leading `+` or `-`.
+func ParseInt64(str: Slice<char8>) -> Result<int64, ParseError> {
+    if str.length == 0 {
+        return Result::Error<int64, ParseError>(ParseError::Empty);
+    }
+
+    let mut index: uint = 0;
+    let mut negative = false;
+    if str[index] == c8'+' || str[index] == c8'-' {
+        negative = str[index] == c8'-';
+        index++;
+        if index == str.length {
+            return Result::Error<int64, ParseError>(ParseError::InvalidCharacter(index - 1));
+        }
+    }
+
+    // The negative limit is one larger because int64::Min has no positive
+    // int64 counterpart. Accumulating as uint64 handles both limits directly.
+    let limit = negative ? 9223372036854775808u64 : 9223372036854775807u64;
+    let mut magnitude: uint64 = 0u64;
+    while index < str.length {
+        let ch = str[index];
+        if ch < c8'0' || ch > c8'9' {
+            return Result::Error<int64, ParseError>(ParseError::InvalidCharacter(index));
+        }
+
+        let digit = ((ch as uint) - (c8'0' as uint)) as uint64;
+        if magnitude > (limit - digit) / 10u64 {
+            return Result::Error<int64, ParseError>(ParseError::Overflow);
+        }
+        magnitude = magnitude * 10u64 + digit;
+        index++;
+    }
+
+    if negative {
+        if magnitude == 9223372036854775808u64 {
+            return Result::Success<int64, ParseError>(int64::Min);
+        }
+        return Result::Success<int64, ParseError>(-(magnitude as int64));
+    }
+    return Result::Success<int64, ParseError>(magnitude as int64);
+}
+
+// Parses the bytes owned by a String without copying them or taking ownership.
+func ParseInt64(str: String) -> Result<int64, ParseError> {
+    return ParseInt64(Slice<char8> { data: str.data, length: str.length });
+}
+
+// Parses into value and reports only whether conversion succeeded. On failure,
+// value is left unchanged. A null output pointer also reports failure.
+func TryParseInt64(str: Slice<char8>, value: *mut int64) -> bool {
+    if value == null {
+        return false;
+    }
+
+    match ParseInt64(str) {
+        .Success(parsed) => {
+            *value = parsed;
+            return true;
+        },
+        .Error(_) => {
+            return false;
+        }
+    }
+}
+
+// String convenience overload of TryParseInt64; no allocation or copy.
+func TryParseInt64(str: String, value: *mut int64) -> bool {
+    return TryParseInt64(Slice<char8> { data: str.data, length: str.length }, value);
+}

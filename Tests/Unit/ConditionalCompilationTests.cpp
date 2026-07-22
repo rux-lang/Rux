@@ -37,6 +37,16 @@ struct Slice<T> { data: *T; length: uint; }
 struct Target {}
 struct Build {}
 struct Compiler {}
+struct SemanticVersion {
+    major: uint;
+    minor: uint;
+    patch: uint;
+}
+extend SemanticVersion {
+    func New(major: uint, minor: uint, patch: uint) -> SemanticVersion {
+        return SemanticVersion { major: major, minor: minor, patch: patch };
+    }
+}
 struct Source {}
 struct Config {}
 intrinsic #target: Target;
@@ -222,6 +232,26 @@ func Do() -> int {
     const auto *func = FindFunc(parsed.module, "Do");
     REQUIRE(func != nullptr);
     CHECK(ReturnedLiteral(*func) == "2");
+}
+
+TEST_CASE("when evaluates logical right shifts at the signed operand width") {
+    auto parsed = ParseSource(R"(
+const Negative: int8 = -8;
+
+func Do() -> int {
+    when Negative >>> 2 == 62 && (-8i16 >>> 2) == 16382 {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+)");
+    const auto model = Analyze(parsed.module);
+    CHECK_FALSE(model.HasErrors());
+
+    const auto *func = FindFunc(parsed.module, "Do");
+    REQUIRE(func != nullptr);
+    CHECK(ReturnedLiteral(*func) == "1");
 }
 
 TEST_CASE("when selects declarations, not just statements") {
@@ -890,14 +920,24 @@ func Selected() -> int {
 
 TEST_CASE("configuration and compiler feature intrinsics are queryable") {
     auto parsed = ParseSource(R"(
-import Rux::{ #config, #compiler, #source };
+import Rux::{ #config, #compiler, #source, SemanticVersion };
+
+const FutureCompiler = SemanticVersion::New(1, 2, 4);
 
 func Selected() -> int {
     when #config.Has("sqlite") &&
         #config.Get("allocator") == "mimalloc" &&
         #compiler.HasFeature("conditional-compilation") &&
         !#compiler.HasFeature("imaginary-feature") &&
-        #compiler.version == "1.2.3" &&
+        #compiler.version.major == 1 &&
+        #compiler.version.minor == 2 &&
+        #compiler.version.patch == 3 &&
+        #compiler.version == SemanticVersion::New(1, 2, 3) &&
+        #compiler.version != FutureCompiler &&
+        #compiler.version < FutureCompiler &&
+        #compiler.version <= SemanticVersion::New(1, 2, 3) &&
+        #compiler.version > SemanticVersion::New(1, 2, 2) &&
+        #compiler.version >= SemanticVersion::New(1, 2, 3) &&
         #source.function == "Selected" &&
         #source.module == "test" {
         return 1;
@@ -909,7 +949,7 @@ func Selected() -> int {
     CompileTimeContext context;
     context.config["sqlite"] = "true";
     context.config["allocator"] = "mimalloc";
-    context.compilerVersion = "1.2.3";
+    context.compilerVersion = "1.2.3-rc.1+build.7";
 
     const auto model = Analyze(parsed.module, std::move(context));
     CHECK_FALSE(model.HasErrors());
@@ -970,7 +1010,12 @@ struct Build {
     time: Slice<char8>;
 }
 
-struct Compiler { version: Slice<char8>; }
+struct SemanticVersion {
+    major: uint;
+    minor: uint;
+    patch: uint;
+}
+struct Compiler { version: SemanticVersion; }
 extend Compiler {
     intrinsic func HasFeature(self, feature: Slice<char8>) -> bool;
 }
@@ -1032,7 +1077,7 @@ module Demo {
     context.isTest = true;
     context.buildTimestamp = 0;
     context.config["allocator"] = "mimalloc";
-    context.compilerVersion = "1.2.3";
+    context.compilerVersion = "1.2.3-rc.1+build.7";
 
     const SemanticModel model = AnalyzeNoDeps(parsed.module, std::move(context));
     std::string diagnosticMessages;
@@ -1057,9 +1102,18 @@ module Demo {
         else {
             const auto *object = dynamic_cast<const HirStructInitExpr *>(let->init.get());
             REQUIRE(object != nullptr);
-            CHECK(let->name == "currentTarget");
-            CHECK(object->typeName == "Target");
-            CHECK(object->fields.size() == 2);
+            if (let->name == "version") {
+                CHECK(object->typeName == "SemanticVersion");
+                REQUIRE(object->fields.size() == 3);
+                CHECK(dynamic_cast<const HirLiteralExpr *>(object->fields[0].value.get())->value == "1");
+                CHECK(dynamic_cast<const HirLiteralExpr *>(object->fields[1].value.get())->value == "2");
+                CHECK(dynamic_cast<const HirLiteralExpr *>(object->fields[2].value.get())->value == "3");
+            }
+            else {
+                CHECK(let->name == "currentTarget");
+                CHECK(object->typeName == "Target");
+                CHECK(object->fields.size() == 2);
+            }
         }
     }
     CHECK(values["line"] != "0");
@@ -1080,7 +1134,6 @@ module Demo {
     CHECK(values["isTest"] == "true");
     CHECK(values["configValue"] == "mimalloc");
     CHECK(values["hasConfig"] == "true");
-    CHECK(values["version"] == "1.2.3");
     CHECK(values["compilerFeature"] == "true");
 }
 

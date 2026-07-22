@@ -2,6 +2,7 @@
 
 #include "Driver/Version.h"
 #include "Semantic/PrimitiveConstants.h"
+#include "Semantic/SemanticVersion.h"
 #include "Target/Target.h"
 
 #include <algorithm>
@@ -465,6 +466,7 @@ private:
     std::string currentModulePath;
     std::string currentDeclModulePath;
     std::unordered_map<std::string, const Expr *> constExprs;
+    std::unordered_map<std::string, std::uint32_t> constSignedIntegerWidths;
     std::unordered_map<std::string, std::vector<std::string>> enumVariants;
     std::unordered_set<std::string> constsInProgress;
     // Rux built-in enum type names, and the program's own enum names. The former
@@ -491,6 +493,27 @@ private:
 
     // What a condition can name: constants and enums
 
+    void RegisterConstant(const ConstDecl &decl) {
+        if (decl.value) {
+            constExprs.emplace(decl.name, decl.value.get());
+        }
+        if (!decl.type) {
+            return;
+        }
+        const auto *named = dynamic_cast<const NamedTypeExpr *>(decl.type->get());
+        if (!named) {
+            return;
+        }
+        if (named->name == "int8")
+            constSignedIntegerWidths.emplace(decl.name, 8);
+        else if (named->name == "int16")
+            constSignedIntegerWidths.emplace(decl.name, 16);
+        else if (named->name == "int32")
+            constSignedIntegerWidths.emplace(decl.name, 32);
+        else if (named->name == "int64" || named->name == "int")
+            constSignedIntegerWidths.emplace(decl.name, named->name == "int64" ? 64 : context.target.pointer_size * 8);
+    }
+
     void CollectCompileTimeDecls(const std::vector<DeclPtr> &decls) {
         for (const auto &decl : decls) {
             if (!decl) {
@@ -502,9 +525,7 @@ private:
                 if (!constDecl->intrinsicName.empty()) {
                     localIntrinsics.insert(constDecl->name);
                 }
-                if (constDecl->value) {
-                    constExprs.emplace(constDecl->name, constDecl->value.get());
-                }
+                RegisterConstant(*constDecl);
             }
             else if (const auto *enumDecl = dynamic_cast<const EnumDecl *>(decl.get())) {
                 programEnumNames.insert(enumDecl->name);
@@ -690,8 +711,6 @@ private:
             if (field == "time")
                 return Value{FormatTimestamp(context.buildTimestamp, "%H:%M:%S")};
         }
-        if (root == "Compiler" && field == "version")
-            return Value{context.compilerVersion};
         if (root == "Source") {
             if (field == "line")
                 return Value{static_cast<std::int64_t>(location.line)};
@@ -707,6 +726,103 @@ private:
                 return Value{currentModulePath};
         }
         return std::nullopt;
+    }
+
+    std::optional<ParsedSemanticVersion> EvalSemanticVersion(const Expr &expr) {
+        if (const auto *ident = dynamic_cast<const IdentExpr *>(&expr)) {
+            const auto it = constExprs.find(ident->name);
+            if (it == constExprs.end() || !constsInProgress.insert(ident->name).second) {
+                return std::nullopt;
+            }
+            auto value = EvalSemanticVersion(*it->second);
+            constsInProgress.erase(ident->name);
+            return value;
+        }
+
+        if (const auto *field = dynamic_cast<const FieldExpr *>(&expr); field && field->field == "version") {
+            if (const auto root = CompilerParamRoot(*field->object); root && *root == "Compiler") {
+                const auto *ident = dynamic_cast<const IdentExpr *>(field->object.get());
+                if (ident && !RequireRuxImport(ident->name, ident->location)) {
+                    return std::nullopt;
+                }
+                return ParseSemanticVersion(context.compilerVersion);
+            }
+        }
+
+        if (const auto *call = dynamic_cast<const CallExpr *>(&expr)) {
+            const auto *path = dynamic_cast<const PathExpr *>(call->callee.get());
+            if (path && path->segments.size() == 2 && path->segments[0] == "SemanticVersion" &&
+                path->segments[1] == "New" && call->args.size() == 3) {
+                ParsedSemanticVersion version;
+                std::uint64_t *components[] = {&version.major, &version.minor, &version.patch};
+                for (std::size_t index = 0; index < call->args.size(); ++index) {
+                    if (!call->args[index])
+                        return std::nullopt;
+                    const auto value = Eval(*call->args[index]);
+                    if (!value)
+                        return std::nullopt;
+                    if (const auto *unsignedValue = std::get_if<std::uint64_t>(&*value)) {
+                        *components[index] = *unsignedValue;
+                    }
+                    else if (const auto *signedValue = std::get_if<std::int64_t>(&*value);
+                             signedValue && *signedValue >= 0) {
+                        *components[index] = static_cast<std::uint64_t>(*signedValue);
+                    }
+                    else {
+                        return std::nullopt;
+                    }
+                }
+                return version;
+            }
+        }
+
+        const auto *init = dynamic_cast<const StructInitExpr *>(&expr);
+        if (!init || init->typeName != "SemanticVersion") {
+            return std::nullopt;
+        }
+
+        ParsedSemanticVersion version;
+        bool hasMajor = false;
+        bool hasMinor = false;
+        bool hasPatch = false;
+        for (const StructInitExpr::Field &field : init->fields) {
+            if (!field.value) {
+                return std::nullopt;
+            }
+            const auto value = Eval(*field.value);
+            if (!value) {
+                return std::nullopt;
+            }
+            auto assignCore = [&](std::uint64_t &component, bool &present) {
+                if (const auto *unsignedValue = std::get_if<std::uint64_t>(&*value)) {
+                    component = *unsignedValue;
+                    present = true;
+                    return true;
+                }
+                if (const auto *signedValue = std::get_if<std::int64_t>(&*value); signedValue && *signedValue >= 0) {
+                    component = static_cast<std::uint64_t>(*signedValue);
+                    present = true;
+                    return true;
+                }
+                return false;
+            };
+            if (field.name == "major") {
+                if (!assignCore(version.major, hasMajor))
+                    return std::nullopt;
+            }
+            else if (field.name == "minor") {
+                if (!assignCore(version.minor, hasMinor))
+                    return std::nullopt;
+            }
+            else if (field.name == "patch") {
+                if (!assignCore(version.patch, hasPatch))
+                    return std::nullopt;
+            }
+        }
+        if (!hasMajor || !hasMinor || !hasPatch) {
+            return std::nullopt;
+        }
+        return version;
     }
 
     std::optional<Value> EvalCompilerParamCall(const std::string_view root, const std::string_view member,
@@ -790,6 +906,23 @@ private:
         }
 
         if (const auto *e = dynamic_cast<const FieldExpr *>(&expr)) {
+            if (const auto *version = dynamic_cast<const FieldExpr *>(e->object.get());
+                version && version->field == "version") {
+                if (const auto root = CompilerParamRoot(*version->object); root && *root == "Compiler") {
+                    const auto *ident = dynamic_cast<const IdentExpr *>(version->object.get());
+                    if (ident && !RequireRuxImport(ident->name, ident->location)) {
+                        return std::nullopt;
+                    }
+                    const ParsedSemanticVersion parsed =
+                        ParseSemanticVersion(context.compilerVersion).value_or(ParsedSemanticVersion{});
+                    if (e->field == "major")
+                        return Value{parsed.major};
+                    if (e->field == "minor")
+                        return Value{parsed.minor};
+                    if (e->field == "patch")
+                        return Value{parsed.patch};
+                }
+            }
             if (const auto root = CompilerParamRoot(*e->object)) {
                 const auto *ident = dynamic_cast<const IdentExpr *>(e->object.get());
                 if (ident && !RequireRuxImport(ident->name, ident->location)) {
@@ -802,6 +935,30 @@ private:
 
         if (const auto *e = dynamic_cast<const CallExpr *>(&expr)) {
             if (const auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {
+                if (const auto left = EvalSemanticVersion(*field->object)) {
+                    if (e->args.size() != 1 || !e->args[0]) {
+                        EmitError(e->location, "semantic version comparison expects exactly one argument");
+                        reportedError = true;
+                        return std::nullopt;
+                    }
+                    const auto right = EvalSemanticVersion(*e->args[0]);
+                    if (!right) {
+                        return std::nullopt;
+                    }
+                    const int comparison = CompareSemanticVersions(*left, *right);
+                    if (field->field == "Compare")
+                        return Value{static_cast<std::int64_t>(comparison)};
+                    if (field->field == "IsEqualTo")
+                        return Value{comparison == 0};
+                    if (field->field == "IsLessThan")
+                        return Value{comparison < 0};
+                    if (field->field == "IsAtMost")
+                        return Value{comparison <= 0};
+                    if (field->field == "IsGreaterThan")
+                        return Value{comparison > 0};
+                    if (field->field == "IsAtLeast")
+                        return Value{comparison >= 0};
+                }
                 if (const auto root = CompilerParamRoot(*field->object)) {
                     const auto *ident = dynamic_cast<const IdentExpr *>(field->object.get());
                     if (ident && !RequireRuxImport(ident->name, ident->location)) {
@@ -1033,6 +1190,44 @@ private:
         return Value{e.op == TokenKind::Equal ? *equal : !*equal};
     }
 
+    std::optional<std::uint32_t> SignedIntegerWidth(const Expr &expr) const {
+        if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr)) {
+            if (literal->token.kind != TokenKind::IntLiteral) {
+                return std::nullopt;
+            }
+            const std::string_view text = literal->token.text;
+            if (text.ends_with("u8") || text.ends_with("u16") || text.ends_with("u32") || text.ends_with("u64") ||
+                text.ends_with('u')) {
+                return std::nullopt;
+            }
+            if (text.ends_with("i8"))
+                return 8;
+            if (text.ends_with("i16"))
+                return 16;
+            if (text.ends_with("i32"))
+                return 32;
+            if (text.ends_with("i64"))
+                return 64;
+            return context.target.pointer_size * 8;
+        }
+        if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expr)) {
+            return SignedIntegerWidth(*unary->operand);
+        }
+        if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expr)) {
+            return SignedIntegerWidth(*binary->left);
+        }
+        if (const auto *ident = dynamic_cast<const IdentExpr *>(&expr)) {
+            if (const auto width = constSignedIntegerWidths.find(ident->name);
+                width != constSignedIntegerWidths.end()) {
+                return width->second;
+            }
+            if (const auto value = constExprs.find(ident->name); value != constExprs.end()) {
+                return SignedIntegerWidth(*value->second);
+            }
+        }
+        return std::nullopt;
+    }
+
     // Alphabetical, so a reader scanning the list for the name they meant to
     // type can find it. Comparison is case-insensitive so technical initialisms
     // sort with the same rule as other names.
@@ -1055,6 +1250,30 @@ private:
     }
 
     std::optional<Value> EvalBinary(const BinaryExpr &e) {
+        if (const auto leftVersion = EvalSemanticVersion(*e.left)) {
+            const auto rightVersion = EvalSemanticVersion(*e.right);
+            if (!rightVersion) {
+                return std::nullopt;
+            }
+            const int comparison = CompareSemanticVersions(*leftVersion, *rightVersion);
+            switch (e.op) {
+            case TokenKind::Equal:
+                return Value{comparison == 0};
+            case TokenKind::BangEqual:
+                return Value{comparison != 0};
+            case TokenKind::Less:
+                return Value{comparison < 0};
+            case TokenKind::LessEqual:
+                return Value{comparison <= 0};
+            case TokenKind::Greater:
+                return Value{comparison > 0};
+            case TokenKind::GreaterEqual:
+                return Value{comparison >= 0};
+            default:
+                return std::nullopt;
+            }
+        }
+
         const auto left = Eval(*e.left);
         if (!left) {
             return std::nullopt;
@@ -1159,11 +1378,25 @@ private:
                     return Value{*l ^ *r};
                 case TokenKind::LessLess:
                 case TokenKind::GreaterGreater:
+                case TokenKind::GreaterGreaterGreater:
                     if (*r < 0 || *r >= 64)
                         return std::nullopt;
-                    return Value{e.op == TokenKind::LessLess
-                                     ? static_cast<std::int64_t>(lu << static_cast<std::uint64_t>(*r))
-                                     : *l >> *r};
+                    if (e.op == TokenKind::LessLess) {
+                        return Value{static_cast<std::int64_t>(lu << static_cast<std::uint64_t>(*r))};
+                    }
+                    if (e.op == TokenKind::GreaterGreater) {
+                        return Value{*l >> *r};
+                    }
+                    if (const auto width = SignedIntegerWidth(*e.left)) {
+                        const std::uint64_t mask =
+                            *width == 64 ? std::numeric_limits<std::uint64_t>::max() : (std::uint64_t{1} << *width) - 1;
+                        std::uint64_t shifted = (lu & mask) >> static_cast<std::uint64_t>(*r);
+                        if (*width < 64 && (shifted & (std::uint64_t{1} << (*width - 1))) != 0) {
+                            shifted |= ~mask;
+                        }
+                        return Value{static_cast<std::int64_t>(shifted)};
+                    }
+                    return std::nullopt;
                 default:
                     return std::nullopt;
                 }
@@ -1197,6 +1430,8 @@ private:
                 if (*r >= 64)
                     return std::nullopt;
                 return Value{e.op == TokenKind::LessLess ? l << *r : l >> *r};
+            case TokenKind::GreaterGreaterGreater:
+                return std::nullopt;
             default:
                 return std::nullopt;
             }
@@ -1683,9 +1918,7 @@ private:
         else if (auto *declStmt = dynamic_cast<DeclStmt *>(&stmt)) {
             if (declStmt->decl) {
                 if (const auto *constDecl = dynamic_cast<const ConstDecl *>(declStmt->decl.get())) {
-                    if (constDecl->value) {
-                        constExprs.emplace(constDecl->name, constDecl->value.get());
-                    }
+                    RegisterConstant(*constDecl);
                 }
                 ResolveDeclBodies(*declStmt->decl);
             }

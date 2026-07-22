@@ -88,12 +88,13 @@ enum class TokenKind : std::uint8_t {
     MinusMinus, // --
 
     // Bitwise operators
-    Amp,            // &
-    Pipe,           // |
-    Caret,          // ^
-    Tilde,          // ~
-    LessLess,       // <<
-    GreaterGreater, // >>
+    Amp,                   // &
+    Pipe,                  // |
+    Caret,                 // ^
+    Tilde,                 // ~
+    LessLess,              // <<
+    GreaterGreater,        // >>
+    GreaterGreaterGreater, // >>>
 
     // Logical operators
     AmpAmp,   // &&
@@ -109,17 +110,18 @@ enum class TokenKind : std::uint8_t {
     GreaterEqual, // >=
 
     // Assignment operators
-    Assign,               // =
-    PlusAssign,           // +=
-    MinusAssign,          // -=
-    StarAssign,           // *=
-    SlashAssign,          // /=
-    PercentAssign,        // %=
-    AmpAssign,            // &=
-    PipeAssign,           // |=
-    CaretAssign,          // ^=
-    LessLessAssign,       // <<=
-    GreaterGreaterAssign, // >>=
+    Assign,                      // =
+    PlusAssign,                  // +=
+    MinusAssign,                 // -=
+    StarAssign,                  // *=
+    SlashAssign,                 // /=
+    PercentAssign,               // %=
+    AmpAssign,                   // &=
+    PipeAssign,                  // |=
+    CaretAssign,                 // ^=
+    LessLessAssign,              // <<=
+    GreaterGreaterAssign,        // >>=
+    GreaterGreaterGreaterAssign, // >>>=
 
     // Special
     NewLine,   // significant newline (if the grammar uses them)

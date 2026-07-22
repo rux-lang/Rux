@@ -1,4 +1,5 @@
-import Format::ToString;
+import Format::{ ToString, ParseError, ParseInt64, TryParseInt64 };
+import Rux::Result;
 import Text::String;
 
 // Std stays out of the dependencies, and a failed check reports itself through
@@ -14,6 +15,87 @@ func Check(actual: String, expected: Slice<char8>, code: int) -> int {
         return 0;
     }
     return code;
+}
+
+func CheckParse(str: Slice<char8>, expected: int64, code: int) -> int {
+    let result = ParseInt64(str);
+    return match result {
+        Result::Success(value) => value == expected ? 0 : code,
+        Result::Error(_) => code
+    };
+}
+
+func CheckParseError(str: Slice<char8>, expected: ParseError, code: int) -> int {
+    let result = ParseInt64(str);
+    return match result {
+        Result::Success(_) => code,
+        Result::Error(error) => error == expected ? 0 : code
+    };
+}
+
+func CheckParsedValues() -> int {
+    let mut code = CheckParse("0", 0i64, 100);
+    if code != 0 { return code; }
+    code = CheckParse("+42", 42i64, 101);
+    if code != 0 { return code; }
+    code = CheckParse("-42", -42i64, 102);
+    if code != 0 { return code; }
+    code = CheckParse("00017", 17i64, 103);
+    if code != 0 { return code; }
+    code = CheckParse("9223372036854775807", int64::Max, 104);
+    if code != 0 { return code; }
+    return CheckParse("-9223372036854775808", int64::Min, 105);
+}
+
+func CheckParseErrors() -> int {
+    let mut code = CheckParseError("", ParseError::Empty, 110);
+    if code != 0 { return code; }
+    code = CheckParseError("12x", ParseError::InvalidCharacter(2u), 111);
+    if code != 0 { return code; }
+    code = CheckParseError("-", ParseError::InvalidCharacter(0u), 112);
+    if code != 0 { return code; }
+    code = CheckParseError("9223372036854775808", ParseError::Overflow, 113);
+    if code != 0 { return code; }
+    return CheckParseError("-9223372036854775809", ParseError::Overflow, 114);
+}
+
+func CheckParseOverloads() -> int {
+    let mut text = String::From("-123");
+    let parsed = ParseInt64(text);
+    text.Free();
+    let code = match parsed {
+        Result::Success(value) => value == -123i64 ? 0 : 120,
+        Result::Error(_) => 120
+    };
+    if code != 0 { return code; }
+
+    let mut value = 9i64;
+    if !TryParseInt64("456", @mut value) { return 121; }
+    if value != 456i64 { return 122; }
+    if TryParseInt64("invalid", @mut value) { return 123; }
+    if value != 456i64 { return 124; }
+    if TryParseInt64("1", null) { return 125; }
+
+    text = String::From("-789");
+    let ok = TryParseInt64(text, @mut value);
+    text.Free();
+    if !ok { return 126; }
+    if value != -789i64 { return 127; }
+
+    text = String::From("bad");
+    let failed = TryParseInt64(text, @mut value);
+    text.Free();
+    if failed { return 128; }
+    if value != -789i64 { return 129; }
+    return 0;
+}
+
+func CheckParsing() -> int {
+    let code = CheckParsedValues();
+    if code != 0 { return code; }
+    let errorCode = CheckParseErrors();
+    if errorCode != 0 { return errorCode; }
+    return CheckParseOverloads();
 }
 
 func Main() -> int {
@@ -42,6 +124,9 @@ func Main() -> int {
 
     // The method the Stringable extension provides.
     code = Check(max.ToString(), "9223372036854775807", 30);
+    if code != 0 { return code; }
+
+    code = CheckParsing();
     if code != 0 { return code; }
 
     return 0;

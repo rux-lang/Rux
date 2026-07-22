@@ -134,6 +134,8 @@ private:
             return "<<";
         case TokenKind::GreaterGreater:
             return ">>";
+        case TokenKind::GreaterGreaterGreater:
+            return ">>>";
         case TokenKind::AmpAmp:
             return "&&";
         case TokenKind::PipePipe:
@@ -174,6 +176,8 @@ private:
             return "<<=";
         case TokenKind::GreaterGreaterAssign:
             return ">>=";
+        case TokenKind::GreaterGreaterGreaterAssign:
+            return ">>>=";
         default:
             return "?";
         }
@@ -386,6 +390,16 @@ private:
             out << "pub ";
         }
         out << "EnumDecl '" << e.name << "'";
+        if (!e.typeParams.empty()) {
+            out << '<';
+            for (std::size_t i = 0; i < e.typeParams.size(); ++i) {
+                if (i) {
+                    out << ", ";
+                }
+                out << e.typeParams[i];
+            }
+            out << '>';
+        }
         if (e.baseType) {
             out << " : " << TypeStr(e.baseType.get());
         }
@@ -1109,6 +1123,9 @@ private:
         else if (const auto *enumPat = dynamic_cast<const EnumPattern *>(&pat)) {
             Pad();
             out << "EnumPattern '";
+            if (enumPat->path.size() == 1) {
+                out << '.';
+            }
             for (std::size_t i = 0; i < enumPat->path.size(); ++i) {
                 if (i) {
                     out << '.';

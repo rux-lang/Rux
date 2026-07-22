@@ -35,6 +35,7 @@ enum class LirOpcode {
     Xor,
     Shl,
     Shr,
+    Lshr,
     // Unary
     Neg,
     Not,
@@ -154,6 +155,7 @@ struct LirEnumVariant {
 struct LirEnumDecl {
     std::string name;
     bool isPublic = false;
+    std::vector<std::string> typeParams;
     TypeRef baseType;
     std::vector<LirEnumVariant> variants;
 };

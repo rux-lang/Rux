@@ -1,8 +1,34 @@
-import Rux::{ Assert, #compiler };
+import Rux::{ Assert, SemanticVersion, #compiler };
+
+const MinimumCompiler = SemanticVersion::New(0, 0, 0);
 
 func Main() -> int {
-    // The compiler always reports a version string.
-    Assert(#compiler.version.length > 0, "version");
+    // The compiler always reports a structured semantic version.
+    Assert(#compiler.version.major > 0 || #compiler.version.minor > 0 || #compiler.version.patch > 0,
+        "compiler version has a non-zero core");
+
+    let version100 = SemanticVersion::New(1, 0, 0);
+    let version101 = SemanticVersion::New(1, 0, 1);
+    let version110 = SemanticVersion::New(1, 1, 0);
+    let version200 = SemanticVersion::New(2, 0, 0);
+    Assert(version100.IsLessThan(version101), "patch comparison");
+    Assert(version101.IsAtMost(version110), "minor comparison");
+    Assert(version110.IsLessThan(version200), "major comparison");
+    Assert(version200.IsEqualTo(SemanticVersion::New(2, 0, 0)), "equal version");
+    Assert(version200.IsAtLeast(version110), "at least comparison");
+    Assert(version200.IsGreaterThan(version100), "greater than comparison");
+    Assert(version200 == SemanticVersion::New(2, 0, 0), "equal operator");
+    Assert(version200 != version110, "not-equal operator");
+    Assert(version100 < version101, "less-than operator");
+    Assert(version101 <= version110, "less-than-or-equal operator");
+    Assert(version200 > version110, "greater-than operator");
+    Assert(version200 >= SemanticVersion::New(2, 0, 0), "greater-than-or-equal operator");
+
+    when #compiler.version >= MinimumCompiler {
+        Assert(true, "compiler satisfies minimum version");
+    } else {
+        Assert(false, "compiler does not satisfy minimum version");
+    }
 
     // TODO: the Compiler.HasFeature intrinsic is not yet implemented in the
     // compiler -- calling it crashes at load with STATUS_ENTRYPOINT_NOT_FOUND

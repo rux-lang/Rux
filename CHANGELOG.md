@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Language
 
+- **Logical right shift** — signed integers support `>>>` and `>>>=` to shift in zero bits while preserving the left operand's type and fixed width; `>>` remains arithmetic for signed integers and logical for unsigned integers.
 - **Targeted lint allowances** — `#Allow("naming.type")` preserves intentional foreign type, field, and variant spellings on a single type declaration without disabling naming checks elsewhere.
 - **Intrinsic assertions** — importing `Assert` or `DebugAssert` from the Rux package enables compiler-backed assertions that report the message, function, file, line, and column before trapping. Release builds remove `DebugAssert` checks without evaluating their arguments.
 - **Intrinsic panic and no-return functions** — importing `Panic` from the Rux package enables compiler-backed panic reporting and termination. `#NoReturn()` marks user or extern functions that never return and makes calls terminate their control-flow path without adding a new type or keyword.

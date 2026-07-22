@@ -1,4 +1,5 @@
-import Format::{ ToString, IsNan, IsInfinite, IsFinite };
+import Format::{ ToString, IsNan, IsInfinite, IsFinite, ParseError, ParseFloat64, TryParseFloat64 };
+import Rux::Result;
 import Text::String;
 
 // Std is deliberately absent from the dependencies: it exports conversions of
@@ -18,6 +19,81 @@ func Check(value: float64, expected: Slice<char8>, code: int) -> int {
         return 0;
     }
     return code;
+}
+
+func CheckParse(str: Slice<char8>, expected: float64, code: int) -> int {
+    let result = ParseFloat64(str);
+    return match result {
+        Result::Success(value) => value == expected ? 0 : code,
+        Result::Error(_) => code
+    };
+}
+
+func CheckParseError(str: Slice<char8>, expected: ParseError, code: int) -> int {
+    let result = ParseFloat64(str);
+    return match result {
+        Result::Success(_) => code,
+        Result::Error(error) => error == expected ? 0 : code
+    };
+}
+
+func CheckParsedValues() -> int {
+    let mut code = CheckParse("0", 0.0, 100);
+    if code != 0 { return code; }
+    code = CheckParse("-2.5", -2.5, 101);
+    if code != 0 { return code; }
+    code = CheckParse(".125", 0.125, 102);
+    if code != 0 { return code; }
+    code = CheckParse("1.25e3", 1250.0, 103);
+    if code != 0 { return code; }
+    return CheckParse("5e-2", 0.05, 104);
+}
+
+func CheckParseErrors() -> int {
+    let mut code = CheckParseError("", ParseError::Empty, 110);
+    if code != 0 { return code; }
+    code = CheckParseError("12x", ParseError::InvalidCharacter(2u), 111);
+    if code != 0 { return code; }
+    return CheckParseError("1e400", ParseError::Overflow, 112);
+}
+
+func CheckParseOverloads() -> int {
+    let mut text = String::From("3.5");
+    let parsed = ParseFloat64(text);
+    text.Free();
+    let code = match parsed {
+        Result::Success(value) => value == 3.5 ? 0 : 120,
+        Result::Error(_) => 120
+    };
+    if code != 0 { return code; }
+
+    let mut value = 9.0;
+    if !TryParseFloat64("6.25", @mut value) { return 121; }
+    if value != 6.25 { return 122; }
+    if TryParseFloat64("invalid", @mut value) { return 123; }
+    if value != 6.25 { return 124; }
+    if TryParseFloat64("1.0", null) { return 125; }
+
+    text = String::From("-4.5");
+    let ok = TryParseFloat64(text, @mut value);
+    text.Free();
+    if !ok { return 126; }
+    if value != -4.5 { return 127; }
+
+    text = String::From("bad");
+    let failed = TryParseFloat64(text, @mut value);
+    text.Free();
+    if failed { return 128; }
+    if value != -4.5 { return 129; }
+    return 0;
+}
+
+func CheckParsing() -> int {
+    let code = CheckParsedValues();
+    if code != 0 { return code; }
+    let errorCode = CheckParseErrors();
+    if errorCode != 0 { return errorCode; }
+    return CheckParseOverloads();
 }
 
 func Main() -> int {
@@ -98,6 +174,11 @@ func Main() -> int {
     if IsFinite(inf) { return 86; }
     if !IsFinite(0.0) { return 87; }
     if !IsFinite(1.7976931348623157e308) { return 88; }
+
+    // Decimal parsing returns a typed Result, including the position of an
+    // invalid character and a distinct overflow error.
+    code = CheckParsing();
+    if code != 0 { return code; }
 
     // The method the Stringable extension provides, which is the same
     // conversion reached through the interface.

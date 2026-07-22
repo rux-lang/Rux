@@ -25,6 +25,23 @@ namespace Rux {
 using namespace Layout;
 
 namespace {
+TypeRef UnsignedIntegerType(const TypeRef &type) {
+    switch (type.kind) {
+    case TypeRef::Kind::Int8:
+        return TypeRef::MakeUInt8();
+    case TypeRef::Kind::Int16:
+        return TypeRef::MakeUInt16();
+    case TypeRef::Kind::Int32:
+        return TypeRef::MakeUInt32();
+    case TypeRef::Kind::Int64:
+        return TypeRef::MakeUInt64();
+    case TypeRef::Kind::Int:
+        return TypeRef::MakeUInt();
+    default:
+        return type;
+    }
+}
+
 std::string_view NumericLiteralSuffix(std::string_view text) {
     static constexpr std::string_view suffixes[] = {
         "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "i", "u",
@@ -243,7 +260,8 @@ private:
             return true;
         case TypeRef::Kind::Named: {
             const std::string base = BaseTypeName(t.name);
-            return base == "Slice" || interfaceNames.count(base) > 0 || layouts.contains(base);
+            return base == "Slice" || interfaceNames.count(base) > 0 || layouts.contains(base) ||
+                   (!t.inner.empty() && SizeOf(t) > 8);
         }
         default:
             return false;
@@ -2188,9 +2206,10 @@ private:
             break;
         }
         case LirOpcode::Shl:
-        case LirOpcode::Shr: {
+        case LirOpcode::Shr:
+        case LirOpcode::Lshr: {
             const TypeRef &t = instr.type;
-            LoadA(instr.srcs[0], t);
+            LoadA(instr.srcs[0], instr.op == LirOpcode::Lshr ? UnsignedIntegerType(t) : t);
             auto it = physRegMap.find(instr.srcs[1]);
             if (it != physRegMap.end()) {
                 enc.MovR11PhysReg(it->second);
@@ -2199,8 +2218,8 @@ private:
                 enc.MovR11Load(Disp(instr.srcs[1]));
             }
             enc.MovRcxR11();
-            bool isShr = (instr.op == LirOpcode::Shr);
-            if (isShr && t.IsSigned()) {
+            bool isShr = instr.op == LirOpcode::Shr || instr.op == LirOpcode::Lshr;
+            if (isShr && t.IsSigned() && instr.op != LirOpcode::Lshr) {
                 enc.SarRaxCl();
             }
             else if (isShr) {

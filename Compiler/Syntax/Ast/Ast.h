@@ -107,7 +107,7 @@ struct RangePattern : Pattern {
     bool inclusive;
 };
 
-// Event.Click(x, y)
+// Event::Click(x, y) or contextual shorthand .Click(x, y)
 struct EnumPattern : Pattern {
     struct NamedArg {
         SourceLocation location;
@@ -115,8 +115,9 @@ struct EnumPattern : Pattern {
         PatternPtr pattern;
     };
 
-    std::vector<std::string> path; // ["Event", "Click"]
-    std::vector<PatternPtr> args;  // bound positions
+    // ["Event", "Click"] for a full pattern; ["Click"] for shorthand.
+    std::vector<std::string> path;
+    std::vector<PatternPtr> args; // bound positions
     std::vector<NamedArg> namedArgs;
 };
 
@@ -543,9 +544,10 @@ struct StructDecl : Decl {
     std::vector<Field> fields;
 };
 
-// enum Name { Variant, Variant(Type, ...), ... }
+// enum Name<T> { Variant, Variant(Type, ...), ... }
 struct EnumDecl : Decl {
     std::string name;
+    std::vector<std::string> typeParams;
     TypeExprPtr baseType;
 
     struct Variant {

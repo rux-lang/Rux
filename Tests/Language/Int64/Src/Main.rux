@@ -40,6 +40,7 @@ func Main() -> int {
     Assert((1 as int64 << 32) == 0x0000000100000000, "int64 left shift");
     Assert((0x4000000000000000 as int64 >> 56) == 0x40, "int64 positive right shift");
     Assert((-9223372036854775808 as int64 >> 56) == -128, "int64 right shift sign-extends");
+    Assert((-8 as int64 >>> 2) == 4611686018427387902, "int64 logical right shift zero-fills");
     Assert((1 as int64 << 63) == -9223372036854775808, "int64 left shift to sign bit");
 
     let low: int64 = -128;

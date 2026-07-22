@@ -6,4 +6,5 @@ Description = "String conversion and formatting"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
 
 [Dependencies]
+Rux = "*"
 Text = "*"

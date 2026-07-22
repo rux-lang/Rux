@@ -25,7 +25,7 @@ ExprPtr Parser::ParseAssign() {
         TokenKind::Assign,         TokenKind::PlusAssign,           TokenKind::MinusAssign,
         TokenKind::StarAssign,     TokenKind::SlashAssign,          TokenKind::PercentAssign,
         TokenKind::AmpAssign,      TokenKind::PipeAssign,           TokenKind::CaretAssign,
-        TokenKind::LessLessAssign, TokenKind::GreaterGreaterAssign,
+        TokenKind::LessLessAssign, TokenKind::GreaterGreaterAssign, TokenKind::GreaterGreaterGreaterAssign,
     };
 
     for (auto op : kAssignOps) {
@@ -259,7 +259,7 @@ ExprPtr Parser::ParseCast() {
 
 ExprPtr Parser::ParseShift() {
     auto left = ParseAdd();
-    while (CheckAny({TokenKind::LessLess, TokenKind::GreaterGreater})) {
+    while (CheckAny({TokenKind::LessLess, TokenKind::GreaterGreater, TokenKind::GreaterGreaterGreater})) {
         const auto loc = CurrentLocation();
         const auto op = Advance().kind;
         auto right = ParseAdd();
@@ -726,6 +726,40 @@ PatternPtr Parser::ParsePattern() {
 PatternPtr Parser::ParsePrimaryPattern() {
     const auto loc = CurrentLocation();
 
+    const auto parseEnumPatternSuffix = [this](std::unique_ptr<EnumPattern> pattern) -> PatternPtr {
+        if (Match(TokenKind::LeftParen)) {
+            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                pattern->args.push_back(ParsePattern());
+                if (!Match(TokenKind::Comma)) {
+                    break;
+                }
+            }
+            Expect(TokenKind::RightParen, "expected ')'");
+        }
+        else if (Match(TokenKind::LeftBrace)) {
+            while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+                EnumPattern::NamedArg arg;
+                arg.location = CurrentLocation();
+                arg.name = Expect(TokenKind::Ident, "expected variant field name").text;
+                if (Match(TokenKind::Colon)) {
+                    arg.pattern = ParsePattern();
+                }
+                else {
+                    auto binding = std::make_unique<IdentPattern>();
+                    binding->location = arg.location;
+                    binding->name = arg.name;
+                    arg.pattern = std::move(binding);
+                }
+                pattern->namedArgs.push_back(std::move(arg));
+                if (!Match(TokenKind::Comma)) {
+                    break;
+                }
+            }
+            Expect(TokenKind::RightBrace, "expected '}'");
+        }
+        return pattern;
+    };
+
     // Wildcard: _
     if (Check(TokenKind::Ident) && Peek().text == "_") {
         Advance();
@@ -768,6 +802,14 @@ PatternPtr Parser::ParsePrimaryPattern() {
         return p;
     }
 
+    // Contextual enum pattern: .Variant, .Variant(value), or .Variant { field }
+    if (Match(TokenKind::Dot)) {
+        auto p = std::make_unique<EnumPattern>();
+        p->location = loc;
+        p->path.push_back(Expect(TokenKind::Ident, "expected enum variant name after '.'").text);
+        return parseEnumPatternSuffix(std::move(p));
+    }
+
     // Identifier-started patterns: ident, EnumName::Variant(args), TypeName
     // { fields }
     if (Check(TokenKind::Ident)) {
@@ -782,37 +824,7 @@ PatternPtr Parser::ParsePrimaryPattern() {
             auto p = std::make_unique<EnumPattern>();
             p->location = loc;
             p->path = std::move(path);
-            if (Match(TokenKind::LeftParen)) {
-                while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-                    p->args.push_back(ParsePattern());
-                    if (!Match(TokenKind::Comma)) {
-                        break;
-                    }
-                }
-                Expect(TokenKind::RightParen, "expected ')'");
-            }
-            else if (Match(TokenKind::LeftBrace)) {
-                while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
-                    EnumPattern::NamedArg arg;
-                    arg.location = CurrentLocation();
-                    arg.name = Expect(TokenKind::Ident, "expected variant field name").text;
-                    if (Match(TokenKind::Colon)) {
-                        arg.pattern = ParsePattern();
-                    }
-                    else {
-                        auto binding = std::make_unique<IdentPattern>();
-                        binding->location = arg.location;
-                        binding->name = arg.name;
-                        arg.pattern = std::move(binding);
-                    }
-                    p->namedArgs.push_back(std::move(arg));
-                    if (!Match(TokenKind::Comma)) {
-                        break;
-                    }
-                }
-                Expect(TokenKind::RightBrace, "expected '}'");
-            }
-            return p;
+            return parseEnumPatternSuffix(std::move(p));
         }
 
         // Struct pattern: TypeName { field: pat, ... }

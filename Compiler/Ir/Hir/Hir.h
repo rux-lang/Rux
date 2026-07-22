@@ -408,6 +408,7 @@ struct HirEnumVariant {
 struct HirEnum {
     std::string name;
     bool isPublic = false;
+    std::vector<std::string> typeParams;
     TypeRef baseType;
     std::vector<HirEnumVariant> variants;
     SourceLocation location;

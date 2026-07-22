@@ -338,7 +338,16 @@ std::string TypeRef::ToString() const {
 }
 
 bool TypeRef::operator==(const TypeRef &o) const noexcept {
-    if (kind != o.kind || name != o.name || arrayLength != o.arrayLength || inner.size() != o.inner.size()) {
+    if (kind != o.kind || name != o.name) {
+        return false;
+    }
+    // Named types are identified by their concrete name. Their `inner` value
+    // may carry layout metadata (for example an enum's storage type), which is
+    // not part of the source-language type identity.
+    if (kind == Kind::Named) {
+        return true;
+    }
+    if (arrayLength != o.arrayLength || inner.size() != o.inner.size()) {
         return false;
     }
     for (std::size_t i = 0; i < inner.size(); ++i) {

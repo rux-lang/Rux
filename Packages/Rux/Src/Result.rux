@@ -1,0 +1,5 @@
+// A value produced by an operation that can fail.
+enum Result<T, E> {
+    Success(T),
+    Error(E)
+}

@@ -846,9 +846,13 @@ Token Lexer::ScanSymbol(const SourceLocation start) {
         }
         return MakeToken(Match('=') ? TokenKind::LessEqual : TokenKind::Less, start, tokenStart);
 
-    // >  or  >=  or  >>=  or  >>
+    // >  or  >=  or  >>  or  >>=  or  >>>  or  >>>=
     case '>':
         if (Match('>')) {
+            if (Match('>')) {
+                return MakeToken(Match('=') ? TokenKind::GreaterGreaterGreaterAssign : TokenKind::GreaterGreaterGreater,
+                                 start, tokenStart);
+            }
             return MakeToken(Match('=') ? TokenKind::GreaterGreaterAssign : TokenKind::GreaterGreater, start,
                              tokenStart);
         }

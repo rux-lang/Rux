@@ -217,6 +217,47 @@ TEST_CASE("fixed arrays require matching literal extents") {
     CHECK(diagnostics.front().message.find("cannot assign") != std::string::npos);
 }
 
+TEST_CASE("contextual enum patterns infer generic subject types") {
+    const auto diagnostics = AnalyzeSource(R"(
+        enum Result<T, E> {
+            Success(T),
+            Error(E)
+        }
+
+        enum ParseError {
+            Invalid
+        }
+
+        func Unwrap(result: Result<float64, ParseError>) -> float64 {
+            return match result {
+                .Success(value) => value,
+                .Error(_) => 0.0
+            };
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("contextual enum patterns diagnose unknown variants") {
+    const auto diagnostics = AnalyzeSource(R"(
+        enum Option {
+            Some(int),
+            None
+        }
+
+        func Read(option: Option) -> int {
+            return match option {
+                .Missing => 0,
+                else => 1
+            };
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics.front().message, "enum 'Option' has no variant 'Missing'");
+}
+
 TEST_CASE("prefix operators bind more tightly than casts") {
     const auto diagnostics = AnalyzeSource(R"(
         func Main() {
@@ -227,6 +268,36 @@ TEST_CASE("prefix operators bind more tightly than casts") {
     )");
 
     CHECK(diagnostics.empty());
+}
+
+TEST_CASE("logical right shift requires a signed integer left operand") {
+    CHECK(AnalyzeSource(R"(
+        func Main() {
+            let value: int8 = -8;
+            let shifted: int8 = value >>> 2;
+        }
+    )")
+              .empty());
+
+    const auto diagnostics = AnalyzeSource(R"(
+        func Main() {
+            let value: uint8 = 248;
+            let shifted = value >>> 2;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics.front().message, "'>>>' requires a signed integer left operand, got 'uint8'");
+
+    const auto compoundDiagnostics = AnalyzeSource(R"(
+        func Main() {
+            let mut value: uint8 = 248;
+            value >>>= 2;
+        }
+    )");
+
+    REQUIRE_EQ(compoundDiagnostics.size(), 1);
+    CHECK_EQ(compoundDiagnostics.front().message, "'>>>=' requires a signed integer target, got 'uint8'");
 }
 
 TEST_CASE("pointer and array type syntax preserves grouping") {

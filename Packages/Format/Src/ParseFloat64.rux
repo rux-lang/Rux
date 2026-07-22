@@ -1,0 +1,149 @@
+import Rux::Result;
+import Text::String;
+
+// Why a decimal string could not be converted to a float64.
+enum ParseError {
+    Empty,
+    InvalidCharacter(uint),
+    Overflow
+}
+
+// Parses a decimal float. The accepted grammar is
+// `[+-]?(digits[.digits?]?|.digits)([eE][+-]?digits)?`.
+func ParseFloat64(str: Slice<char8>) -> Result<float64, ParseError> {
+    if str.length == 0 {
+        return Result::Error<float64, ParseError>(ParseError::Empty);
+    }
+
+    let mut index: uint = 0;
+    let mut negative = false;
+    if str[index] == c8'+' || str[index] == c8'-' {
+        negative = str[index] == c8'-';
+        index++;
+        if index == str.length {
+            return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(index - 1));
+        }
+    }
+
+    // Keep nineteen significant decimal digits. That is more precision than a
+    // float64 can retain, while avoiding an overflowing intermediate value for
+    // long input strings. decimalExponent accounts for the decimal point and
+    // for significant digits omitted after the nineteenth.
+    let mut value = 0.0;
+    let mut significantDigits: uint = 0;
+    let mut decimalExponent: int = 0;
+    let mut digitCount: uint = 0;
+    let mut afterDecimalPoint = false;
+    let mut significant = false;
+
+    while index < str.length {
+        let ch = str[index];
+        if ch >= c8'0' && ch <= c8'9' {
+            let digit = (ch as uint) - (c8'0' as uint);
+            digitCount++;
+
+            if afterDecimalPoint {
+                decimalExponent--;
+            }
+            if digit != 0u || significant {
+                significant = true;
+                if significantDigits < 19u {
+                    value = value * 10.0 + digit as float64;
+                    significantDigits++;
+                } else {
+                    decimalExponent++;
+                }
+            }
+            index++;
+            continue;
+        }
+        if ch == c8'.' && !afterDecimalPoint {
+            afterDecimalPoint = true;
+            index++;
+            continue;
+        }
+        break;
+    }
+
+    if digitCount == 0u {
+        return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(index));
+    }
+
+    if index < str.length && (str[index] == c8'e' || str[index] == c8'E') {
+        index++;
+        let exponentMarker = index - 1;
+        let mut exponentNegative = false;
+        if index < str.length && (str[index] == c8'+' || str[index] == c8'-') {
+            exponentNegative = str[index] == c8'-';
+            index++;
+        }
+        if index == str.length || str[index] < c8'0' || str[index] > c8'9' {
+            return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(exponentMarker));
+        }
+
+        let mut exponent: int = 0;
+        while index < str.length && str[index] >= c8'0' && str[index] <= c8'9' {
+            let digit = ((str[index] as uint) - (c8'0' as uint)) as int;
+            if exponent < 10000 {
+                exponent = exponent * 10 + digit;
+            }
+            index++;
+        }
+        if exponentNegative {
+            decimalExponent -= exponent;
+        } else {
+            decimalExponent += exponent;
+        }
+    }
+
+    if index != str.length {
+        return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(index));
+    }
+
+    if value != 0.0 {
+        if decimalExponent > 308 {
+            return Result::Error<float64, ParseError>(ParseError::Overflow);
+        }
+        if decimalExponent < -400 {
+            value = 0.0;
+        } else {
+            value = ScaleByPow10(value, decimalExponent);
+            if IsInfinite(value) {
+                return Result::Error<float64, ParseError>(ParseError::Overflow);
+            }
+        }
+    }
+
+    if negative {
+        value = -value;
+    }
+    return Result::Success<float64, ParseError>(value);
+}
+
+// Parses the bytes owned by a String without copying them or taking ownership.
+func ParseFloat64(str: String) -> Result<float64, ParseError> {
+    return ParseFloat64(Slice<char8> { data: str.data, length: str.length });
+}
+
+// Parses into value and reports only whether conversion succeeded. On failure,
+// value is left unchanged. A null output pointer also reports failure.
+func TryParseFloat64(str: Slice<char8>, value: *mut float64) -> bool {
+    if value == null {
+        return false;
+    }
+
+    match ParseFloat64(str) {
+        .Success(parsed) => {
+            *value = parsed;
+            return true;
+        },
+        .Error(_) => {
+            return false;
+        }
+    }
+}
+
+// String convenience overload of TryParseFloat64; no allocation or copy.
+func TryParseFloat64(str: String, value: *mut float64) -> bool {
+    return TryParseFloat64(Slice<char8> { data: str.data, length: str.length }, value);
+}

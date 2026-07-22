@@ -6,6 +6,7 @@ Description = "Package test for Format: Float64"
 
 [Dependencies]
 Format = { Path = "../../../../Packages/Format" }
+Rux = { Path = "../../../../Packages/Rux" }
 Text = { Path = "../../../../Packages/Text" }
 
 [Build]

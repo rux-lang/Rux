@@ -294,6 +294,73 @@ bool IsSafePackagePath(const std::string_view path) {
     }
     return true;
 }
+
+bool DownloadPackageWithGit(const std::string &repoUrl, const std::string &folder, const std::filesystem::path &dest,
+                            const bool devBranch) {
+    const auto repositoryInfo = ParseGitHubRepository(repoUrl);
+    if (!repositoryInfo) {
+        return false;
+    }
+
+    std::string packageRoot = folder;
+    std::replace(packageRoot.begin(), packageRoot.end(), '\\', '/');
+    while (packageRoot.starts_with('/')) {
+        packageRoot.erase(packageRoot.begin());
+    }
+    while (packageRoot.ends_with('/')) {
+        packageRoot.pop_back();
+    }
+    if (!packageRoot.empty() && !IsSafePackagePath(packageRoot)) {
+        return false;
+    }
+
+    std::filesystem::path repository = dest;
+    repository += ".repository";
+    std::filesystem::path staging = dest;
+    staging += ".download";
+    std::error_code ec;
+    std::filesystem::remove_all(repository, ec);
+    std::filesystem::remove_all(staging, ec);
+
+    const std::string cloneUrl =
+        "https://github.com/" + UrlEncode(repositoryInfo->owner) + "/" + UrlEncode(repositoryInfo->name) + ".git";
+    std::vector<std::string> argStorage = {"clone", "--quiet", "--depth", "1"};
+    if (devBranch) {
+        argStorage.emplace_back("--branch");
+        argStorage.emplace_back("dev");
+    }
+    argStorage.push_back(cloneUrl);
+    argStorage.push_back(repository.string());
+    std::vector<std::string_view> args;
+    args.reserve(argStorage.size());
+    for (const auto &arg : argStorage) {
+        args.push_back(arg);
+    }
+    if (const auto exitCode = RunInherited("git", args); !exitCode || *exitCode != 0) {
+        std::filesystem::remove_all(repository, ec);
+        return false;
+    }
+
+    const std::filesystem::path source = packageRoot.empty() ? repository : repository / packageRoot;
+    std::filesystem::create_directories(staging, ec);
+    if (!ec && std::filesystem::exists(source / "Rux.toml", ec)) {
+        std::filesystem::copy_file(source / "Rux.toml", staging / "Rux.toml",
+                                   std::filesystem::copy_options::overwrite_existing, ec);
+    }
+    if (!ec && std::filesystem::exists(source / "Src", ec)) {
+        std::filesystem::copy(
+            source / "Src", staging / "Src",
+            std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
+    }
+    const bool packageReady = !ec && std::filesystem::exists(staging / "Rux.toml", ec) && !ec;
+    std::error_code cleanupError;
+    std::filesystem::remove_all(repository, cleanupError);
+    if (!packageReady || !CommitDownloadedPackage(staging, dest)) {
+        std::filesystem::remove_all(staging, ec);
+        return false;
+    }
+    return true;
+}
 } // namespace
 
 std::optional<std::string> FetchUrl(const std::string &url) {
@@ -387,12 +454,12 @@ bool DownloadPackage(const std::string &repoUrl, const std::string &folder, cons
     if (!devBranch) {
         const auto metadata = FetchUrl(apiBase);
         if (!metadata || (branch = JsonLookupString(*metadata, "default_branch")).empty()) {
-            return false;
+            return DownloadPackageWithGit(repoUrl, folder, dest, devBranch);
         }
     }
     const auto tree = FetchUrl(apiBase + "/git/trees/" + UrlEncode(branch) + "?recursive=1");
     if (!tree || IsTrueJsonField(*tree, "truncated")) {
-        return false;
+        return DownloadPackageWithGit(repoUrl, folder, dest, devBranch);
     }
 
     std::string packageRoot = folder;
@@ -435,7 +502,7 @@ bool DownloadPackage(const std::string &repoUrl, const std::string &folder, cons
         const auto contents = FetchUrl(rawUrl);
         if (!contents) {
             std::filesystem::remove_all(staging, ec);
-            return false;
+            return DownloadPackageWithGit(repoUrl, folder, dest, devBranch);
         }
 
         const std::filesystem::path output = staging / std::filesystem::path(relative);
@@ -454,7 +521,11 @@ bool DownloadPackage(const std::string &repoUrl, const std::string &folder, cons
         foundManifest |= relative == "Rux.toml";
     }
 
-    if (!foundManifest || !CommitDownloadedPackage(staging, dest)) {
+    if (!foundManifest) {
+        std::filesystem::remove_all(staging, ec);
+        return DownloadPackageWithGit(repoUrl, folder, dest, devBranch);
+    }
+    if (!CommitDownloadedPackage(staging, dest)) {
         std::filesystem::remove_all(staging, ec);
         return false;
     }

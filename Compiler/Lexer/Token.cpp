@@ -192,6 +192,8 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "LessLess";
     case TokenKind::GreaterGreater:
         return "GreaterGreater";
+    case TokenKind::GreaterGreaterGreater:
+        return "GreaterGreaterGreater";
     case TokenKind::AmpAmp:
         return "AmpAmp";
     case TokenKind::PipePipe:
@@ -232,6 +234,8 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "LessLessAssign";
     case TokenKind::GreaterGreaterAssign:
         return "GreaterGreaterAssign";
+    case TokenKind::GreaterGreaterGreaterAssign:
+        return "GreaterGreaterGreaterAssign";
     case TokenKind::NewLine:
         return "NewLine";
     case TokenKind::EndOfFile:
@@ -251,7 +255,7 @@ bool Token::IsLiteral() const noexcept {
 }
 
 bool Token::IsOperator() const noexcept {
-    return kind >= TokenKind::Plus && kind <= TokenKind::GreaterGreaterAssign;
+    return kind >= TokenKind::Plus && kind <= TokenKind::GreaterGreaterGreaterAssign;
 }
 
 std::string Token::Describe() const {
