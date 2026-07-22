@@ -24,19 +24,19 @@ extern {
 
     /// Converts a byte string to a floating point value
     /// https://en.cppreference.com/c/string/byte/atof
-    func atof(str: *const char8) -> float64;
+    func atof(str: *char8) -> float64;
 
     /// Converts a byte string to an integer value
     /// https://en.cppreference.com/c/string/byte/atoi
-    func atoi(str: *const char8) -> int32;
+    func atoi(str: *char8) -> int32;
 
     /// Converts a byte string to a long integer value
     /// https://en.cppreference.com/c/string/byte/atoi
-    func atol(str: *const char8) -> int64;
+    func atol(str: *char8) -> int64;
 
     /// Converts a byte string to a long long integer value
     /// https://en.cppreference.com/c/string/byte/atoi
-    func atoll(str: *const char8) -> int64;
+    func atoll(str: *char8) -> int64;
 
     /// Allocates memory for an array of num objects of size and zero-initializes it
     /// https://en.cppreference.com/c/memory/calloc
@@ -52,7 +52,7 @@ extern {
 
     /// Returns the value of an environment variable
     /// https://en.cppreference.com/c/program/getenv
-    func getenv(name: *const char8) -> *char8;
+    func getenv(name: *char8) -> *char8;
 
     /// Computes the absolute value of a long integer value
     /// https://en.cppreference.com/c/numeric/math/abs
@@ -80,5 +80,5 @@ extern {
 
     /// Calls the host environment's command processor
     /// https://en.cppreference.com/c/program/system
-    func system(command: *const char8) -> int32;
+    func system(command: *char8) -> int32;
 }

@@ -6,9 +6,9 @@ import Text::{ String, StringBuilder };
 // validated here, since there is nothing to encode -- the byte is passed
 // through as it stands.
 func ToString(value: char8) -> String {
-    var buffer: char8[1];
+    let mut buffer: char8[1];
     buffer[0] = value;
-    return String::From(buffer.data, 1u);
+    return String::From(@buffer[0], 1u);
 }
 
 extend char8 : Stringable {
@@ -17,7 +17,7 @@ extend char8 : Stringable {
     }
 }
 
-extend char8[] : Stringable {
+extend Slice<char8> : Stringable {
     func ToString(self) -> String {
         return String::From(self);
     }

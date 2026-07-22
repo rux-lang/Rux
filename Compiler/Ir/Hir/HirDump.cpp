@@ -80,7 +80,7 @@ static std::string PrintExpr(const HirExpr &expr) {
         }
         return s + " }";
     }
-    if (auto *e = dynamic_cast<const HirSliceExpr *>(&expr)) {
+    if (auto *e = dynamic_cast<const HirArrayExpr *>(&expr)) {
         std::string s = "[";
         for (std::size_t i = 0; i < e->elements.size(); ++i) {
             if (i) {
@@ -210,11 +210,8 @@ static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &
         return;
     }
     if (auto *s = dynamic_cast<const HirLetStmt *>(&stmt)) {
-        out << std::format("{}{} {}: {}", indent, s->isMut ? "var" : "let",
+        out << std::format("{}{} {}: {}", indent, s->isMut ? "let mut" : "let",
                            s->pattern ? PrintPattern(*s->pattern) : s->name, s->type.ToString());
-        if (s->stackBufferLength != 0) {
-            out << std::format("[{}]", s->stackBufferLength);
-        }
         if (s->init) {
             out << " = " << PrintExpr(*s->init);
         }

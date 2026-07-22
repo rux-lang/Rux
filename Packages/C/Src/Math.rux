@@ -312,11 +312,11 @@ extern {
 
     /// Generates a quiet NaN
     /// https://en.cppreference.com/c/numeric/math/nan
-    func nanf(arg: *const char8) -> float32;
+    func nanf(arg: *char8) -> float32;
 
     /// Generates a quiet NaN
     /// https://en.cppreference.com/c/numeric/math/nan
-    func nan(arg: *const char8) -> float64;
+    func nan(arg: *char8) -> float64;
 
     /// Rounds to nearest integer using current rounding mode without raising the inexact exception
     /// https://en.cppreference.com/c/numeric/math/nearbyint

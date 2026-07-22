@@ -2,7 +2,7 @@ const Level = 3;
 
 func Main() -> int {
     // A `when` condition must be known while compiling.
-    var runtime = 1;
+    let mut runtime = 1;
     when runtime > 0 {
         return 1;
     }

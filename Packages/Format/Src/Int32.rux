@@ -2,7 +2,7 @@ import Text::{ String, StringBuilder };
 
 // The decimal text of an int32, widened to int64 for the digit loop.
 func ToString(value: int32) -> String {
-    var builder = StringBuilder::WithCapacity(12);
+    let mut builder = StringBuilder::WithCapacity(12);
     WriteInt(@builder, value as int64);
     return builder.IntoString();
 }

@@ -415,7 +415,7 @@ private:
                 }
             }
         }
-        else if (const auto *sliceExpr = dynamic_cast<const SliceExpr *>(&expr)) {
+        else if (const auto *sliceExpr = dynamic_cast<const ArrayExpr *>(&expr)) {
             for (const auto &el : sliceExpr->elements) {
                 if (el) {
                     VisitExpr(*el);

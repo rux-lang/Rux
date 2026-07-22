@@ -1,10 +1,10 @@
 /// Properties and feature queries for the compiler performing the build.
 struct Compiler {
-    version: char8[];
+    version: Slice<char8>;
 }
 
 extend Compiler {
-    intrinsic func HasFeature(self, feature: char8[]) -> bool;
+    intrinsic func HasFeature(self, feature: Slice<char8>) -> bool;
 }
 
 // Compile-time value

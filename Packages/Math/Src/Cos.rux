@@ -4,7 +4,7 @@ func Cos(x: float64) -> float64 {
         return x;
     }
 
-    var zero = 0.0;
+    let mut zero = 0.0;
 
     // x - x is NaN for an infinity and 0.0 for anything else finite. Cosine
     // has no limit at infinity, so the result is NaN.

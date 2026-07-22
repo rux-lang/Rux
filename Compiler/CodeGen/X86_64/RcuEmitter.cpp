@@ -238,7 +238,7 @@ private:
     [[nodiscard]] bool IsAggregate(const TypeRef &t) const {
         switch (t.kind) {
         case TypeRef::Kind::Tuple:
-        case TypeRef::Kind::Slice:
+        case TypeRef::Kind::Array:
         case TypeRef::Kind::Range:
             return true;
         case TypeRef::Kind::Named: {
@@ -263,9 +263,6 @@ private:
     }
 
     [[nodiscard]] bool IsWin64AddressParam(const TypeRef &t) const {
-        if (t.kind == TypeRef::Kind::Slice) {
-            return true;
-        }
         if (t.kind != TypeRef::Kind::Named) {
             return false;
         }
@@ -1474,28 +1471,7 @@ private:
             interfaceNames.insert(name);
         }
         for (const auto &s : structDecls) {
-            StructLayout layout;
-            int offset = 0, maxAlign = 1;
-            for (const auto &f : s.fields) {
-                int sz = SizeOfRuntime(f.type);
-                int al = sz > 0 ? std::min(sz, 8) : 1;
-                if (f.type.kind == TypeRef::Kind::Named) {
-                    auto it = layouts.find(BaseTypeName(f.type.name));
-                    if (it != layouts.end()) {
-                        sz = it->second.totalSize;
-                        al = it->second.alignment;
-                    }
-                }
-                if (al > 1) {
-                    offset = AlignUp(offset, al);
-                }
-                layout.fields.push_back({f.name, offset, sz});
-                offset += (sz > 0 ? sz : 8);
-                maxAlign = std::max(maxAlign, al);
-            }
-            layout.totalSize = AlignUp(offset, maxAlign);
-            layout.alignment = maxAlign;
-            layouts[s.name] = std::move(layout);
+            layouts[s.name] = ComputeStructLayout(s, layouts);
         }
     }
 
@@ -3085,6 +3061,24 @@ private:
         dataSyms[c.name] = AddSymbol(std::move(header));
     }
 
+    void EmitConstArray(const LirConstDecl &c) {
+        const int elemSize = std::max(SizeOf(c.elementType), 1);
+        const uint32_t arrayOff = AlignRodata(AlignOf(c.elementType));
+        for (const auto &element : c.elements) {
+            AppendConstElement(element, c.elementType);
+        }
+
+        RcuSymbol array;
+        array.name = c.name;
+        array.sectionIdx = RCU_RODATA_IDX;
+        array.value = arrayOff;
+        array.size = static_cast<uint32_t>(c.elements.size() * static_cast<std::size_t>(elemSize));
+        array.kind = RcuSymKind::Const;
+        array.visibility = c.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
+        array.typeName = c.type.ToString();
+        dataSyms[c.name] = AddSymbol(std::move(array));
+    }
+
     void GenModule() {
         BuildLayouts();
         PredeclareFunctions();
@@ -3096,8 +3090,13 @@ private:
         for (const auto &c : mod.consts) {
             // A constant of slice type is addressed, not inlined, so it needs
             // real contents behind its name rather than a placeholder.
-            if (c.isTextSlice || !c.elements.empty()) {
-                EmitConstSlice(c);
+            if (c.hasSequenceData) {
+                if (c.type.kind == TypeRef::Kind::Array) {
+                    EmitConstArray(c);
+                }
+                else {
+                    EmitConstSlice(c);
+                }
                 continue;
             }
             RcuSymbol s;

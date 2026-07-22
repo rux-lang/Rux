@@ -10,10 +10,10 @@ func Set(ptr: *opaque, size: uint, value: int32) {
     when #target.os == .Windows {
         RtlFillMemory(ptr, size, value);
     } else {
-        let bytes = ptr as *char8;
-        var offset: uint = 0;
+        let bytes = ptr as *mut uint8;
+        let mut offset: uint = 0;
         while offset < size {
-            *(bytes + offset) = value as char8;
+            *(bytes + offset) = value as uint8;
             offset++;
         }
     }

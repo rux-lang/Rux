@@ -1,15 +1,15 @@
 import Rux::Assert;
 
-func PlatformName() -> char8[] {
+func PlatformName() -> Slice<char8> {
     return "Windows";
 }
 
-func IsWindows(value: char8[]) -> bool {
+func IsWindows(value: Slice<char8>) -> bool {
     return value.length == 7 && value[0] == c8'W' && value[1] == c8'i' && value[6] == c8's';
 }
 
 func Main() -> int {
-    var str: char8[] = "Hello, world!";
+    let mut str: Slice<char8> = "Hello, world!";
     Assert(str[0] == 'H', "Expected first character to be 'H'");
     Assert(str[7] == 'w', "Expected eighth character to be 'w'");
     Assert(str.data != null, "Expected non-null data pointer");

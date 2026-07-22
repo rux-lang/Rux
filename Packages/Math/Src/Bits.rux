@@ -55,8 +55,8 @@ func Scalb(x: float64, k: int64) -> float64 {
     let big = 8.98846567431158e307; // 2^1023
     let small = 2.2250738585072014e-308 * 9007199254740992.0; // 2^-969
 
-    var y = x;
-    var n = k;
+    let mut y = x;
+    let mut n = k;
 
     if n > 1023i64 {
         y *= big;

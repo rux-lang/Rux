@@ -4,7 +4,7 @@ import Text::{ String, StringBuilder };
 // negative value opens with a minus sign; there is no plus sign on a
 // positive one.
 func ToString(value: int64) -> String {
-    var builder = StringBuilder::WithCapacity(20);
+    let mut builder = StringBuilder::WithCapacity(20);
     WriteInt(@builder, value);
     return builder.IntoString();
 }

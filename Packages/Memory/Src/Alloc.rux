@@ -31,7 +31,7 @@ func Alloc(size: uint) -> *opaque {
             if IsError(mapping) {
                 return null;
             }
-            let header = mapping as *uint;
+            let header = mapping as *mut uint;
             *header = size;
             return (header + 2) as *opaque;
         },

@@ -399,8 +399,11 @@ private:
     }
 
     static bool IsSliceType(const TypeRef &type) {
-        return type.kind == TypeRef::Kind::Slice ||
-               (type.kind == TypeRef::Kind::Named && type.name.starts_with("Slice<"));
+        return type.kind == TypeRef::Kind::Named && type.name.starts_with("Slice<");
+    }
+
+    static bool IsArrayType(const TypeRef &type) {
+        return type.kind == TypeRef::Kind::Array;
     }
 
     static bool IsStringSliceLiteral(const HirLiteralExpr &e) {
@@ -547,19 +550,23 @@ private:
         return std::nullopt;
     }
 
-    // Records the contents of a slice-typed constant so the backend can emit it
-    // as data rather than as an expression evaluated at each use.
+    // Records constant slice/array contents for direct read-only emission.
     void CollectConstContents(const HirConst &c, LirConstDecl &cd) const {
-        if (!IsSliceType(c.type)) {
+        if (!IsSliceType(c.type) && !IsArrayType(c.type)) {
             return;
         }
         if (auto *lit = dynamic_cast<const HirLiteralExpr *>(c.value.get()); lit && IsStringSliceLiteral(*lit)) {
             cd.isTextSlice = true;
+            cd.hasSequenceData = true;
             cd.text = lit->value;
             cd.elementType = StringSliceElementType(*lit);
             return;
         }
-        if (auto *arr = dynamic_cast<const HirSliceExpr *>(c.value.get())) {
+        const HirExpr *value = c.value.get();
+        if (const auto *view = dynamic_cast<const HirArrayToSliceExpr *>(value)) {
+            value = view->value.get();
+        }
+        if (auto *arr = dynamic_cast<const HirArrayExpr *>(value)) {
             std::vector<std::string> elements;
             for (const auto &element : arr->elements) {
                 const auto printed = PrintConstElement(*element);
@@ -571,6 +578,7 @@ private:
             cd.elementType =
                 arr->elementType.IsUnknown() && !arr->elements.empty() ? arr->elements.front()->type : arr->elementType;
             cd.elements = std::move(elements);
+            cd.hasSequenceData = true;
         }
     }
 
@@ -667,14 +675,6 @@ private:
             LirReg slot = EmitAlloca(s->type);
             if (!s->pattern) {
                 locals[s->name] = slot;
-            }
-            if (!s->init && s->stackBufferLength != 0) {
-                const LirReg data = EmitAlloca(s->stackBufferElementType, s->stackBufferLength);
-                const LirReg dataField = EmitFieldPtr(slot, "data", TypeRef::MakePointer(s->stackBufferElementType));
-                EmitStore(data, dataField, TypeRef::MakePointer(s->stackBufferElementType));
-                const LirReg len = EmitConst(std::to_string(s->stackBufferLength), TypeRef::MakeUInt64());
-                const LirReg lenField = EmitFieldPtr(slot, "length", TypeRef::MakeUInt64());
-                EmitStore(len, lenField, TypeRef::MakeUInt64());
             }
             if (s->init) {
                 StoreExprIntoSlot(*s->init, slot, s->type);
@@ -998,7 +998,7 @@ private:
             return;
         }
 
-        if (IsSliceType(s.iterable->type)) {
+        if (IsSliceType(s.iterable->type) || IsArrayType(s.iterable->type)) {
             const TypeRef dataType = TypeRef::MakePointer(elemType);
             LirReg iterSlot = LowerLValue(*s.iterable);
 
@@ -1006,10 +1006,17 @@ private:
             // loop variable name to its induction slot for the loop body.
             locals[s.variable] = slot;
 
-            LirReg dataFieldPtr = EmitFieldPtr(iterSlot, "data", dataType);
-            LirReg dataPtr = EmitLoad(dataFieldPtr, dataType);
-            LirReg lenFieldPtr = EmitFieldPtr(iterSlot, "length", TypeRef::MakeUInt64());
-            LirReg length = EmitLoad(lenFieldPtr, TypeRef::MakeUInt64());
+            LirReg dataPtr = iterSlot;
+            LirReg length = LirNoReg;
+            if (IsSliceType(s.iterable->type)) {
+                LirReg dataFieldPtr = EmitFieldPtr(iterSlot, "data", dataType);
+                dataPtr = EmitLoad(dataFieldPtr, dataType);
+                LirReg lenFieldPtr = EmitFieldPtr(iterSlot, "length", TypeRef::MakeUInt64());
+                length = EmitLoad(lenFieldPtr, TypeRef::MakeUInt64());
+            }
+            else {
+                length = EmitConst(std::to_string(s.iterable->type.arrayLength.value_or(0)), TypeRef::MakeUInt64());
+            }
 
             LirReg idxSlot = EmitAlloca(TypeRef::MakeUInt64());
             LirReg zero = EmitConst("0", TypeRef::MakeUInt64());
@@ -1327,6 +1334,9 @@ private:
         if (auto *e = dynamic_cast<const HirCoerceToInterfaceExpr *>(&expr)) {
             return LowerCoerceToInterface(*e);
         }
+        if (auto *e = dynamic_cast<const HirArrayToSliceExpr *>(&expr)) {
+            return LowerArrayToSlice(*e);
+        }
         if (auto *e = dynamic_cast<const HirInterfaceCallExpr *>(&expr)) {
             return LowerInterfaceCall(*e);
         }
@@ -1340,6 +1350,9 @@ private:
             return EmitLoad(ptr, e->type);
         }
         if (auto *e = dynamic_cast<const HirFieldExpr *>(&expr)) {
+            if (e->object->type.kind == TypeRef::Kind::Array && e->object->type.arrayLength && e->field == "length") {
+                return EmitConst(std::to_string(*e->object->type.arrayLength), TypeRef::MakeUInt());
+            }
             LirReg base =
                 e->object->type.kind == TypeRef::Kind::Pointer ? LowerExpr(*e->object) : LowerLValue(*e->object);
             LirReg ptr = EmitFieldPtr(base, e->field, e->type);
@@ -1348,8 +1361,8 @@ private:
         if (auto *e = dynamic_cast<const HirStructInitExpr *>(&expr)) {
             return LowerStructInit(*e);
         }
-        if (auto *e = dynamic_cast<const HirSliceExpr *>(&expr)) {
-            return LowerSlice(*e);
+        if (auto *e = dynamic_cast<const HirArrayExpr *>(&expr)) {
+            return LowerArray(*e);
         }
         if (auto *e = dynamic_cast<const HirTupleExpr *>(&expr)) {
             return LowerTuple(*e);
@@ -1406,18 +1419,7 @@ private:
             return EmitLoad(ptr, e.type);
         }
         case TK::At: {
-            // Address-of: return the alloca slot for named locals,
-            // otherwise materialize a temporary.
-            if (auto *v = dynamic_cast<const HirVarExpr *>(e.operand.get())) {
-                if (const auto it = locals.find(v->name); it != locals.end()) {
-                    return it->second;
-                }
-            }
-            // Non-addressable: evaluate into a temp slot.
-            const LirReg val = LowerExpr(*e.operand);
-            const LirReg slot = EmitAlloca(e.operand->type);
-            EmitStore(val, slot, e.operand->type);
-            return slot;
+            return LowerLValue(*e.operand);
         }
         case TK::PlusPlus:
         case TK::MinusMinus: {
@@ -1561,9 +1563,6 @@ private:
     }
 
     static TypeRef SliceElementTypeFromType(const TypeRef &type) {
-        if (type.kind == TypeRef::Kind::Slice && !type.inner.empty()) {
-            return type.inner[0];
-        }
         if (type.kind == TypeRef::Kind::Named) {
             if (type.name == "Slice<char16>") {
                 return TypeRef::MakeChar16();
@@ -1666,8 +1665,8 @@ private:
             StoreStructInit(*init, slot);
             return;
         }
-        if (auto *initSliceExpr = dynamic_cast<const HirSliceExpr *>(&expr)) {
-            StoreSliceInit(*initSliceExpr, slot);
+        if (auto *arrayExpr = dynamic_cast<const HirArrayExpr *>(&expr)) {
+            StoreArrayInit(*arrayExpr, slot);
             return;
         }
         if (auto *initTupleExpr = dynamic_cast<const HirTupleExpr *>(&expr)) {
@@ -1693,6 +1692,10 @@ private:
         if (auto *initLitExpr = dynamic_cast<const HirLiteralExpr *>(&expr);
             initLitExpr && IsStringSliceLiteral(*initLitExpr)) {
             StoreStringLiteralSlice(*initLitExpr, slot);
+            return;
+        }
+        if (auto *coerce = dynamic_cast<const HirArrayToSliceExpr *>(&expr)) {
+            StoreArrayToSlice(*coerce, slot);
             return;
         }
         if (IsSliceType(type)) {
@@ -1826,6 +1829,22 @@ private:
     LirReg LowerCoerceToInterface(const HirCoerceToInterfaceExpr &e) {
         LirReg slot = EmitAlloca(e.type); // Named("X") → 16-byte data region
         StoreCoerceToInterface(e, slot);
+        return slot;
+    }
+
+    void StoreArrayToSlice(const HirArrayToSliceExpr &e, LirReg slot) {
+        const LirReg data = LowerLValue(*e.value);
+        const TypeRef dataType = TypeRef::MakePointer(e.elementType);
+        const LirReg dataField = EmitFieldPtr(slot, "data", dataType);
+        EmitStore(data, dataField, dataType);
+        const LirReg length = EmitConst(std::to_string(e.length), TypeRef::MakeUInt64());
+        const LirReg lengthField = EmitFieldPtr(slot, "length", TypeRef::MakeUInt64());
+        EmitStore(length, lengthField, TypeRef::MakeUInt64());
+    }
+
+    LirReg LowerArrayToSlice(const HirArrayToSliceExpr &e) {
+        const LirReg slot = EmitAlloca(e.type);
+        StoreArrayToSlice(e, slot);
         return slot;
     }
 
@@ -2030,9 +2049,9 @@ private:
         }
     }
 
-    LirReg LowerSlice(const HirSliceExpr &e) {
+    LirReg LowerArray(const HirArrayExpr &e) {
         const LirReg slot = EmitAlloca(e.type);
-        StoreSliceInit(e, slot);
+        StoreArrayInit(e, slot);
         return slot;
     }
 
@@ -2065,10 +2084,18 @@ private:
         EmitStore(len, lenField, TypeRef::MakeUInt64());
     }
 
-    void StoreSliceInit(const HirSliceExpr &e, LirReg slot) {
+    void StoreArrayInit(const HirArrayExpr &e, LirReg slot) {
         TypeRef elemType = e.elementType;
         if (elemType.IsUnknown() && !e.elements.empty()) {
             elemType = e.elements.front()->type;
+        }
+        if (IsArrayType(e.type)) {
+            for (std::size_t i = 0; i < e.elements.size(); ++i) {
+                const LirReg idx = EmitConst(std::to_string(i), TypeRef::MakeUInt64());
+                const LirReg ptr = EmitIndexPtr(slot, idx, elemType);
+                StoreExprIntoSlot(*e.elements[i], ptr, elemType);
+            }
+            return;
         }
         LirReg data = EmitAlloca(elemType);
         fn->blocks[cur].instrs.back().strArg = std::to_string(e.elements.size());
@@ -2085,6 +2112,9 @@ private:
     }
 
     LirReg LowerSliceDataPtr(const HirExpr &object, const TypeRef &elemType) {
+        if (IsArrayType(object.type)) {
+            return LowerLValue(object);
+        }
         if (!IsSliceType(object.type)) {
             return LowerExpr(object);
         }
@@ -2107,7 +2137,7 @@ private:
                 return LowerLValue(*constIt->second.value);
             }
             if (const auto constIt = globalConsts.find(e->name); constIt != globalConsts.end()) {
-                if (IsSliceType(constIt->second->type)) {
+                if (IsSliceType(constIt->second->type) || IsArrayType(constIt->second->type)) {
                     return EmitGlobalAddr(e->name, constIt->second->type);
                 }
                 return LowerLValue(*constIt->second->value);
@@ -2122,10 +2152,13 @@ private:
             Emit(std::move(i));
             return ptr;
         }
-        if (auto *e = dynamic_cast<const HirSliceExpr *>(&expr)) {
+        if (auto *e = dynamic_cast<const HirArrayExpr *>(&expr)) {
             LirReg slot = EmitAlloca(e->type);
-            StoreSliceInit(*e, slot);
+            StoreArrayInit(*e, slot);
             return slot;
+        }
+        if (auto *e = dynamic_cast<const HirArrayToSliceExpr *>(&expr)) {
+            return LowerArrayToSlice(*e);
         }
         if (auto *e = dynamic_cast<const HirTupleExpr *>(&expr)) {
             LirReg slot = EmitAlloca(e->type);

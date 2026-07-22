@@ -6,6 +6,11 @@ struct Point {
     z: uint16;
 }
 
+struct Packet {
+    tag: uint8;
+    payload: uint32[];
+}
+
 func Main() -> int {
     Assert(sizeof(int8) == 1, "Expected size of int8 to be 1 byte");
     Assert(sizeof(int16) == 2, "Expected size of int16 to be 2 bytes");
@@ -25,5 +30,8 @@ func Main() -> int {
     Assert(sizeof(float64) == 8, "Expected size of float64 to be 8 bytes");
 
     Assert(sizeof(Point) == 24, "Expected size of Point to be 24 bytes");
+    Assert(sizeof(uint8[10]) == 10, "Expected inline uint8 array to occupy 10 bytes");
+    Assert(sizeof(uint32[3]) == 12, "Expected inline uint32 array to occupy 12 bytes");
+    Assert(sizeof(Packet) == 4, "Expected a flexible tail to contribute alignment but no storage");
     return 0;
 }

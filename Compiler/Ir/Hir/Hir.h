@@ -177,6 +177,13 @@ struct HirCoerceToInterfaceExpr : HirExpr {
     std::string vtableLabel;
 };
 
+// A fixed inline array viewed as a non-owning Slice<T>.
+struct HirArrayToSliceExpr : HirExpr {
+    HirExprPtr value;
+    TypeRef elementType;
+    std::uint64_t length = 0;
+};
+
 // Call a method through an interface fat pointer (dynamic dispatch via
 // vtable)
 struct HirInterfaceCallExpr : HirExpr {
@@ -210,7 +217,7 @@ struct HirStructInitExpr : HirExpr {
 };
 
 // [a, b, c]
-struct HirSliceExpr : HirExpr {
+struct HirArrayExpr : HirExpr {
     TypeRef elementType;
     std::vector<HirExprPtr> elements;
 };
@@ -273,8 +280,6 @@ struct HirLetStmt : HirStmt {
     std::string name;
     HirPatternPtr pattern;
     TypeRef type;
-    TypeRef stackBufferElementType;
-    std::uint64_t stackBufferLength = 0;
     HirExprPtr init;
 };
 

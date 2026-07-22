@@ -16,14 +16,16 @@ using namespace Rux;
 
 namespace {
 
-constexpr std::string_view AssertIntrinsics = R"(
-    intrinsic func Assert(condition: bool, message: char8[]);
+constexpr std::string_view SliceDecl = "struct Slice<T> { data: *T; length: uint; }\n";
 
-    intrinsic func DebugAssert(condition: bool, message: char8[]);
+constexpr std::string_view AssertIntrinsics = R"(
+    intrinsic func Assert(condition: bool, message: Slice<char8>);
+
+    intrinsic func DebugAssert(condition: bool, message: Slice<char8>);
 )";
 
 LirPackage CompileToLir(const std::string &source, const bool debugAssertions) {
-    Lexer lexer(std::string(AssertIntrinsics) + source, "test.rux");
+    Lexer lexer(std::string(SliceDecl) + std::string(AssertIntrinsics) + source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -43,7 +45,7 @@ LirPackage CompileToLir(const std::string &source, const bool debugAssertions) {
 }
 
 std::vector<SemanticDiagnostic> Analyze(const std::string &source) {
-    Lexer lexer(source, "test.rux");
+    Lexer lexer(std::string(SliceDecl) + source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -76,8 +78,8 @@ std::vector<const LirInstr *> Assertions(const LirPackage &package) {
 TEST_CASE("Assert and DebugAssert lower to traps when enabled") {
     auto package = CompileToLir(R"(
         func Main() -> int {
-            var first = true;
-            var second = true;
+            let mut first = true;
+            let mut second = true;
             Assert(first, "always");
             DebugAssert(second, "debug");
             return 0;
@@ -120,7 +122,7 @@ TEST_CASE("release-mode DebugAssert is removed without evaluating arguments") {
         }
 
         func Main() -> int {
-            var condition = true;
+            let mut condition = true;
             Assert(condition, "always");
             DebugAssert(SideEffect(), "disabled");
             return 0;
@@ -155,8 +157,8 @@ TEST_CASE("assertion intrinsics require declarations and enforce their signature
     }));
 
     const auto signatureDiagnostics = Analyze(R"(
-        intrinsic func Assert(condition: bool, message: char8[]);
-        intrinsic func DebugAssert(condition: bool, message: char8[]);
+        intrinsic func Assert(condition: bool, message: Slice<char8>);
+        intrinsic func DebugAssert(condition: bool, message: Slice<char8>);
 
         func Main() -> int {
             Assert("not bool", "condition");

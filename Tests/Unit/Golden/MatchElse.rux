@@ -1,0 +1,6 @@
+func Main() -> int {
+    return match 7 {
+        0 => 1,
+        _ => 2
+    };
+}

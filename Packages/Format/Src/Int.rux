@@ -4,7 +4,7 @@ import Text::{ String, StringBuilder };
 // pointer. It is a type of its own rather than a name for int64, so it needs
 // its own conversion even where the two happen to be the same width.
 func ToString(value: int) -> String {
-    var builder = StringBuilder::WithCapacity(20);
+    let mut builder = StringBuilder::WithCapacity(20);
     WriteInt(@builder, value as int64);
     return builder.IntoString();
 }

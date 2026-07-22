@@ -24,9 +24,9 @@ func PowLog2(ax: float64) -> Log2Pair {
     let cpH = 9.61796700954437255859e-01;
     let cpL = -7.02846165095275826516e-09;
 
-    var a = ax;
-    var n = 0i64;
-    var ix = (FloatBits(a) >> 32u64) & 0x7FFFFFFFu64;
+    let mut a = ax;
+    let mut n = 0i64;
+    let mut ix = (FloatBits(a) >> 32u64) & 0x7FFFFFFFu64;
 
     // A subnormal has no leading one; scale it into the normals.
     if ix < 0x00100000u64 {
@@ -38,8 +38,8 @@ func PowLog2(ax: float64) -> Log2Pair {
     let j = ix & 0xFFFFFu64;
 
     // 0x3988E and 0xBB67A are sqrt(3/2) and sqrt(3) in the top 20 bits.
-    var ixn = j | 0x3FF00000u64;
-    var k = 0i64;
+    let mut ixn = j | 0x3FF00000u64;
+    let mut k = 0i64;
     if j <= 0x3988Eu64 {
         k = 0i64;
     } else if j < 0xBB67Au64 {
@@ -62,12 +62,12 @@ func PowLog2(ax: float64) -> Log2Pair {
     let sH = TruncLow(ss);
 
     // The high half of a + bp, built directly rather than rounded.
-    var tH = FromHighWord(((ixn >> 1u64) | 0x20000000u64) + 0x80000u64 + ((k as uint64) << 18u64));
+    let mut tH = FromHighWord(((ixn >> 1u64) | 0x20000000u64) + 0x80000u64 + ((k as uint64) << 18u64));
     let tL = a - (tH - bp);
     let sL = v * ((u - sH * tH) - sH * tL);
 
-    var s2 = ss * ss;
-    var r = s2 * s2 * (l1 + s2 * (l2 + s2 * (l3 + s2 * (l4 + s2 * (l5 + s2 * l6)))));
+    let mut s2 = ss * ss;
+    let mut r = s2 * s2 * (l1 + s2 * (l2 + s2 * (l3 + s2 * (l4 + s2 * (l5 + s2 * l6)))));
     r += sL * (sH + ss);
     s2 = sH * sH;
     tH = TruncLow(3.0 + s2 + r);
@@ -84,7 +84,7 @@ func PowLog2(ax: float64) -> Log2Pair {
 
     // log2(a) = n + dpH + zH + zL, split once more.
     let t = n as float64;
-    var out: Log2Pair;
+    let mut out: Log2Pair;
     out.hi = TruncLow(((zH + zL) + dpH) + t);
     out.lo = zL - (((out.hi - t) - dpH) - zH);
     return out;
@@ -103,7 +103,7 @@ func PowLog2NearOne(ax: float64) -> Log2Pair {
     let u = ivln2H * t; // ivln2H has 21 significant bits, so this is exact
     let v = t * ivln2L - w * ivln2;
 
-    var out: Log2Pair;
+    let mut out: Log2Pair;
     out.hi = TruncLow(u + v);
     out.lo = v - (out.hi - u);
     return out;
@@ -124,11 +124,11 @@ func Pow2(pHigh: float64, pLow: float64, z: float64) -> float64 {
     let lg2H = 6.93147182464599609375e-01;
     let lg2L = -1.90465429995776804525e-09;
 
-    var pH = pHigh;
+    let mut pH = pHigh;
     let jz = (FloatBits(z) >> 32u64) & 0xFFFFFFFFu64;
     let izz = jz & 0x7FFFFFFFu64;
-    var kk = ((izz >> 20u64) as int64) - 0x3FFi64;
-    var nn = 0i64;
+    let mut kk = ((izz >> 20u64) as int64) - 0x3FFi64;
+    let mut nn = 0i64;
 
     if izz > 0x3FE00000u64 { // |z| > 0.5, so there is an integer part
         let nBits = (jz + (0x100000u64 >> ((kk + 1i64) as uint64))) & 0xFFFFFFFFu64;
@@ -144,7 +144,7 @@ func Pow2(pHigh: float64, pLow: float64, z: float64) -> float64 {
     let t = TruncLow(pLow + pH);
     let u = t * lg2H; // exact: both have few enough significant bits
     let v = (pLow - (t - pH)) * lg2 + t * lg2L;
-    var e = u + v;
+    let mut e = u + v;
     let w = v - (e - u);
 
     let e2 = e * e;
@@ -206,7 +206,7 @@ func Pow(x: float64, y: float64) -> float64 {
     // Whether y is an integer, and whether it is odd, decides the sign of the
     // result and whether it exists at all when x is negative.
     //   0 = not an integer, 1 = an odd integer, 2 = an even integer
-    var yisint = 0i64;
+    let mut yisint = 0i64;
     if xNegative {
         if iy >= 0x43400000u64 {
             // |y| >= 2^53: every significand bit is above the binary point,
@@ -267,21 +267,21 @@ func Pow(x: float64, y: float64) -> float64 {
                 }
                 return negZero;
             }
-            var z0 = ax;
+            let mut z0 = ax;
             if yNegative {
                 z0 = 1.0 / z0;
             }
             return z0;
         }
 
-        var z = ax;
+        let mut z = ax;
         if yNegative {
             z = 1.0 / z;
         }
         if xNegative {
             if ix == 0x3FF00000u64 && yisint == 0i64 {
                 // (-1) to a non-integer power has no real value.
-                var q = z - z;
+                let mut q = z - z;
                 return q / q;
             }
             if yisint == 1i64 {
@@ -293,18 +293,18 @@ func Pow(x: float64, y: float64) -> float64 {
 
     // Nor does any other negative x to a non-integer power.
     if xNegative && yisint == 0i64 {
-        var q = x - x;
+        let mut q = x - x;
         return q / q;
     }
 
     // The sign of the result: negative only for a negative x raised to an odd
     // integer power.
-    var s = 1.0;
+    let mut s = 1.0;
     if xNegative && yisint == 1i64 {
         s = -1.0;
     }
 
-    var lg: Log2Pair;
+    let mut lg: Log2Pair;
 
     if iy > 0x41E00000u64 { // |y| > 2^31
         if iy > 0x43F00000u64 { // |y| > 2^64: the answer must over- or underflow

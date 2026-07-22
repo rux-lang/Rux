@@ -40,7 +40,7 @@ when #target.os == OperatingSystem::FreeBSD {
             return 4;
         }
 
-        var time: Timespec;
+        let mut time: Timespec;
         if ClockGetTime(ClockMonotonic, @time) != 0 || time.seconds < 0 {
             return 5;
         }
@@ -52,7 +52,7 @@ when #target.os == OperatingSystem::FreeBSD {
             return 6;
         }
 
-        let bytes = mapping as *char8;
+        let bytes = mapping as *mut char8;
         *bytes = 42 as char8;
         if *bytes != 42 as char8 {
             return 7;

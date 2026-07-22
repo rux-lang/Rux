@@ -11,7 +11,7 @@ when #target.os {
 func ReadStdinByte(buffer: *char8) -> int64 {
     when #target.os == .Windows {
         let handle = GetStdHandle(StdInputHandle);
-        var bytesRead: uint32 = 0;
+        let mut bytesRead: uint32 = 0;
         if !ReadFile(handle, buffer, 1, @bytesRead, null) {
             return -1;
         }
@@ -27,11 +27,11 @@ func ReadStdinByte(buffer: *char8) -> int64 {
 }
 
 func ReadLine() -> String {
-    var builder = StringBuilder::New();
-    var byte: char8[1];
-    var pendingCarriageReturn = false;
+    let mut builder = StringBuilder::New();
+    let mut byte: char8[1];
+    let mut pendingCarriageReturn = false;
     while true {
-        let count = ReadStdinByte(byte.data);
+        let count = ReadStdinByte(@byte[0]);
         if count <= 0 {
             if pendingCarriageReturn {
                 builder.Append(c8'\r');

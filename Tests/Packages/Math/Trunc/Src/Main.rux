@@ -2,8 +2,8 @@ import Rux::Assert;
 import Math::Trunc;
 
 func Main() -> int {
-    var zero = 0.0;
-    var one = 1.0;
+    let mut zero = 0.0;
+    let mut one = 1.0;
     let inf = one / zero;
 
     Assert(Trunc(0.0) == 0.0, "Trunc(0.0)");

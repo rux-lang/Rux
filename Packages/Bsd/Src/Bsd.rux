@@ -179,7 +179,7 @@ func Read(fd: int32, buffer: *opaque, count: uint) -> int64 {
 }
 
 // Writes up to count bytes from buffer to a file descriptor.
-func Write(fd: int32, buffer: *const opaque, count: uint) -> int64 {
+func Write(fd: int32, buffer: *opaque, count: uint) -> int64 {
     return Syscall3(SysWrite, SignExtendFd(fd), buffer as uint64, count as uint64);
 }
 
@@ -222,7 +222,7 @@ func Brk(address: *opaque) -> int64 {
 }
 
 // Suspends execution for the requested duration and optionally reports time remaining.
-func Nanosleep(request: *const Timespec, remaining: *Timespec) -> int64 {
+func Nanosleep(request: *Timespec, remaining: *Timespec) -> int64 {
     return Syscall2(SysNanosleep, request as uint64, remaining as uint64);
 }
 

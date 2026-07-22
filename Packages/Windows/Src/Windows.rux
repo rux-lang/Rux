@@ -217,19 +217,19 @@ extern {
     // Copies an existing file to a new file.
     // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-copyfilea
     func CopyFileA(
-        existingFileName: *const char8,
-        newFileName: *const char8,
+        existingFileName: *char8,
+        newFileName: *char8,
         failIfExists: bool32
     ) -> bool32;
 
     // Creates a new directory.
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectorya
-    func CreateDirectoryA(pathName: *const char8, securityAttributes: *opaque) -> bool32;
+    func CreateDirectoryA(pathName: *char8, securityAttributes: *opaque) -> bool32;
 
     // Creates or opens a file or I/O device.
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
     func CreateFileA(
-        fileName: *const char8,
+        fileName: *char8,
         desiredAccess: uint32,
         shareMode: uint32,
         securityAttributes: *opaque,
@@ -239,7 +239,7 @@ extern {
     ) -> *opaque;
 
     func CreateFileA(
-        fileName: *const char8,
+        fileName: *char8,
         desiredAccess: uint32,
         shareMode: uint32,
         securityAttributes: *opaque,
@@ -250,7 +250,7 @@ extern {
 
     // Deletes an existing file.
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilea
-    func DeleteFileA(fileName: *const char8) -> bool32;
+    func DeleteFileA(fileName: *char8) -> bool32;
 
     // Ends the calling process and all its threads
     // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-exitprocess
@@ -263,7 +263,7 @@ extern {
     // Searches a directory for a file or subdirectory with a name that matches a specific name (or partial name if wildcards are used).
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfilea
     func FindFirstFileA(
-        fileName: *const char8,
+        fileName: *char8,
         findFileData: *Win32FindDataA
     ) -> *opaque;
 
@@ -297,7 +297,7 @@ extern {
 
     // Retrieves file attributes
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileattributesa
-    func GetFileAttributesA(fileName: *const char8) -> uint32;
+    func GetFileAttributesA(fileName: *char8) -> uint32;
 
     // Retrieves the size of the specified file.
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfilesizeex
@@ -313,7 +313,7 @@ extern {
 
     // Retrieves the address of an exported symbol.
     // https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress
-    func GetProcAddress(libModule: *opaque, procName: *const char8) -> *opaque;
+    func GetProcAddress(libModule: *opaque, procName: *char8) -> *opaque;
 
     // Retrieves a handle to the default heap of the calling process
     // https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-getprocessheap
@@ -345,18 +345,18 @@ extern {
 
     // Loads a DLL into the calling process.
     // https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya
-    func LoadLibraryA(libFileName: *const char8) -> *opaque;
+    func LoadLibraryA(libFileName: *char8) -> *opaque;
 
     // Moves an existing file or directory.
     // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefilea
-    func MoveFileA(existingFileName: *const char8, newFileName: *const char8) -> bool32;
+    func MoveFileA(existingFileName: *char8, newFileName: *char8) -> bool32;
 
     // Maps a character string to a UTF-16 wide character string
     // https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar
     func MultiByteToWideChar(
         codePage: CodePage,
         flags: uint32,
-        multiByteStr: *const char8,
+        multiByteStr: *char8,
         multiByte: int32,
         wideCharStr: *char16,
         wideChar: int32
@@ -367,7 +367,7 @@ extern {
     func MultiByteToWideChar(
         codePage: uint32,
         flags: uint32,
-        multiByteStr: *const char8,
+        multiByteStr: *char8,
         multiByte: int32,
         wideCharStr: *char16,
         wideChar: int32
@@ -395,15 +395,15 @@ extern {
 
     // Deletes an existing empty directory.
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya
-    func RemoveDirectoryA(pathName: *const char8) -> bool32;
+    func RemoveDirectoryA(pathName: *char8) -> bool32;
 
     // Compares two blocks of memory and returns the number of bytes that match until the first difference
     // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlcomparememory
-    func RtlCompareMemory(source1: *const opaque, source2: *const opaque, length: uint) -> uint;
+    func RtlCompareMemory(source1: *opaque, source2: *opaque, length: uint) -> uint;
 
     // Copies a block of memory from one location to another
     // https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa366535(v=vs.85)
-    func RtlCopyMemory(destination: *opaque, source: *const opaque, length: uint);
+    func RtlCopyMemory(destination: *opaque, source: *opaque, length: uint);
 
     // Fills a block of memory with the specified fill value
     // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlfillmemory
@@ -415,11 +415,11 @@ extern {
 
     // Changes the current directory.
     // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory
-    func SetCurrentDirectoryA(pathName: *const char8) -> bool32;
+    func SetCurrentDirectoryA(pathName: *char8) -> bool32;
 
     // Sets file attributes.
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileattributesa
-    func SetFileAttributesA(fileName: *const char8, fileAttributes: uint32) -> bool32;
+    func SetFileAttributesA(fileName: *char8, fileAttributes: uint32) -> bool32;
 
     // Moves the file pointer of the specified file.
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfilepointerex
@@ -439,11 +439,11 @@ extern {
     func WideCharToMultiByte(
         codePage: uint32,
         flags: uint32,
-        wideCharStr: *const char16,
+        wideCharStr: *char16,
         wideChar: int32,
         multiByteStr: *char8,
         multiByte: int32,
-        defaultChar: *const char8,
+        defaultChar: *char8,
         usedDefaultChar: *bool32
     ) -> int32;
 
@@ -451,7 +451,7 @@ extern {
     // https://learn.microsoft.com/en-us/windows/console/writeconsole
     func WriteConsoleA(
         consoleOutput: *opaque,
-        buffer: *const char8,
+        buffer: *char8,
         numberOfCharsToWrite: uint32,
         numberOfCharsWritten: *uint32,
         reserved: *opaque
@@ -461,7 +461,7 @@ extern {
     // https://learn.microsoft.com/en-us/windows/console/writeconsole
     func WriteConsoleW(
         consoleOutput: *opaque,
-        buffer: *const char16,
+        buffer: *char16,
         numberOfCharsToWrite: uint32,
         numberOfCharsWritten: *uint32,
         reserved: *opaque
@@ -471,7 +471,7 @@ extern {
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile
     func WriteFile(
         file: *opaque,
-        buffer: *const opaque,
+        buffer: *opaque,
         bytesToWrite: uint32,
         bytesWritten: *uint32,
         overlapped: *opaque

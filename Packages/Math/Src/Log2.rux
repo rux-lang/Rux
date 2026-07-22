@@ -2,7 +2,7 @@ func Log2(x: float64) -> float64 {
     let ivln2Hi = 1.44269504072144627571e+00;
     let ivln2Lo = 1.67517131648865118353e-10;
 
-    var zero = 0.0;
+    let mut zero = 0.0;
     let bits = FloatBits(x);
 
     if (bits & 0x7FFFFFFFFFFFFFFFu64) == 0u64 {
@@ -30,8 +30,8 @@ func Log2(x: float64) -> float64 {
     let hi = TruncLow(f - hfsq);
     let lo = (f - hi) - hfsq + r;
 
-    var valHi = hi * ivln2Hi;
-    var valLo = (lo + hi) * ivln2Lo + lo * ivln2Hi;
+    let mut valHi = hi * ivln2Hi;
+    let mut valLo = (lo + hi) * ivln2Lo + lo * ivln2Hi;
 
     // Add the exponent last, tracking what the addition rounds away.
     let y = red.k as float64;

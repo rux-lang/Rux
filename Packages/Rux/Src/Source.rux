@@ -2,11 +2,11 @@
 struct Source {
     line: uint;
     column: uint;
-    file: char8[];
-    fileName: char8[];
-    filePath: char8[];
-    function: char8[];
-    module: char8[];
+    file: Slice<char8>;
+    fileName: Slice<char8>;
+    filePath: Slice<char8>;
+    function: Slice<char8>;
+    module: Slice<char8>;
 }
 
 // Compile-time value

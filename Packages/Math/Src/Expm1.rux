@@ -39,13 +39,13 @@ func Expm1(x: float64) -> float64 {
         }
     }
 
-    var xx = x;
-    var c = 0.0;
-    var k = 0i64;
+    let mut xx = x;
+    let mut c = 0.0;
+    let mut k = 0i64;
 
     if hx > 0x3FD62E42u64 { // |x| > 0.5*ln2
-        var hi = 0.0;
-        var lo = 0.0;
+        let mut hi = 0.0;
+        let mut lo = 0.0;
         if hx < 0x3FF0A2B2u64 { // and |x| < 1.5*ln2
             if negative {
                 hi = x + ln2Hi;
@@ -75,7 +75,7 @@ func Expm1(x: float64) -> float64 {
     let hxs = xx * hfx;
     let r1 = 1.0 + hxs * (q1 + hxs * (q2 + hxs * (q3 + hxs * (q4 + hxs * q5))));
     let t = 3.0 - r1 * hfx;
-    var e = hxs * ((r1 - t) / (6.0 - xx * t));
+    let mut e = hxs * ((r1 - t) / (6.0 - xx * t));
 
     if k == 0i64 {
         return xx - (xx * e - hxs);
@@ -100,7 +100,7 @@ func Expm1(x: float64) -> float64 {
 
     if k <= -2i64 || k > 56i64 {
         // The 1 is lost in the rounding either way, so exp(x) - 1 will do.
-        var y = 1.0 - (e - xx);
+        let mut y = 1.0 - (e - xx);
         if k == 1024i64 {
             y = y * 2.0 * 8.98846567431158e307;
         } else {
@@ -115,7 +115,7 @@ func Expm1(x: float64) -> float64 {
     }
 
     let t2 = FromHighWord(((1023i64 - k) as uint64) << 20u64); // 2^-k
-    var y = xx - (e + t2);
+    let mut y = xx - (e + t2);
     y += 1.0;
     return y * twopk;
 }

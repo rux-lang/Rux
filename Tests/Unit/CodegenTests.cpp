@@ -19,8 +19,10 @@
 
 using namespace Rux;
 
+static constexpr std::string_view SliceDecl = "struct Slice<T> { data: *T; length: uint; }\n";
+
 static LirPackage CompileToLir(const std::string &source) {
-    Lexer lexer(source, "test.rux");
+    Lexer lexer(std::string(SliceDecl) + source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -264,7 +266,7 @@ TEST_CASE("assembly phi lowering breaks a swap cycle with a stack temporary") {
 
 TEST_CASE("string literal slices reference static storage") {
     const std::string output = CompileToAsm(R"(
-        func Name() -> char8[] {
+        func Name() -> Slice<char8> {
             return "Windows";
         }
     )");
@@ -272,6 +274,76 @@ TEST_CASE("string literal slices reference static storage") {
     CHECK(output.find("section .rodata") != std::string::npos);
     CHECK(output.find("db    87, 105, 110, 100, 111, 119, 115, 0") != std::string::npos);
     CHECK(output.find("lea     rax, [rel __str") != std::string::npos);
+}
+
+TEST_CASE("array literals infer fixed inline arrays and coerce to Slice views") {
+    const LirPackage package = CompileToLir(R"(
+        func Sum(values: Slice<int>) -> int {
+            return values[0] + values[3];
+        }
+
+        func Main() -> int {
+            return Sum([0, 1, 2, 10]);
+        }
+    )");
+
+    const auto &functions = package.modules.front().funcs;
+    const auto main = std::ranges::find_if(functions, [](const LirFunc &function) { return function.name == "Main"; });
+    REQUIRE(main != functions.end());
+
+    bool hasInlineArray = false;
+    bool hasSliceView = false;
+    for (const LirBlock &block : main->blocks) {
+        for (const LirInstr &instruction : block.instrs) {
+            if (instruction.op != LirOpcode::Alloca) {
+                continue;
+            }
+            hasInlineArray |= instruction.type.kind == TypeRef::Kind::Array && instruction.type.arrayLength == 4 &&
+                              instruction.type.inner == std::vector{TypeRef::MakeInt()};
+            hasSliceView |= instruction.type == TypeRef::MakeNamed("Slice<int>");
+        }
+    }
+
+    CHECK(hasInlineArray);
+    CHECK(hasSliceView);
+}
+
+TEST_CASE("address-of an indexed array element uses the original storage") {
+    const LirPackage package = CompileToLir(R"(
+        func AddressOfFirst() -> uint {
+            let values: uint[4] = [255u, 127u, 10u, 0u];
+            return @values[0] as uint;
+        }
+    )");
+
+    const auto &functions = package.modules.front().funcs;
+    const auto function =
+        std::ranges::find_if(functions, [](const LirFunc &candidate) { return candidate.name == "AddressOfFirst"; });
+    REQUIRE(function != functions.end());
+
+    const LirInstr *addressCast = nullptr;
+    for (const LirBlock &block : function->blocks) {
+        for (const LirInstr &instruction : block.instrs) {
+            if (instruction.op == LirOpcode::Cast && instruction.type == TypeRef::MakeUInt() &&
+                instruction.strArg == "*uint") {
+                addressCast = &instruction;
+            }
+        }
+    }
+    REQUIRE(addressCast != nullptr);
+    REQUIRE_EQ(addressCast->srcs.size(), 1);
+
+    const LirInstr *pointerDefinition = nullptr;
+    for (const LirBlock &block : function->blocks) {
+        const auto instruction = std::ranges::find_if(
+            block.instrs, [&](const LirInstr &candidate) { return candidate.dst == addressCast->srcs.front(); });
+        if (instruction != block.instrs.end()) {
+            pointerDefinition = &*instruction;
+            break;
+        }
+    }
+    REQUIRE(pointerDefinition != nullptr);
+    CHECK_EQ(pointerDefinition->op, LirOpcode::IndexPtr);
 }
 
 TEST_CASE("metadata blocks are rejected before extern functions") {

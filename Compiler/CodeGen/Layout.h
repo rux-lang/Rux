@@ -19,6 +19,10 @@ namespace Rux::Layout {
 // pointer-sized (8).
 [[nodiscard]] int SizeOf(const TypeRef &t);
 
+// Natural alignment of a LIR-level type. Arrays inherit their element's
+// alignment rather than deriving it from their total byte size.
+[[nodiscard]] int AlignOf(const TypeRef &t);
+
 [[nodiscard]] bool IsFloat(const TypeRef &t);
 
 // Strip a generic argument list: "Foo<int32>" -> "Foo".

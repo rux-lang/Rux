@@ -42,7 +42,7 @@ func Main() -> int {
     PrintLine(c16'B');
     PrintLine(c32'C');
 
-    var text = String::From("string-value");
+    let mut text = String::From("string-value");
     PrintLine(text);
     text.Free();
     PrintLine("slice-value");

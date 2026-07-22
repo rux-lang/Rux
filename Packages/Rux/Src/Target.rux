@@ -89,7 +89,7 @@ struct Target {
     pointerBits: uint;
     dataModel: DataModel;
     objectFormat: ObjectFormat;
-    triple: char8[];
+    triple: Slice<char8>;
 }
 
 extend Target {

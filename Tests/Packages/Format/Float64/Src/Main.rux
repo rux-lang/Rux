@@ -7,9 +7,9 @@ import Text::String;
 // run. That rules out Std::Assert, so a failed check reports itself through the
 // exit code instead: each one below is numbered, and `rux test` prints the
 // number of the first that fails.
-func Check(value: float64, expected: char8[], code: int) -> int {
-    var actual = ToString(value);
-    var wanted = String::From(expected);
+func Check(value: float64, expected: Slice<char8>, code: int) -> int {
+    let mut actual = ToString(value);
+    let mut wanted = String::From(expected);
     let ok = actual == wanted;
     actual.Free();
     wanted.Free();
@@ -23,7 +23,7 @@ func Check(value: float64, expected: char8[], code: int) -> int {
 func Main() -> int {
     // Zero always shows a fractional part, so the text reads as a float. The
     // negative zero keeps its sign, which arithmetic alone cannot see.
-    var code = Check(0.0, "0.0", 10);
+    let mut code = Check(0.0, "0.0", 10);
     if code != 0 { return code; }
     code = Check(-0.0, "-0.0", 11);
     if code != 0 { return code; }
@@ -101,8 +101,8 @@ func Main() -> int {
 
     // The method the Stringable extension provides, which is the same
     // conversion reached through the interface.
-    var text = 2.5.ToString();
-    var wanted = String::From("2.5");
+    let mut text = 2.5.ToString();
+    let mut wanted = String::From("2.5");
     let ok = text == wanted;
     text.Free();
     wanted.Free();

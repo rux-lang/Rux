@@ -78,7 +78,7 @@ extend StringBuilder {
             return;
         }
 
-        var capacity = self.capacity;
+        let mut capacity = self.capacity;
         if capacity == 0 {
             capacity = 16;
         }
@@ -118,7 +118,7 @@ extend StringBuilder {
 
     // Writes the bytes of a slice, so a literal can be appended without
     // wrapping it in a String first.
-    func Append(self, str: char8[]) {
+    func Append(self, str: Slice<char8>) {
         if str.length == 0 {
             return;
         }

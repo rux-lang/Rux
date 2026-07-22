@@ -116,7 +116,7 @@ asm func Read(fd: int32, buffer: *opaque, count: uint) -> int64 {
 }
 
 // Writes up to count bytes from buffer to a file descriptor.
-asm func Write(fd: int32, buffer: *const opaque, count: uint) -> int64 {
+asm func Write(fd: int32, buffer: *opaque, count: uint) -> int64 {
     mov rax, 1
     movsxd rdi, edi
     syscall
@@ -171,7 +171,7 @@ asm func Brk(address: *opaque) -> int64 {
 }
 
 // Suspends execution for the requested duration and optionally reports time remaining.
-asm func Nanosleep(request: *const Timespec, remaining: *Timespec) -> int64 {
+asm func Nanosleep(request: *Timespec, remaining: *Timespec) -> int64 {
     mov rax, 35
     syscall
     ret

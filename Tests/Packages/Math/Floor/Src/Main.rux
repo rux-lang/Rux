@@ -2,8 +2,8 @@ import Rux::Assert;
 import Math::Floor;
 
 func Main() -> int {
-    var zero = 0.0;
-    var one = 1.0;
+    let mut zero = 0.0;
+    let mut one = 1.0;
     let inf = one / zero;
 
     Assert(Floor(0.0) == 0.0, "Floor(0.0)");

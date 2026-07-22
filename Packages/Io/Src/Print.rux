@@ -21,16 +21,16 @@ when #target.os {
 when #target.os == .Windows {
     // Write raw bytes to a redirected stdout (a file or pipe), where the UTF-8
     // encoding of `data` is already exactly what should land on disk.
-    func WriteBytes(handle: *opaque, data: *const char8, length: uint) {
+    func WriteBytes(handle: *opaque, data: *char8, length: uint) {
         const MaxWriteLength: uint = 4096;
-        var offset: uint = 0;
+        let mut offset: uint = 0;
         while offset < length {
-            var written: uint32 = 0;
+            let mut written: uint32 = 0;
             let remaining = length - offset;
             let count = remaining > MaxWriteLength ? MaxWriteLength : remaining;
             let ok = WriteFile(
                 handle,
-                (data + offset) as *const opaque,
+                (data + offset) as *opaque,
                 count as uint32,
                 @written,
                 null
@@ -43,10 +43,10 @@ when #target.os == .Windows {
     // Write UTF-16 code units to a console. WriteConsoleW hands the characters
     // to the console as Unicode, so they render correctly no matter what the
     // console's output code page is.
-    func WriteWide(handle: *opaque, data: *const char16, length: uint) {
-        var offset: uint = 0;
+    func WriteWide(handle: *opaque, data: *char16, length: uint) {
+        let mut offset: uint = 0;
         while offset < length {
-            var written: uint32 = 0;
+            let mut written: uint32 = 0;
             let ok = WriteConsoleW(
                 handle,
                 data + offset,
@@ -60,7 +60,7 @@ when #target.os == .Windows {
     }
 }
 
-func Print(data: *const char8, length: uint) {
+func Print(data: *char8, length: uint) {
     if length == 0 { return; }
 
     when #target.os == .Windows {
@@ -70,7 +70,7 @@ func Print(data: *const char8, length: uint) {
         // where the raw UTF-8 bytes are the correct output. Writing UTF-8 bytes
         // to a console would instead be decoded with its code page and turn any
         // non-ASCII text (such as "Привіт світ!") into mojibake.
-        var mode: uint32 = 0;
+        let mut mode: uint32 = 0;
         if !GetConsoleMode(handle, @mode) {
             WriteBytes(handle, data, length);
             return;
@@ -89,11 +89,11 @@ func Print(data: *const char8, length: uint) {
         }
         Free(wide as *opaque);
     } else {
-        var offset: uint = 0;
+        let mut offset: uint = 0;
         while offset < length {
             let written = Write(
                 StdOut,
-                (data + offset) as *const opaque,
+                (data + offset) as *opaque,
                 length - offset
             );
             // EINTR means no bytes were written and the operation can be
@@ -109,120 +109,120 @@ func Print(value: String) {
     Print(value.data, value.length);
 }
 
-func Print(value: char8[]) {
+func Print(value: Slice<char8>) {
     Print(value.data, value.length);
 }
 
-func Print(format: char8[], args: Stringable...) {
-    var text = Format(format, args...);
+func Print(format: Slice<char8>, args: Stringable...) {
+    let mut text = Format(format, args...);
     Print(text);
     text.Free();
 }
 
 func Print(value: bool8) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: bool16) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: bool32) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: char8) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: char16) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: char32) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: int8) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: int16) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: int32) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: int64) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: uint8) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: uint16) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: uint32) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: uint64) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: int) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: uint) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: float32) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: float64) {
-    var text = ToString(value);
+    let mut text = ToString(value);
     Print(text);
     text.Free();
 }

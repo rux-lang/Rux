@@ -206,7 +206,7 @@ ExprPtr Parser::ParseComparison() {
 }
 
 ExprPtr Parser::ParseCast() {
-    auto left = ParsePostfix();
+    auto left = ParseUnary();
     while (CheckAny({TokenKind::AsKeyword, TokenKind::IsKeyword})) {
         const auto loc = CurrentLocation();
         if (Match(TokenKind::AsKeyword)) {
@@ -280,7 +280,7 @@ ExprPtr Parser::ParseMul() {
 
 // ** is right-associative (exponentiation)
 ExprPtr Parser::ParseExp() {
-    auto left = ParseUnary();
+    auto left = ParseCast();
 
     if (Check(TokenKind::Star) && Peek(1).kind == TokenKind::Star) {
         const auto loc = CurrentLocation();
@@ -310,14 +310,17 @@ ExprPtr Parser::ParseUnary() {
                   TokenKind::PlusPlus, TokenKind::MinusMinus})) {
         const auto loc = CurrentLocation();
         const auto op = Advance().kind;
+        // '@mut x' takes a writable '*mut T'; plain '@x' takes a read-only '*T'.
+        const bool addrMut = op == TokenKind::At && Match(TokenKind::MutKeyword);
         auto operand = ParseUnary();
         auto e = std::make_unique<UnaryExpr>();
         e->location = loc;
         e->op = op;
+        e->addrMut = addrMut;
         e->operand = std::move(operand);
         return e;
     }
-    return ParseCast();
+    return ParsePostfix();
 }
 
 ExprPtr Parser::ParsePostfix() {
@@ -473,7 +476,7 @@ ExprPtr Parser::ParsePrimary() {
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             MatchExpr::Arm arm;
             arm.location = CurrentLocation();
-            arm.pattern = ParsePattern();
+            arm.pattern = ParseMatchArmPattern();
             Expect(TokenKind::FatArrow, "expected '=>'");
 
             if (Check(TokenKind::LeftBrace)) {
@@ -551,7 +554,7 @@ ExprPtr Parser::ParsePrimary() {
     }
     // Slice literal: [a, b, c]
     if (Match(TokenKind::LeftBracket)) {
-        auto e = std::make_unique<SliceExpr>();
+        auto e = std::make_unique<ArrayExpr>();
         e->location = loc;
         while (!Check(TokenKind::RightBracket) && !IsAtEnd()) {
             e->elements.push_back(ParseExpr());
@@ -644,6 +647,21 @@ std::vector<ExprPtr> Parser::ParseArgList() {
 }
 
 // Patterns
+PatternPtr Parser::ParseMatchArmPattern() {
+    const auto loc = CurrentLocation();
+    if (Match(TokenKind::ElseKeyword)) {
+        auto pattern = std::make_unique<WildcardPattern>();
+        pattern->location = loc;
+        return pattern;
+    }
+
+    auto pattern = ParsePattern();
+    if (dynamic_cast<const WildcardPattern *>(pattern.get())) {
+        EmitError(loc, "use 'else' for the default match arm");
+    }
+    return pattern;
+}
+
 PatternPtr Parser::ParsePattern() {
     auto inner = ParsePrimaryPattern();
     if (!inner) {

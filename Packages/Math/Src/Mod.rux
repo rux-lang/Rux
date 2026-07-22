@@ -8,10 +8,10 @@
 // subtract -- which is the long division you would do by hand, and the only
 // rounding left is the one that packs the answer back into a float64.
 func Mod(x: float64, y: float64) -> float64 {
-    var uxi = FloatBits(x);
+    let mut uxi = FloatBits(x);
     let uyi = FloatBits(y);
-    var ex = ((uxi >> 52u64) & 0x7FFu64) as int64;
-    var ey = ((uyi >> 52u64) & 0x7FFu64) as int64;
+    let mut ex = ((uxi >> 52u64) & 0x7FFu64) as int64;
+    let mut ey = ((uyi >> 52u64) & 0x7FFu64) as int64;
     let sx = uxi & 0x8000000000000000u64;
 
     let ax = uxi & 0x7FFFFFFFFFFFFFFFu64;
@@ -37,7 +37,7 @@ func Mod(x: float64, y: float64) -> float64 {
     // leading one, so its leading bit has to be found and shifted up, which
     // is what drives its exponent below zero.
     if ex == 0i64 {
-        var t = uxi << 12u64;
+        let mut t = uxi << 12u64;
         while (t >> 63u64) == 0u64 {
             ex -= 1i64;
             t <<= 1u64;
@@ -48,9 +48,9 @@ func Mod(x: float64, y: float64) -> float64 {
         uxi |= 0x10000000000000u64;
     }
 
-    var uy = uyi;
+    let mut uy = uyi;
     if ey == 0i64 {
-        var t = uyi << 12u64;
+        let mut t = uyi << 12u64;
         while (t >> 63u64) == 0u64 {
             ey -= 1i64;
             t <<= 1u64;

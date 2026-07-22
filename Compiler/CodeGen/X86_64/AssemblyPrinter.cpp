@@ -376,7 +376,7 @@ private:
     [[nodiscard]] bool IsAggregate(const TypeRef &t) const {
         switch (t.kind) {
         case TypeRef::Kind::Tuple:
-        case TypeRef::Kind::Slice:
+        case TypeRef::Kind::Array:
         case TypeRef::Kind::Range:
             return true;
         case TypeRef::Kind::Named: {
@@ -389,9 +389,6 @@ private:
     }
 
     [[nodiscard]] bool IsWin64AddressParam(const TypeRef &t) const {
-        if (t.kind == TypeRef::Kind::Slice) {
-            return true;
-        }
         if (t.kind != TypeRef::Kind::Named) {
             return false;
         }

@@ -20,7 +20,7 @@ enum OutputKind: uint8 {
 
 // Properties of the active build profile and output.
 struct Build {
-    profile: char8[];
+    profile: Slice<char8>;
     mode: BuildMode;
     optimization: OptimizationMode;
     debugAssertions: bool;
@@ -28,8 +28,8 @@ struct Build {
     isTest: bool;
     outputKind: OutputKind;
     timestamp: uint64;
-    date: char8[];
-    time: char8[];
+    date: Slice<char8>;
+    time: Slice<char8>;
 }
 
 // Compile-time value

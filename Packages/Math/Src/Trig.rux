@@ -97,8 +97,8 @@ func KernelTan(x: float64, y: float64, reciprocal: bool) -> float64 {
     // is folded to Pi/4 - |x|, a subtraction that is exact there, and the
     // tangent is rebuilt from the fold at the end.
     let folded = ax >= 0.6743354797363281;
-    var a = x;
-    var b = y;
+    let mut a = x;
+    let mut b = y;
     if folded {
         let ay = negative ? -y : y;
         a = (pio4 - ax) + (pio4Lo - ay);
@@ -112,7 +112,7 @@ func KernelTan(x: float64, y: float64, reciprocal: bool) -> float64 {
     let odd = t1 + w * (t3 + w * (t5 + w * (t7 + w * (t9 + w * t11))));
     let even = z * (t2 + w * (t4 + w * (t6 + w * (t8 + w * (t10 + w * t12)))));
     let s = z * a;
-    var r = b + z * (s * (odd + even) + b);
+    let mut r = b + z * (s * (odd + even) + b);
     r += t0 * s;
     // tan(a + b), before the fold is undone.
     let sum = a + r;
@@ -162,14 +162,14 @@ func RemPio2(x: float64) -> Reduction {
     // Gather the 256 bits of 2/Pi starting at bit (shift - 1). Bits at or
     // before the point are zero, which is what the range check produces for
     // a negative limb index. The window is stored least significant first.
-    var window: uint32[8];
+    let mut window: uint32[8];
     for k in 0..8 {
         let offset = shift - 2i64 + 32i64 * (7i64 - (k as int64));
         let limb = offset >> 5i64;
         let bit = offset - (limb << 5i64);
 
-        var first = 0u32;
-        var second = 0u32;
+        let mut first = 0u32;
+        let mut second = 0u32;
         if limb >= 0i64 && limb < 40i64 {
             first = TwoOverPi[limb as uint];
         }
@@ -186,8 +186,8 @@ func RemPio2(x: float64) -> Reduction {
     }
     // product = mantissa * window, keeping only the low 256 bits. Anything
     // above them is a multiple of four quadrants and cannot affect the sine.
-    var product: uint32[8];
-    var carry = 0u64;
+    let mut product: uint32[8];
+    let mut carry = 0u64;
     for i in 0..8 {
         let t = mantLow * (window[i] as uint64) + carry;
         product[i] = (t & 0xFFFFFFFFu64) as uint32;
@@ -201,17 +201,17 @@ func RemPio2(x: float64) -> Reduction {
     }
     // The two bits above the point are the quadrant; the 254 below it are
     // the fraction of x / (Pi/2).
-    var quadrant = ((product[7] >> 30u32) & 3u32) as int64;
+    let mut quadrant = ((product[7] >> 30u32) & 3u32) as int64;
     product[7] = product[7] & 0x3FFFFFFFu32;
     // A fraction past one half belongs to the next quadrant, and its
     // complement is the reduced argument, now negative.
-    var sign = 1.0;
+    let mut sign = 1.0;
     if ((product[7] >> 29u32) & 1u32) == 1u32 {
         quadrant = quadrant + 1i64;
         for i in 0..8 {
             product[i] = ~product[i];
         }
-        var borrow = 1u64;
+        let mut borrow = 1u64;
         for i in 0..8 {
             let t = (product[i] as uint64) + borrow;
             product[i] = (t & 0xFFFFFFFFu64) as uint32;
@@ -223,9 +223,9 @@ func RemPio2(x: float64) -> Reduction {
     // Sum the limbs smallest first, tracking the rounding each addition
     // discards, so the fraction survives as a double pair even when the
     // leading limbs are zero and x sits almost exactly on a quadrant.
-    var sum = 0.0;
-    var compensation = 0.0;
-    var scale = 3.454467422037778e-77; // 2^-254
+    let mut sum = 0.0;
+    let mut compensation = 0.0;
+    let mut scale = 3.454467422037778e-77; // 2^-254
     for k in 0..8 {
         let term = (product[k] as float64) * scale;
         let t = sum + term;
@@ -256,7 +256,7 @@ func RemPio2(x: float64) -> Reduction {
     let headError = ((fracHiHigh * pio2HiHigh - head) + fracHiHigh * pio2HiLow + fracHiLow * pio2HiHigh) +
                     fracHiLow * pio2HiLow;
     let tail = ((headError + fracHi * pio2Lo) + fracLo * pio2Hi) + fracHi * pio2Lo2;
-    var out: Reduction;
+    let mut out: Reduction;
     out.quadrant = quadrant & 3i64;
     out.hi = head + tail;
     out.lo = tail - (out.hi - head);

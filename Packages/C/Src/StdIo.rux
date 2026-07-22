@@ -48,11 +48,11 @@ extern {
 
     /// Opens a file indicated by filename with the given mode
     /// https://en.cppreference.com/c/io/fopen
-    func fopen(filename: *const char8, mode: *const char8) -> *opaque;
+    func fopen(filename: *char8, mode: *char8) -> *opaque;
 
     /// Prints formatted output to a file stream
     /// https://en.cppreference.com/c/io/fprintf
-    func fprintf(stream: *opaque, format: *const char8, ...) -> int32;
+    func fprintf(stream: *opaque, format: *char8, ...) -> int32;
 
     /// Writes a character to the given stream
     /// https://en.cppreference.com/c/io/fputc
@@ -60,7 +60,7 @@ extern {
 
     /// Writes a string to the given stream
     /// https://en.cppreference.com/c/io/fputs
-    func fputs(str: *const char8, stream: *opaque) -> int32;
+    func fputs(str: *char8, stream: *opaque) -> int32;
 
     /// Reads up to count objects of the given size from the stream into a buffer
     /// https://en.cppreference.com/c/io/fread
@@ -68,11 +68,11 @@ extern {
 
     /// Reopens a stream with a different file or mode
     /// https://en.cppreference.com/c/io/freopen
-    func freopen(filename: *const char8, mode: *const char8, stream: *opaque) -> *opaque;
+    func freopen(filename: *char8, mode: *char8, stream: *opaque) -> *opaque;
 
     /// Reads formatted input from a file stream
     /// https://en.cppreference.com/c/io/fscanf
-    func fscanf(stream: *opaque, format: *const char8, ...) -> int32;
+    func fscanf(stream: *opaque, format: *char8, ...) -> int32;
 
     /// Sets the file position indicator for the stream
     /// https://en.cppreference.com/c/io/fseek
@@ -80,7 +80,7 @@ extern {
 
     /// Sets the file position of the stream to the given position
     /// https://en.cppreference.com/c/io/fsetpos
-    func fsetpos(stream: *opaque, pos: *const opaque) -> int32;
+    func fsetpos(stream: *opaque, pos: *opaque) -> int32;
 
     /// Returns the current file position of the stream
     /// https://en.cppreference.com/c/io/ftell
@@ -88,7 +88,7 @@ extern {
 
     /// Writes count objects of the given size from a buffer to the stream
     /// https://en.cppreference.com/c/io/fwrite
-    func fwrite(buffer: *const opaque, size: uint, count: uint, stream: *opaque) -> uint;
+    func fwrite(buffer: *opaque, size: uint, count: uint, stream: *opaque) -> uint;
 
     /// Reads the next character from the given stream
     /// https://en.cppreference.com/c/io/fgetc
@@ -100,11 +100,11 @@ extern {
 
     /// Prints an error message describing the last error to stderr
     /// https://en.cppreference.com/c/io/perror
-    func perror(str: *const char8);
+    func perror(str: *char8);
 
     /// Prints formatted output to stdout
     /// https://en.cppreference.com/c/io/printf
-    func printf(format: *const char8, ...) -> int32;
+    func printf(format: *char8, ...) -> int32;
 
     /// Writes a character to the given stream
     /// https://en.cppreference.com/c/io/fputc
@@ -116,15 +116,15 @@ extern {
 
     /// Writes a string followed by a newline to stdout
     /// https://en.cppreference.com/c/io/puts
-    func puts(str: *const char8) -> int32;
+    func puts(str: *char8) -> int32;
 
     /// Deletes the file identified by the given path
     /// https://en.cppreference.com/c/io/remove
-    func remove(pathname: *const char8) -> int32;
+    func remove(pathname: *char8) -> int32;
 
     /// Renames a file, moving it if necessary
     /// https://en.cppreference.com/c/io/rename
-    func rename(old_filename: *const char8, new_filename: *const char8) -> int32;
+    func rename(old_filename: *char8, new_filename: *char8) -> int32;
 
     /// Moves the file position indicator to the beginning of the stream
     /// https://en.cppreference.com/c/io/rewind
@@ -132,7 +132,7 @@ extern {
 
     /// Reads formatted input from stdin
     /// https://en.cppreference.com/c/io/scanf
-    func scanf(format: *const char8, ...) -> int32;
+    func scanf(format: *char8, ...) -> int32;
 
     /// Sets the buffer to be used by the given stream
     /// https://en.cppreference.com/c/io/setbuf
@@ -144,11 +144,11 @@ extern {
 
     /// Prints formatted output to a string
     /// https://en.cppreference.com/c/io/sprintf
-    func sprintf(buffer: *char8, format: *const char8, ...) -> int32;
+    func sprintf(buffer: *char8, format: *char8, ...) -> int32;
 
     /// Reads formatted input from a string
     /// https://en.cppreference.com/c/io/sscanf
-    func sscanf(buffer: *const char8, format: *const char8, ...) -> int32;
+    func sscanf(buffer: *char8, format: *char8, ...) -> int32;
 
     /// Creates and opens a temporary file with a unique name
     /// https://en.cppreference.com/c/io/tmpfile

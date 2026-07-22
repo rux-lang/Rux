@@ -751,7 +751,7 @@ private:
         }
 
         if (str.size() >= 2 && str.compare(str.size() - 2, 2, "[]") == 0) {
-            return TypeRef::MakeSlice(ParseTypeRefFromString(str.substr(0, str.size() - 2)));
+            return TypeRef::MakeArray(ParseTypeRefFromString(str.substr(0, str.size() - 2)));
         }
 
         if (str[0] == '(' && str.back() == ')') {
@@ -1161,31 +1161,35 @@ private:
                !UnsuffixedIntegerLiteralFits(expr, targetType);
     }
 
-    // Explains a `@x` whose pointee came out read-only because `x` is an
-    // immutable place. The types alone ("'*const int32' to '*int32'") do not
-    // say that the `let` on the operand is the cause, so name the binding and
-    // the fix. Empty when the rejection has some other cause.
+    // Explains why a read-only '*T' (typically from a plain '@x') will not
+    // assign to a '*mut T' target: '@' yields a read-only pointer, so '@mut'
+    // is needed (and the operand must be a mutable place). The types alone
+    // ("'*int32' to '*mut int32'") do not point at the fix, so name it. Empty
+    // when the rejection has some other cause.
     std::string ImmutableAddressOfHint(const Expr &expr, const TypeRef &targetType) {
-        // Only a pointer-to-mutable target loses the const; anything else that
-        // fails to assign here failed for an unrelated reason.
-        if (targetType.kind != TypeRef::Kind::Pointer || targetType.inner.empty() || targetType.inner[0].isConst) {
+        // Only a '*mut T' target can reject a read-only '*T' source this way.
+        if (targetType.kind != TypeRef::Kind::Pointer || targetType.inner.empty() || !targetType.inner[0].isMut) {
             return {};
         }
+        // '@mut x' already produces a '*mut T'; only a plain '@x' lands here.
         const auto *addressOf = dynamic_cast<const UnaryExpr *>(&expr);
-        if (!addressOf || addressOf->op != TokenKind::At) {
+        if (!addressOf || addressOf->op != TokenKind::At || addressOf->addrMut) {
             return {};
         }
         const auto *ident = dynamic_cast<const IdentExpr *>(addressOf->operand.get());
-        if (!ident || !PlaceIsImmutable(*addressOf->operand)) {
-            return {};
+        if (!ident) {
+            return ": '@' yields a read-only '*T'; write '@mut' for a '*mut T'";
         }
         const Symbol *sym = currentScope->Lookup(ident->name);
         if (sym && sym->kind == Symbol::Kind::Const) {
-            return std::format(": '{}' is a constant, so its address is a pointer to immutable data", ident->name);
+            return std::format(": '{}' is a constant; a mutable pointer to it is not allowed", ident->name);
         }
-        return std::format(": '{}' is an immutable 'let' binding, so its address is a pointer to immutable data; "
-                           "declare it 'var' to allow writes through the pointer",
-                           ident->name);
+        if (PlaceIsImmutable(*addressOf->operand)) {
+            return std::format(": '@{0}' yields a read-only '*T'; declare '{0}' as 'let mut' and write '@mut {0}' "
+                               "for a '*mut T'",
+                               ident->name);
+        }
+        return std::format(": '@{0}' yields a read-only '*T'; write '@mut {0}' for a '*mut T'", ident->name);
     }
 
     // Picks the diagnostic for a rejected assignment/conversion. An
@@ -1390,7 +1394,36 @@ private:
         return std::nullopt;
     }
 
-    bool CanAssignExprTo(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) const {
+    bool CanAssignExprTo(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) {
+        if (exprType.kind == TypeRef::Kind::Array && exprType.arrayLength && !exprType.inner.empty()) {
+            if (const auto sliceElement = SliceElementType(targetType)) {
+                if (const auto *array = dynamic_cast<const ArrayExpr *>(&expr)) {
+                    for (const auto &element : array->elements) {
+                        const TypeRef elementType = CheckExpr(*element);
+                        if (!CanAssignExprTo(*element, elementType, *sliceElement)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+                return exprType.inner[0].IsAssignableTo(*sliceElement);
+            }
+        }
+
+        if (const auto *array = dynamic_cast<const ArrayExpr *>(&expr);
+            array && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
+            if (array->elements.size() != *targetType.arrayLength) {
+                return false;
+            }
+            for (const auto &element : array->elements) {
+                const TypeRef elementType = CheckExpr(*element);
+                if (!CanAssignExprTo(*element, elementType, targetType.inner[0])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         // Tuple literals are contextually typed element-by-element. This lets
         // each element use the same assignment rules as a scalar expression
         // (notably range-checked unsuffixed integer literals), and naturally
@@ -1541,9 +1574,6 @@ private:
     }
 
     static std::optional<TypeRef> SliceElementType(const TypeRef &type) {
-        if (type.kind == TypeRef::Kind::Slice && !type.inner.empty()) {
-            return type.inner[0];
-        }
         if (type.kind != TypeRef::Kind::Named) {
             return std::nullopt;
         }
@@ -1559,6 +1589,9 @@ private:
     }
 
     static std::optional<TypeRef> IndexElementType(const TypeRef &type) {
+        if (type.kind == TypeRef::Kind::Array && !type.inner.empty()) {
+            return type.inner[0];
+        }
         if (auto elemType = SliceElementType(type)) {
             return elemType;
         }
@@ -1566,6 +1599,55 @@ private:
             return type.inner[0];
         }
         return std::nullopt;
+    }
+
+    std::optional<std::uint64_t> EvalArrayLength(const Expr &expr) const {
+        const auto value = EvalConstInt(expr);
+        if (!value || *value < 0) {
+            return std::nullopt;
+        }
+        return static_cast<std::uint64_t>(*value);
+    }
+
+    // Validate array extents and reject flexible arrays everywhere except the
+    // final, top-level field of a struct. A nested T[] is never a tail field.
+    void ValidateArrayType(const TypeExpr &type, bool allowFlexibleTail = false) {
+        if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&type)) {
+            if (!array->size) {
+                if (!allowFlexibleTail) {
+                    EmitError(array->location, "flexible array type is only allowed as the final field of a struct");
+                }
+            }
+            else if (!EvalArrayLength(*array->size)) {
+                EmitError(array->size->location, "array length must be a non-negative compile-time integer");
+            }
+            ValidateArrayType(*array->element);
+            return;
+        }
+        if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(&type)) {
+            ValidateArrayType(*pointer->pointee);
+            return;
+        }
+        if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&type)) {
+            for (const auto &element : tuple->elements) {
+                ValidateArrayType(*element);
+            }
+            return;
+        }
+        if (const auto *function = dynamic_cast<const FunctionTypeExpr *>(&type)) {
+            for (const auto &param : function->params) {
+                ValidateArrayType(*param);
+            }
+            if (function->returnType) {
+                ValidateArrayType(**function->returnType);
+            }
+            return;
+        }
+        if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&type)) {
+            for (const auto &arg : named->typeArgs) {
+                ValidateArrayType(*arg);
+            }
+        }
     }
 
     Symbol *FindUniquePackageType(const std::string &name) const {
@@ -1686,16 +1768,16 @@ private:
             if (pointeeType.IsUnknown()) {
                 return TypeRef::MakeUnknown();
             }
-            pointeeType.isConst = pointeeType.isConst || t->pointeeConst;
+            pointeeType.isMut = pointeeType.isMut || t->pointeeMut;
             return TypeRef::MakePointer(std::move(pointeeType));
         }
 
-        if (const auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
+        if (const auto *t = dynamic_cast<const ArrayTypeExpr *>(&expr)) {
             TypeRef elemType = ResolveType(*t->element);
             if (elemType.IsUnknown()) {
                 return TypeRef::MakeUnknown();
             }
-            return TypeRef::MakeNamed(SliceTypeName(elemType));
+            return TypeRef::MakeArray(std::move(elemType), t->size ? EvalArrayLength(*t->size) : std::nullopt);
         }
 
         if (const auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
@@ -1762,11 +1844,12 @@ private:
         }
         if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
             TypeRef pointeeType = ResolveTypeWithSubstitution(*t->pointee, substitutions);
-            pointeeType.isConst = pointeeType.isConst || t->pointeeConst;
+            pointeeType.isMut = pointeeType.isMut || t->pointeeMut;
             return TypeRef::MakePointer(std::move(pointeeType));
         }
-        if (auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
-            return TypeRef::MakeNamed(SliceTypeName(ResolveTypeWithSubstitution(*t->element, substitutions)));
+        if (auto *t = dynamic_cast<const ArrayTypeExpr *>(&expr)) {
+            return TypeRef::MakeArray(ResolveTypeWithSubstitution(*t->element, substitutions),
+                                      t->size ? EvalArrayLength(*t->size) : std::nullopt);
         }
         if (auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
             std::vector<TypeRef> elems;
@@ -2090,7 +2173,24 @@ private:
             return layout->first;
         }
 
+        if (type.kind == TypeRef::Kind::Array) {
+            if (type.inner.empty() || !type.arrayLength) {
+                return std::nullopt;
+            }
+            const auto elemSize = SizeOfTypeRef(type.inner[0], substitutions);
+            return elemSize ? std::optional<std::uint64_t>(*elemSize * *type.arrayLength) : std::nullopt;
+        }
+
         return type.SizeInBytes();
+    }
+
+    std::optional<std::uint64_t> AlignOfTypeRef(const TypeRef &type,
+                                                const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
+        if (type.kind == TypeRef::Kind::Array) {
+            return type.inner.empty() ? std::optional<std::uint64_t>(1) : AlignOfTypeRef(type.inner[0], substitutions);
+        }
+        const auto size = SizeOfTypeRef(type, substitutions);
+        return size ? std::optional<std::uint64_t>(Layout::FieldAlign(*size)) : std::nullopt;
     }
 
     std::optional<std::uint64_t> SizeOfEnum(const EnumDecl &decl,
@@ -2160,13 +2260,25 @@ private:
             return std::nullopt;
         }
 
-        const auto layout = Layout::FieldsSizeAndAlign(structIt->second->fields, [&](const auto &field) {
-            return SizeOfTypeExprWithSubstitution(*field.type, substitutions);
-        });
-        if (!layout) {
-            return std::nullopt;
+        std::uint64_t offset = 0;
+        std::uint64_t maxAlign = 1;
+        for (const auto &field : structIt->second->fields) {
+            const TypeRef fieldType = ResolveTypeWithSubstitution(*field.type, substitutions);
+            const auto align = AlignOfTypeRef(fieldType, substitutions);
+            if (!align) {
+                return std::nullopt;
+            }
+            offset = AlignUp(offset, *align);
+            if (!(fieldType.kind == TypeRef::Kind::Array && !fieldType.arrayLength)) {
+                const auto size = SizeOfTypeRef(fieldType, substitutions);
+                if (!size) {
+                    return std::nullopt;
+                }
+                offset += *size;
+            }
+            maxAlign = std::max(maxAlign, *align);
         }
-        return layout->first;
+        return AlignUp(offset, maxAlign);
     }
 
     std::optional<std::uint64_t>
@@ -2291,6 +2403,7 @@ private:
             CheckConstDecl(*constDecl);
         }
         else if (auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+            ValidateArrayType(*aliasDecl->type);
             ResolveType(*aliasDecl->type); // triggers unknown-type errors
         }
         else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
@@ -2301,15 +2414,18 @@ private:
                                                           externFn->name));
             }
             if (externFn->returnType) {
+                ValidateArrayType(*externFn->returnType->get());
                 ResolveType(*externFn->returnType->get());
             }
             for (auto &p : externFn->params) {
                 if (!p.isVariadic) {
+                    ValidateArrayType(*p.type);
                     ResolveType(*p.type);
                 }
             }
         }
         else if (auto *externVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
+            ValidateArrayType(*externVar->type);
             ResolveType(*externVar->type);
         }
         else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
@@ -2326,6 +2442,9 @@ private:
         auto savedTypeParams = currentTypeParams;
         currentTypeParams = d.typeParams;
 
+        if (d.returnType) {
+            ValidateArrayType(*d.returnType->get());
+        }
         TypeRef retType = d.returnType ? ResolveType(*d.returnType->get()) : TypeRef::MakeOpaque();
 
         auto savedRet = currentReturnType;
@@ -2357,6 +2476,7 @@ private:
             if (param.name == "self") {
                 continue;
             }
+            ValidateArrayType(*param.type);
             if (param.isVariadic) {
                 seenDefault = false; // variadic ends fixed params; reset
             }
@@ -2425,10 +2545,14 @@ private:
         }
 
         std::unordered_set<std::string> seen;
-        for (const auto &field : d.fields) {
+        for (std::size_t i = 0; i < d.fields.size(); ++i) {
+            const auto &field = d.fields[i];
             if (!seen.insert(field.name).second) {
                 EmitError(field.location, std::format("duplicate field '{}' in struct '{}'", field.name, d.name));
             }
+            const auto *array = dynamic_cast<const ArrayTypeExpr *>(field.type.get());
+            const bool isFlexibleTail = array && !array->size && i + 1 == d.fields.size();
+            ValidateArrayType(*field.type, isFlexibleTail);
             ResolveType(*field.type);
         }
 
@@ -2565,6 +2689,7 @@ private:
                                                         d.name, variant.name));
             }
             for (const auto &f : variant.fields) {
+                ValidateArrayType(*f);
                 ResolveType(*f);
             }
             std::unordered_set<std::string> namedFields;
@@ -2573,6 +2698,7 @@ private:
                     EmitError(f.location, std::format("duplicate field '{}' in enum variant '{}::{}'", f.name, d.name,
                                                       variant.name));
                 }
+                ValidateArrayType(*f.type);
                 ResolveType(*f.type);
             }
         }
@@ -2609,6 +2735,7 @@ private:
             if (!seen.insert(field.name).second) {
                 EmitError(field.location, std::format("duplicate field '{}' in union '{}'", field.name, d.name));
             }
+            ValidateArrayType(*field.type);
             ResolveType(*field.type);
         }
     }
@@ -2634,9 +2761,12 @@ private:
     void CheckImplDecl(const ImplDecl &d) {
         // A compound receiver (e.g. `int[]`) resolves through the type
         // expression rather than a named symbol.
+        if (d.extendedType) {
+            ValidateArrayType(*d.extendedType);
+        }
         TypeRef extendedType = d.extendedType ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
         const bool isSliceReceiver =
-            extendedType.kind == TypeRef::Kind::Slice ||
+            extendedType.kind == TypeRef::Kind::Array ||
             (extendedType.kind == TypeRef::Kind::Named && extendedType.name.starts_with("Slice<"));
         if (!isSliceReceiver && !currentScope->Lookup(d.typeName)) {
             EmitError(d.location, std::format("extend for unknown type '{}'", d.typeName));
@@ -2702,8 +2832,7 @@ private:
     }
 
     static bool IsSliceTypeRef(const TypeRef &type) {
-        return type.kind == TypeRef::Kind::Slice ||
-               (type.kind == TypeRef::Kind::Named && type.name.starts_with("Slice<"));
+        return type.kind == TypeRef::Kind::Named && type.name.starts_with("Slice<");
     }
 
     // An element of a constant array must reduce to a literal, since the array
@@ -2739,6 +2868,9 @@ private:
             EmitError(d.location, std::format("constant '{}' requires an initializer", d.name));
             return;
         }
+        if (d.type) {
+            ValidateArrayType(**d.type);
+        }
         TypeRef valueType = CheckExpr(*d.value);
         TypeRef constType = d.type ? ResolveType(*d.type->get()) : valueType;
         if (d.type && !valueType.IsUnknown() && !constType.IsUnknown() &&
@@ -2748,12 +2880,12 @@ private:
                                              std::format("cannot assign '{}' to constant of type '{}'",
                                                          valueType.ToString(), constType.ToString())));
         }
-        if (IsSliceTypeRef(constType)) {
-            const auto *array = dynamic_cast<const SliceExpr *>(d.value.get());
+        if (IsSliceTypeRef(constType) || constType.kind == TypeRef::Kind::Array) {
+            const auto *array = dynamic_cast<const ArrayExpr *>(d.value.get());
             const bool isText = dynamic_cast<const LiteralExpr *>(d.value.get()) != nullptr;
             if (!isText && !array) {
-                EmitError(d.value->location, "a constant of slice type must be initialized with an array "
-                                             "literal or a string literal");
+                EmitError(d.value->location,
+                          "a constant sequence must be initialized with an array literal or a string literal");
             }
             else if (array) {
                 for (const auto &element : array->elements) {
@@ -2945,7 +3077,7 @@ private:
             else if (const auto *ptr = dynamic_cast<const PointerTypeExpr *>(&type)) {
                 self(*ptr->pointee);
             }
-            else if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&type)) {
+            else if (const auto *slice = dynamic_cast<const ArrayTypeExpr *>(&type)) {
                 self(*slice->element);
             }
             else if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&type)) {
@@ -3053,6 +3185,9 @@ private:
             CheckExpr(*exprStmt->expr);
         }
         else if (auto *letStmt = dynamic_cast<const LetStmt *>(&stmt)) {
+            if (letStmt->type) {
+                ValidateArrayType(*letStmt->type->get());
+            }
             TypeRef initType = letStmt->init ? CheckExpr(*letStmt->init) : TypeRef::MakeUnknown();
             TypeRef declType = letStmt->type ? ResolveType(*letStmt->type->get()) : initType;
 
@@ -3164,7 +3299,7 @@ private:
             if (iterType.IsRange() && !iterType.inner.empty()) {
                 elemType = iterType.inner[0];
             }
-            else if (auto sliceElem = SliceElementType(iterType)) {
+            else if (auto sliceElem = IndexElementType(iterType)) {
                 elemType = *sliceElem;
             }
             else {
@@ -3490,6 +3625,7 @@ private:
         }
 
         if (auto *e = dynamic_cast<const SizeOfExpr *>(&expr)) {
+            ValidateArrayType(*e->type);
             TypeRef t = ResolveType(*e->type);
             if (!t.IsUnknown() && !SizeOfTypeExpr(*e->type)) {
                 EmitError(e->location, std::format("cannot determine size of type '{}'", t.ToString()));
@@ -3559,11 +3695,19 @@ private:
                 CheckMutability(*e->operand);
             }
             TypeRef t = CheckExpr(*e->operand);
-            // Taking the address of an immutable place yields a pointer whose
-            // pointee is read-only, so writes through it can be rejected. The
-            // pointee's own const flag also propagates (e.g. &(*constPtr)).
+            // '@x' yields a read-only '*T'; '@mut x' yields a writable '*mut T'
+            // and requires a mutable place (writing through it is otherwise a
+            // way to launder immutability away).
             if (e->op == TokenKind::At) {
-                t.isConst = t.isConst || PlaceIsImmutable(*e->operand);
+                if (e->addrMut) {
+                    if (!PlaceIsWritable(*e->operand, t)) {
+                        EmitError(e->location, MutableAddressOfError(*e->operand));
+                    }
+                    t.isMut = true;
+                }
+                else {
+                    t.isMut = false;
+                }
                 return TypeRef::MakePointer(std::move(t));
             }
             return CheckUnary(e->op, t, e->location);
@@ -3896,6 +4040,9 @@ private:
 
         if (auto *e = dynamic_cast<const FieldExpr *>(&expr)) {
             TypeRef obj = CheckExpr(*e->object);
+            if (obj.kind == TypeRef::Kind::Array && obj.arrayLength && e->field == "length") {
+                return TypeRef::MakeUInt();
+            }
             if (auto elemType = SliceElementType(obj)) {
                 if (e->field == "data") {
                     return TypeRef::MakePointer(*elemType);
@@ -3972,7 +4119,7 @@ private:
             return TypeRef::MakeNamed(GenericStructInitName(*e));
         }
 
-        if (auto *e = dynamic_cast<const SliceExpr *>(&expr)) {
+        if (auto *e = dynamic_cast<const ArrayExpr *>(&expr)) {
             TypeRef elemType = TypeRef::MakeUnknown();
             for (const auto &el : e->elements) {
                 TypeRef t = CheckExpr(*el);
@@ -3980,7 +4127,7 @@ private:
                     elemType = t;
                 }
             }
-            return TypeRef::MakeNamed(SliceTypeName(elemType));
+            return TypeRef::MakeArray(elemType, e->elements.size());
         }
 
         if (auto *e = dynamic_cast<const TupleExpr *>(&expr)) {
@@ -4386,6 +4533,32 @@ private:
         return false;
     }
 
+    // Whether `place` may back a writable '*mut T' via '@mut'. `placeType` is
+    // the already-computed type of `place`; for a deref '*p' it is p's pointee,
+    // whose `isMut` says whether the pointed-to storage is writable.
+    bool PlaceIsWritable(const Expr &place, const TypeRef &placeType) {
+        if (const auto *u = dynamic_cast<const UnaryExpr *>(&place); u && u->op == TokenKind::Star) {
+            return placeType.isMut;
+        }
+        return !PlaceIsImmutable(place);
+    }
+
+    // Message for a rejected '@mut x' on an immutable place, naming the fix.
+    std::string MutableAddressOfError(const Expr &place) {
+        if (const auto *ident = dynamic_cast<const IdentExpr *>(&place)) {
+            if (const Symbol *sym = currentScope->Lookup(ident->name); sym && sym->kind == Symbol::Kind::Const) {
+                return std::format("cannot take a mutable pointer '@mut' to constant '{}'", ident->name);
+            }
+            return std::format("cannot take a mutable pointer '@mut' to immutable binding '{0}'; "
+                               "declare it 'let mut {0}'",
+                               ident->name);
+        }
+        if (const auto *u = dynamic_cast<const UnaryExpr *>(&place); u && u->op == TokenKind::Star) {
+            return "cannot take a mutable pointer '@mut' through a read-only '*T'";
+        }
+        return "cannot take a mutable pointer '@mut' to an immutable place";
+    }
+
     // Check that an assignment target is mutable.
     void CheckMutability(const Expr &target) {
         if (auto *e = dynamic_cast<const IdentExpr *>(&target)) {
@@ -4402,10 +4575,10 @@ private:
             }
         }
         else if (auto *u = dynamic_cast<const UnaryExpr *>(&target); u && u->op == TokenKind::Star) {
-            // Writing through a pointer whose pointee is read-only (e.g. from
-            // &(let x)) is forbidden.
+            // Writing through a read-only pointer '*T' (anything but '*mut T')
+            // is forbidden.
             TypeRef ptr = CheckExpr(*u->operand);
-            if (ptr.kind == TypeRef::Kind::Pointer && !ptr.inner.empty() && ptr.inner[0].isConst) {
+            if (ptr.kind == TypeRef::Kind::Pointer && !ptr.inner.empty() && !ptr.inner[0].isMut) {
                 EmitError(target.location, "cannot assign through a pointer to immutable data");
             }
         }

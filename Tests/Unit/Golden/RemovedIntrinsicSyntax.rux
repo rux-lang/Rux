@@ -3,7 +3,7 @@
 struct Target { pointerBits: uint; }
 
 #Intrinsic("Assert")
-func Assert(condition: bool, message: char8[]);
+func Assert(condition: bool, message: Slice<char8>);
 
 func Main() -> int {
     return 0;

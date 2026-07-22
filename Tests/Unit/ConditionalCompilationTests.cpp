@@ -33,6 +33,7 @@ ParseResult ParseSource(const std::string &source) {
 // fold uses its own built-in variant tables, so the enum bodies here only need
 // to exist, not to be complete.
 constexpr std::string_view kRuxPackageSource = R"(
+struct Slice<T> { data: *T; length: uint; }
 struct Target {}
 struct Build {}
 struct Compiler {}
@@ -43,8 +44,8 @@ intrinsic #build: Build;
 intrinsic #compiler: Compiler;
 intrinsic #source: Source;
 intrinsic #config: Config;
-intrinsic func #Error(message: char8[]);
-intrinsic func #Warn(message: char8[]);
+intrinsic func #Error(message: Slice<char8>);
+intrinsic func #Warn(message: Slice<char8>);
 enum OperatingSystem { Windows }
 enum Architecture { X86Bit64 }
 enum ApplicationBinaryInterface { WindowsX64 }
@@ -424,7 +425,8 @@ func Do() -> int {
 
 TEST_CASE("a #Warn call leaves no runtime code behind") {
     auto parsed = ParseSource(R"(
-intrinsic func #Warn(message: char8[]);
+struct Slice<T> { data: *T; length: uint; }
+intrinsic func #Warn(message: Slice<char8>);
 
 func Do() {
     #Warn("compile-time only");
@@ -806,7 +808,7 @@ func Do() -> Mode {
 TEST_CASE("a when condition that is not a compile-time constant is an error") {
     auto parsed = ParseSource(R"(
 func Do() -> int {
-    var runtime = 1;
+    let mut runtime = 1;
     when runtime > 0 {
         return 1;
     }
@@ -945,11 +947,13 @@ intrinsic #target: Target;
 
 TEST_CASE("ordinary intrinsic expressions lower to context literals") {
     auto parsed = ParseSource(R"(
+struct Slice<T> { data: *T; length: uint; }
+
 enum TargetFeature { SSE2, SSE3, SSSE3, SSE41, SSE42, AVX, AVX2, AVX512, NEON, SVE, RVV }
 
 struct Target {
     pointerBits: uint;
-    triple: char8[];
+    triple: Slice<char8>;
 }
 
 extend Target {
@@ -957,33 +961,33 @@ extend Target {
 }
 
 struct Build {
-    profile: char8[];
+    profile: Slice<char8>;
     debugAssertions: bool;
     debugInfo: bool;
     isTest: bool;
     timestamp: uint64;
-    date: char8[];
-    time: char8[];
+    date: Slice<char8>;
+    time: Slice<char8>;
 }
 
-struct Compiler { version: char8[]; }
+struct Compiler { version: Slice<char8>; }
 extend Compiler {
-    intrinsic func HasFeature(self, feature: char8[]) -> bool;
+    intrinsic func HasFeature(self, feature: Slice<char8>) -> bool;
 }
 
 struct Source {
     line: uint;
     column: uint;
-    fileName: char8[];
-    filePath: char8[];
-    function: char8[];
-    module: char8[];
+    fileName: Slice<char8>;
+    filePath: Slice<char8>;
+    function: Slice<char8>;
+    module: Slice<char8>;
 }
 
 struct Config {}
 extend Config {
-    intrinsic func Get(self, name: char8[]) -> char8[];
-    intrinsic func Has(self, name: char8[]) -> bool;
+    intrinsic func Get(self, name: Slice<char8>) -> Slice<char8>;
+    intrinsic func Has(self, name: Slice<char8>) -> bool;
 }
 
 intrinsic #target: Target;

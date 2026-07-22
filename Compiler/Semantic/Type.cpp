@@ -63,13 +63,18 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
     if (IsUnknown() || other.IsUnknown()) {
         return true;
     }
-    // A pointer-to-immutable (*const T) cannot be coerced into a
-    // pointer-to-mutable (*T): that would silently launder away const.
+    // A read-only pointer (*T) cannot be coerced into a writable one (*mut T):
+    // that would silently grant write access. The reverse (*mut T -> *T) is a
+    // permitted weakening.
     if (kind == Kind::Pointer && other.kind == Kind::Pointer && !inner.empty() && !other.inner.empty() &&
-        inner[0].isConst && !other.inner[0].isConst) {
+        !inner[0].isMut && other.inner[0].isMut) {
         return false;
     }
     if (*this == other) {
+        return true;
+    }
+    if (kind == Kind::Array && arrayLength && !inner.empty() && other.kind == Kind::Named &&
+        other.name == "Slice<" + inner[0].ToString() + ">") {
         return true;
     }
     // float32 widens implicitly to float64 / float (safe, no precision loss
@@ -173,8 +178,19 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
     case Kind::Str:
     case Kind::Func:
         return 8;
-    case Kind::Slice:
-        return 16;
+    case Kind::Array: {
+        if (inner.empty()) {
+            return std::nullopt;
+        }
+        if (!arrayLength) {
+            return 0;
+        }
+        const auto elemSize = inner[0].SizeInBytes();
+        if (!elemSize) {
+            return std::nullopt;
+        }
+        return *elemSize * *arrayLength;
+    }
     case Kind::Range: {
         if (inner.empty()) {
             return std::nullopt;
@@ -252,13 +268,23 @@ std::string TypeRef::ToString() const {
         return name;
     case Kind::TypeParam:
         return name;
-    case Kind::Pointer:
-        if (!inner.empty() && inner[0].isConst) {
-            return "*const " + inner[0].ToString();
+    case Kind::Pointer: {
+        if (inner.empty()) {
+            return "*?";
         }
-        return "*" + (inner.empty() ? "?" : inner[0].ToString());
-    case Kind::Slice:
-        return (inner.empty() ? "?" : inner[0].ToString()) + "[]";
+        std::string pointee = inner[0].ToString();
+        if (inner[0].kind == Kind::Array) {
+            pointee = "(" + pointee + ")";
+        }
+        return (inner[0].isMut ? "*mut " : "*") + pointee;
+    }
+    case Kind::Array: {
+        std::string element = inner.empty() ? "?" : inner[0].ToString();
+        if (!inner.empty() && inner[0].kind == Kind::Pointer) {
+            element = "(" + element + ")";
+        }
+        return element + (arrayLength ? "[" + std::to_string(*arrayLength) + "]" : "[]");
+    }
     case Kind::Range:
         return "Range<" + (inner.empty() ? "?" : inner[0].ToString()) + ">";
     case Kind::Tuple: {
@@ -268,6 +294,9 @@ std::string TypeRef::ToString() const {
                 s += ", ";
             }
             s += inner[i].ToString();
+        }
+        if (inner.size() == 1) {
+            s += ",";
         }
         return s + ")";
     }
@@ -288,7 +317,7 @@ std::string TypeRef::ToString() const {
 }
 
 bool TypeRef::operator==(const TypeRef &o) const noexcept {
-    if (kind != o.kind || name != o.name || inner.size() != o.inner.size()) {
+    if (kind != o.kind || name != o.name || arrayLength != o.arrayLength || inner.size() != o.inner.size()) {
         return false;
     }
     for (std::size_t i = 0; i < inner.size(); ++i) {

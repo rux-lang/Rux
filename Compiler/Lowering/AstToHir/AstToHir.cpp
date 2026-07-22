@@ -581,7 +581,18 @@ private:
         }
 
         if (str.size() >= 2 && str.compare(str.size() - 2, 2, "[]") == 0) {
-            return TypeRef::MakeSlice(ParseTypeRefFromString(str.substr(0, str.size() - 2)));
+            return TypeRef::MakeArray(ParseTypeRefFromString(str.substr(0, str.size() - 2)));
+        }
+        if (str.back() == ']') {
+            const std::size_t open = str.rfind('[');
+            if (open != std::string::npos && open + 1 < str.size() - 1) {
+                try {
+                    const auto length = std::stoull(str.substr(open + 1, str.size() - open - 2));
+                    return TypeRef::MakeArray(ParseTypeRefFromString(str.substr(0, open)), length);
+                }
+                catch (...) {
+                }
+            }
         }
 
         if (str[0] == '(' && str.back() == ')') {
@@ -1096,9 +1107,6 @@ private:
     }
 
     static std::optional<TypeRef> SliceElementType(const TypeRef &type) {
-        if (type.kind == TypeRef::Kind::Slice && !type.inner.empty()) {
-            return type.inner[0];
-        }
         if (type.kind != TypeRef::Kind::Named) {
             return std::nullopt;
         }
@@ -1114,6 +1122,9 @@ private:
     }
 
     static std::optional<TypeRef> IndexElementType(const TypeRef &type) {
+        if (type.kind == TypeRef::Kind::Array && !type.inner.empty()) {
+            return type.inner[0];
+        }
         if (auto elemType = SliceElementType(type)) {
             return elemType;
         }
@@ -1155,8 +1166,8 @@ private:
         if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
             return TypeRef::MakePointer(ResolveType(*t->pointee));
         }
-        if (auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
-            return TypeRef::MakeNamed(SliceTypeName(ResolveType(*t->element)));
+        if (auto *t = dynamic_cast<const ArrayTypeExpr *>(&expr)) {
+            return TypeRef::MakeArray(ResolveType(*t->element), t->size ? FixedArrayTypeSize(expr) : std::nullopt);
         }
         if (auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
             std::vector<TypeRef> elems;
@@ -1182,26 +1193,18 @@ private:
         return TypeRef::MakeUnknown();
     }
 
-    std::optional<std::uint64_t> FixedSliceTypeSize(const TypeExpr &expr) {
-        const auto *slice = dynamic_cast<const SliceTypeExpr *>(&expr);
-        if (!slice || !slice->size) {
+    std::optional<std::uint64_t> FixedArrayTypeSize(const TypeExpr &expr) {
+        const auto *array = dynamic_cast<const ArrayTypeExpr *>(&expr);
+        if (!array || !array->size) {
             return std::nullopt;
         }
-        if (const auto *literal = dynamic_cast<const LiteralExpr *>(slice->size.get())) {
+        if (const auto *literal = dynamic_cast<const LiteralExpr *>(array->size.get())) {
             return ParseUnsuffixedIntegerLiteral(literal->token);
         }
-        if (const auto *ident = dynamic_cast<const IdentExpr *>(slice->size.get())) {
+        if (const auto *ident = dynamic_cast<const IdentExpr *>(array->size.get())) {
             return LookupConstInteger(ident->name);
         }
         return std::nullopt;
-    }
-
-    TypeRef FixedSliceElementType(const TypeExpr &expr) {
-        const auto *slice = dynamic_cast<const SliceTypeExpr *>(&expr);
-        if (!slice) {
-            return TypeRef::MakeUnknown();
-        }
-        return ResolveType(*slice->element);
     }
 
     TypeRef ResolveTypeWithSubstitution(const TypeExpr &expr,
@@ -1228,8 +1231,9 @@ private:
         if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
             return TypeRef::MakePointer(ResolveTypeWithSubstitution(*t->pointee, substitutions));
         }
-        if (auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
-            return TypeRef::MakeNamed(SliceTypeName(ResolveTypeWithSubstitution(*t->element, substitutions)));
+        if (auto *t = dynamic_cast<const ArrayTypeExpr *>(&expr)) {
+            return TypeRef::MakeArray(ResolveTypeWithSubstitution(*t->element, substitutions),
+                                      t->size ? FixedArrayTypeSize(expr) : std::nullopt);
         }
         if (auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
             std::vector<TypeRef> elems;
@@ -1796,7 +1800,24 @@ private:
             return layout->first;
         }
 
+        if (type.kind == TypeRef::Kind::Array) {
+            if (type.inner.empty() || !type.arrayLength) {
+                return std::nullopt;
+            }
+            const auto elemSize = SizeOfTypeRef(type.inner[0], substitutions);
+            return elemSize ? std::optional<std::uint64_t>(*elemSize * *type.arrayLength) : std::nullopt;
+        }
+
         return type.SizeInBytes();
+    }
+
+    std::optional<std::uint64_t> AlignOfTypeRef(const TypeRef &type,
+                                                const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
+        if (type.kind == TypeRef::Kind::Array) {
+            return type.inner.empty() ? std::optional<std::uint64_t>(1) : AlignOfTypeRef(type.inner[0], substitutions);
+        }
+        const auto size = SizeOfTypeRef(type, substitutions);
+        return size ? std::optional<std::uint64_t>(Layout::FieldAlign(*size)) : std::nullopt;
     }
 
     std::optional<std::uint64_t> SizeOfEnum(const EnumDecl &decl,
@@ -1866,13 +1887,25 @@ private:
             return std::nullopt;
         }
 
-        const auto layout = Layout::FieldsSizeAndAlign(structIt->second->fields, [&](const auto &field) {
-            return SizeOfTypeExprWithSubstitution(*field.type, substitutions);
-        });
-        if (!layout) {
-            return std::nullopt;
+        std::uint64_t offset = 0;
+        std::uint64_t maxAlign = 1;
+        for (const auto &field : structIt->second->fields) {
+            const TypeRef fieldType = ResolveTypeWithSubstitution(*field.type, substitutions);
+            const auto align = AlignOfTypeRef(fieldType, substitutions);
+            if (!align) {
+                return std::nullopt;
+            }
+            offset = AlignUp(offset, *align);
+            if (!(fieldType.kind == TypeRef::Kind::Array && !fieldType.arrayLength)) {
+                const auto size = SizeOfTypeRef(fieldType, substitutions);
+                if (!size) {
+                    return std::nullopt;
+                }
+                offset += *size;
+            }
+            maxAlign = std::max(maxAlign, *align);
         }
-        return layout->first;
+        return AlignUp(offset, maxAlign);
     }
 
     std::optional<std::uint64_t>
@@ -2443,7 +2476,7 @@ private:
         inImpl = true;
         TypeRef extendedType = d.extendedType ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
         const bool isSliceReceiver =
-            extendedType.kind == TypeRef::Kind::Slice ||
+            extendedType.kind == TypeRef::Kind::Array ||
             (extendedType.kind == TypeRef::Kind::Named && extendedType.name.starts_with("Slice<"));
         if (isSliceReceiver) {
             // `self` is the slice value; the slice ABI passes its address, so
@@ -2582,13 +2615,6 @@ private:
                 hs->init = explicitType ? LowerExprAs(*s->init, *explicitType) : LowerExpr(*s->init);
             }
             hs->type = explicitType ? *explicitType : (hs->init ? hs->init->type : TypeRef::MakeUnknown());
-            if (s->type) {
-                if (const auto size = FixedSliceTypeSize(**s->type)) {
-                    hs->stackBufferLength = *size;
-                    hs->stackBufferElementType = FixedSliceElementType(**s->type);
-                }
-            }
-
             if (s->pattern) {
                 hs->pattern = LowerLetPattern(*s->pattern, hs->type, s->isMut);
                 return hs;
@@ -2657,7 +2683,7 @@ private:
             if (hs->iterable->type.IsRange() && !hs->iterable->type.inner.empty()) {
                 elemType = hs->iterable->type.inner[0];
             }
-            else if (auto sliceElem = SliceElementType(hs->iterable->type)) {
+            else if (auto sliceElem = IndexElementType(hs->iterable->type)) {
                 elemType = *sliceElem;
             }
             hs->varType = elemType;
@@ -2752,6 +2778,38 @@ private:
 
     // Expression lowering
     HirExprPtr LowerExprAs(const Expr &expr, const TypeRef &targetType) {
+        if (const auto *array = dynamic_cast<const ArrayExpr *>(&expr);
+            array && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
+            auto loweredArray = std::make_unique<HirArrayExpr>();
+            loweredArray->location = array->location;
+            loweredArray->elementType = targetType.inner[0];
+            for (const auto &element : array->elements) {
+                loweredArray->elements.push_back(LowerExprAs(*element, targetType.inner[0]));
+            }
+            loweredArray->type = targetType;
+            return loweredArray;
+        }
+
+        if (const auto *array = dynamic_cast<const ArrayExpr *>(&expr)) {
+            if (const auto sliceElement = SliceElementType(targetType)) {
+                auto loweredArray = std::make_unique<HirArrayExpr>();
+                loweredArray->location = array->location;
+                loweredArray->elementType = *sliceElement;
+                for (const auto &element : array->elements) {
+                    loweredArray->elements.push_back(LowerExprAs(*element, *sliceElement));
+                }
+                loweredArray->type = TypeRef::MakeArray(*sliceElement, array->elements.size());
+
+                auto view = std::make_unique<HirArrayToSliceExpr>();
+                view->location = array->location;
+                view->type = targetType;
+                view->elementType = *sliceElement;
+                view->length = array->elements.size();
+                view->value = std::move(loweredArray);
+                return view;
+            }
+        }
+
         // Preserve the destination tuple type by contextually lowering every
         // tuple-literal element. Besides producing the right aggregate type,
         // this applies any required scalar coercion recursively.
@@ -2800,6 +2858,16 @@ private:
                 coerce->value = std::move(lowered);
                 return coerce;
             }
+        }
+        if (lowered->type.kind == TypeRef::Kind::Array && lowered->type.arrayLength && !lowered->type.inner.empty() &&
+            SliceElementType(targetType)) {
+            auto coerce = std::make_unique<HirArrayToSliceExpr>();
+            coerce->location = expr.location;
+            coerce->type = targetType;
+            coerce->elementType = lowered->type.inner[0];
+            coerce->length = *lowered->type.arrayLength;
+            coerce->value = std::move(lowered);
+            return coerce;
         }
         return lowered;
     }
@@ -3495,9 +3563,8 @@ private:
                         he->isNoReturn = method->isNoReturn;
                         he->callee = std::move(callee);
                         for (std::size_t i = 0; i < args.size(); ++i) {
-                            if (i + 1 < funcType.inner.size() &&
-                                UnsuffixedIntegerLiteralFits(*e->args[i], funcType.inner[i])) {
-                                args[i]->type = funcType.inner[i];
+                            if (i + 1 < funcType.inner.size()) {
+                                args[i] = LowerExprAs(*e->args[i], funcType.inner[i]);
                             }
                             he->args.push_back(std::move(args[i]));
                         }
@@ -3531,6 +3598,9 @@ private:
                         if (funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()) {
                             const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
                             const std::size_t fixedCount = decl->params.size() - (isVariadic ? 1 : 0);
+                            for (std::size_t i = 0; i < std::min(e->args.size(), fixedCount); ++i) {
+                                args[i] = LowerExprAs(*e->args[i], funcType.inner[i]);
+                            }
                             for (std::size_t i = args.size(); i < fixedCount; ++i) {
                                 if (decl->params[i].defaultValue) {
                                     TypeRef pt =
@@ -3550,7 +3620,7 @@ private:
                                     args.push_back(std::move(sliceArg));
                                 }
                                 else {
-                                    auto slice = std::make_unique<HirSliceExpr>();
+                                    auto slice = std::make_unique<HirArrayExpr>();
                                     slice->location = e->location;
                                     slice->elementType = varElemType;
                                     slice->type = TypeRef::MakeNamed(SliceTypeName(varElemType));
@@ -3621,6 +3691,9 @@ private:
                         if (funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()) {
                             const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
                             const std::size_t fixedCount = decl->params.size() - (isVariadic ? 1 : 0);
+                            for (std::size_t i = 0; i < std::min(e->args.size(), fixedCount); ++i) {
+                                args[i] = LowerExprAs(*e->args[i], funcType.inner[i]);
+                            }
                             // Inject default arguments for omitted fixed
                             // parameters
                             for (std::size_t i = args.size(); i < fixedCount; ++i) {
@@ -3644,7 +3717,7 @@ private:
                                     args.push_back(std::move(sliceArg));
                                 }
                                 else {
-                                    auto slice = std::make_unique<HirSliceExpr>();
+                                    auto slice = std::make_unique<HirArrayExpr>();
                                     slice->location = e->location;
                                     slice->elementType = varElemType;
                                     slice->type = TypeRef::MakeNamed(SliceTypeName(varElemType));
@@ -3731,15 +3804,7 @@ private:
                         for (std::size_t i = 0; i < preArgs.size(); ++i) {
                             if (i + 1 < he->callee->type.inner.size()) {
                                 const TypeRef &expectedType = he->callee->type.inner[i + 1];
-                                if (UnsuffixedIntegerLiteralFits(*e->args[i], expectedType)) {
-                                    preArgs[i]->type = expectedType;
-                                }
-                                else if (IsNullLiteral(*e->args[i]) && expectedType.kind == TypeRef::Kind::Pointer) {
-                                    preArgs[i]->type = expectedType;
-                                    if (auto *lit = dynamic_cast<HirLiteralExpr *>(preArgs[i].get())) {
-                                        lit->value = "0";
-                                    }
-                                }
+                                preArgs[i] = LowerExprAs(*e->args[i], expectedType);
                             }
                             he->args.push_back(std::move(preArgs[i]));
                         }
@@ -3828,6 +3893,10 @@ private:
             he->location = e->location;
             he->object = LowerExpr(*e->object);
             he->field = e->field;
+            if (he->object->type.kind == TypeRef::Kind::Array && he->object->type.arrayLength && e->field == "length") {
+                he->type = TypeRef::MakeUInt();
+                return he;
+            }
             if (auto elemType = SliceElementType(he->object->type)) {
                 if (e->field == "data") {
                     he->type = TypeRef::MakePointer(*elemType);
@@ -3913,8 +3982,8 @@ private:
             }
             return he;
         }
-        if (auto *e = dynamic_cast<const SliceExpr *>(&expr)) {
-            auto he = std::make_unique<HirSliceExpr>();
+        if (auto *e = dynamic_cast<const ArrayExpr *>(&expr)) {
+            auto he = std::make_unique<HirArrayExpr>();
             he->location = e->location;
             TypeRef elemType = TypeRef::MakeUnknown();
             for (const auto &el : e->elements) {
@@ -3924,7 +3993,7 @@ private:
                 }
             }
             he->elementType = elemType;
-            he->type = TypeRef::MakeNamed(SliceTypeName(elemType));
+            he->type = TypeRef::MakeArray(elemType, e->elements.size());
             return he;
         }
         if (auto *e = dynamic_cast<const TupleExpr *>(&expr)) {

@@ -20,11 +20,11 @@ extend Square : Figure {
 }
 
 func Main() -> int {
-    var square = Square { size: 5 };
-    var area = square.Area();
+    let mut square = Square { size: 5 };
+    let mut area = square.Area();
     Assert(area == 25, "Expected area of the square to be 25");
 
-    var fig : Figure = square;
+    let mut fig : Figure = square;
     Assert(fig.Area() == 25, "Expected area of the figure to be 25");
     return 0;
 }

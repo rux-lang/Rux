@@ -75,9 +75,9 @@ func Main() -> int {
     Assert(1.0e300 as float32 > 3.4028235e38f32, "a float64 past the float32 range narrows to infinity");
 
     // Assignment and mutation.
-    var x: float32 = 5.0f32;
+    let mut x: float32 = 5.0f32;
     x = x + 1.0f32;
-    Assert(x == 6.0f32, "float32 var mutation via addition");
+    Assert(x == 6.0f32, "float32 let mut mutation via addition");
 
     x += 4.0f32;
     Assert(x == 10.0f32, "float32 compound += operator");

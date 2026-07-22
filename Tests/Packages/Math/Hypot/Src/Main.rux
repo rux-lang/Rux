@@ -13,7 +13,7 @@ func Close(actual: float64, expected: float64) -> bool {
     if actual < 0.0 {
         return false;
     }
-    var gap = BitsOf(actual) - BitsOf(expected);
+    let mut gap = BitsOf(actual) - BitsOf(expected);
     if gap < 0i64 {
         gap = -gap;
     }
@@ -21,8 +21,8 @@ func Close(actual: float64, expected: float64) -> bool {
 }
 
 func Main() -> int {
-    var zero = 0.0;
-    var one = 1.0;
+    let mut zero = 0.0;
+    let mut one = 1.0;
     let inf = one / zero;
 
     Assert(Hypot(0.0, 0.0) == 0.0, "Hypot(0, 0)");

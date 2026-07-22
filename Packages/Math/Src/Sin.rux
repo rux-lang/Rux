@@ -6,7 +6,7 @@ func Sin(x: float64) -> float64 {
         return x;
     }
 
-    var zero = 0.0;
+    let mut zero = 0.0;
 
     // x - x is NaN for an infinity and 0.0 for anything else finite. Sine
     // has no limit at infinity, so the result is NaN.
@@ -23,7 +23,7 @@ func Sin(x: float64) -> float64 {
     let negative = x < 0.0;
     let ax = negative ? -x : x;
 
-    var result = 0.0;
+    let mut result = 0.0;
     if ax <= 0.7853981633974483 {
         // Already inside the kernel's range, so nothing to reduce.
         result = KernelSin(ax, 0.0);

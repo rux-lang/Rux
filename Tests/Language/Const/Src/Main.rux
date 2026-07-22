@@ -1,3 +1,5 @@
+import Rux::Slice;
+
 // A constant of slice type is addressed rather than inlined, so it must exist
 // in read-only data with a {data, length} header. Reading one used to follow a
 // header that was never filled in.
@@ -10,10 +12,10 @@ const SIGNED: int64[3] = [-1i64, 0i64, 9223372036854775807i64];
 const REALS: float64[3] = [1.5, -2.5, 1e300];
 const SMALL: uint8[3] = [1u8, 2u8, 255u8];
 const NAMED: uint32[2] = [SCALAR, 7u32];
-const TEXT: char8[] = "abc";
+const TEXT: Slice<char8> = "abc";
 
-func Sum(values: uint32[]) -> uint32 {
-    var total: uint32 = 0;
+func Sum(values: Slice<uint32>) -> uint32 {
+    let mut total: uint32 = 0;
     for value in values {
         total += value;
     }
@@ -69,7 +71,7 @@ func Main() -> int {
     }
 
     // Iterating and passing a constant array as a slice.
-    var iterated: uint32 = 0;
+    let mut iterated: uint32 = 0;
     for value in WORDS {
         iterated += value;
     }
@@ -78,8 +80,8 @@ func Main() -> int {
     }
 
     // Indexing with a computed index reaches the same data.
-    var index: uint = 0;
-    var total: uint32 = 0;
+    let mut index: uint = 0;
+    let mut total: uint32 = 0;
     while index < WORDS.length {
         total += WORDS[index];
         index += 1;

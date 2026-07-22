@@ -3,7 +3,7 @@ func Tan(x: float64) -> float64 {
     if x != x {
         return x;
     }
-    var zero = 0.0;
+    let mut zero = 0.0;
     // x - x is NaN for an infinity and 0.0 for anything else finite. The
     // tangent has no limit at infinity, so the result is NaN.
     if x - x != 0.0 {
@@ -16,7 +16,7 @@ func Tan(x: float64) -> float64 {
     }
     let negative = x < 0.0;
     let ax = negative ? -x : x;
-    var result = 0.0;
+    let mut result = 0.0;
     if ax <= 0.7853981633974483 {
         // Already inside the kernel's range, so nothing to reduce.
         result = KernelTan(ax, 0.0, false);

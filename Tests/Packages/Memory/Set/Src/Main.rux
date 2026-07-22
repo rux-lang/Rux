@@ -7,7 +7,7 @@ func Main() -> int {
     let bytes = buffer as *uint8;
 
     Set(buffer, 16, 0xFF);
-    var i: uint = 0;
+    let mut i: uint = 0;
     while i < 16 {
         Assert(*(bytes + i) == 0xFF, "Set fills every byte");
         i++;

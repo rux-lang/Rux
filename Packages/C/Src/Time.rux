@@ -40,7 +40,7 @@ when #target.os {
             tm_yday: int32;         // days since January 1 [0, 365]
             tm_isdst: int32;        // daylight saving time flag
             tm_gmtoff: int64;       // seconds east of UTC
-            tm_zone: *const char8;  // timezone abbreviation
+            tm_zone: *char8;  // timezone abbreviation
         }
     }
 }
@@ -69,7 +69,7 @@ when #target.os {
 extern {
     /// Converts a tm object to a textual representation
     /// https://en.cppreference.com/c/chrono/asctime
-    func asctime(time_ptr: *const tm) -> *char8;
+    func asctime(time_ptr: *tm) -> *char8;
 
     /// Returns the approximate processor time used by the program
     /// https://en.cppreference.com/c/chrono/clock
@@ -77,7 +77,7 @@ extern {
 
     /// Converts a time_t object to a textual representation
     /// https://en.cppreference.com/c/chrono/ctime
-    func ctime(timer: *const time_t) -> *char8;
+    func ctime(timer: *time_t) -> *char8;
 
     /// Computes the difference in seconds between two calendar times
     /// https://en.cppreference.com/c/chrono/difftime
@@ -85,11 +85,11 @@ extern {
 
     /// Converts a time_t object to calendar time expressed as UTC
     /// https://en.cppreference.com/c/chrono/gmtime
-    func gmtime(timer: *const time_t) -> *tm;
+    func gmtime(timer: *time_t) -> *tm;
 
     /// Converts a time_t object to calendar time expressed as local time
     /// https://en.cppreference.com/c/chrono/localtime
-    func localtime(timer: *const time_t) -> *tm;
+    func localtime(timer: *time_t) -> *tm;
 
     /// Converts calendar time to a time_t object, normalizing the tm structure
     /// https://en.cppreference.com/c/chrono/mktime
@@ -97,7 +97,7 @@ extern {
 
     /// Converts a tm object to a custom textual representation
     /// https://en.cppreference.com/c/chrono/strftime
-    func strftime(str: *char8, count: uint, format: *const char8, time_ptr: *const tm) -> uint;
+    func strftime(str: *char8, count: uint, format: *char8, time_ptr: *tm) -> uint;
 
     /// Returns the current calendar time since the epoch
     /// https://en.cppreference.com/c/chrono/time

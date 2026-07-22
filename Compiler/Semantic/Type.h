@@ -31,7 +31,7 @@ struct TypeRef {
         Float64,
         Str,       // String
         Pointer,   // *T  — inner[0] = pointee
-        Slice,     // T[] / T[N]  — inner[0] = element
+        Array,     // T[] / T[N] — inner[0] = element; arrayLength is absent for a flexible tail
         Range,     // lo..hi / lo...hi — inner[0] = element
         Tuple,     // (T, U, ...) — inner = elements
         Named,     // user-defined struct/enum/union — name = type name
@@ -48,11 +48,13 @@ struct TypeRef {
     Kind kind = Kind::Unknown;
     std::string name;
     std::vector<TypeRef> inner; // C++17: vector<incomplete T> is valid
-    bool isVariadic = false;    // Func kind: trailing C-style ... (extern) or
+    std::optional<std::uint64_t> arrayLength;
+    bool isVariadic = false; // Func kind: trailing C-style ... (extern) or
     // Rux variadic; extra call args are allowed
-    bool isConst = false; // this type, viewed as a place/pointee, is
-
-    // read-only (e.g. the pointee of &(let x))
+    bool isMut = false; // this type, viewed as a pointee, is writable
+                        // (*mut T). The default is read-only (*T). Deliberately
+                        // NOT part of operator== so it never leaks onto loaded
+                        // value types and breaks overload resolution.
 
     // Factories
     static TypeRef MakeUnknown() {
@@ -218,10 +220,11 @@ struct TypeRef {
         return t;
     }
 
-    static TypeRef MakeSlice(TypeRef elem) {
+    static TypeRef MakeArray(TypeRef elem, std::optional<std::uint64_t> length = std::nullopt) {
         TypeRef t;
-        t.kind = Kind::Slice;
+        t.kind = Kind::Array;
         t.inner.push_back(std::move(elem));
+        t.arrayLength = length;
         return t;
     }
 

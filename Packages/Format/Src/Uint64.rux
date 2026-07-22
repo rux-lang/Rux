@@ -3,7 +3,7 @@ import Text::{ String, StringBuilder };
 // The decimal text of a uint64, in a String the caller owns and frees. There
 // is no sign to write, so the digits stand alone.
 func ToString(value: uint64) -> String {
-    var builder = StringBuilder::WithCapacity(20);
+    let mut builder = StringBuilder::WithCapacity(20);
     WriteUint(@builder, value);
     return builder.IntoString();
 }

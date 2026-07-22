@@ -1,16 +1,15 @@
 func Main() -> int {
-    // Writing through a pointer taken from a `let` binding is forbidden.
+    // Writing through a read-only pointer '*T' (from a plain '@') is forbidden.
     let a = 10;
     let p = @a;
     *p = 50;
 
-    // Laundering the immutable pointer into a mutable-pointee binding is also
-    // rejected at the point the immutability would be dropped.
-    var r: *int = @a;
+    // A read-only '*T' cannot be laundered into a writable '*mut T' binding.
+    let mut r: *mut int = @a;
 
-    // Control: taking the address of a `var` and writing through it is fine.
-    var b = 20;
-    var q = @b;
+    // Control: '@mut' on a `let mut` yields a writable '*mut int'.
+    let mut b = 20;
+    let q = @mut b;
     *q = 60;
 
     return 0;

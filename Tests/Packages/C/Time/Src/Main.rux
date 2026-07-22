@@ -11,7 +11,7 @@ func Main() -> int {
 
     // The current time is well past the epoch, and passing a pointer stores the
     // same value that is returned.
-    let slot = malloc(8) as *int64;
+    let slot = malloc(8) as *mut int64;
     let now = time(slot);
     Assert(now > 0, "time is after the epoch");
     Assert(*slot == now, "time stores the returned value");
@@ -20,7 +20,7 @@ func Main() -> int {
     let local = localtime(slot);
     Assert(mktime(local) == now, "localtime and mktime round-trip");
     when #target.os == OperatingSystem::Linux {
-        Assert(local.tm_zone != null as *const char8, "localtime provides a timezone");
+        Assert(local.tm_zone != null as *char8, "localtime provides a timezone");
     }
 
     // Break the epoch itself down as UTC: second zero is 1970-01-01 00:00:00,

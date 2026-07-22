@@ -255,6 +255,9 @@ void HirPassManager::OptimizeExpr(HirExprPtr &expr) {
     else if (auto *coerce = dynamic_cast<HirCoerceToInterfaceExpr *>(expr.get())) {
         OptimizeExpr(coerce->value);
     }
+    else if (auto *arrayView = dynamic_cast<HirArrayToSliceExpr *>(expr.get())) {
+        OptimizeExpr(arrayView->value);
+    }
     else if (auto *ifaceCall = dynamic_cast<HirInterfaceCallExpr *>(expr.get())) {
         OptimizeExpr(ifaceCall->fatPtrExpr);
         for (auto &arg : ifaceCall->args) {
@@ -273,7 +276,7 @@ void HirPassManager::OptimizeExpr(HirExprPtr &expr) {
             OptimizeExpr(f.value);
         }
     }
-    else if (auto *slice = dynamic_cast<HirSliceExpr *>(expr.get())) {
+    else if (auto *slice = dynamic_cast<HirArrayExpr *>(expr.get())) {
         for (auto &el : slice->elements) {
             OptimizeExpr(el);
         }

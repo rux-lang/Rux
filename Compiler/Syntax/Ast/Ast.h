@@ -42,19 +42,18 @@ struct PathTypeExpr : TypeExpr {
     std::vector<std::string> segments;
 };
 
-// T[], uint8[4]
-struct SliceTypeExpr : TypeExpr {
-    ~SliceTypeExpr() override;
+// Inline arrays: T[] is a flexible struct tail and T[N] has a fixed extent.
+struct ArrayTypeExpr : TypeExpr {
+    ~ArrayTypeExpr() override;
 
     TypeExprPtr element;
-    ExprPtr size; // null for unsized slices (T[]), non-null for fixed-size
-    // arrays (T[N])
+    ExprPtr size; // null for a flexible tail (T[]), non-null for T[N]
 };
 
-// *uint8  or  *const uint8
+// *uint8  or  *mut uint8
 struct PointerTypeExpr : TypeExpr {
     TypeExprPtr pointee;
-    bool pointeeConst = false; // *const T: the pointee is read-only
+    bool pointeeMut = false; // *mut T: the pointee is writable (default is read-only)
 };
 
 // (int32, float64)
@@ -224,6 +223,7 @@ struct IntrinsicExpr : Expr {
 // !x, -x, ~x, *x, &x
 struct UnaryExpr : Expr {
     TokenKind op;
+    bool addrMut = false; // '@mut x': address-of yielding a writable *mut T
     ExprPtr operand;
 };
 
@@ -295,7 +295,7 @@ struct StructInitExpr : Expr {
 };
 
 // [a, b, c]
-struct SliceExpr : Expr {
+struct ArrayExpr : Expr {
     std::vector<ExprPtr> elements;
 };
 
@@ -351,7 +351,7 @@ struct ExprStmt : Stmt {
     ExprPtr expr;
 };
 
-// let name [: Type] = expr; or var name [: Type] = expr;
+// let [mut] name [: Type] = expr;
 struct LetStmt : Stmt {
     bool isMut = false;
     std::string name;
@@ -673,7 +673,7 @@ struct Module {
     std::vector<DeclPtr> items;
 };
 
-inline SliceTypeExpr::~SliceTypeExpr() = default;
+inline ArrayTypeExpr::~ArrayTypeExpr() = default;
 inline BlockExpr::~BlockExpr() = default;
 inline DeclStmt::~DeclStmt() = default;
 inline GuardedPattern::~GuardedPattern() = default;

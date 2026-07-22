@@ -31,7 +31,7 @@ std::unique_ptr<Block> Parser::ParseBlock() {
 StmtPtr Parser::ParseStmt() {
     const auto loc = CurrentLocation();
 
-    if (Check(TokenKind::LetKeyword) || Check(TokenKind::VarKeyword)) {
+    if (Check(TokenKind::LetKeyword)) {
         return ParseLetStmt();
     }
     if (Check(TokenKind::IfKeyword) || Check(TokenKind::WhenKeyword)) {
@@ -122,7 +122,19 @@ StmtPtr Parser::ParseStmt() {
     if (!expr) {
         return nullptr;
     }
-    Expect(TokenKind::Semicolon, "expected ';'");
+    // A bare "expected ';'" is confusing when a second token follows a complete
+    // expression (e.g. two identifiers `asas asasass`, or a removed keyword used
+    // as one): name the token that got in the way instead. The cursor stays put,
+    // so the block loop re-parses that token as the next statement.
+    if (Check(TokenKind::Semicolon)) {
+        Advance();
+    }
+    else if (!IsAtEnd()) {
+        EmitError(CurrentLocation(), "expected ';' after expression, but found '" + Peek().text + "'");
+    }
+    else {
+        EmitError(CurrentLocation(), "expected ';' after expression");
+    }
     auto s = std::make_unique<ExprStmt>();
     s->location = loc;
     s->expr = std::move(expr);
@@ -135,13 +147,9 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
     auto s = std::make_unique<LetStmt>();
     s->location = loc;
 
-    if (Match(TokenKind::VarKeyword)) {
-        s->isMut = true; // var is always mutable
-    }
-    else {
-        Expect(TokenKind::LetKeyword, "expected 'let' or 'var'");
-        s->isMut = false;
-    }
+    Expect(TokenKind::LetKeyword, "expected 'let'");
+    // `let mut name ...` introduces a mutable binding; `let name ...` is immutable.
+    s->isMut = Match(TokenKind::MutKeyword);
     if (Check(TokenKind::Ident)) {
         s->name = Advance().text;
     }
@@ -329,7 +337,7 @@ std::unique_ptr<MatchStmt> Parser::ParseMatchStmt() {
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         MatchStmt::Arm arm;
         arm.location = CurrentLocation();
-        arm.pattern = ParsePattern();
+        arm.pattern = ParseMatchArmPattern();
         Expect(TokenKind::FatArrow, "expected '=>'");
 
         if (Check(TokenKind::LeftBrace)) {

@@ -45,9 +45,9 @@ func Main() -> int {
     Assert(euro as char32 as uint32 == 0x20ACu32, "char16 widens to char32");
 
     // Assignment and mutation.
-    var cursor: char16 = c16'a';
+    let mut cursor: char16 = c16'a';
     cursor = c16'\u{E9}';
-    Assert(cursor as uint32 == 0xE9u32, "char16 var mutation");
+    Assert(cursor as uint32 == 0xE9u32, "char16 let mut mutation");
 
     return 0;
 }

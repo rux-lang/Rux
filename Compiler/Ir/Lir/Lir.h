@@ -175,14 +175,13 @@ struct LirConstDecl {
     TypeRef type;
     std::string value; // printed literal of the constant expression
 
-    // A constant of slice type is emitted as read-only data plus a
-    // {data, length} header published under `name`. Its contents come either
-    // from an array literal (elements) or from a string literal (text, holding
-    // the already decoded bytes); exactly one is set.
+    // Constant sequence contents. Slice<T> publishes a {data, length} header;
+    // T[N] publishes the inline elements directly under `name`.
     TypeRef elementType;
     std::vector<std::string> elements;
     std::string text;
     bool isTextSlice = false;
+    bool hasSequenceData = false;
 };
 
 struct LirTypeAlias {

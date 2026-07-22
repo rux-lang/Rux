@@ -1057,14 +1057,25 @@ static std::string NormalizePrimitiveName(const std::string &name) {
 }
 
 // Canonical string key for an `extend` target. Named types keep their bare name
-// (generic-agnostic, matching struct behaviour); slices become `Slice<Elem>` to
-// match the internal slice type spelling used for method lookup.
+// (generic-agnostic, matching struct behaviour); arrays retain their source
+// spelling and are validated semantically.
 static std::string ImplTypeName(const TypeExpr &type) {
     if (const auto *n = dynamic_cast<const NamedTypeExpr *>(&type)) {
-        return NormalizePrimitiveName(n->name);
+        std::string result = NormalizePrimitiveName(n->name);
+        if (!n->typeArgs.empty()) {
+            result += "<";
+            for (std::size_t i = 0; i < n->typeArgs.size(); ++i) {
+                if (i) {
+                    result += ", ";
+                }
+                result += ImplTypeName(*n->typeArgs[i]);
+            }
+            result += ">";
+        }
+        return result;
     }
-    if (const auto *s = dynamic_cast<const SliceTypeExpr *>(&type)) {
-        return "Slice<" + ImplTypeName(*s->element) + ">";
+    if (const auto *s = dynamic_cast<const ArrayTypeExpr *>(&type)) {
+        return ImplTypeName(*s->element) + (s->size ? "[N]" : "[]");
     }
     if (const auto *p = dynamic_cast<const PointerTypeExpr *>(&type)) {
         return "*" + ImplTypeName(*p->pointee);

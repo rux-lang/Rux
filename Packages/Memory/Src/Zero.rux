@@ -10,8 +10,8 @@ func Zero(ptr: *opaque, size: uint) {
     when #target.os == .Windows {
         RtlZeroMemory(ptr, size);
     } else {
-        let bytes = ptr as *uint8;
-        var offset: uint = 0;
+        let bytes = ptr as *mut uint8;
+        let mut offset: uint = 0;
         while offset < size {
             *(bytes + offset) = 0 as uint8;
             offset++;

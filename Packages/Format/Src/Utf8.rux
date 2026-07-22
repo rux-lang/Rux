@@ -12,7 +12,7 @@ const Replacement = 0xFFFDu32;
 // The UTF-8 bytes of a code point: one byte below U+0080, and up to four
 // above it, each continuation byte carrying six more bits of the value.
 func WriteUtf8(builder: *StringBuilder, code: uint32) {
-    var value = code;
+    let mut value = code;
     if value > 0x10FFFFu32 || (value >= 0xD800u32 && value <= 0xDFFFu32) {
         value = Replacement;
     }

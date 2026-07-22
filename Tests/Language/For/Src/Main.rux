@@ -19,19 +19,19 @@ func Main() -> int {
     // (here a uint32 const in a Range<int>) must be widened when stored
     // into the range. Otherwise the bound's high bits are left
     // uninitialized and the loop runs zero times or never terminates.
-    var exclusive: int = 0;
+    let mut exclusive: int = 0;
     for i in 0..HI {
         exclusive += 1;
     }
     Assert(exclusive == 5, "const exclusive upper bound should iterate 5 times");
 
-    var inclusive: int = 0;
+    let mut inclusive: int = 0;
     for i in 0..=HI {
         inclusive += 1;
     }
     Assert(inclusive == 6, "const inclusive upper bound should iterate 6 times");
 
-    var both: int = 0;
+    let mut both: int = 0;
     for i in LO..HI {
         both += 1;
     }
@@ -44,8 +44,8 @@ func Main() -> int {
     // with an outer k=3 iterates over 3..7 (4 times). Because the loop reuses
     // the existing mutable `k` as its induction variable, `k` holds its final
     // value (7) after the loop.
-    var k: int = 3;
-    var count: int = 0;
+    let mut k: int = 3;
+    let mut count: int = 0;
     for k in k..7 {
         count += 1;
     }
@@ -54,9 +54,9 @@ func Main() -> int {
 
     // Same reuse semantics for slice iteration: the loop drives the existing
     // `elem`, which retains the last element after the loop.
-    var nums: int[] = [10, 20, 30];
-    var elem: int = 99;
-    var sum: int = 0;
+    let mut nums: Slice<int> = [10, 20, 30];
+    let mut elem: int = 99;
+    let mut sum: int = 0;
     for elem in nums {
         sum += elem;
     }

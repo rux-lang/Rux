@@ -50,8 +50,11 @@ int SizeOf(const TypeRef &t) {
         }
         return AlignUp(offset, maxAlign);
     }
-    case TypeRef::Kind::Slice:
-        return 16;
+    case TypeRef::Kind::Array:
+        if (t.inner.empty() || !t.arrayLength) {
+            return 0;
+        }
+        return SizeOf(t.inner[0]) * static_cast<int>(*t.arrayLength);
     case TypeRef::Kind::Range: {
         const TypeRef &elemType = t.inner.empty() ? TypeRef::MakeInt64() : t.inner[0];
         int elemSize = SizeOf(elemType);
@@ -79,6 +82,14 @@ int SizeOf(const TypeRef &t) {
     }
 }
 
+int AlignOf(const TypeRef &t) {
+    if (t.kind == TypeRef::Kind::Array) {
+        return t.inner.empty() ? 1 : AlignOf(t.inner[0]);
+    }
+    const int size = SizeOf(t);
+    return size > 0 ? std::min(size, 8) : 1;
+}
+
 bool IsFloat(const TypeRef &t) {
     return t.kind == TypeRef::Kind::Float32 || t.kind == TypeRef::Kind::Float64;
 }
@@ -94,7 +105,7 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known)
     int maxAlign = 1;
     for (const auto &f : s.fields) {
         int sz = SizeOf(f.type);
-        int al = sz > 0 ? std::min(sz, 8) : 1;
+        int al = AlignOf(f.type);
         if (f.type.kind == TypeRef::Kind::Named) {
             const auto baseName = BaseTypeName(f.type.name);
             if (auto it = known.find(baseName); it != known.end()) {

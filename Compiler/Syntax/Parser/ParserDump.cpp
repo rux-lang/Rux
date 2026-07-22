@@ -69,15 +69,23 @@ private:
             }
             return s;
         }
-        if (const auto *a = dynamic_cast<const SliceTypeExpr *>(t)) {
-            std::string s = TypeStr(a->element.get()) + "[";
+        if (const auto *a = dynamic_cast<const ArrayTypeExpr *>(t)) {
+            std::string element = TypeStr(a->element.get());
+            if (dynamic_cast<const PointerTypeExpr *>(a->element.get())) {
+                element = "(" + element + ")";
+            }
+            std::string s = element + "[";
             if (a->size) {
                 s += "N"; // size is an Expr, not easily stringified
             }
             return s + "]";
         }
         if (const auto *ptr = dynamic_cast<const PointerTypeExpr *>(t)) {
-            return "*" + TypeStr(ptr->pointee.get());
+            std::string pointee = TypeStr(ptr->pointee.get());
+            if (dynamic_cast<const ArrayTypeExpr *>(ptr->pointee.get())) {
+                pointee = "(" + pointee + ")";
+            }
+            return (ptr->pointeeMut ? "*mut " : "*") + pointee;
         }
         if (const auto *tup = dynamic_cast<const TupleTypeExpr *>(t)) {
             std::string s = "(";
@@ -86,6 +94,9 @@ private:
                     s += ", ";
                 }
                 s += TypeStr(tup->elements[i].get());
+            }
+            if (tup->elements.size() == 1) {
+                s += ",";
             }
             return s + ")";
         }
@@ -643,7 +654,7 @@ private:
         else {
             out << s.name;
         }
-        out << "' (" << (s.isMut ? "var" : "let") << ")";
+        out << "' (" << (s.isMut ? "let mut" : "let") << ")";
         if (s.type) {
             out << " : " << TypeStr(s.type->get());
         }
@@ -985,9 +996,9 @@ private:
             }
             --indent;
         }
-        else if (const auto *sliceExpr = dynamic_cast<const SliceExpr *>(&expr)) {
+        else if (const auto *sliceExpr = dynamic_cast<const ArrayExpr *>(&expr)) {
             Pad();
-            out << "SliceExpr [" << sliceExpr->elements.size() << "]\n";
+            out << "ArrayExpr [" << sliceExpr->elements.size() << "]\n";
             ++indent;
             for (const auto &e : sliceExpr->elements) {
                 if (e) {

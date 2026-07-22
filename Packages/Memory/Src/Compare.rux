@@ -6,13 +6,13 @@ when #target.os == .Windows {
 
 // Finds the offset at which two blocks of memory first differ
 // https://rux-lang.dev/api/memory/compare
-func Compare(lhs: *const opaque, rhs: *const opaque, length: uint) -> uint {
+func Compare(lhs: *opaque, rhs: *opaque, length: uint) -> uint {
     when #target.os == .Windows {
         return RtlCompareMemory(lhs, rhs, length);
     } else {
-        let left = lhs as *const uint8;
-        let right = rhs as *const uint8;
-        var offset: uint = 0;
+        let left = lhs as *uint8;
+        let right = rhs as *uint8;
+        let mut offset: uint = 0;
         while offset < length {
             if *(left + offset) != *(right + offset) {
                 return offset;

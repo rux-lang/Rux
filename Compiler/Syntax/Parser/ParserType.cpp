@@ -10,46 +10,60 @@ namespace Rux {
 // Type expressions
 TypeExprPtr Parser::ParseType() {
     const auto loc = CurrentLocation();
+    TypeExprPtr base;
 
     // Function type: func(params) -> T
     if (Check(TokenKind::FuncKeyword)) {
-        return ParseFunctionType();
+        base = ParseFunctionType();
     }
-
-    // Pointer: *T  or  *const T
-    if (Match(TokenKind::Star)) {
-        const bool pointeeConst = Match(TokenKind::ConstKeyword); // optional 'const' qualifier
+    // Pointer: *T  or  *mut T
+    else if (Match(TokenKind::Star)) {
+        const bool pointeeMut = Match(TokenKind::MutKeyword); // optional 'mut' qualifier
         auto p = std::make_unique<PointerTypeExpr>();
         p->location = loc;
-        p->pointeeConst = pointeeConst;
+        p->pointeeMut = pointeeMut;
         p->pointee = ParseType();
-        return p;
+        base = std::move(p);
     }
-
-    // Tuple: (T, U, ...)
-    if (Check(TokenKind::LeftParen)) {
+    // Grouped type or tuple: (T) or (T, U, ...)
+    else if (Check(TokenKind::LeftParen)) {
         Advance();
-        auto t = std::make_unique<TupleTypeExpr>();
-        t->location = loc;
-        while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-            t->elements.push_back(ParseType());
-            if (!Match(TokenKind::Comma)) {
-                break;
+        if (Check(TokenKind::RightParen)) {
+            auto tuple = std::make_unique<TupleTypeExpr>();
+            tuple->location = loc;
+            base = std::move(tuple);
+        }
+        else {
+            auto first = ParseType();
+            if (Match(TokenKind::Comma)) {
+                auto tuple = std::make_unique<TupleTypeExpr>();
+                tuple->location = loc;
+                tuple->elements.push_back(std::move(first));
+                while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                    tuple->elements.push_back(ParseType());
+                    if (!Match(TokenKind::Comma)) {
+                        break;
+                    }
+                }
+                base = std::move(tuple);
+            }
+            else {
+                base = std::move(first);
             }
         }
         Expect(TokenKind::RightParen, "expected ')'");
-        return t;
     }
-
-    TypeExprPtr base = ParseBaseType();
+    else {
+        base = ParseBaseType();
+    }
     if (!base) {
         return nullptr;
     }
 
-    // Postfix slice suffix: T[]  or  T[N]
+    // Postfix inline-array suffix: T[] (flexible tail) or T[N] (fixed)
     while (Check(TokenKind::LeftBracket)) {
         Advance();
-        auto a = std::make_unique<SliceTypeExpr>();
+        auto a = std::make_unique<ArrayTypeExpr>();
         a->location = loc;
         a->element = std::move(base);
         if (!Check(TokenKind::RightBracket)) {

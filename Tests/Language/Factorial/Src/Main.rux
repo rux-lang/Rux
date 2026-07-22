@@ -2,7 +2,7 @@ import Rux::Assert;
 
 // Computes the factorial of a number using an iterative approach
 func Factorial(n: uint) -> uint {
-    var result: uint = 1;
+    let mut result: uint = 1;
     for i in 2..=n {
         result *= i as uint;
     }

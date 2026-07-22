@@ -2,9 +2,9 @@ import Rux::Assert;
 import Text::String;
 
 func Main() -> int {
-    var str1 = String::From("One");
-    var str2 = String::From("Two");
-    var str = str1 + " join " + str2;
+    let mut str1 = String::From("One");
+    let mut str2 = String::From("Two");
+    let mut str = str1 + " join " + str2;
     let expected = "One join Two";
     Assert(str.data[0] == expected[0], "Expected concatenated string to match");
     Assert(str.data[1] == expected[1], "Expected concatenated string to match");

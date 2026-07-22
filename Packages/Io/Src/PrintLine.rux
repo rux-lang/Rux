@@ -8,12 +8,12 @@ func PrintLine(value: String) {
     PrintLine();
 }
 
-func PrintLine(value: char8[]) {
+func PrintLine(value: Slice<char8>) {
     Print(value);
     PrintLine();
 }
 
-func PrintLine(format: char8[], args: Stringable...) {
+func PrintLine(format: Slice<char8>, args: Stringable...) {
     Print(format, args...);
     PrintLine();
 }

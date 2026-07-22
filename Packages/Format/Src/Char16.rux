@@ -6,7 +6,7 @@ import Text::{ String, StringBuilder };
 // conversion only sees one -- so it comes out as the replacement character
 // rather than as an ill-formed sequence.
 func ToString(value: char16) -> String {
-    var builder = StringBuilder::WithCapacity(3);
+    let mut builder = StringBuilder::WithCapacity(3);
     WriteChar(@builder, value);
     return builder.IntoString();
 }

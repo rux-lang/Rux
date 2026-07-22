@@ -6,20 +6,20 @@ import Text::String;
 // Comparing against a literal needs a String to compare with, and that String
 // owns a block like any other. Freeing it here keeps the tests honest about the
 // ownership rule the package is built on.
-func Matches(value: String, expected: char8[]) -> bool {
-    var want = String::From(expected);
+func Matches(value: String, expected: Slice<char8>) -> bool {
+    let mut want = String::From(expected);
     let result = value.Equals(want);
     want.Free();
     return result;
 }
 
 func Main() -> int {
-    var hello = String::From("Hello");
-    var world = String::From("World");
+    let mut hello = String::From("Hello");
+    let mut world = String::From("World");
 
     // Concatenation builds a new block and leaves both operands alone: that is
     // the whole contract of an immutable String.
-    var joined = hello + world;
+    let mut joined = hello + world;
     if joined.Length() != 10 { return 10; }
     if !Matches(joined, "HelloWorld") { return 11; }
     if hello.Length() != 5 { return 12; }
@@ -28,45 +28,45 @@ func Main() -> int {
     joined.Free();
 
     // A slice on the right avoids wrapping the literal in a String first.
-    var greeting = hello + ", " + world;
+    let mut greeting = hello + ", " + world;
     if greeting.Length() != 12 { return 20; }
     if !Matches(greeting, "Hello, World") { return 21; }
     greeting.Free();
 
     // Concatenating an empty String copies the other side rather than aliasing
     // it, so the result can be freed on its own.
-    var empty = String::New();
-    var copy = hello + empty;
+    let mut empty = String::New();
+    let mut copy = hello + empty;
     if !copy.Equals(hello) { return 30; }
     if copy.Data() == hello.Data() { return 31; }
     copy.Free();
 
-    var back = empty + hello;
+    let mut back = empty + hello;
     if !back.Equals(hello) { return 32; }
     back.Free();
 
     // Two empty operands allocate nothing.
-    var nothing = empty + String::New();
+    let mut nothing = empty + String::New();
     if !nothing.IsEmpty() { return 33; }
     if nothing.Data() != null { return 34; }
     nothing.Free();
 
     // Repeat lays the contents down count times.
-    var thrice = hello.Repeat(3);
+    let mut thrice = hello.Repeat(3);
     if thrice.Length() != 15 { return 40; }
     if !Matches(thrice, "HelloHelloHello") { return 41; }
     thrice.Free();
 
-    var once = hello.Repeat(1);
+    let mut once = hello.Repeat(1);
     if !once.Equals(hello) { return 42; }
     once.Free();
 
     // A count of zero, or repeating nothing, yields the empty String.
-    var never = hello.Repeat(0);
+    let mut never = hello.Repeat(0);
     if !never.IsEmpty() { return 43; }
     never.Free();
 
-    var stillEmpty = empty.Repeat(4);
+    let mut stillEmpty = empty.Repeat(4);
     if !stillEmpty.IsEmpty() { return 44; }
     stillEmpty.Free();
 

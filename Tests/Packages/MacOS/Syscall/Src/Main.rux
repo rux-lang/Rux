@@ -40,7 +40,7 @@ when #target.os == OperatingSystem::MacOS &&
             return 4;
         }
 
-        var time: Timeval;
+        let mut time: Timeval;
         if GetTimeOfDay(@time) != 0 || time.seconds <= 0 ||
             time.microseconds < 0 || time.microseconds >= 1000000 {
             return 5;
@@ -53,7 +53,7 @@ when #target.os == OperatingSystem::MacOS &&
             return 6;
         }
 
-        let bytes = mapping as *char8;
+        let bytes = mapping as *mut char8;
         *bytes = 42 as char8;
         if *bytes != 42 as char8 {
             return 7;

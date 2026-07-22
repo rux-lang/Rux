@@ -168,6 +168,7 @@ private:
     // Patterns
     PatternPtr ParsePattern();
     PatternPtr ParsePrimaryPattern();
+    PatternPtr ParseMatchArmPattern();
 
     // Expression argument list
     std::vector<ExprPtr> ParseArgList(); // ( expr, ... )

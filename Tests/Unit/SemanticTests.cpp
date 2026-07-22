@@ -173,6 +173,84 @@ TEST_CASE("ordinary unknown types keep the unknown-type diagnostic") {
     CHECK_EQ(diagnostics.front().message, "unknown type 'CustomInteger'");
 }
 
+TEST_CASE("a flexible array is accepted only as the final struct field") {
+    CHECK(AnalyzeSource(R"(
+        struct Packet {
+            length: uint;
+            data: uint8[];
+        }
+    )")
+              .empty());
+
+    const auto diagnostics = AnalyzeSource(R"(
+        struct NotTail {
+            data: uint8[];
+            length: uint;
+        }
+        union NotStruct { data: uint8[] }
+        func Invalid(value: uint8[]) -> uint8[] {
+            let mut local: uint8[];
+            return value;
+        }
+    )");
+
+    CHECK_EQ(std::ranges::count_if(diagnostics,
+                                   [](const SemanticDiagnostic &diagnostic) {
+                                       return diagnostic.message ==
+                                              "flexible array type is only allowed as the final field of a struct";
+                                   }),
+             5);
+}
+
+TEST_CASE("fixed arrays require matching literal extents") {
+    CHECK(AnalyzeSource(R"(
+        const Bytes: uint8[3] = [1u8, 2u8, 3u8];
+        func Main() {
+            let mut values: uint16[2] = [10u16, 20u16];
+            values[1] = 30u16;
+        }
+    )")
+              .empty());
+
+    const auto diagnostics = AnalyzeSource("const Bytes: uint8[2] = [1u8, 2u8, 3u8];");
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK(diagnostics.front().message.find("cannot assign") != std::string::npos);
+}
+
+TEST_CASE("prefix operators bind more tightly than casts") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Main() {
+            let value = 10;
+            let pointer = @value;
+            let address: uint = @value as uint;
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("pointer and array type syntax preserves grouping") {
+    CHECK(AnalyzeSource(R"(
+        func Main() {
+            let values: uint[4] = [255u, 127u, 10u, 0u];
+            let pointerToArray: *(uint[4]) = @values;
+            let arrayOfPointers: (*uint)[2] = [@values[0], @values[1]];
+            let oneTuple: (uint,) = (1u,);
+        }
+    )")
+              .empty());
+
+    const auto diagnostics = AnalyzeSource(R"(
+        func Main() {
+            let values: uint[4] = [255u, 127u, 10u, 0u];
+            let wrong: (*uint)[4] = @values;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics.front().message, "cannot assign '*(uint[4])' to '(*uint)[4]'");
+}
+
 TEST_CASE("bare package import binds the eponymous module for qualified access") {
     const auto diagnostics = AnalyzeWithDep(R"(
         import Platform;

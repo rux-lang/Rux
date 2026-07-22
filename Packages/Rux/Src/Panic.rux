@@ -1,1 +1,1 @@
-intrinsic func Panic(message: char8[]);
+intrinsic func Panic(message: Slice<char8>);

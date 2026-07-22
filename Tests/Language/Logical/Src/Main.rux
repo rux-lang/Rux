@@ -6,7 +6,7 @@
 // followed, and the whole expression came out false however the operands stood.
 
 func Main() -> int {
-    var x: int = 5;
+    let mut x: int = 5;
 
     // The plain forms, which never broke.
     if !(x > 100 || x >= 1) { return 1; }
@@ -37,7 +37,7 @@ func Main() -> int {
 
     // Short-circuiting still holds: the right side of a false && and of a true ||
     // is never reached, which a division by zero there would otherwise announce.
-    var zero: int = 0;
+    let mut zero: int = 0;
     if zero != 0 && 10 / zero == 1 { return 40; }
     if !(zero == 0 || 10 / zero == 1) { return 41; }
 

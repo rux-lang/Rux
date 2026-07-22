@@ -1,7 +1,7 @@
 import Rux::Assert;
 
 func Sum(args: float...) -> float {
-    var sum: float = 0.0;
+    let mut sum: float = 0.0;
     for val in args {
         sum += val;
     }
@@ -13,7 +13,7 @@ func Calc(args: float...) -> float {
 }
 
 func Main() -> int {
-    var res = Sum();
+    let mut res = Sum();
     Assert(res < 0.001, "Expected sum to be 0.0 for no arguments");
 
     res = Sum(5.0);

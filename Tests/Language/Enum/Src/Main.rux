@@ -38,5 +38,10 @@ func Main() -> int {
         Shape::Point => 0.0
     };
     Assert(val == 200.0, "Expected 200.0");
+    let fallback = match 7 {
+        0 => 1,
+        else => 2
+    };
+    Assert(fallback == 2, "Expected the else match arm");
     return 0;
 }

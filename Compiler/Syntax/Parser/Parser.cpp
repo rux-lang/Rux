@@ -235,7 +235,7 @@ bool Parser::IsTypeArgListAhead() const noexcept {
         case TokenKind::Comma:
         case TokenKind::ColonColon:
         case TokenKind::SelfKeyword:
-        case TokenKind::ConstKeyword:
+        case TokenKind::MutKeyword:
             continue;
         default:
             return false;
@@ -271,10 +271,9 @@ void Parser::Synchronize() {
             k == TokenKind::UnionKeyword || k == TokenKind::InterfaceKeyword || k == TokenKind::ExtendKeyword ||
             k == TokenKind::ModuleKeyword || k == TokenKind::ImportKeyword || k == TokenKind::ConstKeyword ||
             k == TokenKind::TypeKeyword || k == TokenKind::ExternKeyword || k == TokenKind::PubKeyword ||
-            k == TokenKind::LetKeyword || k == TokenKind::VarKeyword || k == TokenKind::IfKeyword ||
-            k == TokenKind::WhenKeyword || k == TokenKind::WhileKeyword || k == TokenKind::DoKeyword ||
-            k == TokenKind::LoopKeyword || k == TokenKind::ForKeyword || k == TokenKind::ReturnKeyword ||
-            k == TokenKind::MatchKeyword) {
+            k == TokenKind::LetKeyword || k == TokenKind::IfKeyword || k == TokenKind::WhenKeyword ||
+            k == TokenKind::WhileKeyword || k == TokenKind::DoKeyword || k == TokenKind::LoopKeyword ||
+            k == TokenKind::ForKeyword || k == TokenKind::ReturnKeyword || k == TokenKind::MatchKeyword) {
             return;
         }
 

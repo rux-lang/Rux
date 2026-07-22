@@ -59,14 +59,14 @@ func Main() -> int {
     // The surrogate range is reserved by UTF-16 and is not a code point, but it
     // is a value a char32 can be cast to at run time, which is what an encoder
     // has to defend itself against.
-    var reserved: uint32 = 0xD800;
+    let mut reserved: uint32 = 0xD800;
     let surrogate = reserved as char32;
     Assert(surrogate as uint32 == 0xD800u32, "char32 holds a surrogate value from a cast");
 
     // Assignment and mutation.
-    var cursor: char32 = c32'a';
+    let mut cursor: char32 = c32'a';
     cursor = c32'\u{1F600}';
-    Assert(cursor as uint32 == 0x1F600u32, "char32 var mutation");
+    Assert(cursor as uint32 == 0x1F600u32, "char32 let mut mutation");
 
     return 0;
 }

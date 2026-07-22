@@ -2,9 +2,9 @@
 struct Config {}
 
 extend Config {
-    intrinsic func Get(self, name: char8[]) -> char8[];
+    intrinsic func Get(self, name: Slice<char8>) -> Slice<char8>;
 
-    intrinsic func Has(self, name: char8[]) -> bool;
+    intrinsic func Has(self, name: Slice<char8>) -> bool;
 }
 
 // Compile-time value
