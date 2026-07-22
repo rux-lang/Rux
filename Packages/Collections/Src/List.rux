@@ -1,1 +1,210 @@
-// Planned package API; List is not implemented yet.
+import Memory::{ Alloc, Copy, Free, Realloc };
+
+// A growable collection which owns one contiguous heap allocation. Capacity
+// grows geometrically as elements are added, while length counts only the
+// initialized elements. Assignment shares the allocation; Clone when both
+// values need independent ownership, and Free each owned allocation once.
+struct List<T> {
+    data: *T;
+    length: uint;
+    capacity: uint;
+}
+
+extend List<T> {
+    // Creates an empty List without allocating.
+    func New() -> List<T> {
+        return List<T> { data: null, length: 0, capacity: 0 };
+    }
+
+    // Creates an empty List with room for capacity elements.
+    func WithCapacity(capacity: uint) -> List<T> {
+        if capacity == 0 {
+            return List<T> { data: null, length: 0, capacity: 0 };
+        }
+
+        let ptr = Alloc(capacity * sizeof(T)) as *T;
+        return List<T> { data: ptr, length: 0, capacity: capacity };
+    }
+
+    // Copies a slice into an independently owned List. Its initial capacity is
+    // exactly its length, and grows on the next append when full.
+    func From(items: Slice<T>) -> List<T> {
+        if items.length == 0 {
+            return List<T> { data: null, length: 0, capacity: 0 };
+        }
+
+        let ptr = Alloc(items.length * sizeof(T)) as *T;
+        Copy(ptr, items.data, items.length * sizeof(T));
+        return List<T> { data: ptr, length: items.length, capacity: items.length };
+    }
+
+    // Copies the initialized elements into an independently owned List.
+    // Element values are copied byte-for-byte; allocations owned by individual
+    // elements remain the element owner's responsibility.
+    func Clone(self) -> List<T> {
+        if self.length == 0 {
+            return List<T> { data: null, length: 0, capacity: 0 };
+        }
+
+        let ptr = Alloc(self.length * sizeof(T)) as *T;
+        Copy(ptr, self.data, self.length * sizeof(T));
+        return List<T> { data: ptr, length: self.length, capacity: self.length };
+    }
+
+    // Releases the allocation and leaves an empty, reusable List behind.
+    func Free(self) {
+        Free(self.data);
+        self.data = null;
+        self.length = 0;
+        self.capacity = 0;
+    }
+
+    // Returns the allocation holding the initialized elements and spare
+    // capacity. A growth operation may move it; Free invalidates it.
+    func Data(self) -> *T {
+        return self.data;
+    }
+
+    func Length(self) -> uint {
+        return self.length;
+    }
+
+    func Capacity(self) -> uint {
+        return self.capacity;
+    }
+
+    func IsEmpty(self) -> bool {
+        return self.length == 0;
+    }
+
+    // Makes room for additional elements without changing Length.
+    func Reserve(self, additional: uint) {
+        self.Grow(self.length + additional);
+    }
+
+    // Ensures capacity for required elements. Starting at four slots and then
+    // doubling keeps repeated additions amortized constant time.
+    func Grow(self, required: uint) {
+        if required <= self.capacity {
+            return;
+        }
+
+        let mut capacity = self.capacity;
+        if capacity == 0 {
+            capacity = 4;
+        }
+        while capacity < required {
+            let doubled = capacity * 2;
+            capacity = doubled < capacity ? required : doubled;
+        }
+
+        self.data = self.data == null
+            ? Alloc(capacity * sizeof(T)) as *T
+            : Realloc(self.data, capacity * sizeof(T)) as *T;
+        self.capacity = capacity;
+    }
+
+    // Appends one element, growing the allocation when it is full.
+    func Add(self, value: T) {
+        self.Grow(self.length + 1);
+        self.data[self.length] = value;
+        self.length++;
+    }
+
+    // Add under the sequence-oriented name used by StringBuilder.
+    func Append(self, value: T) {
+        self.Grow(self.length + 1);
+        self.data[self.length] = value;
+        self.length++;
+    }
+
+    // Inserts before index and shifts following elements to the right. Index
+    // may equal Length to append; a larger index is rejected.
+    func Insert(self, index: uint, value: T) -> bool {
+        if index > self.length {
+            return false;
+        }
+
+        self.Grow(self.length + 1);
+        let mut i = self.length;
+        while i > index {
+            self.data[i] = self.data[i - 1];
+            i--;
+        }
+        self.data[index] = value;
+        self.length++;
+        return true;
+    }
+
+    // Removes the element at index and closes the gap. Capacity is retained so
+    // later additions can reuse the allocation. An invalid index is rejected.
+    func RemoveAt(self, index: uint) -> bool {
+        if index >= self.length {
+            return false;
+        }
+
+        let mut i = index;
+        while i + 1 < self.length {
+            self.data[i] = self.data[i + 1];
+            i++;
+        }
+        self.length--;
+        return true;
+    }
+
+    // Unchecked typed access, matching Array and slice indexing.
+    func At(self, index: uint) -> T {
+        return self.data[index];
+    }
+
+    func Set(self, index: uint, value: T) {
+        self.data[index] = value;
+    }
+
+    // Removes all elements while retaining the allocation for reuse.
+    func Clear(self) {
+        self.length = 0;
+    }
+
+    // Releases unused capacity. An empty List becomes allocation-free.
+    func Shrink(self) {
+        if self.capacity == self.length {
+            return;
+        }
+        if self.length == 0 {
+            self.Free();
+            return;
+        }
+
+        self.data = Realloc(self.data, self.length * sizeof(T)) as *T;
+        self.capacity = self.length;
+    }
+
+    // Borrows the initialized elements without exposing spare capacity.
+    func AsSlice(self) -> Slice<T> {
+        return Slice<T> { data: self.data, length: self.length };
+    }
+
+    // Copies the initialized elements into a fixed-size owning Array.
+    func ToArray(self) -> Array<T> {
+        if self.length == 0 {
+            return Array<T> { data: null, length: 0 };
+        }
+
+        let ptr = Alloc(self.length * sizeof(T)) as *T;
+        Copy(ptr, self.data, self.length * sizeof(T));
+        return Array<T> { data: ptr, length: self.length };
+    }
+
+    // Transfers the allocation into a fixed-size Array without copying. The
+    // List is reset and no longer owns anything.
+    func IntoArray(self) -> Array<T> {
+        self.Shrink();
+
+        let result = Array<T> { data: self.data, length: self.length };
+        self.data = null;
+        self.length = 0;
+        self.capacity = 0;
+        return result;
+    }
+}

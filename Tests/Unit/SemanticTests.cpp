@@ -322,3 +322,52 @@ TEST_CASE("importing a module's item through its full path resolves") {
 
     CHECK(diagnostics.empty());
 }
+
+TEST_CASE("all six range expressions type-check for collection slicing") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Main() {
+            let values: int[6] = [10, 20, 30, 40, 50, 60];
+            let bounded = values[2..4];
+            let inclusive = values[2..=4];
+            let from = values[2..];
+            let to = values[..3];
+            let toInclusive = values[..=3];
+            let full = values[..];
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("ranges without a start are not independently iterable") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Main() {
+            for value in ..3 {}
+            for value in ..=3 {}
+            for value in .. {}
+        }
+    )");
+
+    CHECK_EQ(std::ranges::count_if(diagnostics,
+                                   [](const SemanticDiagnostic &diagnostic) {
+                                       return diagnostic.message.find("has no initial value and is not iterable") !=
+                                              std::string::npos;
+                                   }),
+             3);
+}
+
+TEST_CASE("constant ranges reject a start greater than the end") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Main() {
+            let values: int[3] = [10, 20, 30];
+            let exclusive = values[2..0];
+            let inclusive = values[2..=0];
+        }
+    )");
+
+    CHECK_EQ(std::ranges::count_if(diagnostics,
+                                   [](const SemanticDiagnostic &diagnostic) {
+                                       return diagnostic.message == "range start cannot be greater than its end";
+                                   }),
+             2);
+}

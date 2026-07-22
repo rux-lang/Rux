@@ -374,10 +374,12 @@ private:
     }
 
     [[nodiscard]] bool IsAggregate(const TypeRef &t) const {
+        if (t.IsRange()) {
+            return true;
+        }
         switch (t.kind) {
         case TypeRef::Kind::Tuple:
         case TypeRef::Kind::Array:
-        case TypeRef::Kind::Range:
             return true;
         case TypeRef::Kind::Named: {
             const std::string base = BaseTypeName(t.name);
@@ -1641,6 +1643,16 @@ private:
             return 0;
         }
         const TypeRef &inner = ptrType.inner[0];
+        if (inner.IsRange()) {
+            const TypeRef &elemType = inner.inner.empty() ? TypeRef::MakeInt64() : inner.inner[0];
+            if (fieldName == "start" && inner.RangeHasStart()) {
+                return 0;
+            }
+            if (fieldName == "end" && inner.RangeHasEnd()) {
+                return inner.RangeHasStart() ? SizeOf(elemType) : 0;
+            }
+            return 0;
+        }
         if (inner.kind == TypeRef::Kind::Tuple) {
             std::size_t idx = 0;
             try {

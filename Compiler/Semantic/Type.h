@@ -29,14 +29,19 @@ struct TypeRef {
         UInt, // platform-dependent: 64-bit on x64, 32-bit on x86
         Float32,
         Float64,
-        Str,       // String
-        Pointer,   // *T  — inner[0] = pointee
-        Array,     // T[] / T[N] — inner[0] = element; arrayLength is absent for a flexible tail
-        Range,     // lo..hi / lo...hi — inner[0] = element
-        Tuple,     // (T, U, ...) — inner = elements
-        Named,     // user-defined struct/enum/union — name = type name
-        TypeParam, // generic parameter T — name = param name
-        Func,      // func(...) -> T — inner[0..n-2] = params, inner[n-1] =
+        Str,              // String
+        Pointer,          // *T  — inner[0] = pointee
+        Array,            // T[] / T[N] — inner[0] = element; arrayLength is absent for a flexible tail
+        Range,            // start..end — inner[0] = element
+        RangeInclusive,   // start..=end — inner[0] = element
+        RangeFrom,        // start.. — inner[0] = element
+        RangeTo,          // ..end — inner[0] = element
+        RangeToInclusive, // ..=end — inner[0] = element
+        RangeFull,        // .. — no element type or fields
+        Tuple,            // (T, U, ...) — inner = elements
+        Named,            // user-defined struct/enum/union — name = type name
+        TypeParam,        // generic parameter T — name = param name
+        Func,             // func(...) -> T — inner[0..n-2] = params, inner[n-1] =
         // return
         // Aliases — must come after all concrete values so they don't shift
         // the counter
@@ -228,10 +233,29 @@ struct TypeRef {
         return t;
     }
 
-    static TypeRef MakeRange(TypeRef elem) {
+    static TypeRef MakeRange(TypeRef elem, bool hasStart = true, bool hasEnd = true, bool inclusive = false) {
         TypeRef t;
-        t.kind = Kind::Range;
-        t.inner.push_back(std::move(elem));
+        if (hasStart && hasEnd) {
+            t.kind = inclusive ? Kind::RangeInclusive : Kind::Range;
+        }
+        else if (hasStart) {
+            t.kind = Kind::RangeFrom;
+        }
+        else if (hasEnd) {
+            t.kind = inclusive ? Kind::RangeToInclusive : Kind::RangeTo;
+        }
+        else {
+            t.kind = Kind::RangeFull;
+        }
+        if (t.kind != Kind::RangeFull) {
+            t.inner.push_back(std::move(elem));
+        }
+        return t;
+    }
+
+    static TypeRef MakeRangeFull() {
+        TypeRef t;
+        t.kind = Kind::RangeFull;
         return t;
     }
 
@@ -267,7 +291,25 @@ struct TypeRef {
     [[nodiscard]] bool IsInteger() const noexcept;
 
     [[nodiscard]] bool IsRange() const noexcept {
-        return kind == Kind::Range;
+        return kind == Kind::Range || kind == Kind::RangeInclusive || kind == Kind::RangeFrom ||
+               kind == Kind::RangeTo || kind == Kind::RangeToInclusive || kind == Kind::RangeFull;
+    }
+
+    [[nodiscard]] bool IsIterableRange() const noexcept {
+        return kind == Kind::Range || kind == Kind::RangeInclusive || kind == Kind::RangeFrom;
+    }
+
+    [[nodiscard]] bool RangeHasStart() const noexcept {
+        return kind == Kind::Range || kind == Kind::RangeInclusive || kind == Kind::RangeFrom;
+    }
+
+    [[nodiscard]] bool RangeHasEnd() const noexcept {
+        return kind == Kind::Range || kind == Kind::RangeInclusive || kind == Kind::RangeTo ||
+               kind == Kind::RangeToInclusive;
+    }
+
+    [[nodiscard]] bool IsInclusiveRange() const noexcept {
+        return kind == Kind::RangeInclusive || kind == Kind::RangeToInclusive;
     }
 
     [[nodiscard]] bool IsFloat() const noexcept;

@@ -904,7 +904,7 @@ private:
     }
 
     void LowerFor(const HirForStmt &s) {
-        const bool isRange = s.iterable->type.IsRange();
+        const bool isRange = s.iterable->type.IsIterableRange();
         const TypeRef elemType = (isRange && !s.iterable->type.inner.empty()) ? s.iterable->type.inner[0] : s.varType;
 
         // When the loop reuses a variable already in scope, its storage is the
@@ -918,10 +918,8 @@ private:
         if (isRange) {
             // Get a slot holding the range struct
             LirReg iterSlot;
-            std::optional<bool> literalInclusive;
             if (auto *re = dynamic_cast<const HirRangeExpr *>(s.iterable.get())) {
                 iterSlot = LowerRange(*re);
-                literalInclusive = re->inclusive;
             }
             else {
                 iterSlot = LowerLValue(*s.iterable);
@@ -931,13 +929,15 @@ private:
             // loop variable name to its induction slot for the loop body.
             locals[s.variable] = slot;
 
-            // i = range.lo
-            LirReg loPtr = EmitFieldPtr(iterSlot, "lo", elemType);
+            // i = range.start
+            LirReg loPtr = EmitFieldPtr(iterSlot, "start", elemType);
             LirReg loVal = EmitLoad(loPtr, elemType);
             EmitStore(loVal, slot, elemType);
 
-            LirReg hiPtr = EmitFieldPtr(iterSlot, "hi", elemType);
-            LirReg inclPtr = EmitFieldPtr(iterSlot, "inclusive", TypeRef::MakeBool());
+            LirReg hiPtr = LirNoReg;
+            if (s.iterable->type.RangeHasEnd()) {
+                hiPtr = EmitFieldPtr(iterSlot, "end", elemType);
+            }
 
             std::uint32_t condBlock = NewBlock("for.cond");
             std::uint32_t bodyBlock = NewBlock("for.body");
@@ -949,20 +949,16 @@ private:
             }
             SetBlock(condBlock);
             LirReg iVal = EmitLoad(slot, elemType);
-            LirReg hiCondVal = EmitLoad(hiPtr, elemType);
             LirReg cond;
-            if (literalInclusive.has_value()) {
-                cond = EmitBinary(*literalInclusive ? LirOpcode::CmpLe : LirOpcode::CmpLt, iVal, hiCondVal,
-                                  TypeRef::MakeBool());
+            if (s.iterable->type.RangeHasEnd()) {
+                const LirReg hiCondVal = EmitLoad(hiPtr, elemType);
+                cond = EmitBinary(s.iterable->type.IsInclusiveRange() ? LirOpcode::CmpLe : LirOpcode::CmpLt, iVal,
+                                  hiCondVal, TypeRef::MakeBool());
             }
             else {
-                // Keep the Range<T> contract explicit: continue while
-                // i < hi, or while inclusive is true and i == hi.
-                LirReg beforeHi = EmitBinary(LirOpcode::CmpLt, iVal, hiCondVal, TypeRef::MakeBool());
-                LirReg atHi = EmitBinary(LirOpcode::CmpEq, iVal, hiCondVal, TypeRef::MakeBool());
-                LirReg inclBool = EmitLoad(inclPtr, TypeRef::MakeBool());
-                LirReg inclusiveAtHi = EmitBinary(LirOpcode::And, inclBool, atHi, TypeRef::MakeBool());
-                cond = EmitBinary(LirOpcode::Or, beforeHi, inclusiveAtHi, TypeRef::MakeBool());
+                // RangeFrom<T> is unbounded; the loop exits only through
+                // break/return or another terminating statement in its body.
+                cond = EmitConst("true", TypeRef::MakeBool());
             }
             Branch(cond, bodyBlock, afterBlock);
 
@@ -1341,6 +1337,9 @@ private:
             return LowerInterfaceCall(*e);
         }
         if (auto *e = dynamic_cast<const HirIndexExpr *>(&expr)) {
+            if (e->index->type.IsRange()) {
+                return LowerRangeIndex(*e);
+            }
             LirReg idx = LowerExpr(*e->index);
             LirReg sliceBase = LowerSliceDataPtr(*e->object, e->type);
             LirReg ptr = EmitIndexPtr(sliceBase, idx, e->type);
@@ -2017,17 +2016,14 @@ private:
         // writes the full field; otherwise the unwritten high bits are garbage.
         if (e.lo) {
             const LirReg loVal = EmitCastIfNeeded(LowerExpr(*e.lo), e.lo->type, elemType);
-            const LirReg loPtr = EmitFieldPtr(slot, "lo", elemType);
+            const LirReg loPtr = EmitFieldPtr(slot, "start", elemType);
             EmitStore(loVal, loPtr, elemType);
         }
         if (e.hi) {
             const LirReg hiVal = EmitCastIfNeeded(LowerExpr(*e.hi), e.hi->type, elemType);
-            const LirReg hiPtr = EmitFieldPtr(slot, "hi", elemType);
+            const LirReg hiPtr = EmitFieldPtr(slot, "end", elemType);
             EmitStore(hiVal, hiPtr, elemType);
         }
-        const LirReg inclVal = EmitConst(e.inclusive ? "1" : "0", TypeRef::MakeBool());
-        const LirReg inclPtr = EmitFieldPtr(slot, "inclusive", TypeRef::MakeBool());
-        EmitStore(inclVal, inclPtr, TypeRef::MakeBool());
     }
 
     LirReg LowerRange(const HirRangeExpr &e) {
@@ -2123,6 +2119,64 @@ private:
         return EmitLoad(dataField, TypeRef::MakePointer(elemType));
     }
 
+    LirReg LowerRangeIndex(const HirIndexExpr &e) {
+        const TypeRef elemType = SliceElementTypeFromType(e.type);
+        const TypeRef dataType = TypeRef::MakePointer(elemType);
+        const TypeRef indexType = TypeRef::MakeUInt64();
+
+        // Evaluate the collection once and obtain its data pointer and length.
+        LirReg data;
+        LirReg collectionLength;
+        if (IsArrayType(e.object->type)) {
+            data = LowerLValue(*e.object);
+            collectionLength = EmitConst(std::to_string(e.object->type.arrayLength.value_or(0)), indexType);
+        }
+        else {
+            const LirReg objectSlot = LowerLValue(*e.object);
+            const LirReg dataField = EmitFieldPtr(objectSlot, "data", dataType);
+            data = EmitLoad(dataField, dataType);
+            const LirReg lengthField = EmitFieldPtr(objectSlot, "length", indexType);
+            collectionLength = EmitLoad(lengthField, indexType);
+        }
+
+        const TypeRef &rangeType = e.index->type;
+        LirReg rangeSlot = LirNoReg;
+        if (rangeType.RangeHasStart() || rangeType.RangeHasEnd()) {
+            if (const auto *literal = dynamic_cast<const HirRangeExpr *>(e.index.get())) {
+                rangeSlot = LowerRange(*literal);
+            }
+            else {
+                rangeSlot = LowerLValue(*e.index);
+            }
+        }
+
+        LirReg start = EmitConst("0", indexType);
+        if (rangeType.RangeHasStart()) {
+            const TypeRef boundType = rangeType.inner.empty() ? indexType : rangeType.inner[0];
+            const LirReg startField = EmitFieldPtr(rangeSlot, "start", boundType);
+            start = EmitCastIfNeeded(EmitLoad(startField, boundType), boundType, indexType);
+        }
+
+        LirReg end = collectionLength;
+        if (rangeType.RangeHasEnd()) {
+            const TypeRef boundType = rangeType.inner.empty() ? indexType : rangeType.inner[0];
+            const LirReg endField = EmitFieldPtr(rangeSlot, "end", boundType);
+            end = EmitCastIfNeeded(EmitLoad(endField, boundType), boundType, indexType);
+            if (rangeType.IsInclusiveRange()) {
+                end = EmitBinary(LirOpcode::Add, end, EmitConst("1", indexType), indexType);
+            }
+        }
+
+        const LirReg sliceData = EmitIndexPtr(data, start, elemType);
+        const LirReg sliceLength = EmitBinary(LirOpcode::Sub, end, start, indexType);
+        const LirReg slot = EmitAlloca(e.type);
+        const LirReg resultDataField = EmitFieldPtr(slot, "data", dataType);
+        EmitStore(sliceData, resultDataField, dataType);
+        const LirReg resultLengthField = EmitFieldPtr(slot, "length", indexType);
+        EmitStore(sliceLength, resultLengthField, indexType);
+        return slot;
+    }
+
     // Returns the pointer register for an lvalue expression.
     LirReg LowerLValue(const HirExpr &expr) {
         if (auto *e = dynamic_cast<const HirVarExpr *>(&expr)) {
@@ -2180,6 +2234,9 @@ private:
         }
 
         if (auto *e = dynamic_cast<const HirIndexExpr *>(&expr)) {
+            if (e->index->type.IsRange()) {
+                return LowerRangeIndex(*e);
+            }
             LirReg idx = LowerExpr(*e->index);
             LirReg sliceBase = LowerSliceDataPtr(*e->object, e->type);
             return EmitIndexPtr(sliceBase, idx, e->type);

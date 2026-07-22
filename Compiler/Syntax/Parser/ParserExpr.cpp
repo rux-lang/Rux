@@ -45,6 +45,30 @@ ExprPtr Parser::ParseAssign() {
 }
 
 ExprPtr Parser::ParseRange() {
+    const auto parseUpperBound = [&]() -> ExprPtr {
+        if (Check(TokenKind::RightBracket) || Check(TokenKind::RightParen) || Check(TokenKind::LeftBrace) ||
+            Check(TokenKind::RightBrace) || Check(TokenKind::Comma) || Check(TokenKind::Semicolon) || IsAtEnd()) {
+            return nullptr;
+        }
+        return ParseTernary();
+    };
+
+    // Prefix and full ranges: `..end`, `..=end`, and `..`.
+    if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
+        const auto loc = CurrentLocation();
+        const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
+        Advance();
+        auto right = parseUpperBound();
+        if (incl && !right) {
+            EmitError(loc, "inclusive range requires an end bound");
+        }
+        auto e = std::make_unique<RangeExpr>();
+        e->location = loc;
+        e->inclusive = incl;
+        e->hi = std::move(right);
+        return e;
+    }
+
     auto left = ParseTernary();
     if (!left) {
         return nullptr;
@@ -61,7 +85,10 @@ ExprPtr Parser::ParseRange() {
         const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
         const auto loc = CurrentLocation();
         Advance();
-        auto right = ParseTernary();
+        auto right = parseUpperBound();
+        if (incl && !right) {
+            EmitError(loc, "inclusive range requires an end bound");
+        }
         auto e = std::make_unique<RangeExpr>();
         e->location = loc;
         e->inclusive = incl;

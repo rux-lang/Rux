@@ -14,151 +14,151 @@ when #target.os {
 
 #Link(StdIoLib)
 extern {
-    /// Clears the end-of-file and error indicators for the given stream
-    /// https://en.cppreference.com/c/io/clearerr
+    // Clears the end-of-file and error indicators for the given stream
+    // https://en.cppreference.com/c/io/clearerr
     func clearerr(stream: *opaque);
 
-    /// Closes the given file stream
-    /// https://en.cppreference.com/c/io/fclose
+    // Closes the given file stream
+    // https://en.cppreference.com/c/io/fclose
     func fclose(stream: *opaque) -> int32;
 
-    /// Checks if the end-of-file indicator is set for the given stream
-    /// https://en.cppreference.com/c/io/feof
+    // Checks if the end-of-file indicator is set for the given stream
+    // https://en.cppreference.com/c/io/feof
     func feof(stream: *opaque) -> int32;
 
-    /// Checks if the error indicator is set for the given stream
-    /// https://en.cppreference.com/c/io/ferror
+    // Checks if the error indicator is set for the given stream
+    // https://en.cppreference.com/c/io/ferror
     func ferror(stream: *opaque) -> int32;
 
-    /// Writes any unwritten data from the stream's buffer to the file
-    /// https://en.cppreference.com/c/io/fflush
+    // Writes any unwritten data from the stream's buffer to the file
+    // https://en.cppreference.com/c/io/fflush
     func fflush(stream: *opaque) -> int32;
 
-    /// Reads the next character from the given stream
-    /// https://en.cppreference.com/c/io/fgetc
+    // Reads the next character from the given stream
+    // https://en.cppreference.com/c/io/fgetc
     func fgetc(stream: *opaque) -> int32;
 
-    /// Gets the current file position of the stream
-    /// https://en.cppreference.com/c/io/fgetpos
+    // Gets the current file position of the stream
+    // https://en.cppreference.com/c/io/fgetpos
     func fgetpos(stream: *opaque, pos: *opaque) -> int32;
 
-    /// Reads at most count-1 characters from the stream into a string
-    /// https://en.cppreference.com/c/io/fgets
+    // Reads at most count-1 characters from the stream into a string
+    // https://en.cppreference.com/c/io/fgets
     func fgets(str: *char8, count: int32, stream: *opaque) -> *char8;
 
-    /// Opens a file indicated by filename with the given mode
-    /// https://en.cppreference.com/c/io/fopen
+    // Opens a file indicated by filename with the given mode
+    // https://en.cppreference.com/c/io/fopen
     func fopen(filename: *char8, mode: *char8) -> *opaque;
 
-    /// Prints formatted output to a file stream
-    /// https://en.cppreference.com/c/io/fprintf
+    // Prints formatted output to a file stream
+    // https://en.cppreference.com/c/io/fprintf
     func fprintf(stream: *opaque, format: *char8, ...) -> int32;
 
-    /// Writes a character to the given stream
-    /// https://en.cppreference.com/c/io/fputc
+    // Writes a character to the given stream
+    // https://en.cppreference.com/c/io/fputc
     func fputc(ch: int32, stream: *opaque) -> int32;
 
-    /// Writes a string to the given stream
-    /// https://en.cppreference.com/c/io/fputs
+    // Writes a string to the given stream
+    // https://en.cppreference.com/c/io/fputs
     func fputs(str: *char8, stream: *opaque) -> int32;
 
-    /// Reads up to count objects of the given size from the stream into a buffer
-    /// https://en.cppreference.com/c/io/fread
+    // Reads up to count objects of the given size from the stream into a buffer
+    // https://en.cppreference.com/c/io/fread
     func fread(buffer: *opaque, size: uint, count: uint, stream: *opaque) -> uint;
 
-    /// Reopens a stream with a different file or mode
-    /// https://en.cppreference.com/c/io/freopen
+    // Reopens a stream with a different file or mode
+    // https://en.cppreference.com/c/io/freopen
     func freopen(filename: *char8, mode: *char8, stream: *opaque) -> *opaque;
 
-    /// Reads formatted input from a file stream
-    /// https://en.cppreference.com/c/io/fscanf
+    // Reads formatted input from a file stream
+    // https://en.cppreference.com/c/io/fscanf
     func fscanf(stream: *opaque, format: *char8, ...) -> int32;
 
-    /// Sets the file position indicator for the stream
-    /// https://en.cppreference.com/c/io/fseek
+    // Sets the file position indicator for the stream
+    // https://en.cppreference.com/c/io/fseek
     func fseek(stream: *opaque, offset: int64, origin: int32) -> int32;
 
-    /// Sets the file position of the stream to the given position
-    /// https://en.cppreference.com/c/io/fsetpos
+    // Sets the file position of the stream to the given position
+    // https://en.cppreference.com/c/io/fsetpos
     func fsetpos(stream: *opaque, pos: *opaque) -> int32;
 
-    /// Returns the current file position of the stream
-    /// https://en.cppreference.com/c/io/ftell
+    // Returns the current file position of the stream
+    // https://en.cppreference.com/c/io/ftell
     func ftell(stream: *opaque) -> int64;
 
-    /// Writes count objects of the given size from a buffer to the stream
-    /// https://en.cppreference.com/c/io/fwrite
+    // Writes count objects of the given size from a buffer to the stream
+    // https://en.cppreference.com/c/io/fwrite
     func fwrite(buffer: *opaque, size: uint, count: uint, stream: *opaque) -> uint;
 
-    /// Reads the next character from the given stream
-    /// https://en.cppreference.com/c/io/fgetc
+    // Reads the next character from the given stream
+    // https://en.cppreference.com/c/io/fgetc
     func getc(stream: *opaque) -> int32;
 
-    /// Reads the next character from stdin
-    /// https://en.cppreference.com/c/io/getchar
+    // Reads the next character from stdin
+    // https://en.cppreference.com/c/io/getchar
     func getchar() -> int32;
 
-    /// Prints an error message describing the last error to stderr
-    /// https://en.cppreference.com/c/io/perror
+    // Prints an error message describing the last error to stderr
+    // https://en.cppreference.com/c/io/perror
     func perror(str: *char8);
 
-    /// Prints formatted output to stdout
-    /// https://en.cppreference.com/c/io/printf
+    // Prints formatted output to stdout
+    // https://en.cppreference.com/c/io/printf
     func printf(format: *char8, ...) -> int32;
 
-    /// Writes a character to the given stream
-    /// https://en.cppreference.com/c/io/fputc
+    // Writes a character to the given stream
+    // https://en.cppreference.com/c/io/fputc
     func putc(ch: int32, stream: *opaque) -> int32;
 
-    /// Writes a character to stdout
-    /// https://en.cppreference.com/c/io/putchar
+    // Writes a character to stdout
+    // https://en.cppreference.com/c/io/putchar
     func putchar(ch: int32) -> int32;
 
-    /// Writes a string followed by a newline to stdout
-    /// https://en.cppreference.com/c/io/puts
+    // Writes a string followed by a newline to stdout
+    // https://en.cppreference.com/c/io/puts
     func puts(str: *char8) -> int32;
 
-    /// Deletes the file identified by the given path
-    /// https://en.cppreference.com/c/io/remove
+    // Deletes the file identified by the given path
+    // https://en.cppreference.com/c/io/remove
     func remove(pathname: *char8) -> int32;
 
-    /// Renames a file, moving it if necessary
-    /// https://en.cppreference.com/c/io/rename
+    // Renames a file, moving it if necessary
+    // https://en.cppreference.com/c/io/rename
     func rename(old_filename: *char8, new_filename: *char8) -> int32;
 
-    /// Moves the file position indicator to the beginning of the stream
-    /// https://en.cppreference.com/c/io/rewind
+    // Moves the file position indicator to the beginning of the stream
+    // https://en.cppreference.com/c/io/rewind
     func rewind(stream: *opaque);
 
-    /// Reads formatted input from stdin
-    /// https://en.cppreference.com/c/io/scanf
+    // Reads formatted input from stdin
+    // https://en.cppreference.com/c/io/scanf
     func scanf(format: *char8, ...) -> int32;
 
-    /// Sets the buffer to be used by the given stream
-    /// https://en.cppreference.com/c/io/setbuf
+    // Sets the buffer to be used by the given stream
+    // https://en.cppreference.com/c/io/setbuf
     func setbuf(stream: *opaque, buffer: *char8);
 
-    /// Sets the buffering mode and buffer to be used by the given stream
-    /// https://en.cppreference.com/c/io/setvbuf
+    // Sets the buffering mode and buffer to be used by the given stream
+    // https://en.cppreference.com/c/io/setvbuf
     func setvbuf(stream: *opaque, buffer: *char8, mode: int32, size: uint) -> int32;
 
-    /// Prints formatted output to a string
-    /// https://en.cppreference.com/c/io/sprintf
+    // Prints formatted output to a string
+    // https://en.cppreference.com/c/io/sprintf
     func sprintf(buffer: *char8, format: *char8, ...) -> int32;
 
-    /// Reads formatted input from a string
-    /// https://en.cppreference.com/c/io/sscanf
+    // Reads formatted input from a string
+    // https://en.cppreference.com/c/io/sscanf
     func sscanf(buffer: *char8, format: *char8, ...) -> int32;
 
-    /// Creates and opens a temporary file with a unique name
-    /// https://en.cppreference.com/c/io/tmpfile
+    // Creates and opens a temporary file with a unique name
+    // https://en.cppreference.com/c/io/tmpfile
     func tmpfile() -> *opaque;
 
-    /// Generates a unique filename that does not name an existing file
-    /// https://en.cppreference.com/c/io/tmpnam
+    // Generates a unique filename that does not name an existing file
+    // https://en.cppreference.com/c/io/tmpnam
     func tmpnam(filename: *char8) -> *char8;
 
-    /// Puts a character back into the given stream
-    /// https://en.cppreference.com/c/io/ungetc
+    // Puts a character back into the given stream
+    // https://en.cppreference.com/c/io/ungetc
     func ungetc(ch: int32, stream: *opaque) -> int32;
 }

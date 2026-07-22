@@ -1,0 +1,60 @@
+import Collections::Array;
+
+struct Pair {
+    first: int32;
+    second: int32;
+}
+
+func Main() -> int {
+    // Empty arrays allocate nothing and remain safe to release.
+    let mut empty = Array::New<int32>(0);
+    if !empty.IsEmpty() { return 10; }
+    if empty.Length() != 0 { return 11; }
+    if empty.Data() != null { return 12; }
+    empty.Free();
+
+    // New reserves exactly the requested fixed number of typed slots.
+    let mut values = Array::New<int32>(3);
+    if values.IsEmpty() { return 20; }
+    if values.Length() != 3 { return 21; }
+    if values.Data() == null { return 22; }
+    values.Set(0, 10);
+    values.Set(1, 20);
+    values.Set(2, 30);
+    if values.At(0) != 10 || values.At(1) != 20 || values.At(2) != 30 { return 23; }
+
+    // AsSlice borrows the same allocation rather than copying it.
+    let borrowed = values.AsSlice();
+    if borrowed.data != values.Data() || borrowed.length != values.Length() { return 30; }
+    values.Set(1, 25);
+    if borrowed[1] != 25 { return 31; }
+
+    // Clone owns an independent allocation with the same element values.
+    let mut copy = values.Clone();
+    if copy.Data() == values.Data() { return 40; }
+    if copy.At(0) != 10 || copy.At(1) != 25 || copy.At(2) != 30 { return 41; }
+    copy.Set(0, 99);
+    if values.At(0) != 10 { return 42; }
+    copy.Free();
+
+    // From copies a slice and leaves its source untouched.
+    let source: Slice<int32> = [4, 5, 6, 7];
+    let mut from = Array::From<int32>(source);
+    if from.Length() != 4 || from.Data() == source.data { return 50; }
+    from.Set(0, 8);
+    if source[0] != 4 || from.At(0) != 8 { return 51; }
+    from.Free();
+
+    // Element size participates in allocation and pointer indexing.
+    let mut pairs = Array::New<Pair>(2);
+    pairs.Set(0, Pair { first: 1, second: 2 });
+    pairs.Set(1, Pair { first: 3, second: 4 });
+    if pairs.At(0).second != 2 || pairs.At(1).first != 3 { return 60; }
+    pairs.Free();
+
+    // Free resets ownership, making repeated release a no-op.
+    values.Free();
+    if !values.IsEmpty() || values.Data() != null { return 70; }
+    values.Free();
+    return 0;
+}

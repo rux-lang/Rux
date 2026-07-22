@@ -14,427 +14,427 @@ when #target.os {
 
 #Link(MathLib)
 extern {
-    /// Computes arc cosine
-    /// https://en.cppreference.com/c/numeric/math/acos
+    // Computes arc cosine
+    // https://en.cppreference.com/c/numeric/math/acos
     func acosf(x: float32) -> float32;
 
-    /// Computes arc cosine
-    /// https://en.cppreference.com/c/numeric/math/acos
+    // Computes arc cosine
+    // https://en.cppreference.com/c/numeric/math/acos
     func acos(x: float64) -> float64;
 
-    /// Computes inverse hyperbolic cosine
-    /// https://en.cppreference.com/c/numeric/math/acosh
+    // Computes inverse hyperbolic cosine
+    // https://en.cppreference.com/c/numeric/math/acosh
     func acoshf(x: float32) -> float32;
 
-    /// Computes inverse hyperbolic cosine
-    /// https://en.cppreference.com/c/numeric/math/acosh
+    // Computes inverse hyperbolic cosine
+    // https://en.cppreference.com/c/numeric/math/acosh
     func acosh(x: float64) -> float64;
 
-    /// Computes arc sine
-    /// https://en.cppreference.com/c/numeric/math/asin
+    // Computes arc sine
+    // https://en.cppreference.com/c/numeric/math/asin
     func asinf(x: float32) -> float32;
 
-    /// Computes arc sine
-    /// https://en.cppreference.com/c/numeric/math/asin
+    // Computes arc sine
+    // https://en.cppreference.com/c/numeric/math/asin
     func asin(x: float64) -> float64;
 
-    /// Computes inverse hyperbolic sine
-    /// https://en.cppreference.com/c/numeric/math/asinh
+    // Computes inverse hyperbolic sine
+    // https://en.cppreference.com/c/numeric/math/asinh
     func asinhf(x: float32) -> float32;
 
-    /// Computes inverse hyperbolic sine
-    /// https://en.cppreference.com/c/numeric/math/asinh
+    // Computes inverse hyperbolic sine
+    // https://en.cppreference.com/c/numeric/math/asinh
     func asinh(x: float64) -> float64;
 
-    /// Computes arc tangent
-    /// https://en.cppreference.com/c/numeric/math/atan
+    // Computes arc tangent
+    // https://en.cppreference.com/c/numeric/math/atan
     func atanf(x: float32) -> float32;
 
-    /// Computes arc tangent
-    /// https://en.cppreference.com/c/numeric/math/atan
+    // Computes arc tangent
+    // https://en.cppreference.com/c/numeric/math/atan
     func atan(x: float64) -> float64;
 
-    /// Computes arc tangent, using signs to determine quadrants
-    /// https://en.cppreference.com/c/numeric/math/atan2
+    // Computes arc tangent, using signs to determine quadrants
+    // https://en.cppreference.com/c/numeric/math/atan2
     func atan2f(y: float32, x: float32) -> float32;
 
-    /// Computes arc tangent, using signs to determine quadrants
-    /// https://en.cppreference.com/c/numeric/math/atan2
+    // Computes arc tangent, using signs to determine quadrants
+    // https://en.cppreference.com/c/numeric/math/atan2
     func atan2(y: float64, x: float64) -> float64;
 
-    /// Computes inverse hyperbolic tangent
-    /// https://en.cppreference.com/c/numeric/math/atanh
+    // Computes inverse hyperbolic tangent
+    // https://en.cppreference.com/c/numeric/math/atanh
     func atanhf(x: float32) -> float32;
 
-    /// Computes inverse hyperbolic tangent
-    /// https://en.cppreference.com/c/numeric/math/atanh
+    // Computes inverse hyperbolic tangent
+    // https://en.cppreference.com/c/numeric/math/atanh
     func atanh(x: float64) -> float64;
 
-    /// Computes cube root
-    /// https://en.cppreference.com/c/numeric/math/cbrt
+    // Computes cube root
+    // https://en.cppreference.com/c/numeric/math/cbrt
     func cbrtf(x: float32) -> float32;
 
-    /// Computes cube root
-    /// https://en.cppreference.com/c/numeric/math/cbrt
+    // Computes cube root
+    // https://en.cppreference.com/c/numeric/math/cbrt
     func cbrt(x: float64) -> float64;
 
-    /// Computes smallest integer not less than the given value
-    /// https://en.cppreference.com/c/numeric/math/ceil
+    // Computes smallest integer not less than the given value
+    // https://en.cppreference.com/c/numeric/math/ceil
     func ceilf(x: float32) -> float32;
 
-    /// Computes smallest integer not less than the given value
-    /// https://en.cppreference.com/c/numeric/math/ceil
+    // Computes smallest integer not less than the given value
+    // https://en.cppreference.com/c/numeric/math/ceil
     func ceil(x: float64) -> float64;
 
-    /// Copies the sign of a floating-point value
-    /// https://en.cppreference.com/c/numeric/math/copysign
+    // Copies the sign of a floating-point value
+    // https://en.cppreference.com/c/numeric/math/copysign
     func copysignf(x: float32, y: float32) -> float32;
 
-    /// Copies the sign of a floating-point value
-    /// https://en.cppreference.com/c/numeric/math/copysign
+    // Copies the sign of a floating-point value
+    // https://en.cppreference.com/c/numeric/math/copysign
     func copysign(x: float64, y: float64) -> float64;
 
-    /// Computes cosine
-    /// https://en.cppreference.com/c/numeric/math/cos
+    // Computes cosine
+    // https://en.cppreference.com/c/numeric/math/cos
     func cosf(x: float32) -> float32;
 
-    /// Computes cosine
-    /// https://en.cppreference.com/c/numeric/math/cos
+    // Computes cosine
+    // https://en.cppreference.com/c/numeric/math/cos
     func cos(x: float64) -> float64;
 
-    /// Computes hyperbolic cosine
-    /// https://en.cppreference.com/c/numeric/math/cosh
+    // Computes hyperbolic cosine
+    // https://en.cppreference.com/c/numeric/math/cosh
     func coshf(x: float32) -> float32;
 
-    /// Computes hyperbolic cosine
-    /// https://en.cppreference.com/c/numeric/math/cosh
+    // Computes hyperbolic cosine
+    // https://en.cppreference.com/c/numeric/math/cosh
     func cosh(x: float64) -> float64;
 
-    /// Computes error function
-    /// https://en.cppreference.com/c/numeric/math/erf
+    // Computes error function
+    // https://en.cppreference.com/c/numeric/math/erf
     func erff(x: float32) -> float32;
 
-    /// Computes error function
-    /// https://en.cppreference.com/c/numeric/math/erf
+    // Computes error function
+    // https://en.cppreference.com/c/numeric/math/erf
     func erf(x: float64) -> float64;
 
-    /// Computes complementary error function
-    /// https://en.cppreference.com/c/numeric/math/erfc
+    // Computes complementary error function
+    // https://en.cppreference.com/c/numeric/math/erfc
     func erfcf(x: float32) -> float32;
 
-    /// Computes complementary error function
-    /// https://en.cppreference.com/c/numeric/math/erfc
+    // Computes complementary error function
+    // https://en.cppreference.com/c/numeric/math/erfc
     func erfc(x: float64) -> float64;
 
-    /// Computes e raised to the given power
-    /// https://en.cppreference.com/c/numeric/math/exp
+    // Computes e raised to the given power
+    // https://en.cppreference.com/c/numeric/math/exp
     func expf(x: float32) -> float32;
 
-    /// Computes e raised to the given power
-    /// https://en.cppreference.com/c/numeric/math/exp
+    // Computes e raised to the given power
+    // https://en.cppreference.com/c/numeric/math/exp
     func exp(x: float64) -> float64;
 
-    /// Computes 2 raised to the given power
-    /// https://en.cppreference.com/c/numeric/math/exp2
+    // Computes 2 raised to the given power
+    // https://en.cppreference.com/c/numeric/math/exp2
     func exp2f(x: float32) -> float32;
 
-    /// Computes 2 raised to the given power
-    /// https://en.cppreference.com/c/numeric/math/exp2
+    // Computes 2 raised to the given power
+    // https://en.cppreference.com/c/numeric/math/exp2
     func exp2(x: float64) -> float64;
 
-    /// Computes e raised to the given power, minus one
-    /// https://en.cppreference.com/c/numeric/math/expm1
+    // Computes e raised to the given power, minus one
+    // https://en.cppreference.com/c/numeric/math/expm1
     func expm1f(x: float32) -> float32;
 
-    /// Computes e raised to the given power, minus one
-    /// https://en.cppreference.com/c/numeric/math/expm1
+    // Computes e raised to the given power, minus one
+    // https://en.cppreference.com/c/numeric/math/expm1
     func expm1(x: float64) -> float64;
 
-    /// Computes the absolute value of a floating-point value
-    /// https://en.cppreference.com/c/numeric/math/fabs
+    // Computes the absolute value of a floating-point value
+    // https://en.cppreference.com/c/numeric/math/fabs
     func fabs(x: float64) -> float64;
 
-    /// Computes positive difference of two floating-point values
-    /// https://en.cppreference.com/c/numeric/math/fdim
+    // Computes positive difference of two floating-point values
+    // https://en.cppreference.com/c/numeric/math/fdim
     func fdimf(x: float32, y: float32) -> float32;
 
-    /// Computes positive difference of two floating-point values
-    /// https://en.cppreference.com/c/numeric/math/fdim
+    // Computes positive difference of two floating-point values
+    // https://en.cppreference.com/c/numeric/math/fdim
     func fdim(x: float64, y: float64) -> float64;
 
-    /// Computes largest integer not greater than the given value
-    /// https://en.cppreference.com/c/numeric/math/floor
+    // Computes largest integer not greater than the given value
+    // https://en.cppreference.com/c/numeric/math/floor
     func floorf(x: float32) -> float32;
 
-    /// Computes largest integer not greater than the given value
-    /// https://en.cppreference.com/c/numeric/math/floor
+    // Computes largest integer not greater than the given value
+    // https://en.cppreference.com/c/numeric/math/floor
     func floor(x: float64) -> float64;
 
-    /// Computes fused multiply-add
-    /// https://en.cppreference.com/c/numeric/math/fma
+    // Computes fused multiply-add
+    // https://en.cppreference.com/c/numeric/math/fma
     func fmaf(x: float32, y: float32, z: float32) -> float32;
 
-    /// Computes fused multiply-add
-    /// https://en.cppreference.com/c/numeric/math/fma
+    // Computes fused multiply-add
+    // https://en.cppreference.com/c/numeric/math/fma
     func fma(x: float64, y: float64, z: float64) -> float64;
 
-    /// Computes larger of two floating-point values
-    /// https://en.cppreference.com/c/numeric/math/fmax
+    // Computes larger of two floating-point values
+    // https://en.cppreference.com/c/numeric/math/fmax
     func fmaxf(x: float32, y: float32) -> float32;
 
-    /// Computes larger of two floating-point values
-    /// https://en.cppreference.com/c/numeric/math/fmax
+    // Computes larger of two floating-point values
+    // https://en.cppreference.com/c/numeric/math/fmax
     func fmax(x: float64, y: float64) -> float64;
 
-    /// Computes smaller of two floating-point values
-    /// https://en.cppreference.com/c/numeric/math/fmin
+    // Computes smaller of two floating-point values
+    // https://en.cppreference.com/c/numeric/math/fmin
     func fminf(x: float32, y: float32) -> float32;
 
-    /// Computes smaller of two floating-point values
-    /// https://en.cppreference.com/c/numeric/math/fmin
+    // Computes smaller of two floating-point values
+    // https://en.cppreference.com/c/numeric/math/fmin
     func fmin(x: float64, y: float64) -> float64;
 
-    /// Computes remainder of the floating-point division operation
-    /// https://en.cppreference.com/c/numeric/math/fmod
+    // Computes remainder of the floating-point division operation
+    // https://en.cppreference.com/c/numeric/math/fmod
     func fmodf(x: float32, y: float32) -> float32;
 
-    /// Computes remainder of the floating-point division operation
-    /// https://en.cppreference.com/c/numeric/math/fmod
+    // Computes remainder of the floating-point division operation
+    // https://en.cppreference.com/c/numeric/math/fmod
     func fmod(x: float64, y: float64) -> float64;
 
-    /// Decomposes a number into significand and a power of two
-    /// https://en.cppreference.com/c/numeric/math/frexp
+    // Decomposes a number into significand and a power of two
+    // https://en.cppreference.com/c/numeric/math/frexp
     func frexp(x: float64, exp: *int32) -> float64;
 
-    /// Computes square root of the sum of the squares of two given numbers
-    /// https://en.cppreference.com/c/numeric/math/hypot
+    // Computes square root of the sum of the squares of two given numbers
+    // https://en.cppreference.com/c/numeric/math/hypot
     func hypot(x: float64, y: float64) -> float64;
 
-    /// Extracts exponent of the number
-    /// https://en.cppreference.com/c/numeric/math/ilogb
+    // Extracts exponent of the number
+    // https://en.cppreference.com/c/numeric/math/ilogb
     func ilogbf(x: float32) -> int32;
 
-    /// Extracts exponent of the number
-    /// https://en.cppreference.com/c/numeric/math/ilogb
+    // Extracts exponent of the number
+    // https://en.cppreference.com/c/numeric/math/ilogb
     func ilogb(x: float64) -> int32;
 
-    /// Multiplies a number by 2 raised to an integer power
-    /// https://en.cppreference.com/c/numeric/math/ldexp
+    // Multiplies a number by 2 raised to an integer power
+    // https://en.cppreference.com/c/numeric/math/ldexp
     func ldexp(x: float64, exp: int32) -> float64;
 
-    /// Computes natural logarithm of the absolute value of the gamma function
-    /// https://en.cppreference.com/c/numeric/math/lgamma
+    // Computes natural logarithm of the absolute value of the gamma function
+    // https://en.cppreference.com/c/numeric/math/lgamma
     func lgammaf(x: float32) -> float32;
 
-    /// Computes natural logarithm of the absolute value of the gamma function
-    /// https://en.cppreference.com/c/numeric/math/lgamma
+    // Computes natural logarithm of the absolute value of the gamma function
+    // https://en.cppreference.com/c/numeric/math/lgamma
     func lgamma(x: float64) -> float64;
 
-    /// Rounds to nearest integer using current rounding mode
-    /// https://en.cppreference.com/c/numeric/math/rint
+    // Rounds to nearest integer using current rounding mode
+    // https://en.cppreference.com/c/numeric/math/rint
     func llrintf(x: float32) -> int64;
 
-    /// Rounds to nearest integer using current rounding mode
-    /// https://en.cppreference.com/c/numeric/math/rint
+    // Rounds to nearest integer using current rounding mode
+    // https://en.cppreference.com/c/numeric/math/rint
     func llrint(x: float64) -> int64;
 
-    /// Rounds to nearest integer, rounding away from zero in halfway cases
-    /// https://en.cppreference.com/c/numeric/math/round
+    // Rounds to nearest integer, rounding away from zero in halfway cases
+    // https://en.cppreference.com/c/numeric/math/round
     func llroundf(x: float32) -> int64;
 
-    /// Rounds to nearest integer, rounding away from zero in halfway cases
-    /// https://en.cppreference.com/c/numeric/math/round
+    // Rounds to nearest integer, rounding away from zero in halfway cases
+    // https://en.cppreference.com/c/numeric/math/round
     func llround(x: float64) -> int64;
 
-    /// Computes natural (base e) logarithm
-    /// https://en.cppreference.com/c/numeric/math/log
+    // Computes natural (base e) logarithm
+    // https://en.cppreference.com/c/numeric/math/log
     func logf(x: float32) -> float32;
 
-    /// Computes natural (base e) logarithm
-    /// https://en.cppreference.com/c/numeric/math/log
+    // Computes natural (base e) logarithm
+    // https://en.cppreference.com/c/numeric/math/log
     func log(x: float64) -> float64;
 
-    /// Computes common (base 10) logarithm
-    /// https://en.cppreference.com/c/numeric/math/log10
+    // Computes common (base 10) logarithm
+    // https://en.cppreference.com/c/numeric/math/log10
     func log10f(x: float32) -> float32;
 
-    /// Computes common (base 10) logarithm
-    /// https://en.cppreference.com/c/numeric/math/log10
+    // Computes common (base 10) logarithm
+    // https://en.cppreference.com/c/numeric/math/log10
     func log10(x: float64) -> float64;
 
-    /// Computes natural logarithm of 1 plus the given number
-    /// https://en.cppreference.com/c/numeric/math/log1p
+    // Computes natural logarithm of 1 plus the given number
+    // https://en.cppreference.com/c/numeric/math/log1p
     func log1pf(x: float32) -> float32;
 
-    /// Computes natural logarithm of 1 plus the given number
-    /// https://en.cppreference.com/c/numeric/math/log1p
+    // Computes natural logarithm of 1 plus the given number
+    // https://en.cppreference.com/c/numeric/math/log1p
     func log1p(x: float64) -> float64;
 
-    /// Computes base 2 logarithm
-    /// https://en.cppreference.com/c/numeric/math/log2
+    // Computes base 2 logarithm
+    // https://en.cppreference.com/c/numeric/math/log2
     func log2f(x: float32) -> float32;
 
-    /// Computes base 2 logarithm
-    /// https://en.cppreference.com/c/numeric/math/log2
+    // Computes base 2 logarithm
+    // https://en.cppreference.com/c/numeric/math/log2
     func log2(x: float64) -> float64;
 
-    /// Extracts exponent of the number
-    /// https://en.cppreference.com/c/numeric/math/logb
+    // Extracts exponent of the number
+    // https://en.cppreference.com/c/numeric/math/logb
     func logbf(x: float32) -> float32;
 
-    /// Extracts exponent of the number
-    /// https://en.cppreference.com/c/numeric/math/logb
+    // Extracts exponent of the number
+    // https://en.cppreference.com/c/numeric/math/logb
     func logb(x: float64) -> float64;
 
-    /// Rounds to nearest integer using current rounding mode
-    /// https://en.cppreference.com/c/numeric/math/rint
+    // Rounds to nearest integer using current rounding mode
+    // https://en.cppreference.com/c/numeric/math/rint
     func lrintf(x: float32) -> int64;
 
-    /// Rounds to nearest integer using current rounding mode
-    /// https://en.cppreference.com/c/numeric/math/rint
+    // Rounds to nearest integer using current rounding mode
+    // https://en.cppreference.com/c/numeric/math/rint
     func lrint(x: float64) -> int64;
 
-    /// Rounds to nearest integer, rounding away from zero in halfway cases
-    /// https://en.cppreference.com/c/numeric/math/round
+    // Rounds to nearest integer, rounding away from zero in halfway cases
+    // https://en.cppreference.com/c/numeric/math/round
     func lroundf(x: float32) -> int64;
 
-    /// Rounds to nearest integer, rounding away from zero in halfway cases
-    /// https://en.cppreference.com/c/numeric/math/round
+    // Rounds to nearest integer, rounding away from zero in halfway cases
+    // https://en.cppreference.com/c/numeric/math/round
     func lround(x: float64) -> int64;
 
-    /// Decomposes a number into integer and fractional parts
-    /// https://en.cppreference.com/c/numeric/math/modf
+    // Decomposes a number into integer and fractional parts
+    // https://en.cppreference.com/c/numeric/math/modf
     func modff(x: float32, iptr: *float32) -> float32;
 
-    /// Decomposes a number into integer and fractional parts
-    /// https://en.cppreference.com/c/numeric/math/modf
+    // Decomposes a number into integer and fractional parts
+    // https://en.cppreference.com/c/numeric/math/modf
     func modf(x: float64, iptr: *float64) -> float64;
 
-    /// Generates a quiet NaN
-    /// https://en.cppreference.com/c/numeric/math/nan
+    // Generates a quiet NaN
+    // https://en.cppreference.com/c/numeric/math/nan
     func nanf(arg: *char8) -> float32;
 
-    /// Generates a quiet NaN
-    /// https://en.cppreference.com/c/numeric/math/nan
+    // Generates a quiet NaN
+    // https://en.cppreference.com/c/numeric/math/nan
     func nan(arg: *char8) -> float64;
 
-    /// Rounds to nearest integer using current rounding mode without raising the inexact exception
-    /// https://en.cppreference.com/c/numeric/math/nearbyint
+    // Rounds to nearest integer using current rounding mode without raising the inexact exception
+    // https://en.cppreference.com/c/numeric/math/nearbyint
     func nearbyintf(x: float32) -> float32;
 
-    /// Rounds to nearest integer using current rounding mode without raising the inexact exception
-    /// https://en.cppreference.com/c/numeric/math/nearbyint
+    // Rounds to nearest integer using current rounding mode without raising the inexact exception
+    // https://en.cppreference.com/c/numeric/math/nearbyint
     func nearbyint(x: float64) -> float64;
 
-    /// Determines next representable floating-point value toward the given value
-    /// https://en.cppreference.com/c/numeric/math/nextafter
+    // Determines next representable floating-point value toward the given value
+    // https://en.cppreference.com/c/numeric/math/nextafter
     func nextafterf(from: float32, to: float32) -> float32;
 
-    /// Determines next representable floating-point value toward the given value
-    /// https://en.cppreference.com/c/numeric/math/nextafter
+    // Determines next representable floating-point value toward the given value
+    // https://en.cppreference.com/c/numeric/math/nextafter
     func nextafter(from: float64, to: float64) -> float64;
 
-    /// Computes a number raised to the given power
-    /// https://en.cppreference.com/c/numeric/math/pow
+    // Computes a number raised to the given power
+    // https://en.cppreference.com/c/numeric/math/pow
     func powf(base: float32, exponent: float32) -> float32;
 
-    /// Computes a number raised to the given power
-    /// https://en.cppreference.com/c/numeric/math/pow
+    // Computes a number raised to the given power
+    // https://en.cppreference.com/c/numeric/math/pow
     func pow(base: float64, exponent: float64) -> float64;
 
-    /// Computes signed remainder of the floating-point division operation
-    /// https://en.cppreference.com/c/numeric/math/remainder
+    // Computes signed remainder of the floating-point division operation
+    // https://en.cppreference.com/c/numeric/math/remainder
     func remainderf(x: float32, y: float32) -> float32;
 
-    /// Computes signed remainder of the floating-point division operation
-    /// https://en.cppreference.com/c/numeric/math/remainder
+    // Computes signed remainder of the floating-point division operation
+    // https://en.cppreference.com/c/numeric/math/remainder
     func remainder(x: float64, y: float64) -> float64;
 
-    /// Computes signed remainder as well as the three last bits of the division operation
-    /// https://en.cppreference.com/c/numeric/math/remquo
+    // Computes signed remainder as well as the three last bits of the division operation
+    // https://en.cppreference.com/c/numeric/math/remquo
     func remquof(x: float32, y: float32, quo: *int32) -> float32;
 
-    /// Computes signed remainder as well as the three last bits of the division operation
-    /// https://en.cppreference.com/c/numeric/math/remquo
+    // Computes signed remainder as well as the three last bits of the division operation
+    // https://en.cppreference.com/c/numeric/math/remquo
     func remquo(x: float64, y: float64, quo: *int32) -> float64;
 
-    /// Rounds to nearest integer using current rounding mode
-    /// https://en.cppreference.com/c/numeric/math/rint
+    // Rounds to nearest integer using current rounding mode
+    // https://en.cppreference.com/c/numeric/math/rint
     func rintf(x: float32) -> float32;
 
-    /// Rounds to nearest integer using current rounding mode
-    /// https://en.cppreference.com/c/numeric/math/rint
+    // Rounds to nearest integer using current rounding mode
+    // https://en.cppreference.com/c/numeric/math/rint
     func rint(x: float64) -> float64;
 
-    /// Rounds to nearest integer, rounding away from zero in halfway cases
-    /// https://en.cppreference.com/c/numeric/math/round
+    // Rounds to nearest integer, rounding away from zero in halfway cases
+    // https://en.cppreference.com/c/numeric/math/round
     func roundf(x: float32) -> float32;
 
-    /// Rounds to nearest integer, rounding away from zero in halfway cases
-    /// https://en.cppreference.com/c/numeric/math/round
+    // Rounds to nearest integer, rounding away from zero in halfway cases
+    // https://en.cppreference.com/c/numeric/math/round
     func round(x: float64) -> float64;
 
-    /// Multiplies a number by FLT_RADIX raised to an integer power
-    /// https://en.cppreference.com/c/numeric/math/scalbn
+    // Multiplies a number by FLT_RADIX raised to an integer power
+    // https://en.cppreference.com/c/numeric/math/scalbn
     func scalbnf(x: float32, n: int32) -> float32;
 
-    /// Multiplies a number by FLT_RADIX raised to an integer power
-    /// https://en.cppreference.com/c/numeric/math/scalbn
+    // Multiplies a number by FLT_RADIX raised to an integer power
+    // https://en.cppreference.com/c/numeric/math/scalbn
     func scalbn(x: float64, n: int32) -> float64;
 
-    /// Computes sine
-    /// https://en.cppreference.com/c/numeric/math/sin
+    // Computes sine
+    // https://en.cppreference.com/c/numeric/math/sin
     func sinf(x: float32) -> float32;
 
-    /// Computes sine
-    /// https://en.cppreference.com/c/numeric/math/sin
+    // Computes sine
+    // https://en.cppreference.com/c/numeric/math/sin
     func sin(x: float64) -> float64;
 
-    /// Computes hyperbolic sine
-    /// https://en.cppreference.com/c/numeric/math/sinh
+    // Computes hyperbolic sine
+    // https://en.cppreference.com/c/numeric/math/sinh
     func sinhf(x: float32) -> float32;
 
-    /// Computes hyperbolic sine
-    /// https://en.cppreference.com/c/numeric/math/sinh
+    // Computes hyperbolic sine
+    // https://en.cppreference.com/c/numeric/math/sinh
     func sinh(x: float64) -> float64;
 
-    /// Computes square root
-    /// https://en.cppreference.com/c/numeric/math/sqrt
+    // Computes square root
+    // https://en.cppreference.com/c/numeric/math/sqrt
     func sqrtf(x: float32) -> float32;
 
-    /// Computes square root
-    /// https://en.cppreference.com/c/numeric/math/sqrt
+    // Computes square root
+    // https://en.cppreference.com/c/numeric/math/sqrt
     func sqrt(x: float64) -> float64;
 
-    /// Computes tangent
-    /// https://en.cppreference.com/c/numeric/math/tan
+    // Computes tangent
+    // https://en.cppreference.com/c/numeric/math/tan
     func tanf(x: float32) -> float32;
 
-    /// Computes tangent
-    /// https://en.cppreference.com/c/numeric/math/tan
+    // Computes tangent
+    // https://en.cppreference.com/c/numeric/math/tan
     func tan(x: float64) -> float64;
 
-    /// Computes hyperbolic tangent
-    /// https://en.cppreference.com/c/numeric/math/tanh
+    // Computes hyperbolic tangent
+    // https://en.cppreference.com/c/numeric/math/tanh
     func tanhf(x: float32) -> float32;
 
-    /// Computes hyperbolic tangent
-    /// https://en.cppreference.com/c/numeric/math/tanh
+    // Computes hyperbolic tangent
+    // https://en.cppreference.com/c/numeric/math/tanh
     func tanh(x: float64) -> float64;
 
-    /// Computes gamma function
-    /// https://en.cppreference.com/c/numeric/math/tgamma
+    // Computes gamma function
+    // https://en.cppreference.com/c/numeric/math/tgamma
     func tgammaf(x: float32) -> float32;
 
-    /// Computes gamma function
-    /// https://en.cppreference.com/c/numeric/math/tgamma
+    // Computes gamma function
+    // https://en.cppreference.com/c/numeric/math/tgamma
     func tgamma(x: float64) -> float64;
 
-    /// Rounds to nearest integer not greater in magnitude than the given value
-    /// https://en.cppreference.com/c/numeric/math/trunc
+    // Rounds to nearest integer not greater in magnitude than the given value
+    // https://en.cppreference.com/c/numeric/math/trunc
     func truncf(x: float32) -> float32;
 
-    /// Rounds to nearest integer not greater in magnitude than the given value
-    /// https://en.cppreference.com/c/numeric/math/trunc
+    // Rounds to nearest integer not greater in magnitude than the given value
+    // https://en.cppreference.com/c/numeric/math/trunc
     func trunc(x: float64) -> float64;
 }

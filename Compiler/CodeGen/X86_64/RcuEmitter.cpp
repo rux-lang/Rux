@@ -204,10 +204,8 @@ private:
     }
 
     [[nodiscard]] int SizeOfRuntime(const TypeRef &t) const {
-        if (t.kind == TypeRef::Kind::Range) {
-            const TypeRef &elemType = t.inner.empty() ? TypeRef::MakeInt64() : t.inner[0];
-            int elemSize = SizeOf(elemType);
-            return AlignUp(2 * elemSize + 1, elemSize > 0 ? elemSize : 1);
+        if (t.IsRange()) {
+            return SizeOf(t);
         }
         if (t.kind == TypeRef::Kind::Named) {
             const std::string base = BaseTypeName(t.name);
@@ -236,10 +234,12 @@ private:
     }
 
     [[nodiscard]] bool IsAggregate(const TypeRef &t) const {
+        if (t.IsRange()) {
+            return true;
+        }
         switch (t.kind) {
         case TypeRef::Kind::Tuple:
         case TypeRef::Kind::Array:
-        case TypeRef::Kind::Range:
             return true;
         case TypeRef::Kind::Named: {
             const std::string base = BaseTypeName(t.name);
@@ -1176,17 +1176,14 @@ private:
             return 0;
         }
         const TypeRef &inner = pt.inner[0];
-        if (inner.kind == TypeRef::Kind::Range) {
+        if (inner.IsRange()) {
             const TypeRef &elemType = inner.inner.empty() ? TypeRef::MakeInt64() : inner.inner[0];
             int elemSize = SizeOf(elemType);
-            if (fieldName == "lo") {
+            if (fieldName == "start" && inner.RangeHasStart()) {
                 return 0;
             }
-            if (fieldName == "hi") {
-                return elemSize;
-            }
-            if (fieldName == "inclusive") {
-                return 2 * elemSize;
+            if (fieldName == "end" && inner.RangeHasEnd()) {
+                return inner.RangeHasStart() ? elemSize : 0;
             }
             return 0;
         }

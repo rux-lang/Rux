@@ -431,12 +431,14 @@ private:
             collectModulePath = saved;
         }
         else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
+            const std::string typeName =
+                implDecl->typeName.starts_with("Slice<") ? implDecl->typeName : BaseTypeName(implDecl->typeName);
             for (const auto &method : implDecl->methods) {
-                methodsByType[implDecl->typeName][method->name].push_back(method.get());
+                methodsByType[typeName][method->name].push_back(method.get());
             }
             if (implDecl->interfaceName) {
-                typeInterfaceVtables[implDecl->typeName][*implDecl->interfaceName] =
-                    "__vtable__" + implDecl->typeName + "__" + *implDecl->interfaceName;
+                typeInterfaceVtables[typeName][*implDecl->interfaceName] =
+                    "__vtable__" + typeName + "__" + *implDecl->interfaceName;
             }
         }
     }
@@ -500,6 +502,28 @@ private:
     static std::string BaseTypeName(const std::string &name) {
         const std::size_t pos = name.find('<');
         return pos == std::string::npos ? name : name.substr(0, pos);
+    }
+
+    std::vector<std::string> ImplTypeParams(const ImplDecl &decl) const {
+        std::vector<std::string> params;
+        const auto *target = dynamic_cast<const NamedTypeExpr *>(decl.extendedType.get());
+        if (!target) {
+            return params;
+        }
+        const auto structIt = structDecls.find(target->name);
+        if (structIt == structDecls.end()) {
+            return params;
+        }
+
+        const auto &structParams = structIt->second->typeParams;
+        const std::size_t count = std::min(structParams.size(), target->typeArgs.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            const auto *arg = dynamic_cast<const NamedTypeExpr *>(target->typeArgs[i].get());
+            if (arg && arg->typeArgs.empty() && arg->name == structParams[i]) {
+                params.push_back(arg->name);
+            }
+        }
+        return params;
     }
 
     static TypeRef ParseTypeRefFromString(std::string str) {
@@ -618,8 +642,26 @@ private:
             return TypeRef::MakeTuple(elems);
         }
 
+        const auto rangeElement = [&](const std::string_view prefix) {
+            return ParseTypeRefFromString(str.substr(prefix.size(), str.size() - prefix.size() - 1));
+        };
         if (str.rfind("Range<", 0) == 0 && str.back() == '>') {
-            return TypeRef::MakeRange(ParseTypeRefFromString(str.substr(6, str.size() - 7)));
+            return TypeRef::MakeRange(rangeElement("Range<"));
+        }
+        if (str.rfind("RangeInclusive<", 0) == 0 && str.back() == '>') {
+            return TypeRef::MakeRange(rangeElement("RangeInclusive<"), true, true, true);
+        }
+        if (str.rfind("RangeFrom<", 0) == 0 && str.back() == '>') {
+            return TypeRef::MakeRange(rangeElement("RangeFrom<"), true, false);
+        }
+        if (str.rfind("RangeTo<", 0) == 0 && str.back() == '>') {
+            return TypeRef::MakeRange(rangeElement("RangeTo<"), false, true);
+        }
+        if (str.rfind("RangeToInclusive<", 0) == 0 && str.back() == '>') {
+            return TypeRef::MakeRange(rangeElement("RangeToInclusive<"), false, true, true);
+        }
+        if (str == "RangeFull") {
+            return TypeRef::MakeRangeFull();
         }
 
         return TypeRef::MakeNamed(str);
@@ -1146,6 +1188,27 @@ private:
                     }
                 }
             }
+            if (t->name == "RangeFull" && t->typeArgs.empty()) {
+                return TypeRef::MakeRangeFull();
+            }
+            if (t->typeArgs.size() == 1) {
+                TypeRef elemType = ResolveType(*t->typeArgs[0]);
+                if (t->name == "Range") {
+                    return TypeRef::MakeRange(std::move(elemType));
+                }
+                if (t->name == "RangeInclusive") {
+                    return TypeRef::MakeRange(std::move(elemType), true, true, true);
+                }
+                if (t->name == "RangeFrom") {
+                    return TypeRef::MakeRange(std::move(elemType), true, false);
+                }
+                if (t->name == "RangeTo") {
+                    return TypeRef::MakeRange(std::move(elemType), false, true);
+                }
+                if (t->name == "RangeToInclusive") {
+                    return TypeRef::MakeRange(std::move(elemType), false, true, true);
+                }
+            }
             HirSymbol *sym = currentScope->Lookup(t->name);
             if (sym && (sym->kind == HirSymbol::Kind::Type || sym->kind == HirSymbol::Kind::Interface)) {
                 if (t->typeArgs.empty() && !sym->type.IsUnknown()) {
@@ -1217,6 +1280,25 @@ private:
                 return ResolveType(expr);
             }
 
+            if (t->typeArgs.size() == 1) {
+                TypeRef elemType = ResolveTypeWithSubstitution(*t->typeArgs[0], substitutions);
+                if (t->name == "Range") {
+                    return TypeRef::MakeRange(std::move(elemType));
+                }
+                if (t->name == "RangeInclusive") {
+                    return TypeRef::MakeRange(std::move(elemType), true, true, true);
+                }
+                if (t->name == "RangeFrom") {
+                    return TypeRef::MakeRange(std::move(elemType), true, false);
+                }
+                if (t->name == "RangeTo") {
+                    return TypeRef::MakeRange(std::move(elemType), false, true);
+                }
+                if (t->name == "RangeToInclusive") {
+                    return TypeRef::MakeRange(std::move(elemType), false, true, true);
+                }
+            }
+
             TypeRef named = TypeRef::MakeNamed(t->name);
             named.name += "<";
             for (std::size_t i = 0; i < t->typeArgs.size(); ++i) {
@@ -1274,16 +1356,59 @@ private:
         return TypeRef::MakeUnknown();
     }
 
+    std::unordered_map<std::string, TypeRef> MethodTypeSubstitutions(const TypeRef &receiverType) const {
+        const TypeRef *receiver = &receiverType;
+        if (receiver->kind == TypeRef::Kind::Pointer && !receiver->inner.empty()) {
+            receiver = &receiver->inner[0];
+        }
+        if (receiver->kind != TypeRef::Kind::Named) {
+            return {};
+        }
+
+        const auto structIt = structDecls.find(BaseTypeName(receiver->name));
+        if (structIt == structDecls.end()) {
+            return {};
+        }
+        const std::vector<TypeRef> args = ParseTypeArgsFromTypeName(receiver->name);
+        std::unordered_map<std::string, TypeRef> substitutions;
+        const auto &params = structIt->second->typeParams;
+        const std::size_t count = std::min(params.size(), args.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            substitutions.emplace(params[i], args[i]);
+        }
+        return substitutions;
+    }
+
+    TypeRef InstantiateAssociatedReceiver(TypeRef receiverType, const std::vector<TypeExprPtr> &typeArgs) {
+        const std::string typeName = NamedBaseTypeName(receiverType);
+        const auto structIt = structDecls.find(typeName);
+        if (structIt == structDecls.end() || structIt->second->typeParams.empty() || typeArgs.empty()) {
+            return receiverType;
+        }
+
+        std::string name = typeName + "<";
+        for (std::size_t i = 0; i < typeArgs.size(); ++i) {
+            if (i) {
+                name += ", ";
+            }
+            name += ResolveType(*typeArgs[i]).ToString();
+        }
+        name += ">";
+        return TypeRef::MakeNamed(std::move(name));
+    }
+
     TypeRef MethodType(const TypeRef &receiverType, const FuncDecl &method) {
+        const auto substitutions = MethodTypeSubstitutions(receiverType);
         std::vector<TypeRef> params;
         params.push_back(receiverType);
         for (const auto &param : method.params) {
             if (param.isVariadic || param.name == "self") {
                 continue;
             }
-            params.push_back(ResolveType(*param.type));
+            params.push_back(ResolveTypeWithSubstitution(*param.type, substitutions));
         }
-        TypeRef ret = method.returnType ? ResolveType(*method.returnType->get()) : TypeRef::MakeOpaque();
+        TypeRef ret = method.returnType ? ResolveTypeWithSubstitution(*method.returnType->get(), substitutions)
+                                        : TypeRef::MakeOpaque();
         return TypeRef::MakeFunc(std::move(params), std::move(ret));
     }
 
@@ -1291,14 +1416,16 @@ private:
         TypeRef savedSelfType = currentSelfType;
         currentSelfType =
             receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
+        const auto substitutions = MethodTypeSubstitutions(receiverType);
         std::vector<TypeRef> params;
         for (const auto &param : method.params) {
             if (param.isVariadic) {
                 continue;
             }
-            params.push_back(ResolveType(*param.type));
+            params.push_back(ResolveTypeWithSubstitution(*param.type, substitutions));
         }
-        TypeRef ret = method.returnType ? ResolveType(*method.returnType->get()) : TypeRef::MakeOpaque();
+        TypeRef ret = method.returnType ? ResolveTypeWithSubstitution(*method.returnType->get(), substitutions)
+                                        : TypeRef::MakeOpaque();
         currentSelfType = savedSelfType;
         return TypeRef::MakeFunc(std::move(params), std::move(ret));
     }
@@ -1352,6 +1479,33 @@ private:
             }
         }
         return out.empty() ? "_" : out;
+    }
+
+    std::string ConcreteMethodCalleeName(const std::string &typeName, const TypeRef &receiverType,
+                                         const FuncDecl &method) {
+        const auto substitutions = MethodTypeSubstitutions(receiverType);
+        if (substitutions.empty()) {
+            return CalleeName(typeName, method.name, receiverType, method);
+        }
+
+        std::string name = CalleeName(typeName, method.name, receiverType, method);
+        const auto structIt = structDecls.find(typeName);
+        if (structIt != structDecls.end()) {
+            for (const auto &param : structIt->second->typeParams) {
+                if (const auto it = substitutions.find(param); it != substitutions.end()) {
+                    name += "_" + MangleTypeName(it->second);
+                }
+            }
+        }
+
+        if (generatedMonomorphizedFuncNames.insert(name).second) {
+            const TypeRef savedSelfType = currentSelfType;
+            currentSelfType =
+                receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
+            monomorphizedFuncs.push_back(LowerFunc(method, /*isMethod=*/true, substitutions, name));
+            currentSelfType = savedSelfType;
+        }
+        return name;
     }
 
     std::string MangleWithParams(const std::string &name, const FuncDecl &decl) {
@@ -1780,7 +1934,10 @@ private:
             return SizeOfStruct(baseName, localSubs);
         }
 
-        if (type.kind == TypeRef::Kind::Range) {
+        if (type.IsRange()) {
+            if (type.kind == TypeRef::Kind::RangeFull) {
+                return 0;
+            }
             if (type.inner.empty()) {
                 return std::nullopt;
             }
@@ -1788,7 +1945,8 @@ private:
             if (!elemSize || *elemSize == 0) {
                 return std::nullopt;
             }
-            return AlignUp(2 * *elemSize + 1, *elemSize);
+            return (type.kind == TypeRef::Kind::Range || type.kind == TypeRef::Kind::RangeInclusive) ? 2 * *elemSize
+                                                                                                     : *elemSize;
         }
 
         if (type.kind == TypeRef::Kind::Tuple) {
@@ -2272,7 +2430,11 @@ private:
             hmod.interfaces.push_back(LowerInterface(*ifaceDecl));
         }
         else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
-            hmod.impls.push_back(LowerImpl(*implDecl));
+            // Generic struct methods are emitted on demand for each concrete
+            // receiver type, just like generic free functions.
+            if (ImplTypeParams(*implDecl).empty()) {
+                hmod.impls.push_back(LowerImpl(*implDecl));
+            }
         }
         else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
             // An intrinsic value has no value to lower; uses of it become the
@@ -2484,18 +2646,12 @@ private:
             currentSelfType = extendedType;
         }
         else {
-            TypeRef selfBase;
-            if (HirSymbol *sym = currentScope->Lookup(d.typeName); sym && !sym->type.IsUnknown()) {
-                selfBase = sym->type;
-            }
-            else {
-                selfBase = TypeRef::MakeNamed(d.typeName);
-            }
+            TypeRef selfBase = extendedType.IsUnknown() ? TypeRef::MakeNamed(d.typeName) : extendedType;
             currentSelfType = TypeRef::MakePointer(selfBase);
         }
 
         HirImplBlock hib;
-        hib.typeName = d.typeName;
+        hib.typeName = d.typeName.starts_with("Slice<") ? d.typeName : BaseTypeName(d.typeName);
         hib.interfaceName = d.interfaceName;
         hib.location = d.location;
         for (const auto &m : d.methods) {
@@ -2680,7 +2836,7 @@ private:
             hs->variable = s->variable;
             hs->iterable = LowerExpr(*s->iterable);
             TypeRef elemType = TypeRef::MakeUnknown();
-            if (hs->iterable->type.IsRange() && !hs->iterable->type.inner.empty()) {
+            if (hs->iterable->type.IsIterableRange() && !hs->iterable->type.inner.empty()) {
                 elemType = hs->iterable->type.inner[0];
             }
             else if (auto sliceElem = IndexElementType(hs->iterable->type)) {
@@ -3391,7 +3547,7 @@ private:
 
                 auto callee = std::make_unique<HirVarExpr>();
                 callee->location = e->location;
-                callee->name = CalleeName(receiverBase, opName, selfArg->type, *method);
+                callee->name = ConcreteMethodCalleeName(receiverBase, selfArg->type, *method);
                 callee->type = MethodType(selfArg->type, *method);
 
                 auto call = std::make_unique<HirCallExpr>();
@@ -3453,10 +3609,24 @@ private:
                 he->hi = LowerExpr(*e->hi);
             }
             TypeRef elemType = he->lo ? he->lo->type : he->hi ? he->hi->type : TypeRef::MakeInt64();
-            if (elemType.IsUnknown()) {
-                elemType = TypeRef::MakeInt64();
+            if (e->lo && he->hi && he->hi->type.IsInteger() && UnsuffixedIntegerLiteralFits(*e->lo, he->hi->type)) {
+                elemType = he->hi->type;
+                he->lo = LowerExprAs(*e->lo, elemType);
             }
-            he->type = TypeRef::MakeRange(elemType);
+            else if (e->hi && he->lo && he->lo->type.IsInteger() &&
+                     UnsuffixedIntegerLiteralFits(*e->hi, he->lo->type)) {
+                elemType = he->lo->type;
+                he->hi = LowerExprAs(*e->hi, elemType);
+            }
+            if (!he->lo && !he->hi) {
+                he->type = TypeRef::MakeRangeFull();
+            }
+            else {
+                if (elemType.IsUnknown()) {
+                    elemType = TypeRef::MakeInt64();
+                }
+                he->type = TypeRef::MakeRange(elemType, he->lo != nullptr, he->hi != nullptr, he->inclusive);
+            }
             return he;
         }
         if (auto *e = dynamic_cast<const CallExpr *>(&expr)) {
@@ -3543,6 +3713,7 @@ private:
                 if (first && (first->kind == HirSymbol::Kind::Type || first->kind == HirSymbol::Kind::Interface) &&
                     !LookupEnumVariant(path->segments[0], path->segments[1])) {
                     TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
+                    receiverType = InstantiateAssociatedReceiver(std::move(receiverType), e->typeArgs);
                     std::vector<HirExprPtr> args;
                     std::vector<TypeRef> argTypes;
                     args.reserve(e->args.size());
@@ -3556,7 +3727,7 @@ private:
                         TypeRef funcType = AssociatedFunctionType(receiverType, *method);
                         auto callee = std::make_unique<HirVarExpr>();
                         callee->location = path->location;
-                        callee->name = CalleeName(path->segments[0], path->segments[1], receiverType, *method);
+                        callee->name = ConcreteMethodCalleeName(path->segments[0], receiverType, *method);
                         callee->type = funcType;
                         auto he = std::make_unique<HirCallExpr>();
                         he->location = e->location;
@@ -3796,7 +3967,7 @@ private:
                     }
                     auto callee = std::make_unique<HirVarExpr>();
                     callee->location = field->location;
-                    callee->name = CalleeName(receiverBase, field->field, selfArg->type, *method);
+                    callee->name = ConcreteMethodCalleeName(receiverBase, selfArg->type, *method);
                     callee->type = MethodType(selfArg->type, *method);
                     he->callee = std::move(callee);
                     he->args.push_back(std::move(selfArg));
@@ -3878,7 +4049,19 @@ private:
             he->location = e->location;
             he->object = LowerExpr(*e->object);
             he->index = LowerExpr(*e->index);
-            if (auto elemType = IndexElementType(he->object->type)) {
+            if (he->index->type.IsRange()) {
+                std::optional<TypeRef> elemType;
+                if (he->object->type.kind == TypeRef::Kind::Array && !he->object->type.inner.empty()) {
+                    elemType = he->object->type.inner[0];
+                }
+                else {
+                    elemType = SliceElementType(he->object->type);
+                }
+                if (elemType) {
+                    he->type = TypeRef::MakeNamed(SliceTypeName(*elemType));
+                }
+            }
+            else if (auto elemType = IndexElementType(he->object->type)) {
                 he->type = *elemType;
             }
             return he;
@@ -3908,11 +4091,11 @@ private:
             else if (he->object->type.IsRange()) {
                 TypeRef rangeElemType =
                     he->object->type.inner.empty() ? TypeRef::MakeInt64() : he->object->type.inner[0];
-                if (e->field == "lo" || e->field == "hi") {
+                if (e->field == "start" && he->object->type.RangeHasStart()) {
                     he->type = rangeElemType;
                 }
-                else if (e->field == "inclusive") {
-                    he->type = TypeRef::MakeBool();
+                else if (e->field == "end" && he->object->type.RangeHasEnd()) {
+                    he->type = rangeElemType;
                 }
             }
             else if (he->object->type.kind == TypeRef::Kind::Tuple) {
@@ -3973,7 +4156,8 @@ private:
             auto he = std::make_unique<HirStructInitExpr>();
             he->location = e->location;
             he->typeName = GenericStructInitName(*e);
-            he->type = TypeRef::MakeNamed(he->typeName);
+            TypeRef type = ParseTypeRefFromString(he->typeName);
+            he->type = type.IsRange() ? type : TypeRef::MakeNamed(he->typeName);
             for (const auto &f : e->fields) {
                 HirStructInitField hf;
                 hf.name = f.name;

@@ -55,11 +55,17 @@ int SizeOf(const TypeRef &t) {
             return 0;
         }
         return SizeOf(t.inner[0]) * static_cast<int>(*t.arrayLength);
-    case TypeRef::Kind::Range: {
+    case TypeRef::Kind::Range:
+    case TypeRef::Kind::RangeInclusive: {
         const TypeRef &elemType = t.inner.empty() ? TypeRef::MakeInt64() : t.inner[0];
-        int elemSize = SizeOf(elemType);
-        return AlignUp(2 * elemSize + 1, elemSize > 0 ? elemSize : 1);
+        return 2 * SizeOf(elemType);
     }
+    case TypeRef::Kind::RangeFrom:
+    case TypeRef::Kind::RangeTo:
+    case TypeRef::Kind::RangeToInclusive:
+        return t.inner.empty() ? 0 : SizeOf(t.inner[0]);
+    case TypeRef::Kind::RangeFull:
+        return 0;
     case TypeRef::Kind::Named: {
         const auto baseName = BaseTypeName(t.name);
         if (baseName == "Slice" || baseName.starts_with("Slice<")) {

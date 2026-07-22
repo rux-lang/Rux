@@ -8,6 +8,30 @@ func IsWindows(value: Slice<char8>) -> bool {
     return value.length == 7 && value[0] == c8'W' && value[1] == c8'i' && value[6] == c8's';
 }
 
+func RangeStart(value: Range<int>) -> int {
+    return value.start;
+}
+
+func InclusiveEnd(value: RangeInclusive<int>) -> int {
+    return value.end;
+}
+
+func FromStart(value: RangeFrom<int>) -> int {
+    return value.start;
+}
+
+func ToEnd(value: RangeTo<int>) -> int {
+    return value.end;
+}
+
+func ToInclusiveEnd(value: RangeToInclusive<int>) -> int {
+    return value.end;
+}
+
+func IsFull(value: RangeFull) -> bool {
+    return true;
+}
+
 func Main() -> int {
     let mut str: Slice<char8> = "Hello, world!";
     Assert(str[0] == 'H', "Expected first character to be 'H'");
@@ -15,5 +39,51 @@ func Main() -> int {
     Assert(str.data != null, "Expected non-null data pointer");
     Assert(str.length == 13, "Expected length of 13");
     Assert(IsWindows(PlatformName()), "Returned string literal must have static storage duration");
+
+    let values: Slice<int> = [10, 20, 30, 40, 50, 60];
+
+    let bounded: Range<int> = 2..4;
+    Assert(bounded.start == 2 && bounded.end == 4, "Range fields should be start/end");
+    Assert(RangeStart(bounded) == 2, "Range should be accepted by typed APIs");
+    let initialized = Range<int> { start: 1, end: 3 };
+    Assert(initialized.start == 1 && initialized.end == 3, "Range should support struct initialization");
+    let boundedValues: Slice<int> = values[bounded];
+    Assert(boundedValues.length == 2 && boundedValues[0] == 30 && boundedValues[1] == 40,
+           "exclusive bounded slice should contain [30, 40]");
+
+    let inclusive: RangeInclusive<int> = 2..=4;
+    Assert(InclusiveEnd(inclusive) == 4, "RangeInclusive should be accepted by typed APIs");
+    let inclusiveValues: Slice<int> = values[inclusive];
+    Assert(inclusiveValues.length == 3 && inclusiveValues[0] == 30 && inclusiveValues[2] == 50,
+           "inclusive bounded slice should contain [30, 40, 50]");
+
+    let from: RangeFrom<int> = 2..;
+    Assert(FromStart(from) == 2, "RangeFrom should be accepted by typed APIs");
+    let fromValues: Slice<int> = values[from];
+    Assert(fromValues.length == 4 && fromValues[0] == 30 && fromValues[3] == 60,
+           "open-ended slice should contain [30, 40, 50, 60]");
+
+    let to: RangeTo<int> = ..3;
+    Assert(ToEnd(to) == 3, "RangeTo should be accepted by typed APIs");
+    let toValues: Slice<int> = values[to];
+    Assert(toValues.length == 3 && toValues[0] == 10 && toValues[2] == 30,
+           "startless slice should contain [10, 20, 30]");
+
+    let toInclusive: RangeToInclusive<int> = ..=3;
+    Assert(ToInclusiveEnd(toInclusive) == 3, "RangeToInclusive should be accepted by typed APIs");
+    let toInclusiveValues: Slice<int> = values[toInclusive];
+    Assert(toInclusiveValues.length == 4 && toInclusiveValues[0] == 10 && toInclusiveValues[3] == 40,
+           "inclusive startless slice should contain [10, 20, 30, 40]");
+
+    let full: RangeFull = ..;
+    Assert(IsFull(full), "RangeFull should be accepted by typed APIs");
+    let allValues: Slice<int> = values[full];
+    Assert(allValues.length == values.length && allValues[0] == 10 && allValues[5] == 60,
+           "full slice should cover the entire collection");
+
+    let arrayValues: int[4] = [7, 8, 9, 10];
+    let arraySlice: Slice<int> = arrayValues[1..=2];
+    Assert(arraySlice.length == 2 && arraySlice[0] == 8 && arraySlice[1] == 9,
+           "fixed arrays should support range slicing");
     return 0;
 }

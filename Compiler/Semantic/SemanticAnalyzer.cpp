@@ -601,11 +601,13 @@ private:
             }
         }
         else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
+            const std::string typeName =
+                implDecl->typeName.starts_with("Slice<") ? implDecl->typeName : BaseTypeName(implDecl->typeName);
             for (const auto &method : implDecl->methods) {
-                methodsByType[implDecl->typeName][method->name].push_back(method.get());
+                methodsByType[typeName][method->name].push_back(method.get());
             }
             if (implDecl->interfaceName) {
-                typeImplementsInterfaces[implDecl->typeName].insert(*implDecl->interfaceName);
+                typeImplementsInterfaces[typeName].insert(*implDecl->interfaceName);
             }
         }
         // Import declarations don't add names in the first pass.
@@ -670,6 +672,28 @@ private:
     static std::string BaseTypeName(const std::string &name) {
         const std::size_t pos = name.find('<');
         return pos == std::string::npos ? name : name.substr(0, pos);
+    }
+
+    std::vector<std::string> ImplTypeParams(const ImplDecl &decl) const {
+        std::vector<std::string> params;
+        const auto *target = dynamic_cast<const NamedTypeExpr *>(decl.extendedType.get());
+        if (!target) {
+            return params;
+        }
+        const auto structIt = structDecls.find(target->name);
+        if (structIt == structDecls.end()) {
+            return params;
+        }
+
+        const auto &structParams = structIt->second->typeParams;
+        const std::size_t count = std::min(structParams.size(), target->typeArgs.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            const auto *arg = dynamic_cast<const NamedTypeExpr *>(target->typeArgs[i].get());
+            if (arg && arg->typeArgs.empty() && arg->name == structParams[i]) {
+                params.push_back(arg->name);
+            }
+        }
+        return params;
     }
 
     static TypeRef ParseTypeRefFromString(std::string str) {
@@ -777,8 +801,26 @@ private:
             return TypeRef::MakeTuple(elems);
         }
 
+        const auto rangeElement = [&](const std::string_view prefix) {
+            return ParseTypeRefFromString(str.substr(prefix.size(), str.size() - prefix.size() - 1));
+        };
         if (str.rfind("Range<", 0) == 0 && str.back() == '>') {
-            return TypeRef::MakeRange(ParseTypeRefFromString(str.substr(6, str.size() - 7)));
+            return TypeRef::MakeRange(rangeElement("Range<"));
+        }
+        if (str.rfind("RangeInclusive<", 0) == 0 && str.back() == '>') {
+            return TypeRef::MakeRange(rangeElement("RangeInclusive<"), true, true, true);
+        }
+        if (str.rfind("RangeFrom<", 0) == 0 && str.back() == '>') {
+            return TypeRef::MakeRange(rangeElement("RangeFrom<"), true, false);
+        }
+        if (str.rfind("RangeTo<", 0) == 0 && str.back() == '>') {
+            return TypeRef::MakeRange(rangeElement("RangeTo<"), false, true);
+        }
+        if (str.rfind("RangeToInclusive<", 0) == 0 && str.back() == '>') {
+            return TypeRef::MakeRange(rangeElement("RangeToInclusive<"), false, true, true);
+        }
+        if (str == "RangeFull") {
+            return TypeRef::MakeRangeFull();
         }
 
         return TypeRef::MakeNamed(str);
@@ -1714,6 +1756,28 @@ private:
             if (hasUnknownArgs) {
                 return TypeRef::MakeUnknown();
             }
+
+            if (t->name == "RangeFull" && resolvedArgs.empty()) {
+                return TypeRef::MakeRangeFull();
+            }
+            if (resolvedArgs.size() == 1) {
+                if (t->name == "Range") {
+                    return TypeRef::MakeRange(resolvedArgs[0]);
+                }
+                if (t->name == "RangeInclusive") {
+                    return TypeRef::MakeRange(resolvedArgs[0], true, true, true);
+                }
+                if (t->name == "RangeFrom") {
+                    return TypeRef::MakeRange(resolvedArgs[0], true, false);
+                }
+                if (t->name == "RangeTo") {
+                    return TypeRef::MakeRange(resolvedArgs[0], false, true);
+                }
+                if (t->name == "RangeToInclusive") {
+                    return TypeRef::MakeRange(resolvedArgs[0], false, true, true);
+                }
+            }
+
             Symbol *sym = currentScope ? currentScope->Lookup(t->name) : nullptr;
             if (sym && (sym->kind == Symbol::Kind::Type || sym->kind == Symbol::Kind::Interface)) {
                 // Return base type if no generic arguments are provided
@@ -1829,6 +1893,25 @@ private:
                     return it->second;
                 }
                 return ResolveType(expr);
+            }
+
+            if (t->typeArgs.size() == 1) {
+                TypeRef elemType = ResolveTypeWithSubstitution(*t->typeArgs[0], substitutions);
+                if (t->name == "Range") {
+                    return TypeRef::MakeRange(std::move(elemType));
+                }
+                if (t->name == "RangeInclusive") {
+                    return TypeRef::MakeRange(std::move(elemType), true, true, true);
+                }
+                if (t->name == "RangeFrom") {
+                    return TypeRef::MakeRange(std::move(elemType), true, false);
+                }
+                if (t->name == "RangeTo") {
+                    return TypeRef::MakeRange(std::move(elemType), false, true);
+                }
+                if (t->name == "RangeToInclusive") {
+                    return TypeRef::MakeRange(std::move(elemType), false, true, true);
+                }
             }
 
             TypeRef named = TypeRef::MakeNamed(t->name);
@@ -1952,11 +2035,54 @@ private:
         return nullptr;
     }
 
+    std::unordered_map<std::string, TypeRef> MethodTypeSubstitutions(const TypeRef &receiverType) const {
+        const TypeRef *receiver = &receiverType;
+        if (receiver->kind == TypeRef::Kind::Pointer && !receiver->inner.empty()) {
+            receiver = &receiver->inner[0];
+        }
+        if (receiver->kind != TypeRef::Kind::Named) {
+            return {};
+        }
+
+        const auto structIt = structDecls.find(BaseTypeName(receiver->name));
+        if (structIt == structDecls.end()) {
+            return {};
+        }
+        const std::vector<TypeRef> args = ParseTypeArgsFromTypeName(receiver->name);
+        std::unordered_map<std::string, TypeRef> substitutions;
+        const auto &params = structIt->second->typeParams;
+        const std::size_t count = std::min(params.size(), args.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            substitutions.emplace(params[i], args[i]);
+        }
+        return substitutions;
+    }
+
+    TypeRef InstantiateAssociatedReceiver(TypeRef receiverType, const std::vector<TypeExprPtr> &typeArgs) {
+        const std::string typeName = NamedBaseTypeName(receiverType);
+        const auto structIt = structDecls.find(typeName);
+        if (structIt == structDecls.end() || structIt->second->typeParams.empty() || typeArgs.empty()) {
+            return receiverType;
+        }
+
+        std::string name = typeName + "<";
+        for (std::size_t i = 0; i < typeArgs.size(); ++i) {
+            if (i) {
+                name += ", ";
+            }
+            name += ResolveType(*typeArgs[i]).ToString();
+        }
+        name += ">";
+        return TypeRef::MakeNamed(std::move(name));
+    }
+
     TypeRef ResolveMethodReturnType(const TypeRef &receiverType, const FuncDecl &method) {
         TypeRef savedSelfType = currentSelfType;
         currentSelfType =
             receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
-        TypeRef ret = method.returnType ? ResolveType(*method.returnType->get()) : TypeRef::MakeOpaque();
+        const auto substitutions = MethodTypeSubstitutions(receiverType);
+        TypeRef ret = method.returnType ? ResolveTypeWithSubstitution(*method.returnType->get(), substitutions)
+                                        : TypeRef::MakeOpaque();
         currentSelfType = savedSelfType;
         return ret;
     }
@@ -1970,7 +2096,7 @@ private:
             if (param.isVariadic || param.name == "self") {
                 continue;
             }
-            params.push_back(ResolveType(*param.type));
+            params.push_back(ResolveTypeWithSubstitution(*param.type, MethodTypeSubstitutions(receiverType)));
         }
         currentSelfType = savedSelfType;
         return params;
@@ -1980,7 +2106,8 @@ private:
         TypeRef savedSelfType = currentSelfType;
         currentSelfType =
             receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
-        TypeRef type = MakeFuncType(method.params, method.returnType, method.typeParams);
+        TypeRef type = MakeFuncTypeWithSubstitution(method.params, method.returnType,
+                                                    MethodTypeSubstitutions(receiverType), method.typeParams);
         currentSelfType = savedSelfType;
         return type;
     }
@@ -2153,7 +2280,10 @@ private:
             return SizeOfStruct(baseName, localSubs);
         }
 
-        if (type.kind == TypeRef::Kind::Range) {
+        if (type.IsRange()) {
+            if (type.kind == TypeRef::Kind::RangeFull) {
+                return 0;
+            }
             if (type.inner.empty()) {
                 return std::nullopt;
             }
@@ -2161,7 +2291,8 @@ private:
             if (!elemSize || *elemSize == 0) {
                 return std::nullopt;
             }
-            return AlignUp(2 * *elemSize + 1, *elemSize);
+            return (type.kind == TypeRef::Kind::Range || type.kind == TypeRef::Kind::RangeInclusive) ? 2 * *elemSize
+                                                                                                     : *elemSize;
         }
 
         if (type.kind == TypeRef::Kind::Tuple) {
@@ -2305,7 +2436,10 @@ private:
 
     std::optional<FunctionSignature> ResolveFunctionSignature(const FuncDecl &decl, const bool isMethod) {
         auto savedTypeParams = currentTypeParams;
-        currentTypeParams = decl.typeParams;
+        if (!isMethod) {
+            currentTypeParams.clear();
+        }
+        currentTypeParams.insert(currentTypeParams.end(), decl.typeParams.begin(), decl.typeParams.end());
 
         std::unordered_map<std::string, TypeRef> substitutions;
         for (std::size_t i = 0; i < decl.typeParams.size(); ++i) {
@@ -2440,7 +2574,10 @@ private:
 
     void CheckFuncDecl(const FuncDecl &d, bool isMethod = false) {
         auto savedTypeParams = currentTypeParams;
-        currentTypeParams = d.typeParams;
+        if (!isMethod) {
+            currentTypeParams.clear();
+        }
+        currentTypeParams.insert(currentTypeParams.end(), d.typeParams.begin(), d.typeParams.end());
 
         if (d.returnType) {
             ValidateArrayType(*d.returnType->get());
@@ -2759,6 +2896,9 @@ private:
     }
 
     void CheckImplDecl(const ImplDecl &d) {
+        const auto savedTypeParams = currentTypeParams;
+        currentTypeParams = ImplTypeParams(d);
+
         // A compound receiver (e.g. `int[]`) resolves through the type
         // expression rather than a named symbol.
         if (d.extendedType) {
@@ -2768,7 +2908,8 @@ private:
         const bool isSliceReceiver =
             extendedType.kind == TypeRef::Kind::Array ||
             (extendedType.kind == TypeRef::Kind::Named && extendedType.name.starts_with("Slice<"));
-        if (!isSliceReceiver && !currentScope->Lookup(d.typeName)) {
+        const std::string typeName = d.typeName.starts_with("Slice<") ? d.typeName : BaseTypeName(d.typeName);
+        if (!isSliceReceiver && !currentScope->Lookup(typeName)) {
             EmitError(d.location, std::format("extend for unknown type '{}'", d.typeName));
         }
 
@@ -2801,17 +2942,11 @@ private:
             currentSelfType = extendedType;
         }
         else {
-            TypeRef selfBase;
-            if (Symbol *sym = currentScope->Lookup(d.typeName); sym && !sym->type.IsUnknown()) {
-                selfBase = sym->type;
-            }
-            else {
-                selfBase = TypeRef::MakeNamed(d.typeName);
-            }
+            TypeRef selfBase = extendedType.IsUnknown() ? TypeRef::MakeNamed(d.typeName) : extendedType;
             currentSelfType = TypeRef::MakePointer(selfBase);
         }
         for (const auto &m : d.methods) {
-            if (const auto typeIt = methodsByType.find(d.typeName); typeIt != methodsByType.end()) {
+            if (const auto typeIt = methodsByType.find(typeName); typeIt != methodsByType.end()) {
                 if (const auto methodIt = typeIt->second.find(m->name); methodIt != typeIt->second.end()) {
                     ValidateFunctionSignature(*m, methodIt->second, /*isMethod=*/true);
                 }
@@ -2820,6 +2955,7 @@ private:
         }
         currentSelfType = savedSelfType;
         inImpl = savedInImpl;
+        currentTypeParams = savedTypeParams;
     }
 
     void CheckModuleDecl(const ModuleDecl &d) {
@@ -3296,8 +3432,13 @@ private:
         else if (auto *forStmt = dynamic_cast<const ForStmt *>(&stmt)) {
             TypeRef iterType = CheckExpr(*forStmt->iterable);
             TypeRef elemType;
-            if (iterType.IsRange() && !iterType.inner.empty()) {
+            if (iterType.IsIterableRange() && !iterType.inner.empty()) {
                 elemType = iterType.inner[0];
+            }
+            else if (iterType.IsRange()) {
+                EmitError(forStmt->iterable->location,
+                          std::format("range type '{}' has no initial value and is not iterable", iterType.ToString()));
+                elemType = TypeRef::MakeUnknown();
             }
             else if (auto sliceElem = IndexElementType(iterType)) {
                 elemType = *sliceElem;
@@ -3627,7 +3768,7 @@ private:
         if (auto *e = dynamic_cast<const SizeOfExpr *>(&expr)) {
             ValidateArrayType(*e->type);
             TypeRef t = ResolveType(*e->type);
-            if (!t.IsUnknown() && !SizeOfTypeExpr(*e->type)) {
+            if (!t.IsUnknown() && t.kind != TypeRef::Kind::TypeParam && !SizeOfTypeExpr(*e->type)) {
                 EmitError(e->location, std::format("cannot determine size of type '{}'", t.ToString()));
             }
             return TypeRef::MakeUInt64();
@@ -3754,14 +3895,27 @@ private:
         if (auto *e = dynamic_cast<const RangeExpr *>(&expr)) {
             TypeRef loType = e->lo ? CheckExpr(*e->lo) : TypeRef::MakeUnknown();
             TypeRef hiType = e->hi ? CheckExpr(*e->hi) : TypeRef::MakeUnknown();
-            if (!loType.IsUnknown() && !hiType.IsUnknown() && !loType.IsNumeric() && !hiType.IsNumeric()) {
-                EmitError(e->location, "range operands must be numeric");
+            if ((!loType.IsUnknown() && !loType.IsNumeric()) || (!hiType.IsUnknown() && !hiType.IsNumeric())) {
+                EmitError(e->location, "range bounds must be numeric");
+            }
+            if (e->lo && e->hi) {
+                const auto start = EvalConstInt(*e->lo);
+                const auto end = EvalConstInt(*e->hi);
+                if (start && end && *start > *end) {
+                    EmitError(e->location, "range start cannot be greater than its end");
+                }
             }
             TypeRef elemType = loType.IsUnknown() ? hiType : loType;
-            if (elemType.IsUnknown()) {
-                elemType = TypeRef::MakeInt64();
+            if (e->lo && e->hi && hiType.IsInteger() && UnsuffixedIntegerLiteralFits(*e->lo, hiType)) {
+                elemType = hiType;
             }
-            return TypeRef::MakeRange(elemType);
+            else if (e->lo && e->hi && loType.IsInteger() && UnsuffixedIntegerLiteralFits(*e->hi, loType)) {
+                elemType = loType;
+            }
+            if (elemType.IsUnknown()) {
+                return TypeRef::MakeRangeFull();
+            }
+            return TypeRef::MakeRange(elemType, e->lo != nullptr, e->hi != nullptr, e->inclusive);
         }
 
         if (auto *e = dynamic_cast<const CallExpr *>(&expr)) {
@@ -3958,6 +4112,15 @@ private:
                     Symbol *first = currentScope->Lookup(path->segments[0]);
                     if (first && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
                         TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
+                        if (const auto structIt = structDecls.find(path->segments[0]);
+                            structIt != structDecls.end() && !structIt->second->typeParams.empty() &&
+                            e->typeArgs.size() != structIt->second->typeParams.size()) {
+                            EmitError(e->location,
+                                      std::format("associated function on '{}' expects {} type argument(s), got {}",
+                                                  path->segments[0], structIt->second->typeParams.size(),
+                                                  e->typeArgs.size()));
+                        }
+                        receiverType = InstantiateAssociatedReceiver(std::move(receiverType), e->typeArgs);
                         const std::string &methodName = path->segments[1];
                         std::vector<TypeRef> argTypes;
                         argTypes.reserve(e->args.size());
@@ -4031,7 +4194,21 @@ private:
 
         if (auto *e = dynamic_cast<const IndexExpr *>(&expr)) {
             TypeRef obj = CheckExpr(*e->object);
-            CheckExpr(*e->index);
+            TypeRef index = CheckExpr(*e->index);
+            if (index.IsRange()) {
+                std::optional<TypeRef> elemType;
+                if (obj.kind == TypeRef::Kind::Array && !obj.inner.empty()) {
+                    elemType = obj.inner[0];
+                }
+                else {
+                    elemType = SliceElementType(obj);
+                }
+                if (elemType) {
+                    return TypeRef::MakeNamed(SliceTypeName(*elemType));
+                }
+                EmitError(e->location, std::format("cannot slice value of type '{}'", obj.ToString()));
+                return TypeRef::MakeUnknown();
+            }
             if (auto elemType = IndexElementType(obj)) {
                 return *elemType;
             }
@@ -4055,11 +4232,11 @@ private:
             }
             if (obj.IsRange()) {
                 TypeRef elemType = obj.inner.empty() ? TypeRef::MakeInt64() : obj.inner[0];
-                if (e->field == "lo" || e->field == "hi") {
+                if (e->field == "start" && obj.RangeHasStart()) {
                     return elemType;
                 }
-                if (e->field == "inclusive") {
-                    return TypeRef::MakeBool();
+                if (e->field == "end" && obj.RangeHasEnd()) {
+                    return elemType;
                 }
                 EmitError(e->location, std::format("unknown field '{}' on type '{}'", e->field, obj.ToString()));
                 return TypeRef::MakeUnknown();
@@ -4116,7 +4293,9 @@ private:
             if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(e->typeName); enumDecl && variant) {
                 return EnumType(*enumDecl);
             }
-            return TypeRef::MakeNamed(GenericStructInitName(*e));
+            const std::string typeName = GenericStructInitName(*e);
+            TypeRef type = ParseTypeRefFromString(typeName);
+            return type.IsRange() ? type : TypeRef::MakeNamed(typeName);
         }
 
         if (auto *e = dynamic_cast<const ArrayExpr *>(&expr)) {

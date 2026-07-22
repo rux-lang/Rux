@@ -191,7 +191,8 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
         }
         return *elemSize * *arrayLength;
     }
-    case Kind::Range: {
+    case Kind::Range:
+    case Kind::RangeInclusive: {
         if (inner.empty()) {
             return std::nullopt;
         }
@@ -199,8 +200,18 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
         if (!elemSize || *elemSize == 0) {
             return std::nullopt;
         }
-        return Layout::AlignUp(2 * *elemSize + 1, *elemSize);
+        return 2 * *elemSize;
     }
+    case Kind::RangeFrom:
+    case Kind::RangeTo:
+    case Kind::RangeToInclusive: {
+        if (inner.empty()) {
+            return std::nullopt;
+        }
+        return inner[0].SizeInBytes();
+    }
+    case Kind::RangeFull:
+        return 0;
     case Kind::Tuple: {
         const auto layout = Layout::FieldsSizeAndAlign(inner, [](const TypeRef &elem) { return elem.SizeInBytes(); });
         if (!layout) {
@@ -287,6 +298,16 @@ std::string TypeRef::ToString() const {
     }
     case Kind::Range:
         return "Range<" + (inner.empty() ? "?" : inner[0].ToString()) + ">";
+    case Kind::RangeInclusive:
+        return "RangeInclusive<" + (inner.empty() ? "?" : inner[0].ToString()) + ">";
+    case Kind::RangeFrom:
+        return "RangeFrom<" + (inner.empty() ? "?" : inner[0].ToString()) + ">";
+    case Kind::RangeTo:
+        return "RangeTo<" + (inner.empty() ? "?" : inner[0].ToString()) + ">";
+    case Kind::RangeToInclusive:
+        return "RangeToInclusive<" + (inner.empty() ? "?" : inner[0].ToString()) + ">";
+    case Kind::RangeFull:
+        return "RangeFull";
     case Kind::Tuple: {
         std::string s = "(";
         for (std::size_t i = 0; i < inner.size(); ++i) {

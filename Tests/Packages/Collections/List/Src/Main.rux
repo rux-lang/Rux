@@ -1,0 +1,105 @@
+import Collections::List;
+
+struct Pair {
+    first: int32;
+    second: int32;
+}
+
+func Main() -> int {
+    // New owns nothing until the first addition.
+    let mut empty = List::New<int32>();
+    if !empty.IsEmpty() || empty.Length() != 0 || empty.Capacity() != 0 { return 10; }
+    if empty.Data() != null { return 11; }
+    empty.Free();
+
+    // Capacity grows geometrically while existing elements stay intact.
+    let mut values = List::WithCapacity<int32>(2);
+    if values.Length() != 0 || values.Capacity() != 2 { return 20; }
+    values.Add(10);
+    values.Add(20);
+    let initialData = values.Data();
+    values.Add(30);
+    values.Append(40);
+    if values.Length() != 4 || values.Capacity() < 4 { return 21; }
+    if values.At(0) != 10 || values.At(1) != 20 || values.At(2) != 30 || values.At(3) != 40 { return 22; }
+    if initialData == null { return 23; }
+
+    // Reserve changes only capacity, and Set performs typed replacement.
+    values.Reserve(10);
+    if values.Length() != 4 || values.Capacity() < 14 { return 30; }
+    values.Set(1, 25);
+    if values.At(1) != 25 { return 31; }
+
+    // Insert accepts every position through Length and rejects positions past
+    // it. RemoveAt closes each resulting gap.
+    if !values.Insert(0, 5) { return 40; }
+    if !values.Insert(3, 27) { return 41; }
+    if !values.Insert(values.Length(), 50) { return 42; }
+    if values.Insert(values.Length() + 1, 99) { return 43; }
+    if values.Length() != 7 { return 44; }
+    if values.At(0) != 5 || values.At(3) != 27 || values.At(6) != 50 { return 45; }
+    if !values.RemoveAt(0) { return 46; }
+    if !values.RemoveAt(2) { return 47; }
+    if !values.RemoveAt(values.Length() - 1) { return 48; }
+    if values.RemoveAt(values.Length()) { return 49; }
+    if values.Length() != 4 || values.At(0) != 10 || values.At(1) != 25 ||
+       values.At(2) != 30 || values.At(3) != 40 { return 50; }
+
+    // A slice borrows only initialized elements.
+    let borrowed = values.AsSlice();
+    if borrowed.data != values.Data() || borrowed.length != 4 || borrowed[2] != 30 { return 60; }
+
+    // Clone and ToArray copy, leaving independently owned allocations.
+    let mut copy = values.Clone();
+    if copy.Data() == values.Data() || copy.Capacity() != copy.Length() { return 70; }
+    copy.Set(0, 99);
+    if values.At(0) != 10 { return 71; }
+    copy.Free();
+
+    let mut fixed = values.ToArray();
+    if fixed.Data() == values.Data() || fixed.Length() != values.Length() { return 72; }
+    fixed.Set(0, 88);
+    if values.At(0) != 10 { return 73; }
+    fixed.Free();
+
+    // From copies its source, and Shrink returns spare capacity.
+    let source: Slice<int32> = [1, 2, 3];
+    let mut from = List::From<int32>(source);
+    if from.Data() == source.data || from.Length() != 3 || from.Capacity() != 3 { return 80; }
+    from.Reserve(5);
+    from.Shrink();
+    if from.Capacity() != from.Length() || from.At(2) != 3 { return 81; }
+    from.Free();
+
+    // Clear retains capacity for reuse; shrinking an empty List frees it.
+    let retained = values.Data();
+    let retainedCapacity = values.Capacity();
+    values.Clear();
+    if !values.IsEmpty() || values.Data() != retained || values.Capacity() != retainedCapacity { return 90; }
+    values.Add(7);
+    if values.Data() != retained || values.At(0) != 7 { return 91; }
+    values.Clear();
+    values.Shrink();
+    if values.Data() != null || values.Capacity() != 0 { return 92; }
+
+    // IntoArray transfers the allocation after trimming it to Length.
+    let mut moved = List::WithCapacity<int32>(8);
+    moved.Add(6);
+    moved.Add(7);
+    let oldData = moved.Data();
+    let mut array = moved.IntoArray();
+    if moved.Data() != null || moved.Length() != 0 || moved.Capacity() != 0 { return 100; }
+    if array.Length() != 2 || array.At(0) != 6 || array.At(1) != 7 { return 101; }
+    if array.Data() == null || oldData == null { return 102; }
+    array.Free();
+    moved.Free();
+
+    // Growth and pointer indexing honor element sizes larger than one word.
+    let mut pairs = List::New<Pair>();
+    pairs.Add(Pair { first: 1, second: 2 });
+    pairs.Add(Pair { first: 3, second: 4 });
+    pairs.Insert(1, Pair { first: 5, second: 6 });
+    if pairs.Length() != 3 || pairs.At(1).second != 6 || pairs.At(2).first != 3 { return 110; }
+    pairs.Free();
+    return 0;
+}

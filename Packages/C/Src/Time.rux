@@ -1,17 +1,17 @@
 import Rux::{ #target, #Error };
 
-/// Arithmetic type capable of representing a calendar time
-/// https://en.cppreference.com/c/chrono/time_t
+// Arithmetic type capable of representing a calendar time
+// https://en.cppreference.com/c/chrono/time_t
 #Allow("naming.type")
 type time_t = int64;
 
-/// Arithmetic type capable of representing processor time
-/// https://en.cppreference.com/c/chrono/clock_t
+// Arithmetic type capable of representing processor time
+// https://en.cppreference.com/c/chrono/clock_t
 #Allow("naming.type")
 type clock_t = int64;
 
-/// Calendar time broken down into its components
-/// https://en.cppreference.com/c/chrono/tm
+// Calendar time broken down into its components
+// https://en.cppreference.com/c/chrono/tm
 when #target.os {
     .Windows => {
         #Allow("naming.type")
@@ -45,8 +45,8 @@ when #target.os {
     }
 }
 
-/// Time in seconds and nanoseconds
-/// https://en.cppreference.com/c/chrono/timespec
+// Time in seconds and nanoseconds
+// https://en.cppreference.com/c/chrono/timespec
 #Allow("naming.type")
 struct timespec {
     tv_sec: time_t; // whole seconds
@@ -67,39 +67,39 @@ when #target.os {
 
 #Link(TimeLib)
 extern {
-    /// Converts a tm object to a textual representation
-    /// https://en.cppreference.com/c/chrono/asctime
+    // Converts a tm object to a textual representation
+    // https://en.cppreference.com/c/chrono/asctime
     func asctime(time_ptr: *tm) -> *char8;
 
-    /// Returns the approximate processor time used by the program
-    /// https://en.cppreference.com/c/chrono/clock
+    // Returns the approximate processor time used by the program
+    // https://en.cppreference.com/c/chrono/clock
     func clock() -> clock_t;
 
-    /// Converts a time_t object to a textual representation
-    /// https://en.cppreference.com/c/chrono/ctime
+    // Converts a time_t object to a textual representation
+    // https://en.cppreference.com/c/chrono/ctime
     func ctime(timer: *time_t) -> *char8;
 
-    /// Computes the difference in seconds between two calendar times
-    /// https://en.cppreference.com/c/chrono/difftime
+    // Computes the difference in seconds between two calendar times
+    // https://en.cppreference.com/c/chrono/difftime
     func difftime(time_end: time_t, time_beg: time_t) -> float64;
 
-    /// Converts a time_t object to calendar time expressed as UTC
-    /// https://en.cppreference.com/c/chrono/gmtime
+    // Converts a time_t object to calendar time expressed as UTC
+    // https://en.cppreference.com/c/chrono/gmtime
     func gmtime(timer: *time_t) -> *tm;
 
-    /// Converts a time_t object to calendar time expressed as local time
-    /// https://en.cppreference.com/c/chrono/localtime
+    // Converts a time_t object to calendar time expressed as local time
+    // https://en.cppreference.com/c/chrono/localtime
     func localtime(timer: *time_t) -> *tm;
 
-    /// Converts calendar time to a time_t object, normalizing the tm structure
-    /// https://en.cppreference.com/c/chrono/mktime
+    // Converts calendar time to a time_t object, normalizing the tm structure
+    // https://en.cppreference.com/c/chrono/mktime
     func mktime(time_ptr: *tm) -> time_t;
 
-    /// Converts a tm object to a custom textual representation
-    /// https://en.cppreference.com/c/chrono/strftime
+    // Converts a tm object to a custom textual representation
+    // https://en.cppreference.com/c/chrono/strftime
     func strftime(str: *char8, count: uint, format: *char8, time_ptr: *tm) -> uint;
 
-    /// Returns the current calendar time since the epoch
-    /// https://en.cppreference.com/c/chrono/time
+    // Returns the current calendar time since the epoch
+    // https://en.cppreference.com/c/chrono/time
     func time(timer: *time_t) -> time_t;
 }

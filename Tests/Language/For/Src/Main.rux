@@ -1,13 +1,8 @@
 import Rux::Assert;
 
-// struct Range<T> {
-//     lo: T;
-//     hi: T;
-//     inclusive: bool8;
-// }
-
 const HI: uint32 = 5;
 const LO: uint32 = 1;
+const ZERO: int = 0;
 
 func Main() -> int {
     for i in 0..=10 {
@@ -20,13 +15,13 @@ func Main() -> int {
     // into the range. Otherwise the bound's high bits are left
     // uninitialized and the loop runs zero times or never terminates.
     let mut exclusive: int = 0;
-    for i in 0..HI {
+    for i in ZERO..HI {
         exclusive += 1;
     }
     Assert(exclusive == 5, "const exclusive upper bound should iterate 5 times");
 
     let mut inclusive: int = 0;
-    for i in 0..=HI {
+    for i in ZERO..=HI {
         inclusive += 1;
     }
     Assert(inclusive == 6, "const inclusive upper bound should iterate 6 times");
@@ -36,6 +31,16 @@ func Main() -> int {
         both += 1;
     }
     Assert(both == 4, "const lower and upper bounds should iterate 4 times");
+
+    // An unsuffixed integer literal adopts the other integer bound's type.
+    // Length-like APIs return uint, so `0..length` must also produce uint
+    // indices rather than rejecting them at typed call sites.
+    let length: uint = 3;
+    let mut lastIndex: uint = 0;
+    for i in 0..length {
+        lastIndex = i;
+    }
+    Assert(lastIndex == 2, "zero-based range should use its uint upper-bound type");
 
     // Regression test for https://github.com/rux-lang/Rux/issues/163:
     // when a loop's range bound reuses an in-scope variable name, that bound
@@ -62,6 +67,18 @@ func Main() -> int {
     }
     Assert(sum == 60, "slice loop should sum all elements");
     Assert(elem == 30, "reused slice loop variable should retain its final value");
+
+    // A RangeFrom has an initial value and is independently iterable. It is
+    // unbounded, so this loop terminates explicitly.
+    let from: RangeFrom<int> = 5..;
+    let mut fromSum: int = 0;
+    for i in from {
+        fromSum += i;
+        if i == 7 {
+            break;
+        }
+    }
+    Assert(fromSum == 18, "RangeFrom should iterate upward from its start");
 
     return 0;
 }

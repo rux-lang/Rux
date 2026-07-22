@@ -1,0 +1,29 @@
+// 0..10
+struct Range<T> {
+    start: T;
+    end: T;
+}
+
+// 0..=10
+struct RangeInclusive<T> {
+    start: T;
+    end: T;
+}
+
+// 5..
+struct RangeFrom<T> {
+    start: T;
+}
+
+// ..10
+struct RangeTo<T> {
+    end: T;
+}
+
+// ..=10
+struct RangeToInclusive<T> {
+    end: T;
+}
+
+// ..
+struct RangeFull {}

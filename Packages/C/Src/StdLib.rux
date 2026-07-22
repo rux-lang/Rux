@@ -14,71 +14,71 @@ when #target.os {
 
 #Link(StdLib)
 extern {
-    /// Causes abnormal program termination without cleaning up
-    /// https://en.cppreference.com/c/program/abort
+    // Causes abnormal program termination without cleaning up
+    // https://en.cppreference.com/c/program/abort
     func abort();
 
-    /// Computes the absolute value of an integer value
-    /// https://en.cppreference.com/c/numeric/math/abs
+    // Computes the absolute value of an integer value
+    // https://en.cppreference.com/c/numeric/math/abs
     func abs(n: int32) -> int32;
 
-    /// Converts a byte string to a floating point value
-    /// https://en.cppreference.com/c/string/byte/atof
+    // Converts a byte string to a floating point value
+    // https://en.cppreference.com/c/string/byte/atof
     func atof(str: *char8) -> float64;
 
-    /// Converts a byte string to an integer value
-    /// https://en.cppreference.com/c/string/byte/atoi
+    // Converts a byte string to an integer value
+    // https://en.cppreference.com/c/string/byte/atoi
     func atoi(str: *char8) -> int32;
 
-    /// Converts a byte string to a long integer value
-    /// https://en.cppreference.com/c/string/byte/atoi
+    // Converts a byte string to a long integer value
+    // https://en.cppreference.com/c/string/byte/atoi
     func atol(str: *char8) -> int64;
 
-    /// Converts a byte string to a long long integer value
-    /// https://en.cppreference.com/c/string/byte/atoi
+    // Converts a byte string to a long long integer value
+    // https://en.cppreference.com/c/string/byte/atoi
     func atoll(str: *char8) -> int64;
 
-    /// Allocates memory for an array of num objects of size and zero-initializes it
-    /// https://en.cppreference.com/c/memory/calloc
+    // Allocates memory for an array of num objects of size and zero-initializes it
+    // https://en.cppreference.com/c/memory/calloc
     func calloc(num: uint, size: uint) -> *opaque;
 
-    /// Causes normal program termination with cleanup
-    /// https://en.cppreference.com/c/program/exit
+    // Causes normal program termination with cleanup
+    // https://en.cppreference.com/c/program/exit
     func exit(status: int32);
 
-    /// Deallocates the memory previously allocated by malloc, calloc or realloc
-    /// https://en.cppreference.com/c/memory/free
+    // Deallocates the memory previously allocated by malloc, calloc or realloc
+    // https://en.cppreference.com/c/memory/free
     func free(ptr: *opaque);
 
-    /// Returns the value of an environment variable
-    /// https://en.cppreference.com/c/program/getenv
+    // Returns the value of an environment variable
+    // https://en.cppreference.com/c/program/getenv
     func getenv(name: *char8) -> *char8;
 
-    /// Computes the absolute value of a long integer value
-    /// https://en.cppreference.com/c/numeric/math/abs
+    // Computes the absolute value of a long integer value
+    // https://en.cppreference.com/c/numeric/math/abs
     func labs(n: int64) -> int64;
 
-    /// Computes the absolute value of a long long integer value
-    /// https://en.cppreference.com/c/numeric/math/abs
+    // Computes the absolute value of a long long integer value
+    // https://en.cppreference.com/c/numeric/math/abs
     func llabs(n: int64) -> int64;
 
-    /// Allocates size bytes of uninitialized memory
-    /// https://en.cppreference.com/c/memory/malloc
+    // Allocates size bytes of uninitialized memory
+    // https://en.cppreference.com/c/memory/malloc
     func malloc(size: uint) -> *opaque;
 
-    /// Returns a pseudo-random integer value between 0 and RAND_MAX
-    /// https://en.cppreference.com/c/numeric/random/rand
+    // Returns a pseudo-random integer value between 0 and RAND_MAX
+    // https://en.cppreference.com/c/numeric/random/rand
     func rand() -> int32;
 
-    /// Changes the size of the memory block pointed to by ptr to size bytes
-    /// https://en.cppreference.com/c/memory/realloc
+    // Changes the size of the memory block pointed to by ptr to size bytes
+    // https://en.cppreference.com/c/memory/realloc
     func realloc(ptr: *opaque, size: uint) -> *opaque;
 
-    /// Seeds the pseudo-random number generator used by rand
-    /// https://en.cppreference.com/c/numeric/random/srand
+    // Seeds the pseudo-random number generator used by rand
+    // https://en.cppreference.com/c/numeric/random/srand
     func srand(seed: uint32);
 
-    /// Calls the host environment's command processor
-    /// https://en.cppreference.com/c/program/system
+    // Calls the host environment's command processor
+    // https://en.cppreference.com/c/program/system
     func system(command: *char8) -> int32;
 }

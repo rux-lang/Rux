@@ -1,0 +1,86 @@
+import Memory::{ Alloc, Copy, Free };
+
+// A fixed-length collection which owns one contiguous heap allocation. The
+// length never changes after construction; use List when elements must be
+// appended or removed. Assignment copies the Array value and therefore shares
+// its allocation. Clone when both copies need to be freed, and Free exactly
+// once for every owned allocation.
+struct Array<T> {
+    data: *T;
+    length: uint;
+}
+
+extend Array<T> {
+    // Creates an uninitialized Array. A zero-length Array owns no allocation.
+    func New(length: uint) -> Array<T> {
+        if length == 0 {
+            return Array<T> { data: null, length: 0 };
+        }
+
+        let ptr = Alloc(length * sizeof(T)) as *T;
+        return Array<T> { data: ptr, length: length };
+    }
+
+    // Copies a slice into an independently owned Array.
+    func From(items: Slice<T>) -> Array<T> {
+        if items.length == 0 {
+            return Array<T> { data: null, length: 0 };
+        }
+
+        let ptr = Alloc(items.length * sizeof(T)) as *T;
+        Copy(ptr, items.data, items.length * sizeof(T));
+        return Array<T> { data: ptr, length: items.length };
+    }
+
+    // Returns an independent copy of this Array's storage. Values of T are
+    // copied byte-for-byte; allocations owned by individual elements remain
+    // the element owner's responsibility.
+    func Clone(self) -> Array<T> {
+        if self.length == 0 {
+            return Array<T> { data: null, length: 0 };
+        }
+
+        let ptr = Alloc(self.length * sizeof(T)) as *T;
+        Copy(ptr, self.data, self.length * sizeof(T));
+        return Array<T> { data: ptr, length: self.length };
+    }
+
+    // Releases the allocation and leaves an empty Array behind. Calling Free
+    // again is safe because Memory::Free accepts null.
+    func Free(self) {
+        Free(self.data);
+        self.data = null;
+        self.length = 0;
+    }
+
+    // Returns the owned allocation. The pointer remains valid until Free.
+    func Data(self) -> *T {
+        return self.data;
+    }
+
+    // Returns the fixed number of elements in the Array.
+    func Length(self) -> uint {
+        return self.length;
+    }
+
+    func IsEmpty(self) -> bool {
+        return self.length == 0;
+    }
+
+    // Returns the element at index. Like pointer and slice indexing, this is
+    // unchecked; callers must keep index below Length.
+    func At(self, index: uint) -> T {
+        return self.data[index];
+    }
+
+    // Replaces the element at index. Indexing is unchecked, as in At.
+    func Set(self, index: uint, value: T) {
+        self.data[index] = value;
+    }
+
+    // Borrows all elements as a slice without copying them. The slice must not
+    // outlive this Array's allocation.
+    func AsSlice(self) -> Slice<T> {
+        return Slice<T> { data: self.data, length: self.length };
+    }
+}

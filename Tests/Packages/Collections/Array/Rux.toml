@@ -1,0 +1,11 @@
+[Package]
+Name = "CollectionsArray"
+Version = "0.1.0"
+Type = "bin"
+Description = "Package test for Collections: Array"
+
+[Dependencies]
+Collections = { Path = "../../../../Packages/Collections" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Collections"
