@@ -193,6 +193,7 @@ public:
         for (auto *mod : modules) {
             CheckModule(*mod);
         }
+        ValidatePendingGenericInstantiations();
     }
 
 private:
@@ -222,6 +223,40 @@ private:
     std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methodsByType;
     std::unordered_map<std::string, std::unordered_set<std::string>> typeImplementsInterfaces;
+    const FuncDecl *currentFunctionDecl = nullptr;
+    std::unordered_map<const FuncDecl *, Scope *> functionDeclScopes;
+    std::unordered_map<const FuncDecl *, std::string> functionDeclFiles;
+
+    struct DeferredUnaryCheck {
+        TokenKind op;
+        TypeRef operand;
+        SourceLocation location;
+    };
+
+    struct DeferredBinaryCheck {
+        TokenKind op;
+        TypeRef left;
+        TypeRef right;
+        const Expr *leftExpr;
+        const Expr *rightExpr;
+        SourceLocation location;
+    };
+
+    struct DeferredGenericCall {
+        const FuncDecl *callee;
+        std::unordered_map<std::string, TypeRef> substitutions;
+    };
+
+    struct PendingGenericInstantiation {
+        const FuncDecl *decl;
+        std::unordered_map<std::string, TypeRef> substitutions;
+    };
+
+    std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredGenericCall>> deferredGenericCalls;
+    std::vector<PendingGenericInstantiation> pendingGenericInstantiations;
+    std::unordered_map<const FuncDecl *, std::unordered_set<std::string>> validatedGenericInstantiations;
 
     struct FunctionSignature {
         std::size_t typeParamCount = 0;
@@ -483,6 +518,8 @@ private:
         };
 
         if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
+            functionDeclScopes[fn] = &scope;
+            functionDeclFiles[fn] = currentFile;
             Symbol sym;
             sym.kind = Symbol::Kind::Func;
             sym.name = fn->name;
@@ -2604,6 +2641,8 @@ private:
 
     void CheckFuncDecl(const FuncDecl &d, bool isMethod = false) {
         auto savedTypeParams = currentTypeParams;
+        const FuncDecl *savedFunctionDecl = currentFunctionDecl;
+        currentFunctionDecl = &d;
         if (!isMethod) {
             currentTypeParams.clear();
         }
@@ -2695,6 +2734,7 @@ private:
         currentReturnType = savedRet;
         currentFunctionNoReturn = savedNoReturn;
         currentTypeParams = savedTypeParams;
+        currentFunctionDecl = savedFunctionDecl;
     }
 
     void CheckStructDecl(const StructDecl &d) {
@@ -4052,6 +4092,7 @@ private:
                     for (std::size_t i = 0; i < count; ++i) {
                         substitutions.emplace(decl->typeParams[i], ResolveType(*e->typeArgs[i]));
                     }
+                    QueueGenericInstantiation(*decl, substitutions);
                     TypeRef funcType =
                         MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
                     const std::size_t paramCount =
@@ -4535,9 +4576,112 @@ private:
         }
     }
 
+    static bool ContainsTypeParam(const TypeRef &type) {
+        if (type.kind == TypeRef::Kind::TypeParam) {
+            return true;
+        }
+        return std::ranges::any_of(type.inner, [](const TypeRef &inner) { return ContainsTypeParam(inner); });
+    }
+
+    static TypeRef SubstituteTypeParams(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) {
+        if (type.kind == TypeRef::Kind::TypeParam) {
+            if (const auto it = substitutions.find(type.name); it != substitutions.end()) {
+                return it->second;
+            }
+            return type;
+        }
+        for (TypeRef &inner : type.inner) {
+            inner = SubstituteTypeParams(std::move(inner), substitutions);
+        }
+        return type;
+    }
+
+    void QueueGenericInstantiation(const FuncDecl &decl,
+                                   const std::unordered_map<std::string, TypeRef> &substitutions) {
+        if (decl.typeParams.empty() || substitutions.size() != decl.typeParams.size()) {
+            return;
+        }
+
+        const bool isConcrete = std::ranges::all_of(decl.typeParams, [&](const std::string &param) {
+            const auto it = substitutions.find(param);
+            return it != substitutions.end() && !it->second.IsUnknown() && !ContainsTypeParam(it->second);
+        });
+        if (!isConcrete) {
+            if (currentFunctionDecl) {
+                deferredGenericCalls[currentFunctionDecl].push_back({&decl, substitutions});
+            }
+            return;
+        }
+        pendingGenericInstantiations.push_back({&decl, substitutions});
+    }
+
+    void ValidatePendingGenericInstantiations() {
+        std::size_t processed = 0;
+        while (processed < pendingGenericInstantiations.size()) {
+            PendingGenericInstantiation instantiation = std::move(pendingGenericInstantiations[processed++]);
+
+            std::string key;
+            for (const std::string &param : instantiation.decl->typeParams) {
+                if (!key.empty()) {
+                    key += ";";
+                }
+                key += instantiation.substitutions.at(param).ToString();
+            }
+            if (!validatedGenericInstantiations[instantiation.decl].insert(std::move(key)).second) {
+                continue;
+            }
+
+            Scope *savedScope = currentScope;
+            const std::string savedFile = currentFile;
+            const FuncDecl *savedFunctionDecl = currentFunctionDecl;
+            if (const auto it = functionDeclScopes.find(instantiation.decl); it != functionDeclScopes.end()) {
+                currentScope = it->second;
+            }
+            if (const auto it = functionDeclFiles.find(instantiation.decl); it != functionDeclFiles.end()) {
+                currentFile = it->second;
+            }
+            currentFunctionDecl = nullptr;
+
+            if (const auto it = deferredUnaryChecks.find(instantiation.decl); it != deferredUnaryChecks.end()) {
+                for (const DeferredUnaryCheck &check : it->second) {
+                    CheckUnary(check.op, SubstituteTypeParams(check.operand, instantiation.substitutions),
+                               check.location);
+                }
+            }
+            if (const auto it = deferredBinaryChecks.find(instantiation.decl); it != deferredBinaryChecks.end()) {
+                for (const DeferredBinaryCheck &check : it->second) {
+                    CheckBinary(check.op, SubstituteTypeParams(check.left, instantiation.substitutions),
+                                SubstituteTypeParams(check.right, instantiation.substitutions), *check.leftExpr,
+                                *check.rightExpr, check.location);
+                }
+            }
+            if (const auto it = deferredGenericCalls.find(instantiation.decl); it != deferredGenericCalls.end()) {
+                for (const DeferredGenericCall &call : it->second) {
+                    std::unordered_map<std::string, TypeRef> substitutions;
+                    for (const auto &[param, type] : call.substitutions) {
+                        substitutions.emplace(param, SubstituteTypeParams(type, instantiation.substitutions));
+                    }
+                    QueueGenericInstantiation(*call.callee, substitutions);
+                }
+            }
+
+            currentFunctionDecl = savedFunctionDecl;
+            currentFile = savedFile;
+            currentScope = savedScope;
+        }
+    }
+
     TypeRef CheckUnary(TokenKind op, const TypeRef &t, SourceLocation loc) {
         if (t.IsUnknown()) {
             return TypeRef::MakeUnknown();
+        }
+        if (t.kind == TypeRef::Kind::TypeParam &&
+            (op == TokenKind::Bang || op == TokenKind::Minus || op == TokenKind::Tilde || op == TokenKind::PlusPlus ||
+             op == TokenKind::MinusMinus)) {
+            if (currentFunctionDecl) {
+                deferredUnaryChecks[currentFunctionDecl].push_back({op, t, loc});
+            }
+            return op == TokenKind::Bang ? TypeRef::MakeBool() : t;
         }
         switch (op) {
         case TokenKind::Bang:
@@ -4630,6 +4774,24 @@ private:
                         SourceLocation loc) {
         if (l.IsUnknown() || r.IsUnknown()) {
             return TypeRef::MakeUnknown();
+        }
+        if (ContainsTypeParam(l) || ContainsTypeParam(r)) {
+            if (currentFunctionDecl) {
+                deferredBinaryChecks[currentFunctionDecl].push_back({op, l, r, &leftExpr, &rightExpr, loc});
+            }
+            switch (op) {
+            case TokenKind::AmpAmp:
+            case TokenKind::PipePipe:
+            case TokenKind::Equal:
+            case TokenKind::BangEqual:
+            case TokenKind::Less:
+            case TokenKind::LessEqual:
+            case TokenKind::Greater:
+            case TokenKind::GreaterEqual:
+                return TypeRef::MakeBool();
+            default:
+                return l;
+            }
         }
 
         const std::string_view opName = BinaryOperatorName(op);

@@ -8,11 +8,16 @@ func Max<T>(a: T, b: T) -> T {
     }
 }
 
+func Div<T>(x: T, y: T) -> T {
+    return x / y;
+}
+
 func Main() -> int {
     let x = Max<int32>(5, 10);
     Assert(x == 10, "Expected 10");
     let y = Max<float64>(3.14, 2.71);
     Assert(y == 3.14, "Expected 3.14");
+    let quotient = Div<float>(10.0, 2.0);
+    Assert(quotient == 5.0, "Expected 5.0");
     return 0;
 }
-

@@ -329,6 +329,40 @@ TEST_CASE("contextual enum patterns infer generic subject types") {
     CHECK(diagnostics.empty());
 }
 
+TEST_CASE("generic arithmetic is checked after type substitution") {
+    CHECK(AnalyzeSource(R"(
+        func Div<T>(x: T, y: T) -> T {
+            return x / y;
+        }
+
+        func Forward<T>(x: T, y: T) -> T {
+            return Div<T>(x, y);
+        }
+
+        func Main() {
+            let quotient = Forward<float>(10.0, 2.0);
+        }
+    )")
+              .empty());
+
+    const auto diagnostics = AnalyzeSource(R"(
+        func Div<T>(x: T, y: T) -> T {
+            return x / y;
+        }
+
+        func Forward<T>(x: T, y: T) -> T {
+            return Div<T>(x, y);
+        }
+
+        func Main() {
+            let quotient = Forward<bool>(true, false);
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics.front().message, "'/' applied to non-numeric type 'bool8'");
+}
+
 TEST_CASE("contextual enum patterns diagnose unknown variants") {
     const auto diagnostics = AnalyzeSource(R"(
         enum Option {
