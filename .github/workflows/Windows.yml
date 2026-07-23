@@ -37,7 +37,7 @@ jobs:
             label: AArch64
             runner: windows-11-arm
             vs_arch: arm64
-            vs_host_arch: amd64
+            vs_host_arch: arm64
             compiler_target: aarch64-pc-windows-msvc
             artifact: rux-windows-aarch64
     runs-on: ${{ matrix.runner }}
@@ -113,7 +113,7 @@ jobs:
             label: AArch64
             runner: windows-11-arm
             vs_arch: arm64
-            vs_host_arch: amd64
+            vs_host_arch: arm64
             artifact: rux-windows-aarch64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
