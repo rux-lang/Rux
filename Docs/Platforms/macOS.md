@@ -1,6 +1,6 @@
 # Rux on macOS
 
-This guide covers installing and building Rux on x86-64 macOS. Return to the [main README](../../README.md) for language documentation and project information.
+This guide covers installing and building Rux on Intel and Apple Silicon macOS. Return to the [main README](../../README.md) for language documentation and project information.
 
 ## Installing a Release
 
@@ -26,13 +26,23 @@ The script creates a Release build in `Build/` and writes the compiler to `Bin/r
 
 For a Debug build, add `--configuration Debug`. Run `sh Build.sh --help` to see every option.
 
+On Apple Silicon, Rux selects the `macos-aarch64` target by default. The AArch64
+backend lowers Rux LIR through the system Clang driver, which applies the
+AAPCS64 ABI and writes a native ARM64 Mach-O executable. Keep the Xcode Command
+Line Tools installed so `/usr/bin/clang` is available when compiling Rux
+programs.
+
 ## Verifying the Build
 
 Run the compiler:
 
 ```sh
 ./Bin/rux version
+file ./Bin/rux
 ```
+
+On Apple Silicon, `file` should report a `Mach-O 64-bit executable arm64`.
+Programs built by `./Bin/rux build` should report the same architecture.
 
 Run the complete repository verification workflow with the same Homebrew compiler:
 

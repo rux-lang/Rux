@@ -87,18 +87,18 @@ There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan
 
 A source file flows through these stages, front to back. Each stage owns a small set of files, so this is the map for "where do I make this change?":
 
-| Stage             | File(s)                         | Role                              |
-| ----------------- | ------------------------------- | --------------------------------- |
-| Source loading    | `Source/SourceLoader.cpp`       | Locate and read source files      |
-| Lexing            | `Lexer/Lexer.cpp`               | Source text → token stream        |
-| Parsing           | `Syntax/Parser/`                | Tokens → AST                      |
-| Semantic analysis | `Semantic/SemanticAnalyzer.cpp` | AST → validated `SemanticModel`   |
-| HIR lowering      | `Lowering/AstToHir/`            | Semantic model → HIR              |
-| HIR passes        | `Ir/Hir/Passes/`                | HIR optimization                  |
-| LIR lowering      | `Lowering/HirToLir/`            | HIR → control-flow-explicit LIR   |
-| Code generation   | `CodeGen/X86_64/`               | LIR → x86-64 RCU object data      |
-| Object emission   | `Object/Rcu/`                   | RCU serialization and diagnostics |
-| Linking           | `Linker/{Pe,Elf,MachO}/`        | Objects → target executable       |
+| Stage             | File(s)                             | Role                                      |
+| ----------------- | ----------------------------------- | ----------------------------------------- |
+| Source loading    | `Source/SourceLoader.cpp`           | Locate and read source files              |
+| Lexing            | `Lexer/Lexer.cpp`                   | Source text → token stream                |
+| Parsing           | `Syntax/Parser/`                    | Tokens → AST                              |
+| Semantic analysis | `Semantic/SemanticAnalyzer.cpp`     | AST → validated `SemanticModel`           |
+| HIR lowering      | `Lowering/AstToHir/`                | Semantic model → HIR                      |
+| HIR passes        | `Ir/Hir/Passes/`                    | HIR optimization                          |
+| LIR lowering      | `Lowering/HirToLir/`                | HIR → control-flow-explicit LIR           |
+| Code generation   | `CodeGen/{X86_64,AArch64}/`         | LIR → target-native representation        |
+| Object emission   | `Object/Rcu/`                       | x86-64 RCU serialization and diagnostics  |
+| Linking           | `Linker/{Pe,Elf,MachO}/` or Clang   | Objects/LIR lowering → target executable  |
 
 Supporting layers around the pipeline:
 

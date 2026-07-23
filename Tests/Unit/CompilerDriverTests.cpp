@@ -1,7 +1,9 @@
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 #include "System/Os.h"
+#include "Target/Target.h"
 
+#include <array>
 #include <chrono>
 #include <doctest.h>
 #include <filesystem>
@@ -162,6 +164,14 @@ TEST_CASE("compiler driver loads path dependencies when building") {
     CHECK(diagnostics.empty());
     CHECK(result.stats.dependencyFiles == 1);
     CHECK(std::filesystem::is_regular_file(result.executablePath));
+
+    if constexpr (Target::HostOS == Target::OS::MacOS && Target::HostArch == Target::Arch::ARM64) {
+        std::ifstream executable(result.executablePath, std::ios::binary);
+        std::array<unsigned char, 8> header{};
+        executable.read(reinterpret_cast<char *>(header.data()), static_cast<std::streamsize>(header.size()));
+        REQUIRE(executable.gcount() == static_cast<std::streamsize>(header.size()));
+        CHECK(header == std::array<unsigned char, 8>{0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0x00, 0x00, 0x01});
+    }
 }
 
 TEST_CASE("compiler driver resolves transitive dependencies from local workspace members") {

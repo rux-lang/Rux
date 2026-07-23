@@ -494,6 +494,7 @@ private:
             lf.isPublic = ef.isPublic;
             lf.isExtern = true;
             lf.isNoReturn = ef.isNoReturn;
+            lf.isVariadic = ef.isVariadic;
             lf.callConv = ef.callConv;
             lf.returnType = ef.returnType;
             LirReg pr = 0;

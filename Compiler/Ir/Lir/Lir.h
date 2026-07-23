@@ -125,6 +125,7 @@ struct LirFunc {
     bool isPublic = false;
     bool isExtern = false;
     bool isNoReturn = false;
+    bool isVariadic = false;       // C-style variadic extern declaration
     CallingConvention callConv = CallingConvention::Default;
     std::vector<LirParam> params;
     TypeRef returnType;

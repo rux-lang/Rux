@@ -209,7 +209,7 @@ constexpr std::array build_opts = {
     OptionDoc{.flags = "--target <triple>"sv, .desc = "Build for the specified target platform (e.g. x86, x64)"sv},
     OptionDoc{.flags = "-q, --quiet"sv, .desc = "Suppress non-essential output (only errors are shown)"sv},
     OptionDoc{.flags = "-v, --verbose"sv, .desc = "Enable verbose output for detailed build information"sv},
-    OptionDoc{.flags = "--dump-asm"sv, .desc = "Write x86-64 assembly to Temp/Asm/out.asm"sv},
+    OptionDoc{.flags = "--dump-asm"sv, .desc = "Write target assembly to Temp/Asm/"sv},
     OptionDoc{.flags = "--dump-ast"sv, .desc = "Write the parsed AST to Temp/Ast/<file>.ast"sv},
     OptionDoc{.flags = "--dump-hir"sv, .desc = "Write the high-level IR to Temp/Hir/hir.txt"sv},
     OptionDoc{.flags = "--dump-lir"sv, .desc = "Write the low-level IR to Temp/Lir/lir.txt"sv},

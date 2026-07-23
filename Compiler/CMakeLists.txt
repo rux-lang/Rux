@@ -101,12 +101,19 @@ rux_add_component(RuxObjectRcu
     Object/Rcu/RcuDump.cpp
     Object/Rcu/RcuWriter.cpp)
 
+rux_add_component(RuxCodeGenCommon
+    CodeGen/Layout.cpp)
+target_link_libraries(RuxCodeGenCommon PUBLIC RuxLir)
+
 rux_add_component(RuxCodeGenX86_64
-    CodeGen/Layout.cpp
     CodeGen/X86_64/Assembler.cpp
     CodeGen/X86_64/AssemblyPrinter.cpp
     CodeGen/X86_64/RcuEmitter.cpp)
-target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxLir RuxObjectRcu RuxDiagnostics)
+target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
+
+rux_add_component(RuxCodeGenAArch64
+    CodeGen/AArch64/NativeEmitter.cpp)
+target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxCodeGenCommon RuxSystem RuxDiagnostics)
 
 rux_add_component(RuxLinker
     Linker/Linker.cpp
@@ -121,7 +128,7 @@ rux_add_component(RuxDriver
     Driver/BuildTarget.cpp)
 target_link_libraries(RuxDriver PUBLIC
     RuxSource RuxSystem RuxPackage RuxLexer RuxSyntax RuxSemantic
-    RuxHir RuxHirPasses RuxLir RuxLowering RuxCodeGenX86_64
+    RuxHir RuxHirPasses RuxLir RuxLowering RuxCodeGenX86_64 RuxCodeGenAArch64
     RuxObjectRcu RuxLinker)
 
 # Compatibility aggregation target for embedders and existing tests. It owns
@@ -159,7 +166,8 @@ set_target_properties(rux PROPERTIES
 if (MSVC OR (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
     set_property(TARGET rux RuxDiagnostics RuxSource RuxSystem RuxPackage
         RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxLinter RuxHir RuxHirPasses RuxLir
-        RuxLowering RuxObjectRcu RuxCodeGenX86_64 RuxLinker RuxDriver PROPERTY
+        RuxLowering RuxObjectRcu RuxCodeGenCommon RuxCodeGenX86_64 RuxCodeGenAArch64
+        RuxLinker RuxDriver PROPERTY
         MSVC_RUNTIME_LIBRARY
         "$<IF:$<CONFIG:Release>,MultiThreaded,MultiThreaded$<$<CONFIG:Debug>:Debug>DLL>")
 endif ()

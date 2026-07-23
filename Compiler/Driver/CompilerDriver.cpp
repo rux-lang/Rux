@@ -1,5 +1,6 @@
 #include "Driver/CompilerDriver.h"
 
+#include "CodeGen/AArch64/NativeEmitter.h"
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Driver/BuildTarget.h"
@@ -495,15 +496,39 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     }
     stats.lir = ElapsedMs(lirStart);
 
-    // Assembly dump (optional)
     const auto codegenStart = std::chrono::steady_clock::now();
-    if (opts.dumpAsm) {
+    const bool useAArch64Backend = compileTimeContext.target.os == Target::OS::MacOS &&
+                                   compileTimeContext.target.arch == Target::Arch::ARM64;
+
+    // Assembly dump (optional). The AArch64 backend emits its dump below while
+    // invoking the native compiler.
+    if (opts.dumpAsm && !useAArch64Backend) {
         if (opts.verbose) {
             std::print("  Emitting assembly for {}\n", opts.manifest.package.name);
         }
         auto asmDir = root / "Temp" / "Asm";
         std::filesystem::create_directories(asmDir);
         AssemblyPrinter::Emit(lirPackage, asmDir / "out.asm");
+    }
+
+    // macOS/AArch64 uses the native AAPCS64 backend. It produces the final
+    // executable directly, so the x86-specific RCU and Mach-O stages below are
+    // intentionally bypassed.
+    if (useAArch64Backend) {
+        const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, !opts.isTest);
+        exePath = binDir / ExecutableFileName(opts.manifest.package.name, Target::OS::MacOS);
+        AArch64NativeEmitter emitter(lirPackage, std::string(opts.manifest.package.name));
+        const bool release = compileTimeContext.buildMode == Target::BuildMode::Release;
+        const std::optional<std::filesystem::path> assemblyPath =
+            opts.dumpAsm ? std::make_optional(root / "Temp" / "Asm" / "out.s") : std::nullopt;
+        if (!emitter.EmitExecutable(exePath, root / "Temp" / "Native", release, assemblyPath)) {
+            for (const auto &diagnostic : emitter.Diagnostics()) {
+                Emit(diagnostic);
+            }
+            return false;
+        }
+        stats.codegen = ElapsedMs(codegenStart);
+        return true;
     }
 
     // RCU object generation

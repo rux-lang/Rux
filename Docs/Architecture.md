@@ -13,8 +13,13 @@ Source -> Lexer -> Syntax -> SemanticModel
                                 v
                           HIR-to-LIR -> LIR
                                 |
-                                v
-                         x86-64 CodeGen -> RCU Object -> Linker
+                    +-----------+-----------+
+                    |                       |
+                    v                       v
+             x86-64 CodeGen          macOS AArch64 CodeGen
+                    |                       |
+                    v                       v
+              RCU Object -> Linker    Clang -> ARM64 Mach-O
 ```
 
 The driver loads the root manifest and dependencies before entering this pipeline. Diagnostics can stop the process after any frontend stage; object emission and linking only run when analysis and lowering succeed.
@@ -34,7 +39,9 @@ The driver loads the root manifest and dependencies before entering this pipelin
 | `Ir/Hir`               | High-level IR and its transformations                                 | Semantic and Lexer                    |
 | `Ir/Lir`               | Control-flow-explicit low-level IR                                    | Semantic                              |
 | `Lowering`             | AST/semantic model → HIR → LIR                                        | Frontend and IR components            |
+| `CodeGen`              | Layout rules shared by machine backends                              | LIR                                   |
 | `CodeGen/X86_64`       | x86-64 code generation and RCU construction                           | LIR, Object, Diagnostics              |
+| `CodeGen/AArch64`      | macOS AArch64 native lowering through the platform Clang driver       | LIR, System, Diagnostics              |
 | `Object/Rcu`           | RCU object representation and serialization                           | Standard library                      |
 | `Linker`               | PE, ELF, and Mach-O output                                            | Object and System                     |
 | `Driver`               | End-to-end compilation orchestration and build reports                | All compiler stages                   |
@@ -52,7 +59,7 @@ Operating-system APIs are confined to `Compiler/System`; the CI isolation guard 
 
 The principal ownership namespaces currently enforced at cross-platform and orchestration boundaries are `Rux::Target`, `Rux::System`, and `Rux::Driver`. New standalone tools use `Rux::Formatting` and `Rux::Linting`. Existing language model types remain in `Rux` while those large APIs are migrated incrementally; new code must not add declarations to `Misc` or recreate a generic `Utils` component.
 
-The build exposes focused targets such as `RuxSyntax`, `RuxSemantic`, `RuxHir`, `RuxLir`, `RuxLowering`, `RuxCodeGenX86_64`, `RuxObjectRcu`, `RuxLinker`, and `RuxDriver`. `RuxCore` is an interface-only compatibility aggregation target.
+The build exposes focused targets such as `RuxSyntax`, `RuxSemantic`, `RuxHir`, `RuxLir`, `RuxLowering`, `RuxCodeGenCommon`, `RuxCodeGenX86_64`, `RuxCodeGenAArch64`, `RuxObjectRcu`, `RuxLinker`, and `RuxDriver`. `RuxCore` is an interface-only compatibility aggregation target.
 
 `RuxCore` is convenient for the unit-test executable and embedders, but compiler components must link to their actual dependencies. It must not become a shortcut that introduces cycles between stages.
 
