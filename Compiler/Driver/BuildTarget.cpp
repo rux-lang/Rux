@@ -19,7 +19,7 @@ std::string TargetName() {
         return std::string{ToString(HostOS)};
     }
 
-    return std::format("{} {}", ToString(HostOS), ToString(HostArch));
+    return std::format("{} {}", ToString(HostOS), ToDisplayString(HostArch));
 }
 
 std::string HostTargetTriple() {
@@ -30,11 +30,35 @@ std::string HostTargetTriple() {
 }
 
 bool IsSupportedTargetTriple(const std::string_view target) {
-    constexpr std::array supported_targets{"linux-x64",     "windows-x64",   "macos-x64",
-                                           "macos-aarch64", "freebsd-x64",   "openbsd-x64",
-                                           "netbsd-x64",    "dragonfly-x64", "illumos-x64"};
+    constexpr std::array supported_targets{
+        "linux-x86_64",   "linux-aarch64",   "windows-x86_64", "windows-aarch64", "macos-x86_64",     "macos-aarch64",
+        "freebsd-x86_64", "freebsd-aarch64", "openbsd-x86_64", "netbsd-x86_64",   "dragonfly-x86_64", "illumos-x86_64",
+    };
 
-    return std::ranges::contains(supported_targets, target);
+    return std::ranges::contains(supported_targets, CanonicalTargetTriple(target));
+}
+
+std::string_view SupportedTargetTriples() {
+    return "linux-x86_64, linux-aarch64, windows-x86_64, windows-aarch64, "
+           "macos-x86_64, macos-aarch64, freebsd-x86_64, freebsd-aarch64, "
+           "openbsd-x86_64, netbsd-x86_64, dragonfly-x86_64, illumos-x86_64";
+}
+
+std::string CanonicalTargetTriple(const std::string_view target) {
+    const auto dashPos = target.find('-');
+    if (dashPos == std::string_view::npos) {
+        return std::string(target);
+    }
+
+    const auto os = target.substr(0, dashPos);
+    auto arch = target.substr(dashPos + 1);
+    if (arch == "x64" || arch == "amd64" || arch == "x86-64" || arch == "x86_64") {
+        arch = "x86_64";
+    }
+    else if (arch == "arm64" || arch == "aarch64") {
+        arch = "aarch64";
+    }
+    return std::format("{}-{}", os, arch);
 }
 
 std::string_view TargetOsName(const std::string_view target) {
@@ -97,19 +121,19 @@ Target::OS TargetTripleOs(const std::string_view target) {
 }
 
 Target::Arch TargetTripleArch(const std::string_view target) {
-    const auto dashPos = target.rfind('-');
+    const auto dashPos = target.find('-');
     const auto arch = dashPos == std::string_view::npos ? target : target.substr(dashPos + 1);
     if (arch == "x86") {
         return Target::Arch::X86_32;
     }
-    if (arch == "x64" || arch == "x86_64") {
+    if (arch == "x64" || arch == "amd64" || arch == "x86-64" || arch == "x86_64") {
         return Target::Arch::X86_64;
     }
     if (arch == "arm" || arch == "arm32") {
         return Target::Arch::ARM32;
     }
     if (arch == "arm64" || arch == "aarch64") {
-        return Target::Arch::ARM64;
+        return Target::Arch::AArch64;
     }
     if (arch == "riscv32") {
         return Target::Arch::RISCV32;

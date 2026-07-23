@@ -1,19 +1,37 @@
+import Rux::{ Architecture, #target, #Error };
+
 // Standard file descriptors.
 const StdIn: int32 = 0;
 const StdOut: int32 = 1;
 const StdErr: int32 = 2;
 
-// Linux x86-64 syscall numbers.
-const SysRead: uint64 = 0;
-const SysWrite: uint64 = 1;
-const SysClose: uint64 = 3;
-const SysMmap: uint64 = 9;
-const SysMunmap: uint64 = 11;
-const SysBrk: uint64 = 12;
-const SysNanosleep: uint64 = 35;
-const SysGetPid: uint64 = 39;
-const SysExit: uint64 = 60;
-const SysClockGetTime: uint64 = 228;
+when #target.arch {
+    Architecture::X86_64 => {
+        const SysRead: uint64 = 0;
+        const SysWrite: uint64 = 1;
+        const SysClose: uint64 = 3;
+        const SysMmap: uint64 = 9;
+        const SysMunmap: uint64 = 11;
+        const SysBrk: uint64 = 12;
+        const SysNanosleep: uint64 = 35;
+        const SysGetPid: uint64 = 39;
+        const SysExit: uint64 = 60;
+        const SysClockGetTime: uint64 = 228;
+    },
+    Architecture::AArch64 => {
+        const SysRead: uint64 = 63;
+        const SysWrite: uint64 = 64;
+        const SysClose: uint64 = 57;
+        const SysMmap: uint64 = 222;
+        const SysMunmap: uint64 = 215;
+        const SysBrk: uint64 = 214;
+        const SysNanosleep: uint64 = 101;
+        const SysGetPid: uint64 = 172;
+        const SysExit: uint64 = 93;
+        const SysClockGetTime: uint64 = 113;
+    },
+    else => #Error("Unsupported Linux architecture")
+}
 
 const ClockRealtime: int32 = 0;
 const ClockMonotonic: int32 = 1;
@@ -33,10 +51,11 @@ struct Timespec {
     nanoseconds: int64;
 }
 
-// Rux functions use the System V ABI on Linux. The kernel keeps the first
+// Rux functions use the System V ABI on Linux x86-64. The kernel keeps the first
 // three argument registers, but takes its fourth argument in r10 instead of
 // rcx. A seventh function argument is passed at [rsp + 8], after the return
-// address. Linux returns either a non-negative result or -errno in rax.
+// address. On AArch64, the native backend lowers these wrappers through libc's
+// syscall function. Linux returns either a non-negative result or -errno.
 // Executes a raw Linux system call without arguments.
 asm func Syscall0(number: uint64) -> int64 {
     mov rax, rdi
@@ -107,82 +126,66 @@ asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3
     ret
 }
 
+func SignExtendFd(fd: int32) -> uint64 {
+    return (fd as int64) as uint64;
+}
+
 // Reads up to count bytes from a file descriptor into buffer.
-asm func Read(fd: int32, buffer: *opaque, count: uint) -> int64 {
-    mov rax, 0
-    movsxd rdi, edi
-    syscall
-    ret
+func Read(fd: int32, buffer: *opaque, count: uint) -> int64 {
+    return Syscall3(SysRead, SignExtendFd(fd), buffer as uint64, count as uint64);
 }
 
 // Writes up to count bytes from buffer to a file descriptor.
-asm func Write(fd: int32, buffer: *opaque, count: uint) -> int64 {
-    mov rax, 1
-    movsxd rdi, edi
-    syscall
-    ret
+func Write(fd: int32, buffer: *opaque, count: uint) -> int64 {
+    return Syscall3(SysWrite, SignExtendFd(fd), buffer as uint64, count as uint64);
 }
 
 // Closes a file descriptor and releases its kernel resources.
-asm func Close(fd: int32) -> int64 {
-    mov rax, 3
-    movsxd rdi, edi
-    syscall
-    ret
+func Close(fd: int32) -> int64 {
+    return Syscall1(SysClose, SignExtendFd(fd));
 }
 
 // Terminates the current process with code; returns only if the syscall fails.
-asm func Exit(code: int32) {
-    mov rax, 60
-    mov edi, edi
-    syscall
-    ret
+func Exit(code: int32) {
+    Syscall1(SysExit, (code as int64) as uint64);
 }
 
 // Returns the process identifier of the calling process.
-asm func GetPid() -> int64 {
-    mov rax, 39
-    syscall
-    ret
+func GetPid() -> int64 {
+    return Syscall0(SysGetPid);
 }
 
 // Creates a memory mapping and returns its address or a negative errno value.
-asm func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32, offset: uint64) -> int64 {
-    mov rax, 9
-    mov edx, edx
-    mov r10d, ecx
-    movsxd r8, r8d
-    syscall
-    ret
+func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32, offset: uint64) -> int64 {
+    return Syscall6(
+        SysMmap,
+        address as uint64,
+        length as uint64,
+        protection as uint64,
+        flags as uint64,
+        SignExtendFd(fd),
+        offset
+    );
 }
 
 // Removes a memory mapping that begins at address and spans length bytes.
-asm func Munmap(address: *opaque, length: uint) -> int64 {
-    mov rax, 11
-    syscall
-    ret
+func Munmap(address: *opaque, length: uint) -> int64 {
+    return Syscall2(SysMunmap, address as uint64, length as uint64);
 }
 
 // Sets the process data-segment break and returns the resulting break address.
-asm func Brk(address: *opaque) -> int64 {
-    mov rax, 12
-    syscall
-    ret
+func Brk(address: *opaque) -> int64 {
+    return Syscall1(SysBrk, address as uint64);
 }
 
 // Suspends execution for the requested duration and optionally reports time remaining.
-asm func Nanosleep(request: *Timespec, remaining: *Timespec) -> int64 {
-    mov rax, 35
-    syscall
-    ret
+func Nanosleep(request: *Timespec, remaining: *Timespec) -> int64 {
+    return Syscall2(SysNanosleep, request as uint64, remaining as uint64);
 }
 
 // Reads a Linux clock into time and returns zero or a negative errno value.
-asm func ClockGetTime(clockId: int32, time: *Timespec) -> int64 {
-    mov rax, 228
-    mov edi, edi
-    syscall
-    ret
+func ClockGetTime(clockId: int32, time: *Timespec) -> int64 {
+    return Syscall2(SysClockGetTime, (clockId as int64) as uint64, time as uint64);
 }
 
 // Reports whether a raw result is in Linux's reserved -4095 through -1 error range.

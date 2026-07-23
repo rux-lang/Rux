@@ -21,8 +21,24 @@ env:
 
 jobs:
   build:
-    name: Build
-    runs-on: windows-2025
+    name: Build (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            label: x86-64
+            runner: windows-2025
+            vs_arch: amd64
+            compiler_target: x86_64-pc-windows-msvc
+            artifact: rux-windows-x86_64
+          - arch: aarch64
+            label: AArch64
+            runner: windows-11-arm
+            vs_arch: arm64
+            compiler_target: aarch64-pc-windows-msvc
+            artifact: rux-windows-aarch64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     steps:
       - name: Checkout
@@ -48,30 +64,54 @@ jobs:
           }
 
           $devShell = Join-Path $vsPath "Common7\Tools\Launch-VsDevShell.ps1"
-          & $devShell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+          & $devShell -Arch ${{ matrix.vs_arch }} -HostArch ${{ matrix.vs_arch }} -SkipAutomaticLocation
 
           cmake -S . -B Build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_CXX_COMPILER=clang++ `
+            -DCMAKE_CXX_COMPILER_TARGET=${{ matrix.compiler_target }} `
             -DRUX_WERROR=ON `
             -DRUX_BUILD_TESTS=ON
           cmake --build Build --config Release --parallel
 
       - name: Unit tests
-        run: ctest --test-dir Build --output-on-failure -C Release
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -property installationPath
+          if (-not $vsPath) {
+              throw "Visual Studio installation not found"
+          }
+          $devShell = Join-Path $vsPath "Common7\Tools\Launch-VsDevShell.ps1"
+          & $devShell -Arch ${{ matrix.vs_arch }} -HostArch ${{ matrix.vs_arch }} -SkipAutomaticLocation
+          ctest --test-dir Build --output-on-failure -C Release
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-windows-x64
+          name: ${{ matrix.artifact }}
           path: Bin/rux.exe
           if-no-files-found: error
           retention-days: 7
 
   test:
-    name: Test
+    name: Test (${{ matrix.label }})
     needs: build
-    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            label: x86-64
+            runner: windows-2025
+            vs_arch: amd64
+            artifact: rux-windows-x86_64
+          - arch: aarch64
+            label: AArch64
+            runner: windows-11-arm
+            vs_arch: arm64
+            artifact: rux-windows-aarch64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -82,11 +122,19 @@ jobs:
       - name: Download binary artifact
         uses: actions/download-artifact@v8
         with:
-          name: rux-windows-x64
+          name: ${{ matrix.artifact }}
           path: Bin
 
       - name: Verify Rux workspace
+        shell: pwsh
         run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -property installationPath
+          if (-not $vsPath) {
+              throw "Visual Studio installation not found"
+          }
+          $devShell = Join-Path $vsPath "Common7\Tools\Launch-VsDevShell.ps1"
+          & $devShell -Arch ${{ matrix.vs_arch }} -HostArch ${{ matrix.vs_arch }} -SkipAutomaticLocation
           ./Bin/rux.exe check
           ./Bin/rux.exe lint
           ./Bin/rux.exe test --release

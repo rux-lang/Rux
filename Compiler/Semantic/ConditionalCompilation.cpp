@@ -89,7 +89,7 @@ bool IsBuildableOs(const std::string_view variant) {
     return it != std::end(OsVariants) && it->buildable;
 }
 
-constexpr std::array ArchVariants{"ARM32", "ARM64", "RISCV32", "RISCV64", "X86Bit32", "X86Bit64"};
+constexpr std::array ArchVariants{"ARM32", "AArch64", "RISCV32", "RISCV64", "X86Bit32", "X86_64"};
 constexpr std::array AbiVariants{"AAPCS", "AAPCS64", "RiscvIlp32", "RiscvLp64", "SystemV", "WindowsX64", "WindowsX86"};
 constexpr std::array EndianVariants{"Big", "Little"};
 constexpr std::array DataModelVariants{"ILP32", "LLP64", "LP64"};
@@ -118,11 +118,11 @@ std::string ArchVariant(const Target::Arch arch) {
     case Target::Arch::X86_32:
         return "X86Bit32";
     case Target::Arch::X86_64:
-        return "X86Bit64";
+        return "X86_64";
     case Target::Arch::ARM32:
         return "ARM32";
-    case Target::Arch::ARM64:
-        return "ARM64";
+    case Target::Arch::AArch64:
+        return "AArch64";
     case Target::Arch::RISCV32:
         return "RISCV32";
     case Target::Arch::RISCV64:

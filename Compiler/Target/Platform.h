@@ -80,9 +80,9 @@
 // ---- Architecture -----------------------------------------------------------
 
 #if defined(__x86_64__) || defined(_M_X64)
-    #define RUX_ARCH_X64 1
+    #define RUX_ARCH_X86_64 1
 #else
-    #define RUX_ARCH_X64 0
+    #define RUX_ARCH_X86_64 0
 #endif
 
 #if defined(__i386__) || defined(_M_IX86)
@@ -92,9 +92,9 @@
 #endif
 
 #if defined(__aarch64__) || defined(_M_ARM64)
-    #define RUX_ARCH_ARM64 1
+    #define RUX_ARCH_AARCH64 1
 #else
-    #define RUX_ARCH_ARM64 0
+    #define RUX_ARCH_AARCH64 0
 #endif
 
 #if defined(__arm__) || defined(_M_ARM)

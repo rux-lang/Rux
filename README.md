@@ -16,6 +16,17 @@ Rux is a fast, compiled, strongly typed, multi-paradigm programming language.
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](LICENSE.md)
 
+## Platform Support
+
+| Platform | x86-64 CI | AArch64 CI | Prebuilt release |
+| -------- | :-------: | :--------: | :--------------: |
+| FreeBSD  |    Yes    |    Yes     |        —         |
+| Linux    |    Yes    |    Yes     |      x86-64      |
+| macOS    |    Yes    |    Yes     |        —         |
+| Windows  |    Yes    |    Yes     |      x86-64      |
+
+CI coverage means that Rux is built and tested from source on that platform and architecture.
+
 > [!IMPORTANT]
 > Rux is under active, pre-1.0 development. Language features, compiler behavior, and package formats may change between minor releases. Check the [changelog](CHANGELOG.md) when upgrading.
 

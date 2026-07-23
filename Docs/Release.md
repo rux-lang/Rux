@@ -16,8 +16,10 @@ The workflow runs on `push: tags: [ 'v*' ]` and needs `contents: write` permissi
 ## Stages
 
 ```
-verify-version ──► linux  ──┐
-                  windows ──┴──► release (publish)
+verify-version ──► freebsd ───┐
+                   linux   ───┤
+                   macos   ───┼──► release (publish)
+                   windows ───┘
 ```
 
 ### 1. `verify-version` (fail fast)
@@ -26,27 +28,29 @@ Parses `VERSION` from `CMakeLists.txt` and compares it to the pushed tag (minus 
 
 > **Always bump `VERSION` in `CMakeLists.txt` before tagging, and tag the exact same version.**
 
-### 2. Build jobs (`linux`, `windows`)
+### 2. Build jobs (`freebsd`, `linux`, `macos`, `windows`)
 
-Each `needs: verify-version`, then builds Release **and runs the test suite** — a broken build or failing test blocks the release. Each uploads its binary as an artifact; the Windows job additionally packages the freshly built binary into a per-user MSI installer (`Packaging/Windows/Msi/Build.ps1`):
+Each `needs: verify-version`, then builds Release **and runs the test suite** — a broken build or failing test blocks the release. Each uploads its x86-64 binary as an artifact; the Windows job additionally packages the freshly built binary into a per-user MSI installer (`Packaging/Windows/Msi/Build.ps1`):
 
-| Job       | Runner       | Artifacts                                        |
-| --------- | ------------ | ------------------------------------------------ |
-| `linux`   | ubuntu-24.04 | `rux-linux-x64` (the `rux` binary)               |
-| `windows` | windows-2025 | `rux-windows-x64` (`rux.exe`), `rux-windows-msi` |
+| Job       | Runner          | Artifacts                                           |
+| --------- | --------------- | --------------------------------------------------- |
+| `freebsd` | FreeBSD 14.4 VM | `rux-freebsd-x86_64` (the `rux` binary)             |
+| `linux`   | ubuntu-24.04    | `rux-linux-x86_64` (the `rux` binary)               |
+| `macos`   | macos-26-intel  | `rux-macos-x86_64` (the `rux` binary)               |
+| `windows` | windows-2025    | `rux-windows-x86_64` (`rux.exe`), `rux-windows-msi` |
 
 Each job runs language tests from the repository root. Test manifests use local path dependencies, and transitive first-party dependencies resolve from workspace members with registry fallback disabled, so release validation is deterministic and network-independent. The Linux job also checks every maintained Rux source with `rux fmt --check` before packaging.
 
 ### 3. `release` (publish)
 
-`needs: [ linux, windows ]`:
+`needs: [ freebsd, linux, macos, windows ]`:
 
 1. Download all build artifacts.
 2. Package them:
-   - `rux-linux.tar.gz` (preserves the executable bit)
+   - `rux-freebsd.tar.gz`, `rux-linux.tar.gz`, and `rux-macos.tar.gz` (preserve the executable bit)
    - `rux-windows.zip`
    - `rux-windows.msi` (attached as-is)
-   - `SHA256SUMS` (integrity hashes for all three packages)
+   - `SHA256SUMS` (integrity hashes for all five packages)
 3. Create a **draft** GitHub Release with auto-generated release notes and every package attached.
 
 ## Cutting a release — checklist

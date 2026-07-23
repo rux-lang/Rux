@@ -20,9 +20,9 @@ func Main() -> int {
     // 64-bit instruction sets carry 64-bit pointers, the 32-bit sets 32-bit ones.
     Assert(#target.pointerBits == 32 || #target.pointerBits == 64, "pointerBits");
 
-    let is64 = #target.arch == Architecture::ARM64
+    let is64 = #target.arch == Architecture::AArch64
         || #target.arch == Architecture::RISCV64
-        || #target.arch == Architecture::X86Bit64;
+        || #target.arch == Architecture::X86_64;
     let is32 = #target.arch == Architecture::ARM32
         || #target.arch == Architecture::RISCV32
         || #target.arch == Architecture::X86Bit32;

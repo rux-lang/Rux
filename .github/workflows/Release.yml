@@ -112,7 +112,7 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-freebsd-x64
+          name: rux-freebsd-x86_64
           path: Bin/rux
           if-no-files-found: error
           retention-days: 7
@@ -170,7 +170,7 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-linux-x64
+          name: rux-linux-x86_64
           path: Bin/rux
           if-no-files-found: error
           retention-days: 7
@@ -220,7 +220,7 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-macos-x64
+          name: rux-macos-x86_64
           path: Bin/rux
           if-no-files-found: error
           retention-days: 7
@@ -274,7 +274,7 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-windows-x64
+          name: rux-windows-x86_64
           path: Bin/rux.exe
           if-no-files-found: error
           retention-days: 7
@@ -305,13 +305,13 @@ jobs:
       - name: Download Linux artifact
         uses: actions/download-artifact@v8
         with:
-          name: rux-linux-x64
+          name: rux-linux-x86_64
           path: dist/linux
 
       - name: Download Windows artifact
         uses: actions/download-artifact@v8
         with:
-          name: rux-windows-x64
+          name: rux-windows-x86_64
           path: dist/windows
 
       - name: Download Windows MSI artifact
@@ -323,13 +323,13 @@ jobs:
       - name: Download macOS artifact
         uses: actions/download-artifact@v8
         with:
-          name: rux-macos-x64
+          name: rux-macos-x86_64
           path: dist/macos
 
       - name: Download FreeBSD artifact
         uses: actions/download-artifact@v8
         with:
-          name: rux-freebsd-x64
+          name: rux-freebsd-x86_64
           path: dist/freebsd
 
       # Unix archives preserve executable permissions; zip is conventional

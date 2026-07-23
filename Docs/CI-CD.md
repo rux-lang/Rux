@@ -6,12 +6,12 @@ Continuous integration runs on every push and pull request to `main` and `dev`, 
 
 Each supported platform has its own workflow under [`.github/workflows/`](../.github/workflows/):
 
-| Workflow      | Platform            | Runner            | Toolchain install         |
-| ------------- | ------------------- | ----------------- | ------------------------- |
-| `FreeBSD.yml` | FreeBSD 14.4 x86-64 | QEMU VM on Ubuntu | `pkg llvm22`              |
-| `Linux.yml`   | Ubuntu 24.04        | GitHub-hosted     | `apt.llvm.org` → Clang 22 |
-| `macOS.yml`   | macOS 26 x86-64     | GitHub-hosted     | Homebrew `llvm@22`        |
-| `Windows.yml` | Windows Server 2025 | GitHub-hosted     | Runner's bundled Clang    |
+| Workflow      | Platform                    | Runner            | Toolchain install         |
+| ------------- | --------------------------- | ----------------- | ------------------------- |
+| `FreeBSD.yml` | FreeBSD 14.4 x86-64 and AArch64  | QEMU VM on Ubuntu | `pkg llvm22`              |
+| `Linux.yml`   | Ubuntu 24.04 x86-64 and AArch64  | GitHub-hosted     | `apt.llvm.org` → Clang 22 |
+| `macOS.yml`   | macOS 26 x86-64 and AArch64      | GitHub-hosted     | Homebrew `llvm@22`        |
+| `Windows.yml` | Windows x86-64 and AArch64        | GitHub-hosted     | Runner's bundled Clang    |
 
 Their status is shown by the badges at the top of the [README](../README.md).
 
@@ -37,7 +37,10 @@ Superseded runs on the same ref are cancelled automatically (`concurrency: cance
 
 ## What each run does
 
-Each per-OS validation workflow is two jobs — **Build**, then **Test** (`needs: build`). Splitting them means the binary is compiled once, uploaded as an artifact, then downloaded by the test job. Using `Linux.yml` as the reference shape:
+Each per-OS validation workflow has an x86-64/AArch64 matrix with two stages —
+**Build**, then **Test** (`needs: build`). Splitting them means each native
+binary is compiled once, uploaded as an architecture-labelled artifact, then
+downloaded by the matching test job. Using `Linux.yml` as the reference shape:
 
 1. **Build job**
    - Check out the repo.
@@ -58,17 +61,17 @@ Each per-OS validation workflow is two jobs — **Build**, then **Test** (`needs
 
 The native-runner workflows differ only in how the compiler is obtained; the emulated ones differ in _where the whole job runs_:
 
-- **Ubuntu** — installs Clang 22 from `apt.llvm.org` and builds with `clang++-22`.
-- **Windows** — uses the runner's bundled Clang. Before configuring, it locates Visual Studio with `vswhere` and initializes the VS dev environment (`Launch-VsDevShell.ps1`) so Clang can find the Windows SDK, CRT headers, and import libraries.
+- **Ubuntu** — installs Clang 22 from `apt.llvm.org` and builds with `clang++-22` on `ubuntu-24.04` (x86-64) and `ubuntu-24.04-arm` (AArch64).
+- **Windows** — uses the runner's bundled Clang on `windows-2025` (x86-64) and `windows-11-arm` (AArch64). Before configuring, it locates Visual Studio with `vswhere`, initializes the matching native VS dev environment (`Launch-VsDevShell.ps1`), and gives Clang the explicit MSVC target triple.
 - **macOS** — Apple Clang lags upstream and lacks full C++26 support, so the workflow installs LLVM `llvm@22` from Homebrew and points `CMAKE_CXX_COMPILER` at the Homebrew `clang++`.
-- **FreeBSD** — GitHub has no native FreeBSD runner, so each job boots FreeBSD 14.4 in a QEMU VM via `vmactions/freebsd-vm` on an Ubuntu host. Because Build and Test are separate jobs, each boots a _fresh_ VM; the Test VM installs the Clang runtime libraries needed by the prebuilt binary.
+- **FreeBSD** — GitHub has no native FreeBSD runner, so each job boots an x86-64 or AArch64 FreeBSD 14.4 QEMU VM via `vmactions/freebsd-vm` on an Ubuntu host. Because Build and Test are separate jobs, each boots a _fresh_ VM; the Test VM installs the Clang runtime libraries needed by the prebuilt binary.
 
 ## Required checks
 
 The following must pass before a PR can merge (configured in branch protection — see [Branch Architecture](Branches.md)):
 
-- **`Linux.yml`** (Ubuntu 24.04)
-- **`Windows.yml`** (Windows Server 2025)
+- **`Linux.yml`** (Ubuntu 24.04 x86-64 and AArch64)
+- **`Windows.yml`** (Windows x86-64 and AArch64)
 
 The remaining workflows — `macOS.yml` and `FreeBSD.yml` — run on every push and PR and report status, but are **informational**: they broaden platform coverage without blocking merges, since non-required platforms can be slower or occasionally flaky. A red informational check is still worth investigating before merging.
 
@@ -93,8 +96,9 @@ Adjust the compiler executable for the host platform. Run the test command from 
 
 ## Infrastructure notes
 
-- **Runner images** — Ubuntu, Windows, and macOS use GitHub-hosted runners (`ubuntu-24.04`, `windows-2025`, `macos-26-intel`). FreeBSD runs on an `ubuntu-24.04` host and boots its target OS in a QEMU VM. There are **no self-hosted runners**.
+- **Runner images** — Linux uses `ubuntu-24.04` and `ubuntu-24.04-arm`; Windows uses `windows-2025` and `windows-11-arm`; macOS uses `macos-26-intel` and `macos-26`. FreeBSD runs on an `ubuntu-24.04` host and boots x86-64/AArch64 guests in QEMU. There are **no self-hosted runners**.
 - **Workflow security** — validation jobs have read-only repository permissions and checkouts do not persist credentials. Only the release publishing job receives `contents: write`.
 - **Tool versions** — CMake and Ninja are pinned centrally in each workflow so runner-image changes do not silently change the build toolchain.
-- **Artifacts** — intermediate binaries are architecture-labelled and retained for seven days. Release archives include `SHA256SUMS` for integrity verification.
+- **Architecture names** — prose and check labels use x86-64/AArch64; matrix values and artifact names use `x86_64`/`aarch64`. Runner, Visual Studio, and VM inputs retain the exact spellings required by those external tools.
+- **Artifacts** — intermediate binaries are architecture-labelled with `x86_64` or `aarch64` and retained for seven days. Release archives include `SHA256SUMS` for integrity verification.
 - **Caching** — none is configured today; each job starts with a fresh package cache and build directory. If build times become a problem, the natural next step is caching compiler downloads, the CMake/Ninja build directory, or the Rux package cache.

@@ -74,6 +74,11 @@ else {
 }
 
 $cmake = Find-Tool -Name "cmake"
+$compilerTarget = switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture) {
+    ([System.Runtime.InteropServices.Architecture]::X64) { "x86_64-pc-windows-msvc" }
+    ([System.Runtime.InteropServices.Architecture]::Arm64) { "aarch64-pc-windows-msvc" }
+    default { throw "Unsupported Windows architecture: $([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)" }
+}
 $startedAt = Get-Date
 
 Push-Location $repositoryRoot
@@ -85,6 +90,7 @@ try {
         "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=$Configuration",
         "-DCMAKE_CXX_COMPILER=clang++",
+        "-DCMAKE_CXX_COMPILER_TARGET=$compilerTarget",
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         "-DRUX_WERROR=ON",
         "-DRUX_BUILD_TESTS=ON"

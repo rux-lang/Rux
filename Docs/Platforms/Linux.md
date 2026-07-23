@@ -1,6 +1,6 @@
 # Rux on Linux
 
-This guide covers installing a published Rux release on x86-64 Linux and building Rux from source on Ubuntu. Return to the [main README](../../README.md) for language documentation and project information.
+This guide covers installing a published Rux release on x86-64 Linux and building Rux from source on x86-64 or AArch64 Ubuntu. Return to the [main README](../../README.md) for language documentation and project information.
 
 ## Installing a Release
 
@@ -42,6 +42,10 @@ sh Build.sh
 ```
 
 The LLVM installer names the compiler `clang++-22`; `Build.sh` detects it automatically. The script creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
+
+On AArch64, Rux selects the `linux-aarch64` target automatically and uses the
+platform Clang driver for final native lowering and linking. Published Linux
+release binaries remain x86-64-only for now.
 
 For a Debug build, run `sh Build.sh --configuration Debug`. On other Linux distributions, install equivalent tool versions through the distribution's package manager and pass `--compiler PATH` when Clang is not detected automatically. Run `sh Build.sh --help` to see every option.
 

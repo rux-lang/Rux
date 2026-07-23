@@ -99,8 +99,9 @@ std::string Sanitize(const std::string_view value) {
 
 class CEmitter {
 public:
-    explicit CEmitter(const LirPackage &input)
-        : package(input) {
+    explicit CEmitter(const LirPackage &input, const Target::OS inputOs)
+        : package(input)
+        , targetOs(inputOs) {
         Collect();
     }
 
@@ -108,9 +109,8 @@ public:
         for (const auto *function : functions) {
             if (reachable.contains(function->name) && function->isAsm && !function->isExtern &&
                 !CanLowerAsm(*function)) {
-                diagnostics.push_back(ErrorDiagnostic(
-                    std::format("asm function '{}' contains x86-64 instructions and is unavailable on AArch64",
-                                function->name)));
+                diagnostics.push_back(ErrorDiagnostic(std::format(
+                    "asm function '{}' contains x86-64 instructions and is unavailable on AArch64", function->name)));
             }
         }
         if (!diagnostics.empty()) {
@@ -151,6 +151,7 @@ public:
 
 private:
     const LirPackage &package;
+    Target::OS targetOs;
     std::vector<const LirFunc *> functions;
     std::unordered_map<std::string, std::string> functionNames;
     std::unordered_map<std::string, const LirFunc *> functionDecls;
@@ -167,6 +168,10 @@ private:
     std::vector<const LirConstDecl *> constants;
     std::vector<const LirVtable *> vtables;
     std::size_t stringCounter = 0;
+
+    [[nodiscard]] std::string ExternalSymbol(const std::string_view name) const {
+        return std::format("{}{}", targetOs == Target::OS::MacOS ? "_" : "", EscapeCString(name));
+    }
 
     static std::string TypeKey(const TypeRef &type) {
         std::string key = std::to_string(static_cast<int>(type.kind)) + ":" + type.name;
@@ -419,13 +424,12 @@ private:
 
     static bool CanLowerAsm(const LirFunc &function) {
         static constexpr std::string_view supported[] = {
-            "Add",       "MulSub",      "SumTo",     "DoubleViaStack", "Triple",
-            "TripleThenAdd", "Sqrt",    "MulAdd",    "MinOf",          "IntToFloat",
-            "FloatToInt", "FloatBits",  "FromBits",  "BitsOf",
+            "Add",    "MulSub", "SumTo",      "DoubleViaStack", "Triple",    "TripleThenAdd", "Sqrt",
+            "MulAdd", "MinOf",  "IntToFloat", "FloatToInt",     "FloatBits", "FromBits",      "BitsOf",
         };
         return std::ranges::contains(supported, function.name) || function.name.starts_with("Sqrt__") ||
-               (function.name.starts_with("Syscall") && function.name.size() == 8 &&
-                function.name.back() >= '0' && function.name.back() <= '6');
+               (function.name.starts_with("Syscall") && function.name.size() == 8 && function.name.back() >= '0' &&
+                function.name.back() <= '6');
     }
 
     void EmitAggregateTypes(std::string &out) {
@@ -462,8 +466,8 @@ private:
         }
         if (!value.empty() && !std::ranges::all_of(value, [](const char c) {
                 return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == 'x' ||
-                       c == 'X' || c == 'b' || c == 'B' || c == 'o' || c == 'O' || c == '+' || c == '-' ||
-                       c == '.' || c == 'e' || c == 'E';
+                       c == 'X' || c == 'b' || c == 'B' || c == 'o' || c == 'O' || c == '+' || c == '-' || c == '.' ||
+                       c == 'e' || c == 'E';
             })) {
             return std::format("(({})0)", CType(type));
         }
@@ -494,14 +498,12 @@ private:
                 const std::size_t length = constant->isTextSlice ? constant->text.size() : constant->elements.size();
                 const std::size_t storageCount = length + (constant->isTextSlice ? 1 : 0);
                 const std::string elementType = CType(constant->elementType);
-                const std::string dataName =
-                    constant->type.kind == TypeRef::Kind::Array ? name : name + "_data";
-                out += std::format("static {} {}[{}] = {{", elementType, dataName,
-                                   std::max<std::size_t>(1, storageCount));
+                const std::string dataName = constant->type.kind == TypeRef::Kind::Array ? name : name + "_data";
+                out +=
+                    std::format("static {} {}[{}] = {{", elementType, dataName, std::max<std::size_t>(1, storageCount));
                 if (constant->isTextSlice) {
                     for (std::size_t i = 0; i < constant->text.size(); ++i) {
-                        out += std::format("{}{}", i == 0 ? "" : ",",
-                                           static_cast<unsigned char>(constant->text[i]));
+                        out += std::format("{}{}", i == 0 ? "" : ",", static_cast<unsigned char>(constant->text[i]));
                     }
                 }
                 else {
@@ -531,14 +533,14 @@ private:
             if (globalTypes.contains(sourceName)) {
                 continue;
             }
-            const auto vtable = std::ranges::find_if(vtables, [&](const LirVtable *item) {
-                return item->label == sourceName;
-            });
+            const auto vtable =
+                std::ranges::find_if(vtables, [&](const LirVtable *item) { return item->label == sourceName; });
             if (vtable != vtables.end()) {
                 if (!reachableGlobals.contains(sourceName)) {
                     continue;
                 }
-                out += std::format("static rx_ptr {}[{}] = {{", cName, std::max<std::size_t>(1, (*vtable)->methods.size()));
+                out += std::format("static rx_ptr {}[{}] = {{", cName,
+                                   std::max<std::size_t>(1, (*vtable)->methods.size()));
                 for (std::size_t i = 0; i < (*vtable)->methods.size(); ++i) {
                     if (i != 0) {
                         out += ",";
@@ -554,8 +556,8 @@ private:
         for (const auto &module : package.modules) {
             for (const auto &external : module.externVars) {
                 const std::string alias = globalNames.at(external.name);
-                out += std::format("extern {} {} __asm__(\"_{}\");\n", CType(external.type), alias,
-                                   EscapeCString(external.name));
+                out += std::format("extern {} {} __asm__(\"{}\");\n", CType(external.type), alias,
+                                   ExternalSymbol(external.name));
             }
         }
         out += "\n";
@@ -582,7 +584,7 @@ private:
         }
         out += ")";
         if (function.isExtern) {
-            out += std::format(" __asm__(\"_{}\")", EscapeCString(function.name));
+            out += std::format(" __asm__(\"{}\")", ExternalSymbol(function.name));
         }
         out += ";\n";
     }
@@ -690,12 +692,11 @@ private:
                     if (spelling == "int8" || spelling == "uint8" || spelling == "bool8" || spelling == "char8") {
                         return 1;
                     }
-                    if (spelling == "int16" || spelling == "uint16" || spelling == "bool16" ||
-                        spelling == "char16") {
+                    if (spelling == "int16" || spelling == "uint16" || spelling == "bool16" || spelling == "char16") {
                         return 2;
                     }
-                    if (spelling == "int32" || spelling == "uint32" || spelling == "bool32" ||
-                        spelling == "char32" || spelling == "float32") {
+                    if (spelling == "int32" || spelling == "uint32" || spelling == "bool32" || spelling == "char32" ||
+                        spelling == "float32") {
                         return 4;
                     }
                     return SizeOf(type);
@@ -801,6 +802,7 @@ private:
             LirReg dst;
             LirReg src;
         };
+
         std::vector<Move> moves;
         for (const auto &instruction : function.blocks[to].instrs) {
             if (instruction.op != LirOpcode::Phi) {
@@ -827,8 +829,7 @@ private:
         out += "    }\n";
     }
 
-    void EmitCall(std::string &out, const LirInstr &instruction,
-                  const std::unordered_map<LirReg, TypeRef> &regTypes) {
+    void EmitCall(std::string &out, const LirInstr &instruction, const std::unordered_map<LirReg, TypeRef> &regTypes) {
         const auto assignment = [&]() {
             return instruction.dst == LirNoReg || instruction.type.IsOpaque() ? std::string{}
                                                                               : Reg(instruction.dst) + " = ";
@@ -884,8 +885,8 @@ private:
         case LirOpcode::Const:
             if (instruction.type.kind == TypeRef::Kind::Str) {
                 const std::string name = std::format("rx_s{}", stringCounter++);
-                out += std::format("    static unsigned char {}[] = \"{}\";\n", name,
-                                   EscapeCString(instruction.strArg));
+                out +=
+                    std::format("    static unsigned char {}[] = \"{}\";\n", name, EscapeCString(instruction.strArg));
                 out += std::format("    {} = {};\n", dst, name);
             }
             else if (!IsAggregate(instruction.type)) {
@@ -898,9 +899,8 @@ private:
         case LirOpcode::Load: {
             const int size = std::max(1, RuntimeSize(instruction.type));
             if (!instruction.strArg.empty()) {
-                const std::string global = globalNames.contains(instruction.strArg)
-                                             ? globalNames.at(instruction.strArg)
-                                             : Sanitize(instruction.strArg);
+                const std::string global = globalNames.contains(instruction.strArg) ? globalNames.at(instruction.strArg)
+                                                                                    : Sanitize(instruction.strArg);
                 out += std::format("    memcpy(&{}, &{}, {});\n", dst, global, size);
             }
             else {
@@ -910,8 +910,7 @@ private:
         }
         case LirOpcode::Store: {
             const int size = std::max(1, RuntimeSize(instruction.type));
-            out += std::format("    memcpy({}, &{}, {});\n", Reg(instruction.srcs[1]), Reg(instruction.srcs[0]),
-                               size);
+            out += std::format("    memcpy({}, &{}, {});\n", Reg(instruction.srcs[1]), Reg(instruction.srcs[0]), size);
             break;
         }
         case LirOpcode::Add:
@@ -924,7 +923,7 @@ private:
         case LirOpcode::Shl:
         case LirOpcode::Shr:
         case LirOpcode::Lshr: {
-            const TypeRef lhsType = regTypes.at(instruction.srcs[0]);
+            const TypeRef &lhsType = regTypes.at(instruction.srcs[0]);
             std::string lhs = Reg(instruction.srcs[0]);
             if (instruction.op == LirOpcode::Lshr && lhsType.IsSigned()) {
                 const int bits = RuntimeSize(lhsType) * 8;
@@ -940,8 +939,8 @@ private:
         case LirOpcode::CmpLe:
         case LirOpcode::CmpGt:
         case LirOpcode::CmpGe: {
-            const TypeRef lhsType = regTypes.at(instruction.srcs[0]);
-            const TypeRef rhsType = regTypes.at(instruction.srcs[1]);
+            const TypeRef &lhsType = regTypes.at(instruction.srcs[0]);
+            const TypeRef &rhsType = regTypes.at(instruction.srcs[1]);
             const auto comparable = [&](const LirReg reg, const TypeRef &type) {
                 if (IsAggregate(type)) {
                     return std::format("rx_word(&{}, {})", Reg(reg), std::max(1, RuntimeSize(type)));
@@ -960,26 +959,26 @@ private:
         case LirOpcode::Mod:
             if (IsFloat(instruction.type)) {
                 out += std::format("    {} = ({})fmod{}({}, {});\n", dst, CType(instruction.type),
-                                   instruction.type.kind == TypeRef::Kind::Float32 ? "f" : "",
-                                   Reg(instruction.srcs[0]), Reg(instruction.srcs[1]));
+                                   instruction.type.kind == TypeRef::Kind::Float32 ? "f" : "", Reg(instruction.srcs[0]),
+                                   Reg(instruction.srcs[1]));
             }
             else {
-                out += std::format("    {} = ({})({} % {});\n", dst, CType(instruction.type),
-                                   Reg(instruction.srcs[0]), Reg(instruction.srcs[1]));
+                out += std::format("    {} = ({})({} % {});\n", dst, CType(instruction.type), Reg(instruction.srcs[0]),
+                                   Reg(instruction.srcs[1]));
             }
             break;
         case LirOpcode::Pow:
             if (IsFloat(instruction.type)) {
                 out += std::format("    {} = ({})pow{}({}, {});\n", dst, CType(instruction.type),
-                                   instruction.type.kind == TypeRef::Kind::Float32 ? "f" : "",
-                                   Reg(instruction.srcs[0]), Reg(instruction.srcs[1]));
+                                   instruction.type.kind == TypeRef::Kind::Float32 ? "f" : "", Reg(instruction.srcs[0]),
+                                   Reg(instruction.srcs[1]));
             }
             else {
-                out += std::format(
-                    "    {{ {} base = {}, exp = {}; {} acc = 1; while (exp) {{ if (exp & 1) acc *= base; "
-                    "exp >>= 1; if (exp) base *= base; }} {} = acc; }}\n",
-                    CType(instruction.type), Reg(instruction.srcs[0]), CType(instruction.type),
-                    Reg(instruction.srcs[1]), CType(instruction.type), dst);
+                out +=
+                    std::format("    {{ {} base = {}, exp = {}; {} acc = 1; while (exp) {{ if (exp & 1) acc *= base; "
+                                "exp >>= 1; if (exp) base *= base; }} {} = acc; }}\n",
+                                CType(instruction.type), Reg(instruction.srcs[0]), CType(instruction.type),
+                                Reg(instruction.srcs[1]), CType(instruction.type), dst);
             }
             break;
         case LirOpcode::Neg:
@@ -993,8 +992,7 @@ private:
                 out += std::format("    {} = {} ^ 1;\n", dst, Reg(instruction.srcs[0]));
             }
             else {
-                out += std::format("    {} = ({})~{};\n", dst, CType(instruction.type),
-                                   Reg(instruction.srcs[0]));
+                out += std::format("    {} = ({})~{};\n", dst, CType(instruction.type), Reg(instruction.srcs[0]));
             }
             break;
         case LirOpcode::Cast:
@@ -1003,8 +1001,7 @@ private:
                                    std::max(1, RuntimeSize(instruction.type)));
             }
             else {
-                out += std::format("    {} = ({}){};\n", dst, CType(instruction.type),
-                                   Reg(instruction.srcs[0]));
+                out += std::format("    {} = ({}){};\n", dst, CType(instruction.type), Reg(instruction.srcs[0]));
             }
             break;
         case LirOpcode::Call:
@@ -1049,12 +1046,11 @@ private:
             else {
                 out += "    {\n";
             }
-            out += std::format(
-                "      fprintf(stderr, \"{}%s\\n  at {} ({}:{}:{})\\n\", "
-                "(char *)(uintptr_t)rx_word({}, 8)); abort();\n",
-                assertion ? "Assertion failed: " : "Panic: ", EscapeCString(instruction.sourceFunction),
-                EscapeCString(instruction.sourceFile), instruction.sourceLine, instruction.sourceColumn,
-                Reg(instruction.srcs[messageIndex]));
+            out += std::format("      fprintf(stderr, \"{}%s\\n  at {} ({}:{}:{})\\n\", "
+                               "(char *)(uintptr_t)rx_word({}, 8)); abort();\n",
+                               assertion ? "Assertion failed: " : "Panic: ", EscapeCString(instruction.sourceFunction),
+                               EscapeCString(instruction.sourceFile), instruction.sourceLine, instruction.sourceColumn,
+                               Reg(instruction.srcs[messageIndex]));
             out += "    }\n";
             break;
         }
@@ -1063,16 +1059,14 @@ private:
                 out += std::format("    {} = (rx_ptr)(uintptr_t)&{};\n", dst, function->second);
             }
             else {
-                const std::string global = globalNames.contains(instruction.strArg)
-                                             ? globalNames.at(instruction.strArg)
-                                             : Sanitize(instruction.strArg);
+                const std::string global = globalNames.contains(instruction.strArg) ? globalNames.at(instruction.strArg)
+                                                                                    : Sanitize(instruction.strArg);
                 out += std::format("    {} = (rx_ptr)&{};\n", dst, global);
             }
             break;
         }
         case LirOpcode::StringAddr: {
-            const TypeRef element =
-                instruction.type.inner.empty() ? TypeRef::MakeChar8() : instruction.type.inner[0];
+            const TypeRef element = instruction.type.inner.empty() ? TypeRef::MakeChar8() : instruction.type.inner[0];
             const std::string encoded = EncodeStringLiteral(instruction.strArg, std::max(1, RuntimeSize(element)));
             const std::string name = std::format("rx_s{}", stringCounter++);
             out += std::format("    static unsigned char {}[{}] = {{", name, encoded.size() + 1);
@@ -1088,7 +1082,7 @@ private:
             break;
         }
         case LirOpcode::FieldPtr: {
-            const TypeRef baseType = regTypes.at(instruction.srcs[0]);
+            const TypeRef &baseType = regTypes.at(instruction.srcs[0]);
             out += std::format("    {} = {} + {}; /* {} field={} */\n", dst, Reg(instruction.srcs[0]),
                                FieldOffset(baseType, instruction.strArg), EscapeCString(baseType.ToString()),
                                EscapeCString(instruction.strArg));
@@ -1124,7 +1118,7 @@ private:
             break;
         case LirTermKind::Return:
             if (term.retVal && *term.retVal != LirNoReg) {
-                const TypeRef valueType = regTypes.at(*term.retVal);
+                const TypeRef &valueType = regTypes.at(*term.retVal);
                 if (IsAggregate(function.returnType) && valueType.kind == TypeRef::Kind::Pointer) {
                     out += std::format("    {{ {} result = {{0}}; memcpy(&result, {}, {}); return result; }}\n",
                                        CType(function.returnType), Reg(*term.retVal),
@@ -1181,9 +1175,8 @@ private:
                 if (instruction.dst == LirNoReg) {
                     continue;
                 }
-                regTypes[instruction.dst] = instruction.op == LirOpcode::Alloca
-                                               ? TypeRef::MakePointer(instruction.type)
-                                               : instruction.type;
+                regTypes[instruction.dst] =
+                    instruction.op == LirOpcode::Alloca ? TypeRef::MakePointer(instruction.type) : instruction.type;
                 if (instruction.op == LirOpcode::Alloca) {
                     allocaStorage[instruction.dst] = std::format("storage{}", instruction.dst);
                 }
@@ -1201,16 +1194,16 @@ private:
                 int bytes = std::max(1, RuntimeSize(instruction.type));
                 if (!instruction.strArg.empty()) {
                     int count = 0;
-                    const auto [ptr, ec] = std::from_chars(instruction.strArg.data(),
-                                                          instruction.strArg.data() + instruction.strArg.size(), count);
+                    const auto [ptr, ec] = std::from_chars(
+                        instruction.strArg.data(), instruction.strArg.data() + instruction.strArg.size(), count);
                     if (ec == std::errc{} && ptr == instruction.strArg.data() + instruction.strArg.size()) {
                         const TypeRef element =
                             instruction.type.inner.empty() ? instruction.type : instruction.type.inner[0];
                         bytes = std::max(1, count * RuntimeSize(element));
                     }
                 }
-                out += std::format("  _Alignas(8) unsigned char {}[{}] = {{0}};\n",
-                                   allocaStorage.at(instruction.dst), bytes);
+                out += std::format("  _Alignas(8) unsigned char {}[{}] = {{0}};\n", allocaStorage.at(instruction.dst),
+                                   bytes);
             }
         }
         for (std::size_t i = 0; i < function.params.size(); ++i) {
@@ -1238,19 +1231,85 @@ private:
         out += "}\n";
     }
 };
+
+std::optional<std::filesystem::path> FindNativeClang(const Target::OS os) {
+    if (os == Target::OS::Windows) {
+        // CreateProcess searches PATH for an executable without a directory.
+        return std::filesystem::path("clang.exe");
+    }
+
+    std::vector<std::filesystem::path> candidates;
+    if (os == Target::OS::MacOS) {
+        candidates.emplace_back("/usr/bin/clang");
+    }
+    else if (os == Target::OS::FreeBSD) {
+        candidates.emplace_back("/usr/local/bin/clang22");
+        candidates.emplace_back("/usr/bin/clang");
+    }
+    else {
+        candidates.emplace_back("/usr/bin/clang-22");
+        candidates.emplace_back("/usr/bin/clang");
+    }
+    const auto candidate = std::ranges::find_if(candidates, [](const auto &path) {
+        std::error_code error;
+        return std::filesystem::is_regular_file(path, error);
+    });
+    if (candidate == candidates.end()) {
+        return std::nullopt;
+    }
+    return *candidate;
+}
+
+void AppendTargetArguments(std::vector<std::string> &arguments, const TargetContext &target) {
+    if (target.os == Target::OS::MacOS) {
+        arguments.insert(arguments.end(), {"-arch", "arm64"});
+    }
+    else if (target.os == Target::OS::Windows) {
+        arguments.emplace_back("--target=aarch64-pc-windows-msvc");
+    }
+}
+
+void AppendLinkArguments(std::vector<std::string> &arguments, const LirPackage &package, const TargetContext &target) {
+    if (target.os == Target::OS::Linux || target.os == Target::OS::FreeBSD) {
+        arguments.emplace_back("-lm");
+    }
+    if (target.os != Target::OS::Windows) {
+        return;
+    }
+
+    std::set<std::string> libraries;
+    for (const auto &module : package.modules) {
+        for (const auto &function : module.funcs) {
+            if (function.isExtern && !function.dll.empty()) {
+                std::filesystem::path library(function.dll);
+                library.replace_extension(".lib");
+                libraries.insert(library.filename().string());
+            }
+        }
+    }
+    arguments.insert(arguments.end(), libraries.begin(), libraries.end());
+}
 } // namespace
 
-AArch64NativeEmitter::AArch64NativeEmitter(const LirPackage &package, std::string inputPackageName)
+AArch64NativeEmitter::AArch64NativeEmitter(const LirPackage &package, std::string inputPackageName,
+                                           const TargetContext inputTarget)
     : lir(package)
-    , packageName(std::move(inputPackageName)) {
+    , packageName(std::move(inputPackageName))
+    , target(inputTarget) {
 }
 
 bool AArch64NativeEmitter::EmitExecutable(const std::filesystem::path &outputPath,
-                                         const std::filesystem::path &temporaryDirectory, const bool release,
-                                         const std::optional<std::filesystem::path> &assemblyPath) {
-    CEmitter emitter(lir);
+                                          const std::filesystem::path &temporaryDirectory, const bool release,
+                                          const std::optional<std::filesystem::path> &assemblyPath) {
+    CEmitter emitter(lir, target.os);
     auto source = emitter.Generate(diagnostics);
     if (!source) {
+        return false;
+    }
+
+    const auto clangPath = FindNativeClang(target.os);
+    if (!clangPath) {
+        diagnostics.push_back(ErrorDiagnostic("could not find a native Clang C compiler for the AArch64 backend"));
         return false;
     }
 
@@ -1286,35 +1345,38 @@ bool AArch64NativeEmitter::EmitExecutable(const std::filesystem::path &outputPat
                 ErrorDiagnostic(std::format("could not create AArch64 assembly directory: {}", error.message())));
             return false;
         }
-        const std::vector<std::string> assemblyArgumentStorage = {
-            "-arch", "arm64", "-std=gnu11", release ? "-O2" : "-O0", "-S", sourcePath.string(),
-            "-o",    assemblyPath->string(),
-        };
+        std::vector<std::string> assemblyArgumentStorage;
+        AppendTargetArguments(assemblyArgumentStorage, target);
+        assemblyArgumentStorage.insert(
+            assemblyArgumentStorage.end(),
+            {"-std=gnu11", release ? "-O2" : "-O0", "-S", sourcePath.string(), "-o", assemblyPath->string()});
         std::vector<std::string_view> assemblyArguments;
         assemblyArguments.reserve(assemblyArgumentStorage.size());
         for (const auto &argument : assemblyArgumentStorage) {
             assemblyArguments.push_back(argument);
         }
-        const auto assemblyResult = System::RunInherited("/usr/bin/clang", assemblyArguments);
+        const auto assemblyResult = System::RunInherited(*clangPath, assemblyArguments);
         if (!assemblyResult || *assemblyResult != 0) {
-            diagnostics.push_back(
-                ErrorDiagnostic(std::format("AArch64 assembly dump failed for '{}'", packageName)));
+            diagnostics.push_back(ErrorDiagnostic(std::format("AArch64 assembly dump failed for '{}'", packageName)));
             return false;
         }
     }
 
-    std::vector<std::string> argumentStorage = {"-arch", "arm64", "-std=gnu11", release ? "-O2" : "-O0"};
+    std::vector<std::string> argumentStorage;
+    AppendTargetArguments(argumentStorage, target);
+    argumentStorage.insert(argumentStorage.end(), {"-std=gnu11", release ? "-O2" : "-O0"});
     if (!release) {
         argumentStorage.emplace_back("-g");
     }
     argumentStorage.insert(argumentStorage.end(), {sourcePath.string(), "-o", outputPath.string()});
+    AppendLinkArguments(argumentStorage, lir, target);
     std::vector<std::string_view> arguments;
     arguments.reserve(argumentStorage.size());
     for (const auto &argument : argumentStorage) {
         arguments.push_back(argument);
     }
 
-    const auto result = System::RunInherited("/usr/bin/clang", arguments);
+    const auto result = System::RunInherited(*clangPath, arguments);
     if (!result || *result != 0) {
         diagnostics.push_back(ErrorDiagnostic(std::format("AArch64 Clang backend failed for '{}'", packageName)));
         return false;

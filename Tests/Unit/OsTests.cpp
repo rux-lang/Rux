@@ -65,8 +65,31 @@ TEST_CASE("workspace platform package names match their target triples") {
     CHECK(IsPlatformPackageName("Linux"));
     CHECK(IsPlatformPackageName("MacOS"));
     CHECK(IsPlatformPackageName("Bsd"));
-    CHECK(PlatformPackageMatchesTarget("Linux", "linux-x64"));
+    CHECK(PlatformPackageMatchesTarget("Linux", "linux-x86_64"));
     CHECK(PlatformPackageMatchesTarget("MacOS", "macos-aarch64"));
-    CHECK(PlatformPackageMatchesTarget("Bsd", "freebsd-x64"));
-    CHECK_FALSE(PlatformPackageMatchesTarget("Illumos", "linux-x64"));
+    CHECK(PlatformPackageMatchesTarget("Bsd", "freebsd-x86_64"));
+    CHECK_FALSE(PlatformPackageMatchesTarget("Illumos", "linux-x86_64"));
+}
+
+TEST_CASE("supported targets include native AArch64 hosts") {
+    using namespace Rux::Driver;
+
+    CHECK(IsSupportedTargetTriple("freebsd-aarch64"));
+    CHECK(IsSupportedTargetTriple("linux-aarch64"));
+    CHECK(IsSupportedTargetTriple("macos-aarch64"));
+    CHECK(IsSupportedTargetTriple("windows-aarch64"));
+    CHECK_FALSE(IsSupportedTargetTriple("openbsd-aarch64"));
+}
+
+TEST_CASE("target triples use canonical architecture names and accept compatibility aliases") {
+    using namespace Rux::Driver;
+
+    CHECK(CanonicalTargetTriple("linux-x86_64") == "linux-x86_64");
+    CHECK(CanonicalTargetTriple("linux-x64") == "linux-x86_64");
+    CHECK(CanonicalTargetTriple("linux-amd64") == "linux-x86_64");
+    CHECK(CanonicalTargetTriple("linux-x86-64") == "linux-x86_64");
+    CHECK(CanonicalTargetTriple("linux-arm64") == "linux-aarch64");
+    CHECK(IsSupportedTargetTriple("windows-x64"));
+    CHECK(IsSupportedTargetTriple("windows-amd64"));
+    CHECK(IsSupportedTargetTriple("windows-arm64"));
 }

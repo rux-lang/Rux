@@ -21,17 +21,19 @@ env:
 
 jobs:
   build:
-    name: Build (${{ matrix.arch }})
+    name: Build (${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: x64
+          - arch: x86_64
+            label: x86-64
             runner: macos-26-intel
-            artifact: rux-macos-x64
-          - arch: arm64
+            artifact: rux-macos-x86_64
+          - arch: aarch64
+            label: AArch64
             runner: macos-26
-            artifact: rux-macos-arm64
+            artifact: rux-macos-aarch64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
@@ -74,18 +76,20 @@ jobs:
           retention-days: 7
 
   test:
-    name: Test (${{ matrix.arch }})
+    name: Test (${{ matrix.label }})
     needs: build
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: x64
+          - arch: x86_64
+            label: x86-64
             runner: macos-26-intel
-            artifact: rux-macos-x64
-          - arch: arm64
+            artifact: rux-macos-x86_64
+          - arch: aarch64
+            label: AArch64
             runner: macos-26
-            artifact: rux-macos-arm64
+            artifact: rux-macos-aarch64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     steps:

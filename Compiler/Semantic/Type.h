@@ -26,7 +26,7 @@ struct TypeRef {
         UInt32,
         UInt64,
         Int,
-        UInt, // platform-dependent: 64-bit on x64, 32-bit on x86
+        UInt, // platform-dependent: 64-bit on x86-64, 32-bit on x86
         Float32,
         Float64,
         Str,              // String

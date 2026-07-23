@@ -67,11 +67,8 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     const std::string_view profileName = isRelease ? "Release" : "Debug";
     std::string targetName = HostTargetTriple();
     if (!IsSupportedTargetTriple(targetName)) {
-        std::print(stderr,
-                   "error: unsupported target '{}'; supported targets are "
-                   "linux-x64, windows-x64, macos-x64, macos-arm64, "
-                   "freebsd-x64, openbsd-x64, netbsd-x64, illumos-x64\n",
-                   targetName);
+        std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", targetName,
+                   SupportedTargetTriples());
         return 1;
     }
     const bool buildQuiet = !opts.verbose || opts.quiet;

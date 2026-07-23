@@ -90,7 +90,7 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
         return true;
     }
     // int/uint interoperate with their fixed-width platform equivalents
-    // (x64: 64-bit)
+    // (x86-64: 64-bit)
     if (kind == Kind::Int64 && other.kind == Kind::Int) {
         return true;
     }

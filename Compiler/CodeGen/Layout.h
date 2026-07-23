@@ -1,6 +1,6 @@
 #pragma once
 
-// LIR-level type sizing, struct layout, and the x64 argument-register tables
+// LIR-level type sizing, struct layout, and the x86-64 argument-register tables
 // shared by the assembly and RCU-object code generators.
 
 #include "Ir/Lir/Lir.h"

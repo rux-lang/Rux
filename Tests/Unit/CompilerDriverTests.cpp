@@ -165,7 +165,7 @@ TEST_CASE("compiler driver loads path dependencies when building") {
     CHECK(result.stats.dependencyFiles == 1);
     CHECK(std::filesystem::is_regular_file(result.executablePath));
 
-    if constexpr (Target::HostOS == Target::OS::MacOS && Target::HostArch == Target::Arch::ARM64) {
+    if constexpr (Target::HostOS == Target::OS::MacOS && Target::HostArch == Target::Arch::AArch64) {
         std::ifstream executable(result.executablePath, std::ios::binary);
         std::array<unsigned char, 8> header{};
         executable.read(reinterpret_cast<char *>(header.data()), static_cast<std::streamsize>(header.size()));

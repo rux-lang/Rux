@@ -27,9 +27,21 @@ env:
 # Clang runtime libraries the binary links against).
 jobs:
   build:
-    name: Build
+    name: Build (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            label: x86-64
+            vm_arch: x86_64
+            artifact: rux-freebsd-x86_64
+          - arch: aarch64
+            label: AArch64
+            vm_arch: aarch64
+            artifact: rux-freebsd-aarch64
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -40,6 +52,7 @@ jobs:
         uses: vmactions/freebsd-vm@v1
         with:
           release: "14.4"
+          arch: ${{ matrix.vm_arch }}
           usesh: true
           envs: 'CMAKE_VERSION CMAKE_SHA256'
           # FreeBSD packages CMake 3.31, so build the pinned CMake release once
@@ -84,16 +97,28 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-freebsd-x64
+          name: ${{ matrix.artifact }}
           path: Bin/rux
           if-no-files-found: error
           retention-days: 7
 
   test:
-    name: Test
+    name: Test (${{ matrix.label }})
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            label: x86-64
+            vm_arch: x86_64
+            artifact: rux-freebsd-x86_64
+          - arch: aarch64
+            label: AArch64
+            vm_arch: aarch64
+            artifact: rux-freebsd-aarch64
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -103,13 +128,14 @@ jobs:
       - name: Download binary artifact
         uses: actions/download-artifact@v8
         with:
-          name: rux-freebsd-x64
+          name: ${{ matrix.artifact }}
           path: Bin
 
       - name: Test in FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
           release: "14.4"
+          arch: ${{ matrix.vm_arch }}
           usesh: true
           # The prebuilt binary needs the Clang runtime libraries. The
           # workspace and test manifests resolve first-party packages

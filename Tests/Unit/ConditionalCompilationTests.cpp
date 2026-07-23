@@ -57,7 +57,7 @@ intrinsic #config: Config;
 intrinsic func #Error(message: Slice<char8>);
 intrinsic func #Warn(message: Slice<char8>);
 enum OperatingSystem { Windows }
-enum Architecture { X86Bit64 }
+enum Architecture { X86_64 }
 enum ApplicationBinaryInterface { WindowsX64 }
 enum Endianness { Little }
 enum DataModel { LLP64 }
@@ -873,13 +873,13 @@ import Rux::{ #target, #build, #compiler, OperatingSystem, Architecture, Applica
 
 func Selected() -> int {
     when #target.os == OperatingSystem::Windows &&
-        #target.arch == Architecture::X86Bit64 &&
+        #target.arch == Architecture::X86_64 &&
         #target.abi == ApplicationBinaryInterface::WindowsX64 &&
         #target.endian == Endianness::Little &&
         #target.pointerBits == 64 &&
         #target.dataModel == DataModel::LLP64 &&
         #target.objectFormat == ObjectFormat::COFF &&
-        #target.triple == "windows-x64" &&
+        #target.triple == "windows-x86_64" &&
         #target.HasFeature(.AVX2) &&
         #build.profile == "Production" &&
         #build.mode == BuildMode::Release &&
@@ -904,7 +904,7 @@ func Selected() -> int {
     context.target.data_model = Target::DataModel::LLP64;
     context.target.object_format = Target::ObjectFormat::COFF;
     context.target.cpu_features = Target::CpuFeature::AVX2;
-    context.targetTriple = "windows-x64";
+    context.targetTriple = "windows-x86_64";
     context.profileName = "Production";
     context.buildMode = Target::BuildMode::Release;
     context.optimization = OptimizationMode::Speed;
@@ -1070,7 +1070,7 @@ module Demo {
     CompileTimeContext context;
     context.target.pointer_size = 8;
     context.target.cpu_features = Target::CpuFeature::AVX2;
-    context.targetTriple = "windows-x64";
+    context.targetTriple = "windows-x86_64";
     context.profileName = "Testing";
     context.debugAssertions = false;
     context.debugInfo = true;
@@ -1126,7 +1126,7 @@ module Demo {
     CHECK(values["time"] == "00:00:00");
     CHECK(values["timestamp"] == "0");
     CHECK(values["pointerBits"] == "64");
-    CHECK(values["targetTriple"] == "windows-x64");
+    CHECK(values["targetTriple"] == "windows-x86_64");
     CHECK(values["feature"] == "true");
     CHECK(values["profile"] == "Testing");
     CHECK(values["debugAssertions"] == "false");

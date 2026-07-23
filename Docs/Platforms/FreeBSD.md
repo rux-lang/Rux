@@ -1,6 +1,6 @@
 # Rux on FreeBSD
 
-This guide covers installing and building Rux on x86-64 FreeBSD. Return to the [main README](../../README.md) for language documentation and project information.
+This guide covers installing and building Rux on x86-64 and AArch64 FreeBSD. Return to the [main README](../../README.md) for language documentation and project information.
 
 ## Installing a Release
 
@@ -46,6 +46,9 @@ sh Build.sh
 ```
 
 The FreeBSD package names the compiler `clang++22`; `Build.sh` detects it automatically. The script creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
+
+On AArch64, Rux selects the `freebsd-aarch64` target automatically and uses the
+platform Clang driver for final native lowering and linking.
 
 For a Debug build, run `sh Build.sh --configuration Debug`. Run `sh Build.sh --help` to see every option.
 

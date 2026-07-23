@@ -20,14 +20,15 @@ enum OperatingSystem: uint8 {
 }
 
 // Processor architectures that can be selected by compile-time target values
+#Allow("naming.type")
 enum Architecture: uint8 {
     Unknown = 0,
     ARM32 = 1,
-    ARM64 = 2,
+    AArch64 = 2,
     RISCV32 = 3,
     RISCV64 = 4,
     X86Bit32 = 5,
-    X86Bit64 = 6
+    X86_64 = 6
 }
 
 // Application binary interfaces used by compilation targets

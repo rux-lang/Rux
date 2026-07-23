@@ -1,6 +1,6 @@
 # Rux on Windows
 
-This guide covers installing a published Rux release and building Rux from source on x86-64 Windows. Return to the [main README](../../README.md) for language documentation and project information.
+This guide covers installing a published x86-64 Rux release and building Rux from source on x86-64 or AArch64 Windows. Return to the [main README](../../README.md) for language documentation and project information.
 
 ## Installing a Release
 
@@ -48,11 +48,12 @@ Rux currently requires Clang 22.1 or newer, CMake 4.3 or newer, Ninja 1.11 or ne
    scoop install git llvm cmake ninja
    ```
 
-4. Use an **x64 Native Tools Command Prompt** for Visual Studio. To use an existing PowerShell window instead, initialize the development environment once per session:
+4. Use the Native Tools Command Prompt matching the host architecture. To use an existing PowerShell window instead, initialize the development environment once per session:
 
    ```powershell
    $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
-   & "$vs\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+   $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq "Arm64") { "arm64" } else { "amd64" }
+   & "$vs\Common7\Tools\Launch-VsDevShell.ps1" -Arch $arch -HostArch $arch -SkipAutomaticLocation
    ```
 
 5. Clone and build Rux from the initialized environment:
@@ -64,6 +65,10 @@ Rux currently requires Clang 22.1 or newer, CMake 4.3 or newer, Ninja 1.11 or ne
    ```
 
 The script creates a Release build in `Build\` and writes the compiler to `Bin\rux.exe`.
+
+`Build.ps1` selects `windows-x86_64` or `windows-aarch64` from the native host
+architecture. Published Windows ZIP, MSI, PowerShell, and Scoop installations
+remain x86-64-only for now.
 
 For a Debug build, run `.\Build.ps1 -Configuration Debug`. Run `Get-Help .\Build.ps1 -Full` to see every option.
 

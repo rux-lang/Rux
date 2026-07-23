@@ -431,18 +431,14 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         return 1;
     }
 
-    std::string targetName = target.empty() ? HostTargetTriple() : std::string(target);
+    std::string targetName = target.empty() ? HostTargetTriple() : CanonicalTargetTriple(target);
     if (!IsSupportedTargetTriple(targetName)) {
         if (jsonOutput) {
             EmitFatal("unsupported target '" + targetName + "'");
         }
         else {
-            std::print(stderr,
-                       "error: unsupported target '{}'; supported targets are "
-                       "linux-x64, windows-x64, macos-x64, macos-aarch64, "
-                       "freebsd-x64, openbsd-x64, netbsd-x64, dragonfly-x64, "
-                       "illumos-x64\n",
-                       targetName);
+            std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", targetName,
+                       SupportedTargetTriples());
         }
         return 1;
     }

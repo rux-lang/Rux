@@ -113,13 +113,10 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     if (!manifest) {
         return 1;
     }
-    std::string targetName = target.empty() ? HostTargetTriple() : std::string(target);
+    std::string targetName = target.empty() ? HostTargetTriple() : CanonicalTargetTriple(target);
     if (!IsSupportedTargetTriple(targetName)) {
-        std::print(stderr,
-                   "error: unsupported target '{}'; supported targets are "
-                   "linux-x64, windows-x64, macos-x64, macos-arm64, "
-                   "freebsd-x64, openbsd-x64, netbsd-x64, illumos-x64\n",
-                   targetName);
+        std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", targetName,
+                   SupportedTargetTriples());
         return 1;
     }
     const std::string hostTarget = HostTargetTriple();

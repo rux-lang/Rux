@@ -206,7 +206,8 @@ constexpr std::array build_opts = {
     OptionDoc{.flags = "--profile <n>"sv, .desc = "Build using a custom profile defined in Rux.toml"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile (optimized, no debug info)"sv},
     OptionDoc{.flags = "--stats"sv, .desc = "Print build timing, source, performance, and output statistics"sv},
-    OptionDoc{.flags = "--target <triple>"sv, .desc = "Build for the specified target platform (e.g. x86, x64)"sv},
+    OptionDoc{.flags = "--target <triple>"sv,
+              .desc = "Build for the specified target platform (e.g. linux-x86_64, linux-aarch64)"sv},
     OptionDoc{.flags = "-q, --quiet"sv, .desc = "Suppress non-essential output (only errors are shown)"sv},
     OptionDoc{.flags = "-v, --verbose"sv, .desc = "Enable verbose output for detailed build information"sv},
     OptionDoc{.flags = "--dump-asm"sv, .desc = "Write target assembly to Temp/Asm/"sv},
@@ -226,7 +227,7 @@ constexpr std::array check_opts = {
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
     OptionDoc{.flags = "--json"sv, .desc = "Output diagnostics in JSON format"sv},
     OptionDoc{.flags = "--target <triple>"sv, .desc = "Check code health for a specific target platform"sv}};
-constexpr std::array check_exs = {""sv, "--json"sv, "--target windows-x64"sv};
+constexpr std::array check_exs = {""sv, "--json"sv, "--target windows-x86_64"sv};
 
 // Clean
 constexpr std::array clean_usage = {"[options]"sv};

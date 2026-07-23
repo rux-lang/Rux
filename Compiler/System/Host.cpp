@@ -23,7 +23,7 @@
     #include <unistd.h>
 #endif
 
-#if RUX_ARCH_X86 || RUX_ARCH_X64
+#if RUX_ARCH_X86 || RUX_ARCH_X86_64
     #if RUX_COMPILER_MSVC
         #include <intrin.h>
     #else
@@ -35,7 +35,7 @@ namespace Rux::System {
 using namespace Target;
 
 namespace {
-#if RUX_ARCH_X86 || RUX_ARCH_X64
+#if RUX_ARCH_X86 || RUX_ARCH_X86_64
 
 [[nodiscard]] inline bool HasOSXSAVE() noexcept {
     int r[4]{};
@@ -64,7 +64,7 @@ namespace {
 [[nodiscard]] CpuFeatures DetectCpuFeaturesImpl() noexcept {
     CpuFeatures f = CpuFeature::None;
 
-#if RUX_ARCH_X86 || RUX_ARCH_X64
+#if RUX_ARCH_X86 || RUX_ARCH_X86_64
 
     int r[4]{};
 
@@ -116,7 +116,7 @@ namespace {
         f |= CpuFeature::AVX512;
     }
 
-#elif RUX_ARCH_ARM64 || RUX_ARCH_ARM32
+#elif RUX_ARCH_AARCH64 || RUX_ARCH_ARM32
 
     #if RUX_OS_LINUX
     unsigned long hw = getauxval(AT_HWCAP);

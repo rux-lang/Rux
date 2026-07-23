@@ -21,8 +21,20 @@ env:
 
 jobs:
   build:
-    name: Build
-    runs-on: ubuntu-24.04
+    name: Build (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            label: x86-64
+            runner: ubuntu-24.04
+            artifact: rux-linux-x86_64
+          - arch: aarch64
+            label: AArch64
+            runner: ubuntu-24.04-arm
+            artifact: rux-linux-aarch64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -57,15 +69,27 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-linux-x64
+          name: ${{ matrix.artifact }}
           path: Bin/rux
           if-no-files-found: error
           retention-days: 7
 
   test:
-    name: Test
+    name: Test (${{ matrix.label }})
     needs: build
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            label: x86-64
+            runner: ubuntu-24.04
+            artifact: rux-linux-x86_64
+          - arch: aarch64
+            label: AArch64
+            runner: ubuntu-24.04-arm
+            artifact: rux-linux-aarch64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -73,10 +97,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install Clang 22
+        if: matrix.arch == 'aarch64'
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSLo /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 22
+
       - name: Download binary artifact
         uses: actions/download-artifact@v8
         with:
-          name: rux-linux-x64
+          name: ${{ matrix.artifact }}
           path: Bin
 
       # Restore the executable bit (artifacts don't preserve permissions).
@@ -84,6 +115,7 @@ jobs:
         run: chmod +x Bin/rux
 
       - name: Check Rux formatting
+        if: matrix.arch == 'x86_64'
         run: |
           set -e
           manifest_count=$(find Packages Tests -type f -name Rux.toml -print | wc -l | tr -d '[:space:]')

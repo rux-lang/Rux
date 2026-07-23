@@ -16,14 +16,22 @@
 namespace Rux::Driver {
 // ---- Target triples ---------------------------------------------------------
 
-// Human-readable name of the host target, e.g. "Windows x64".
+// Human-readable name of the host target, e.g. "Windows x86-64".
 [[nodiscard]] std::string TargetName();
 
-// Lower-case "os-arch" triple of the host, e.g. "windows-x64".
+// Lower-case "os-arch" triple of the host, e.g. "windows-x86_64".
 [[nodiscard]] std::string HostTargetTriple();
 
+// Convert accepted architecture aliases to the canonical machine spelling.
+// For example, "windows-x64" and "windows-amd64" become "windows-x86_64".
+[[nodiscard]] std::string CanonicalTargetTriple(std::string_view target);
+
 // True if `target` is one of the officially supported "os-arch" triples.
+// Compatibility aliases are accepted and normalized by CanonicalTargetTriple.
 [[nodiscard]] bool IsSupportedTargetTriple(std::string_view target);
+
+// Comma-separated list used by CLI diagnostics.
+[[nodiscard]] std::string_view SupportedTargetTriples();
 
 // Canonical OS name ("Linux", "Windows", "macOS", "BSD", "Illumos") for the OS
 // component of an "os-arch" triple, or "" if it cannot be determined.

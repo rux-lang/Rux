@@ -16,10 +16,10 @@ Source -> Lexer -> Syntax -> SemanticModel
                     +-----------+-----------+
                     |                       |
                     v                       v
-             x86-64 CodeGen          macOS AArch64 CodeGen
+             x86-64 CodeGen           Native AArch64 CodeGen
                     |                       |
                     v                       v
-              RCU Object -> Linker    Clang -> ARM64 Mach-O
+              RCU Object -> Linker    Clang -> ELF / Mach-O / PE
 ```
 
 The driver loads the root manifest and dependencies before entering this pipeline. Diagnostics can stop the process after any frontend stage; object emission and linking only run when analysis and lowering succeed.
@@ -41,7 +41,7 @@ The driver loads the root manifest and dependencies before entering this pipelin
 | `Lowering`             | AST/semantic model → HIR → LIR                                        | Frontend and IR components            |
 | `CodeGen`              | Layout rules shared by machine backends                              | LIR                                   |
 | `CodeGen/X86_64`       | x86-64 code generation and RCU construction                           | LIR, Object, Diagnostics              |
-| `CodeGen/AArch64`      | macOS AArch64 native lowering through the platform Clang driver       | LIR, System, Diagnostics              |
+| `CodeGen/AArch64`      | Native AArch64 lowering and linking through the platform Clang driver | LIR, System, Diagnostics              |
 | `Object/Rcu`           | RCU object representation and serialization                           | Standard library                      |
 | `Linker`               | PE, ELF, and Mach-O output                                            | Object and System                     |
 | `Driver`               | End-to-end compilation orchestration and build reports                | All compiler stages                   |
@@ -54,6 +54,26 @@ The CMake target graph enforces these dependencies. Prefer adding a dependency t
 `Target` describes the output machine. `System` describes the host running the compiler. Code generation and linking must use target data rather than host preprocessor checks. For example, emitting a Linux executable while running on Windows is a target decision; locating `%LocalAppData%` is a host decision.
 
 Operating-system APIs are confined to `Compiler/System`; the CI isolation guard is `Tests/Policy/PlatformIsolation/Check.sh`. New uses of `getenv`, `<windows.h>`, `fork`, or similar APIs belong behind a `System` interface.
+
+## Architecture naming
+
+Use one spelling per context so the website, repository, CLI, and compiler APIs stay predictable:
+
+| Context                    | x86-64                  | AArch64                  |
+| -------------------------- | ----------------------- | ------------------------ |
+| Website, docs, CI labels   | `x86-64`                | `AArch64`                |
+| Target and artifact IDs    | `x86_64`                | `aarch64`                |
+| C++ enum                   | `Target::Arch::X86_64`  | `Target::Arch::AArch64`  |
+| Rux enum                   | `Architecture::X86_64`  | `Architecture::AArch64`  |
+| Code-generation directory  | `CodeGen/X86_64`        | `CodeGen/AArch64`        |
+
+Canonical target names combine the lowercase OS identifier with the machine
+identifier, such as `linux-x86_64` and `windows-aarch64`. The CLI accepts
+`x64`, `amd64`, `x86-64`, and `arm64` suffixes for compatibility, but
+normalizes them before comparison and before exposing `#target.triple`.
+External APIs keep their required spellings, including Visual Studio
+`amd64`/`arm64`, GitHub's `windows-11-arm`, FreeBSD's `aarch64`, and WiX's
+`x64`.
 
 ## Namespaces and public boundaries
 

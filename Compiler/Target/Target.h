@@ -43,7 +43,7 @@ enum class OS : std::uint8_t {
 enum class Arch : std::uint8_t {
     Unknown = 0,
     ARM32 = 1,
-    ARM64 = 2,
+    AArch64 = 2,
     RISCV32 = 3,
     RISCV64 = 4,
     X86_32 = 5,
@@ -136,7 +136,7 @@ struct CpuFeatures {
 namespace CpuFeature {
 inline constexpr CpuFeatures None{0};
 
-// x86 / x64
+// x86
 inline constexpr CpuFeatures SSE2{1ull << 0};
 inline constexpr CpuFeatures SSE3{1ull << 1};
 inline constexpr CpuFeatures SSSE3{1ull << 2};
@@ -213,10 +213,10 @@ struct MemoryInfo {
     case Arch::X86_32:
         return "x86";
     case Arch::X86_64:
-        return "x64";
+        return "x86_64";
     case Arch::ARM32:
         return "arm32";
-    case Arch::ARM64:
+    case Arch::AArch64:
         return "aarch64";
     case Arch::RISCV32:
         return "riscv32";
@@ -227,10 +227,21 @@ struct MemoryInfo {
     }
 }
 
+[[nodiscard]] constexpr std::string_view ToDisplayString(Arch arch) noexcept {
+    switch (arch) {
+    case Arch::X86_64:
+        return "x86-64";
+    case Arch::AArch64:
+        return "AArch64";
+    default:
+        return ToString(arch);
+    }
+}
+
 [[nodiscard]] constexpr bool Is64Bit(Arch arch) noexcept {
     switch (arch) {
     case Arch::X86_64:
-    case Arch::ARM64:
+    case Arch::AArch64:
     case Arch::RISCV64:
         return true;
     default:
@@ -293,7 +304,7 @@ struct ABIInfo {
     }
 
     // ARM
-    if (arch == Arch::ARM64) {
+    if (arch == Arch::AArch64) {
         return {ABI::AAPCS64, CallingConv::AAPCS64, false, 16}; // Applies to Win/Lin/Mac
     }
     if (arch == Arch::ARM32) {
@@ -348,14 +359,14 @@ inline constexpr OS HostOS = []() noexcept {
 }();
 
 inline constexpr Arch HostArch = []() noexcept {
-    if constexpr (RUX_ARCH_X64) {
+    if constexpr (RUX_ARCH_X86_64) {
         return Arch::X86_64;
     }
     if constexpr (RUX_ARCH_X86) {
         return Arch::X86_32;
     }
-    if constexpr (RUX_ARCH_ARM64) {
-        return Arch::ARM64;
+    if constexpr (RUX_ARCH_AARCH64) {
+        return Arch::AArch64;
     }
     if constexpr (RUX_ARCH_ARM32) {
         return Arch::ARM32;
@@ -371,10 +382,10 @@ inline constexpr Arch HostArch = []() noexcept {
 
 inline constexpr DataModel HostDataModel = []() noexcept {
     if constexpr (RUX_OS_WINDOWS) {
-        return (RUX_ARCH_X64 || RUX_ARCH_ARM64) ? DataModel::LLP64 : DataModel::ILP32;
+        return (RUX_ARCH_X86_64 || RUX_ARCH_AARCH64) ? DataModel::LLP64 : DataModel::ILP32;
     }
     else {
-        return (RUX_ARCH_X64 || RUX_ARCH_ARM64 || RUX_ARCH_RISCV64) ? DataModel::LP64 : DataModel::ILP32;
+        return (RUX_ARCH_X86_64 || RUX_ARCH_AARCH64 || RUX_ARCH_RISCV64) ? DataModel::LP64 : DataModel::ILP32;
     }
 }();
 

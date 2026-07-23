@@ -1,6 +1,6 @@
 # Rux on macOS
 
-This guide covers installing and building Rux on Intel and Apple Silicon macOS. Return to the [main README](../../README.md) for language documentation and project information.
+This guide covers installing and building Rux on x86-64 and AArch64 macOS. Return to the [main README](../../README.md) for language documentation and project information.
 
 ## Installing a Release
 
@@ -28,7 +28,7 @@ For a Debug build, add `--configuration Debug`. Run `sh Build.sh --help` to see 
 
 On Apple Silicon, Rux selects the `macos-aarch64` target by default. The AArch64
 backend lowers Rux LIR through the system Clang driver, which applies the
-AAPCS64 ABI and writes a native ARM64 Mach-O executable. Keep the Xcode Command
+AAPCS64 ABI and writes a native AArch64 Mach-O executable. Keep the Xcode Command
 Line Tools installed so `/usr/bin/clang` is available when compiling Rux
 programs.
 
