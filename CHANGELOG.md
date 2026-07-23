@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Tooling
 
 - **AArch64 host support** — FreeBSD, Linux, and Windows now build and run the compiler natively on AArch64, with architecture-correct target selection, platform-aware lowering, and full CI build/test coverage alongside x86-64.
-- **Hardened CI and releases** — all workflows use current action versions, least-privilege permissions, credential-free checkouts, bounded timeouts, pinned CMake/Ninja versions, consistent `x86_64` artifact names, and seven-day intermediate artifact retention. Every platform now runs C++ unit tests plus Rux check, lint, and test verification; release assets include SHA-256 checksums.
+- **Hardened CI and releases** — all workflows use current action versions, least-privilege permissions, credential-free checkouts, bounded timeouts, consistent `x86_64` artifact names, and seven-day intermediate artifact retention. Every platform now runs C++ unit tests plus Rux check, lint, and test verification; release assets include SHA-256 checksums.
 - **C++ static analysis** — `.clang-tidy` defines an enforced, high-signal Clang 22 baseline for compiler and unit-test translation units. The portable test workflows run the analysis in parallel from CMake's compilation database when passed `-ClangTidy` or `--clang-tidy`, and the lint CI workflow always rejects new findings.
 - **Portable repository scripts** — `Build.sh` and `Test.sh` provide the same build and complete verification entry points as their PowerShell counterparts on Linux, macOS, and FreeBSD.
 - **Source formatting scripts** — `Format.ps1` and `Format.sh` format or check all maintained C++ and Rux sources while excluding vendored code and malformed diagnostic fixtures.
@@ -45,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **CMake 3.30 baseline** — Rux now accepts CMake 3.30 or newer while retaining policy behavior through CMake 4.3. FreeBSD CI uses the packaged CMake 3.31 release instead of spending more than 20 minutes building CMake from source.
 - **Explicit binding and pointee mutability** — `let` bindings and parameters are immutable by default, while `var` declares a mutable binding or parameter. Pointer pointee mutability is written `*T` (read-only) or `*var T` (writable), and `@place` infers the pointer form from the addressed place. This replaces `let mut`, `*mut T`, and `@mut`.
 - **Hermetic consolidated tests** — repository tests are organized as language, package, unit/golden, and policy suites below `Tests/`. Every Rux test dependency is an explicit local path, while workspace-member overrides resolve transitive first-party dependencies without registry access.
 - **Flat test executable output** — `rux test` writes each executable directly to its configured `[Build].Output` directory instead of adding a `Debug` or `Release` subdirectory. Ordinary `rux build` and `rux run` outputs remain profile-specific.

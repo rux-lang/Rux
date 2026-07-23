@@ -20,10 +20,10 @@ Rux is a fast, compiled, strongly typed, multi-paradigm programming language.
 
 | Platform | x86-64 CI | AArch64 CI | Prebuilt release |
 | -------- | :-------: | :--------: | :--------------: |
-| FreeBSD  |    Yes    |    Yes     |        —         |
-| Linux    |    Yes    |    Yes     |      x86-64      |
-| macOS    |    Yes    |    Yes     |        —         |
-| Windows  |    Yes    |    Yes     |      x86-64      |
+| FreeBSD  |    Yes    |    Yes     | x86-64, AArch64  |
+| Linux    |    Yes    |    Yes     | x86-64, AArch64  |
+| macOS    |    Yes    |    Yes     | x86-64, AArch64  |
+| Windows  |    Yes    |    Yes     | x86-64, AArch64  |
 
 CI coverage means that Rux is built and tested from source on that platform and architecture.
 
@@ -57,12 +57,12 @@ These are living documents. Update the relevant page in the same pull request wh
 
 ## Installing a Release
 
-Prebuilt x86-64 releases are currently published for Linux and Windows. Choose your operating system for installation, upgrade, removal, and verification instructions:
+Prebuilt x86-64 and AArch64 releases are published for every supported operating system. Choose your operating system for installation, upgrade, removal, and verification instructions:
 
-- [FreeBSD](Docs/Platforms/FreeBSD.md#installing-a-release) — build from source; a native release is not published yet.
-- [Linux](Docs/Platforms/Linux.md#installing-a-release) — install with the shell installer.
-- [macOS](Docs/Platforms/macOS.md#installing-a-release) — build from source; a native release is not published yet.
-- [Windows](Docs/Platforms/Windows.md#installing-a-release) — install with PowerShell, Scoop, or MSI.
+- [FreeBSD](Docs/Platforms/FreeBSD.md#installing-a-release) — install the native archive.
+- [Linux](Docs/Platforms/Linux.md#installing-a-release) — use the x86-64 shell installer or a native archive.
+- [macOS](Docs/Platforms/macOS.md#installing-a-release) — install the native archive.
+- [Windows](Docs/Platforms/Windows.md#installing-a-release) — use an x86-64 installer or a native ZIP.
 
 ## Building from Source
 

@@ -4,11 +4,13 @@ This guide covers installing and building Rux on x86-64 and AArch64 macOS. Retur
 
 ## Installing a Release
 
-A native macOS release is not currently published. Build Rux from source using the instructions below.
+Download the `rux-macos-x86_64.tar.gz` or `rux-macos-aarch64.tar.gz` archive
+matching the Mac from the [latest GitHub release](https://github.com/rux-lang/Rux/releases/latest).
+Extract it, make `rux` executable, and place it in a directory on `PATH`.
 
 ## Building from Source
 
-Rux currently requires Clang 22.1 or newer, CMake 4.3 or newer, Ninja 1.11 or newer, and a recent Git installation. Apple Clang does not yet provide all C++26 features used by Rux, so install upstream LLVM 22 and the build tools with [Homebrew](https://brew.sh/):
+Rux currently requires Clang 22.1 or newer, CMake 3.30 or newer, Ninja 1.11 or newer, and a recent Git installation. Apple Clang does not yet provide all C++26 features used by Rux, so install upstream LLVM 22 and the build tools with [Homebrew](https://brew.sh/):
 
 ```sh
 brew install llvm@22 cmake ninja git

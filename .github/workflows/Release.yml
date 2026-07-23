@@ -17,7 +17,6 @@ concurrency:
 
 env:
   CMAKE_VERSION: "4.3.3"
-  CMAKE_SHA256: "cba4bb7a44edf2877bb6f059932896383babe435b3a8c3b5df48b4aa41c9bb85"
   NINJA_VERSION: "1.13.2"
 
 jobs:
@@ -48,16 +47,29 @@ jobs:
             exit 1
           fi
 
-  # Build, test, and upload one binary per target OS. Tests run here too, so a
-  # broken build or failing suite blocks the release. Each job uploads its
-  # binary under the basename the packaging step expects (rux / rux.exe).
+  # Build, test, and upload one binary per supported OS/architecture pair.
+  # Tests run here too, so a broken build or failing suite blocks the release.
+  # Each job uploads its binary under the basename the packaging step expects
+  # (rux / rux.exe).
   # GitHub has no native FreeBSD runner, so build and test inside a FreeBSD
   # VM and sync the resulting binary back to the Ubuntu host for upload.
   freebsd:
-    name: FreeBSD
+    name: FreeBSD (${{ matrix.label }})
     needs: verify-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            label: x86-64
+            vm_arch: x86_64
+            artifact: rux-freebsd-x86_64
+          - arch: aarch64
+            label: AArch64
+            vm_arch: aarch64
+            artifact: rux-freebsd-aarch64
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -68,36 +80,15 @@ jobs:
         uses: vmactions/freebsd-vm@v1
         with:
           release: "14.4"
+          arch: ${{ matrix.vm_arch }}
           usesh: true
-          envs: 'CMAKE_VERSION CMAKE_SHA256'
           cache-after-prepare: true
           prepare: |
             set -e
-            pkg install -y llvm22 cmake ninja
-            archive="/tmp/cmake-${CMAKE_VERSION}.tar.gz"
-            source="/tmp/cmake-${CMAKE_VERSION}"
-            build="/tmp/cmake-build"
-            prefix="/opt/cmake-${CMAKE_VERSION}"
-
-            fetch -o "$archive" \
-              "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz"
-            if [ "$(sha256 -q "$archive")" != "$CMAKE_SHA256" ]; then
-              echo "CMake source archive checksum mismatch" >&2
-              exit 1
-            fi
-
-            tar -xzf "$archive" -C /tmp
-            cmake -S "$source" -B "$build" -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_C_COMPILER=clang22 \
-              -DCMAKE_CXX_COMPILER=clang++22 \
-              -DCMAKE_INSTALL_PREFIX="$prefix" \
-              -DBUILD_TESTING=OFF
-            cmake --build "$build" --parallel
-            cmake --install "$build"
+            pkg install -y llvm22 cmake-core ninja
           run: |
             set -e
-            export PATH="/opt/cmake-${CMAKE_VERSION}/bin:$PATH"
+            cmake --version
             cmake -S . -B Build -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_CXX_COMPILER=clang++22 \
@@ -112,15 +103,27 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-freebsd-x86_64
+          name: ${{ matrix.artifact }}
           path: Bin/rux
           if-no-files-found: error
           retention-days: 7
 
   linux:
-    name: Linux
+    name: Linux (${{ matrix.label }})
     needs: verify-version
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            label: x86-64
+            runner: ubuntu-24.04
+            artifact: rux-linux-x86_64
+          - arch: aarch64
+            label: AArch64
+            runner: ubuntu-24.04-arm
+            artifact: rux-linux-aarch64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     steps:
       - name: Checkout
@@ -153,6 +156,7 @@ jobs:
         run: ctest --test-dir Build --output-on-failure -C Release
 
       - name: Check Rux formatting
+        if: matrix.arch == 'x86_64'
         run: |
           set -e
           manifest_count=$(find Packages Tests -type f -name Rux.toml -print | wc -l | tr -d '[:space:]')
@@ -170,15 +174,27 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-linux-x86_64
+          name: ${{ matrix.artifact }}
           path: Bin/rux
           if-no-files-found: error
           retention-days: 7
 
   macos:
-    name: macOS
+    name: macOS (${{ matrix.label }})
     needs: verify-version
-    runs-on: macos-26-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            label: x86-64
+            runner: macos-26-intel
+            artifact: rux-macos-x86_64
+          - arch: aarch64
+            label: AArch64
+            runner: macos-26
+            artifact: rux-macos-aarch64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -220,15 +236,33 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-macos-x86_64
+          name: ${{ matrix.artifact }}
           path: Bin/rux
           if-no-files-found: error
           retention-days: 7
 
   windows:
-    name: Windows
+    name: Windows (${{ matrix.label }})
     needs: verify-version
-    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            label: x86-64
+            runner: windows-2025
+            vs_arch: amd64
+            vs_host_arch: amd64
+            compiler_target: x86_64-pc-windows-msvc
+            artifact: rux-windows-x86_64
+          - arch: aarch64
+            label: AArch64
+            runner: windows-11-arm
+            vs_arch: arm64
+            vs_host_arch: amd64
+            compiler_target: aarch64-pc-windows-msvc
+            artifact: rux-windows-aarch64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -254,11 +288,12 @@ jobs:
           }
 
           $devShell = Join-Path $vsPath "Common7\Tools\Launch-VsDevShell.ps1"
-          & $devShell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+          & $devShell -Arch ${{ matrix.vs_arch }} -HostArch ${{ matrix.vs_host_arch }} -SkipAutomaticLocation
 
           cmake -S . -B Build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_CXX_COMPILER=clang++ `
+            -DCMAKE_CXX_COMPILER_TARGET=${{ matrix.compiler_target }} `
             -DRUX_WERROR=ON `
             -DRUX_BUILD_TESTS=ON
           cmake --build Build --config Release --parallel
@@ -267,6 +302,14 @@ jobs:
       - name: Verify Rux workspace
         shell: pwsh
         run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -property installationPath
+          if (-not $vsPath) {
+              throw "Visual Studio installation not found"
+          }
+          $devShell = Join-Path $vsPath "Common7\Tools\Launch-VsDevShell.ps1"
+          & $devShell -Arch ${{ matrix.vs_arch }} -HostArch ${{ matrix.vs_host_arch }} -SkipAutomaticLocation
+
           ./Bin/rux.exe check
           ./Bin/rux.exe lint
           ./Bin/rux.exe test --release
@@ -274,20 +317,22 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rux-windows-x86_64
+          name: ${{ matrix.artifact }}
           path: Bin/rux.exe
           if-no-files-found: error
           retention-days: 7
 
       # Package the freshly built binary into a per-user MSI installer.
       - name: Build MSI installer
+        if: matrix.arch == 'x86_64'
         shell: pwsh
         run: ./Packaging/Windows/Msi/Build.ps1 -RuxExe Bin/rux.exe
 
       - name: Upload MSI artifact
+        if: matrix.arch == 'x86_64'
         uses: actions/upload-artifact@v7
         with:
-          name: rux-windows-msi
+          name: rux-windows-x86_64-msi
           path: Packaging/Windows/Msi/out/rux-windows.msi
           if-no-files-found: error
           retention-days: 7
@@ -300,55 +345,56 @@ jobs:
     permissions:
       contents: write
     steps:
-      # Keep each Unix artifact in its own directory because all three
-      # binaries have the same basename.
-      - name: Download Linux artifact
+      # Keep each artifact in its own directory because binaries from the
+      # same operating system have identical basenames.
+      - name: Download x86-64 binary artifacts
         uses: actions/download-artifact@v8
         with:
-          name: rux-linux-x86_64
-          path: dist/linux
+          pattern: rux-*-x86_64
+          path: dist
 
-      - name: Download Windows artifact
+      - name: Download AArch64 binary artifacts
         uses: actions/download-artifact@v8
         with:
-          name: rux-windows-x86_64
-          path: dist/windows
+          pattern: rux-*-aarch64
+          path: dist
 
       - name: Download Windows MSI artifact
         uses: actions/download-artifact@v8
         with:
-          name: rux-windows-msi
-          path: dist/windows-msi
-
-      - name: Download macOS artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: rux-macos-x86_64
-          path: dist/macos
-
-      - name: Download FreeBSD artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: rux-freebsd-x86_64
-          path: dist/freebsd
+          name: rux-windows-x86_64-msi
+          path: dist/rux-windows-x86_64-msi
 
       # Unix archives preserve executable permissions; zip is conventional
-      # for the standalone Windows binary.
+      # for standalone Windows binaries. Keep the old unqualified x86-64
+      # filenames as compatibility aliases.
       - name: Package assets
         run: |
+          set -e
           mkdir -p out
-          chmod +x dist/linux/rux dist/macos/rux dist/freebsd/rux
-          tar -czf "out/rux-linux.tar.gz"   -C dist/linux rux
-          tar -czf "out/rux-macos.tar.gz"   -C dist/macos rux
-          tar -czf "out/rux-freebsd.tar.gz" -C dist/freebsd rux
-          zip -j "out/rux-windows.zip" dist/windows/rux.exe
-          cp dist/windows-msi/rux-windows.msi out/
-          (cd out && sha256sum \
-            rux-linux.tar.gz \
-            rux-windows.zip \
-            rux-windows.msi \
-            rux-macos.tar.gz \
-            rux-freebsd.tar.gz > SHA256SUMS)
+          for platform in linux macos freebsd; do
+            for arch in x86_64 aarch64; do
+              source="dist/rux-${platform}-${arch}/rux"
+              chmod +x "$source"
+              tar -czf "out/rux-${platform}-${arch}.tar.gz" \
+                -C "dist/rux-${platform}-${arch}" rux
+            done
+          done
+          for arch in x86_64 aarch64; do
+            zip -j "out/rux-windows-${arch}.zip" \
+              "dist/rux-windows-${arch}/rux.exe"
+          done
+          cp dist/rux-windows-x86_64-msi/rux-windows.msi \
+            out/rux-windows-x86_64.msi
+
+          # Compatibility aliases; the current installers consume a subset.
+          cp out/rux-freebsd-x86_64.tar.gz out/rux-freebsd.tar.gz
+          cp out/rux-linux-x86_64.tar.gz out/rux-linux.tar.gz
+          cp out/rux-macos-x86_64.tar.gz out/rux-macos.tar.gz
+          cp out/rux-windows-x86_64.zip out/rux-windows.zip
+          cp out/rux-windows-x86_64.msi out/rux-windows.msi
+
+          (cd out && sha256sum rux-* > SHA256SUMS)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3

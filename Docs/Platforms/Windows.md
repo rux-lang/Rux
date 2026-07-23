@@ -1,6 +1,6 @@
 # Rux on Windows
 
-This guide covers installing a published x86-64 Rux release and building Rux from source on x86-64 or AArch64 Windows. Return to the [main README](../../README.md) for language documentation and project information.
+This guide covers installing and building Rux on x86-64 or AArch64 Windows. Return to the [main README](../../README.md) for language documentation and project information.
 
 ## Installing a Release
 
@@ -21,6 +21,10 @@ Choose one of these per-user installation methods; none requires administrator a
 
 - Download `rux-windows.msi` from the [latest GitHub release](https://github.com/rux-lang/Rux/releases/latest) and run it.
 
+These automated installers currently install x86-64 Rux. On AArch64 Windows,
+download `rux-windows-aarch64.zip` from the latest release and extract
+`rux.exe` into a directory on `PATH`.
+
 Open a new terminal after installation, then verify the compiler:
 
 ```powershell
@@ -31,7 +35,7 @@ Use the same installation method again to upgrade. The [Windows installer guide]
 
 ## Building from Source
 
-Rux currently requires Clang 22.1 or newer, CMake 4.3 or newer, Ninja 1.11 or newer, a recent Git installation, and the Windows SDK and C runtime supplied by Visual Studio.
+Rux currently requires Clang 22.1 or newer, CMake 3.30 or newer, Ninja 1.11 or newer, a recent Git installation, and the Windows SDK and C runtime supplied by Visual Studio.
 
 1. Install Visual Studio or Visual Studio Build Tools with the **Desktop development with C++** workload.
 
@@ -52,8 +56,8 @@ Rux currently requires Clang 22.1 or newer, CMake 4.3 or newer, Ninja 1.11 or ne
 
    ```powershell
    $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
-   $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq "Arm64") { "arm64" } else { "amd64" }
-   & "$vs\Common7\Tools\Launch-VsDevShell.ps1" -Arch $arch -HostArch $arch -SkipAutomaticLocation
+   $targetArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq "Arm64") { "arm64" } else { "amd64" }
+   & "$vs\Common7\Tools\Launch-VsDevShell.ps1" -Arch $targetArch -HostArch amd64 -SkipAutomaticLocation
    ```
 
 5. Clone and build Rux from the initialized environment:
@@ -67,8 +71,7 @@ Rux currently requires Clang 22.1 or newer, CMake 4.3 or newer, Ninja 1.11 or ne
 The script creates a Release build in `Build\` and writes the compiler to `Bin\rux.exe`.
 
 `Build.ps1` selects `windows-x86_64` or `windows-aarch64` from the native host
-architecture. Published Windows ZIP, MSI, PowerShell, and Scoop installations
-remain x86-64-only for now.
+architecture.
 
 For a Debug build, run `.\Build.ps1 -Configuration Debug`. Run `Get-Help .\Build.ps1 -Full` to see every option.
 

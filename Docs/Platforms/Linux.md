@@ -1,6 +1,6 @@
 # Rux on Linux
 
-This guide covers installing a published Rux release on x86-64 Linux and building Rux from source on x86-64 or AArch64 Ubuntu. Return to the [main README](../../README.md) for language documentation and project information.
+This guide covers installing and building Rux on x86-64 or AArch64 Linux. Return to the [main README](../../README.md) for language documentation and project information.
 
 ## Installing a Release
 
@@ -18,9 +18,14 @@ rux version
 
 Run the installer again to upgrade. The [Linux installer guide](../../Packaging/Linux/README.md) covers version pinning, custom destinations, PATH changes, and removal.
 
+The installer currently selects the x86-64 compatibility asset. On AArch64,
+download `rux-linux-aarch64.tar.gz` from the
+[latest GitHub release](https://github.com/rux-lang/Rux/releases/latest),
+extract it, and place `rux` in a directory on `PATH`.
+
 ## Building from Source
 
-Rux currently requires Clang 22.1 or newer, CMake 4.3 or newer, Ninja 1.11 or newer, and a recent Git installation.
+Rux currently requires Clang 22.1 or newer, CMake 3.30 or newer, Ninja 1.11 or newer, and a recent Git installation.
 
 On Ubuntu 26.04, install Clang 22 from the LLVM apt repository, CMake from Snap, and the remaining tools from Ubuntu:
 
@@ -44,8 +49,7 @@ sh Build.sh
 The LLVM installer names the compiler `clang++-22`; `Build.sh` detects it automatically. The script creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
 
 On AArch64, Rux selects the `linux-aarch64` target automatically and uses the
-platform Clang driver for final native lowering and linking. Published Linux
-release binaries remain x86-64-only for now.
+platform Clang driver for final native lowering and linking.
 
 For a Debug build, run `sh Build.sh --configuration Debug`. On other Linux distributions, install equivalent tool versions through the distribution's package manager and pass `--compiler PATH` when Clang is not detected automatically. Run `sh Build.sh --help` to see every option.
 

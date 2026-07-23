@@ -15,10 +15,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  CMAKE_VERSION: "4.3.3"
-  CMAKE_SHA256: "cba4bb7a44edf2877bb6f059932896383babe435b3a8c3b5df48b4aa41c9bb85"
-
 # GitHub has no native FreeBSD runner, so each job runs a FreeBSD VM (via
 # QEMU) on an Ubuntu host. Build and Test are separate jobs: the Build VM
 # compiles rux and the binary is synced back to the host and uploaded as an
@@ -54,37 +50,14 @@ jobs:
           release: "14.4"
           arch: ${{ matrix.vm_arch }}
           usesh: true
-          envs: 'CMAKE_VERSION CMAKE_SHA256'
-          # FreeBSD packages CMake 3.31, so build the pinned CMake release once
-          # and cache the prepared VM image for subsequent workflow runs.
+          # Cache the prepared VM image so the LLVM and build-tool packages do
+          # not need to be downloaded on every workflow run.
           cache-after-prepare: true
           prepare: |
             set -e
-            pkg install -y llvm22 cmake ninja
-            archive="/tmp/cmake-${CMAKE_VERSION}.tar.gz"
-            source="/tmp/cmake-${CMAKE_VERSION}"
-            build="/tmp/cmake-build"
-            prefix="/opt/cmake-${CMAKE_VERSION}"
-
-            fetch -o "$archive" \
-              "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz"
-            if [ "$(sha256 -q "$archive")" != "$CMAKE_SHA256" ]; then
-              echo "CMake source archive checksum mismatch" >&2
-              exit 1
-            fi
-
-            tar -xzf "$archive" -C /tmp
-            cmake -S "$source" -B "$build" -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_C_COMPILER=clang22 \
-              -DCMAKE_CXX_COMPILER=clang++22 \
-              -DCMAKE_INSTALL_PREFIX="$prefix" \
-              -DBUILD_TESTING=OFF
-            cmake --build "$build" --parallel
-            cmake --install "$build"
+            pkg install -y llvm22 cmake-core ninja
           run: |
             set -e
-            export PATH="/opt/cmake-${CMAKE_VERSION}/bin:$PATH"
             cmake --version
             cmake -S . -B Build -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \

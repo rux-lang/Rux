@@ -62,7 +62,7 @@ downloaded by the matching test job. Using `Linux.yml` as the reference shape:
 The native-runner workflows differ only in how the compiler is obtained; the emulated ones differ in _where the whole job runs_:
 
 - **Ubuntu** — installs Clang 22 from `apt.llvm.org` and builds with `clang++-22` on `ubuntu-24.04` (x86-64) and `ubuntu-24.04-arm` (AArch64).
-- **Windows** — uses the runner's bundled Clang on `windows-2025` (x86-64) and `windows-11-arm` (AArch64). Before configuring, it locates Visual Studio with `vswhere`, initializes the matching native VS dev environment (`Launch-VsDevShell.ps1`), and gives Clang the explicit MSVC target triple.
+- **Windows** — uses the runner's bundled Clang on `windows-2025` (x86-64) and `windows-11-arm` (AArch64). Before configuring, it locates Visual Studio with `vswhere`, initializes the AMD64-hosted tools for the matching x86-64 or ARM64 target (`Launch-VsDevShell.ps1`), and gives Clang the explicit MSVC target triple.
 - **macOS** — Apple Clang lags upstream and lacks full C++26 support, so the workflow installs LLVM `llvm@22` from Homebrew and points `CMAKE_CXX_COMPILER` at the Homebrew `clang++`.
 - **FreeBSD** — GitHub has no native FreeBSD runner, so each job boots an x86-64 or AArch64 FreeBSD 14.4 QEMU VM via `vmactions/freebsd-vm` on an Ubuntu host. Because Build and Test are separate jobs, each boots a _fresh_ VM; the Test VM installs the Clang runtime libraries needed by the prebuilt binary.
 

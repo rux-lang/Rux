@@ -30,12 +30,14 @@ jobs:
             label: x86-64
             runner: windows-2025
             vs_arch: amd64
+            vs_host_arch: amd64
             compiler_target: x86_64-pc-windows-msvc
             artifact: rux-windows-x86_64
           - arch: aarch64
             label: AArch64
             runner: windows-11-arm
             vs_arch: arm64
+            vs_host_arch: amd64
             compiler_target: aarch64-pc-windows-msvc
             artifact: rux-windows-aarch64
     runs-on: ${{ matrix.runner }}
@@ -64,7 +66,7 @@ jobs:
           }
 
           $devShell = Join-Path $vsPath "Common7\Tools\Launch-VsDevShell.ps1"
-          & $devShell -Arch ${{ matrix.vs_arch }} -HostArch ${{ matrix.vs_arch }} -SkipAutomaticLocation
+          & $devShell -Arch ${{ matrix.vs_arch }} -HostArch ${{ matrix.vs_host_arch }} -SkipAutomaticLocation
 
           cmake -S . -B Build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
@@ -83,7 +85,7 @@ jobs:
               throw "Visual Studio installation not found"
           }
           $devShell = Join-Path $vsPath "Common7\Tools\Launch-VsDevShell.ps1"
-          & $devShell -Arch ${{ matrix.vs_arch }} -HostArch ${{ matrix.vs_arch }} -SkipAutomaticLocation
+          & $devShell -Arch ${{ matrix.vs_arch }} -HostArch ${{ matrix.vs_host_arch }} -SkipAutomaticLocation
           ctest --test-dir Build --output-on-failure -C Release
 
       - name: Upload binary artifact
@@ -105,11 +107,13 @@ jobs:
             label: x86-64
             runner: windows-2025
             vs_arch: amd64
+            vs_host_arch: amd64
             artifact: rux-windows-x86_64
           - arch: aarch64
             label: AArch64
             runner: windows-11-arm
             vs_arch: arm64
+            vs_host_arch: amd64
             artifact: rux-windows-aarch64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
@@ -134,7 +138,7 @@ jobs:
               throw "Visual Studio installation not found"
           }
           $devShell = Join-Path $vsPath "Common7\Tools\Launch-VsDevShell.ps1"
-          & $devShell -Arch ${{ matrix.vs_arch }} -HostArch ${{ matrix.vs_arch }} -SkipAutomaticLocation
+          & $devShell -Arch ${{ matrix.vs_arch }} -HostArch ${{ matrix.vs_host_arch }} -SkipAutomaticLocation
           ./Bin/rux.exe check
           ./Bin/rux.exe lint
           ./Bin/rux.exe test --release
