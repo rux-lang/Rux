@@ -5,7 +5,7 @@ import Text::{ String, StringBuilder };
 // and UTF-8 has no use for, is not a code point at all and comes out as the
 // replacement character.
 func ToString(value: char32) -> String {
-    let mut builder = StringBuilder::WithCapacity(4);
+    var builder = StringBuilder::WithCapacity(4);
     WriteChar(@builder, value);
     return builder.IntoString();
 }

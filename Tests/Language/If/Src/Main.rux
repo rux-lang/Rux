@@ -1,8 +1,8 @@
 import Rux::Assert;
 
 func Main() -> int {
-    let mut a = 100;
-    let mut b = 200;
+    var a = 100;
+    var b = 200;
     if a > b {
         a += 10;
         b += 10;

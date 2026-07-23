@@ -6,11 +6,11 @@ struct Point {
 }
 
 func Main() -> int {
-    let mut p: Point = Point { x: 10, y: 20 };
+    var p: Point = Point { x: 10, y: 20 };
     Assert(p.x == 10, "Expected p.x to be 10");
     Assert(p.y == 20, "Expected p.y to be 20");
 
-    let mut ptr: *mut Point = @mut p;
+    var ptr: *var Point = @p;
     Assert(ptr != null, "Expected ptr to not be null");
 
     ptr.x = 30;

@@ -6,7 +6,7 @@ import Memory::{ Alloc, Copy, Free, Realloc };
 // Hand the result over with IntoString once, or take a copy with ToString as
 // often as needed.
 struct StringBuilder {
-    data: *char8;
+    data: *var char8;
     length: uint;
     capacity: uint;
 }
@@ -26,7 +26,7 @@ extend StringBuilder {
             return StringBuilder::New();
         }
 
-        let ptr = Alloc(capacity) as *char8;
+        let ptr = Alloc(capacity) as *var char8;
         return StringBuilder { data: ptr, length: 0, capacity: capacity };
     }
 
@@ -78,7 +78,7 @@ extend StringBuilder {
             return;
         }
 
-        let mut capacity = self.capacity;
+        var capacity = self.capacity;
         if capacity == 0 {
             capacity = 16;
         }
@@ -87,8 +87,8 @@ extend StringBuilder {
         }
 
         self.data = self.data == null
-            ? Alloc(capacity) as *char8
-            : Realloc(self.data, capacity) as *char8;
+            ? Alloc(capacity) as *var char8
+            : Realloc(self.data, capacity) as *var char8;
         self.capacity = capacity;
     }
 
@@ -105,7 +105,7 @@ extend StringBuilder {
             return;
         }
 
-        self.data = Realloc(self.data, self.length) as *char8;
+        self.data = Realloc(self.data, self.length) as *var char8;
         self.capacity = self.length;
     }
 

@@ -4,8 +4,8 @@ import Text::String;
 // Std stays out of the dependencies, and a failed check reports itself through
 // the exit code. See the Int8 test for why.
 func Check(actual: String, expected: Slice<char8>, code: int) -> int {
-    let mut text = actual;
-    let mut wanted = String::From(expected);
+    var text = actual;
+    var wanted = String::From(expected);
     let ok = text == wanted;
     text.Free();
     wanted.Free();
@@ -18,7 +18,7 @@ func Check(actual: String, expected: Slice<char8>, code: int) -> int {
 
 func Main() -> int {
     let zero: uint64 = 0;
-    let mut code = Check(ToString(zero), "0", 10);
+    var code = Check(ToString(zero), "0", 10);
     if code != 0 { return code; }
 
     let value: uint64 = 9876543210;

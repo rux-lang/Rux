@@ -12,7 +12,7 @@ func ArcSin(x: float64) -> float64 {
         return -pio2;
     }
     if x > 1.0 || x < -1.0 {
-        let mut zero = 0.0;
+        var zero = 0.0;
         return zero / zero;
     }
     if x == 0.0 {

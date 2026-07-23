@@ -24,7 +24,7 @@ func Cbrt(x: float64) -> float64 {
         return x + x;
     }
 
-    let mut t = 0.0;
+    var t = 0.0;
     if hx < 0x00100000u64 {
         // Cbrt(+-0) is +-0, sign and all.
         if (hx | (bits & 0xFFFFFFFFu64)) == 0u64 {
@@ -42,7 +42,7 @@ func Cbrt(x: float64) -> float64 {
     }
 
     // Lift the seed to 23 bits: cbrt(x) = t * cbrt(x/t^3) ~ t * P(t^3/x).
-    let mut r = (t * t) * (t / x);
+    var r = (t * t) * (t / x);
     t = t * ((p0 + r * (p1 + r * p2)) + ((r * r) * r) * (p3 + r * p4));
 
     // Round t away from zero to 23 bits. That makes t*t exact below, and it

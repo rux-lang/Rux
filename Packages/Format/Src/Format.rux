@@ -24,11 +24,11 @@ func Format(format: Slice<char8>, args: Stringable...) -> String {
     // too small a one only costs a reallocation, which is what the builder
     // is there to handle: the short calls that most of them are fill in
     // without one.
-    let mut builder = StringBuilder::WithCapacity(format.length + args.length * 8);
+    var builder = StringBuilder::WithCapacity(format.length + args.length * 8);
     // The argument the next placeholder takes. Placeholders are filled in
     // the order they are written, so this only ever moves forward.
-    let mut next: uint = 0;
-    let mut i: uint = 0;
+    var next: uint = 0;
+    var i: uint = 0;
     while i < format.length {
         let ch = format[i];
         let paired = i + 1 < format.length;
@@ -47,7 +47,7 @@ func Format(format: Slice<char8>, args: Stringable...) -> String {
                 // The String an argument renders itself into is freed as
                 // soon as its bytes are in the builder, so a call holds one
                 // of them at a time rather than one for every argument.
-                let mut text = args[next].ToString();
+                var text = args[next].ToString();
                 builder.Append(text);
                 text.Free();
                 next++;

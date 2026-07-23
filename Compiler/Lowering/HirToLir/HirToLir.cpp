@@ -1678,7 +1678,7 @@ private:
                 if (elemName == "int") {
                     return TypeRef::MakeInt();
                 }
-                if (elemName == "uint8") {
+                if (elemName == "byte" || elemName == "uint8") {
                     return TypeRef::MakeUInt8();
                 }
                 if (elemName == "uint16") {

@@ -9,8 +9,8 @@ import Text::String;
 // exit code instead: each one below is numbered, and `rux test` prints the
 // number of the first that fails.
 func Check(value: float64, expected: Slice<char8>, code: int) -> int {
-    let mut actual = ToString(value);
-    let mut wanted = String::From(expected);
+    var actual = ToString(value);
+    var wanted = String::From(expected);
     let ok = actual == wanted;
     actual.Free();
     wanted.Free();
@@ -38,7 +38,7 @@ func CheckParseError(str: Slice<char8>, expected: ParseError, code: int) -> int 
 }
 
 func CheckParsedValues() -> int {
-    let mut code = CheckParse("0", 0.0, 100);
+    var code = CheckParse("0", 0.0, 100);
     if code != 0 { return code; }
     code = CheckParse("-2.5", -2.5, 101);
     if code != 0 { return code; }
@@ -50,7 +50,7 @@ func CheckParsedValues() -> int {
 }
 
 func CheckParseErrors() -> int {
-    let mut code = CheckParseError("", ParseError::Empty, 110);
+    var code = CheckParseError("", ParseError::Empty, 110);
     if code != 0 { return code; }
     code = CheckParseError("12x", ParseError::InvalidCharacter(2u), 111);
     if code != 0 { return code; }
@@ -58,7 +58,7 @@ func CheckParseErrors() -> int {
 }
 
 func CheckParseOverloads() -> int {
-    let mut text = String::From("3.5");
+    var text = String::From("3.5");
     let parsed = ParseFloat64(text);
     text.Free();
     let code = match parsed {
@@ -67,21 +67,21 @@ func CheckParseOverloads() -> int {
     };
     if code != 0 { return code; }
 
-    let mut value = 9.0;
-    if !TryParseFloat64("6.25", @mut value) { return 121; }
+    var value = 9.0;
+    if !TryParseFloat64("6.25", @value) { return 121; }
     if value != 6.25 { return 122; }
-    if TryParseFloat64("invalid", @mut value) { return 123; }
+    if TryParseFloat64("invalid", @value) { return 123; }
     if value != 6.25 { return 124; }
     if TryParseFloat64("1.0", null) { return 125; }
 
     text = String::From("-4.5");
-    let ok = TryParseFloat64(text, @mut value);
+    let ok = TryParseFloat64(text, @value);
     text.Free();
     if !ok { return 126; }
     if value != -4.5 { return 127; }
 
     text = String::From("bad");
-    let failed = TryParseFloat64(text, @mut value);
+    let failed = TryParseFloat64(text, @value);
     text.Free();
     if failed { return 128; }
     if value != -4.5 { return 129; }
@@ -99,7 +99,7 @@ func CheckParsing() -> int {
 func Main() -> int {
     // Zero always shows a fractional part, so the text reads as a float. The
     // negative zero keeps its sign, which arithmetic alone cannot see.
-    let mut code = Check(0.0, "0.0", 10);
+    var code = Check(0.0, "0.0", 10);
     if code != 0 { return code; }
     code = Check(-0.0, "-0.0", 11);
     if code != 0 { return code; }
@@ -182,8 +182,8 @@ func Main() -> int {
 
     // The method the Stringable extension provides, which is the same
     // conversion reached through the interface.
-    let mut text = 2.5.ToString();
-    let mut wanted = String::From("2.5");
+    var text = 2.5.ToString();
+    var wanted = String::From("2.5");
     let ok = text == wanted;
     text.Free();
     wanted.Free();

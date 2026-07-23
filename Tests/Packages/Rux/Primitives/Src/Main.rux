@@ -9,6 +9,7 @@ func Main() -> int {
     Assert(int32::Bits == 32 && int32::Bytes == 4, "int32 width");
     Assert(int64::Bits == 64 && int64::Bytes == 8, "int64 width");
     Assert(uint8::Bits == 8 && uint8::Bytes == 1, "uint8 width");
+    Assert(byte::Bits == uint8::Bits && byte::Bytes == uint8::Bytes, "byte alias width");
     Assert(uint16::Bits == 16 && uint16::Bytes == 2, "uint16 width");
     Assert(uint32::Bits == 32 && uint32::Bytes == 4, "uint32 width");
     Assert(uint64::Bits == 64 && uint64::Bytes == 8, "uint64 width");
@@ -20,6 +21,7 @@ func Main() -> int {
 
     // Unsigned ranges start at zero and reach the all-ones value.
     Assert(uint8::Min as uint64 == 0 && uint8::Max as uint64 == 255, "uint8 range");
+    Assert(byte::Min == uint8::Min && byte::Max == uint8::Max, "byte alias range");
     Assert(uint16::Max as uint64 == 65535, "uint16 max");
     Assert(uint32::Max as uint64 == 4294967295, "uint32 max");
 

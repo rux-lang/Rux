@@ -3,7 +3,7 @@ import Text::{ String, StringBuilder };
 // The decimal text of a uint, the unsigned integer that is as wide as a
 // pointer. As with int, it is a type of its own and not a name for uint64.
 func ToString(value: uint) -> String {
-    let mut builder = StringBuilder::WithCapacity(20);
+    var builder = StringBuilder::WithCapacity(20);
     WriteUint(@builder, value as uint64);
     return builder.IntoString();
 }

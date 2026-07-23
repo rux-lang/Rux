@@ -1,8 +1,8 @@
 import Rux::Assert;
 
 func Main() -> int {
-    let mut i = 0;
-    let mut sum = 0;
+    var i = 0;
+    var sum = 0;
     loop {
         ++i;
         if i > 100 { break; }

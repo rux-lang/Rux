@@ -15,7 +15,7 @@ const NAMED: uint32[2] = [SCALAR, 7u32];
 const TEXT: Slice<char8> = "abc";
 
 func Sum(values: Slice<uint32>) -> uint32 {
-    let mut total: uint32 = 0;
+    var total: uint32 = 0;
     for value in values {
         total += value;
     }
@@ -71,7 +71,7 @@ func Main() -> int {
     }
 
     // Iterating and passing a constant array as a slice.
-    let mut iterated: uint32 = 0;
+    var iterated: uint32 = 0;
     for value in WORDS {
         iterated += value;
     }
@@ -80,8 +80,8 @@ func Main() -> int {
     }
 
     // Indexing with a computed index reaches the same data.
-    let mut index: uint = 0;
-    let mut total: uint32 = 0;
+    var index: uint = 0;
+    var total: uint32 = 0;
     while index < WORDS.length {
         total += WORDS[index];
         index += 1;

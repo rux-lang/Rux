@@ -838,7 +838,7 @@ func Do() -> Mode {
 TEST_CASE("a when condition that is not a compile-time constant is an error") {
     auto parsed = ParseSource(R"(
 func Do() -> int {
-    let mut runtime = 1;
+    var runtime = 1;
     when runtime > 0 {
         return 1;
     }

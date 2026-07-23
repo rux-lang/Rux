@@ -4,7 +4,7 @@ import Rux::Assert;
 // can be iterated and indexed directly.
 extend Slice<int> {
     func Sum(self) -> int {
-        let mut sum = 0;
+        var sum = 0;
         for num in self {
             sum += num;
         }
@@ -12,7 +12,7 @@ extend Slice<int> {
     }
 
     func Contains(self, target: int) -> bool {
-        let mut i: uint64 = 0;
+        var i: uint64 = 0;
         while i < self.length {
             if self[i] == target {
                 return true;
@@ -27,7 +27,7 @@ extend Slice<int> {
 // from Slice<int>: method lookup is element-specific.
 extend Slice<char8> {
     func Count(self) -> int {
-        let mut n = 0;
+        var n = 0;
         for c in self {
             n += 1;
         }
@@ -36,12 +36,12 @@ extend Slice<char8> {
 }
 
 func Main() -> int {
-    let mut nums: Slice<int> = [1, 2, 3, 4, 5];
+    var nums: Slice<int> = [1, 2, 3, 4, 5];
     Assert(nums.Sum() == 15, "Expected sum of 15");
     Assert(nums.Contains(3), "Expected nums to contain 3");
     Assert(!nums.Contains(99), "Expected nums to not contain 99");
 
-    let mut text: Slice<char8> = "Hello";
+    var text: Slice<char8> = "Hello";
     Assert(text.Count() == 5, "Expected count of 5");
 
     return 0;

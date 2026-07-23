@@ -42,6 +42,8 @@ func Main() -> int {
 
     Assert(uint8::Bits == 8 && uint8::Bytes == 1 && uint8::Min == 0u8 && uint8::Max == 255u8,
            "uint8 constants");
+    Assert(byte::Bits == uint8::Bits && byte::Bytes == uint8::Bytes &&
+           byte::Min == uint8::Min && byte::Max == uint8::Max, "byte alias constants");
     Assert(uint16::Bits == 16 && uint16::Bytes == 2 && uint16::Min == 0u16 && uint16::Max == 65535u16,
            "uint16 constants");
     Assert(uint32::Bits == 32 && uint32::Bytes == 4 && uint32::Min == 0u32 && uint32::Max == 4294967295u32,

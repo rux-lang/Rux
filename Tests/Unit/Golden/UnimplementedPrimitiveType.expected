@@ -1,1 +1,1 @@
-2:16: error: primitive type 'int128' is reserved but is not implemented in this compiler version
+2:12: error: primitive type 'int128' is reserved but is not implemented in this compiler version

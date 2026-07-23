@@ -4,8 +4,8 @@ import Text::String;
 // Std stays out of the dependencies, and a failed check reports itself through
 // the exit code. See the Int8 test for why.
 func Check(actual: String, expected: Slice<char8>, code: int) -> int {
-    let mut text = actual;
-    let mut wanted = String::From(expected);
+    var text = actual;
+    var wanted = String::From(expected);
     let ok = text == wanted;
     text.Free();
     wanted.Free();
@@ -20,7 +20,7 @@ func Main() -> int {
     // A char8 is one byte of UTF-8, not one character. Nothing is encoded and
     // nothing is validated: the byte is passed through as it stands, and the
     // String that comes back is one byte long whatever the byte happens to be.
-    let mut code = Check(ToString(c8'A'), "A", 10);
+    var code = Check(ToString(c8'A'), "A", 10);
     if code != 0 { return code; }
     code = Check(ToString(c8'z'), "z", 11);
     if code != 0 { return code; }
@@ -34,7 +34,7 @@ func Main() -> int {
     // The null character is a byte like any other here, and the String that
     // holds it has a length of one rather than a length of zero: a String
     // carries its length and does not look for a terminator.
-    let mut text = ToString(c8'\0');
+    var text = ToString(c8'\0');
     let ok = text.Length() == 1 && text.At(0) == c8'\0';
     text.Free();
     if !ok { return 20; }
@@ -42,8 +42,8 @@ func Main() -> int {
     // A byte out of the middle of a multi-byte sequence is a fragment, and it
     // comes through as the fragment it is: 0xC3 is the first half of the two
     // byte encoding of U+00E9, and on its own it means nothing.
-    let mut fragment: uint8 = 0xC3;
-    let mut piece = ToString(fragment as char8);
+    var fragment: uint8 = 0xC3;
+    var piece = ToString(fragment as char8);
     let intact = piece.Length() == 1 && (piece.At(0) as uint8) == 0xC3;
     piece.Free();
     if !intact { return 21; }

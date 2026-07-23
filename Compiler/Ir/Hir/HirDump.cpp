@@ -210,7 +210,7 @@ static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &
         return;
     }
     if (auto *s = dynamic_cast<const HirLetStmt *>(&stmt)) {
-        out << std::format("{}{} {}: {}", indent, s->isMut ? "let mut" : "let",
+        out << std::format("{}{} {}: {}", indent, s->isMut ? "var" : "let",
                            s->pattern ? PrintPattern(*s->pattern) : s->name, s->type.ToString());
         if (s->init) {
             out << " = " << PrintExpr(*s->init);

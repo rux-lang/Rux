@@ -6,7 +6,7 @@ import Memory::{ Alloc, Copy, Free };
 // its allocation. Clone when both copies need to be freed, and Free exactly
 // once for every owned allocation.
 struct Array<T> {
-    data: *T;
+    data: *var T;
     length: uint;
 }
 
@@ -17,7 +17,7 @@ extend Array<T> {
             return Array<T> { data: null, length: 0 };
         }
 
-        let ptr = Alloc(length * sizeof(T)) as *T;
+        let ptr = Alloc(length * sizeof(T)) as *var T;
         return Array<T> { data: ptr, length: length };
     }
 
@@ -27,7 +27,7 @@ extend Array<T> {
             return Array<T> { data: null, length: 0 };
         }
 
-        let ptr = Alloc(items.length * sizeof(T)) as *T;
+        let ptr = Alloc(items.length * sizeof(T)) as *var T;
         Copy(ptr, items.data, items.length * sizeof(T));
         return Array<T> { data: ptr, length: items.length };
     }
@@ -40,7 +40,7 @@ extend Array<T> {
             return Array<T> { data: null, length: 0 };
         }
 
-        let ptr = Alloc(self.length * sizeof(T)) as *T;
+        let ptr = Alloc(self.length * sizeof(T)) as *var T;
         Copy(ptr, self.data, self.length * sizeof(T));
         return Array<T> { data: ptr, length: self.length };
     }

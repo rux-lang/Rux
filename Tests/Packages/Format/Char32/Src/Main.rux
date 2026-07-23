@@ -12,8 +12,8 @@ import Text::String;
 // sequence needs 32 bits, so a uint64 holds any of them, and the length is
 // checked alongside it because 0x41 and 0x0041 pack the same.
 func Bytes(text: String) -> uint64 {
-    let mut packed: uint64 = 0;
-    let mut i: uint = 0;
+    var packed: uint64 = 0;
+    var i: uint = 0;
     while i < text.Length() {
         packed = (packed << 8u64) | (text.At(i) as uint64);
         i++;
@@ -22,7 +22,7 @@ func Bytes(text: String) -> uint64 {
 }
 
 func Check(actual: String, length: uint, bytes: uint64, code: int) -> int {
-    let mut text = actual;
+    var text = actual;
     let ok = text.Length() == length && Bytes(text) == bytes;
     text.Free();
 
@@ -35,7 +35,7 @@ func Check(actual: String, length: uint, bytes: uint64, code: int) -> int {
 func Main() -> int {
     // A char32 holds one code point, which becomes one to four bytes of UTF-8.
     // The first three widths are the ones a char16 could reach as well.
-    let mut code = Check(ToString(c32'A'), 1u, 0x41u64, 10);
+    var code = Check(ToString(c32'A'), 1u, 0x41u64, 10);
     if code != 0 { return code; }
     code = Check(ToString(c32'é'), 2u, 0xC3A9u64, 11);
     if code != 0 { return code; }
@@ -59,20 +59,20 @@ func Main() -> int {
     // replacement character.
     //
     // The surrogate range is reserved by UTF-16 and means nothing in UTF-8.
-    let mut surrogate: uint32 = 0xD800;
+    var surrogate: uint32 = 0xD800;
     code = Check(ToString(surrogate as char32), 3u, 0xEFBFBDu64, 30);
     if code != 0 { return code; }
 
-    let mut reserved: uint32 = 0xDFFF;
+    var reserved: uint32 = 0xDFFF;
     code = Check(ToString(reserved as char32), 3u, 0xEFBFBDu64, 31);
     if code != 0 { return code; }
 
     // The first value past the last code point, and one far beyond it.
-    let mut past: uint32 = 0x110000;
+    var past: uint32 = 0x110000;
     code = Check(ToString(past as char32), 3u, 0xEFBFBDu64, 32);
     if code != 0 { return code; }
 
-    let mut far: uint32 = 0xFFFFFFFF;
+    var far: uint32 = 0xFFFFFFFF;
     code = Check(ToString(far as char32), 3u, 0xEFBFBDu64, 33);
     if code != 0 { return code; }
 

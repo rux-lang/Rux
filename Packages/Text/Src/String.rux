@@ -28,7 +28,7 @@ extend String {
             return String::New();
         }
 
-        let ptr = Alloc(length) as *char8;
+        let ptr = Alloc(length) as *var char8;
         Copy(ptr, str, length);
         return String { data: ptr, length: length };
     }
@@ -118,7 +118,7 @@ extend String {
             return String::New();
         }
 
-        let ptr = Alloc(length) as *char8;
+        let ptr = Alloc(length) as *var char8;
         Copy(ptr, self.data, self.length);
         Copy(ptr + self.length, other.data, other.length);
         return String { data: ptr, length: length };
@@ -132,7 +132,7 @@ extend String {
             return String::New();
         }
 
-        let ptr = Alloc(length) as *char8;
+        let ptr = Alloc(length) as *var char8;
         Copy(ptr, self.data, self.length);
         Copy(ptr + self.length, other.data, other.length);
         return String { data: ptr, length: length };
@@ -176,7 +176,7 @@ extend String {
         }
 
         let last = self.length - needle.length;
-        let mut start: uint = 0;
+        var start: uint = 0;
         while start <= last {
             if Compare(self.data + start, needle.data, needle.length) == needle.length {
                 return start as int;
@@ -201,7 +201,7 @@ extend String {
             return String::New();
         }
 
-        let mut count = length;
+        var count = length;
         let available = self.length - start;
         if count > available {
             count = available;
@@ -217,7 +217,7 @@ extend String {
             return String::New();
         }
 
-        let ptr = Alloc(self.length) as *char8;
+        let ptr = Alloc(self.length) as *var char8;
         for i in 0..self.length {
             let ch = self.data[i];
             if ch >= c8'a' && ch <= c8'z' {
@@ -235,7 +235,7 @@ extend String {
             return String::New();
         }
 
-        let ptr = Alloc(self.length) as *char8;
+        let ptr = Alloc(self.length) as *var char8;
         for i in 0..self.length {
             let ch = self.data[i];
             if ch >= c8'A' && ch <= c8'Z' {
@@ -251,7 +251,7 @@ extend String {
     // receiver alone. Whitespace that is all there is trims down to the empty
     // String. See IsSpace for which bytes count.
     func Trim(self) -> String {
-        let mut start: uint = 0;
+        var start: uint = 0;
         while start < self.length && IsSpace(self.data[start]) {
             start++;
         }
@@ -260,7 +260,7 @@ extend String {
             return String::New();
         }
 
-        let mut end = self.length;
+        var end = self.length;
         while end > start && IsSpace(self.data[end - 1]) {
             end--;
         }
@@ -275,8 +275,8 @@ extend String {
             return String::New();
         }
 
-        let mut builder = StringBuilder::WithCapacity(self.length * count);
-        let mut i: uint = 0;
+        var builder = StringBuilder::WithCapacity(self.length * count);
+        var i: uint = 0;
         while i < count {
             builder.Append(*self);
             i++;

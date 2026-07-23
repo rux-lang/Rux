@@ -59,9 +59,9 @@ func Exp(x: float64) -> float64 {
         }
     }
 
-    let mut hi = 0.0;
-    let mut lo = 0.0;
-    let mut k = 0i64;
+    var hi = 0.0;
+    var lo = 0.0;
+    var k = 0i64;
 
     if hx > 0x3FD62E42u64 { // |x| > 0.5*ln2, so a multiple of ln2 comes off
         if hx < 0x3FF0A2B2u64 { // and |x| < 1.5*ln2, so that multiple is one

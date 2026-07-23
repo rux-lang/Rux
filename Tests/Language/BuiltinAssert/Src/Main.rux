@@ -1,13 +1,13 @@
 import Rux::{ Assert, #build, DebugAssert };
 
 func MustNotRun() -> bool {
-    let mut zero = 0;
+    var zero = 0;
     let failure = 1 / zero;
     return false;
 }
 
 func Main() -> int {
-    let mut condition = true;
+    var condition = true;
     Assert(condition, "Assert intrinsic works");
     when #build.debugAssertions {
         DebugAssert(condition, "DebugAssert is active in debug builds");

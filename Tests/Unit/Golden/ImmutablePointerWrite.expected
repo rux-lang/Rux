@@ -1,2 +1,2 @@
 5:5: error: cannot assign through a pointer to immutable data
-8:5: error: cannot assign '*int' to '*mut int': '@a' yields a read-only '*T'; declare 'a' as 'let mut' and write '@mut a' for a '*mut T'
+8:5: error: cannot assign '*int' to '*var int': '@a' yields a read-only '*T'; declare 'a' with 'var' for a '*var T'

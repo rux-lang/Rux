@@ -63,8 +63,8 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
     if (IsUnknown() || other.IsUnknown()) {
         return true;
     }
-    // A read-only pointer (*T) cannot be coerced into a writable one (*mut T):
-    // that would silently grant write access. The reverse (*mut T -> *T) is a
+    // A read-only pointer (*T) cannot be coerced into a writable one (*var T):
+    // that would silently grant write access. The reverse (*var T -> *T) is a
     // permitted weakening.
     if (kind == Kind::Pointer && other.kind == Kind::Pointer && !inner.empty() && !other.inner.empty() &&
         !inner[0].isMut && other.inner[0].isMut) {
@@ -287,7 +287,7 @@ std::string TypeRef::ToString() const {
         if (inner[0].kind == Kind::Array) {
             pointee = "(" + pointee + ")";
         }
-        return (inner[0].isMut ? "*mut " : "*") + pointee;
+        return (inner[0].isMut ? "*var " : "*") + pointee;
     }
     case Kind::Array: {
         std::string element = inner.empty() ? "?" : inner[0].ToString();

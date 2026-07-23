@@ -9,16 +9,16 @@ using namespace Rux;
 TEST_CASE("every primitive exposes its recommended constants") {
     const CompileTimeContext context;
 
-    constexpr std::array widthTypes{"bool",   "bool8",  "bool16", "bool32", "char",  "char8",   "char16",
-                                    "char32", "int",    "int8",   "int16",  "int32", "int64",   "uint",
-                                    "uint8",  "uint16", "uint32", "uint64", "float", "float32", "float64"};
+    constexpr std::array widthTypes{"bool",   "bool8",  "bool16", "bool32", "byte",    "char",   "char8", "char16",
+                                    "char32", "int",    "int8",   "int16",  "int32",   "int64",  "uint",  "uint8",
+                                    "uint16", "uint32", "uint64", "float",  "float32", "float64"};
     for (const std::string_view type : widthTypes) {
         CAPTURE(type);
         CHECK(LookupPrimitiveConstant(type, "Bits", context).has_value());
         CHECK(LookupPrimitiveConstant(type, "Bytes", context).has_value());
     }
 
-    constexpr std::array integerTypes{"int",  "int8",  "int16",  "int32",  "int64",
+    constexpr std::array integerTypes{"byte", "int",   "int8",   "int16",  "int32", "int64",
                                       "uint", "uint8", "uint16", "uint32", "uint64"};
     for (const std::string_view type : integerTypes) {
         CAPTURE(type);

@@ -33,6 +33,15 @@ TEST_CASE("Lexer keeps the original source spelling in token text") {
     CHECK(result.tokens[3].text == "0xFF");
 }
 
+TEST_CASE("var is a keyword and mut is an ordinary identifier") {
+    const auto result = Lex("var value = 1; let mut = value;");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.tokens.size() >= 10);
+    CHECK(result.tokens[0].Is(TokenKind::VarKeyword));
+    CHECK(result.tokens[6].Is(TokenKind::Ident));
+    CHECK(result.tokens[6].text == "mut");
+}
+
 TEST_CASE("Lexer uses maximal munch for logical right shift operators") {
     const auto result = Lex("a >>> b; a >>>= b;");
     REQUIRE(result.diagnostics.empty());

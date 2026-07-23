@@ -23,9 +23,9 @@ when #target.os == .Windows {
     // encoding of `data` is already exactly what should land on disk.
     func WriteBytes(handle: *opaque, data: *char8, length: uint) {
         const MaxWriteLength: uint = 4096;
-        let mut offset: uint = 0;
+        var offset: uint = 0;
         while offset < length {
-            let mut written: uint32 = 0;
+            var written: uint32 = 0;
             let remaining = length - offset;
             let count = remaining > MaxWriteLength ? MaxWriteLength : remaining;
             let ok = WriteFile(
@@ -44,9 +44,9 @@ when #target.os == .Windows {
     // to the console as Unicode, so they render correctly no matter what the
     // console's output code page is.
     func WriteWide(handle: *opaque, data: *char16, length: uint) {
-        let mut offset: uint = 0;
+        var offset: uint = 0;
         while offset < length {
-            let mut written: uint32 = 0;
+            var written: uint32 = 0;
             let ok = WriteConsoleW(
                 handle,
                 data + offset,
@@ -70,7 +70,7 @@ func Print(data: *char8, length: uint) {
         // where the raw UTF-8 bytes are the correct output. Writing UTF-8 bytes
         // to a console would instead be decoded with its code page and turn any
         // non-ASCII text (such as "Привіт світ!") into mojibake.
-        let mut mode: uint32 = 0;
+        var mode: uint32 = 0;
         if !GetConsoleMode(handle, @mode) {
             WriteBytes(handle, data, length);
             return;
@@ -89,7 +89,7 @@ func Print(data: *char8, length: uint) {
         }
         Free(wide as *opaque);
     } else {
-        let mut offset: uint = 0;
+        var offset: uint = 0;
         while offset < length {
             let written = Write(
                 StdOut,
@@ -114,115 +114,115 @@ func Print(value: Slice<char8>) {
 }
 
 func Print(format: Slice<char8>, args: Stringable...) {
-    let mut text = Format(format, args...);
+    var text = Format(format, args...);
     Print(text);
     text.Free();
 }
 
 func Print(value: bool8) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: bool16) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: bool32) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: char8) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: char16) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: char32) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: int8) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: int16) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: int32) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: int64) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: uint8) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: uint16) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: uint32) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: uint64) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: int) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: uint) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: float32) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }
 
 func Print(value: float64) {
-    let mut text = ToString(value);
+    var text = ToString(value);
     Print(text);
     text.Free();
 }

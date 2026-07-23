@@ -5,8 +5,8 @@ import Text::String;
 // Std stays out of the dependencies, and a failed check reports itself through
 // the exit code. See the Int8 test for why.
 func Check(actual: String, expected: Slice<char8>, code: int) -> int {
-    let mut text = actual;
-    let mut wanted = String::From(expected);
+    var text = actual;
+    var wanted = String::From(expected);
     let ok = text == wanted;
     text.Free();
     wanted.Free();
@@ -34,7 +34,7 @@ func CheckParseError(str: Slice<char8>, expected: ParseError, code: int) -> int 
 }
 
 func CheckParsedValues() -> int {
-    let mut code = CheckParse("0", 0i64, 100);
+    var code = CheckParse("0", 0i64, 100);
     if code != 0 { return code; }
     code = CheckParse("+42", 42i64, 101);
     if code != 0 { return code; }
@@ -48,7 +48,7 @@ func CheckParsedValues() -> int {
 }
 
 func CheckParseErrors() -> int {
-    let mut code = CheckParseError("", ParseError::Empty, 110);
+    var code = CheckParseError("", ParseError::Empty, 110);
     if code != 0 { return code; }
     code = CheckParseError("12x", ParseError::InvalidCharacter(2u), 111);
     if code != 0 { return code; }
@@ -60,7 +60,7 @@ func CheckParseErrors() -> int {
 }
 
 func CheckParseOverloads() -> int {
-    let mut text = String::From("-123");
+    var text = String::From("-123");
     let parsed = ParseInt64(text);
     text.Free();
     let code = match parsed {
@@ -69,21 +69,21 @@ func CheckParseOverloads() -> int {
     };
     if code != 0 { return code; }
 
-    let mut value = 9i64;
-    if !TryParseInt64("456", @mut value) { return 121; }
+    var value = 9i64;
+    if !TryParseInt64("456", @value) { return 121; }
     if value != 456i64 { return 122; }
-    if TryParseInt64("invalid", @mut value) { return 123; }
+    if TryParseInt64("invalid", @value) { return 123; }
     if value != 456i64 { return 124; }
     if TryParseInt64("1", null) { return 125; }
 
     text = String::From("-789");
-    let ok = TryParseInt64(text, @mut value);
+    let ok = TryParseInt64(text, @value);
     text.Free();
     if !ok { return 126; }
     if value != -789i64 { return 127; }
 
     text = String::From("bad");
-    let failed = TryParseInt64(text, @mut value);
+    let failed = TryParseInt64(text, @value);
     text.Free();
     if failed { return 128; }
     if value != -789i64 { return 129; }
@@ -100,7 +100,7 @@ func CheckParsing() -> int {
 
 func Main() -> int {
     let zero: int64 = 0;
-    let mut code = Check(ToString(zero), "0", 10);
+    var code = Check(ToString(zero), "0", 10);
     if code != 0 { return code; }
 
     let negative: int64 = -9876543210;

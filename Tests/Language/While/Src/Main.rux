@@ -1,7 +1,7 @@
 import Rux::Assert;
 
 func Main() -> int {
-    let mut i = 0;
+    var i = 0;
 
     do { i++; } while i < 50;
     Assert(i == 50, "Expected i to be 50 after do-while loop");

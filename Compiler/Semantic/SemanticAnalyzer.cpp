@@ -62,7 +62,6 @@ struct Symbol {
     SourceLocation location;
     TypeRef type;
     bool isMut = false;
-    bool isParam = false; // function parameter: a mutable local copy, so &param is writable
     std::string intrinsicName;
     std::vector<const FuncDecl *> funcOverloads;
     const ExternFuncDecl *externDecl = nullptr; // retained for #Warn/#Error at call sites
@@ -325,6 +324,7 @@ private:
         add("int32", TypeRef::MakeInt32());
         add("int64", TypeRef::MakeInt64());
         add("int", TypeRef::MakeInt());
+        add("byte", TypeRef::MakeByte());
         add("uint8", TypeRef::MakeUInt8());
         add("uint16", TypeRef::MakeUInt16());
         add("uint32", TypeRef::MakeUInt32());
@@ -748,7 +748,7 @@ private:
         if (str == "int") {
             return TypeRef::MakeInt();
         }
-        if (str == "uint8") {
+        if (str == "byte" || str == "uint8") {
             return TypeRef::MakeUInt8();
         }
         if (str == "uint16") {
@@ -1203,35 +1203,31 @@ private:
                !UnsuffixedIntegerLiteralFits(expr, targetType);
     }
 
-    // Explains why a read-only '*T' (typically from a plain '@x') will not
-    // assign to a '*mut T' target: '@' yields a read-only pointer, so '@mut'
-    // is needed (and the operand must be a mutable place). The types alone
-    // ("'*int32' to '*mut int32'") do not point at the fix, so name it. Empty
-    // when the rejection has some other cause.
+    // Explains why the address of an immutable place cannot initialize a
+    // writable pointer. The types alone do not point at the required binding
+    // change, so name it when possible.
     std::string ImmutableAddressOfHint(const Expr &expr, const TypeRef &targetType) {
-        // Only a '*mut T' target can reject a read-only '*T' source this way.
+        // Only a '*var T' target can reject a read-only '*T' source this way.
         if (targetType.kind != TypeRef::Kind::Pointer || targetType.inner.empty() || !targetType.inner[0].isMut) {
             return {};
         }
-        // '@mut x' already produces a '*mut T'; only a plain '@x' lands here.
         const auto *addressOf = dynamic_cast<const UnaryExpr *>(&expr);
-        if (!addressOf || addressOf->op != TokenKind::At || addressOf->addrMut) {
+        if (!addressOf || addressOf->op != TokenKind::At) {
             return {};
         }
         const auto *ident = dynamic_cast<const IdentExpr *>(addressOf->operand.get());
         if (!ident) {
-            return ": '@' yields a read-only '*T'; write '@mut' for a '*mut T'";
+            return ": the addressed place is immutable and yields a read-only '*T'";
         }
         const Symbol *sym = currentScope->Lookup(ident->name);
         if (sym && sym->kind == Symbol::Kind::Const) {
             return std::format(": '{}' is a constant; a mutable pointer to it is not allowed", ident->name);
         }
         if (PlaceIsImmutable(*addressOf->operand)) {
-            return std::format(": '@{0}' yields a read-only '*T'; declare '{0}' as 'let mut' and write '@mut {0}' "
-                               "for a '*mut T'",
+            return std::format(": '@{0}' yields a read-only '*T'; declare '{0}' with 'var' for a '*var T'",
                                ident->name);
         }
-        return std::format(": '@{0}' yields a read-only '*T'; write '@mut {0}' for a '*mut T'", ident->name);
+        return {};
     }
 
     // Picks the diagnostic for a rejected assignment/conversion. An
@@ -1593,7 +1589,7 @@ private:
         if (name == "int") {
             return TypeRef::MakeInt();
         }
-        if (name == "uint8") {
+        if (name == "byte" || name == "uint8") {
             return TypeRef::MakeUInt8();
         }
         if (name == "uint16") {
@@ -2666,8 +2662,7 @@ private:
             sym.location = param.location;
             sym.type = param.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
                                         : ResolveType(*param.type);
-            sym.isMut = false;
-            sym.isParam = true;
+            sym.isMut = param.isMut;
             Define(sym);
             if (param.defaultValue) {
                 TypeRef paramType = ResolveType(*param.type);
@@ -3928,19 +3923,10 @@ private:
                 CheckMutability(*e->operand);
             }
             TypeRef t = CheckExpr(*e->operand);
-            // '@x' yields a read-only '*T'; '@mut x' yields a writable '*mut T'
-            // and requires a mutable place (writing through it is otherwise a
-            // way to launder immutability away).
+            // Address-of inherits the addressed place's mutability: `@let`
+            // yields `*T`, while `@var` yields `*var T`.
             if (e->op == TokenKind::At) {
-                if (e->addrMut) {
-                    if (!PlaceIsWritable(*e->operand, t)) {
-                        EmitError(e->location, MutableAddressOfError(*e->operand));
-                    }
-                    t.isMut = true;
-                }
-                else {
-                    t.isMut = false;
-                }
+                t.isMut = PlaceIsWritable(*e->operand, t);
                 return TypeRef::MakePointer(std::move(t));
             }
             return CheckUnary(e->op, t, e->location);
@@ -4860,13 +4846,33 @@ private:
             if (sym->kind == Symbol::Kind::Const) {
                 return true;
             }
-            // A `let` binding is immutable; a parameter is a mutable local copy.
-            return sym->kind == Symbol::Kind::Var && !sym->isMut && !sym->isParam;
+            return sym->kind == Symbol::Kind::Var && !sym->isMut;
+        }
+        if (const auto *field = dynamic_cast<const FieldExpr *>(&place)) {
+            if (dynamic_cast<const SelfExpr *>(field->object.get())) {
+                return false;
+            }
+            const TypeRef objectType = CheckExpr(*field->object);
+            if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
+                return !objectType.inner[0].isMut;
+            }
+            return PlaceIsImmutable(*field->object);
+        }
+        if (const auto *index = dynamic_cast<const IndexExpr *>(&place)) {
+            const TypeRef objectType = CheckExpr(*index->object);
+            if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
+                return !objectType.inner[0].isMut;
+            }
+            return PlaceIsImmutable(*index->object);
+        }
+        if (const auto *u = dynamic_cast<const UnaryExpr *>(&place); u && u->op == TokenKind::Star) {
+            const TypeRef ptr = CheckExpr(*u->operand);
+            return ptr.kind == TypeRef::Kind::Pointer && !ptr.inner.empty() && !ptr.inner[0].isMut;
         }
         return false;
     }
 
-    // Whether `place` may back a writable '*mut T' via '@mut'. `placeType` is
+    // Whether `place` may back a writable '*var T'. `placeType` is
     // the already-computed type of `place`; for a deref '*p' it is p's pointee,
     // whose `isMut` says whether the pointed-to storage is writable.
     bool PlaceIsWritable(const Expr &place, const TypeRef &placeType) {
@@ -4874,22 +4880,6 @@ private:
             return placeType.isMut;
         }
         return !PlaceIsImmutable(place);
-    }
-
-    // Message for a rejected '@mut x' on an immutable place, naming the fix.
-    std::string MutableAddressOfError(const Expr &place) {
-        if (const auto *ident = dynamic_cast<const IdentExpr *>(&place)) {
-            if (const Symbol *sym = currentScope->Lookup(ident->name); sym && sym->kind == Symbol::Kind::Const) {
-                return std::format("cannot take a mutable pointer '@mut' to constant '{}'", ident->name);
-            }
-            return std::format("cannot take a mutable pointer '@mut' to immutable binding '{0}'; "
-                               "declare it 'let mut {0}'",
-                               ident->name);
-        }
-        if (const auto *u = dynamic_cast<const UnaryExpr *>(&place); u && u->op == TokenKind::Star) {
-            return "cannot take a mutable pointer '@mut' through a read-only '*T'";
-        }
-        return "cannot take a mutable pointer '@mut' to an immutable place";
     }
 
     // Check that an assignment target is mutable.
@@ -4908,11 +4898,36 @@ private:
             }
         }
         else if (auto *u = dynamic_cast<const UnaryExpr *>(&target); u && u->op == TokenKind::Star) {
-            // Writing through a read-only pointer '*T' (anything but '*mut T')
+            // Writing through a read-only pointer '*T' (anything but '*var T')
             // is forbidden.
             TypeRef ptr = CheckExpr(*u->operand);
             if (ptr.kind == TypeRef::Kind::Pointer && !ptr.inner.empty() && !ptr.inner[0].isMut) {
                 EmitError(target.location, "cannot assign through a pointer to immutable data");
+            }
+        }
+        else if (const auto *field = dynamic_cast<const FieldExpr *>(&target)) {
+            if (dynamic_cast<const SelfExpr *>(field->object.get())) {
+                return;
+            }
+            const TypeRef objectType = CheckExpr(*field->object);
+            if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
+                if (!objectType.inner[0].isMut) {
+                    EmitError(target.location, "cannot assign through a pointer to immutable data");
+                }
+            }
+            else {
+                CheckMutability(*field->object);
+            }
+        }
+        else if (const auto *index = dynamic_cast<const IndexExpr *>(&target)) {
+            const TypeRef objectType = CheckExpr(*index->object);
+            if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
+                if (!objectType.inner[0].isMut) {
+                    EmitError(target.location, "cannot assign through a pointer to immutable data");
+                }
+            }
+            else {
+                CheckMutability(*index->object);
             }
         }
     }

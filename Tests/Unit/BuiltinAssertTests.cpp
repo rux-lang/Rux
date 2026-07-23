@@ -78,8 +78,8 @@ std::vector<const LirInstr *> Assertions(const LirPackage &package) {
 TEST_CASE("Assert and DebugAssert lower to traps when enabled") {
     auto package = CompileToLir(R"(
         func Main() -> int {
-            let mut first = true;
-            let mut second = true;
+            var first = true;
+            var second = true;
             Assert(first, "always");
             DebugAssert(second, "debug");
             return 0;
@@ -122,7 +122,7 @@ TEST_CASE("release-mode DebugAssert is removed without evaluating arguments") {
         }
 
         func Main() -> int {
-            let mut condition = true;
+            var condition = true;
             Assert(condition, "always");
             DebugAssert(SideEffect(), "disabled");
             return 0;

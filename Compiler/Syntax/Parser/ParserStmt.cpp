@@ -31,7 +31,7 @@ std::unique_ptr<Block> Parser::ParseBlock() {
 StmtPtr Parser::ParseStmt() {
     const auto loc = CurrentLocation();
 
-    if (Check(TokenKind::LetKeyword)) {
+    if (CheckAny({TokenKind::LetKeyword, TokenKind::VarKeyword})) {
         return ParseLetStmt();
     }
     if (Check(TokenKind::IfKeyword) || Check(TokenKind::WhenKeyword)) {
@@ -147,9 +147,11 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
     auto s = std::make_unique<LetStmt>();
     s->location = loc;
 
-    Expect(TokenKind::LetKeyword, "expected 'let'");
-    // `let mut name ...` introduces a mutable binding; `let name ...` is immutable.
-    s->isMut = Match(TokenKind::MutKeyword);
+    // `let` introduces an immutable binding; `var` introduces a mutable one.
+    s->isMut = Match(TokenKind::VarKeyword);
+    if (!s->isMut) {
+        Expect(TokenKind::LetKeyword, "expected 'let' or 'var'");
+    }
     if (Check(TokenKind::Ident)) {
         s->name = Advance().text;
     }

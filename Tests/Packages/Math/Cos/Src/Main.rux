@@ -26,7 +26,7 @@ func Close(actual: float64, expected: float64) -> bool {
             return false;
         }
     }
-    let mut gap = BitsOf(actual) - BitsOf(expected);
+    var gap = BitsOf(actual) - BitsOf(expected);
     if gap < 0i64 {
         gap = -gap;
     }
@@ -85,8 +85,8 @@ func Main() -> int {
     Assert(Close(Cos(5.319372648326541e255), -4.687165924254628e-19), "Cos(worst case reduction)");
 
     // NaN propagates and the infinities have no cosine.
-    let mut zero = 0.0;
-    let mut one = 1.0;
+    var zero = 0.0;
+    var one = 1.0;
     let nan = zero / zero;
     let nanCos = Cos(nan);
     Assert(nanCos != nanCos, "Cos(NaN) is NaN");

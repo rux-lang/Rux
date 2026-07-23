@@ -13,7 +13,7 @@ func Close(actual: float64, expected: float64) -> bool {
     if actual < 0.0 {
         return false;
     }
-    let mut gap = BitsOf(actual) - BitsOf(expected);
+    var gap = BitsOf(actual) - BitsOf(expected);
     if gap < 0i64 {
         gap = -gap;
     }
@@ -23,7 +23,7 @@ func Close(actual: float64, expected: float64) -> bool {
 func Main() -> int {
     let pi = 3.141592653589793;
     let pio2 = 1.5707963267948966;
-    let mut zero = 0.0;
+    var zero = 0.0;
 
     Assert(ArcCos(1.0) == 0.0, "ArcCos(1.0)");
     Assert(ArcCos(-1.0) == pi, "ArcCos(-1.0)");

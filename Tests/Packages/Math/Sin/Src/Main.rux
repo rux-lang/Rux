@@ -26,7 +26,7 @@ func Close(actual: float64, expected: float64) -> bool {
             return false;
         }
     }
-    let mut gap = BitsOf(actual) - BitsOf(expected);
+    var gap = BitsOf(actual) - BitsOf(expected);
     if gap < 0i64 {
         gap = -gap;
     }
@@ -35,7 +35,7 @@ func Close(actual: float64, expected: float64) -> bool {
 
 func Main() -> int {
     // Zero keeps its sign, which the argument reduction would otherwise lose.
-    let mut one = 1.0;
+    var one = 1.0;
     Assert(Sin(0.0) == 0.0, "Sin(0.0) is zero");
     let negZero = Sin(-0.0);
     Assert(negZero == 0.0, "Sin(-0.0) is zero");
@@ -84,7 +84,7 @@ func Main() -> int {
     Assert(Close(Sin(1.7976931348623157e308), 0.004961954789184062), "Sin(DBL_MAX)");
 
     // NaN propagates and the infinities have no sine.
-    let mut zero = 0.0;
+    var zero = 0.0;
     let nan = zero / zero;
     let nanSin = Sin(nan);
     Assert(nanSin != nanSin, "Sin(NaN) is NaN");

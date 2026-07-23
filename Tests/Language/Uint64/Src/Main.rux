@@ -46,9 +46,9 @@ func Main() -> int {
     let narrow: uint32 = max as uint32;
     Assert(narrow == 0xFFFFFFFF, "uint64 to uint32 truncates to low dword");
 
-    let mut x: uint64 = 5;
+    var x: uint64 = 5;
     x = x + 1;
-    Assert(x == 6, "uint64 let mut mutation via addition");
+    Assert(x == 6, "uint64 var mutation via addition");
     x += 10;
     Assert(x == 16, "uint64 compound += operator");
     x -= 6;

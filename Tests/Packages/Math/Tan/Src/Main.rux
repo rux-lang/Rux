@@ -26,7 +26,7 @@ func Close(actual: float64, expected: float64) -> bool {
             return false;
         }
     }
-    let mut gap = BitsOf(actual) - BitsOf(expected);
+    var gap = BitsOf(actual) - BitsOf(expected);
     if gap < 0i64 {
         gap = -gap;
     }
@@ -35,7 +35,7 @@ func Close(actual: float64, expected: float64) -> bool {
 
 func Main() -> int {
     // Zero keeps its sign, which the argument reduction would otherwise lose.
-    let mut one = 1.0;
+    var one = 1.0;
     Assert(Tan(0.0) == 0.0, "Tan(0.0) is zero");
     let negZero = Tan(-0.0);
     Assert(negZero == 0.0, "Tan(-0.0) is zero");
@@ -97,7 +97,7 @@ func Main() -> int {
     Assert(Close(Tan(5.319372648326541e255), -2.133485385753704e18), "Tan(worst case reduction)");
 
     // NaN propagates and the infinities have no tangent.
-    let mut zero = 0.0;
+    var zero = 0.0;
     let nan = zero / zero;
     let nanTan = Tan(nan);
     Assert(nanTan != nanTan, "Tan(NaN) is NaN");

@@ -4,8 +4,8 @@ import Text::String;
 // Std stays out of the dependencies, and a failed check reports itself through
 // the exit code. See the Int8 test for why.
 func Check(actual: String, expected: Slice<char8>, code: int) -> int {
-    let mut text = actual;
-    let mut wanted = String::From(expected);
+    var text = actual;
+    var wanted = String::From(expected);
     let ok = text == wanted;
     text.Free();
     wanted.Free();
@@ -37,7 +37,7 @@ struct Filler {
 
 extend Filler : Stringable {
     func ToString(self) -> String {
-        let mut unit = String::From("0123456789abcdef");
+        var unit = String::From("0123456789abcdef");
         let text = unit.Repeat(self.count);
         unit.Free();
         return text;
@@ -47,7 +47,7 @@ extend Filler : Stringable {
 func Main() -> int {
     // Text outside a placeholder is copied through, and a format with nothing to
     // substitute is copied through entire.
-    let mut code = Check(Format(""), "", 10);
+    var code = Check(Format(""), "", 10);
     if code != 0 { return code; }
     code = Check(Format("hello"), "hello", 11);
     if code != 0 { return code; }
@@ -91,7 +91,7 @@ func Main() -> int {
     // arguments make of it. The old Std::Format truncated at 1024 bytes, and
     // this is the case that caught it.
     let filler = Filler { count: 100 };
-    let mut long = Format("<{}>", filler);
+    var long = Format("<{}>", filler);
     let grown = long.Length() == 1602;
     long.Free();
     if !grown { return 60; }

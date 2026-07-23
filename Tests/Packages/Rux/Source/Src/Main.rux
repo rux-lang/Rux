@@ -6,7 +6,7 @@ func SliceEquals(a: Slice<char8>, b: Slice<char8>) -> bool {
     if a.length != b.length {
         return false;
     }
-    let mut i: uint = 0;
+    var i: uint = 0;
     while i < a.length {
         if a.data[i] != b.data[i] {
             return false;

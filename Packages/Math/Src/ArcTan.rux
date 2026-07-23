@@ -25,7 +25,7 @@ func ArcTan(x: float64) -> float64 {
     }
     let bits = FloatBits(x);
     let negative = (bits >> 63u64) == 1u64;
-    let mut ax = Abs(x);
+    var ax = Abs(x);
     if ax >= 4.722366482869645e21 { // 2^72, including infinity
         let y = atanhi3 + atanlo3;
         return negative ? -y : y;
@@ -33,7 +33,7 @@ func ArcTan(x: float64) -> float64 {
     if ax < 1.862645149230957e-9 {
         return x;
     }
-    let mut id = -1i64;
+    var id = -1i64;
     if ax < 0.4375 {
         id = -1i64;
     } else if ax < 1.1875 {
@@ -56,12 +56,12 @@ func ArcTan(x: float64) -> float64 {
     let s1 = z * (aT0 + w * (aT2 + w * (aT4 + w * (aT6 + w * (aT8 + w * aT10)))));
     let s2 = w * (aT1 + w * (aT3 + w * (aT5 + w * (aT7 + w * aT9))));
     let correction = ax * (s1 + s2);
-    let mut y = 0.0;
+    var y = 0.0;
     if id < 0i64 {
         y = ax - correction;
     } else {
-        let mut hi = atanhi0;
-        let mut lo = atanlo0;
+        var hi = atanhi0;
+        var lo = atanlo0;
         if id == 1i64 {
             hi = atanhi1;
             lo = atanlo1;

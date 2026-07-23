@@ -278,6 +278,7 @@ private:
         add("int32", TypeRef::MakeInt32());
         add("int64", TypeRef::MakeInt64());
         add("int", TypeRef::MakeInt());
+        add("byte", TypeRef::MakeByte());
         add("uint8", TypeRef::MakeUInt8());
         add("uint16", TypeRef::MakeUInt16());
         add("uint32", TypeRef::MakeUInt32());
@@ -583,7 +584,7 @@ private:
         if (str == "int") {
             return TypeRef::MakeInt();
         }
-        if (str == "uint8") {
+        if (str == "byte" || str == "uint8") {
             return TypeRef::MakeUInt8();
         }
         if (str == "uint16") {
@@ -1126,7 +1127,7 @@ private:
         if (name == "int") {
             return TypeRef::MakeInt();
         }
-        if (name == "uint8") {
+        if (name == "byte" || name == "uint8") {
             return TypeRef::MakeUInt8();
         }
         if (name == "uint16") {
@@ -2568,6 +2569,7 @@ private:
             sym.name = param.name;
             sym.type = param.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
                                         : ResolveType(*param.type);
+            sym.isMut = param.isMut;
             Define(sym);
         }
         std::optional<HirBlock> body;
@@ -3586,7 +3588,11 @@ private:
             he->location = e->location;
             he->op = e->op;
             he->operand = LowerExpr(*e->operand);
-            he->type = InferUnaryType(e->op, he->operand->type);
+            TypeRef operandType = he->operand->type;
+            if (e->op == TokenKind::At) {
+                operandType.isMut = PlaceIsWritable(*e->operand, operandType);
+            }
+            he->type = InferUnaryType(e->op, operandType);
             return he;
         }
         if (auto *e = dynamic_cast<const PostfixExpr *>(&expr)) {
@@ -4327,6 +4333,34 @@ private:
         default:
             return t;
         }
+    }
+
+    bool PlaceIsWritable(const Expr &place, const TypeRef &placeType) {
+        if (const auto *ident = dynamic_cast<const IdentExpr *>(&place)) {
+            const HirSymbol *sym = currentScope->Lookup(ident->name);
+            return sym && sym->kind == HirSymbol::Kind::Var && sym->isMut;
+        }
+        if (const auto *field = dynamic_cast<const FieldExpr *>(&place)) {
+            if (dynamic_cast<const SelfExpr *>(field->object.get())) {
+                return true;
+            }
+            const TypeRef objectType = LowerExpr(*field->object)->type;
+            if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
+                return objectType.inner[0].isMut;
+            }
+            return PlaceIsWritable(*field->object, objectType);
+        }
+        if (const auto *index = dynamic_cast<const IndexExpr *>(&place)) {
+            const TypeRef objectType = LowerExpr(*index->object)->type;
+            if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
+                return objectType.inner[0].isMut;
+            }
+            return PlaceIsWritable(*index->object, objectType);
+        }
+        if (const auto *u = dynamic_cast<const UnaryExpr *>(&place); u && u->op == TokenKind::Star) {
+            return placeType.isMut;
+        }
+        return false;
     }
 
     static TypeRef InferBinaryType(TokenKind op, const TypeRef &l, const TypeRef &r) {

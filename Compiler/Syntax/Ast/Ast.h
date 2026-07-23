@@ -50,10 +50,10 @@ struct ArrayTypeExpr : TypeExpr {
     ExprPtr size; // null for a flexible tail (T[]), non-null for T[N]
 };
 
-// *uint8  or  *mut uint8
+// *uint8  or  *var uint8
 struct PointerTypeExpr : TypeExpr {
     TypeExprPtr pointee;
-    bool pointeeMut = false; // *mut T: the pointee is writable (default is read-only)
+    bool pointeeMut = false; // *var T: the pointee is writable (default is read-only)
 };
 
 // (int32, float64)
@@ -224,7 +224,6 @@ struct IntrinsicExpr : Expr {
 // !x, -x, ~x, *x, &x
 struct UnaryExpr : Expr {
     TokenKind op;
-    bool addrMut = false; // '@mut x': address-of yielding a writable *mut T
     ExprPtr operand;
 };
 
@@ -352,7 +351,7 @@ struct ExprStmt : Stmt {
     ExprPtr expr;
 };
 
-// let [mut] name [: Type] = expr;
+// let/var name [: Type] = expr;
 struct LetStmt : Stmt {
     bool isMut = false;
     std::string name;
@@ -477,6 +476,7 @@ struct Param {
     SourceLocation location;
     std::string name;
     TypeExprPtr type;
+    bool isMut = false;      // `var name: T`; parameters are immutable by default
     bool isVariadic = false; // for extern ...
     std::optional<ExprPtr> defaultValue;
 };

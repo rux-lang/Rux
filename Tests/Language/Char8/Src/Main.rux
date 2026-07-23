@@ -68,9 +68,9 @@ func Main() -> int {
     Assert(text.length == 3, "a three byte literal has a length of three");
 
     // Assignment and mutation.
-    let mut cursor: char8 = c8'a';
+    var cursor: char8 = c8'a';
     cursor = c8'b';
-    Assert(cursor == c8'b', "char8 let mut mutation");
+    Assert(cursor == c8'b', "char8 var mutation");
 
     // Use in a condition, where a char8 is compared rather than tested.
     let terminator: char8 = c8'\0';

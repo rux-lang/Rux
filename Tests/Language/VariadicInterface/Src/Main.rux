@@ -54,7 +54,7 @@ extend Tiny64 : TinyValue {
 }
 
 func SumTiny(args: TinyValue...) -> int {
-    let mut sum: int = 0;
+    var sum: int = 0;
     for val in args {
         sum += val.Value();
     }

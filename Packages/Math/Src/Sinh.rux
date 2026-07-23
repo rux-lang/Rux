@@ -21,7 +21,7 @@ func Sinh(x: float64) -> float64 {
         return negative ? -huge * huge : huge * huge;
     }
 
-    let mut y = 0.0;
+    var y = 0.0;
     if ax < 1.0 {
         let t = Expm1(ax);
         y = 0.5 * (2.0 * t - t * t / (t + 1.0));

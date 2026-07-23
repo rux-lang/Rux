@@ -3,7 +3,7 @@ import Memory::{ Alloc, Free };
 
 func Main() -> int {
     let size: uint = 1024;
-    let mut ptr = Alloc(size);
+    var ptr = Alloc(size);
     Assert(ptr != null, "Memory allocation failed");
     Free(ptr);
     return 0;

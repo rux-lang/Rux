@@ -3,7 +3,7 @@ import Text::{ String, StringBuilder };
 // See Tests/Packages/Text/String for why Std is not a dependency and a failed check reports
 // itself through the exit code.
 func Matches(value: String, expected: Slice<char8>) -> bool {
-    let mut want = String::From(expected);
+    var want = String::From(expected);
     let result = value.Equals(want);
     want.Free();
     return result;
@@ -11,7 +11,7 @@ func Matches(value: String, expected: Slice<char8>) -> bool {
 
 func Main() -> int {
     // A fresh builder holds no block until something is appended.
-    let mut builder = StringBuilder::New();
+    var builder = StringBuilder::New();
     if builder.Length() != 0 { return 10; }
     if builder.Capacity() != 0 { return 11; }
     if !builder.IsEmpty() { return 12; }
@@ -20,7 +20,7 @@ func Main() -> int {
     // The three Append overloads all write to the same buffer.
     builder.Append(c8'H');
     builder.Append("ello");
-    let mut world = String::From(", World");
+    var world = String::From(", World");
     builder.Append(world);
     world.Free();
 
@@ -33,7 +33,7 @@ func Main() -> int {
 
     // ToString copies, so the builder keeps its own block and both have to be
     // freed.
-    let mut text = builder.ToString();
+    var text = builder.ToString();
     if !Matches(text, "Hello, World") { return 30; }
     if text.Data() == builder.Data() { return 31; }
     if builder.Length() != 12 { return 32; }
@@ -47,7 +47,7 @@ func Main() -> int {
     if builder.Capacity() != capacity { return 41; }
 
     // Crossing the current capacity doubles it rather than growing by one.
-    let mut i: uint = 0;
+    var i: uint = 0;
     while i < 20 {
         builder.Append(c8'x');
         i++;
@@ -72,7 +72,7 @@ func Main() -> int {
 
     // WithCapacity takes the block up front, so appends up to that size do not
     // reallocate.
-    let mut sized = StringBuilder::WithCapacity(64);
+    var sized = StringBuilder::WithCapacity(64);
     if sized.Capacity() != 64 { return 60; }
     if !sized.IsEmpty() { return 61; }
     if sized.Data() == null { return 62; }
@@ -85,7 +85,7 @@ func Main() -> int {
 
     // IntoString hands the block over instead of copying it, and leaves the
     // builder empty and owning nothing.
-    let mut moved = sized.IntoString();
+    var moved = sized.IntoString();
     if !Matches(moved, "Hello, World") { return 70; }
     if moved.Length() != 12 { return 71; }
     if sized.Length() != 0 { return 72; }
@@ -98,20 +98,20 @@ func Main() -> int {
     moved.Free();
 
     // Draining an empty builder yields the empty String and allocates nothing.
-    let mut blank = StringBuilder::New();
-    let mut nothing = blank.IntoString();
+    var blank = StringBuilder::New();
+    var nothing = blank.IntoString();
     if !nothing.IsEmpty() { return 80; }
     if nothing.Data() != null { return 81; }
     nothing.Free();
     blank.Free();
 
     // A builder that is freed outright can be filled again from scratch.
-    let mut reused = StringBuilder::WithCapacity(8);
+    var reused = StringBuilder::WithCapacity(8);
     reused.Free();
     if reused.Capacity() != 0 { return 90; }
     reused.Append("again");
     if reused.Length() != 5 { return 91; }
-    let mut final = reused.IntoString();
+    var final = reused.IntoString();
     if !Matches(final, "again") { return 92; }
     final.Free();
     reused.Free();

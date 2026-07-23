@@ -33,7 +33,7 @@ func IsFull(value: RangeFull) -> bool {
 }
 
 func Main() -> int {
-    let mut str: Slice<char8> = "Hello, world!";
+    var str: Slice<char8> = "Hello, world!";
     Assert(str[0] == 'H', "Expected first character to be 'H'");
     Assert(str[7] == 'w', "Expected eighth character to be 'w'");
     Assert(str.data != null, "Expected non-null data pointer");

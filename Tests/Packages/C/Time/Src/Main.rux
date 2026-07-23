@@ -11,7 +11,7 @@ func Main() -> int {
 
     // The current time is well past the epoch, and passing a pointer stores the
     // same value that is returned.
-    let slot = malloc(8) as *mut int64;
+    let slot = malloc(8) as *var int64;
     let now = time(slot);
     Assert(now > 0, "time is after the epoch");
     Assert(*slot == now, "time stores the returned value");

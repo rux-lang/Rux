@@ -7,8 +7,8 @@ func Main() -> int {
     Assert(src != null && dst != null, "Alloc(64)");
 
     // A distinct byte per position catches a copy that gets the order wrong.
-    let source = src as *mut uint8;
-    let mut i: uint = 0;
+    let source = src as *var uint8;
+    var i: uint = 0;
     while i < 64 {
         *(source + i) = i as uint8;
         i++;

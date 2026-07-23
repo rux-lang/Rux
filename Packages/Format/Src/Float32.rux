@@ -29,7 +29,7 @@ func IsFinite(value: float32) -> bool {
 // The decimal text of a float32, in a String the caller owns and frees.
 // Fixed notation while the exponent stays in [-4, 7), scientific outside it.
 func ToString(value: float32) -> String {
-    let mut builder = StringBuilder::WithCapacity(16);
+    var builder = StringBuilder::WithCapacity(16);
     WriteFloat(@builder, value);
     return builder.IntoString();
 }

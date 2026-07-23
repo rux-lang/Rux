@@ -117,7 +117,7 @@ std::optional<TypeRef> PrimitiveTypeFromName(const std::string_view name) {
         return TypeRef::MakeInt64();
     if (name == "int")
         return TypeRef::MakeInt();
-    if (name == "uint8")
+    if (name == "byte" || name == "uint8")
         return TypeRef::MakeUInt8();
     if (name == "uint16")
         return TypeRef::MakeUInt16();

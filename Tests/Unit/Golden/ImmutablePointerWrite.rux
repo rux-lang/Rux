@@ -4,12 +4,12 @@ func Main() -> int {
     let p = @a;
     *p = 50;
 
-    // A read-only '*T' cannot be laundered into a writable '*mut T' binding.
-    let mut r: *mut int = @a;
+    // A read-only '*T' cannot be laundered into a writable '*var T' binding.
+    var r: *var int = @a;
 
-    // Control: '@mut' on a `let mut` yields a writable '*mut int'.
-    let mut b = 20;
-    let q = @mut b;
+    // Control: '@' on a `var` yields a writable '*var int'.
+    var b = 20;
+    let q = @b;
     *q = 60;
 
     return 0;

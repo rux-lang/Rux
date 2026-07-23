@@ -54,6 +54,96 @@ std::vector<SemanticDiagnostic> AnalyzeWithDep(const std::string &userSource, co
 
 } // namespace
 
+TEST_CASE("let and var independently control binding and pointee mutability") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Main() {
+            let immutable = 10;
+            var mutable = 20;
+
+            let readOnly: *int = @immutable;
+            let writable: *var int = @mutable;
+            let weakened: *int = @mutable;
+
+            immutable = 11;
+            *readOnly = 12;
+            *writable = 21;
+            mutable = 22;
+
+            let bad: *var int = @immutable;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 3);
+    CHECK_EQ(diagnostics[0].message, "cannot assign to immutable variable 'immutable'");
+    CHECK_EQ(diagnostics[1].message, "cannot assign through a pointer to immutable data");
+    CHECK_EQ(diagnostics[2].message, "cannot assign '*int' to '*var int': '@immutable' yields a read-only '*T'; "
+                                     "declare 'immutable' with 'var' for a '*var T'");
+}
+
+TEST_CASE("function parameters are immutable unless declared var") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Immutable(x: int, ptr: *var int) {
+            x = 1;
+            ptr = ptr;
+            *ptr = 2;
+        }
+
+        func Mutable(var x: int, var ptr: *var int) {
+            x = 3;
+            ptr = ptr;
+            *ptr = 4;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "cannot assign to immutable variable 'x'");
+    CHECK_EQ(diagnostics[1].message, "cannot assign to immutable variable 'ptr'");
+}
+
+TEST_CASE("pointer binding mutability is independent of pointee mutability") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Main() {
+            let a = 10;
+            var b = 20;
+
+            let immutableReadOnly: *int = @a;
+            let immutableWritable: *var int = @b;
+            var mutableReadOnly: *int = @a;
+            var mutableWritable: *var int = @b;
+
+            immutableReadOnly = mutableReadOnly;
+            immutableWritable = mutableWritable;
+            mutableReadOnly = immutableReadOnly;
+            mutableWritable = immutableWritable;
+
+            *immutableWritable = 21;
+            *mutableWritable = 22;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "cannot assign to immutable variable 'immutableReadOnly'");
+    CHECK_EQ(diagnostics[1].message, "cannot assign to immutable variable 'immutableWritable'");
+}
+
+TEST_CASE("byte is a canonical alias of uint8") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Read(value: uint8) -> byte {
+            return value;
+        }
+
+        func Main() {
+            let raw: byte = 255u8;
+            let numeric: uint8 = raw;
+            var storage: byte[2] = [raw, numeric];
+            let ptr: *var byte = @storage[0];
+            *ptr = Read(1u8);
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
 TEST_CASE("extern function call attributes emit direct and qualified diagnostics") {
     const auto diagnostics = AnalyzeSource(R"(
         #Error("direct extern call is forbidden")
@@ -189,7 +279,7 @@ TEST_CASE("a flexible array is accepted only as the final struct field") {
         }
         union NotStruct { data: uint8[] }
         func Invalid(value: uint8[]) -> uint8[] {
-            let mut local: uint8[];
+            var local: uint8[];
             return value;
         }
     )");
@@ -206,7 +296,7 @@ TEST_CASE("fixed arrays require matching literal extents") {
     CHECK(AnalyzeSource(R"(
         const Bytes: uint8[3] = [1u8, 2u8, 3u8];
         func Main() {
-            let mut values: uint16[2] = [10u16, 20u16];
+            var values: uint16[2] = [10u16, 20u16];
             values[1] = 30u16;
         }
     )")
@@ -291,7 +381,7 @@ TEST_CASE("logical right shift requires a signed integer left operand") {
 
     const auto compoundDiagnostics = AnalyzeSource(R"(
         func Main() {
-            let mut value: uint8 = 248;
+            var value: uint8 = 248;
             value >>>= 2;
         }
     )");

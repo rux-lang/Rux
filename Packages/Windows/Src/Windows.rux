@@ -333,7 +333,7 @@ extern {
 
     // Allocates a block of memory from a heap. The allocated memory is not movable
     // https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapalloc
-    func HeapAlloc(heap: *opaque, flags: uint32, bytes: uint) -> *opaque;
+    func HeapAlloc(heap: *opaque, flags: uint32, bytes: uint) -> *var opaque;
 
     // Frees a memory block allocated from a heap by the HeapAlloc or HeapReAlloc function
     // https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapfree
@@ -341,7 +341,7 @@ extern {
 
     // Reallocates a block of memory from a heap
     // https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heaprealloc
-    func HeapReAlloc(heap: *opaque, flags: uint32, mem: *opaque, bytes: uint) -> *opaque;
+    func HeapReAlloc(heap: *opaque, flags: uint32, mem: *opaque, bytes: uint) -> *var opaque;
 
     // Loads a DLL into the calling process.
     // https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya
@@ -403,7 +403,7 @@ extern {
 
     // Copies a block of memory from one location to another
     // https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa366535(v=vs.85)
-    func RtlCopyMemory(destination: *opaque, source: *opaque, length: uint);
+    func RtlCopyMemory(destination: *var opaque, source: *opaque, length: uint);
 
     // Fills a block of memory with the specified fill value
     // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlfillmemory

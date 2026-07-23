@@ -85,7 +85,7 @@ private:
             if (dynamic_cast<const ArrayTypeExpr *>(ptr->pointee.get())) {
                 pointee = "(" + pointee + ")";
             }
-            return (ptr->pointeeMut ? "*mut " : "*") + pointee;
+            return (ptr->pointeeMut ? "*var " : "*") + pointee;
         }
         if (const auto *tup = dynamic_cast<const TupleTypeExpr *>(t)) {
             std::string s = "(";
@@ -286,6 +286,9 @@ private:
             if (p.isVariadic) {
                 out << "...";
                 continue;
+            }
+            if (p.isMut) {
+                out << "var ";
             }
             out << p.name << ": " << TypeStr(p.type.get());
         }
@@ -582,6 +585,9 @@ private:
             if (i) {
                 out << ", ";
             }
+            if (f.params[i].isMut) {
+                out << "var ";
+            }
             out << f.params[i].name << ": " << TypeStr(f.params[i].type.get());
         }
         if (f.isVariadic) {
@@ -668,7 +674,7 @@ private:
         else {
             out << s.name;
         }
-        out << "' (" << (s.isMut ? "let mut" : "let") << ")";
+        out << "' (" << (s.isMut ? "var" : "let") << ")";
         if (s.type) {
             out << " : " << TypeStr(s.type->get());
         }

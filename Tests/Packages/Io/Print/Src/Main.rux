@@ -44,7 +44,7 @@ func Main() -> int {
     Print(c16'B'); Separator();
     Print(c32'C'); Separator();
 
-    let mut text = String::From("string-value");
+    var text = String::From("string-value");
     Print(text); Separator();
     text.Free();
     Print("slice-value"); Separator();

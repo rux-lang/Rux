@@ -3,11 +3,11 @@ import Text::String;
 // See Tests/Packages/Text/String for why Std is not a dependency and a failed check reports
 // itself through the exit code.
 func Main() -> int {
-    let mut hello = String::From("Hello");
-    let mut same = String::From("Hello");
-    let mut other = String::From("World");
-    let mut shorter = String::From("Hell");
-    let mut empty = String::New();
+    var hello = String::From("Hello");
+    var same = String::From("Hello");
+    var other = String::From("World");
+    var shorter = String::From("Hell");
+    var empty = String::New();
 
     // Equal contents in separate blocks compare equal, so equality is by value
     // rather than by address.
@@ -27,7 +27,7 @@ func Main() -> int {
 
     // The empty String equals only itself. It owns no block, so the comparison
     // must not reach into its null data.
-    let mut alsoEmpty = String::New();
+    var alsoEmpty = String::New();
     if !empty.Equals(alsoEmpty) { return 30; }
     if empty.Equals(hello) { return 31; }
     if hello.Equals(empty) { return 32; }
@@ -35,7 +35,7 @@ func Main() -> int {
 
     // Equality is reflexive over a clone, which is the case Free has to keep
     // working after.
-    let mut copy = hello.Clone();
+    var copy = hello.Clone();
     if !(copy == hello) { return 40; }
     copy.Free();
 

@@ -1,0 +1,6 @@
+// Primitive constants are supplied directly by the compiler
+// byte is an alias for uint8
+// byte::Min
+// byte::Max
+// byte::Bits
+// byte::Bytes

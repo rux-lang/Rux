@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Language
 
+- **`byte` primitive alias** — `byte` is the raw-storage spelling of `uint8`, with identical representation, ABI, constants, conversions, and overload identity. Memory operations use it for byte-addressable views while numeric code can retain the explicit `uint8` spelling.
 - **Logical right shift** — signed integers support `>>>` and `>>>=` to shift in zero bits while preserving the left operand's type and fixed width; `>>` remains arithmetic for signed integers and logical for unsigned integers.
 - **Targeted lint allowances** — `#Allow("naming.type")` preserves intentional foreign type, field, and variant spellings on a single type declaration without disabling naming checks elsewhere.
 - **Intrinsic assertions** — importing `Assert` or `DebugAssert` from the Rux package enables compiler-backed assertions that report the message, function, file, line, and column before trapping. Release builds remove `DebugAssert` checks without evaluating their arguments.
@@ -43,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Explicit binding and pointee mutability** — `let` bindings and parameters are immutable by default, while `var` declares a mutable binding or parameter. Pointer pointee mutability is written `*T` (read-only) or `*var T` (writable), and `@place` infers the pointer form from the addressed place. This replaces `let mut`, `*mut T`, and `@mut`.
 - **Hermetic consolidated tests** — repository tests are organized as language, package, unit/golden, and policy suites below `Tests/`. Every Rux test dependency is an explicit local path, while workspace-member overrides resolve transitive first-party dependencies without registry access.
 - **Flat test executable output** — `rux test` writes each executable directly to its configured `[Build].Output` directory instead of adding a `Debug` or `Release` subdirectory. Ordinary `rux build` and `rux run` outputs remain profile-specific.
 - **Fully-qualified item imports** — importing an item now requires its complete `Package::Module::…::Item` path; the shortcut that let a bare `import Package::Item` reach into a package's same-named module is gone. `import Memory::Alloc` is an error (with a `did you mean 'import Memory::Memory::Alloc'?` hint) — the package name is always the first segment and the containing module must be named. Items declared at a package's root (`import Rux::{ #target }`) are unaffected.

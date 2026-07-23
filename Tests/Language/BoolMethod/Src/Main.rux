@@ -39,8 +39,8 @@ extend int16 {
 // Leaves a run of non-zero bytes on the stack, so that a slot read past its end
 // picks up something other than a helpful zero.
 func Dirty() -> int {
-    let mut junk: char8[64];
-    let mut i: uint = 0;
+    var junk: char8[64];
+    var i: uint = 0;
     while i < 64 {
         junk[i] = 0xFFu8 as char8;
         i++;
@@ -69,8 +69,8 @@ func Main() -> int {
     if f32.Value() { return 30; }
     if !t32.Value() { return 31; }
 
-    // A let mut receiver, which is passed by its own address and was always right.
-    let mut v16: bool16 = false;
+    // A var receiver, which is passed by its own address and was always right.
+    var v16: bool16 = false;
     if v16.Value() { return 40; }
 
     // The same substitution for the narrow integers, whose literals are of the

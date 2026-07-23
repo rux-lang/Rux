@@ -6,7 +6,7 @@ when #target.os == .Windows {
 
 // Resizes a block of memory, preserving the bytes that still fit
 // https://rux-lang.dev/api/memory/realloc
-func Realloc(ptr: *opaque, size: uint) -> *opaque {
+func Realloc(ptr: *opaque, size: uint) -> *var opaque {
     when #target.os {
         .DragonFlyBSD, .FreeBSD, .Linux, .MacOS, .NetBSD, .OpenBSD => {
             if ptr == null {

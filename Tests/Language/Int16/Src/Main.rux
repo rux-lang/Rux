@@ -57,9 +57,9 @@ func Main() -> int {
     let narrow: int16 = wide as int16;
     Assert(narrow == -1, "int32 0xFFFF truncates to int16 -1");
 
-    let mut x: int16 = 5;
+    var x: int16 = 5;
     x = x + 1;
-    Assert(x == 6, "int16 let mut mutation via addition");
+    Assert(x == 6, "int16 var mutation via addition");
     x += 10;
     Assert(x == 16, "int16 compound += operator");
     x -= 6;

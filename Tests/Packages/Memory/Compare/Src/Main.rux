@@ -15,7 +15,7 @@ func Main() -> int {
     Assert(Compare(lhs, rhs, 8) == 8, "equal prefix reports length");
 
     // A difference reports the offset where the blocks first diverge.
-    let bytes = rhs as *mut uint8;
+    let bytes = rhs as *var uint8;
     *(bytes + 5) = 0x00;
     Assert(Compare(lhs, rhs, 16) == 5, "first mismatch at index 5");
 

@@ -10,9 +10,9 @@ func Compare(lhs: *opaque, rhs: *opaque, length: uint) -> uint {
     when #target.os == .Windows {
         return RtlCompareMemory(lhs, rhs, length);
     } else {
-        let left = lhs as *uint8;
-        let right = rhs as *uint8;
-        let mut offset: uint = 0;
+        let left = lhs as *byte;
+        let right = rhs as *byte;
+        var offset: uint = 0;
         while offset < length {
             if *(left + offset) != *(right + offset) {
                 return offset;

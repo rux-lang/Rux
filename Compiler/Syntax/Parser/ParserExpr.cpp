@@ -337,13 +337,10 @@ ExprPtr Parser::ParseUnary() {
                   TokenKind::PlusPlus, TokenKind::MinusMinus})) {
         const auto loc = CurrentLocation();
         const auto op = Advance().kind;
-        // '@mut x' takes a writable '*mut T'; plain '@x' takes a read-only '*T'.
-        const bool addrMut = op == TokenKind::At && Match(TokenKind::MutKeyword);
         auto operand = ParseUnary();
         auto e = std::make_unique<UnaryExpr>();
         e->location = loc;
         e->op = op;
-        e->addrMut = addrMut;
         e->operand = std::move(operand);
         return e;
     }

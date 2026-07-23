@@ -2,8 +2,8 @@ import Rux::Assert;
 import Math::Max;
 
 func Main() -> int {
-    let mut zero = 0.0;
-    let mut one = 1.0;
+    var zero = 0.0;
+    var one = 1.0;
     let inf = one / zero;
     let nan = zero / zero;
 

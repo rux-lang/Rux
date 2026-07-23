@@ -4,7 +4,7 @@ func Log10(x: float64) -> float64 {
     let log10Of2Hi = 3.01029995663611771306e-01;
     let log10Of2Lo = 3.69423907715893089906e-13;
 
-    let mut zero = 0.0;
+    var zero = 0.0;
     let bits = FloatBits(x);
 
     if (bits & 0x7FFFFFFFFFFFFFFFu64) == 0u64 {
@@ -29,9 +29,9 @@ func Log10(x: float64) -> float64 {
     let lo = (f - hi) - hfsq + r;
 
     let y = red.k as float64;
-    let mut valHi = hi * ivln10Hi;
+    var valHi = hi * ivln10Hi;
     let y2 = y * log10Of2Hi;
-    let mut valLo = y * log10Of2Lo + (lo + hi) * ivln10Lo + lo * ivln10Hi;
+    var valLo = y * log10Of2Lo + (lo + hi) * ivln10Lo + lo * ivln10Hi;
 
     let w = y2 + valHi;
     valLo += (y2 - w) + valHi;

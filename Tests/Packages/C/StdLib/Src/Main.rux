@@ -7,7 +7,7 @@ import C::{
 
 func Main() -> int {
     // malloc hands back a writable block; every byte reads back what was written.
-    let block = malloc(64) as *mut uint8;
+    let block = malloc(64) as *var uint8;
     Assert(block != null as *uint8, "malloc(64)");
     *block = 0x5A;
     *(block + 63) = 0xC3;
@@ -23,7 +23,7 @@ func Main() -> int {
     free(zeroed as *opaque);
 
     // realloc grows a block while preserving the bytes already stored in it.
-    let grow = malloc(8) as *mut uint8;
+    let grow = malloc(8) as *var uint8;
     *grow = 0x11;
     *(grow + 7) = 0x22;
     let bigger = realloc(grow as *opaque, 32) as *uint8;

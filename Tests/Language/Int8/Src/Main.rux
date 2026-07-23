@@ -78,9 +78,9 @@ func Main() -> int {
     Assert(narrow == -1, "int16 0x00FF truncates to int8 -1");
 
     // Assignment and mutation
-    let mut x: int8 = 5;
+    var x: int8 = 5;
     x = x + 1;
-    Assert(x == 6, "int8 let mut mutation via addition");
+    Assert(x == 6, "int8 var mutation via addition");
 
     x += 10;
     Assert(x == 16, "int8 compound += operator");

@@ -9,7 +9,7 @@ import Text::StringBuilder;
 // decimal exponent. `significant` is how many digits to generate before
 // rounding: fifteen for a float64, seven for a float32.
 func WriteDecimal(builder: *StringBuilder, value: float64, significant: uint) {
-    let mut abs = value;
+    var abs = value;
     if value < 0.0 {
         builder.Append(c8'-');
         abs = -value;
@@ -18,8 +18,8 @@ func WriteDecimal(builder: *StringBuilder, value: float64, significant: uint) {
     // A first guess at the decimal exponent, walking the value into
     // [1, 10). Every step rounds, so what this settles on is an estimate,
     // and the mantissa it leaves behind is thrown away.
-    let mut exp10: int = 0;
-    let mut mantissa = abs;
+    var exp10: int = 0;
+    var mantissa = abs;
     while mantissa >= 10.0 {
         mantissa /= 10.0;
         exp10++;
@@ -48,7 +48,7 @@ func WriteDecimal(builder: *StringBuilder, value: float64, significant: uint) {
     // [10^(n-1), 10^n) and sits far inside a uint64 for any n this is asked
     // for.
     let scale = Pow10(significant - 1);
-    let mut scaled = (mantissa * scale + 0.5) as uint64;
+    var scaled = (mantissa * scale + 0.5) as uint64;
 
     // Rounding up can carry the whole way: 9.999... scales to 10^n, one digit
     // too many. Dropping the zero the carry created puts it right.
@@ -58,10 +58,10 @@ func WriteDecimal(builder: *StringBuilder, value: float64, significant: uint) {
         exp10++;
     }
 
-    let mut digits: char8[20];
-    let mut count = significant;
-    let mut index = count;
-    let mut rest = scaled;
+    var digits: char8[20];
+    var count = significant;
+    var index = count;
+    var rest = scaled;
     while index > 0 {
         index--;
         digits[index] = (rest % 10u64 + 48u64) as char8;
@@ -96,7 +96,7 @@ func WriteFixed(builder: *StringBuilder, digits: Slice<char8>, count: uint, exp1
         // many more zeros as the exponent calls for: -1 puts the first digit
         // straight after the point, -3 leaves two zeros in front of it.
         builder.Append("0.");
-        let mut pad = exp10 + 1;
+        var pad = exp10 + 1;
         while pad < 0 {
             builder.Append(c8'0');
             pad++;
@@ -112,7 +112,7 @@ func WriteFixed(builder: *StringBuilder, digits: Slice<char8>, count: uint, exp1
     // when the value has more magnitude than it has digits to fill it with:
     // 1.2e4 holds two digits and five places, and prints as 12000.
     let length = (exp10 as uint) + 1;
-    let mut i: uint = 0;
+    var i: uint = 0;
     while i < length {
         if i < count {
             builder.Append(digits[i]);
@@ -128,7 +128,7 @@ func WriteFixed(builder: *StringBuilder, digits: Slice<char8>, count: uint, exp1
         return;
     }
 
-    let mut j = length;
+    var j = length;
     while j < count {
         builder.Append(digits[j]);
         j++;
@@ -144,7 +144,7 @@ func WriteScientific(builder: *StringBuilder, digits: Slice<char8>, count: uint,
     if count == 1 {
         builder.Append(c8'0');
     } else {
-        let mut i: uint = 1;
+        var i: uint = 1;
         while i < count {
             builder.Append(digits[i]);
             i++;
@@ -152,7 +152,7 @@ func WriteScientific(builder: *StringBuilder, digits: Slice<char8>, count: uint,
     }
 
     builder.Append(c8'e');
-    let mut exp = exp10;
+    var exp = exp10;
     if exp < 0 {
         builder.Append(c8'-');
         exp = -exp;
@@ -164,9 +164,9 @@ func WriteScientific(builder: *StringBuilder, digits: Slice<char8>, count: uint,
     // Three of them are enough, since the exponent of a float64 reaches 308,
     // and it never reaches zero: this notation is only chosen for a value
     // whose exponent falls outside [-4, significant).
-    let mut expDigits: char8[4];
-    let mut length: uint = 0;
-    let mut rest = exp as uint;
+    var expDigits: char8[4];
+    var length: uint = 0;
+    var rest = exp as uint;
     while rest > 0 {
         expDigits[length] = (rest % 10u + 48u) as char8;
         length++;
@@ -177,7 +177,7 @@ func WriteScientific(builder: *StringBuilder, digits: Slice<char8>, count: uint,
         builder.Append(c8'0');
     }
 
-    let mut i = length;
+    var i = length;
     while i > 0 {
         i--;
         builder.Append(expDigits[i]);
@@ -188,8 +188,8 @@ func WriteScientific(builder: *StringBuilder, digits: Slice<char8>, count: uint,
 // rounding, and each is reached here by a chain of exact multiplications, so
 // within that range this is exact. It is never asked for more.
 func Pow10(exp: uint) -> float64 {
-    let mut result = 1.0;
-    let mut i: uint = 0;
+    var result = 1.0;
+    var i: uint = 0;
     while i < exp {
         result *= 10.0;
         i++;
@@ -204,8 +204,8 @@ func Pow10(exp: uint) -> float64 {
 // overflowed to infinity before it could be used at all.
 func ScaleByPow10(value: float64, exp: int) -> float64 {
     let step = Pow10(22u);
-    let mut result = value;
-    let mut rest = exp;
+    var result = value;
+    var rest = exp;
 
     while rest >= 22 {
         result *= step;

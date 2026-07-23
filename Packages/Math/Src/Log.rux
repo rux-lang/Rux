@@ -34,8 +34,8 @@ func LogPoly(f: float64) -> float64 {
 // one, rather than simply in [1, 2), halves the range the series has to
 // cover and keeps |f| below sqrt(2) - 1.
 func LogNormalize(x: float64) -> LogReduction {
-    let mut k = 0i64;
-    let mut bits = FloatBits(x);
+    var k = 0i64;
+    var bits = FloatBits(x);
 
     // A subnormal has no leading one in place; scale it into the normals.
     if (bits >> 52u64) == 0u64 {
@@ -43,7 +43,7 @@ func LogNormalize(x: float64) -> LogReduction {
         bits = FloatBits(x * 1.8014398509481984e16); // 2^54
     }
 
-    let mut hx = bits >> 32u64;
+    var hx = bits >> 32u64;
     k += ((hx >> 20u64) as int64) - 1023i64;
     hx &= 0xFFFFFu64;
 
@@ -52,7 +52,7 @@ func LogNormalize(x: float64) -> LogReduction {
     let i = (hx + 0x95F64u64) & 0x100000u64;
     k += (i >> 20u64) as int64;
 
-    let mut out: LogReduction;
+    var out: LogReduction;
     out.k = k;
     out.m = FromBits(((hx | (i ^ 0x3FF00000u64)) << 32u64) | (bits & 0xFFFFFFFFu64));
     return out;
@@ -62,7 +62,7 @@ func Log(x: float64) -> float64 {
     let ln2Hi = 6.93147180369123816490e-01;
     let ln2Lo = 1.90821492927058770002e-10;
 
-    let mut zero = 0.0;
+    var zero = 0.0;
     let bits = FloatBits(x);
 
     // log(+-0) is -Inf.

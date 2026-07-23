@@ -16,9 +16,9 @@ TypeExprPtr Parser::ParseType() {
     if (Check(TokenKind::FuncKeyword)) {
         base = ParseFunctionType();
     }
-    // Pointer: *T  or  *mut T
+    // Pointer: *T  or  *var T
     else if (Match(TokenKind::Star)) {
-        const bool pointeeMut = Match(TokenKind::MutKeyword); // optional 'mut' qualifier
+        const bool pointeeMut = Match(TokenKind::VarKeyword); // optional pointee mutability qualifier
         auto p = std::make_unique<PointerTypeExpr>();
         p->location = loc;
         p->pointeeMut = pointeeMut;

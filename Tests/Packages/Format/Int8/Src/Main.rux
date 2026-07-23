@@ -8,8 +8,8 @@ import Text::String;
 // exit code instead: each one below is numbered, and `rux test` prints the
 // number of the first that fails.
 func Check(actual: String, expected: Slice<char8>, code: int) -> int {
-    let mut text = actual;
-    let mut wanted = String::From(expected);
+    var text = actual;
+    var wanted = String::From(expected);
     let ok = text == wanted;
     text.Free();
     wanted.Free();
@@ -22,7 +22,7 @@ func Check(actual: String, expected: Slice<char8>, code: int) -> int {
 
 func Main() -> int {
     let zero: int8 = 0;
-    let mut code = Check(ToString(zero), "0", 10);
+    var code = Check(ToString(zero), "0", 10);
     if code != 0 { return code; }
 
     let one: int8 = 1;

@@ -36,7 +36,7 @@ enum class TokenKind : std::uint8_t {
     IntrinsicKeyword, // intrinsic
     FuncKeyword,      // func
     LetKeyword,       // let
-    MutKeyword,       // mut
+    VarKeyword,       // var
     ConstKeyword,     // const
     TypeKeyword,      // type
     StructKeyword,    // struct

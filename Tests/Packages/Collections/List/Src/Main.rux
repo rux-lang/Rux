@@ -7,13 +7,13 @@ struct Pair {
 
 func Main() -> int {
     // New owns nothing until the first addition.
-    let mut empty = List::New<int32>();
+    var empty = List::New<int32>();
     if !empty.IsEmpty() || empty.Length() != 0 || empty.Capacity() != 0 { return 10; }
     if empty.Data() != null { return 11; }
     empty.Free();
 
     // Capacity grows geometrically while existing elements stay intact.
-    let mut values = List::WithCapacity<int32>(2);
+    var values = List::WithCapacity<int32>(2);
     if values.Length() != 0 || values.Capacity() != 2 { return 20; }
     values.Add(10);
     values.Add(20);
@@ -50,13 +50,13 @@ func Main() -> int {
     if borrowed.data != values.Data() || borrowed.length != 4 || borrowed[2] != 30 { return 60; }
 
     // Clone and ToArray copy, leaving independently owned allocations.
-    let mut copy = values.Clone();
+    var copy = values.Clone();
     if copy.Data() == values.Data() || copy.Capacity() != copy.Length() { return 70; }
     copy.Set(0, 99);
     if values.At(0) != 10 { return 71; }
     copy.Free();
 
-    let mut fixed = values.ToArray();
+    var fixed = values.ToArray();
     if fixed.Data() == values.Data() || fixed.Length() != values.Length() { return 72; }
     fixed.Set(0, 88);
     if values.At(0) != 10 { return 73; }
@@ -64,7 +64,7 @@ func Main() -> int {
 
     // From copies its source, and Shrink returns spare capacity.
     let source: Slice<int32> = [1, 2, 3];
-    let mut from = List::From<int32>(source);
+    var from = List::From<int32>(source);
     if from.Data() == source.data || from.Length() != 3 || from.Capacity() != 3 { return 80; }
     from.Reserve(5);
     from.Shrink();
@@ -83,11 +83,11 @@ func Main() -> int {
     if values.Data() != null || values.Capacity() != 0 { return 92; }
 
     // IntoArray transfers the allocation after trimming it to Length.
-    let mut moved = List::WithCapacity<int32>(8);
+    var moved = List::WithCapacity<int32>(8);
     moved.Add(6);
     moved.Add(7);
     let oldData = moved.Data();
-    let mut array = moved.IntoArray();
+    var array = moved.IntoArray();
     if moved.Data() != null || moved.Length() != 0 || moved.Capacity() != 0 { return 100; }
     if array.Length() != 2 || array.At(0) != 6 || array.At(1) != 7 { return 101; }
     if array.Data() == null || oldData == null { return 102; }
@@ -95,7 +95,7 @@ func Main() -> int {
     moved.Free();
 
     // Growth and pointer indexing honor element sizes larger than one word.
-    let mut pairs = List::New<Pair>();
+    var pairs = List::New<Pair>();
     pairs.Add(Pair { first: 1, second: 2 });
     pairs.Add(Pair { first: 3, second: 4 });
     pairs.Insert(1, Pair { first: 5, second: 6 });

@@ -26,7 +26,7 @@ func Close(actual: float64, expected: float64) -> bool {
             return false;
         }
     }
-    let mut gap = BitsOf(actual) - BitsOf(expected);
+    var gap = BitsOf(actual) - BitsOf(expected);
     if gap < 0i64 {
         gap = -gap;
     }
@@ -34,7 +34,7 @@ func Close(actual: float64, expected: float64) -> bool {
 }
 
 func Main() -> int {
-    let mut one = 1.0;
+    var one = 1.0;
 
     // Zero keeps its sign under a multiplication.
     Assert(DegToRad(0.0) == 0.0, "DegToRad(0.0) is zero");
@@ -75,7 +75,7 @@ func Main() -> int {
     Assert(Close(RadToDeg(1e-300), 5.729577951308232e-299), "RadToDeg(1e-300)");
 
     // NaN propagates and the infinities scale to infinities.
-    let mut zero = 0.0;
+    var zero = 0.0;
     let nan = zero / zero;
     let nanRad = DegToRad(nan);
     Assert(nanRad != nanRad, "DegToRad(NaN) is NaN");

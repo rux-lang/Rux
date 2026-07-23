@@ -22,7 +22,7 @@ TokenKind KeywordKind(const std::string_view text) noexcept {
         {"intrinsic", TokenKind::IntrinsicKeyword},
         {"func", TokenKind::FuncKeyword},
         {"let", TokenKind::LetKeyword},
-        {"mut", TokenKind::MutKeyword},
+        {"var", TokenKind::VarKeyword},
         {"const", TokenKind::ConstKeyword},
         {"type", TokenKind::TypeKeyword},
         {"struct", TokenKind::StructKeyword},
@@ -92,8 +92,8 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "FuncKeyword";
     case TokenKind::LetKeyword:
         return "LetKeyword";
-    case TokenKind::MutKeyword:
-        return "MutKeyword";
+    case TokenKind::VarKeyword:
+        return "VarKeyword";
     case TokenKind::ConstKeyword:
         return "ConstKeyword";
     case TokenKind::TypeKeyword:

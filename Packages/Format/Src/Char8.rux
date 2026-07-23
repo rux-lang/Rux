@@ -6,7 +6,7 @@ import Text::{ String, StringBuilder };
 // validated here, since there is nothing to encode -- the byte is passed
 // through as it stands.
 func ToString(value: char8) -> String {
-    let mut buffer: char8[1];
+    var buffer: char8[1];
     buffer[0] = value;
     return String::From(@buffer[0], 1u);
 }

@@ -3,88 +3,88 @@ import Text::String;
 // See Tests/Packages/Text/String for why Std is not a dependency and a failed check reports
 // itself through the exit code.
 func Matches(value: String, expected: Slice<char8>) -> bool {
-    let mut want = String::From(expected);
+    var want = String::From(expected);
     let result = value.Equals(want);
     want.Free();
     return result;
 }
 
 func Main() -> int {
-    let mut mixed = String::From("Hello, World!");
-    let mut empty = String::New();
+    var mixed = String::From("Hello, World!");
+    var empty = String::New();
 
     // Every transform returns a new block and leaves the receiver as it was.
     // The checks against `mixed` after each call are the point of the type.
-    let mut upper = mixed.ToUpper();
+    var upper = mixed.ToUpper();
     if !Matches(upper, "HELLO, WORLD!") { return 10; }
     if upper.Data() == mixed.Data() { return 11; }
     if !Matches(mixed, "Hello, World!") { return 12; }
     upper.Free();
 
-    let mut lower = mixed.ToLower();
+    var lower = mixed.ToLower();
     if !Matches(lower, "hello, world!") { return 20; }
     if !Matches(mixed, "Hello, World!") { return 21; }
     lower.Free();
 
     // Digits and punctuation are left alone.
-    let mut digits = String::From("a1!Z");
-    let mut loudDigits = digits.ToUpper();
+    var digits = String::From("a1!Z");
+    var loudDigits = digits.ToUpper();
     if !Matches(loudDigits, "A1!Z") { return 22; }
     loudDigits.Free();
     digits.Free();
 
     // Transforming nothing allocates nothing.
-    let mut upperEmpty = empty.ToUpper();
+    var upperEmpty = empty.ToUpper();
     if !upperEmpty.IsEmpty() { return 23; }
     if upperEmpty.Data() != null { return 24; }
     upperEmpty.Free();
 
-    let mut padded = String::From("  \t Hello \r\n ");
-    let mut trimmed = padded.Trim();
+    var padded = String::From("  \t Hello \r\n ");
+    var trimmed = padded.Trim();
     if !Matches(trimmed, "Hello") { return 30; }
     if !Matches(padded, "  \t Hello \r\n ") { return 31; }
     trimmed.Free();
     padded.Free();
 
     // Nothing to trim leaves the contents intact but still copies the block.
-    let mut tight = String::From("Hello");
-    let mut stillTight = tight.Trim();
+    var tight = String::From("Hello");
+    var stillTight = tight.Trim();
     if !Matches(stillTight, "Hello") { return 32; }
     if stillTight.Data() == tight.Data() { return 33; }
     stillTight.Free();
     tight.Free();
 
     // All whitespace trims down to nothing.
-    let mut blank = String::From(" \t\r\n ");
-    let mut nothing = blank.Trim();
+    var blank = String::From(" \t\r\n ");
+    var nothing = blank.Trim();
     if !nothing.IsEmpty() { return 34; }
     if nothing.Data() != null { return 35; }
     nothing.Free();
     blank.Free();
 
-    let mut middle = mixed.Substring(7, 5);
+    var middle = mixed.Substring(7, 5);
     if !Matches(middle, "World") { return 40; }
     if !Matches(mixed, "Hello, World!") { return 41; }
     middle.Free();
 
     // A range that overruns the end is clamped to what is actually there.
-    let mut clamped = mixed.Substring(7, 100);
+    var clamped = mixed.Substring(7, 100);
     if !Matches(clamped, "World!") { return 42; }
     clamped.Free();
 
     // A start at or past the end yields the empty String.
-    let mut past = mixed.Substring(13, 3);
+    var past = mixed.Substring(13, 3);
     if !past.IsEmpty() { return 43; }
     if past.Data() != null { return 44; }
     past.Free();
 
     // So does a zero length.
-    let mut none = mixed.Substring(2, 0);
+    var none = mixed.Substring(2, 0);
     if !none.IsEmpty() { return 45; }
     none.Free();
 
     // The full range copies the whole String.
-    let mut whole = mixed.Substring(0, mixed.Length());
+    var whole = mixed.Substring(0, mixed.Length());
     if !whole.Equals(mixed) { return 46; }
     if whole.Data() == mixed.Data() { return 47; }
     whole.Free();

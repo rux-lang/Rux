@@ -17,8 +17,8 @@ func Main() -> int {
     let negative = Sqrt(-1.0);
     Assert(negative != negative, "Sqrt(-1.0) is NaN");
 
-    let mut zero = 0.0;
-    let mut one = 1.0;
+    var zero = 0.0;
+    var one = 1.0;
 
     let inf = one / zero;
     Assert(Sqrt(inf) == inf, "Sqrt(+Inf) is +Inf");

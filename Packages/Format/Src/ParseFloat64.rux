@@ -15,8 +15,8 @@ func ParseFloat64(str: Slice<char8>) -> Result<float64, ParseError> {
         return Result::Error<float64, ParseError>(ParseError::Empty);
     }
 
-    let mut index: uint = 0;
-    let mut negative = false;
+    var index: uint = 0;
+    var negative = false;
     if str[index] == c8'+' || str[index] == c8'-' {
         negative = str[index] == c8'-';
         index++;
@@ -29,12 +29,12 @@ func ParseFloat64(str: Slice<char8>) -> Result<float64, ParseError> {
     // float64 can retain, while avoiding an overflowing intermediate value for
     // long input strings. decimalExponent accounts for the decimal point and
     // for significant digits omitted after the nineteenth.
-    let mut value = 0.0;
-    let mut significantDigits: uint = 0;
-    let mut decimalExponent: int = 0;
-    let mut digitCount: uint = 0;
-    let mut afterDecimalPoint = false;
-    let mut significant = false;
+    var value = 0.0;
+    var significantDigits: uint = 0;
+    var decimalExponent: int = 0;
+    var digitCount: uint = 0;
+    var afterDecimalPoint = false;
+    var significant = false;
 
     while index < str.length {
         let ch = str[index];
@@ -72,7 +72,7 @@ func ParseFloat64(str: Slice<char8>) -> Result<float64, ParseError> {
     if index < str.length && (str[index] == c8'e' || str[index] == c8'E') {
         index++;
         let exponentMarker = index - 1;
-        let mut exponentNegative = false;
+        var exponentNegative = false;
         if index < str.length && (str[index] == c8'+' || str[index] == c8'-') {
             exponentNegative = str[index] == c8'-';
             index++;
@@ -81,7 +81,7 @@ func ParseFloat64(str: Slice<char8>) -> Result<float64, ParseError> {
             return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(exponentMarker));
         }
 
-        let mut exponent: int = 0;
+        var exponent: int = 0;
         while index < str.length && str[index] >= c8'0' && str[index] <= c8'9' {
             let digit = ((str[index] as uint) - (c8'0' as uint)) as int;
             if exponent < 10000 {
@@ -127,7 +127,7 @@ func ParseFloat64(str: String) -> Result<float64, ParseError> {
 
 // Parses into value and reports only whether conversion succeeded. On failure,
 // value is left unchanged. A null output pointer also reports failure.
-func TryParseFloat64(str: Slice<char8>, value: *mut float64) -> bool {
+func TryParseFloat64(str: Slice<char8>, value: *var float64) -> bool {
     if value == null {
         return false;
     }
@@ -144,6 +144,6 @@ func TryParseFloat64(str: Slice<char8>, value: *mut float64) -> bool {
 }
 
 // String convenience overload of TryParseFloat64; no allocation or copy.
-func TryParseFloat64(str: String, value: *mut float64) -> bool {
+func TryParseFloat64(str: String, value: *var float64) -> bool {
     return TryParseFloat64(Slice<char8> { data: str.data, length: str.length }, value);
 }

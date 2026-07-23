@@ -7,19 +7,19 @@ import Text::String;
 // owns a block like any other. Freeing it here keeps the tests honest about the
 // ownership rule the package is built on.
 func Matches(value: String, expected: Slice<char8>) -> bool {
-    let mut want = String::From(expected);
+    var want = String::From(expected);
     let result = value.Equals(want);
     want.Free();
     return result;
 }
 
 func Main() -> int {
-    let mut hello = String::From("Hello");
-    let mut world = String::From("World");
+    var hello = String::From("Hello");
+    var world = String::From("World");
 
     // Concatenation builds a new block and leaves both operands alone: that is
     // the whole contract of an immutable String.
-    let mut joined = hello + world;
+    var joined = hello + world;
     if joined.Length() != 10 { return 10; }
     if !Matches(joined, "HelloWorld") { return 11; }
     if hello.Length() != 5 { return 12; }
@@ -28,45 +28,45 @@ func Main() -> int {
     joined.Free();
 
     // A slice on the right avoids wrapping the literal in a String first.
-    let mut greeting = hello + ", " + world;
+    var greeting = hello + ", " + world;
     if greeting.Length() != 12 { return 20; }
     if !Matches(greeting, "Hello, World") { return 21; }
     greeting.Free();
 
     // Concatenating an empty String copies the other side rather than aliasing
     // it, so the result can be freed on its own.
-    let mut empty = String::New();
-    let mut copy = hello + empty;
+    var empty = String::New();
+    var copy = hello + empty;
     if !copy.Equals(hello) { return 30; }
     if copy.Data() == hello.Data() { return 31; }
     copy.Free();
 
-    let mut back = empty + hello;
+    var back = empty + hello;
     if !back.Equals(hello) { return 32; }
     back.Free();
 
     // Two empty operands allocate nothing.
-    let mut nothing = empty + String::New();
+    var nothing = empty + String::New();
     if !nothing.IsEmpty() { return 33; }
     if nothing.Data() != null { return 34; }
     nothing.Free();
 
     // Repeat lays the contents down count times.
-    let mut thrice = hello.Repeat(3);
+    var thrice = hello.Repeat(3);
     if thrice.Length() != 15 { return 40; }
     if !Matches(thrice, "HelloHelloHello") { return 41; }
     thrice.Free();
 
-    let mut once = hello.Repeat(1);
+    var once = hello.Repeat(1);
     if !once.Equals(hello) { return 42; }
     once.Free();
 
     // A count of zero, or repeating nothing, yields the empty String.
-    let mut never = hello.Repeat(0);
+    var never = hello.Repeat(0);
     if !never.IsEmpty() { return 43; }
     never.Free();
 
-    let mut stillEmpty = empty.Repeat(4);
+    var stillEmpty = empty.Repeat(4);
     if !stillEmpty.IsEmpty() { return 44; }
     stillEmpty.Free();
 

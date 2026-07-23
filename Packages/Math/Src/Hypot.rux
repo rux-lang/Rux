@@ -6,10 +6,10 @@
 // half of a, whose square is exact, so the sum handed to Sqrt has almost
 // twice the precision of a plain x*x + y*y.
 func Hypot(x: float64, y: float64) -> float64 {
-    let mut a = Abs(x);
-    let mut b = Abs(y);
-    let mut ha = FloatBits(a) >> 32u64;
-    let mut hb = FloatBits(b) >> 32u64;
+    var a = Abs(x);
+    var b = Abs(y);
+    var ha = FloatBits(a) >> 32u64;
+    var hb = FloatBits(b) >> 32u64;
 
     // Order them so a is the larger.
     if hb > ha {
@@ -27,13 +27,13 @@ func Hypot(x: float64, y: float64) -> float64 {
         return a + b;
     }
 
-    let mut k = 0i64;
+    var k = 0i64;
 
     if ha > 0x5F300000u64 { // a > 2^500
         if ha >= 0x7FF00000u64 {
             // Hypot is infinite if either argument is, even if the other is
             // a NaN; otherwise the NaN propagates through a + b.
-            let mut w = a + b;
+            var w = a + b;
             if (ha & 0xFFFFFu64) == 0u64 && (FloatBits(a) & 0xFFFFFFFFu64) == 0u64 {
                 w = a;
             }
@@ -70,7 +70,7 @@ func Hypot(x: float64, y: float64) -> float64 {
     }
 
     // Both are now of a size that squares safely.
-    let mut w = a - b;
+    var w = a - b;
     if w > b {
         // a is the dominant term, so split it and square the high half exactly.
         let t1 = FromHighWord(ha);

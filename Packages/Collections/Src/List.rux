@@ -5,7 +5,7 @@ import Memory::{ Alloc, Copy, Free, Realloc };
 // initialized elements. Assignment shares the allocation; Clone when both
 // values need independent ownership, and Free each owned allocation once.
 struct List<T> {
-    data: *T;
+    data: *var T;
     length: uint;
     capacity: uint;
 }
@@ -22,7 +22,7 @@ extend List<T> {
             return List<T> { data: null, length: 0, capacity: 0 };
         }
 
-        let ptr = Alloc(capacity * sizeof(T)) as *T;
+        let ptr = Alloc(capacity * sizeof(T)) as *var T;
         return List<T> { data: ptr, length: 0, capacity: capacity };
     }
 
@@ -33,7 +33,7 @@ extend List<T> {
             return List<T> { data: null, length: 0, capacity: 0 };
         }
 
-        let ptr = Alloc(items.length * sizeof(T)) as *T;
+        let ptr = Alloc(items.length * sizeof(T)) as *var T;
         Copy(ptr, items.data, items.length * sizeof(T));
         return List<T> { data: ptr, length: items.length, capacity: items.length };
     }
@@ -46,7 +46,7 @@ extend List<T> {
             return List<T> { data: null, length: 0, capacity: 0 };
         }
 
-        let ptr = Alloc(self.length * sizeof(T)) as *T;
+        let ptr = Alloc(self.length * sizeof(T)) as *var T;
         Copy(ptr, self.data, self.length * sizeof(T));
         return List<T> { data: ptr, length: self.length, capacity: self.length };
     }
@@ -89,7 +89,7 @@ extend List<T> {
             return;
         }
 
-        let mut capacity = self.capacity;
+        var capacity = self.capacity;
         if capacity == 0 {
             capacity = 4;
         }
@@ -99,8 +99,8 @@ extend List<T> {
         }
 
         self.data = self.data == null
-            ? Alloc(capacity * sizeof(T)) as *T
-            : Realloc(self.data, capacity * sizeof(T)) as *T;
+            ? Alloc(capacity * sizeof(T)) as *var T
+            : Realloc(self.data, capacity * sizeof(T)) as *var T;
         self.capacity = capacity;
     }
 
@@ -126,7 +126,7 @@ extend List<T> {
         }
 
         self.Grow(self.length + 1);
-        let mut i = self.length;
+        var i = self.length;
         while i > index {
             self.data[i] = self.data[i - 1];
             i--;
@@ -143,7 +143,7 @@ extend List<T> {
             return false;
         }
 
-        let mut i = index;
+        var i = index;
         while i + 1 < self.length {
             self.data[i] = self.data[i + 1];
             i++;
@@ -176,7 +176,7 @@ extend List<T> {
             return;
         }
 
-        self.data = Realloc(self.data, self.length * sizeof(T)) as *T;
+        self.data = Realloc(self.data, self.length * sizeof(T)) as *var T;
         self.capacity = self.length;
     }
 
@@ -191,7 +191,7 @@ extend List<T> {
             return Array<T> { data: null, length: 0 };
         }
 
-        let ptr = Alloc(self.length * sizeof(T)) as *T;
+        let ptr = Alloc(self.length * sizeof(T)) as *var T;
         Copy(ptr, self.data, self.length * sizeof(T));
         return Array<T> { data: ptr, length: self.length };
     }

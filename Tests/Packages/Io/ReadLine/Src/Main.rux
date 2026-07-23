@@ -5,7 +5,7 @@ import Io::{
 };
 
 func EchoLine() {
-    let mut line = ReadLine();
+    var line = ReadLine();
     Print("[");
     Print(line);
     PrintLine("]");

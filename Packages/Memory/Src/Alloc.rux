@@ -17,7 +17,7 @@ when #target.os {
 
 // Allocates an uninitialized block of memory
 // https://rux-lang.dev/api/memory/alloc
-func Alloc(size: uint) -> *opaque {
+func Alloc(size: uint) -> *var opaque {
     when #target.os {
         .DragonFlyBSD, .FreeBSD, .Linux, .MacOS, .NetBSD, .OpenBSD => {
             // Two machine words keep the returned address aligned to 16 bytes.
@@ -31,9 +31,9 @@ func Alloc(size: uint) -> *opaque {
             if IsError(mapping) {
                 return null;
             }
-            let header = mapping as *mut uint;
+            let header = mapping as *var uint;
             *header = size;
-            return (header + 2) as *opaque;
+            return (header + 2) as *var opaque;
         },
         .Windows => {
             let heap = GetProcessHeap();

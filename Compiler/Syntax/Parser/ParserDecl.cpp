@@ -588,6 +588,7 @@ Param Parser::ParseParam(bool allowVariadic) {
         return p;
     }
 
+    p.isMut = Match(TokenKind::VarKeyword);
     p.name = Expect(TokenKind::Ident, "expected parameter name").text;
     Expect(TokenKind::Colon, "expected ':'");
     p.type = ParseType();
@@ -1049,6 +1050,9 @@ std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
 static std::string NormalizePrimitiveName(const std::string &name) {
     if (name == "bool") {
         return "bool8";
+    }
+    if (name == "byte") {
+        return "uint8";
     }
     if (name == "char") {
         return "char32";

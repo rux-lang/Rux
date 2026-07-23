@@ -7,8 +7,8 @@ func ParseInt64(str: Slice<char8>) -> Result<int64, ParseError> {
         return Result::Error<int64, ParseError>(ParseError::Empty);
     }
 
-    let mut index: uint = 0;
-    let mut negative = false;
+    var index: uint = 0;
+    var negative = false;
     if str[index] == c8'+' || str[index] == c8'-' {
         negative = str[index] == c8'-';
         index++;
@@ -20,7 +20,7 @@ func ParseInt64(str: Slice<char8>) -> Result<int64, ParseError> {
     // The negative limit is one larger because int64::Min has no positive
     // int64 counterpart. Accumulating as uint64 handles both limits directly.
     let limit = negative ? 9223372036854775808u64 : 9223372036854775807u64;
-    let mut magnitude: uint64 = 0u64;
+    var magnitude: uint64 = 0u64;
     while index < str.length {
         let ch = str[index];
         if ch < c8'0' || ch > c8'9' {
@@ -51,7 +51,7 @@ func ParseInt64(str: String) -> Result<int64, ParseError> {
 
 // Parses into value and reports only whether conversion succeeded. On failure,
 // value is left unchanged. A null output pointer also reports failure.
-func TryParseInt64(str: Slice<char8>, value: *mut int64) -> bool {
+func TryParseInt64(str: Slice<char8>, value: *var int64) -> bool {
     if value == null {
         return false;
     }
@@ -68,6 +68,6 @@ func TryParseInt64(str: Slice<char8>, value: *mut int64) -> bool {
 }
 
 // String convenience overload of TryParseInt64; no allocation or copy.
-func TryParseInt64(str: String, value: *mut int64) -> bool {
+func TryParseInt64(str: String, value: *var int64) -> bool {
     return TryParseInt64(Slice<char8> { data: str.data, length: str.length }, value);
 }

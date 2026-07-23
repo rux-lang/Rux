@@ -14,16 +14,16 @@ func WriteUint(builder: *StringBuilder, value: uint64) {
         return;
     }
 
-    let mut digits: char8[20];
-    let mut length: uint = 0;
-    let mut rest = value;
+    var digits: char8[20];
+    var length: uint = 0;
+    var rest = value;
     while rest > 0u64 {
         digits[length] = (rest % 10u64 + 48u64) as char8;
         length++;
         rest /= 10u64;
     }
 
-    let mut i = length;
+    var i = length;
     while i > 0 {
         i--;
         builder.Append(digits[i]);

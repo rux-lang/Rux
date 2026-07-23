@@ -8,14 +8,14 @@ import Text::String;
 // test` prints the number of the first that fails.
 func Main() -> int {
     // The empty String owns nothing, so it can still be freed like any other.
-    let mut empty = String::New();
+    var empty = String::New();
     if empty.Length() != 0 { return 10; }
     if !empty.IsEmpty() { return 11; }
     if empty.Data() != null { return 12; }
     empty.Free();
 
     let literal: Slice<char8> = "Hello";
-    let mut hello = String::From(literal);
+    var hello = String::From(literal);
     if hello.Length() != 5 { return 20; }
     if hello.IsEmpty() { return 21; }
 
@@ -30,26 +30,26 @@ func Main() -> int {
     if hello.At(5) != c8'\0' { return 25; }
 
     let raw: Slice<char8> = "ab";
-    let mut pair = String::From(raw.data, 2);
+    var pair = String::From(raw.data, 2);
     if pair.Length() != 2 { return 30; }
     if pair.At(0) != c8'a' { return 31; }
     if pair.At(1) != c8'b' { return 32; }
     pair.Free();
 
     // A zero length allocates nothing.
-    let mut none = String::From(raw.data, 0);
+    var none = String::From(raw.data, 0);
     if !none.IsEmpty() { return 40; }
     if none.Data() != null { return 41; }
     none.Free();
 
     // Clone gives an independent block, so both copies can be freed.
-    let mut copy = hello.Clone();
+    var copy = hello.Clone();
     if !copy.Equals(hello) { return 50; }
     if copy.Data() == hello.Data() { return 51; }
     copy.Free();
 
     // Cloning the empty String stays empty rather than allocating.
-    let mut emptyCopy = String::New().Clone();
+    var emptyCopy = String::New().Clone();
     if !emptyCopy.IsEmpty() { return 52; }
     if emptyCopy.Data() != null { return 53; }
     emptyCopy.Free();

@@ -3,13 +3,13 @@ import Text::String;
 // See Tests/Packages/Text/String for why Std is not a dependency and a failed check reports
 // itself through the exit code.
 func Main() -> int {
-    let mut haystack = String::From("Hello, World");
-    let mut hello = String::From("Hello");
-    let mut world = String::From("World");
-    let mut comma = String::From(", ");
-    let mut absent = String::From("Goodbye");
-    let mut longer = String::From("Hello, World and more");
-    let mut empty = String::New();
+    var haystack = String::From("Hello, World");
+    var hello = String::From("Hello");
+    var world = String::From("World");
+    var comma = String::From(", ");
+    var absent = String::From("Goodbye");
+    var longer = String::From("Hello, World and more");
+    var empty = String::New();
 
     if !haystack.StartsWith(hello) { return 10; }
     if haystack.StartsWith(world) { return 11; }
@@ -40,13 +40,13 @@ func Main() -> int {
 
     // A match that runs to the very end is still found, which is the bound the
     // scan is easiest to get wrong at.
-    let mut tail = String::From("d");
+    var tail = String::From("d");
     if haystack.IndexOf(tail) != 11 { return 46; }
     tail.Free();
 
     // The first of several matches wins.
-    let mut repeated = String::From("abcabc");
-    let mut needle = String::From("abc");
+    var repeated = String::From("abcabc");
+    var needle = String::From("abc");
     if repeated.IndexOf(needle) != 0 { return 47; }
     needle.Free();
     repeated.Free();

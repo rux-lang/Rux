@@ -12,8 +12,8 @@ import Text::String;
 // 24 bits, so a uint64 holds any of them, and the length is checked alongside it
 // because 0x41 and 0x0041 pack the same.
 func Bytes(text: String) -> uint64 {
-    let mut packed: uint64 = 0;
-    let mut i: uint = 0;
+    var packed: uint64 = 0;
+    var i: uint = 0;
     while i < text.Length() {
         packed = (packed << 8u64) | (text.At(i) as uint64);
         i++;
@@ -22,7 +22,7 @@ func Bytes(text: String) -> uint64 {
 }
 
 func Check(actual: String, length: uint, bytes: uint64, code: int) -> int {
-    let mut text = actual;
+    var text = actual;
     let ok = text.Length() == length && Bytes(text) == bytes;
     text.Free();
 
@@ -35,7 +35,7 @@ func Check(actual: String, length: uint, bytes: uint64, code: int) -> int {
 func Main() -> int {
     // A char16 holds one UTF-16 code unit, which becomes one to three bytes of
     // UTF-8. Below U+0080 the byte is the code point itself.
-    let mut code = Check(ToString(c16'A'), 1u, 0x41u64, 10);
+    var code = Check(ToString(c16'A'), 1u, 0x41u64, 10);
     if code != 0 { return code; }
     code = Check(ToString(c16'\0'), 1u, 0x00u64, 11);
     if code != 0 { return code; }
@@ -63,11 +63,11 @@ func Main() -> int {
     // arrive through a cast at run time -- which is exactly where the encoder
     // has to defend itself. It comes out as U+FFFD, the replacement character,
     // rather than as an ill-formed sequence.
-    let mut high: uint32 = 0xD800;
+    var high: uint32 = 0xD800;
     code = Check(ToString(high as char16), 3u, 0xEFBFBDu64, 40);
     if code != 0 { return code; }
 
-    let mut low: uint32 = 0xDFFF;
+    var low: uint32 = 0xDFFF;
     code = Check(ToString(low as char16), 3u, 0xEFBFBDu64, 41);
     if code != 0 { return code; }
 

@@ -26,7 +26,7 @@ func Close(actual: float64, expected: float64) -> bool {
             return false;
         }
     }
-    let mut gap = BitsOf(actual) - BitsOf(expected);
+    var gap = BitsOf(actual) - BitsOf(expected);
     if gap < 0i64 {
         gap = -gap;
     }
@@ -34,8 +34,8 @@ func Close(actual: float64, expected: float64) -> bool {
 }
 
 func Main() -> int {
-    let mut zero = 0.0;
-    let mut one = 1.0;
+    var zero = 0.0;
+    var one = 1.0;
     let inf = one / zero;
 
     // The pole at zero. Both sides are infinite, and each keeps the sign of the

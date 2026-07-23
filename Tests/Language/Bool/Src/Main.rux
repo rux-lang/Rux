@@ -3,7 +3,7 @@ import Rux::Assert;
 // Counts the operands that were evaluated at all, which is how the short-circuit
 // checks below prove that a right-hand side was skipped rather than merely that
 // the answer came out right.
-func Sees(counter: *mut int, value: bool) -> bool {
+func Sees(counter: *var int, value: bool) -> bool {
     *counter += 1;
     return value;
 }
@@ -41,7 +41,7 @@ func Main() -> int {
 
     // A bool of each width holds up as a condition, which is a test against zero
     // at whatever width the value really is.
-    let mut reached = false;
+    var reached = false;
     if yes16 {
         reached = true;
     }
@@ -54,12 +54,12 @@ func Main() -> int {
     Assert(!reached, "a false bool32 does not drive an if");
 
     // A comparison assigned into each width, rather than a literal.
-    let mut computed16: bool16 = 10 > 5;
+    var computed16: bool16 = 10 > 5;
     Assert(computed16, "a comparison assigns into a bool16");
     computed16 = 10 < 5;
     Assert(!computed16, "a false comparison assigns into a bool16");
 
-    let mut computed32: bool32 = 10 != 10;
+    var computed32: bool32 = 10 != 10;
     Assert(!computed32, "a false comparison assigns into a bool32");
 
     // Negation, and the double negation that leaves a value as it was.
@@ -79,23 +79,23 @@ func Main() -> int {
 
     // Short-circuiting: the right-hand side of a false && and of a true || is
     // never evaluated, which the call counter is here to witness.
-    let mut calls: int = 0;
-    let skippedAnd = Sees(@mut calls, false) && Sees(@mut calls, true);
+    var calls: int = 0;
+    let skippedAnd = Sees(@calls, false) && Sees(@calls, true);
     Assert(!skippedAnd, "a false && is false");
     Assert(calls == 1, "&& does not evaluate its right side when the left is false");
 
     calls = 0;
-    let skippedOr = Sees(@mut calls, true) || Sees(@mut calls, false);
+    let skippedOr = Sees(@calls, true) || Sees(@calls, false);
     Assert(skippedOr, "a true || is true");
     Assert(calls == 1, "|| does not evaluate its right side when the left is true");
 
     calls = 0;
-    let bothAnd = Sees(@mut calls, true) && Sees(@mut calls, true);
+    let bothAnd = Sees(@calls, true) && Sees(@calls, true);
     Assert(bothAnd, "a && with two true sides is true");
     Assert(calls == 2, "&& evaluates its right side when the left is true");
 
     calls = 0;
-    let bothOr = Sees(@mut calls, false) || Sees(@mut calls, true);
+    let bothOr = Sees(@calls, false) || Sees(@calls, true);
     Assert(bothOr, "a || with a true right side is true");
     Assert(calls == 2, "|| evaluates its right side when the left is false");
 
@@ -110,12 +110,12 @@ func Main() -> int {
     // A bool as a value rather than as a condition: assigned, passed, returned.
     let flag = 10 > 5 && 5 > 3;
     Assert(flag, "a chain assigned into a binding");
-    Assert(Sees(@mut calls, flag), "a bool passed to a function and returned from it");
+    Assert(Sees(@calls, flag), "a bool passed to a function and returned from it");
 
     // Assignment and mutation.
-    let mut toggle = true;
+    var toggle = true;
     toggle = !toggle;
-    Assert(!toggle, "a bool let mut can be toggled");
+    Assert(!toggle, "a bool var can be toggled");
     toggle = !toggle;
     Assert(toggle, "and toggled back");
 

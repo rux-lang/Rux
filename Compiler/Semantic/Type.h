@@ -46,6 +46,7 @@ struct TypeRef {
         // Aliases — must come after all concrete values so they don't shift
         // the counter
         Bool = Bool8,    // bool is an alias for bool8
+        Byte = UInt8,    // byte is an alias for uint8
         Char = Char32,   // char is an alias for char32
         Float = Float64, // float is an alias for float64
     };
@@ -57,7 +58,7 @@ struct TypeRef {
     bool isVariadic = false; // Func kind: trailing C-style ... (extern) or
     // Rux variadic; extra call args are allowed
     bool isMut = false; // this type, viewed as a pointee, is writable
-                        // (*mut T). The default is read-only (*T). Deliberately
+                        // (*var T). The default is read-only (*T). Deliberately
                         // NOT part of operator== so it never leaks onto loaded
                         // value types and breaks overload resolution.
 
@@ -154,6 +155,10 @@ struct TypeRef {
         TypeRef t;
         t.kind = Kind::UInt8;
         return t;
+    }
+
+    static TypeRef MakeByte() {
+        return MakeUInt8();
     }
 
     static TypeRef MakeUInt16() {

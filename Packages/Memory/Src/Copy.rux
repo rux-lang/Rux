@@ -6,13 +6,13 @@ when #target.os == .Windows {
 
 // Copies bytes from one block of memory to another
 // https://rux-lang.dev/api/memory/copy
-func Copy(dest: *opaque, src: *opaque, length: uint) {
+func Copy(dest: *var opaque, src: *opaque, length: uint) {
     when #target.os == .Windows {
         RtlCopyMemory(dest, src, length);
     } else {
-        let destination = dest as *mut uint8;
-        let source = src as *uint8;
-        let mut offset: uint = 0;
+        let destination = dest as *var byte;
+        let source = src as *byte;
+        var offset: uint = 0;
         while offset < length {
             *(destination + offset) = *(source + offset);
             offset++;

@@ -88,9 +88,9 @@ func Main() -> int {
     Assert(small as float64 == 2.5, "float32 widens exactly to float64");
 
     // Assignment and mutation.
-    let mut x: float64 = 5.0;
+    var x: float64 = 5.0;
     x = x + 1.0;
-    Assert(x == 6.0, "float64 let mut mutation via addition");
+    Assert(x == 6.0, "float64 var mutation via addition");
 
     x += 4.0;
     Assert(x == 10.0, "float64 compound += operator");

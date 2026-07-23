@@ -35,7 +35,7 @@ func IsFinite(value: float64) -> bool {
 // it, where fixed notation would be mostly zeros. See Digits64 for what the
 // digits are worth.
 func ToString(value: float64) -> String {
-    let mut builder = StringBuilder::WithCapacity(24);
+    var builder = StringBuilder::WithCapacity(24);
     WriteFloat(@builder, value);
     return builder.IntoString();
 }
