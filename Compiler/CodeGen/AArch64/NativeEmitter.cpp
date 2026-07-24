@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
@@ -1269,6 +1270,14 @@ void AppendTargetArguments(std::vector<std::string> &arguments, const TargetCont
     }
 }
 
+/// The C runtime DLLs have no matching import library of the same name (there is no ucrtbase.lib),
+/// and Clang already links a CRT for MSVC targets, so requesting them again only creates conflicts.
+bool IsCRuntimeDll(std::string stem) {
+    std::ranges::transform(stem, stem.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return stem.starts_with("msvcr") || stem.starts_with("ucrtbase") || stem.starts_with("vcruntime") ||
+           stem.starts_with("api-ms-win-crt-");
+}
+
 void AppendLinkArguments(std::vector<std::string> &arguments, const LirPackage &package, const TargetContext &target) {
     if (target.os == Target::OS::Linux || target.os == Target::OS::FreeBSD) {
         arguments.emplace_back("-lm");
@@ -1281,13 +1290,18 @@ void AppendLinkArguments(std::vector<std::string> &arguments, const LirPackage &
     for (const auto &module : package.modules) {
         for (const auto &function : module.funcs) {
             if (function.isExtern && !function.dll.empty()) {
-                std::filesystem::path library(function.dll);
-                library.replace_extension(".lib");
-                libraries.insert(library.filename().string());
+                auto stem = std::filesystem::path(function.dll).stem().string();
+                if (!stem.empty() && !IsCRuntimeDll(stem)) {
+                    libraries.insert(std::move(stem));
+                }
             }
         }
     }
-    arguments.insert(arguments.end(), libraries.begin(), libraries.end());
+    // Clang rejects a bare 'Kernel32.lib' operand as a missing input file; '-l' defers the name to
+    // the linker, which resolves it against the SDK library paths.
+    for (const auto &library : libraries) {
+        arguments.push_back(std::format("-l{}", library));
+    }
 }
 } // namespace
 
