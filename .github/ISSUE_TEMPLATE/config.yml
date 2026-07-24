@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Language feature proposal
+    url: https://github.com/rux-lang/Rux/discussions
+    about: Propose and discuss new language features in Discussions before opening an issue.
+  - name: Question or help
+    url: https://discord.com/invite/uvSHjtZSVG
+    about: Ask on Discord — usage questions are answered faster there than in the issue tracker.
+  - name: Security vulnerability
+    url: https://github.com/rux-lang/Rux/security/policy
+    about: Report privately following the security policy; do not open a public issue.

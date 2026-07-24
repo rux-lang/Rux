@@ -2,7 +2,7 @@
 
 How branches are organized in the Rux repository and the rules that govern them.
 
-## The two long-lived branches
+## The Two Long-Lived Branches
 
 | Branch     | Role                                                                    | Accepts PRs? |
 | ---------- | ----------------------------------------------------------------------- | ------------ |
@@ -11,7 +11,7 @@ How branches are organized in the Rux repository and the rules that govern them.
 
 Both branches are built and tested by CI on every push and pull request (see [CI/CD Flow](CI-CD.md)).
 
-## Topic branches
+## Topic Branches
 
 Contributors branch off `dev` for each unit of work and open a PR back into `dev`:
 
@@ -21,7 +21,7 @@ git pull --ff-only
 git switch -c feat/my-feature
 ```
 
-### Naming convention
+### Naming Convention
 
 Topic branches **should** use a `type/short-description` prefix, so the branch's intent is clear at a glance. This is a recommendation, not a hard gate — but following it keeps the branch list readable:
 
@@ -37,7 +37,7 @@ Use a short, hyphenated description after the prefix, e.g. `fix/lookup-overload`
 
 Keep unrelated work on separate branches. If `dev` advances while you are working, merge or rebase it before requesting final review; avoid rewriting commits after review has started unless the reviewer agrees.
 
-## How changes flow
+## How Changes Flow
 
 ```
 topic branch ──PR──► dev ──(merge to main)──► main ──tag vX.Y.Z──► Release Pipeline
@@ -53,7 +53,7 @@ At release time, `dev` is merged into `main` with a **merge commit** (not a fast
 
 After promotion, new development continues from `dev`; do not base ordinary feature work on `main`.
 
-## Branch protection
+## Branch Protection
 
 Both `main` and `dev` are protected. Merging into either requires:
 

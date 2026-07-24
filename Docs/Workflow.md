@@ -12,7 +12,7 @@ The LLVM tools have distinct roles:
 - **`clang-tidy`** enforces the static-analysis baseline in [`.clang-tidy`](../.clang-tidy).
 - **Editor / IDE** setup is optional. The build scripts enable `CMAKE_EXPORT_COMPILE_COMMANDS`, producing `Build/compile_commands.json` for clang-tidy, clangd, and other tools.
 
-## 2. Get the source and configure
+## 2. Get the Source and Configure
 
 ```sh
 git clone https://github.com/rux-lang/Rux.git
@@ -25,7 +25,7 @@ cmake -S . -B Build -G Ninja \
 
 With no `-DCMAKE_BUILD_TYPE`, the project defaults to a **Release** build (set in `CMakeLists.txt`). See [Debug vs. Release](#debug-vs-release-builds) below for when to pick the other.
 
-## 3. The inner loop
+## 3. The Inner Loop
 
 1. **Branch** off `dev` (see [Branch Architecture](Branches.md)).
 2. **Edit** sources under `Compiler/<Component>/` (e.g. `Compiler/Syntax/`, `Compiler/Semantic/`, or `Compiler/CodeGen/`); headers live next to their `.cpp` files.
@@ -40,24 +40,25 @@ With no `-DCMAKE_BUILD_TYPE`, the project defaults to a **Release** build (set i
 5. **Test** against the local workspace packages (see below):
    ```sh
    ./Bin/rux test --release
-   ctest --test-dir Build --output-on-failure
+   ctest --test-dir Build --output-on-failure -C Release
    ```
 6. **Format** all maintained C++ and Rux sources: `sh Format.sh` (PowerShell: `./Format.ps1`).
 
 The repository provides matching platform entry points. PowerShell users can run `./Build.ps1`, `./Format.ps1`, and `./Test.ps1`; Linux, macOS, and FreeBSD users can run `sh Build.sh`, `sh Format.sh`, and `sh Test.sh`. The build scripts configure and build the compiler and C++ test target while generating the compilation database. The format scripts handle maintained C++ and Rux sources. The test scripts run the policy, formatting, build, CTest, lint, and Rux-test workflow. Use `./Test.ps1 -SkipBuild` or `sh Test.sh --skip-build` to reuse an existing build. Add `-ClangTidy` or `--clang-tidy` for the slower static-analysis pass; the Code Quality workflow always runs it.
 
-### Debug vs. Release builds
+### Debug vs. Release Builds
 
 - **Release** (default) — optimized; this is what CI builds and tests, and what ships. Use it for normal development and before pushing.
 - **Debug** — configure a _separate_ build directory with `-DCMAKE_BUILD_TYPE=Debug` (e.g. `cmake -S . -B Build-Debug -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DRUX_BUILD_TESTS=ON`). It is unoptimized and includes debug information, so breakpoints and stepping in a debugger (LLDB/GDB) behave predictably.
 
 There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan/UBSan, pass the flags yourself on a throwaway build dir, e.g. `-DCMAKE_CXX_FLAGS="-fsanitize=address,undefined"`.
 
-## 4. Repository layout
+## 4. Repository Layout
 
 | Path                        | Purpose                                                                              |
 | --------------------------- | ------------------------------------------------------------------------------------ |
 | `Compiler/Cli/`             | Command-line interface and terminal presentation                                     |
+| `Compiler/Diagnostics/`     | Diagnostic values, severities, and rendering primitives                              |
 | `Compiler/Driver/`          | Compilation orchestration, targets, and build reports                                |
 | `Compiler/Source/`          | Source discovery, loading, and locations                                             |
 | `Compiler/Lexer/`           | Tokens and lexical analysis                                                          |
@@ -83,7 +84,7 @@ There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan
 
 `Bin/` contains every repository executable. The compiler builds directly to `Bin/rux` (`Bin\rux.exe` on Windows), the C++ unit runner to `Bin/Tests/Unit/rux-tests`, language tests to `Bin/Tests/Language/`, and package tests to `Bin/Tests/Packages/<Package>/`. Test executables are written directly to those corresponding directories without `Debug` or `Release` subdirectories. CMake intermediates stay in the build directory passed to `-B`. `Bin/` is listed in `.gitignore`; nothing under it is tracked.
 
-### Compiler pipeline
+### Compiler Pipeline
 
 A source file flows through these stages, front to back. Each stage owns a small set of files, so this is the map for "where do I make this change?":
 
@@ -111,7 +112,7 @@ Supporting layers around the pipeline:
 
 There are two suites: Rux-language test packages (run with `rux test`) and C++ unit tests for the compiler internals (run with `ctest`).
 
-### Language and package tests (`Tests/Language/`, `Tests/Packages/`)
+### Language and Package Tests (`Tests/Language/`, `Tests/Packages/`)
 
 Run the full suite from the repository root:
 
@@ -153,7 +154,7 @@ Output = "../../../Bin/Tests/Language"
 
 Package tests live at `Tests/Packages/<Package>/<Test>/`. Their manifests use local path dependencies back to the package they cover and direct output to the corresponding central binary folder. For example, a Math test uses `Math = { Path = "../../../../Packages/Math" }` and `Output = "../../../../Bin/Tests/Packages/Math"`.
 
-### Unit tests (`Tests/Unit/`)
+### Unit Tests (`Tests/Unit/`)
 
 C++ tests against `RuxCore` using the vendored [doctest](https://github.com/doctest/doctest) header. Build and run them with:
 
@@ -167,11 +168,11 @@ The unit-test executable is written to `Bin/Tests/Unit/rux-tests` (`rux-tests.ex
 
 Run the centralized binary directly for doctest filtering, for example `Bin/Tests/Unit/rux-tests -ts="Lexer*"` (with `.exe` on Windows).
 
-### Golden diagnostics (`Tests/Unit/Golden/`)
+### Golden Diagnostics (`Tests/Unit/Golden/`)
 
 Part of the unit-test binary: every `Tests/Unit/Golden/<Case>.rux` is compiled through the frontend (lex → parse → sema), the diagnostics are rendered one per line as `line:column: severity: message`, and compared against `<Case>.expected`. To add a case, drop a `.rux` file in `Tests/Unit/Golden/`, run the test binary once with `RUX_UPDATE_GOLDEN=1` to generate the `.expected` file, and review it before committing. **When you change or add a diagnostic, add or regenerate the affected golden cases.**
 
-## 6. Code style
+## 6. Code Style
 
 Formatting is enforced by [`.clang-format`](../.clang-format) for C++ (LLVM base, 4-space indent, west const, 120-column limit) and by `rux fmt` for Rux sources. The repository scripts format all maintained sources:
 

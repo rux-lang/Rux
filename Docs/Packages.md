@@ -4,13 +4,13 @@ First-party Rux packages live under `Packages/` in the repository root. Return t
 
 ## Package Status
 
-Packages marked **Planned** reserve their package names and source layout but do not expose an API yet.
+Packages marked **Planned** reserve their package names and source layout but do not expose an API yet. **Partial** means some modules are usable while others are still placeholders.
 
 | Package       | Status    | Description                                              |
 | ------------- | --------- | -------------------------------------------------------- |
 | `Algorithms`  | Planned   | Generic algorithms over slices, ranges, and iterators    |
 | `C`           | Available | C standard library bindings                              |
-| `Collections` | Planned   | Generic data structures                                  |
+| `Collections` | Partial   | Generic data structures; `Array` and `List` are usable   |
 | `Format`      | Available | String conversion and formatting                         |
 | `Hash`        | Planned   | Hash functions and checksums                             |
 | `Io`          | Available | Streams, console I/O, readers, and writers               |

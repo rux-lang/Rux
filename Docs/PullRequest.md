@@ -2,12 +2,12 @@
 
 What happens to a change from the moment you open a pull request until it merges into `dev`.
 
-## Before you open a PR
+## Preflight Checklist
 
 - Your branch is based on `dev` and targets `dev` (see [Branch Architecture](Branches.md)).
 - The release build passes locally.
 - `rux test --release` passes from the repository root using only local workspace packages.
-- C++ unit tests pass with `ctest --test-dir Build --output-on-failure` when the change touches compiler internals.
+- C++ unit tests pass with `ctest --test-dir Build --output-on-failure -C Release` when the change touches compiler internals.
 - Touched files are `clang-format`-clean.
 - `clang-tidy` passes for every maintained C++ translation unit.
 - User-visible behavior has an integration or golden test; internal behavior has focused C++ unit coverage.
@@ -21,9 +21,9 @@ What happens to a change from the moment you open a pull request until it merges
 - Describe **what** changed and **why**, not just how.
 - Include the exact commands used to verify the change and call out any checks you could not run locally.
 
-There is no pull-request template in `.github/` today, so there's no enforced checklist — write the description by hand and cover the points above. The contributor expectations live in [`CONTRIBUTING.md`](../CONTRIBUTING.md); a PR that satisfies the **Before you open a PR** list above is in good shape.
+Opening a PR prefills [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md). Fill in each section rather than deleting it; the template mirrors the **Preflight Checklist** above and the contributor expectations in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
-## 2. Automated checks
+## 2. Automated Checks
 
 Opening or updating a PR triggers the full per-OS CI matrix — every supported platform builds and runs the test suite. See [CI/CD Flow](CI-CD.md) for the exact workflows and platforms.
 
@@ -49,7 +49,7 @@ Reviewers should check ownership boundaries as well as behavior: package and hos
 - **Who merges:** any maintainer, once the required checks are green and the PR has its approving review.
 - **After merge the head branch is deleted** automatically; you can safely delete your local copy too (`git branch -d <branch>`).
 
-## 5. After merge
+## 5. After Merge
 
 - The change rides `dev` until the next promotion to `main`.
 - It ships to users when a release is cut (see [Release Pipeline](Release.md)).

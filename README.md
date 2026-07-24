@@ -6,7 +6,7 @@
 
 # Rux Programming Language
 
-Rux is a fast, compiled, strongly typed, multi-paradigm programming language.
+Rux is a fast, compiled, strongly typed, multi-paradigm programming language. On x86-64 the compiler is self-contained — its own code generator, object format, and PE/ELF/Mach-O linkers produce a native executable with no external toolchain; AArch64 targets lower natively and link through the platform Clang driver.
 
 [![FreeBSD](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml)
 [![Linux](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml)
@@ -16,44 +16,58 @@ Rux is a fast, compiled, strongly typed, multi-paradigm programming language.
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](LICENSE.md)
 
-## Platform Support
-
-| Platform | x86-64 CI | AArch64 CI | Prebuilt release |
-| -------- | :-------: | :--------: | :--------------: |
-| FreeBSD  |    Yes    |    Yes     | x86-64, AArch64  |
-| Linux    |    Yes    |    Yes     | x86-64, AArch64  |
-| macOS    |    Yes    |    Yes     | x86-64, AArch64  |
-| Windows  |    Yes    |    Yes     | x86-64, AArch64  |
-
-CI coverage means that Rux is built and tested from source on that platform and architecture.
+Each platform badge above covers a native build-and-test run on both supported architectures, x86-64 and AArch64, and prebuilt binaries are published for every one of them.
 
 > [!IMPORTANT]
 > Rux is under active, pre-1.0 development. Language features, compiler behavior, and package formats may change between minor releases. Check the [changelog](CHANGELOG.md) when upgrading.
 
+## Hello, Rux
+
+```rux
+import Io::PrintLine;
+import Rux::{ OperatingSystem, #target };
+
+func Main() -> int {
+    let greeting = "Hello, Rux!";
+
+    for i in 0..3 {
+        PrintLine(greeting);
+    }
+
+    when #target.os == .Windows {
+        PrintLine("Compiled for Windows.");
+    } else {
+        PrintLine("Compiled for a Unix-like system.");
+    }
+
+    return 0;
+}
+```
+
+`when` runs while compiling: only the taken branch is analyzed and emitted, so the other may reference symbols that do not exist on the current target.
+
+Scaffold, build, and run a package with:
+
+```sh
+rux new App
+cd App
+rux run
+```
+
+`rux new` writes a minimal `Main`; the sample above also needs `Io` and `Rux` in the manifest's `[Dependencies]`.
+
 ## Documentation
+
+Language and tool documentation lives on the website:
 
 - [Get started](https://rux-lang.dev/start)
 - [Rux reference](https://rux-lang.dev/docs)
 - [CLI reference](https://rux-lang.dev/cli)
 - [API reference](https://rux-lang.dev/api)
 
-Platform installation and source-build guides are indexed in the next two sections. For work on the compiler and repository, use the guide that matches the task:
+Working on the compiler itself is covered by the guides in [`Docs/`](Docs/), indexed in [CONTRIBUTING.md](CONTRIBUTING.md#process-documentation). Installer implementation notes live beside their source, in [Packaging/Linux](Packaging/Linux/README.md) and [Packaging/Windows](Packaging/Windows/README.md).
 
-- [Contributing](CONTRIBUTING.md) — prepare a change and understand the contribution requirements.
-- [Development Workflow](Docs/Workflow.md) — configure a development build, run tests, format code, or find a component.
-- [Compiler Architecture](Docs/Architecture.md) — understand component ownership, dependency direction, or the compilation pipeline.
-- [First-Party Packages](Docs/Packages.md) — review package status, layout, dependencies, and centralized tests.
-- [Branch Architecture](Docs/Branches.md) — create a topic branch or understand how changes reach a release.
-- [Pull Request Lifecycle](Docs/PullRequest.md) — prepare, review, update, or merge a pull request.
-- [CI/CD Flow](Docs/CI-CD.md) — reproduce a required check or understand platform-specific CI.
-- [Release Pipeline](Docs/Release.md) — prepare a version, tag it, verify artifacts, and publish a release.
-
-Installer implementation and maintenance documentation lives beside its source code:
-
-- [Linux installer](Packaging/Linux/README.md)
-- [Windows installers](Packaging/Windows/README.md)
-
-These are living documents. Update the relevant page in the same pull request whenever a process, branch rule, installer, or workflow changes. Commands use POSIX shell syntax unless a PowerShell example is provided; on Windows, replace `./Bin/rux` with `.\Bin\rux.exe`.
+Commands in this repository use POSIX shell syntax unless a PowerShell example is provided; on Windows, replace `./Bin/rux` with `.\Bin\rux.exe`.
 
 ## Installing a Release
 
@@ -75,7 +89,7 @@ Rux is written in C++26 and currently builds with Clang. GCC and MSVC support is
 
 ## Contributing
 
-Contributions are welcome. Start with the [contributing guide](CONTRIBUTING.md) and open pull requests against the `dev` branch. The [development workflow](Docs/Workflow.md) explains the compiler layout, tests, formatting, and static analysis in detail.
+Contributions are welcome. Start with the [contributing guide](CONTRIBUTING.md) and open pull requests against the `dev` branch. The [development workflow](Docs/Workflow.md) explains the compiler layout, tests, formatting, and static analysis in detail. Documentation is part of the change: update the affected page in the same pull request whenever a process, branch rule, installer, or workflow changes.
 
 ## Community
 

@@ -1,6 +1,6 @@
 // Square root, computed by the SSE hardware instruction. Both the Win64 and
 // System V ABIs pass the first float argument in xmm0 and return the result
-// in xmm0, so no @[Call] override is needed. sqrtss/sqrtsd are correctly
+// in xmm0, so no #Abi override is needed. sqrtss/sqrtsd are correctly
 // rounded and already produce the IEEE-754 results for the special cases:
 // Sqrt(NaN) = NaN, Sqrt(+Inf) = +Inf, Sqrt(-0.0) = -0.0, Sqrt(x < 0) = NaN.
 

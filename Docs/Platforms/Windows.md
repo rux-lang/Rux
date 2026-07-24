@@ -56,8 +56,10 @@ Rux currently requires Clang 22.1 or newer, CMake 3.30 or newer, Ninja 1.11 or n
 
    ```powershell
    $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
-   $targetArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq "Arm64") { "arm64" } else { "amd64" }
-   & "$vs\Common7\Tools\Launch-VsDevShell.ps1" -Arch $targetArch -HostArch amd64 -SkipAutomaticLocation
+   $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq "Arm64") { "arm64" } else { "amd64" }
+   cmd /c "`"$vs\VC\Auxiliary\Build\vcvarsall.bat`" $arch && set" | ForEach-Object {
+       if ($_ -match "^([^=]+)=(.*)$") { Set-Item -LiteralPath "Env:\$($Matches[1])" -Value $Matches[2] }
+   }
    ```
 
 5. Clone and build Rux from the initialized environment:
@@ -69,6 +71,12 @@ Rux currently requires Clang 22.1 or newer, CMake 3.30 or newer, Ninja 1.11 or n
    ```
 
 The script creates a Release build in `Build\` and writes the compiler to `Bin\rux.exe`.
+
+Once the repository is cloned, later sessions can replace the snippet in step 4 with the script CI uses, which performs the same initialization for the requested toolset:
+
+```powershell
+./.github/scripts/Enter-VsDevEnv.ps1 -Arch amd64   # arm64 on an AArch64 host
+```
 
 `Build.ps1` selects `windows-x86_64` or `windows-aarch64` from the native host
 architecture.

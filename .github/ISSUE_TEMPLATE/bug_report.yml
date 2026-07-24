@@ -1,0 +1,66 @@
+name: Bug report
+description: Report incorrect compiler, CLI, or package-manager behavior
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong, in one or two sentences.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Minimal reproducer
+      description: The smallest Rux source, manifest, or command sequence that shows the problem.
+      render: rux
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs. actual behavior
+      description: Include the exact diagnostic, exit code, or output you saw.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Rux version
+      description: Output of `rux version`, or the commit hash for a source build.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - FreeBSD
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: arch
+    attributes:
+      label: Architecture
+      options:
+        - x86-64
+        - AArch64
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: dev
+    attributes:
+      label: Latest `dev`
+      options:
+        - label: The problem reproduces on the latest `dev` branch

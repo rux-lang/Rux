@@ -1,8 +1,8 @@
-# Compiler architecture
+# Compiler Architecture
 
 Rux is split into focused CMake component targets whose dependencies follow the compilation pipeline. Most implementation folders map directly to a target; header-only target models are shared by the components that consume them. This keeps frontend, backend, host-system, and package-management changes reviewable without turning `RuxCore` into a monolith.
 
-## Compilation pipeline
+## Compilation Pipeline
 
 ```text
 Source -> Lexer -> Syntax -> SemanticModel
@@ -24,7 +24,7 @@ Source -> Lexer -> Syntax -> SemanticModel
 
 The driver loads the root manifest and dependencies before entering this pipeline. Diagnostics can stop the process after any frontend stage; object emission and linking only run when analysis and lowering succeed.
 
-## Component ownership
+## Component Ownership
 
 | Component              | Owns                                                                  | May depend on                         |
 | ---------------------- | --------------------------------------------------------------------- | ------------------------------------- |
@@ -49,13 +49,13 @@ The driver loads the root manifest and dependencies before entering this pipelin
 
 The CMake target graph enforces these dependencies. Prefer adding a dependency to the narrowest owning component rather than reaching through `RuxCore`.
 
-## Host and target boundaries
+## Host and Target Boundaries
 
 `Target` describes the output machine. `System` describes the host running the compiler. Code generation and linking must use target data rather than host preprocessor checks. For example, emitting a Linux executable while running on Windows is a target decision; locating `%LocalAppData%` is a host decision.
 
 Operating-system APIs are confined to `Compiler/System`; the CI isolation guard is `Tests/Policy/PlatformIsolation/Check.sh`. New uses of `getenv`, `<windows.h>`, `fork`, or similar APIs belong behind a `System` interface.
 
-## Architecture naming
+## Architecture Naming
 
 Use one spelling per context so the website, repository, CLI, and compiler APIs stay predictable:
 
@@ -75,7 +75,7 @@ External APIs keep their required spellings, including Visual Studio
 `amd64`/`arm64`, GitHub's `windows-11-arm`, FreeBSD's `aarch64`, and WiX's
 `x64`.
 
-## Namespaces and public boundaries
+## Namespaces and Public Boundaries
 
 The principal ownership namespaces currently enforced at cross-platform and orchestration boundaries are `Rux::Target`, `Rux::System`, and `Rux::Driver`. New standalone tools use `Rux::Formatting` and `Rux::Linting`. Existing language model types remain in `Rux` while those large APIs are migrated incrementally; new code must not add declarations to `Misc` or recreate a generic `Utils` component.
 
@@ -83,7 +83,7 @@ The build exposes focused targets such as `RuxSyntax`, `RuxSemantic`, `RuxHir`, 
 
 `RuxCore` is convenient for the unit-test executable and embedders, but compiler components must link to their actual dependencies. It must not become a shortcut that introduces cycles between stages.
 
-## CLI and package flows
+## CLI and Package Flows
 
 Formatter and linter are internal compiler components exposed through the single `rux` application:
 
@@ -100,7 +100,7 @@ Package commands use `Package/Manifest` for manifest parsing and `System/Process
 
 An explicit `[Workspace]` manifest names its member packages. Workspace checks resolve dependencies matching member package names from the local source tree. `rux test` discovers runnable packages below the root `Tests/` tree, requires their direct dependencies to use local path entries, resolves transitive first-party dependencies from workspace members, and disables registry fallback. Publishable package manifests can therefore retain registry-compatible dependency declarations without making repository tests depend on the network or shared package cache.
 
-## Failure and diagnostic contracts
+## Failure and Diagnostic Contracts
 
 Ordinary compiler failures are values, not exceptions. Frontend stages collect diagnostics with source locations so users can fix several problems per run. Filesystem, process, and network helpers return `bool`, `std::optional`, or a result object; the CLI owns user-facing error text and exit codes.
 

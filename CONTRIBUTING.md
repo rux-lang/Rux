@@ -14,7 +14,7 @@ Thanks for your interest in contributing to the Rux programming language! This p
 
 1. Build the compiler by following [Building from Source](README.md#building-from-source) in the README, then enable the C++ test target in the same build directory:
    ```sh
-   cmake -S . -B Build -DRUX_BUILD_TESTS=ON
+   cmake -S . -B Build -G Ninja -DRUX_BUILD_TESTS=ON
    cmake --build Build --config Release
    ```
 2. [Fork](https://github.com/rux-lang/Rux/fork) the repo and branch off `dev`:
@@ -35,19 +35,21 @@ Thanks for your interest in contributing to the Rux programming language! This p
    PowerShell users can run `./Test.ps1` for the complete build-and-test workflow, or `./Test.ps1 -SkipBuild` after an existing build. Linux, macOS, and FreeBSD users can run `sh Test.sh`, or `sh Test.sh --skip-build` after an existing build. Add `-ClangTidy` or `--clang-tidy` before submitting compiler changes to run the slower static-analysis pass locally; CI always enforces it.
 
 4. Format all maintained C++ and Rux source files with `./Format.ps1` on PowerShell or `sh Format.sh` on Linux, macOS, and FreeBSD.
-5. Push your branch and open a Pull Request **against `dev`**.
+5. Push your branch and open a Pull Request **against `dev`**, filling in the [pull request template](.github/PULL_REQUEST_TEMPLATE.md).
 
 ## Process Documentation
 
 For anything beyond the quick start, see the detailed guides:
 
-| Guide                                         | What it covers                                                |
-| --------------------------------------------- | ------------------------------------------------------------- |
-| [Development Workflow](Docs/Workflow.md)      | Day-to-day loop: build, change, test, format, commit          |
-| [Branch Architecture](Docs/Branches.md)       | What `main` and `dev` are for, naming, protection rules       |
-| [Pull Request Lifecycle](Docs/PullRequest.md) | From opening a PR to merge: review, CI gates, etiquette       |
-| [CI/CD Flow](Docs/CI-CD.md)                   | The per-OS build/test workflows that run on every push and PR |
-| [Release Pipeline](Docs/Release.md)           | How a tag becomes a published, multi-platform release         |
+| Guide                                          | What it covers                                                 |
+| ---------------------------------------------- | -------------------------------------------------------------- |
+| [Development Workflow](Docs/Workflow.md)       | Day-to-day loop: build, change, test, format, commit           |
+| [Compiler Architecture](Docs/Architecture.md)  | Component ownership, dependency direction, compilation pipeline |
+| [First-Party Packages](Docs/Packages.md)       | Package status, layout, dependencies, and centralized tests    |
+| [Branch Architecture](Docs/Branches.md)        | What `main` and `dev` are for, naming, protection rules        |
+| [Pull Request Lifecycle](Docs/PullRequest.md)  | From opening a PR to merge: review, CI gates, etiquette        |
+| [CI/CD Flow](Docs/CI-CD.md)                    | The per-OS build/test workflows that run on every push and PR  |
+| [Release Pipeline](Docs/Release.md)            | How a tag becomes a published, multi-platform release          |
 
 ## Code Style
 
@@ -77,12 +79,15 @@ The scripts cover `Compiler/`, maintained C++ unit-test code, and every Rux pack
 
 ## Reporting Bugs
 
-Include:
+Open a [bug report](https://github.com/rux-lang/Rux/issues/new?template=bug_report.yml) and fill in the form, which asks for:
 
 - Rux version / commit hash (`rux version`)
 - A minimal reproducer (source file or snippet)
 - Expected vs. actual behavior
+- Operating system and architecture
 - Whether the problem reproduces on the latest `dev` branch
+
+Language feature ideas belong in [Discussions](https://github.com/rux-lang/Rux/discussions) first; security issues follow the [security policy](.github/SECURITY.md) and must not be filed as public issues.
 
 ## Community
 

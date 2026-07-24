@@ -22,13 +22,13 @@ verify-version ──► freebsd ───┐
                    windows ───┘
 ```
 
-### 1. `verify-version` (fail fast)
+### 1. `verify-version` (Fail Fast)
 
 Parses `VERSION` from `CMakeLists.txt` and compares it to the pushed tag (minus the `v`). If they don't match, the run fails immediately — a mismatched tag can never produce a release.
 
 > **Always bump `VERSION` in `CMakeLists.txt` before tagging, and tag the exact same version.**
 
-### 2. Build jobs (`freebsd`, `linux`, `macos`, `windows`)
+### 2. Build Jobs (`freebsd`, `linux`, `macos`, `windows`)
 
 Each `needs: verify-version`, then builds Release **and runs the test suite** — a broken build or failing test blocks the release. Each job has x86-64 and AArch64 matrix entries and uploads one architecture-labelled binary artifact. The Windows x86-64 entry additionally packages the freshly built binary into a per-user MSI installer (`Packaging/Windows/Msi/Build.ps1`):
 
@@ -56,7 +56,7 @@ Each job runs language tests from the repository root. Test manifests use local 
    - `SHA256SUMS` (integrity hashes for every package)
 3. Create a **draft** GitHub Release with auto-generated release notes and every package attached.
 
-## Cutting a release — checklist
+## Cutting a Release — Checklist
 
 1. Ensure `dev` is green and promoted to `main` (see [Branch Architecture](Branches.md)).
 2. Bump `VERSION` in `CMakeLists.txt`.
@@ -91,14 +91,14 @@ Do not move or reuse a published tag. If a released artifact is defective, prepa
 
 Canonical release asset names use `rux-<os>-<architecture>.<extension>`:
 
-| Assets                                                     | Architectures        |
-| ---------------------------------------------------------- | -------------------- |
-| `rux-freebsd-<architecture>.tar.gz`                        | x86-64 and AArch64   |
-| `rux-linux-<architecture>.tar.gz`                          | x86-64 and AArch64   |
-| `rux-macos-<architecture>.tar.gz`                          | x86-64 and AArch64   |
-| `rux-windows-<architecture>.zip`                           | x86-64 and AArch64   |
-| `rux-windows-x86_64.msi`                                  | x86-64 only          |
-| `SHA256SUMS`                                               | every release asset  |
+| Assets                              | Architectures       |
+| ----------------------------------- | ------------------- |
+| `rux-freebsd-<architecture>.tar.gz` | x86-64 and AArch64  |
+| `rux-linux-<architecture>.tar.gz`   | x86-64 and AArch64  |
+| `rux-macos-<architecture>.tar.gz`   | x86-64 and AArch64  |
+| `rux-windows-<architecture>.zip`    | x86-64 and AArch64  |
+| `rux-windows-x86_64.msi`            | x86-64 only         |
+| `SHA256SUMS`                        | every release asset |
 
 The architecture identifiers in filenames are `x86_64` and `aarch64`, matching compiler target and CI artifact identifiers. The release tag already carries the version, so asset names deliberately omit it; this also keeps stable GitHub `releases/latest/download/<asset>` URLs.
 
@@ -106,7 +106,7 @@ For compatibility, the workflow also publishes the former architecture-unqualifi
 
 The Linux and PowerShell installers use GitHub's `releases/latest/download/<asset>` redirect unless the user pins a version. Publishing the draft therefore makes the new release available to those installers without another repository change. The website's install endpoints serve the scripts; they do not host the release binaries themselves.
 
-## Failed releases
+## Failed Releases
 
 - A failed workflow before publication creates no public release. Fix the underlying problem, delete the unpublished tag if appropriate, and create a new tag only after the commit is ready.
 - A draft with incorrect notes or attachments can be edited or deleted before publication.
