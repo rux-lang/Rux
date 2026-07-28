@@ -39,7 +39,7 @@ The driver loads the root manifest and dependencies before entering this pipelin
 | `Ir/Hir`               | High-level IR and its transformations                                 | Semantic and Lexer                    |
 | `Ir/Lir`               | Control-flow-explicit low-level IR                                    | Semantic                              |
 | `Lowering`             | AST/semantic model → HIR → LIR                                        | Frontend and IR components            |
-| `CodeGen`              | Layout rules shared by machine backends                              | LIR                                   |
+| `CodeGen`              | Layout rules shared by machine backends                               | LIR                                   |
 | `CodeGen/X86_64`       | x86-64 code generation and RCU construction                           | LIR, Object, Diagnostics              |
 | `CodeGen/AArch64`      | Native AArch64 lowering and linking through the platform Clang driver | LIR, System, Diagnostics              |
 | `Object/Rcu`           | RCU object representation and serialization                           | Standard library                      |
@@ -59,21 +59,15 @@ Operating-system APIs are confined to `Compiler/System`; the CI isolation guard 
 
 Use one spelling per context so the website, repository, CLI, and compiler APIs stay predictable:
 
-| Context                    | x86-64                  | AArch64                  |
-| -------------------------- | ----------------------- | ------------------------ |
-| Website, docs, CI labels   | `x86-64`                | `AArch64`                |
-| Target and artifact IDs    | `x86_64`                | `aarch64`                |
-| C++ enum                   | `Target::Arch::X86_64`  | `Target::Arch::AArch64`  |
-| Rux enum                   | `Architecture::X86_64`  | `Architecture::AArch64`  |
-| Code-generation directory  | `CodeGen/X86_64`        | `CodeGen/AArch64`        |
+| Context                   | x86-64                 | AArch64                 |
+| ------------------------- | ---------------------- | ----------------------- |
+| Website, docs, CI labels  | `x86-64`               | `AArch64`               |
+| Target and artifact IDs   | `x86_64`               | `aarch64`               |
+| C++ enum                  | `Target::Arch::X86_64` | `Target::Arch::AArch64` |
+| Rux enum                  | `Architecture::X86_64` | `Architecture::AArch64` |
+| Code-generation directory | `CodeGen/X86_64`       | `CodeGen/AArch64`       |
 
-Canonical target names combine the lowercase OS identifier with the machine
-identifier, such as `linux-x86_64` and `windows-aarch64`. The CLI accepts
-`x64`, `amd64`, `x86-64`, and `arm64` suffixes for compatibility, but
-normalizes them before comparison and before exposing `#target.triple`.
-External APIs keep their required spellings, including Visual Studio
-`amd64`/`arm64`, GitHub's `windows-11-arm`, FreeBSD's `aarch64`, and WiX's
-`x64`.
+Canonical target names combine the lowercase OS identifier with the machine identifier, such as `linux-x86_64` and `windows-aarch64`. The CLI accepts `x64`, `amd64`, `x86-64`, and `arm64` suffixes for compatibility, but normalizes them before comparison and before exposing `#target.triple`. External APIs keep their required spellings, including Visual Studio `amd64`/`arm64`, GitHub's `windows-11-arm`, FreeBSD's `aarch64`, and WiX's `x64`.
 
 ## Namespaces and Public Boundaries
 
@@ -93,12 +87,12 @@ rux lint -> RuxLinter    -> RuxSyntax + RuxSemantic
 rux      -> RuxDriver
 ```
 
-Package commands use `Package/Manifest` for manifest parsing and `System/Process` for registry/network operations. Build and check resolve path dependencies directly and registry dependencies from the shared package cache:
+Package commands use `Package/Manifest` for the strict versioned [`Rux.toml` contract](Manifest.md) and `System/Process` for registry/network operations. Manifest failures carry source-located diagnostics rather than escaping as exceptions. Build and check resolve path dependencies directly and registry dependencies from the shared package cache:
 
 - Windows: `%LocalAppData%\Rux\Packages`
 - Unix-like hosts: `~/.rux/packages`
 
-An explicit `[Workspace]` manifest names its member packages. Workspace checks resolve dependencies matching member package names from the local source tree. `rux test` discovers runnable packages below the root `Tests/` tree, requires their direct dependencies to use local path entries, resolves transitive first-party dependencies from workspace members, and disables registry fallback. Publishable package manifests can therefore retain registry-compatible dependency declarations without making repository tests depend on the network or shared package cache.
+An explicit `[Workspace]` manifest names its member packages. Workspace checks resolve qualified registry dependencies from matching namespaced members and resolve test-only path dependencies directly. `rux test` discovers `Program` packages below the root `Tests/` tree, requires their direct dependencies to use local path entries, resolves transitive first-party dependencies from workspace members, and disables registry fallback. Publishable package manifests can therefore retain qualified registry dependencies without making repository tests depend on the network or shared package cache.
 
 ## Failure and Diagnostic Contracts
 

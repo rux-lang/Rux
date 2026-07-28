@@ -55,32 +55,32 @@ There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan
 
 ## 4. Repository Layout
 
-| Path                        | Purpose                                                                              |
-| --------------------------- | ------------------------------------------------------------------------------------ |
-| `Compiler/Cli/`             | Command-line interface and terminal presentation                                     |
-| `Compiler/Diagnostics/`     | Diagnostic values, severities, and rendering primitives                              |
-| `Compiler/Driver/`          | Compilation orchestration, targets, and build reports                                |
-| `Compiler/Source/`          | Source discovery, loading, and locations                                             |
-| `Compiler/Lexer/`           | Tokens and lexical analysis                                                          |
-| `Compiler/Syntax/`          | AST and parser                                                                       |
-| `Compiler/Semantic/`        | Types, symbols, analysis, and the persistent semantic model                          |
-| `Compiler/Ir/`              | HIR/LIR models, printers, and IR-local passes                                        |
-| `Compiler/Lowering/`        | Explicit AST-to-HIR and HIR-to-LIR transformations                                   |
-| `Compiler/CodeGen/`         | Target-specific code generation                                                      |
-| `Compiler/Object/`          | Object formats and serialization                                                     |
-| `Compiler/Linker/`          | PE, ELF, and Mach-O executable writers                                               |
-| `Compiler/Target/`          | Compilation target, ABI, data-layout, and architecture model                         |
-| `Compiler/System/`          | Host OS, hardware, filesystem, and process services                                  |
-| `Compiler/Package/`         | Manifest parsing and package management                                              |
-| `Compiler/Formatter/`       | Formatting engine used by `rux fmt`                                                  |
-| `Compiler/Linter/`          | Lint engine and rules used by `rux lint`                                             |
-| `Tests/Language/`           | Executable Rux language and compiler-behavior tests (`rux test`)                     |
-| `Tests/Packages/`           | Executable first-party package tests grouped as `<Package>/<Test>` (`rux test`)      |
-| `Tests/Unit/`               | C++ unit tests and their `Golden/` diagnostic fixtures (doctest + CTest)             |
-| `Tests/Policy/`             | Repository-policy checks, including platform isolation                              |
-| `Packaging/`                | Linux and Windows installer scripts plus the Windows MSI project                     |
-| `Bin/`                      | Compiler and centralized test executables; **git-ignored**                           |
-| `CMakeLists.txt`            | Top-level build entry: project `VERSION` + `add_subdirectory(Compiler)`              |
+| Path                    | Purpose                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| `Compiler/Cli/`         | Command-line interface and terminal presentation                                |
+| `Compiler/Diagnostics/` | Diagnostic values, severities, and rendering primitives                         |
+| `Compiler/Driver/`      | Compilation orchestration, targets, and build reports                           |
+| `Compiler/Source/`      | Source discovery, loading, and locations                                        |
+| `Compiler/Lexer/`       | Tokens and lexical analysis                                                     |
+| `Compiler/Syntax/`      | AST and parser                                                                  |
+| `Compiler/Semantic/`    | Types, symbols, analysis, and the persistent semantic model                     |
+| `Compiler/Ir/`          | HIR/LIR models, printers, and IR-local passes                                   |
+| `Compiler/Lowering/`    | Explicit AST-to-HIR and HIR-to-LIR transformations                              |
+| `Compiler/CodeGen/`     | Target-specific code generation                                                 |
+| `Compiler/Object/`      | Object formats and serialization                                                |
+| `Compiler/Linker/`      | PE, ELF, and Mach-O executable writers                                          |
+| `Compiler/Target/`      | Compilation target, ABI, data-layout, and architecture model                    |
+| `Compiler/System/`      | Host OS, hardware, filesystem, and process services                             |
+| `Compiler/Package/`     | Manifest parsing and package management                                         |
+| `Compiler/Formatter/`   | Formatting engine used by `rux fmt`                                             |
+| `Compiler/Linter/`      | Lint engine and rules used by `rux lint`                                        |
+| `Tests/Language/`       | Executable Rux language and compiler-behavior tests (`rux test`)                |
+| `Tests/Packages/`       | Executable first-party package tests grouped as `<Package>/<Test>` (`rux test`) |
+| `Tests/Unit/`           | C++ unit tests and their `Golden/` diagnostic fixtures (doctest + CTest)        |
+| `Tests/Policy/`         | Repository-policy checks, including platform isolation                          |
+| `Packaging/`            | Linux and Windows installer scripts plus the Windows MSI project                |
+| `Bin/`                  | Compiler and centralized test executables; **git-ignored**                      |
+| `CMakeLists.txt`        | Top-level build entry: project `VERSION` + `add_subdirectory(Compiler)`         |
 
 `Bin/` contains every repository executable. The compiler builds directly to `Bin/rux` (`Bin\rux.exe` on Windows), the C++ unit runner to `Bin/Tests/Unit/rux-tests`, language tests to `Bin/Tests/Language/`, and package tests to `Bin/Tests/Packages/<Package>/`. Test executables are written directly to those corresponding directories without `Debug` or `Release` subdirectories. CMake intermediates stay in the build directory passed to `-B`. `Bin/` is listed in `.gitignore`; nothing under it is tracked.
 
@@ -88,18 +88,18 @@ There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan
 
 A source file flows through these stages, front to back. Each stage owns a small set of files, so this is the map for "where do I make this change?":
 
-| Stage             | File(s)                             | Role                                      |
-| ----------------- | ----------------------------------- | ----------------------------------------- |
-| Source loading    | `Source/SourceLoader.cpp`           | Locate and read source files              |
-| Lexing            | `Lexer/Lexer.cpp`                   | Source text → token stream                |
-| Parsing           | `Syntax/Parser/`                    | Tokens → AST                              |
-| Semantic analysis | `Semantic/SemanticAnalyzer.cpp`     | AST → validated `SemanticModel`           |
-| HIR lowering      | `Lowering/AstToHir/`                | Semantic model → HIR                      |
-| HIR passes        | `Ir/Hir/Passes/`                    | HIR optimization                          |
-| LIR lowering      | `Lowering/HirToLir/`                | HIR → control-flow-explicit LIR           |
-| Code generation   | `CodeGen/{X86_64,AArch64}/`         | LIR → target-native representation        |
-| Object emission   | `Object/Rcu/`                       | x86-64 RCU serialization and diagnostics  |
-| Linking           | `Linker/{Pe,Elf,MachO}/` or Clang   | Objects/LIR lowering → target executable  |
+| Stage             | File(s)                           | Role                                     |
+| ----------------- | --------------------------------- | ---------------------------------------- |
+| Source loading    | `Source/SourceLoader.cpp`         | Locate and read source files             |
+| Lexing            | `Lexer/Lexer.cpp`                 | Source text → token stream               |
+| Parsing           | `Syntax/Parser/`                  | Tokens → AST                             |
+| Semantic analysis | `Semantic/SemanticAnalyzer.cpp`   | AST → validated `SemanticModel`          |
+| HIR lowering      | `Lowering/AstToHir/`              | Semantic model → HIR                     |
+| HIR passes        | `Ir/Hir/Passes/`                  | HIR optimization                         |
+| LIR lowering      | `Lowering/HirToLir/`              | HIR → control-flow-explicit LIR          |
+| Code generation   | `CodeGen/{X86_64,AArch64}/`       | LIR → target-native representation       |
+| Object emission   | `Object/Rcu/`                     | x86-64 RCU serialization and diagnostics |
+| Linking           | `Linker/{Pe,Elf,MachO}/` or Clang | Objects/LIR lowering → target executable |
 
 Supporting layers around the pipeline:
 
@@ -120,7 +120,7 @@ Run the full suite from the repository root:
 ./Bin/rux test --release  # omit --release for a Debug-profile test build
 ```
 
-The root `Rux.toml` declares every first-party package as a workspace member. Every dependency in a test manifest must use a local `Path` into `Packages/`; the C++ manifest-policy test enforces this across the whole tree. While running tests, transitive dependencies declared by publishable package manifests are overridden by matching local workspace members, and registry fallback is disabled. The repository test suite therefore requires no package-cache setup or network access.
+The root `Rux.toml` is a versioned workspace manifest that declares every first-party package as a member. Every dependency in a test manifest must use a local `Path` into `Packages/`; the C++ manifest-policy test enforces this across the whole tree. While running tests, qualified transitive dependencies declared by publishable package manifests are overridden by matching namespaced workspace members, and registry fallback is disabled. The repository test suite therefore requires no package-cache setup or network access. The complete syntax is defined by the [`Rux.toml` manifest contract](Manifest.md).
 
 `rux test` walks `Tests/` recursively: a directory with a `Rux.toml` is a test package; a directory without one (like `Tests/Language/` or `Tests/Packages/`) is a group and is searched further. Each package is built and run, and per-package results plus a summary are reported.
 
@@ -140,10 +140,12 @@ func Main() -> int {
 Each language test lives at `Tests/Language/<Name>/` with a `Rux.toml` manifest and `Src/Main.rux`:
 
 ```toml
+Version = 1
+
 [Package]
 Name = "Arithmetic"
 Version = "0.1.0"
-Type = "bin"
+Type = "Program"
 Description = "Language test: Arithmetic"
 
 [Build]

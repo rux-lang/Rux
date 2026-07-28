@@ -21,41 +21,6 @@ Each platform badge above covers a native build-and-test run on both supported a
 > [!IMPORTANT]
 > Rux is under active, pre-1.0 development. Language features, compiler behavior, and package formats may change between minor releases. Check the [changelog](CHANGELOG.md) when upgrading.
 
-## Hello, Rux
-
-```rux
-import Io::PrintLine;
-import Rux::{ OperatingSystem, #target };
-
-func Main() -> int {
-    let greeting = "Hello, Rux!";
-
-    for i in 0..3 {
-        PrintLine(greeting);
-    }
-
-    when #target.os == .Windows {
-        PrintLine("Compiled for Windows.");
-    } else {
-        PrintLine("Compiled for a Unix-like system.");
-    }
-
-    return 0;
-}
-```
-
-`when` runs while compiling: only the taken branch is analyzed and emitted, so the other may reference symbols that do not exist on the current target.
-
-Scaffold, build, and run a package with:
-
-```sh
-rux new App
-cd App
-rux run
-```
-
-`rux new` writes a minimal `Main`; the sample above also needs `Io` and `Rux` in the manifest's `[Dependencies]`.
-
 ## Documentation
 
 Language and tool documentation lives on the website:

@@ -29,7 +29,7 @@ The `Bsd`, `Linux`, `MacOS`, and `Windows` packages provide operating-system bin
 
 ## Package Layout and Tests
 
-Each package has a manifest and source directory. Executable package tests are centralized under `Tests/Packages/` and use local first-party dependencies:
+Each package has a versioned [`Rux.toml` manifest](Manifest.md) and source directory. `Program` package tests are centralized under `Tests/Packages/` and use local first-party path dependencies:
 
 ```text
 Packages/Format/
