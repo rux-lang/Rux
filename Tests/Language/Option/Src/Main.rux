@@ -1,0 +1,27 @@
+import Rux::Assert;
+import Rux::Option;
+
+func Main() -> int {
+    let optSome: Option<int> = Option::Some<int>(42);
+    let optNone: Option<int> = Option::None<int>();
+
+    let isSome = match optSome {
+        .Some(_) => true,
+        .None => false
+    };
+    Assert(isSome, "Expected optSome to be Some");
+
+    let val = match optSome {
+        .Some(v) => v,
+        .None => 0
+    };
+    Assert(val == 42, "Expected val to be 42");
+
+    let isNone = match optNone {
+        .Some(_) => false,
+        .None => true
+    };
+    Assert(isNone, "Expected optNone to be None");
+
+    return 0;
+}

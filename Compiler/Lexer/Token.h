@@ -31,6 +31,7 @@ enum class TokenKind : std::uint8_t {
     ContinueKeyword, // continue
     ReturnKeyword,   // return
     MatchKeyword,    // match
+    DeferKeyword,    // defer
 
     // Declarations
     IntrinsicKeyword, // intrinsic

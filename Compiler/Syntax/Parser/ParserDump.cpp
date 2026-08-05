@@ -641,6 +641,15 @@ private:
         else if (const auto *ret = dynamic_cast<const ReturnStmt *>(&stmt)) {
             PrintReturnStmt(*ret);
         }
+        else if (const auto *def = dynamic_cast<const DeferStmt *>(&stmt)) {
+            Pad();
+            out << "DeferStmt\n";
+            ++indent;
+            if (def->deferredStmt) {
+                PrintStmt(*def->deferredStmt);
+            }
+            --indent;
+        }
         else if (dynamic_cast<const BreakStmt *>(&stmt)) {
             Pad();
             out << "BreakStmt\n";
@@ -892,6 +901,15 @@ private:
             }
             if (assignExpr->value) {
                 PrintExpr(*assignExpr->value);
+            }
+            --indent;
+        }
+        else if (const auto *tryExpr = dynamic_cast<const TryExpr *>(&expr)) {
+            Pad();
+            out << "TryExpr\n";
+            ++indent;
+            if (tryExpr->operand) {
+                PrintExpr(*tryExpr->operand);
             }
             --indent;
         }

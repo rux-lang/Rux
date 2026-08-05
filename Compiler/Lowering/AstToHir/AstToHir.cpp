@@ -221,6 +221,7 @@ private:
     std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> typeInterfaceVtables;
     std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
+    std::vector<std::vector<const DeferStmt *>> deferStack;
 
     // Free functions live in a single flat lookup table, so a module path is
     // kept alongside each one: it decides which candidates a call site can see
@@ -241,6 +242,7 @@ private:
         ownedScopes.push_back(std::make_unique<HirScope>(currentScope));
         currentScope = ownedScopes.back().get();
         constIntegerScopes.emplace_back();
+        deferStack.emplace_back();
     }
 
     void PopScope() {
@@ -248,6 +250,9 @@ private:
         currentScope = currentScope->Parent();
         if (constIntegerScopes.size() > 1) {
             constIntegerScopes.pop_back();
+        }
+        if (!deferStack.empty()) {
+            deferStack.pop_back();
         }
     }
 
@@ -2802,7 +2807,30 @@ private:
                 exprStmt && IsDiagnosticIntrinsicCall(*exprStmt->expr)) {
                 continue;
             }
+            if (const auto *defStmt = dynamic_cast<const DeferStmt *>(stmt.get())) {
+                if (!deferStack.empty() && defStmt->deferredStmt) {
+                    deferStack.back().push_back(defStmt);
+                }
+                continue;
+            }
+            if (const auto *retStmt = dynamic_cast<const ReturnStmt *>(stmt.get())) {
+                (void)retStmt;
+                for (auto scopeIt = deferStack.rbegin(); scopeIt != deferStack.rend(); ++scopeIt) {
+                    for (auto defIt = scopeIt->rbegin(); defIt != scopeIt->rend(); ++defIt) {
+                        if ((*defIt)->deferredStmt) {
+                            hb.stmts.push_back(LowerStmt(*(*defIt)->deferredStmt));
+                        }
+                    }
+                }
+            }
             hb.stmts.push_back(LowerStmt(*stmt));
+        }
+        if (!deferStack.empty()) {
+            for (auto defIt = deferStack.back().rbegin(); defIt != deferStack.back().rend(); ++defIt) {
+                if ((*defIt)->deferredStmt) {
+                    hb.stmts.push_back(LowerStmt(*(*defIt)->deferredStmt));
+                }
+            }
         }
         PopScope();
         return hb;
@@ -2941,6 +2969,12 @@ private:
             if (s->value) {
                 hs->value = LowerExprAs(**s->value, currentReturnType);
             }
+            return hs;
+        }
+
+        if (auto *s = dynamic_cast<const DeferStmt *>(&stmt)) {
+            auto hs = std::make_unique<HirExprStmt>();
+            hs->location = s->location;
             return hs;
         }
 
@@ -3705,6 +3739,19 @@ private:
                 he->type = TypeRef::MakeRange(elemType, he->lo != nullptr, he->hi != nullptr, he->inclusive);
             }
             return he;
+        }
+        if (auto *e = dynamic_cast<const TryExpr *>(&expr)) {
+            HirExprPtr operand = LowerExpr(*e->operand);
+            TypeRef resType = operand->type;
+            const auto typeArgs = ParseTypeArgsFromTypeName(resType.name);
+            TypeRef innerValType = !typeArgs.empty() ? typeArgs[0] : resType;
+
+            auto tryExpr = std::make_unique<HirUnaryExpr>();
+            tryExpr->location = e->location;
+            tryExpr->op = TokenKind::Question;
+            tryExpr->operand = std::move(operand);
+            tryExpr->type = innerValType;
+            return tryExpr;
         }
         if (auto *e = dynamic_cast<const CallExpr *>(&expr)) {
             if (const auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {

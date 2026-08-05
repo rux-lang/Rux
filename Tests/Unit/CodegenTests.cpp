@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <bit>
 #include <doctest.h>
+#include <iostream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -28,11 +29,21 @@ static LirPackage CompileToLir(const std::string &source) {
 
     Parser parser(std::move(lexed.tokens), "test.rux");
     auto parsed = parser.Parse();
+    if (parsed.HasErrors()) {
+        for (const auto &diag : parsed.diagnostics) {
+            std::cerr << "Parser error: " << diag.message << "\n";
+        }
+    }
     REQUIRE_FALSE(parsed.HasErrors());
 
     std::vector<Module *> modules = {&parsed.module};
     SemanticAnalyzer analyzer(modules, {}, "test", RUX_OS_WINDOWS ? "windows" : "linux");
     auto semaModel = analyzer.Analyze();
+    if (semaModel.HasErrors()) {
+        for (const auto &diag : semaModel.diagnostics) {
+            INFO(diag.message);
+        }
+    }
     REQUIRE_FALSE(semaModel.HasErrors());
 
     AstToHirLowering hirLowering(semaModel);

@@ -282,6 +282,11 @@ private:
                 VisitExpr(**retStmt->value);
             }
         }
+        else if (const auto *defStmt = dynamic_cast<const DeferStmt *>(&stmt)) {
+            if (defStmt->deferredStmt) {
+                VisitStmt(*defStmt->deferredStmt);
+            }
+        }
         else if (const auto *declStmt = dynamic_cast<const DeclStmt *>(&stmt)) {
             if (declStmt->decl) {
                 VisitDecl(*declStmt->decl);
@@ -348,6 +353,11 @@ private:
         else if (const auto *postExpr = dynamic_cast<const PostfixExpr *>(&expr)) {
             if (postExpr->operand) {
                 VisitExpr(*postExpr->operand);
+            }
+        }
+        else if (const auto *tryExpr = dynamic_cast<const TryExpr *>(&expr)) {
+            if (tryExpr->operand) {
+                VisitExpr(*tryExpr->operand);
             }
         }
         else if (const auto *binExpr = dynamic_cast<const BinaryExpr *>(&expr)) {

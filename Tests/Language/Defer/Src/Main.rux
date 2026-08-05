@@ -1,0 +1,15 @@
+import Rux::Assert;
+
+func TestDefer() -> int {
+    var counter = 0;
+    if true {
+        defer counter = counter + 10;
+        counter = counter + 1;
+    }
+    Assert(counter == 11, "Expected counter to be 11 after scope exit");
+    return 0;
+}
+
+func Main() -> int {
+    return TestDefer();
+}

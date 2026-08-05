@@ -321,6 +321,11 @@ struct IsExpr : Expr {
     TypeExprPtr type;
 };
 
+// expr?
+struct TryExpr : Expr {
+    ExprPtr operand;
+};
+
 // { stmts; value }  — block used as expression (match arm body)
 struct BlockExpr : Expr {
     ~BlockExpr() override;
@@ -438,6 +443,11 @@ struct MatchStmt : Stmt {
 // return [expr];
 struct ReturnStmt : Stmt {
     std::optional<ExprPtr> value;
+};
+
+// defer stmt;
+struct DeferStmt : Stmt {
+    StmtPtr deferredStmt;
 };
 
 // break [label];
