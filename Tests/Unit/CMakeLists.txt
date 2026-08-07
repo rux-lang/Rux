@@ -65,6 +65,7 @@ set_source_files_properties(${RUX_TEST_SOURCES} PROPERTIES
 # The golden diagnostics runner reads its cases from the source tree.
 target_compile_definitions(rux-tests PRIVATE
     RUX_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/Tests/Unit/Golden"
+    RUX_ROOT_DIR="${CMAKE_SOURCE_DIR}"
     RUX_TESTS_DIR="${CMAKE_SOURCE_DIR}/Tests"
     RUX_PACKAGES_DIR="${CMAKE_SOURCE_DIR}/Packages"
     RUX_TEST_BIN_DIR="${CMAKE_SOURCE_DIR}/Bin/Tests")

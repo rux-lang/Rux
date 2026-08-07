@@ -140,6 +140,7 @@ func Main() -> int {
 Each language test lives at `Tests/Language/<Name>/` with a `Rux.toml` manifest and `Src/Main.rux`:
 
 ```toml
+[Manifest]
 Version = 1
 
 [Package]

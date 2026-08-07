@@ -6,9 +6,11 @@
 #include <doctest.h>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using namespace Rux;
 using namespace Rux::System;
@@ -480,6 +482,126 @@ TEST_CASE("Package specifications parse into validated identities") {
     CHECK_FALSE(ParsePackageSpec("-bad/Io").has_value());
 }
 
+// --- Repository manifest policy ----------------------------------------------
+//
+// The repository is the first consumer of Manifest Version 1, so these cases
+// hold every checked-in Rux.toml to the contract the registry will apply.
+
+namespace {
+
+// True when `path` is `root` or lies below it.
+bool IsBelow(const std::filesystem::path &path, const std::filesystem::path &root) {
+    const auto relative = path.lexically_relative(root);
+    return !relative.empty() && *relative.begin() != "..";
+}
+
+// Every Rux.toml tracked in the repository, in a stable order.
+std::vector<std::filesystem::path> RepositoryManifests() {
+    std::vector<std::filesystem::path> manifests;
+    const auto root = std::filesystem::weakly_canonical(std::filesystem::path(RUX_ROOT_DIR));
+    manifests.push_back(root / "Rux.toml");
+    for (const auto *subtree : {RUX_PACKAGES_DIR, RUX_TESTS_DIR}) {
+        for (const auto &entry :
+             std::filesystem::recursive_directory_iterator(std::filesystem::weakly_canonical(subtree))) {
+            if (entry.is_regular_file() && entry.path().filename() == "Rux.toml") {
+                manifests.push_back(entry.path());
+            }
+        }
+    }
+    std::ranges::sort(manifests);
+    return manifests;
+}
+
+std::string ReadFileText(const std::filesystem::path &path) {
+    std::ifstream input(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+}
+
+} // namespace
+
+TEST_CASE("every repository manifest declares the Version 1 schema and is canonical") {
+    const auto manifests = RepositoryManifests();
+    REQUIRE_MESSAGE(manifests.size() > 1, "no repository manifests found below ", RUX_ROOT_DIR);
+
+    for (const auto &path : manifests) {
+        const auto result = Manifest::Load(path);
+        REQUIRE_MESSAGE(result.Ok(), "invalid manifest: ",
+                        result.diagnostics.empty() ? path.string() : result.diagnostics.front().Format());
+
+        CHECK_MESSAGE(result.manifest->header.schemaVersion == manifestSchemaVersion,
+                      "manifest must declare [Manifest] Version = 1: ", path.string());
+        // Formatting is byte-exact, so `rux fmt --manifest-only` is a no-op on a
+        // checked-in manifest and never shows up as an unrelated diff.
+        CHECK_MESSAGE(result.manifest->Serialize() == ReadFileText(path),
+                      "manifest is not in canonical form; run 'rux fmt --manifest-only': ", path.string());
+    }
+}
+
+TEST_CASE("the workspace root lists every first-party package") {
+    const auto root = std::filesystem::weakly_canonical(std::filesystem::path(RUX_ROOT_DIR));
+    const auto packagesRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_PACKAGES_DIR));
+
+    const auto result = Manifest::Load(root / "Rux.toml");
+    REQUIRE(result.Ok());
+    REQUIRE_MESSAGE(result.manifest->IsWorkspace(), "the repository root must be a workspace manifest");
+
+    for (const auto &member : result.manifest->workspace.packages) {
+        CHECK_MESSAGE(std::filesystem::is_regular_file((root / member / "Rux.toml").lexically_normal()),
+                      "workspace member has no Rux.toml: ", member);
+    }
+    for (const auto &entry : std::filesystem::directory_iterator(packagesRoot)) {
+        if (!entry.is_directory() || !std::filesystem::is_regular_file(entry.path() / "Rux.toml")) {
+            continue;
+        }
+        const auto member = ("Packages/" + entry.path().filename().string());
+        CHECK_MESSAGE(std::ranges::contains(result.manifest->workspace.packages, member),
+                      "package is missing from the root workspace: ", member);
+    }
+}
+
+TEST_CASE("first-party packages are publishable under the Rux namespace") {
+    const auto packagesRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_PACKAGES_DIR));
+    std::size_t packageCount = 0;
+
+    for (const auto &entry : std::filesystem::directory_iterator(packagesRoot)) {
+        const auto path = entry.path() / "Rux.toml";
+        if (!entry.is_directory() || !std::filesystem::is_regular_file(path)) {
+            continue;
+        }
+        ++packageCount;
+        const auto result = Manifest::Load(path);
+        REQUIRE_MESSAGE(result.Ok(), "invalid package manifest: ", path.string());
+        const Manifest &manifest = *result.manifest;
+
+        // Publication needs a qualified identity, so every shipped package
+        // declares one even though the field is optional locally.
+        REQUIRE_MESSAGE(manifest.package.ns.has_value(), "first-party package must declare Namespace: ", path.string());
+        CHECK_MESSAGE(manifest.package.ns->Text() == "Rux",
+                      "first-party package must publish under 'Rux': ", path.string(), ", found '",
+                      manifest.package.ns->Text(), "'");
+        CHECK_MESSAGE(manifest.package.name.Text() == entry.path().filename().string(),
+                      "package name must match its directory: ", path.string());
+        CHECK_MESSAGE(!manifest.package.description.empty(), "package needs a description: ", path.string());
+        CHECK_MESSAGE(!manifest.package.authors.empty(), "package needs authors: ", path.string());
+
+        for (const auto &dependency : manifest.dependencies) {
+            // A published package cannot carry a path dependency, so first-party
+            // packages depend on each other through the registry form only.
+            REQUIRE_MESSAGE(!dependency.IsPath(), "first-party dependency must be a registry entry: ", path.string(),
+                            " -> ", dependency.importName.Text());
+            const auto *registry = dependency.Registry();
+            CHECK_MESSAGE(registry->ns.Text() == "Rux",
+                          "first-party dependency must resolve under 'Rux': ", path.string(), " -> ",
+                          dependency.importName.Text());
+            CHECK_MESSAGE(std::filesystem::is_regular_file(packagesRoot / dependency.package.Text() / "Rux.toml"),
+                          "dependency names no first-party package: ", path.string(), " -> ",
+                          dependency.package.Text());
+        }
+    }
+
+    CHECK_MESSAGE(packageCount > 0, "no first-party packages found below ", packagesRoot.string());
+}
+
 TEST_CASE("repository Rux tests use canonical local manifests") {
     const auto testsRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_TESTS_DIR));
     const auto packagesRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_PACKAGES_DIR));
@@ -496,19 +618,19 @@ TEST_CASE("repository Rux tests use canonical local manifests") {
                         result.diagnostics.empty() ? entry.path().string() : result.diagnostics.front().Format());
         const Manifest &manifest = *result.manifest;
 
-        CHECK_MESSAGE(manifest.header.schemaVersion == 1,
-                      "test package must declare [Manifest] Version = 1: ", entry.path().string());
         CHECK_MESSAGE(manifest.package.type == ManifestPackageType::Program,
                       "test package must use Type = \"Program\": ", entry.path().string());
+        // A test package is built in place and never published, so it stays
+        // namespace-free on purpose.
+        CHECK_MESSAGE(!manifest.package.ns.has_value(),
+                      "test package must stay namespace-free: ", entry.path().string());
         CHECK_MESSAGE(!manifest.package.description.empty(),
                       "test package needs a description: ", entry.path().string());
         CHECK_MESSAGE(std::filesystem::is_regular_file(entry.path().parent_path() / "Src" / "Main.rux"),
                       "test package needs Src/Main.rux: ", entry.path().string());
 
         const auto output = std::filesystem::weakly_canonical(entry.path().parent_path() / manifest.build.output);
-        const auto outputRelative = output.lexically_relative(binariesRoot);
-        const bool outputIsCentralized = !outputRelative.empty() && *outputRelative.begin() != "..";
-        CHECK_MESSAGE(outputIsCentralized, "test output must stay below Bin/Tests: ", entry.path().string());
+        CHECK_MESSAGE(IsBelow(output, binariesRoot), "test output must stay below Bin/Tests: ", entry.path().string());
 
         for (const auto &dependency : manifest.dependencies) {
             REQUIRE_MESSAGE(dependency.IsPath(),
@@ -516,10 +638,9 @@ TEST_CASE("repository Rux tests use canonical local manifests") {
                             dependency.importName.Text());
             const auto dependencyRoot =
                 std::filesystem::weakly_canonical(entry.path().parent_path() / dependency.Path());
-            const auto dependencyRelative = dependencyRoot.lexically_relative(packagesRoot);
-            const bool dependencyIsLocal = !dependencyRelative.empty() && *dependencyRelative.begin() != "..";
-            CHECK_MESSAGE(dependencyIsLocal, "test dependency must resolve below Packages: ", entry.path().string(),
-                          " -> ", dependency.importName.Text());
+            CHECK_MESSAGE(IsBelow(dependencyRoot, packagesRoot),
+                          "test dependency must resolve below Packages: ", entry.path().string(), " -> ",
+                          dependency.importName.Text());
             const auto dependencyResult = Manifest::Load(dependencyRoot / "Rux.toml");
             REQUIRE_MESSAGE(dependencyResult.Ok(), "local dependency has no valid manifest: ", dependencyRoot.string());
             CHECK_MESSAGE(dependencyResult.manifest->package.name == dependency.package,

@@ -2,6 +2,7 @@
 Version = 1
 
 [Package]
+Namespace = "Rux"
 Name = "Rux"
 Version = "0.1.0"
 Type = "Source"

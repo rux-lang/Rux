@@ -21,10 +21,12 @@ To run the complete repository workflow—including policy, formatting, build, C
 
 Test manifests are intentionally uniform:
 
-- `Type = "bin"` is explicit.
+- `[Manifest] Version = 1` opens every file.
+- `Type = "Program"` is explicit.
+- `Namespace` is omitted; a test package is built in place and never published.
 - Language outputs go to `Bin/Tests/Language/`.
 - Package outputs go to `Bin/Tests/Packages/<Package>/`.
-- Every dependency uses `Path = ...` and resolves below the root `Packages/` directory.
+- Every dependency is a `{ Path = "..." }` inline table resolving below the root `Packages/` directory.
 - Registry dependencies are forbidden in test manifests.
 
 During workspace tests, transitive dependencies in publishable first-party package manifests are resolved from matching local workspace members. Registry fallback is disabled, so the suite does not require `rux install`, a populated package cache, or network access.
@@ -37,4 +39,4 @@ During workspace tests, transitive dependencies in publishable first-party packa
 - Put diagnostic input/expected-output pairs in `Unit/Golden/`.
 - Put repository source-layout invariants in `Policy/<Rule>/`.
 
-The C++ manifest-policy test validates every Rux test manifest, local dependency path, executable type, source entry point, and centralized output path.
+The C++ manifest-policy tests in `Unit/ManifestTests.cpp` validate every checked-in `Rux.toml`: the schema header and canonical formatting repository-wide, the `Rux` namespace and registry dependency form of publishable first-party packages, and the package type, namespace-free identity, local dependency paths, source entry point and centralized output path of each test manifest.

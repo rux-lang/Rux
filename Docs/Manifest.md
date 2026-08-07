@@ -37,7 +37,7 @@ Readme = "README.md"
 Memory = { Namespace = "Rux", Version = "^0.1.0" }
 
 [Build]
-Output = "Bin"
+Output = "Dist"
 
 [Build.Defines]
 CheckedArithmetic = "true"
@@ -119,7 +119,7 @@ Each `[Dependencies]` key is the local import name and each value is an inline t
 [Dependencies]
 Io = { Namespace = "Rux", Version = "^1.0.0" }
 Json = { Namespace = "Acme", Package = "FastJson", Version = ">=2.0.0, <3.0.0" }
-Util = { Package = "Util", Path = "../Util" }
+Util = { Path = "../Util" }
 ```
 
 A registry dependency requires `Namespace` and `Version`. A path dependency requires `Path` and cannot carry `Namespace` or `Version`. Either form may set `Package` to name a package whose spelling differs from the import name; `Package` defaults to the import name.
