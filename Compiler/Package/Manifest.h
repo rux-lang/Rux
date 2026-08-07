@@ -1,18 +1,90 @@
 #pragma once
 
+#include "Package/Identity.h"
+#include "Package/Version.h"
+
 #include <filesystem>
 #include <map>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace Rux {
+/// The only manifest schema version this compiler accepts.
+inline constexpr int manifestSchemaVersion = 1;
+
 /**
- * @brief A dependency entry in a Rux.toml manifest.
+ * @brief What a package builds.
+ */
+enum class ManifestPackageType {
+    /// A runnable executable with a Main entry point.
+    Program,
+
+    /// A shared library linked by dependents and loaded at run time.
+    Library,
+
+    /// Rux sources compiled directly into dependent packages.
+    Source,
+};
+
+[[nodiscard]] std::string_view ToString(ManifestPackageType type) noexcept;
+
+[[nodiscard]] std::optional<ManifestPackageType> ParseManifestPackageType(std::string_view value) noexcept;
+
+/**
+ * @brief The `[Manifest]` schema header.
+ *
+ * `schemaVersion` is the manifest schema version, distinct from the package's
+ * own `[Package].Version`. `minRux` is the oldest compiler release that can
+ * build the package; it is optional locally and required to publish.
+ */
+struct ManifestHeader {
+    int schemaVersion = 0;
+    std::optional<SemanticVersion> minRux;
+};
+
+/**
+ * @brief A dependency resolved from the package registry.
+ */
+struct RegistryDependencySource {
+    IdentitySegment ns;
+    VersionRange version;
+};
+
+/**
+ * @brief A dependency resolved from a local directory.
+ */
+struct PathDependencySource {
+    std::string path;
+};
+
+/**
+ * @brief A typed `[Dependencies]` entry.
+ *
+ * `importName` is the table key and the name the dependency is imported under.
+ * `package` is the dependency's own package name, which defaults to the import
+ * name and differs only when the entry sets `Package`.
+ */
+struct ManifestDependency {
+    IdentitySegment importName;
+    IdentitySegment package;
+    std::variant<RegistryDependencySource, PathDependencySource> source;
+
+    [[nodiscard]] bool IsPath() const noexcept {
+        return std::holds_alternative<PathDependencySource>(source);
+    }
+};
+
+/**
+ * @brief A dependency entry as read by the pre-Version 1 line parser.
  *
  * A dependency can either be:
  *  - version-based (version is set, path is empty)
  *  - path-based (path is set, version is ignored)
+ *
+ * The strict parser replaces this with ManifestDependency, which carries
+ * validated identities and a typed version requirement instead of raw strings.
  */
 struct Dependency {
     std::string name;
@@ -26,6 +98,9 @@ struct Dependency {
  * @brief Package metadata section of the manifest.
  */
 struct Package {
+    /// Registry namespace; unset for a local-only package.
+    std::optional<IdentitySegment> ns;
+
     std::string name;
 
     /// Semantic version (default: 0.1.0)
@@ -37,9 +112,17 @@ struct Package {
 
     std::string description;
     std::vector<std::string> authors;
+    std::vector<std::string> keywords;
     std::string license;
+
+    /// Package-relative path to a license file; mutually exclusive with license.
+    std::string licenseFile;
+
     std::string repository;
     std::string homepage;
+
+    /// Package-relative path to a readme file.
+    std::string readme;
 };
 
 /**
@@ -69,6 +152,7 @@ struct Build {
  * @brief Represents a parsed Rux.toml manifest.
  */
 struct Manifest {
+    ManifestHeader header;
     Package package;
     Build build;
     std::vector<Dependency> dependencies;

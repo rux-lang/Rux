@@ -16,6 +16,8 @@ set(RUX_TEST_SOURCES
     ManifestTests.cpp
     OptimizerTests.cpp
     OsTests.cpp
+    PackageIdentityTests.cpp
+    PackageVersionTests.cpp
     ProcessTests.cpp
     PrimitiveConstantsTests.cpp
     SemanticTests.cpp

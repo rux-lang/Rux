@@ -46,8 +46,10 @@ if (WIN32)
 endif ()
 
 rux_add_component(RuxPackage
+    Package/Identity.cpp
     Package/Manifest.cpp
-    Package/Package.cpp)
+    Package/Package.cpp
+    Package/Version.cpp)
 
 rux_add_component(RuxLexer
     Lexer/Token.cpp

@@ -5,6 +5,31 @@
 #include <ranges>
 
 namespace Rux {
+std::string_view ToString(const ManifestPackageType type) noexcept {
+    switch (type) {
+    case ManifestPackageType::Program:
+        return "Program";
+    case ManifestPackageType::Library:
+        return "Library";
+    case ManifestPackageType::Source:
+        return "Source";
+    }
+    return "Program";
+}
+
+std::optional<ManifestPackageType> ParseManifestPackageType(const std::string_view value) noexcept {
+    if (value == "Program") {
+        return ManifestPackageType::Program;
+    }
+    if (value == "Library") {
+        return ManifestPackageType::Library;
+    }
+    if (value == "Source") {
+        return ManifestPackageType::Source;
+    }
+    return std::nullopt;
+}
+
 static constexpr std::string_view whitespace = " \t\r\n";
 
 static constexpr std::string_view Trim(const std::string_view s) noexcept {
