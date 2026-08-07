@@ -58,7 +58,7 @@ int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &op
             outcome.errors = 1;
             return outcome;
         }
-        if (packageManifest.IsWorkspace() || packageManifest.package.name.empty()) {
+        if (packageManifest.IsWorkspace() || packageManifest.package.name.Empty()) {
             std::print(stderr, "error: workspace member '{}' is not a package\n",
                        packageManifestPath.parent_path().string());
             outcome.errors = 1;
@@ -120,8 +120,8 @@ int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &op
                 jobs.push_back({memberManifestPath, label, std::nullopt});
                 continue;
             }
-            if (IsPlatformPackageName(memberManifest->package.name) &&
-                !PlatformPackageMatchesTarget(memberManifest->package.name, targetName)) {
+            if (IsPlatformPackageName(memberManifest->package.name.Text()) &&
+                !PlatformPackageMatchesTarget(memberManifest->package.name.Text(), targetName)) {
                 continue;
             }
             jobs.push_back({memberManifestPath, label, std::move(*memberManifest)});
@@ -129,9 +129,9 @@ int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &op
     }
     else {
         if (!opts.quiet) {
-            std::println("Linting {} v{}", rootManifest->package.name, rootManifest->package.version);
+            std::println("Linting {} v{}", rootManifest->package.name.Text(), rootManifest->package.version.Text());
         }
-        jobs.push_back({*manifestPath, rootManifest->package.name, std::move(*rootManifest)});
+        jobs.push_back({*manifestPath, rootManifest->package.name.Text(), std::move(*rootManifest)});
     }
 
     const AnsiStyle style{ColorEnabled(opts.color)};

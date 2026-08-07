@@ -48,7 +48,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
     auto QueueDependencies = [&](const Manifest &packageManifest) {
         for (const auto &dep : packageManifest.dependencies) {
             if (const std::string packageName = DependencyPackageName(dep);
-                dep.path.empty() && !queued.contains(packageName)) {
+                !dep.IsPath() && !queued.contains(packageName)) {
                 queue.push_back(packageName);
                 queued.insert(packageName);
             }
@@ -58,9 +58,13 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
     // registry dependency declared by the current project's manifest. From
     // here both cases share the same transitive resolution loop below.
     if (!packageSpec.empty()) {
-        auto [pkgName, pkgVersion] = ParsePackageSpec(packageSpec);
-        queue.push_back(pkgName);
-        queued.insert(pkgName);
+        const auto parsedSpec = ParsePackageSpec(packageSpec);
+        if (!parsedSpec) {
+            std::print(stderr, "error: {}\n", parsedSpec.error());
+            return 1;
+        }
+        queue.push_back(parsedSpec->name.Text());
+        queued.insert(parsedSpec->name.Text());
     }
     else {
         std::optional<std::filesystem::path> manifestPath;
@@ -88,7 +92,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
                 if (!packageManifest) {
                     return 1;
                 }
-                if (packageManifest->IsWorkspace() || packageManifest->package.name.empty()) {
+                if (packageManifest->IsWorkspace() || packageManifest->package.name.Empty()) {
                     std::print(stderr, "error: workspace member '{}' is not a package\n",
                                packageManifestPath.parent_path().string());
                     return 1;
@@ -117,7 +121,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
                     if (!memberManifest) {
                         return 1;
                     }
-                    if (memberManifest->IsWorkspace() || memberManifest->package.name.empty()) {
+                    if (memberManifest->IsWorkspace() || memberManifest->package.name.Empty()) {
                         std::print(stderr, "error: workspace member '{}' is not a package\n", member);
                         return 1;
                     }
@@ -186,10 +190,10 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
             }
             ++installed;
         }
-        if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
-            for (const auto &dep : depManifest->dependencies) {
+        if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml"); depManifest.Ok()) {
+            for (const auto &dep : depManifest.manifest->dependencies) {
                 if (const std::string depPackageName = DependencyPackageName(dep);
-                    dep.path.empty() && !queued.contains(depPackageName)) {
+                    !dep.IsPath() && !queued.contains(depPackageName)) {
                     queue.push_back(depPackageName);
                     queued.insert(depPackageName);
                 }
@@ -290,7 +294,7 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
     }
     std::vector<std::string> toRemove;
     for (const auto &dep : manifest->dependencies) {
-        if (dep.path.empty()) {
+        if (!dep.IsPath()) {
             toRemove.push_back(DependencyPackageName(dep));
         }
     }
@@ -365,10 +369,19 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opt
     if (!manifest) {
         return 1;
     }
-    auto [pkgName, pkgVersion] = ParsePackageSpec(spec);
+    const auto parsedSpec = ParsePackageSpec(spec);
+    if (!parsedSpec) {
+        std::print(stderr, "error: {}\n", parsedSpec.error());
+        return 1;
+    }
+    const std::string pkgName = parsedSpec->name.Text();
 
     if (!pathArg.empty()) {
-        const bool changed = manifest->AddPathDependency(pkgName, std::string(pathArg));
+        if (parsedSpec->ns) {
+            std::print(stderr, "error: a path dependency cannot name a registry namespace\n");
+            return 1;
+        }
+        const bool changed = manifest->AddPathDependency(parsedSpec->name, std::string(pathArg));
         if (!manifest->Save(*manifestPath)) {
             std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
             return 1;
@@ -383,6 +396,12 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opt
         }
         return 0;
     }
+    // A registry dependency records the namespace it resolves under, so the
+    // qualified spelling is the only one that can be written.
+    if (!parsedSpec->ns) {
+        std::print(stderr, "error: a registry dependency needs a namespace; write 'rux add Namespace/{}'\n", pkgName);
+        return 1;
+    }
     if (!opts.quiet) {
         std::print("     Fetching registry...\n");
     }
@@ -395,18 +414,20 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opt
         std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
         return 1;
     }
-    const bool changed = manifest->AddDependency(pkgName, pkgVersion);
+    // An omitted requirement accepts any stable release.
+    VersionRange requirement = parsedSpec->version.value_or(*VersionRange::Parse("*"));
+    const std::string ver = requirement.Text();
+    const bool changed = manifest->AddRegistryDependency(parsedSpec->name, *parsedSpec->ns, std::move(requirement));
     if (!manifest->Save(*manifestPath)) {
         std::print(stderr, "error: failed to write '{}'\n", manifestPath->string());
         return 1;
     }
     if (!opts.quiet) {
-        const std::string ver = pkgVersion.empty() ? "latest" : pkgVersion;
         if (changed) {
-            std::print("Added {} @ {}\n", pkgName, ver);
+            std::print("Added {}/{} @ {}\n", parsedSpec->ns->Text(), pkgName, ver);
         }
         else {
-            std::print("Up-to-date {} @ {}\n", pkgName, ver);
+            std::print("Up-to-date {}/{} @ {}\n", parsedSpec->ns->Text(), pkgName, ver);
         }
     }
     return 0;
@@ -439,8 +460,13 @@ int Cli::RunRemove(std::span<const std::string_view> args, const GlobalOptions &
     if (!manifest) {
         return 1;
     }
-    std::string pkgName(name);
-    if (!manifest->RemoveDependency(pkgName)) {
+    const std::string pkgName(name);
+    const auto importName = IdentitySegment::Parse(pkgName);
+    if (!importName) {
+        std::print(stderr, "error: '{}' is not a valid import name: {}\n", pkgName, Describe(importName.error()));
+        return 1;
+    }
+    if (!manifest->RemoveDependency(*importName)) {
         std::print(stderr, "error: package '{}' is not a dependency\n", pkgName);
         return 1;
     }
@@ -509,12 +535,12 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions &op
     }
     std::print("Dependencies ({}):\n", manifest->dependencies.size());
     for (const auto &dep : manifest->dependencies) {
-        if (!dep.path.empty()) {
-            std::print("  {} (path: {})\n", dep.name, dep.path);
+        if (dep.IsPath()) {
+            std::print("  {} (path: {})\n", dep.importName.Text(), dep.Path());
         }
         else {
-            const std::string ver = dep.version.empty() ? "latest" : dep.version;
-            std::print("  {} @ {}\n", dep.name, ver);
+            const auto *registry = dep.Registry();
+            std::print("  {}/{} @ {}\n", registry->ns.Text(), dep.package.Text(), registry->version.Text());
         }
     }
     return 0;
@@ -594,7 +620,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
     std::unordered_set<std::string> queued;
     for (const auto &dep : manifest->dependencies) {
         const std::string packageName = DependencyPackageName(dep);
-        if (dep.path.empty() && !queued.count(packageName)) {
+        if (!dep.IsPath() && !queued.count(packageName)) {
             queue.push_back(packageName);
             queued.insert(packageName);
         }
@@ -656,10 +682,10 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
             ++installed;
         }
         // Enqueue registry deps declared by this package
-        if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml")) {
-            for (const auto &dep : depManifest->dependencies) {
+        if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml"); depManifest.Ok()) {
+            for (const auto &dep : depManifest.manifest->dependencies) {
                 const std::string depPackageName = DependencyPackageName(dep);
-                if (dep.path.empty() && !queued.count(depPackageName)) {
+                if (!dep.IsPath() && !queued.count(depPackageName)) {
                     queue.push_back(depPackageName);
                     queued.insert(depPackageName);
                 }
@@ -719,18 +745,19 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
             return 1;
         }
     }
-    auto manifest = Manifest::Load(manifestPath);
-    if (!manifest) {
-        std::print(stderr, "error: failed to parse '{}'\n", manifestPath.string());
+    auto infoResult = Manifest::Load(manifestPath);
+    if (!infoResult.Ok()) {
+        ReportManifestDiagnostics(infoResult);
         return 1;
     }
+    const auto manifest = std::move(infoResult.manifest);
     // not using nlohmann/json.hpp to keep compiler as small and fast as
     // possible
     if (jsonOutput) {
         std::print("{}\n", "{");
-        std::print("  \"name\": \"{}\",\n", manifest->package.name);
-        std::print("  \"version\": \"{}\",\n", manifest->package.version);
-        std::print("  \"type\": \"{}\",\n", manifest->package.type);
+        std::print("  \"name\": \"{}\",\n", manifest->package.name.Text());
+        std::print("  \"version\": \"{}\",\n", manifest->package.version.Text());
+        std::print("  \"type\": \"{}\",\n", ToString(manifest->package.type));
         if (!manifest->package.description.empty()) {
             std::print("  \"description\": \"{}\",\n", manifest->package.description);
         }
@@ -754,13 +781,15 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
         for (size_t i = 0; i < manifest->dependencies.size(); ++i) {
             const auto &dep = manifest->dependencies[i];
             std::print("    {}", "{");
-            std::print("\"name\": \"{}\"", dep.name);
+            std::print("\"name\": \"{}\"", dep.importName.Text());
 
-            if (!dep.path.empty()) {
-                std::print(", \"path\": \"{}\"", dep.path);
+            if (dep.IsPath()) {
+                std::print(", \"path\": \"{}\"", dep.Path());
             }
             else {
-                std::print(", \"version\": \"{}\"", dep.version.empty() ? "*" : dep.version);
+                const auto *registry = dep.Registry();
+                std::print(", \"namespace\": \"{}\", \"package\": \"{}\", \"version\": \"{}\"", registry->ns.Text(),
+                           dep.package.Text(), registry->version.Text());
             }
             // Only add a comma if this isn't the last element in the vector
             if (i + 1 < manifest->dependencies.size()) {
@@ -777,7 +806,7 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
         std::print("Name:        {}\n"
                    "Version:     {}\n"
                    "Type:        {}\n",
-                   manifest->package.name, manifest->package.version, manifest->package.type);
+                   manifest->package.name.Text(), manifest->package.version.Text(), ToString(manifest->package.type));
         if (!manifest->package.description.empty()) {
             std::print("Description: {}\n", manifest->package.description);
         }
@@ -800,11 +829,12 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
         if (!manifest->dependencies.empty()) {
             std::print("\nDependencies:\n");
             for (const auto &dep : manifest->dependencies) {
-                if (!dep.path.empty()) {
-                    std::print("  - {} (path: {})\n", dep.name, dep.path);
+                if (dep.IsPath()) {
+                    std::print("  - {} (path: {})\n", dep.importName.Text(), dep.Path());
                 }
                 else {
-                    std::print("  - {} @ {}\n", dep.name, dep.version.empty() ? "*" : dep.version);
+                    const auto *registry = dep.Registry();
+                    std::print("  - {}/{} @ {}\n", registry->ns.Text(), dep.package.Text(), registry->version.Text());
                 }
             }
         }

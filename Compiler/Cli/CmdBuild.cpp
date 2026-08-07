@@ -135,7 +135,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         profileName = profile;
     }
     if (!opts.quiet && !showStats) {
-        std::print("Compiling {} v{} [{}]\n", manifest->package.name, manifest->package.version,
+        std::print("Compiling {} v{} [{}]\n", manifest->package.name.Text(), manifest->package.version.Text(),
                    manifestPath->parent_path().string());
     }
     CompileOptions copts;

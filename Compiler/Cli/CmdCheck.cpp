@@ -81,11 +81,14 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         }
         return 1;
     }
-    auto manifest = Manifest::Load(*manifestPath);
-    if (!manifest) {
-        EmitFatal("failed to parse '" + manifestPath->string() + "'");
+    auto rootResult = Manifest::Load(*manifestPath);
+    if (!rootResult.Ok()) {
+        for (const auto &diagnostic : rootResult.diagnostics) {
+            EmitFatal(diagnostic.Format());
+        }
         return 1;
     }
+    auto manifest = std::move(rootResult.manifest);
     std::string targetName = target.empty() ? HostTargetTriple() : CanonicalTargetTriple(target);
     if (!IsSupportedTargetTriple(targetName)) {
         if (jsonOutput) {
@@ -113,7 +116,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     std::map<std::string, std::filesystem::path> localPackageRoots;
     bool localDependenciesOnly = false;
     auto CheckPackage = [&](const std::filesystem::path &packageManifestPath, Manifest packageManifest) {
-        if (packageManifest.IsWorkspace() || packageManifest.package.name.empty()) {
+        if (packageManifest.IsWorkspace() || packageManifest.package.name.Empty()) {
             EmitFatal("workspace member '" + packageManifestPath.parent_path().string() + "' is not a package");
             return false;
         }
@@ -167,26 +170,29 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
                 jobs.push_back({memberManifestPath, label, std::nullopt});
                 continue;
             }
-            auto memberManifest = Manifest::Load(memberManifestPath);
-            if (!memberManifest) {
-                EmitFatal("failed to parse '" + memberManifestPath.string() + "'");
+            auto memberResult = Manifest::Load(memberManifestPath);
+            if (!memberResult.Ok()) {
+                for (const auto &diagnostic : memberResult.diagnostics) {
+                    EmitFatal(diagnostic.Format());
+                }
                 jobs.push_back({memberManifestPath, label, std::nullopt});
                 continue;
             }
-            if (memberManifest->IsWorkspace() || memberManifest->package.name.empty()) {
+            auto memberManifest = std::move(memberResult.manifest);
+            if (memberManifest->IsWorkspace() || memberManifest->package.name.Empty()) {
                 EmitFatal("workspace member '" + member + "' is not a package");
                 jobs.push_back({memberManifestPath, label, std::nullopt});
                 continue;
             }
             const auto [existing, inserted] =
-                localPackageRoots.emplace(memberManifest->package.name, memberManifestPath.parent_path());
+                localPackageRoots.emplace(memberManifest->package.name.Text(), memberManifestPath.parent_path());
             if (!inserted && existing->second != memberManifestPath.parent_path()) {
-                EmitFatal("duplicate workspace package name '" + memberManifest->package.name + "'");
+                EmitFatal("duplicate workspace package name '" + memberManifest->package.name.Text() + "'");
                 jobs.push_back({memberManifestPath, label, std::nullopt});
                 continue;
             }
-            if (IsPlatformPackageName(memberManifest->package.name) &&
-                !PlatformPackageMatchesTarget(memberManifest->package.name, targetName)) {
+            if (IsPlatformPackageName(memberManifest->package.name.Text()) &&
+                !PlatformPackageMatchesTarget(memberManifest->package.name.Text(), targetName)) {
                 continue;
             }
             jobs.push_back({memberManifestPath, label, std::move(*memberManifest)});
@@ -195,9 +201,9 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     }
     else {
         if (!opts.quiet && !jsonOutput) {
-            std::println("Checking {} v{}", manifest->package.name, manifest->package.version);
+            std::println("Checking {} v{}", manifest->package.name.Text(), manifest->package.version.Text());
         }
-        jobs.push_back({*manifestPath, manifest->package.name, std::move(*manifest)});
+        jobs.push_back({*manifestPath, manifest->package.name.Text(), std::move(*manifest)});
     }
 
     const AnsiStyle style{ColorEnabled(opts.color)};

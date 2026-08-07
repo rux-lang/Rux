@@ -194,9 +194,10 @@ void PrintAligned(const std::string_view left, const std::string_view right, con
 
 namespace Data {
 // Add
-constexpr std::array add_usage = {"[package]"sv, "[package]@[version]"sv, "[package] --path [path]"sv};
+constexpr std::array add_usage = {"[namespace]/[package]"sv, "[namespace]/[package]@[requirement]"sv,
+                                  "[package] --path [path]"sv};
 constexpr std::array add_opts = {OptionDoc{.flags = "--path <path>"sv, .desc = "Add a local path-based dependency"sv}};
-constexpr std::array add_exs = {"Rux"sv, "Rux@0.1.0"sv, "Json --path ../Json"sv};
+constexpr std::array add_exs = {"Rux/Io"sv, "Rux/Io@^0.1.0"sv, "Json --path ../Json"sv};
 
 // Build
 constexpr std::array build_usage = {"[options]"sv};

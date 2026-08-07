@@ -1,7 +1,10 @@
+[Manifest]
+Version = 1
+
 [Package]
 Name = "PrintLine"
 Version = "0.1.0"
-Type = "bin"
+Type = "Program"
 Description = "Package test for Io: PrintLine"
 
 [Dependencies]

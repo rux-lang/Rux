@@ -1,7 +1,10 @@
+[Manifest]
+Version = 1
+
 [Package]
 Name = "Floor"
 Version = "0.1.0"
-Type = "bin"
+Type = "Program"
 Description = "Package test for Math: Floor"
 
 [Dependencies]

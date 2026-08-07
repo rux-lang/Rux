@@ -180,8 +180,8 @@ bool PlatformPackageMatchesTarget(const std::string_view name, const std::string
     return name == targetOs;
 }
 
-std::string DependencyPackageName(const Dependency &dep) {
-    return dep.package.empty() ? dep.name : dep.package;
+const std::string &DependencyPackageName(const ManifestDependency &dep) {
+    return dep.package.Text();
 }
 
 std::optional<std::filesystem::path> RequireManifest() {
@@ -209,12 +209,16 @@ std::optional<std::filesystem::path> RequireManifest(const std::filesystem::path
     return manifestPath;
 }
 
-std::optional<Manifest> LoadManifest(const std::filesystem::path &path) {
-    auto m = Manifest::Load(path);
-    if (!m) {
-        std::print(stderr, "error: failed to parse '{}'\n", path.string());
+void ReportManifestDiagnostics(const ManifestResult &result) {
+    for (const auto &diagnostic : result.diagnostics) {
+        std::print(stderr, "error: {}\n", diagnostic.Format());
     }
-    return m;
+}
+
+std::optional<Manifest> LoadManifest(const std::filesystem::path &path) {
+    auto result = Manifest::Load(path);
+    ReportManifestDiagnostics(result);
+    return std::move(result.manifest);
 }
 
 std::filesystem::path ResolveBuildOutputDir(const std::filesystem::path &root, const Manifest &manifest,

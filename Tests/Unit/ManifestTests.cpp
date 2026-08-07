@@ -6,59 +6,422 @@
 #include <doctest.h>
 #include <filesystem>
 #include <fstream>
-#include <sstream>
+#include <ostream>
 #include <string>
+#include <string_view>
 
 using namespace Rux;
 using namespace Rux::System;
 
-TEST_CASE("Manifest preserves author arrays and uses canonical assignment spacing") {
-    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-    const std::filesystem::path root = TempDirectory() / ("rux-manifest-test-" + std::to_string(nonce));
-    const std::filesystem::path path = root / "Rux.toml";
-    std::filesystem::create_directories(root);
+namespace {
+constexpr std::string_view canonicalPackage = R"([Manifest]
+Version = 1
+MinRux = "0.4.0"
 
-    {
-        std::ofstream input(path);
-        input << R"([Package]
+[Package]
+Namespace = "Rux"
 Name = "App"
-Version = "0.1.0"
-Type = "bin"
+Version = "1.2.3-alpha.1+linux"
+Type = "Program"
+Description = "An example package"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
-
-[Build]
-Output = "Bin"
-)";
-        REQUIRE(input.good());
-    }
-
-    const auto manifest = Manifest::Load(path);
-    REQUIRE(manifest.has_value());
-    CHECK(manifest->package.authors == std::vector<std::string>{"Rux Contributors <info@rux-lang.dev>"});
-
-    Manifest updated = *manifest;
-    REQUIRE(updated.AddDependency("Io", ""));
-    REQUIRE(updated.Save(path));
-
-    std::ifstream output(path);
-    std::ostringstream contents;
-    contents << output.rdbuf();
-    const std::string expected = R"([Package]
-Name = "App"
-Version = "0.1.0"
-Type = "bin"
-Authors = ["Rux Contributors <info@rux-lang.dev>"]
+Keywords = ["Example", "Demo"]
+License = "MIT"
+Repository = "https://github.com/rux-lang/Rux"
+Homepage = "https://rux-lang.dev"
+Readme = "README.md"
 
 [Dependencies]
-Io = "*"
+Io = { Namespace = "Rux", Version = "^1.0.0" }
+Json = { Namespace = "Acme", Package = "FastJson", Version = ">=2.0.0, <3.0.0" }
+Util = { Path = "../Util" }
 
 [Build]
-Output = "Bin"
-)";
-    CHECK(contents.str() == expected);
+Output = "Dist"
 
-    std::error_code error;
-    std::filesystem::remove_all(root, error);
+[Build.Defines]
+Channel = "Nightly"
+Retries = 3
+Tracing = true
+)";
+
+constexpr std::string_view canonicalWorkspace = R"([Manifest]
+Version = 1
+
+[Workspace]
+Packages = [
+    "Packages/Math",
+    "Packages/Memory",
+]
+)";
+
+Manifest Accepted(const std::string_view text) {
+    auto result = Manifest::Parse(text, "Rux.toml");
+    if (!result.Ok()) {
+        REQUIRE_MESSAGE(result.Ok(), "expected the manifest to parse: ", result.diagnostics.front().message);
+    }
+    CHECK(result.diagnostics.empty());
+    return std::move(*result.manifest);
+}
+
+ManifestDiagnostic Rejected(const std::string_view text) {
+    auto result = Manifest::Parse(text, "Rux.toml");
+    REQUIRE_MESSAGE(!result.Ok(), "expected the manifest to be rejected");
+    REQUIRE(result.diagnostics.size() == 1);
+    return result.diagnostics.front();
+}
+
+// A minimal valid package, so a case can vary one thing at a time.
+std::string WithPackage(const std::string_view body) {
+    return std::string("[Manifest]\nVersion = 1\n\n[Package]\nName = \"App\"\nVersion = \"0.1.0\"\n"
+                       "Type = \"Program\"\n") +
+           std::string(body);
+}
+} // namespace
+
+TEST_CASE("A canonical package manifest round trips byte for byte") {
+    const Manifest manifest = Accepted(canonicalPackage);
+
+    CHECK(manifest.header.schemaVersion == 1);
+    REQUIRE(manifest.header.minRux.has_value());
+    CHECK(manifest.header.minRux->Text() == "0.4.0");
+    REQUIRE(manifest.package.ns.has_value());
+    CHECK(manifest.package.ns->Text() == "Rux");
+    CHECK(manifest.package.name.Text() == "App");
+    CHECK(manifest.package.version.Text() == "1.2.3-alpha.1+linux");
+    CHECK(manifest.package.type == ManifestPackageType::Program);
+    CHECK(manifest.package.keywords.size() == 2);
+    CHECK(manifest.package.readme == "README.md");
+    CHECK_FALSE(manifest.IsWorkspace());
+
+    REQUIRE(manifest.dependencies.size() == 3);
+    const auto *io = manifest.FindDependency(*IdentitySegment::Parse("Io"));
+    REQUIRE(io != nullptr);
+    REQUIRE(io->Registry() != nullptr);
+    CHECK(io->Registry()->ns.Text() == "Rux");
+    CHECK(io->Registry()->version.Text() == "^1.0.0");
+
+    const auto *json = manifest.FindDependency(*IdentitySegment::Parse("Json"));
+    REQUIRE(json != nullptr);
+    CHECK(json->package.Text() == "FastJson");
+
+    const auto *util = manifest.FindDependency(*IdentitySegment::Parse("Util"));
+    REQUIRE(util != nullptr);
+    CHECK(util->IsPath());
+    CHECK(util->Path() == "../Util");
+
+    CHECK(manifest.build.output == "Dist");
+    CHECK(manifest.build.defines.at("Retries").kind == DefineValue::Kind::Integer);
+    CHECK(manifest.build.defines.at("Tracing").kind == DefineValue::Kind::Boolean);
+    CHECK(manifest.build.ConfigValues().at("Tracing") == "true");
+
+    CHECK(manifest.Serialize() == canonicalPackage);
+}
+
+TEST_CASE("A canonical workspace manifest round trips byte for byte") {
+    const Manifest manifest = Accepted(canonicalWorkspace);
+
+    CHECK(manifest.IsWorkspace());
+    CHECK(manifest.workspace.packages == std::vector<std::string>{"Packages/Math", "Packages/Memory"});
+    CHECK(manifest.Serialize() == canonicalWorkspace);
+}
+
+TEST_CASE("Serialization uses canonical order regardless of input order") {
+    const Manifest manifest = Accepted(R"([Manifest]
+Version = 1
+
+[Build.Defines]
+Zeta = "last"
+Alpha = "first"
+
+[Build]
+Output = "Out"
+
+[Dependencies]
+zulu = { Path = "../Zulu" }
+Alpha = { Namespace = "Rux", Version = "*" }
+
+[Package]
+Name = "App"
+Version = "0.1.0"
+Type = "Library"
+)");
+
+    CHECK(manifest.Serialize() == R"([Manifest]
+Version = 1
+
+[Package]
+Name = "App"
+Version = "0.1.0"
+Type = "Library"
+
+[Dependencies]
+Alpha = { Namespace = "Rux", Version = "*" }
+zulu = { Path = "../Zulu" }
+
+[Build]
+Output = "Out"
+
+[Build.Defines]
+Alpha = "first"
+Zeta = "last"
+)");
+}
+
+TEST_CASE("A default build section is left out of canonical form") {
+    const Manifest manifest = Accepted(WithPackage("\n[Build]\nOutput = \"Bin\"\n"));
+    CHECK(manifest.build.output == "Bin");
+    CHECK(manifest.Serialize().find("[Build]") == std::string::npos);
+}
+
+TEST_CASE("The parser accepts the documented TOML surface") {
+    const Manifest manifest = Accepted(R"(# A leading comment.
+[Manifest]
+Version = 1   # trailing comment
+
+[Package]
+Name = "App"
+Version = "0.1.0"
+Type = "Source"
+Description = "quotes \" backslash \\ tab \t newline \n unicode \u00E9"
+Authors = [
+    "First Author",
+    "Second Author",   # a trailing comma and comment are both fine
+]
+
+[Dependencies]
+"Quoted" = { Path = "../Quoted" }
+)");
+
+    CHECK(manifest.package.description == "quotes \" backslash \\ tab \t newline \n unicode \xc3\xa9");
+    CHECK(manifest.package.authors.size() == 2);
+    REQUIRE(manifest.dependencies.size() == 1);
+    CHECK(manifest.dependencies.front().importName.Text() == "Quoted");
+}
+
+TEST_CASE("Manifest diagnostics carry the path, line and column") {
+    const ManifestDiagnostic diagnostic = Rejected(R"([Manifest]
+Version = 1
+
+[Package]
+Name = "App"
+Version = "not a version"
+Type = "Program"
+)");
+
+    CHECK(diagnostic.path == std::filesystem::path("Rux.toml"));
+    CHECK(diagnostic.line == 6);
+    CHECK(diagnostic.column == 11);
+    CHECK(diagnostic.message.find("'Version' is not a valid version") != std::string::npos);
+    CHECK(diagnostic.Format().starts_with("Rux.toml:6:11: "));
+}
+
+TEST_CASE("The schema version is required and pinned") {
+    CHECK(
+        Rejected("[Package]\nName = \"App\"\nVersion = \"0.1.0\"\nType = \"Program\"\n").message.find("'[Manifest]'") !=
+        std::string::npos);
+
+    const auto unsupported = Rejected("[Manifest]\nVersion = 2\n\n[Package]\nName = \"App\"\n"
+                                      "Version = \"0.1.0\"\nType = \"Program\"\n");
+    CHECK(unsupported.line == 2);
+    CHECK(unsupported.message.find("unsupported manifest version 2") != std::string::npos);
+
+    CHECK(Rejected("[Manifest]\nVersion = \"1\"\n\n[Package]\nName = \"App\"\nVersion = \"0.1.0\"\n"
+                   "Type = \"Program\"\n")
+              .message.find("must be an integer") != std::string::npos);
+
+    CHECK(Rejected("[Manifest]\n\n[Package]\nName = \"App\"\nVersion = \"0.1.0\"\nType = \"Program\"\n")
+              .message.find("must declare 'Version'") != std::string::npos);
+}
+
+TEST_CASE("Package and workspace tables are mutually exclusive") {
+    CHECK(Rejected(R"([Manifest]
+Version = 1
+
+[Package]
+Name = "App"
+Version = "0.1.0"
+Type = "Program"
+
+[Workspace]
+Packages = ["Packages/Math"]
+)")
+              .message.find("mutually exclusive") != std::string::npos);
+
+    CHECK(Rejected("[Manifest]\nVersion = 1\n").message.find("either '[Package]' or '[Workspace]'") !=
+          std::string::npos);
+}
+
+TEST_CASE("Unknown, duplicate and mistyped input is rejected") {
+    SUBCASE("unknown section") {
+        const auto diagnostic = Rejected(WithPackage("\n[Extras]\nKey = \"value\"\n"));
+        CHECK(diagnostic.line == 9);
+        CHECK(diagnostic.message.find("unknown section '[Extras]'") != std::string::npos);
+    }
+    SUBCASE("duplicate section") {
+        CHECK(Rejected(WithPackage("\n[Build]\nOutput = \"A\"\n\n[Build]\nOutput = \"B\"\n"))
+                  .message.find("duplicate section '[Build]'") != std::string::npos);
+    }
+    SUBCASE("duplicate key") {
+        CHECK(Rejected(WithPackage("Description = \"one\"\nDescription = \"two\"\n"))
+                  .message.find("duplicate key 'Description'") != std::string::npos);
+    }
+    SUBCASE("unknown field") {
+        CHECK(Rejected(WithPackage("Maintainer = \"someone\"\n")).message.find("unknown field 'Maintainer'") !=
+              std::string::npos);
+    }
+    SUBCASE("wrong value type") {
+        CHECK(Rejected(WithPackage("Description = 7\n")).message.find("must be a string, found integer") !=
+              std::string::npos);
+        CHECK(Rejected(WithPackage("Authors = \"solo\"\n")).message.find("must be an array") != std::string::npos);
+    }
+    SUBCASE("missing required field") {
+        CHECK(Rejected("[Manifest]\nVersion = 1\n\n[Package]\nName = \"App\"\nVersion = \"0.1.0\"\n")
+                  .message.find("must declare 'Type'") != std::string::npos);
+    }
+    SUBCASE("unknown package type") {
+        CHECK(Rejected("[Manifest]\nVersion = 1\n\n[Package]\nName = \"App\"\nVersion = \"0.1.0\"\n"
+                       "Type = \"bin\"\n")
+                  .message.find("'Program', 'Library' or 'Source'") != std::string::npos);
+    }
+    SUBCASE("invalid identity") {
+        CHECK(Rejected("[Manifest]\nVersion = 1\n\n[Package]\nName = \"My__Pkg\"\nVersion = \"0.1.0\"\n"
+                       "Type = \"Program\"\n")
+                  .message.find("not a valid identity") != std::string::npos);
+    }
+    SUBCASE("license and license file together") {
+        CHECK(Rejected(WithPackage("License = \"MIT\"\nLicenseFile = \"LICENSE.md\"\n"))
+                  .message.find("mutually exclusive") != std::string::npos);
+    }
+    SUBCASE("colliding keywords") {
+        CHECK(Rejected(WithPackage("Keywords = [\"My_Word\", \"my-word\"]\n")).message.find("collides") !=
+              std::string::npos);
+    }
+}
+
+TEST_CASE("Malformed TOML is rejected with a location") {
+    SUBCASE("unterminated string") {
+        CHECK(Rejected(WithPackage("Description = \"open\n")).message.find("unterminated string") != std::string::npos);
+    }
+    SUBCASE("unknown escape") {
+        CHECK(Rejected(WithPackage("Description = \"bad \\q\"\n")).message.find("unknown string escape") !=
+              std::string::npos);
+    }
+    SUBCASE("missing equals") {
+        CHECK(Rejected(WithPackage("Description\n")).message.find("expected '='") != std::string::npos);
+    }
+    SUBCASE("trailing text") {
+        CHECK(Rejected(WithPackage("Description = \"a\" extra\n")).message.find("unexpected text") !=
+              std::string::npos);
+    }
+    SUBCASE("keys before any table") {
+        CHECK(Rejected("Version = 1\n\n[Manifest]\nVersion = 1\n").message.find("expected a table header") !=
+              std::string::npos);
+    }
+    SUBCASE("unsupported value syntax") {
+        CHECK(Rejected(WithPackage("\n[Build.Defines]\nRatio = 1.5\n")).message.find("expected an integer") !=
+              std::string::npos);
+    }
+}
+
+TEST_CASE("Dependency entries follow the documented rules") {
+    SUBCASE("registry entries need a namespace and a version") {
+        CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Version = \"*\" }\n"))
+                  .message.find("must declare 'Namespace'") != std::string::npos);
+        CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Namespace = \"Rux\" }\n"))
+                  .message.find("must declare 'Version'") != std::string::npos);
+    }
+    SUBCASE("path entries cannot carry registry fields") {
+        CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Namespace = \"Rux\", Path = \"../Io\" }\n"))
+                  .message.find("cannot also declare") != std::string::npos);
+    }
+    SUBCASE("a bare string is not a dependency") {
+        CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = \"*\"\n")).message.find("must be an inline table") !=
+              std::string::npos);
+    }
+    SUBCASE("unknown dependency field") {
+        CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Namespace = \"Rux\", Version = \"*\", Git = \"x\" }\n"))
+                  .message.find("unknown dependency field 'Git'") != std::string::npos);
+    }
+    SUBCASE("invalid version requirement") {
+        CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Namespace = \"Rux\", Version = \"1 || 2\" }\n"))
+                  .message.find("not a valid requirement") != std::string::npos);
+    }
+    SUBCASE("import names collide after normalization") {
+        const auto diagnostic =
+            Rejected(WithPackage("\n[Dependencies]\nMy_Pkg = { Path = \"../A\" }\n\"my-pkg\" = { Path = \"../B\" }\n"));
+        CHECK(diagnostic.message.find("collides with 'My_Pkg' after normalization") != std::string::npos);
+    }
+    SUBCASE("an alias keeps both names") {
+        const Manifest manifest =
+            Accepted(WithPackage("\n[Dependencies]\nJson = { Namespace = \"Acme\", Package = \"FastJson\", "
+                                 "Version = \"^2.0.0\" }\n"));
+        CHECK(manifest.dependencies.front().importName.Text() == "Json");
+        CHECK(manifest.dependencies.front().package.Text() == "FastJson");
+    }
+}
+
+TEST_CASE("Workspace tables follow the documented rules") {
+    SUBCASE("packages cannot be empty") {
+        CHECK(Rejected("[Manifest]\nVersion = 1\n\n[Workspace]\nPackages = []\n").message.find("cannot be empty") !=
+              std::string::npos);
+    }
+    SUBCASE("duplicate members are rejected") {
+        CHECK(Rejected("[Manifest]\nVersion = 1\n\n[Workspace]\nPackages = [\"A\", \"A\"]\n")
+                  .message.find("duplicate workspace package") != std::string::npos);
+    }
+    SUBCASE("a workspace cannot declare dependencies or build settings") {
+        CHECK(Rejected("[Manifest]\nVersion = 1\n\n[Workspace]\nPackages = [\"A\"]\n\n[Dependencies]\n"
+                       "Io = { Namespace = \"Rux\", Version = \"*\" }\n")
+                  .message.find("cannot declare dependencies") != std::string::npos);
+        CHECK(Rejected("[Manifest]\nVersion = 1\n\n[Workspace]\nPackages = [\"A\"]\n\n[Build]\nOutput = \"Out\"\n")
+                  .message.find("cannot declare build settings") != std::string::npos);
+    }
+}
+
+TEST_CASE("Manifest paths must be relative and portable") {
+    CHECK(Rejected(WithPackage("\n[Build]\nOutput = \"C:/Out\"\n")).message.find("must be a relative path") !=
+          std::string::npos);
+    CHECK(Rejected(WithPackage("\n[Build]\nOutput = \"Out\\\\Sub\"\n")).message.find("'/' separators") !=
+          std::string::npos);
+    CHECK(Rejected(WithPackage("\n[Build]\nOutput = \"./Out\"\n")).message.find("'.' component") != std::string::npos);
+    CHECK(Rejected(WithPackage("Readme = \"../README.md\"\n")).message.find("'..' component") != std::string::npos);
+    CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"A/../B\" }\n"))
+              .message.find("'..' after a normal component") != std::string::npos);
+
+    // A dependency may still climb out of its own directory first.
+    CHECK(Accepted(WithPackage("\n[Dependencies]\nIo = { Path = \"../../Packages/Io\" }\n")).dependencies.size() == 1);
+}
+
+TEST_CASE("Oversized manifests are rejected before parsing") {
+    std::string huge = std::string(WithPackage("")) + "\n";
+    huge.append(manifestMaxBytes, '#');
+    auto result = Manifest::Parse(huge, "Rux.toml");
+    REQUIRE_FALSE(result.Ok());
+    CHECK(result.diagnostics.front().message.find("larger than") != std::string::npos);
+}
+
+TEST_CASE("Dependency editing keeps the manifest canonical") {
+    Manifest manifest = Accepted(WithPackage(""));
+    const auto io = *IdentitySegment::Parse("Io");
+    const auto rux = *IdentitySegment::Parse("Rux");
+
+    CHECK(manifest.AddRegistryDependency(io, rux, *VersionRange::Parse("^1.0.0")));
+    CHECK_FALSE(manifest.AddRegistryDependency(io, rux, *VersionRange::Parse("^1.0.0")));
+    CHECK(manifest.AddPathDependency(io, "../Io"));
+    REQUIRE(manifest.dependencies.size() == 1);
+    CHECK(manifest.dependencies.front().IsPath());
+
+    CHECK(manifest.RemoveDependency(*IdentitySegment::Parse("io")));
+    CHECK(manifest.dependencies.empty());
+    CHECK_FALSE(manifest.RemoveDependency(io));
+}
+
+TEST_CASE("Loading a missing manifest reports a diagnostic instead of throwing") {
+    const auto result = Manifest::Load(TempDirectory() / "rux-does-not-exist" / "Rux.toml");
+    REQUIRE_FALSE(result.Ok());
+    REQUIRE(result.diagnostics.size() == 1);
+    CHECK(result.diagnostics.front().message.find("could not open") != std::string::npos);
 }
 
 TEST_CASE("Manifest-less workspace discovery finds members and test packages") {
@@ -74,7 +437,7 @@ TEST_CASE("Manifest-less workspace discovery finds members and test packages") {
     for (const auto &manifestPath : expected) {
         std::filesystem::create_directories(manifestPath.parent_path());
         std::ofstream manifest(manifestPath);
-        manifest << "[Package]\nName = \"Fixture\"\n";
+        manifest << WithPackage("");
         REQUIRE(manifest.good());
     }
 
@@ -84,7 +447,7 @@ TEST_CASE("Manifest-less workspace discovery finds members and test packages") {
     std::filesystem::create_directories(hiddenNestedManifest.parent_path());
     {
         std::ofstream manifest(hiddenNestedManifest);
-        manifest << "[Package]\nName = \"Hidden\"\n";
+        manifest << WithPackage("");
         REQUIRE(manifest.good());
     }
 
@@ -95,6 +458,26 @@ TEST_CASE("Manifest-less workspace discovery finds members and test packages") {
 
     std::error_code error;
     std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("Package specifications parse into validated identities") {
+    const auto qualified = ParsePackageSpec("Rux/Io@^1.2.0");
+    REQUIRE(qualified.has_value());
+    REQUIRE(qualified->ns.has_value());
+    CHECK(qualified->ns->Text() == "Rux");
+    CHECK(qualified->name.Text() == "Io");
+    REQUIRE(qualified->version.has_value());
+    CHECK(qualified->version->Text() == "^1.2.0");
+
+    const auto bare = ParsePackageSpec("Io");
+    REQUIRE(bare.has_value());
+    CHECK_FALSE(bare->ns.has_value());
+    CHECK_FALSE(bare->version.has_value());
+
+    CHECK_FALSE(ParsePackageSpec("Rux/Io@").has_value());
+    CHECK_FALSE(ParsePackageSpec("Rux/Io@1 || 2").has_value());
+    CHECK_FALSE(ParsePackageSpec("My__Pkg").has_value());
+    CHECK_FALSE(ParsePackageSpec("-bad/Io").has_value());
 }
 
 TEST_CASE("repository Rux tests use canonical local manifests") {
@@ -108,36 +491,40 @@ TEST_CASE("repository Rux tests use canonical local manifests") {
             continue;
         }
         ++manifestCount;
-        const auto manifest = Manifest::Load(entry.path());
-        REQUIRE_MESSAGE(manifest.has_value(), "invalid test manifest: ", entry.path().string());
-        CHECK_MESSAGE(manifest->package.type == "bin",
-                      "test package must explicitly use Type = \"bin\": ", entry.path().string());
-        CHECK_MESSAGE(!manifest->package.description.empty(),
+        const auto result = Manifest::Load(entry.path());
+        REQUIRE_MESSAGE(result.Ok(), "invalid test manifest: ",
+                        result.diagnostics.empty() ? entry.path().string() : result.diagnostics.front().Format());
+        const Manifest &manifest = *result.manifest;
+
+        CHECK_MESSAGE(manifest.header.schemaVersion == 1,
+                      "test package must declare [Manifest] Version = 1: ", entry.path().string());
+        CHECK_MESSAGE(manifest.package.type == ManifestPackageType::Program,
+                      "test package must use Type = \"Program\": ", entry.path().string());
+        CHECK_MESSAGE(!manifest.package.description.empty(),
                       "test package needs a description: ", entry.path().string());
         CHECK_MESSAGE(std::filesystem::is_regular_file(entry.path().parent_path() / "Src" / "Main.rux"),
                       "test package needs Src/Main.rux: ", entry.path().string());
 
-        const auto output = std::filesystem::weakly_canonical(entry.path().parent_path() / manifest->build.output);
+        const auto output = std::filesystem::weakly_canonical(entry.path().parent_path() / manifest.build.output);
         const auto outputRelative = output.lexically_relative(binariesRoot);
         const bool outputIsCentralized = !outputRelative.empty() && *outputRelative.begin() != "..";
         CHECK_MESSAGE(outputIsCentralized, "test output must stay below Bin/Tests: ", entry.path().string());
 
-        for (const auto &dependency : manifest->dependencies) {
-            REQUIRE_MESSAGE(!dependency.path.empty(),
+        for (const auto &dependency : manifest.dependencies) {
+            REQUIRE_MESSAGE(dependency.IsPath(),
                             "test dependencies must use local Path entries: ", entry.path().string(), " -> ",
-                            dependency.name);
-            const auto dependencyRoot = std::filesystem::weakly_canonical(entry.path().parent_path() / dependency.path);
+                            dependency.importName.Text());
+            const auto dependencyRoot =
+                std::filesystem::weakly_canonical(entry.path().parent_path() / dependency.Path());
             const auto dependencyRelative = dependencyRoot.lexically_relative(packagesRoot);
             const bool dependencyIsLocal = !dependencyRelative.empty() && *dependencyRelative.begin() != "..";
             CHECK_MESSAGE(dependencyIsLocal, "test dependency must resolve below Packages: ", entry.path().string(),
-                          " -> ", dependency.name);
-            const auto dependencyManifest = Manifest::Load(dependencyRoot / "Rux.toml");
-            REQUIRE_MESSAGE(dependencyManifest.has_value(),
-                            "local dependency has no valid manifest: ", dependencyRoot.string());
-            const auto expectedName = dependency.package.empty() ? dependency.name : dependency.package;
-            CHECK_MESSAGE(dependencyManifest->package.name == expectedName, "dependency name/path mismatch in ",
-                          entry.path().string(), ": expected ", expectedName, ", found ",
-                          dependencyManifest->package.name);
+                          " -> ", dependency.importName.Text());
+            const auto dependencyResult = Manifest::Load(dependencyRoot / "Rux.toml");
+            REQUIRE_MESSAGE(dependencyResult.Ok(), "local dependency has no valid manifest: ", dependencyRoot.string());
+            CHECK_MESSAGE(dependencyResult.manifest->package.name == dependency.package,
+                          "dependency name/path mismatch in ", entry.path().string(), ": expected ",
+                          dependency.package.Text(), ", found ", dependencyResult.manifest->package.name.Text());
         }
     }
 

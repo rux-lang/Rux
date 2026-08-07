@@ -53,17 +53,13 @@ void CompilerDriver::InitializeCompileTimeContext() {
     compileTimeContext.isTest = opts.isTest;
     compileTimeContext.sourceRoot = root.lexically_normal();
     compileTimeContext.compilerVersion = RUX_VERSION;
-    compileTimeContext.config = opts.manifest.build.defines;
+    compileTimeContext.config = opts.manifest.build.ConfigValues();
     for (const auto &[name, value] : opts.defines) {
         compileTimeContext.config[name] = value;
     }
 
-    const std::string &packageType = opts.manifest.package.type;
-    if (packageType == "Dll" || packageType == "dll" || packageType == "sharedlib" || packageType == "SharedLib") {
+    if (opts.manifest.package.type == ManifestPackageType::Library) {
         compileTimeContext.outputKind = OutputKind::SharedLibrary;
-    }
-    else if (packageType == "lib" || packageType == "Lib" || packageType == "staticlib" || packageType == "StaticLib") {
-        compileTimeContext.outputKind = OutputKind::StaticLibrary;
     }
 
     compileTimeContext.buildTimestamp =
@@ -274,9 +270,9 @@ bool CompilerDriver::LoadDependencies() {
         if (queuedPackageNames.count(pkgName)) {
             return true;
         }
-        const Dependency *dep = nullptr;
+        const ManifestDependency *dep = nullptr;
         for (const auto &d : ownerManifest.dependencies) {
-            if (d.name == pkgName) {
+            if (d.importName.Text() == pkgName) {
                 dep = &d;
                 break;
             }
@@ -287,8 +283,8 @@ bool CompilerDriver::LoadDependencies() {
             return false;
         }
         std::filesystem::path depRoot;
-        if (!dep->path.empty()) {
-            depRoot = (ownerRoot / dep->path).lexically_normal();
+        if (dep->IsPath()) {
+            depRoot = (ownerRoot / dep->Path()).lexically_normal();
         }
         else if (const auto local = opts.localPackageRoots.find(DependencyPackageName(*dep));
                  local != opts.localPackageRoots.end()) {
@@ -308,14 +304,17 @@ bool CompilerDriver::LoadDependencies() {
             }
         }
         auto depManifest = Manifest::Load(depRoot / "Rux.toml");
-        if (!depManifest) {
+        if (!depManifest.Ok()) {
+            for (const auto &diagnostic : depManifest.diagnostics) {
+                Emit(ErrorDiagnostic(diagnostic.Format()));
+            }
             Emit(ErrorDiagnostic("dependency package '" + pkgName + "' was not found at '" + depRoot.string() + "'"));
             return false;
         }
         queuedPackageNames.insert(pkgName);
         // Keep the import name as the package namespace loaded into Sema,
         // even when the files came from another package name.
-        pendingPackages.push_back({dep->name, depRoot, std::move(*depManifest)});
+        pendingPackages.push_back({dep->importName.Text(), depRoot, std::move(*depManifest.manifest)});
         return true;
     };
 
@@ -344,7 +343,7 @@ bool CompilerDriver::LoadDependencies() {
             }
         }
         for (const auto &pkgName : imports) {
-            if (pkgName == opts.manifest.package.name) {
+            if (pkgName == opts.manifest.package.name.Text()) {
                 continue;
             }
             if (!enqueueDependency(pkgName, opts.manifest, root)) {
@@ -411,7 +410,7 @@ bool CompilerDriver::LoadDependencies() {
             }
         }
         for (const auto &pkgName : imports) {
-            if (pkgName == pendingManifest.package.name || pkgName == packageName) {
+            if (pkgName == pendingManifest.package.name.Text() || pkgName == packageName) {
                 continue;
             }
             if (!enqueueDependency(pkgName, pendingManifest, pendingRoot)) {
@@ -430,7 +429,7 @@ bool CompilerDriver::LoadDependencies() {
 bool CompilerDriver::Analyze() {
     const auto semanticStart = std::chrono::steady_clock::now();
     if (opts.verbose) {
-        std::print("  Analyzing {}\n", opts.manifest.package.name);
+        std::print("  Analyzing {}\n", opts.manifest.package.name.Text());
     }
     std::vector<Module *> userModules;
     userModules.reserve(parseResults.size());
@@ -450,7 +449,7 @@ bool CompilerDriver::Analyze() {
             depPackages[it->second].modules.push_back({loadedModuleNames[i], &depParseResults[i].module});
         }
     }
-    SemanticAnalyzer analyzer(std::move(userModules), std::move(depPackages), opts.manifest.package.name,
+    SemanticAnalyzer analyzer(std::move(userModules), std::move(depPackages), opts.manifest.package.name.Text(),
                               compileTimeContext);
     semanticModel = analyzer.Analyze();
     EmitAll(semanticModel->diagnostics);
@@ -471,7 +470,7 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     // HIR
     const auto hirStart = std::chrono::steady_clock::now();
     if (opts.verbose) {
-        std::print("  Lowering {}\n", opts.manifest.package.name);
+        std::print("  Lowering {}\n", opts.manifest.package.name.Text());
     }
     AstToHirLowering hirLowering(*semanticModel);
     auto hirPackage = hirLowering.Generate();
@@ -485,7 +484,7 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     // LIR
     const auto lirStart = std::chrono::steady_clock::now();
     if (opts.verbose) {
-        std::print("  Emitting LIR for {}\n", opts.manifest.package.name);
+        std::print("  Emitting LIR for {}\n", opts.manifest.package.name.Text());
     }
     HirToLirLowering lirLowering(std::move(hirPackage));
     auto lirPackage = lirLowering.Generate();
@@ -503,7 +502,7 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     // invoking the native compiler.
     if (opts.dumpAsm && !useAArch64Backend) {
         if (opts.verbose) {
-            std::print("  Emitting assembly for {}\n", opts.manifest.package.name);
+            std::print("  Emitting assembly for {}\n", opts.manifest.package.name.Text());
         }
         auto asmDir = root / "Temp" / "Asm";
         std::filesystem::create_directories(asmDir);
@@ -515,8 +514,9 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     // below are intentionally bypassed.
     if (useAArch64Backend) {
         const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, !opts.isTest);
-        exePath = binDir / ExecutableFileName(opts.manifest.package.name, compileTimeContext.target.os);
-        AArch64NativeEmitter emitter(lirPackage, std::string(opts.manifest.package.name), compileTimeContext.target);
+        exePath = binDir / ExecutableFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os);
+        AArch64NativeEmitter emitter(lirPackage, std::string(opts.manifest.package.name.Text()),
+                                     compileTimeContext.target);
         const bool release = compileTimeContext.buildMode == Target::BuildMode::Release;
         const std::optional<std::filesystem::path> assemblyPath =
             opts.dumpAsm ? std::make_optional(root / "Temp" / "Asm" / "out.s") : std::nullopt;
@@ -532,9 +532,9 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
 
     // RCU object generation
     if (opts.verbose) {
-        std::print("  Emitting RCU objects for {}\n", opts.manifest.package.name);
+        std::print("  Emitting RCU objects for {}\n", opts.manifest.package.name.Text());
     }
-    RcuEmitter rcuEmitter(lirPackage, std::string(opts.manifest.package.name), compileTimeContext.target.os);
+    RcuEmitter rcuEmitter(lirPackage, std::string(opts.manifest.package.name.Text()), compileTimeContext.target.os);
     auto rcuFiles = rcuEmitter.Generate();
     if (!rcuEmitter.Diagnostics().empty()) {
         bool hasError = false;
@@ -564,15 +564,15 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     // Link
     const auto linkingStart = std::chrono::steady_clock::now();
     if (opts.verbose) {
-        std::print("   Linking {}\n", opts.manifest.package.name);
+        std::print("   Linking {}\n", opts.manifest.package.name.Text());
     }
     const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, !opts.isTest);
-    const bool buildDll = (opts.manifest.package.type == "Dll" || opts.manifest.package.type == "dll");
+    const bool buildDll = opts.manifest.package.type == ManifestPackageType::Library;
     const OS targetOs = TargetTripleOs(opts.targetName);
-    const std::string outputName = buildDll ? SharedLibraryFileName(opts.manifest.package.name, targetOs)
-                                            : ExecutableFileName(opts.manifest.package.name, targetOs);
+    const std::string outputName = buildDll ? SharedLibraryFileName(opts.manifest.package.name.Text(), targetOs)
+                                            : ExecutableFileName(opts.manifest.package.name.Text(), targetOs);
     exePath = binDir / outputName;
-    Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name), {root}, buildDll, targetOs);
+    Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name.Text()), {root}, buildDll, targetOs);
     if (!linker.Link(exePath)) {
         for (const auto &err : linker.Errors()) {
             Emit(ErrorDiagnostic(err.message));

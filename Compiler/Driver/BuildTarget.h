@@ -52,7 +52,9 @@ namespace Rux::Driver {
 [[nodiscard]] bool IsPlatformPackageName(std::string_view name);
 [[nodiscard]] bool PlatformPackageMatchesTarget(std::string_view name, std::string_view target);
 
-[[nodiscard]] std::string DependencyPackageName(const Dependency &dep);
+// The package name a dependency resolves to, which is its import name unless
+// the entry overrides it with `Package`.
+[[nodiscard]] const std::string &DependencyPackageName(const ManifestDependency &dep);
 
 // ---- Workspace / registry locations -----------------------------------------
 
@@ -61,8 +63,11 @@ namespace Rux::Driver {
 [[nodiscard]] std::optional<std::filesystem::path> RequireManifest();
 [[nodiscard]] std::optional<std::filesystem::path> RequireManifest(const std::filesystem::path &manifestPath);
 
-// Parse a manifest, printing an error on failure.
+// Parse a manifest, printing its source-located diagnostics on failure.
 [[nodiscard]] std::optional<Manifest> LoadManifest(const std::filesystem::path &path);
+
+// Print manifest diagnostics in the standard `path:line:column: error:` form.
+void ReportManifestDiagnostics(const ManifestResult &result);
 
 // Resolve the build output directory (defaults to "Bin"), optionally appending
 // the selected profile. Test runs use a profile-independent output directory.

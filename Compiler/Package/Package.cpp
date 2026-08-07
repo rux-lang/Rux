@@ -71,10 +71,16 @@ bool ScaffoldPackage(const fs::path &root, const std::string &name, const Packag
     }
 
     if (const auto tomlPath = root / "Rux.toml"; !initMode || !fs::exists(tomlPath)) {
+        auto packageName = IdentitySegment::Parse(name);
+        if (!packageName) {
+            std::println(stderr, "error: '{}' is not a valid package name: {}", name, Describe(packageName.error()));
+            return false;
+        }
         Manifest m;
-        m.package.name = name;
-        m.package.version = "0.1.0";
-        m.package.type = (type == PackageType::Executable ? "bin" : "lib");
+        m.package.name = *packageName;
+        m.package.version = *SemanticVersion::Parse("0.1.0");
+        m.package.type =
+            (type == PackageType::Executable ? ManifestPackageType::Program : ManifestPackageType::Library);
         if (!m.Save(tomlPath)) {
             std::println(stderr, "error: cannot write Rux.toml");
             return false;

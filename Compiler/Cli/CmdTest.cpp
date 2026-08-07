@@ -99,14 +99,16 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                     std::print(stderr, "warning: workspace member '{}' has no Rux.toml — skipping\n", member);
                     continue;
                 }
-                auto memberManifest = Manifest::Load(memberManifestPath);
-                if (!memberManifest || memberManifest->package.name.empty()) {
+                auto memberResult = Manifest::Load(memberManifestPath);
+                if (!memberResult.Ok() || memberResult.manifest->package.name.Empty()) {
+                    ReportManifestDiagnostics(memberResult);
                     std::print(stderr, "error: workspace member '{}' is not a package\n", member);
                     return 1;
                 }
-                const auto [existing, inserted] = localPackageRoots.emplace(memberManifest->package.name, memberDir);
+                const std::string &memberName = memberResult.manifest->package.name.Text();
+                const auto [existing, inserted] = localPackageRoots.emplace(memberName, memberDir);
                 if (!inserted && existing->second != memberDir) {
-                    std::print(stderr, "error: duplicate workspace package name '{}'\n", memberManifest->package.name);
+                    std::print(stderr, "error: duplicate workspace package name '{}'\n", memberName);
                     return 1;
                 }
                 if (auto memberTests = memberDir / "Tests"; std::filesystem::exists(memberTests, ec)) {
@@ -116,7 +118,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         }
         else {
             if (!opts.quiet) {
-                std::print("Testing {} v{}\n", manifest->package.name, manifest->package.version);
+                std::print("Testing {} v{}\n", manifest->package.name.Text(), manifest->package.version.Text());
             }
             testRoots.push_back({projectRoot / "Tests", {}});
         }
@@ -153,9 +155,9 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     const std::string_view profileName = isRelease ? "Release" : "Debug";
 
     // Collect test package directories: any directory under a test root that
-    // contains a Rux.toml with Type = "bin". A directory without a manifest is
-    // a group (e.g. Tests/Language/) and is searched recursively, a few levels
-    // deep so build-output trees don't get walked.
+    // contains a Rux.toml with Type = "Program". A directory without a manifest
+    // is a group (e.g. Tests/Language/) and is searched recursively, a few
+    // levels deep so build-output trees don't get walked.
     struct TestPackage {
         std::filesystem::path dir;
         std::string label;
@@ -188,12 +190,11 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                         continue;
                     }
                     auto pkgManifest = Manifest::Load(toml);
-                    if (!pkgManifest) {
+                    if (!pkgManifest.Ok()) {
                         continue;
                     }
-                    // Only run binary packages (not DLLs / shared libraries).
-                    const auto &type = pkgManifest->package.type;
-                    if (type != "bin" && type != "Bin") {
+                    // Only a Program package has an entry point to run.
+                    if (pkgManifest.manifest->package.type != ManifestPackageType::Program) {
                         continue;
                     }
                     auto label = entry.path().lexically_relative(root.dir).generic_string();
@@ -243,19 +244,20 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         TestOutcome outcome;
 
         // Load the package manifest to derive the executable name and output path.
-        auto pkgManifest = Manifest::Load(pkgDir / "Rux.toml");
-        if (!pkgManifest) {
-            std::print(stderr, "error: failed to parse '{}'\n", (pkgDir / "Rux.toml").string());
+        auto pkgResult = Manifest::Load(pkgDir / "Rux.toml");
+        if (!pkgResult.Ok()) {
+            ReportManifestDiagnostics(pkgResult);
             outcome.status = TestStatus::BuildError;
             return outcome;
         }
+        auto pkgManifest = std::move(pkgResult.manifest);
         for (const auto &dependency : pkgManifest->dependencies) {
-            if (dependency.path.empty()) {
+            if (!dependency.IsPath()) {
                 outcome.status = TestStatus::BuildError;
                 outcome.output = std::format(
                     "error: test dependency '{}' must use a local Path entry in '{}'; registry dependencies are "
                     "not allowed\n",
-                    dependency.name, (pkgDir / "Rux.toml").string());
+                    dependency.importName.Text(), (pkgDir / "Rux.toml").string());
                 return outcome;
             }
         }

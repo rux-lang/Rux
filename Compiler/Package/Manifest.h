@@ -3,16 +3,28 @@
 #include "Package/Identity.h"
 #include "Package/Version.h"
 
+#include <cstdint>
+#include <expected>
 #include <filesystem>
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
 namespace Rux {
 /// The only manifest schema version this compiler accepts.
 inline constexpr int manifestSchemaVersion = 1;
+
+/// Manifest source larger than this is rejected before parsing.
+inline constexpr std::size_t manifestMaxBytes = 65536;
+
+inline constexpr std::size_t manifestMaxDependencies = 256;
+inline constexpr std::size_t manifestMaxWorkspacePackages = 256;
+inline constexpr std::size_t manifestMaxDefines = 128;
+inline constexpr std::size_t manifestMaxAuthors = 32;
+inline constexpr std::size_t manifestMaxKeywords = 32;
 
 /**
  * @brief What a package builds.
@@ -33,6 +45,25 @@ enum class ManifestPackageType {
 [[nodiscard]] std::optional<ManifestPackageType> ParseManifestPackageType(std::string_view value) noexcept;
 
 /**
+ * @brief A manifest problem located in the file it came from.
+ *
+ * Package code does not depend on the compiler's diagnostic component, so the
+ * CLI and driver translate these into their own diagnostic type for display.
+ */
+struct ManifestDiagnostic {
+    std::filesystem::path path;
+
+    /// 1-based line and column of the rejected token.
+    std::uint32_t line = 1;
+    std::uint32_t column = 1;
+
+    std::string message;
+
+    /// Render as `path:line:column: message`.
+    [[nodiscard]] std::string Format() const;
+};
+
+/**
  * @brief The `[Manifest]` schema header.
  *
  * `schemaVersion` is the manifest schema version, distinct from the package's
@@ -40,7 +71,7 @@ enum class ManifestPackageType {
  * build the package; it is optional locally and required to publish.
  */
 struct ManifestHeader {
-    int schemaVersion = 0;
+    int schemaVersion = manifestSchemaVersion;
     std::optional<SemanticVersion> minRux;
 };
 
@@ -74,24 +105,14 @@ struct ManifestDependency {
     [[nodiscard]] bool IsPath() const noexcept {
         return std::holds_alternative<PathDependencySource>(source);
     }
-};
 
-/**
- * @brief A dependency entry as read by the pre-Version 1 line parser.
- *
- * A dependency can either be:
- *  - version-based (version is set, path is empty)
- *  - path-based (path is set, version is ignored)
- *
- * The strict parser replaces this with ManifestDependency, which carries
- * validated identities and a typed version requirement instead of raw strings.
- */
-struct Dependency {
-    std::string name;
-    std::string package; // registry/package name; empty means same as name
-    std::string version; // empty = "latest"
-    std::string path;    // for path-based deps: { Path = "..." }, empty if
-    // version-based
+    /// The local directory of a path dependency, or an empty string.
+    [[nodiscard]] const std::string &Path() const noexcept;
+
+    /// The registry source, or nullptr for a path dependency.
+    [[nodiscard]] const RegistryDependencySource *Registry() const noexcept {
+        return std::get_if<RegistryDependencySource>(&source);
+    }
 };
 
 /**
@@ -101,18 +122,15 @@ struct Package {
     /// Registry namespace; unset for a local-only package.
     std::optional<IdentitySegment> ns;
 
-    std::string name;
-
-    /// Semantic version (default: 0.1.0)
-    std::string version = "0.1.0";
-
-    /// Package type: "bin", "sharedlib", or "dll" (Windows PE32+ shared
-    /// library)
-    std::string type = "bin";
+    IdentitySegment name;
+    SemanticVersion version;
+    ManifestPackageType type = ManifestPackageType::Program;
 
     std::string description;
     std::vector<std::string> authors;
-    std::vector<std::string> keywords;
+    std::vector<IdentitySegment> keywords;
+
+    /// SPDX expression; mutually exclusive with licenseFile.
     std::string license;
 
     /// Package-relative path to a license file; mutually exclusive with license.
@@ -138,67 +156,102 @@ struct Workspace {
 };
 
 /**
- * @brief Build configuration section.
+ * @brief One `[Build.Defines]` value.
+ *
+ * The declared TOML type is retained so canonical serialization reproduces the
+ * spelling it read. Compile-time configuration consumes the text form.
  */
-struct Build {
-    /// Output directory or artifact name.
-    std::string output = "Bin";
+struct DefineValue {
+    enum class Kind {
+        String,
+        Boolean,
+        Integer,
+    };
 
-    /// User-defined compile-time values exposed through the Rux package's `config` value.
-    std::map<std::string, std::string> defines;
+    Kind kind = Kind::String;
+    std::string text;
 };
 
 /**
- * @brief Represents a parsed Rux.toml manifest.
+ * @brief Build configuration section.
+ */
+struct Build {
+    /// Output directory, relative to the manifest unless absolute.
+    std::string output = "Bin";
+
+    /// User-defined compile-time values exposed through the Rux package's `config` value.
+    std::map<std::string, DefineValue> defines;
+
+    /// The defines as plain text, in the form compile-time configuration expects.
+    [[nodiscard]] std::map<std::string, std::string> ConfigValues() const;
+};
+
+struct ManifestResult;
+
+/**
+ * @brief A parsed Version 1 `Rux.toml`.
  */
 struct Manifest {
     ManifestHeader header;
     Package package;
     Build build;
-    std::vector<Dependency> dependencies;
+    std::vector<ManifestDependency> dependencies;
     Workspace workspace;
 
     /**
      * @brief Whether this manifest describes a workspace rather than a package.
      *
-     * A workspace manifest declares `[Workspace]` with one or more member
-     * packages and has no `[Package]` of its own.
+     * `[Package]` and `[Workspace]` are mutually exclusive, and a workspace
+     * lists at least one member.
      */
     [[nodiscard]] bool IsWorkspace() const noexcept {
-        return package.name.empty() && !workspace.packages.empty();
+        return !workspace.packages.empty();
     }
 
     /**
-     * @brief Load a manifest from disk.
+     * @brief Load and validate a manifest from disk.
      * @param path Path to Rux.toml
-     * @return Parsed manifest or std::nullopt on failure
      */
-    static std::optional<Manifest> Load(const std::filesystem::path &path);
+    [[nodiscard]] static ManifestResult Load(const std::filesystem::path &path);
 
     /**
-     * @brief Save manifest to disk.
-     * @param path Output file path
-     * @return true on success, false on failure
+     * @brief Validate manifest text that is already in memory.
+     * @param text Manifest source
+     * @param path Path used to locate diagnostics
+     */
+    [[nodiscard]] static ManifestResult Parse(std::string_view text, const std::filesystem::path &path);
+
+    /**
+     * @brief Render the manifest in canonical form.
+     */
+    [[nodiscard]] std::string Serialize() const;
+
+    /**
+     * @brief Write the canonical form to disk.
+     * @return false when the file could not be written
      */
     [[nodiscard]] bool Save(const std::filesystem::path &path) const;
 
-    /**
-     * @brief Add or update a registry dependency.
-     * @return false if already exists with same version
-     */
-    bool AddDependency(const std::string &name, const std::string &version);
+    /// Find a dependency by normalized import name.
+    [[nodiscard]] const ManifestDependency *FindDependency(const IdentitySegment &importName) const;
 
     /**
-     * @brief Add or update a path-based dependency.
-     * @return false if already exists with same path
+     * @brief Add or replace a registry dependency.
+     * @return false when an identical entry already exists
      */
-    bool AddPathDependency(const std::string &name, const std::string &path);
+    bool AddRegistryDependency(IdentitySegment importName, IdentitySegment ns, VersionRange version);
 
     /**
-     * @brief Remove a dependency by name.
-     * @return false if not found
+     * @brief Add or replace a path dependency.
+     * @return false when an identical entry already exists
      */
-    bool RemoveDependency(const std::string &name);
+    bool AddPathDependency(IdentitySegment importName, std::string path);
+
+    /**
+     * @brief Remove a dependency by normalized import name.
+     * @return false when no such dependency exists
+     */
+    bool RemoveDependency(const IdentitySegment &importName);
 
     /**
      * @brief Find a Rux.toml by walking up directories.
@@ -210,30 +263,47 @@ struct Manifest {
 };
 
 /**
+ * @brief The outcome of loading or parsing a manifest.
+ *
+ * A failed load carries at least one diagnostic and no manifest. A successful
+ * load carries a manifest and no diagnostics; the parser stops at the first
+ * rejected construct rather than guessing how to continue.
+ */
+struct ManifestResult {
+    std::optional<Manifest> manifest;
+    std::vector<ManifestDiagnostic> diagnostics;
+
+    [[nodiscard]] bool Ok() const noexcept {
+        return manifest.has_value();
+    }
+};
+
+/**
  * @brief Discover package manifests owned by a workspace without a root manifest.
  *
- * A manifest-less workspace
- * may keep test packages below Tests/ and package
- * members in immediate child directories. Member test packages are
- * discovered
+ * A manifest-less workspace may keep test packages below Tests/ and package
+ * members in immediate child directories. Member test packages are discovered
  * below each member's Tests/ directory as well. Group directories below a
- * Tests/ root are searched to
- * the same bounded depth used by `rux test`.
+ * Tests/ root are searched to the same bounded depth used by `rux test`.
  */
 [[nodiscard]] std::vector<std::filesystem::path>
 DiscoverManifestlessWorkspaceManifests(const std::filesystem::path &root = std::filesystem::current_path());
 
 /**
- * @brief Parse a package specification string.
+ * @brief A package reference written on the command line.
  *
- * Examples:
- * @code
- * "Rux"       -> { "Rux", "" }
- * "Rux@1.2.0" -> { "Rux", "1.2.0" }
- * @endcode
- *
- * @param spec Package spec string
- * @return Pair of {name, version}
+ * `Namespace/Name@requirement` names a registry package; the namespace and the
+ * requirement are both optional in the spelling and absent here when omitted.
  */
-std::pair<std::string, std::string> ParsePackageSpec(std::string_view spec);
+struct PackageSpec {
+    std::optional<IdentitySegment> ns;
+    IdentitySegment name;
+    std::optional<VersionRange> version;
+};
+
+/**
+ * @brief Parse `[Namespace/]Name[@requirement]`.
+ * @return The parsed reference, or an explanation of what was rejected
+ */
+[[nodiscard]] std::expected<PackageSpec, std::string> ParsePackageSpec(std::string_view spec);
 } // namespace Rux

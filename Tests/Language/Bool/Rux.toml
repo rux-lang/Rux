@@ -1,7 +1,10 @@
+[Manifest]
+Version = 1
+
 [Package]
 Name = "Bool"
 Version = "0.1.0"
-Type = "bin"
+Type = "Program"
 Description = "Language test: Bool"
 
 [Dependencies]

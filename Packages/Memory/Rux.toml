@@ -1,3 +1,6 @@
+[Manifest]
+Version = 1
+
 [Package]
 Name = "Memory"
 Version = "0.1.0"
@@ -6,8 +9,8 @@ Description = "Memory management functions"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
 
 [Dependencies]
-Bsd = "*"
-Linux = "*"
-MacOS = "*"
-Rux = "*"
-Windows = "*"
+Bsd = { Namespace = "Rux", Version = "*" }
+Linux = { Namespace = "Rux", Version = "*" }
+MacOS = { Namespace = "Rux", Version = "*" }
+Rux = { Namespace = "Rux", Version = "*" }
+Windows = { Namespace = "Rux", Version = "*" }

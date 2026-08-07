@@ -41,26 +41,11 @@ int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions &opt
     }
     auto root = manifestPath->parent_path();
     if (manifestOnly) {
-        auto manifest = Manifest::Load(*manifestPath);
+        auto manifest = LoadManifest(*manifestPath);
         if (!manifest) {
-            std::print(stderr, "error: failed to parse manifest file '{}'\n", manifestPath->string());
             return 1;
         }
-        // Get formatted content by saving to a temp file and reading it
-        auto tempPath = manifestPath->parent_path() / "Rux.toml.fmt.tmp";
-        if (!manifest->Save(tempPath)) {
-            std::print(stderr, "error: failed to serialize formatted manifest\n");
-            return 1;
-        }
-        std::string formattedContent;
-        {
-            std::ifstream tempFile(tempPath, std::ios::binary);
-            if (tempFile) {
-                formattedContent.assign(std::istreambuf_iterator<char>(tempFile), std::istreambuf_iterator<char>());
-            }
-        }
-        std::error_code ec;
-        std::filesystem::remove(tempPath, ec);
+        const std::string formattedContent = manifest->Serialize();
         std::string originalContent;
         {
             std::ifstream inFile(*manifestPath, std::ios::binary);
@@ -170,7 +155,8 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         return 1;
     }
     if (!opts.quiet) {
-        std::print("  Generating documentation for {} v{}\n", manifest->package.name, manifest->package.version);
+        std::print("  Generating documentation for {} v{}\n", manifest->package.name.Text(),
+                   manifest->package.version.Text());
     }
 
     // TODO: documentation generator

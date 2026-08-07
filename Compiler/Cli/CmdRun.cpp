@@ -73,7 +73,7 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     }
     const bool buildQuiet = !opts.verbose || opts.quiet;
     if (!buildQuiet) {
-        std::print("Compiling {} v{} [{}]\n", manifest->package.name, manifest->package.version,
+        std::print("Compiling {} v{} [{}]\n", manifest->package.name.Text(), manifest->package.version.Text(),
                    manifestPath->parent_path().string());
     }
     CompileOptions copts;
@@ -92,9 +92,8 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     if (!buildQuiet) {
         PrintBuildSummary(result.executablePath, profileName, result.stats);
     }
-    const bool runDll = (manifest->package.type == "Dll" || manifest->package.type == "dll");
-    if (runDll) {
-        std::print(stderr, "error: cannot run a DLL package directly\n");
+    if (manifest->package.type == ManifestPackageType::Library) {
+        std::print(stderr, "error: cannot run a Library package; only a Program package has an entry point\n");
         return 1;
     }
     auto exePath = result.executablePath;

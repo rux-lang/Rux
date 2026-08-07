@@ -31,8 +31,9 @@ public:
         std::filesystem::create_directories(depRoot / "Src");
         std::filesystem::create_directories(transitiveRoot / "Src");
 
-        dependency.package.name = "Dependency";
-        dependency.package.type = "source";
+        dependency.package.name = *IdentitySegment::Parse("Dependency");
+        dependency.package.version = *SemanticVersion::Parse("0.1.0");
+        dependency.package.type = ManifestPackageType::Source;
         REQUIRE(dependency.Save(depRoot / "Rux.toml"));
         REQUIRE(WriteFile(depRoot / "Src" / "Api.rux", R"(
 module Api {
@@ -42,9 +43,10 @@ module Api {
 }
 )"));
 
-        application.package.name = "App";
-        application.package.type = "bin";
-        application.dependencies.push_back({"Dependency", {}, {}, "../Dependency"});
+        application.package.name = *IdentitySegment::Parse("App");
+        application.package.version = *SemanticVersion::Parse("0.1.0");
+        application.package.type = ManifestPackageType::Program;
+        REQUIRE(application.AddPathDependency(*IdentitySegment::Parse("Dependency"), "../Dependency"));
         REQUIRE(application.Save(appRoot / "Rux.toml"));
         REQUIRE(WriteFile(appRoot / "Src" / "Main.rux", R"(
 import Dependency::Api::Answer;
@@ -68,13 +70,14 @@ func Main() -> int {
     }
 
     void SetManifestDefine(std::string name, std::string value) {
-        application.build.defines[std::move(name)] = std::move(value);
+        application.build.defines[std::move(name)] = DefineValue{DefineValue::Kind::String, std::move(value)};
     }
 
     void UseRegistryDeclaredTransitiveDependency() {
         Manifest transitive;
-        transitive.package.name = "Transitive";
-        transitive.package.type = "source";
+        transitive.package.name = *IdentitySegment::Parse("Transitive");
+        transitive.package.version = *SemanticVersion::Parse("0.1.0");
+        transitive.package.type = ManifestPackageType::Source;
         REQUIRE(transitive.Save(transitiveRoot / "Rux.toml"));
         REQUIRE(WriteFile(transitiveRoot / "Src" / "Api.rux", R"(
 module Api {
@@ -84,7 +87,8 @@ module Api {
 }
 )"));
 
-        dependency.dependencies.push_back({"Transitive", {}, "*", {}});
+        REQUIRE(dependency.AddRegistryDependency(*IdentitySegment::Parse("Transitive"), *IdentitySegment::Parse("Rux"),
+                                                 *VersionRange::Parse("*")));
         REQUIRE(dependency.Save(depRoot / "Rux.toml"));
         REQUIRE(WriteFile(depRoot / "Src" / "Api.rux", R"(
 import Transitive::Api::Value;
