@@ -1140,6 +1140,43 @@ std::optional<std::filesystem::path> Manifest::Find(const std::filesystem::path 
     return std::nullopt;
 }
 
+std::vector<std::string> ValidateForPublication(const Manifest &manifest) {
+    std::vector<std::string> rejections;
+
+    if (manifest.IsWorkspace()) {
+        rejections.emplace_back("a workspace cannot be published; publish a member package instead");
+        return rejections;
+    }
+
+    if (!manifest.package.ns) {
+        rejections.emplace_back("publication requires [Package].Namespace; a namespace-free package is local-only");
+    }
+
+    if (!manifest.header.minRux) {
+        rejections.emplace_back(
+            std::format("publication requires [Manifest].MinRux, the oldest compiler release that can build the "
+                        "package; it must be at least {}",
+                        publicationMinRuxFloor));
+    }
+    else if (const auto floor = SemanticVersion::Parse(publicationMinRuxFloor);
+             floor && SemanticVersion::ComparePrecedence(*manifest.header.minRux, *floor) < 0) {
+        rejections.emplace_back(std::format("[Manifest].MinRux is '{}' but publication requires at least {}",
+                                            manifest.header.minRux->Text(), publicationMinRuxFloor));
+    }
+
+    // A path dependency names a directory that exists only in the publishing
+    // tree, so a consumer resolving from the registry could never satisfy it.
+    for (const auto &dependency : manifest.dependencies) {
+        if (dependency.IsPath()) {
+            rejections.emplace_back(
+                std::format("dependency '{}' uses Path = \"{}\"; publication requires registry dependencies",
+                            dependency.importName.Text(), dependency.Path()));
+        }
+    }
+
+    return rejections;
+}
+
 std::vector<std::filesystem::path> DiscoverManifestlessWorkspaceManifests(const std::filesystem::path &root) {
     std::vector<std::filesystem::path> manifests;
 

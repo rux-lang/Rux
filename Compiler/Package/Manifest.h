@@ -278,6 +278,28 @@ struct ManifestResult {
     }
 };
 
+/// The oldest compiler release a published package may declare as its minimum.
+inline constexpr std::string_view publicationMinRuxFloor = "0.4.0";
+
+/**
+ * @brief Check a manifest against the publication validation profile.
+ *
+ * The profile is not stored in `Rux.toml`; it is selected by the operation.
+ * Local validation, which `Manifest::Load` applies, accepts workspaces and
+ * permits a package to omit `Namespace` and `MinRux` and to use path
+ * dependencies. Publication accepts none of that, because a published package
+ * must be identifiable in the registry and resolvable without the local tree.
+ *
+ * The returned messages have no source position — a required field that is
+ * absent has nothing to point at — so they are strings rather than
+ * ManifestDiagnostic values, and the CLI renders them.
+ *
+ * @param manifest A manifest that already passed local validation
+ *
+ * @return One message per rejected rule; empty when the manifest is publishable
+ */
+[[nodiscard]] std::vector<std::string> ValidateForPublication(const Manifest &manifest);
+
 /**
  * @brief Discover package manifests owned by a workspace without a root manifest.
  *

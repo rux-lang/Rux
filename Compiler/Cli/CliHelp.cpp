@@ -290,6 +290,19 @@ constexpr std::array new_opts = {
     OptionDoc{.flags = "--path <dir>"sv, .desc = "Create the workspace in a specific directory"sv}};
 constexpr std::array new_exs = {"App"sv, "App --bin"sv, "Io --lib --namespace Rux"sv};
 
+// Pack
+constexpr std::array pack_usage = {"[options]"sv};
+constexpr std::array pack_opts = {
+    OptionDoc{.flags = "--output <path>"sv, .desc = "Write the archive to a specific path"sv}};
+constexpr std::array pack_exs = {""sv, "--output Dist/Math.ruxpkg"sv};
+
+// Publish
+constexpr std::array publish_usage = {"[options]"sv};
+constexpr std::array publish_opts = {
+    OptionDoc{.flags = "--registry <url>"sv, .desc = "Registry API base URL to publish to"sv},
+    OptionDoc{.flags = "--dry-run"sv, .desc = "Validate and build the archive without uploading"sv}};
+constexpr std::array publish_exs = {""sv, "--dry-run"sv, "--registry http://localhost:8080"sv};
+
 // Remove
 constexpr std::array remove_usage = {"[name]"sv};
 constexpr std::array remove_exs = {"Json"sv, "Random"sv};
@@ -458,6 +471,30 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .footer = {},
                .examples = Data::new_exs,
                .options = Data::new_opts},
+
+    CommandDoc{.name = "pack"sv,
+               .shortDesc = "Build the publishable package archive"sv,
+               .description = "Build the .ruxpkg archive that 'rux publish' uploads"sv,
+               .usage = Data::pack_usage,
+               .postUsage = "The archive contains Rux.toml, every file below Src/, and the files named by "
+                            "Readme and LicenseFile. Without --output it is written to the build output "
+                            "directory as <Name>-<Version>.ruxpkg.\n"
+                            "The package must satisfy the same rules 'rux publish' enforces."sv,
+               .footer = {},
+               .examples = Data::pack_exs,
+               .options = Data::pack_opts},
+
+    CommandDoc{.name = "publish"sv,
+               .shortDesc = "Publish the package to the registry"sv,
+               .description = "Upload the package archive to a Rux package registry"sv,
+               .usage = Data::publish_usage,
+               .postUsage = "Publication requires [Package].Namespace and [Manifest].MinRux, and rejects "
+                            "workspaces and path dependencies. Published versions are immutable.\n"
+                            "The bearer credential is read from the RUX_TOKEN environment variable and must "
+                            "carry the 'publish' scope. The registry defaults to RUX_REGISTRY_URL when set."sv,
+               .footer = {},
+               .examples = Data::publish_exs,
+               .options = Data::publish_opts},
 
     CommandDoc{.name = "remove"sv,
                .shortDesc = "Remove a dependency from the manifest"sv,

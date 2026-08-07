@@ -183,6 +183,24 @@ All limits count UTF-8 bytes:
 
 The selected validation policy is not stored in `Rux.toml`. Local validation accepts package and workspace manifests, allows a package to omit `Namespace` and `MinRux`, and permits path dependencies. Publication validation accepts only package manifests, requires `Namespace` and `MinRux`, and rejects every path dependency.
 
+`rux publish` and `rux pack` apply the publication profile before doing any other work, so a manifest that cannot be published is reported locally rather than by the registry. Every other command applies the local profile.
+
+## Publishing
+
+`rux pack` builds the package archive and `rux publish` uploads it. Both accept only a package manifest that passes publication validation.
+
+The archive is a ZIP named `<Name>-<Version>.ruxpkg`. It contains `Rux.toml` at its root, every regular file below `Src/`, and the files named by `Readme` and `LicenseFile`. It must contain at least one `Src/**/*.rux` source. Entry paths are relative, `/`-separated UTF-8; entries are sorted and carry a fixed timestamp, so packing one tree twice produces identical bytes. Publication uploads the manifest beside the archive and the two copies must match byte for byte, comments and line endings included.
+
+```sh
+rux pack
+rux publish --dry-run
+rux publish
+```
+
+`rux publish` reads its bearer credential from the `RUX_TOKEN` environment variable, which must carry the registry's `publish` scope. There is no flag for it, so the credential stays out of shell history and the process list. The registry defaults to the official API and is overridden by `RUX_REGISTRY_URL` or `--registry <url>`, which is how a local registry is targeted for testing. `--dry-run` validates and builds the archive without uploading and needs no credential.
+
+A published version is immutable: republishing an existing `major.minor.patch` — build metadata included — is rejected. `rux publish` does not build or check the package first; run `rux check` beforehand.
+
 ## Canonical serialization
 
 `rux fmt --manifest-only`, `rux add`, `rux remove`, `rux new` and `rux init` write the same order:
@@ -197,4 +215,4 @@ Only recognized fields are serialized. Required fields never rely on implicit de
 
 ## Migration and release
 
-The compiler, CLI, first-party packages, workspaces and tests move to Manifest Version 1 in one atomic repository change. Official first-party packages use `Namespace = "Rux"`; local test packages may remain namespace-free. The cutover ships in Rux `0.4.0`, a permitted breaking minor release while Rux is pre-1.0. The release is gated on the package registry accepting the same schema and conformance cases. Remote registry index resolution and publish/download transport remain separate integration work.
+The compiler, CLI, first-party packages, workspaces and tests move to Manifest Version 1 in one atomic repository change. Official first-party packages use `Namespace = "Rux"`; local test packages may remain namespace-free. The cutover ships in Rux `0.4.0`, a permitted breaking minor release while Rux is pre-1.0. The release is gated on the package registry accepting the same schema and conformance cases. Publication transport ships with `rux publish`; remote registry index resolution and artifact download remain separate integration work, so `rux install` still resolves through the package index.

@@ -482,6 +482,89 @@ TEST_CASE("Package specifications parse into validated identities") {
     CHECK_FALSE(ParsePackageSpec("-bad/Io").has_value());
 }
 
+// --- Publication validation profile ------------------------------------------
+
+TEST_CASE("the publication profile accepts a complete package manifest") {
+    const Manifest manifest = Accepted(R"([Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Rux"
+Name = "App"
+Version = "1.2.3"
+Type = "Program"
+
+[Dependencies]
+Io = { Namespace = "Rux", Version = "^1.0.0" }
+)");
+
+    CHECK(ValidateForPublication(manifest).empty());
+}
+
+TEST_CASE("the publication profile rejects what local validation allows") {
+    SUBCASE("a workspace is not a package") {
+        const auto rejections = ValidateForPublication(Accepted(canonicalWorkspace));
+        REQUIRE(rejections.size() == 1);
+        CHECK(rejections.front().contains("workspace"));
+    }
+
+    SUBCASE("a namespace-free package is local-only") {
+        const auto rejections = ValidateForPublication(Accepted(WithPackage("")));
+        // The same manifest also omits MinRux, so both rules report.
+        REQUIRE(rejections.size() == 2);
+        CHECK(rejections[0].contains("Namespace"));
+        CHECK(rejections[1].contains("MinRux"));
+    }
+
+    SUBCASE("MinRux is required") {
+        const auto rejections = ValidateForPublication(Accepted(R"([Manifest]
+Version = 1
+
+[Package]
+Namespace = "Rux"
+Name = "App"
+Version = "0.1.0"
+Type = "Program"
+)"));
+        REQUIRE(rejections.size() == 1);
+        CHECK(rejections.front().contains("MinRux"));
+    }
+
+    SUBCASE("MinRux below the floor is rejected") {
+        const auto rejections = ValidateForPublication(Accepted(R"([Manifest]
+Version = 1
+MinRux = "0.3.9"
+
+[Package]
+Namespace = "Rux"
+Name = "App"
+Version = "0.1.0"
+Type = "Program"
+)"));
+        REQUIRE(rejections.size() == 1);
+        CHECK(rejections.front().contains("0.3.9"));
+    }
+
+    SUBCASE("a path dependency cannot be resolved from the registry") {
+        const auto rejections = ValidateForPublication(Accepted(R"([Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Rux"
+Name = "App"
+Version = "0.1.0"
+Type = "Program"
+
+[Dependencies]
+Util = { Path = "../Util" }
+)"));
+        REQUIRE(rejections.size() == 1);
+        CHECK(rejections.front().contains("Util"));
+    }
+}
+
 // --- Repository manifest policy ----------------------------------------------
 //
 // The repository is the first consumer of Manifest Version 1, so these cases
@@ -583,6 +666,10 @@ TEST_CASE("first-party packages are publishable under the Rux namespace") {
                       "package name must match its directory: ", path.string());
         CHECK_MESSAGE(!manifest.package.description.empty(), "package needs a description: ", path.string());
         CHECK_MESSAGE(!manifest.package.authors.empty(), "package needs authors: ", path.string());
+
+        // MinRux is the other field publication requires and local builds do not.
+        CHECK_MESSAGE(ValidateForPublication(manifest).empty(),
+                      "first-party package must satisfy the publication profile: ", path.string());
 
         for (const auto &dependency : manifest.dependencies) {
             // A published package cannot carry a path dependency, so first-party

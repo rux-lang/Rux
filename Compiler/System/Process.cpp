@@ -5,7 +5,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cstdio>
+#include <format>
 #include <fstream>
 #include <system_error>
 #include <vector>
@@ -13,6 +15,8 @@
 #if RUX_OS_WINDOWS
     #include <winhttp.h>
 #else
+    #include <atomic>
+    #include <charconv>
     #include <fcntl.h>
     #include <sys/wait.h>
     #include <unistd.h>
@@ -134,6 +138,73 @@ std::vector<std::string> JsonFindGitBlobPaths(const std::string_view json) {
         }
     }
     return paths;
+}
+
+std::vector<ProblemError> JsonFindProblemErrors(std::string_view json) {
+    std::vector<ProblemError> errors;
+
+    // Locate the "errors" array, then walk the flat objects inside it. Anything
+    // before the array, such as the document's own "code", stays out of range.
+    const auto key = json.find("\"errors\"");
+    if (key == std::string_view::npos) {
+        return errors;
+    }
+    const auto open = json.find('[', key);
+    if (open == std::string_view::npos) {
+        return errors;
+    }
+
+    std::size_t pos = open;
+    while ((pos = json.find('{', pos)) != std::string_view::npos) {
+        const std::size_t objectStart = pos++;
+        const auto end = json.find('}', objectStart);
+        if (end == std::string_view::npos) {
+            break;
+        }
+        const std::string_view object = json.substr(objectStart, end - objectStart + 1);
+        ProblemError entry{.code = JsonLookupString(object, "code"), .detail = JsonLookupString(object, "detail")};
+        if (!entry.code.empty() || !entry.detail.empty()) {
+            errors.push_back(std::move(entry));
+        }
+        pos = end + 1;
+        if (const auto close = json.find(']', open); close != std::string_view::npos && pos > close) {
+            break;
+        }
+    }
+    return errors;
+}
+
+std::optional<MultipartBody> BuildMultipartBody(const std::span<const MultipartPart> parts) {
+    // The boundary may not appear anywhere in the payload. Trying a few fixed
+    // suffixes is enough: a part would have to contain every candidate to fail.
+    std::string boundary;
+    bool usable = false;
+    for (int attempt = 0; attempt < 16 && !usable; ++attempt) {
+        boundary = std::format("RuxBoundary{:016x}", 0x9E3779B97F4A7C15ULL * static_cast<std::uint64_t>(attempt + 1));
+        usable = std::ranges::none_of(
+            parts, [&boundary](const MultipartPart &part) { return part.content.find(boundary) != std::string::npos; });
+    }
+    if (!usable) {
+        return std::nullopt;
+    }
+
+    MultipartBody encoded{.contentType = "multipart/form-data; boundary=" + boundary, .body = {}};
+    for (const auto &part : parts) {
+        encoded.body += "--" + boundary + "\r\n";
+        encoded.body += "Content-Disposition: form-data; name=\"" + part.name + "\"\r\n\r\n";
+        encoded.body += part.content;
+        encoded.body += "\r\n";
+    }
+    encoded.body += "--" + boundary + "--\r\n";
+    return encoded;
+}
+
+std::optional<std::string> FetchUrl(const std::string &url) {
+    auto response = HttpSend({.method = "GET", .url = url, .headers = {}, .body = {}});
+    if (!response || response->status < 200 || response->status >= 300) {
+        return std::nullopt;
+    }
+    return std::move(response->body);
 }
 
 namespace {
@@ -363,8 +434,8 @@ bool DownloadPackageWithGit(const std::string &repoUrl, const std::string &folde
 }
 } // namespace
 
-std::optional<std::string> FetchUrl(const std::string &url) {
-    const std::wstring wideUrl = Utf8ToWide(url);
+std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
+    const std::wstring wideUrl = Utf8ToWide(request.url);
     if (wideUrl.empty()) {
         return std::nullopt;
     }
@@ -393,27 +464,43 @@ std::optional<std::string> FetchUrl(const std::string &url) {
     if (!session.Get()) {
         return std::nullopt;
     }
-    WinHttpSetTimeouts(session.Get(), 30'000, 30'000, 30'000, 30'000);
+    // The send and receive budgets cover a publication upload, which the
+    // registry allows up to two minutes to complete.
+    WinHttpSetTimeouts(session.Get(), 30'000, 30'000, 120'000, 120'000);
 
     WinHttpHandle connection(WinHttpConnect(session.Get(), host.c_str(), components.nPort, 0));
     if (!connection.Get()) {
         return std::nullopt;
     }
     const DWORD flags = components.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
-    const wchar_t *acceptTypes[] = {L"application/json", L"text/plain", L"*/*", nullptr};
-    WinHttpHandle request(
-        WinHttpOpenRequest(connection.Get(), L"GET", path.c_str(), nullptr, WINHTTP_NO_REFERER, acceptTypes, flags));
-    if (!request.Get() ||
-        !WinHttpSendRequest(request.Get(), WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
-        !WinHttpReceiveResponse(request.Get(), nullptr)) {
+    const wchar_t *acceptTypes[] = {L"application/json", L"application/problem+json", L"text/plain", L"*/*", nullptr};
+    const std::wstring method = Utf8ToWide(request.method);
+    WinHttpHandle handle(WinHttpOpenRequest(connection.Get(), method.c_str(), path.c_str(), nullptr, WINHTTP_NO_REFERER,
+                                            acceptTypes, flags));
+    if (!handle.Get()) {
+        return std::nullopt;
+    }
+
+    for (const auto &header : request.headers) {
+        const std::wstring line = Utf8ToWide(header.name + ": " + header.value);
+        if (line.empty() || !WinHttpAddRequestHeaders(handle.Get(), line.c_str(), static_cast<DWORD>(-1),
+                                                      WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE)) {
+            return std::nullopt;
+        }
+    }
+
+    const auto bodySize = static_cast<DWORD>(request.body.size());
+    void *bodyData = request.body.empty() ? WINHTTP_NO_REQUEST_DATA
+                                          : const_cast<void *>(static_cast<const void *>(request.body.data()));
+    if (!WinHttpSendRequest(handle.Get(), WINHTTP_NO_ADDITIONAL_HEADERS, 0, bodyData, bodySize, bodySize, 0) ||
+        !WinHttpReceiveResponse(handle.Get(), nullptr)) {
         return std::nullopt;
     }
 
     DWORD status = 0;
     DWORD statusSize = sizeof(status);
-    if (!WinHttpQueryHeaders(request.Get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                             WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize, WINHTTP_NO_HEADER_INDEX) ||
-        status < 200 || status >= 300) {
+    if (!WinHttpQueryHeaders(handle.Get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                             WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize, WINHTTP_NO_HEADER_INDEX)) {
         return std::nullopt;
     }
 
@@ -421,7 +508,7 @@ std::optional<std::string> FetchUrl(const std::string &url) {
     std::string result;
     while (true) {
         DWORD available = 0;
-        if (!WinHttpQueryDataAvailable(request.Get(), &available)) {
+        if (!WinHttpQueryDataAvailable(handle.Get(), &available)) {
             return std::nullopt;
         }
         if (available == 0) {
@@ -433,12 +520,12 @@ std::optional<std::string> FetchUrl(const std::string &url) {
         const std::size_t offset = result.size();
         result.resize(offset + available);
         DWORD read = 0;
-        if (!WinHttpReadData(request.Get(), result.data() + offset, available, &read)) {
+        if (!WinHttpReadData(handle.Get(), result.data() + offset, available, &read)) {
             return std::nullopt;
         }
         result.resize(offset + read);
     }
-    return result;
+    return HttpResponse{.status = static_cast<unsigned>(status), .body = std::move(result)};
 }
 
 bool DownloadPackage(const std::string &repoUrl, const std::string &folder, const std::filesystem::path &dest,
@@ -647,14 +734,125 @@ std::optional<std::string> RunCommandCapture(const std::string &command) {
     }
     return output;
 }
+
+// Quote a value for a curl configuration file, where an argument is wrapped in
+// double quotes and backslashes and quotes are escaped.
+std::string CurlConfigQuote(const std::string &value) {
+    std::string quoted;
+    quoted.reserve(value.size() + 2);
+    quoted += '"';
+    for (const char ch : value) {
+        if (ch == '\\' || ch == '"') {
+            quoted += '\\';
+        }
+        quoted += ch;
+    }
+    quoted += '"';
+    return quoted;
+}
+
+// Write a file only the current user can read. The curl configuration carries
+// the bearer credential, so it must never be world-readable, and open() with an
+// explicit mode avoids the window a later permissions change would leave.
+bool WritePrivateFile(const std::filesystem::path &path, const std::string_view data) {
+    const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_EXCL, 0600);
+    if (fd < 0) {
+        return false;
+    }
+    std::size_t written = 0;
+    bool ok = true;
+    while (written < data.size()) {
+        const ssize_t chunk = ::write(fd, data.data() + written, data.size() - written);
+        if (chunk <= 0) {
+            ok = false;
+            break;
+        }
+        written += static_cast<std::size_t>(chunk);
+    }
+    return ::close(fd) == 0 && ok;
+}
+
+std::optional<std::string> ReadWholeFile(const std::filesystem::path &path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        return std::nullopt;
+    }
+    return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+}
+
+// Removes its directory when the request finishes, however it finishes.
+struct TemporaryDirectory {
+    std::filesystem::path path;
+
+    ~TemporaryDirectory() {
+        std::error_code ec;
+        std::filesystem::remove_all(path, ec);
+    }
+};
 } // namespace
 
-std::optional<std::string> FetchUrl(const std::string &url) {
-    const std::string quotedUrl = ShellQuote(url);
-    if (auto body = RunCommandCapture("curl -fsSL " + quotedUrl)) {
-        return body;
+std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
+    // curl carries the credential and the body in files rather than in argv,
+    // so neither reaches the process list.
+    std::error_code ec;
+    static std::atomic<unsigned> counter{0};
+    const std::filesystem::path tempRoot = std::filesystem::temp_directory_path(ec);
+    if (ec) {
+        return std::nullopt;
     }
-    return RunCommandCapture("wget -qO- " + quotedUrl);
+    const TemporaryDirectory workspace{tempRoot / std::format("rux-http-{}-{}", ::getpid(), counter.fetch_add(1))};
+    if (!std::filesystem::create_directories(workspace.path, ec) || ec) {
+        return std::nullopt;
+    }
+    std::filesystem::permissions(workspace.path, std::filesystem::perms::owner_all, ec);
+
+    const std::filesystem::path configPath = workspace.path / "request.conf";
+    const std::filesystem::path bodyPath = workspace.path / "request.body";
+    const std::filesystem::path responsePath = workspace.path / "response.body";
+
+    std::string config;
+    config += "--request " + CurlConfigQuote(request.method) + "\n";
+    config += "--url " + CurlConfigQuote(request.url) + "\n";
+    config += "--silent\n--show-error\n--location\n";
+    config += "--max-time 120\n";
+    config += "--output " + CurlConfigQuote(responsePath.string()) + "\n";
+    config += "--write-out \"%{http_code}\"\n";
+    for (const auto &header : request.headers) {
+        config += "--header " + CurlConfigQuote(header.name + ": " + header.value) + "\n";
+    }
+    if (!request.body.empty()) {
+        if (!WritePrivateFile(bodyPath, request.body)) {
+            return std::nullopt;
+        }
+        config += "--data-binary " + CurlConfigQuote("@" + bodyPath.string()) + "\n";
+    }
+    if (!WritePrivateFile(configPath, config)) {
+        return std::nullopt;
+    }
+
+    // curl exits 0 for a 4xx or 5xx unless --fail is given, so a non-zero exit
+    // here means no response arrived at all. Its stderr is left attached so a
+    // transport failure still explains itself, as it did before.
+    auto status = RunCommandCapture("curl --config " + ShellQuote(configPath.string()));
+    if (!status) {
+        // A plain read can still succeed through wget where curl is absent.
+        // Anything richer than that needs curl.
+        if (request.method != "GET" || !request.headers.empty() || !request.body.empty()) {
+            return std::nullopt;
+        }
+        auto body = RunCommandCapture("wget -qO- " + ShellQuote(request.url));
+        if (!body) {
+            return std::nullopt;
+        }
+        return HttpResponse{.status = 200, .body = std::move(*body)};
+    }
+
+    unsigned code = 0;
+    const auto digits = std::string_view(*status);
+    if (std::from_chars(digits.data(), digits.data() + digits.size(), code).ec != std::errc{}) {
+        return std::nullopt;
+    }
+    return HttpResponse{.status = code, .body = ReadWholeFile(responsePath).value_or(std::string{})};
 }
 
 bool DownloadPackage(const std::string &repoUrl, const std::string &folder, const std::filesystem::path &dest,

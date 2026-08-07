@@ -202,6 +202,12 @@ int Cli::Run() const {
     if (command == "new") {
         return RunNew(rest, opts);
     }
+    if (command == "pack") {
+        return RunPack(rest, opts);
+    }
+    if (command == "publish") {
+        return RunPublish(rest, opts);
+    }
     if (command == "add") {
         return RunAdd(rest, opts);
     }

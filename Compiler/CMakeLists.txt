@@ -46,6 +46,7 @@ if (WIN32)
 endif ()
 
 rux_add_component(RuxPackage
+    Package/Artifact.cpp
     Package/Identity.cpp
     Package/Manifest.cpp
     Package/Package.cpp
@@ -149,6 +150,7 @@ add_executable(rux
     Cli/CmdMisc.cpp
     Cli/CmdNew.cpp
     Cli/CmdPackage.cpp
+    Cli/CmdPublish.cpp
     Cli/CmdRun.cpp
     Cli/CmdTest.cpp
 )

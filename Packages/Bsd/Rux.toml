@@ -1,5 +1,6 @@
 [Manifest]
 Version = 1
+MinRux = "0.4.0"
 
 [Package]
 Namespace = "Rux"

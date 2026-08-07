@@ -4,6 +4,7 @@
 
 set(RUX_TEST_SOURCES
     Main.cpp
+    ArtifactTests.cpp
     BuiltinAssertTests.cpp
     BuiltinPanicTests.cpp
     BuildReportTests.cpp
