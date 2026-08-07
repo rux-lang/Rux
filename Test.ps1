@@ -61,7 +61,11 @@ $ErrorActionPreference = "Stop"
 function Find-Tool {
     param(
         [Parameter(Mandatory)]
-        [string[]]$Name
+        [string[]]$Name,
+
+        [string[]]$FallbackPath = @(),
+
+        [string]$Hint
     )
 
     foreach ($candidate in $Name) {
@@ -71,7 +75,53 @@ function Find-Tool {
         }
     }
 
-    throw "Required tool not found: $($Name -join ' or ')"
+    foreach ($candidate in $FallbackPath) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            return $candidate
+        }
+    }
+
+    $message = "Required tool not found: $($Name -join ' or ')"
+    if ($Hint) {
+        $message += ". $Hint"
+    }
+    throw $message
+}
+
+function Get-PosixShellCandidate {
+    <#
+    .SYNOPSIS
+    Well-known sh.exe locations for Git for Windows.
+
+    .DESCRIPTION
+    A default Git for Windows installation puts only its cmd directory on PATH,
+    so sh.exe is present but not discoverable by name. Derive its location from
+    the git executable, then fall back to the standard install roots.
+    #>
+
+    $candidates = [System.Collections.Generic.List[string]]::new()
+
+    $git = Get-Command git -CommandType Application -ErrorAction SilentlyContinue
+    if ($git) {
+        # git.exe lives in <root>\cmd or <root>\bin; sh.exe in <root>\bin or <root>\usr\bin.
+        $gitRoot = Split-Path -Parent (Split-Path -Parent $git.Source)
+        $candidates.Add((Join-Path $gitRoot "bin\sh.exe"))
+        $candidates.Add((Join-Path $gitRoot "usr\bin\sh.exe"))
+    }
+
+    $roots = @(
+        $env:ProgramFiles
+        ${env:ProgramFiles(x86)}
+        if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Programs" }
+    )
+    foreach ($root in $roots) {
+        if ($root) {
+            $candidates.Add((Join-Path $root "Git\bin\sh.exe"))
+            $candidates.Add((Join-Path $root "Git\usr\bin\sh.exe"))
+        }
+    }
+
+    return @($candidates)
 }
 
 function Invoke-Checked {
@@ -138,7 +188,9 @@ else {
 }
 
 $ctest = Find-Tool -Name "ctest"
-$shell = Find-Tool -Name "sh"
+$shell = Find-Tool -Name "sh" `
+    -FallbackPath (Get-PosixShellCandidate) `
+    -Hint "Install Git for Windows, or add a POSIX shell to PATH."
 if ($ClangTidy -and $PSVersionTable.PSVersion.Major -lt 7) {
     throw "-ClangTidy requires PowerShell 7 or newer."
 }
