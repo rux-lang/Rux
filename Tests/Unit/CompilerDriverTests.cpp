@@ -69,6 +69,10 @@ func Main() -> int {
         REQUIRE(WriteFile(appRoot / "Src" / "Main.rux", source));
     }
 
+    void SetApplicationType(const ManifestPackageType type) {
+        application.package.type = type;
+    }
+
     void SetManifestDefine(std::string name, std::string value) {
         application.build.defines[std::move(name)] = DefineValue{DefineValue::Kind::String, std::move(value)};
     }
@@ -176,6 +180,36 @@ TEST_CASE("compiler driver loads path dependencies when building") {
         REQUIRE(executable.gcount() == static_cast<std::streamsize>(header.size()));
         CHECK(header == std::array<unsigned char, 8>{0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0x00, 0x00, 0x01});
     }
+}
+
+TEST_CASE("compiler driver links a Library package as a shared library") {
+    DependencyFixture fixture;
+    fixture.SetApplicationType(ManifestPackageType::Library);
+    std::vector<Diagnostic> diagnostics;
+
+    const auto result = CompilerDriver(fixture.Options(false, diagnostics)).Compile();
+
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.executablePath.filename().string() == SharedLibraryFileName("App"));
+    CHECK(std::filesystem::is_regular_file(result.executablePath));
+}
+
+TEST_CASE("compiler driver checks a Source package but refuses to build it") {
+    DependencyFixture fixture;
+    fixture.SetApplicationType(ManifestPackageType::Source);
+
+    std::vector<Diagnostic> checkDiagnostics;
+    CHECK(CompilerDriver(fixture.Options(true, checkDiagnostics)).Compile().ok);
+    CHECK(checkDiagnostics.empty());
+
+    std::vector<Diagnostic> buildDiagnostics;
+    const auto build = CompilerDriver(fixture.Options(false, buildDiagnostics)).Compile();
+
+    CHECK_FALSE(build.ok);
+    REQUIRE(buildDiagnostics.size() == 1);
+    CHECK(buildDiagnostics[0].IsError());
+    CHECK(buildDiagnostics[0].message.contains("Type = \"Source\""));
 }
 
 TEST_CASE("compiler driver resolves transitive dependencies from local workspace members") {

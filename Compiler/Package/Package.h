@@ -1,32 +1,35 @@
 #pragma once
 
+#include "Package/Manifest.h"
+
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace Rux {
 /**
- * @brief Defines the architectural nature of a Rux package.
+ * @brief Describes the package that ScaffoldPackage creates.
+ *
+ * The package kind is the manifest's own `ManifestPackageType`, so scaffolding
+ * and manifest parsing agree on the three Version 1 kinds.
  */
-enum class PackageType {
-    Executable,    ///< Standard binary output (e.g., CLI tools, applications).
-    SharedLibrary, ///< Dynamically linked library (.so/.dll/.dylib).
-    StaticLibrary, ///< Statically linked library archive (.a/.lib).
-    Source,        ///< Source-only package.
+struct ScaffoldOptions {
+    std::filesystem::path root;                              ///< Directory that receives the package.
+    std::string name;                                        ///< Package name, validated as an identity segment.
+    ManifestPackageType type = ManifestPackageType::Program; ///< Program, Library or Source.
+    std::optional<IdentitySegment> ns = std::nullopt;        ///< Optional registry namespace.
+    bool initMode = false;                                   ///< Do not fail when the directory already exists.
 };
 
 /**
  * @brief Scaffolds a new Rux package structure.
  *
- * Creates standard directories, a default Rux.toml manifest,
- * and starter source files depending on package type.
+ * Creates standard directories, a Version 1 Rux.toml manifest, and a starter
+ * source file matching the package kind.
  *
- * @param root Project root directory
- * @param name Package name
- * @param type Package type (executable or library)
- * @param initMode If true, does not fail when directory already exists
+ * @param options Package location, identity and kind
  *
  * @return true on success, false on failure
  */
-bool ScaffoldPackage(const std::filesystem::path &root, const std::string &name, PackageType type,
-                     bool initMode = false);
+bool ScaffoldPackage(const ScaffoldOptions &options);
 } // namespace Rux

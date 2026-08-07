@@ -79,6 +79,8 @@ Package types determine top-level command behavior:
 
 There is no separate `SharedLibrary` type because `Library` already denotes one, and static archives are not a package type.
 
+`rux new` and `rux init` create a `Program` by default and with `--bin`, a `Library` with `--lib`, and a `Source` package with `--source`. The three flags are mutually exclusive.
+
 `[Build]` is optional. `Output` is a package-relative path and defaults to `Bin`. `[Build.Defines]` is an optional table whose values are exposed to compile-time configuration.
 
 ## Workspace manifests

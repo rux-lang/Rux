@@ -262,9 +262,11 @@ constexpr std::array info_exs = {"Rux"sv, "Windows"sv};
 // Init
 constexpr std::array init_usage = {"[options]"sv};
 constexpr std::array init_opts = {
-    OptionDoc{.flags = "--bin"sv, .desc = "Create an executable binary package configuration"sv},
-    OptionDoc{.flags = "--lib"sv, .desc = "Create a library package configuration"sv}};
-constexpr std::array init_exs = {""sv, "--bin"sv};
+    OptionDoc{.flags = "--bin"sv, .desc = "Create a Program package with an entry point (default)"sv},
+    OptionDoc{.flags = "--lib"sv, .desc = "Create a Library package built as a shared library"sv},
+    OptionDoc{.flags = "--source"sv, .desc = "Create a Source package compiled into its dependents"sv},
+    OptionDoc{.flags = "--namespace <ns>"sv, .desc = "Set the registry namespace required to publish"sv}};
+constexpr std::array init_exs = {""sv, "--bin"sv, "--lib --namespace Rux"sv};
 
 // Install
 constexpr std::array install_usage = {""sv, "[package]"sv, "[package]@[version]"sv, "--dev [package]"sv};
@@ -281,10 +283,12 @@ constexpr std::array list_exs = {""sv, "--global"sv};
 // New
 constexpr std::array new_usage = {"[name] [options]"sv};
 constexpr std::array new_opts = {
-    OptionDoc{.flags = "--bin"sv, .desc = "Create an executable binary package application (default)"sv},
-    OptionDoc{.flags = "--lib"sv, .desc = "Create a library code package"sv},
+    OptionDoc{.flags = "--bin"sv, .desc = "Create a Program package with an entry point (default)"sv},
+    OptionDoc{.flags = "--lib"sv, .desc = "Create a Library package built as a shared library"sv},
+    OptionDoc{.flags = "--source"sv, .desc = "Create a Source package compiled into its dependents"sv},
+    OptionDoc{.flags = "--namespace <ns>"sv, .desc = "Set the registry namespace required to publish"sv},
     OptionDoc{.flags = "--path <dir>"sv, .desc = "Create the workspace in a specific directory"sv}};
-constexpr std::array new_exs = {"Program"sv, "Program --bin"sv};
+constexpr std::array new_exs = {"App"sv, "App --bin"sv, "Io --lib --namespace Rux"sv};
 
 // Remove
 constexpr std::array remove_usage = {"[name]"sv};

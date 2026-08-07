@@ -114,6 +114,15 @@ CompileResult CompilerDriver::Compile() {
         Emit(ErrorDiagnostic("SOURCE_DATE_EPOCH must be a non-negative integer number of seconds"));
         return result;
     }
+    // A Source package has no artifact of its own: it is compiled into whichever
+    // package depends on it. Checking it in place is still useful, so the kind is
+    // only rejected once a build is actually requested.
+    if (!opts.checkOnly && opts.manifest.package.type == ManifestPackageType::Source) {
+        Emit(ErrorDiagnostic("package '" + opts.manifest.package.name.Text() +
+                             "' has Type = \"Source\" and is compiled into dependent packages; it cannot be built or "
+                             "run as a top-level target"));
+        return result;
+    }
 
     if (!LexAndParseSources()) {
         return result;

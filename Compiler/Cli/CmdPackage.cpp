@@ -755,9 +755,19 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
     // possible
     if (jsonOutput) {
         std::print("{}\n", "{");
+        if (manifest->package.ns) {
+            std::print("  \"namespace\": \"{}\",\n", manifest->package.ns->Text());
+        }
         std::print("  \"name\": \"{}\",\n", manifest->package.name.Text());
         std::print("  \"version\": \"{}\",\n", manifest->package.version.Text());
         std::print("  \"type\": \"{}\",\n", ToString(manifest->package.type));
+        if (!manifest->package.keywords.empty()) {
+            std::print("  \"keywords\": [");
+            for (std::size_t i = 0; i < manifest->package.keywords.size(); ++i) {
+                std::print("{}\"{}\"", i == 0 ? "" : ", ", manifest->package.keywords[i].Text());
+            }
+            std::print("],\n");
+        }
         if (!manifest->package.description.empty()) {
             std::print("  \"description\": \"{}\",\n", manifest->package.description);
         }
@@ -803,10 +813,20 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
         std::print("{}\n", "}");
     }
     else {
+        if (manifest->package.ns) {
+            std::print("Namespace:   {}\n", manifest->package.ns->Text());
+        }
         std::print("Name:        {}\n"
                    "Version:     {}\n"
                    "Type:        {}\n",
                    manifest->package.name.Text(), manifest->package.version.Text(), ToString(manifest->package.type));
+        if (!manifest->package.keywords.empty()) {
+            std::print("Keywords:    ");
+            for (std::size_t i = 0; i < manifest->package.keywords.size(); ++i) {
+                std::print("{}{}", i == 0 ? "" : ", ", manifest->package.keywords[i].Text());
+            }
+            std::print("\n");
+        }
         if (!manifest->package.description.empty()) {
             std::print("Description: {}\n", manifest->package.description);
         }

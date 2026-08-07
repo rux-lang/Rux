@@ -63,6 +63,13 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     if (!manifest) {
         return 1;
     }
+    // Reject a package that cannot produce an entry point before spending a
+    // build on it. Type = "Source" is rejected by the driver itself, since it
+    // is equally unbuildable.
+    if (manifest->package.type == ManifestPackageType::Library) {
+        std::print(stderr, "error: cannot run a Library package; only a Program package has an entry point\n");
+        return 1;
+    }
     // Build first (quiet unless verbose)
     const std::string_view profileName = isRelease ? "Release" : "Debug";
     std::string targetName = HostTargetTriple();
@@ -91,10 +98,6 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     }
     if (!buildQuiet) {
         PrintBuildSummary(result.executablePath, profileName, result.stats);
-    }
-    if (manifest->package.type == ManifestPackageType::Library) {
-        std::print(stderr, "error: cannot run a Library package; only a Program package has an entry point\n");
-        return 1;
     }
     auto exePath = result.executablePath;
     if (!std::filesystem::exists(exePath)) {

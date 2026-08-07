@@ -51,9 +51,39 @@ static ScaffoldResult MakeDir(const fs::path &path) {
     return std::unexpected(std::format("failed to create directory: {}", path.string()));
 }
 
-bool ScaffoldPackage(const fs::path &root, const std::string &name, const PackageType type, const bool initMode) {
-    if (!initMode && fs::exists(root)) {
+/**
+ * @brief Names the starter source file for a package kind.
+ *
+ * Only a Program carries an entry point, so it alone gets Main.rux. Library and
+ * Source packages expose a module instead.
+ */
+static std::string_view StarterFileName(const ManifestPackageType type) {
+    return type == ManifestPackageType::Program ? "Main.rux" : "Lib.rux";
+}
+
+/**
+ * @brief Starter source matching the package kind.
+ */
+static std::string StarterSource(const ManifestPackageType type, const std::string &name) {
+    if (type == ManifestPackageType::Program) {
+        return "func Main() -> int {\n    return 0;\n}\n";
+    }
+    return std::format("module {} {{\n}}\n", name);
+}
+
+bool ScaffoldPackage(const ScaffoldOptions &options) {
+    const fs::path &root = options.root;
+    if (!options.initMode && fs::exists(root)) {
         std::println(stderr, "error: directory '{}' already exists", root.string());
+        return false;
+    }
+
+    // Validate the identity before touching the filesystem, so a rejected name
+    // leaves no half-created package behind.
+    const auto packageName = IdentitySegment::Parse(options.name);
+    if (!packageName) {
+        std::println(stderr, "error: '{}' is not a valid package name: {}", options.name,
+                     Describe(packageName.error()));
         return false;
     }
 
@@ -65,39 +95,39 @@ bool ScaffoldPackage(const fs::path &root, const std::string &name, const Packag
         return true;
     };
 
-    if (const std::vector dirs = {root / "Bin/Debug", root / "Bin/Release", root / "Src", root / "Temp"};
-        !std::ranges::all_of(dirs, [&](const auto &p) { return run_task(MakeDir(p)); })) {
+    // A Source package produces no artifact of its own, so it needs no output
+    // directories; it is compiled into whichever package depends on it.
+    std::vector dirs = {root / "Src", root / "Temp"};
+    if (options.type != ManifestPackageType::Source) {
+        dirs.insert(dirs.begin(), {root / "Bin/Debug", root / "Bin/Release"});
+    }
+    if (!std::ranges::all_of(dirs, [&](const auto &p) { return run_task(MakeDir(p)); })) {
         return false;
     }
 
-    if (const auto tomlPath = root / "Rux.toml"; !initMode || !fs::exists(tomlPath)) {
-        auto packageName = IdentitySegment::Parse(name);
-        if (!packageName) {
-            std::println(stderr, "error: '{}' is not a valid package name: {}", name, Describe(packageName.error()));
-            return false;
-        }
+    if (const auto tomlPath = root / "Rux.toml"; !options.initMode || !fs::exists(tomlPath)) {
         Manifest m;
+        m.package.ns = options.ns;
         m.package.name = *packageName;
         m.package.version = *SemanticVersion::Parse("0.1.0");
-        m.package.type =
-            (type == PackageType::Executable ? ManifestPackageType::Program : ManifestPackageType::Library);
+        m.package.type = options.type;
         if (!m.Save(tomlPath)) {
             std::println(stderr, "error: cannot write Rux.toml");
             return false;
         }
     }
 
-    const bool isBin = (type == PackageType::Executable);
-    const std::string_view srcContent = isBin ? "func Main() -> int {\n    return 0;\n}\n" : "// Library\n";
+    const std::string srcContent = StarterSource(options.type, packageName->Text());
 
     struct FileTask {
         fs::path path;
         std::string_view content;
     };
 
-    const FileTask tasks[] = {{root / "Src" / (isBin ? "Main.rux" : "Lib.rux"), srcContent},
+    const FileTask tasks[] = {{root / "Src" / StarterFileName(options.type), srcContent},
                               {root / ".gitignore", "# Rux build outputs\nBin/\nTemp/\n"}};
 
-    return std::ranges::all_of(tasks, [&](const auto &t) { return run_task(WriteFile(t.path, t.content, initMode)); });
+    return std::ranges::all_of(tasks,
+                               [&](const auto &t) { return run_task(WriteFile(t.path, t.content, options.initMode)); });
 }
 } // namespace Rux
