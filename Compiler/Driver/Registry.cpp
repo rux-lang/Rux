@@ -4,7 +4,10 @@
 #include "System/Json.h"
 #include "System/Process.h"
 
+#include <algorithm>
 #include <format>
+#include <ranges>
+#include <span>
 #include <utility>
 
 using namespace Rux::System;
@@ -215,14 +218,27 @@ std::expected<std::string, RegistryError> DownloadArtifact(const std::string_vie
     return body;
 }
 
-const RegistryVersion *SelectVersion(const RegistryIndexEntry &entry, const VersionRange &range,
+VersionRejection ClassifyVersion(const RegistryVersion &candidate, const std::span<const VersionRange> ranges,
+                                 const SemanticVersion &compiler) {
+    const bool matchesAll = std::ranges::all_of(
+        ranges, [&candidate](const VersionRange &range) { return range.Matches(candidate.version); });
+    if (!matchesAll) {
+        return VersionRejection::RequirementUnmet;
+    }
+    if (candidate.yanked) {
+        return VersionRejection::Yanked;
+    }
+    if (candidate.minRux && SemanticVersion::ComparePrecedence(*candidate.minRux, compiler) > 0) {
+        return VersionRejection::CompilerTooOld;
+    }
+    return VersionRejection::Eligible;
+}
+
+const RegistryVersion *SelectVersion(const RegistryIndexEntry &entry, const std::span<const VersionRange> ranges,
                                      const SemanticVersion &compiler) {
     const RegistryVersion *best = nullptr;
     for (const auto &candidate : entry.versions) {
-        if (candidate.yanked || !range.Matches(candidate.version)) {
-            continue;
-        }
-        if (candidate.minRux && SemanticVersion::ComparePrecedence(*candidate.minRux, compiler) > 0) {
+        if (ClassifyVersion(candidate, ranges, compiler) != VersionRejection::Eligible) {
             continue;
         }
         // Precedence ignores build metadata, so two candidates can tie. The
@@ -233,6 +249,60 @@ const RegistryVersion *SelectVersion(const RegistryIndexEntry &entry, const Vers
         }
     }
     return best;
+}
+
+const RegistryVersion *SelectVersion(const RegistryIndexEntry &entry, const VersionRange &range,
+                                     const SemanticVersion &compiler) {
+    return SelectVersion(entry, std::span(&range, 1), compiler);
+}
+
+std::string DescribeRanges(const std::span<const VersionRange> ranges) {
+    std::string listed;
+    for (const auto &range : ranges) {
+        listed += (listed.empty() ? "'" : ", '") + range.Text() + "'";
+    }
+    return listed;
+}
+
+ResolutionFailure DescribeResolutionFailure(const RegistryIndexEntry &entry, const std::span<const VersionRange> ranges,
+                                            const SemanticVersion &compiler, const std::string_view base) {
+    const std::string identity = QualifiedIdentity(entry.ns, entry.package);
+
+    // Highest first: the version the user most likely expected to get is the
+    // one they should read about first.
+    std::vector<const RegistryVersion *> excluded;
+    for (const auto &candidate : std::ranges::reverse_view(entry.versions)) {
+        if (const VersionRejection rejection = ClassifyVersion(candidate, ranges, compiler);
+            rejection != VersionRejection::Eligible && rejection != VersionRejection::RequirementUnmet) {
+            excluded.push_back(&candidate);
+        }
+    }
+
+    /// One excluded version, phrased to stand on its own.
+    const auto reason = [&identity, &compiler](const RegistryVersion &candidate) {
+        if (candidate.yanked) {
+            return std::format("{} {} has been yanked", identity, candidate.version.Text());
+        }
+        return std::format("{} {} needs Rux {} or newer, but this is Rux {}", identity, candidate.version.Text(),
+                           candidate.minRux->Text(), compiler.Text());
+    };
+
+    if (excluded.size() == 1) {
+        // The single excluded version is the whole story: leading with the
+        // requirement would only delay it by a line.
+        return ResolutionFailure{.message = reason(*excluded.front()), .details = {}};
+    }
+
+    ResolutionFailure failure{.message = std::format("no version of {} satisfies {}", identity, DescribeRanges(ranges)),
+                              .details = {}};
+    if (excluded.empty()) {
+        failure.details.push_back(std::format("{} publishes {}", base, DescribeAvailableVersions(entry)));
+        return failure;
+    }
+    for (const RegistryVersion *candidate : excluded) {
+        failure.details.push_back(reason(*candidate));
+    }
+    return failure;
 }
 
 std::string DescribeAvailableVersions(const RegistryIndexEntry &entry) {

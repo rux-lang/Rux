@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <expected>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -114,8 +115,33 @@ FetchPackageIndex(std::string_view base, const IdentitySegment &ns, const Identi
                                                                          const IdentitySegment &package,
                                                                          const SemanticVersion &version);
 
+/// Why one published version was, or was not, a candidate.
+enum class VersionRejection : std::uint8_t {
+    /// Nothing rules it out.
+    Eligible,
+
+    /// It satisfies the requirements but has been withdrawn.
+    Yanked,
+
+    /// It satisfies the requirements but declares a newer compiler minimum.
+    CompilerTooOld,
+
+    /// No requirement problem beyond the version range itself.
+    RequirementUnmet,
+};
+
 /**
- * @brief Choose the version of `entry` a requirement resolves to.
+ * @brief Decide whether one version could be selected, and why not when it could not.
+ *
+ * The order matters for diagnostics: a version is only reported as yanked or as
+ * needing a newer compiler when the requirements would otherwise have accepted
+ * it, so an error never blames a rule the user was nowhere near.
+ */
+[[nodiscard]] VersionRejection ClassifyVersion(const RegistryVersion &candidate, std::span<const VersionRange> ranges,
+                                               const SemanticVersion &compiler);
+
+/**
+ * @brief Choose the version of `entry` that satisfies every requirement in `ranges`.
  *
  * Yanked versions are skipped, as is any version whose declared minimum
  * compiler release is newer than `compiler`. The highest remaining match wins,
@@ -124,8 +150,40 @@ FetchPackageIndex(std::string_view base, const IdentitySegment &ns, const Identi
  *
  * @return The chosen version, or nullptr when nothing qualifies
  */
+[[nodiscard]] const RegistryVersion *
+SelectVersion(const RegistryIndexEntry &entry, std::span<const VersionRange> ranges, const SemanticVersion &compiler);
+
+/// Convenience overload for a single requirement.
 [[nodiscard]] const RegistryVersion *SelectVersion(const RegistryIndexEntry &entry, const VersionRange &range,
                                                    const SemanticVersion &compiler);
+
+/// A failed resolution, split into the `error:` line and what follows it.
+struct ResolutionFailure {
+    /// The headline, already specific enough to stand alone where it can be.
+    std::string message;
+
+    /// Extra lines, indented under the headline. Empty when the headline said
+    /// everything there was to say.
+    std::vector<std::string> details;
+};
+
+/**
+ * @brief Explain why no version of `entry` could be selected.
+ *
+ * Naming only the requirement would be misleading whenever a version did match
+ * it and lost to the yank or compiler-minimum rule instead: the reader would be
+ * told that nothing satisfies a requirement directly above the version that
+ * does. So when one excluded version accounts for the whole failure, the reason
+ * *is* the message and there is nothing below it; the requirement only leads
+ * when several versions failed for different reasons, or when none matched at
+ * all and the published list is the useful thing to show.
+ */
+[[nodiscard]] ResolutionFailure DescribeResolutionFailure(const RegistryIndexEntry &entry,
+                                                          std::span<const VersionRange> ranges,
+                                                          const SemanticVersion &compiler, std::string_view base);
+
+/// Render accumulated requirements as `'^1.0.0'` or `'>=1.0.0', '<2.0.0'`.
+[[nodiscard]] std::string DescribeRanges(std::span<const VersionRange> ranges);
 
 /// Every version text in `entry`, ascending, for an error that has to say what
 /// the registry does offer.

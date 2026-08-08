@@ -4,6 +4,7 @@
 
 #include "Driver/Registry.h"
 
+#include <array>
 #include <doctest.h>
 #include <string>
 
@@ -201,6 +202,93 @@ TEST_CASE("SelectVersion reports nothing when no release qualifies") {
     const auto entry = DecodePackageIndex(kIndexBody);
     REQUIRE(entry.has_value());
     CHECK(SelectVersion(*entry, Range("^2.0.0"), Version("0.4.0")) == nullptr);
+}
+
+TEST_CASE("SelectVersion honors every accumulated requirement at once") {
+    const auto entry = DecodePackageIndex(kIndexBody);
+    REQUIRE(entry.has_value());
+    const std::array<VersionRange, 2> both{Range(">=0.1.0"), Range("<0.2.0")};
+
+    const RegistryVersion *chosen = SelectVersion(*entry, both, Version("0.4.0"));
+    REQUIRE(chosen != nullptr);
+    CHECK(chosen->version.Text() == "0.1.0");
+
+    const std::array<VersionRange, 2> disjoint{Range("^0.1.0"), Range("^0.2.0")};
+    CHECK(SelectVersion(*entry, disjoint, Version("0.4.0")) == nullptr);
+}
+
+TEST_CASE("ClassifyVersion blames the version range before any other rule") {
+    const auto entry = DecodePackageIndex(kIndexBody);
+    REQUIRE(entry.has_value());
+    const std::array<VersionRange, 1> exact{Range("=0.1.0")};
+    const SemanticVersion compiler = Version("0.4.0");
+
+    // 0.4.0 is yanked, but this requirement would not have chosen it anyway,
+    // so it is reported as an ordinary non-match rather than as yanked.
+    CHECK(ClassifyVersion(entry->versions[3], exact, compiler) == VersionRejection::RequirementUnmet);
+    CHECK(ClassifyVersion(entry->versions[0], exact, compiler) == VersionRejection::Eligible);
+
+    const std::array<VersionRange, 1> any{Range("*")};
+    CHECK(ClassifyVersion(entry->versions[3], any, compiler) == VersionRejection::Yanked);
+    CHECK(ClassifyVersion(entry->versions[2], any, compiler) == VersionRejection::CompilerTooOld);
+}
+
+TEST_CASE("A single excluded version is the whole message, with nothing below it") {
+    const auto entry = DecodePackageIndex(kIndexBody);
+    REQUIRE(entry.has_value());
+
+    // The requirement matches 0.3.0 and only the compiler minimum rules it out.
+    // Leading with the requirement would contradict the version the user asked
+    // for, so the reason stands alone.
+    const std::array<VersionRange, 1> tooNew{Range("=0.3.0")};
+    const auto compilerFailure = DescribeResolutionFailure(*entry, tooNew, Version("0.4.0"), "https://example.test");
+    CHECK(compilerFailure.message == "Rux/Io 0.3.0 needs Rux 9.0.0 or newer, but this is Rux 0.4.0");
+    CHECK(compilerFailure.details.empty());
+
+    const std::array<VersionRange, 1> yanked{Range("=0.4.0")};
+    const auto yankedFailure = DescribeResolutionFailure(*entry, yanked, Version("0.4.0"), "https://example.test");
+    CHECK(yankedFailure.message == "Rux/Io 0.4.0 has been yanked");
+    CHECK(yankedFailure.details.empty());
+}
+
+TEST_CASE("Several excluded versions lead with the requirement and list the reasons, highest first") {
+    const auto entry = DecodePackageIndex(kIndexBody);
+    REQUIRE(entry.has_value());
+    const std::array<VersionRange, 1> any{Range(">=0.3.0")};
+
+    const auto failure = DescribeResolutionFailure(*entry, any, Version("0.4.0"), "https://example.test");
+    CHECK(failure.message == "no version of Rux/Io satisfies '>=0.3.0'");
+    REQUIRE(failure.details.size() == 2);
+    CHECK(failure.details[0] == "Rux/Io 0.4.0 has been yanked");
+    CHECK(failure.details[1] == "Rux/Io 0.3.0 needs Rux 9.0.0 or newer, but this is Rux 0.4.0");
+}
+
+TEST_CASE("A requirement nothing matched falls back to the published list") {
+    const auto entry = DecodePackageIndex(kIndexBody);
+    REQUIRE(entry.has_value());
+    const std::array<VersionRange, 1> unmet{Range("^2.0.0")};
+
+    const auto failure = DescribeResolutionFailure(*entry, unmet, Version("0.4.0"), "https://example.test");
+    CHECK(failure.message == "no version of Rux/Io satisfies '^2.0.0'");
+    REQUIRE(failure.details.size() == 1);
+    CHECK(failure.details[0] == "https://example.test publishes 0.1.0, 0.2.0, 0.3.0, 0.4.0 (yanked)");
+}
+
+TEST_CASE("Conflicting requirements are all named in the message") {
+    const auto entry = DecodePackageIndex(kIndexBody);
+    REQUIRE(entry.has_value());
+    const std::array<VersionRange, 2> disjoint{Range("^0.1.0"), Range("^0.2.0")};
+
+    const auto failure = DescribeResolutionFailure(*entry, disjoint, Version("0.4.0"), "https://example.test");
+    CHECK(failure.message == "no version of Rux/Io satisfies '^0.1.0', '^0.2.0'");
+}
+
+TEST_CASE("DescribeRanges quotes each requirement") {
+    const std::array<VersionRange, 1> one{Range("^1.0.0")};
+    CHECK(DescribeRanges(one) == "'^1.0.0'");
+
+    const std::array<VersionRange, 2> two{Range(">=1.0.0"), Range("<2.0.0")};
+    CHECK(DescribeRanges(two) == "'>=1.0.0', '<2.0.0'");
 }
 
 TEST_CASE("DescribeAvailableVersions names every release and marks the yanked ones") {
