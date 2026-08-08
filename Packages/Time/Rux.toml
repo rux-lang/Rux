@@ -9,6 +9,7 @@ Version = "0.1.0"
 Type = "Source"
 Description = "Durations, monotonic clocks, and wall clocks"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
+Keywords = ["Time", "Duration", "Clock", "Instant"]
 License = "MIT"
 LicenseFile = "LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"

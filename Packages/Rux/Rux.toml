@@ -9,6 +9,7 @@ Version = "0.1.0"
 Type = "Source"
 Description = "Core language intrinsics"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
+Keywords = ["Rux", "Core", "Intrinsics", "Language", "Prelude"]
 License = "MIT"
 LicenseFile = "LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"

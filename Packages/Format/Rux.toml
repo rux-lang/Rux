@@ -9,6 +9,7 @@ Version = "0.1.0"
 Type = "Source"
 Description = "String conversion and formatting"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
+Keywords = ["Format", "Formatting", "Conversion", "Strings", "Parsing"]
 License = "MIT"
 LicenseFile = "LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"

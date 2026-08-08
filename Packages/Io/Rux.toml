@@ -9,6 +9,7 @@ Version = "0.1.0"
 Type = "Source"
 Description = "Streams, console I/O, readers, and writers"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
+Keywords = ["Io", "Streams", "Console", "Reader", "Writer"]
 License = "MIT"
 LicenseFile = "LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"
