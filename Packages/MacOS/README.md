@@ -29,8 +29,6 @@ when #target.os == .MacOS {
 }
 ```
 
-Higher-level packages such as [`Rux/Io`](../Io) and [`Rux/Memory`](../Memory) already do this, and are the interface to prefer unless you need the syscall itself.
-
 ## Documentation
 
 <https://rux-lang.dev/docs/api/macos>

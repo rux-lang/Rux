@@ -142,7 +142,7 @@ TEST_CASE("packing the same tree twice produces identical bytes") {
     CHECK(std::ranges::is_sorted(names));
 }
 
-TEST_CASE("referenced readme and license files are packed") {
+TEST_CASE("the referenced readme is packed and license text is not") {
     const ArtifactFixture fixture;
     fixture.WriteMinimalPackage(R"([Manifest]
 Version = 1
@@ -153,7 +153,8 @@ Namespace = "Acme"
 Name = "Widget"
 Version = "1.0.0"
 Type = "Source"
-LicenseFile = "LICENSE.md"
+License = "MIT"
+LicenseUrl = "https://example.com/LICENSE.md"
 Readme = "Docs/README.md"
 )");
     fixture.Write("Docs/README.md", "# Widget\n");
@@ -162,10 +163,12 @@ Readme = "Docs/README.md"
     const auto artifact = fixture.Build();
     REQUIRE(artifact.has_value());
 
+    // LicenseUrl names the terms rather than shipping them, so a license file
+    // sitting beside the manifest is an ordinary unreferenced file.
     const auto names = ArchiveEntryNames(artifact->archive);
-    REQUIRE(names.size() == 4);
+    REQUIRE(names.size() == 3);
     CHECK(std::ranges::contains(names, "Docs/README.md"));
-    CHECK(std::ranges::contains(names, "LICENSE.md"));
+    CHECK_FALSE(std::ranges::contains(names, "LICENSE.md"));
 }
 
 TEST_CASE("a declared readme that does not exist is rejected") {

@@ -20,6 +20,9 @@ inline constexpr int manifestSchemaVersion = 1;
 /// Manifest source larger than this is rejected before parsing.
 inline constexpr std::size_t manifestMaxBytes = 65536;
 
+/// Longest accepted metadata URL.
+inline constexpr std::size_t manifestMaxUrlBytes = 2048;
+
 inline constexpr std::size_t manifestMaxDependencies = 256;
 inline constexpr std::size_t manifestMaxWorkspacePackages = 256;
 inline constexpr std::size_t manifestMaxDefines = 128;
@@ -130,11 +133,11 @@ struct Package {
     std::vector<std::string> authors;
     std::vector<IdentitySegment> keywords;
 
-    /// SPDX expression; mutually exclusive with licenseFile.
+    /// SPDX expression.
     std::string license;
 
-    /// Package-relative path to a license file; mutually exclusive with license.
-    std::string licenseFile;
+    /// Absolute http/https URL of the license text.
+    std::string licenseUrl;
 
     std::string repository;
     std::string homepage;

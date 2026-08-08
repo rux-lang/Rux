@@ -313,12 +313,9 @@ ArtifactResult BuildPackageArtifact(const fs::path &manifestPath, const Manifest
         return std::unexpected(std::move(collected.error()));
     }
 
-    // Readme and LicenseFile name archive entries, so a declared path that is
-    // missing would fail remote validation. Reject it here instead.
-    for (const auto &referenced : {manifest.package.readme, manifest.package.licenseFile}) {
-        if (referenced.empty()) {
-            continue;
-        }
+    // Readme names an archive entry, so a declared path that is missing would
+    // fail remote validation. Reject it here instead.
+    if (const std::string &referenced = manifest.package.readme; !referenced.empty()) {
         std::error_code ec;
         const fs::path file = root / referenced;
         if (!fs::is_regular_file(file, ec)) {

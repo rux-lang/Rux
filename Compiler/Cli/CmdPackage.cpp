@@ -781,6 +781,9 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
         if (!manifest->package.license.empty()) {
             std::print("  \"license\": \"{}\",\n", manifest->package.license);
         }
+        if (!manifest->package.licenseUrl.empty()) {
+            std::print("  \"licenseUrl\": \"{}\",\n", manifest->package.licenseUrl);
+        }
         if (!manifest->package.repository.empty()) {
             std::print("  \"repository\": \"{}\",\n", manifest->package.repository);
         }
@@ -839,6 +842,9 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
         }
         if (!manifest->package.license.empty()) {
             std::print("License:     {}\n", manifest->package.license);
+        }
+        if (!manifest->package.licenseUrl.empty()) {
+            std::print("LicenseUrl:  {}\n", manifest->package.licenseUrl);
         }
         if (!manifest->package.repository.empty()) {
             std::print("Repository:  {}\n", manifest->package.repository);

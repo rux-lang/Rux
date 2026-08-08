@@ -639,6 +639,39 @@ private:
         return text;
     }
 
+    // Metadata URLs are absolute `http`/`https`, carry a host and no credentials.
+    static std::string ReadUrl(const Value &value, const std::string_view field) {
+        const std::string &text = Typed(value, Value::Kind::String, field).text;
+        if (text.size() > manifestMaxUrlBytes) {
+            FailAt(value.location, std::format("'{}' exceeds the {}-byte URL limit", field, manifestMaxUrlBytes));
+        }
+        for (const unsigned char byte : text) {
+            if (byte <= ' ' || byte == 0x7F) {
+                FailAt(value.location, std::format("'{}' contains an invalid character", field));
+            }
+        }
+
+        std::string_view rest(text);
+        if (rest.starts_with("https://")) {
+            rest.remove_prefix(std::string_view("https://").size());
+        }
+        else if (rest.starts_with("http://")) {
+            rest.remove_prefix(std::string_view("http://").size());
+        }
+        else {
+            FailAt(value.location, std::format("'{}' must be an absolute 'http' or 'https' URL", field));
+        }
+
+        const std::string_view authority = rest.substr(0, rest.find_first_of("/?#"));
+        if (authority.empty()) {
+            FailAt(value.location, std::format("'{}' must include a host", field));
+        }
+        if (authority.find('@') != std::string_view::npos) {
+            FailAt(value.location, std::format("'{}' cannot contain credentials", field));
+        }
+        return text;
+    }
+
     static void ReadHeader(const Table &table, ManifestHeader &header) {
         static constexpr std::string_view known[] = {"Version", "MinRux"};
         RejectUnknownKeys(table, known);
@@ -662,7 +695,7 @@ private:
     static void ReadPackage(const Table &table, Package &package) {
         static constexpr std::string_view known[] = {"Namespace",   "Name",       "Version",  "Type",
                                                      "Description", "Authors",    "Keywords", "License",
-                                                     "LicenseFile", "Repository", "Homepage", "Readme"};
+                                                     "LicenseUrl",  "Repository", "Homepage", "Readme"};
         RejectUnknownKeys(table, known);
 
         if (const Value *ns = Lookup(table, "Namespace")) {
@@ -720,22 +753,17 @@ private:
                 package.keywords.push_back(std::move(segment));
             }
         }
-        const Value *license = Lookup(table, "License");
-        const Value *licenseFile = Lookup(table, "LicenseFile");
-        if (license != nullptr && licenseFile != nullptr) {
-            FailAt(licenseFile->location, "'License' and 'LicenseFile' are mutually exclusive");
-        }
-        if (license != nullptr) {
+        if (const Value *license = Lookup(table, "License")) {
             package.license = Typed(*license, Value::Kind::String, "License").text;
         }
-        if (licenseFile != nullptr) {
-            package.licenseFile = ReadPath(*licenseFile, "LicenseFile", false);
+        if (const Value *licenseUrl = Lookup(table, "LicenseUrl")) {
+            package.licenseUrl = ReadUrl(*licenseUrl, "LicenseUrl");
         }
         if (const Value *repository = Lookup(table, "Repository")) {
-            package.repository = Typed(*repository, Value::Kind::String, "Repository").text;
+            package.repository = ReadUrl(*repository, "Repository");
         }
         if (const Value *homepage = Lookup(table, "Homepage")) {
-            package.homepage = Typed(*homepage, Value::Kind::String, "Homepage").text;
+            package.homepage = ReadUrl(*homepage, "Homepage");
         }
         if (const Value *readme = Lookup(table, "Readme")) {
             package.readme = ReadPath(*readme, "Readme", false);
@@ -973,8 +1001,8 @@ std::string Manifest::Serialize() const {
     if (!package.license.empty()) {
         out << "License = " << Quoted(package.license) << '\n';
     }
-    if (!package.licenseFile.empty()) {
-        out << "LicenseFile = " << Quoted(package.licenseFile) << '\n';
+    if (!package.licenseUrl.empty()) {
+        out << "LicenseUrl = " << Quoted(package.licenseUrl) << '\n';
     }
     if (!package.repository.empty()) {
         out << "Repository = " << Quoted(package.repository) << '\n';

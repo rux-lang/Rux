@@ -29,6 +29,7 @@ Description = "Mathematical constants and functions"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
 Keywords = ["Math", "Numeric"]
 License = "MIT"
+LicenseUrl = "https://github.com/rux-lang/Rux/blob/main/LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"
 Homepage = "https://rux-lang.dev"
 Readme = "README.md"
@@ -63,13 +64,15 @@ CheckedArithmetic = "true"
 | `Description` | Optional                              | String                                                  |
 | `Authors`     | Optional                              | Array of strings                                        |
 | `Keywords`    | Optional                              | Array of identity segments, unique after normalization  |
-| `License`     | Optional                              | SPDX expression; cannot be combined with `LicenseFile`  |
-| `LicenseFile` | Optional                              | Package-relative path; cannot be combined with `License` |
+| `License`     | Optional                              | SPDX expression                                         |
+| `LicenseUrl`  | Optional                              | Absolute `http`/`https` URL with a host and no credentials |
 | `Repository`  | Optional                              | Absolute `http`/`https` URL with a host and no credentials |
 | `Homepage`    | Optional                              | Absolute `http`/`https` URL with a host and no credentials |
 | `Readme`      | Optional                              | Package-relative path                                   |
 
 The scalar legacy form of `Authors` is invalid.
+
+`License` names the terms and `LicenseUrl` points at their text. They are independent, so a package may declare either or both. The archive carries no license text of its own, so a package whose terms are not a well-known SPDX expression should always publish a `LicenseUrl`.
 
 Package types determine top-level command behavior:
 
@@ -158,7 +161,9 @@ Manifest Version 1 intentionally uses a constrained TOML surface:
 
 Canonical writers emit only this surface. Parsing rejects malformed TOML, duplicate keys, wrong value types, unknown top-level settings, unknown sections, unknown fixed-schema fields, invalid identities or versions, missing required fields and dependency import-name collisions. Keys inside `[Dependencies]` and `[Build.Defines]` are data rather than fixed field names.
 
-Manifest paths are UTF-8, relative and `/`-separated. Backslashes, absolute roots, empty components and `.` components are invalid. `Readme`, `LicenseFile` and workspace paths also reject `..`. Dependency and output paths may begin with `..` components, but parent traversal cannot follow a normal component.
+Manifest paths are UTF-8, relative and `/`-separated. Backslashes, absolute roots, empty components and `.` components are invalid. `Readme` and workspace paths also reject `..`. Dependency and output paths may begin with `..` components, but parent traversal cannot follow a normal component.
+
+Manifest URLs are absolute `http` or `https`, carry a host, and reject credentials, whitespace and control characters.
 
 Diagnostics identify the manifest path, line and column and explain the rejected field or syntax. Ordinary manifest failures do not throw through compiler or CLI boundaries.
 
@@ -189,7 +194,7 @@ The selected validation policy is not stored in `Rux.toml`. Local validation acc
 
 `rux pack` builds the package archive and `rux publish` uploads it. Both accept only a package manifest that passes publication validation.
 
-The archive is a ZIP named `<Name>-<Version>.ruxpkg`. It contains `Rux.toml` at its root, every regular file below `Src/`, and the files named by `Readme` and `LicenseFile`. It must contain at least one `Src/**/*.rux` source. Entry paths are relative, `/`-separated UTF-8; entries are sorted and carry a fixed timestamp, so packing one tree twice produces identical bytes. Publication uploads the manifest beside the archive and the two copies must match byte for byte, comments and line endings included.
+The archive is a ZIP named `<Name>-<Version>.ruxpkg`. It contains `Rux.toml` at its root, every regular file below `Src/`, and the file named by `Readme`. It must contain at least one `Src/**/*.rux` source. Entry paths are relative, `/`-separated UTF-8; entries are sorted and carry a fixed timestamp, so packing one tree twice produces identical bytes. Publication uploads the manifest beside the archive and the two copies must match byte for byte, comments and line endings included.
 
 ```sh
 rux login

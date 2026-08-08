@@ -29,6 +29,7 @@ Description = "An example package"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
 Keywords = ["Example", "Demo"]
 License = "MIT"
+LicenseUrl = "https://github.com/rux-lang/Rux/blob/main/LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"
 Homepage = "https://rux-lang.dev"
 Readme = "README.md"
@@ -291,13 +292,53 @@ TEST_CASE("Unknown, duplicate and mistyped input is rejected") {
                        "Type = \"Program\"\n")
                   .message.find("not a valid identity") != std::string::npos);
     }
-    SUBCASE("license and license file together") {
-        CHECK(Rejected(WithPackage("License = \"MIT\"\nLicenseFile = \"LICENSE.md\"\n"))
-                  .message.find("mutually exclusive") != std::string::npos);
+    SUBCASE("the retired license file field") {
+        CHECK(Rejected(WithPackage("LicenseFile = \"LICENSE.md\"\n")).message.find("unknown field 'LicenseFile'") !=
+              std::string::npos);
     }
     SUBCASE("colliding keywords") {
         CHECK(Rejected(WithPackage("Keywords = [\"My_Word\", \"my-word\"]\n")).message.find("collides") !=
               std::string::npos);
+    }
+}
+
+TEST_CASE("An SPDX expression and a license URL describe one package together") {
+    const Manifest manifest =
+        Accepted(WithPackage("License = \"MIT\"\nLicenseUrl = \"https://example.com/LICENSE.md\"\n"));
+    CHECK(manifest.package.license == "MIT");
+    CHECK(manifest.package.licenseUrl == "https://example.com/LICENSE.md");
+}
+
+TEST_CASE("Metadata URLs must be absolute, hosted and free of credentials") {
+    SUBCASE("relative") {
+        CHECK(Rejected(WithPackage("LicenseUrl = \"github.com/rux-lang/Rux\"\n")).message.find("absolute") !=
+              std::string::npos);
+    }
+    SUBCASE("unsupported scheme") {
+        CHECK(Rejected(WithPackage("LicenseUrl = \"ftp://example.com/LICENSE.md\"\n"))
+                  .message.find("'http' or 'https'") != std::string::npos);
+    }
+    SUBCASE("missing host") {
+        CHECK(Rejected(WithPackage("LicenseUrl = \"https:///LICENSE.md\"\n")).message.find("must include a host") !=
+              std::string::npos);
+    }
+    SUBCASE("credentials") {
+        CHECK(Rejected(WithPackage("LicenseUrl = \"https://user:secret@example.com/L\"\n"))
+                  .message.find("cannot contain credentials") != std::string::npos);
+    }
+    SUBCASE("embedded space") {
+        CHECK(Rejected(WithPackage("LicenseUrl = \"https://example.com/a b\"\n")).message.find("invalid character") !=
+              std::string::npos);
+    }
+    SUBCASE("over the length limit") {
+        const std::string url = "https://example.com/" + std::string(manifestMaxUrlBytes, 'a');
+        CHECK(Rejected(WithPackage("LicenseUrl = \"" + url + "\"\n")).message.find("byte URL limit") !=
+              std::string::npos);
+    }
+    SUBCASE("repository and homepage share the rule") {
+        CHECK(Rejected(WithPackage("Repository = \"github.com/rux-lang/Rux\"\n")).message.find("'Repository'") !=
+              std::string::npos);
+        CHECK(Rejected(WithPackage("Homepage = \"rux-lang.dev\"\n")).message.find("'Homepage'") != std::string::npos);
     }
 }
 
@@ -666,6 +707,11 @@ TEST_CASE("first-party packages are publishable under the Rux namespace") {
                       "package name must match its directory: ", path.string());
         CHECK_MESSAGE(!manifest.package.description.empty(), "package needs a description: ", path.string());
         CHECK_MESSAGE(!manifest.package.authors.empty(), "package needs authors: ", path.string());
+
+        // The archive carries no license text, so the terms are only ever
+        // reachable through these two fields.
+        CHECK_MESSAGE(!manifest.package.license.empty(), "package needs a license: ", path.string());
+        CHECK_MESSAGE(!manifest.package.licenseUrl.empty(), "package needs a license URL: ", path.string());
 
         // MinRux is the other field publication requires and local builds do not.
         CHECK_MESSAGE(ValidateForPublication(manifest).empty(),

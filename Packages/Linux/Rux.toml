@@ -10,6 +10,7 @@ Type = "Source"
 Description = "Linux platform bindings"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
 License = "MIT"
+LicenseUrl = "https://github.com/rux-lang/Rux/blob/main/LICENSE.md"
 Readme = "README.md"
 
 [Dependencies]
