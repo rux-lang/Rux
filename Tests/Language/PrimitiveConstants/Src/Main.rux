@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 
 when int32::Bits == 32 && int32::Bytes == 4 &&
      int32::Min == -2147483648 && int32::Max == 2147483647 &&

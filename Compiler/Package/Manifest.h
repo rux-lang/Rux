@@ -287,6 +287,16 @@ struct ManifestResult {
 /// The oldest compiler release a published package may declare as its minimum.
 inline constexpr std::string_view publicationMinRuxFloor = "0.4.0";
 
+/// Registry identity of the package supplying the language's intrinsics: the
+/// compile-time context, the diagnostic directives, and the built-in enums a
+/// `when` condition may name. Recognized by identity rather than by the name a
+/// dependent binds it to, which `Package` lets a manifest choose freely.
+inline constexpr std::string_view intrinsicsPackageNamespace = "Rux";
+inline constexpr std::string_view intrinsicsPackageName = "Core";
+
+/// Whether `manifest` describes that package.
+[[nodiscard]] bool IsIntrinsicsPackage(const Manifest &manifest);
+
 /**
  * @brief Check a manifest against the publication validation profile.
  *

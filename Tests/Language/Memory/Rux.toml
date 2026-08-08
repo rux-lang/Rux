@@ -8,8 +8,8 @@ Type = "Program"
 Description = "Language test: MemoryTest"
 
 [Dependencies]
+Core = { Path = "../../../Packages/Core" }
 Memory = { Path = "../../../Packages/Memory" }
-Rux = { Path = "../../../Packages/Rux" }
 
 [Build]
 Output = "../../../Bin/Tests/Language"

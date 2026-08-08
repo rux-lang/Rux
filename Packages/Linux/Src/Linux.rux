@@ -1,4 +1,4 @@
-import Rux::{ Architecture, #target, #Error };
+import Core::{ Architecture, #target, #Error };
 
 // Standard file descriptors.
 const StdIn: int32 = 0;

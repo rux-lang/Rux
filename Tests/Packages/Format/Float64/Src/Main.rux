@@ -1,5 +1,5 @@
 import Format::{ ToString, IsNan, IsInfinite, IsFinite, ParseError, ParseFloat64, TryParseFloat64 };
-import Rux::Result;
+import Core::Result;
 import Text::String;
 
 // Std is deliberately absent from the dependencies: it exports conversions of

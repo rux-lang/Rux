@@ -1,4 +1,4 @@
-import Rux::{ Assert, OperatingSystem, #target };
+import Core::{ Assert, OperatingSystem, #target };
 import C::{ time, clock, difftime, gmtime, localtime, mktime, malloc, free };
 
 func Main() -> int {

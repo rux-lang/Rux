@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Primitives"
+Version = "0.1.0"
+Type = "Program"
+Description = "Package test for Core: Primitives"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Core"

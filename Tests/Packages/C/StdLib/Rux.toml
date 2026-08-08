@@ -9,7 +9,7 @@ Description = "Package test for C: StdLib"
 
 [Dependencies]
 C = { Path = "../../../../Packages/C" }
-Rux = { Path = "../../../../Packages/Rux" }
+Core = { Path = "../../../../Packages/Core" }
 
 [Build]
 Output = "../../../../Bin/Tests/Packages/C"

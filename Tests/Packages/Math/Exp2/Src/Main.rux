@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 import Math::Exp2;
 
 asm func BitsOf(x: float64) -> int64 {

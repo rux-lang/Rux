@@ -1,4 +1,4 @@
-import Rux::{ #target, OperatingSystem };
+import Core::{ #target, OperatingSystem };
 
 when #target.os == OperatingSystem::Windows {
     import Windows::{

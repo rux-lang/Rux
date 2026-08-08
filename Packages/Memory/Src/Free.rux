@@ -1,4 +1,4 @@
-import Rux::{ #target };
+import Core::{ #target };
 
 when #target.os {
     .DragonFlyBSD, .FreeBSD, .NetBSD, .OpenBSD => import Bsd::Munmap,

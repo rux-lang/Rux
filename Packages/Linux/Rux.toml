@@ -17,4 +17,4 @@ Homepage = "https://rux-lang.dev/docs/api/linux"
 ReadmeFile = "README.md"
 
 [Dependencies]
-Rux = { Namespace = "Rux", Version = "0.1.0" }
+Core = { Namespace = "Rux", Version = "0.1.0" }

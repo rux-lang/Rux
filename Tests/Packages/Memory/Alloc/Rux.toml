@@ -8,8 +8,8 @@ Type = "Program"
 Description = "Package test for Memory: Alloc"
 
 [Dependencies]
+Core = { Path = "../../../../Packages/Core" }
 Memory = { Path = "../../../../Packages/Memory" }
-Rux = { Path = "../../../../Packages/Rux" }
 
 [Build]
 Output = "../../../../Bin/Tests/Packages/Memory"

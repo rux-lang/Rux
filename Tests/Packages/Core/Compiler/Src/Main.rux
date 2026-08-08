@@ -1,4 +1,4 @@
-import Rux::{ Assert, SemanticVersion, #compiler };
+import Core::{ Assert, SemanticVersion, #compiler };
 
 const MinimumCompiler = SemanticVersion::New(0, 0, 0);
 

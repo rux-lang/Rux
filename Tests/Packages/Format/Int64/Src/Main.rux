@@ -1,5 +1,5 @@
 import Format::{ ToString, ParseError, ParseInt64, TryParseInt64 };
-import Rux::Result;
+import Core::Result;
 import Text::String;
 
 // Std stays out of the dependencies, and a failed check reports itself through

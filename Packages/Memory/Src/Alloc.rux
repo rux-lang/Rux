@@ -1,4 +1,4 @@
-import Rux::{ #target, #Error };
+import Core::{ #target, #Error };
 
 when #target.os {
     .DragonFlyBSD, .FreeBSD, .NetBSD, .OpenBSD => import Bsd::{

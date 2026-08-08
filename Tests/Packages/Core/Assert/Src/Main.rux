@@ -1,4 +1,4 @@
-import Rux::{ Assert, DebugAssert };
+import Core::{ Assert, DebugAssert };
 
 // Assert and DebugAssert both let execution continue when the condition holds;
 // a false condition would abort the process with a nonzero status. This test

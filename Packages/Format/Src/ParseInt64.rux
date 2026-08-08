@@ -1,4 +1,4 @@
-import Rux::Result;
+import Core::Result;
 import Text::String;
 
 // Parses a base-10 signed integer with an optional leading `+` or `-`.

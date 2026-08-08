@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 import C::{
     sqrt, sqrtf, cbrt, fabs, floor, ceil, trunc, round,
     pow, fmax, fmin, fmod, copysign, fdim, hypot,

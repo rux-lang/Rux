@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 import C::{
     malloc, free, calloc, realloc,
     abs, labs, llabs, atoi, atol, atoll, atof,

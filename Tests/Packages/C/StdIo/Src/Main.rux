@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 import C::{ sprintf, sscanf, malloc, free, puts, putchar };
 
 func Main() -> int {

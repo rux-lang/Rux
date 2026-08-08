@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 
 func divide(a: int, b: int) -> (int, bool) {
     if b == 0 {

@@ -8,7 +8,7 @@ Type = "Program"
 Description = "Package test for Windows: constants and enum values"
 
 [Dependencies]
-Rux = { Path = "../../../../Packages/Rux" }
+Core = { Path = "../../../../Packages/Core" }
 Windows = { Path = "../../../../Packages/Windows" }
 
 [Build]

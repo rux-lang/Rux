@@ -4,14 +4,14 @@ MinRux = "0.4.0"
 
 [Package]
 Namespace = "Rux"
-Name = "Rux"
+Name = "Core"
 Version = "0.1.0"
 Type = "Source"
 Description = "Core language intrinsics"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
-Keywords = ["Rux", "Core", "Intrinsics", "Language", "Prelude"]
+Keywords = ["Core", "Rux", "Intrinsics", "Language"]
 License = "MIT"
 LicenseFile = "LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"
-Homepage = "https://rux-lang.dev/docs/api/rux"
+Homepage = "https://rux-lang.dev/docs/api/core"
 ReadmeFile = "README.md"

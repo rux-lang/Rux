@@ -1,4 +1,4 @@
-import Rux::{ Architecture, OperatingSystem, #target };
+import Core::{ Architecture, OperatingSystem, #target };
 
 when #target.os == OperatingSystem::MacOS &&
      #target.arch == Architecture::X86_64 {

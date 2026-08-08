@@ -8,8 +8,8 @@ Type = "Program"
 Description = "Package test for Format: Float64"
 
 [Dependencies]
+Core = { Path = "../../../../Packages/Core" }
 Format = { Path = "../../../../Packages/Format" }
-Rux = { Path = "../../../../Packages/Rux" }
 Text = { Path = "../../../../Packages/Text" }
 
 [Build]

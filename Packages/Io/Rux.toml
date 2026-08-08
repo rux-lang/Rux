@@ -18,10 +18,10 @@ ReadmeFile = "README.md"
 
 [Dependencies]
 Bsd = { Namespace = "Rux", Version = "0.1.0" }
+Core = { Namespace = "Rux", Version = "0.1.0" }
 Format = { Namespace = "Rux", Version = "0.1.0" }
 Linux = { Namespace = "Rux", Version = "0.1.0" }
 MacOS = { Namespace = "Rux", Version = "0.1.0" }
 Memory = { Namespace = "Rux", Version = "0.1.0" }
-Rux = { Namespace = "Rux", Version = "0.1.0" }
 Text = { Namespace = "Rux", Version = "0.1.0" }
 Windows = { Namespace = "Rux", Version = "0.1.0" }

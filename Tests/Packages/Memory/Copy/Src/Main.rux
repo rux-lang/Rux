@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 import Memory::{ Alloc, Compare, Copy, Free, Set, Zero };
 
 func Main() -> int {

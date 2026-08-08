@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 import Math::E;
 import Math::Log2E;
 import Math::Log10E;

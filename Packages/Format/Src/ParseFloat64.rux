@@ -1,4 +1,4 @@
-import Rux::Result;
+import Core::Result;
 import Text::String;
 
 // Why a decimal string could not be converted to a float64.

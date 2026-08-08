@@ -9,7 +9,7 @@ Description = "Package test for Bsd: Syscall"
 
 [Dependencies]
 Bsd = { Path = "../../../../Packages/Bsd" }
-Rux = { Path = "../../../../Packages/Rux" }
+Core = { Path = "../../../../Packages/Core" }
 
 [Build]
 Output = "../../../../Bin/Tests/Packages/Bsd"

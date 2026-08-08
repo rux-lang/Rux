@@ -426,8 +426,8 @@ public:
         RegisterVariants(enumVariants, "OptimizationMode", OptimizationVariants);
         RegisterVariants(enumVariants, "OutputKind", OutputKindVariants);
         // Everything registered so far is a Rux built-in; naming one in a `when`
-        // condition requires an explicit `import Rux::{...}` in the file. The
-        // program's own enums, collected later, do not.
+        // condition requires the file to have imported it from the intrinsics
+        // package. The program's own enums, collected later, do not.
         for (const auto &[name, _] : enumVariants) {
             builtinEnumNames.insert(name);
         }
@@ -542,8 +542,11 @@ private:
         }
     }
 
-    // Record which names the current file imports from the `Rux` package, so a
-    // `when` condition can require its build intrinsics and enums to be imported.
+    // Record which names the current file imports from the intrinsics package,
+    // so a `when` condition can require its build intrinsics and enums to be
+    // imported. The import name is whatever the owning manifest bound the
+    // package to, so it is matched against the aliases the driver resolved
+    // rather than against a fixed spelling.
     void SetRuxImportsForModule(const Module &module) {
         ruxImports.clear();
         ruxGlobImport = false;
@@ -556,7 +559,7 @@ private:
                 continue;
             }
             if (const auto *use = dynamic_cast<const UseDecl *>(decl.get())) {
-                if (use->path.empty() || use->path.front() != "Rux") {
+                if (use->path.empty() || !context.intrinsicsAliases.contains(use->path.front())) {
                     continue;
                 }
                 if (use->kind == UseDecl::Kind::Glob) {

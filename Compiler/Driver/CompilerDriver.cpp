@@ -54,6 +54,9 @@ void CompilerDriver::InitializeCompileTimeContext() {
     compileTimeContext.sourceRoot = root.lexically_normal();
     compileTimeContext.compilerVersion = RUX_VERSION;
     compileTimeContext.config = opts.manifest.build.ConfigValues();
+    // Which import name means the intrinsics package is the root manifest's
+    // choice; each dependency's own manifest answers it again below.
+    compileTimeContext.intrinsicsAliases = IntrinsicsAliases(opts.manifest, root);
     for (const auto &[name, value] : opts.defines) {
         compileTimeContext.config[name] = value;
     }
@@ -377,6 +380,9 @@ bool CompilerDriver::LoadDependencies() {
         const std::filesystem::path pendingRoot = pendingPackages[pendingIndex].root;
         const Manifest pendingManifest = pendingPackages[pendingIndex].manifest;
         const std::string packageName = pendingPackages[pendingIndex].name;
+        // A dependency's `when` conditions are written against the import names
+        // its own manifest chose, which need not match the root's.
+        compileTimeContext.intrinsicsAliases = IntrinsicsAliases(pendingManifest, pendingRoot);
         if (opts.verbose) {
             std::print("  Loading package {} from {}\n", packageName, pendingRoot.string());
         }

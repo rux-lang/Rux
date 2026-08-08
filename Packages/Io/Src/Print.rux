@@ -1,6 +1,6 @@
 import Format::{ Format, Stringable, ToString };
 import Memory::{ Alloc, Free };
-import Rux::{ #target };
+import Core::{ #target };
 import Text::String;
 
 when #target.os {

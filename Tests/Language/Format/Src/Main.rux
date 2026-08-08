@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 import Format::Format;
 
 func Main() -> int {

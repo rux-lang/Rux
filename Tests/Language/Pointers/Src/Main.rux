@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 
 struct Point {
     x: float;

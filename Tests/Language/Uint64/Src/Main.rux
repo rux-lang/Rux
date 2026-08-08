@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 
 func Main() -> int {
     let a: uint64 = 1000000000;

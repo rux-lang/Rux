@@ -8,8 +8,8 @@ Type = "Program"
 Description = "Package test for MacOS: Syscall"
 
 [Dependencies]
+Core = { Path = "../../../../Packages/Core" }
 MacOS = { Path = "../../../../Packages/MacOS" }
-Rux = { Path = "../../../../Packages/Rux" }
 
 [Build]
 Output = "../../../../Bin/Tests/Packages/MacOS"

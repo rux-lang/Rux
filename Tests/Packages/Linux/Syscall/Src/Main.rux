@@ -1,4 +1,4 @@
-import Rux::{ OperatingSystem, #target };
+import Core::{ OperatingSystem, #target };
 import Linux::{
     ClockGetTime,
     ClockMonotonic,

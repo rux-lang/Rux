@@ -1,4 +1,4 @@
-import Rux::{
+import Core::{
     Assert, #target, OperatingSystem, Architecture, Endianness, DataModel,
     ObjectFormat
 };

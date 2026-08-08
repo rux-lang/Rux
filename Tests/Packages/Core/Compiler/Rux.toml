@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Compiler"
+Version = "0.1.0"
+Type = "Program"
+Description = "Package test for Core: Compiler"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Core"

@@ -22,7 +22,7 @@ Darwin partitions syscall numbers by class, with the Unix/BSD calls in class 2. 
 macOS only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:
 
 ```rux
-import Rux::#target;
+import Core::#target;
 
 when #target.os == .MacOS {
     import MacOS::{ StdOut, Write };

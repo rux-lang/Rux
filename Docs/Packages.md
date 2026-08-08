@@ -11,6 +11,7 @@ Packages marked **Planned** reserve their package names and source layout but do
 | `Algorithms`  | Planned   | Generic algorithms over slices, ranges, and iterators    |
 | `C`           | Available | C standard library bindings                              |
 | `Collections` | Partial   | Generic data structures; `Array` and `List` are usable   |
+| `Core`        | Available | Core language intrinsics                                 |
 | `Format`      | Available | String conversion and formatting                         |
 | `Hash`        | Planned   | Hash functions and checksums                             |
 | `Io`          | Available | Streams, console I/O, readers, and writers               |
@@ -18,7 +19,6 @@ Packages marked **Planned** reserve their package names and source layout but do
 | `Math`        | Available | Mathematical constants and functions                     |
 | `Memory`      | Available | Memory-management functions                              |
 | `Random`      | Planned   | Pseudorandom generators and distributions                |
-| `Rux`         | Available | Core language intrinsics                                 |
 | `Text`        | Available | Strings and fundamental text manipulation                |
 | `Time`        | Planned   | Durations, monotonic clocks, and wall clocks             |
 | `Uuid`        | Planned   | UUID representation, parsing, formatting, and generation |

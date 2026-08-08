@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 import Math::Abs;
 
 func Main() -> int {

@@ -20,7 +20,7 @@ rux add Rux/Bsd
 The four BSDs only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:
 
 ```rux
-import Rux::#target;
+import Core::#target;
 
 when #target.os {
     .DragonFlyBSD, .FreeBSD, .NetBSD, .OpenBSD => import Bsd::{ StdOut, Write }

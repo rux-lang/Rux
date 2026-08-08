@@ -29,10 +29,10 @@ ParseResult ParseSource(const std::string &source) {
     return parsed;
 }
 
-// A stand-in `Rux` package so `import Rux::{...}` resolves in these tests. The
+// A stand-in intrinsics package so `import Core::{...}` resolves in these tests. The
 // fold uses its own built-in variant tables, so the enum bodies here only need
 // to exist, not to be complete.
-constexpr std::string_view kRuxPackageSource = R"(
+constexpr std::string_view kCorePackageSource = R"(
 struct Slice<T> { data: *T; length: uint; }
 struct Target {}
 struct Build {}
@@ -68,15 +68,15 @@ enum OutputKind { SharedLibrary }
 )";
 
 DepPackage RuxDep(ParseResult &storage) {
-    storage = ParseSource(std::string(kRuxPackageSource));
+    storage = ParseSource(std::string(kCorePackageSource));
     DepPackage dep;
-    dep.name = "Rux";
-    dep.modules.push_back({"Rux", &storage.module});
+    dep.name = "Core";
+    dep.modules.push_back({"Core", &storage.module});
     return dep;
 }
 
 // Runs the front end the way the driver does, which folds `when` in `module`,
-// with the stand-in `Rux` package available so `import Rux::{...}` resolves.
+// with the stand-in intrinsics package available so `import Core::{...}` resolves.
 SemanticModel Analyze(Module &module, const std::string &targetSystem = "Windows") {
     ParseResult rux;
     std::vector<Module *> modules = {&module};
@@ -279,7 +279,7 @@ when Debug {
 
 TEST_CASE("when selects methods inside an extend block") {
     auto parsed = ParseSource(R"(
-import Rux::{ #target, OperatingSystem };
+import Core::{ #target, OperatingSystem };
 
 struct Animal {}
 
@@ -320,7 +320,7 @@ extend Animal {
 
 TEST_CASE("when tests the target OS through #target.os") {
     const std::string source = R"(
-import Rux::{ #target, OperatingSystem };
+import Core::{ #target, OperatingSystem };
 
 func Do() -> int {
     when #target.os == OperatingSystem::Windows {
@@ -346,7 +346,7 @@ func Do() -> int {
 
 TEST_CASE("#target.os compares against the OperatingSystem enum") {
     auto parsed = ParseSource(R"(
-import Rux::{ #target, OperatingSystem };
+import Core::{ #target, OperatingSystem };
 
 func Do() -> int {
     when #target.os != OperatingSystem::Linux {
@@ -365,7 +365,7 @@ func Do() -> int {
 
 TEST_CASE("an enum shorthand takes its enum from the other side of a when condition") {
     const std::string source = R"(
-import Rux::{ #target };
+import Core::{ #target };
 
 func Do() -> int {
     when #target.os == .Windows {
@@ -390,7 +390,7 @@ func Do() -> int {
 
 TEST_CASE("an enum shorthand in a when condition still validates the variant") {
     auto parsed = ParseSource(R"(
-import Rux::{ #target };
+import Core::{ #target };
 
 func Do() -> int {
     when #target.os == .Wndows {
@@ -408,7 +408,7 @@ func Do() -> int {
 
 TEST_CASE("#Error in a taken branch emits its message as a compile-time error") {
     auto parsed = ParseSource(R"(
-import Rux::{ #target, #Error };
+import Core::{ #target, #Error };
 
 func Do() -> int {
     when #target.os == .Windows {
@@ -424,7 +424,7 @@ func Do() -> int {
 
 TEST_CASE("#Error in a branch that is not taken never fires") {
     auto parsed = ParseSource(R"(
-import Rux::{ #target, #Error };
+import Core::{ #target, #Error };
 
 func Do() -> int {
     when #target.os == .Linux {
@@ -439,7 +439,7 @@ func Do() -> int {
 
 TEST_CASE("#Warn emits a warning, not an error") {
     auto parsed = ParseSource(R"(
-import Rux::{ #Warn };
+import Core::{ #Warn };
 
 func Do() -> int {
     #Warn("deprecated path");
@@ -476,7 +476,7 @@ func Do() {
 
 TEST_CASE("#Error requires a string-literal message") {
     auto parsed = ParseSource(R"(
-import Rux::{ #Error };
+import Core::{ #Error };
 
 const Message = "hi";
 
@@ -492,7 +492,7 @@ func Do() -> int {
 
 TEST_CASE("a compile-time match statement selects the arm for the target") {
     const std::string source = R"(
-import Rux::{ #target };
+import Core::{ #target };
 
 func Do() -> int {
     when #target.os {
@@ -518,7 +518,7 @@ func Do() -> int {
 
 TEST_CASE("a compile-time match arm may list several patterns") {
     const std::string source = R"(
-import Rux::{ #target };
+import Core::{ #target };
 
 func Do() -> int {
     when #target.os {
@@ -548,7 +548,7 @@ func Do() -> int {
 
 TEST_CASE("a compile-time match accepts a bare-expression arm and the full enum form") {
     auto parsed = ParseSource(R"(
-import Rux::{ #target, OperatingSystem };
+import Core::{ #target, OperatingSystem };
 
 func Do() -> int {
     when #target.os {
@@ -569,7 +569,7 @@ func Do() -> int {
 
 TEST_CASE("a compile-time match with no matching arm and no else is an error") {
     auto parsed = ParseSource(R"(
-import Rux::{ #target };
+import Core::{ #target };
 
 func Do() -> int {
     when #target.os {
@@ -586,7 +586,7 @@ func Do() -> int {
 
 TEST_CASE("a compile-time match arm fires #Error only when it is the taken arm") {
     const std::string source = R"(
-import Rux::{ #target, #Error };
+import Core::{ #target, #Error };
 
 func Do() -> int {
     when #target.os {
@@ -609,10 +609,10 @@ func Do() -> int {
 
 TEST_CASE("a declaration-level match groups patterns and takes a semicolon-less import body") {
     const std::string source = R"(
-import Rux::{ #target, #Error };
+import Core::{ #target, #Error };
 
 when #target.os {
-    .Windows, .Linux => import Rux::{ OperatingSystem }
+    .Windows, .Linux => import Core::{ OperatingSystem }
     else => #Error("unsupported")
 }
 )";
@@ -632,7 +632,7 @@ when #target.os {
 
 TEST_CASE("a declaration-level compile-time match splices the taken arm") {
     const std::string source = R"(
-import Rux::{ #target, #Error };
+import Core::{ #target, #Error };
 
 when #target.os {
     .Windows => { func Tag() -> int { return 1; } }
@@ -653,7 +653,7 @@ when #target.os {
 
 TEST_CASE("the dropped OS alias no longer names the OperatingSystem enum") {
     auto parsed = ParseSource(R"(
-import Rux::{ #target };
+import Core::{ #target };
 
 func Do() -> int {
     when #target.os == OS::Windows {
@@ -669,7 +669,7 @@ func Do() -> int {
 
 TEST_CASE("a built-in enum named in a condition must be imported from Rux") {
     auto parsed = ParseSource(R"(
-import Rux::{ #target };
+import Core::{ #target };
 
 func Do() -> int {
     when #target.os == OperatingSystem::Windows {
@@ -720,7 +720,7 @@ func Do() -> int {
 
 TEST_CASE("#target.os tells the BSDs apart") {
     const std::string source = R"(
-import Rux::{ #target, OperatingSystem };
+import Core::{ #target, OperatingSystem };
 
 func Do() -> int {
     when #target.os == OperatingSystem::FreeBSD {
@@ -755,7 +755,7 @@ func Do() -> int {
 
 TEST_CASE("an OS no build target produces warns instead of quietly never running") {
     auto parsed = ParseSource(R"(
-import Rux::{ #target, OperatingSystem };
+import Core::{ #target, OperatingSystem };
 
 func Do() -> int {
     when #target.os == OperatingSystem::Haiku {
@@ -776,7 +776,7 @@ func Do() -> int {
 
 TEST_CASE("a misspelled OS variant is an error, not a silently false branch") {
     auto parsed = ParseSource(R"(
-import Rux::{ #target, OperatingSystem };
+import Core::{ #target, OperatingSystem };
 
 func Do() -> int {
     when #target.os == OperatingSystem::Wndows {
@@ -868,7 +868,7 @@ func Do() -> int {
 
 TEST_CASE("target and build intrinsics expose the full compile-time context") {
     auto parsed = ParseSource(R"(
-import Rux::{ #target, #build, #compiler, OperatingSystem, Architecture, ApplicationBinaryInterface, Endianness,
+import Core::{ #target, #build, #compiler, OperatingSystem, Architecture, ApplicationBinaryInterface, Endianness,
              DataModel, ObjectFormat, BuildMode, OptimizationMode, OutputKind };
 
 func Selected() -> int {
@@ -920,7 +920,7 @@ func Selected() -> int {
 
 TEST_CASE("configuration and compiler feature intrinsics are queryable") {
     auto parsed = ParseSource(R"(
-import Rux::{ #config, #compiler, #source, SemanticVersion };
+import Core::{ #config, #compiler, #source, SemanticVersion };
 
 const FutureCompiler = SemanticVersion::New(1, 2, 4);
 
@@ -1139,7 +1139,7 @@ module Demo {
 
 TEST_CASE("when includes true declarations and removes false declarations and imports") {
     auto parsed = ParseSource(R"(
-import Rux::{ #compiler };
+import Core::{ #compiler };
 
 const Enabled = true;
 
@@ -1178,7 +1178,7 @@ when false {
 
 TEST_CASE("Link resolves a target-selected compile-time string constant") {
     auto parsed = ParseSource(R"(
-import Rux::{ OperatingSystem, #target };
+import Core::{ OperatingSystem, #target };
 
 when #target.os == OperatingSystem::Windows {
     const LibName = "ucrtbase.dll";
@@ -1216,4 +1216,55 @@ extern func Run();
     CHECK(std::ranges::any_of(model.diagnostics, [](const auto &diagnostic) {
         return diagnostic.message == "'#Link' library name 'LibName' must be a string";
     }));
+}
+
+// The intrinsics package is recognized by the import name its owning manifest
+// bound it to, which `Package` lets a manifest choose. Keying the fold on a
+// fixed spelling silently cost conditional compilation to anyone who renamed
+// the dependency, so both directions are pinned here.
+
+TEST_CASE("a condition accepts intrinsics imported under the manifest's own alias") {
+    auto parsed = ParseSource(R"(
+import Lang::{ #target, OperatingSystem };
+
+func Which() -> int {
+    when #target.os == OperatingSystem::Windows { return 1; }
+    else { return 2; }
+}
+)");
+    CompileTimeContext context;
+    context.target.os = Target::OS::Windows;
+    context.intrinsicsAliases = {"Lang"};
+
+    ParseResult core;
+    std::vector<Module *> modules = {&parsed.module};
+    DepPackage dep = RuxDep(core);
+    dep.name = "Lang";
+    dep.modules[0].moduleName = "Lang";
+    SemanticAnalyzer analyzer(modules, {dep}, "test", std::move(context));
+    const auto model = analyzer.Analyze();
+    CHECK_FALSE(model.HasErrors());
+}
+
+TEST_CASE("a condition still requires the intrinsic to be imported from that package") {
+    auto parsed = ParseSource(R"(
+import Other::{ #target, OperatingSystem };
+
+func Which() -> int {
+    when #target.os == OperatingSystem::Windows { return 1; }
+    else { return 2; }
+}
+)");
+    CompileTimeContext context;
+    context.target.os = Target::OS::Windows;
+    context.intrinsicsAliases = {"Core"};
+
+    ParseResult core;
+    std::vector<Module *> modules = {&parsed.module};
+    DepPackage dep = RuxDep(core);
+    dep.name = "Other";
+    dep.modules[0].moduleName = "Other";
+    SemanticAnalyzer analyzer(modules, {dep}, "test", std::move(context));
+    const auto model = analyzer.Analyze();
+    CHECK(model.HasErrors());
 }

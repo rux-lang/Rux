@@ -8,7 +8,7 @@ Type = "Program"
 Description = "Language test: Float32"
 
 [Dependencies]
-Rux = { Path = "../../../Packages/Rux" }
+Core = { Path = "../../../Packages/Core" }
 
 [Build]
 Output = "../../../Bin/Tests/Language"

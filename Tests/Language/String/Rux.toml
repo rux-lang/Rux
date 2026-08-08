@@ -8,7 +8,7 @@ Type = "Program"
 Description = "Language test: String"
 
 [Dependencies]
-Rux = { Path = "../../../Packages/Rux" }
+Core = { Path = "../../../Packages/Core" }
 Text = { Path = "../../../Packages/Text" }
 
 [Build]

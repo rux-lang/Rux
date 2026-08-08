@@ -26,7 +26,7 @@ Failure is reported the Win32 way rather than through an errno: a `bool32` or a 
 Windows only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:
 
 ```rux
-import Rux::#target;
+import Core::#target;
 
 when #target.os == .Windows {
     import Windows::{ GetStdHandle, StdOutputHandle, WriteConsoleA };

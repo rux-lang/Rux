@@ -12,7 +12,7 @@ rux add Rux/Algorithms
 
 ## Planned surface
 
-Sorting, searching, and the transformations that pair with the range and slice types in [`Rux/Rux`](../Rux) and the containers in [`Rux/Collections`](../Collections).
+Sorting, searching, and the transformations that pair with the range and slice types in [`Rux/Core`](../Core) and the containers in [`Rux/Collections`](../Collections).
 
 ## License
 

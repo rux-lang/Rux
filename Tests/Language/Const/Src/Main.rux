@@ -1,4 +1,4 @@
-import Rux::Slice;
+import Core::Slice;
 
 // A constant of slice type is addressed rather than inlined, so it must exist
 // in read-only data with a {data, length} header. Reading one used to follow a

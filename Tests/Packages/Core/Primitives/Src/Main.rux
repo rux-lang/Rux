@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 
 // The compiler supplies Min, Max, Bits and Bytes on every primitive type. These
 // are the invariants that hold on every target the package supports.

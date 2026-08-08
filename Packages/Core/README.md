@@ -1,4 +1,4 @@
-# Rux
+# Core
 
 Core language intrinsics: the declarations the compiler itself supplies, and the primitive types every other package builds on.
 
@@ -7,7 +7,7 @@ This is the one package almost everything depends on. Importing it is what turns
 ## Installation
 
 ```sh
-rux add Rux/Rux
+rux add Rux/Core
 ```
 
 ## What it provides
@@ -23,7 +23,7 @@ rux add Rux/Rux
 ## Example
 
 ```rux
-import Rux::{ #target, #Error };
+import Core::{ #target, #Error };
 
 when #target.os {
     .Windows, .Linux, .MacOS => {},

@@ -1,4 +1,4 @@
-import Rux::{ #target, #Error };
+import Core::{ #target, #Error };
 
 when #target.os == .Windows {
     import Windows::{ GetProcessHeap, HeapAlloc, HeapFree, HeapReAlloc };

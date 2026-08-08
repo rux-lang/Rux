@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 
 func Main() -> int {
     let a: int32 = 100000;

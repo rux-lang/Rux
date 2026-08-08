@@ -1,4 +1,4 @@
-import Rux::Assert;
+import Core::Assert;
 
 func PlatformName() -> Slice<char8> {
     return "Windows";
