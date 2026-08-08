@@ -192,12 +192,33 @@ The selected validation policy is not stored in `Rux.toml`. Local validation acc
 The archive is a ZIP named `<Name>-<Version>.ruxpkg`. It contains `Rux.toml` at its root, every regular file below `Src/`, and the files named by `Readme` and `LicenseFile`. It must contain at least one `Src/**/*.rux` source. Entry paths are relative, `/`-separated UTF-8; entries are sorted and carry a fixed timestamp, so packing one tree twice produces identical bytes. Publication uploads the manifest beside the archive and the two copies must match byte for byte, comments and line endings included.
 
 ```sh
+rux login
 rux pack
 rux publish --dry-run
 rux publish
 ```
 
-`rux publish` reads its bearer credential from the `RUX_TOKEN` environment variable, which must carry the registry's `publish` scope. There is no flag for it, so the credential stays out of shell history and the process list. The registry defaults to the official API and is overridden by `RUX_REGISTRY_URL` or `--registry <url>`, which is how a local registry is targeted for testing. `--dry-run` validates and builds the archive without uploading and needs no credential.
+The registry defaults to the official API and is overridden by `RUX_REGISTRY_URL` or `--registry <url>`, which is how a local registry is targeted for testing. `--dry-run` validates and builds the archive without uploading and needs no credential.
+
+### Credentials
+
+`rux publish` needs a bearer credential carrying the registry's `publish` scope, and takes it from the first of these that applies:
+
+1. the `RUX_TOKEN` environment variable;
+2. the token `rux login` stored for the registry being published to.
+
+The environment wins so a CI job is never shadowed by a file left behind on a self-hosted runner. Neither command has a `--token` flag: `rux login` reads the token from stdin — prompting without echo on a terminal, otherwise reading one line, so `echo "$TOKEN" | rux login` works — which keeps the credential out of shell history and the process list.
+
+Stored tokens live in `%LOCALAPPDATA%\Rux\Credentials.toml` on Windows and `$HOME/.rux/credentials.toml` elsewhere, beside the package cache, restricted to your account:
+
+```toml
+[Registry."https://api.rux-lang.dev"]
+Token = "rux_pat_..."
+```
+
+Entries are keyed by registry base URL rather than kept as one ambient token, so pointing `--registry` at a local registry cannot send it the credential for the official one. `rux logout` removes the entry for one registry and leaves the rest.
+
+`rux login` checks the token against the registry before storing it and refuses one that is rejected. A registry that does not implement the check, or that cannot be reached, produces a warning and the token is stored unverified.
 
 A published version is immutable: republishing an existing `major.minor.patch` — build metadata included — is rejected. `rux publish` does not build or check the package first; run `rux check` beforehand.
 

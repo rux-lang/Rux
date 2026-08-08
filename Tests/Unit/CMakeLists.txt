@@ -11,6 +11,7 @@ set(RUX_TEST_SOURCES
     CodegenTests.cpp
     CompilerDriverTests.cpp
     ConditionalCompilationTests.cpp
+    CredentialsTests.cpp
     GoldenDiagnosticsTests.cpp
     LexerTests.cpp
     LinkerTests.cpp

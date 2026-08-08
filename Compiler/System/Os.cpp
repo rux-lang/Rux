@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <iostream>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -29,6 +30,15 @@
             #include <stropts.h>
         #endif
     #endif
+#endif
+
+// termios is optional on the Unices we build for; TCSAFLUSH is the marker that
+// the header was actually found above. Without it a secret is still read, just
+// without echo suppression.
+#if !RUX_OS_WINDOWS && defined(TCSAFLUSH)
+    #define RUX_HAS_TERMIOS 1
+#else
+    #define RUX_HAS_TERMIOS 0
 #endif
 
 namespace Rux::System {
@@ -86,6 +96,40 @@ std::optional<std::filesystem::path> GetEnvPath(const char *name) {
 #endif
 }
 
+#if RUX_OS_WINDOWS
+namespace {
+/// Widen an ASCII name for the wide environment entry points.
+std::wstring WidenAscii(const std::string_view text) {
+    return {text.begin(), text.end()};
+}
+} // namespace
+#endif
+
+bool SetEnv(const char *name, const std::string_view value) {
+#if RUX_OS_WINDOWS
+    return SetEnvironmentVariableW(WidenAscii(name).c_str(), WidenAscii(value).c_str()) != 0;
+#else
+    return setenv(name, std::string(value).c_str(), 1) == 0;
+#endif
+}
+
+bool SetEnvPath(const char *name, const std::filesystem::path &value) {
+#if RUX_OS_WINDOWS
+    return SetEnvironmentVariableW(WidenAscii(name).c_str(), value.wstring().c_str()) != 0;
+#else
+    return setenv(name, value.c_str(), 1) == 0;
+#endif
+}
+
+bool UnsetEnv(const char *name) {
+#if RUX_OS_WINDOWS
+    // A null value deletes the variable; "already absent" reports success.
+    return SetEnvironmentVariableW(WidenAscii(name).c_str(), nullptr) != 0 || GetLastError() == ERROR_ENVVAR_NOT_FOUND;
+#else
+    return unsetenv(name) == 0;
+#endif
+}
+
 // ---- Console ------------------------------------------------------------------
 
 bool StdoutIsInteractive() {
@@ -106,6 +150,63 @@ bool StdoutIsInteractive() {
 #else
     return isatty(fileno(stdout)) != 0;
 #endif
+}
+
+bool StdinIsInteractive() {
+#if RUX_OS_WINDOWS
+    HANDLE const handle = GetStdHandle(STD_INPUT_HANDLE);
+    if (handle == nullptr || handle == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    if (GetFileType(handle) != FILE_TYPE_CHAR) {
+        return false; // redirected from a file or pipe
+    }
+    DWORD consoleMode = 0;
+    return GetConsoleMode(handle, &consoleMode) != 0;
+#else
+    return isatty(fileno(stdin)) != 0;
+#endif
+}
+
+std::optional<std::string> ReadSecretLine() {
+    // Echo is disabled around the read and restored on every exit path, so an
+    // interrupted or failed read cannot leave the terminal silent.
+    bool restore = false;
+#if RUX_OS_WINDOWS
+    HANDLE const handle = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD savedMode = 0;
+    if (handle != nullptr && handle != INVALID_HANDLE_VALUE && GetConsoleMode(handle, &savedMode)) {
+        restore = SetConsoleMode(handle, savedMode & ~static_cast<DWORD>(ENABLE_ECHO_INPUT)) != 0;
+    }
+#elif RUX_HAS_TERMIOS
+    termios saved{};
+    if (isatty(fileno(stdin)) != 0 && tcgetattr(fileno(stdin), &saved) == 0) {
+        termios muted = saved;
+        muted.c_lflag &= ~static_cast<tcflag_t>(ECHO);
+        restore = tcsetattr(fileno(stdin), TCSAFLUSH, &muted) == 0;
+    }
+#endif
+
+    std::string line;
+    const bool read = static_cast<bool>(std::getline(std::cin, line));
+
+    if (restore) {
+#if RUX_OS_WINDOWS
+        SetConsoleMode(handle, savedMode);
+#elif RUX_HAS_TERMIOS
+        tcsetattr(fileno(stdin), TCSAFLUSH, &saved);
+#endif
+        // The Enter that ended the line was swallowed with the rest of the echo.
+        std::fputc('\n', stderr);
+    }
+
+    if (!read) {
+        return std::nullopt;
+    }
+    if (line.ends_with('\r')) {
+        line.pop_back(); // CRLF input arriving through a pipe
+    }
+    return line;
 }
 
 std::size_t TerminalWidth() {
@@ -132,6 +233,15 @@ std::filesystem::path TempDirectory() {
     return ec ? std::filesystem::path{} : dir;
 }
 
+std::filesystem::path UserDataDir() {
+    if constexpr (HostOS == OS::Windows) {
+        return GetEnvPath("LOCALAPPDATA").value_or(std::filesystem::path{}) / "Rux";
+    }
+    else {
+        return GetEnvPath("HOME").value_or(std::filesystem::path("/tmp")) / ".rux";
+    }
+}
+
 std::filesystem::path WindowsSystemDirectory() {
 #if RUX_OS_WINDOWS
     wchar_t sysDir[MAX_PATH];
@@ -141,6 +251,20 @@ std::filesystem::path WindowsSystemDirectory() {
     }
 #endif
     return {};
+}
+
+// ---- Files ----------------------------------------------------------------------
+
+bool SetPrivateFilePermissions(const std::filesystem::path &path) {
+    if constexpr (HostOS == OS::Windows) {
+        return true; // %LOCALAPPDATA% is already ACL'd to the owner
+    }
+    else {
+        std::error_code ec;
+        std::filesystem::permissions(path, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
+                                     std::filesystem::perm_options::replace, ec);
+        return !ec;
+    }
 }
 
 // ---- Process --------------------------------------------------------------------

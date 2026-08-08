@@ -280,6 +280,18 @@ constexpr std::array list_opts = {OptionDoc{
     .flags = "--global"sv, .desc = "List packages in the global environment cache instead of the local manifest"sv}};
 constexpr std::array list_exs = {""sv, "--global"sv};
 
+// Login
+constexpr std::array login_usage = {"[options]"sv};
+constexpr std::array login_opts = {
+    OptionDoc{.flags = "--registry <url>"sv, .desc = "Registry API base URL to authenticate to"sv}};
+constexpr std::array login_exs = {""sv, "--registry http://localhost:8080"sv};
+
+// Logout
+constexpr std::array logout_usage = {"[options]"sv};
+constexpr std::array logout_opts = {
+    OptionDoc{.flags = "--registry <url>"sv, .desc = "Registry API base URL to forget the token for"sv}};
+constexpr std::array logout_exs = {""sv, "--registry http://localhost:8080"sv};
+
 // New
 constexpr std::array new_usage = {"[name] [options]"sv};
 constexpr std::array new_opts = {
@@ -463,6 +475,29 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .examples = Data::list_exs,
                .options = Data::list_opts},
 
+    CommandDoc{.name = "login"sv,
+               .shortDesc = "Store a registry token for publishing"sv,
+               .description = "Authenticate to a Rux package registry"sv,
+               .usage = Data::login_usage,
+               .postUsage = "The token is read from stdin, never from an option, so it stays out of shell "
+                            "history and the process list. A terminal is prompted without echo; otherwise a "
+                            "single line is read, which is what makes 'echo $TOKEN | rux login' work.\n"
+                            "It is stored per registry in a file only you can read, and RUX_TOKEN still "
+                            "overrides it when set."sv,
+               .footer = {},
+               .examples = Data::login_exs,
+               .options = Data::login_opts},
+
+    CommandDoc{.name = "logout"sv,
+               .shortDesc = "Remove a stored registry token"sv,
+               .description = "Forget the token stored for a Rux package registry"sv,
+               .usage = Data::logout_usage,
+               .postUsage = "Only the entry for the selected registry is removed; tokens stored for other "
+                            "registries are kept. RUX_TOKEN is an environment variable and is unaffected."sv,
+               .footer = {},
+               .examples = Data::logout_exs,
+               .options = Data::logout_opts},
+
     CommandDoc{.name = "new"sv,
                .shortDesc = "Create a new Rux package"sv,
                .description = "Create a new Rux package in a new directory"sv,
@@ -490,8 +525,9 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .usage = Data::publish_usage,
                .postUsage = "Publication requires [Package].Namespace and [Manifest].MinRux, and rejects "
                             "workspaces and path dependencies. Published versions are immutable.\n"
-                            "The bearer credential is read from the RUX_TOKEN environment variable and must "
-                            "carry the 'publish' scope. The registry defaults to RUX_REGISTRY_URL when set."sv,
+                            "The bearer credential comes from the RUX_TOKEN environment variable, or from the "
+                            "token 'rux login' stored for this registry, and must carry the 'publish' scope. "
+                            "The registry defaults to RUX_REGISTRY_URL when set."sv,
                .footer = {},
                .examples = Data::publish_exs,
                .options = Data::publish_opts},

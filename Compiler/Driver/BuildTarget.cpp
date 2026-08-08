@@ -235,11 +235,8 @@ std::filesystem::path ResolveBuildOutputDir(const std::filesystem::path &root, c
 }
 
 std::filesystem::path RegistryPackagesDir() {
-    if constexpr (HostOS == OS::Windows) {
-        return GetEnvPath("LOCALAPPDATA").value_or(std::filesystem::path{}) / "Rux" / "Packages";
-    }
-    else {
-        return GetEnvPath("HOME").value_or(std::filesystem::path("/tmp")) / ".rux" / "packages";
-    }
+    // The leaf follows each platform's own casing, matching the parent that
+    // UserDataDir picks: %LOCALAPPDATA%\Rux\Packages, or $HOME/.rux/packages.
+    return UserDataDir() / (HostOS == OS::Windows ? "Packages" : "packages");
 }
 } // namespace Rux::Driver

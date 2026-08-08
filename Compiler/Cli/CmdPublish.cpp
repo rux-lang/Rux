@@ -2,6 +2,7 @@
 
 #include "Cli/Cli.h"
 #include "Driver/BuildTarget.h"
+#include "Driver/Credentials.h"
 #include "Package/Artifact.h"
 #include "Package/Manifest.h"
 #include "System/Os.h"
@@ -24,12 +25,6 @@ using namespace Driver;
 using namespace System;
 
 namespace {
-/// Environment variable holding the registry bearer credential.
-constexpr const char *credentialVariable = "RUX_TOKEN";
-
-/// Environment variable overriding the registry API base URL.
-constexpr const char *registryVariable = "RUX_REGISTRY_URL";
-
 /**
  * @brief Load the manifest of the package a publication command targets.
  *
@@ -78,26 +73,19 @@ std::string QualifiedName(const Manifest &manifest) {
     return manifest.package.ns ? std::format("{}/{}", manifest.package.ns->Text(), name) : name;
 }
 
-/// Resolve the registry API base, trimming a trailing slash so routes append cleanly.
-std::string ResolveRegistryBase(const std::string_view flagValue) {
-    std::string base(flagValue);
-    if (base.empty()) {
-        base = GetEnv(registryVariable).value_or(std::string(kRegistryApiBase));
-    }
-    while (base.ends_with('/')) {
-        base.pop_back();
-    }
-    return base;
-}
-
 /**
  * @brief Explain a failed publication from its problem document.
  *
  * The registry answers with RFC 9457 problem details, whose `code` is stable
  * and machine-readable. Codes a user can act on get a specific message; the
  * rest fall back to the server's own `detail`.
+ *
+ * Credential problems name `credentialSource` rather than a fixed variable,
+ * because the token may equally have come from RUX_TOKEN or from the file
+ * `rux login` wrote.
  */
-void ReportPublicationProblem(const HttpResponse &response, const Manifest &manifest, const std::string_view base) {
+void ReportPublicationProblem(const HttpResponse &response, const Manifest &manifest, const std::string_view base,
+                              const std::string_view credentialSource) {
     const std::string code = JsonLookupString(response.body, "code");
     const std::string detail = JsonLookupString(response.body, "detail");
     const std::string identity = QualifiedName(manifest);
@@ -113,14 +101,14 @@ void ReportPublicationProblem(const HttpResponse &response, const Manifest &mani
                    manifest.package.ns ? manifest.package.ns->Text() : std::string{}, base);
     }
     else if (code == "publication_forbidden") {
-        std::print(stderr, "error: the credential in {} does not own or maintain namespace '{}'\n", credentialVariable,
+        std::print(stderr, "error: the credential in {} does not own or maintain namespace '{}'\n", credentialSource,
                    manifest.package.ns ? manifest.package.ns->Text() : std::string{});
     }
     else if (code == "insufficient_scope") {
-        std::print(stderr, "error: the credential in {} lacks the 'publish' scope\n", credentialVariable);
+        std::print(stderr, "error: the credential in {} lacks the 'publish' scope\n", credentialSource);
     }
     else if (code == "authentication_required") {
-        std::print(stderr, "error: {} rejected the credential in {}\n", base, credentialVariable);
+        std::print(stderr, "error: {} rejected the credential in {}\n", base, credentialSource);
     }
     else if (code == "rate_limited") {
         std::print(stderr, "error: {} is rate-limiting publication; retry shortly\n", base);
@@ -243,16 +231,19 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
     // The credential is read before the archive is built so an unauthenticated
     // run fails immediately rather than after the work.
     const std::string base = ResolveRegistryBase(registryArg);
-    std::string credential;
+    Credential credential;
     if (!dryRun) {
-        credential = GetEnv(credentialVariable).value_or(std::string{});
-        if (credential.empty()) {
-            std::print(stderr, "error: no registry credential; set {} to a token with the 'publish' scope\n",
-                       credentialVariable);
+        auto resolved = ResolveCredential(base);
+        if (!resolved) {
+            std::print(stderr,
+                       "error: no credential for {}; run 'rux login' or set {} to a token with the 'publish' "
+                       "scope\n",
+                       base, kCredentialVariable);
             return 1;
         }
-        if (credential.find_first_of(" \t\r\n") != std::string::npos) {
-            std::print(stderr, "error: the credential in {} contains whitespace\n", credentialVariable);
+        credential = std::move(*resolved);
+        if (credential.token.find_first_of(" \t\r\n") != std::string::npos) {
+            std::print(stderr, "error: the credential in {} contains whitespace\n", credential.source);
             return 1;
         }
     }
@@ -289,7 +280,7 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
     }
     auto response = HttpSend({.method = "POST",
                               .url = base + "/v1/packages",
-                              .headers = {{.name = "Authorization", .value = "Bearer " + credential},
+                              .headers = {{.name = "Authorization", .value = "Bearer " + credential.token},
                                           {.name = "Content-Type", .value = body->contentType}},
                               .body = std::move(body->body)});
     if (!response) {
@@ -297,7 +288,7 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
         return 1;
     }
     if (response->status != 201) {
-        ReportPublicationProblem(*response, manifest, base);
+        ReportPublicationProblem(*response, manifest, base, credential.source);
         return 1;
     }
 

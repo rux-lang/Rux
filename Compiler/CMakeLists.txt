@@ -128,7 +128,8 @@ target_link_libraries(RuxLinker PUBLIC RuxObjectRcu RuxSystem)
 rux_add_component(RuxDriver
     Driver/CompilerDriver.cpp
     Driver/BuildReport.cpp
-    Driver/BuildTarget.cpp)
+    Driver/BuildTarget.cpp
+    Driver/Credentials.cpp)
 target_link_libraries(RuxDriver PUBLIC
     RuxSource RuxSystem RuxPackage RuxLexer RuxSyntax RuxSemantic
     RuxHir RuxHirPasses RuxLir RuxLowering RuxCodeGenX86_64 RuxCodeGenAArch64
@@ -144,6 +145,7 @@ add_executable(rux
     Cli/Cli.cpp
     Cli/CliHelp.cpp
     Cli/TerminalStyle.cpp
+    Cli/CmdAuth.cpp
     Cli/CmdBuild.cpp
     Cli/CmdCheck.cpp
     Cli/CmdLint.cpp

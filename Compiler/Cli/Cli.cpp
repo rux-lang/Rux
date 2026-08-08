@@ -199,6 +199,12 @@ int Cli::Run() const {
     if (command == "list") {
         return RunList(rest, opts);
     }
+    if (command == "login") {
+        return RunLogin(rest, opts);
+    }
+    if (command == "logout") {
+        return RunLogout(rest, opts);
+    }
     if (command == "new") {
         return RunNew(rest, opts);
     }

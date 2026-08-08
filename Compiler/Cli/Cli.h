@@ -41,6 +41,8 @@ private:
     static int RunInstall(std::span<const std::string_view> args, const GlobalOptions &opts);
     static int RunUninstall(std::span<const std::string_view> args, const GlobalOptions &opts);
     static int RunList(std::span<const std::string_view> args, const GlobalOptions &opts);
+    static int RunLogin(std::span<const std::string_view> args, const GlobalOptions &opts);
+    static int RunLogout(std::span<const std::string_view> args, const GlobalOptions &opts);
     static int RunNew(std::span<const std::string_view> args, const GlobalOptions &opts);
     static int RunPack(std::span<const std::string_view> args, const GlobalOptions &opts);
     static int RunPublish(std::span<const std::string_view> args, const GlobalOptions &opts);
