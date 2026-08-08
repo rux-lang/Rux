@@ -196,7 +196,9 @@ namespace Data {
 // Add
 constexpr std::array add_usage = {"[namespace]/[package]"sv, "[namespace]/[package]@[requirement]"sv,
                                   "[package] --path [path]"sv};
-constexpr std::array add_opts = {OptionDoc{.flags = "--path <path>"sv, .desc = "Add a local path-based dependency"sv}};
+constexpr std::array add_opts = {
+    OptionDoc{.flags = "--path <path>"sv, .desc = "Add a local path-based dependency"sv},
+    OptionDoc{.flags = "--registry <url>"sv, .desc = "Registry API base URL to check the package against"sv}};
 constexpr std::array add_exs = {"Rux/Io"sv, "Rux/Io@^0.1.0"sv, "Json --path ../Json"sv};
 
 // Build
@@ -255,9 +257,11 @@ constexpr std::array<OptionDoc, 0> lint_opts = {};
 constexpr std::array lint_exs = {""sv, "--verbose"sv};
 
 // Info
-constexpr std::array info_usage = {"[package name]"sv};
-constexpr std::array info_opts = {OptionDoc{.flags = "--json"sv, .desc = "Output package metadata in JSON format"sv}};
-constexpr std::array info_exs = {"Rux"sv, "Windows"sv};
+constexpr std::array info_usage = {""sv, "[namespace]/[package]"sv, "[namespace]/[package]@[requirement]"sv};
+constexpr std::array info_opts = {
+    OptionDoc{.flags = "--json"sv, .desc = "Output package metadata in JSON format"sv},
+    OptionDoc{.flags = "--registry <url>"sv, .desc = "Registry API base URL to look an uninstalled package up on"sv}};
+constexpr std::array info_exs = {""sv, "Rux/Io"sv, "Rux/Io@0.1.0"sv, "--json"sv};
 
 // Init
 constexpr std::array init_usage = {"[options]"sv};
@@ -269,10 +273,10 @@ constexpr std::array init_opts = {
 constexpr std::array init_exs = {""sv, "--bin"sv, "--lib --namespace Rux"sv};
 
 // Install
-constexpr std::array install_usage = {""sv, "[package]"sv, "[package]@[version]"sv, "--dev [package]"sv};
+constexpr std::array install_usage = {""sv, "[namespace]/[package]"sv, "[namespace]/[package]@[requirement]"sv};
 constexpr std::array install_opts = {
-    OptionDoc{.flags = "--dev"sv, .desc = "Clone the package repository's development branch"sv}};
-constexpr std::array install_exs = {""sv, "Rux"sv, "Rux@0.1.0"sv, "--dev Rux"sv, "--dev Windows"sv};
+    OptionDoc{.flags = "--registry <url>"sv, .desc = "Registry API base URL to resolve and download from"sv}};
+constexpr std::array install_exs = {""sv, "Rux/Io"sv, "Rux/Io@^0.1.0"sv, "--registry http://localhost:8080"sv};
 
 // List
 constexpr std::array list_usage = {"[options]"sv};
@@ -334,16 +338,18 @@ constexpr std::array test_opts = {
 constexpr std::array test_exs = {""sv, "--release"sv};
 
 // Uninstall
-constexpr std::array uninstall_usage = {""sv, "[package]"sv, "[options]"sv};
+constexpr std::array uninstall_usage = {""sv, "[namespace]/[package]"sv, "[namespace]/[package]@[requirement]"sv,
+                                        "[options]"sv};
 constexpr std::array uninstall_opts = {
     OptionDoc{.flags = "--global"sv, .desc = "Uninstall every package in the global environment cache"sv}};
-constexpr std::array uninstall_exs = {""sv, "Json"sv, "--global"sv};
+constexpr std::array uninstall_exs = {""sv, "Rux/Json"sv, "Rux/Json@0.1.0"sv, "--global"sv};
 
 // Update
 constexpr std::array update_usage = {"[options]"sv};
 constexpr std::array update_opts = {
-    OptionDoc{.flags = "--global"sv, .desc = "Update all entries in the global environment cache"sv}};
-constexpr std::array update_exs = {""sv, "--global"sv};
+    OptionDoc{.flags = "--global"sv, .desc = "Update all entries in the global environment cache"sv},
+    OptionDoc{.flags = "--registry <url>"sv, .desc = "Registry API base URL to resolve and download from"sv}};
+constexpr std::array update_exs = {""sv, "--global"sv, "--registry http://localhost:8080"sv};
 
 // Version
 constexpr std::array version_exs = {""sv, "rux -V"sv, "rux --version"sv};
@@ -428,7 +434,7 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
 
     CommandDoc{.name = "info"sv,
                .shortDesc = "Show package metadata and manifest information"sv,
-               .description = "Show information about an installed Rux package"sv,
+               .description = "Show information about the current or an installed Rux package"sv,
                .usage = Data::info_usage,
                .postUsage = {},
                .footer = {},
@@ -452,7 +458,10 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                             "workspace, dependencies from every member package are installed in one pass. If no "
                             "manifest exists, packages are discovered from Tests/ and immediate member directories.\n"
                             "With a package name, downloads it and its transitive dependencies to the package cache; "
-                            "use 'rux add' to declare it in Rux.toml."sv,
+                            "use 'rux add' to declare it in Rux.toml.\n"
+                            "Each package is resolved through the registry index, downloaded as a published archive "
+                            "and checked against the SHA-256 the registry publishes for it. Versions are cached side "
+                            "by side, so a build selects the one its requirement matches."sv,
                .footer = {},
                .examples = Data::install_exs,
                .options = Data::install_opts},
@@ -563,10 +572,10 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .shortDesc = "Uninstall dependencies"sv,
                .description = "Uninstall dependencies from the local cache"sv,
                .usage = Data::uninstall_usage,
-               .postUsage = "Without a package name, removes all registry dependencies "
-                            "listed in Rux.toml from the local "
-                            "cache.\nWith a package name, removes only that package.\nWith --global, removes every "
-                            "package present in the cache, whether or not Rux.toml declares it."sv,
+               .postUsage = "Without a package name, removes every installed version of the registry dependencies "
+                            "listed in Rux.toml from the local cache.\nWith a package name, removes every installed "
+                            "version of it, or only the versions an added @requirement matches.\nWith --global, "
+                            "removes every package present in the cache, whether or not Rux.toml declares it."sv,
                .footer = {},
                .examples = Data::uninstall_exs,
                .options = Data::uninstall_opts},
@@ -575,9 +584,10 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .shortDesc = "Update dependencies"sv,
                .description = {} /* Fallback */,
                .usage = Data::update_usage,
-               .postUsage = "Without --global, checks all registry dependencies listed in Rux.toml and pulls the "
-                            "latest changes. Missing packages are cloned from the registry.\nWith --global, updates "
-                            "every package present in the local cache."sv,
+               .postUsage = "Without --global, re-resolves every registry dependency listed in Rux.toml against the "
+                            "registry and installs the newest version each requirement allows.\nWith --global, moves "
+                            "every package present in the local cache to its newest published release.\nOlder "
+                            "versions stay installed; 'rux uninstall' removes them."sv,
                .footer = {},
                .examples = Data::update_exs,
                .options = Data::update_opts},

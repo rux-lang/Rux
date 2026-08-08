@@ -23,155 +23,25 @@
 #endif
 
 namespace Rux::System {
-std::string JsonLookupString(std::string_view json, std::string_view key) {
-    const std::string needle = "\"" + std::string(key) + "\"";
-    std::size_t pos = 0;
-    while ((pos = json.find(needle, pos)) != std::string_view::npos) {
-        std::size_t i = pos + needle.size();
-        while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == '\r' || json[i] == '\n')) {
-            ++i;
+std::string UrlEncode(const std::string_view text, const bool preserveSlashes) {
+    static constexpr std::string_view digits = "0123456789ABCDEF";
+    std::string encoded;
+    encoded.reserve(text.size());
+    for (const char raw : text) {
+        const auto byte = static_cast<unsigned char>(raw);
+        const bool unreserved = (byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z') ||
+                                (byte >= '0' && byte <= '9') || byte == '-' || byte == '.' || byte == '_' ||
+                                byte == '~' || (preserveSlashes && byte == '/');
+        if (unreserved) {
+            encoded.push_back(raw);
         }
-        if (i >= json.size() || json[i] != ':') {
-            pos = i;
-            continue;
-        }
-        ++i;
-        while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == '\r' || json[i] == '\n')) {
-            ++i;
-        }
-        if (i >= json.size() || json[i] != '"') {
-            pos = i;
-            continue;
-        }
-        ++i;
-        const auto end = json.find('"', i);
-        if (end == std::string_view::npos) {
-            break;
-        }
-        return std::string(json.substr(i, end - i));
-    }
-    return {};
-}
-
-std::string JsonFindPackageField(std::string_view json, std::string_view name, std::string_view field) {
-    // Walk each top-level object in the array and return the requested field of
-    // the one whose "name" matches. Braces and quotes inside string values are
-    // skipped so they don't confuse the object boundaries.
-    std::size_t i = 0;
-    while ((i = json.find('{', i)) != std::string_view::npos) {
-        std::size_t depth = 0;
-        bool inString = false;
-        bool escaped = false;
-        std::size_t j = i;
-        for (; j < json.size(); ++j) {
-            const char c = json[j];
-            if (escaped) {
-                escaped = false;
-            }
-            else if (c == '\\') {
-                escaped = inString;
-            }
-            else if (c == '"') {
-                inString = !inString;
-            }
-            else if (!inString && c == '{') {
-                ++depth;
-            }
-            else if (!inString && c == '}') {
-                if (--depth == 0) {
-                    break;
-                }
-            }
-        }
-
-        const std::string_view object = json.substr(i, j - i + 1);
-        if (JsonLookupString(object, "name") == name) {
-            return JsonLookupString(object, field);
-        }
-        i = j + 1;
-    }
-    return {};
-}
-
-std::string JsonFindPackageRepository(std::string_view json, std::string_view name) {
-    return JsonFindPackageField(json, name, "repository");
-}
-
-std::vector<std::string> JsonFindGitBlobPaths(const std::string_view json) {
-    std::vector<std::string> paths;
-    std::size_t pos = 0;
-    while ((pos = json.find('{', pos)) != std::string_view::npos) {
-        const std::size_t objectStart = pos++;
-        std::size_t depth = 0;
-        bool inString = false;
-        bool escaped = false;
-        std::size_t end = objectStart;
-        for (; end < json.size(); ++end) {
-            const char c = json[end];
-            if (escaped) {
-                escaped = false;
-            }
-            else if (c == '\\' && inString) {
-                escaped = true;
-            }
-            else if (c == '"') {
-                inString = !inString;
-            }
-            else if (!inString && c == '{') {
-                ++depth;
-            }
-            else if (!inString && c == '}' && --depth == 0) {
-                break;
-            }
-        }
-        if (end >= json.size()) {
-            break;
-        }
-
-        const std::string_view object = json.substr(objectStart, end - objectStart + 1);
-        // Git tree entries are flat objects. Ignoring enclosing objects avoids
-        // treating a nested entry as a field of the response object itself.
-        if (object.find('{', 1) == std::string_view::npos && JsonLookupString(object, "type") == "blob") {
-            if (std::string path = JsonLookupString(object, "path"); !path.empty()) {
-                paths.push_back(std::move(path));
-            }
+        else {
+            encoded.push_back('%');
+            encoded.push_back(digits[byte >> 4]);
+            encoded.push_back(digits[byte & 0x0F]);
         }
     }
-    return paths;
-}
-
-std::vector<ProblemError> JsonFindProblemErrors(std::string_view json) {
-    std::vector<ProblemError> errors;
-
-    // Locate the "errors" array, then walk the flat objects inside it. Anything
-    // before the array, such as the document's own "code", stays out of range.
-    const auto key = json.find("\"errors\"");
-    if (key == std::string_view::npos) {
-        return errors;
-    }
-    const auto open = json.find('[', key);
-    if (open == std::string_view::npos) {
-        return errors;
-    }
-
-    std::size_t pos = open;
-    while ((pos = json.find('{', pos)) != std::string_view::npos) {
-        const std::size_t objectStart = pos++;
-        const auto end = json.find('}', objectStart);
-        if (end == std::string_view::npos) {
-            break;
-        }
-        const std::string_view object = json.substr(objectStart, end - objectStart + 1);
-        ProblemError entry{.code = JsonLookupString(object, "code"), .detail = JsonLookupString(object, "detail")};
-        if (!entry.code.empty() || !entry.detail.empty()) {
-            errors.push_back(std::move(entry));
-        }
-        pos = end + 1;
-        if (const auto close = json.find(']', open); close != std::string_view::npos && pos > close) {
-            break;
-        }
-    }
-    return errors;
+    return encoded;
 }
 
 std::optional<MultipartBody> BuildMultipartBody(const std::span<const MultipartPart> parts) {
@@ -207,7 +77,6 @@ std::optional<std::string> FetchUrl(const std::string &url) {
     return std::move(response->body);
 }
 
-namespace {
 bool CommitDownloadedPackage(const std::filesystem::path &staging, const std::filesystem::path &dest) {
     std::error_code ec;
     std::filesystem::path backup = dest;
@@ -237,7 +106,6 @@ bool CommitDownloadedPackage(const std::filesystem::path &staging, const std::fi
     std::filesystem::remove_all(backup, ec);
     return true;
 }
-} // namespace
 
 #if RUX_OS_WINDOWS
 
@@ -282,156 +150,6 @@ std::wstring Utf8ToWide(const std::string_view text) {
     return result;
 }
 
-std::string UrlEncode(const std::string_view text, const bool preserveSlashes = false) {
-    constexpr char hex[] = "0123456789ABCDEF";
-    std::string encoded;
-    encoded.reserve(text.size());
-    for (const unsigned char c : text) {
-        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' ||
-            c == '.' || c == '~' || (preserveSlashes && c == '/')) {
-            encoded += static_cast<char>(c);
-        }
-        else {
-            encoded += '%';
-            encoded += hex[c >> 4];
-            encoded += hex[c & 0x0f];
-        }
-    }
-    return encoded;
-}
-
-struct GitHubRepository {
-    std::string owner;
-    std::string name;
-};
-
-std::optional<GitHubRepository> ParseGitHubRepository(std::string_view url) {
-    constexpr std::string_view prefix = "https://github.com/";
-    if (!url.starts_with(prefix)) {
-        return std::nullopt;
-    }
-    url.remove_prefix(prefix.size());
-    while (url.ends_with('/')) {
-        url.remove_suffix(1);
-    }
-    const auto slash = url.find('/');
-    if (slash == std::string_view::npos || slash == 0 || slash + 1 == url.size() ||
-        url.find('/', slash + 1) != std::string_view::npos) {
-        return std::nullopt;
-    }
-    std::string_view name = url.substr(slash + 1);
-    if (name.ends_with(".git")) {
-        name.remove_suffix(4);
-    }
-    if (name.empty()) {
-        return std::nullopt;
-    }
-    return GitHubRepository{std::string(url.substr(0, slash)), std::string(name)};
-}
-
-bool IsTrueJsonField(const std::string_view json, const std::string_view key) {
-    const std::string needle = "\"" + std::string(key) + "\"";
-    auto pos = json.find(needle);
-    if (pos == std::string_view::npos) {
-        return false;
-    }
-    pos = json.find(':', pos + needle.size());
-    if (pos == std::string_view::npos) {
-        return false;
-    }
-    do {
-        ++pos;
-    }
-    while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\r' || json[pos] == '\n'));
-    return json.substr(pos).starts_with("true");
-}
-
-bool IsSafePackagePath(const std::string_view path) {
-    if (path.empty() || path.starts_with('/') || path.find('\\') != std::string_view::npos ||
-        path.find(':') != std::string_view::npos) {
-        return false;
-    }
-    std::size_t start = 0;
-    while (start < path.size()) {
-        const auto slash = path.find('/', start);
-        const auto part = path.substr(start, slash == std::string_view::npos ? path.size() - start : slash - start);
-        if (part.empty() || part == "." || part == "..") {
-            return false;
-        }
-        if (slash == std::string_view::npos) {
-            break;
-        }
-        start = slash + 1;
-    }
-    return true;
-}
-
-bool DownloadPackageWithGit(const std::string &repoUrl, const std::string &folder, const std::filesystem::path &dest,
-                            const bool devBranch) {
-    const auto repositoryInfo = ParseGitHubRepository(repoUrl);
-    if (!repositoryInfo) {
-        return false;
-    }
-
-    std::string packageRoot = folder;
-    std::replace(packageRoot.begin(), packageRoot.end(), '\\', '/');
-    while (packageRoot.starts_with('/')) {
-        packageRoot.erase(packageRoot.begin());
-    }
-    while (packageRoot.ends_with('/')) {
-        packageRoot.pop_back();
-    }
-    if (!packageRoot.empty() && !IsSafePackagePath(packageRoot)) {
-        return false;
-    }
-
-    std::filesystem::path repository = dest;
-    repository += ".repository";
-    std::filesystem::path staging = dest;
-    staging += ".download";
-    std::error_code ec;
-    std::filesystem::remove_all(repository, ec);
-    std::filesystem::remove_all(staging, ec);
-
-    const std::string cloneUrl =
-        "https://github.com/" + UrlEncode(repositoryInfo->owner) + "/" + UrlEncode(repositoryInfo->name) + ".git";
-    std::vector<std::string> argStorage = {"clone", "--quiet", "--depth", "1"};
-    if (devBranch) {
-        argStorage.emplace_back("--branch");
-        argStorage.emplace_back("dev");
-    }
-    argStorage.push_back(cloneUrl);
-    argStorage.push_back(repository.string());
-    std::vector<std::string_view> args;
-    args.reserve(argStorage.size());
-    for (const auto &arg : argStorage) {
-        args.push_back(arg);
-    }
-    if (const auto exitCode = RunInherited("git", args); !exitCode || *exitCode != 0) {
-        std::filesystem::remove_all(repository, ec);
-        return false;
-    }
-
-    const std::filesystem::path source = packageRoot.empty() ? repository : repository / packageRoot;
-    std::filesystem::create_directories(staging, ec);
-    if (!ec && std::filesystem::exists(source / "Rux.toml", ec)) {
-        std::filesystem::copy_file(source / "Rux.toml", staging / "Rux.toml",
-                                   std::filesystem::copy_options::overwrite_existing, ec);
-    }
-    if (!ec && std::filesystem::exists(source / "Src", ec)) {
-        std::filesystem::copy(
-            source / "Src", staging / "Src",
-            std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
-    }
-    const bool packageReady = !ec && std::filesystem::exists(staging / "Rux.toml", ec) && !ec;
-    std::error_code cleanupError;
-    std::filesystem::remove_all(repository, cleanupError);
-    if (!packageReady || !CommitDownloadedPackage(staging, dest)) {
-        std::filesystem::remove_all(staging, ec);
-        return false;
-    }
-    return true;
-}
 } // namespace
 
 std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
@@ -526,97 +244,6 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
         result.resize(offset + read);
     }
     return HttpResponse{.status = static_cast<unsigned>(status), .body = std::move(result)};
-}
-
-bool DownloadPackage(const std::string &repoUrl, const std::string &folder, const std::filesystem::path &dest,
-                     const bool devBranch) {
-    const auto repository = ParseGitHubRepository(repoUrl);
-    if (!repository) {
-        return false;
-    }
-
-    const std::string apiBase =
-        "https://api.github.com/repos/" + UrlEncode(repository->owner) + "/" + UrlEncode(repository->name);
-    std::string branch = "dev";
-    if (!devBranch) {
-        const auto metadata = FetchUrl(apiBase);
-        if (!metadata || (branch = JsonLookupString(*metadata, "default_branch")).empty()) {
-            return DownloadPackageWithGit(repoUrl, folder, dest, devBranch);
-        }
-    }
-    const auto tree = FetchUrl(apiBase + "/git/trees/" + UrlEncode(branch) + "?recursive=1");
-    if (!tree || IsTrueJsonField(*tree, "truncated")) {
-        return DownloadPackageWithGit(repoUrl, folder, dest, devBranch);
-    }
-
-    std::string packageRoot = folder;
-    std::replace(packageRoot.begin(), packageRoot.end(), '\\', '/');
-    while (packageRoot.starts_with('/')) {
-        packageRoot.erase(packageRoot.begin());
-    }
-    while (packageRoot.ends_with('/')) {
-        packageRoot.pop_back();
-    }
-    const std::string prefix = packageRoot.empty() ? std::string{} : packageRoot + "/";
-
-    std::filesystem::path staging = dest;
-    staging += ".download";
-    std::error_code ec;
-    std::filesystem::remove_all(staging, ec);
-    std::filesystem::create_directories(staging, ec);
-    if (ec) {
-        return false;
-    }
-
-    bool foundManifest = false;
-    for (const std::string &remotePath : JsonFindGitBlobPaths(*tree)) {
-        if (!prefix.empty() && !std::string_view(remotePath).starts_with(prefix)) {
-            continue;
-        }
-        const std::string_view relative =
-            prefix.empty() ? std::string_view(remotePath) : std::string_view(remotePath).substr(prefix.size());
-        if (relative != "Rux.toml" && !relative.starts_with("Src/")) {
-            continue;
-        }
-        if (!IsSafePackagePath(relative)) {
-            std::filesystem::remove_all(staging, ec);
-            return false;
-        }
-
-        const std::string rawUrl = "https://raw.githubusercontent.com/" + UrlEncode(repository->owner) + "/" +
-                                   UrlEncode(repository->name) + "/" + UrlEncode(branch) + "/" +
-                                   UrlEncode(remotePath, true);
-        const auto contents = FetchUrl(rawUrl);
-        if (!contents) {
-            std::filesystem::remove_all(staging, ec);
-            return DownloadPackageWithGit(repoUrl, folder, dest, devBranch);
-        }
-
-        const std::filesystem::path output = staging / std::filesystem::path(relative);
-        std::filesystem::create_directories(output.parent_path(), ec);
-        if (ec) {
-            std::filesystem::remove_all(staging, ec);
-            return false;
-        }
-        std::ofstream file(output, std::ios::binary | std::ios::trunc);
-        file.write(contents->data(), static_cast<std::streamsize>(contents->size()));
-        if (!file) {
-            file.close();
-            std::filesystem::remove_all(staging, ec);
-            return false;
-        }
-        foundManifest |= relative == "Rux.toml";
-    }
-
-    if (!foundManifest) {
-        std::filesystem::remove_all(staging, ec);
-        return DownloadPackageWithGit(repoUrl, folder, dest, devBranch);
-    }
-    if (!CommitDownloadedPackage(staging, dest)) {
-        std::filesystem::remove_all(staging, ec);
-        return false;
-    }
-    return true;
 }
 
 std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<const std::string_view> args) {
@@ -853,45 +480,6 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
         return std::nullopt;
     }
     return HttpResponse{.status = code, .body = ReadWholeFile(responsePath).value_or(std::string{})};
-}
-
-bool DownloadPackage(const std::string &repoUrl, const std::string &folder, const std::filesystem::path &dest,
-                     const bool devBranch) {
-    std::filesystem::path repository = dest;
-    repository += ".repository";
-    std::filesystem::path staging = dest;
-    staging += ".download";
-    std::error_code ec;
-    std::filesystem::remove_all(repository, ec);
-    std::filesystem::remove_all(staging, ec);
-
-    const std::string branch = devBranch ? " -b dev" : "";
-    const std::string command =
-        "git clone" + branch + " " + ShellQuote(repoUrl) + " " + ShellQuote(repository.string());
-    if (std::system(command.c_str()) != 0) {
-        std::filesystem::remove_all(repository, ec);
-        return false;
-    }
-
-    const std::filesystem::path source = folder.empty() ? repository : repository / folder;
-    std::filesystem::create_directories(staging, ec);
-    if (!ec && std::filesystem::exists(source / "Rux.toml", ec)) {
-        std::filesystem::copy_file(source / "Rux.toml", staging / "Rux.toml",
-                                   std::filesystem::copy_options::overwrite_existing, ec);
-    }
-    if (!ec && std::filesystem::exists(source / "Src", ec)) {
-        std::filesystem::copy(
-            source / "Src", staging / "Src",
-            std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
-    }
-    const bool packageReady = !ec && std::filesystem::exists(staging / "Rux.toml", ec) && !ec;
-    std::error_code cleanupError;
-    std::filesystem::remove_all(repository, cleanupError);
-    if (!packageReady || !CommitDownloadedPackage(staging, dest)) {
-        std::filesystem::remove_all(staging, ec);
-        return false;
-    }
-    return true;
 }
 
 std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<const std::string_view> args) {

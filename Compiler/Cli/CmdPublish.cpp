@@ -5,6 +5,7 @@
 #include "Driver/Credentials.h"
 #include "Package/Artifact.h"
 #include "Package/Manifest.h"
+#include "System/Json.h"
 #include "System/Os.h"
 #include "System/Process.h"
 

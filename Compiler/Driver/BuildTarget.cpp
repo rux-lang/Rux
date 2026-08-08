@@ -239,4 +239,50 @@ std::filesystem::path RegistryPackagesDir() {
     // UserDataDir picks: %LOCALAPPDATA%\Rux\Packages, or $HOME/.rux/packages.
     return UserDataDir() / (HostOS == OS::Windows ? "Packages" : "packages");
 }
+
+std::filesystem::path RegistryPackageDir(const IdentitySegment &ns, const IdentitySegment &name,
+                                         const SemanticVersion &version) {
+    return RegistryPackagesDir() / ns.Normalized() / name.Normalized() / version.Text();
+}
+
+std::vector<InstalledPackage> InstalledVersions(const IdentitySegment &ns, const IdentitySegment &name) {
+    std::vector<InstalledPackage> installed;
+    const std::filesystem::path packageDir = RegistryPackagesDir() / ns.Normalized() / name.Normalized();
+
+    std::error_code ec;
+    if (!std::filesystem::is_directory(packageDir, ec)) {
+        return installed;
+    }
+    for (const auto &entry : std::filesystem::directory_iterator(packageDir, ec)) {
+        if (!entry.is_directory(ec)) {
+            continue;
+        }
+        // A directory whose name is not a version was left by something other
+        // than an install; skipping it keeps one stray entry from failing every
+        // later resolution.
+        auto version = SemanticVersion::Parse(entry.path().filename().string());
+        if (!version) {
+            continue;
+        }
+        installed.push_back(InstalledPackage{.version = std::move(*version), .root = entry.path()});
+    }
+    std::ranges::sort(installed, [](const InstalledPackage &left, const InstalledPackage &right) {
+        return SemanticVersion::ComparePrecedence(left.version, right.version) < 0;
+    });
+    return installed;
+}
+
+std::optional<InstalledPackage> FindInstalledPackage(const IdentitySegment &ns, const IdentitySegment &name,
+                                                     const VersionRange &range) {
+    std::optional<InstalledPackage> best;
+    for (auto &candidate : InstalledVersions(ns, name)) {
+        if (!range.Matches(candidate.version)) {
+            continue;
+        }
+        if (!best || SemanticVersion::ComparePrecedence(candidate.version, best->version) >= 0) {
+            best = std::move(candidate);
+        }
+    }
+    return best;
+}
 } // namespace Rux::Driver

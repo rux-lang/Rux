@@ -39,6 +39,7 @@ target_link_libraries(RuxSource PUBLIC RuxDiagnostics)
 
 rux_add_component(RuxSystem
     System/Host.cpp
+    System/Json.cpp
     System/Os.cpp
     System/Process.cpp)
 if (WIN32)
@@ -47,6 +48,7 @@ endif ()
 
 rux_add_component(RuxPackage
     Package/Artifact.cpp
+    Package/Checksum.cpp
     Package/Identity.cpp
     Package/Manifest.cpp
     Package/Package.cpp
@@ -129,7 +131,8 @@ rux_add_component(RuxDriver
     Driver/CompilerDriver.cpp
     Driver/BuildReport.cpp
     Driver/BuildTarget.cpp
-    Driver/Credentials.cpp)
+    Driver/Credentials.cpp
+    Driver/Registry.cpp)
 target_link_libraries(RuxDriver PUBLIC
     RuxSource RuxSystem RuxPackage RuxLexer RuxSyntax RuxSemantic
     RuxHir RuxHirPasses RuxLir RuxLowering RuxCodeGenX86_64 RuxCodeGenAArch64

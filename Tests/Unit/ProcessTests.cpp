@@ -1,50 +1,43 @@
 #include "System/Process.h"
 
+#include <array>
 #include <doctest.h>
+#include <string>
 
 using namespace Rux::System;
 
-TEST_CASE("JsonLookupString finds string values in flat objects") {
-    constexpr const char *json = R"({ "name": "Std", "repository": "https://example.com/std" })";
-    CHECK(JsonLookupString(json, "name") == "Std");
-    CHECK(JsonLookupString(json, "repository") == "https://example.com/std");
-    CHECK(JsonLookupString(json, "missing").empty());
+TEST_CASE("UrlEncode leaves unreserved characters alone") {
+    CHECK(UrlEncode("rux") == "rux");
+    CHECK(UrlEncode("my-pkg_2.0~x") == "my-pkg_2.0~x");
 }
 
-TEST_CASE("JsonLookupString tolerates whitespace around the colon") {
-    CHECK(JsonLookupString(R"({ "key"  :   "value" })", "key") == "value");
+TEST_CASE("UrlEncode escapes everything a path segment must not carry") {
+    CHECK(UrlEncode("a/b") == "a%2Fb");
+    CHECK(UrlEncode("1.0.0+build 1") == "1.0.0%2Bbuild%201");
+    CHECK(UrlEncode("?#&=") == "%3F%23%26%3D");
 }
 
-TEST_CASE("JsonLookupString ignores keys without string values") {
-    CHECK(JsonLookupString(R"({ "key": 42 })", "key").empty());
+TEST_CASE("UrlEncode can preserve slashes for a whole path") {
+    CHECK(UrlEncode("Src/Main.rux", true) == "Src/Main.rux");
+    CHECK(UrlEncode("Src/A B.rux", true) == "Src/A%20B.rux");
 }
 
-TEST_CASE("JsonFindPackageRepository selects the matching array entry") {
-    constexpr const char *index = R"([
-        { "name": "Std", "repository": "https://example.com/std" },
-        { "name": "Json", "repository": "https://example.com/json" }
-    ])";
-    CHECK(JsonFindPackageRepository(index, "Std") == "https://example.com/std");
-    CHECK(JsonFindPackageRepository(index, "Json") == "https://example.com/json");
-    CHECK(JsonFindPackageRepository(index, "Missing").empty());
+TEST_CASE("UrlEncode escapes non-ASCII bytes") {
+    CHECK(UrlEncode("\xC3\xA9") == "%C3%A9");
 }
 
-TEST_CASE("JsonFindPackageRepository is not confused by braces inside strings") {
-    constexpr const char *index = R"([
-        { "name": "Weird", "description": "has { braces } and \"quotes\"", "repository": "https://example.com/weird" }
-    ])";
-    CHECK(JsonFindPackageRepository(index, "Weird") == "https://example.com/weird");
-}
+TEST_CASE("BuildMultipartBody frames every part with the same boundary") {
+    const std::array<MultipartPart, 2> parts{MultipartPart{.name = "manifest", .content = "[Manifest]\n"},
+                                             MultipartPart{.name = "package", .content = "PK\x03\x04"}};
+    const auto encoded = BuildMultipartBody(parts);
+    REQUIRE(encoded.has_value());
 
-TEST_CASE("JsonFindGitBlobPaths selects files from a GitHub tree response") {
-    constexpr const char *tree = R"({
-        "sha": "root",
-        "tree": [
-            { "path": "Rux.toml", "type": "blob", "sha": "manifest" },
-            { "path": "Src/Main.rux", "type": "blob", "sha": "source" },
-            { "path": "Src", "type": "tree", "sha": "directory" }
-        ],
-        "truncated": false
-    })";
-    CHECK(JsonFindGitBlobPaths(tree) == std::vector<std::string>{"Rux.toml", "Src/Main.rux"});
+    const std::string marker = "multipart/form-data; boundary=";
+    REQUIRE(encoded->contentType.starts_with(marker));
+    const std::string boundary = encoded->contentType.substr(marker.size());
+
+    CHECK(encoded->body.starts_with("--" + boundary + "\r\n"));
+    CHECK(encoded->body.ends_with("--" + boundary + "--\r\n"));
+    CHECK(encoded->body.contains("Content-Disposition: form-data; name=\"manifest\"\r\n\r\n[Manifest]\n"));
+    CHECK(encoded->body.contains("Content-Disposition: form-data; name=\"package\"\r\n\r\nPK\x03\x04"));
 }

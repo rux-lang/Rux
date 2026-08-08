@@ -305,12 +305,24 @@ bool CompilerDriver::LoadDependencies() {
                                      "' is not a local workspace member; registry dependencies are disabled"));
                 return false;
             }
-            depRoot = RegistryPackagesDir() / DependencyPackageName(*dep);
-            if (!std::filesystem::exists(depRoot)) {
-                Emit(ErrorDiagnostic("package '" + DependencyPackageName(*dep) +
-                                     "' is not installed — run 'rux install'"));
+            // The cache holds every installed version side by side, so the
+            // requirement in the manifest decides which one this build sees.
+            // Resolution is local: a build never contacts the registry.
+            const RegistryDependencySource *registry = dep->Registry();
+            const std::string identity = registry->ns.Text() + "/" + DependencyPackageName(*dep);
+            const auto installed = FindInstalledPackage(registry->ns, dep->package, registry->version);
+            if (!installed) {
+                const auto present = InstalledVersions(registry->ns, dep->package);
+                std::string listed;
+                for (const auto &candidate : present) {
+                    listed += (listed.empty() ? "" : ", ") + candidate.version.Text();
+                }
+                Emit(ErrorDiagnostic("no installed version of '" + identity + "' satisfies '" +
+                                     registry->version.Text() + "'" +
+                                     (listed.empty() ? "" : " (installed: " + listed + ")") + " — run 'rux install'"));
                 return false;
             }
+            depRoot = installed->root;
         }
         auto depManifest = Manifest::Load(depRoot / "Rux.toml");
         if (!depManifest.Ok()) {

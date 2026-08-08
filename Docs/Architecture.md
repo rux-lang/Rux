@@ -30,7 +30,7 @@ The driver loads the root manifest and dependencies before entering this pipelin
 | ---------------------- | --------------------------------------------------------------------- | ------------------------------------- |
 | `Diagnostics`          | Diagnostic values and rendering primitives                            | Standard library only                 |
 | `Source`               | Source loading and source locations                                   | Diagnostics                           |
-| `System`               | Host OS, process, filesystem, networking, and environment access      | Standard library and host APIs        |
+| `System`               | Host OS, process, filesystem, networking, environment, and JSON       | Standard library and host APIs        |
 | `Target`               | Header-only target triples, ABI, layout, and instruction models       | Standard library only                 |
 | `Package`              | `Rux.toml`, dependency metadata, and workspace discovery              | Standard library                      |
 | `Lexer`                | Tokens and lexical analysis                                           | Diagnostics                           |
@@ -87,10 +87,14 @@ rux lint -> RuxLinter    -> RuxSyntax + RuxSemantic
 rux      -> RuxDriver
 ```
 
-Package commands use `Package/Manifest` for the strict versioned [`Rux.toml` contract](Manifest.md) and `System/Process` for registry/network operations. Manifest failures carry source-located diagnostics rather than escaping as exceptions. Build and check resolve path dependencies directly and registry dependencies from the shared package cache:
+Package commands use `Package/Manifest` for the strict versioned [`Rux.toml` contract](Manifest.md), `System/Process` and `System/Json` for registry transport and response parsing, and `Driver/Registry` for the registry's read contract: the resolver index, an exact version's checksum, and the artifact bytes. `Package/Checksum` verifies a download against the digest the registry published, and `Package/Artifact` both builds and unpacks the `.ruxpkg` archive under one contract. Manifest failures carry source-located diagnostics rather than escaping as exceptions.
 
-- Windows: `%LocalAppData%\Rux\Packages`
-- Unix-like hosts: `~/.rux/packages`
+Build and check resolve path dependencies directly and registry dependencies from the shared package cache, which is keyed by normalized identity and exact version so several versions of a package coexist:
+
+- Windows: `%LocalAppData%\Rux\Packages\<namespace>\<name>\<version>`
+- Unix-like hosts: `~/.rux/packages/<namespace>/<name>/<version>`
+
+Selecting among installed versions is a local operation in `Driver/BuildTarget`, so a build never reaches the network; only `install`, `update`, `add`, `info` and the publication commands do.
 
 An explicit `[Workspace]` manifest names its member packages. Workspace checks resolve qualified registry dependencies from matching namespaced members and resolve test-only path dependencies directly. `rux test` discovers `Program` packages below the root `Tests/` tree, requires their direct dependencies to use local path entries, resolves transitive first-party dependencies from workspace members, and disables registry fallback. Publishable package manifests can therefore retain qualified registry dependencies without making repository tests depend on the network or shared package cache.
 

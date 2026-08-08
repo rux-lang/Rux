@@ -9,20 +9,24 @@ set(RUX_TEST_SOURCES
     BuiltinPanicTests.cpp
     BuildReportTests.cpp
     CodegenTests.cpp
+    ChecksumTests.cpp
     CompilerDriverTests.cpp
     ConditionalCompilationTests.cpp
     CredentialsTests.cpp
     GoldenDiagnosticsTests.cpp
+    JsonTests.cpp
     LexerTests.cpp
     LinkerTests.cpp
     ManifestTests.cpp
     OptimizerTests.cpp
     OsTests.cpp
+    PackageCacheTests.cpp
     PackageIdentityTests.cpp
     PackageScaffoldTests.cpp
     PackageVersionTests.cpp
     ProcessTests.cpp
     PrimitiveConstantsTests.cpp
+    RegistryTests.cpp
     SemanticTests.cpp
 )
 

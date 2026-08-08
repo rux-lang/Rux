@@ -7,6 +7,7 @@
 
 #include "Cli/Cli.h"
 #include "Driver/Credentials.h"
+#include "System/Json.h"
 #include "System/Os.h"
 #include "System/Process.h"
 

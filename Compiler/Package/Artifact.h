@@ -66,4 +66,31 @@ BuildPackageArtifact(const std::filesystem::path &manifestPath, const Manifest &
  * survives into the file name: `Math-0.1.0.ruxpkg`.
  */
 [[nodiscard]] std::string ArtifactFileName(const Manifest &manifest);
+
+/// What an archive turned out to contain once written to disk.
+struct ExtractedArtifact {
+    std::size_t fileCount = 0;
+    std::size_t sourceFileCount = 0;
+    std::size_t expandedBytes = 0;
+};
+
+/**
+ * @brief Write the contents of a `.ruxpkg` archive into `dest`.
+ *
+ * Holds a downloaded archive to the same Artifact v1 contract that
+ * BuildPackageArtifact enforces when packing: Stored entries only, a root
+ * `Rux.toml`, at least one Rux source below `Src/`, portable entry paths, and
+ * the declared size and count limits. Every entry's CRC-32 is verified, so a
+ * truncated or altered archive is rejected rather than installed.
+ *
+ * Nothing is written until the whole archive has been validated. `dest` is
+ * expected to be a fresh staging directory the caller commits afterwards.
+ *
+ * @param archive Complete archive bytes
+ * @param dest Directory to write the entries into
+ *
+ * @return What was extracted, or the reason the archive was rejected
+ */
+[[nodiscard]] std::expected<ExtractedArtifact, std::string> ExtractPackageArtifact(std::string_view archive,
+                                                                                   const std::filesystem::path &dest);
 } // namespace Rux

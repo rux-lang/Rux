@@ -1,7 +1,17 @@
 // Package-manager commands: install, uninstall, add, remove, list, update, info.
+//
+// Every command that reaches the network goes through the versioned registry
+// API in Driver/Registry: the resolver index chooses versions, and the download
+// route supplies the published .ruxpkg. Installed packages are cached per exact
+// version, so one host can hold several versions of the same package and a
+// build picks the one its manifest asks for without contacting the registry.
 
 #include "Cli/Cli.h"
 #include "Driver/BuildTarget.h"
+#include "Driver/Credentials.h"
+#include "Driver/Registry.h"
+#include "Package/Artifact.h"
+#include "Package/Checksum.h"
 #include "Package/Manifest.h"
 #include "System/Process.h"
 
@@ -9,31 +19,488 @@
 #include <cstdio>
 #include <filesystem>
 #include <format>
-#include <fstream>
+#include <map>
 #include <optional>
 #include <print>
-#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 using namespace Rux;
 using namespace Driver;
 using namespace System;
 
+namespace {
+/// One thing that must be resolved: a package and the requirement on it.
+struct Requirement {
+    IdentitySegment ns;
+    IdentitySegment package;
+    VersionRange range;
+};
+
+/// A package the resolver settled on.
+struct Resolution {
+    IdentitySegment ns;
+    IdentitySegment package;
+    SemanticVersion version;
+};
+
+/// The lookup key two spellings of one package share.
+std::string IdentityKey(const IdentitySegment &ns, const IdentitySegment &package) {
+    return ns.Normalized() + "/" + package.Normalized();
+}
+
+std::string Qualified(const IdentitySegment &ns, const IdentitySegment &package) {
+    return QualifiedIdentity(ns, package);
+}
+
+/**
+ * @brief Fetches each package's index at most once per command.
+ *
+ * A dependency graph names the same package from several dependents, and the
+ * index is the same document every time; one request per package keeps a large
+ * install from hammering the registry.
+ */
+class IndexCache {
+public:
+    explicit IndexCache(std::string registryBase)
+        : base(std::move(registryBase)) {
+    }
+
+    [[nodiscard]] const std::string &Base() const noexcept {
+        return base;
+    }
+
+    /// The index for one package, or nullptr after reporting why it is missing.
+    [[nodiscard]] const RegistryIndexEntry *Get(const IdentitySegment &ns, const IdentitySegment &package) {
+        const std::string key = IdentityKey(ns, package);
+        if (const auto found = entries.find(key); found != entries.end()) {
+            return &found->second;
+        }
+        auto fetched = FetchPackageIndex(base, ns, package);
+        if (!fetched) {
+            std::print(stderr, "error: {}\n", Describe(fetched.error(), base, Qualified(ns, package)));
+            return nullptr;
+        }
+        return &entries.emplace(key, std::move(*fetched)).first->second;
+    }
+
+private:
+    std::string base;
+    std::map<std::string, RegistryIndexEntry> entries;
+};
+
+/// The requirements accumulated for one package, and the version they settled on.
+struct Selection {
+    IdentitySegment ns;
+    IdentitySegment package;
+    std::vector<VersionRange> ranges;
+    SemanticVersion version;
+};
+
+/// The highest non-yanked, buildable version matching every accumulated range.
+const RegistryVersion *SelectAgainstAll(const RegistryIndexEntry &entry, const std::vector<VersionRange> &ranges,
+                                        const SemanticVersion &compiler) {
+    const RegistryVersion *best = nullptr;
+    for (const auto &candidate : entry.versions) {
+        if (candidate.yanked) {
+            continue;
+        }
+        if (candidate.minRux && SemanticVersion::ComparePrecedence(*candidate.minRux, compiler) > 0) {
+            continue;
+        }
+        const bool matchesAll = std::ranges::all_of(
+            ranges, [&candidate](const VersionRange &range) { return range.Matches(candidate.version); });
+        if (!matchesAll) {
+            continue;
+        }
+        // The index is ascending and breaks precedence ties with build
+        // metadata, so taking the later of a tie follows the registry's order.
+        if (best == nullptr || SemanticVersion::ComparePrecedence(candidate.version, best->version) >= 0) {
+            best = &candidate;
+        }
+    }
+    return best;
+}
+
+std::string DescribeRanges(const std::vector<VersionRange> &ranges) {
+    std::string listed;
+    for (const auto &range : ranges) {
+        listed += (listed.empty() ? "'" : ", '") + range.Text() + "'";
+    }
+    return listed;
+}
+
+/**
+ * @brief Resolve `seeds` and everything they depend on.
+ *
+ * Breadth-first over the resolver index: each selected version contributes its
+ * own dependency edges, so the whole transitive graph is decided before
+ * anything is downloaded. One version is selected per package; when a later
+ * requirement rules the current selection out, the package is re-selected
+ * against every requirement seen so far. There is no backtracking, so a graph
+ * with genuinely incompatible requirements is reported rather than silently
+ * resolved one way.
+ *
+ * @return The resolved graph, or nullopt after the reason has been printed
+ */
+std::optional<std::vector<Resolution>> ResolveGraph(IndexCache &index, const std::vector<Requirement> &seeds) {
+    const SemanticVersion compiler = CompilerVersion();
+    std::map<std::string, Selection> selections;
+    std::vector<Requirement> queue = seeds;
+    std::unordered_set<std::string> processed;
+    // Insertion order is what the install phase reports, so seeds and their
+    // dependencies appear in the order they were discovered.
+    std::vector<std::string> order;
+
+    for (std::size_t i = 0; i < queue.size(); ++i) {
+        const Requirement requirement = queue[i];
+        const std::string key = IdentityKey(requirement.ns, requirement.package);
+        if (!processed.insert(key + "@" + requirement.range.Text()).second) {
+            continue;
+        }
+
+        const RegistryIndexEntry *entry = index.Get(requirement.ns, requirement.package);
+        if (entry == nullptr) {
+            return std::nullopt;
+        }
+
+        auto [selection, inserted] = selections.try_emplace(
+            key, Selection{.ns = entry->ns, .package = entry->package, .ranges = {}, .version = {}});
+        if (inserted) {
+            order.push_back(key);
+        }
+        selection->second.ranges.push_back(requirement.range);
+
+        const RegistryVersion *chosen = SelectAgainstAll(*entry, selection->second.ranges, compiler);
+        if (chosen == nullptr) {
+            std::print(stderr, "error: no version of {} satisfies {}\n", Qualified(entry->ns, entry->package),
+                       DescribeRanges(selection->second.ranges));
+            std::print(stderr, "  {} publishes {}\n", index.Base(), DescribeAvailableVersions(*entry));
+            return std::nullopt;
+        }
+        if (!selection->second.version.Empty() && selection->second.version.Text() == chosen->version.Text()) {
+            continue;
+        }
+        selection->second.version = chosen->version;
+        for (const auto &edge : chosen->dependencies) {
+            queue.push_back(Requirement{.ns = edge.ns, .package = edge.package, .range = edge.range});
+        }
+    }
+
+    std::vector<Resolution> resolved;
+    resolved.reserve(order.size());
+    for (const auto &key : order) {
+        const Selection &selection = selections.at(key);
+        resolved.push_back(Resolution{.ns = selection.ns, .package = selection.package, .version = selection.version});
+    }
+    return resolved;
+}
+
+/// Whether the manifest in a cache directory really is the package it claims.
+bool CacheEntryMatches(const std::filesystem::path &root, const Resolution &resolution) {
+    const auto loaded = Manifest::Load(root / "Rux.toml");
+    if (!loaded.Ok() || loaded.manifest->IsWorkspace()) {
+        return false;
+    }
+    const Package &package = loaded.manifest->package;
+    return package.ns && *package.ns == resolution.ns && package.name == resolution.package &&
+           package.version.Text() == resolution.version.Text();
+}
+
+/// Outcome counters shared by the install and update reports.
+struct InstallTally {
+    int installed = 0;
+    int upToDate = 0;
+};
+
+/**
+ * @brief Download, verify and unpack everything the resolver selected.
+ *
+ * The digest is fetched before the artifact so a registry that cannot vouch for
+ * the bytes fails before they are transferred. Nothing reaches the cache
+ * directory until the archive has matched its digest and passed the artifact
+ * contract, and the swap into place is atomic.
+ */
+bool InstallResolved(const IndexCache &index, const std::vector<Resolution> &resolved, const GlobalOptions &opts,
+                     InstallTally &tally) {
+    for (const auto &resolution : resolved) {
+        const std::string identity = Qualified(resolution.ns, resolution.package);
+        const std::filesystem::path packageDir =
+            RegistryPackageDir(resolution.ns, resolution.package, resolution.version);
+
+        if (CacheEntryMatches(packageDir, resolution)) {
+            if (!opts.quiet) {
+                std::print("   Up-to-date {} {}\n", identity, resolution.version.Text());
+            }
+            ++tally.upToDate;
+            continue;
+        }
+
+        if (!opts.quiet) {
+            std::print("  Downloading {} {}\n", identity, resolution.version.Text());
+        }
+        auto digest = FetchArtifactChecksum(index.Base(), resolution.ns, resolution.package, resolution.version);
+        if (!digest) {
+            std::print(stderr, "error: {}\n", Describe(digest.error(), index.Base(), identity));
+            return false;
+        }
+        auto archive = DownloadArtifact(index.Base(), resolution.ns, resolution.package, resolution.version);
+        if (!archive) {
+            std::print(stderr, "error: {}\n", Describe(archive.error(), index.Base(), identity));
+            return false;
+        }
+        if (const std::string actual = Sha256Hex(*archive); !DigestsEqual(actual, *digest)) {
+            std::print(stderr, "error: the archive for {} {} does not match the checksum {} published for it\n",
+                       identity, resolution.version.Text(), *digest);
+            return false;
+        }
+
+        std::filesystem::path staging = packageDir;
+        staging += ".download";
+        std::error_code ec;
+        std::filesystem::remove_all(staging, ec);
+        std::filesystem::create_directories(packageDir.parent_path(), ec);
+        if (ec) {
+            std::print(stderr, "error: failed to create '{}'\n", packageDir.parent_path().generic_string());
+            return false;
+        }
+
+        auto extracted = ExtractPackageArtifact(*archive, staging);
+        if (!extracted) {
+            std::filesystem::remove_all(staging, ec);
+            std::print(stderr, "error: the archive for {} {} was rejected: {}\n", identity, resolution.version.Text(),
+                       extracted.error());
+            return false;
+        }
+
+        const auto staged = Manifest::Load(staging / "Rux.toml");
+        if (!staged.Ok() || staged.manifest->IsWorkspace() || !staged.manifest->package.ns ||
+            *staged.manifest->package.ns != resolution.ns || staged.manifest->package.name != resolution.package ||
+            staged.manifest->package.version.Text() != resolution.version.Text()) {
+            std::filesystem::remove_all(staging, ec);
+            std::print(stderr, "error: the archive published as {} {} contains a different package\n", identity,
+                       resolution.version.Text());
+            return false;
+        }
+
+        if (!CommitDownloadedPackage(staging, packageDir)) {
+            std::filesystem::remove_all(staging, ec);
+            std::print(stderr, "error: failed to install {} into '{}'\n", identity, packageDir.generic_string());
+            return false;
+        }
+        if (!opts.quiet) {
+            std::print("    Installed {} {} ({} files)\n", identity, resolution.version.Text(), extracted->fileCount);
+        }
+        ++tally.installed;
+    }
+    return true;
+}
+
+/**
+ * @brief Remove cache entries left by the pre-registry flat layout.
+ *
+ * That layout stored one unversioned directory per bare package name, so its
+ * manifest sits directly below the cache root. Nothing reads those directories
+ * any more, and leaving them would only clutter `rux list --global`.
+ */
+void RemoveLegacyCacheEntries(const GlobalOptions &opts) {
+    const std::filesystem::path cacheDir = RegistryPackagesDir();
+    std::error_code ec;
+    if (!std::filesystem::is_directory(cacheDir, ec)) {
+        return;
+    }
+    for (const auto &entry : std::filesystem::directory_iterator(cacheDir, ec)) {
+        if (!entry.is_directory(ec) || !std::filesystem::exists(entry.path() / "Rux.toml", ec)) {
+            continue;
+        }
+        std::error_code removeError;
+        std::filesystem::remove_all(entry.path(), removeError);
+        if (!removeError && !opts.quiet) {
+            std::print("     Removed legacy cache entry {}\n", entry.path().filename().string());
+        }
+    }
+}
+
+/// Collect the registry dependencies a manifest declares.
+void QueueRegistryDependencies(const Manifest &manifest, std::vector<Requirement> &out) {
+    for (const auto &dep : manifest.dependencies) {
+        if (const RegistryDependencySource *registry = dep.Registry()) {
+            out.push_back(Requirement{.ns = registry->ns, .package = dep.package, .range = registry->version});
+        }
+    }
+}
+
+/**
+ * @brief Seed the resolver from the project the command was run in.
+ *
+ * Mirrors what `rux build` would resolve: a package manifest contributes its own
+ * dependencies, a workspace manifest contributes every member's, and a
+ * workspace without a root manifest contributes every discovered member's.
+ *
+ * @return The requirements, or nullopt after the reason has been printed
+ */
+std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opts) {
+    std::vector<Requirement> seeds;
+    std::optional<std::filesystem::path> manifestPath;
+    if (!opts.manifest.empty()) {
+        manifestPath = RequireManifest(opts.manifest);
+        if (!manifestPath) {
+            return std::nullopt;
+        }
+    }
+    else {
+        manifestPath = Manifest::Find();
+    }
+
+    if (!manifestPath) {
+        const auto workspaceManifests = DiscoverManifestlessWorkspaceManifests();
+        if (workspaceManifests.empty()) {
+            static_cast<void>(RequireManifest()); // Print the standard missing-manifest error.
+            return std::nullopt;
+        }
+        if (!opts.quiet) {
+            std::print("Installing workspace\n");
+        }
+        for (const auto &memberPath : workspaceManifests) {
+            auto memberManifest = LoadManifest(memberPath);
+            if (!memberManifest) {
+                return std::nullopt;
+            }
+            if (memberManifest->IsWorkspace() || memberManifest->package.name.Empty()) {
+                std::print(stderr, "error: workspace member '{}' is not a package\n",
+                           memberPath.parent_path().string());
+                return std::nullopt;
+            }
+            QueueRegistryDependencies(*memberManifest, seeds);
+        }
+        return seeds;
+    }
+
+    auto manifest = LoadManifest(*manifestPath);
+    if (!manifest) {
+        return std::nullopt;
+    }
+    if (!manifest->IsWorkspace()) {
+        QueueRegistryDependencies(*manifest, seeds);
+        return seeds;
+    }
+
+    if (!opts.quiet) {
+        std::print("Installing workspace\n");
+    }
+    const std::filesystem::path workspaceRoot = manifestPath->parent_path();
+    for (const auto &member : manifest->workspace.packages) {
+        const auto memberPath = (workspaceRoot / member / "Rux.toml").lexically_normal();
+        std::error_code ec;
+        if (!std::filesystem::exists(memberPath, ec)) {
+            std::print(stderr, "error: workspace member '{}' has no Rux.toml\n", member);
+            return std::nullopt;
+        }
+        auto memberManifest = LoadManifest(memberPath);
+        if (!memberManifest) {
+            return std::nullopt;
+        }
+        if (memberManifest->IsWorkspace() || memberManifest->package.name.Empty()) {
+            std::print(stderr, "error: workspace member '{}' is not a package\n", member);
+            return std::nullopt;
+        }
+        QueueRegistryDependencies(*memberManifest, seeds);
+    }
+    return seeds;
+}
+
+/// A requirement read off the command line, and whether it was written down.
+struct SpecRequirement {
+    Requirement requirement;
+
+    /// False when the spec named no `@requirement` and the wildcard stood in.
+    /// `uninstall` distinguishes the two: naming a package removes every
+    /// installed version, while naming a requirement removes only its matches.
+    bool explicitRange = false;
+};
+
+/// Turn a command-line spec into one requirement, or explain why it cannot be.
+std::optional<SpecRequirement> RequirementFromSpec(const std::string_view spec, const std::string_view command) {
+    const auto parsed = ParsePackageSpec(spec);
+    if (!parsed) {
+        std::print(stderr, "error: {}\n", parsed.error());
+        return std::nullopt;
+    }
+    if (!parsed->ns) {
+        std::print(stderr, "error: a registry package needs a namespace; write 'rux {} Namespace/{}'\n", command,
+                   parsed->name.Text());
+        return std::nullopt;
+    }
+    // An omitted requirement accepts any stable release, matching `rux add`.
+    return SpecRequirement{.requirement = {.ns = *parsed->ns,
+                                           .package = parsed->name,
+                                           .range = parsed->version.value_or(*VersionRange::Parse("*"))},
+                           .explicitRange = parsed->version.has_value()};
+}
+
+/// Every `<namespace>/<name>` pair the cache holds, in normalized order.
+std::vector<std::pair<IdentitySegment, IdentitySegment>> CachedPackages() {
+    std::vector<std::pair<IdentitySegment, IdentitySegment>> packages;
+    const std::filesystem::path cacheDir = RegistryPackagesDir();
+    std::error_code ec;
+    if (!std::filesystem::is_directory(cacheDir, ec)) {
+        return packages;
+    }
+    for (const auto &namespaceDir : std::filesystem::directory_iterator(cacheDir, ec)) {
+        if (!namespaceDir.is_directory(ec)) {
+            continue;
+        }
+        auto ns = IdentitySegment::Parse(namespaceDir.path().filename().string());
+        if (!ns) {
+            continue;
+        }
+        for (const auto &packageDir : std::filesystem::directory_iterator(namespaceDir.path(), ec)) {
+            if (!packageDir.is_directory(ec)) {
+                continue;
+            }
+            auto name = IdentitySegment::Parse(packageDir.path().filename().string());
+            if (!name) {
+                continue;
+            }
+            packages.emplace_back(*ns, *name);
+        }
+    }
+    std::ranges::sort(packages, [](const auto &left, const auto &right) {
+        return left.first == right.first ? left.second < right.second : left.first < right.first;
+    });
+    return packages;
+}
+
+/// Read `--registry <url>`, leaving `index` on its value. Returns false on a
+/// missing operand, which every caller reports the same way.
+bool ReadRegistryOption(const std::span<const std::string_view> args, std::size_t &index,
+                        std::string_view &registryArg) {
+    if (index + 1 >= args.size()) {
+        std::print(stderr, "error: '--registry' requires an argument\n");
+        return false;
+    }
+    registryArg = args[++index];
+    return true;
+}
+} // namespace
+
 int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions &opts) {
     std::string_view packageSpec;
-    bool packageFromDev = false;
-    for (auto arg : args) {
+    std::string_view registryArg;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string_view arg = args[i];
         if (arg == "-h" || arg == "--help") {
             PrintHelpFor("install");
             return 0;
         }
-        if (arg == "--dev") {
-            packageFromDev = true;
+        if (arg == "--registry") {
+            if (!ReadRegistryOption(args, i, registryArg)) {
+                return 1;
+            }
             continue;
         }
         if (!arg.starts_with('-') && packageSpec.empty()) {
@@ -43,171 +510,51 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
         PrintUnknownOption(arg, "install");
         return 1;
     }
-    std::vector<std::string> queue;
-    std::unordered_set<std::string> queued;
-    auto QueueDependencies = [&](const Manifest &packageManifest) {
-        for (const auto &dep : packageManifest.dependencies) {
-            if (const std::string packageName = DependencyPackageName(dep);
-                !dep.IsPath() && !queued.contains(packageName)) {
-                queue.push_back(packageName);
-                queued.insert(packageName);
-            }
-        }
-    };
-    // Seed the work queue: either the explicitly named package, or every
-    // registry dependency declared by the current project's manifest. From
-    // here both cases share the same transitive resolution loop below.
+
+    std::vector<Requirement> seeds;
     if (!packageSpec.empty()) {
-        const auto parsedSpec = ParsePackageSpec(packageSpec);
-        if (!parsedSpec) {
-            std::print(stderr, "error: {}\n", parsedSpec.error());
+        auto spec = RequirementFromSpec(packageSpec, "install");
+        if (!spec) {
             return 1;
         }
-        queue.push_back(parsedSpec->name.Text());
-        queued.insert(parsedSpec->name.Text());
+        seeds.push_back(std::move(spec->requirement));
     }
     else {
-        std::optional<std::filesystem::path> manifestPath;
-        if (!opts.manifest.empty()) {
-            manifestPath = RequireManifest(opts.manifest);
-            if (!manifestPath) {
-                return 1;
-            }
+        auto seeded = SeedFromProject(opts);
+        if (!seeded) {
+            return 1;
         }
-        else {
-            manifestPath = Manifest::Find();
-        }
-
-        if (!manifestPath) {
-            const auto workspaceManifests = DiscoverManifestlessWorkspaceManifests();
-            if (workspaceManifests.empty()) {
-                static_cast<void>(RequireManifest()); // Print the standard missing-manifest error.
-                return 1;
-            }
-            if (!opts.quiet) {
-                std::print("Installing workspace\n");
-            }
-            for (const auto &packageManifestPath : workspaceManifests) {
-                auto packageManifest = LoadManifest(packageManifestPath);
-                if (!packageManifest) {
-                    return 1;
-                }
-                if (packageManifest->IsWorkspace() || packageManifest->package.name.Empty()) {
-                    std::print(stderr, "error: workspace member '{}' is not a package\n",
-                               packageManifestPath.parent_path().string());
-                    return 1;
-                }
-                QueueDependencies(*packageManifest);
-            }
-        }
-        else {
-            auto manifest = LoadManifest(*manifestPath);
-            if (!manifest) {
-                return 1;
-            }
-            if (manifest->IsWorkspace()) {
-                if (!opts.quiet) {
-                    std::print("Installing workspace\n");
-                }
-                const auto workspaceRoot = manifestPath->parent_path();
-                for (const auto &member : manifest->workspace.packages) {
-                    const auto memberManifestPath = (workspaceRoot / member / "Rux.toml").lexically_normal();
-                    std::error_code ec;
-                    if (!std::filesystem::exists(memberManifestPath, ec)) {
-                        std::print(stderr, "error: workspace member '{}' has no Rux.toml\n", member);
-                        return 1;
-                    }
-                    auto memberManifest = LoadManifest(memberManifestPath);
-                    if (!memberManifest) {
-                        return 1;
-                    }
-                    if (memberManifest->IsWorkspace() || memberManifest->package.name.Empty()) {
-                        std::print(stderr, "error: workspace member '{}' is not a package\n", member);
-                        return 1;
-                    }
-                    QueueDependencies(*memberManifest);
-                }
-            }
-            else {
-                QueueDependencies(*manifest);
-            }
-        }
-        if (queue.empty()) {
+        seeds = std::move(*seeded);
+        if (seeds.empty()) {
             if (!opts.quiet) {
                 std::print("  No registry dependencies to install.\n");
             }
             return 0;
         }
     }
+
+    RemoveLegacyCacheEntries(opts);
     if (!opts.quiet) {
-        std::print("     Fetching registry...\n");
+        std::print("     Resolving from {}\n", ResolveRegistryBase(registryArg));
     }
-    const auto jsonOptInstall = FetchUrl(std::string(kRegistryUrl));
-    if (!jsonOptInstall) {
-        std::print(stderr, "error: failed to fetch package registry\n");
+    IndexCache index(ResolveRegistryBase(registryArg));
+    const auto resolved = ResolveGraph(index, seeds);
+    if (!resolved) {
         return 1;
     }
-    int installed = 0;
-    int upToDate = 0;
-    // Breadth-first install: each downloaded package's own dependencies are
-    // appended to the queue, so the whole transitive graph is resolved
-    // (e.g. installing Io also pulls in its platform packages).
-    for (std::size_t i = 0; i < queue.size(); ++i) {
-        const std::string &pkgName = queue[i];
-        const std::string repoUrl = JsonFindPackageRepository(*jsonOptInstall, pkgName);
-        if (repoUrl.empty()) {
-            std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
-            return 1;
-        }
-        // A non-empty folder means the package lives in a subdirectory of a
-        // monorepo, so only that subdirectory is installed rather than the whole
-        // repository.
-        const std::string folder = JsonFindPackageField(*jsonOptInstall, pkgName, "folder");
-        const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
-        std::error_code ec;
-        create_directories(pkgDir.parent_path(), ec);
-        if (exists(pkgDir)) {
-            if (!opts.quiet) {
-                std::print("   Up-to-date {}\n", pkgName);
-            }
-            ++upToDate;
-        }
-        else {
-            if (!opts.quiet) {
-                if (folder.empty()) {
-                    std::print("  Downloading {} from {}\n", pkgName, repoUrl);
-                }
-                else {
-                    std::print("  Downloading {} from {} [{}]\n", pkgName, repoUrl, folder);
-                }
-            }
-            if (!DownloadPackage(repoUrl, folder, pkgDir, packageFromDev)) {
-                std::print(stderr, "error: failed to download '{}'\n", repoUrl);
-                return 1;
-            }
-            if (!opts.quiet) {
-                std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
-            }
-            ++installed;
-        }
-        if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml"); depManifest.Ok()) {
-            for (const auto &dep : depManifest.manifest->dependencies) {
-                if (const std::string depPackageName = DependencyPackageName(dep);
-                    !dep.IsPath() && !queued.contains(depPackageName)) {
-                    queue.push_back(depPackageName);
-                    queued.insert(depPackageName);
-                }
-            }
-        }
+
+    InstallTally tally;
+    if (!InstallResolved(index, *resolved, opts, tally)) {
+        return 1;
     }
     if (!opts.quiet) {
-        std::print("     Summary: {} installed, {} already up-to-date\n", installed, upToDate);
+        std::print("     Summary: {} installed, {} already up-to-date\n", tally.installed, tally.upToDate);
     }
     return 0;
 }
 
 int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOptions &opts) {
-    std::string_view packageName;
+    std::string_view packageSpec;
     bool global = false;
     for (auto arg : args) {
         if (arg == "-h" || arg == "--help") {
@@ -218,48 +565,53 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
             global = true;
             continue;
         }
-        if (!arg.starts_with('-') && packageName.empty()) {
-            packageName = arg;
+        if (!arg.starts_with('-') && packageSpec.empty()) {
+            packageSpec = arg;
             continue;
         }
         PrintUnknownOption(arg, "uninstall");
         return 1;
     }
-    if (global && !packageName.empty()) {
+    if (global && !packageSpec.empty()) {
         std::print(stderr, "error: '--global' cannot be combined with a package name\n");
         return 1;
     }
 
+    /// Remove every installed version of one package, or just the ones a
+    /// requirement selects, and report what went.
+    const auto removeVersions = [&opts](const IdentitySegment &ns, const IdentitySegment &name,
+                                        const std::optional<VersionRange> &range, int &removed) -> bool {
+        for (const auto &installed : InstalledVersions(ns, name)) {
+            if (range && !range->Matches(installed.version)) {
+                continue;
+            }
+            std::error_code ec;
+            std::filesystem::remove_all(installed.root, ec);
+            if (ec) {
+                std::print(stderr, "error: failed to remove '{}': {}\n", installed.root.generic_string(), ec.message());
+                return false;
+            }
+            if (!opts.quiet) {
+                std::print("   Uninstalled {} {}\n", QualifiedIdentity(ns, name), installed.version.Text());
+            }
+            ++removed;
+        }
+        return true;
+    };
+
     if (global) {
         const auto cacheDir = RegistryPackagesDir();
-        std::vector<std::filesystem::path> pkgDirs;
-        std::error_code ec;
-        if (std::filesystem::exists(cacheDir, ec)) {
-            for (const auto &entry : std::filesystem::directory_iterator(cacheDir, ec)) {
-                if (entry.is_directory()) {
-                    pkgDirs.push_back(entry.path());
-                }
+        int removed = 0;
+        for (const auto &[ns, name] : CachedPackages()) {
+            if (!removeVersions(ns, name, std::nullopt, removed)) {
+                return 1;
             }
         }
-        if (pkgDirs.empty()) {
+        if (removed == 0) {
             if (!opts.quiet) {
                 std::print("  Global cache is empty ({})\n", cacheDir.string());
             }
             return 0;
-        }
-        std::ranges::sort(pkgDirs);
-        int removed = 0;
-        for (const auto &pkgDir : pkgDirs) {
-            const std::string pkgName = pkgDir.filename().string();
-            std::filesystem::remove_all(pkgDir, ec);
-            if (ec) {
-                std::print(stderr, "error: failed to remove '{}': {}\n", pkgDir.string(), ec.message());
-                return 1;
-            }
-            if (!opts.quiet) {
-                std::print("   Uninstalled {}\n", pkgName);
-            }
-            ++removed;
         }
         if (!opts.quiet) {
             std::print("     Summary: {} uninstalled\n", removed);
@@ -267,23 +619,27 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
         return 0;
     }
 
-    if (!packageName.empty()) {
-        const std::filesystem::path pkgDir = RegistryPackagesDir() / std::string(packageName);
-        if (!std::filesystem::exists(pkgDir)) {
-            std::print(stderr, "error: package '{}' is not installed\n", packageName);
+    if (!packageSpec.empty()) {
+        auto spec = RequirementFromSpec(packageSpec, "uninstall");
+        if (!spec) {
             return 1;
         }
-        std::error_code ec;
-        std::filesystem::remove_all(pkgDir, ec);
-        if (ec) {
-            std::print(stderr, "error: failed to remove '{}': {}\n", pkgDir.string(), ec.message());
+        // A bare `Namespace/Name` removes every installed version; adding
+        // `@requirement` narrows it to the versions that requirement selects.
+        const Requirement &requirement = spec->requirement;
+        int removed = 0;
+        if (!removeVersions(requirement.ns, requirement.package,
+                            spec->explicitRange ? std::optional(requirement.range) : std::nullopt, removed)) {
             return 1;
         }
-        if (!opts.quiet) {
-            std::print("   Uninstalled {}\n", packageName);
+        if (removed == 0) {
+            std::print(stderr, "error: no installed version of '{}' matches\n",
+                       Qualified(requirement.ns, requirement.package));
+            return 1;
         }
         return 0;
     }
+
     const auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
@@ -292,13 +648,9 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
     if (!manifest) {
         return 1;
     }
-    std::vector<std::string> toRemove;
-    for (const auto &dep : manifest->dependencies) {
-        if (!dep.IsPath()) {
-            toRemove.push_back(DependencyPackageName(dep));
-        }
-    }
-    if (toRemove.empty()) {
+    std::vector<Requirement> declared;
+    QueueRegistryDependencies(*manifest, declared);
+    if (declared.empty()) {
         if (!opts.quiet) {
             std::print("  No registry dependencies to uninstall.\n");
         }
@@ -306,25 +658,17 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
     }
     int removed = 0;
     int notFound = 0;
-    for (const auto &pkgName : toRemove) {
-        const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
-        if (!std::filesystem::exists(pkgDir)) {
-            if (!opts.quiet) {
-                std::print("  Not installed {}\n", pkgName);
-            }
-            ++notFound;
-            continue;
-        }
-        std::error_code ec;
-        std::filesystem::remove_all(pkgDir, ec);
-        if (ec) {
-            std::print(stderr, "error: failed to remove '{}': {}\n", pkgDir.string(), ec.message());
+    for (const auto &requirement : declared) {
+        int before = removed;
+        if (!removeVersions(requirement.ns, requirement.package, std::nullopt, removed)) {
             return 1;
         }
-        if (!opts.quiet) {
-            std::print("   Uninstalled {}\n", pkgName);
+        if (removed == before) {
+            if (!opts.quiet) {
+                std::print("  Not installed {}\n", Qualified(requirement.ns, requirement.package));
+            }
+            ++notFound;
         }
-        ++removed;
     }
     if (!opts.quiet) {
         std::print("     Summary: {} uninstalled, {} not installed\n", removed, notFound);
@@ -335,6 +679,7 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
 int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opts) {
     std::string_view spec;
     std::string_view pathArg;
+    std::string_view registryArg;
     for (std::size_t i = 0; i < args.size(); ++i) {
         std::string_view arg = args[i];
         if (arg == "-h" || arg == "--help") {
@@ -347,6 +692,12 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opt
                 return 1;
             }
             pathArg = args[++i];
+            continue;
+        }
+        if (arg == "--registry") {
+            if (!ReadRegistryOption(args, i, registryArg)) {
+                return 1;
+            }
             continue;
         }
         if (!arg.starts_with('-') && spec.empty()) {
@@ -402,18 +753,18 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opt
         std::print(stderr, "error: a registry dependency needs a namespace; write 'rux add Namespace/{}'\n", pkgName);
         return 1;
     }
+
+    // Confirm the package exists before writing a requirement that could never
+    // resolve. The index is the cheapest route that answers that question.
+    const std::string base = ResolveRegistryBase(registryArg);
     if (!opts.quiet) {
-        std::print("     Fetching registry...\n");
+        std::print("     Resolving from {}\n", base);
     }
-    const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
-    if (!jsonOpt) {
-        std::print(stderr, "error: failed to fetch package registry\n");
+    if (auto entry = FetchPackageIndex(base, *parsedSpec->ns, parsedSpec->name); !entry) {
+        std::print(stderr, "error: {}\n", Describe(entry.error(), base, Qualified(*parsedSpec->ns, parsedSpec->name)));
         return 1;
     }
-    if (JsonFindPackageRepository(*jsonOpt, pkgName).empty()) {
-        std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
-        return 1;
-    }
+
     // An omitted requirement accepts any stable release.
     VersionRange requirement = parsedSpec->version.value_or(*VersionRange::Parse("*"));
     const std::string ver = requirement.Text();
@@ -496,26 +847,29 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions &op
     }
     if (global) {
         const auto cacheDir = RegistryPackagesDir();
-        std::vector<std::string> packages;
-        std::error_code ec;
-        if (std::filesystem::exists(cacheDir, ec)) {
-            for (const auto &entry : std::filesystem::directory_iterator(cacheDir, ec)) {
-                if (entry.is_directory()) {
-                    packages.push_back(entry.path().filename().string());
-                }
+        std::vector<std::string> lines;
+        for (const auto &[ns, name] : CachedPackages()) {
+            for (const auto &installed : InstalledVersions(ns, name)) {
+                // Cache directories are normalized, so the display spelling
+                // comes from the manifest the package was published with.
+                const auto loaded = Manifest::Load(installed.root / "Rux.toml");
+                const std::string identity =
+                    loaded.Ok() && !loaded.manifest->IsWorkspace() && loaded.manifest->package.ns
+                        ? QualifiedIdentity(*loaded.manifest->package.ns, loaded.manifest->package.name)
+                        : QualifiedIdentity(ns, name);
+                lines.push_back(std::format("{} {}", identity, installed.version.Text()));
             }
-            std::ranges::sort(packages);
         }
-        if (packages.empty()) {
+        if (lines.empty()) {
             if (!opts.quiet) {
                 std::print("  Global cache is empty ({})\n", cacheDir.string());
             }
             return 0;
         }
-        std::print("Global cache ({} package{} at {}):\n", packages.size(), packages.size() == 1 ? "" : "s",
+        std::print("Global cache ({} version{} at {}):\n", lines.size(), lines.size() == 1 ? "" : "s",
                    cacheDir.string());
-        for (const auto &pkg : packages) {
-            std::print("  {}\n", pkg);
+        for (const auto &line : lines) {
+            std::print("  {}\n", line);
         }
         return 0;
     }
@@ -537,10 +891,19 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions &op
     for (const auto &dep : manifest->dependencies) {
         if (dep.IsPath()) {
             std::print("  {} (path: {})\n", dep.importName.Text(), dep.Path());
+            continue;
+        }
+        const auto *registry = dep.Registry();
+        // Naming the version a build would actually use turns the requirement
+        // into something checkable without running the build.
+        const auto installed = FindInstalledPackage(registry->ns, dep.package, registry->version);
+        if (installed) {
+            std::print("  {}/{} @ {} (installed {})\n", registry->ns.Text(), dep.package.Text(),
+                       registry->version.Text(), installed->version.Text());
         }
         else {
-            const auto *registry = dep.Registry();
-            std::print("  {}/{} @ {}\n", registry->ns.Text(), dep.package.Text(), registry->version.Text());
+            std::print("  {}/{} @ {} (not installed)\n", registry->ns.Text(), dep.package.Text(),
+                       registry->version.Text());
         }
     }
     return 0;
@@ -548,9 +911,17 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions &op
 
 int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &opts) {
     bool global = false;
-    for (auto &arg : args) {
+    std::string_view registryArg;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string_view arg = args[i];
         if (arg == "--global") {
             global = true;
+            continue;
+        }
+        if (arg == "--registry") {
+            if (!ReadRegistryOption(args, i, registryArg)) {
+                return 1;
+            }
             continue;
         }
         if (arg == "-h" || arg == "--help") {
@@ -560,151 +931,63 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
         PrintUnknownOption(arg, "update");
         return 1;
     }
+
+    std::vector<Requirement> seeds;
     if (global) {
-        const auto cacheDir = RegistryPackagesDir();
-        std::vector<std::filesystem::path> pkgDirs;
-        std::error_code ec;
-        if (std::filesystem::exists(cacheDir, ec)) {
-            for (const auto &entry : std::filesystem::directory_iterator(cacheDir, ec)) {
-                if (entry.is_directory()) {
-                    pkgDirs.push_back(entry.path());
-                }
-            }
+        // Nothing declares a requirement on a cached package here, so each one
+        // is refreshed to the newest release the registry still offers.
+        const VersionRange any = *VersionRange::Parse("*");
+        for (const auto &[ns, name] : CachedPackages()) {
+            seeds.push_back(Requirement{.ns = ns, .package = name, .range = any});
         }
-        if (pkgDirs.empty()) {
+        if (seeds.empty()) {
             if (!opts.quiet) {
                 std::print("  No packages in global cache to update.\n");
             }
             return 0;
         }
-        if (!opts.quiet) {
-            std::print("     Fetching registry...\n");
-        }
-        const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
-        if (!jsonOpt) {
-            std::print(stderr, "error: failed to fetch package registry\n");
+    }
+    else {
+        auto seeded = SeedFromProject(opts);
+        if (!seeded) {
             return 1;
         }
-        int updated = 0;
-        for (const auto &pkgDir : pkgDirs) {
-            const std::string pkgName = pkgDir.filename().string();
-            const std::string repoUrl = JsonFindPackageRepository(*jsonOpt, pkgName);
-            if (repoUrl.empty()) {
-                std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
-                return 1;
-            }
-            const std::string folder = JsonFindPackageField(*jsonOpt, pkgName, "folder");
+        seeds = std::move(*seeded);
+        if (seeds.empty()) {
             if (!opts.quiet) {
-                std::print("    Updating {}...\n", pkgName);
+                std::print("  No registry dependencies to update.\n");
             }
-            if (!DownloadPackage(repoUrl, folder, pkgDir, false)) {
-                std::print(stderr, "error: failed to update '{}'\n", pkgName);
-                return 1;
-            }
-            ++updated;
-        }
-        if (!opts.quiet) {
-            std::print("     Summary: {} updated\n", updated);
-        }
-        return 0;
-    }
-    const auto manifestPath = RequireManifest(opts.manifest);
-    if (!manifestPath) {
-        return 1;
-    }
-    auto manifest = LoadManifest(*manifestPath);
-    if (!manifest) {
-        return 1;
-    }
-    std::vector<std::string> queue;
-    std::unordered_set<std::string> queued;
-    for (const auto &dep : manifest->dependencies) {
-        const std::string packageName = DependencyPackageName(dep);
-        if (!dep.IsPath() && !queued.count(packageName)) {
-            queue.push_back(packageName);
-            queued.insert(packageName);
+            return 0;
         }
     }
-    if (queue.empty()) {
-        if (!opts.quiet) {
-            std::print("  No registry dependencies to update.\n");
-        }
-        return 0;
-    }
-    if (!opts.quiet) {
-        std::print("     Fetching registry...\n");
-    }
-    const auto jsonOpt = FetchUrl(std::string(kRegistryUrl));
-    if (!jsonOpt) {
-        std::print(stderr, "error: failed to fetch package registry\n");
-        return 1;
-    }
-    int updated = 0;
-    int installed = 0;
-    for (std::size_t i = 0; i < queue.size(); ++i) {
-        const std::string &pkgName = queue[i];
-        const std::string repoUrl = JsonFindPackageRepository(*jsonOpt, pkgName);
-        if (repoUrl.empty()) {
-            std::print(stderr, "error: package '{}' not found in registry\n", pkgName);
-            return 1;
-        }
-        const std::string folder = JsonFindPackageField(*jsonOpt, pkgName, "folder");
-        const std::filesystem::path pkgDir = RegistryPackagesDir() / pkgName;
-        std::error_code ec;
-        std::filesystem::create_directories(pkgDir.parent_path(), ec);
 
-        if (std::filesystem::exists(pkgDir)) {
-            if (!opts.quiet) {
-                std::print("    Updating {}...\n", pkgName);
-            }
-            if (!DownloadPackage(repoUrl, folder, pkgDir, false)) {
-                std::print(stderr, "error: failed to update '{}'\n", pkgName);
-                return 1;
-            }
-            ++updated;
-        }
-        else {
-            if (!opts.quiet) {
-                if (folder.empty()) {
-                    std::print("  Downloading {} from {}\n", pkgName, repoUrl);
-                }
-                else {
-                    std::print("  Downloading {} from {} [{}]\n", pkgName, repoUrl, folder);
-                }
-            }
-            if (!DownloadPackage(repoUrl, folder, pkgDir, false)) {
-                std::print(stderr, "error: failed to download '{}'\n", repoUrl);
-                return 1;
-            }
-            if (!opts.quiet) {
-                std::print("    Installed {} at {}\n", pkgName, pkgDir.string());
-            }
-            ++installed;
-        }
-        // Enqueue registry deps declared by this package
-        if (const auto depManifest = Manifest::Load(pkgDir / "Rux.toml"); depManifest.Ok()) {
-            for (const auto &dep : depManifest.manifest->dependencies) {
-                const std::string depPackageName = DependencyPackageName(dep);
-                if (!dep.IsPath() && !queued.count(depPackageName)) {
-                    queue.push_back(depPackageName);
-                    queued.insert(depPackageName);
-                }
-            }
-        }
+    RemoveLegacyCacheEntries(opts);
+    if (!opts.quiet) {
+        std::print("     Resolving from {}\n", ResolveRegistryBase(registryArg));
+    }
+    IndexCache index(ResolveRegistryBase(registryArg));
+    const auto resolved = ResolveGraph(index, seeds);
+    if (!resolved) {
+        return 1;
+    }
+
+    InstallTally tally;
+    if (!InstallResolved(index, *resolved, opts, tally)) {
+        return 1;
     }
     if (!opts.quiet) {
-        std::print("     Summary: {} updated, {} newly installed\n", updated, installed);
+        std::print("     Summary: {} newly installed, {} already current\n", tally.installed, tally.upToDate);
     }
     return 0;
 }
 
-// TODO: Make this look in the registry instead of installed packages
 // TODO: Extend Package manifest metadata support
 int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &opts) {
-    (void)opts;
-    std::string_view packageName;
+    std::string_view packageSpec;
+    std::string_view registryArg;
     bool jsonOutput = false;
-    for (auto arg : args) {
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string_view arg = args[i];
         if (arg == "-h" || arg == "--help") {
             PrintHelpFor("info");
             return 0;
@@ -713,8 +996,14 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
             jsonOutput = true;
             continue;
         }
-        if (!arg.starts_with('-') && packageName.empty()) {
-            packageName = arg;
+        if (arg == "--registry") {
+            if (!ReadRegistryOption(args, i, registryArg)) {
+                return 1;
+            }
+            continue;
+        }
+        if (!arg.starts_with('-') && packageSpec.empty()) {
+            packageSpec = arg;
             continue;
         }
         PrintUnknownOption(arg, "info");
@@ -728,7 +1017,7 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
             return 1;
         }
     }
-    else if (packageName.empty()) {
+    else if (packageSpec.empty()) {
         auto localManifestOpt = Manifest::Find(std::filesystem::current_path());
         if (!localManifestOpt) {
             std::print(stderr, "error: missing package name, and no Rux.toml found in current directory\n");
@@ -737,13 +1026,28 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
         manifestPath = *localManifestOpt;
     }
     else {
-        const auto packageDir = RegistryPackagesDir() / std::string(packageName);
-        manifestPath = packageDir / "Rux.toml";
-
-        if (!std::filesystem::exists(manifestPath)) {
-            std::print(stderr, "error: package '{}' is not installed\n", packageName);
+        auto spec = RequirementFromSpec(packageSpec, "info");
+        if (!spec) {
             return 1;
         }
+        const Requirement &requirement = spec->requirement;
+        const auto installed = FindInstalledPackage(requirement.ns, requirement.package, requirement.range);
+        if (!installed) {
+            // Not having it locally is worth distinguishing from it not
+            // existing, so the registry is asked which versions there are.
+            const std::string base = ResolveRegistryBase(registryArg);
+            const std::string identity = Qualified(requirement.ns, requirement.package);
+            auto entry = FetchPackageIndex(base, requirement.ns, requirement.package);
+            if (!entry) {
+                std::print(stderr, "error: {}\n", Describe(entry.error(), base, identity));
+                return 1;
+            }
+            std::print(stderr, "error: no installed version of {} matches '{}'; run 'rux install {}'\n", identity,
+                       requirement.range.Text(), packageSpec);
+            std::print(stderr, "  {} publishes {}\n", base, DescribeAvailableVersions(*entry));
+            return 1;
+        }
+        manifestPath = installed->root / "Rux.toml";
     }
     auto infoResult = Manifest::Load(manifestPath);
     if (!infoResult.Ok()) {

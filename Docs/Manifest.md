@@ -227,6 +227,23 @@ Entries are keyed by registry base URL rather than kept as one ambient token, so
 
 A published version is immutable: republishing an existing `major.minor.patch` — build metadata included — is rejected. `rux publish` does not build or check the package first; run `rux check` beforehand.
 
+## Installation and resolution
+
+`rux install` reads the registry's resolver index and downloads published archives. It contacts no host other than the selected registry, and `--registry` and `RUX_REGISTRY_URL` retarget resolution and download exactly as they retarget publication. No credential is involved: the read side is public.
+
+Resolution walks the dependency graph breadth-first from the root manifest — or from every member of a workspace — and asks `/v1/index/<namespace>/<package>` for each package it reaches. A candidate version is eligible when it is not yanked, its `MinRux` is no newer than the running compiler, and it satisfies every requirement gathered for that package. The highest eligible version wins, ordered by SemVer precedence with build metadata as the tie-break. A package resolves to one version; requirements that cannot be satisfied together are reported rather than resolved arbitrarily. `rux update` runs the same resolution and installs the newest version each requirement now allows.
+
+Each selected version is downloaded as its `.ruxpkg`, checked against the SHA-256 the registry publishes for it, and unpacked under the same archive contract `rux pack` applies — entry paths cannot escape the package, and the declared size and count limits hold. A download that fails any of those checks installs nothing. The unpacked manifest must also carry the identity and version it was published under.
+
+Packages are cached per exact version, using normalized identity for the directory names and the complete version text for the leaf:
+
+```text
+%LocalAppData%\Rux\Packages\<namespace>\<name>\<version>\   (Windows)
+~/.rux/packages/<namespace>/<name>/<version>/               (Unix-like hosts)
+```
+
+Several versions of one package can therefore be installed at once. `rux build`, `rux check`, `rux run` and `rux test` select among them locally — the highest installed version matching the manifest requirement — so a build never contacts the registry. A requirement with no matching installed version is an error naming the versions that are installed.
+
 ## Canonical serialization
 
 `rux fmt --manifest-only`, `rux add`, `rux remove`, `rux new` and `rux init` write the same order:
@@ -241,4 +258,6 @@ Only recognized fields are serialized. Required fields never rely on implicit de
 
 ## Migration and release
 
-The compiler, CLI, first-party packages, workspaces and tests move to Manifest Version 1 in one atomic repository change. Official first-party packages use `Namespace = "Rux"`; local test packages may remain namespace-free. The cutover ships in Rux `0.4.0`, a permitted breaking minor release while Rux is pre-1.0. The release is gated on the package registry accepting the same schema and conformance cases. Publication transport ships with `rux publish`; remote registry index resolution and artifact download remain separate integration work, so `rux install` still resolves through the package index.
+The compiler, CLI, first-party packages, workspaces and tests move to Manifest Version 1 in one atomic repository change. Official first-party packages use `Namespace = "Rux"`; local test packages may remain namespace-free. The cutover ships in Rux `0.4.0`, a permitted breaking minor release while Rux is pre-1.0. The release is gated on the package registry accepting the same schema and conformance cases, and on it serving the resolver index and download routes `rux install` now reads.
+
+The package cache changed shape with the switch to registry installs. A cache written by an earlier release stored one unversioned directory per bare package name; `rux install` and `rux update` delete those entries when they find them, and the packages are reinstalled under their qualified identity.

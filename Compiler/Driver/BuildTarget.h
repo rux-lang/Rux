@@ -76,4 +76,28 @@ void ReportManifestDiagnostics(const ManifestResult &result);
 
 // Per-user directory where installed registry packages are cached.
 [[nodiscard]] std::filesystem::path RegistryPackagesDir();
+
+// Cache directory of one exact version: <cache>/<namespace>/<name>/<version>.
+// The identity segments use their normalized spelling, so `Rux/My_Pkg` and
+// `rux/my-pkg` share one directory the way they share one registry entry, while
+// the version keeps its exact text including build metadata.
+[[nodiscard]] std::filesystem::path RegistryPackageDir(const IdentitySegment &ns, const IdentitySegment &name,
+                                                       const SemanticVersion &version);
+
+// An installed version of a package, paired with the directory holding it.
+struct InstalledPackage {
+    SemanticVersion version;
+    std::filesystem::path root;
+};
+
+// Every installed version of one package, ascending. Directory names that are
+// not semantic versions are ignored, so a cache entry left by an older layout
+// is inert rather than a failure.
+[[nodiscard]] std::vector<InstalledPackage> InstalledVersions(const IdentitySegment &ns, const IdentitySegment &name);
+
+// The installed version a requirement resolves to: the highest one it matches,
+// or nullopt when none is installed. Build and check use this instead of
+// contacting the registry, so a build never needs the network.
+[[nodiscard]] std::optional<InstalledPackage>
+FindInstalledPackage(const IdentitySegment &ns, const IdentitySegment &name, const VersionRange &range);
 } // namespace Rux::Driver

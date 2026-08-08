@@ -1,0 +1,256 @@
+#include "Driver/Registry.h"
+
+#include "Driver/Version.h"
+#include "System/Json.h"
+#include "System/Process.h"
+
+#include <format>
+#include <utility>
+
+using namespace Rux::System;
+
+namespace Rux::Driver {
+namespace {
+/// Build one `/v1` URL from already-normalized identity segments.
+std::string RouteUrl(const std::string_view base, const std::string_view suffix) {
+    return std::string(base) + std::string(suffix);
+}
+
+std::string PackageRoute(const IdentitySegment &ns, const IdentitySegment &package) {
+    return UrlEncode(ns.Normalized()) + "/" + UrlEncode(package.Normalized());
+}
+
+RegistryError Malformed(std::string detail) {
+    return RegistryError{.kind = RegistryErrorKind::Malformed, .status = 0, .code = {}, .detail = std::move(detail)};
+}
+
+/// Read one identity segment out of a response, preserving its spelling.
+std::optional<IdentitySegment> ReadSegment(const JsonValue &object, const std::string_view key) {
+    auto parsed = IdentitySegment::Parse(object.StringAt(key));
+    if (!parsed) {
+        return std::nullopt;
+    }
+    return std::move(*parsed);
+}
+
+/**
+ * @brief Perform one unauthenticated GET and separate success from a problem.
+ *
+ * A 404 becomes NotFound whatever the body says, because the two package
+ * routes report absence with different problem codes and every caller means the
+ * same thing by them.
+ */
+std::expected<std::string, RegistryError> GetRoute(const std::string_view url) {
+    auto response = HttpSend({.method = "GET", .url = std::string(url), .headers = {}, .body = {}});
+    if (!response) {
+        return std::unexpected(
+            RegistryError{.kind = RegistryErrorKind::Unreachable, .status = 0, .code = {}, .detail = {}});
+    }
+    if (response->status >= 200 && response->status < 300) {
+        return std::move(response->body);
+    }
+    RegistryError error = DecodeProblem(response->body, response->status);
+    if (response->status == 404) {
+        error.kind = RegistryErrorKind::NotFound;
+    }
+    return std::unexpected(std::move(error));
+}
+} // namespace
+
+std::string QualifiedIdentity(const IdentitySegment &ns, const IdentitySegment &package) {
+    return std::format("{}/{}", ns.Text(), package.Text());
+}
+
+RegistryError DecodeProblem(const std::string_view body, const unsigned status) {
+    RegistryError error{.kind = RegistryErrorKind::Rejected, .status = status, .code = {}, .detail = {}};
+    const auto document = ParseJson(body);
+    if (!document) {
+        return error;
+    }
+    error.code = document->StringAt("code");
+    error.detail = document->StringAt("detail");
+    return error;
+}
+
+std::string Describe(const RegistryError &error, const std::string_view base, const std::string_view identity) {
+    switch (error.kind) {
+    case RegistryErrorKind::Unreachable:
+        return std::format("failed to reach the registry at {}", base);
+    case RegistryErrorKind::NotFound:
+        return std::format("{} is not published on {}", identity, base);
+    case RegistryErrorKind::Malformed:
+        return std::format("{} sent a response for {} that could not be read: {}", base, identity, error.detail);
+    case RegistryErrorKind::Rejected:
+        break;
+    }
+    if (error.code == "rate_limited") {
+        return std::format("{} is rate-limiting requests; retry shortly", base);
+    }
+    if (!error.detail.empty()) {
+        return error.detail;
+    }
+    return std::format("{} answered with status {} for {}", base, error.status, identity);
+}
+
+std::expected<RegistryIndexEntry, RegistryError> DecodePackageIndex(const std::string_view body) {
+    const auto document = ParseJson(body);
+    if (!document) {
+        return std::unexpected(Malformed(document.error().message));
+    }
+    const JsonValue *data = document->Find("data");
+    if (data == nullptr || !data->IsObject()) {
+        return std::unexpected(Malformed("the index has no 'data' object"));
+    }
+
+    auto ns = ReadSegment(*data, "namespace");
+    auto package = ReadSegment(*data, "package");
+    if (!ns || !package) {
+        return std::unexpected(Malformed("the index does not name a valid package identity"));
+    }
+
+    RegistryIndexEntry entry{.ns = std::move(*ns), .package = std::move(*package), .versions = {}};
+    const JsonValue *versions = data->Find("versions");
+    if (versions == nullptr || !versions->IsArray()) {
+        return std::unexpected(Malformed("the index has no 'versions' array"));
+    }
+
+    for (const auto &element : versions->Elements()) {
+        auto version = SemanticVersion::Parse(element.StringAt("version"));
+        if (!version) {
+            return std::unexpected(
+                Malformed(std::format("the index lists an unreadable version '{}'", element.StringAt("version"))));
+        }
+        RegistryVersion published{.version = std::move(*version),
+                                  .minRux = std::nullopt,
+                                  .yanked = element.BoolAt("yanked"),
+                                  .dependencies = {}};
+
+        // A registry that does not record a minimum leaves the member null,
+        // which is not the same as recording an unreadable one.
+        if (const JsonValue *minRux = element.Find("min_rux"); minRux != nullptr && !minRux->IsNull()) {
+            auto parsed = SemanticVersion::Parse(minRux->AsString());
+            if (!parsed) {
+                return std::unexpected(
+                    Malformed(std::format("the index lists an unreadable MinRux '{}'", minRux->AsString())));
+            }
+            published.minRux = std::move(*parsed);
+        }
+
+        if (const JsonValue *dependencies = element.Find("dependencies"); dependencies != nullptr) {
+            for (const auto &edge : dependencies->Elements()) {
+                auto alias = ReadSegment(edge, "alias");
+                auto targetNs = ReadSegment(edge, "target_namespace");
+                auto targetPackage = ReadSegment(edge, "target_package");
+                auto range = VersionRange::Parse(edge.StringAt("version_range"));
+                if (!alias || !targetNs || !targetPackage || !range) {
+                    return std::unexpected(Malformed(std::format(
+                        "the index lists an unreadable dependency of version {}", published.version.Text())));
+                }
+                published.dependencies.push_back(RegistryDependencyEdge{.alias = std::move(*alias),
+                                                                        .ns = std::move(*targetNs),
+                                                                        .package = std::move(*targetPackage),
+                                                                        .range = std::move(*range)});
+            }
+        }
+        entry.versions.push_back(std::move(published));
+    }
+    return entry;
+}
+
+std::expected<std::string, RegistryError> DecodeArtifactChecksum(const std::string_view body) {
+    const auto document = ParseJson(body);
+    if (!document) {
+        return std::unexpected(Malformed(document.error().message));
+    }
+    const JsonValue *data = document->Find("data");
+    if (data == nullptr || !data->IsObject()) {
+        return std::unexpected(Malformed("the version metadata has no 'data' object"));
+    }
+    const JsonValue *checksum = data->Find("checksum");
+    if (checksum == nullptr || !checksum->IsObject()) {
+        return std::unexpected(Malformed("the version metadata carries no checksum"));
+    }
+    if (const std::string &algorithm = checksum->StringAt("algorithm"); algorithm != "sha256") {
+        return std::unexpected(Malformed(std::format("the artifact checksum uses '{}' rather than sha256", algorithm)));
+    }
+    const std::string &digest = checksum->StringAt("digest");
+    if (digest.empty()) {
+        return std::unexpected(Malformed("the artifact checksum has no digest"));
+    }
+    return digest;
+}
+
+std::expected<RegistryIndexEntry, RegistryError>
+FetchPackageIndex(const std::string_view base, const IdentitySegment &ns, const IdentitySegment &package) {
+    auto body = GetRoute(RouteUrl(base, "/v1/index/" + PackageRoute(ns, package)));
+    if (!body) {
+        return std::unexpected(std::move(body.error()));
+    }
+    return DecodePackageIndex(*body);
+}
+
+std::expected<std::string, RegistryError> FetchArtifactChecksum(const std::string_view base, const IdentitySegment &ns,
+                                                                const IdentitySegment &package,
+                                                                const SemanticVersion &version) {
+    auto body = GetRoute(RouteUrl(base, "/v1/packages/" + PackageRoute(ns, package) + "/" + UrlEncode(version.Text())));
+    if (!body) {
+        return std::unexpected(std::move(body.error()));
+    }
+    return DecodeArtifactChecksum(*body);
+}
+
+std::expected<std::string, RegistryError> DownloadArtifact(const std::string_view base, const IdentitySegment &ns,
+                                                           const IdentitySegment &package,
+                                                           const SemanticVersion &version) {
+    // The route answers 307 with a CDN location; HttpSend follows it, so the
+    // body here is already the artifact rather than an empty redirect.
+    auto body = GetRoute(
+        RouteUrl(base, "/v1/packages/" + PackageRoute(ns, package) + "/" + UrlEncode(version.Text()) + "/download"));
+    if (!body) {
+        return std::unexpected(std::move(body.error()));
+    }
+    if (body->empty()) {
+        return std::unexpected(Malformed("the download route returned no artifact"));
+    }
+    return body;
+}
+
+const RegistryVersion *SelectVersion(const RegistryIndexEntry &entry, const VersionRange &range,
+                                     const SemanticVersion &compiler) {
+    const RegistryVersion *best = nullptr;
+    for (const auto &candidate : entry.versions) {
+        if (candidate.yanked || !range.Matches(candidate.version)) {
+            continue;
+        }
+        if (candidate.minRux && SemanticVersion::ComparePrecedence(*candidate.minRux, compiler) > 0) {
+            continue;
+        }
+        // Precedence ignores build metadata, so two candidates can tie. The
+        // index is ascending and uses build metadata as its own tie-break, so
+        // taking the later of a tie matches the registry's total order.
+        if (best == nullptr || SemanticVersion::ComparePrecedence(candidate.version, best->version) >= 0) {
+            best = &candidate;
+        }
+    }
+    return best;
+}
+
+std::string DescribeAvailableVersions(const RegistryIndexEntry &entry) {
+    std::string listed;
+    for (const auto &candidate : entry.versions) {
+        if (!listed.empty()) {
+            listed += ", ";
+        }
+        listed += candidate.version.Text();
+        if (candidate.yanked) {
+            listed += " (yanked)";
+        }
+    }
+    return listed.empty() ? std::string("none") : listed;
+}
+
+SemanticVersion CompilerVersion() {
+    auto parsed = SemanticVersion::Parse(RUX_VERSION);
+    return parsed ? std::move(*parsed) : SemanticVersion{};
+}
+} // namespace Rux::Driver
