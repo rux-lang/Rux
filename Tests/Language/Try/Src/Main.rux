@@ -1,0 +1,39 @@
+import Rux::Assert;
+import Rux::Option;
+import Rux::Result;
+
+func ParseVal(val: int) -> Option<int> {
+    if val > 0 {
+        return Option::Some<int>(val * 2);
+    }
+    return Option::None<int>();
+}
+
+func ComputeOption(a: int) -> Option<int> {
+    let x = ParseVal(a)?;
+    return Option::Some<int>(x + 1);
+}
+
+func Main() -> int {
+    let resOk = ComputeOption(5);
+    let isSome = match resOk {
+        .Some(_) => true,
+        .None => false
+    };
+    Assert(isSome, "Expected ComputeOption(5) to be Some");
+
+    let val = match resOk {
+        .Some(v) => v,
+        .None => 0
+    };
+    Assert(val == 11, "Expected ComputeOption(5) to be 11");
+
+    let resNone = ComputeOption(-1);
+    let isNone = match resNone {
+        .Some(_) => false,
+        .None => true
+    };
+    Assert(isNone, "Expected ComputeOption(-1) to be None");
+
+    return 0;
+}

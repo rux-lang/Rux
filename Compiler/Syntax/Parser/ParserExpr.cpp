@@ -347,6 +347,61 @@ ExprPtr Parser::ParseUnary() {
     return ParsePostfix();
 }
 
+bool Parser::IsTernaryQuestionAhead() const {
+    if (!Check(TokenKind::Question)) {
+        return false;
+    }
+    std::size_t offset = 1;
+    int parenDepth = 0;
+    int braceDepth = 0;
+    int bracketDepth = 0;
+
+    while (true) {
+        const Token &tok = Peek(offset);
+        if (tok.Is(TokenKind::EndOfFile)) {
+            break;
+        }
+
+        if (tok.Is(TokenKind::LeftParen)) {
+            parenDepth++;
+        }
+        else if (tok.Is(TokenKind::RightParen)) {
+            if (parenDepth == 0) {
+                break;
+            }
+            parenDepth--;
+        }
+        else if (tok.Is(TokenKind::LeftBrace)) {
+            braceDepth++;
+        }
+        else if (tok.Is(TokenKind::RightBrace)) {
+            if (braceDepth == 0) {
+                break;
+            }
+            braceDepth--;
+        }
+        else if (tok.Is(TokenKind::LeftBracket)) {
+            bracketDepth++;
+        }
+        else if (tok.Is(TokenKind::RightBracket)) {
+            if (bracketDepth == 0) {
+                break;
+            }
+            bracketDepth--;
+        }
+        else if (parenDepth == 0 && braceDepth == 0 && bracketDepth == 0) {
+            if (tok.Is(TokenKind::Colon)) {
+                return true;
+            }
+            if (tok.Is(TokenKind::Semicolon) || tok.Is(TokenKind::Comma) || tok.Is(TokenKind::FatArrow)) {
+                break;
+            }
+        }
+        offset++;
+    }
+    return false;
+}
+
 ExprPtr Parser::ParsePostfix() {
     auto left = ParsePrimary();
     if (!left) {
@@ -477,6 +532,16 @@ ExprPtr Parser::ParsePostfix() {
             auto e = std::make_unique<PostfixExpr>();
             e->location = loc;
             e->op = op;
+            e->operand = std::move(left);
+            left = std::move(e);
+            continue;
+        }
+
+        // Postfix ? (TryExpr): expr?
+        if (Check(TokenKind::Question) && !IsTernaryQuestionAhead()) {
+            Advance();
+            auto e = std::make_unique<TryExpr>();
+            e->location = loc;
             e->operand = std::move(left);
             left = std::move(e);
             continue;

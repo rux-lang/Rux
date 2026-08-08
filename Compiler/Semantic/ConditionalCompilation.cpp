@@ -1912,6 +1912,11 @@ private:
                 ResolveExpr(returnStmt->value->get());
             }
         }
+        else if (auto *deferStmt = dynamic_cast<DeferStmt *>(&stmt)) {
+            if (deferStmt->deferredStmt) {
+                ResolveNestedBlocks(*deferStmt->deferredStmt);
+            }
+        }
         else if (auto *exprStmt = dynamic_cast<ExprStmt *>(&stmt)) {
             ResolveExpr(exprStmt->expr.get());
         }
@@ -1973,6 +1978,9 @@ private:
         }
         else if (auto *cast = dynamic_cast<CastExpr *>(expr)) {
             ResolveExpr(cast->operand.get());
+        }
+        else if (auto *tryExpr = dynamic_cast<TryExpr *>(expr)) {
+            ResolveExpr(tryExpr->operand.get());
         }
         else if (auto *intrinsic = dynamic_cast<IntrinsicExpr *>(expr)) {
             for (auto &arg : intrinsic->args) {

@@ -3601,6 +3601,11 @@ private:
             CollectDecl(*declStmt->decl, *currentScope);
             CheckDecl(*declStmt->decl);
         }
+        else if (auto *defStmt = dynamic_cast<const DeferStmt *>(&stmt)) {
+            if (defStmt->deferredStmt) {
+                CheckStmt(*defStmt->deferredStmt);
+            }
+        }
     }
 
     void CheckLetPattern(const Pattern &pat, const TypeRef &type, bool isMut) {
@@ -4523,6 +4528,18 @@ private:
                 }
             }
             return TypeRef::MakeBool();
+        }
+
+        if (auto *e = dynamic_cast<const TryExpr *>(&expr)) {
+            TypeRef opType = CheckExpr(*e->operand);
+            if (opType.IsUnknown()) {
+                return TypeRef::MakeUnknown();
+            }
+            const auto typeArgs = ParseTypeArgsFromTypeName(opType.name);
+            if (!typeArgs.empty()) {
+                return typeArgs[0];
+            }
+            return opType;
         }
 
         if (auto *e = dynamic_cast<const MatchExpr *>(&expr)) {

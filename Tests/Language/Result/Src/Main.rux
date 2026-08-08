@@ -1,0 +1,25 @@
+import Rux::Assert;
+import Rux::Result;
+
+func Main() -> int {
+    let resOk: Result<int, int> = Result::Ok<int, int>(100);
+    let resErr: Result<int, int> = Result::Err<int, int>(-1);
+
+    let isOk = match resOk {
+        .Ok(_) => true,
+        .Success(_) => true,
+        .Err(_) => false,
+        .Error(_) => false
+    };
+    Assert(isOk, "Expected resOk to be Ok");
+
+    let isErr = match resErr {
+        .Ok(_) => false,
+        .Success(_) => false,
+        .Err(_) => true,
+        .Error(_) => true
+    };
+    Assert(isErr, "Expected resErr to be Err");
+
+    return 0;
+}

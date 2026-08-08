@@ -1,5 +1,7 @@
 // A value produced by an operation that can fail.
 enum Result<T, E> {
+    Ok(T),
+    Err(E),
     Success(T),
     Error(E)
 }

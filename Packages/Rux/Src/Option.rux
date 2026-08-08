@@ -1,0 +1,5 @@
+// An optional value that may be Some(T) or None.
+enum Option<T> {
+    Some(T),
+    None
+}
