@@ -7,6 +7,7 @@
 // build picks the one its manifest asks for without contacting the registry.
 
 #include "Cli/Cli.h"
+#include "Cli/TerminalStyle.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/Credentials.h"
 #include "Driver/Registry.h"
@@ -32,6 +33,7 @@
 using namespace Rux;
 using namespace Driver;
 using namespace System;
+using namespace CliSupport;
 
 namespace {
 /// One thing that must be resolved: a package and the requirement on it.
@@ -101,39 +103,6 @@ struct Selection {
     SemanticVersion version;
 };
 
-/// The highest non-yanked, buildable version matching every accumulated range.
-const RegistryVersion *SelectAgainstAll(const RegistryIndexEntry &entry, const std::vector<VersionRange> &ranges,
-                                        const SemanticVersion &compiler) {
-    const RegistryVersion *best = nullptr;
-    for (const auto &candidate : entry.versions) {
-        if (candidate.yanked) {
-            continue;
-        }
-        if (candidate.minRux && SemanticVersion::ComparePrecedence(*candidate.minRux, compiler) > 0) {
-            continue;
-        }
-        const bool matchesAll = std::ranges::all_of(
-            ranges, [&candidate](const VersionRange &range) { return range.Matches(candidate.version); });
-        if (!matchesAll) {
-            continue;
-        }
-        // The index is ascending and breaks precedence ties with build
-        // metadata, so taking the later of a tie follows the registry's order.
-        if (best == nullptr || SemanticVersion::ComparePrecedence(candidate.version, best->version) >= 0) {
-            best = &candidate;
-        }
-    }
-    return best;
-}
-
-std::string DescribeRanges(const std::vector<VersionRange> &ranges) {
-    std::string listed;
-    for (const auto &range : ranges) {
-        listed += (listed.empty() ? "'" : ", '") + range.Text() + "'";
-    }
-    return listed;
-}
-
 /**
  * @brief Resolve `seeds` and everything they depend on.
  *
@@ -175,11 +144,14 @@ std::optional<std::vector<Resolution>> ResolveGraph(IndexCache &index, const std
         }
         selection->second.ranges.push_back(requirement.range);
 
-        const RegistryVersion *chosen = SelectAgainstAll(*entry, selection->second.ranges, compiler);
+        const RegistryVersion *chosen = SelectVersion(*entry, selection->second.ranges, compiler);
         if (chosen == nullptr) {
-            std::print(stderr, "error: no version of {} satisfies {}\n", Qualified(entry->ns, entry->package),
-                       DescribeRanges(selection->second.ranges));
-            std::print(stderr, "  {} publishes {}\n", index.Base(), DescribeAvailableVersions(*entry));
+            const ResolutionFailure failure =
+                DescribeResolutionFailure(*entry, selection->second.ranges, compiler, index.Base());
+            std::print(stderr, "error: {}\n", failure.message);
+            for (const auto &detail : failure.details) {
+                std::print(stderr, "{}{}\n", errorContinuation, detail);
+            }
             return std::nullopt;
         }
         if (!selection->second.version.Empty() && selection->second.version.Text() == chosen->version.Text()) {
@@ -234,14 +206,14 @@ bool InstallResolved(const IndexCache &index, const std::vector<Resolution> &res
 
         if (CacheEntryMatches(packageDir, resolution)) {
             if (!opts.quiet) {
-                std::print("   Up-to-date {} {}\n", identity, resolution.version.Text());
+                std::print("{} {} {}\n", Status("Up-to-date"), identity, resolution.version.Text());
             }
             ++tally.upToDate;
             continue;
         }
 
         if (!opts.quiet) {
-            std::print("  Downloading {} {}\n", identity, resolution.version.Text());
+            std::print("{} {} {}\n", Status("Downloading"), identity, resolution.version.Text());
         }
         auto digest = FetchArtifactChecksum(index.Base(), resolution.ns, resolution.package, resolution.version);
         if (!digest) {
@@ -293,7 +265,8 @@ bool InstallResolved(const IndexCache &index, const std::vector<Resolution> &res
             return false;
         }
         if (!opts.quiet) {
-            std::print("    Installed {} {} ({} files)\n", identity, resolution.version.Text(), extracted->fileCount);
+            std::print("{} {} {} ({} files)\n", Status("Installed"), identity, resolution.version.Text(),
+                       extracted->fileCount);
         }
         ++tally.installed;
     }
@@ -320,7 +293,7 @@ void RemoveLegacyCacheEntries(const GlobalOptions &opts) {
         std::error_code removeError;
         std::filesystem::remove_all(entry.path(), removeError);
         if (!removeError && !opts.quiet) {
-            std::print("     Removed legacy cache entry {}\n", entry.path().filename().string());
+            std::print("{} legacy cache entry {}\n", Status("Removed"), entry.path().filename().string());
         }
     }
 }
@@ -363,7 +336,7 @@ std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opt
             return std::nullopt;
         }
         if (!opts.quiet) {
-            std::print("Installing workspace\n");
+            std::print("{} workspace\n", Status("Installing"));
         }
         for (const auto &memberPath : workspaceManifests) {
             auto memberManifest = LoadManifest(memberPath);
@@ -390,7 +363,7 @@ std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opt
     }
 
     if (!opts.quiet) {
-        std::print("Installing workspace\n");
+        std::print("{} workspace\n", Status("Installing"));
     }
     const std::filesystem::path workspaceRoot = manifestPath->parent_path();
     for (const auto &member : manifest->workspace.packages) {
@@ -535,7 +508,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
 
     RemoveLegacyCacheEntries(opts);
     if (!opts.quiet) {
-        std::print("     Resolving from {}\n", ResolveRegistryBase(registryArg));
+        std::print("{} from {}\n", Status("Resolving"), ResolveRegistryBase(registryArg));
     }
     IndexCache index(ResolveRegistryBase(registryArg));
     const auto resolved = ResolveGraph(index, seeds);
@@ -548,7 +521,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
         return 1;
     }
     if (!opts.quiet) {
-        std::print("     Summary: {} installed, {} already up-to-date\n", tally.installed, tally.upToDate);
+        std::print("{} {} installed, {} already up-to-date\n", Status("Summary:"), tally.installed, tally.upToDate);
     }
     return 0;
 }
@@ -592,7 +565,7 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
                 return false;
             }
             if (!opts.quiet) {
-                std::print("   Uninstalled {} {}\n", QualifiedIdentity(ns, name), installed.version.Text());
+                std::print("{} {} {}\n", Status("Uninstalled"), QualifiedIdentity(ns, name), installed.version.Text());
             }
             ++removed;
         }
@@ -614,7 +587,7 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
             return 0;
         }
         if (!opts.quiet) {
-            std::print("     Summary: {} uninstalled\n", removed);
+            std::print("{} {} uninstalled\n", Status("Summary:"), removed);
         }
         return 0;
     }
@@ -665,13 +638,13 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
         }
         if (removed == before) {
             if (!opts.quiet) {
-                std::print("  Not installed {}\n", Qualified(requirement.ns, requirement.package));
+                std::print("{} {}\n", Status("Not found"), Qualified(requirement.ns, requirement.package));
             }
             ++notFound;
         }
     }
     if (!opts.quiet) {
-        std::print("     Summary: {} uninstalled, {} not installed\n", removed, notFound);
+        std::print("{} {} uninstalled, {} not installed\n", Status("Summary:"), removed, notFound);
     }
     return 0;
 }
@@ -758,7 +731,7 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opt
     // resolve. The index is the cheapest route that answers that question.
     const std::string base = ResolveRegistryBase(registryArg);
     if (!opts.quiet) {
-        std::print("     Resolving from {}\n", base);
+        std::print("{} from {}\n", Status("Resolving"), base);
     }
     if (auto entry = FetchPackageIndex(base, *parsedSpec->ns, parsedSpec->name); !entry) {
         std::print(stderr, "error: {}\n", Describe(entry.error(), base, Qualified(*parsedSpec->ns, parsedSpec->name)));
@@ -826,7 +799,7 @@ int Cli::RunRemove(std::span<const std::string_view> args, const GlobalOptions &
         return 1;
     }
     if (!opts.quiet) {
-        std::print("     Removed {}\n", pkgName);
+        std::print("{} {}\n", Status("Removed"), pkgName);
     }
     return 0;
 }
@@ -963,7 +936,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
 
     RemoveLegacyCacheEntries(opts);
     if (!opts.quiet) {
-        std::print("     Resolving from {}\n", ResolveRegistryBase(registryArg));
+        std::print("{} from {}\n", Status("Resolving"), ResolveRegistryBase(registryArg));
     }
     IndexCache index(ResolveRegistryBase(registryArg));
     const auto resolved = ResolveGraph(index, seeds);
@@ -976,7 +949,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
         return 1;
     }
     if (!opts.quiet) {
-        std::print("     Summary: {} newly installed, {} already current\n", tally.installed, tally.upToDate);
+        std::print("{} {} newly installed, {} already current\n", Status("Summary:"), tally.installed, tally.upToDate);
     }
     return 0;
 }
@@ -1044,7 +1017,7 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
             }
             std::print(stderr, "error: no installed version of {} matches '{}'; run 'rux install {}'\n", identity,
                        requirement.range.Text(), packageSpec);
-            std::print(stderr, "  {} publishes {}\n", base, DescribeAvailableVersions(*entry));
+            std::print(stderr, "{}{} publishes {}\n", errorContinuation, base, DescribeAvailableVersions(*entry));
             return 1;
         }
         manifestPath = installed->root / "Rux.toml";

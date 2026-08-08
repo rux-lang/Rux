@@ -1,6 +1,7 @@
 // Publication commands: pack builds the .ruxpkg archive, publish uploads it.
 
 #include "Cli/Cli.h"
+#include "Cli/TerminalStyle.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/Credentials.h"
 #include "Package/Artifact.h"
@@ -24,6 +25,7 @@
 using namespace Rux;
 using namespace Driver;
 using namespace System;
+using namespace CliSupport;
 
 namespace {
 /**
@@ -123,10 +125,10 @@ void ReportPublicationProblem(const HttpResponse &response, const Manifest &mani
 
     for (const auto &entry : JsonFindProblemErrors(response.body)) {
         if (entry.detail.empty()) {
-            std::print(stderr, "  {}\n", entry.code);
+            std::print(stderr, "{}{}\n", errorContinuation, entry.code);
         }
         else {
-            std::print(stderr, "  {}: {}\n", entry.code, entry.detail);
+            std::print(stderr, "{}{}: {}\n", errorContinuation, entry.code, entry.detail);
         }
     }
 }
@@ -186,9 +188,9 @@ int Cli::RunPack(std::span<const std::string_view> args, const GlobalOptions &op
     }
 
     if (!opts.quiet) {
-        std::print("      Packed {} {} ({} files, {})\n", QualifiedName(manifest), manifest.package.version.Text(),
-                   artifact->fileCount, FormatBytes(artifact->archive.size()));
-        std::print("     Written {}\n", output.generic_string());
+        std::print("{} {} {} ({} files, {})\n", Status("Packed"), QualifiedName(manifest),
+                   manifest.package.version.Text(), artifact->fileCount, FormatBytes(artifact->archive.size()));
+        std::print("{} {}\n", Status("Written"), output.generic_string());
     }
     return 0;
 }
@@ -256,12 +258,12 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
     }
 
     if (!opts.quiet) {
-        std::print("      Packed {} {} ({} files, {})\n", QualifiedName(manifest), manifest.package.version.Text(),
-                   artifact->fileCount, FormatBytes(artifact->archive.size()));
+        std::print("{} {} {} ({} files, {})\n", Status("Packed"), QualifiedName(manifest),
+                   manifest.package.version.Text(), artifact->fileCount, FormatBytes(artifact->archive.size()));
     }
     if (dryRun) {
         if (!opts.quiet) {
-            std::print("     Dry run: the package is publishable and was not uploaded\n");
+            std::print("{} the package is publishable and was not uploaded\n", Status("Dry run:"));
         }
         return 0;
     }
@@ -277,7 +279,7 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
     }
 
     if (!opts.quiet) {
-        std::print("   Uploading to {}\n", base);
+        std::print("{} to {}\n", Status("Uploading"), base);
     }
     auto response = HttpSend({.method = "POST",
                               .url = base + "/v1/packages",
@@ -294,7 +296,7 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
     }
 
     if (!opts.quiet) {
-        std::print("   Published {} {}\n", QualifiedName(manifest), manifest.package.version.Text());
+        std::print("{} {} {}\n", Status("Published"), QualifiedName(manifest), manifest.package.version.Text());
     }
     return 0;
 }

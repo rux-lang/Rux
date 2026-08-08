@@ -6,6 +6,7 @@
 // free of a --token flag.
 
 #include "Cli/Cli.h"
+#include "Cli/TerminalStyle.h"
 #include "Driver/Credentials.h"
 #include "System/Json.h"
 #include "System/Os.h"
@@ -21,6 +22,7 @@
 using namespace Rux;
 using namespace Driver;
 using namespace System;
+using namespace CliSupport;
 
 namespace {
 /// Obtain the token, prompting only when a person is there to read the prompt.
@@ -150,12 +152,12 @@ int Cli::RunLogin(std::span<const std::string_view> args, const GlobalOptions &o
 
     if (!opts.quiet) {
         if (identity.empty()) {
-            std::print("   Logged in to {}\n", base);
+            std::print("{} in to {}\n", Status("Logged"), base);
         }
         else {
-            std::print("   Logged in to {} as {}\n", base, identity);
+            std::print("{} in to {} as {}\n", Status("Logged"), base, identity);
         }
-        std::print("      Stored {}\n", CredentialsPath().generic_string());
+        std::print("{} {}\n", Status("Stored"), CredentialsPath().generic_string());
     }
     // A set RUX_TOKEN outranks what was just stored, so silently storing a token
     // that will not be used would be the confusing outcome.
@@ -194,10 +196,10 @@ int Cli::RunLogout(std::span<const std::string_view> args, const GlobalOptions &
 
     if (!opts.quiet) {
         if (*erased) {
-            std::print("  Logged out of {}\n", base);
+            std::print("{} out of {}\n", Status("Logged"), base);
         }
         else {
-            std::print("  No stored token for {}\n", base);
+            std::print("{} no stored token for {}\n", Status("Skipped"), base);
         }
     }
     return 0;

@@ -43,4 +43,18 @@ struct AnsiStyle {
 // convention, and whether stdout is an interactive terminal. On Windows this
 // also enables virtual-terminal processing so the escape codes are interpreted.
 [[nodiscard]] bool ColorEnabled(ColorMode mode);
+
+// Column the leading verb of a progress line is right-aligned in, so a run of
+// them shares one left edge for the text that follows. Stated once here because
+// counting the spaces at each call site is what let four different widths into
+// the CLI in the first place.
+inline constexpr std::size_t statusWidth = 12;
+
+// Right-align `verb` in the status column. The caller adds the separating space
+// and the message: `std::print("{} {}\n", Status("Installed"), identity)`.
+[[nodiscard]] std::string Status(std::string_view verb);
+
+// Indent that lines a continuation up under the message of an `error: ` line,
+// so the detail reads as belonging to the error rather than to the next thing.
+inline constexpr std::string_view errorContinuation = "       ";
 } // namespace Rux::CliSupport
