@@ -35,4 +35,4 @@ when #target.os == .MacOS {
 
 ## License
 
-Licensed under the [MIT License](https://github.com/rux-lang/Rux/blob/main/LICENSE.md).
+Licensed under the [MIT License](LICENSE.md).

@@ -16,4 +16,4 @@ Sorting, searching, and the transformations that pair with the range and slice t
 
 ## License
 
-Licensed under the [MIT License](https://github.com/rux-lang/Rux/blob/main/LICENSE.md).
+Licensed under the [MIT License](LICENSE.md).

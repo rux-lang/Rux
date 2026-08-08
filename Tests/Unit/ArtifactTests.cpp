@@ -142,7 +142,7 @@ TEST_CASE("packing the same tree twice produces identical bytes") {
     CHECK(std::ranges::is_sorted(names));
 }
 
-TEST_CASE("the referenced readme is packed and license text is not") {
+TEST_CASE("both referenced text files are packed") {
     const ArtifactFixture fixture;
     fixture.WriteMinimalPackage(R"([Manifest]
 Version = 1
@@ -154,8 +154,8 @@ Name = "Widget"
 Version = "1.0.0"
 Type = "Source"
 License = "MIT"
-LicenseUrl = "https://example.com/LICENSE.md"
-Readme = "Docs/README.md"
+LicenseFile = "LICENSE.md"
+ReadmeFile = "Docs/README.md"
 )");
     fixture.Write("Docs/README.md", "# Widget\n");
     fixture.Write("LICENSE.md", "MIT\n");
@@ -163,12 +163,53 @@ Readme = "Docs/README.md"
     const auto artifact = fixture.Build();
     REQUIRE(artifact.has_value());
 
-    // LicenseUrl names the terms rather than shipping them, so a license file
-    // sitting beside the manifest is an ordinary unreferenced file.
     const auto names = ArchiveEntryNames(artifact->archive);
-    REQUIRE(names.size() == 3);
+    REQUIRE(names.size() == 4);
     CHECK(std::ranges::contains(names, "Docs/README.md"));
+    CHECK(std::ranges::contains(names, "LICENSE.md"));
+}
+
+TEST_CASE("an unreferenced license file stays out of the archive") {
+    const ArtifactFixture fixture;
+    fixture.WriteMinimalPackage(R"([Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Acme"
+Name = "Widget"
+Version = "1.0.0"
+Type = "Source"
+License = "MIT"
+)");
+    fixture.Write("LICENSE.md", "MIT\n");
+
+    const auto artifact = fixture.Build();
+    REQUIRE(artifact.has_value());
+
+    // The SPDX expression names the terms without shipping them, so a license
+    // file the manifest never references is an ordinary unreferenced file.
+    const auto names = ArchiveEntryNames(artifact->archive);
     CHECK_FALSE(std::ranges::contains(names, "LICENSE.md"));
+}
+
+TEST_CASE("a declared license file that does not exist is rejected") {
+    const ArtifactFixture fixture;
+    fixture.WriteMinimalPackage(R"([Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Acme"
+Name = "Widget"
+Version = "1.0.0"
+Type = "Source"
+LicenseFile = "LICENSE.md"
+)");
+
+    const auto artifact = fixture.Build();
+    REQUIRE_FALSE(artifact.has_value());
+    CHECK(artifact.error().contains("LICENSE.md"));
 }
 
 TEST_CASE("a declared readme that does not exist is rejected") {
@@ -182,7 +223,7 @@ Namespace = "Acme"
 Name = "Widget"
 Version = "1.0.0"
 Type = "Source"
-Readme = "README.md"
+ReadmeFile = "README.md"
 )");
 
     const auto artifact = fixture.Build();

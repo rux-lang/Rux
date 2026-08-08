@@ -695,7 +695,7 @@ private:
     static void ReadPackage(const Table &table, Package &package) {
         static constexpr std::string_view known[] = {"Namespace",   "Name",       "Version",  "Type",
                                                      "Description", "Authors",    "Keywords", "License",
-                                                     "LicenseUrl",  "Repository", "Homepage", "Readme"};
+                                                     "LicenseFile", "Repository", "Homepage", "ReadmeFile"};
         RejectUnknownKeys(table, known);
 
         if (const Value *ns = Lookup(table, "Namespace")) {
@@ -756,8 +756,10 @@ private:
         if (const Value *license = Lookup(table, "License")) {
             package.license = Typed(*license, Value::Kind::String, "License").text;
         }
-        if (const Value *licenseUrl = Lookup(table, "LicenseUrl")) {
-            package.licenseUrl = ReadUrl(*licenseUrl, "LicenseUrl");
+        // A field named '*File' is a path into the package, never a URL, so it
+        // is read with the same rules as any other archive entry.
+        if (const Value *licenseFile = Lookup(table, "LicenseFile")) {
+            package.licenseFile = ReadPath(*licenseFile, "LicenseFile", false);
         }
         if (const Value *repository = Lookup(table, "Repository")) {
             package.repository = ReadUrl(*repository, "Repository");
@@ -765,8 +767,8 @@ private:
         if (const Value *homepage = Lookup(table, "Homepage")) {
             package.homepage = ReadUrl(*homepage, "Homepage");
         }
-        if (const Value *readme = Lookup(table, "Readme")) {
-            package.readme = ReadPath(*readme, "Readme", false);
+        if (const Value *readmeFile = Lookup(table, "ReadmeFile")) {
+            package.readmeFile = ReadPath(*readmeFile, "ReadmeFile", false);
         }
     }
 
@@ -1001,8 +1003,8 @@ std::string Manifest::Serialize() const {
     if (!package.license.empty()) {
         out << "License = " << Quoted(package.license) << '\n';
     }
-    if (!package.licenseUrl.empty()) {
-        out << "LicenseUrl = " << Quoted(package.licenseUrl) << '\n';
+    if (!package.licenseFile.empty()) {
+        out << "LicenseFile = " << Quoted(package.licenseFile) << '\n';
     }
     if (!package.repository.empty()) {
         out << "Repository = " << Quoted(package.repository) << '\n';
@@ -1010,8 +1012,8 @@ std::string Manifest::Serialize() const {
     if (!package.homepage.empty()) {
         out << "Homepage = " << Quoted(package.homepage) << '\n';
     }
-    if (!package.readme.empty()) {
-        out << "Readme = " << Quoted(package.readme) << '\n';
+    if (!package.readmeFile.empty()) {
+        out << "ReadmeFile = " << Quoted(package.readmeFile) << '\n';
     }
 
     if (!dependencies.empty()) {

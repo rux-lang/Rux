@@ -511,8 +511,8 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .shortDesc = "Build the publishable package archive"sv,
                .description = "Build the .ruxpkg archive that 'rux publish' uploads"sv,
                .usage = Data::pack_usage,
-               .postUsage = "The archive contains Rux.toml, every file below Src/, and the file named by "
-                            "Readme. Without --output it is written to the build output "
+               .postUsage = "The archive contains Rux.toml, every file below Src/, and the files named by "
+                            "ReadmeFile and LicenseFile. Without --output it is written to the build output "
                             "directory as <Name>-<Version>.ruxpkg.\n"
                             "The package must satisfy the same rules 'rux publish' enforces."sv,
                .footer = {},

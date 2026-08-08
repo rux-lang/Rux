@@ -10,8 +10,10 @@ Type = "Source"
 Description = "Linux platform bindings"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
 License = "MIT"
-LicenseUrl = "https://github.com/rux-lang/Rux/blob/main/LICENSE.md"
-Readme = "README.md"
+LicenseFile = "LICENSE.md"
+Repository = "https://github.com/rux-lang/Rux"
+Homepage = "https://rux-lang.dev/docs/api/linux"
+ReadmeFile = "README.md"
 
 [Dependencies]
-Rux = { Namespace = "Rux", Version = "^0.1.0" }
+Rux = { Namespace = "Rux", Version = "0.1.0" }

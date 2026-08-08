@@ -35,4 +35,4 @@ Higher-level packages such as [`Rux/Io`](../Io) and [`Rux/Memory`](../Memory) al
 
 ## License
 
-Licensed under the [MIT License](https://github.com/rux-lang/Rux/blob/main/LICENSE.md).
+Licensed under the [MIT License](LICENSE.md).

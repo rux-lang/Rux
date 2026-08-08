@@ -29,10 +29,10 @@ Description = "An example package"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
 Keywords = ["Example", "Demo"]
 License = "MIT"
-LicenseUrl = "https://github.com/rux-lang/Rux/blob/main/LICENSE.md"
+LicenseFile = "LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"
 Homepage = "https://rux-lang.dev"
-Readme = "README.md"
+ReadmeFile = "README.md"
 
 [Dependencies]
 Io = { Namespace = "Rux", Version = "^1.0.0" }
@@ -94,7 +94,8 @@ TEST_CASE("A canonical package manifest round trips byte for byte") {
     CHECK(manifest.package.version.Text() == "1.2.3-alpha.1+linux");
     CHECK(manifest.package.type == ManifestPackageType::Program);
     CHECK(manifest.package.keywords.size() == 2);
-    CHECK(manifest.package.readme == "README.md");
+    CHECK(manifest.package.readmeFile == "README.md");
+    CHECK(manifest.package.licenseFile == "LICENSE.md");
     CHECK_FALSE(manifest.IsWorkspace());
 
     REQUIRE(manifest.dependencies.size() == 3);
@@ -292,8 +293,12 @@ TEST_CASE("Unknown, duplicate and mistyped input is rejected") {
                        "Type = \"Program\"\n")
                   .message.find("not a valid identity") != std::string::npos);
     }
-    SUBCASE("the retired license file field") {
-        CHECK(Rejected(WithPackage("LicenseFile = \"LICENSE.md\"\n")).message.find("unknown field 'LicenseFile'") !=
+    SUBCASE("the retired license URL field") {
+        CHECK(Rejected(WithPackage("LicenseUrl = \"https://example.com/LICENSE.md\"\n"))
+                  .message.find("unknown field 'LicenseUrl'") != std::string::npos);
+    }
+    SUBCASE("the retired unsuffixed readme field") {
+        CHECK(Rejected(WithPackage("Readme = \"README.md\"\n")).message.find("unknown field 'Readme'") !=
               std::string::npos);
     }
     SUBCASE("colliding keywords") {
@@ -302,40 +307,55 @@ TEST_CASE("Unknown, duplicate and mistyped input is rejected") {
     }
 }
 
-TEST_CASE("An SPDX expression and a license URL describe one package together") {
-    const Manifest manifest =
-        Accepted(WithPackage("License = \"MIT\"\nLicenseUrl = \"https://example.com/LICENSE.md\"\n"));
-    CHECK(manifest.package.license == "MIT");
-    CHECK(manifest.package.licenseUrl == "https://example.com/LICENSE.md");
+TEST_CASE("The license expression and the license file are independent") {
+    SUBCASE("both together") {
+        const Manifest manifest = Accepted(WithPackage("License = \"MIT\"\nLicenseFile = \"LICENSE.md\"\n"));
+        CHECK(manifest.package.license == "MIT");
+        CHECK(manifest.package.licenseFile == "LICENSE.md");
+    }
+    SUBCASE("expression alone") {
+        const Manifest manifest = Accepted(WithPackage("License = \"MIT\"\n"));
+        CHECK(manifest.package.license == "MIT");
+        CHECK(manifest.package.licenseFile.empty());
+    }
+    SUBCASE("file alone") {
+        const Manifest manifest = Accepted(WithPackage("LicenseFile = \"LICENSE.md\"\n"));
+        CHECK(manifest.package.license.empty());
+        CHECK(manifest.package.licenseFile == "LICENSE.md");
+    }
+    SUBCASE("a license file is a path, not a URL") {
+        CHECK(Rejected(WithPackage("LicenseFile = \"https://example.com/LICENSE.md\"\n")).message.find("path") !=
+              std::string::npos);
+    }
 }
 
 TEST_CASE("Metadata URLs must be absolute, hosted and free of credentials") {
     SUBCASE("relative") {
-        CHECK(Rejected(WithPackage("LicenseUrl = \"github.com/rux-lang/Rux\"\n")).message.find("absolute") !=
+        CHECK(Rejected(WithPackage("Repository = \"github.com/rux-lang/Rux\"\n")).message.find("absolute") !=
               std::string::npos);
     }
     SUBCASE("unsupported scheme") {
-        CHECK(Rejected(WithPackage("LicenseUrl = \"ftp://example.com/LICENSE.md\"\n"))
-                  .message.find("'http' or 'https'") != std::string::npos);
+        CHECK(Rejected(WithPackage("Repository = \"ftp://example.com/repo\"\n")).message.find("'http' or 'https'") !=
+              std::string::npos);
     }
     SUBCASE("missing host") {
-        CHECK(Rejected(WithPackage("LicenseUrl = \"https:///LICENSE.md\"\n")).message.find("must include a host") !=
+        CHECK(Rejected(WithPackage("Repository = \"https:///repo\"\n")).message.find("must include a host") !=
               std::string::npos);
     }
     SUBCASE("credentials") {
-        CHECK(Rejected(WithPackage("LicenseUrl = \"https://user:secret@example.com/L\"\n"))
+        CHECK(Rejected(WithPackage("Repository = \"https://user:secret@example.com/r\"\n"))
                   .message.find("cannot contain credentials") != std::string::npos);
     }
     SUBCASE("embedded space") {
-        CHECK(Rejected(WithPackage("LicenseUrl = \"https://example.com/a b\"\n")).message.find("invalid character") !=
+        CHECK(Rejected(WithPackage("Repository = \"https://example.com/a b\"\n")).message.find("invalid character") !=
               std::string::npos);
     }
     SUBCASE("over the length limit") {
         const std::string url = "https://example.com/" + std::string(manifestMaxUrlBytes, 'a');
-        CHECK(Rejected(WithPackage("LicenseUrl = \"" + url + "\"\n")).message.find("byte URL limit") !=
+        CHECK(Rejected(WithPackage("Repository = \"" + url + "\"\n")).message.find("byte URL limit") !=
               std::string::npos);
     }
-    SUBCASE("repository and homepage share the rule") {
+    SUBCASE("repository and homepage are named in their own diagnostics") {
         CHECK(Rejected(WithPackage("Repository = \"github.com/rux-lang/Rux\"\n")).message.find("'Repository'") !=
               std::string::npos);
         CHECK(Rejected(WithPackage("Homepage = \"rux-lang.dev\"\n")).message.find("'Homepage'") != std::string::npos);
@@ -428,7 +448,7 @@ TEST_CASE("Manifest paths must be relative and portable") {
     CHECK(Rejected(WithPackage("\n[Build]\nOutput = \"Out\\\\Sub\"\n")).message.find("'/' separators") !=
           std::string::npos);
     CHECK(Rejected(WithPackage("\n[Build]\nOutput = \"./Out\"\n")).message.find("'.' component") != std::string::npos);
-    CHECK(Rejected(WithPackage("Readme = \"../README.md\"\n")).message.find("'..' component") != std::string::npos);
+    CHECK(Rejected(WithPackage("ReadmeFile = \"../README.md\"\n")).message.find("'..' component") != std::string::npos);
     CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"A/../B\" }\n"))
               .message.find("'..' after a normal component") != std::string::npos);
 
@@ -708,10 +728,15 @@ TEST_CASE("first-party packages are publishable under the Rux namespace") {
         CHECK_MESSAGE(!manifest.package.description.empty(), "package needs a description: ", path.string());
         CHECK_MESSAGE(!manifest.package.authors.empty(), "package needs authors: ", path.string());
 
-        // The archive carries no license text, so the terms are only ever
-        // reachable through these two fields.
+        // The expression is what a dependency-tree license audit reads and the
+        // file is what a human reads, so every shipped package declares both,
+        // and the declared file has to exist to survive packing.
         CHECK_MESSAGE(!manifest.package.license.empty(), "package needs a license: ", path.string());
-        CHECK_MESSAGE(!manifest.package.licenseUrl.empty(), "package needs a license URL: ", path.string());
+        CHECK_MESSAGE(!manifest.package.licenseFile.empty(), "package needs a license file: ", path.string());
+        CHECK_MESSAGE(std::filesystem::is_regular_file(entry.path() / manifest.package.licenseFile),
+                      "declared license file is missing: ", path.string());
+        CHECK_MESSAGE(std::filesystem::is_regular_file(entry.path() / manifest.package.readmeFile),
+                      "declared readme file is missing: ", path.string());
 
         // MinRux is the other field publication requires and local builds do not.
         CHECK_MESSAGE(ValidateForPublication(manifest).empty(),

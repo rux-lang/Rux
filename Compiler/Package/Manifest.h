@@ -133,17 +133,20 @@ struct Package {
     std::vector<std::string> authors;
     std::vector<IdentitySegment> keywords;
 
-    /// SPDX expression.
+    /// SPDX expression naming the terms.
+    ///
+    /// Independent of `licenseFile`: a manifest may declare the expression,
+    /// the file, both, or neither.
     std::string license;
 
-    /// Absolute http/https URL of the license text.
-    std::string licenseUrl;
+    /// Package-relative path to the license text carried in the package.
+    std::string licenseFile;
 
     std::string repository;
     std::string homepage;
 
     /// Package-relative path to a readme file.
-    std::string readme;
+    std::string readmeFile;
 };
 
 /**

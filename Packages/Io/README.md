@@ -26,7 +26,7 @@ rux add Rux/Io
 ```rux
 import Io::{ PrintLine, ReadLine };
 
-func Main() -> int32 {
+func Main() -> int {
     PrintLine("What is your name?");
     var name = ReadLine();
     PrintLine(name);
@@ -41,4 +41,4 @@ func Main() -> int32 {
 
 ## License
 
-Licensed under the [MIT License](https://github.com/rux-lang/Rux/blob/main/LICENSE.md).
+Licensed under the [MIT License](LICENSE.md).

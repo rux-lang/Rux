@@ -43,9 +43,9 @@ struct PackageArtifact {
 /**
  * @brief Build the `.ruxpkg` archive for a package.
  *
- * Collects the manifest, every regular file below `Src/`, and the file named
- * by `Readme`. Entries are sorted by path and carry a fixed timestamp, so
- * building the same tree twice produces identical bytes.
+ * Collects the manifest, every regular file below `Src/`, and the files named
+ * by `ReadmeFile` and `LicenseFile`. Entries are sorted by path and carry a
+ * fixed timestamp, so building the same tree twice produces identical bytes.
  *
  * The caller is expected to have accepted the manifest under the publication
  * profile first; this function checks the archive contract rather than the
