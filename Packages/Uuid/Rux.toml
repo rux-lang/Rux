@@ -9,3 +9,5 @@ Version = "0.1.0"
 Type = "Source"
 Description = "UUID representation, parsing, formatting, and generation"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
+License = "MIT"
+Readme = "README.md"

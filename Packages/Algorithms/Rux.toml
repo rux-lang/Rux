@@ -9,3 +9,5 @@ Version = "0.1.0"
 Type = "Source"
 Description = "Generic algorithms over slices, ranges, and iterators"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
+License = "MIT"
+Readme = "README.md"

@@ -238,8 +238,10 @@ extern {
         templateFile: *opaque
     ) -> *opaque;
 
-    func CreateFileA(
-        fileName: *char8,
+    // Creates or opens a file or I/O device.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
+    func CreateFileW(
+        fileName: *char16,
         desiredAccess: uint32,
         shareMode: uint32,
         securityAttributes: *opaque,

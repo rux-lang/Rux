@@ -9,10 +9,12 @@ Version = "0.1.0"
 Type = "Source"
 Description = "Memory management functions"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
+License = "MIT"
+Readme = "README.md"
 
 [Dependencies]
-Bsd = { Namespace = "Rux", Version = "*" }
-Linux = { Namespace = "Rux", Version = "*" }
-MacOS = { Namespace = "Rux", Version = "*" }
-Rux = { Namespace = "Rux", Version = "*" }
-Windows = { Namespace = "Rux", Version = "*" }
+Bsd = { Namespace = "Rux", Version = "0.1.0" }
+Linux = { Namespace = "Rux", Version = "0.1.0" }
+MacOS = { Namespace = "Rux", Version = "0.1.0" }
+Rux = { Namespace = "Rux", Version = "0.1.0" }
+Windows = { Namespace = "Rux", Version = "0.1.0" }

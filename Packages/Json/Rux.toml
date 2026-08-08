@@ -9,3 +9,5 @@ Version = "0.1.0"
 Type = "Source"
 Description = "JSON parsing and serialization"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
+License = "MIT"
+Readme = "README.md"

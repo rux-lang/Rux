@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://rux-lang.dev">
-    <img src="https://rux-lang.dev/logo.svg" alt="Rux logo" width="150">
+    <img src="https://rux-lang.dev/logo.svg" alt="Rux logo" width="120">
   </a>
 </p>
 
@@ -62,4 +62,4 @@ Join the project on [GitHub Discussions](https://github.com/rux-lang/Rux/discuss
 
 ## License
 
-Rux is available under the [MIT License](LICENSE.md).
+Licensed under the [MIT License](LICENSE.md).

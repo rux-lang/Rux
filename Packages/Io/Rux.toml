@@ -9,13 +9,15 @@ Version = "0.1.0"
 Type = "Source"
 Description = "Streams, console I/O, readers, and writers"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
+License = "MIT"
+Readme = "README.md"
 
 [Dependencies]
-Bsd = { Namespace = "Rux", Version = "*" }
-Format = { Namespace = "Rux", Version = "*" }
-Linux = { Namespace = "Rux", Version = "*" }
-MacOS = { Namespace = "Rux", Version = "*" }
-Memory = { Namespace = "Rux", Version = "*" }
-Rux = { Namespace = "Rux", Version = "*" }
-Text = { Namespace = "Rux", Version = "*" }
-Windows = { Namespace = "Rux", Version = "*" }
+Bsd = { Namespace = "Rux", Version = "0.1.0" }
+Format = { Namespace = "Rux", Version = "0.1.0" }
+Linux = { Namespace = "Rux", Version = "0.1.0" }
+MacOS = { Namespace = "Rux", Version = "0.1.0" }
+Memory = { Namespace = "Rux", Version = "0.1.0" }
+Rux = { Namespace = "Rux", Version = "0.1.0" }
+Text = { Namespace = "Rux", Version = "0.1.0" }
+Windows = { Namespace = "Rux", Version = "0.1.0" }
