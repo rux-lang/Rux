@@ -279,6 +279,11 @@ bool InstallResolved(const IndexCache &index, const std::vector<Resolution> &res
  * That layout stored one unversioned directory per bare package name, so its
  * manifest sits directly below the cache root. Nothing reads those directories
  * any more, and leaving them would only clutter `rux list --global`.
+ *
+ * Callers must run this before resolving, not merely early: the intrinsics
+ * package used to be named `Rux`, so `<cache>/Rux` can be one of these flat
+ * entries rather than a namespace directory, and a package lookup matching
+ * directory names would otherwise adopt it and install inside it.
  */
 void RemoveLegacyCacheEntries(const GlobalOptions &opts) {
     const std::filesystem::path cacheDir = RegistryPackagesDir();
@@ -415,7 +420,11 @@ std::optional<SpecRequirement> RequirementFromSpec(const std::string_view spec, 
                            .explicitRange = parsed->version.has_value()};
 }
 
-/// Every `<namespace>/<name>` pair the cache holds, in normalized order.
+/// Every `<namespace>/<name>` pair the cache holds, in normalized order, each
+/// carrying the spelling its directory uses. Unlike the lookup in BuildTarget,
+/// this parses rather than normalizes: enumeration must not turn a stray
+/// directory name into an identity, while a lookup has to find the directory
+/// whichever way it was spelled.
 std::vector<std::pair<IdentitySegment, IdentitySegment>> CachedPackages() {
     std::vector<std::pair<IdentitySegment, IdentitySegment>> packages;
     const std::filesystem::path cacheDir = RegistryPackagesDir();
@@ -506,6 +515,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
         }
     }
 
+    // Must precede resolution, not merely run early; see the function.
     RemoveLegacyCacheEntries(opts);
     if (!opts.quiet) {
         std::print("{} from {}\n", Status("Resolving"), ResolveRegistryBase(registryArg));
@@ -823,14 +833,10 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions &op
         std::vector<std::string> lines;
         for (const auto &[ns, name] : CachedPackages()) {
             for (const auto &installed : InstalledVersions(ns, name)) {
-                // Cache directories are normalized, so the display spelling
-                // comes from the manifest the package was published with.
-                const auto loaded = Manifest::Load(installed.root / "Rux.toml");
-                const std::string identity =
-                    loaded.Ok() && !loaded.manifest->IsWorkspace() && loaded.manifest->package.ns
-                        ? QualifiedIdentity(*loaded.manifest->package.ns, loaded.manifest->package.name)
-                        : QualifiedIdentity(ns, name);
-                lines.push_back(std::format("{} {}", identity, installed.version.Text()));
+                // Cache directories carry the spelling the package was published
+                // with, so the directory name is the display spelling and there
+                // is no manifest to re-read for it.
+                lines.push_back(std::format("{} {}", QualifiedIdentity(ns, name), installed.version.Text()));
             }
         }
         if (lines.empty()) {
@@ -934,6 +940,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
         }
     }
 
+    // Must precede resolution, not merely run early; see the function.
     RemoveLegacyCacheEntries(opts);
     if (!opts.quiet) {
         std::print("{} from {}\n", Status("Resolving"), ResolveRegistryBase(registryArg));

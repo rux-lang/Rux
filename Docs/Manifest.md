@@ -235,11 +235,11 @@ Resolution walks the dependency graph breadth-first from the root manifest — o
 
 Each selected version is downloaded as its `.ruxpkg`, checked against the SHA-256 the registry publishes for it, and unpacked under the same archive contract `rux pack` applies — entry paths cannot escape the package, and the declared size and count limits hold. A download that fails any of those checks installs nothing. The unpacked manifest must also carry the identity and version it was published under.
 
-Packages are cached per exact version, using normalized identity for the directory names and the complete version text for the leaf:
+Packages are cached per exact version. The namespace and name directories use the spelling the package was published under, and are matched by their normalized form, so a manifest that spells a dependency differently still resolves to the one entry. The leaf is the complete version text:
 
 ```text
-%LocalAppData%\Rux\Packages\<namespace>\<name>\<version>\   (Windows)
-~/.rux/packages/<namespace>/<name>/<version>/               (Unix-like hosts)
+%LocalAppData%\Rux\Packages\Rux\Io\0.1.0\   (Windows)
+~/.rux/packages/Rux/Io/0.1.0/               (Unix-like hosts)
 ```
 
 Several versions of one package can therefore be installed at once. `rux build`, `rux check`, `rux run` and `rux test` select among them locally — the highest installed version matching the manifest requirement — so a build never contacts the registry. A requirement with no matching installed version is an error naming the versions that are installed.

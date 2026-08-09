@@ -7,12 +7,14 @@
 #include "System/Os.h"
 #include "Target/Target.h"
 
+#include <algorithm>
 #include <doctest.h>
 #include <filesystem>
 #include <fstream>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using namespace Rux;
 using namespace Rux::Driver;
@@ -92,27 +94,45 @@ void Install(const std::string_view ns, const std::string_view name, const std::
     std::ofstream(dir / "Rux.toml", std::ios::binary) << "[Manifest]\nVersion = 1\n";
 }
 
-/// Create a directory in the cache that no install would have produced.
+/// Create a directory beside a package's installed versions that no install
+/// would have produced. The parent is resolved the way production resolves it,
+/// so the stray always lands beside the versions it is meant to sit beside.
 void PlaceStrayDirectory(const std::string_view ns, const std::string_view name, const std::string_view leaf) {
     std::error_code ec;
-    std::filesystem::create_directories(RegistryPackagesDir() / std::string(ns) / std::string(name) / std::string(leaf),
-                                        ec);
+    std::filesystem::create_directories(RegistryPackageParentDir(Segment(ns), Segment(name)) / std::string(leaf), ec);
     REQUIRE(!ec);
+}
+
+/// Create a directory under the cache root from literal path segments, for the
+/// cases that are about the spelling on disk and so cannot go through the
+/// production path.
+void PlaceRawDirectory(const std::string_view relative) {
+    std::error_code ec;
+    std::filesystem::create_directories(RegistryPackagesDir() / std::filesystem::path(relative), ec);
+    REQUIRE(!ec);
+}
+
+/// Filenames directly under `dir`, sorted. Reading the name back is the only
+/// portable way to assert casing: exists() is case-blind on Windows and macOS.
+std::vector<std::string> ChildNames(const std::filesystem::path &dir) {
+    std::vector<std::string> names;
+    std::error_code ec;
+    for (const auto &entry : std::filesystem::directory_iterator(dir, ec)) {
+        names.push_back(entry.path().filename().string());
+    }
+    std::ranges::sort(names);
+    return names;
 }
 } // namespace
 
-TEST_CASE("a package directory is keyed by normalized identity and exact version") {
+TEST_CASE("a package directory is keyed by display spelling and exact version") {
     const ScopedPackageCache cache;
     const auto dir = RegistryPackageDir(Segment("Rux"), Segment("My_Pkg"), Version("1.2.3+native"));
 
     CHECK(dir.filename() == "1.2.3+native");
-    CHECK(dir.parent_path().filename() == "my-pkg");
-    CHECK(dir.parent_path().parent_path().filename() == "rux");
+    CHECK(dir.parent_path().filename() == "My_Pkg");
+    CHECK(dir.parent_path().parent_path().filename() == "Rux");
     CHECK(dir.parent_path().parent_path().parent_path() == RegistryPackagesDir());
-
-    // Two spellings of one identity share one directory, as they share one
-    // registry entry.
-    CHECK(RegistryPackageDir(Segment("rux"), Segment("my-pkg"), Version("1.2.3+native")) == dir);
 }
 
 TEST_CASE("installed versions are reported in ascending order") {
@@ -141,8 +161,8 @@ TEST_CASE("a package that was never installed has no versions") {
 TEST_CASE("a directory whose name is not a version is ignored") {
     const ScopedPackageCache cache;
     Install("Rux", "Io", "0.1.0");
-    PlaceStrayDirectory("rux", "io", "Src");
-    PlaceStrayDirectory("rux", "io", "not-a-version");
+    PlaceStrayDirectory("Rux", "Io", "Src");
+    PlaceStrayDirectory("Rux", "Io", "not-a-version");
 
     const auto installed = InstalledVersions(Segment("Rux"), Segment("Io"));
     REQUIRE(installed.size() == 1);
@@ -181,9 +201,89 @@ TEST_CASE("resolution finds a package installed under a different spelling") {
     const ScopedPackageCache cache;
     Install("rux", "my-pkg", "1.0.0");
 
+    // An install writes the spelling the registry publishes; a build looks the
+    // package up with the spelling the consuming manifest uses. This is the case
+    // that fails if lookup ever goes back to joining the caller's spelling, and
+    // it is meaningful on either kind of filesystem: `rux` and `Rux` differ only
+    // where case matters, but `my-pkg` and `My_Pkg` differ everywhere.
     const auto found = FindInstalledPackage(Segment("Rux"), Segment("My_Pkg"), Range("^1.0.0"));
     REQUIRE(found.has_value());
     CHECK(found->version.Text() == "1.0.0");
+}
+
+TEST_CASE("an install creates directories under the published spelling") {
+    const ScopedPackageCache cache;
+    Install("Rux", "Windows", "0.1.0");
+
+    CHECK(ChildNames(RegistryPackagesDir()) == std::vector<std::string>{"Rux"});
+    CHECK(ChildNames(RegistryPackagesDir() / "Rux") == std::vector<std::string>{"Windows"});
+}
+
+TEST_CASE("looking a package up creates nothing") {
+    const ScopedPackageCache cache;
+    PlaceRawDirectory("rux/io/0.1.0");
+
+    const auto found = FindInstalledPackage(Segment("Rux"), Segment("Io"), Range("*"));
+    REQUIRE(found.has_value());
+    CHECK(found->version.Text() == "0.1.0");
+    // Resolving an identity must not leave a second tree behind for it.
+    CHECK(ChildNames(RegistryPackagesDir()) == std::vector<std::string>{"rux"});
+}
+
+TEST_CASE("a new version joins the directory a package already has") {
+    const ScopedPackageCache cache;
+    PlaceRawDirectory("rux/io");
+
+    // Only the missing leaf takes the display spelling; an existing parent is
+    // kept, because forking a second tree would hide the versions already in it.
+    const auto dir = RegistryPackageDir(Segment("Rux"), Segment("Io"), Version("1.0.0"));
+    CHECK(dir.parent_path() == RegistryPackagesDir() / "rux" / "io");
+}
+
+// Two directories that differ only by case need a case-sensitive filesystem to
+// coexist, but `-` and `_` are distinct bytes everywhere while normalizing to
+// the same identity. The pair below therefore reproduces a split tree on all
+// four supported platforms rather than only on Linux and FreeBSD.
+
+TEST_CASE("one of two spellings of an identity is preferred consistently") {
+    const ScopedPackageCache cache;
+    PlaceRawDirectory("Rux/My-Pkg");
+    PlaceRawDirectory("Rux/My_Pkg");
+
+    // Directory iteration order is unspecified, so without a tie-break a build
+    // could resolve to a different directory on each run.
+    const auto first = RegistryPackageParentDir(Segment("Rux"), Segment("my-pkg"));
+    CHECK(RegistryPackageParentDir(Segment("Rux"), Segment("my-pkg")) == first);
+    CHECK(first.filename() == "My-Pkg");
+}
+
+TEST_CASE("the display spelling wins over another spelling of the same identity") {
+    const ScopedPackageCache cache;
+    PlaceRawDirectory("Rux/My-Pkg");
+    PlaceRawDirectory("Rux/My_Pkg");
+
+    // "My-Pkg" is the lower name, so only an exact match can select "My_Pkg".
+    CHECK(RegistryPackageParentDir(Segment("Rux"), Segment("My_Pkg")).filename() == "My_Pkg");
+}
+
+TEST_CASE("a file where a namespace directory would be is not a package") {
+    const ScopedPackageCache cache;
+    std::error_code ec;
+    std::filesystem::create_directories(RegistryPackagesDir(), ec);
+    REQUIRE(!ec);
+    std::ofstream(RegistryPackagesDir() / "Rux", std::ios::binary) << "not a directory";
+
+    CHECK(InstalledVersions(Segment("Rux"), Segment("Io")).empty());
+}
+
+TEST_CASE("a directory that is not an identity at all is ignored") {
+    const ScopedPackageCache cache;
+    Install("Rux", "Io", "0.1.0");
+    PlaceRawDirectory("not a valid identity!");
+
+    const auto found = FindInstalledPackage(Segment("Rux"), Segment("Io"), Range("*"));
+    REQUIRE(found.has_value());
+    CHECK(found->version.Text() == "0.1.0");
 }
 
 TEST_CASE("build metadata breaks a tie between otherwise equal versions") {

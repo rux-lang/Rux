@@ -89,10 +89,12 @@ rux      -> RuxDriver
 
 Package commands use `Package/Manifest` for the strict versioned [`Rux.toml` contract](Manifest.md), `System/Process` and `System/Json` for registry transport and response parsing, and `Driver/Registry` for the registry's read contract: the resolver index, an exact version's checksum, and the artifact bytes. `Package/Checksum` verifies a download against the digest the registry published, and `Package/Artifact` both builds and unpacks the `.ruxpkg` archive under one contract. Manifest failures carry source-located diagnostics rather than escaping as exceptions.
 
-Build and check resolve path dependencies directly and registry dependencies from the shared package cache, which is keyed by normalized identity and exact version so several versions of a package coexist:
+Build and check resolve path dependencies directly and registry dependencies from the shared package cache, which is keyed by identity and exact version so several versions of a package coexist:
 
-- Windows: `%LocalAppData%\Rux\Packages\<namespace>\<name>\<version>`
-- Unix-like hosts: `~/.rux/packages/<namespace>/<name>/<version>`
+- Windows: `%LocalAppData%\Rux\Packages\<namespace>\<name>\<version>`, for example `%LocalAppData%\Rux\Packages\Rux\Io\0.1.0`
+- Unix-like hosts: `~/.rux/packages/<namespace>/<name>/<version>`, for example `~/.rux/packages/Rux/Io/0.1.0`
+
+The namespace and name directories carry the spelling the package was published under, and an existing one is found by comparing normalized names. That matters because the two sides disagree by design: an install writes the spelling the registry publishes, while a build looks the package up with the spelling the consuming manifest happens to use.
 
 Selecting among installed versions is a local operation in `Driver/BuildTarget`, so a build never reaches the network; only `install`, `update`, `add`, `info` and the publication commands do.
 
