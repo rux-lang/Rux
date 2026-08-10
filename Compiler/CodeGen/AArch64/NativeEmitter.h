@@ -22,9 +22,9 @@ class AArch64NativeEmitter {
 public:
     explicit AArch64NativeEmitter(const LirPackage &package, std::string packageName, TargetContext target);
 
-    [[nodiscard]] bool EmitExecutable(const std::filesystem::path &outputPath,
-                                      const std::filesystem::path &temporaryDirectory, bool release,
-                                      const std::optional<std::filesystem::path> &assemblyPath = std::nullopt);
+    [[nodiscard]] bool EmitArtifact(const std::filesystem::path &outputPath,
+                                    const std::filesystem::path &temporaryDirectory, bool release, bool sharedLibrary,
+                                    const std::optional<std::filesystem::path> &assemblyPath = std::nullopt);
 
     [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const {
         return diagnostics;

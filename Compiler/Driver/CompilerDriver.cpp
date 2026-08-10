@@ -541,13 +541,17 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     // below are intentionally bypassed.
     if (useAArch64Backend) {
         const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, !opts.isTest);
-        exePath = binDir / ExecutableFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os);
+        const bool sharedLibrary = opts.manifest.package.type == ManifestPackageType::Library;
+        const std::string outputName =
+            sharedLibrary ? SharedLibraryFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os)
+                          : ExecutableFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os);
+        exePath = binDir / outputName;
         AArch64NativeEmitter emitter(lirPackage, std::string(opts.manifest.package.name.Text()),
                                      compileTimeContext.target);
         const bool release = compileTimeContext.buildMode == Target::BuildMode::Release;
         const std::optional<std::filesystem::path> assemblyPath =
             opts.dumpAsm ? std::make_optional(root / "Temp" / "Asm" / "out.s") : std::nullopt;
-        if (!emitter.EmitExecutable(exePath, root / "Temp" / "Native", release, assemblyPath)) {
+        if (!emitter.EmitArtifact(exePath, root / "Temp" / "Native", release, sharedLibrary, assemblyPath)) {
             for (const auto &diagnostic : emitter.Diagnostics()) {
                 Emit(diagnostic);
             }

@@ -1312,9 +1312,10 @@ AArch64NativeEmitter::AArch64NativeEmitter(const LirPackage &package, std::strin
     , target(inputTarget) {
 }
 
-bool AArch64NativeEmitter::EmitExecutable(const std::filesystem::path &outputPath,
-                                          const std::filesystem::path &temporaryDirectory, const bool release,
-                                          const std::optional<std::filesystem::path> &assemblyPath) {
+bool AArch64NativeEmitter::EmitArtifact(const std::filesystem::path &outputPath,
+                                        const std::filesystem::path &temporaryDirectory, const bool release,
+                                        const bool sharedLibrary,
+                                        const std::optional<std::filesystem::path> &assemblyPath) {
     CEmitter emitter(lir, target.os);
     auto source = emitter.Generate(diagnostics);
     if (!source) {
@@ -1381,6 +1382,9 @@ bool AArch64NativeEmitter::EmitExecutable(const std::filesystem::path &outputPat
     argumentStorage.insert(argumentStorage.end(), {"-std=gnu11", release ? "-O2" : "-O0"});
     if (!release) {
         argumentStorage.emplace_back("-g");
+    }
+    if (sharedLibrary) {
+        argumentStorage.emplace_back(target.os == Target::OS::MacOS ? "-dynamiclib" : "-shared");
     }
     argumentStorage.insert(argumentStorage.end(), {sourcePath.string(), "-o", outputPath.string()});
     AppendLinkArguments(argumentStorage, lir, target);
