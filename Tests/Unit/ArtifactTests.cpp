@@ -2,6 +2,7 @@
 #include "Package/Manifest.h"
 #include "System/Os.h"
 
+#include <algorithm>
 #include <chrono>
 #include <doctest.h>
 #include <filesystem>
