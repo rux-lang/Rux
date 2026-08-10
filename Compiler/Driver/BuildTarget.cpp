@@ -352,7 +352,11 @@ std::vector<InstalledPackage> InstalledVersions(const IdentitySegment &ns, const
         installed.push_back(InstalledPackage{.version = std::move(*version), .root = entry.path()});
     }
     std::ranges::sort(installed, [](const InstalledPackage &left, const InstalledPackage &right) {
-        return SemanticVersion::ComparePrecedence(left.version, right.version) < 0;
+        const int precedence = SemanticVersion::ComparePrecedence(left.version, right.version);
+        if (precedence != 0) {
+            return precedence < 0;
+        }
+        return left.version.Text() < right.version.Text();
     });
     return installed;
 }
