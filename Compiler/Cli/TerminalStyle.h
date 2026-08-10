@@ -25,6 +25,10 @@ struct AnsiStyle {
         return enabled ? "\033[33m" : "";
     }
 
+    [[nodiscard]] std::string_view Cyan() const {
+        return enabled ? "\033[36m" : "";
+    }
+
     [[nodiscard]] std::string_view Bold() const {
         return enabled ? "\033[1m" : "";
     }
@@ -39,9 +43,13 @@ struct AnsiStyle {
 };
 
 // Decide whether ANSI styling should be emitted, honoring --color, the NO_COLOR
-// convention, and whether stdout is an interactive terminal. On Windows this
-// also enables virtual-terminal processing so the escape codes are interpreted.
-[[nodiscard]] bool ColorEnabled(ColorMode mode);
+// convention, TERM=dumb, and whether the selected stream is an interactive
+// terminal. On Windows this also enables virtual-terminal processing.
+enum class OutputStream {
+    Stdout,
+    Stderr
+};
+[[nodiscard]] bool ColorEnabled(ColorMode mode, OutputStream stream = OutputStream::Stdout);
 
 // Progress lines print their verb at column 0 with no padding, so a run of them
 // shares one left edge. Nothing right-aligns a verb; a helper that did was

@@ -143,6 +143,9 @@ CompileResult CompilerDriver::Compile() {
     }
     if (opts.checkOnly) {
         result.stats = stats;
+        if (opts.captureFrontend) {
+            result.modules = std::move(parseResults);
+        }
         result.ok = true;
         return result;
     }

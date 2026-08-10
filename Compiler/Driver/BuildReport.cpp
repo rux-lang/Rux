@@ -4,11 +4,28 @@
 #include "Driver/Version.h"
 
 #include <cmath>
+#include <cstdio>
 #include <iomanip>
-#include <print>
 #include <sstream>
 
 namespace Rux::Driver {
+namespace {
+struct ReportStyle {
+    std::string_view green;
+    std::string_view cyan;
+    std::string_view bold;
+    std::string_view dim;
+    std::string_view reset;
+};
+
+ReportStyle Style(const bool enabled) {
+    if (!enabled) {
+        return {};
+    }
+    return {.green = "\033[32m", .cyan = "\033[36m", .bold = "\033[1m", .dim = "\033[2m", .reset = "\033[0m"};
+}
+} // namespace
+
 std::size_t CountLines(std::string_view source) {
     if (source.empty()) {
         return 0;
@@ -100,7 +117,8 @@ std::string FormatDuration(std::chrono::milliseconds elapsed) {
     return FormatDecimal(static_cast<double>(elapsed.count()) / 1000.0, 2) + "s";
 }
 
-void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats) {
+std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_view profileName,
+                             const BuildStats &stats, const bool colorEnabled) {
     const auto totalMs = stats.total.count();
     const double seconds = stats.totalSeconds;
     const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
@@ -111,59 +129,73 @@ void PrintBuildStats(const std::filesystem::path &exePath, std::string_view prof
     const double compileSpeed = seconds > 0.0 ? static_cast<double>(totalLines) / seconds : 0.0;
     const double throughput = seconds > 0.0 ? static_cast<double>(totalSourceSize) / 1024.0 / 1024.0 / seconds : 0.0;
 
-    std::print("Rux Compiler {}\n"
-               "Target: {}\n"
-               "Mode: {}\n\n"
-               "Build finished successfully.\n\n"
-               "Total build time:            {} ms\n"
-               "  Lexing:                    {} ms\n"
-               "  Parsing:                   {} ms\n"
-               "  Semantic:                  {} ms\n"
-               "  HIR:                       {} ms\n"
-               "  LIR:                       {} ms\n"
-               "  Codegen:                   {} ms\n"
-               "  Linking:                   {} ms\n\n"
-               "Total files:                 {}\n"
-               "  Local files:               {}\n"
-               "  Dependency files:          {}\n\n"
-               "Total lines:                 {}\n"
-               "  Local lines:               {}\n"
-               "  Dependency lines:          {}\n\n"
-               "Total tokens:                {}\n"
-               "  Local tokens:              {}\n"
-               "  Dependency tokens:         {}\n\n"
-               "Total source size:           {}\n"
-               "  Local source size:         {}\n"
-               "  Dependency source size:    {}\n\n"
-               "Output:\n"
-               "  Executable:                {}\n"
-               "  Executable size:           {}\n"
-               "  Peak memory:               {}\n\n"
-               "Performance:\n"
-               "  Compile speed:             {} LOC/s\n"
-               "  Token throughput:          {}\n"
-               "  Total throughput:          {} MB/s\n",
-               RUX_VERSION, TargetName(), profileName, totalMs, stats.lexing.count(), stats.parsing.count(),
-               stats.semantic.count(), stats.hir.count(), stats.lir.count(), stats.codegen.count(),
-               stats.linking.count(), FormatNumber(totalFiles), FormatNumber(stats.localFiles),
-               FormatNumber(stats.dependencyFiles), FormatNumber(totalLines), FormatNumber(stats.localLines),
-               FormatNumber(stats.dependencyLines), FormatNumber(totalTokens), FormatNumber(stats.localTokens),
-               FormatNumber(stats.dependencyTokens), FormatSize(totalSourceSize), FormatSize(stats.localSourceSize),
-               FormatSize(stats.dependencySourceSize), exePath.filename().string(), FormatSize(stats.executableSize),
-               FormatSize(stats.peakMemoryBytes), FormatNumber(static_cast<std::uintmax_t>(std::llround(compileSpeed))),
-               FormatTokenThroughput(tokenThroughput), FormatDecimal(throughput, 2));
+    const auto style = Style(colorEnabled);
+    std::ostringstream output;
+    output << style.bold << "Rux Compiler " << RUX_VERSION << style.reset << '\n'
+           << "Target: " << TargetName() << '\n'
+           << "Mode: " << style.bold << profileName << style.reset << "\n\n"
+           << style.green << style.bold << "Build finished successfully." << style.reset << "\n\n"
+           << "Total build time:            " << style.bold << totalMs << " ms" << style.reset << '\n'
+           << "  Lexing:                    " << stats.lexing.count() << " ms\n"
+           << "  Parsing:                   " << stats.parsing.count() << " ms\n"
+           << "  Semantic:                  " << stats.semantic.count() << " ms\n"
+           << "  HIR:                       " << stats.hir.count() << " ms\n"
+           << "  LIR:                       " << stats.lir.count() << " ms\n"
+           << "  Codegen:                   " << stats.codegen.count() << " ms\n"
+           << "  Linking:                   " << stats.linking.count() << " ms\n\n"
+           << "Total files:                 " << FormatNumber(totalFiles) << '\n'
+           << "  Local files:               " << FormatNumber(stats.localFiles) << '\n'
+           << "  Dependency files:          " << FormatNumber(stats.dependencyFiles) << "\n\n"
+           << "Total lines:                 " << FormatNumber(totalLines) << '\n'
+           << "  Local lines:               " << FormatNumber(stats.localLines) << '\n'
+           << "  Dependency lines:          " << FormatNumber(stats.dependencyLines) << "\n\n"
+           << "Total tokens:                " << FormatNumber(totalTokens) << '\n'
+           << "  Local tokens:              " << FormatNumber(stats.localTokens) << '\n'
+           << "  Dependency tokens:         " << FormatNumber(stats.dependencyTokens) << "\n\n"
+           << "Total source size:           " << FormatSize(totalSourceSize) << '\n'
+           << "  Local source size:         " << FormatSize(stats.localSourceSize) << '\n'
+           << "  Dependency source size:    " << FormatSize(stats.dependencySourceSize) << "\n\n"
+           << style.cyan << style.bold << "Output:" << style.reset << '\n'
+           << "  Executable:                " << style.cyan << exePath.filename().string() << style.reset << '\n'
+           << "  Executable size:           " << FormatSize(stats.executableSize) << '\n'
+           << "  Peak memory:               " << FormatSize(stats.peakMemoryBytes) << "\n\n"
+           << style.cyan << style.bold << "Performance:" << style.reset << '\n'
+           << "  Compile speed:             " << FormatNumber(static_cast<std::uintmax_t>(std::llround(compileSpeed)))
+           << " LOC/s\n"
+           << "  Token throughput:          " << FormatTokenThroughput(tokenThroughput) << '\n'
+           << "  Total throughput:          " << FormatDecimal(throughput, 2) << " MB/s\n";
+    return output.str();
 }
 
-void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats) {
+std::string FormatBuildSummary(const std::filesystem::path &exePath, std::string_view profileName,
+                               const BuildStats &stats, const bool colorEnabled) {
     const auto totalMs = stats.total.count();
     const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
     const std::size_t totalLines = stats.localLines + stats.dependencyLines;
     const std::size_t totalTokens = stats.localTokens + stats.dependencyTokens;
     const double compileSpeed = stats.totalSeconds > 0.0 ? static_cast<double>(totalLines) / stats.totalSeconds : 0.0;
 
-    std::print("Built `{}` [{}] in {} ms\n", profileName, exePath.string(), totalMs);
-    std::print("{} files | {} LOC | {} tokens | {} LOC/s | {} {}\n", FormatNumber(totalFiles), FormatNumber(totalLines),
-               FormatCompactNumber(static_cast<double>(totalTokens)), FormatCompactNumber(compileSpeed),
-               exePath.filename().string(), FormatSize(stats.executableSize));
+    const auto style = Style(colorEnabled);
+    std::ostringstream output;
+    output << style.green << style.bold << "Built" << style.reset << ' ' << style.bold << profileName << style.reset
+           << " [" << style.cyan << exePath.string() << style.reset << "] in " << style.bold << totalMs << " ms"
+           << style.reset << '\n'
+           << style.dim << FormatNumber(totalFiles) << " files | " << FormatNumber(totalLines) << " LOC | "
+           << FormatCompactNumber(static_cast<double>(totalTokens)) << " tokens | " << FormatCompactNumber(compileSpeed)
+           << " LOC/s | " << exePath.filename().string() << ' ' << FormatSize(stats.executableSize) << style.reset
+           << '\n';
+    return output.str();
+}
+
+void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats,
+                     const bool colorEnabled) {
+    const auto report = FormatBuildStats(exePath, profileName, stats, colorEnabled);
+    std::fwrite(report.data(), sizeof(char), report.size(), stdout);
+}
+
+void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats,
+                       const bool colorEnabled) {
+    const auto report = FormatBuildSummary(exePath, profileName, stats, colorEnabled);
+    std::fwrite(report.data(), sizeof(char), report.size(), stdout);
 }
 } // namespace Rux::Driver

@@ -62,6 +62,12 @@ inline double ElapsedSeconds(const std::chrono::steady_clock::time_point start,
 
 // ---- Reporting --------------------------------------------------------------
 
-void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats);
-void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats);
+[[nodiscard]] std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_view profileName,
+                                           const BuildStats &stats, bool colorEnabled);
+[[nodiscard]] std::string FormatBuildSummary(const std::filesystem::path &exePath, std::string_view profileName,
+                                             const BuildStats &stats, bool colorEnabled);
+void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats,
+                     bool colorEnabled);
+void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats,
+                       bool colorEnabled);
 } // namespace Rux::Driver

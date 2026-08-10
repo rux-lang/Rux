@@ -35,6 +35,11 @@ struct Diagnostic {
 // "error" / "warning" — the spelling used in both text and JSON output.
 [[nodiscard]] std::string_view SeverityName(Diagnostic::Severity severity) noexcept;
 
+// Escape one UTF-8 string for use between JSON quotes. Bytes outside the ASCII
+// control range are preserved; quotes, backslashes, and control characters are
+// encoded according to RFC 8259.
+[[nodiscard]] std::string EscapeJson(std::string_view value);
+
 // Print "file:line:column: severity: message" to stderr, or
 // "severity: message" when the diagnostic has no source file.
 void PrintDiagnostic(const Diagnostic &diag);

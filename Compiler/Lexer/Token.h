@@ -124,9 +124,10 @@ enum class TokenKind : std::uint8_t {
     GreaterGreaterGreaterAssign, // >>>=
 
     // Special
-    NewLine,   // significant newline (if the grammar uses them)
-    EndOfFile, // end of file
-    Unknown,   // unrecognized character — carry it for better errors
+    DocComment, // /// outer documentation attached to the following item
+    NewLine,    // significant newline (if the grammar uses them)
+    EndOfFile,  // end of file
+    Unknown,    // unrecognized character — carry it for better errors
 };
 
 struct Token {

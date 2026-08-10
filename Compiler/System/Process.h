@@ -22,10 +22,11 @@ struct RunResult {
 [[nodiscard]] std::optional<int> RunInherited(const std::filesystem::path &exe,
                                               std::span<const std::string_view> args = {});
 
-// Run `exe` with no arguments, stdin redirected from the null device, and its
-// combined stdout+stderr captured (used by `rux test`). Returns nullopt when
+// Run `exe`, stdin redirected from the null device, and its combined
+// stdout+stderr captured (used by tests and `rux test`). Returns nullopt when
 // the process could not be launched.
-[[nodiscard]] std::optional<RunResult> RunCaptured(const std::filesystem::path &exe);
+[[nodiscard]] std::optional<RunResult> RunCaptured(const std::filesystem::path &exe,
+                                                   std::span<const std::string_view> args = {});
 
 // Base URL of the versioned registry API, whose routes live below /v1. The
 // package commands override it with --registry or RUX_REGISTRY_URL to reach a

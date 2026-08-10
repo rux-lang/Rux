@@ -5,8 +5,7 @@
 #include <print>
 
 namespace Rux {
-namespace {
-std::string JsonEscape(std::string_view s) {
+std::string EscapeJson(std::string_view s) {
     std::string out;
     if (s.size() < ((std::numeric_limits<size_t>::max)() - 128)) {
         out.reserve(s.size() + (s.size() / 10) + 16);
@@ -50,7 +49,6 @@ std::string JsonEscape(std::string_view s) {
     }
     return out;
 }
-} // namespace
 
 Diagnostic ErrorDiagnostic(std::string message) {
     return {Diagnostic::Severity::Error, {}, {.line = 0, .column = 0, .offset = 0}, std::move(message)};
@@ -86,11 +84,11 @@ void PrintDiagnosticsJson(std::span<const Diagnostic> diags, const bool success)
     for (std::size_t i = 0; i < diags.size(); ++i) {
         const auto &d = diags[i];
         std::print("    {{");
-        std::print("\"file\":\"{}\",", JsonEscape(d.sourceName));
+        std::print("\"file\":\"{}\",", EscapeJson(d.sourceName));
         std::print("\"line\":{},", d.location.line);
         std::print("\"column\":{},", d.location.column);
-        std::print("\"severity\":\"{}\",", JsonEscape(SeverityName(d.severity)));
-        std::print("\"message\":\"{}\"", JsonEscape(d.message));
+        std::print("\"severity\":\"{}\",", EscapeJson(SeverityName(d.severity)));
+        std::print("\"message\":\"{}\"", EscapeJson(d.message));
         std::print("}}{}\n", (i + 1 < diags.size()) ? "," : "");
     }
     std::print("  ]\n");

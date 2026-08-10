@@ -40,6 +40,7 @@ struct CompileOptions {
     bool isTest = false;
     bool checkOnly = false; // stop after semantic analysis; keep going past
     // frontend errors so all diagnostics are reported
+    bool captureFrontend = false; // retain folded user ASTs in CompileResult
 
     // Debug dumps written under <package root>/Temp (build --dump-*).
     bool dumpTokens = false;
@@ -62,6 +63,7 @@ struct CompileResult {
     bool ok = false;
     std::filesystem::path executablePath; // empty in checkOnly mode or on failure
     BuildStats stats;
+    std::vector<ParseResult> modules; // populated when captureFrontend succeeds
 };
 
 class CompilerDriver {

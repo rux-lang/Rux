@@ -10,9 +10,11 @@ set(RUX_TEST_SOURCES
     BuildReportTests.cpp
     CodegenTests.cpp
     ChecksumTests.cpp
+    CliProcessTests.cpp
     CompilerDriverTests.cpp
     ConditionalCompilationTests.cpp
     CredentialsTests.cpp
+    DocumentationTests.cpp
     GoldenDiagnosticsTests.cpp
     JsonTests.cpp
     LexerTests.cpp
@@ -36,8 +38,8 @@ endif ()
 if (TARGET RuxLinter)
     list(APPEND RUX_TEST_SOURCES LinterTests.cpp)
 endif ()
-
 add_executable(rux-tests ${RUX_TEST_SOURCES})
+add_dependencies(rux-tests rux)
 
 # Keep the unit-test executable with the other repository binaries. Explicit
 # per-config properties prevent multi-config generators from adding profile
@@ -55,6 +57,9 @@ if (TARGET RuxFormatter)
 endif ()
 if (TARGET RuxLinter)
     target_link_libraries(rux-tests PRIVATE RuxLinter)
+endif ()
+if (TARGET RuxDocumentation)
+    target_link_libraries(rux-tests PRIVATE RuxDocumentation)
 endif ()
 
 # SYSTEM keeps the project's warning flags (and -Werror in CI) from applying

@@ -2,6 +2,7 @@
 
 #include "Cli/Cli.h"
 #include "Cli/DefineOption.h"
+#include "Cli/TerminalStyle.h"
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
@@ -22,7 +23,6 @@ using namespace Driver;
 int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &opts) {
     bool isRelease = false;
     bool isDebug = false;
-    std::string_view profile;
     std::string_view target;
     bool dumpTokens = false;
     bool dumpAst = false;
@@ -53,36 +53,40 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
             showStats = true;
             continue;
         }
-        if (arg == "--dump-tokens") {
-            dumpTokens = true;
-            continue;
-        }
-        if (arg == "--dump-ast") {
-            dumpAst = true;
-            continue;
-        }
-        if (arg == "--dump-sema") {
-            dumpSema = true;
-            continue;
-        }
-        if (arg == "--dump-hir") {
-            dumpHir = true;
-            continue;
-        }
-        if (arg == "--dump-lir") {
-            dumpLir = true;
-            continue;
-        }
-        if (arg == "--dump-asm") {
-            dumpAsm = true;
-            continue;
-        }
-        if (arg == "--dump-rcu") {
-            dumpRcu = true;
-            continue;
-        }
-        if (arg == "--profile" && i + 1 < args.size()) {
-            profile = args[++i];
+        if (arg == "--emit" && i + 1 < args.size()) {
+            std::string_view values = args[++i];
+            while (!values.empty()) {
+                const auto comma = values.find(',');
+                const auto value = values.substr(0, comma);
+                if (value == "tokens")
+                    dumpTokens = true;
+                else if (value == "ast")
+                    dumpAst = true;
+                else if (value == "sema")
+                    dumpSema = true;
+                else if (value == "hir")
+                    dumpHir = true;
+                else if (value == "lir")
+                    dumpLir = true;
+                else if (value == "asm")
+                    dumpAsm = true;
+                else if (value == "rcu")
+                    dumpRcu = true;
+                else {
+                    std::println(
+                        stderr,
+                        "error: unsupported --emit value '{}'; expected tokens, ast, sema, hir, lir, asm, or rcu",
+                        value);
+                    return 2;
+                }
+                if (comma == std::string_view::npos)
+                    break;
+                values.remove_prefix(comma + 1);
+                if (values.empty()) {
+                    std::println(stderr, "error: --emit contains an empty value");
+                    return 2;
+                }
+            }
             continue;
         }
         if (arg == "--target" && i + 1 < args.size()) {
@@ -93,7 +97,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
             std::string error;
             if (!AddCompileTimeDefine(args[++i], defines, error)) {
                 std::print(stderr, "error: {}\n", error);
-                return 1;
+                return 2;
             }
             continue;
         }
@@ -104,7 +108,6 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         PrintUnknownOption(arg, "build");
         return 1;
     }
-    (void)isDebug; // Stop -Wunused-but-set-variable
     auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
@@ -130,13 +133,13 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
                    hostTarget, targetName);
         return 1;
     }
-    std::string_view profileName = isRelease ? "Release" : "Debug";
-    if (!profile.empty()) {
-        profileName = profile;
-    }
+    const std::string_view profileName = isRelease ? "Release" : "Debug";
+    (void)isDebug;
     if (!opts.quiet && !showStats) {
-        std::print("Compiling {} v{} [{}]\n", manifest->package.name.Text(), manifest->package.version.Text(),
-                   manifestPath->parent_path().string());
+        const AnsiStyle style{ColorEnabled(opts.color, OutputStream::Stderr)};
+        std::print(stderr, "{}{}Compiling{} {}{}{} v{} [{}{}{}]\n", style.Cyan(), style.Bold(), style.Reset(),
+                   style.Bold(), manifest->package.name.Text(), style.Reset(), manifest->package.version.Text(),
+                   style.Cyan(), manifestPath->parent_path().string(), style.Reset());
     }
     CompileOptions copts;
     copts.manifestPath = *manifestPath;
@@ -159,11 +162,13 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         return 1;
     }
     if (!opts.quiet && showStats) {
-        PrintBuildStats(result.executablePath, profileName, result.stats);
+        PrintBuildStats(result.executablePath, profileName, result.stats,
+                        ColorEnabled(opts.color, OutputStream::Stdout));
         return 0;
     }
     if (!opts.quiet) {
-        PrintBuildSummary(result.executablePath, profileName, result.stats);
+        PrintBuildSummary(result.executablePath, profileName, result.stats,
+                          ColorEnabled(opts.color, OutputStream::Stdout));
     }
     return 0;
 }

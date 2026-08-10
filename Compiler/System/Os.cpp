@@ -12,6 +12,7 @@
 
 #if RUX_OS_WINDOWS
     #include <psapi.h>
+    #include <shellapi.h>
 #else
     #include <sys/ioctl.h>
     #include <sys/resource.h>
@@ -19,6 +20,7 @@
         #include <sys/sysctl.h>
         #include <sys/user.h>
     #endif
+    #include <sys/wait.h>
     #include <unistd.h>
     #if defined(__has_include)
         #if __has_include(<termios.h>)
@@ -152,6 +154,23 @@ bool StdoutIsInteractive() {
 #endif
 }
 
+bool StderrIsInteractive() {
+#if RUX_OS_WINDOWS
+    HANDLE const handle = GetStdHandle(STD_ERROR_HANDLE);
+    if (handle == nullptr || handle == INVALID_HANDLE_VALUE || GetFileType(handle) != FILE_TYPE_CHAR) {
+        return false;
+    }
+    DWORD consoleMode = 0;
+    if (!GetConsoleMode(handle, &consoleMode)) {
+        return false;
+    }
+    SetConsoleMode(handle, consoleMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    return true;
+#else
+    return isatty(fileno(stderr)) != 0;
+#endif
+}
+
 bool StdinIsInteractive() {
 #if RUX_OS_WINDOWS
     HANDLE const handle = GetStdHandle(STD_INPUT_HANDLE);
@@ -265,6 +284,30 @@ bool SetPrivateFilePermissions(const std::filesystem::path &path) {
                                      std::filesystem::perm_options::replace, ec);
         return !ec;
     }
+}
+
+bool OpenInDefaultApplication(const std::filesystem::path &path) {
+#if RUX_OS_WINDOWS
+    const auto result = reinterpret_cast<std::intptr_t>(
+        ShellExecuteW(nullptr, L"open", path.wstring().c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+    return result > 32;
+#else
+    const pid_t child = fork();
+    if (child < 0) {
+        return false;
+    }
+    if (child == 0) {
+        if constexpr (HostOS == OS::MacOS) {
+            execlp("open", "open", path.c_str(), static_cast<char *>(nullptr));
+        }
+        else {
+            execlp("xdg-open", "xdg-open", path.c_str(), static_cast<char *>(nullptr));
+        }
+        _exit(127);
+    }
+    int status = 0;
+    return waitpid(child, &status, 0) == child && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+#endif
 }
 
 // ---- Process --------------------------------------------------------------------

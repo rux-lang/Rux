@@ -50,6 +50,23 @@ ParseResult Parser::Parse() {
     return ParseResult{std::move(mod), std::move(diagnostics)};
 }
 
+std::string Parser::ParseDocumentation() {
+    std::string documentation;
+    std::uint32_t previousLine = 0;
+    while (Check(TokenKind::DocComment)) {
+        const Token &comment = Advance();
+        if (previousLine != 0 && comment.location.line != previousLine + 1)
+            documentation.clear();
+        if (!documentation.empty())
+            documentation += '\n';
+        documentation += comment.text;
+        previousLine = comment.location.line;
+    }
+    if (previousLine != 0 && CurrentLocation().line > previousLine + 1)
+        documentation.clear();
+    return documentation;
+}
+
 // Token helpers
 const Token &Parser::Peek(const std::size_t ahead) const noexcept {
     const std::size_t idx = pos + ahead;

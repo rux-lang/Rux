@@ -226,6 +226,9 @@ void Lexer::ScanAll() {
 Token Lexer::NextToken() {
     const SourceLocation start = CurrentLocation();
     const char c = Peek();
+    if (c == '/' && Peek(1) == '/' && Peek(2) == '/') {
+        return ScanDocComment(start);
+    }
     // Prefixed string literals
     if (c == 'c') {
         if (Peek(1) == '8' && Peek(2) == '"') {
@@ -357,7 +360,7 @@ void Lexer::SkipWhitespace() {
             continue;
         }
         // Line comment
-        if (c == '/' && Peek(1) == '/') {
+        if (c == '/' && Peek(1) == '/' && Peek(2) != '/') {
             SkipLineComment();
             continue;
         }
@@ -368,6 +371,19 @@ void Lexer::SkipWhitespace() {
         }
         break;
     }
+}
+
+Token Lexer::ScanDocComment(const SourceLocation start) {
+    Advance();
+    Advance();
+    Advance();
+    if (Peek() == ' ')
+        Advance();
+    const std::size_t contentStart = pos;
+    while (!IsAtEnd() && Peek() != '\n')
+        Advance();
+    return Token{
+        .kind = TokenKind::DocComment, .text = source.substr(contentStart, pos - contentStart), .location = start};
 }
 
 void Lexer::SkipLineComment() {

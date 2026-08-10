@@ -460,6 +460,7 @@ struct DeclStmt : Stmt {
 struct Decl {
     SourceLocation location;
     bool isPublic = false;
+    std::string documentation;
     // Non-empty for declarations whose implementation/value is supplied by
     // the compiler rather than Rux source: the `intrinsic` keyword sets it to
     // the registry key derived from the declaration itself (see ParseDecl).
@@ -537,6 +538,7 @@ struct StructDecl : Decl {
     struct Field {
         SourceLocation location;
         bool isPublic = false;
+        std::string documentation;
         std::string name;
         TypeExprPtr type;
     };
@@ -552,11 +554,13 @@ struct EnumDecl : Decl {
 
     struct Variant {
         SourceLocation location;
+        std::string documentation;
         std::string name;
         std::vector<TypeExprPtr> fields; // empty = unit variant
 
         struct NamedField {
             SourceLocation location;
+            std::string documentation;
             std::string name;
             TypeExprPtr type;
         };
@@ -574,6 +578,7 @@ struct UnionDecl : Decl {
 
     struct Field {
         SourceLocation location;
+        std::string documentation;
         std::string name;
         TypeExprPtr type;
     };

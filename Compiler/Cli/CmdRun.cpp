@@ -2,6 +2,7 @@
 
 #include "Cli/Cli.h"
 #include "Cli/DefineOption.h"
+#include "Cli/TerminalStyle.h"
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
@@ -80,8 +81,10 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     }
     const bool buildQuiet = !opts.verbose || opts.quiet;
     if (!buildQuiet) {
-        std::print("Compiling {} v{} [{}]\n", manifest->package.name.Text(), manifest->package.version.Text(),
-                   manifestPath->parent_path().string());
+        const AnsiStyle style{ColorEnabled(opts.color, OutputStream::Stderr)};
+        std::print(stderr, "{}{}Compiling{} {}{}{} v{} [{}{}{}]\n", style.Cyan(), style.Bold(), style.Reset(),
+                   style.Bold(), manifest->package.name.Text(), style.Reset(), manifest->package.version.Text(),
+                   style.Cyan(), manifestPath->parent_path().string(), style.Reset());
     }
     CompileOptions copts;
     copts.manifestPath = *manifestPath;
@@ -97,7 +100,9 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         return 1;
     }
     if (!buildQuiet) {
-        PrintBuildSummary(result.executablePath, profileName, result.stats);
+        const auto report = FormatBuildSummary(result.executablePath, profileName, result.stats,
+                                               ColorEnabled(opts.color, OutputStream::Stderr));
+        std::fwrite(report.data(), sizeof(char), report.size(), stderr);
     }
     auto exePath = result.executablePath;
     if (!std::filesystem::exists(exePath)) {

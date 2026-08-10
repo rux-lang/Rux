@@ -66,6 +66,7 @@ private:
 
     // Top-level
     DeclPtr ParseDecl();
+    [[nodiscard]] std::string ParseDocumentation();
 
     // Attribute parsing
     struct ParsedAttrs {

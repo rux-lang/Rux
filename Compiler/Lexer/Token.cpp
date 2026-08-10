@@ -236,6 +236,8 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "GreaterGreaterAssign";
     case TokenKind::GreaterGreaterGreaterAssign:
         return "GreaterGreaterGreaterAssign";
+    case TokenKind::DocComment:
+        return "DocComment";
     case TokenKind::NewLine:
         return "NewLine";
     case TokenKind::EndOfFile:

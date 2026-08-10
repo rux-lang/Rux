@@ -80,6 +80,10 @@ rux_add_component(RuxFormatter
     Formatter/Formatter.cpp)
 target_link_libraries(RuxFormatter PUBLIC RuxSyntax)
 
+rux_add_component(RuxDocumentation
+    Documentation/Generator.cpp)
+target_link_libraries(RuxDocumentation PUBLIC RuxSyntax RuxPackage RuxDiagnostics)
+
 rux_add_component(RuxLinter
     Linter/Linter.cpp)
 target_link_libraries(RuxLinter PUBLIC RuxSyntax RuxSemantic)
@@ -160,7 +164,7 @@ add_executable(rux
     Cli/CmdTest.cpp
 )
 
-target_link_libraries(rux PRIVATE RuxCore RuxFormatter RuxLinter)
+target_link_libraries(rux PRIVATE RuxCore RuxFormatter RuxLinter RuxDocumentation)
 
 # Emit the compiler directly to Bin/ in the source tree while keeping CMake
 # intermediates in the build directory. Configuration-specific properties keep
@@ -174,7 +178,7 @@ set_target_properties(rux PROPERTIES
 
 if (MSVC OR (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
     set_property(TARGET rux RuxDiagnostics RuxSource RuxSystem RuxPackage
-        RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxLinter RuxHir RuxHirPasses RuxLir
+        RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxDocumentation RuxLinter RuxHir RuxHirPasses RuxLir
         RuxLowering RuxObjectRcu RuxCodeGenCommon RuxCodeGenX86_64 RuxCodeGenAArch64
         RuxLinker RuxDriver PROPERTY
         MSVC_RUNTIME_LIBRARY

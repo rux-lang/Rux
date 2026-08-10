@@ -8,6 +8,7 @@
 
 #include "Cli/Cli.h"
 #include "Cli/TerminalStyle.h"
+#include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/Credentials.h"
@@ -1025,7 +1026,13 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
 int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &opts) {
     std::string_view packageSpec;
     std::string_view registryArg;
-    bool jsonOutput = false;
+    const bool jsonOutput = std::ranges::find(args, "--json") != args.end();
+    auto JsonFailure = [&](const std::string_view message) {
+        if (jsonOutput) {
+            std::println("{{\"success\":false,\"error\":\"{}\"}}", EscapeJson(message));
+        }
+        return 1;
+    };
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string_view arg = args[i];
         if (arg == "-h" || arg == "--help") {
@@ -1033,12 +1040,11 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
             return 0;
         }
         if (arg == "--json") {
-            jsonOutput = true;
             continue;
         }
         if (arg == "--registry") {
             if (!ReadRegistryOption(args, i, registryArg)) {
-                return 1;
+                return JsonFailure("--registry requires an argument");
             }
             continue;
         }
@@ -1054,21 +1060,21 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
         manifestPath = opts.manifest;
         if (!std::filesystem::exists(manifestPath)) {
             std::print(stderr, "error: specified manifest '{}' not found\n", manifestPath.string());
-            return 1;
+            return JsonFailure("the specified manifest was not found");
         }
     }
     else if (packageSpec.empty()) {
         auto localManifestOpt = Manifest::Find(std::filesystem::current_path());
         if (!localManifestOpt) {
             std::print(stderr, "error: missing package name, and no Rux.toml found in current directory\n");
-            return 1;
+            return JsonFailure("missing package name and no Rux.toml was found");
         }
         manifestPath = *localManifestOpt;
     }
     else {
         auto spec = RequirementFromSpec(packageSpec, "info");
         if (!spec) {
-            return 1;
+            return JsonFailure("invalid package identity or version requirement");
         }
         const Requirement &requirement = spec->requirement;
         const auto installed = FindInstalledPackage(requirement.ns, requirement.package, requirement.range);
@@ -1080,73 +1086,75 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
             auto entry = FetchPackageIndex(base, requirement.ns, requirement.package);
             if (!entry) {
                 std::print(stderr, "error: {}\n", Describe(entry.error(), base, identity));
-                return 1;
+                return JsonFailure("the registry lookup failed");
             }
             std::print(stderr, "error: no installed version of {} matches '{}'; run 'rux install {}'\n", identity,
                        requirement.range.Text(), packageSpec);
             std::print(stderr, "{}{} publishes {}\n", errorContinuation, base, DescribeAvailableVersions(*entry));
-            return 1;
+            return JsonFailure("no installed package version matches the requirement");
         }
         manifestPath = installed->root / "Rux.toml";
     }
     auto infoResult = Manifest::Load(manifestPath);
     if (!infoResult.Ok()) {
         ReportManifestDiagnostics(infoResult);
-        return 1;
+        return JsonFailure("the package manifest is invalid");
     }
     const auto manifest = std::move(infoResult.manifest);
     // not using nlohmann/json.hpp to keep compiler as small and fast as
     // possible
     if (jsonOutput) {
         std::print("{}\n", "{");
+        std::print("  \"success\": true,\n");
         if (manifest->package.ns) {
-            std::print("  \"namespace\": \"{}\",\n", manifest->package.ns->Text());
+            std::print("  \"namespace\": \"{}\",\n", EscapeJson(manifest->package.ns->Text()));
         }
-        std::print("  \"name\": \"{}\",\n", manifest->package.name.Text());
-        std::print("  \"version\": \"{}\",\n", manifest->package.version.Text());
-        std::print("  \"type\": \"{}\",\n", ToString(manifest->package.type));
+        std::print("  \"name\": \"{}\",\n", EscapeJson(manifest->package.name.Text()));
+        std::print("  \"version\": \"{}\",\n", EscapeJson(manifest->package.version.Text()));
+        std::print("  \"type\": \"{}\",\n", EscapeJson(ToString(manifest->package.type)));
         if (!manifest->package.keywords.empty()) {
             std::print("  \"keywords\": [");
             for (std::size_t i = 0; i < manifest->package.keywords.size(); ++i) {
-                std::print("{}\"{}\"", i == 0 ? "" : ", ", manifest->package.keywords[i].Text());
+                std::print("{}\"{}\"", i == 0 ? "" : ", ", EscapeJson(manifest->package.keywords[i].Text()));
             }
             std::print("],\n");
         }
         if (!manifest->package.description.empty()) {
-            std::print("  \"description\": \"{}\",\n", manifest->package.description);
+            std::print("  \"description\": \"{}\",\n", EscapeJson(manifest->package.description));
         }
         if (!manifest->package.authors.empty()) {
             std::print("  \"authors\": [");
             for (std::size_t i = 0; i < manifest->package.authors.size(); ++i) {
-                std::print("{}\"{}\"", i == 0 ? "" : ", ", manifest->package.authors[i]);
+                std::print("{}\"{}\"", i == 0 ? "" : ", ", EscapeJson(manifest->package.authors[i]));
             }
             std::print("],\n");
         }
         if (!manifest->package.license.empty()) {
-            std::print("  \"license\": \"{}\",\n", manifest->package.license);
+            std::print("  \"license\": \"{}\",\n", EscapeJson(manifest->package.license));
         }
         if (!manifest->package.licenseFile.empty()) {
-            std::print("  \"licenseFile\": \"{}\",\n", manifest->package.licenseFile);
+            std::print("  \"licenseFile\": \"{}\",\n", EscapeJson(manifest->package.licenseFile));
         }
         if (!manifest->package.repository.empty()) {
-            std::print("  \"repository\": \"{}\",\n", manifest->package.repository);
+            std::print("  \"repository\": \"{}\",\n", EscapeJson(manifest->package.repository));
         }
         if (!manifest->package.homepage.empty()) {
-            std::print("  \"homepage\": \"{}\",\n", manifest->package.homepage);
+            std::print("  \"homepage\": \"{}\",\n", EscapeJson(manifest->package.homepage));
         }
         std::print("  \"dependencies\": [\n");
         for (size_t i = 0; i < manifest->dependencies.size(); ++i) {
             const auto &dep = manifest->dependencies[i];
             std::print("    {}", "{");
-            std::print("\"name\": \"{}\"", dep.importName.Text());
+            std::print("\"name\": \"{}\"", EscapeJson(dep.importName.Text()));
 
             if (dep.IsPath()) {
-                std::print(", \"path\": \"{}\"", dep.Path());
+                std::print(", \"path\": \"{}\"", EscapeJson(dep.Path()));
             }
             else {
                 const auto *registry = dep.Registry();
-                std::print(", \"namespace\": \"{}\", \"package\": \"{}\", \"version\": \"{}\"", registry->ns.Text(),
-                           dep.package.Text(), registry->version.Text());
+                std::print(", \"namespace\": \"{}\", \"package\": \"{}\", \"version\": \"{}\"",
+                           EscapeJson(registry->ns.Text()), EscapeJson(dep.package.Text()),
+                           EscapeJson(registry->version.Text()));
             }
             // Only add a comma if this isn't the last element in the vector
             if (i + 1 < manifest->dependencies.size()) {

@@ -53,6 +53,11 @@ namespace Rux::System {
 // on the console, so ANSI escape codes are interpreted.
 [[nodiscard]] bool StdoutIsInteractive();
 
+// True when stderr is an interactive terminal. It is queried independently
+// from stdout because diagnostics commonly remain attached to a terminal while
+// primary output is redirected.
+[[nodiscard]] bool StderrIsInteractive();
+
 // True when stdin is an interactive terminal rather than a file or a pipe.
 // Callers use this to decide between prompting and reading piped input.
 [[nodiscard]] bool StdinIsInteractive();
@@ -88,6 +93,11 @@ namespace Rux::System {
 // owner. Returns false when the permissions could not be applied, which callers
 // storing secrets must treat as a failure rather than ignore.
 [[nodiscard]] bool SetPrivateFilePermissions(const std::filesystem::path &path);
+
+// Ask the operating system to open `path` in its default application. This is
+// used by commands such as `rux doc --open`; false means no opener could be
+// launched.
+[[nodiscard]] bool OpenInDefaultApplication(const std::filesystem::path &path);
 
 // ---- Process --------------------------------------------------------------------
 

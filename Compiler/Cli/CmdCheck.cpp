@@ -8,6 +8,7 @@
 #include "Driver/CompilerDriver.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -25,7 +26,7 @@ using namespace CliSupport;
 using namespace Driver;
 
 int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &opts) {
-    bool jsonOutput = false;
+    const bool jsonOutput = std::ranges::find(args, "--json") != args.end();
     std::string_view target;
     std::map<std::string, std::string> defines;
     for (std::size_t i = 0; i < args.size(); ++i) {
@@ -37,7 +38,6 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
             continue;
         }
         if (arg == "--json") {
-            jsonOutput = true;
             continue;
         }
         if (arg == "--target" && i + 1 < args.size()) {
@@ -47,8 +47,13 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         if (arg == "--define" && i + 1 < args.size()) {
             std::string error;
             if (!AddCompileTimeDefine(args[++i], defines, error)) {
-                std::print(stderr, "error: {}\n", error);
-                return 1;
+                if (jsonOutput) {
+                    PrintDiagnosticsJson(std::array{ErrorDiagnostic(error)}, false);
+                }
+                else {
+                    std::print(stderr, "error: {}\n", error);
+                }
+                return 2;
             }
             continue;
         }
@@ -73,20 +78,25 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         EmitDiag(ErrorDiagnostic(std::move(message)));
         hadErrors = true;
     };
+    auto Finish = [&](const int exitCode) {
+        if (jsonOutput)
+            PrintDiagnosticsJson(jsonDiags, exitCode == 0);
+        return exitCode;
+    };
     auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         if (jsonOutput) {
             EmitFatal("could not find 'Rux.toml' in current directory or any "
                       "parent directory");
         }
-        return 1;
+        return Finish(1);
     }
     auto rootResult = Manifest::Load(*manifestPath);
     if (!rootResult.Ok()) {
         for (const auto &diagnostic : rootResult.diagnostics) {
             EmitFatal(diagnostic.Format());
         }
-        return 1;
+        return Finish(1);
     }
     auto manifest = std::move(rootResult.manifest);
     std::string targetName = target.empty() ? HostTargetTriple() : CanonicalTargetTriple(target);
@@ -98,20 +108,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
             std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", targetName,
                        SupportedTargetTriples());
         }
-        return 1;
-    }
-    const std::string hostTarget = HostTargetTriple();
-    if (hostTarget != "unknown" && targetName != hostTarget) {
-        if (jsonOutput) {
-            EmitFatal("cross-target build from '" + hostTarget + "' to '" + targetName + "' is not supported yet");
-        }
-        else {
-            std::print(stderr,
-                       "error: cross-target build from '{}' to '{}' is not "
-                       "supported yet\n",
-                       hostTarget, targetName);
-        }
-        return 1;
+        return Finish(1);
     }
     std::map<std::string, std::filesystem::path> localPackageRoots;
     bool localDependenciesOnly = false;
@@ -254,8 +251,5 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         std::println("  Total : {}", passed + failed);
         std::println("  Time  : {:.2f}s", elapsed);
     }
-    if (jsonOutput) {
-        PrintDiagnosticsJson(jsonDiags, !hadErrors);
-    }
-    return hadErrors ? 1 : 0;
+    return Finish(hadErrors ? 1 : 0);
 }

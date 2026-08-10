@@ -421,11 +421,17 @@ DeclPtr Parser::ParseIntrinsicDecl(const bool isPublic, ParsedAttrs &attrs, cons
 
 // Top-level declarations
 DeclPtr Parser::ParseDecl() {
+    std::string documentation = ParseDocumentation();
     const auto loc = CurrentLocation();
+    auto AttachDocumentation = [&](DeclPtr declaration) -> DeclPtr {
+        if (declaration)
+            declaration->documentation = documentation;
+        return declaration;
+    };
 
     // Conditional compilation.
     if (Check(TokenKind::WhenKeyword)) {
-        return ParseWhenDecl();
+        return AttachDocumentation(ParseWhenDecl());
     }
     // The forms `when` replaced. Both are diagnosed here rather than left to the
     // attribute parser, which would only report that '#' wants a name.
@@ -434,7 +440,7 @@ DeclPtr Parser::ParseDecl() {
         Advance(); // '#'
         Advance(); // 'if'
         // Parse it as the `when` it meant, so the chain reports only its spelling.
-        return ParseWhenBody(loc);
+        return AttachDocumentation(ParseWhenBody(loc));
     }
     if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident) && Peek(1).text == "When") {
         EmitError(loc, "the '#When' attribute has been removed; wrap the declaration in "
@@ -454,7 +460,7 @@ DeclPtr Parser::ParseDecl() {
                 Advance();
             }
         }
-        return ParseDecl();
+        return AttachDocumentation(ParseDecl());
     }
 
     // The form `intrinsic` replaced. Caught before ParseAttrs, which would
@@ -479,7 +485,7 @@ DeclPtr Parser::ParseDecl() {
         }
         ParsedAttrs rest = ParseAttrs();
         const bool pub = Match(TokenKind::PubKeyword);
-        return ParseIntrinsicDecl(pub, rest, loc);
+        return AttachDocumentation(ParseIntrinsicDecl(pub, rest, loc));
     }
 
     ParsedAttrs attrs = ParseAttrs();
@@ -492,47 +498,47 @@ DeclPtr Parser::ParseDecl() {
     // intrinsic value/func: the compiler supplies the value or the body. The
     // declaration itself names the intrinsic, so there is nothing to write twice.
     if (Match(TokenKind::IntrinsicKeyword)) {
-        return ParseIntrinsicDecl(isPublic, attrs, Previous().location);
+        return AttachDocumentation(ParseIntrinsicDecl(isPublic, attrs, Previous().location));
     }
 
     // asm func
     if (Check(TokenKind::Ident) && Peek().text == "asm" && Peek(1).Is(TokenKind::FuncKeyword)) {
         Advance(); // consume 'asm'
-        return ApplyAttrs(ParseFuncDecl(isPublic, true, attrs.callConv), attrs);
+        return AttachDocumentation(ApplyAttrs(ParseFuncDecl(isPublic, true, attrs.callConv), attrs));
     }
 
     if (Check(TokenKind::FuncKeyword)) {
-        return ApplyAttrs(ParseFuncDecl(isPublic, false, attrs.callConv), attrs);
+        return AttachDocumentation(ApplyAttrs(ParseFuncDecl(isPublic, false, attrs.callConv), attrs));
     }
     if (Check(TokenKind::StructKeyword)) {
-        return ApplyAttrs(ParseStructDecl(isPublic), attrs);
+        return AttachDocumentation(ApplyAttrs(ParseStructDecl(isPublic), attrs));
     }
     if (Check(TokenKind::EnumKeyword)) {
-        return ApplyAttrs(ParseEnumDecl(isPublic), attrs);
+        return AttachDocumentation(ApplyAttrs(ParseEnumDecl(isPublic), attrs));
     }
     if (Check(TokenKind::UnionKeyword)) {
-        return ApplyAttrs(ParseUnionDecl(isPublic), attrs);
+        return AttachDocumentation(ApplyAttrs(ParseUnionDecl(isPublic), attrs));
     }
     if (Check(TokenKind::InterfaceKeyword)) {
-        return ApplyAttrs(ParseInterfaceDecl(isPublic), attrs);
+        return AttachDocumentation(ApplyAttrs(ParseInterfaceDecl(isPublic), attrs));
     }
     if (Check(TokenKind::ExtendKeyword)) {
-        return ApplyAttrs(ParseImplDecl(), attrs);
+        return AttachDocumentation(ApplyAttrs(ParseImplDecl(), attrs));
     }
     if (Check(TokenKind::ModuleKeyword)) {
-        return ApplyAttrs(ParseModuleDecl(isPublic), attrs);
+        return AttachDocumentation(ApplyAttrs(ParseModuleDecl(isPublic), attrs));
     }
     if (Check(TokenKind::ImportKeyword)) {
-        return ApplyAttrs(ParseUseDecl(), attrs);
+        return AttachDocumentation(ApplyAttrs(ParseUseDecl(), attrs));
     }
     if (Check(TokenKind::ConstKeyword)) {
-        return ApplyAttrs(ParseConstDecl(isPublic), attrs);
+        return AttachDocumentation(ApplyAttrs(ParseConstDecl(isPublic), attrs));
     }
     if (Check(TokenKind::TypeKeyword)) {
-        return ApplyAttrs(ParseTypeAliasDecl(isPublic), attrs);
+        return AttachDocumentation(ApplyAttrs(ParseTypeAliasDecl(isPublic), attrs));
     }
     if (Check(TokenKind::ExternKeyword)) {
-        return ApplyAttrs(ParseExternDecl(isPublic, attrs), attrs);
+        return AttachDocumentation(ApplyAttrs(ParseExternDecl(isPublic, attrs), attrs));
     }
 
     EmitError(loc, std::format("unexpected token '{}', expected a declaration", Peek().text));
@@ -907,6 +913,7 @@ std::unique_ptr<StructDecl> Parser::ParseStructDecl(bool isPublic) {
     Expect(TokenKind::LeftBrace, "expected '{'");
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         StructDecl::Field field;
+        field.documentation = ParseDocumentation();
         field.location = CurrentLocation();
 
         if (Match(TokenKind::PubKeyword)) {
@@ -945,6 +952,7 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
     Expect(TokenKind::LeftBrace, "expected '{'");
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         EnumDecl::Variant variant;
+        variant.documentation = ParseDocumentation();
         variant.location = CurrentLocation();
         variant.name = Expect(TokenKind::Ident, "expected variant name").text;
 
@@ -960,6 +968,7 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
         else if (Match(TokenKind::LeftBrace)) {
             while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                 EnumDecl::Variant::NamedField field;
+                field.documentation = ParseDocumentation();
                 field.location = CurrentLocation();
                 field.name = Expect(TokenKind::Ident, "expected variant field name").text;
                 Expect(TokenKind::Colon, "expected ':'");
@@ -1006,6 +1015,7 @@ std::unique_ptr<UnionDecl> Parser::ParseUnionDecl(bool isPublic) {
     Expect(TokenKind::LeftBrace, "expected '{'");
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         UnionDecl::Field field;
+        field.documentation = ParseDocumentation();
         field.location = CurrentLocation();
         field.name = Expect(TokenKind::Ident, "expected field name").text;
         Expect(TokenKind::Colon, "expected ':'");
@@ -1031,12 +1041,14 @@ std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
 
     Expect(TokenKind::LeftBrace, "expected '{'");
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+        std::string documentation = ParseDocumentation();
         if (!Check(TokenKind::FuncKeyword)) {
             EmitError(CurrentLocation(), "expected 'func' in interface body");
             Recover();
             continue;
         }
         if (auto method = ParseFuncDecl(false, false)) {
+            method->documentation = std::move(documentation);
             decl->methods.push_back(std::move(method));
         }
     }
@@ -1130,11 +1142,13 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
 
     Expect(TokenKind::LeftBrace, "expected '{'");
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+        std::string documentation = ParseDocumentation();
         // Methods can be conditionally compiled like any other declaration.
         // Conditional compilation later moves those of the taken branch into
         // `methods`.
         if (Check(TokenKind::WhenKeyword)) {
             if (auto conditional = ParseWhenDecl()) {
+                conditional->documentation = std::move(documentation);
                 decl->conditionals.push_back(std::move(conditional));
             }
             continue;
@@ -1150,6 +1164,7 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
             continue;
         }
         if (auto method = ParseFuncDecl(pub, false, attrs.callConv)) {
+            method->documentation = std::move(documentation);
             if (isIntrinsic) {
                 // A method's intrinsic is namespaced by the type it extends, so
                 // `extend Target { intrinsic func HasFeature }` is

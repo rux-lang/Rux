@@ -69,6 +69,7 @@ private:
     void SkipWhitespace();
     void SkipLineComment();  // // …
     void SkipBlockComment(); // /* … */  (supports nesting)
+    Token ScanDocComment(SourceLocation start);
 
     // Scanners for each token family
     Token ScanIdent(SourceLocation start);

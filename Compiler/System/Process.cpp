@@ -271,7 +271,7 @@ std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<cons
     return static_cast<int>(exitCode);
 }
 
-std::optional<RunResult> RunCaptured(const std::filesystem::path &exe) {
+std::optional<RunResult> RunCaptured(const std::filesystem::path &exe, const std::span<const std::string_view> args) {
     SECURITY_ATTRIBUTES sa{};
     sa.nLength = sizeof(sa);
     sa.bInheritHandle = TRUE;
@@ -285,6 +285,11 @@ std::optional<RunResult> RunCaptured(const std::filesystem::path &exe) {
 
     HANDLE hNul = CreateFileA("NUL", GENERIC_READ, FILE_SHARE_READ, &sa, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     std::string cmdLine = "\"" + exe.string() + "\"";
+    for (const auto argument : args) {
+        cmdLine += " \"";
+        cmdLine += argument;
+        cmdLine += '"';
+    }
     STARTUPINFOA si{};
     PROCESS_INFORMATION pi{};
     si.cb = sizeof(si);
@@ -510,9 +515,18 @@ std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<cons
     return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
 }
 
-std::optional<RunResult> RunCaptured(const std::filesystem::path &exe) {
+std::optional<RunResult> RunCaptured(const std::filesystem::path &exe, const std::span<const std::string_view> args) {
     const std::string exeStr = exe.string();
-    const char *argv[] = {exeStr.c_str(), nullptr};
+    std::vector<std::string> argStrings;
+    argStrings.reserve(args.size() + 1);
+    argStrings.push_back(exeStr);
+    for (const auto argument : args)
+        argStrings.emplace_back(argument);
+    std::vector<char *> argv;
+    argv.reserve(argStrings.size() + 1);
+    for (auto &argument : argStrings)
+        argv.push_back(argument.data());
+    argv.push_back(nullptr);
     int fds[2];
     if (pipe(fds) != 0) {
         return std::nullopt;
@@ -533,7 +547,7 @@ std::optional<RunResult> RunCaptured(const std::filesystem::path &exe) {
         dup2(fds[1], 2);
         close(fds[0]);
         close(fds[1]);
-        execv(exeStr.c_str(), const_cast<char *const *>(argv));
+        execv(exeStr.c_str(), argv.data());
         _exit(127);
     }
     close(fds[1]);

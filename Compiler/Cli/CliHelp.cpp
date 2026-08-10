@@ -1,6 +1,9 @@
 // Help-text registry, layout engine, and the help/version printers.
 
 #include "Cli/Cli.h"
+#include "Cli/CliSpec.h"
+#include "Cli/TerminalStyle.h"
+#include "Diagnostics/Diagnostics.h"
 #include "Driver/Version.h"
 #include "System/Os.h"
 
@@ -9,6 +12,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdio>
+#include <format>
 #include <functional>
 #include <print>
 #include <ranges>
@@ -17,25 +21,13 @@
 #include <string_view>
 
 using namespace Rux;
+using namespace Rux::CliSupport;
+using namespace Rux::CliContract;
 using namespace std::string_view_literals;
 
 namespace {
-struct OptionDoc {
-    std::string_view flags;
-    std::string_view desc;
-};
-
-struct CommandDoc {
-    std::string_view name;
-    std::string_view shortDesc;
-    std::string_view description; // If empty, falls back to shortDesc
-
-    std::span<const std::string_view> usage;
-    std::string_view postUsage;
-    std::string_view footer;
-    std::span<const std::string_view> examples;
-    std::span<const OptionDoc> options;
-};
+using OptionDoc = OptionSpec;
+using CommandDoc = CommandSpec;
 
 // Matches any type compatible with std::size(), returning a value
 // implicitly convertible to std::size_t.
@@ -136,12 +128,13 @@ constexpr void Wrap(std::string_view text, const std::size_t width, Callback cal
     }
 }
 
-void PrintCmdLine(std::string_view cmd, std::string_view suffix) {
+void PrintCmdLine(std::string_view cmd, std::string_view suffix, const AnsiStyle &style) {
     std::print("{}", std::string(Layout::BlockIndent, ' '));
+    std::print("{}{}", style.Cyan(), style.Bold());
     // If the example is already a complete command line starting with
     // "rux", print it directly and bail out early.
     if (suffix.starts_with(Layout::CliName)) {
-        std::println("{}", suffix);
+        std::println("{}{}", suffix, style.Reset());
         return;
     }
     // Otherwise, construct the standard "rux <cmd> <suffix>" layout
@@ -152,16 +145,16 @@ void PrintCmdLine(std::string_view cmd, std::string_view suffix) {
     if (!suffix.empty()) {
         std::print(" {}", suffix);
     }
-    std::println("");
+    std::println("{}", style.Reset());
 }
 
-void PrintBlock(std::string_view title, const std::string_view text, const size_t termWidth,
+void PrintBlock(std::string_view title, const std::string_view text, const size_t termWidth, const AnsiStyle &style,
                 const size_t indent = Layout::BlockIndent) {
     if (text.empty()) {
         return;
     }
     if (!title.empty()) {
-        std::println("{}:", title);
+        std::println("{}{}{}:", style.Bold(), title, style.Reset());
     }
     const size_t usable = UsableWidth(termWidth, indent);
     Wrap(text, usable, [&](std::string_view line) -> void {
@@ -172,7 +165,7 @@ void PrintBlock(std::string_view title, const std::string_view text, const size_
 }
 
 void PrintAligned(const std::string_view left, const std::string_view right, const size_t leftWidth,
-                  const size_t termWidth) {
+                  const size_t termWidth, const AnsiStyle &style) {
     const size_t indent = Layout::BlockIndent + leftWidth + Layout::AlignedPadding;
     const size_t width = UsableWidth(termWidth, indent);
     bool first = true;
@@ -180,7 +173,8 @@ void PrintAligned(const std::string_view left, const std::string_view right, con
         if (first) {
             std::string leftColumn(left);
             leftColumn.resize(leftWidth + Layout::AlignedPadding, ' ');
-            std::println("{}{}{}", std::string(Layout::BlockIndent, ' '), leftColumn, line);
+            std::println("{}{}{}{}{}", std::string(Layout::BlockIndent, ' '), style.Cyan(), leftColumn, style.Reset(),
+                         line);
             first = false;
         }
         else {
@@ -188,7 +182,7 @@ void PrintAligned(const std::string_view left, const std::string_view right, con
         }
     });
     if (first) {
-        std::println("{}{}", std::string(Layout::BlockIndent, ' '), left);
+        std::println("{}{}{}{}", std::string(Layout::BlockIndent, ' '), style.Cyan(), left, style.Reset());
     }
 }
 
@@ -206,23 +200,16 @@ constexpr std::array build_usage = {"[options]"sv};
 constexpr std::array build_opts = {
     OptionDoc{.flags = "--debug"sv, .desc = "Build with debug symbols (unoptimized output)"sv},
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
-    OptionDoc{.flags = "--profile <n>"sv, .desc = "Build using a custom profile defined in Rux.toml"sv},
+    OptionDoc{.flags = "--emit <kind[,kind...]>"sv,
+              .desc = "Additionally emit tokens, ast, sema, hir, lir, asm, or rcu inspection output"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile (optimized, no debug info)"sv},
     OptionDoc{.flags = "--stats"sv, .desc = "Print build timing, source, performance, and output statistics"sv},
     OptionDoc{.flags = "--target <triple>"sv,
               .desc = "Build for the specified target platform (e.g. linux-x86_64, linux-aarch64)"sv},
     OptionDoc{.flags = "-q, --quiet"sv, .desc = "Suppress non-essential output (only errors are shown)"sv},
-    OptionDoc{.flags = "-v, --verbose"sv, .desc = "Enable verbose output for detailed build information"sv},
-    OptionDoc{.flags = "--dump-asm"sv, .desc = "Write target assembly to Temp/Asm/"sv},
-    OptionDoc{.flags = "--dump-ast"sv, .desc = "Write the parsed AST to Temp/Ast/<file>.ast"sv},
-    OptionDoc{.flags = "--dump-hir"sv, .desc = "Write the high-level IR to Temp/Hir/hir.txt"sv},
-    OptionDoc{.flags = "--dump-lir"sv, .desc = "Write the low-level IR to Temp/Lir/lir.txt"sv},
-    OptionDoc{.flags = "--dump-rcu"sv, .desc = "Write RCU object files to Temp/Obj/ and text dumps to Temp/Rcu/"sv},
-    OptionDoc{.flags = "--dump-sema"sv, .desc = "Write semantic analysis results to Temp/Sema/sema.txt"sv},
-    OptionDoc{.flags = "--dump-tokens"sv, .desc = "Write the token stream to Temp/Tokens/<file>.tokens"sv}};
+    OptionDoc{.flags = "-v, --verbose"sv, .desc = "Enable verbose output for detailed build information"sv}};
 constexpr std::array build_exs = {
-    ""sv,           "--debug"sv,    "--release"sv,  "--stats"sv,    "--verbose --release"sv,
-    "--dump-ast"sv, "--dump-hir"sv, "--dump-lir"sv, "--dump-asm"sv, "--dump-rcu"sv};
+    ""sv, "--debug"sv, "--release"sv, "--stats"sv, "--verbose --release"sv, "--emit ast,sema"sv};
 
 // Check
 constexpr std::array check_usage = {"[options]"sv};
@@ -241,14 +228,19 @@ constexpr std::array clean_exs = {""sv, "--temp"sv};
 // Doc
 constexpr std::array doc_usage = {"[options]"sv};
 constexpr std::array doc_opts = {
-    OptionDoc{.flags = "--open"sv, .desc = "Open the generated documentation index in a browser"sv}};
+    OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
+    OptionDoc{.flags = "--document-private-items"sv, .desc = "Include private declarations and members"sv},
+    OptionDoc{.flags = "-o, --output <dir>"sv, .desc = "Write the generated site to this directory"sv},
+    OptionDoc{.flags = "--open"sv, .desc = "Open the generated documentation index in a browser"sv},
+    OptionDoc{.flags = "--target <triple>"sv, .desc = "Document APIs enabled for a supported target"sv}};
 constexpr std::array doc_exs = {""sv, "--open"sv};
 
 // Fmt
 constexpr std::array fmt_usage = {"[options]"sv};
 constexpr std::array fmt_opts = {
     OptionDoc{.flags = "--check"sv, .desc = "Check file formatting status without modifying source files"sv},
-    OptionDoc{.flags = "--manifest-only"sv, .desc = "Format only the manifest configuration file (Rux.toml)"sv}};
+    OptionDoc{.flags = "--manifest-only"sv, .desc = "Format only the manifest configuration file (Rux.toml)"sv},
+    OptionDoc{.flags = "--source-only"sv, .desc = "Format only Rux source files"sv}};
 constexpr std::array fmt_exs = {""sv, "--check"sv, "--manifest-only"sv};
 
 // Lint
@@ -311,7 +303,7 @@ constexpr std::array new_exs = {"App"sv, "App --bin"sv, "Io --lib --namespace Ru
 // Pack
 constexpr std::array pack_usage = {"[options]"sv};
 constexpr std::array pack_opts = {
-    OptionDoc{.flags = "--output <path>"sv, .desc = "Write the archive to a specific path"sv}};
+    OptionDoc{.flags = "-o, --output <path>"sv, .desc = "Write the archive to a specific path"sv}};
 constexpr std::array pack_exs = {""sv, "--output Dist/Math.ruxpkg"sv};
 
 // Publish
@@ -357,11 +349,14 @@ constexpr std::array update_exs = {""sv, "--global"sv, "--target linux-aarch64"s
 
 // Version
 constexpr std::array version_exs = {""sv, "rux -V"sv, "rux --version"sv};
+
+constexpr std::array help_opts = {
+    OptionDoc{.flags = "--json"sv, .desc = "Print the versioned command contract as JSON"sv}};
 } // namespace Data
 
 namespace GlobalOpts {
 constexpr std::array catalog = {
-    OptionDoc{.flags = "--color <auto|on|off>"sv, .desc = "Control colored console output"sv},
+    OptionDoc{.flags = "--color <auto|always|never>"sv, .desc = "Control colored console output"sv},
     OptionDoc{.flags = "-h, --help"sv, .desc = "Show help information"sv},
     OptionDoc{.flags = "--manifest <path>"sv, .desc = "Use the specified manifest file instead of Rux.toml"sv},
     OptionDoc{.flags = "-q, --quiet"sv, .desc = "Do not show log messages"sv},
@@ -434,7 +429,7 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .postUsage = {},
                .footer = {},
                .examples = {},
-               .options = {}},
+               .options = Data::help_opts},
 
     CommandDoc{.name = "info"sv,
                .shortDesc = "Show package metadata and manifest information"sv,
@@ -644,24 +639,171 @@ constexpr auto G_CMD_WIDTH = MaxSize(G_COMMAND_HELP_MAPS, &CommandDoc::name);
 constexpr auto G_OPT_WIDTH = MaxSize(GlobalOpts::catalog, &OptionDoc::flags);
 } // namespace
 
-void Cli::PrintHelp() {
-    const size_t termWidth = GetTerminalWidth();
-    std::println("Rux compiler and package manager\n");
-    std::println("Usage: {} [command] [options] [-- args...]\n", Layout::CliName);
-    std::println("Commands:");
-    for (const auto &cmd : G_COMMAND_HELP_MAPS) {
-        PrintAligned(cmd.name, cmd.shortDesc, G_CMD_WIDTH, termWidth);
-    }
-    std::println("\nOptions:");
-    for (const auto &[flags, desc] : GlobalOpts::catalog) {
-        PrintAligned(flags, desc, G_OPT_WIDTH, termWidth);
-    }
-    std::println("\nUse 'rux help <command>' for more information about a command.");
+namespace Rux::CliContract {
+std::span<const OptionSpec> GlobalOptions() {
+    return GlobalOpts::catalog;
 }
 
-void Cli::PrintHelpFor(const std::string_view command) {
+std::span<const CommandSpec> Commands() {
+    return G_COMMAND_HELP_MAPS;
+}
+
+const CommandSpec *FindCommand(const std::string_view name) {
+    const auto it = std::ranges::lower_bound(G_COMMAND_HELP_MAPS, name, std::less<>{}, &CommandSpec::name);
+    return it != G_COMMAND_HELP_MAPS.end() && it->name == name ? &*it : nullptr;
+}
+
+bool OptionMatches(const OptionSpec &option, std::string_view spelling) {
+    const auto equals = spelling.find('=');
+    if (equals != std::string_view::npos) {
+        spelling = spelling.substr(0, equals);
+    }
+    std::string_view flags = option.flags;
+    while (!flags.empty()) {
+        const auto comma = flags.find(',');
+        auto flag = flags.substr(0, comma);
+        flag.remove_prefix(std::min(flag.find_first_not_of(' '), flag.size()));
+        flag = flag.substr(0, flag.find(' '));
+        if (flag == spelling) {
+            return true;
+        }
+        if (comma == std::string_view::npos) {
+            break;
+        }
+        flags.remove_prefix(comma + 1);
+    }
+    return false;
+}
+
+bool OptionTakesValue(const OptionSpec &option) {
+    return option.flags.find('<') != std::string_view::npos;
+}
+
+std::string_view PreferredOptionName(const OptionSpec &option) {
+    std::string_view preferred;
+    std::string_view flags = option.flags;
+    while (!flags.empty()) {
+        const auto comma = flags.find(',');
+        auto flag = flags.substr(0, comma);
+        flag.remove_prefix(std::min(flag.find_first_not_of(' '), flag.size()));
+        flag = flag.substr(0, flag.find(' '));
+        if (preferred.empty() || flag.starts_with("--")) {
+            preferred = flag;
+        }
+        if (comma == std::string_view::npos) {
+            break;
+        }
+        flags.remove_prefix(comma + 1);
+    }
+    return preferred;
+}
+
+const PositionalSpec &PositionalsFor(const std::string_view command) {
+    static constexpr std::array packageArg = {
+        ArgumentSpec{.name = "package", .description = "A namespaced package identity and optional requirement"}};
+    static constexpr std::array requiredPackageArg = {ArgumentSpec{
+        .name = "package", .description = "A namespaced package identity and optional requirement", .required = true}};
+    static constexpr std::array nameArg = {
+        ArgumentSpec{.name = "name", .description = "The package or dependency name", .required = true}};
+    static constexpr std::array commandArg = {
+        ArgumentSpec{.name = "command", .description = "The command whose help should be shown"}};
+    static constexpr std::array specs = {
+        PositionalSpec{.command = "add", .arguments = requiredPackageArg, .minimum = 1, .maximum = 1},
+        PositionalSpec{.command = "help", .arguments = commandArg, .minimum = 0, .maximum = 1},
+        PositionalSpec{.command = "info", .arguments = packageArg, .minimum = 0, .maximum = 1},
+        PositionalSpec{.command = "install", .arguments = packageArg, .minimum = 0, .maximum = 1},
+        PositionalSpec{.command = "new", .arguments = nameArg, .minimum = 1, .maximum = 1},
+        PositionalSpec{.command = "remove", .arguments = nameArg, .minimum = 1, .maximum = 1},
+        PositionalSpec{.command = "run", .arguments = {}, .minimum = 0, .maximum = 0, .acceptsPassthrough = true},
+        PositionalSpec{.command = "uninstall", .arguments = packageArg, .minimum = 0, .maximum = 1}};
+    static constexpr PositionalSpec none{};
+    const auto it = std::ranges::find(specs, command, &PositionalSpec::command);
+    return it == specs.end() ? none : *it;
+}
+} // namespace Rux::CliContract
+
+namespace {
+void PrintJsonString(const std::string_view value) {
+    std::print("\"{}\"", EscapeJson(value));
+}
+
+void PrintOptionJson(const OptionSpec &option) {
+    std::print("{{\"flags\":");
+    PrintJsonString(option.flags);
+    std::print(",\"description\":");
+    PrintJsonString(option.desc);
+    std::print(",\"takesValue\":{},\"repeatable\":{}}}", OptionTakesValue(option),
+               option.flags.starts_with("--define") || option.flags.starts_with("--emit"));
+}
+
+void PrintCommandJson(const CommandSpec &command) {
+    const auto &positionals = PositionalsFor(command.name);
+    std::print("{{\"name\":");
+    PrintJsonString(command.name);
+    std::print(",\"summary\":");
+    PrintJsonString(command.shortDesc);
+    std::print(",\"description\":");
+    PrintJsonString(command.description.empty() ? command.shortDesc : command.description);
+    std::print(",\"usages\":[");
+    for (std::size_t i = 0; i < command.usage.size(); ++i) {
+        if (i != 0)
+            std::print(",");
+        PrintJsonString(std::format("rux {}{}{}", command.name, command.usage[i].empty() ? "" : " ", command.usage[i]));
+    }
+    if (command.usage.empty())
+        PrintJsonString(std::format("rux {}", command.name));
+    std::print("],\"arguments\":[");
+    for (std::size_t i = 0; i < positionals.arguments.size(); ++i) {
+        if (i != 0)
+            std::print(",");
+        const auto &argument = positionals.arguments[i];
+        std::print("{{\"name\":");
+        PrintJsonString(argument.name);
+        std::print(",\"description\":");
+        PrintJsonString(argument.description);
+        std::print(",\"required\":{},\"multiple\":{}}}", argument.required, argument.multiple);
+    }
+    std::print("],\"options\":[");
+    for (std::size_t i = 0; i < command.options.size(); ++i) {
+        if (i != 0)
+            std::print(",");
+        PrintOptionJson(command.options[i]);
+    }
+    std::print("],\"examples\":[");
+    for (std::size_t i = 0; i < command.examples.size(); ++i) {
+        if (i != 0)
+            std::print(",");
+        const auto example = command.examples[i];
+        PrintJsonString(example.starts_with("rux")
+                            ? example
+                            : std::format("rux {}{}{}", command.name, example.empty() ? "" : " ", example));
+    }
+    std::print("],\"documentationUrl\":");
+    PrintJsonString(std::format("https://rux-lang.dev/docs/cli/{}", command.name));
+    std::print("}}");
+}
+} // namespace
+
+void Cli::PrintHelp(const ColorMode color) {
+    const size_t termWidth = GetTerminalWidth();
+    const AnsiStyle style{ColorEnabled(color, OutputStream::Stdout)};
+    std::println("The {}{}Rux{} compiler and package manager\n", style.Bold(), style.Cyan(), style.Reset());
+    std::println("{}Usage:{} {}{}{} [global-options] <command> [command-options] [operands]\n", style.Bold(),
+                 style.Reset(), style.Cyan(), Layout::CliName, style.Reset());
+    std::println("{}Commands:{}", style.Bold(), style.Reset());
+    for (const auto &cmd : G_COMMAND_HELP_MAPS) {
+        PrintAligned(cmd.name, cmd.shortDesc, G_CMD_WIDTH, termWidth, style);
+    }
+    std::println("\n{}Global options:{}", style.Bold(), style.Reset());
+    for (const auto &[flags, desc] : GlobalOpts::catalog) {
+        PrintAligned(flags, desc, G_OPT_WIDTH, termWidth, style);
+    }
+    std::println("\nUse '{}rux help <command>{}' for more information about a command.", style.Cyan(), style.Reset());
+}
+
+void Cli::PrintHelpFor(const std::string_view command, const ColorMode color) {
     if (command == "help") {
-        PrintHelp();
+        PrintHelp(color);
         return;
     }
     const auto it = std::ranges::lower_bound(G_COMMAND_HELP_MAPS, command, std::less<>{}, &CommandDoc::name);
@@ -671,33 +813,34 @@ void Cli::PrintHelpFor(const std::string_view command) {
     }
     const auto &[name, shortDesc, description, usage, postUsage, footer, examples, options] = *it;
     const size_t termWidth = GetTerminalWidth();
+    const AnsiStyle style{ColorEnabled(color, OutputStream::Stdout)};
     const std::string_view longOrShortDescription = !description.empty() ? description : shortDesc;
     Wrap(longOrShortDescription, termWidth, [&](std::string_view line) -> void { std::println("{}", line); });
     std::println("");
-    std::println("Usage:");
+    std::println("{}Usage:{}", style.Bold(), style.Reset());
     if (usage.empty()) {
-        PrintCmdLine(name, ""sv);
+        PrintCmdLine(name, ""sv, style);
     }
     else {
         for (const std::string_view usageVariant : usage) {
-            PrintCmdLine(name, usageVariant);
+            PrintCmdLine(name, usageVariant, style);
         }
     }
     std::println("");
-    PrintBlock(""sv, postUsage, termWidth);
+    PrintBlock(""sv, postUsage, termWidth, style);
     if (!options.empty()) {
         const auto optWidth = MaxSize(options, &OptionDoc::flags);
-        std::println("Options:");
+        std::println("{}Options:{}", style.Bold(), style.Reset());
         for (const auto &[flags, desc] : options) {
-            PrintAligned(flags, desc, optWidth, termWidth);
+            PrintAligned(flags, desc, optWidth, termWidth, style);
         }
         std::println("");
     }
-    PrintBlock(""sv, footer, termWidth, 0);
+    PrintBlock(""sv, footer, termWidth, style, 0);
     if (!examples.empty()) {
-        std::println("Examples:");
+        std::println("{}Examples:{}", style.Bold(), style.Reset());
         for (const auto example : examples) {
-            PrintCmdLine(name, example);
+            PrintCmdLine(name, example, style);
         }
         std::println("");
     }
@@ -707,12 +850,58 @@ void Cli::PrintVersion() {
     std::println("Rux {} ({} {})", RUX_VERSION, RUX_BUILD_DATE, RUX_BUILD_TIME);
 }
 
-int Cli::RunHelp(std::span<const std::string_view> args, const GlobalOptions &) {
-    if (!args.empty()) {
-        PrintHelpFor(args.front());
+void Cli::PrintHelpJson(const std::string_view command) {
+    std::print("{{\"schemaVersion\":1,\"program\":{{\"name\":\"rux\",\"version\":");
+    PrintJsonString(RUX_VERSION);
+    std::print("}},\"globalOptions\":[");
+    const auto globals = CliContract::GlobalOptions();
+    for (std::size_t i = 0; i < globals.size(); ++i) {
+        if (i != 0)
+            std::print(",");
+        PrintOptionJson(globals[i]);
+    }
+    std::print("],\"commands\":[");
+    if (command.empty()) {
+        const auto commands = CliContract::Commands();
+        for (std::size_t i = 0; i < commands.size(); ++i) {
+            if (i != 0)
+                std::print(",");
+            PrintCommandJson(commands[i]);
+        }
+    }
+    else if (const auto *spec = CliContract::FindCommand(command)) {
+        PrintCommandJson(*spec);
+    }
+    std::println("]}}");
+}
+
+int Cli::RunHelp(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    bool json = false;
+    std::string_view command;
+    for (const auto arg : args) {
+        if (arg == "--json") {
+            json = true;
+        }
+        else if (command.empty()) {
+            command = arg;
+        }
+        else {
+            std::println(stderr, "error: too many arguments for command 'help'");
+            return 2;
+        }
+    }
+    if (!command.empty() && !CliContract::FindCommand(command)) {
+        PrintUnknownCommand(command);
+        return 2;
+    }
+    if (json) {
+        PrintHelpJson(command);
+    }
+    else if (!command.empty()) {
+        PrintHelpFor(command, opts.color);
     }
     else {
-        PrintHelp();
+        PrintHelp(opts.color);
     }
     return 0;
 }

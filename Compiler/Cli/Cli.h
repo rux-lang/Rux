@@ -26,9 +26,6 @@ public:
 private:
     std::span<char *const> args;
 
-    // Argument parsing
-    static GlobalOptions ParseGlobalOptions(std::span<const std::string_view> args);
-
     // Command dispatch
     static int RunHelp(std::span<const std::string_view> args, const GlobalOptions &opts);
     static int RunVersion(const GlobalOptions &opts);
@@ -55,8 +52,9 @@ private:
     static int RunCheck(std::span<const std::string_view> args, const GlobalOptions &opts);
 
     // Help printers
-    static void PrintHelp();
-    static void PrintHelpFor(std::string_view command);
+    static void PrintHelp(ColorMode color = ColorMode::Auto);
+    static void PrintHelpFor(std::string_view command, ColorMode color = ColorMode::Auto);
+    static void PrintHelpJson(std::string_view command = {});
     static void PrintVersion();
     static void PrintUnknownCommand(std::string_view command);
     static void PrintUnknownOption(std::string_view option, std::string_view command = {});
