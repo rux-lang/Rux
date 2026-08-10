@@ -77,6 +77,10 @@ func Main() -> int {
         application.build.defines[std::move(name)] = DefineValue{DefineValue::Kind::String, std::move(value)};
     }
 
+    void SetDependencyTargets(std::vector<Target::OS> targetOS) {
+        application.dependencies.front().targetOS = std::move(targetOS);
+    }
+
     void UseRegistryDeclaredTransitiveDependency() {
         Manifest transitive;
         transitive.package.name = *IdentitySegment::Parse("Transitive");
@@ -153,6 +157,7 @@ TEST_CASE("test output directories omit the build profile") {
 
 TEST_CASE("compiler driver loads path dependencies when checking") {
     DependencyFixture fixture;
+    fixture.SetDependencyTargets({Target::HostOS});
     std::vector<Diagnostic> diagnostics;
 
     const auto result = CompilerDriver(fixture.Options(true, diagnostics)).Compile();
@@ -160,6 +165,42 @@ TEST_CASE("compiler driver loads path dependencies when checking") {
     CHECK(result.ok);
     CHECK(diagnostics.empty());
     CHECK(result.stats.dependencyFiles == 1);
+}
+
+TEST_CASE("compiler driver enforces TargetOS on an active dependency import") {
+    DependencyFixture fixture;
+    const Target::OS excluded = Target::HostOS == Target::OS::Windows ? Target::OS::Linux : Target::OS::Windows;
+    fixture.SetDependencyTargets({excluded});
+    std::vector<Diagnostic> diagnostics;
+
+    const auto result = CompilerDriver(fixture.Options(true, diagnostics)).Compile();
+
+    CHECK_FALSE(result.ok);
+    REQUIRE(diagnostics.size() == 1);
+    CHECK(diagnostics.front().message.contains("not available for target"));
+    CHECK(diagnostics.front().message.contains("TargetOS"));
+}
+
+TEST_CASE("compiler driver ignores a TargetOS dependency imported only by a removed branch") {
+    DependencyFixture fixture;
+    const Target::OS excluded = Target::HostOS == Target::OS::Windows ? Target::OS::Linux : Target::OS::Windows;
+    fixture.SetDependencyTargets({excluded});
+    fixture.SetApplicationSource(R"(
+when false {
+    import Dependency::Api::Answer;
+}
+
+func Main() -> int {
+    return 0;
+}
+)");
+    std::vector<Diagnostic> diagnostics;
+
+    const auto result = CompilerDriver(fixture.Options(true, diagnostics)).Compile();
+
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.stats.dependencyFiles == 0);
 }
 
 TEST_CASE("compiler driver loads path dependencies when building") {

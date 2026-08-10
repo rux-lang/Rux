@@ -2,6 +2,7 @@
 
 #include "Package/Identity.h"
 #include "Package/Version.h"
+#include "Target/Target.h"
 
 #include <cstdint>
 #include <expected>
@@ -46,6 +47,12 @@ enum class ManifestPackageType {
 [[nodiscard]] std::string_view ToString(ManifestPackageType type) noexcept;
 
 [[nodiscard]] std::optional<ManifestPackageType> ParseManifestPackageType(std::string_view value) noexcept;
+
+/// Canonical manifest spelling of an operating system accepted by `TargetOS`.
+[[nodiscard]] std::string_view ManifestTargetOSName(Target::OS os) noexcept;
+
+/// Parse one exact operating-system name accepted by `TargetOS`.
+[[nodiscard]] std::optional<Target::OS> ParseManifestTargetOS(std::string_view value) noexcept;
 
 /**
  * @brief A manifest problem located in the file it came from.
@@ -104,6 +111,7 @@ struct ManifestDependency {
     IdentitySegment importName;
     IdentitySegment package;
     std::variant<RegistryDependencySource, PathDependencySource> source;
+    std::vector<Target::OS> targetOS;
 
     [[nodiscard]] bool IsPath() const noexcept {
         return std::holds_alternative<PathDependencySource>(source);
@@ -116,6 +124,9 @@ struct ManifestDependency {
     [[nodiscard]] const RegistryDependencySource *Registry() const noexcept {
         return std::get_if<RegistryDependencySource>(&source);
     }
+
+    /// Whether this dependency is available to `os`; an empty allow-list means every target.
+    [[nodiscard]] bool MatchesTarget(Target::OS os) const noexcept;
 };
 
 /**

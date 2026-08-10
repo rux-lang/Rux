@@ -36,6 +36,41 @@ std::optional<ManifestPackageType> ParseManifestPackageType(const std::string_vi
     return std::nullopt;
 }
 
+std::string_view ManifestTargetOSName(const Target::OS os) noexcept {
+    switch (os) {
+    case Target::OS::Windows:
+        return "Windows";
+    case Target::OS::Linux:
+        return "Linux";
+    case Target::OS::MacOS:
+        return "MacOS";
+    case Target::OS::FreeBSD:
+        return "FreeBSD";
+    case Target::OS::OpenBSD:
+        return "OpenBSD";
+    case Target::OS::NetBSD:
+        return "NetBSD";
+    case Target::OS::DragonFlyBSD:
+        return "DragonFlyBSD";
+    case Target::OS::Illumos:
+        return "Illumos";
+    default:
+        return "";
+    }
+}
+
+std::optional<Target::OS> ParseManifestTargetOS(const std::string_view value) noexcept {
+    constexpr Target::OS supported[] = {Target::OS::Windows,      Target::OS::Linux,   Target::OS::MacOS,
+                                        Target::OS::FreeBSD,      Target::OS::OpenBSD, Target::OS::NetBSD,
+                                        Target::OS::DragonFlyBSD, Target::OS::Illumos};
+    for (const Target::OS os : supported) {
+        if (ManifestTargetOSName(os) == value) {
+            return os;
+        }
+    }
+    return std::nullopt;
+}
+
 std::string ManifestDiagnostic::Format() const {
     return std::format("{}:{}:{}: {}", path.string(), line, column, message);
 }
@@ -46,6 +81,10 @@ const std::string &ManifestDependency::Path() const noexcept {
         return local->path;
     }
     return none;
+}
+
+bool ManifestDependency::MatchesTarget(const Target::OS os) const noexcept {
+    return targetOS.empty() || std::ranges::contains(targetOS, os);
 }
 
 std::map<std::string, std::string> Build::ConfigValues() const {
@@ -813,7 +852,7 @@ private:
             const Value &value = *entry.value;
             Typed(value, Value::Kind::InlineTable, entry.key);
 
-            static constexpr std::string_view known[] = {"Namespace", "Package", "Version", "Path"};
+            static constexpr std::string_view known[] = {"Namespace", "Package", "Version", "Path", "TargetOS"};
             for (const auto &field : value.table) {
                 if (std::ranges::find(known, field.key) == std::ranges::end(known)) {
                     FailAt(field.keyLocation,
@@ -829,6 +868,7 @@ private:
             const KeyValue *ns = field("Namespace");
             const KeyValue *requirement = field("Version");
             const KeyValue *path = field("Path");
+            const KeyValue *targetOS = field("TargetOS");
 
             dependency.package = dependency.importName;
             if (const KeyValue *alias = field("Package")) {
@@ -858,6 +898,24 @@ private:
                            std::format("'Version' is not a valid requirement: {}", Describe(range.error())));
                 }
                 dependency.source = RegistryDependencySource{ReadIdentity(*ns->value, "Namespace"), *range};
+            }
+
+            if (targetOS != nullptr) {
+                Typed(*targetOS->value, Value::Kind::Array, "TargetOS");
+                if (targetOS->value->array.empty()) {
+                    FailAt(targetOS->value->location, "'TargetOS' cannot be empty; omit it to match every target");
+                }
+                for (const auto &item : targetOS->value->array) {
+                    const std::string &name = Typed(*item, Value::Kind::String, "TargetOS").text;
+                    const auto os = ParseManifestTargetOS(name);
+                    if (!os) {
+                        FailAt(item->location, std::format("'{}' is not a supported TargetOS", name));
+                    }
+                    if (std::ranges::contains(dependency.targetOS, *os)) {
+                        FailAt(item->location, std::format("duplicate TargetOS '{}'", name));
+                    }
+                    dependency.targetOS.push_back(*os);
+                }
             }
 
             for (const auto &existing : dependencies) {
@@ -1042,6 +1100,16 @@ std::string Manifest::Serialize() const {
                 }
                 out << "Path = " << Quoted(dependency->Path());
             }
+            if (!dependency->targetOS.empty()) {
+                out << ", TargetOS = [";
+                for (std::size_t i = 0; i < dependency->targetOS.size(); ++i) {
+                    if (i != 0) {
+                        out << ", ";
+                    }
+                    out << Quoted(ManifestTargetOSName(dependency->targetOS[i]));
+                }
+                out << ']';
+            }
             out << " }\n";
         }
     }
@@ -1130,7 +1198,7 @@ bool Manifest::AddRegistryDependency(IdentitySegment importName, IdentitySegment
         found->source = std::move(source);
         return true;
     }
-    dependencies.push_back({importName, importName, std::move(source)});
+    dependencies.push_back({importName, importName, std::move(source), {}});
     return true;
 }
 
@@ -1144,7 +1212,7 @@ bool Manifest::AddPathDependency(IdentitySegment importName, std::string path) {
         found->source = PathDependencySource{std::move(path)};
         return true;
     }
-    dependencies.push_back({importName, importName, PathDependencySource{std::move(path)}});
+    dependencies.push_back({importName, importName, PathDependencySource{std::move(path)}, {}});
     return true;
 }
 

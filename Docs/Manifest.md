@@ -123,9 +123,12 @@ Each `[Dependencies]` key is the local import name and each value is an inline t
 Io = { Namespace = "Rux", Version = "^1.0.0" }
 Json = { Namespace = "Acme", Package = "FastJson", Version = ">=2.0.0, <3.0.0" }
 Util = { Path = "../Util" }
+Windows = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Windows"] }
 ```
 
 A registry dependency requires `Namespace` and `Version`. A path dependency requires `Path` and cannot carry `Namespace` or `Version`. Either form may set `Package` to name a package whose spelling differs from the import name; `Package` defaults to the import name.
+
+Either form may also declare a non-empty `TargetOS` allow-list. The dependency participates in builds and package resolution only when the selected target operating system appears in the list; omitting `TargetOS` makes it unconditional. The accepted values are `Windows`, `Linux`, `MacOS`, `FreeBSD`, `OpenBSD`, `NetBSD`, `DragonFlyBSD` and `Illumos`. Values are exact and cannot repeat. A dependency shared by the supported BSD targets therefore declares `TargetOS = ["DragonFlyBSD", "FreeBSD", "NetBSD", "OpenBSD"]`.
 
 The import name is an identity segment, and two dependencies cannot produce the same import name after normalization. Path dependencies are valid for local builds but make a manifest unpublishable.
 
@@ -231,7 +234,9 @@ A published version is immutable: republishing an existing `major.minor.patch` �
 
 `rux install` reads the registry's resolver index and downloads published archives. It contacts no host other than the selected registry, and `--registry` and `RUX_REGISTRY_URL` retarget resolution and download exactly as they retarget publication. No credential is involved: the read side is public.
 
-Resolution walks the dependency graph breadth-first from the root manifest — or from every member of a workspace — and asks `/v1/index/<namespace>/<package>` for each package it reaches. A candidate version is eligible when it is not yanked, its `MinRux` is no newer than the running compiler, and it satisfies every requirement gathered for that package. The highest eligible version wins, ordered by SemVer precedence with build metadata as the tie-break. A package resolves to one version; requirements that cannot be satisfied together are reported rather than resolved arbitrarily. `rux update` runs the same resolution and installs the newest version each requirement now allows.
+Resolution walks the dependency graph breadth-first from the root manifest — or from every member of a workspace — and asks `/v1/index/<namespace>/<package>` for each package it reaches. `rux install` and `rux update` use the host target by default and accept `--target <triple>` to resolve for another supported target. Root requirements and transitive registry edges whose `TargetOS` allow-list excludes that target are pruned before they constrain or enter the graph. Installing an explicitly named package still installs that package; the target only filters its transitive dependencies.
+
+A candidate version is eligible when it is not yanked, its `MinRux` is no newer than the running compiler, and it satisfies every applicable requirement gathered for that package. The highest eligible version wins, ordered by SemVer precedence with build metadata as the tie-break. A package resolves to one version; requirements that cannot be satisfied together are reported rather than resolved arbitrarily. `rux update` runs the same resolution and installs the newest version each requirement now allows. Registry index dependency objects carry an optional `target_os` array using the manifest spellings; an omitted field preserves the existing unconditional-edge behavior.
 
 Each selected version is downloaded as its `.ruxpkg`, checked against the SHA-256 the registry publishes for it, and unpacked under the same archive contract `rux pack` applies — entry paths cannot escape the package, and the declared size and count limits hold. A download that fails any of those checks installs nothing. The unpacked manifest must also carry the identity and version it was published under.
 

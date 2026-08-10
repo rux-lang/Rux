@@ -422,6 +422,45 @@ TEST_CASE("Dependency entries follow the documented rules") {
         CHECK(manifest.dependencies.front().importName.Text() == "Json");
         CHECK(manifest.dependencies.front().package.Text() == "FastJson");
     }
+    SUBCASE("target operating systems are exact non-empty allow-lists") {
+        const Manifest manifest = Accepted(
+            WithPackage("\n[Dependencies]\nPlatform = { Path = \"../Platform\", TargetOS = [\"Windows\", \"Linux\", "
+                        "\"MacOS\", \"FreeBSD\", \"OpenBSD\", \"NetBSD\", \"DragonFlyBSD\", \"Illumos\"] }\n"));
+        const auto &dependency = manifest.dependencies.front();
+        CHECK(dependency.targetOS.size() == 8);
+        CHECK(dependency.MatchesTarget(Target::OS::Windows));
+        CHECK(dependency.MatchesTarget(Target::OS::DragonFlyBSD));
+        CHECK_FALSE(dependency.MatchesTarget(Target::OS::AIX));
+
+        CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = [] }\n"))
+                  .message.find("cannot be empty") != std::string::npos);
+        CHECK(Rejected(
+                  WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = [\"Windows\", \"Windows\"] }\n"))
+                  .message.find("duplicate TargetOS") != std::string::npos);
+        CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = [\"macOS\"] }\n"))
+                  .message.find("not a supported TargetOS") != std::string::npos);
+        CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = \"Windows\" }\n"))
+                  .message.find("must be an array") != std::string::npos);
+        CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = [1] }\n"))
+                  .message.find("must be a string") != std::string::npos);
+    }
+}
+
+TEST_CASE("TargetOS round trips on registry and path dependencies") {
+    constexpr std::string_view source = R"([Manifest]
+Version = 1
+
+[Package]
+Name = "App"
+Version = "0.1.0"
+Type = "Program"
+
+[Dependencies]
+Local = { Path = "../Local", TargetOS = ["Linux"] }
+Windows = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Windows"] }
+)";
+    const Manifest manifest = Accepted(source);
+    CHECK(manifest.Serialize() == source);
 }
 
 TEST_CASE("Workspace tables follow the documented rules") {
@@ -465,15 +504,19 @@ TEST_CASE("Oversized manifests are rejected before parsing") {
 }
 
 TEST_CASE("Dependency editing keeps the manifest canonical") {
-    Manifest manifest = Accepted(WithPackage(""));
+    Manifest manifest = Accepted(
+        WithPackage("\n[Dependencies]\nIo = { Namespace = \"Rux\", Version = \"*\", TargetOS = [\"Windows\"] }\n"));
     const auto io = *IdentitySegment::Parse("Io");
     const auto rux = *IdentitySegment::Parse("Rux");
 
     CHECK(manifest.AddRegistryDependency(io, rux, *VersionRange::Parse("^1.0.0")));
+    REQUIRE(manifest.dependencies.front().targetOS.size() == 1);
+    CHECK(manifest.dependencies.front().targetOS.front() == Target::OS::Windows);
     CHECK_FALSE(manifest.AddRegistryDependency(io, rux, *VersionRange::Parse("^1.0.0")));
     CHECK(manifest.AddPathDependency(io, "../Io"));
     REQUIRE(manifest.dependencies.size() == 1);
     CHECK(manifest.dependencies.front().IsPath());
+    CHECK(manifest.dependencies.front().targetOS.front() == Target::OS::Windows);
 
     CHECK(manifest.RemoveDependency(*IdentitySegment::Parse("io")));
     CHECK(manifest.dependencies.empty());

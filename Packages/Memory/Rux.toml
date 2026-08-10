@@ -17,8 +17,8 @@ Homepage = "https://rux-lang.dev/docs/api/memory"
 ReadmeFile = "README.md"
 
 [Dependencies]
-Bsd = { Namespace = "Rux", Version = "0.1.0" }
+Bsd = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["DragonFlyBSD", "FreeBSD", "NetBSD", "OpenBSD"] }
 Core = { Namespace = "Rux", Version = "0.1.0" }
-Linux = { Namespace = "Rux", Version = "0.1.0" }
-MacOS = { Namespace = "Rux", Version = "0.1.0" }
-Windows = { Namespace = "Rux", Version = "0.1.0" }
+Linux = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Linux"] }
+MacOS = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["MacOS"] }
+Windows = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Windows"] }

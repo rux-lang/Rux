@@ -275,8 +275,10 @@ constexpr std::array init_exs = {""sv, "--bin"sv, "--lib --namespace Rux"sv};
 // Install
 constexpr std::array install_usage = {""sv, "[namespace]/[package]"sv, "[namespace]/[package]@[requirement]"sv};
 constexpr std::array install_opts = {
-    OptionDoc{.flags = "--registry <url>"sv, .desc = "Registry API base URL to resolve and download from"sv}};
-constexpr std::array install_exs = {""sv, "Rux/Io"sv, "Rux/Io@^0.1.0"sv, "--registry http://localhost:8080"sv};
+    OptionDoc{.flags = "--registry <url>"sv, .desc = "Registry API base URL to resolve and download from"sv},
+    OptionDoc{.flags = "--target <triple>"sv, .desc = "Install dependencies applicable to a target platform"sv}};
+constexpr std::array install_exs = {""sv, "Rux/Io"sv, "Rux/Io@^0.1.0"sv, "--target windows-x86_64"sv,
+                                    "--registry http://localhost:8080"sv};
 
 // List
 constexpr std::array list_usage = {"[options]"sv};
@@ -348,8 +350,10 @@ constexpr std::array uninstall_exs = {""sv, "Rux/Json"sv, "Rux/Json@0.1.0"sv, "-
 constexpr std::array update_usage = {"[options]"sv};
 constexpr std::array update_opts = {
     OptionDoc{.flags = "--global"sv, .desc = "Update all entries in the global environment cache"sv},
-    OptionDoc{.flags = "--registry <url>"sv, .desc = "Registry API base URL to resolve and download from"sv}};
-constexpr std::array update_exs = {""sv, "--global"sv, "--registry http://localhost:8080"sv};
+    OptionDoc{.flags = "--registry <url>"sv, .desc = "Registry API base URL to resolve and download from"sv},
+    OptionDoc{.flags = "--target <triple>"sv, .desc = "Update dependencies applicable to a target platform"sv}};
+constexpr std::array update_exs = {""sv, "--global"sv, "--target linux-aarch64"sv,
+                                   "--registry http://localhost:8080"sv};
 
 // Version
 constexpr std::array version_exs = {""sv, "rux -V"sv, "rux --version"sv};
@@ -459,6 +463,8 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                             "manifest exists, packages are discovered from Tests/ and immediate member directories.\n"
                             "With a package name, downloads it and its transitive dependencies to the package cache; "
                             "use 'rux add' to declare it in Rux.toml.\n"
+                            "TargetOS conditions use the host target unless --target selects another supported "
+                            "target triple.\n"
                             "Each package is resolved through the registry index, downloaded as a published archive "
                             "and checked against the SHA-256 the registry publishes for it. Versions are cached side "
                             "by side, so a build selects the one its requirement matches."sv,
@@ -587,7 +593,8 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .postUsage = "Without --global, re-resolves every registry dependency listed in Rux.toml against the "
                             "registry and installs the newest version each requirement allows.\nWith --global, moves "
                             "every package present in the local cache to its newest published release.\nOlder "
-                            "versions stay installed; 'rux uninstall' removes them."sv,
+                            "versions stay installed; 'rux uninstall' removes them. TargetOS conditions use the host "
+                            "target unless --target selects another supported target triple."sv,
                .footer = {},
                .examples = Data::update_exs,
                .options = Data::update_opts},

@@ -294,6 +294,11 @@ bool CompilerDriver::LoadDependencies() {
                                  (ownerRoot / "Rux.toml").string() + "'"));
             return false;
         }
+        if (!dep->MatchesTarget(TargetTripleOs(opts.targetName))) {
+            Emit(ErrorDiagnostic("dependency '" + pkgName + "' is not available for target '" + opts.targetName +
+                                 "' according to TargetOS in '" + (ownerRoot / "Rux.toml").string() + "'"));
+            return false;
+        }
         std::filesystem::path depRoot;
         if (dep->IsPath()) {
             depRoot = (ownerRoot / dep->Path()).lexically_normal();

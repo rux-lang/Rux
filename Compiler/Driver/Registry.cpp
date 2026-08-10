@@ -1,6 +1,7 @@
 #include "Driver/Registry.h"
 
 #include "Driver/Version.h"
+#include "Package/Manifest.h"
 #include "System/Json.h"
 #include "System/Process.h"
 
@@ -59,6 +60,10 @@ std::expected<std::string, RegistryError> GetRoute(const std::string_view url) {
     return std::unexpected(std::move(error));
 }
 } // namespace
+
+bool RegistryDependencyEdge::MatchesTarget(const Target::OS os) const noexcept {
+    return targetOS.empty() || std::ranges::contains(targetOS, os);
+}
 
 std::string QualifiedIdentity(const IdentitySegment &ns, const IdentitySegment &package) {
     return std::format("{}/{}", ns.Text(), package.Text());
@@ -149,10 +154,28 @@ std::expected<RegistryIndexEntry, RegistryError> DecodePackageIndex(const std::s
                     return std::unexpected(Malformed(std::format(
                         "the index lists an unreadable dependency of version {}", published.version.Text())));
                 }
-                published.dependencies.push_back(RegistryDependencyEdge{.alias = std::move(*alias),
-                                                                        .ns = std::move(*targetNs),
-                                                                        .package = std::move(*targetPackage),
-                                                                        .range = std::move(*range)});
+                RegistryDependencyEdge dependency{.alias = std::move(*alias),
+                                                  .ns = std::move(*targetNs),
+                                                  .package = std::move(*targetPackage),
+                                                  .range = std::move(*range),
+                                                  .targetOS = {}};
+                if (const JsonValue *targetOS = edge.Find("target_os"); targetOS != nullptr) {
+                    if (!targetOS->IsArray() || targetOS->Elements().empty()) {
+                        return std::unexpected(Malformed(
+                            std::format("the index lists an unreadable target_os for a dependency of version {}",
+                                        published.version.Text())));
+                    }
+                    for (const auto &item : targetOS->Elements()) {
+                        const auto os = ParseManifestTargetOS(item.AsString());
+                        if (!os || std::ranges::contains(dependency.targetOS, *os)) {
+                            return std::unexpected(Malformed(
+                                std::format("the index lists an unreadable target_os for a dependency of version {}",
+                                            published.version.Text())));
+                        }
+                        dependency.targetOS.push_back(*os);
+                    }
+                }
+                published.dependencies.push_back(std::move(dependency));
             }
         }
         entry.versions.push_back(std::move(published));

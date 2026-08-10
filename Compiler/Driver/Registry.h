@@ -13,6 +13,7 @@
 
 #include "Package/Identity.h"
 #include "Package/Version.h"
+#include "Target/Target.h"
 
 #include <cstdint>
 #include <expected>
@@ -29,6 +30,9 @@ struct RegistryDependencyEdge {
     IdentitySegment ns;
     IdentitySegment package;
     VersionRange range;
+    std::vector<Target::OS> targetOS;
+
+    [[nodiscard]] bool MatchesTarget(Target::OS os) const noexcept;
 };
 
 /// One published version of a package.

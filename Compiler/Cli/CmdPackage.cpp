@@ -59,6 +59,18 @@ std::string Qualified(const IdentitySegment &ns, const IdentitySegment &package)
     return QualifiedIdentity(ns, package);
 }
 
+std::string TargetSuffix(const ManifestDependency &dependency) {
+    if (dependency.targetOS.empty()) {
+        return {};
+    }
+    std::string suffix = " [targets: ";
+    for (std::size_t i = 0; i < dependency.targetOS.size(); ++i) {
+        suffix += (i == 0 ? "" : ", ");
+        suffix += ManifestTargetOSName(dependency.targetOS[i]);
+    }
+    return suffix + ']';
+}
+
 /**
  * @brief Fetches each package's index at most once per command.
  *
@@ -116,7 +128,8 @@ struct Selection {
  *
  * @return The resolved graph, or nullopt after the reason has been printed
  */
-std::optional<std::vector<Resolution>> ResolveGraph(IndexCache &index, const std::vector<Requirement> &seeds) {
+std::optional<std::vector<Resolution>> ResolveGraph(IndexCache &index, const std::vector<Requirement> &seeds,
+                                                    const Target::OS targetOS) {
     const SemanticVersion compiler = CompilerVersion();
     std::map<std::string, Selection> selections;
     std::vector<Requirement> queue = seeds;
@@ -159,7 +172,9 @@ std::optional<std::vector<Resolution>> ResolveGraph(IndexCache &index, const std
         }
         selection->second.version = chosen->version;
         for (const auto &edge : chosen->dependencies) {
-            queue.push_back(Requirement{.ns = edge.ns, .package = edge.package, .range = edge.range});
+            if (edge.MatchesTarget(targetOS)) {
+                queue.push_back(Requirement{.ns = edge.ns, .package = edge.package, .range = edge.range});
+            }
         }
     }
 
@@ -304,9 +319,11 @@ void RemoveLegacyCacheEntries(const GlobalOptions &opts) {
 }
 
 /// Collect the registry dependencies a manifest declares.
-void QueueRegistryDependencies(const Manifest &manifest, std::vector<Requirement> &out) {
+void QueueRegistryDependencies(const Manifest &manifest, const std::optional<Target::OS> targetOS,
+                               std::vector<Requirement> &out) {
     for (const auto &dep : manifest.dependencies) {
-        if (const RegistryDependencySource *registry = dep.Registry()) {
+        if (const RegistryDependencySource *registry = dep.Registry();
+            registry != nullptr && (!targetOS || dep.MatchesTarget(*targetOS))) {
             out.push_back(Requirement{.ns = registry->ns, .package = dep.package, .range = registry->version});
         }
     }
@@ -321,7 +338,7 @@ void QueueRegistryDependencies(const Manifest &manifest, std::vector<Requirement
  *
  * @return The requirements, or nullopt after the reason has been printed
  */
-std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opts) {
+std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opts, const Target::OS targetOS) {
     std::vector<Requirement> seeds;
     std::optional<std::filesystem::path> manifestPath;
     if (!opts.manifest.empty()) {
@@ -353,7 +370,7 @@ std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opt
                            memberPath.parent_path().string());
                 return std::nullopt;
             }
-            QueueRegistryDependencies(*memberManifest, seeds);
+            QueueRegistryDependencies(*memberManifest, targetOS, seeds);
         }
         return seeds;
     }
@@ -363,7 +380,7 @@ std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opt
         return std::nullopt;
     }
     if (!manifest->IsWorkspace()) {
-        QueueRegistryDependencies(*manifest, seeds);
+        QueueRegistryDependencies(*manifest, targetOS, seeds);
         return seeds;
     }
 
@@ -386,7 +403,7 @@ std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opt
             std::print(stderr, "error: workspace member '{}' is not a package\n", member);
             return std::nullopt;
         }
-        QueueRegistryDependencies(*memberManifest, seeds);
+        QueueRegistryDependencies(*memberManifest, targetOS, seeds);
     }
     return seeds;
 }
@@ -468,11 +485,22 @@ bool ReadRegistryOption(const std::span<const std::string_view> args, std::size_
     registryArg = args[++index];
     return true;
 }
+
+std::optional<Target::OS> ResolvePackageTarget(const std::string_view requested) {
+    const std::string target = requested.empty() ? HostTargetTriple() : CanonicalTargetTriple(requested);
+    if (!IsSupportedTargetTriple(target)) {
+        std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", target,
+                   SupportedTargetTriples());
+        return std::nullopt;
+    }
+    return TargetTripleOs(target);
+}
 } // namespace
 
 int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions &opts) {
     std::string_view packageSpec;
     std::string_view registryArg;
+    std::string_view targetArg;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string_view arg = args[i];
         if (arg == "-h" || arg == "--help") {
@@ -485,11 +513,24 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
             }
             continue;
         }
+        if (arg == "--target") {
+            if (i + 1 >= args.size()) {
+                std::print(stderr, "error: '--target' requires an argument\n");
+                return 1;
+            }
+            targetArg = args[++i];
+            continue;
+        }
         if (!arg.starts_with('-') && packageSpec.empty()) {
             packageSpec = arg;
             continue;
         }
         PrintUnknownOption(arg, "install");
+        return 1;
+    }
+
+    const auto targetOS = ResolvePackageTarget(targetArg);
+    if (!targetOS) {
         return 1;
     }
 
@@ -502,7 +543,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
         seeds.push_back(std::move(spec->requirement));
     }
     else {
-        auto seeded = SeedFromProject(opts);
+        auto seeded = SeedFromProject(opts, *targetOS);
         if (!seeded) {
             return 1;
         }
@@ -521,7 +562,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
         std::print("{} from {}\n", Status("Resolving"), ResolveRegistryBase(registryArg));
     }
     IndexCache index(ResolveRegistryBase(registryArg));
-    const auto resolved = ResolveGraph(index, seeds);
+    const auto resolved = ResolveGraph(index, seeds, *targetOS);
     if (!resolved) {
         return 1;
     }
@@ -632,7 +673,7 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
         return 1;
     }
     std::vector<Requirement> declared;
-    QueueRegistryDependencies(*manifest, declared);
+    QueueRegistryDependencies(*manifest, std::nullopt, declared);
     if (declared.empty()) {
         if (!opts.quiet) {
             std::print("  No registry dependencies to uninstall.\n");
@@ -869,7 +910,7 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions &op
     std::print("Dependencies ({}):\n", manifest->dependencies.size());
     for (const auto &dep : manifest->dependencies) {
         if (dep.IsPath()) {
-            std::print("  {} (path: {})\n", dep.importName.Text(), dep.Path());
+            std::print("  {} (path: {}){}\n", dep.importName.Text(), dep.Path(), TargetSuffix(dep));
             continue;
         }
         const auto *registry = dep.Registry();
@@ -877,12 +918,12 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions &op
         // into something checkable without running the build.
         const auto installed = FindInstalledPackage(registry->ns, dep.package, registry->version);
         if (installed) {
-            std::print("  {}/{} @ {} (installed {})\n", registry->ns.Text(), dep.package.Text(),
-                       registry->version.Text(), installed->version.Text());
+            std::print("  {}/{} @ {}{} (installed {})\n", registry->ns.Text(), dep.package.Text(),
+                       registry->version.Text(), TargetSuffix(dep), installed->version.Text());
         }
         else {
-            std::print("  {}/{} @ {} (not installed)\n", registry->ns.Text(), dep.package.Text(),
-                       registry->version.Text());
+            std::print("  {}/{} @ {}{} (not installed)\n", registry->ns.Text(), dep.package.Text(),
+                       registry->version.Text(), TargetSuffix(dep));
         }
     }
     return 0;
@@ -891,6 +932,7 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions &op
 int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &opts) {
     bool global = false;
     std::string_view registryArg;
+    std::string_view targetArg;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string_view arg = args[i];
         if (arg == "--global") {
@@ -903,11 +945,24 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
             }
             continue;
         }
+        if (arg == "--target") {
+            if (i + 1 >= args.size()) {
+                std::print(stderr, "error: '--target' requires an argument\n");
+                return 1;
+            }
+            targetArg = args[++i];
+            continue;
+        }
         if (arg == "-h" || arg == "--help") {
             PrintHelpFor("update");
             return 0;
         }
         PrintUnknownOption(arg, "update");
+        return 1;
+    }
+
+    const auto targetOS = ResolvePackageTarget(targetArg);
+    if (!targetOS) {
         return 1;
     }
 
@@ -927,7 +982,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
         }
     }
     else {
-        auto seeded = SeedFromProject(opts);
+        auto seeded = SeedFromProject(opts, *targetOS);
         if (!seeded) {
             return 1;
         }
@@ -946,7 +1001,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
         std::print("{} from {}\n", Status("Resolving"), ResolveRegistryBase(registryArg));
     }
     IndexCache index(ResolveRegistryBase(registryArg));
-    const auto resolved = ResolveGraph(index, seeds);
+    const auto resolved = ResolveGraph(index, seeds, *targetOS);
     if (!resolved) {
         return 1;
     }
@@ -1140,11 +1195,12 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
             std::print("\nDependencies:\n");
             for (const auto &dep : manifest->dependencies) {
                 if (dep.IsPath()) {
-                    std::print("  - {} (path: {})\n", dep.importName.Text(), dep.Path());
+                    std::print("  - {} (path: {}){}\n", dep.importName.Text(), dep.Path(), TargetSuffix(dep));
                 }
                 else {
                     const auto *registry = dep.Registry();
-                    std::print("  - {}/{} @ {}\n", registry->ns.Text(), dep.package.Text(), registry->version.Text());
+                    std::print("  - {}/{} @ {}{}\n", registry->ns.Text(), dep.package.Text(), registry->version.Text(),
+                               TargetSuffix(dep));
                 }
             }
         }
