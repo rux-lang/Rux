@@ -4,7 +4,7 @@ Version = 1
 [Package]
 Name = "Functions"
 Version = "0.1.0"
-Type = "Program"
+Type = "Executable"
 Description = "Language test: Functions"
 
 [Dependencies]

@@ -2,6 +2,7 @@
 
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Lir/Lir.h"
+#include "Linker/ArtifactKind.h"
 #include "Target/Target.h"
 
 #include <filesystem>
@@ -23,7 +24,8 @@ public:
     explicit AArch64NativeEmitter(const LirPackage &package, std::string packageName, TargetContext target);
 
     [[nodiscard]] bool EmitArtifact(const std::filesystem::path &outputPath,
-                                    const std::filesystem::path &temporaryDirectory, bool release, bool sharedLibrary,
+                                    const std::filesystem::path &temporaryDirectory, bool release,
+                                    ArtifactKind artifactKind,
                                     const std::optional<std::filesystem::path> &assemblyPath = std::nullopt);
 
     [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const {

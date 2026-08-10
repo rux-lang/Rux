@@ -15,7 +15,8 @@ enum OptimizationMode: uint8 {
 enum OutputKind: uint8 {
     Executable = 0,
     SharedLibrary = 1,
-    StaticLibrary = 2
+    StaticLibrary = 2,
+    SourceLibrary = 3
 }
 
 // Properties of the active build profile and output.

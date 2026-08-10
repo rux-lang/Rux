@@ -259,6 +259,11 @@ FindDllFile(const std::string &dll, const std::vector<std::filesystem::path> &se
 }
 
 bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
+    const bool isDll = artifactKind == ArtifactKind::SharedLibrary;
+    // Executables conventionally occupy 0x140000000. A fixed-base DLL must
+    // not request the same address as its importing executable because this
+    // writer intentionally emits no base-relocation table yet.
+    const uint64_t imageBase = isDll ? 0x1'8000'0000ULL : kImageBase;
     // 1. Collect imported external function names
 
     // EXEs always need ExitProcess for the entry thunk; DLLs do not.
@@ -501,6 +506,57 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
         PadTo(rdataBuf, 2);
     }
 
+    // Reserve the complete export directory before assigning section RVAs.
+    // Appending it after layout could move .data to another page and leave
+    // already-resolved data symbols pointing at the old address.
+    std::vector<std::string> exportNames;
+    if (isDll) {
+        for (const auto &obj : objects) {
+            for (const auto &sym : obj.symbols) {
+                if (sym.kind == RcuSymKind::Func && sym.visibility != RcuSymVis::Local && !sym.name.empty() &&
+                    sym.name != "DllMain") {
+                    exportNames.push_back(sym.name);
+                }
+            }
+        }
+        std::ranges::sort(exportNames);
+        exportNames.erase(std::ranges::unique(exportNames).begin(), exportNames.end());
+    }
+
+    uint32_t exportDirOff = 0;
+    uint32_t exportDirSize = 0;
+    size_t exportDirectoryPosition = 0;
+    uint32_t exportFunctionArrayOff = 0;
+    uint32_t exportNameArrayOff = 0;
+    uint32_t exportOrdinalArrayOff = 0;
+    uint32_t exportDllNameOff = 0;
+    std::vector<uint32_t> exportNameStringOffsets;
+    if (!exportNames.empty()) {
+        exportDirOff = static_cast<uint32_t>(rdataBuf.size());
+        exportDirectoryPosition = rdataBuf.size();
+        WriteZeros(rdataBuf, 40);
+
+        exportFunctionArrayOff = static_cast<uint32_t>(rdataBuf.size());
+        WriteZeros(rdataBuf, exportNames.size() * 4);
+        exportNameArrayOff = static_cast<uint32_t>(rdataBuf.size());
+        WriteZeros(rdataBuf, exportNames.size() * 4);
+        exportOrdinalArrayOff = static_cast<uint32_t>(rdataBuf.size());
+        for (size_t i = 0; i < exportNames.size(); ++i) {
+            WriteU16(rdataBuf, static_cast<uint16_t>(i));
+        }
+
+        exportDllNameOff = static_cast<uint32_t>(rdataBuf.size());
+        WriteCStr(rdataBuf, System::SharedLibraryFileName(packageName, Target::OS::Windows).c_str());
+        PadTo(rdataBuf, 2);
+        exportNameStringOffsets.reserve(exportNames.size());
+        for (const auto &name : exportNames) {
+            exportNameStringOffsets.push_back(static_cast<uint32_t>(rdataBuf.size()));
+            WriteCStr(rdataBuf, name.c_str());
+            PadTo(rdataBuf, 2);
+        }
+        exportDirSize = static_cast<uint32_t>(rdataBuf.size()) - exportDirOff;
+    }
+
     // 5. Compute section layout (RVAs and file offsets)
     const uint32_t numSections = mergedData.empty() ? 2u : 3u;
     const uint32_t rawHdrBytes = 64 + 4 + 20 + 240 + numSections * 40;
@@ -510,8 +566,8 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
     const uint32_t textFileSize = AlignUp(textVirtSize, kFileAlign);
     const uint32_t textFileOff = sizeOfHeaders;
     const uint32_t rdataRva = textRva + AlignUp(textVirtSize, kSecAlign);
-    const auto rdataVirtSize = static_cast<uint32_t>(rdataBuf.size());
-    const uint32_t rdataFileSize = AlignUp(rdataVirtSize, kFileAlign);
+    auto rdataVirtSize = static_cast<uint32_t>(rdataBuf.size());
+    uint32_t rdataFileSize = AlignUp(rdataVirtSize, kFileAlign);
     const uint32_t rdataFileOff = textFileOff + textFileSize;
     uint32_t dataRva = 0, dataVirtSize = 0, dataFileSize = 0, dataFileOff = 0;
     if (!mergedData.empty()) {
@@ -549,7 +605,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
 
     // Add all imported function thunks first
     for (size_t i = 0; i < numImports; ++i) {
-        symMap[importNames[i]] = kImageBase + textRva + thunkOff[i];
+        symMap[importNames[i]] = imageBase + textRva + thunkOff[i];
     }
 
     // Add symbols defined in each RCU file. Local data/constant symbols are
@@ -570,19 +626,44 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
             }
             uint64_t va = 0;
             if (sym.sectionIdx == RCU_TEXT_IDX) {
-                va = kImageBase + textRva + preambleSize + lay.textOff + sym.value;
+                va = imageBase + textRva + preambleSize + lay.textOff + sym.value;
             }
             else if (sym.sectionIdx == RCU_RODATA_IDX) {
-                va = kImageBase + rdataRva + lay.rodataOff + sym.value;
+                va = imageBase + rdataRva + lay.rodataOff + sym.value;
             }
             else if (sym.sectionIdx == RCU_DATA_IDX) {
-                va = kImageBase + dataRva + lay.dataOff + sym.value;
+                va = imageBase + dataRva + lay.dataOff + sym.value;
             }
             else {
                 continue;
             }
             symMap.try_emplace(sym.name, va); // first definition wins
         }
+    }
+
+    if (!exportNames.empty()) {
+        const auto numberOfExports = static_cast<uint32_t>(exportNames.size());
+        for (uint32_t i = 0; i < numberOfExports; ++i) {
+            const auto symbol = symMap.find(exportNames[i]);
+            if (symbol == symMap.end()) {
+                Error("internal: exported PE symbol '" + exportNames[i] + "' was not resolved");
+                continue;
+            }
+            Patch32(rdataBuf, exportFunctionArrayOff + i * 4, static_cast<uint32_t>(symbol->second - imageBase));
+            Patch32(rdataBuf, exportNameArrayOff + i * 4, rdataRva + exportNameStringOffsets[i]);
+        }
+        Patch32(rdataBuf, exportDirectoryPosition + 0, 0);                            // Characteristics
+        Patch32(rdataBuf, exportDirectoryPosition + 4, 0);                            // deterministic timestamp
+        Patch32(rdataBuf, exportDirectoryPosition + 12, rdataRva + exportDllNameOff); // Name
+        Patch32(rdataBuf, exportDirectoryPosition + 16, 1);                           // ordinal base
+        Patch32(rdataBuf, exportDirectoryPosition + 20, numberOfExports);
+        Patch32(rdataBuf, exportDirectoryPosition + 24, numberOfExports);
+        Patch32(rdataBuf, exportDirectoryPosition + 28, rdataRva + exportFunctionArrayOff);
+        Patch32(rdataBuf, exportDirectoryPosition + 32, rdataRva + exportNameArrayOff);
+        Patch32(rdataBuf, exportDirectoryPosition + 36, rdataRva + exportOrdinalArrayOff);
+    }
+    if (!errors.empty()) {
+        return false;
     }
 
     // 8. Build final .text (preamble + user code)
@@ -592,8 +673,8 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
 
     // Patch import thunks: jmp [rip + disp32] → IAT entry
     for (size_t i = 0; i < numImports; ++i) {
-        uint64_t thunkVA = kImageBase + textRva + thunkOff[i];
-        uint64_t iatEntryVA = kImageBase + rdataRva + iatEntryOff[i];
+        uint64_t thunkVA = imageBase + textRva + thunkOff[i];
+        uint64_t iatEntryVA = imageBase + rdataRva + iatEntryOff[i];
         auto disp = static_cast<int32_t>(iatEntryVA - (thunkVA + 6));
         Patch32(textBuf, thunkOff[i] + 2, static_cast<uint32_t>(disp));
     }
@@ -613,7 +694,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
         auto it = symMap.find("DllMain");
         if (it != symMap.end()) {
             uint64_t dllMainVA = it->second;
-            uint64_t nextInst = kImageBase + textRva + kCallMainDisp + 4;
+            uint64_t nextInst = imageBase + textRva + kCallMainDisp + 4;
             Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(dllMainVA - nextInst));
         }
         else {
@@ -631,14 +712,14 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
             return false;
         }
         uint64_t mainVA = it->second;
-        uint64_t nextInst = kImageBase + textRva + kCallMainDisp + 4;
+        uint64_t nextInst = imageBase + textRva + kCallMainDisp + 4;
         Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(mainVA - nextInst));
     }
 
     // Patch entry thunk: call ExitProcess thunk (EXE only)
     if (!isDll) {
-        uint64_t exitVA = kImageBase + textRva + thunkOff[importIdx["ExitProcess"]];
-        uint64_t nextInst = kImageBase + textRva + kCallExitDisp + 4;
+        uint64_t exitVA = imageBase + textRva + thunkOff[importIdx["ExitProcess"]];
+        uint64_t nextInst = imageBase + textRva + kCallExitDisp + 4;
         Patch32(textBuf, kCallExitDisp, static_cast<uint32_t>(exitVA - nextInst));
     }
 
@@ -654,17 +735,17 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
             if (sec.type == RcuSecType::Text) {
                 buf = &textBuf;
                 baseInBuf = preambleSize + lay.textOff;
-                secBaseVA = kImageBase + textRva + preambleSize + lay.textOff;
+                secBaseVA = imageBase + textRva + preambleSize + lay.textOff;
             }
             else if (sec.type == RcuSecType::RoData) {
                 buf = &rdataBuf;
                 baseInBuf = lay.rodataOff;
-                secBaseVA = kImageBase + rdataRva + lay.rodataOff;
+                secBaseVA = imageBase + rdataRva + lay.rodataOff;
             }
             else if (sec.type == RcuSecType::Data) {
                 buf = &mergedData;
                 baseInBuf = lay.dataOff;
-                secBaseVA = kImageBase + dataRva + lay.dataOff;
+                secBaseVA = imageBase + dataRva + lay.dataOff;
             }
             else {
                 continue;
@@ -695,13 +776,13 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
                 else {
                     // Unnamed or purely local — compute from section index
                     if (sym.sectionIdx == RCU_TEXT_IDX) {
-                        targetVA = kImageBase + textRva + preambleSize + lay.textOff + sym.value;
+                        targetVA = imageBase + textRva + preambleSize + lay.textOff + sym.value;
                     }
                     else if (sym.sectionIdx == RCU_RODATA_IDX) {
-                        targetVA = kImageBase + rdataRva + lay.rodataOff + sym.value;
+                        targetVA = imageBase + rdataRva + lay.rodataOff + sym.value;
                     }
                     else if (sym.sectionIdx == RCU_DATA_IDX) {
-                        targetVA = kImageBase + dataRva + lay.dataOff + sym.value;
+                        targetVA = imageBase + dataRva + lay.dataOff + sym.value;
                     }
                     else {
                         continue;
@@ -734,90 +815,6 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
 
     if (!errors.empty()) {
         return false;
-    }
-
-    // Build export directory for DLLs
-    // We export all pub functions that are marked as exported symbols.
-    // Collect exported function names (non-extern, non-local, Func kind).
-    std::vector<std::string> exportNames;
-    if (isDll) {
-        for (const auto &obj : objects) {
-            for (const auto &sym : obj.symbols) {
-                if (sym.kind == RcuSymKind::Func && sym.visibility != RcuSymVis::Local && !sym.name.empty() &&
-                    sym.name != "DllMain" && symMap.contains(sym.name)) {
-                    exportNames.push_back(sym.name);
-                }
-            }
-        }
-        std::ranges::sort(exportNames);
-        exportNames.erase(std::ranges::unique(exportNames).begin(), exportNames.end());
-    }
-
-    // Build export directory data (appended to .rdata)
-    uint32_t exportDirOff = 0;
-    uint32_t exportDirSize = 0;
-    if (isDll && !exportNames.empty()) {
-        exportDirOff = static_cast<uint32_t>(rdataBuf.size());
-        const auto numExports = static_cast<uint32_t>(exportNames.size());
-
-        // Reserve IMAGE_EXPORT_DIRECTORY (40 bytes)
-        const size_t expDirPos = rdataBuf.size();
-        WriteZeros(rdataBuf, 40);
-
-        // AddressOfFunctions array (RVAs)
-        const auto funcArrayOff = static_cast<uint32_t>(rdataBuf.size());
-        for (uint32_t i = 0; i < numExports; ++i) {
-            WriteU32(rdataBuf, 0); // patched below
-        }
-
-        // AddressOfNames array (RVAs to name strings)
-        const auto nameArrayOff = static_cast<uint32_t>(rdataBuf.size());
-        for (uint32_t i = 0; i < numExports; ++i) {
-            WriteU32(rdataBuf, 0); // patched below
-        }
-
-        // AddressOfNameOrdinals array
-        const auto ordArrayOff = static_cast<uint32_t>(rdataBuf.size());
-        for (uint32_t i = 0; i < numExports; ++i) {
-            WriteU16(rdataBuf, static_cast<uint16_t>(i));
-        }
-
-        // DLL name string
-        const auto dllNameStrOff = static_cast<uint32_t>(rdataBuf.size());
-        WriteCStr(rdataBuf, System::SharedLibraryFileName(packageName, Target::OS::Windows).c_str());
-        PadTo(rdataBuf, 2);
-
-        // Function name strings + patch name/func arrays
-        for (uint32_t i = 0; i < numExports; ++i) {
-            const auto nameStrOff = static_cast<uint32_t>(rdataBuf.size());
-            WriteCStr(rdataBuf, exportNames[i].c_str());
-            PadTo(rdataBuf, 2);
-            // Patch name array entry
-            Patch32(rdataBuf, nameArrayOff + i * 4, rdataRva + nameStrOff);
-            // Patch function RVA
-            auto it = symMap.find(exportNames[i]);
-            if (it != symMap.end()) {
-                auto funcRva = static_cast<uint32_t>(it->second - kImageBase);
-                Patch32(rdataBuf, funcArrayOff + i * 4, funcRva);
-            }
-        }
-
-        exportDirSize = static_cast<uint32_t>(rdataBuf.size()) - exportDirOff;
-
-        // Patch IMAGE_EXPORT_DIRECTORY fields
-        Patch32(rdataBuf, expDirPos + 0, 0); // Characteristics
-        Patch32(rdataBuf, expDirPos + 4,
-                static_cast<uint32_t>(std::time(nullptr)));          // TimeDateStamp
-        Patch32(rdataBuf, expDirPos + 12, rdataRva + dllNameStrOff); // Name RVA
-        Patch32(rdataBuf, expDirPos + 16, 1);                        // Base (ordinal base)
-        Patch32(rdataBuf, expDirPos + 20, numExports);               // NumberOfFunctions
-        Patch32(rdataBuf, expDirPos + 24, numExports);               // NumberOfNames
-        Patch32(rdataBuf, expDirPos + 28,
-                rdataRva + funcArrayOff); // AddressOfFunctions
-        Patch32(rdataBuf, expDirPos + 32,
-                rdataRva + nameArrayOff); // AddressOfNames
-        Patch32(rdataBuf, expDirPos + 36,
-                rdataRva + ordArrayOff); // AddressOfNameOrdinals
     }
 
     // 10. Emit PE32+ file
@@ -883,7 +880,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
     wU32(0);                            // SizeOfUninitializedData
     wU32(textRva);                      // AddressOfEntryPoint (__rux_start at start of .text)
     wU32(textRva);                      // BaseOfCode
-    wU64(kImageBase);
+    wU64(imageBase);
     wU32(kSecAlign);
     wU32(kFileAlign);
     wU16(6);
@@ -907,8 +904,8 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
     // DataDirectory[16]
     // [0] Export — filled for DLLs, empty for EXEs
     wDir(isDll && exportDirSize > 0 ? rdataRva + exportDirOff : 0, isDll && exportDirSize > 0 ? exportDirSize : 0);
-    wDir(rdataRva + importDirOff,
-         static_cast<uint32_t>((importDllNames.size() + 1) * 20)); // [1]  Import
+    wDir(importDllNames.empty() ? 0 : rdataRva + importDirOff,
+         importDllNames.empty() ? 0 : static_cast<uint32_t>((importDllNames.size() + 1) * 20)); // [1] Import
     wDir(0, 0);
     wDir(0, 0);
     wDir(0, 0);
@@ -918,8 +915,8 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
     wDir(0, 0);
     wDir(0, 0);
     wDir(0, 0);
-    wDir(0, 0);                       // [8..11]
-    wDir(rdataRva + iatOff, iatSize); // [12] IAT
+    wDir(0, 0);                                          // [8..11]
+    wDir(iatSize == 0 ? 0 : rdataRva + iatOff, iatSize); // [12] IAT
     wDir(0, 0);
     wDir(0, 0);
     wDir(0, 0); // [13..15]

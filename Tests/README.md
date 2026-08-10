@@ -22,7 +22,7 @@ To run the complete repository workflow—including policy, formatting, build, C
 Test manifests are intentionally uniform:
 
 - `[Manifest] Version = 1` opens every file.
-- `Type = "Program"` is explicit.
+- `Type = "Executable"` is explicit.
 - `Namespace` is omitted; a test package is built in place and never published.
 - Language outputs go to `Bin/Tests/Language/`.
 - Package outputs go to `Bin/Tests/Packages/<Package>/`.

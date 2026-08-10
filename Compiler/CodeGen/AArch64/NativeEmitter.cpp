@@ -1,6 +1,7 @@
 #include "CodeGen/AArch64/NativeEmitter.h"
 
 #include "CodeGen/Layout.h"
+#include "Linker/ArchiveWriter.h"
 #include "System/Process.h"
 
 #include <algorithm>
@@ -100,9 +101,10 @@ std::string Sanitize(const std::string_view value) {
 
 class CEmitter {
 public:
-    explicit CEmitter(const LirPackage &input, const Target::OS inputOs)
+    explicit CEmitter(const LirPackage &input, const Target::OS inputOs, const ArtifactKind inputArtifactKind)
         : package(input)
-        , targetOs(inputOs) {
+        , targetOs(inputOs)
+        , artifactKind(inputArtifactKind) {
         Collect();
     }
 
@@ -125,6 +127,8 @@ public:
         out += "#include <stdio.h>\n";
         out += "#include <stdlib.h>\n";
         out += "#include <string.h>\n\n";
+        out += "#if defined(_WIN32)\n#define RX_EXPORT __declspec(dllexport)\n#else\n"
+               "#define RX_EXPORT __attribute__((visibility(\"default\")))\n#endif\n";
         out += "typedef unsigned char *rx_ptr;\n";
         out += "extern long syscall(long, ...);\n";
         out += "static uint64_t rx_word(const void *value, size_t size) { uint64_t result = 0; "
@@ -141,11 +145,13 @@ public:
             }
         }
 
-        if (const auto it = functionNames.find("Main"); it != functionNames.end()) {
-            out += std::format("\nint main(void) {{ return (int){}(); }}\n", it->second);
-        }
-        else {
-            out += "\nint main(void) { return 0; }\n";
+        if (artifactKind == ArtifactKind::Executable) {
+            if (const auto it = functionNames.find("Main"); it != functionNames.end()) {
+                out += std::format("\nint main(void) {{ return (int){}(); }}\n", it->second);
+            }
+            else {
+                out += "\nint main(void) { return 0; }\n";
+            }
         }
         return out;
     }
@@ -153,6 +159,7 @@ public:
 private:
     const LirPackage &package;
     Target::OS targetOs;
+    ArtifactKind artifactKind;
     std::vector<const LirFunc *> functions;
     std::unordered_map<std::string, std::string> functionNames;
     std::unordered_map<std::string, const LirFunc *> functionDecls;
@@ -373,6 +380,9 @@ private:
                 if (function.isExtern) {
                     functionNames.try_emplace(function.name, std::format("rx_ext{}", functionIndex++));
                 }
+                else if (function.isPublic && artifactKind != ArtifactKind::Executable) {
+                    functionNames.try_emplace(function.name, Sanitize(function.name));
+                }
                 else {
                     functionNames.try_emplace(function.name, std::format("rx_f{}", functionIndex++));
                 }
@@ -390,7 +400,16 @@ private:
                 }
             }
         }
-        MarkReachable("Main");
+        if (artifactKind == ArtifactKind::Executable) {
+            MarkReachable("Main");
+        }
+        else {
+            for (const auto *function : functions) {
+                if (function->isPublic && !function->isExtern) {
+                    MarkReachable(function->name);
+                }
+            }
+        }
     }
 
     void MarkReachable(const std::string &name) {
@@ -570,6 +589,9 @@ private:
 
     void EmitPrototype(std::string &out, const LirFunc &function) {
         const std::string name = functionNames.at(function.name);
+        if (function.isPublic && !function.isExtern && artifactKind != ArtifactKind::Executable) {
+            out += "RX_EXPORT ";
+        }
         out += std::format("{} {}(", FunctionReturnType(function), name);
         for (std::size_t i = 0; i < function.params.size(); ++i) {
             if (i != 0) {
@@ -585,6 +607,9 @@ private:
         }
         out += ")";
         if (function.isExtern) {
+            out += std::format(" __asm__(\"{}\")", ExternalSymbol(function.name));
+        }
+        else if (function.isPublic && artifactKind != ArtifactKind::Executable) {
             out += std::format(" __asm__(\"{}\")", ExternalSymbol(function.name));
         }
         out += ";\n";
@@ -1314,9 +1339,9 @@ AArch64NativeEmitter::AArch64NativeEmitter(const LirPackage &package, std::strin
 
 bool AArch64NativeEmitter::EmitArtifact(const std::filesystem::path &outputPath,
                                         const std::filesystem::path &temporaryDirectory, const bool release,
-                                        const bool sharedLibrary,
+                                        const ArtifactKind artifactKind,
                                         const std::optional<std::filesystem::path> &assemblyPath) {
-    CEmitter emitter(lir, target.os);
+    CEmitter emitter(lir, target.os, artifactKind);
     auto source = emitter.Generate(diagnostics);
     if (!source) {
         return false;
@@ -1383,11 +1408,31 @@ bool AArch64NativeEmitter::EmitArtifact(const std::filesystem::path &outputPath,
     if (!release) {
         argumentStorage.emplace_back("-g");
     }
-    if (sharedLibrary) {
+    if (artifactKind == ArtifactKind::SharedLibrary) {
         argumentStorage.emplace_back(target.os == Target::OS::MacOS ? "-dynamiclib" : "-shared");
     }
-    argumentStorage.insert(argumentStorage.end(), {sourcePath.string(), "-o", outputPath.string()});
-    AppendLinkArguments(argumentStorage, lir, target);
+    const std::filesystem::path nativeOutput =
+        artifactKind == ArtifactKind::StaticLibrary
+            ? temporaryDirectory / (target.os == Target::OS::Windows ? "aarch64-native.obj" : "aarch64-native.o")
+            : outputPath;
+    if (artifactKind == ArtifactKind::StaticLibrary) {
+        argumentStorage.emplace_back("-c");
+    }
+    argumentStorage.insert(argumentStorage.end(), {sourcePath.string(), "-o", nativeOutput.string()});
+    if (artifactKind != ArtifactKind::StaticLibrary) {
+        if (artifactKind == ArtifactKind::SharedLibrary && target.os == Target::OS::MacOS) {
+            argumentStorage.push_back(std::format("-Wl,-install_name,@rpath/{}", outputPath.filename().string()));
+        }
+        else if (artifactKind == ArtifactKind::SharedLibrary && target.os == Target::OS::Windows) {
+            auto importLibraryPath = outputPath;
+            importLibraryPath.replace_extension(".lib");
+            argumentStorage.push_back(std::format("-Wl,/implib:{}", importLibraryPath.string()));
+        }
+        else if (artifactKind == ArtifactKind::SharedLibrary && target.os != Target::OS::Windows) {
+            argumentStorage.push_back(std::format("-Wl,-soname,{}", outputPath.filename().string()));
+        }
+        AppendLinkArguments(argumentStorage, lir, target);
+    }
     std::vector<std::string_view> arguments;
     arguments.reserve(argumentStorage.size());
     for (const auto &argument : argumentStorage) {
@@ -1398,6 +1443,29 @@ bool AArch64NativeEmitter::EmitArtifact(const std::filesystem::path &outputPath,
     if (!result || *result != 0) {
         diagnostics.push_back(ErrorDiagnostic(std::format("AArch64 Clang backend failed for '{}'", packageName)));
         return false;
+    }
+    if (artifactKind == ArtifactKind::StaticLibrary) {
+        std::ifstream objectStream(nativeOutput, std::ios::binary);
+        NativeObject object;
+        object.name = nativeOutput.filename().string();
+        object.bytes.assign(std::istreambuf_iterator<char>(objectStream), std::istreambuf_iterator<char>());
+        if (!objectStream.good() && !objectStream.eof()) {
+            diagnostics.push_back(ErrorDiagnostic("could not read the AArch64 relocatable object"));
+            return false;
+        }
+        for (const auto &module : lir.modules) {
+            for (const auto &function : module.funcs) {
+                if (function.isPublic && !function.isExtern) {
+                    object.publicSymbols.push_back(target.os == Target::OS::MacOS ? "_" + function.name
+                                                                                  : function.name);
+                }
+            }
+        }
+        std::string archiveError;
+        if (!WriteNativeArchive(std::span<const NativeObject>(&object, 1), target.os, outputPath, archiveError)) {
+            diagnostics.push_back(ErrorDiagnostic(std::move(archiveError)));
+            return false;
+        }
     }
     return true;
 }

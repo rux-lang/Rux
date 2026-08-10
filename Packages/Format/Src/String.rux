@@ -1,0 +1,12 @@
+import Text::String;
+
+// A String is already the text it would render into, so the conversion is a
+// copy rather than a formatting step. It has to be a copy: Format frees the
+// String an argument renders itself into as soon as its bytes are in the
+// builder, and handing back the receiver's own block would leave the caller
+// holding a String whose allocation is gone.
+extend String : Stringable {
+    func ToString(self) -> String {
+        return self.Clone();
+    }
+}

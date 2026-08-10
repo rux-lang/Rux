@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <map>
 #include <ranges>
 #include <string>
 #include <unordered_map>
@@ -17,7 +18,7 @@
 
 namespace Rux {
 namespace {
-constexpr uint64_t kBase = 0x1'0000'0000ULL;
+constexpr uint64_t kExecutableBase = 0x1'0000'0000ULL;
 constexpr uint64_t kPage = 0x1000;
 constexpr const char *kSystemLibName = "libSystem.B.dylib";
 constexpr const char *kDefaultLib = "/usr/lib/libSystem.B.dylib";
@@ -91,9 +92,100 @@ void WriteDylibCommand(Buf &commands, const std::string &path) {
         WriteU8(commands, 0);
     }
 }
+
+void WriteIdDylibCommand(Buf &commands, const std::string &path) {
+    const uint32_t commandSize = StringCommandSize(24, path);
+    WriteU32(commands, 0x0D); // LC_ID_DYLIB
+    WriteU32(commands, commandSize);
+    WriteU32(commands, 24);
+    WriteU32(commands, 0);       // deterministic timestamp
+    WriteU32(commands, 0x10000); // current version 1.0.0
+    WriteU32(commands, 0x10000); // compatibility version 1.0.0
+    for (const char byte : path) {
+        WriteU8(commands, static_cast<uint8_t>(byte));
+    }
+    WriteU8(commands, 0);
+    while (commands.size() % 8 != 0) {
+        WriteU8(commands, 0);
+    }
+}
+
+Buf BuildExportTrie(const std::vector<std::pair<std::string, uint64_t>> &exports) {
+    if (exports.empty()) {
+        return {};
+    }
+
+    struct TrieNode {
+        std::map<uint8_t, size_t> children;
+        bool terminal = false;
+        uint64_t address = 0;
+    };
+
+    std::vector<TrieNode> nodes(1);
+    for (const auto &[name, address] : exports) {
+        size_t nodeIndex = 0;
+        const std::string nativeName = "_" + name;
+        for (const unsigned char character : nativeName) {
+            const auto child = nodes[nodeIndex].children.find(character);
+            if (child != nodes[nodeIndex].children.end()) {
+                nodeIndex = child->second;
+                continue;
+            }
+            const size_t childIndex = nodes.size();
+            nodes.push_back({});
+            nodes[nodeIndex].children.emplace(character, childIndex);
+            nodeIndex = childIndex;
+        }
+        nodes[nodeIndex].terminal = true;
+        nodes[nodeIndex].address = address;
+    }
+
+    std::vector<size_t> offsets(nodes.size());
+    std::vector<Buf> encoded(nodes.size());
+    for (;;) {
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            encoded[i].clear();
+            if (nodes[i].terminal) {
+                Buf terminal;
+                WriteUleb128(terminal, 0);                // flags
+                WriteUleb128(terminal, nodes[i].address); // image-relative address
+                WriteUleb128(encoded[i], terminal.size());
+                encoded[i].insert(encoded[i].end(), terminal.begin(), terminal.end());
+            }
+            else {
+                WriteU8(encoded[i], 0);
+            }
+            WriteU8(encoded[i], static_cast<uint8_t>(nodes[i].children.size()));
+            for (const auto &[character, childIndex] : nodes[i].children) {
+                WriteU8(encoded[i], character);
+                WriteU8(encoded[i], 0);
+                WriteUleb128(encoded[i], offsets[childIndex]);
+            }
+        }
+
+        std::vector<size_t> nextOffsets(nodes.size());
+        size_t cursor = 0;
+        for (size_t i = 0; i < encoded.size(); ++i) {
+            nextOffsets[i] = cursor;
+            cursor += encoded[i].size();
+        }
+        if (nextOffsets == offsets) {
+            break;
+        }
+        offsets = std::move(nextOffsets);
+    }
+
+    Buf trie;
+    for (const auto &node : encoded) {
+        trie.insert(trie.end(), node.begin(), node.end());
+    }
+    return trie;
+}
 } // namespace
 
 bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
+    const bool isShared = artifactKind == ArtifactKind::SharedLibrary;
+    const uint64_t imageBase = isShared ? 0 : kExecutableBase;
     // Collect definitions first so cross-module references are resolved as
     // ordinary Rux symbols instead of dynamic imports.
     std::unordered_set<std::string> definedSymbols;
@@ -160,7 +252,7 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         return false;
     }
 
-    const bool dynamic = !importLib.empty();
+    const bool dynamic = isShared || !importLib.empty();
 
     std::vector<std::string> importNames;
     importNames.reserve(importLib.size());
@@ -187,13 +279,41 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         libraryOrdinal[neededLibs[i]] = static_cast<uint8_t>(i + 1);
     }
 
+    struct SharedExportSource {
+        std::string name;
+        size_t objectIndex;
+        RcuSymbol symbol;
+    };
+
+    std::vector<SharedExportSource> sharedExportSources;
+    if (isShared) {
+        std::map<std::string, SharedExportSource> exportsByName;
+        for (size_t objectIndex = 0; objectIndex < objects.size(); ++objectIndex) {
+            for (const auto &symbol : objects[objectIndex].symbols) {
+                if (symbol.visibility == RcuSymVis::Local || symbol.name.empty() ||
+                    symbol.sectionIdx == RCU_SEC_EXTERNAL) {
+                    continue;
+                }
+                exportsByName.try_emplace(symbol.name, SharedExportSource{symbol.name, objectIndex, symbol});
+            }
+        }
+        for (auto &[name, source] : exportsByName) {
+            (void)name;
+            sharedExportSources.push_back(std::move(source));
+        }
+    }
+
     // Entry point. Dynamic executables are entered as a normal function by
     // dyld, so preserve its return address and provide Win64 shadow space for
     // Rux's current default macOS calling convention. Static executables keep
     // the raw exit syscall path.
     Buf textPrefix;
     size_t callMainDisp = 0;
-    if (dynamic) {
+    if (isShared) {
+        // A dylib has no process entry stub. dyld calls only explicit
+        // initializers; Rux 0.4.0 does not synthesize one.
+    }
+    else if (dynamic) {
         textPrefix.insert(textPrefix.end(), {0x48, 0x83, 0xEC, 0x28}); // sub rsp, 40
         callMainDisp = textPrefix.size() + 1;
         textPrefix.insert(textPrefix.end(), {0xE8, 0, 0, 0, 0});       // call Main
@@ -285,24 +405,9 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     Buf indirectSymbols;
     Buf stringTable = {0};
     if (dynamic) {
-        for (size_t i = 0; i < importNames.size(); ++i) {
-            const auto &name = importNames[i];
-            const uint32_t stringIndex = static_cast<uint32_t>(stringTable.size());
-            WriteU8(stringTable, '_');
-            for (const char byte : name) {
-                WriteU8(stringTable, static_cast<uint8_t>(byte));
-            }
-            WriteU8(stringTable, 0);
-
-            WriteU32(dynamicSymbols, stringIndex);
-            WriteU8(dynamicSymbols, 0x01); // N_UNDF | N_EXT
-            WriteU8(dynamicSymbols, 0);    // NO_SECT
-            WriteU16(dynamicSymbols, static_cast<uint16_t>(libraryOrdinal.at(importLib.at(name))) << 8);
-            WriteU64(dynamicSymbols, 0);
-        }
         for (size_t section = 0; section < 2; ++section) {
             for (size_t i = 0; i < importNames.size(); ++i) {
-                WriteU32(indirectSymbols, static_cast<uint32_t>(i));
+                WriteU32(indirectSymbols, static_cast<uint32_t>(sharedExportSources.size() + i));
             }
         }
     }
@@ -315,16 +420,24 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     const uint32_t textCommandSize = segmentCommandSize + textSectionCount * sectionSize;
     const uint32_t dataCommandSize = segmentCommandSize + dataSectionCount * sectionSize;
 
-    uint32_t commandCount = 4; // PAGEZERO, TEXT, DATA, LINKEDIT
-    uint32_t commandsSize = segmentCommandSize + textCommandSize + dataCommandSize + segmentCommandSize;
+    uint32_t commandCount = isShared ? 3 : 4; // [PAGEZERO], TEXT, DATA, LINKEDIT
+    uint32_t commandsSize = textCommandSize + dataCommandSize + segmentCommandSize;
+    if (!isShared) {
+        commandsSize += segmentCommandSize;
+    }
     if (dynamic) {
-        commandCount += 5 + static_cast<uint32_t>(neededLibs.size()); // DYLD_INFO, SYMTAB, DYSYMTAB,
-                                                                      // DYLINKER, MAIN, dylibs
-        commandsSize += 48;                                           // LC_DYLD_INFO_ONLY
-        commandsSize += 24;                                           // LC_SYMTAB
-        commandsSize += 80;                                           // LC_DYSYMTAB
-        commandsSize += StringCommandSize(12, kDyldPath);
-        commandsSize += 24; // LC_MAIN
+        commandCount += (isShared ? 4 : 5) + static_cast<uint32_t>(neededLibs.size());
+        commandsSize += 48; // LC_DYLD_INFO_ONLY
+        commandsSize += 24; // LC_SYMTAB
+        commandsSize += 80; // LC_DYSYMTAB
+        if (isShared) {
+            const std::string installName = "@rpath/" + outputPath.filename().string();
+            commandsSize += StringCommandSize(24, installName); // LC_ID_DYLIB
+        }
+        else {
+            commandsSize += StringCommandSize(12, kDyldPath);
+            commandsSize += 24; // LC_MAIN
+        }
         for (const auto &library : neededLibs) {
             commandsSize += StringCommandSize(24, library);
         }
@@ -337,26 +450,117 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     const uint64_t headerSize = 32 + commandsSize;
     constexpr uint64_t codeSignatureCommandSlack = 32;
     const uint64_t textOffset = AlignUp64(headerSize + codeSignatureCommandSlack, 16);
-    const uint64_t textVA = kBase + textOffset;
+    const uint64_t textVA = imageBase + textOffset;
     const uint64_t stubsOffset = AlignUp64(textOffset + textBuffer.size(), 2);
-    const uint64_t stubsVA = kBase + stubsOffset;
+    const uint64_t stubsVA = imageBase + stubsOffset;
     const uint64_t rodataOffset = AlignUp64(stubsOffset + stubs.size(), 16);
-    const uint64_t rodataVA = kBase + rodataOffset;
+    const uint64_t rodataVA = imageBase + rodataOffset;
     const uint64_t textSegmentFileEnd = rodataOffset + mergedRodata.size();
     const uint64_t textSegmentVMSize = AlignUp64(textSegmentFileEnd, kPage);
 
     const uint64_t dataSegmentOffset = AlignUp64(textSegmentFileEnd, kPage);
-    const uint64_t dataSegmentVA = kBase + dataSegmentOffset;
+    const uint64_t dataSegmentVA = imageBase + dataSegmentOffset;
     const uint64_t pointersOffset = dataSegmentOffset;
     const uint64_t pointersVA = dataSegmentVA;
     const uint64_t dataOffset = AlignUp64(pointersOffset + importPointers.size(), 8);
-    const uint64_t dataVA = kBase + dataOffset;
+    const uint64_t dataVA = imageBase + dataOffset;
     const uint64_t dataSegmentFileSize = dataOffset + mergedData.size() - dataSegmentOffset;
     const uint64_t dataSegmentVMSize = AlignUp64(std::max<uint64_t>(dataSegmentFileSize, 1), kPage);
 
     const uint64_t linkeditOffset = dataSegmentOffset + dataSegmentVMSize;
-    const uint64_t linkeditVA = kBase + linkeditOffset;
-    Buf linkeditBuffer = bindStream;
+    const uint64_t linkeditVA = imageBase + linkeditOffset;
+
+    Buf rebaseStream;
+    if (isShared) {
+        WriteU8(rebaseStream, 0x11); // SET_TYPE_IMM | REBASE_TYPE_POINTER
+        for (size_t objectIndex = 0; objectIndex < objects.size(); ++objectIndex) {
+            const auto &object = objects[objectIndex];
+            const auto &layout = layouts[objectIndex];
+            for (const auto &section : object.sections) {
+                uint8_t segmentIndex = 0;
+                uint64_t segmentOffset = 0;
+                if (section.type == RcuSecType::Text) {
+                    segmentIndex = 0;
+                    segmentOffset = textVA + prefixSize + layout.textOffset - imageBase;
+                }
+                else if (section.type == RcuSecType::RoData) {
+                    segmentIndex = 0;
+                    segmentOffset = rodataVA + layout.rodataOffset - imageBase;
+                }
+                else if (section.type == RcuSecType::Data) {
+                    segmentIndex = 1;
+                    segmentOffset = dataVA + layout.dataOffset - dataSegmentVA;
+                }
+                else {
+                    continue;
+                }
+                for (const auto &relocation : section.relocs) {
+                    if (relocation.type != RcuRelType::Abs64) {
+                        continue;
+                    }
+                    WriteU8(rebaseStream, static_cast<uint8_t>(0x20 | segmentIndex));
+                    WriteUleb128(rebaseStream, segmentOffset + relocation.sectionOffset);
+                    WriteU8(rebaseStream, 0x51); // DO_REBASE_IMM_TIMES | 1
+                }
+            }
+        }
+        WriteU8(rebaseStream, 0); // DONE
+    }
+
+    std::vector<std::pair<std::string, uint64_t>> sharedExports;
+    for (const auto &source : sharedExportSources) {
+        const auto &layout = layouts[source.objectIndex];
+        uint64_t address = 0;
+        uint8_t sectionOrdinal = 0;
+        if (source.symbol.sectionIdx == RCU_TEXT_IDX) {
+            address = textVA + prefixSize + layout.textOffset + source.symbol.value;
+            sectionOrdinal = 1;
+        }
+        else if (source.symbol.sectionIdx == RCU_RODATA_IDX) {
+            address = rodataVA + layout.rodataOffset + source.symbol.value;
+            sectionOrdinal = 3;
+        }
+        else if (source.symbol.sectionIdx == RCU_DATA_IDX) {
+            address = dataVA + layout.dataOffset + source.symbol.value;
+            sectionOrdinal = 5;
+        }
+        else {
+            continue;
+        }
+
+        const uint32_t stringIndex = static_cast<uint32_t>(stringTable.size());
+        WriteU8(stringTable, '_');
+        for (const char byte : source.name) {
+            WriteU8(stringTable, static_cast<uint8_t>(byte));
+        }
+        WriteU8(stringTable, 0);
+        WriteU32(dynamicSymbols, stringIndex);
+        WriteU8(dynamicSymbols, 0x0F); // N_SECT | N_EXT
+        WriteU8(dynamicSymbols, sectionOrdinal);
+        WriteU16(dynamicSymbols, 0);
+        WriteU64(dynamicSymbols, address);
+        sharedExports.emplace_back(source.name, address);
+    }
+    for (const auto &name : importNames) {
+        const uint32_t stringIndex = static_cast<uint32_t>(stringTable.size());
+        WriteU8(stringTable, '_');
+        for (const char byte : name) {
+            WriteU8(stringTable, static_cast<uint8_t>(byte));
+        }
+        WriteU8(stringTable, 0);
+        WriteU32(dynamicSymbols, stringIndex);
+        WriteU8(dynamicSymbols, 0x01); // N_UNDF | N_EXT
+        WriteU8(dynamicSymbols, 0);
+        WriteU16(dynamicSymbols, static_cast<uint16_t>(libraryOrdinal.at(importLib.at(name))) << 8);
+        WriteU64(dynamicSymbols, 0);
+    }
+
+    const Buf exportTrie = BuildExportTrie(sharedExports);
+    Buf linkeditBuffer = rebaseStream;
+    const uint64_t bindOffset = linkeditOffset + linkeditBuffer.size();
+    linkeditBuffer.insert(linkeditBuffer.end(), bindStream.begin(), bindStream.end());
+    const uint64_t exportTrieOffset = linkeditOffset + linkeditBuffer.size();
+    linkeditBuffer.insert(linkeditBuffer.end(), exportTrie.begin(), exportTrie.end());
     while ((linkeditOffset + linkeditBuffer.size()) % 8 != 0) {
         WriteU8(linkeditBuffer, 0);
     }
@@ -411,14 +615,16 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         }
     }
 
-    const auto mainIt = symbolMap.find("Main");
-    if (mainIt == symbolMap.end()) {
-        Error("undefined symbol 'Main' — no entry point found");
-        return false;
+    if (!isShared) {
+        const auto mainIt = symbolMap.find("Main");
+        if (mainIt == symbolMap.end()) {
+            Error("undefined symbol 'Main' — no entry point found");
+            return false;
+        }
+        const uint64_t callMainNextInstruction = textVA + callMainDisp + 4;
+        Patch32(textBuffer, callMainDisp,
+                static_cast<uint32_t>(static_cast<int32_t>(mainIt->second - callMainNextInstruction)));
     }
-    const uint64_t callMainNextInstruction = textVA + callMainDisp + 4;
-    Patch32(textBuffer, callMainDisp,
-            static_cast<uint32_t>(static_cast<int32_t>(mainIt->second - callMainNextInstruction)));
 
     // Resolve object relocations against defined symbols or import stubs.
     for (size_t i = 0; i < objects.size(); ++i) {
@@ -507,24 +713,26 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
 
     Buf loadCommands;
 
-    // __PAGEZERO
-    WriteU32(loadCommands, 0x19);
-    WriteU32(loadCommands, segmentCommandSize);
-    WriteMachName(loadCommands, "__PAGEZERO");
-    WriteU64(loadCommands, 0);
-    WriteU64(loadCommands, kBase);
-    WriteU64(loadCommands, 0);
-    WriteU64(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
+    if (!isShared) {
+        // __PAGEZERO
+        WriteU32(loadCommands, 0x19);
+        WriteU32(loadCommands, segmentCommandSize);
+        WriteMachName(loadCommands, "__PAGEZERO");
+        WriteU64(loadCommands, 0);
+        WriteU64(loadCommands, kExecutableBase);
+        WriteU64(loadCommands, 0);
+        WriteU64(loadCommands, 0);
+        WriteU32(loadCommands, 0);
+        WriteU32(loadCommands, 0);
+        WriteU32(loadCommands, 0);
+        WriteU32(loadCommands, 0);
+    }
 
     // __TEXT: __text, [__stubs], __const
     WriteU32(loadCommands, 0x19);
     WriteU32(loadCommands, textCommandSize);
     WriteMachName(loadCommands, "__TEXT");
-    WriteU64(loadCommands, kBase);
+    WriteU64(loadCommands, imageBase);
     WriteU64(loadCommands, textSegmentVMSize);
     WriteU64(loadCommands, 0);
     WriteU64(loadCommands, textSegmentFileEnd);
@@ -632,31 +840,31 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     if (dynamic) {
         WriteU32(loadCommands, 0x8000'0022); // LC_DYLD_INFO_ONLY
         WriteU32(loadCommands, 48);
-        WriteU32(loadCommands, 0); // rebase_off
-        WriteU32(loadCommands, 0); // rebase_size
-        WriteU32(loadCommands, static_cast<uint32_t>(linkeditOffset));
+        WriteU32(loadCommands, rebaseStream.empty() ? 0 : static_cast<uint32_t>(linkeditOffset));
+        WriteU32(loadCommands, static_cast<uint32_t>(rebaseStream.size()));
+        WriteU32(loadCommands, bindStream.empty() ? 0 : static_cast<uint32_t>(bindOffset));
         WriteU32(loadCommands, static_cast<uint32_t>(bindStream.size()));
         WriteU32(loadCommands, 0); // weak_bind_off
         WriteU32(loadCommands, 0); // weak_bind_size
         WriteU32(loadCommands, 0); // lazy_bind_off
         WriteU32(loadCommands, 0); // lazy_bind_size
-        WriteU32(loadCommands, 0); // export_off
-        WriteU32(loadCommands, 0); // export_size
+        WriteU32(loadCommands, exportTrie.empty() ? 0 : static_cast<uint32_t>(exportTrieOffset));
+        WriteU32(loadCommands, static_cast<uint32_t>(exportTrie.size()));
 
         WriteU32(loadCommands, 0x02); // LC_SYMTAB
         WriteU32(loadCommands, 24);
         WriteU32(loadCommands, static_cast<uint32_t>(symbolTableOffset));
-        WriteU32(loadCommands, static_cast<uint32_t>(importNames.size()));
+        WriteU32(loadCommands, static_cast<uint32_t>(sharedExports.size() + importNames.size()));
         WriteU32(loadCommands, static_cast<uint32_t>(stringTableOffset));
         WriteU32(loadCommands, static_cast<uint32_t>(stringTable.size()));
 
         WriteU32(loadCommands, 0x0B); // LC_DYSYMTAB
         WriteU32(loadCommands, 80);
-        WriteU32(loadCommands, 0); // ilocalsym
-        WriteU32(loadCommands, 0); // nlocalsym
-        WriteU32(loadCommands, 0); // iextdefsym
-        WriteU32(loadCommands, 0); // nextdefsym
-        WriteU32(loadCommands, 0); // iundefsym
+        WriteU32(loadCommands, 0);                                           // ilocalsym
+        WriteU32(loadCommands, 0);                                           // nlocalsym
+        WriteU32(loadCommands, 0);                                           // iextdefsym
+        WriteU32(loadCommands, static_cast<uint32_t>(sharedExports.size())); // nextdefsym
+        WriteU32(loadCommands, static_cast<uint32_t>(sharedExports.size())); // iundefsym
         WriteU32(loadCommands, static_cast<uint32_t>(importNames.size()));
         WriteU32(loadCommands, 0); // tocoff
         WriteU32(loadCommands, 0); // ntoc
@@ -671,12 +879,17 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         WriteU32(loadCommands, 0); // locreloff
         WriteU32(loadCommands, 0); // nlocrel
 
-        WriteDylinkerCommand(loadCommands);
+        if (isShared) {
+            WriteIdDylibCommand(loadCommands, "@rpath/" + outputPath.filename().string());
+        }
+        else {
+            WriteDylinkerCommand(loadCommands);
 
-        WriteU32(loadCommands, 0x8000'0028); // LC_MAIN
-        WriteU32(loadCommands, 24);
-        WriteU64(loadCommands, textOffset); // entryoff from start of __TEXT/file
-        WriteU64(loadCommands, 0);          // stacksize
+            WriteU32(loadCommands, 0x8000'0028); // LC_MAIN
+            WriteU32(loadCommands, 24);
+            WriteU64(loadCommands, textOffset); // entryoff from start of __TEXT/file
+            WriteU64(loadCommands, 0);          // stacksize
+        }
 
         for (const auto &library : neededLibs) {
             WriteDylibCommand(loadCommands, library);
@@ -719,10 +932,10 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     };
 
     Buf header;
-    WriteU32(header, 0xFEED'FACF); // MH_MAGIC_64
-    WriteU32(header, 0x0100'0007); // CPU_TYPE_X86_64
-    WriteU32(header, 0x0000'0003); // CPU_SUBTYPE_X86_64_ALL
-    WriteU32(header, 2);           // MH_EXECUTE
+    WriteU32(header, 0xFEED'FACF);      // MH_MAGIC_64
+    WriteU32(header, 0x0100'0007);      // CPU_TYPE_X86_64
+    WriteU32(header, 0x0000'0003);      // CPU_SUBTYPE_X86_64_ALL
+    WriteU32(header, isShared ? 6 : 2); // MH_DYLIB or MH_EXECUTE
     WriteU32(header, commandCount);
     WriteU32(header, commandsSize);
     WriteU32(header, dynamic ? 0x0000'0005 : 0x0000'0001); // MH_DYLDLINK | MH_NOUNDEFS
@@ -750,13 +963,15 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     }
 
     std::error_code errorCode;
-    std::filesystem::permissions(outputPath,
-                                 std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec |
-                                     std::filesystem::perms::others_exec,
-                                 std::filesystem::perm_options::add, errorCode);
-    if (errorCode) {
-        Error("cannot mark output executable: " + errorCode.message());
-        return false;
+    if (!isShared) {
+        std::filesystem::permissions(outputPath,
+                                     std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec |
+                                         std::filesystem::perms::others_exec,
+                                     std::filesystem::perm_options::add, errorCode);
+        if (errorCode) {
+            Error("cannot mark output executable: " + errorCode.message());
+            return false;
+        }
     }
 
     const std::string signCommand = "codesign --force --sign - \"" + outputPath.string() + "\" 2>/dev/null";

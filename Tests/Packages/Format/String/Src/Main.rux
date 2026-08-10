@@ -1,0 +1,75 @@
+import Format::{ Format, Stringable };
+import Text::String;
+
+// Std stays out of the dependencies, and a failed check reports itself through
+// the exit code. See the Int8 test for why.
+func Check(actual: String, expected: Slice<char8>, code: int) -> int {
+    var text = actual;
+    var wanted = String::From(expected);
+    let ok = text == wanted;
+    text.Free();
+    wanted.Free();
+
+    if ok {
+        return 0;
+    }
+    return code;
+}
+
+func Main() -> int {
+    var hello = String::From("Hello World!");
+
+    // A String is already the text it renders into, so the conversion carries
+    // the bytes through unchanged.
+    var code = Check(hello.ToString(), "Hello World!", 10);
+    if code != 0 { return code; }
+
+    // The path a placeholder takes: an argument reaches Format as a Stringable
+    // and as nothing else, so this is what the extension is for.
+    code = Check(Format("{}", hello), "Hello World!", 11);
+    if code != 0 { return code; }
+    code = Check(Format("<{}>", hello), "<Hello World!>", 12);
+    if code != 0 { return code; }
+
+    // A String argument sits alongside any other Stringable, and the same one
+    // may fill more than one placeholder.
+    code = Check(Format("{} {} {}", hello, 42, true), "Hello World! 42 true", 13);
+    if code != 0 { return code; }
+    code = Check(Format("{}{}", hello, hello), "Hello World!Hello World!", 14);
+    if code != 0 { return code; }
+
+    // The conversion is a copy rather than a handoff of the receiver's block.
+    // Format frees the String an argument renders itself into, so a shared
+    // block would leave the caller holding freed memory.
+    var copy = hello.ToString();
+    let separate = copy.Data() != hello.Data();
+    copy.Free();
+    if !separate { return 20; }
+
+    // Which is what leaves the receiver intact after the calls above, each of
+    // which freed a String this one rendered.
+    code = Check(hello.Clone(), "Hello World!", 21);
+    if code != 0 { return code; }
+
+    // The empty String owns no block, and renders as the empty text without
+    // allocating one.
+    var empty = String::New();
+    var rendered = empty.ToString();
+    let length = rendered.Length();
+    let data = rendered.Data();
+    rendered.Free();
+    if length != 0 || data != null { return 30; }
+    code = Check(Format("[{}]", empty), "[]", 31);
+    if code != 0 { return code; }
+    empty.Free();
+
+    // A String holding a placeholder is an argument, not a format: what it
+    // holds is copied through rather than read for braces of its own.
+    var braces = String::From("{} {{");
+    code = Check(Format("{}", braces), "{} {{", 40);
+    if code != 0 { return code; }
+    braces.Free();
+
+    hello.Free();
+    return 0;
+}

@@ -81,6 +81,12 @@ Once the repository is cloned, later sessions can replace the snippet in step 4 
 `Build.ps1` selects `windows-x86_64` or `windows-aarch64` from the native host
 architecture.
 
+## Native Package Artifacts
+
+An `Executable` package writes `Name.exe`, a `SharedLibrary` writes `Name.dll` plus the `Name.lib` import library, and a `StaticLibrary` writes `Name.lib`. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
+
+The x86-64 backend writes PE/COFF objects and libraries directly. The AArch64 backend asks Clang for a relocatable object and uses the same deterministic archive layer for static output.
+
 For a Debug build, run `.\Build.ps1 -Configuration Debug`. Run `Get-Help .\Build.ps1 -Full` to see every option.
 
 ## Verifying the Build

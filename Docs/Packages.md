@@ -25,11 +25,11 @@ Packages marked **Planned** reserve their package names and source layout but do
 
 ## Target-Specific Packages
 
-The `Bsd`, `Linux`, `MacOS`, and `Windows` packages provide operating-system bindings. Source packages can conditionally import these packages according to the compilation target.
+The `Bsd`, `Linux`, `MacOS`, and `Windows` packages provide operating-system bindings. SourceLibrary packages can conditionally import these packages according to the compilation target.
 
 ## Package Layout and Tests
 
-Each package has a versioned [`Rux.toml` manifest](Manifest.md) and source directory. `Program` package tests are centralized under `Tests/Packages/` and use local first-party path dependencies:
+Each package has a versioned [`Rux.toml` manifest](Manifest.md) and source directory. `Executable` package tests are centralized under `Tests/Packages/` and use local first-party path dependencies:
 
 ```text
 Packages/Format/

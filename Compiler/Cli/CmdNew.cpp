@@ -16,20 +16,26 @@ using namespace Rux;
 
 namespace {
 
-// The three Version 1 package kinds map one-to-one onto the scaffolding flags,
+// The four Version 1 package kinds map one-to-one onto the scaffolding flags,
 // which are mutually exclusive rather than letting one silently win.
-std::optional<ManifestPackageType> SelectPackageType(const bool bin, const bool lib, const bool source) {
-    if (static_cast<int>(bin) + static_cast<int>(lib) + static_cast<int>(source) > 1) {
-        std::print(stderr, "error: '--bin', '--lib' and '--source' cannot be combined\n\n");
+std::optional<ManifestPackageType> SelectPackageType(const bool executable, const bool shared, const bool staticLibrary,
+                                                     const bool source) {
+    if (static_cast<int>(executable) + static_cast<int>(shared) + static_cast<int>(staticLibrary) +
+            static_cast<int>(source) >
+        1) {
+        std::print(stderr, "error: '--executable', '--shared', '--static' and '--source' cannot be combined\n\n");
         return std::nullopt;
     }
-    if (lib) {
-        return ManifestPackageType::Library;
+    if (shared) {
+        return ManifestPackageType::SharedLibrary;
+    }
+    if (staticLibrary) {
+        return ManifestPackageType::StaticLibrary;
     }
     if (source) {
-        return ManifestPackageType::Source;
+        return ManifestPackageType::SourceLibrary;
     }
-    return ManifestPackageType::Program;
+    return ManifestPackageType::Executable;
 }
 
 // Validates the optional `--namespace` operand against the identity grammar.
@@ -46,31 +52,38 @@ bool ParseNamespace(const std::string_view value, std::optional<IdentitySegment>
 // Lower-case description used by the progress lines of both commands.
 std::string_view KindLabel(const ManifestPackageType type) {
     switch (type) {
-    case ManifestPackageType::Library:
-        return "library";
-    case ManifestPackageType::Source:
-        return "source";
-    case ManifestPackageType::Program:
+    case ManifestPackageType::SharedLibrary:
+        return "shared-library";
+    case ManifestPackageType::StaticLibrary:
+        return "static-library";
+    case ManifestPackageType::SourceLibrary:
+        return "source-library";
+    case ManifestPackageType::Executable:
         break;
     }
-    return "program";
+    return "executable";
 }
 
 } // namespace
 
 int Cli::RunInit(std::span<const std::string_view> args, const GlobalOptions &opts) {
-    bool bin = false;
-    bool lib = false;
+    bool executable = false;
+    bool shared = false;
+    bool staticLibrary = false;
     bool source = false;
     std::optional<IdentitySegment> ns;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string_view arg = args[i];
-        if (arg == "--bin") {
-            bin = true;
+        if (arg == "--executable") {
+            executable = true;
             continue;
         }
-        if (arg == "--lib") {
-            lib = true;
+        if (arg == "--shared") {
+            shared = true;
+            continue;
+        }
+        if (arg == "--static") {
+            staticLibrary = true;
             continue;
         }
         if (arg == "--source") {
@@ -94,7 +107,7 @@ int Cli::RunInit(std::span<const std::string_view> args, const GlobalOptions &op
         PrintUnknownOption(arg, "init");
         return 1;
     }
-    const auto type = SelectPackageType(bin, lib, source);
+    const auto type = SelectPackageType(executable, shared, staticLibrary, source);
     if (!type) {
         PrintHelpFor("init");
         return 1;
@@ -115,19 +128,24 @@ int Cli::RunInit(std::span<const std::string_view> args, const GlobalOptions &op
 
 int Cli::RunNew(const std::span<const std::string_view> args, const GlobalOptions &opts) {
     std::string_view name;
-    bool bin = false;
-    bool lib = false;
+    bool executable = false;
+    bool shared = false;
+    bool staticLibrary = false;
     bool source = false;
     std::optional<IdentitySegment> ns;
     std::string_view customPath;
     for (std::size_t i = 0; i < args.size(); ++i) {
         std::string_view arg = args[i];
-        if (arg == "--bin") {
-            bin = true;
+        if (arg == "--executable") {
+            executable = true;
             continue;
         }
-        if (arg == "--lib") {
-            lib = true;
+        if (arg == "--shared") {
+            shared = true;
+            continue;
+        }
+        if (arg == "--static") {
+            staticLibrary = true;
             continue;
         }
         if (arg == "--source") {
@@ -164,7 +182,7 @@ int Cli::RunNew(const std::span<const std::string_view> args, const GlobalOption
         PrintHelpFor("new");
         return 1;
     }
-    const auto type = SelectPackageType(bin, lib, source);
+    const auto type = SelectPackageType(executable, shared, staticLibrary, source);
     if (!type) {
         PrintHelpFor("new");
         return 1;

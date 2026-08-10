@@ -33,7 +33,7 @@ public:
 
         dependency.package.name = *IdentitySegment::Parse("Dependency");
         dependency.package.version = *SemanticVersion::Parse("0.1.0");
-        dependency.package.type = ManifestPackageType::Source;
+        dependency.package.type = ManifestPackageType::SourceLibrary;
         REQUIRE(dependency.Save(depRoot / "Rux.toml"));
         REQUIRE(WriteFile(depRoot / "Src" / "Api.rux", R"(
 module Api {
@@ -45,7 +45,7 @@ module Api {
 
         application.package.name = *IdentitySegment::Parse("App");
         application.package.version = *SemanticVersion::Parse("0.1.0");
-        application.package.type = ManifestPackageType::Program;
+        application.package.type = ManifestPackageType::Executable;
         REQUIRE(application.AddPathDependency(*IdentitySegment::Parse("Dependency"), "../Dependency"));
         REQUIRE(application.Save(appRoot / "Rux.toml"));
         REQUIRE(WriteFile(appRoot / "Src" / "Main.rux", R"(
@@ -85,7 +85,7 @@ func Main() -> int {
         Manifest transitive;
         transitive.package.name = *IdentitySegment::Parse("Transitive");
         transitive.package.version = *SemanticVersion::Parse("0.1.0");
-        transitive.package.type = ManifestPackageType::Source;
+        transitive.package.type = ManifestPackageType::SourceLibrary;
         REQUIRE(transitive.Save(transitiveRoot / "Rux.toml"));
         REQUIRE(WriteFile(transitiveRoot / "Src" / "Api.rux", R"(
 module Api {
@@ -212,10 +212,10 @@ TEST_CASE("compiler driver loads path dependencies when building") {
     CHECK(result.ok);
     CHECK(diagnostics.empty());
     CHECK(result.stats.dependencyFiles == 1);
-    CHECK(std::filesystem::is_regular_file(result.executablePath));
+    CHECK(std::filesystem::is_regular_file(result.primaryArtifactPath));
 
     if constexpr (Target::HostOS == Target::OS::MacOS && Target::HostArch == Target::Arch::AArch64) {
-        std::ifstream executable(result.executablePath, std::ios::binary);
+        std::ifstream executable(result.primaryArtifactPath, std::ios::binary);
         std::array<unsigned char, 8> header{};
         executable.read(reinterpret_cast<char *>(header.data()), static_cast<std::streamsize>(header.size()));
         REQUIRE(executable.gcount() == static_cast<std::streamsize>(header.size()));
@@ -223,22 +223,44 @@ TEST_CASE("compiler driver loads path dependencies when building") {
     }
 }
 
-TEST_CASE("compiler driver links a Library package as a shared library") {
+TEST_CASE("compiler driver links a SharedLibrary package as a native shared library") {
     DependencyFixture fixture;
-    fixture.SetApplicationType(ManifestPackageType::Library);
+    fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
     std::vector<Diagnostic> diagnostics;
 
     const auto result = CompilerDriver(fixture.Options(false, diagnostics)).Compile();
 
     CHECK(result.ok);
     CHECK(diagnostics.empty());
-    CHECK(result.executablePath.filename().string() == SharedLibraryFileName("App"));
-    CHECK(std::filesystem::is_regular_file(result.executablePath));
+    CHECK(result.primaryArtifactPath.filename().string() == SharedLibraryFileName("App"));
+    CHECK(std::filesystem::is_regular_file(result.primaryArtifactPath));
+    if constexpr (Target::HostOS == Target::OS::Windows) {
+        REQUIRE(result.secondaryArtifactPaths.size() == 1);
+        CHECK(result.secondaryArtifactPaths.front().filename().string() == StaticLibraryFileName("App"));
+        CHECK(std::filesystem::is_regular_file(result.secondaryArtifactPaths.front()));
+    }
 }
 
-TEST_CASE("compiler driver checks a Source package but refuses to build it") {
+TEST_CASE("compiler driver builds a StaticLibrary package as a native archive") {
     DependencyFixture fixture;
-    fixture.SetApplicationType(ManifestPackageType::Source);
+    fixture.SetApplicationType(ManifestPackageType::StaticLibrary);
+    std::vector<Diagnostic> diagnostics;
+
+    const auto result = CompilerDriver(fixture.Options(false, diagnostics)).Compile();
+
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.primaryArtifactPath.filename().string() == StaticLibraryFileName("App"));
+    REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
+    std::ifstream archive(result.primaryArtifactPath, std::ios::binary);
+    std::array<char, 8> magic{};
+    archive.read(magic.data(), static_cast<std::streamsize>(magic.size()));
+    CHECK(magic == std::array<char, 8>{'!', '<', 'a', 'r', 'c', 'h', '>', '\n'});
+}
+
+TEST_CASE("compiler driver checks a SourceLibrary package but refuses to build it") {
+    DependencyFixture fixture;
+    fixture.SetApplicationType(ManifestPackageType::SourceLibrary);
 
     std::vector<Diagnostic> checkDiagnostics;
     CHECK(CompilerDriver(fixture.Options(true, checkDiagnostics)).Compile().ok);
@@ -250,7 +272,7 @@ TEST_CASE("compiler driver checks a Source package but refuses to build it") {
     CHECK_FALSE(build.ok);
     REQUIRE(buildDiagnostics.size() == 1);
     CHECK(buildDiagnostics[0].IsError());
-    CHECK(buildDiagnostics[0].message.contains("Type = \"Source\""));
+    CHECK(buildDiagnostics[0].message.contains("Type = \"SourceLibrary\""));
 }
 
 TEST_CASE("compiler driver resolves transitive dependencies from local workspace members") {
@@ -316,5 +338,5 @@ when #config.Has("allocator") &&
 
     CHECK(result.ok);
     CHECK(diagnostics.empty());
-    CHECK(std::filesystem::is_regular_file(result.executablePath));
+    CHECK(std::filesystem::is_regular_file(result.primaryArtifactPath));
 }

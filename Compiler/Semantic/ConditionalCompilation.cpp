@@ -96,7 +96,7 @@ constexpr std::array DataModelVariants{"ILP32", "LLP64", "LP64"};
 constexpr std::array ObjectFormatVariants{"COFF", "ELF", "MachO", "Wasm"};
 constexpr std::array BuildModeVariants{"Debug", "Release"};
 constexpr std::array OptimizationVariants{"None", "Size", "Speed"};
-constexpr std::array OutputKindVariants{"Executable", "SharedLibrary", "StaticLibrary"};
+constexpr std::array OutputKindVariants{"Executable", "SharedLibrary", "StaticLibrary", "SourceLibrary"};
 constexpr std::array TargetFeatureVariants{"AVX",  "AVX2",  "AVX512", "NEON",  "RVV", "SSE2",
                                            "SSE3", "SSE41", "SSE42",  "SSSE3", "SVE"};
 constexpr std::array CompilerFeatures{
@@ -704,6 +704,7 @@ private:
             if (field == "outputKind") {
                 std::string variant = context.outputKind == OutputKind::StaticLibrary ? "StaticLibrary"
                                     : context.outputKind == OutputKind::SharedLibrary ? "SharedLibrary"
+                                    : context.outputKind == OutputKind::SourceLibrary ? "SourceLibrary"
                                                                                       : "Executable";
                 return Value{EnumValue{"OutputKind", std::move(variant)}};
             }
@@ -1051,6 +1052,8 @@ private:
                     variant = "StaticLibrary";
                 else if (context.outputKind == OutputKind::SharedLibrary)
                     variant = "SharedLibrary";
+                else if (context.outputKind == OutputKind::SourceLibrary)
+                    variant = "SourceLibrary";
                 return Value{EnumValue{"OutputKind", std::move(variant)}};
             }
             case K::BuildTimestamp:

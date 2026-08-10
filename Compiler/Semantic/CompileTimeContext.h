@@ -27,6 +27,7 @@ enum class OutputKind : std::uint8_t {
     Executable = 0,
     SharedLibrary = 1,
     StaticLibrary = 2,
+    SourceLibrary = 3,
 };
 
 struct CompileTimeContext {

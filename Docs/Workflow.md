@@ -68,7 +68,7 @@ There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan
 | `Compiler/Lowering/`    | Explicit AST-to-HIR and HIR-to-LIR transformations                              |
 | `Compiler/CodeGen/`     | Target-specific code generation                                                 |
 | `Compiler/Object/`      | Object formats and serialization                                                |
-| `Compiler/Linker/`      | PE, ELF, and Mach-O executable writers                                          |
+| `Compiler/Linker/`      | PE, ELF, Mach-O, relocatable-object, and archive writers                        |
 | `Compiler/Target/`      | Compilation target, ABI, data-layout, and architecture model                    |
 | `Compiler/System/`      | Host OS, hardware, filesystem, and process services                             |
 | `Compiler/Package/`     | Manifest parsing and package management                                         |
@@ -88,18 +88,18 @@ There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan
 
 A source file flows through these stages, front to back. Each stage owns a small set of files, so this is the map for "where do I make this change?":
 
-| Stage             | File(s)                           | Role                                     |
-| ----------------- | --------------------------------- | ---------------------------------------- |
-| Source loading    | `Source/SourceLoader.cpp`         | Locate and read source files             |
-| Lexing            | `Lexer/Lexer.cpp`                 | Source text → token stream               |
-| Parsing           | `Syntax/Parser/`                  | Tokens → AST                             |
-| Semantic analysis | `Semantic/SemanticAnalyzer.cpp`   | AST → validated `SemanticModel`          |
-| HIR lowering      | `Lowering/AstToHir/`              | Semantic model → HIR                     |
-| HIR passes        | `Ir/Hir/Passes/`                  | HIR optimization                         |
-| LIR lowering      | `Lowering/HirToLir/`              | HIR → control-flow-explicit LIR          |
-| Code generation   | `CodeGen/{X86_64,AArch64}/`       | LIR → target-native representation       |
-| Object emission   | `Object/Rcu/`                     | x86-64 RCU serialization and diagnostics |
-| Linking           | `Linker/{Pe,Elf,MachO}/` or Clang | Objects/LIR lowering → target executable |
+| Stage             | File(s)                                             | Role                                     |
+| ----------------- | --------------------------------------------------- | ---------------------------------------- |
+| Source loading    | `Source/SourceLoader.cpp`                           | Locate and read source files             |
+| Lexing            | `Lexer/Lexer.cpp`                                   | Source text → token stream               |
+| Parsing           | `Syntax/Parser/`                                    | Tokens → AST                             |
+| Semantic analysis | `Semantic/SemanticAnalyzer.cpp`                     | AST → validated `SemanticModel`          |
+| HIR lowering      | `Lowering/AstToHir/`                                | Semantic model → HIR                     |
+| HIR passes        | `Ir/Hir/Passes/`                                    | HIR optimization                         |
+| LIR lowering      | `Lowering/HirToLir/`                                | HIR → control-flow-explicit LIR          |
+| Code generation   | `CodeGen/{X86_64,AArch64}/`                         | LIR → target-native representation       |
+| Object emission   | `Object/Rcu/`                                       | x86-64 RCU serialization and diagnostics |
+| Linking           | `Linker/{Pe,Elf,MachO}/`, archive writers, or Clang | Objects/LIR lowering → target artifact   |
 
 Supporting layers around the pipeline:
 
@@ -146,7 +146,7 @@ Version = 1
 [Package]
 Name = "Arithmetic"
 Version = "0.1.0"
-Type = "Program"
+Type = "Executable"
 Description = "Language test: Arithmetic"
 
 [Build]

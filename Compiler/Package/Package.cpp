@@ -54,18 +54,18 @@ static ScaffoldResult MakeDir(const fs::path &path) {
 /**
  * @brief Names the starter source file for a package kind.
  *
- * Only a Program carries an entry point, so it alone gets Main.rux. Library and
- * Source packages expose a module instead.
+ * Only an Executable carries an entry point, so it alone gets Main.rux. Library
+ * packages expose a module instead.
  */
 static std::string_view StarterFileName(const ManifestPackageType type) {
-    return type == ManifestPackageType::Program ? "Main.rux" : "Lib.rux";
+    return type == ManifestPackageType::Executable ? "Main.rux" : "Lib.rux";
 }
 
 /**
  * @brief Starter source matching the package kind.
  */
 static std::string StarterSource(const ManifestPackageType type, const std::string &name) {
-    if (type == ManifestPackageType::Program) {
+    if (type == ManifestPackageType::Executable) {
         return "func Main() -> int {\n    return 0;\n}\n";
     }
     return std::format("module {} {{\n}}\n", name);
@@ -95,10 +95,10 @@ bool ScaffoldPackage(const ScaffoldOptions &options) {
         return true;
     };
 
-    // A Source package produces no artifact of its own, so it needs no output
+    // A SourceLibrary package produces no artifact of its own, so it needs no output
     // directories; it is compiled into whichever package depends on it.
     std::vector dirs = {root / "Src", root / "Temp"};
-    if (options.type != ManifestPackageType::Source) {
+    if (options.type != ManifestPackageType::SourceLibrary) {
         dirs.insert(dirs.begin(), {root / "Bin/Debug", root / "Bin/Release"});
     }
     if (!std::ranges::all_of(dirs, [&](const auto &p) { return run_task(MakeDir(p)); })) {

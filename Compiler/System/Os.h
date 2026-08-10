@@ -112,4 +112,6 @@ namespace Rux::System {
 // Shared-library file name for `os`: appends ".dll" on Windows; unchanged
 // elsewhere (ELF/Mach-O outputs currently carry no prefix or extension).
 [[nodiscard]] std::string SharedLibraryFileName(std::string name, Target::OS os = Target::HostOS);
+
+[[nodiscard]] std::string StaticLibraryFileName(std::string name, Target::OS os = Target::HostOS);
 } // namespace Rux::System

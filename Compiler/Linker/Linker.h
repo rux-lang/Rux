@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Linker/ArtifactKind.h"
 #include "Object/Rcu/Rcu.h"
 #include "Target/Target.h"
 
@@ -19,7 +20,8 @@ struct LinkerError {
 class Linker {
 public:
     explicit Linker(std::vector<RcuFile> inputObjects, std::string inputPackageName,
-                    std::vector<std::filesystem::path> inputImportSearchDirs = {}, bool inputIsDll = false,
+                    std::vector<std::filesystem::path> inputImportSearchDirs = {},
+                    ArtifactKind inputArtifactKind = ArtifactKind::Executable,
                     Target::OS inputTargetOs = Target::HostOS);
 
     // Produce the EXE or DLL at outputPath. Creates parent directories as
@@ -36,7 +38,7 @@ private:
     std::string packageName;
     std::vector<std::filesystem::path> importSearchDirs;
     std::vector<LinkerError> errors;
-    bool isDll = false;
+    ArtifactKind artifactKind = ArtifactKind::Executable;
     Target::OS targetOs = Target::HostOS;
 
     void Error(std::string msg);
@@ -46,5 +48,6 @@ private:
     [[nodiscard]] bool LinkPe64(const std::filesystem::path &outputPath);
     [[nodiscard]] bool LinkElf64(const std::filesystem::path &outputPath);
     [[nodiscard]] bool LinkMachO64(const std::filesystem::path &outputPath);
+    [[nodiscard]] bool WriteStaticLibrary(const std::filesystem::path &outputPath);
 };
 } // namespace Rux

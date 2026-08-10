@@ -64,11 +64,12 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     if (!manifest) {
         return 1;
     }
-    // Reject a package that cannot produce an entry point before spending a
-    // build on it. Type = "Source" is rejected by the driver itself, since it
-    // is equally unbuildable.
-    if (manifest->package.type == ManifestPackageType::Library) {
-        std::print(stderr, "error: cannot run a Library package; only a Program package has an entry point\n");
+    // Reject artifact-producing libraries before spending a build on them.
+    // SourceLibrary is rejected by the driver itself because it has no artifact.
+    if (manifest->package.type == ManifestPackageType::SharedLibrary ||
+        manifest->package.type == ManifestPackageType::StaticLibrary) {
+        std::print(stderr, "error: cannot run a {} package; only an Executable package has an entry point\n",
+                   ToString(manifest->package.type));
         return 1;
     }
     // Build first (quiet unless verbose)
@@ -100,11 +101,11 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         return 1;
     }
     if (!buildQuiet) {
-        const auto report = FormatBuildSummary(result.executablePath, profileName, result.stats,
+        const auto report = FormatBuildSummary(result.primaryArtifactPath, profileName, result.stats,
                                                ColorEnabled(opts.color, OutputStream::Stderr));
         std::fwrite(report.data(), sizeof(char), report.size(), stderr);
     }
-    auto exePath = result.executablePath;
+    auto exePath = result.primaryArtifactPath;
     if (!std::filesystem::exists(exePath)) {
         std::print(stderr, "error: executable not found: '{}'\n", exePath.string());
         return 1;

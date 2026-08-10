@@ -25,7 +25,7 @@ MinRux = "0.4.0"
 Namespace = "Acme"
 Name = "Widget"
 Version = "1.2.3+native"
-Type = "Source"
+Type = "SourceLibrary"
 )";
 
 // Owns a scratch package tree so each case builds from a clean directory.
@@ -261,7 +261,7 @@ MinRux = "0.4.0"
 Namespace = "Acme"
 Name = "Widget"
 Version = "1.0.0"
-Type = "Source"
+Type = "SourceLibrary"
 License = "MIT"
 LicenseFile = "LICENSE.md"
 ReadmeFile = "Docs/README.md"
@@ -288,7 +288,7 @@ MinRux = "0.4.0"
 Namespace = "Acme"
 Name = "Widget"
 Version = "1.0.0"
-Type = "Source"
+Type = "SourceLibrary"
 License = "MIT"
 )");
     fixture.Write("LICENSE.md", "MIT\n");
@@ -312,7 +312,7 @@ MinRux = "0.4.0"
 Namespace = "Acme"
 Name = "Widget"
 Version = "1.0.0"
-Type = "Source"
+Type = "SourceLibrary"
 LicenseFile = "LICENSE.md"
 )");
 
@@ -331,7 +331,7 @@ MinRux = "0.4.0"
 Namespace = "Acme"
 Name = "Widget"
 Version = "1.0.0"
-Type = "Source"
+Type = "SourceLibrary"
 ReadmeFile = "README.md"
 )");
 

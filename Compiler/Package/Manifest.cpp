@@ -13,25 +13,30 @@
 namespace Rux {
 std::string_view ToString(const ManifestPackageType type) noexcept {
     switch (type) {
-    case ManifestPackageType::Program:
-        return "Program";
-    case ManifestPackageType::Library:
-        return "Library";
-    case ManifestPackageType::Source:
-        return "Source";
+    case ManifestPackageType::Executable:
+        return "Executable";
+    case ManifestPackageType::SharedLibrary:
+        return "SharedLibrary";
+    case ManifestPackageType::StaticLibrary:
+        return "StaticLibrary";
+    case ManifestPackageType::SourceLibrary:
+        return "SourceLibrary";
     }
-    return "Program";
+    return "Executable";
 }
 
 std::optional<ManifestPackageType> ParseManifestPackageType(const std::string_view value) noexcept {
-    if (value == "Program") {
-        return ManifestPackageType::Program;
+    if (value == "Executable") {
+        return ManifestPackageType::Executable;
     }
-    if (value == "Library") {
-        return ManifestPackageType::Library;
+    if (value == "SharedLibrary") {
+        return ManifestPackageType::SharedLibrary;
     }
-    if (value == "Source") {
-        return ManifestPackageType::Source;
+    if (value == "StaticLibrary") {
+        return ManifestPackageType::StaticLibrary;
+    }
+    if (value == "SourceLibrary") {
+        return ManifestPackageType::SourceLibrary;
     }
     return std::nullopt;
 }
@@ -760,7 +765,9 @@ private:
         const auto parsedType = ParseManifestPackageType(Typed(*type, Value::Kind::String, "Type").text);
         if (!parsedType) {
             FailAt(type->location,
-                   std::format("'Type' must be 'Program', 'Library' or 'Source', found '{}'", type->text));
+                   std::format("'Type' must be 'Executable', 'SharedLibrary', 'StaticLibrary' or 'SourceLibrary', "
+                               "found '{}'",
+                               type->text));
         }
         package.type = *parsedType;
 
@@ -1250,6 +1257,12 @@ std::vector<std::string> ValidateForPublication(const Manifest &manifest) {
     if (manifest.IsWorkspace()) {
         rejections.emplace_back("a workspace cannot be published; publish a member package instead");
         return rejections;
+    }
+
+    if (manifest.package.type != ManifestPackageType::SourceLibrary) {
+        rejections.emplace_back(std::format("[Package].Type = \"{}\" cannot be published by Rux 0.4.0; this release "
+                                            "publishes only Type = \"SourceLibrary\"",
+                                            ToString(manifest.package.type)));
     }
 
     if (!manifest.package.ns) {

@@ -258,11 +258,12 @@ constexpr std::array info_exs = {""sv, "Rux/Io"sv, "Rux/Io@0.1.0"sv, "--json"sv}
 // Init
 constexpr std::array init_usage = {"[options]"sv};
 constexpr std::array init_opts = {
-    OptionDoc{.flags = "--bin"sv, .desc = "Create a Program package with an entry point (default)"sv},
-    OptionDoc{.flags = "--lib"sv, .desc = "Create a Library package built as a shared library"sv},
-    OptionDoc{.flags = "--source"sv, .desc = "Create a Source package compiled into its dependents"sv},
+    OptionDoc{.flags = "--executable"sv, .desc = "Create an Executable package with an entry point (default)"sv},
+    OptionDoc{.flags = "--shared"sv, .desc = "Create a SharedLibrary package"sv},
+    OptionDoc{.flags = "--static"sv, .desc = "Create a StaticLibrary package"sv},
+    OptionDoc{.flags = "--source"sv, .desc = "Create a SourceLibrary package compiled into its dependents"sv},
     OptionDoc{.flags = "--namespace <ns>"sv, .desc = "Set the registry namespace required to publish"sv}};
-constexpr std::array init_exs = {""sv, "--bin"sv, "--lib --namespace Rux"sv};
+constexpr std::array init_exs = {""sv, "--executable"sv, "--shared --namespace Rux"sv, "--static"sv, "--source"sv};
 
 // Install
 constexpr std::array install_usage = {""sv, "[namespace]/[package]"sv, "[namespace]/[package]@[requirement]"sv};
@@ -293,12 +294,14 @@ constexpr std::array logout_exs = {""sv, "--registry http://localhost:8080"sv};
 // New
 constexpr std::array new_usage = {"[name] [options]"sv};
 constexpr std::array new_opts = {
-    OptionDoc{.flags = "--bin"sv, .desc = "Create a Program package with an entry point (default)"sv},
-    OptionDoc{.flags = "--lib"sv, .desc = "Create a Library package built as a shared library"sv},
-    OptionDoc{.flags = "--source"sv, .desc = "Create a Source package compiled into its dependents"sv},
+    OptionDoc{.flags = "--executable"sv, .desc = "Create an Executable package with an entry point (default)"sv},
+    OptionDoc{.flags = "--shared"sv, .desc = "Create a SharedLibrary package"sv},
+    OptionDoc{.flags = "--static"sv, .desc = "Create a StaticLibrary package"sv},
+    OptionDoc{.flags = "--source"sv, .desc = "Create a SourceLibrary package compiled into its dependents"sv},
     OptionDoc{.flags = "--namespace <ns>"sv, .desc = "Set the registry namespace required to publish"sv},
     OptionDoc{.flags = "--path <dir>"sv, .desc = "Create the workspace in a specific directory"sv}};
-constexpr std::array new_exs = {"App"sv, "App --bin"sv, "Io --lib --namespace Rux"sv};
+constexpr std::array new_exs = {"App"sv, "App --executable"sv, "Io --shared --namespace Rux"sv, "Math --static"sv,
+                                "Json --source"sv};
 
 // Pack
 constexpr std::array pack_usage = {"[options]"sv};

@@ -4,7 +4,7 @@ Version = 1
 [Package]
 Name = "Hypot"
 Version = "0.1.0"
-Type = "Program"
+Type = "Executable"
 Description = "Package test for Math: Hypot"
 
 [Dependencies]

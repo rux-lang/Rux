@@ -51,6 +51,12 @@ The LLVM installer names the compiler `clang++-22`; `Build.sh` detects it automa
 On AArch64, Rux selects the `linux-aarch64` target automatically and uses the
 platform Clang driver for final native lowering and linking.
 
+## Native Package Artifacts
+
+An `Executable` package writes `Name`, a `SharedLibrary` writes `libName.so` with its SONAME, and a `StaticLibrary` writes `libName.a` with a GNU archive symbol index. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
+
+The x86-64 backend writes ELF objects and images directly. The AArch64 backend uses Clang for relocatable-object and shared-library emission, then the common deterministic archive layer for static output.
+
 For a Debug build, run `sh Build.sh --configuration Debug`. On other Linux distributions, install equivalent tool versions through the distribution's package manager and pass `--compiler PATH` when Clang is not detected automatically. Run `sh Build.sh --help` to see every option.
 
 ## Verifying the Build

@@ -155,7 +155,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     const std::string_view profileName = isRelease ? "Release" : "Debug";
 
     // Collect test package directories: any directory under a test root that
-    // contains a Rux.toml with Type = "Program". A directory without a manifest
+    // contains a Rux.toml with Type = "Executable". A directory without a manifest
     // is a group (e.g. Tests/Language/) and is searched recursively, a few
     // levels deep so build-output trees don't get walked.
     struct TestPackage {
@@ -193,8 +193,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                     if (!pkgManifest.Ok()) {
                         continue;
                     }
-                    // Only a Program package has an entry point to run.
-                    if (pkgManifest.manifest->package.type != ManifestPackageType::Program) {
+                    // Only an Executable package has an entry point to run.
+                    if (pkgManifest.manifest->package.type != ManifestPackageType::Executable) {
                         continue;
                     }
                     auto label = entry.path().lexically_relative(root.dir).generic_string();
@@ -279,7 +279,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             outcome.status = TestStatus::BuildError;
             return outcome;
         }
-        const auto exePath = result.executablePath;
+        const auto exePath = result.primaryArtifactPath;
 
         if (!std::filesystem::exists(exePath)) {
             std::print(stderr, "error: built executable not found at '{}'\n", exePath.string());

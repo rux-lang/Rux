@@ -162,12 +162,12 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         return 1;
     }
     if (!opts.quiet && showStats) {
-        PrintBuildStats(result.executablePath, profileName, result.stats,
+        PrintBuildStats(result.primaryArtifactPath, profileName, result.stats,
                         ColorEnabled(opts.color, OutputStream::Stdout));
         return 0;
     }
     if (!opts.quiet) {
-        PrintBuildSummary(result.executablePath, profileName, result.stats,
+        PrintBuildSummary(result.primaryArtifactPath, profileName, result.stats,
                           ColorEnabled(opts.color, OutputStream::Stdout));
     }
     return 0;

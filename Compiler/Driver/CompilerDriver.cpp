@@ -61,8 +61,14 @@ void CompilerDriver::InitializeCompileTimeContext() {
         compileTimeContext.config[name] = value;
     }
 
-    if (opts.manifest.package.type == ManifestPackageType::Library) {
+    if (opts.manifest.package.type == ManifestPackageType::SharedLibrary) {
         compileTimeContext.outputKind = OutputKind::SharedLibrary;
+    }
+    else if (opts.manifest.package.type == ManifestPackageType::StaticLibrary) {
+        compileTimeContext.outputKind = OutputKind::StaticLibrary;
+    }
+    else if (opts.manifest.package.type == ManifestPackageType::SourceLibrary) {
+        compileTimeContext.outputKind = OutputKind::SourceLibrary;
     }
 
     compileTimeContext.buildTimestamp =
@@ -117,13 +123,14 @@ CompileResult CompilerDriver::Compile() {
         Emit(ErrorDiagnostic("SOURCE_DATE_EPOCH must be a non-negative integer number of seconds"));
         return result;
     }
-    // A Source package has no artifact of its own: it is compiled into whichever
+    // A SourceLibrary package has no artifact of its own: it is compiled into whichever
     // package depends on it. Checking it in place is still useful, so the kind is
     // only rejected once a build is actually requested.
-    if (!opts.checkOnly && opts.manifest.package.type == ManifestPackageType::Source) {
-        Emit(ErrorDiagnostic("package '" + opts.manifest.package.name.Text() +
-                             "' has Type = \"Source\" and is compiled into dependent packages; it cannot be built or "
-                             "run as a top-level target"));
+    if (!opts.checkOnly && opts.manifest.package.type == ManifestPackageType::SourceLibrary) {
+        Emit(ErrorDiagnostic(
+            "package '" + opts.manifest.package.name.Text() +
+            "' has Type = \"SourceLibrary\" and is compiled into dependent packages; it cannot be built or "
+            "run as a top-level target"));
         return result;
     }
 
@@ -150,8 +157,8 @@ CompileResult CompilerDriver::Compile() {
         return result;
     }
 
-    std::filesystem::path exePath;
-    if (!GenerateExecutable(exePath)) {
+    std::filesystem::path artifactPath;
+    if (!GenerateArtifact(artifactPath, result.secondaryArtifactPaths)) {
         return result;
     }
 
@@ -159,14 +166,14 @@ CompileResult CompilerDriver::Compile() {
     stats.total = ElapsedMs(t0, buildEnd);
     stats.totalSeconds = ElapsedSeconds(t0, buildEnd);
     std::error_code sizeError;
-    stats.executableSize = std::filesystem::file_size(exePath, sizeError);
+    stats.executableSize = std::filesystem::file_size(artifactPath, sizeError);
     if (sizeError) {
         stats.executableSize = 0;
     }
     stats.peakMemoryBytes = PeakMemoryBytes();
 
     result.stats = stats;
-    result.executablePath = std::move(exePath);
+    result.primaryArtifactPath = std::move(artifactPath);
     result.ok = true;
     return result;
 }
@@ -501,7 +508,8 @@ bool CompilerDriver::Analyze() {
     return true;
 }
 
-bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
+bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
+                                      std::vector<std::filesystem::path> &secondaryArtifactPaths) {
     // HIR
     const auto hirStart = std::chrono::steady_clock::now();
     if (opts.verbose) {
@@ -549,21 +557,32 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     // below are intentionally bypassed.
     if (useAArch64Backend) {
         const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, !opts.isTest);
-        const bool sharedLibrary = opts.manifest.package.type == ManifestPackageType::Library;
+        const ManifestPackageType packageType = opts.manifest.package.type;
+        const bool sharedLibrary = packageType == ManifestPackageType::SharedLibrary;
+        const ArtifactKind artifactKind = sharedLibrary ? ArtifactKind::SharedLibrary
+                                        : packageType == ManifestPackageType::StaticLibrary
+                                            ? ArtifactKind::StaticLibrary
+                                            : ArtifactKind::Executable;
         const std::string outputName =
-            sharedLibrary ? SharedLibraryFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os)
-                          : ExecutableFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os);
-        exePath = binDir / outputName;
+            packageType == ManifestPackageType::StaticLibrary
+                ? StaticLibraryFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os)
+            : sharedLibrary ? SharedLibraryFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os)
+                            : ExecutableFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os);
+        artifactPath = binDir / outputName;
         AArch64NativeEmitter emitter(lirPackage, std::string(opts.manifest.package.name.Text()),
                                      compileTimeContext.target);
         const bool release = compileTimeContext.buildMode == Target::BuildMode::Release;
         const std::optional<std::filesystem::path> assemblyPath =
             opts.dumpAsm ? std::make_optional(root / "Temp" / "Asm" / "out.s") : std::nullopt;
-        if (!emitter.EmitArtifact(exePath, root / "Temp" / "Native", release, sharedLibrary, assemblyPath)) {
+        if (!emitter.EmitArtifact(artifactPath, root / "Temp" / "Native", release, artifactKind, assemblyPath)) {
             for (const auto &diagnostic : emitter.Diagnostics()) {
                 Emit(diagnostic);
             }
             return false;
+        }
+        if (artifactKind == ArtifactKind::SharedLibrary && compileTimeContext.target.os == OS::Windows) {
+            secondaryArtifactPaths.push_back(
+                binDir / StaticLibraryFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os));
         }
         stats.codegen = ElapsedMs(codegenStart);
         return true;
@@ -606,17 +625,26 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
         std::print("Linking {}\n", opts.manifest.package.name.Text());
     }
     const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, !opts.isTest);
-    const bool buildDll = opts.manifest.package.type == ManifestPackageType::Library;
+    const ManifestPackageType packageType = opts.manifest.package.type;
+    const ArtifactKind artifactKind = packageType == ManifestPackageType::SharedLibrary ? ArtifactKind::SharedLibrary
+                                    : packageType == ManifestPackageType::StaticLibrary ? ArtifactKind::StaticLibrary
+                                                                                        : ArtifactKind::Executable;
     const OS targetOs = TargetTripleOs(opts.targetName);
-    const std::string outputName = buildDll ? SharedLibraryFileName(opts.manifest.package.name.Text(), targetOs)
-                                            : ExecutableFileName(opts.manifest.package.name.Text(), targetOs);
-    exePath = binDir / outputName;
-    Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name.Text()), {root}, buildDll, targetOs);
-    if (!linker.Link(exePath)) {
+    const std::string outputName = artifactKind == ArtifactKind::SharedLibrary
+                                     ? SharedLibraryFileName(opts.manifest.package.name.Text(), targetOs)
+                                 : artifactKind == ArtifactKind::StaticLibrary
+                                     ? StaticLibraryFileName(opts.manifest.package.name.Text(), targetOs)
+                                     : ExecutableFileName(opts.manifest.package.name.Text(), targetOs);
+    artifactPath = binDir / outputName;
+    Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name.Text()), {root}, artifactKind, targetOs);
+    if (!linker.Link(artifactPath)) {
         for (const auto &err : linker.Errors()) {
             Emit(ErrorDiagnostic(err.message));
         }
         return false;
+    }
+    if (artifactKind == ArtifactKind::SharedLibrary && targetOs == OS::Windows) {
+        secondaryArtifactPaths.push_back(binDir / StaticLibraryFileName(opts.manifest.package.name.Text(), targetOs));
     }
     stats.linking = ElapsedMs(linkingStart);
     return true;

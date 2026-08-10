@@ -53,10 +53,14 @@ TEST_CASE("ExecutableFileName appends .exe only for Windows targets") {
     CHECK(ExecutableFileName("rux", OS::MacOS) == "rux");
 }
 
-TEST_CASE("SharedLibraryFileName appends .dll only for Windows targets") {
+TEST_CASE("library file names follow target platform conventions") {
     CHECK(SharedLibraryFileName("Std", OS::Windows) == "Std.dll");
-    CHECK(SharedLibraryFileName("Std", OS::Linux) == "Std");
-    CHECK(SharedLibraryFileName("Std", OS::FreeBSD) == "Std");
+    CHECK(SharedLibraryFileName("Std", OS::Linux) == "libStd.so");
+    CHECK(SharedLibraryFileName("Std", OS::FreeBSD) == "libStd.so");
+    CHECK(SharedLibraryFileName("Std", OS::MacOS) == "libStd.dylib");
+    CHECK(StaticLibraryFileName("Std", OS::Windows) == "Std.lib");
+    CHECK(StaticLibraryFileName("Std", OS::Linux) == "libStd.a");
+    CHECK(StaticLibraryFileName("Std", OS::MacOS) == "libStd.a");
 }
 
 TEST_CASE("workspace platform package names match their target triples") {

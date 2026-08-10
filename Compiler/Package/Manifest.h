@@ -35,13 +35,16 @@ inline constexpr std::size_t manifestMaxKeywords = 32;
  */
 enum class ManifestPackageType {
     /// A runnable executable with a Main entry point.
-    Program,
+    Executable,
 
     /// A shared library linked by dependents and loaded at run time.
-    Library,
+    SharedLibrary,
+
+    /// A target-native static library archive.
+    StaticLibrary,
 
     /// Rux sources compiled directly into dependent packages.
-    Source,
+    SourceLibrary,
 };
 
 [[nodiscard]] std::string_view ToString(ManifestPackageType type) noexcept;
@@ -138,7 +141,7 @@ struct Package {
 
     IdentitySegment name;
     SemanticVersion version;
-    ManifestPackageType type = ManifestPackageType::Program;
+    ManifestPackageType type = ManifestPackageType::Executable;
 
     std::string description;
     std::vector<std::string> authors;

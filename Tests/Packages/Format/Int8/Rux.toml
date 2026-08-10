@@ -4,7 +4,7 @@ Version = 1
 [Package]
 Name = "Int8"
 Version = "0.1.0"
-Type = "Program"
+Type = "Executable"
 Description = "Package test for Format: Int8"
 
 [Dependencies]

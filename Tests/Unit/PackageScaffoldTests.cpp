@@ -48,18 +48,18 @@ private:
 
 } // namespace
 
-TEST_CASE("scaffolding writes a Version 1 Program package") {
+TEST_CASE("scaffolding writes a Version 1 Executable package") {
     const ScaffoldFixture fixture;
     const auto packageRoot = fixture.Package("App");
 
-    REQUIRE(ScaffoldPackage({.root = packageRoot, .name = "App", .type = ManifestPackageType::Program}));
+    REQUIRE(ScaffoldPackage({.root = packageRoot, .name = "App", .type = ManifestPackageType::Executable}));
 
     const auto result = Manifest::Load(packageRoot / "Rux.toml");
     REQUIRE(result.Ok());
     CHECK(result.manifest->header.schemaVersion == manifestSchemaVersion);
     CHECK(result.manifest->package.name.Text() == "App");
     CHECK(result.manifest->package.version.Text() == "0.1.0");
-    CHECK(result.manifest->package.type == ManifestPackageType::Program);
+    CHECK(result.manifest->package.type == ManifestPackageType::Executable);
     CHECK_FALSE(result.manifest->package.ns.has_value());
 
     CHECK(std::filesystem::is_regular_file(packageRoot / "Src" / "Main.rux"));
@@ -70,15 +70,15 @@ TEST_CASE("scaffolding writes a Version 1 Program package") {
     CHECK(std::filesystem::is_regular_file(packageRoot / ".gitignore"));
 }
 
-TEST_CASE("scaffolding writes a Library package without an entry point") {
+TEST_CASE("scaffolding writes a SharedLibrary package without an entry point") {
     const ScaffoldFixture fixture;
     const auto packageRoot = fixture.Package("Io");
 
-    REQUIRE(ScaffoldPackage({.root = packageRoot, .name = "Io", .type = ManifestPackageType::Library}));
+    REQUIRE(ScaffoldPackage({.root = packageRoot, .name = "Io", .type = ManifestPackageType::SharedLibrary}));
 
     const auto result = Manifest::Load(packageRoot / "Rux.toml");
     REQUIRE(result.Ok());
-    CHECK(result.manifest->package.type == ManifestPackageType::Library);
+    CHECK(result.manifest->package.type == ManifestPackageType::SharedLibrary);
 
     CHECK_FALSE(std::filesystem::exists(packageRoot / "Src" / "Main.rux"));
     REQUIRE(std::filesystem::is_regular_file(packageRoot / "Src" / "Lib.rux"));
@@ -86,18 +86,32 @@ TEST_CASE("scaffolding writes a Library package without an entry point") {
     CHECK(std::filesystem::is_directory(packageRoot / "Bin" / "Debug"));
 }
 
-TEST_CASE("scaffolding writes a Source package with no output directories") {
+TEST_CASE("scaffolding writes a StaticLibrary package without an entry point") {
     const ScaffoldFixture fixture;
-    const auto packageRoot = fixture.Package("Json");
+    const auto packageRoot = fixture.Package("Math");
 
-    REQUIRE(ScaffoldPackage({.root = packageRoot, .name = "Json", .type = ManifestPackageType::Source}));
+    REQUIRE(ScaffoldPackage({.root = packageRoot, .name = "Math", .type = ManifestPackageType::StaticLibrary}));
 
     const auto result = Manifest::Load(packageRoot / "Rux.toml");
     REQUIRE(result.Ok());
-    CHECK(result.manifest->package.type == ManifestPackageType::Source);
+    CHECK(result.manifest->package.type == ManifestPackageType::StaticLibrary);
+    CHECK(std::filesystem::is_regular_file(packageRoot / "Src" / "Lib.rux"));
+    CHECK_FALSE(std::filesystem::exists(packageRoot / "Src" / "Main.rux"));
+    CHECK(std::filesystem::is_directory(packageRoot / "Bin" / "Debug"));
+}
+
+TEST_CASE("scaffolding writes a SourceLibrary package with no output directories") {
+    const ScaffoldFixture fixture;
+    const auto packageRoot = fixture.Package("Json");
+
+    REQUIRE(ScaffoldPackage({.root = packageRoot, .name = "Json", .type = ManifestPackageType::SourceLibrary}));
+
+    const auto result = Manifest::Load(packageRoot / "Rux.toml");
+    REQUIRE(result.Ok());
+    CHECK(result.manifest->package.type == ManifestPackageType::SourceLibrary);
 
     CHECK(std::filesystem::is_regular_file(packageRoot / "Src" / "Lib.rux"));
-    // A Source package is compiled into its dependents and links nothing itself.
+    // A SourceLibrary package is compiled into its dependents and links nothing itself.
     CHECK_FALSE(std::filesystem::exists(packageRoot / "Bin"));
 }
 
@@ -107,7 +121,7 @@ TEST_CASE("scaffolding records an optional namespace") {
 
     REQUIRE(ScaffoldPackage({.root = packageRoot,
                              .name = "Io",
-                             .type = ManifestPackageType::Library,
+                             .type = ManifestPackageType::SharedLibrary,
                              .ns = *IdentitySegment::Parse("Rux")}));
 
     const auto result = Manifest::Load(packageRoot / "Rux.toml");
@@ -141,14 +155,14 @@ TEST_CASE("initializing preserves an existing manifest and sources") {
     const auto packageRoot = fixture.Package("App");
     REQUIRE(ScaffoldPackage({.root = packageRoot,
                              .name = "App",
-                             .type = ManifestPackageType::Source,
+                             .type = ManifestPackageType::SourceLibrary,
                              .ns = *IdentitySegment::Parse("Rux")}));
     const auto manifestBefore = ScaffoldFixture::Read(packageRoot / "Rux.toml");
     const auto sourceBefore = ScaffoldFixture::Read(packageRoot / "Src" / "Lib.rux");
 
     // Re-initializing with different options must not rewrite what is there.
-    REQUIRE(
-        ScaffoldPackage({.root = packageRoot, .name = "App", .type = ManifestPackageType::Library, .initMode = true}));
+    REQUIRE(ScaffoldPackage(
+        {.root = packageRoot, .name = "App", .type = ManifestPackageType::SharedLibrary, .initMode = true}));
 
     CHECK(ScaffoldFixture::Read(packageRoot / "Rux.toml") == manifestBefore);
     CHECK(ScaffoldFixture::Read(packageRoot / "Src" / "Lib.rux") == sourceBefore);

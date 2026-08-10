@@ -96,7 +96,8 @@ static Buf BuildOsNote() {
 }
 
 bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
-    static constexpr uint64_t kBase = 0x400000;
+    const bool isShared = artifactKind == ArtifactKind::SharedLibrary;
+    const uint64_t imageBase = isShared ? 0 : 0x400000;
     static constexpr uint64_t kPage = 0x1000;
     static constexpr uint32_t kPfX = 0x1;
     static constexpr uint32_t kPfW = 0x2;
@@ -178,8 +179,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // buffered stdio is flushed — a raw exit syscall would discard it — so we
     // pull in exit() as an implicit import (mirroring the PE writer's use of
     // ExitProcess for its entry stub).
-    const bool dynamic = !importLib.empty();
-    if (dynamic) {
+    const bool dynamic = isShared || !importLib.empty();
+    if (dynamic && !isShared) {
         importLib.try_emplace("exit", kDefaultLib);
     }
 
@@ -187,23 +188,26 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     //    program then exits with a raw syscall (no libc); a dynamic one tail
     //    calls libc exit() with Main's return value so stdio is flushed.
     Buf textPre;
-    textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
-    const size_t kCallMainDisp = textPre.size() + 1;
-    textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
-    textPre.insert(textPre.end(), {0x89, 0xC7});                   // mov edi, eax (exit code)
+    size_t callMainDisp = 0;
     size_t kCallExitDisp = 0;
-    if (dynamic) {
-        kCallExitDisp = textPre.size() + 1;
-        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call exit@plt
-        textPre.insert(textPre.end(), {0xCC});                         // int3 (unreachable)
-    }
-    else {
+    if (!isShared) {
+        textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
+        callMainDisp = textPre.size() + 1;
+        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
+        textPre.insert(textPre.end(), {0x89, 0xC7});                   // mov edi, eax (exit code)
+        if (dynamic) {
+            kCallExitDisp = textPre.size() + 1;
+            textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call exit@plt
+            textPre.insert(textPre.end(), {0xCC});                         // int3 (unreachable)
+        }
+        else {
 #if RUX_IS_BSD || RUX_IS_SUNOS
-        textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD/Illumos exit)
+            textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD/Illumos exit)
 #else
-        textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
+            textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
 #endif
-        textPre.insert(textPre.end(), {0x0F, 0x05}); // syscall
+            textPre.insert(textPre.end(), {0x0F, 0x05}); // syscall
+        }
     }
     const auto preambleSize = static_cast<uint32_t>(textPre.size());
 
@@ -272,7 +276,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     // Applies every object's relocations against the resolved symbol map.
     const auto applyRelocs = [&](const std::unordered_map<std::string, uint64_t> &symMap, Buf &txt, Buf &ro, Buf &dat,
-                                 uint64_t textVA, uint64_t roVA, uint64_t dataVA) {
+                                 uint64_t textVA, uint64_t roVA, uint64_t dataVA, Buf *dynamicRelocations) {
         for (size_t i = 0; i < objects.size(); ++i) {
             const auto &obj = objects[i];
             const auto &lay = layouts[i];
@@ -342,7 +346,13 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                         if (patchAt + 8 > buf->size()) {
                             continue;
                         }
-                        Patch64(*buf, patchAt, targetVA + static_cast<uint64_t>(reloc.addend));
+                        const uint64_t value = targetVA + static_cast<uint64_t>(reloc.addend);
+                        Patch64(*buf, patchAt, value);
+                        if (dynamicRelocations != nullptr) {
+                            WriteU64(*dynamicRelocations, siteVA); // r_offset
+                            WriteU64(*dynamicRelocations, 8);      // R_X86_64_RELATIVE
+                            WriteU64(*dynamicRelocations, value);  // r_addend
+                        }
                     }
                     else if (reloc.type == RcuRelType::Abs32) {
                         if (patchAt + 4 > buf->size()) {
@@ -408,9 +418,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         for (int i = 0; i < 8; ++i) {
             WriteU8(hdr, 0);
         }
-        WriteU16(hdr, 2);    // ET_EXEC
-        WriteU16(hdr, 0x3E); // EM_X86_64
-        WriteU32(hdr, 1);    // e_version
+        WriteU16(hdr, isShared ? 3 : 2); // ET_DYN or ET_EXEC
+        WriteU16(hdr, 0x3E);             // EM_X86_64
+        WriteU32(hdr, 1);                // e_version
         WriteU64(hdr, entryVA);
         WriteU64(hdr, phoff);
         WriteU64(hdr, 0);  // e_shoff
@@ -439,13 +449,15 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         }
 
         std::error_code ec;
-        std::filesystem::permissions(outputPath,
-                                     std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec |
-                                         std::filesystem::perms::others_exec,
-                                     std::filesystem::perm_options::add, ec);
-        if (ec) {
-            Error("cannot mark output executable: " + ec.message());
-            return false;
+        if (!isShared) {
+            std::filesystem::permissions(outputPath,
+                                         std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec |
+                                             std::filesystem::perms::others_exec,
+                                         std::filesystem::perm_options::add, ec);
+            if (ec) {
+                Error("cannot mark output executable: " + ec.message());
+                return false;
+            }
         }
         return true;
     };
@@ -467,7 +479,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         const auto phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0) + (hasNote ? 1 : 0));
         constexpr uint64_t phoff = 64;
         const uint64_t textOff = alignUp(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
-        const uint64_t textVA = kBase + textOff;
+        const uint64_t textVA = imageBase + textOff;
 
         // The OS note (when present) leads .rodata so PT_NOTE can point at it.
         Buf rodataBuf = osNote;
@@ -475,9 +487,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         const uint64_t noteRodataDelta = osNote.size();
 
         const uint64_t rdataOff = alignUp(textOff + textBuf.size(), kPage);
-        const uint64_t rdataVA = kBase + rdataOff;
+        const uint64_t rdataVA = imageBase + rdataOff;
         const uint64_t dataOff = alignUp(rdataOff + rodataBuf.size(), kPage);
-        const uint64_t dataVA = kBase + dataOff;
+        const uint64_t dataVA = imageBase + dataOff;
 
         auto symMap = buildDefinedSymMap(textVA, rdataVA + noteRodataDelta, dataVA);
         auto it = symMap.find("Main");
@@ -485,10 +497,10 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             Error("undefined symbol 'Main' — no entry point found");
             return false;
         }
-        const uint64_t nextInst = textVA + kCallMainDisp + 4;
-        Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(it->second - nextInst));
+        const uint64_t nextInst = textVA + callMainDisp + 4;
+        Patch32(textBuf, callMainDisp, static_cast<uint32_t>(it->second - nextInst));
 
-        applyRelocs(symMap, textBuf, rodataBuf, mergedData, textVA, rdataVA + noteRodataDelta, dataVA);
+        applyRelocs(symMap, textBuf, rodataBuf, mergedData, textVA, rdataVA + noteRodataDelta, dataVA, nullptr);
         if (!errors.empty()) {
             return false;
         }
@@ -507,7 +519,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                         phoff);
     }
 
-    // --- Dynamically linked executable importing from shared libraries. ---
+    // --- Dynamically linked executable or shared object. ---
     const size_t n = importNames.size();
 
     struct ExportedDataSymbol {
@@ -517,6 +529,31 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     };
 
     std::vector<ExportedDataSymbol> exportedDataSymbols;
+
+    struct SharedExport {
+        std::string name;
+        uint8_t kind;
+        uint32_t size;
+        uint32_t dynsymValueOffset;
+    };
+
+    std::vector<SharedExport> sharedExports;
+    if (isShared) {
+        std::map<std::string, SharedExport> exportsByName;
+        for (const auto &object : objects) {
+            for (const auto &symbol : object.symbols) {
+                if (symbol.visibility == RcuSymVis::Local || symbol.name.empty() ||
+                    symbol.sectionIdx == RCU_SEC_EXTERNAL) {
+                    continue;
+                }
+                exportsByName.try_emplace(symbol.name, SharedExport{symbol.name, symbol.kind, symbol.size, 0});
+            }
+        }
+        for (auto &[name, symbol] : exportsByName) {
+            (void)name;
+            sharedExports.push_back(std::move(symbol));
+        }
+    }
 
 #if RUX_IS_BSD
     const auto exportPointerDataSymbol = [&](std::string name) {
@@ -566,14 +603,19 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     for (size_t i = 0; i < exportedDataSymbols.size(); ++i) {
         exportedNameStrOff[i] = internStr(exportedDataSymbols[i].name);
     }
+    std::vector<uint32_t> sharedExportNameStrOff(sharedExports.size());
+    for (size_t i = 0; i < sharedExports.size(); ++i) {
+        sharedExportNameStrOff[i] = internStr(sharedExports[i].name);
+    }
     std::vector<uint32_t> libStrOff(neededLibs.size());
     for (size_t i = 0; i < neededLibs.size(); ++i) {
         libStrOff[i] = internStr(neededLibs[i]);
     }
+    const uint32_t sonameStrOff = isShared ? internStr(outputPath.filename().string()) : 0;
 
     // .dynsym: index 0 is STN_UNDEF, followed by undefined STT_FUNC imports
     // and any executable-defined symbols needed by the runtime loader.
-    const size_t nsym = n + 1 + exportedDataSymbols.size();
+    const size_t nsym = n + 1 + exportedDataSymbols.size() + sharedExports.size();
     Buf dynsym;
     WriteZeros(dynsym, 24); // null symbol
     for (size_t i = 0; i < n; ++i) {
@@ -593,6 +635,16 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         WriteU64(dynsym, 0); // st_value, patched once dataVA is known
         WriteU64(dynsym, 8); // st_size
     }
+    for (size_t i = 0; i < sharedExports.size(); ++i) {
+        const auto &symbol = sharedExports[i];
+        WriteU32(dynsym, sharedExportNameStrOff[i]);
+        WriteU8(dynsym, symbol.kind == RcuSymKind::Func ? 0x12 : 0x11); // global function or object
+        WriteU8(dynsym, 0);
+        WriteU16(dynsym, 0xFFF1); // SHN_ABS; the image has no section table
+        sharedExports[i].dynsymValueOffset = static_cast<uint32_t>(dynsym.size());
+        WriteU64(dynsym, 0); // patched after virtual addresses are assigned
+        WriteU64(dynsym, symbol.size);
+    }
 
     // .hash (SysV): distribute all dynsym entries across buckets by ElfHash.
     const uint32_t nbucket = static_cast<uint32_t>(std::max<size_t>(1, nsym));
@@ -600,6 +652,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     std::vector<uint32_t> chain(nsym, 0);
     std::vector<std::string> dynSymbolNames = importNames;
     for (const auto &symbol : exportedDataSymbols) {
+        dynSymbolNames.push_back(symbol.name);
+    }
+    for (const auto &symbol : sharedExports) {
         dynSymbolNames.push_back(symbol.name);
     }
     for (size_t i = dynSymbolNames.size(); i >= 1; --i) {
@@ -620,21 +675,30 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     // Interp string.
     Buf interp;
-    WriteCStr(interp, kElfInterp);
+    if (!isShared) {
+        WriteCStr(interp, kElfInterp);
+    }
 
     // Fixed-size buffers whose bytes are patched once addresses are known.
     const size_t relaSz = n * 24;
+    size_t relativeRelocationCount = 0;
+    if (isShared) {
+        for (const auto &object : objects) {
+            for (const auto &section : object.sections) {
+                relativeRelocationCount += static_cast<size_t>(std::ranges::count_if(
+                    section.relocs, [](const RcuReloc &relocation) { return relocation.type == RcuRelType::Abs64; }));
+            }
+        }
+    }
+    const size_t relaDynSz = relativeRelocationCount * 24;
     const size_t pltSz = (n + 1) * 16;
     const size_t gotSz = (3 + n) * 8;
-    const size_t dynSz = (neededLibs.size() + 11) * 16;
+    const size_t dynSz = (neededLibs.size() + 11 + (isShared ? 1 : 0) + (relaDynSz != 0 ? 3 : 0)) * 16;
 
-    // 5. Assign file offsets; every section's VA is kBase + its file offset.
-    uint64_t off = 64 + static_cast<uint64_t>([&] {
-                       // PT_PHDR, PT_INTERP, PT_LOAD(rx), PT_LOAD(rw), PT_DYNAMIC, [PT_NOTE]
-                       return (5 + (hasNote ? 1 : 0)) * 56;
-                   }());
+    // 5. Assign file offsets; every section's VA is imageBase + its file offset.
     constexpr uint64_t phoff = 64;
-    const auto phnum = static_cast<uint16_t>(5 + (hasNote ? 1 : 0));
+    const auto phnum = static_cast<uint16_t>((isShared ? 4 : 5) + (hasNote ? 1 : 0));
+    uint64_t off = 64 + static_cast<uint64_t>(phnum) * 56;
 
     const uint64_t interpOff = off;
     off += interp.size();
@@ -649,6 +713,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     off = dynsymOff + dynsym.size();
     const uint64_t dynstrOff = off;
     off += dynstr.size();
+    const uint64_t relaDynOff = alignUp(off, 8);
+    off = relaDynOff + relaDynSz;
     const uint64_t relaOff = alignUp(off, 8);
     off = relaOff + relaSz;
     const uint64_t pltOff = alignUp(off, 16);
@@ -670,17 +736,18 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // unwritten).
     const uint64_t rwFileEnd = mergedData.empty() ? (gotOff + gotSz) : (dataOff + mergedData.size());
 
-    const uint64_t interpVA = kBase + interpOff;
-    const uint64_t hashVA = kBase + hashOff;
-    const uint64_t dynsymVA = kBase + dynsymOff;
-    const uint64_t dynstrVA = kBase + dynstrOff;
-    const uint64_t relaVA = kBase + relaOff;
-    const uint64_t pltVA = kBase + pltOff;
-    const uint64_t textVA = kBase + textOff;
-    const uint64_t rodataVA = kBase + rodataOff;
-    const uint64_t dynamicVA = kBase + dynamicOff;
-    const uint64_t gotVA = kBase + gotOff;
-    const uint64_t dataVA = kBase + dataOff;
+    const uint64_t interpVA = imageBase + interpOff;
+    const uint64_t hashVA = imageBase + hashOff;
+    const uint64_t dynsymVA = imageBase + dynsymOff;
+    const uint64_t dynstrVA = imageBase + dynstrOff;
+    const uint64_t relaDynVA = imageBase + relaDynOff;
+    const uint64_t relaVA = imageBase + relaOff;
+    const uint64_t pltVA = imageBase + pltOff;
+    const uint64_t textVA = imageBase + textOff;
+    const uint64_t rodataVA = imageBase + rodataOff;
+    const uint64_t dynamicVA = imageBase + dynamicOff;
+    const uint64_t gotVA = imageBase + gotOff;
+    const uint64_t dataVA = imageBase + dataOff;
 
     for (const auto &symbol : exportedDataSymbols) {
         Patch64(dynsym, symbol.dynsymValueOffset, dataVA + symbol.dataOffset);
@@ -739,17 +806,25 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     for (size_t i = 0; i < neededLibs.size(); ++i) {
         writeDyn(1, libStrOff[i]); // DT_NEEDED
     }
+    if (isShared) {
+        writeDyn(14, sonameStrOff); // DT_SONAME
+    }
     writeDyn(4, hashVA);         // DT_HASH
     writeDyn(5, dynstrVA);       // DT_STRTAB
     writeDyn(6, dynsymVA);       // DT_SYMTAB
     writeDyn(10, dynstr.size()); // DT_STRSZ
     writeDyn(11, 24);            // DT_SYMENT
-    writeDyn(3, gotVA);          // DT_PLTGOT
-    writeDyn(2, relaSz);         // DT_PLTRELSZ
-    writeDyn(20, 7);             // DT_PLTREL = DT_RELA
-    writeDyn(23, relaVA);        // DT_JMPREL
-    writeDyn(21, 0);             // DT_DEBUG
-    writeDyn(0, 0);              // DT_NULL
+    if (relaDynSz != 0) {
+        writeDyn(7, relaDynVA); // DT_RELA
+        writeDyn(8, relaDynSz); // DT_RELASZ
+        writeDyn(9, 24);        // DT_RELAENT
+    }
+    writeDyn(3, gotVA);   // DT_PLTGOT
+    writeDyn(2, relaSz);  // DT_PLTRELSZ
+    writeDyn(20, 7);      // DT_PLTREL = DT_RELA
+    writeDyn(23, relaVA); // DT_JMPREL
+    writeDyn(21, 0);      // DT_DEBUG
+    writeDyn(0, 0);       // DT_NULL
     if (dyn.size() != dynSz) {
         Error("internal: ELF .dynamic size mismatch");
         return false;
@@ -760,39 +835,56 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     for (size_t i = 0; i < n; ++i) {
         symMap[importNames[i]] = pltVA + (i + 1) * 16;
     }
-    auto mainIt = symMap.find("Main");
-    if (mainIt == symMap.end()) {
-        Error("undefined symbol 'Main' — no entry point found");
-        return false;
+    for (const auto &symbol : sharedExports) {
+        const auto it = symMap.find(symbol.name);
+        if (it == symMap.end()) {
+            Error("internal: exported ELF symbol '" + symbol.name + "' was not resolved");
+            return false;
+        }
+        Patch64(dynsym, symbol.dynsymValueOffset, it->second);
     }
-    const uint64_t nextInst = textVA + kCallMainDisp + 4;
-    Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(mainIt->second - nextInst));
+    if (!isShared) {
+        const auto mainIt = symMap.find("Main");
+        if (mainIt == symMap.end()) {
+            Error("undefined symbol 'Main' — no entry point found");
+            return false;
+        }
+        const uint64_t nextInst = textVA + callMainDisp + 4;
+        Patch32(textBuf, callMainDisp, static_cast<uint32_t>(mainIt->second - nextInst));
 
-    // Wire the entry stub's `call exit@plt` to libc exit's PLT stub.
-    const auto exitIt = symMap.find("exit");
-    if (exitIt == symMap.end()) {
-        Error("internal: implicit libc 'exit' import was not resolved");
-        return false;
+        // Wire the entry stub's `call exit@plt` to libc exit's PLT stub.
+        const auto exitIt = symMap.find("exit");
+        if (exitIt == symMap.end()) {
+            Error("internal: implicit libc 'exit' import was not resolved");
+            return false;
+        }
+        const uint64_t exitNext = textVA + kCallExitDisp + 4;
+        Patch32(textBuf, kCallExitDisp, static_cast<uint32_t>(exitIt->second - exitNext));
     }
-    const uint64_t exitNext = textVA + kCallExitDisp + 4;
-    Patch32(textBuf, kCallExitDisp, static_cast<uint32_t>(exitIt->second - exitNext));
 
-    applyRelocs(symMap, textBuf, mergedRodata, mergedData, textVA, rodataVA, dataVA);
+    Buf relaDyn;
+    applyRelocs(symMap, textBuf, mergedRodata, mergedData, textVA, rodataVA, dataVA, isShared ? &relaDyn : nullptr);
     if (!errors.empty()) {
+        return false;
+    }
+    if (relaDyn.size() != relaDynSz) {
+        Error("internal: ELF .rela.dyn size mismatch");
         return false;
     }
 
     // 11. Program headers.
     Buf phdrs;
-    writePhdr(phdrs, 6, kPfR, phoff, kBase + phoff, static_cast<uint64_t>(phnum) * 56,
-              static_cast<uint64_t>(phnum) * 56, 8);                                 // PT_PHDR
-    writePhdr(phdrs, 3, kPfR, interpOff, interpVA, interp.size(), interp.size(), 1); // PT_INTERP
-    writePhdr(phdrs, 1, kPfR | kPfX, 0, kBase, rxFileEnd, rxFileEnd, kPage);         // PT_LOAD (r-x)
+    writePhdr(phdrs, 6, kPfR, phoff, imageBase + phoff, static_cast<uint64_t>(phnum) * 56,
+              static_cast<uint64_t>(phnum) * 56, 8); // PT_PHDR
+    if (!isShared) {
+        writePhdr(phdrs, 3, kPfR, interpOff, interpVA, interp.size(), interp.size(), 1); // PT_INTERP
+    }
+    writePhdr(phdrs, 1, kPfR | kPfX, 0, imageBase, rxFileEnd, rxFileEnd, kPage); // PT_LOAD (r-x)
     writePhdr(phdrs, 1, kPfR | kPfW, dynamicOff, dynamicVA, rwFileEnd - dynamicOff, rwFileEnd - dynamicOff,
               kPage);                                                         // PT_LOAD (rw-)
     writePhdr(phdrs, 2, kPfR | kPfW, dynamicOff, dynamicVA, dynSz, dynSz, 8); // PT_DYNAMIC
     if (hasNote) {
-        writePhdr(phdrs, 4, kPfR, noteOff, kBase + noteOff, osNote.size(), osNote.size(), 4); // PT_NOTE
+        writePhdr(phdrs, 4, kPfR, noteOff, imageBase + noteOff, osNote.size(), osNote.size(), 4); // PT_NOTE
     }
 
     return emitFile(phnum, phdrs,
@@ -801,6 +893,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                      {hashOff, &hash},
                      {dynsymOff, &dynsym},
                      {dynstrOff, &dynstr},
+                     {relaDynOff, &relaDyn},
                      {relaOff, &rela},
                      {pltOff, &plt},
                      {textOff, &textBuf},
@@ -808,6 +901,6 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                      {dynamicOff, &dyn},
                      {gotOff, &got},
                      {dataOff, &mergedData}},
-                    textVA, phoff);
+                    isShared ? 0 : textVA, phoff);
 }
 } // namespace Rux

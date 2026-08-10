@@ -51,7 +51,7 @@ TEST_CASE("documentation generator escapes content and protects unmanaged direct
                         "pub struct Public {\n    /// `value` field.\n    pub value: int;\n}\n"
                         "/// Hidden.\nfunc Private();\n");
     auto loaded = Manifest::Parse("[Manifest]\nVersion = 1\n\n[Package]\nName = \"DocsTest\"\n"
-                                  "Version = \"0.4.0\"\nType = \"Source\"\nDescription = \"Docs test\"\n",
+                                  "Version = \"0.4.0\"\nType = \"SourceLibrary\"\nDescription = \"Docs test\"\n",
                                   "Rux.toml");
     REQUIRE(loaded.Ok());
 

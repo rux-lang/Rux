@@ -4,7 +4,7 @@ Version = 1
 [Package]
 Name = "Bool"
 Version = "0.1.0"
-Type = "Program"
+Type = "Executable"
 Description = "Language test: Bool"
 
 [Dependencies]

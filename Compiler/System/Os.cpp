@@ -356,6 +356,22 @@ std::string SharedLibraryFileName(std::string name, OS os) {
     if (os == OS::Windows) {
         name += ".dll";
     }
+    else if (os == OS::MacOS) {
+        name = "lib" + name + ".dylib";
+    }
+    else {
+        name = "lib" + name + ".so";
+    }
+    return name;
+}
+
+std::string StaticLibraryFileName(std::string name, OS os) {
+    if (os == OS::Windows) {
+        name += ".lib";
+    }
+    else {
+        name = "lib" + name + ".a";
+    }
     return name;
 }
 } // namespace Rux::System

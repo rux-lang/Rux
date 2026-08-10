@@ -24,7 +24,7 @@ MinRux = "0.4.0"
 Namespace = "Rux"
 Name = "Math"
 Version = "0.1.0"
-Type = "Source"
+Type = "SourceLibrary"
 Description = "Mathematical constants and functions"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
 Keywords = ["Math", "Numeric"]
@@ -46,29 +46,29 @@ CheckedArithmetic = "true"
 
 `[Manifest]` contains:
 
-| Field     | Presence                              | Contract                                                        |
-| --------- | ------------------------------------- | --------------------------------------------------------------- |
-| `Version` | Required                              | Integer schema version; Version 1 is the only accepted value    |
-| `MinRux`  | Optional locally; required to publish | Strict SemVer with precedence at least `0.4.0`                  |
+| Field     | Presence                              | Contract                                                     |
+| --------- | ------------------------------------- | ------------------------------------------------------------ |
+| `Version` | Required                              | Integer schema version; Version 1 is the only accepted value |
+| `MinRux`  | Optional locally; required to publish | Strict SemVer with precedence at least `0.4.0`               |
 
 `MinRux` is the oldest compiler release that can build the package. A compiler older than the declared minimum refuses to build, check, run, test or install the package; manifest editing stays available. Omitting it locally keeps `rux new`, `rux init` and repository test packages free of a field only publication needs.
 
 `[Package]` contains:
 
-| Field         | Presence                              | Contract                                                |
-| ------------- | ------------------------------------- | ------------------------------------------------------- |
-| `Namespace`   | Optional locally; required to publish | One identity segment                                    |
-| `Name`        | Required                              | One identity segment                                    |
-| `Version`     | Required                              | Strict Semantic Versioning 2.0.0 without a leading `v`  |
-| `Type`        | Required                              | Exactly `Program`, `Library` or `Source`                |
-| `Description` | Optional                              | String                                                  |
-| `Authors`     | Optional                              | Array of strings                                        |
-| `Keywords`    | Optional                              | Array of identity segments, unique after normalization  |
-| `License`     | Optional                              | SPDX expression                                         |
-| `LicenseFile` | Optional                              | Package-relative path                                   |
-| `Repository`  | Optional                              | Absolute `http`/`https` URL with a host and no credentials |
-| `Homepage`    | Optional                              | Absolute `http`/`https` URL with a host and no credentials |
-| `ReadmeFile`  | Optional                              | Package-relative path                                   |
+| Field         | Presence                              | Contract                                                                  |
+| ------------- | ------------------------------------- | ------------------------------------------------------------------------- |
+| `Namespace`   | Optional locally; required to publish | One identity segment                                                      |
+| `Name`        | Required                              | One identity segment                                                      |
+| `Version`     | Required                              | Strict Semantic Versioning 2.0.0 without a leading `v`                    |
+| `Type`        | Required                              | Exactly `Executable`, `SharedLibrary`, `StaticLibrary` or `SourceLibrary` |
+| `Description` | Optional                              | String                                                                    |
+| `Authors`     | Optional                              | Array of strings                                                          |
+| `Keywords`    | Optional                              | Array of identity segments, unique after normalization                    |
+| `License`     | Optional                              | SPDX expression                                                           |
+| `LicenseFile` | Optional                              | Package-relative path                                                     |
+| `Repository`  | Optional                              | Absolute `http`/`https` URL with a host and no credentials                |
+| `Homepage`    | Optional                              | Absolute `http`/`https` URL with a host and no credentials                |
+| `ReadmeFile`  | Optional                              | Package-relative path                                                     |
 
 The scalar legacy form of `Authors` is invalid.
 
@@ -76,13 +76,14 @@ The scalar legacy form of `Authors` is invalid.
 
 Package types determine top-level command behavior:
 
-- `Program` builds an executable with a `Main` entry point and may be run.
-- `Library` builds the platform shared-library artifact, linked by dependents and loaded at run time.
-- `Source` is compiled directly into dependent packages. It may be checked and consumed as a dependency, but `rux build` and `rux run` reject it as a top-level target.
+- `Executable` builds a runnable program with a `Main` entry point.
+- `SharedLibrary` builds `Name.dll` plus `Name.lib` on Windows, `libName.so` on ELF targets, or `libName.dylib` on macOS. It cannot run.
+- `StaticLibrary` builds `Name.lib` on Windows or `libName.a` on ELF targets and macOS. It cannot run.
+- `SourceLibrary` is compiled directly into dependent packages. It may be checked and consumed as a dependency, but cannot build or run as a top-level target.
 
-There is no separate `SharedLibrary` type because `Library` already denotes one, and static archives are not a package type.
+The retired `Program`, `Library`, and `Source` spellings are invalid and have no aliases. Dependency consumption remains source-based in 0.4.0 even when a local dependency declares `SharedLibrary` or `StaticLibrary`.
 
-`rux new` and `rux init` create a `Program` by default and with `--bin`, a `Library` with `--lib`, and a `Source` package with `--source`. The three flags are mutually exclusive.
+`rux new` and `rux init` select mutually exclusive `--executable`, `--shared`, `--static`, and `--source` modes. Executable is the default; `--bin` and `--lib` are invalid.
 
 `[Build]` is optional. `Output` is a package-relative path and defaults to `Bin`. `[Build.Defines]` is an optional table whose values are exposed to compile-time configuration.
 
@@ -195,7 +196,11 @@ The selected validation policy is not stored in `Rux.toml`. Local validation acc
 
 ## Publishing
 
-`rux pack` builds the package archive and `rux publish` uploads it. Both accept only a package manifest that passes publication validation.
+`rux pack` builds the package archive and `rux publish` uploads it. In Rux 0.4.0 both accept only `Type = "SourceLibrary"`. Other valid types are rejected before credential lookup, archive construction, filesystem output, or network access with:
+
+```text
+[Package].Type = "<actual>" cannot be published by Rux 0.4.0; this release publishes only Type = "SourceLibrary"
+```
 
 The archive is a ZIP named `<Name>-<Version>.ruxpkg`. It contains `Rux.toml` at its root, every regular file below `Src/`, and the files named by `ReadmeFile` and `LicenseFile`. It must contain at least one `Src/**/*.rux` source. Entry paths are relative, `/`-separated UTF-8; entries are sorted and carry a fixed timestamp, so packing one tree twice produces identical bytes. Publication uploads the manifest beside the archive and the two copies must match byte for byte, comments and line endings included.
 

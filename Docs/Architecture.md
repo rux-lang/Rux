@@ -41,9 +41,10 @@ The driver loads the root manifest and dependencies before entering this pipelin
 | `Lowering`             | AST/semantic model → HIR → LIR                                        | Frontend and IR components            |
 | `CodeGen`              | Layout rules shared by machine backends                               | LIR                                   |
 | `CodeGen/X86_64`       | x86-64 code generation and RCU construction                           | LIR, Object, Diagnostics              |
-| `CodeGen/AArch64`      | Native AArch64 lowering and linking through the platform Clang driver | LIR, System, Diagnostics              |
+| `CodeGen/AArch64`      | Native AArch64 lowering and linking through the platform Clang driver | LIR, System, Diagnostics, Archive     |
 | `Object/Rcu`           | RCU object representation and serialization                           | Standard library                      |
-| `Linker`               | PE, ELF, and Mach-O output                                            | Object and System                     |
+| `Archive`              | Deterministic native archive containers and symbol indexes            | Object                                |
+| `Linker`               | PE, ELF, Mach-O, relocatable-object, and library output               | Object, Archive, and System           |
 | `Driver`               | End-to-end compilation orchestration and build reports                | All compiler stages                   |
 | `Formatter` / `Linter` | Source formatting and lint diagnostics                                | Syntax; the linter also uses Semantic |
 
@@ -73,7 +74,7 @@ Canonical target names combine the lowercase OS identifier with the machine iden
 
 The principal ownership namespaces currently enforced at cross-platform and orchestration boundaries are `Rux::Target`, `Rux::System`, and `Rux::Driver`. New standalone tools use `Rux::Formatting` and `Rux::Linting`. Existing language model types remain in `Rux` while those large APIs are migrated incrementally; new code must not add declarations to `Misc` or recreate a generic `Utils` component.
 
-The build exposes focused targets such as `RuxSyntax`, `RuxSemantic`, `RuxHir`, `RuxLir`, `RuxLowering`, `RuxCodeGenCommon`, `RuxCodeGenX86_64`, `RuxCodeGenAArch64`, `RuxObjectRcu`, `RuxLinker`, and `RuxDriver`. `RuxCore` is an interface-only compatibility aggregation target.
+The build exposes focused targets such as `RuxSyntax`, `RuxSemantic`, `RuxHir`, `RuxLir`, `RuxLowering`, `RuxCodeGenCommon`, `RuxCodeGenX86_64`, `RuxCodeGenAArch64`, `RuxObjectRcu`, `RuxArchive`, `RuxLinker`, and `RuxDriver`. `RuxCore` is an interface-only compatibility aggregation target.
 
 `RuxCore` is convenient for the unit-test executable and embedders, but compiler components must link to their actual dependencies. It must not become a shortcut that introduces cycles between stages.
 

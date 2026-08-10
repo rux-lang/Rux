@@ -24,7 +24,7 @@ MinRux = "0.4.0"
 Namespace = "Rux"
 Name = "App"
 Version = "1.2.3-alpha.1+linux"
-Type = "Program"
+Type = "Executable"
 Description = "An example package"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
 Keywords = ["Example", "Demo"]
@@ -75,10 +75,9 @@ ManifestDiagnostic Rejected(const std::string_view text) {
 }
 
 // A minimal valid package, so a case can vary one thing at a time.
-std::string WithPackage(const std::string_view body) {
-    return std::string("[Manifest]\nVersion = 1\n\n[Package]\nName = \"App\"\nVersion = \"0.1.0\"\n"
-                       "Type = \"Program\"\n") +
-           std::string(body);
+std::string WithPackage(const std::string_view body, const std::string_view type = "Executable") {
+    return std::string("[Manifest]\nVersion = 1\n\n[Package]\nName = \"App\"\nVersion = \"0.1.0\"\nType = \"") +
+           std::string(type) + "\"\n" + std::string(body);
 }
 } // namespace
 
@@ -92,7 +91,7 @@ TEST_CASE("A canonical package manifest round trips byte for byte") {
     CHECK(manifest.package.ns->Text() == "Rux");
     CHECK(manifest.package.name.Text() == "App");
     CHECK(manifest.package.version.Text() == "1.2.3-alpha.1+linux");
-    CHECK(manifest.package.type == ManifestPackageType::Program);
+    CHECK(manifest.package.type == ManifestPackageType::Executable);
     CHECK(manifest.package.keywords.size() == 2);
     CHECK(manifest.package.readmeFile == "README.md");
     CHECK(manifest.package.licenseFile == "LICENSE.md");
@@ -148,7 +147,7 @@ Alpha = { Namespace = "Rux", Version = "*" }
 [Package]
 Name = "App"
 Version = "0.1.0"
-Type = "Library"
+Type = "SharedLibrary"
 )");
 
     CHECK(manifest.Serialize() == R"([Manifest]
@@ -157,7 +156,7 @@ Version = 1
 [Package]
 Name = "App"
 Version = "0.1.0"
-Type = "Library"
+Type = "SharedLibrary"
 
 [Dependencies]
 Alpha = { Namespace = "Rux", Version = "*" }
@@ -186,7 +185,7 @@ Version = 1   # trailing comment
 [Package]
 Name = "App"
 Version = "0.1.0"
-Type = "Source"
+Type = "SourceLibrary"
 Description = "quotes \" backslash \\ tab \t newline \n unicode \u00E9"
 Authors = [
     "First Author",
@@ -210,7 +209,7 @@ Version = 1
 [Package]
 Name = "App"
 Version = "not a version"
-Type = "Program"
+Type = "Executable"
 )");
 
     CHECK(diagnostic.path == std::filesystem::path("Rux.toml"));
@@ -221,20 +220,19 @@ Type = "Program"
 }
 
 TEST_CASE("The schema version is required and pinned") {
-    CHECK(
-        Rejected("[Package]\nName = \"App\"\nVersion = \"0.1.0\"\nType = \"Program\"\n").message.find("'[Manifest]'") !=
-        std::string::npos);
+    CHECK(Rejected("[Package]\nName = \"App\"\nVersion = \"0.1.0\"\nType = \"Executable\"\n")
+              .message.find("'[Manifest]'") != std::string::npos);
 
     const auto unsupported = Rejected("[Manifest]\nVersion = 2\n\n[Package]\nName = \"App\"\n"
-                                      "Version = \"0.1.0\"\nType = \"Program\"\n");
+                                      "Version = \"0.1.0\"\nType = \"Executable\"\n");
     CHECK(unsupported.line == 2);
     CHECK(unsupported.message.find("unsupported manifest version 2") != std::string::npos);
 
     CHECK(Rejected("[Manifest]\nVersion = \"1\"\n\n[Package]\nName = \"App\"\nVersion = \"0.1.0\"\n"
-                   "Type = \"Program\"\n")
+                   "Type = \"Executable\"\n")
               .message.find("must be an integer") != std::string::npos);
 
-    CHECK(Rejected("[Manifest]\n\n[Package]\nName = \"App\"\nVersion = \"0.1.0\"\nType = \"Program\"\n")
+    CHECK(Rejected("[Manifest]\n\n[Package]\nName = \"App\"\nVersion = \"0.1.0\"\nType = \"Executable\"\n")
               .message.find("must declare 'Version'") != std::string::npos);
 }
 
@@ -245,7 +243,7 @@ Version = 1
 [Package]
 Name = "App"
 Version = "0.1.0"
-Type = "Program"
+Type = "Executable"
 
 [Workspace]
 Packages = ["Packages/Math"]
@@ -286,11 +284,23 @@ TEST_CASE("Unknown, duplicate and mistyped input is rejected") {
     SUBCASE("unknown package type") {
         CHECK(Rejected("[Manifest]\nVersion = 1\n\n[Package]\nName = \"App\"\nVersion = \"0.1.0\"\n"
                        "Type = \"bin\"\n")
-                  .message.find("'Program', 'Library' or 'Source'") != std::string::npos);
+                  .message.find("'Executable', 'SharedLibrary', 'StaticLibrary' or 'SourceLibrary'") !=
+              std::string::npos);
+    }
+    SUBCASE("the four package types are exact and the retired spellings are rejected") {
+        for (const std::string_view type : {"Executable", "SharedLibrary", "StaticLibrary", "SourceLibrary"}) {
+            const auto parsedType = ParseManifestPackageType(type);
+            REQUIRE(parsedType.has_value());
+            CHECK(Accepted(WithPackage("", type)).package.type == *parsedType);
+        }
+        for (const std::string_view type :
+             {"Program", "Library", "Source", "executable", "sharedlibrary", "staticlibrary", "sourcelibrary"}) {
+            CHECK(Rejected(WithPackage("", type)).message.find("must be 'Executable'") != std::string::npos);
+        }
     }
     SUBCASE("invalid identity") {
         CHECK(Rejected("[Manifest]\nVersion = 1\n\n[Package]\nName = \"My__Pkg\"\nVersion = \"0.1.0\"\n"
-                       "Type = \"Program\"\n")
+                       "Type = \"Executable\"\n")
                   .message.find("not a valid identity") != std::string::npos);
     }
     SUBCASE("the retired license URL field") {
@@ -453,7 +463,7 @@ Version = 1
 [Package]
 Name = "App"
 Version = "0.1.0"
-Type = "Program"
+Type = "SourceLibrary"
 
 [Dependencies]
 Local = { Path = "../Local", TargetOS = ["Linux"] }
@@ -597,7 +607,7 @@ MinRux = "0.4.0"
 Namespace = "Rux"
 Name = "App"
 Version = "1.2.3"
-Type = "Program"
+Type = "SourceLibrary"
 
 [Dependencies]
 Io = { Namespace = "Rux", Version = "^1.0.0" }
@@ -614,7 +624,7 @@ TEST_CASE("the publication profile rejects what local validation allows") {
     }
 
     SUBCASE("a namespace-free package is local-only") {
-        const auto rejections = ValidateForPublication(Accepted(WithPackage("")));
+        const auto rejections = ValidateForPublication(Accepted(WithPackage("", "SourceLibrary")));
         // The same manifest also omits MinRux, so both rules report.
         REQUIRE(rejections.size() == 2);
         CHECK(rejections[0].contains("Namespace"));
@@ -629,7 +639,7 @@ Version = 1
 Namespace = "Rux"
 Name = "App"
 Version = "0.1.0"
-Type = "Program"
+Type = "SourceLibrary"
 )"));
         REQUIRE(rejections.size() == 1);
         CHECK(rejections.front().contains("MinRux"));
@@ -644,7 +654,7 @@ MinRux = "0.3.9"
 Namespace = "Rux"
 Name = "App"
 Version = "0.1.0"
-Type = "Program"
+Type = "SourceLibrary"
 )"));
         REQUIRE(rejections.size() == 1);
         CHECK(rejections.front().contains("0.3.9"));
@@ -659,13 +669,24 @@ MinRux = "0.4.0"
 Namespace = "Rux"
 Name = "App"
 Version = "0.1.0"
-Type = "Program"
+Type = "SourceLibrary"
 
 [Dependencies]
 Util = { Path = "../Util" }
 )"));
         REQUIRE(rejections.size() == 1);
         CHECK(rejections.front().contains("Util"));
+    }
+
+    SUBCASE("only SourceLibrary is publishable in Rux 0.4.0") {
+        for (const std::string_view type : {"Executable", "SharedLibrary", "StaticLibrary"}) {
+            const auto rejections = ValidateForPublication(Accepted(WithPackage("Namespace = \"Rux\"\n", type)));
+            REQUIRE(rejections.size() == 2);
+            CHECK(rejections[0] == "[Package].Type = \"" + std::string(type) +
+                                       "\" cannot be published by Rux 0.4.0; this release publishes only Type = "
+                                       "\"SourceLibrary\"");
+            CHECK(rejections[1].contains("MinRux"));
+        }
     }
 }
 
@@ -819,8 +840,8 @@ TEST_CASE("repository Rux tests use canonical local manifests") {
                         result.diagnostics.empty() ? entry.path().string() : result.diagnostics.front().Format());
         const Manifest &manifest = *result.manifest;
 
-        CHECK_MESSAGE(manifest.package.type == ManifestPackageType::Program,
-                      "test package must use Type = \"Program\": ", entry.path().string());
+        CHECK_MESSAGE(manifest.package.type == ManifestPackageType::Executable,
+                      "test package must use Type = \"Executable\": ", entry.path().string());
         // A test package is built in place and never published, so it stays
         // namespace-free on purpose.
         CHECK_MESSAGE(!manifest.package.ns.has_value(),

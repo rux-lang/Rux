@@ -61,7 +61,8 @@ struct CompileOptions {
 
 struct CompileResult {
     bool ok = false;
-    std::filesystem::path executablePath; // empty in checkOnly mode or on failure
+    std::filesystem::path primaryArtifactPath; // empty in checkOnly mode or on failure
+    std::vector<std::filesystem::path> secondaryArtifactPaths;
     BuildStats stats;
     std::vector<ParseResult> modules; // populated when captureFrontend succeeds
 };
@@ -86,7 +87,8 @@ private:
     bool LexAndParseSources();
     bool LoadDependencies();
     bool Analyze();
-    bool GenerateExecutable(std::filesystem::path &exePath);
+    bool GenerateArtifact(std::filesystem::path &artifactPath,
+                          std::vector<std::filesystem::path> &secondaryArtifactPaths);
 
     CompileOptions opts;
     std::filesystem::path root; // package root (manifest directory)

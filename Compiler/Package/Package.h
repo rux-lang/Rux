@@ -11,14 +11,14 @@ namespace Rux {
  * @brief Describes the package that ScaffoldPackage creates.
  *
  * The package kind is the manifest's own `ManifestPackageType`, so scaffolding
- * and manifest parsing agree on the three Version 1 kinds.
+ * and manifest parsing agree on the four Version 1 kinds.
  */
 struct ScaffoldOptions {
-    std::filesystem::path root;                              ///< Directory that receives the package.
-    std::string name;                                        ///< Package name, validated as an identity segment.
-    ManifestPackageType type = ManifestPackageType::Program; ///< Program, Library or Source.
-    std::optional<IdentitySegment> ns = std::nullopt;        ///< Optional registry namespace.
-    bool initMode = false;                                   ///< Do not fail when the directory already exists.
+    std::filesystem::path root;                                 ///< Directory that receives the package.
+    std::string name;                                           ///< Package name, validated as an identity segment.
+    ManifestPackageType type = ManifestPackageType::Executable; ///< Executable or one of the library kinds.
+    std::optional<IdentitySegment> ns = std::nullopt;           ///< Optional registry namespace.
+    bool initMode = false;                                      ///< Do not fail when the directory already exists.
 };
 
 /**

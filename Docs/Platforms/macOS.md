@@ -34,6 +34,12 @@ AAPCS64 ABI and writes a native AArch64 Mach-O executable. Keep the Xcode Comman
 Line Tools installed so `/usr/bin/clang` is available when compiling Rux
 programs.
 
+## Native Package Artifacts
+
+An `Executable` package writes `Name`, a `SharedLibrary` writes `libName.dylib` with `LC_ID_DYLIB` set to `@rpath/libName.dylib`, and a `StaticLibrary` writes `libName.a` with a BSD archive symbol index. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
+
+The x86-64 backend writes Mach-O objects and images directly. The AArch64 backend uses Clang for relocatable-object and dylib emission, then the common deterministic archive layer for static output.
+
 ## Verifying the Build
 
 Run the compiler:

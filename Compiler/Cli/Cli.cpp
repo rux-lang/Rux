@@ -286,11 +286,17 @@ int Cli::Run() const {
         return *error;
     if (const auto error = conflicts("--source-only", "--manifest-only"))
         return *error;
-    if (const auto error = conflicts("--bin", "--lib"))
+    if (const auto error = conflicts("--executable", "--shared"))
         return *error;
-    if (const auto error = conflicts("--bin", "--source"))
+    if (const auto error = conflicts("--executable", "--static"))
         return *error;
-    if (const auto error = conflicts("--lib", "--source"))
+    if (const auto error = conflicts("--executable", "--source"))
+        return *error;
+    if (const auto error = conflicts("--shared", "--static"))
+        return *error;
+    if (const auto error = conflicts("--shared", "--source"))
+        return *error;
+    if (const auto error = conflicts("--static", "--source"))
         return *error;
     if (command == "uninstall" && operandCount != 0 && Contains(seenOptions, "--global")) {
         return usageError("--global cannot be combined with a package argument");
