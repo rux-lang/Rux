@@ -8,6 +8,7 @@
 
 #include "Cli/Cli.h"
 #include "Cli/TerminalStyle.h"
+#include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/Credentials.h"
 #include "Driver/Registry.h"
@@ -17,6 +18,7 @@
 #include "System/Process.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <format>
@@ -221,14 +223,14 @@ bool InstallResolved(const IndexCache &index, const std::vector<Resolution> &res
 
         if (CacheEntryMatches(packageDir, resolution)) {
             if (!opts.quiet) {
-                std::print("{} {} {}\n", Status("Up-to-date"), identity, resolution.version.Text());
+                std::print("Up-to-date {} {}\n", identity, resolution.version.Text());
             }
             ++tally.upToDate;
             continue;
         }
 
         if (!opts.quiet) {
-            std::print("{} {} {}\n", Status("Downloading"), identity, resolution.version.Text());
+            std::print("Downloading {} {}\n", identity, resolution.version.Text());
         }
         auto digest = FetchArtifactChecksum(index.Base(), resolution.ns, resolution.package, resolution.version);
         if (!digest) {
@@ -280,8 +282,7 @@ bool InstallResolved(const IndexCache &index, const std::vector<Resolution> &res
             return false;
         }
         if (!opts.quiet) {
-            std::print("{} {} {} ({} files)\n", Status("Installed"), identity, resolution.version.Text(),
-                       extracted->fileCount);
+            std::print("Installed {} {} ({} files)\n", identity, resolution.version.Text(), extracted->fileCount);
         }
         ++tally.installed;
     }
@@ -313,7 +314,7 @@ void RemoveLegacyCacheEntries(const GlobalOptions &opts) {
         std::error_code removeError;
         std::filesystem::remove_all(entry.path(), removeError);
         if (!removeError && !opts.quiet) {
-            std::print("{} legacy cache entry {}\n", Status("Removed"), entry.path().filename().string());
+            std::print("Removed legacy cache entry {}\n", entry.path().filename().string());
         }
     }
 }
@@ -358,7 +359,7 @@ std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opt
             return std::nullopt;
         }
         if (!opts.quiet) {
-            std::print("{} workspace\n", Status("Installing"));
+            std::print("Installing workspace\n");
         }
         for (const auto &memberPath : workspaceManifests) {
             auto memberManifest = LoadManifest(memberPath);
@@ -385,7 +386,7 @@ std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opt
     }
 
     if (!opts.quiet) {
-        std::print("{} workspace\n", Status("Installing"));
+        std::print("Installing workspace\n");
     }
     const std::filesystem::path workspaceRoot = manifestPath->parent_path();
     for (const auto &member : manifest->workspace.packages) {
@@ -529,6 +530,9 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
         return 1;
     }
 
+    // Timed from here rather than from entry, so the reported span is the work
+    // the network and disk did, not the argument parsing above it.
+    const auto installStart = std::chrono::steady_clock::now();
     const auto targetOS = ResolvePackageTarget(targetArg);
     if (!targetOS) {
         return 1;
@@ -559,7 +563,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
     // Must precede resolution, not merely run early; see the function.
     RemoveLegacyCacheEntries(opts);
     if (!opts.quiet) {
-        std::print("{} from {}\n", Status("Resolving"), ResolveRegistryBase(registryArg));
+        std::print("Resolving from {}\n", ResolveRegistryBase(registryArg));
     }
     IndexCache index(ResolveRegistryBase(registryArg));
     const auto resolved = ResolveGraph(index, seeds, *targetOS);
@@ -572,7 +576,8 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
         return 1;
     }
     if (!opts.quiet) {
-        std::print("{} {} installed, {} already up-to-date\n", Status("Summary:"), tally.installed, tally.upToDate);
+        std::print("Summary: {} installed, {} already up-to-date in {}\n", tally.installed, tally.upToDate,
+                   FormatDuration(ElapsedMs(installStart)));
     }
     return 0;
 }
@@ -616,7 +621,7 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
                 return false;
             }
             if (!opts.quiet) {
-                std::print("{} {} {}\n", Status("Uninstalled"), QualifiedIdentity(ns, name), installed.version.Text());
+                std::print("Uninstalled {} {}\n", QualifiedIdentity(ns, name), installed.version.Text());
             }
             ++removed;
         }
@@ -638,7 +643,7 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
             return 0;
         }
         if (!opts.quiet) {
-            std::print("{} {} uninstalled\n", Status("Summary:"), removed);
+            std::print("Summary: {} uninstalled\n", removed);
         }
         return 0;
     }
@@ -689,13 +694,13 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
         }
         if (removed == before) {
             if (!opts.quiet) {
-                std::print("{} {}\n", Status("Not found"), Qualified(requirement.ns, requirement.package));
+                std::print("Not installed {}\n", Qualified(requirement.ns, requirement.package));
             }
             ++notFound;
         }
     }
     if (!opts.quiet) {
-        std::print("{} {} uninstalled, {} not installed\n", Status("Summary:"), removed, notFound);
+        std::print("Summary: {} uninstalled, {} not installed\n", removed, notFound);
     }
     return 0;
 }
@@ -782,7 +787,7 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opt
     // resolve. The index is the cheapest route that answers that question.
     const std::string base = ResolveRegistryBase(registryArg);
     if (!opts.quiet) {
-        std::print("{} from {}\n", Status("Resolving"), base);
+        std::print("Resolving from {}\n", base);
     }
     if (auto entry = FetchPackageIndex(base, *parsedSpec->ns, parsedSpec->name); !entry) {
         std::print(stderr, "error: {}\n", Describe(entry.error(), base, Qualified(*parsedSpec->ns, parsedSpec->name)));
@@ -850,7 +855,7 @@ int Cli::RunRemove(std::span<const std::string_view> args, const GlobalOptions &
         return 1;
     }
     if (!opts.quiet) {
-        std::print("{} {}\n", Status("Removed"), pkgName);
+        std::print("Removed {}\n", pkgName);
     }
     return 0;
 }
@@ -998,7 +1003,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
     // Must precede resolution, not merely run early; see the function.
     RemoveLegacyCacheEntries(opts);
     if (!opts.quiet) {
-        std::print("{} from {}\n", Status("Resolving"), ResolveRegistryBase(registryArg));
+        std::print("Resolving from {}\n", ResolveRegistryBase(registryArg));
     }
     IndexCache index(ResolveRegistryBase(registryArg));
     const auto resolved = ResolveGraph(index, seeds, *targetOS);
@@ -1011,7 +1016,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
         return 1;
     }
     if (!opts.quiet) {
-        std::print("{} {} newly installed, {} already current\n", Status("Summary:"), tally.installed, tally.upToDate);
+        std::print("Summary: {} newly installed, {} already current\n", tally.installed, tally.upToDate);
     }
     return 0;
 }

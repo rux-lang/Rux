@@ -1,7 +1,6 @@
 // `rux fmt` and `rux doc`.
 
 #include "Cli/Cli.h"
-#include "Cli/TerminalStyle.h"
 #include "Driver/BuildTarget.h"
 #include "Formatter/Formatter.h"
 
@@ -16,7 +15,6 @@
 
 using namespace Rux;
 using namespace Driver;
-using namespace CliSupport;
 
 int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions &opts) {
     bool check = false;
@@ -164,7 +162,7 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
     // TODO: documentation generator
 
     if (openAfter && !opts.quiet) {
-        std::print("{} documentation...\n", Status("Opening"));
+        std::print("Opening documentation...\n");
     }
 
     return 0;

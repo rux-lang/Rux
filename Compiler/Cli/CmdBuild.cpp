@@ -2,7 +2,6 @@
 
 #include "Cli/Cli.h"
 #include "Cli/DefineOption.h"
-#include "Cli/TerminalStyle.h"
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
@@ -207,7 +206,7 @@ int Cli::RunClean(std::span<const std::string_view> args, const GlobalOptions &o
             return false;
         }
         if (!opts.quiet) {
-            std::print("{} {}\n", Status("Removed"), dir.string());
+            std::print("Removed {}\n", dir.string());
         }
         return true;
     };

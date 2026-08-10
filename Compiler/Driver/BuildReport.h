@@ -58,6 +58,7 @@ inline double ElapsedSeconds(const std::chrono::steady_clock::time_point start,
 [[nodiscard]] std::string FormatCompactNumber(double value);
 [[nodiscard]] std::string FormatTokenThroughput(double tokensPerSecond);
 [[nodiscard]] std::string FormatSize(std::uintmax_t bytes);
+[[nodiscard]] std::string FormatDuration(std::chrono::milliseconds elapsed);
 
 // ---- Reporting --------------------------------------------------------------
 

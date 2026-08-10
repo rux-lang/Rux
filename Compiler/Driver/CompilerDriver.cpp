@@ -192,7 +192,7 @@ bool CompilerDriver::LexAndParseSources() {
     const auto lexingStart = std::chrono::steady_clock::now();
     for (const auto &file : loadResult->files) {
         if (opts.verbose) {
-            std::print("     Lexing {}\n", file.path.string());
+            std::print("Lexing {}\n", file.path.string());
         }
         Lexer lexer(file.source, file.path.string());
         auto lexResult = lexer.Tokenize();
@@ -225,7 +225,7 @@ bool CompilerDriver::LexAndParseSources() {
     for (std::size_t fileIndex = 0; fileIndex < loadResult->files.size(); ++fileIndex) {
         const auto &file = loadResult->files[fileIndex];
         if (opts.verbose) {
-            std::print("    Parsing {}\n", file.path.string());
+            std::print("Parsing {}\n", file.path.string());
         }
         auto &lexResult = lexResults[fileIndex];
         if (lexResult.HasErrors()) {
@@ -389,7 +389,7 @@ bool CompilerDriver::LoadDependencies() {
         // its own manifest chose, which need not match the root's.
         compileTimeContext.intrinsicsAliases = IntrinsicsAliases(pendingManifest, pendingRoot);
         if (opts.verbose) {
-            std::print("  Loading package {} from {}\n", packageName, pendingRoot.string());
+            std::print("Loading package {} from {}\n", packageName, pendingRoot.string());
         }
         auto depLoadResult = SourceLoader::Load(pendingRoot);
         if (!depLoadResult) {
@@ -461,7 +461,7 @@ bool CompilerDriver::LoadDependencies() {
 bool CompilerDriver::Analyze() {
     const auto semanticStart = std::chrono::steady_clock::now();
     if (opts.verbose) {
-        std::print("  Analyzing {}\n", opts.manifest.package.name.Text());
+        std::print("Analyzing {}\n", opts.manifest.package.name.Text());
     }
     std::vector<Module *> userModules;
     userModules.reserve(parseResults.size());
@@ -502,7 +502,7 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     // HIR
     const auto hirStart = std::chrono::steady_clock::now();
     if (opts.verbose) {
-        std::print("  Lowering {}\n", opts.manifest.package.name.Text());
+        std::print("Lowering {}\n", opts.manifest.package.name.Text());
     }
     AstToHirLowering hirLowering(*semanticModel);
     auto hirPackage = hirLowering.Generate();
@@ -516,7 +516,7 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     // LIR
     const auto lirStart = std::chrono::steady_clock::now();
     if (opts.verbose) {
-        std::print("  Emitting LIR for {}\n", opts.manifest.package.name.Text());
+        std::print("Emitting LIR for {}\n", opts.manifest.package.name.Text());
     }
     HirToLirLowering lirLowering(std::move(hirPackage));
     auto lirPackage = lirLowering.Generate();
@@ -534,7 +534,7 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     // invoking the native compiler.
     if (opts.dumpAsm && !useAArch64Backend) {
         if (opts.verbose) {
-            std::print("  Emitting assembly for {}\n", opts.manifest.package.name.Text());
+            std::print("Emitting assembly for {}\n", opts.manifest.package.name.Text());
         }
         auto asmDir = root / "Temp" / "Asm";
         std::filesystem::create_directories(asmDir);
@@ -568,7 +568,7 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
 
     // RCU object generation
     if (opts.verbose) {
-        std::print("  Emitting RCU objects for {}\n", opts.manifest.package.name.Text());
+        std::print("Emitting RCU objects for {}\n", opts.manifest.package.name.Text());
     }
     RcuEmitter rcuEmitter(lirPackage, std::string(opts.manifest.package.name.Text()), compileTimeContext.target.os);
     auto rcuFiles = rcuEmitter.Generate();
@@ -600,7 +600,7 @@ bool CompilerDriver::GenerateExecutable(std::filesystem::path &exePath) {
     // Link
     const auto linkingStart = std::chrono::steady_clock::now();
     if (opts.verbose) {
-        std::print("   Linking {}\n", opts.manifest.package.name.Text());
+        std::print("Linking {}\n", opts.manifest.package.name.Text());
     }
     const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, !opts.isTest);
     const bool buildDll = opts.manifest.package.type == ManifestPackageType::Library;

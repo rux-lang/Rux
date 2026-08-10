@@ -188,9 +188,9 @@ int Cli::RunPack(std::span<const std::string_view> args, const GlobalOptions &op
     }
 
     if (!opts.quiet) {
-        std::print("{} {} {} ({} files, {})\n", Status("Packed"), QualifiedName(manifest),
-                   manifest.package.version.Text(), artifact->fileCount, FormatBytes(artifact->archive.size()));
-        std::print("{} {}\n", Status("Written"), output.generic_string());
+        std::print("Packed {} {} ({} files, {})\n", QualifiedName(manifest), manifest.package.version.Text(),
+                   artifact->fileCount, FormatBytes(artifact->archive.size()));
+        std::print("Written {}\n", output.generic_string());
     }
     return 0;
 }
@@ -258,12 +258,12 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
     }
 
     if (!opts.quiet) {
-        std::print("{} {} {} ({} files, {})\n", Status("Packed"), QualifiedName(manifest),
-                   manifest.package.version.Text(), artifact->fileCount, FormatBytes(artifact->archive.size()));
+        std::print("Packed {} {} ({} files, {})\n", QualifiedName(manifest), manifest.package.version.Text(),
+                   artifact->fileCount, FormatBytes(artifact->archive.size()));
     }
     if (dryRun) {
         if (!opts.quiet) {
-            std::print("{} the package is publishable and was not uploaded\n", Status("Dry run:"));
+            std::print("Dry run: the package is publishable and was not uploaded\n");
         }
         return 0;
     }
@@ -279,7 +279,7 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
     }
 
     if (!opts.quiet) {
-        std::print("{} to {}\n", Status("Uploading"), base);
+        std::print("Uploading to {}\n", base);
     }
     auto response = HttpSend({.method = "POST",
                               .url = base + "/v1/packages",
@@ -296,7 +296,7 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
     }
 
     if (!opts.quiet) {
-        std::print("{} {} {}\n", Status("Published"), QualifiedName(manifest), manifest.package.version.Text());
+        std::print("Published {} {}\n", QualifiedName(manifest), manifest.package.version.Text());
     }
     return 0;
 }

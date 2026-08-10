@@ -38,6 +38,16 @@ TEST_CASE("FormatTokenThroughput picks a unit per magnitude") {
     CHECK(FormatTokenThroughput(2'000'000.0) == "2 M tok/s");
 }
 
+TEST_CASE("FormatDuration reports milliseconds below one second and seconds above") {
+    using namespace std::chrono_literals;
+    CHECK(FormatDuration(0ms) == "0 ms");
+    CHECK(FormatDuration(842ms) == "842 ms");
+    CHECK(FormatDuration(999ms) == "999 ms");
+    CHECK(FormatDuration(1000ms) == "1s");
+    CHECK(FormatDuration(1230ms) == "1.23s");
+    CHECK(FormatDuration(12500ms) == "12.5s");
+}
+
 TEST_CASE("FormatSize reports KB below one MB and MB above") {
     CHECK(FormatSize(512) == "1 KB");
     CHECK(FormatSize(10 * 1024) == "10 KB");

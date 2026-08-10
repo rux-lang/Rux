@@ -288,7 +288,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         }
 
         if (opts.verbose)
-            std::print("     Running `{}`\n", exePath.string());
+            std::print("Running `{}`\n", exePath.string());
 
         const auto start = std::chrono::steady_clock::now();
 

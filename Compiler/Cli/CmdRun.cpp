@@ -105,7 +105,7 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         return 1;
     }
     if (opts.verbose && !opts.quiet) {
-        std::print("     Running `{}`\n", exePath.string());
+        std::print("Running `{}`\n", exePath.string());
     }
     const auto exitCode = RunInherited(exePath, runArgs);
     if (!exitCode) {

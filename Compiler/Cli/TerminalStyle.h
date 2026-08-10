@@ -4,7 +4,6 @@
 
 #include "Cli/Cli.h"
 
-#include <string>
 #include <string_view>
 
 namespace Rux::CliSupport {
@@ -44,15 +43,9 @@ struct AnsiStyle {
 // also enables virtual-terminal processing so the escape codes are interpreted.
 [[nodiscard]] bool ColorEnabled(ColorMode mode);
 
-// Column the leading verb of a progress line is right-aligned in, so a run of
-// them shares one left edge for the text that follows. Stated once here because
-// counting the spaces at each call site is what let four different widths into
-// the CLI in the first place.
-inline constexpr std::size_t statusWidth = 12;
-
-// Right-align `verb` in the status column. The caller adds the separating space
-// and the message: `std::print("{} {}\n", Status("Installed"), identity)`.
-[[nodiscard]] std::string Status(std::string_view verb);
+// Progress lines print their verb at column 0 with no padding, so a run of them
+// shares one left edge. Nothing right-aligns a verb; a helper that did was
+// removed on purpose.
 
 // Indent that lines a continuation up under the message of an `error: ` line,
 // so the detail reads as belonging to the error rather than to the next thing.

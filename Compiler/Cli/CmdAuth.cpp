@@ -6,7 +6,6 @@
 // free of a --token flag.
 
 #include "Cli/Cli.h"
-#include "Cli/TerminalStyle.h"
 #include "Driver/Credentials.h"
 #include "System/Json.h"
 #include "System/Os.h"
@@ -22,7 +21,6 @@
 using namespace Rux;
 using namespace Driver;
 using namespace System;
-using namespace CliSupport;
 
 namespace {
 /// Obtain the token, prompting only when a person is there to read the prompt.
@@ -74,7 +72,7 @@ Verification VerifyToken(const std::string_view base, const std::string_view tok
                               .headers = {{.name = "Authorization", .value = "Bearer " + std::string(token)}},
                               .body = {}});
     if (!response) {
-        std::print(stderr, "     Warning {} could not be reached; the token was not verified\n", base);
+        std::print(stderr, "warning: {} could not be reached; the token was not verified\n", base);
         return Verification::Unknown;
     }
     if (response->status == 200) {
@@ -82,7 +80,7 @@ Verification VerifyToken(const std::string_view base, const std::string_view tok
         // A token without 'publish' is still worth storing -- it may be a yank
         // or namespace token -- but publishing with it would fail later.
         if (!GrantsPublish(response->body)) {
-            std::print(stderr, "     Warning that token lacks the 'publish' scope\n");
+            std::print(stderr, "warning: that token lacks the 'publish' scope\n");
         }
         return Verification::Accepted;
     }
@@ -100,7 +98,7 @@ Verification VerifyToken(const std::string_view base, const std::string_view tok
         }
         return Verification::Rejected;
     }
-    std::print(stderr, "     Warning {} did not verify the token (status {})\n", base, response->status);
+    std::print(stderr, "warning: {} did not verify the token (status {})\n", base, response->status);
     return Verification::Unknown;
 }
 } // namespace
@@ -152,17 +150,17 @@ int Cli::RunLogin(std::span<const std::string_view> args, const GlobalOptions &o
 
     if (!opts.quiet) {
         if (identity.empty()) {
-            std::print("{} in to {}\n", Status("Logged"), base);
+            std::print("Logged in to {}\n", base);
         }
         else {
-            std::print("{} in to {} as {}\n", Status("Logged"), base, identity);
+            std::print("Logged in to {} as {}\n", base, identity);
         }
-        std::print("{} {}\n", Status("Stored"), CredentialsPath().generic_string());
+        std::print("Stored {}\n", CredentialsPath().generic_string());
     }
     // A set RUX_TOKEN outranks what was just stored, so silently storing a token
     // that will not be used would be the confusing outcome.
     if (HasEnv(kCredentialVariable)) {
-        std::print(stderr, "     Warning {} is set and takes precedence over the stored token\n", kCredentialVariable);
+        std::print(stderr, "warning: {} is set and takes precedence over the stored token\n", kCredentialVariable);
     }
     return 0;
 }
@@ -196,10 +194,10 @@ int Cli::RunLogout(std::span<const std::string_view> args, const GlobalOptions &
 
     if (!opts.quiet) {
         if (*erased) {
-            std::print("{} out of {}\n", Status("Logged"), base);
+            std::print("Logged out of {}\n", base);
         }
         else {
-            std::print("{} no stored token for {}\n", Status("Skipped"), base);
+            std::print("No stored token for {}\n", base);
         }
     }
     return 0;

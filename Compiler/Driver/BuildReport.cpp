@@ -91,6 +91,15 @@ std::string FormatSize(std::uintmax_t bytes) {
     return FormatDecimal(mb, 2) + " MB";
 }
 
+std::string FormatDuration(std::chrono::milliseconds elapsed) {
+    // Milliseconds below a second, seconds above: a four-digit millisecond count
+    // is harder to read than the same span written as `1.23s`.
+    if (elapsed < std::chrono::seconds(1)) {
+        return FormatNumber(static_cast<std::uintmax_t>(elapsed.count())) + " ms";
+    }
+    return FormatDecimal(static_cast<double>(elapsed.count()) / 1000.0, 2) + "s";
+}
+
 void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats) {
     const auto totalMs = stats.total.count();
     const double seconds = stats.totalSeconds;

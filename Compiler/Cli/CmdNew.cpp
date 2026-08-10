@@ -1,7 +1,6 @@
 // `rux new` and `rux init` — package scaffolding.
 
 #include "Cli/Cli.h"
-#include "Cli/TerminalStyle.h"
 #include "Package/Package.h"
 
 #include <cstdio>
@@ -14,7 +13,6 @@
 #include <utility>
 
 using namespace Rux;
-using namespace CliSupport;
 
 namespace {
 
@@ -104,13 +102,13 @@ int Cli::RunInit(std::span<const std::string_view> args, const GlobalOptions &op
     const auto root = std::filesystem::current_path();
     auto name = root.filename().string();
     if (!opts.quiet) {
-        std::print("{} {} package '{}'\n", Status("Initializing"), KindLabel(*type), name);
+        std::print("Initializing {} package '{}'\n", KindLabel(*type), name);
     }
     if (!ScaffoldPackage({.root = root, .name = name, .type = *type, .ns = std::move(ns), .initMode = true})) {
         return 1;
     }
     if (!opts.quiet) {
-        std::print("{} package '{}'\n", Status("Initialized"), name);
+        std::print("Initialized package '{}'\n", name);
     }
     return 0;
 }
