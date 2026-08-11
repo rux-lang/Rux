@@ -4,6 +4,7 @@
 
 set(RUX_TEST_SOURCES
     Main.cpp
+    AArch64AssemblerTests.cpp
     AArch64EncoderTests.cpp
     ArtifactTests.cpp
     AsmParserTests.cpp
