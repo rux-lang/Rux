@@ -80,6 +80,17 @@ enum class A64ExtendKind : std::uint8_t {
     Sxtx = 7,
 };
 
+// What a memory access does to the base register it addresses through. The
+// three modes share one encoding page and one immediate field, differing only
+// in two bits, so they are one encoder per access rather than three; ARM spells
+// the two writeback modes with the plain LDR and STR mnemonics rather than with
+// the LDUR and STUR that name the unwritten-back form of the same field.
+enum class A64IndexMode : std::uint8_t {
+    Offset,    // [Xn, #imm]  — the base is read and left alone
+    PostIndex, // [Xn], #imm  — the access uses the base, which is then advanced
+    PreIndex,  // [Xn, #imm]! — the base is advanced first, and the access uses it
+};
+
 // Condition codes, in the order the four-bit `cond` field encodes them.
 enum class A64Condition : std::uint8_t {
     Eq = 0,  // equal

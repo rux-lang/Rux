@@ -318,6 +318,101 @@ public:
     [[nodiscard]] A64Status Rev16(A64Reg rd, A64Reg rn) const;
     [[nodiscard]] A64Status Rev32(A64Reg rd, A64Reg rn) const;
 
+    // Loads and stores.
+    //
+    // The base register is 64-bit in every form and reads code 31 as the stack
+    // pointer, since addressing relative to SP is the common case; the
+    // transferred register reads it as the zero register, so SP is never the
+    // value moved. The width of the access comes from that register in the
+    // LDR / STR forms — a W or X register for 32 and 64 bits, a vector one for
+    // the B, H, S, D and Q widths — and from the mnemonic in the narrowing and
+    // sign-extending ones, whose register names the width the value ends up at
+    // rather than the width read from memory.
+
+    // Unsigned-offset loads and stores. `offset` is a byte displacement from
+    // `rn`, divided by the access width to reach the 12-bit field, so the reach
+    // of a form grows with its width: 32 KiB for a byte access and 256 KiB for
+    // a pair of doublewords. An offset that does not divide is Unaligned and
+    // one too large is OutOfRange — neither is ever silently truncated, and the
+    // caller falls back to the unscaled or register-offset form.
+    [[nodiscard]] A64Status Ldr(A64Reg rt, A64Reg rn, std::uint64_t offset = 0) const;
+    [[nodiscard]] A64Status Str(A64Reg rt, A64Reg rn, std::uint64_t offset = 0) const;
+    [[nodiscard]] A64Status Ldrb(A64Reg rt, A64Reg rn, std::uint64_t offset = 0) const;
+    [[nodiscard]] A64Status Strb(A64Reg rt, A64Reg rn, std::uint64_t offset = 0) const;
+    [[nodiscard]] A64Status Ldrh(A64Reg rt, A64Reg rn, std::uint64_t offset = 0) const;
+    [[nodiscard]] A64Status Strh(A64Reg rt, A64Reg rn, std::uint64_t offset = 0) const;
+
+    // The sign-extending loads, whose `rt` is the width extended to: LDRSB into
+    // an X register and into a W register are two encodings, and LDRSW has only
+    // the 64-bit one because a word extended to a word extends nothing.
+    [[nodiscard]] A64Status Ldrsb(A64Reg rt, A64Reg rn, std::uint64_t offset = 0) const;
+    [[nodiscard]] A64Status Ldrsh(A64Reg rt, A64Reg rn, std::uint64_t offset = 0) const;
+    [[nodiscard]] A64Status Ldrsw(A64Reg rt, A64Reg rn, std::uint64_t offset = 0) const;
+
+    // Unscaled and indexed loads and stores. `offset` is a signed byte
+    // displacement in a 9-bit field with no scaling, so these reach -256 to 255
+    // bytes at every width and are what a negative or unaligned displacement
+    // falls back to. `mode` chooses whether `rn` is written back and whether the
+    // access happens before or after it is: the LDUR and STUR mnemonics name the
+    // Offset mode, and the two writeback modes are spelled LDR and STR.
+    [[nodiscard]] A64Status Ldur(A64Reg rt, A64Reg rn, std::int64_t offset = 0,
+                                 A64IndexMode mode = A64IndexMode::Offset) const;
+    [[nodiscard]] A64Status Stur(A64Reg rt, A64Reg rn, std::int64_t offset = 0,
+                                 A64IndexMode mode = A64IndexMode::Offset) const;
+    [[nodiscard]] A64Status Ldurb(A64Reg rt, A64Reg rn, std::int64_t offset = 0,
+                                  A64IndexMode mode = A64IndexMode::Offset) const;
+    [[nodiscard]] A64Status Sturb(A64Reg rt, A64Reg rn, std::int64_t offset = 0,
+                                  A64IndexMode mode = A64IndexMode::Offset) const;
+    [[nodiscard]] A64Status Ldurh(A64Reg rt, A64Reg rn, std::int64_t offset = 0,
+                                  A64IndexMode mode = A64IndexMode::Offset) const;
+    [[nodiscard]] A64Status Sturh(A64Reg rt, A64Reg rn, std::int64_t offset = 0,
+                                  A64IndexMode mode = A64IndexMode::Offset) const;
+    [[nodiscard]] A64Status Ldursb(A64Reg rt, A64Reg rn, std::int64_t offset = 0,
+                                   A64IndexMode mode = A64IndexMode::Offset) const;
+    [[nodiscard]] A64Status Ldursh(A64Reg rt, A64Reg rn, std::int64_t offset = 0,
+                                   A64IndexMode mode = A64IndexMode::Offset) const;
+    [[nodiscard]] A64Status Ldursw(A64Reg rt, A64Reg rn, std::int64_t offset = 0,
+                                   A64IndexMode mode = A64IndexMode::Offset) const;
+
+    // Register-offset loads and stores. The index is extended by `extend` —
+    // UXTW and SXTW read a W register, and UXTX and SXTX a whole X one, the
+    // latter being the encoding assembly syntax spells LSL — and then shifted
+    // left by `amount`. The instruction carries a scale bit rather than a shift
+    // amount, so `amount` must be either 0 or the base-2 logarithm of the access
+    // width, and anything else is InvalidImmediate.
+    [[nodiscard]] A64Status LdrReg(A64Reg rt, A64Reg rn, A64Reg rm, A64ExtendKind extend = A64ExtendKind::Uxtx,
+                                   unsigned amount = 0) const;
+    [[nodiscard]] A64Status StrReg(A64Reg rt, A64Reg rn, A64Reg rm, A64ExtendKind extend = A64ExtendKind::Uxtx,
+                                   unsigned amount = 0) const;
+    [[nodiscard]] A64Status LdrbReg(A64Reg rt, A64Reg rn, A64Reg rm, A64ExtendKind extend = A64ExtendKind::Uxtx,
+                                    unsigned amount = 0) const;
+    [[nodiscard]] A64Status StrbReg(A64Reg rt, A64Reg rn, A64Reg rm, A64ExtendKind extend = A64ExtendKind::Uxtx,
+                                    unsigned amount = 0) const;
+    [[nodiscard]] A64Status LdrhReg(A64Reg rt, A64Reg rn, A64Reg rm, A64ExtendKind extend = A64ExtendKind::Uxtx,
+                                    unsigned amount = 0) const;
+    [[nodiscard]] A64Status StrhReg(A64Reg rt, A64Reg rn, A64Reg rm, A64ExtendKind extend = A64ExtendKind::Uxtx,
+                                    unsigned amount = 0) const;
+    [[nodiscard]] A64Status LdrsbReg(A64Reg rt, A64Reg rn, A64Reg rm, A64ExtendKind extend = A64ExtendKind::Uxtx,
+                                     unsigned amount = 0) const;
+    [[nodiscard]] A64Status LdrshReg(A64Reg rt, A64Reg rn, A64Reg rm, A64ExtendKind extend = A64ExtendKind::Uxtx,
+                                     unsigned amount = 0) const;
+    [[nodiscard]] A64Status LdrswReg(A64Reg rt, A64Reg rn, A64Reg rm, A64ExtendKind extend = A64ExtendKind::Uxtx,
+                                     unsigned amount = 0) const;
+
+    // Load and store pair. The two transferred registers are the same width and
+    // the same file, general purpose at 32 or 64 bits and vector at 32, 64 or
+    // 128; `offset` is scaled by the width of one of them and reaches -64 to 63
+    // of them, which is what makes STP the instruction a prologue pushes with.
+    [[nodiscard]] A64Status Ldp(A64Reg rt, A64Reg rt2, A64Reg rn, std::int64_t offset = 0,
+                                A64IndexMode mode = A64IndexMode::Offset) const;
+    [[nodiscard]] A64Status Stp(A64Reg rt, A64Reg rt2, A64Reg rn, std::int64_t offset = 0,
+                                A64IndexMode mode = A64IndexMode::Offset) const;
+
+    // LDR (literal): a load from a PC-relative address, reaching +/-1 MiB in
+    // whole instructions. `offset` is a byte distance from this instruction and
+    // must be a multiple of four; `rt` may be W, X, S, D or Q.
+    [[nodiscard]] A64Status LdrLiteral(A64Reg rt, std::int64_t offset) const;
+
 private:
     std::vector<std::uint8_t> &out;
 };

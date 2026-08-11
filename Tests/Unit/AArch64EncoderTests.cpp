@@ -892,6 +892,251 @@ TEST_CASE("AArch64 encodes bit counting and byte reversal") {
     v.Refuses(v.enc.Rev(x3, A64::Dn(5)), A64Status::InvalidRegister);
 }
 
+// Loads and Stores: Load/store register (unsigned immediate).
+TEST_CASE("AArch64 encodes unsigned-offset loads and stores") {
+    A64Vectors v;
+    const A64Reg x0 = A64::Xn(0);
+    const A64Reg x1 = A64::Xn(1);
+    const A64Reg w0 = A64::Wn(0);
+
+    SUBCASE("general purpose, scaled by the access width") {
+        v.Encodes(v.enc.Ldr(x0, x1), 0xF9400020);
+        v.Encodes(v.enc.Ldr(x0, x1, 8), 0xF9400420);
+        v.Encodes(v.enc.Ldr(x0, x1, 32760), 0xF97FFC20);
+        v.Encodes(v.enc.Str(x0, x1), 0xF9000020);
+        v.Encodes(v.enc.Str(x0, x1, 8), 0xF9000420);
+        v.Encodes(v.enc.Str(x0, x1, 32760), 0xF93FFC20);
+        v.Encodes(v.enc.Ldr(w0, x1), 0xB9400020);
+        v.Encodes(v.enc.Ldr(w0, x1, 4), 0xB9400420);
+        v.Encodes(v.enc.Ldr(w0, x1, 16380), 0xB97FFC20);
+        // The base is the one field that reads code 31 as the stack pointer.
+        v.Encodes(v.enc.Ldr(x0, A64::Sp, 8), 0xF94007E0);
+        v.Encodes(v.enc.Ldr(A64::Xzr, x1), 0xF940003F);
+    }
+
+    SUBCASE("all five SIMD widths") {
+        v.Encodes(v.enc.Ldr(A64::Bn(0), x1, 3), 0x3D400C20);
+        v.Encodes(v.enc.Ldr(A64::Bn(0), x1, 4095), 0x3D7FFC20);
+        v.Encodes(v.enc.Ldr(A64::Hn(0), x1, 2), 0x7D400420);
+        v.Encodes(v.enc.Ldr(A64::Hn(0), x1, 8190), 0x7D7FFC20);
+        v.Encodes(v.enc.Ldr(A64::Sn(0), x1, 4), 0xBD400420);
+        v.Encodes(v.enc.Ldr(A64::Dn(0), x1, 8), 0xFD400420);
+        // A Q access has no `size` value of its own and borrows a bit of `opc`.
+        v.Encodes(v.enc.Ldr(A64::Qn(0), x1), 0x3DC00020);
+        v.Encodes(v.enc.Ldr(A64::Qn(0), x1, 65520), 0x3DFFFC20);
+        v.Encodes(v.enc.Str(A64::Qn(0), x1, 16), 0x3D800420);
+    }
+
+    SUBCASE("narrowing and sign-extending") {
+        v.Encodes(v.enc.Ldrb(w0, x1, 3), 0x39400C20);
+        v.Encodes(v.enc.Ldrb(w0, x1, 4095), 0x397FFC20);
+        v.Encodes(v.enc.Strb(A64::Wn(5), x1, 1), 0x39000425);
+        v.Encodes(v.enc.Ldrh(w0, x1, 2), 0x79400420);
+        v.Encodes(v.enc.Ldrh(w0, x1, 8190), 0x797FFC20);
+        v.Encodes(v.enc.Strh(A64::Wn(5), A64::Sp, 2), 0x790007E5);
+        // The sign-extending loads name the width they extend to, so the two
+        // widths of LDRSB are two encodings.
+        v.Encodes(v.enc.Ldrsb(x0, x1, 1), 0x39800420);
+        v.Encodes(v.enc.Ldrsb(A64::Wn(7), x1, 1), 0x39C00427);
+        v.Encodes(v.enc.Ldrsh(x0, x1, 2), 0x79800420);
+        v.Encodes(v.enc.Ldrsh(A64::Wn(7), x1), 0x79C00027);
+        v.Encodes(v.enc.Ldrsw(x0, x1, 4), 0xB9800420);
+        v.Encodes(v.enc.Ldrsw(x0, x1, 16380), 0xB9BFFC20);
+    }
+
+    SUBCASE("refusals") {
+        // An offset that does not divide by the access width has no encoding
+        // here at all, and one past the field is out of range, not truncated.
+        v.Refuses(v.enc.Ldr(x0, x1, 4), A64Status::Unaligned);
+        v.Refuses(v.enc.Ldr(A64::Qn(0), x1, 8), A64Status::Unaligned);
+        v.Refuses(v.enc.Ldr(x0, x1, 32768), A64Status::OutOfRange);
+        v.Refuses(v.enc.Ldrb(w0, x1, 4096), A64Status::OutOfRange);
+        // The base is always a 64-bit register, and never the zero register.
+        v.Refuses(v.enc.Ldr(x0, A64::Wn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Ldr(x0, A64::Xzr), A64Status::InvalidRegister);
+        // The transferred register never reads code 31 as the stack pointer.
+        v.Refuses(v.enc.Str(A64::Sp, x1), A64Status::InvalidRegister);
+        // LDRB and LDRH name a W register; LDRSW only widens, so it names an X.
+        v.Refuses(v.enc.Ldrb(x0, x1), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Strh(x0, x1), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Ldrsw(w0, x1), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Ldrb(A64::Bn(0), x1), A64Status::InvalidRegister);
+    }
+}
+
+// Loads and Stores: Load/store register (unscaled immediate), (immediate
+// post-indexed) and (immediate pre-indexed), which share one signed 9-bit field.
+TEST_CASE("AArch64 encodes unscaled and indexed loads and stores") {
+    A64Vectors v;
+    const A64Reg x0 = A64::Xn(0);
+    const A64Reg x1 = A64::Xn(1);
+    const A64Reg w0 = A64::Wn(0);
+
+    SUBCASE("LDUR and STUR reach either side of the base") {
+        v.Encodes(v.enc.Ldur(x0, x1), 0xF8400020);
+        v.Encodes(v.enc.Ldur(x0, x1, 1), 0xF8401020);
+        v.Encodes(v.enc.Ldur(x0, x1, 255), 0xF84FF020);
+        v.Encodes(v.enc.Ldur(x0, x1, -1), 0xF85FF020);
+        v.Encodes(v.enc.Ldur(x0, x1, -256), 0xF8500020);
+        v.Encodes(v.enc.Ldur(x0, A64::Sp, -17), 0xF85EF3E0);
+        v.Encodes(v.enc.Ldur(A64::Wn(4), x1, 1), 0xB8401024);
+        v.Encodes(v.enc.Stur(x0, x1, -8), 0xF81F8020);
+        v.Encodes(v.enc.Sturb(w0, x1, 1), 0x38001020);
+        v.Encodes(v.enc.Sturh(w0, x1, -256), 0x78100020);
+        v.Encodes(v.enc.Ldursb(A64::Xn(2), x1, 255), 0x388FF022);
+        v.Encodes(v.enc.Ldursh(A64::Xn(2), x1, -1), 0x789FF022);
+        v.Encodes(v.enc.Ldursw(A64::Xn(2), x1, -17), 0xB89EF022);
+        // The SIMD widths reach the same 9 bits, unscaled at every one of them.
+        v.Encodes(v.enc.Ldur(A64::Qn(5), x1, 255), 0x3CCFF025);
+    }
+
+    SUBCASE("pre-index and post-index write the base back") {
+        // ARM spells these two modes LDR and STR: they differ from LDUR and
+        // STUR only in the two bits below the immediate.
+        v.Encodes(v.enc.Ldur(x0, x1, 255, A64IndexMode::PostIndex), 0xF84FF420);
+        v.Encodes(v.enc.Ldur(x0, x1, 255, A64IndexMode::PreIndex), 0xF84FFC20);
+        v.Encodes(v.enc.Ldur(x0, x1, -256, A64IndexMode::PostIndex), 0xF8500420);
+        v.Encodes(v.enc.Ldur(x0, A64::Sp, 255, A64IndexMode::PreIndex), 0xF84FFFE0);
+        v.Encodes(v.enc.Stur(A64::Qn(5), A64::Sp, -256, A64IndexMode::PreIndex), 0x3C900FE5);
+        v.Encodes(v.enc.Stur(A64::Qn(5), x1, 255, A64IndexMode::PostIndex), 0x3C8FF425);
+        v.Encodes(v.enc.Ldur(A64::Bn(1), x1, -256, A64IndexMode::PostIndex), 0x3C500421);
+        v.Encodes(v.enc.Ldur(A64::Sn(3), A64::Sp, 255, A64IndexMode::PreIndex), 0xBC4FFFE3);
+    }
+
+    SUBCASE("refusals") {
+        v.Refuses(v.enc.Ldur(x0, x1, 256), A64Status::OutOfRange);
+        v.Refuses(v.enc.Ldur(x0, x1, -257), A64Status::OutOfRange);
+        v.Refuses(v.enc.Stur(x0, x1, 256, A64IndexMode::PreIndex), A64Status::OutOfRange);
+        v.Refuses(v.enc.Ldur(x0, A64::Xzr), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Ldur(A64::Sp, x1), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Ldurb(x0, x1), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Ldursw(w0, x1), A64Status::InvalidRegister);
+    }
+}
+
+// Loads and Stores: Load/store register (register offset).
+TEST_CASE("AArch64 encodes register-offset loads and stores") {
+    A64Vectors v;
+    const A64Reg x0 = A64::Xn(0);
+    const A64Reg x1 = A64::Xn(1);
+    const A64Reg x7 = A64::Xn(7);
+    const A64Reg w7 = A64::Wn(7);
+
+    SUBCASE("every option, with and without the scale bit") {
+        v.Encodes(v.enc.LdrReg(x0, x1, w7, A64ExtendKind::Uxtw), 0xF8674820);
+        v.Encodes(v.enc.LdrReg(x0, x1, w7, A64ExtendKind::Uxtw, 3), 0xF8675820);
+        // UXTX is the encoding the assembly syntax spells LSL.
+        v.Encodes(v.enc.LdrReg(x0, x1, x7), 0xF8676820);
+        v.Encodes(v.enc.LdrReg(x0, x1, x7, A64ExtendKind::Uxtx, 3), 0xF8677820);
+        v.Encodes(v.enc.LdrReg(x0, x1, w7, A64ExtendKind::Sxtw), 0xF867C820);
+        v.Encodes(v.enc.LdrReg(x0, x1, w7, A64ExtendKind::Sxtw, 3), 0xF867D820);
+        v.Encodes(v.enc.LdrReg(x0, x1, x7, A64ExtendKind::Sxtx), 0xF867E820);
+        v.Encodes(v.enc.LdrReg(x0, x1, x7, A64ExtendKind::Sxtx, 3), 0xF867F820);
+        v.Encodes(v.enc.LdrReg(A64::Wn(1), x1, x7, A64ExtendKind::Uxtx, 2), 0xB8677821);
+        v.Encodes(v.enc.StrReg(x0, A64::Sp, x7, A64ExtendKind::Uxtx, 3), 0xF8277BE0);
+    }
+
+    SUBCASE("the scale follows the access width") {
+        v.Encodes(v.enc.LdrReg(A64::Hn(3), x1, x7, A64ExtendKind::Uxtx, 1), 0x7C677823);
+        v.Encodes(v.enc.LdrReg(A64::Qn(6), x1, x7, A64ExtendKind::Uxtx, 4), 0x3CE77826);
+        v.Encodes(v.enc.LdrReg(A64::Qn(6), x1, x7), 0x3CE76826);
+        v.Encodes(v.enc.LdrhReg(A64::Wn(0), x1, w7, A64ExtendKind::Uxtw, 1), 0x78675820);
+        v.Encodes(v.enc.LdrswReg(x0, x1, x7, A64ExtendKind::Uxtx, 2), 0xB8A77820);
+        v.Encodes(v.enc.LdrsbReg(x0, x1, w7, A64ExtendKind::Sxtw), 0x38A7C820);
+        // A byte access has nothing to scale, so it only ever writes S as zero.
+        v.Encodes(v.enc.LdrbReg(A64::Wn(0), x1, x7), 0x38676820);
+        v.Encodes(v.enc.StrbReg(A64::Wn(0), x1, w7, A64ExtendKind::Uxtw), 0x38274820);
+    }
+
+    SUBCASE("refusals") {
+        // Only the word and doubleword extensions index memory.
+        v.Refuses(v.enc.LdrReg(x0, x1, w7, A64ExtendKind::Uxtb), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.LdrReg(x0, x1, w7, A64ExtendKind::Sxth), A64Status::InvalidImmediate);
+        // The extension names the width of the index.
+        v.Refuses(v.enc.LdrReg(x0, x1, x7, A64ExtendKind::Uxtw), A64Status::InvalidRegister);
+        v.Refuses(v.enc.LdrReg(x0, x1, w7, A64ExtendKind::Uxtx), A64Status::InvalidRegister);
+        // The shift is a scale bit, so it is either absent or exactly the log2
+        // of the access width.
+        v.Refuses(v.enc.LdrReg(x0, x1, x7, A64ExtendKind::Uxtx, 2), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.LdrbReg(A64::Wn(0), x1, x7, A64ExtendKind::Uxtx, 1), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.LdrReg(x0, A64::Xzr, x7), A64Status::InvalidRegister);
+        v.Refuses(v.enc.LdrReg(x0, x1, A64::Sp), A64Status::InvalidRegister);
+    }
+}
+
+// Loads and Stores: Load/store register pair, in all three modes.
+TEST_CASE("AArch64 encodes load and store pair") {
+    A64Vectors v;
+    const A64Reg x0 = A64::Xn(0);
+    const A64Reg x1 = A64::Xn(1);
+
+    SUBCASE("general purpose, scaled by one register") {
+        v.Encodes(v.enc.Ldp(A64::Fp, A64::Lr, x1), 0xA940783D);
+        v.Encodes(v.enc.Ldp(A64::Fp, A64::Lr, x1, 8), 0xA940F83D);
+        v.Encodes(v.enc.Ldp(A64::Fp, A64::Lr, x1, 504), 0xA95FF83D);
+        v.Encodes(v.enc.Ldp(A64::Fp, A64::Lr, x1, -512), 0xA960783D);
+        v.Encodes(v.enc.Stp(A64::Fp, A64::Lr, x1, -16), 0xA93F783D);
+        v.Encodes(v.enc.Ldp(x0, A64::Xzr, A64::Sp, -16), 0xA97F7FE0);
+        v.Encodes(v.enc.Ldp(A64::Wn(3), A64::Wn(4), x1, 4), 0x29409023);
+        v.Encodes(v.enc.Stp(A64::Wn(3), A64::Wn(4), x1, -256), 0x29201023);
+        v.Encodes(v.enc.Ldp(A64::Wn(3), A64::Wn(4), x1, 252), 0x295F9023);
+    }
+
+    SUBCASE("the frame chain a prologue and epilogue move") {
+        v.Encodes(v.enc.Stp(A64::Fp, A64::Lr, A64::Sp, -16, A64IndexMode::PreIndex), 0xA9BF7BFD);
+        v.Encodes(v.enc.Ldp(A64::Fp, A64::Lr, A64::Sp, 16, A64IndexMode::PostIndex), 0xA8C17BFD);
+        v.Encodes(v.enc.Stp(A64::Fp, A64::Lr, A64::Sp, -512, A64IndexMode::PreIndex), 0xA9A07BFD);
+        v.Encodes(v.enc.Ldp(A64::Fp, A64::Lr, A64::Sp, 504, A64IndexMode::PostIndex), 0xA8DFFBFD);
+    }
+
+    SUBCASE("SIMD") {
+        v.Encodes(v.enc.Ldp(A64::Sn(0), A64::Sn(1), x1, 4), 0x2D408420);
+        v.Encodes(v.enc.Stp(A64::Sn(0), A64::Sn(1), x1, -256), 0x2D200420);
+        v.Encodes(v.enc.Ldp(A64::Dn(8), A64::Dn(9), x1, 8), 0x6D40A428);
+        v.Encodes(v.enc.Stp(A64::Dn(8), A64::Dn(9), x1, -512, A64IndexMode::PreIndex), 0x6DA02428);
+        v.Encodes(v.enc.Ldp(A64::Qn(2), A64::Qn(3), x1, -1024), 0xAD600C22);
+        v.Encodes(v.enc.Stp(A64::Qn(2), A64::Qn(3), x1, -32, A64IndexMode::PostIndex), 0xACBF0C22);
+    }
+
+    SUBCASE("refusals") {
+        v.Refuses(v.enc.Ldp(x0, x1, A64::Xn(2), 4), A64Status::Unaligned);
+        v.Refuses(v.enc.Ldp(x0, x1, A64::Xn(2), 512), A64Status::OutOfRange);
+        v.Refuses(v.enc.Ldp(x0, x1, A64::Xn(2), -520), A64Status::OutOfRange);
+        // The two registers are one width and one file.
+        v.Refuses(v.enc.Ldp(x0, A64::Wn(1), A64::Xn(2)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Ldp(x0, A64::Dn(1), A64::Xn(2)), A64Status::InvalidRegister);
+        // There is no byte or halfword pair, and neither reading of code 31 is
+        // a transferable register.
+        v.Refuses(v.enc.Ldp(A64::Bn(0), A64::Bn(1), A64::Xn(2)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Ldp(A64::Hn(0), A64::Hn(1), A64::Xn(2)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Stp(A64::Sp, x1, A64::Xn(2)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Stp(x0, x1, A64::Xzr), A64Status::InvalidRegister);
+    }
+}
+
+// Loads and Stores: Load register (literal).
+TEST_CASE("AArch64 encodes LDR from a PC-relative literal") {
+    A64Vectors v;
+
+    v.Encodes(v.enc.LdrLiteral(A64::Xn(0), 0), 0x58000000);
+    v.Encodes(v.enc.LdrLiteral(A64::Xn(0), 4), 0x58000020);
+    v.Encodes(v.enc.LdrLiteral(A64::Xn(0), -4), 0x58FFFFE0);
+    v.Encodes(v.enc.LdrLiteral(A64::Wn(3), 4), 0x18000023);
+    v.Encodes(v.enc.LdrLiteral(A64::Sn(5), 0), 0x1C000005);
+    v.Encodes(v.enc.LdrLiteral(A64::Dn(7), 0), 0x5C000007);
+    v.Encodes(v.enc.LdrLiteral(A64::Qn(9), 0), 0x9C000009);
+    // The boundaries of the 19-bit field, counted in instructions.
+    v.Encodes(v.enc.LdrLiteral(A64::Xn(0), 1048572), 0x587FFFE0);
+    v.Encodes(v.enc.LdrLiteral(A64::Xn(0), -1048576), 0x58800000);
+
+    v.Refuses(v.enc.LdrLiteral(A64::Xn(0), 2), A64Status::Unaligned);
+    v.Refuses(v.enc.LdrLiteral(A64::Xn(0), 1048576), A64Status::OutOfRange);
+    v.Refuses(v.enc.LdrLiteral(A64::Xn(0), -1048580), A64Status::OutOfRange);
+    v.Refuses(v.enc.LdrLiteral(A64::Bn(0), 0), A64Status::InvalidRegister);
+    v.Refuses(v.enc.LdrLiteral(A64::Hn(0), 0), A64Status::InvalidRegister);
+    v.Refuses(v.enc.LdrLiteral(A64::Sp, 0), A64Status::InvalidRegister);
+}
+
 TEST_CASE("AArch64 encoder statuses have names for diagnostics") {
     CHECK(A64StatusName(A64Status::Ok) == "ok");
     CHECK(A64StatusName(A64Status::InvalidRegister) == "invalid register");
