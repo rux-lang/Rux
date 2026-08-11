@@ -26,6 +26,12 @@ namespace Rux::Layout {
 
 [[nodiscard]] bool IsFloat(const TypeRef &t);
 
+// The unsigned integer type of the same width, which is how a logical right
+// shift reads its operand: `lshr` on a signed type is the one place a value's
+// bits are widened by its width rather than by its signedness. Anything that is
+// not a signed integer already reads that way and is returned unchanged.
+[[nodiscard]] TypeRef UnsignedIntegerType(const TypeRef &type);
+
 // Strip a generic argument list: "Foo<int32>" -> "Foo".
 [[nodiscard]] std::string BaseTypeName(const std::string &name);
 

@@ -21,23 +21,6 @@ namespace Rux {
 using namespace Layout;
 
 namespace {
-TypeRef UnsignedIntegerType(const TypeRef &type) {
-    switch (type.kind) {
-    case TypeRef::Kind::Int8:
-        return TypeRef::MakeUInt8();
-    case TypeRef::Kind::Int16:
-        return TypeRef::MakeUInt16();
-    case TypeRef::Kind::Int32:
-        return TypeRef::MakeUInt32();
-    case TypeRef::Kind::Int64:
-        return TypeRef::MakeUInt64();
-    case TypeRef::Kind::Int:
-        return TypeRef::MakeUInt();
-    default:
-        return type;
-    }
-}
-
 // RCU Code Generator: LirModule → RcuFile
 struct JumpPatch {
     uint32_t patchOff;

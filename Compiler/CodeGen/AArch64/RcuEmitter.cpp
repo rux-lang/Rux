@@ -108,6 +108,10 @@ constexpr unsigned kFpTemp = 16;
     return offset % 8 == 0 && offset >= -512 && offset <= 504;
 }
 
+// No symbol at all, for a lazily declared runtime helper nothing has reached
+// yet. Index zero is a real symbol, so absence needs a value of its own.
+constexpr std::uint32_t kNoSymbol = ~0U;
+
 class AArch64CodeGen {
 public:
     explicit AArch64CodeGen(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
@@ -149,6 +153,10 @@ private:
     std::unordered_map<std::string, std::uint32_t> externSyms;
     std::unordered_map<std::string, std::uint32_t> funcSyms;
     std::unordered_map<std::string, std::uint32_t> dataSyms;
+
+    // The synthesized integer exponentiation helper, or kNoSymbol until a `**`
+    // reaches it.
+    std::uint32_t ipowSym = kNoSymbol;
 
     // Interned read-only constants, by the literal that produced them → symbol
     // index, so a value written twice is emitted once. The counter names them
@@ -274,6 +282,88 @@ private:
         const std::uint32_t idx = AddSymbol(std::move(sym));
         funcSyms[func.name] = idx;
         return idx;
+    }
+
+    // Runtime helpers
+    //
+    // A `**` is the one arithmetic operator no instruction performs, so it is a
+    // call to a body this object synthesizes rather than an instruction — and a
+    // body of its own rather than an expansion at each use, since it is a loop.
+    // The symbol is declared the first time one is reached and the body emitted
+    // once, after every user function, so a call ahead of it resolves through a
+    // relocation like any other local text symbol.
+
+    std::uint32_t EnsureIntPowHelper() {
+        if (ipowSym == kNoSymbol) {
+            RcuSymbol sym;
+            sym.name = "__rux_ipow";
+            sym.sectionIdx = RCU_TEXT_IDX;
+            sym.value = 0; // filled in by EmitIntPowHelper
+            sym.kind = RcuSymKind::Func;
+            sym.visibility = RcuSymVis::Local;
+            ipowSym = AddSymbol(std::move(sym));
+        }
+        return ipowSym;
+    }
+
+    // X0 = X0 ** X1, with a signed exponent.
+    //
+    // Exponentiation by squaring, which is the algorithm the x86-64 back end
+    // synthesizes and gives the same answers to: a negative exponent yields
+    // zero and a zero exponent yields one. The low bits of a two's-complement
+    // product do not depend on the bits above them, so this one 64-bit body
+    // serves every integer width, and `**` takes on no dependency on libm or a
+    // C runtime on any target.
+    //
+    // It reads and writes X0, X1 and X2 and touches no memory, so it needs no
+    // frame of its own and leaves nothing for a caller to save.
+    void EmitIntPowHelper() {
+        if (ipowSym == kNoSymbol) {
+            return;
+        }
+        currentFunc = "__rux_ipow";
+        constexpr std::string_view what = "the exponentiation helper";
+
+        const A64Reg result = A64::Xn(0);
+        const A64Reg exponent = A64::Xn(1);
+        const A64Reg base = A64::Xn(2);
+
+        const std::uint32_t start = enc.Size();
+        symbols[ipowSym].value = start;
+
+        Must(enc.Mov(base, result), what);
+        Must(enc.LoadImm64(result, 0), what); // a negative exponent yields zero
+        const std::uint32_t negativeBranch = enc.Size();
+        Must(enc.Tbnz(exponent, 63, 0), what);
+        Must(enc.LoadImm64(result, 1), what);
+
+        const std::uint32_t loop = enc.Size();
+        const std::uint32_t doneBranch = enc.Size();
+        Must(enc.Cbz(exponent, 0), what);
+        const std::uint32_t squareBranch = enc.Size();
+        Must(enc.Tbz(exponent, 0, 0), what);
+        Must(enc.Mul(result, result, base), what); // an odd exponent takes one base
+
+        const std::uint32_t square = enc.Size();
+        Must(enc.Mul(base, base, base), what);
+        Must(enc.Asr(exponent, exponent, 1), what);
+        Must(enc.B(static_cast<std::int64_t>(loop) - static_cast<std::int64_t>(enc.Size())), what);
+
+        const std::uint32_t done = enc.Size();
+        Must(enc.Ret(), what);
+
+        // The three forward branches, each patched into the field its own form
+        // keeps its immediate in: fourteen bits for the test-and-branch pair
+        // and nineteen for the compare-and-branch one, both starting at bit 5.
+        const auto instructions = [](const std::uint32_t from, const std::uint32_t to) {
+            return (to - from) / A64Enc::InstrSize;
+        };
+        enc.PatchField(negativeBranch, 5, 14, instructions(negativeBranch, done));
+        enc.PatchField(doneBranch, 5, 19, instructions(doneBranch, done));
+        enc.PatchField(squareBranch, 5, 14, instructions(squareBranch, square));
+
+        symbols[ipowSym].size = enc.Size() - start;
+        currentFunc.clear();
     }
 
     // The read-only pool
@@ -691,6 +781,59 @@ private:
         }
     }
 
+    // Integer arithmetic
+    //
+    // Every one of these computes in a whole 64-bit register whatever width its
+    // type is, and the two ends of that are what make a narrow result behave
+    // the way the x86-64 back end's does. On the way in, LoadFromSlot extends
+    // by the type: a signed one sign-extends and an unsigned one zero-extends,
+    // which is what gives SDIV, UDIV and ASRV the narrow answers rather than
+    // answers about whatever the slot's upper bytes happened to hold. On the
+    // way out, StoreToSlot writes only the bytes the type occupies, so a
+    // `uint8` sum wraps because the byte above it is never written and no
+    // explicit truncation is emitted anywhere.
+
+    // The type a virtual register holds, for an operand whose width is not the
+    // instruction's own — a shift amount, or an index.
+    [[nodiscard]] TypeRef TypeOfReg(const LirReg reg) const {
+        const auto it = regTypes.find(reg);
+        return it == regTypes.end() ? TypeRef::MakeInt64() : it->second;
+    }
+
+    // Bring the two operands of a binary integer instruction into X9 and X12,
+    // each extended by the type it is read at. A type no arithmetic instruction
+    // here reaches — a float, which is Task 26's, or an aggregate, which is
+    // nothing's — is reported instead, and `false` means nothing was emitted.
+    bool LoadBinaryOperands(const LirInstr &instr, const TypeRef &lhsType, const TypeRef &rhsType) {
+        if (!IsScalarInteger(lhsType)) {
+            NotImplemented(std::format("the '{}' opcode on '{}'", LirOpcodeName(instr.op), lhsType.ToString()));
+            return false;
+        }
+        if (instr.srcs.size() < 2) {
+            Report(std::format("AArch64 code generation reached a '{}' with one operand in '{}'",
+                               LirOpcodeName(instr.op), currentFunc));
+            return false;
+        }
+        LoadFromSlot(A64::Xn(kTemp), instr.srcs[0], lhsType);
+        LoadFromSlot(A64::Xn(kTemp2), instr.srcs[1], rhsType);
+        return true;
+    }
+
+    // The same for the one-operand forms, which read X9 alone.
+    bool LoadUnaryOperand(const LirInstr &instr, const TypeRef &type) {
+        if (!IsScalarInteger(type)) {
+            NotImplemented(std::format("the '{}' opcode on '{}'", LirOpcodeName(instr.op), type.ToString()));
+            return false;
+        }
+        if (instr.srcs.empty()) {
+            Report(std::format("AArch64 code generation reached a '{}' with no operand in '{}'",
+                               LirOpcodeName(instr.op), currentFunc));
+            return false;
+        }
+        LoadFromSlot(A64::Xn(kTemp), instr.srcs[0], type);
+        return true;
+    }
+
     // Instruction selection
 
     // The bits a constant denotes. A boolean is written as a word rather than a
@@ -889,8 +1032,7 @@ private:
             const A64Reg addr = A64::Xn(kTemp);
             const A64Reg index = A64::Xn(kAddr);
             LoadPointer(addr, instr.srcs[0]);
-            const auto indexType = regTypes.find(instr.srcs[1]);
-            LoadFromSlot(index, instr.srcs[1], indexType == regTypes.end() ? TypeRef::MakeInt64() : indexType->second);
+            LoadFromSlot(index, instr.srcs[1], TypeOfReg(instr.srcs[1]));
 
             // A power-of-two element scales inside the addition itself;
             // anything else is a multiply, which MADD folds into the same
@@ -905,6 +1047,164 @@ private:
                 Must(enc.Madd(addr, index, width, addr), "an element address");
             }
             StoreToSlot(addr, instr.dst, TypeRef::MakePointer(instr.type));
+            break;
+        }
+        case LirOpcode::Add:
+        case LirOpcode::Sub:
+        case LirOpcode::Mul:
+        case LirOpcode::And:
+        case LirOpcode::Or:
+        case LirOpcode::Xor: {
+            const TypeRef &type = instr.type;
+            if (!LoadBinaryOperands(instr, type, type)) {
+                break;
+            }
+            const A64Reg lhs = A64::Xn(kTemp);
+            const A64Reg rhs = A64::Xn(kTemp2);
+            A64Status status = A64Status::Ok;
+            switch (instr.op) {
+            case LirOpcode::Add:
+                status = enc.Add(lhs, lhs, rhs);
+                break;
+            case LirOpcode::Sub:
+                status = enc.Sub(lhs, lhs, rhs);
+                break;
+            case LirOpcode::Mul:
+                status = enc.Mul(lhs, lhs, rhs);
+                break;
+            case LirOpcode::And:
+                status = enc.And(lhs, lhs, rhs);
+                break;
+            case LirOpcode::Or:
+                status = enc.Orr(lhs, lhs, rhs);
+                break;
+            default:
+                status = enc.Eor(lhs, lhs, rhs);
+                break;
+            }
+            Must(status, LirOpcodeName(instr.op));
+            StoreToSlot(lhs, instr.dst, type);
+            break;
+        }
+        case LirOpcode::Div:
+        case LirOpcode::Mod: {
+            const TypeRef &type = instr.type;
+            if (!LoadBinaryOperands(instr, type, type)) {
+                break;
+            }
+            const A64Reg lhs = A64::Xn(kTemp);
+            const A64Reg rhs = A64::Xn(kTemp2);
+            // The quotient goes somewhere neither operand is, since a
+            // remainder needs both of them back afterwards.
+            const A64Reg quotient = A64::Xn(kAddr);
+            Must(type.IsSigned() ? enc.Sdiv(quotient, lhs, rhs) : enc.Udiv(quotient, lhs, rhs),
+                 LirOpcodeName(instr.op));
+            if (instr.op == LirOpcode::Div) {
+                StoreToSlot(quotient, instr.dst, type);
+                break;
+            }
+            // AArch64 has no remainder instruction: it is the dividend less
+            // the quotient times the divisor, which MSUB is one instruction
+            // of. The sign follows from the division, so the signed and the
+            // unsigned remainder differ only in which divide came first.
+            Must(enc.Msub(lhs, quotient, rhs, lhs), LirOpcodeName(instr.op));
+            StoreToSlot(lhs, instr.dst, type);
+            break;
+        }
+        case LirOpcode::Pow: {
+            const TypeRef &type = instr.type;
+            if (!IsScalarInteger(type)) {
+                NotImplemented(std::format("the '{}' opcode on '{}'", LirOpcodeName(instr.op), type.ToString()));
+                break;
+            }
+            if (instr.srcs.size() < 2) {
+                Report(std::format("AArch64 code generation reached a 'pow' with one operand in '{}'", currentFunc));
+                break;
+            }
+            // The helper takes its base and its exponent where AAPCS64 puts
+            // the first two arguments and answers where it puts a return
+            // value. It saves nothing, and neither does this: every value this
+            // generator holds lives in a stack slot between instructions, so a
+            // call clobbers nothing that is live.
+            LoadFromSlot(A64::Xn(kReturn), instr.srcs[0], type);
+            LoadFromSlot(A64::Xn(kReturn + 1), instr.srcs[1], TypeOfReg(instr.srcs[1]));
+            const std::uint32_t callSite = enc.Size();
+            Must(enc.Bl(0), "a call to the exponentiation helper");
+            AddTextReloc(callSite, EnsureIntPowHelper(), RcuRelType::AArch64Call26);
+            StoreToSlot(A64::Xn(kReturn), instr.dst, type);
+            break;
+        }
+        case LirOpcode::Shl:
+        case LirOpcode::Shr:
+        case LirOpcode::Lshr: {
+            const TypeRef &type = instr.type;
+            if (instr.srcs.size() < 2) {
+                Report(std::format("AArch64 code generation reached a '{}' with no amount in '{}'",
+                                   LirOpcodeName(instr.op), currentFunc));
+                break;
+            }
+            // A logical right shift reads its operand as unsigned whatever the
+            // type says, which is the whole of what separates it from `shr`.
+            // The amount is read at its own type, since nothing says it has the
+            // type of the value being shifted.
+            const bool logical = instr.op == LirOpcode::Lshr;
+            if (!LoadBinaryOperands(instr, logical ? UnsignedIntegerType(type) : type, TypeOfReg(instr.srcs[1]))) {
+                break;
+            }
+            const A64Reg value = A64::Xn(kTemp);
+            const A64Reg amount = A64::Xn(kTemp2);
+            // The variable shifts mask the amount to the width of the register
+            // they shift, so an over-long shift wraps rather than being
+            // undefined — and since both back ends shift a 64-bit register, it
+            // wraps at the same 64 the x86-64 shifts do.
+            A64Status status = A64Status::Ok;
+            if (instr.op == LirOpcode::Shl) {
+                status = enc.Lslv(value, value, amount);
+            }
+            else if (logical || !type.IsSigned()) {
+                status = enc.Lsrv(value, value, amount);
+            }
+            else {
+                status = enc.Asrv(value, value, amount);
+            }
+            Must(status, LirOpcodeName(instr.op));
+            StoreToSlot(value, instr.dst, type);
+            break;
+        }
+        case LirOpcode::Neg: {
+            const TypeRef &type = instr.type;
+            if (!LoadUnaryOperand(instr, type)) {
+                break;
+            }
+            const A64Reg value = A64::Xn(kTemp);
+            Must(enc.Neg(value, value), LirOpcodeName(instr.op));
+            StoreToSlot(value, instr.dst, type);
+            break;
+        }
+        case LirOpcode::Not: {
+            // Logical negation, whose result is a boolean rather than a value
+            // of the operand's type: anything that compares equal to zero
+            // becomes one and everything else becomes zero.
+            if (!LoadUnaryOperand(instr, instr.type)) {
+                break;
+            }
+            const A64Reg value = A64::Xn(kTemp);
+            Must(enc.SubsImm(A64::Xzr, value, 0), LirOpcodeName(instr.op));
+            Must(enc.Cset(value, A64Condition::Eq), LirOpcodeName(instr.op));
+            StoreToSlot(value, instr.dst, TypeRef::MakeBool());
+            break;
+        }
+        case LirOpcode::BitNot: {
+            const TypeRef &type = instr.type;
+            if (!LoadUnaryOperand(instr, type)) {
+                break;
+            }
+            const A64Reg value = A64::Xn(kTemp);
+            // On a boolean `~` is the logical negation, so that `~true` is
+            // `false`: complementing the whole register would leave 0xFE in the
+            // byte the slot keeps, which loads back as true again.
+            Must(type.IsBool() ? enc.EorImm(value, value, 1) : enc.Mvn(value, value), LirOpcodeName(instr.op));
+            StoreToSlot(value, instr.dst, type);
             break;
         }
         default:
@@ -1130,6 +1430,9 @@ private:
         for (const auto &func : mod.funcs) {
             GenFunc(func);
         }
+        // The runtime helpers the generated code reached, after every user
+        // function so a call to one is always a forward reference.
+        EmitIntPowHelper();
     }
 };
 

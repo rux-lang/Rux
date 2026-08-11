@@ -117,6 +117,23 @@ bool IsFloat(const TypeRef &t) {
     return t.kind == TypeRef::Kind::Float32 || t.kind == TypeRef::Kind::Float64;
 }
 
+TypeRef UnsignedIntegerType(const TypeRef &type) {
+    switch (type.kind) {
+    case TypeRef::Kind::Int8:
+        return TypeRef::MakeUInt8();
+    case TypeRef::Kind::Int16:
+        return TypeRef::MakeUInt16();
+    case TypeRef::Kind::Int32:
+        return TypeRef::MakeUInt32();
+    case TypeRef::Kind::Int64:
+        return TypeRef::MakeUInt64();
+    case TypeRef::Kind::Int:
+        return TypeRef::MakeUInt();
+    default:
+        return type;
+    }
+}
+
 std::string BaseTypeName(const std::string &name) {
     const std::size_t pos = name.find('<');
     return pos == std::string::npos ? name : name.substr(0, pos);

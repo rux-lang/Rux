@@ -18,23 +18,6 @@ using namespace Layout;
 
 // Type utilities
 namespace {
-TypeRef UnsignedIntegerType(const TypeRef &type) {
-    switch (type.kind) {
-    case TypeRef::Kind::Int8:
-        return TypeRef::MakeUInt8();
-    case TypeRef::Kind::Int16:
-        return TypeRef::MakeUInt16();
-    case TypeRef::Kind::Int32:
-        return TypeRef::MakeUInt32();
-    case TypeRef::Kind::Int64:
-        return TypeRef::MakeUInt64();
-    case TypeRef::Kind::Int:
-        return TypeRef::MakeUInt();
-    default:
-        return type;
-    }
-}
-
 // x86-64 register names sized for the rax family
 std::string_view GprA(int bytes) {
     switch (bytes) {

@@ -281,13 +281,13 @@ TEST_CASE("AArch64 RCU emitter keeps the stack pointer 16-byte aligned across a 
 }
 
 TEST_CASE("AArch64 RCU emitter reports an unimplemented opcode by name") {
-    // Written so the sum survives constant folding and reaches the back end as
-    // an `add` rather than as one more constant.
+    // A widening conversion, which reaches the back end as the `cast` opcode
+    // that Task 26 lowers.
     const auto package = CompileToAArch64Lir(R"(
         func Main() -> int {
-            var total: int = 1;
-            total = total + 2;
-            return total;
+            var narrow: int32 = 1;
+            var wide: int = narrow as int;
+            return wide;
         }
     )");
 
@@ -296,7 +296,7 @@ TEST_CASE("AArch64 RCU emitter reports an unimplemented opcode by name") {
     CHECK_EQ(objects.size(), 1);
 
     const auto reports = JoinMessages(emitter.Diagnostics());
-    CHECK_MESSAGE(reports.contains("'add' opcode"), reports);
+    CHECK_MESSAGE(reports.contains("'cast' opcode"), reports);
     CHECK_MESSAGE(reports.contains("not implemented yet"), reports);
     CHECK_MESSAGE(reports.contains("'Main'"), reports);
     for (const auto &diagnostic : emitter.Diagnostics()) {
@@ -722,4 +722,244 @@ TEST_CASE("AArch64 RCU emitter reaches a slot past the addressing range through 
     // hand-rolled beside the access.
     CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFF8003FFU) == 0x910003B0U; }));
     CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFFFFFE0U) == 0xF9400200U; }));
+}
+
+// Integer arithmetic, bitwise and shift opcodes
+//
+// Each of these is a whole program too, so an emitter that reported nothing is
+// part of what every case checks. The words are the instructions themselves —
+// the operands are always X9, X12 and, where a divide needs a third register,
+// X10, since every value lives in a stack slot between instructions.
+
+TEST_CASE("AArch64 RCU emitter lowers each binary integer operator to one instruction") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var a: int = 37;
+            var b: int = 5;
+            var sum = a + b;
+            var difference = a - b;
+            var product = a * b;
+            var conjunction = a & b;
+            var disjunction = a | b;
+            var exclusive = a ^ b;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    const std::vector<std::uint32_t> expected = {
+        0x8B0C0129, // add x9, x9, x12
+        0xCB0C0129, // sub x9, x9, x12
+        0x9B0C7D29, // mul x9, x9, x12
+        0x8A0C0129, // and x9, x9, x12
+        0xAA0C0129, // orr x9, x9, x12
+        0xCA0C0129, // eor x9, x9, x12
+    };
+    for (const auto word : expected) {
+        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    }
+}
+
+TEST_CASE("AArch64 RCU emitter divides with the instruction the operand's signedness names") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var signedLeft: int = -100;
+            var signedRight: int = 7;
+            var signedQuotient = signedLeft / signedRight;
+            var unsignedLeft: uint = 100;
+            var unsignedRight: uint = 7;
+            var unsignedQuotient = unsignedLeft / unsignedRight;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // The operands arrive extended by their own types, so the divide itself is
+    // the only thing that has to know which of the two it is.
+    CHECK_MESSAGE(std::ranges::find(words, 0x9ACC0D2AU) != words.end(), "sdiv x10, x9, x12");
+    CHECK_MESSAGE(std::ranges::find(words, 0x9ACC092AU) != words.end(), "udiv x10, x9, x12");
+}
+
+TEST_CASE("AArch64 RCU emitter synthesizes a remainder from a divide and a multiply-subtract") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var left: int = -100;
+            var right: int = 7;
+            var remainder = left % right;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // AArch64 has no remainder instruction: it is the dividend less the
+    // quotient times the divisor, and MSUB is that whole expression.
+    CHECK_MESSAGE(std::ranges::find(words, 0x9ACC0D2AU) != words.end(), "sdiv x10, x9, x12");
+    CHECK_MESSAGE(std::ranges::find(words, 0x9B0CA549U) != words.end(), "msub x9, x10, x12, x9");
+    // The multiply is folded into the subtraction rather than standing beside
+    // it, so a plain MUL anywhere would mean two instructions where one does.
+    CHECK_FALSE(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFE0FC00U) == 0x9B007C00U; }));
+}
+
+TEST_CASE("AArch64 RCU emitter wraps a narrow result at the width its type occupies") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var small: uint8 = 200;
+            var step: uint8 = 100;
+            var wrapped = small + step;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // Two byte loads, the addition at a whole register's width, and a byte
+    // store: 300 wraps to 44 because the byte above it is never written, which
+    // is exactly how the x86-64 back end wraps it and costs no masking here
+    // either.
+    const auto sum = std::ranges::find(words, 0x8B0C0129U); // add x9, x9, x12
+    REQUIRE_MESSAGE(sum != words.end(), "add x9, x9, x12");
+    const auto index = static_cast<std::size_t>(sum - words.begin());
+    REQUIRE_GE(index, 2);
+    REQUIRE_LT(index + 1, words.size());
+    CHECK_EQ(HexWord(words[index - 2] & 0xFFC003FFU), HexWord(0x394003A9U)); // ldrb w9, [x29, #imm]
+    CHECK_EQ(HexWord(words[index - 1] & 0xFFC003FFU), HexWord(0x394003ACU)); // ldrb w12, [x29, #imm]
+    CHECK_EQ(HexWord(words[index + 1] & 0xFFC003FFU), HexWord(0x390003A9U)); // strb w9, [x29, #imm]
+}
+
+TEST_CASE("AArch64 RCU emitter reads a right shift at the signedness its opcode asks for") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var wide: int32 = -100;
+            var amount: int32 = 3;
+            var arithmetic = wide >> amount;
+            var logical = wide >>> amount;
+            var left = wide << amount;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // The variable shifts mask the amount to the width of the register they
+    // shift, so nothing masks it here and an over-long shift wraps at the same
+    // 64 the x86-64 back end's does.
+    const auto arithmetic = std::ranges::find(words, 0x9ACC2929U); // asr x9, x9, x12
+    const auto logical = std::ranges::find(words, 0x9ACC2529U);    // lsr x9, x9, x12
+    REQUIRE_MESSAGE(arithmetic != words.end(), "asr x9, x9, x12");
+    REQUIRE_MESSAGE(logical != words.end(), "lsr x9, x9, x12");
+    CHECK_MESSAGE(std::ranges::find(words, 0x9ACC2129U) != words.end(), "lsl x9, x9, x12");
+
+    // What separates the two right shifts is the load two instructions above
+    // each: `>>` sign-extends its operand and `>>>` reads the same signed type
+    // as unsigned, which is the whole of the difference between them.
+    const auto signedLoad = *(arithmetic - 2);
+    const auto unsignedLoad = *(logical - 2);
+    CHECK_EQ(HexWord(signedLoad & 0xFFC003FFU), HexWord(0xB98003A9U));   // ldrsw x9, [x29, #imm]
+    CHECK_EQ(HexWord(unsignedLoad & 0xFFC003FFU), HexWord(0xB94003A9U)); // ldr   w9, [x29, #imm]
+}
+
+TEST_CASE("AArch64 RCU emitter negates, complements and tests in one instruction each") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var value: int = 37;
+            var negated = -value;
+            var complemented = ~value;
+            var flag: bool = true;
+            var notted = !flag;
+            var flipped = ~flag;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    const std::vector<std::uint32_t> expected = {
+        0xCB0903E9, // neg  x9, x9        — SUB from the zero register
+        0xAA2903E9, // mvn  x9, x9        — ORN from the zero register
+        0xF100013F, // cmp  x9, #0
+        0x9A9F17E9, // cset x9, eq        — the logical negation, as a boolean
+        0xD2400129, // eor  x9, x9, #1    — `~` on a boolean is that negation too
+    };
+    for (const auto word : expected) {
+        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    }
+    // A boolean is a byte in its slot, so complementing the whole register
+    // would leave 0xFE there and read back as true again.
+    CHECK_EQ(std::ranges::count(words, 0xAA2903E9U), 1);
+}
+
+TEST_CASE("AArch64 RCU emitter calls one synthesized exponentiation helper") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var base: int = 5;
+            var exponent: int = 3;
+            var first = base ** exponent;
+            var second = exponent ** base;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto &object = objects.front();
+
+    // One body, whatever the number of uses, and local to the object: two
+    // modules of a package each carry their own rather than sharing one.
+    const RcuSymbol *helper = FindSymbol(object, "__rux_ipow");
+    REQUIRE(helper != nullptr);
+    CHECK_EQ(helper->sectionIdx, RCU_TEXT_IDX);
+    CHECK_EQ(helper->visibility, RcuSymVis::Local);
+    CHECK_EQ(helper->kind, RcuSymKind::Func);
+
+    // Exponentiation by squaring, with a negative exponent yielding zero and a
+    // zero exponent yielding one — the answers the x86-64 helper gives.
+    const std::vector<std::uint32_t> expected = {
+        0xAA0003E2, // mov  x2, x0        — the base
+        0xD2800000, // mov  x0, #0        — a negative exponent yields zero
+        0xB7F80101, // tbnz x1, #63, done
+        0xD2800020, // mov  x0, #1
+        0xB40000C1, // loop: cbz x1, done
+        0x36000041, // tbz  w1, #0, square
+        0x9B027C00, // mul  x0, x0, x2
+        0x9B027C42, // square: mul x2, x2, x2
+        0x9341FC21, // asr  x1, x1, #1
+        0x17FFFFFB, // b    loop
+        0xD65F03C0, // done: ret
+    };
+    const auto body = FunctionWords(object, "__rux_ipow");
+    REQUIRE_EQ(body.size(), expected.size());
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        CHECK_EQ(HexWord(body[i]), HexWord(expected[i]));
+    }
+
+    // Each use is a BL carrying a branch relocation against that one symbol,
+    // since the body is emitted after every function that calls it.
+    const auto calls = RelocsFor(object, RCU_TEXT_IDX, "__rux_ipow");
+    REQUIRE_EQ(calls.size(), 2);
+    for (const auto &call : calls) {
+        CHECK_EQ(call.type, RcuRelType::AArch64Call26);
+        CHECK_EQ(HexWord(TextWordAt(object, call.sectionOffset) & 0xFC000000U), HexWord(0x94000000U)); // bl
+    }
 }
