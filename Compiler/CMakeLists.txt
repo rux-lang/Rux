@@ -125,6 +125,7 @@ rux_add_component(RuxArchive
 target_link_libraries(RuxArchive PUBLIC RuxObjectRcu)
 
 rux_add_component(RuxCodeGenAArch64
+    CodeGen/AArch64/Encoder.cpp
     CodeGen/AArch64/NativeEmitter.cpp)
 target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxCodeGenCommon RuxSystem RuxDiagnostics RuxArchive)
 

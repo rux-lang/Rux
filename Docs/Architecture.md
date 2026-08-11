@@ -41,7 +41,7 @@ The driver loads the root manifest and dependencies before entering this pipelin
 | `Lowering`             | AST/semantic model → HIR → LIR                                        | Frontend and IR components            |
 | `CodeGen`              | Layout rules shared by machine backends                               | LIR                                   |
 | `CodeGen/X86_64`       | x86-64 code generation and RCU construction                           | LIR, Object, Diagnostics              |
-| `CodeGen/AArch64`      | Native AArch64 lowering and linking through the platform Clang driver | LIR, System, Diagnostics, Archive     |
+| `CodeGen/AArch64`      | AArch64 instruction encoding; lowering still through the Clang driver | LIR, System, Diagnostics, Archive     |
 | `Object/Rcu`           | RCU object representation, relocation kinds, and serialization        | Target                                |
 | `Archive`              | Deterministic native archive containers and symbol indexes            | Object                                |
 | `Linker`               | PE, ELF, Mach-O, relocatable-object, and library output               | Object, Archive, and System           |
