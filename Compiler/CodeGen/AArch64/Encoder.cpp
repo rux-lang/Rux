@@ -145,6 +145,127 @@ A64Status EncodeExtend(const A64Enc &enc, const A64Reg rd, const A64Reg rn, cons
     const A64Reg source = A64::Gpr(rn.code, rd.bits);
     return EncodeBitfield(enc, rd, source, 0, width - 1U, signExtend ? 0U : 2U);
 }
+
+// ADD / ADDS / SUB / SUBS (shifted register):
+// sf | op | S | 01011 | shift | 0 | Rm | imm6 | Rn | Rd.
+A64Status EncodeAddSubShifted(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm,
+                              const A64ShiftKind shift, const unsigned amount, const bool subtract,
+                              const bool setFlags) {
+    const unsigned bits = rd.bits;
+    if (!ZrOperand(rd, bits) || !ZrOperand(rn, bits) || !ZrOperand(rm, bits)) {
+        return A64Status::InvalidRegister;
+    }
+    // ROR is a logical-only shift; the arithmetic forms leave its encoding
+    // unallocated rather than giving it a meaning.
+    if (shift == A64ShiftKind::Ror || amount >= bits) {
+        return A64Status::InvalidImmediate;
+    }
+    enc.Word(rd.Sf() << 31U | (subtract ? 1U : 0U) << 30U | (setFlags ? 1U : 0U) << 29U | 0x0BU << 24U |
+             static_cast<std::uint32_t>(shift) << 22U | std::uint32_t{rm.code} << 16U | amount << 10U |
+             std::uint32_t{rn.code} << 5U | rd.code);
+    return A64Status::Ok;
+}
+
+// ADD / ADDS / SUB / SUBS (extended register):
+// sf | op | S | 01011 | 00 | 1 | Rm | option | imm3 | Rn | Rd.
+A64Status EncodeAddSubExtended(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm,
+                               const A64ExtendKind extend, const unsigned amount, const bool subtract,
+                               const bool setFlags) {
+    const unsigned bits = rd.bits;
+    if (!(setFlags ? ZrOperand(rd, bits) : SpOperand(rd, bits)) || !SpOperand(rn, bits)) {
+        return A64Status::InvalidRegister;
+    }
+    // The extension says how much of `rm` is read, so everything short of a
+    // whole doubleword is a W register. A 32-bit instruction has no doubleword
+    // source at all, which leaves UXTX and SXTX naming a W register too.
+    const bool wholeRegister = bits == 64 && (extend == A64ExtendKind::Uxtx || extend == A64ExtendKind::Sxtx);
+    if (!ZrOperand(rm, wholeRegister ? 64U : 32U)) {
+        return A64Status::InvalidRegister;
+    }
+    if (amount > 4) {
+        return A64Status::InvalidImmediate;
+    }
+    enc.Word(rd.Sf() << 31U | (subtract ? 1U : 0U) << 30U | (setFlags ? 1U : 0U) << 29U | 0x0BU << 24U | 1U << 21U |
+             std::uint32_t{rm.code} << 16U | static_cast<std::uint32_t>(extend) << 13U | amount << 10U |
+             std::uint32_t{rn.code} << 5U | rd.code);
+    return A64Status::Ok;
+}
+
+// Logical (shifted register): sf | opc | 01010 | shift | N | Rm | imm6 | Rn | Rd.
+// `opc` picks the operation and `N` complements the shifted `rm`.
+A64Status EncodeLogicalShifted(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm,
+                               const A64ShiftKind shift, const unsigned amount, const unsigned opc, const bool negate) {
+    const unsigned bits = rd.bits;
+    if (!ZrOperand(rd, bits) || !ZrOperand(rn, bits) || !ZrOperand(rm, bits)) {
+        return A64Status::InvalidRegister;
+    }
+    if (amount >= bits) {
+        return A64Status::InvalidImmediate;
+    }
+    enc.Word(rd.Sf() << 31U | opc << 29U | 0x0AU << 24U | static_cast<std::uint32_t>(shift) << 22U |
+             (negate ? 1U : 0U) << 21U | std::uint32_t{rm.code} << 16U | amount << 10U | std::uint32_t{rn.code} << 5U |
+             rd.code);
+    return A64Status::Ok;
+}
+
+// Data processing (2 source): sf | 0 | S | 11010110 | Rm | opcode | Rn | Rd.
+// The variable shifts and the two divides share it.
+A64Status EncodeDataProc2(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm, const unsigned opcode) {
+    const unsigned bits = rd.bits;
+    if (!ZrOperand(rd, bits) || !ZrOperand(rn, bits) || !ZrOperand(rm, bits)) {
+        return A64Status::InvalidRegister;
+    }
+    enc.Word(rd.Sf() << 31U | 0xD6U << 21U | std::uint32_t{rm.code} << 16U | opcode << 10U |
+             std::uint32_t{rn.code} << 5U | rd.code);
+    return A64Status::Ok;
+}
+
+// Data processing (1 source): sf | 1 | S | 11010110 | 00000 | opcode | Rn | Rd.
+A64Status EncodeDataProc1(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const unsigned opcode) {
+    const unsigned bits = rd.bits;
+    if (!ZrOperand(rd, bits) || !ZrOperand(rn, bits)) {
+        return A64Status::InvalidRegister;
+    }
+    enc.Word(rd.Sf() << 31U | 1U << 30U | 0xD6U << 21U | opcode << 10U | std::uint32_t{rn.code} << 5U | rd.code);
+    return A64Status::Ok;
+}
+
+// Data processing (3 source): sf | 00 | 11011 | op31 | Rm | o0 | Ra | Rn | Rd.
+// `op31` and `o0` together name the operation, and the widening and high-half
+// forms differ from the plain ones only in the widths their operands take.
+A64Status EncodeMulAcc(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Reg ra,
+                       const unsigned op31, const bool subtract, const unsigned sourceBits) {
+    if (!ZrOperand(rd, rd.bits) || !ZrOperand(ra, rd.bits)) {
+        return A64Status::InvalidRegister;
+    }
+    if (!ZrOperand(rn, sourceBits) || !ZrOperand(rm, sourceBits)) {
+        return A64Status::InvalidRegister;
+    }
+    enc.Word(rd.Sf() << 31U | 0x1BU << 24U | op31 << 21U | std::uint32_t{rm.code} << 16U | (subtract ? 1U : 0U) << 15U |
+             std::uint32_t{ra.code} << 10U | std::uint32_t{rn.code} << 5U | rd.code);
+    return A64Status::Ok;
+}
+
+// Conditional select: sf | op | S | 11010100 | Rm | cond | op2 | Rn | Rd.
+A64Status EncodeCondSelect(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm,
+                           const A64Condition cond, const bool invert, const bool increment) {
+    const unsigned bits = rd.bits;
+    if (!ZrOperand(rd, bits) || !ZrOperand(rn, bits) || !ZrOperand(rm, bits)) {
+        return A64Status::InvalidRegister;
+    }
+    enc.Word(rd.Sf() << 31U | (invert ? 1U : 0U) << 30U | 0xD4U << 21U | std::uint32_t{rm.code} << 16U |
+             static_cast<std::uint32_t>(cond) << 12U | (increment ? 1U : 0U) << 10U | std::uint32_t{rn.code} << 5U |
+             rd.code);
+    return A64Status::Ok;
+}
+
+// Every conditional-select alias reads as "when `cond`, do the thing", which
+// the underlying instruction spells as "unless `cond`, transform rm". AL and NV
+// are each other's inverse and mean the same thing, so no alias can be written
+// with them without reversing its own sense.
+constexpr bool InvertibleCondition(const A64Condition cond) {
+    return cond != A64Condition::Al && cond != A64Condition::Nv;
+}
 } // namespace
 
 std::string_view A64StatusName(const A64Status status) {
@@ -442,5 +563,278 @@ A64Status A64Enc::Extr(const A64Reg rd, const A64Reg rn, const A64Reg rm, const 
 
 A64Status A64Enc::Ror(const A64Reg rd, const A64Reg rn, const unsigned shift) const {
     return Extr(rd, rn, rn, shift);
+}
+
+A64Status A64Enc::Add(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ShiftKind shift,
+                      const unsigned amount) const {
+    return EncodeAddSubShifted(*this, rd, rn, rm, shift, amount, false, false);
+}
+
+A64Status A64Enc::Adds(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ShiftKind shift,
+                       const unsigned amount) const {
+    return EncodeAddSubShifted(*this, rd, rn, rm, shift, amount, false, true);
+}
+
+A64Status A64Enc::Sub(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ShiftKind shift,
+                      const unsigned amount) const {
+    return EncodeAddSubShifted(*this, rd, rn, rm, shift, amount, true, false);
+}
+
+A64Status A64Enc::Subs(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ShiftKind shift,
+                       const unsigned amount) const {
+    return EncodeAddSubShifted(*this, rd, rn, rm, shift, amount, true, true);
+}
+
+A64Status A64Enc::Cmp(const A64Reg rn, const A64Reg rm, const A64ShiftKind shift, const unsigned amount) const {
+    return Subs(A64::Gpr(31, rn.bits), rn, rm, shift, amount);
+}
+
+A64Status A64Enc::Cmn(const A64Reg rn, const A64Reg rm, const A64ShiftKind shift, const unsigned amount) const {
+    return Adds(A64::Gpr(31, rn.bits), rn, rm, shift, amount);
+}
+
+A64Status A64Enc::Neg(const A64Reg rd, const A64Reg rm, const A64ShiftKind shift, const unsigned amount) const {
+    return Sub(rd, A64::Gpr(31, rd.bits), rm, shift, amount);
+}
+
+A64Status A64Enc::Negs(const A64Reg rd, const A64Reg rm, const A64ShiftKind shift, const unsigned amount) const {
+    return Subs(rd, A64::Gpr(31, rd.bits), rm, shift, amount);
+}
+
+A64Status A64Enc::AddExt(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ExtendKind extend,
+                         const unsigned amount) const {
+    return EncodeAddSubExtended(*this, rd, rn, rm, extend, amount, false, false);
+}
+
+A64Status A64Enc::AddsExt(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ExtendKind extend,
+                          const unsigned amount) const {
+    return EncodeAddSubExtended(*this, rd, rn, rm, extend, amount, false, true);
+}
+
+A64Status A64Enc::SubExt(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ExtendKind extend,
+                         const unsigned amount) const {
+    return EncodeAddSubExtended(*this, rd, rn, rm, extend, amount, true, false);
+}
+
+A64Status A64Enc::SubsExt(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ExtendKind extend,
+                          const unsigned amount) const {
+    return EncodeAddSubExtended(*this, rd, rn, rm, extend, amount, true, true);
+}
+
+A64Status A64Enc::And(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ShiftKind shift,
+                      const unsigned amount) const {
+    return EncodeLogicalShifted(*this, rd, rn, rm, shift, amount, 0, false);
+}
+
+A64Status A64Enc::Bic(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ShiftKind shift,
+                      const unsigned amount) const {
+    return EncodeLogicalShifted(*this, rd, rn, rm, shift, amount, 0, true);
+}
+
+A64Status A64Enc::Orr(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ShiftKind shift,
+                      const unsigned amount) const {
+    return EncodeLogicalShifted(*this, rd, rn, rm, shift, amount, 1, false);
+}
+
+A64Status A64Enc::Orn(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ShiftKind shift,
+                      const unsigned amount) const {
+    return EncodeLogicalShifted(*this, rd, rn, rm, shift, amount, 1, true);
+}
+
+A64Status A64Enc::Eor(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ShiftKind shift,
+                      const unsigned amount) const {
+    return EncodeLogicalShifted(*this, rd, rn, rm, shift, amount, 2, false);
+}
+
+A64Status A64Enc::Eon(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ShiftKind shift,
+                      const unsigned amount) const {
+    return EncodeLogicalShifted(*this, rd, rn, rm, shift, amount, 2, true);
+}
+
+A64Status A64Enc::Ands(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ShiftKind shift,
+                       const unsigned amount) const {
+    return EncodeLogicalShifted(*this, rd, rn, rm, shift, amount, 3, false);
+}
+
+A64Status A64Enc::Bics(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ShiftKind shift,
+                       const unsigned amount) const {
+    return EncodeLogicalShifted(*this, rd, rn, rm, shift, amount, 3, true);
+}
+
+A64Status A64Enc::Tst(const A64Reg rn, const A64Reg rm, const A64ShiftKind shift, const unsigned amount) const {
+    return Ands(A64::Gpr(31, rn.bits), rn, rm, shift, amount);
+}
+
+A64Status A64Enc::Mvn(const A64Reg rd, const A64Reg rm, const A64ShiftKind shift, const unsigned amount) const {
+    return Orn(rd, A64::Gpr(31, rd.bits), rm, shift, amount);
+}
+
+A64Status A64Enc::Mov(const A64Reg rd, const A64Reg rm) const {
+    // ORR reads code 31 as the zero register, so a MOV naming SP has to be the
+    // arithmetic form instead. That form in turn cannot name XZR, which is why
+    // MOV between the two readings of code 31 does not exist.
+    if (rd.IsStackPointer() || rm.IsStackPointer()) {
+        return AddImm(rd, rm, 0);
+    }
+    return Orr(rd, A64::Gpr(31, rd.bits), rm);
+}
+
+A64Status A64Enc::Lslv(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeDataProc2(*this, rd, rn, rm, 0x08);
+}
+
+A64Status A64Enc::Lsrv(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeDataProc2(*this, rd, rn, rm, 0x09);
+}
+
+A64Status A64Enc::Asrv(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeDataProc2(*this, rd, rn, rm, 0x0A);
+}
+
+A64Status A64Enc::Rorv(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeDataProc2(*this, rd, rn, rm, 0x0B);
+}
+
+A64Status A64Enc::Udiv(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeDataProc2(*this, rd, rn, rm, 0x02);
+}
+
+A64Status A64Enc::Sdiv(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeDataProc2(*this, rd, rn, rm, 0x03);
+}
+
+A64Status A64Enc::Madd(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Reg ra) const {
+    return EncodeMulAcc(*this, rd, rn, rm, ra, 0, false, rd.bits);
+}
+
+A64Status A64Enc::Msub(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Reg ra) const {
+    return EncodeMulAcc(*this, rd, rn, rm, ra, 0, true, rd.bits);
+}
+
+A64Status A64Enc::Mul(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return Madd(rd, rn, rm, A64::Gpr(31, rd.bits));
+}
+
+A64Status A64Enc::Mneg(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return Msub(rd, rn, rm, A64::Gpr(31, rd.bits));
+}
+
+A64Status A64Enc::Smaddl(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Reg ra) const {
+    if (rd.bits != 64) {
+        return A64Status::InvalidRegister;
+    }
+    return EncodeMulAcc(*this, rd, rn, rm, ra, 1, false, 32);
+}
+
+A64Status A64Enc::Umaddl(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Reg ra) const {
+    if (rd.bits != 64) {
+        return A64Status::InvalidRegister;
+    }
+    return EncodeMulAcc(*this, rd, rn, rm, ra, 5, false, 32);
+}
+
+A64Status A64Enc::Smull(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return Smaddl(rd, rn, rm, A64::Xzr);
+}
+
+A64Status A64Enc::Umull(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return Umaddl(rd, rn, rm, A64::Xzr);
+}
+
+A64Status A64Enc::Smulh(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    if (rd.bits != 64) {
+        return A64Status::InvalidRegister;
+    }
+    return EncodeMulAcc(*this, rd, rn, rm, A64::Xzr, 2, false, 64);
+}
+
+A64Status A64Enc::Umulh(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    if (rd.bits != 64) {
+        return A64Status::InvalidRegister;
+    }
+    return EncodeMulAcc(*this, rd, rn, rm, A64::Xzr, 6, false, 64);
+}
+
+A64Status A64Enc::Csel(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Condition cond) const {
+    return EncodeCondSelect(*this, rd, rn, rm, cond, false, false);
+}
+
+A64Status A64Enc::Csinc(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Condition cond) const {
+    return EncodeCondSelect(*this, rd, rn, rm, cond, false, true);
+}
+
+A64Status A64Enc::Csinv(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Condition cond) const {
+    return EncodeCondSelect(*this, rd, rn, rm, cond, true, false);
+}
+
+A64Status A64Enc::Csneg(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Condition cond) const {
+    return EncodeCondSelect(*this, rd, rn, rm, cond, true, true);
+}
+
+A64Status A64Enc::Cset(const A64Reg rd, const A64Condition cond) const {
+    if (!InvertibleCondition(cond)) {
+        return A64Status::InvalidImmediate;
+    }
+    const A64Reg zero = A64::Gpr(31, rd.bits);
+    return Csinc(rd, zero, zero, A64::InvertCondition(cond));
+}
+
+A64Status A64Enc::Csetm(const A64Reg rd, const A64Condition cond) const {
+    if (!InvertibleCondition(cond)) {
+        return A64Status::InvalidImmediate;
+    }
+    const A64Reg zero = A64::Gpr(31, rd.bits);
+    return Csinv(rd, zero, zero, A64::InvertCondition(cond));
+}
+
+A64Status A64Enc::Cinc(const A64Reg rd, const A64Reg rn, const A64Condition cond) const {
+    if (!InvertibleCondition(cond)) {
+        return A64Status::InvalidImmediate;
+    }
+    return Csinc(rd, rn, rn, A64::InvertCondition(cond));
+}
+
+A64Status A64Enc::Cinv(const A64Reg rd, const A64Reg rn, const A64Condition cond) const {
+    if (!InvertibleCondition(cond)) {
+        return A64Status::InvalidImmediate;
+    }
+    return Csinv(rd, rn, rn, A64::InvertCondition(cond));
+}
+
+A64Status A64Enc::Cneg(const A64Reg rd, const A64Reg rn, const A64Condition cond) const {
+    if (!InvertibleCondition(cond)) {
+        return A64Status::InvalidImmediate;
+    }
+    return Csneg(rd, rn, rn, A64::InvertCondition(cond));
+}
+
+A64Status A64Enc::Rbit(const A64Reg rd, const A64Reg rn) const {
+    return EncodeDataProc1(*this, rd, rn, 0x00);
+}
+
+A64Status A64Enc::Rev16(const A64Reg rd, const A64Reg rn) const {
+    return EncodeDataProc1(*this, rd, rn, 0x01);
+}
+
+A64Status A64Enc::Rev32(const A64Reg rd, const A64Reg rn) const {
+    // Reversing the bytes of each word is only distinct from REV where there is
+    // more than one word, so the 32-bit encoding is REV itself and REV32 has
+    // none of its own.
+    if (rd.bits != 64) {
+        return A64Status::InvalidRegister;
+    }
+    return EncodeDataProc1(*this, rd, rn, 0x02);
+}
+
+A64Status A64Enc::Rev(const A64Reg rd, const A64Reg rn) const {
+    return EncodeDataProc1(*this, rd, rn, rd.bits == 64 ? 0x03U : 0x02U);
+}
+
+A64Status A64Enc::Clz(const A64Reg rd, const A64Reg rn) const {
+    return EncodeDataProc1(*this, rd, rn, 0x04);
+}
+
+A64Status A64Enc::Cls(const A64Reg rd, const A64Reg rn) const {
+    return EncodeDataProc1(*this, rd, rn, 0x05);
 }
 } // namespace Rux

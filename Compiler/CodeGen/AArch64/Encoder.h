@@ -189,6 +189,135 @@ public:
     [[nodiscard]] A64Status Extr(A64Reg rd, A64Reg rn, A64Reg rm, unsigned lsb) const;
     [[nodiscard]] A64Status Ror(A64Reg rd, A64Reg rn, unsigned shift) const;
 
+    // Data processing — register.
+    //
+    // The same width rule holds: `rd` selects the form and every other
+    // general-purpose operand must match it, apart from the deliberately mixed
+    // widths of the extended-register and widening-multiply forms. Only the
+    // extended-register instructions reach the stack pointer; the shifted and
+    // logical forms read code 31 as the zero register throughout, which is what
+    // makes CMP, TST, NEG and MOV aliases of them.
+
+    // ADD / ADDS / SUB / SUBS (shifted register). `amount` must be smaller than
+    // the register width, and `shift` is LSL, LSR or ASR — ROR has no encoding
+    // in the arithmetic forms.
+    [[nodiscard]] A64Status Add(A64Reg rd, A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                unsigned amount = 0) const;
+    [[nodiscard]] A64Status Adds(A64Reg rd, A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                 unsigned amount = 0) const;
+    [[nodiscard]] A64Status Sub(A64Reg rd, A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                unsigned amount = 0) const;
+    [[nodiscard]] A64Status Subs(A64Reg rd, A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                 unsigned amount = 0) const;
+
+    // The shifted-register aliases: CMP and CMN discard the result, NEG and
+    // NEGS subtract from the zero register.
+    [[nodiscard]] A64Status Cmp(A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                unsigned amount = 0) const;
+    [[nodiscard]] A64Status Cmn(A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                unsigned amount = 0) const;
+    [[nodiscard]] A64Status Neg(A64Reg rd, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                unsigned amount = 0) const;
+    [[nodiscard]] A64Status Negs(A64Reg rd, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                 unsigned amount = 0) const;
+
+    // ADD / ADDS / SUB / SUBS (extended register). The extension names how much
+    // of `rm` is read and whether the rest is copied or replicated, so `rm` is a
+    // W register for every option but UXTX and SXTX; `amount` is a left shift of
+    // 0 to 4 applied after the extension. These are the only arithmetic forms
+    // that reach SP, which they read through `rn` and — outside the
+    // flag-setting pair — write through `rd`.
+    [[nodiscard]] A64Status AddExt(A64Reg rd, A64Reg rn, A64Reg rm, A64ExtendKind extend, unsigned amount = 0) const;
+    [[nodiscard]] A64Status AddsExt(A64Reg rd, A64Reg rn, A64Reg rm, A64ExtendKind extend, unsigned amount = 0) const;
+    [[nodiscard]] A64Status SubExt(A64Reg rd, A64Reg rn, A64Reg rm, A64ExtendKind extend, unsigned amount = 0) const;
+    [[nodiscard]] A64Status SubsExt(A64Reg rd, A64Reg rn, A64Reg rm, A64ExtendKind extend, unsigned amount = 0) const;
+
+    // Logical (shifted register). The four inverting forms apply the shift and
+    // then complement `rm`; unlike the arithmetic forms these accept ROR.
+    [[nodiscard]] A64Status And(A64Reg rd, A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                unsigned amount = 0) const;
+    [[nodiscard]] A64Status Bic(A64Reg rd, A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                unsigned amount = 0) const;
+    [[nodiscard]] A64Status Orr(A64Reg rd, A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                unsigned amount = 0) const;
+    [[nodiscard]] A64Status Orn(A64Reg rd, A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                unsigned amount = 0) const;
+    [[nodiscard]] A64Status Eor(A64Reg rd, A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                unsigned amount = 0) const;
+    [[nodiscard]] A64Status Eon(A64Reg rd, A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                unsigned amount = 0) const;
+    [[nodiscard]] A64Status Ands(A64Reg rd, A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                 unsigned amount = 0) const;
+    [[nodiscard]] A64Status Bics(A64Reg rd, A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                 unsigned amount = 0) const;
+
+    // The logical aliases. MOV is ORR from the zero register, except when
+    // either operand is SP — code 31 names the wrong register there, so the
+    // stack-pointer form of MOV is ADD with an immediate of zero instead.
+    [[nodiscard]] A64Status Tst(A64Reg rn, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                unsigned amount = 0) const;
+    [[nodiscard]] A64Status Mvn(A64Reg rd, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
+                                unsigned amount = 0) const;
+    [[nodiscard]] A64Status Mov(A64Reg rd, A64Reg rm) const;
+
+    // Variable shifts, which take the amount from a register and mask it to the
+    // operand width, so no shift is ever out of range.
+    [[nodiscard]] A64Status Lslv(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Lsrv(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Asrv(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Rorv(A64Reg rd, A64Reg rn, A64Reg rm) const;
+
+    // SDIV and UDIV. Division by zero yields zero and overflow saturates, both
+    // without trapping, so a language that needs a diagnostic must test first.
+    [[nodiscard]] A64Status Sdiv(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Udiv(A64Reg rd, A64Reg rn, A64Reg rm) const;
+
+    // Multiply-accumulate: rd = ra +/- rn * rm, at the width of `rd`. MUL and
+    // MNEG are the forms that accumulate into the zero register.
+    [[nodiscard]] A64Status Madd(A64Reg rd, A64Reg rn, A64Reg rm, A64Reg ra) const;
+    [[nodiscard]] A64Status Msub(A64Reg rd, A64Reg rn, A64Reg rm, A64Reg ra) const;
+    [[nodiscard]] A64Status Mul(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Mneg(A64Reg rd, A64Reg rn, A64Reg rm) const;
+
+    // Widening multiply: a 32-bit `rn` times a 32-bit `rm` into a 64-bit `rd`,
+    // so these are the only forms whose operand widths deliberately disagree.
+    [[nodiscard]] A64Status Smaddl(A64Reg rd, A64Reg rn, A64Reg rm, A64Reg ra) const;
+    [[nodiscard]] A64Status Umaddl(A64Reg rd, A64Reg rn, A64Reg rm, A64Reg ra) const;
+    [[nodiscard]] A64Status Smull(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Umull(A64Reg rd, A64Reg rn, A64Reg rm) const;
+
+    // The high half of a 64-by-64 multiply. All three operands are 64-bit.
+    [[nodiscard]] A64Status Smulh(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Umulh(A64Reg rd, A64Reg rn, A64Reg rm) const;
+
+    // Conditional select: `rd` takes `rn` when `cond` holds and otherwise a
+    // transformation of `rm` — as it stands, incremented, complemented or
+    // negated.
+    [[nodiscard]] A64Status Csel(A64Reg rd, A64Reg rn, A64Reg rm, A64Condition cond) const;
+    [[nodiscard]] A64Status Csinc(A64Reg rd, A64Reg rn, A64Reg rm, A64Condition cond) const;
+    [[nodiscard]] A64Status Csinv(A64Reg rd, A64Reg rn, A64Reg rm, A64Condition cond) const;
+    [[nodiscard]] A64Status Csneg(A64Reg rd, A64Reg rn, A64Reg rm, A64Condition cond) const;
+
+    // The conditional-select aliases, each of which encodes the inverse of the
+    // condition it is written with. AL and NV therefore have no alias form —
+    // inverting them would silently reverse the sense of the instruction — and
+    // are refused as InvalidImmediate.
+    [[nodiscard]] A64Status Cset(A64Reg rd, A64Condition cond) const;
+    [[nodiscard]] A64Status Csetm(A64Reg rd, A64Condition cond) const;
+    [[nodiscard]] A64Status Cinc(A64Reg rd, A64Reg rn, A64Condition cond) const;
+    [[nodiscard]] A64Status Cinv(A64Reg rd, A64Reg rn, A64Condition cond) const;
+    [[nodiscard]] A64Status Cneg(A64Reg rd, A64Reg rn, A64Condition cond) const;
+
+    // Bit and byte counting and reversal. REV reverses every byte of the
+    // register and REV32 every byte of each word, so REV32 exists only in the
+    // 64-bit form and REV at that width is what REV32 would otherwise be.
+    [[nodiscard]] A64Status Clz(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Cls(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Rbit(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Rev(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Rev16(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Rev32(A64Reg rd, A64Reg rn) const;
+
 private:
     std::vector<std::uint8_t> &out;
 };

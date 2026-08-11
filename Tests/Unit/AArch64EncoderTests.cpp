@@ -581,6 +581,317 @@ TEST_CASE("AArch64 encodes EXTR and its ROR alias") {
     v.Refuses(v.enc.Ror(A64::Sp, x5, 1), A64Status::InvalidRegister);
 }
 
+// Data Processing — Register: Add/subtract (shifted register).
+TEST_CASE("AArch64 encodes shifted-register add and subtract") {
+    A64Vectors v;
+    const A64Reg x3 = A64::Xn(3);
+    const A64Reg x5 = A64::Xn(5);
+    const A64Reg x7 = A64::Xn(7);
+    const A64Reg w3 = A64::Wn(3);
+    const A64Reg w5 = A64::Wn(5);
+    const A64Reg w7 = A64::Wn(7);
+
+    SUBCASE("64-bit") {
+        v.Encodes(v.enc.Add(x3, x5, x7), 0x8B0700A3);
+        v.Encodes(v.enc.Adds(x3, x5, x7), 0xAB0700A3);
+        v.Encodes(v.enc.Sub(x3, x5, x7), 0xCB0700A3);
+        v.Encodes(v.enc.Subs(x3, x5, x7), 0xEB0700A3);
+        v.Encodes(v.enc.Add(x3, x5, x7, A64ShiftKind::Lsl, 12), 0x8B0730A3);
+        v.Encodes(v.enc.Add(x3, x5, x7, A64ShiftKind::Lsr, 63), 0x8B47FCA3);
+        v.Encodes(v.enc.Add(x3, x5, x7, A64ShiftKind::Asr, 1), 0x8B8704A3);
+        v.Encodes(v.enc.Sub(x3, x5, x7, A64ShiftKind::Asr, 63), 0xCB87FCA3);
+        // Code 31 is the zero register in every field of this form.
+        v.Encodes(v.enc.Add(x3, x5, A64::Xzr), 0x8B1F00A3);
+        v.Encodes(v.enc.Add(A64::Xzr, x5, x7), 0x8B0700BF);
+    }
+
+    SUBCASE("32-bit") {
+        v.Encodes(v.enc.Add(w3, w5, w7), 0x0B0700A3);
+        v.Encodes(v.enc.Adds(w3, w5, w7, A64ShiftKind::Lsl, 31), 0x2B077CA3);
+        v.Encodes(v.enc.Sub(w3, w5, w7, A64ShiftKind::Lsr, 1), 0x4B4704A3);
+        v.Encodes(v.enc.Subs(w3, w5, w7, A64ShiftKind::Asr, 31), 0x6B877CA3);
+    }
+
+    SUBCASE("aliases") {
+        v.Encodes(v.enc.Cmp(x5, x7), 0xEB0700BF);
+        v.Encodes(v.enc.Cmp(x5, x7, A64ShiftKind::Lsl, 3), 0xEB070CBF);
+        v.Encodes(v.enc.Cmn(x5, x7), 0xAB0700BF);
+        v.Encodes(v.enc.Neg(x3, x7), 0xCB0703E3);
+        v.Encodes(v.enc.Negs(x3, x7), 0xEB0703E3);
+        v.Encodes(v.enc.Neg(w3, w7, A64ShiftKind::Lsl, 2), 0x4B070BE3);
+        v.Encodes(v.enc.Cmp(w5, w7, A64ShiftKind::Asr, 4), 0x6B8710BF);
+    }
+
+    SUBCASE("refusals") {
+        // The shift amount is a bit position within the register.
+        v.Refuses(v.enc.Add(x3, x5, x7, A64ShiftKind::Lsl, 64), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Add(w3, w5, w7, A64ShiftKind::Lsl, 32), A64Status::InvalidImmediate);
+        // ROR has no encoding in the arithmetic forms.
+        v.Refuses(v.enc.Add(x3, x5, x7, A64ShiftKind::Ror, 1), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Subs(w3, w5, w7, A64ShiftKind::Ror, 0), A64Status::InvalidImmediate);
+        // No field of this form reads code 31 as the stack pointer, so SP is
+        // reachable only through the extended-register form.
+        v.Refuses(v.enc.Add(A64::Sp, x5, x7), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Add(x3, A64::Sp, x7), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Cmp(A64::Sp, x7), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Add(x3, x5, w7), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Add(x3, x5, A64::Dn(7)), A64Status::InvalidRegister);
+    }
+}
+
+// Data Processing — Register: Add/subtract (extended register).
+TEST_CASE("AArch64 encodes extended-register add and subtract") {
+    A64Vectors v;
+    const A64Reg x3 = A64::Xn(3);
+    const A64Reg x5 = A64::Xn(5);
+    const A64Reg x7 = A64::Xn(7);
+    const A64Reg w3 = A64::Wn(3);
+    const A64Reg w5 = A64::Wn(5);
+    const A64Reg w7 = A64::Wn(7);
+
+    SUBCASE("every option at every shift") {
+        v.Encodes(v.enc.AddExt(x3, x5, w7, A64ExtendKind::Uxtb), 0x8B2700A3);
+        v.Encodes(v.enc.AddExt(x3, x5, w7, A64ExtendKind::Uxth, 1), 0x8B2724A3);
+        v.Encodes(v.enc.AddExt(x3, x5, w7, A64ExtendKind::Uxtw, 2), 0x8B2748A3);
+        v.Encodes(v.enc.AddExt(x3, x5, x7, A64ExtendKind::Uxtx, 3), 0x8B276CA3);
+        v.Encodes(v.enc.AddExt(x3, x5, w7, A64ExtendKind::Sxtb, 4), 0x8B2790A3);
+        v.Encodes(v.enc.AddsExt(x3, x5, w7, A64ExtendKind::Sxth), 0xAB27A0A3);
+        v.Encodes(v.enc.SubExt(x3, x5, w7, A64ExtendKind::Sxtw), 0xCB27C0A3);
+        v.Encodes(v.enc.SubsExt(x3, x5, x7, A64ExtendKind::Sxtx), 0xEB27E0A3);
+    }
+
+    SUBCASE("stack pointer operands") {
+        v.Encodes(v.enc.AddExt(A64::Sp, A64::Sp, x7, A64ExtendKind::Uxtx), 0x8B2763FF);
+        v.Encodes(v.enc.AddExt(x3, A64::Sp, w7, A64ExtendKind::Uxtw, 2), 0x8B274BE3);
+        // CMP SP, Xm is the flag-setting form, which reads SP but writes XZR.
+        v.Encodes(v.enc.SubsExt(A64::Xzr, A64::Sp, x7, A64ExtendKind::Sxtx), 0xEB27E3FF);
+        v.Encodes(v.enc.AddExt(A64::Wsp, A64::Wsp, w7, A64ExtendKind::Uxtw), 0x0B2743FF);
+    }
+
+    SUBCASE("32-bit") {
+        v.Encodes(v.enc.AddExt(w3, w5, w7, A64ExtendKind::Uxtb), 0x0B2700A3);
+        // A 32-bit instruction has no doubleword source, so even UXTX reads a W
+        // register.
+        v.Encodes(v.enc.AddsExt(w3, w5, w7, A64ExtendKind::Uxtx, 1), 0x2B2764A3);
+    }
+
+    SUBCASE("refusals") {
+        v.Refuses(v.enc.AddExt(x3, x5, w7, A64ExtendKind::Uxtb, 5), A64Status::InvalidImmediate);
+        // The extension names the width of the source.
+        v.Refuses(v.enc.AddExt(x3, x5, x7, A64ExtendKind::Uxtb), A64Status::InvalidRegister);
+        v.Refuses(v.enc.AddExt(x3, x5, w7, A64ExtendKind::Uxtx), A64Status::InvalidRegister);
+        v.Refuses(v.enc.AddExt(w3, w5, A64::Xn(7), A64ExtendKind::Uxtx), A64Status::InvalidRegister);
+        // The flag-setting forms cannot write SP, and no form reads XZR as rn.
+        v.Refuses(v.enc.AddsExt(A64::Sp, A64::Sp, x7, A64ExtendKind::Uxtx), A64Status::InvalidRegister);
+        v.Refuses(v.enc.AddExt(x3, A64::Xzr, w7, A64ExtendKind::Uxtb), A64Status::InvalidRegister);
+    }
+}
+
+// Data Processing — Register: Logical (shifted register).
+TEST_CASE("AArch64 encodes the logical shifted-register group") {
+    A64Vectors v;
+    const A64Reg x3 = A64::Xn(3);
+    const A64Reg x5 = A64::Xn(5);
+    const A64Reg x7 = A64::Xn(7);
+    const A64Reg w3 = A64::Wn(3);
+    const A64Reg w5 = A64::Wn(5);
+    const A64Reg w7 = A64::Wn(7);
+
+    SUBCASE("the eight operations") {
+        v.Encodes(v.enc.And(x3, x5, x7), 0x8A0700A3);
+        v.Encodes(v.enc.Bic(x3, x5, x7), 0x8A2700A3);
+        v.Encodes(v.enc.Orr(x3, x5, x7), 0xAA0700A3);
+        v.Encodes(v.enc.Orn(x3, x5, x7), 0xAA2700A3);
+        v.Encodes(v.enc.Eor(x3, x5, x7), 0xCA0700A3);
+        v.Encodes(v.enc.Eon(x3, x5, x7), 0xCA2700A3);
+        v.Encodes(v.enc.Ands(x3, x5, x7), 0xEA0700A3);
+        v.Encodes(v.enc.Bics(x3, x5, x7), 0xEA2700A3);
+    }
+
+    SUBCASE("shifts, including the ROR the arithmetic forms lack") {
+        v.Encodes(v.enc.And(x3, x5, x7, A64ShiftKind::Lsl, 63), 0x8A07FCA3);
+        v.Encodes(v.enc.Orr(x3, x5, x7, A64ShiftKind::Lsr, 1), 0xAA4704A3);
+        v.Encodes(v.enc.Eor(x3, x5, x7, A64ShiftKind::Asr, 32), 0xCA8780A3);
+        v.Encodes(v.enc.Bic(x3, x5, x7, A64ShiftKind::Ror, 16), 0x8AE740A3);
+        v.Encodes(v.enc.And(w3, w5, w7), 0x0A0700A3);
+        v.Encodes(v.enc.Ands(w3, w5, w7, A64ShiftKind::Ror, 31), 0x6AC77CA3);
+        v.Encodes(v.enc.Orr(w3, w5, w7, A64ShiftKind::Lsl, 1), 0x2A0704A3);
+    }
+
+    SUBCASE("aliases") {
+        v.Encodes(v.enc.Tst(x5, x7), 0xEA0700BF);
+        v.Encodes(v.enc.Tst(w5, w7, A64ShiftKind::Lsl, 3), 0x6A070CBF);
+        v.Encodes(v.enc.Mvn(x3, x7), 0xAA2703E3);
+        v.Encodes(v.enc.Mvn(w3, w7, A64ShiftKind::Asr, 5), 0x2AA717E3);
+        v.Encodes(v.enc.Mov(x3, x7), 0xAA0703E3);
+        v.Encodes(v.enc.Mov(w3, w7), 0x2A0703E3);
+        v.Encodes(v.enc.Mov(x3, A64::Xzr), 0xAA1F03E3);
+        // MOV naming SP is the arithmetic form, since ORR reads code 31 as XZR.
+        v.Encodes(v.enc.Mov(A64::Sp, x5), 0x910000BF);
+        v.Encodes(v.enc.Mov(x3, A64::Sp), 0x910003E3);
+        v.Encodes(v.enc.Mov(A64::Wsp, w5), 0x110000BF);
+    }
+
+    SUBCASE("refusals") {
+        v.Refuses(v.enc.And(x3, x5, x7, A64ShiftKind::Lsl, 64), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Orr(w3, w5, w7, A64ShiftKind::Ror, 32), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.And(A64::Sp, x5, x7), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Tst(A64::Sp, x7), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Orr(x3, x5, w7), A64Status::InvalidRegister);
+        // Neither reading of code 31 can be moved to the other.
+        v.Refuses(v.enc.Mov(A64::Sp, A64::Xzr), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Mov(A64::Xzr, A64::Sp), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Mov(x3, A64::Wn(7)), A64Status::InvalidRegister);
+    }
+}
+
+// Data Processing — Register: Data-processing (2 source).
+TEST_CASE("AArch64 encodes variable shifts and division") {
+    A64Vectors v;
+    const A64Reg x3 = A64::Xn(3);
+    const A64Reg x5 = A64::Xn(5);
+    const A64Reg x7 = A64::Xn(7);
+    const A64Reg w3 = A64::Wn(3);
+    const A64Reg w5 = A64::Wn(5);
+    const A64Reg w7 = A64::Wn(7);
+
+    v.Encodes(v.enc.Lslv(x3, x5, x7), 0x9AC720A3);
+    v.Encodes(v.enc.Lsrv(x3, x5, x7), 0x9AC724A3);
+    v.Encodes(v.enc.Asrv(x3, x5, x7), 0x9AC728A3);
+    v.Encodes(v.enc.Rorv(x3, x5, x7), 0x9AC72CA3);
+    v.Encodes(v.enc.Lslv(w3, w5, w7), 0x1AC720A3);
+    v.Encodes(v.enc.Rorv(w3, w5, w7), 0x1AC72CA3);
+
+    v.Encodes(v.enc.Sdiv(x3, x5, x7), 0x9AC70CA3);
+    v.Encodes(v.enc.Udiv(x3, x5, x7), 0x9AC708A3);
+    v.Encodes(v.enc.Sdiv(w3, w5, w7), 0x1AC70CA3);
+    v.Encodes(v.enc.Udiv(w3, w5, w7), 0x1AC708A3);
+
+    v.Refuses(v.enc.Lslv(A64::Sp, x5, x7), A64Status::InvalidRegister);
+    v.Refuses(v.enc.Sdiv(x3, w5, x7), A64Status::InvalidRegister);
+    v.Refuses(v.enc.Udiv(x3, x5, A64::Sp), A64Status::InvalidRegister);
+}
+
+// Data Processing — Register: Data-processing (3 source).
+TEST_CASE("AArch64 encodes the multiply-accumulate group") {
+    A64Vectors v;
+    const A64Reg x3 = A64::Xn(3);
+    const A64Reg x5 = A64::Xn(5);
+    const A64Reg x7 = A64::Xn(7);
+    const A64Reg x11 = A64::Xn(11);
+    const A64Reg w3 = A64::Wn(3);
+    const A64Reg w5 = A64::Wn(5);
+    const A64Reg w7 = A64::Wn(7);
+    const A64Reg w11 = A64::Wn(11);
+
+    SUBCASE("same-width forms") {
+        v.Encodes(v.enc.Madd(x3, x5, x7, x11), 0x9B072CA3);
+        v.Encodes(v.enc.Msub(x3, x5, x7, x11), 0x9B07ACA3);
+        v.Encodes(v.enc.Mul(x3, x5, x7), 0x9B077CA3);
+        v.Encodes(v.enc.Mneg(x3, x5, x7), 0x9B07FCA3);
+        v.Encodes(v.enc.Madd(w3, w5, w7, w11), 0x1B072CA3);
+        v.Encodes(v.enc.Mul(w3, w5, w7), 0x1B077CA3);
+        v.Encodes(v.enc.Mneg(w3, w5, w7), 0x1B07FCA3);
+    }
+
+    SUBCASE("widening and high-half forms") {
+        v.Encodes(v.enc.Smaddl(x3, w5, w7, x11), 0x9B272CA3);
+        v.Encodes(v.enc.Umaddl(x3, w5, w7, x11), 0x9BA72CA3);
+        v.Encodes(v.enc.Smull(x3, w5, w7), 0x9B277CA3);
+        v.Encodes(v.enc.Umull(x3, w5, w7), 0x9BA77CA3);
+        v.Encodes(v.enc.Smulh(x3, x5, x7), 0x9B477CA3);
+        v.Encodes(v.enc.Umulh(x3, x5, x7), 0x9BC77CA3);
+    }
+
+    SUBCASE("refusals") {
+        v.Refuses(v.enc.Madd(x3, w5, x7, x11), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Madd(x3, x5, x7, w11), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Mul(A64::Sp, x5, x7), A64Status::InvalidRegister);
+        // The widening forms multiply W registers into an X register; nothing
+        // else about their operand widths is negotiable.
+        v.Refuses(v.enc.Smull(w3, w5, w7), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Smull(x3, x5, x7), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Umaddl(x3, w5, w7, w11), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Smulh(x3, w5, w7), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Umulh(w3, w5, w7), A64Status::InvalidRegister);
+    }
+}
+
+// Data Processing — Register: Conditional select.
+TEST_CASE("AArch64 encodes conditional selects and their aliases") {
+    A64Vectors v;
+    const A64Reg x3 = A64::Xn(3);
+    const A64Reg x5 = A64::Xn(5);
+    const A64Reg x7 = A64::Xn(7);
+    const A64Reg w3 = A64::Wn(3);
+    const A64Reg w5 = A64::Wn(5);
+    const A64Reg w7 = A64::Wn(7);
+
+    SUBCASE("the four instructions") {
+        v.Encodes(v.enc.Csel(x3, x5, x7, A64Condition::Eq), 0x9A8700A3);
+        v.Encodes(v.enc.Csinc(x3, x5, x7, A64Condition::Ne), 0x9A8714A3);
+        v.Encodes(v.enc.Csinv(x3, x5, x7, A64Condition::Ge), 0xDA87A0A3);
+        v.Encodes(v.enc.Csneg(x3, x5, x7, A64Condition::Lt), 0xDA87B4A3);
+        v.Encodes(v.enc.Csel(w3, w5, w7, A64Condition::Hi), 0x1A8780A3);
+        // The instructions themselves accept AL and NV; only the aliases cannot.
+        v.Encodes(v.enc.Csel(x3, x5, x7, A64Condition::Al), 0x9A87E0A3);
+        v.Encodes(v.enc.Csel(x3, x5, x7, A64Condition::Nv), 0x9A87F0A3);
+    }
+
+    SUBCASE("aliases encode the inverse condition") {
+        v.Encodes(v.enc.Cset(x3, A64Condition::Eq), 0x9A9F17E3);
+        v.Encodes(v.enc.Cset(w3, A64Condition::Ne), 0x1A9F07E3);
+        v.Encodes(v.enc.Csetm(x3, A64Condition::Lt), 0xDA9FA3E3);
+        v.Encodes(v.enc.Cinc(x3, x5, A64Condition::Gt), 0x9A85D4A3);
+        v.Encodes(v.enc.Cinv(x3, x5, A64Condition::Le), 0xDA85C0A3);
+        v.Encodes(v.enc.Cneg(x3, x5, A64Condition::Mi), 0xDA8554A3);
+        v.Encodes(v.enc.Cneg(w3, w5, A64Condition::Pl), 0x5A8544A3);
+    }
+
+    SUBCASE("refusals") {
+        // Inverting AL gives NV, which also means always, so an alias written
+        // with either would read as the opposite of itself.
+        v.Refuses(v.enc.Cset(x3, A64Condition::Al), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Cset(x3, A64Condition::Nv), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Csetm(w3, A64Condition::Al), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Cinc(x3, x5, A64Condition::Nv), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Cinv(x3, x5, A64Condition::Al), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Cneg(x3, x5, A64Condition::Al), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Csel(A64::Sp, x5, x7, A64Condition::Eq), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Csel(x3, w5, x7, A64Condition::Eq), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Cset(A64::Sp, A64Condition::Eq), A64Status::InvalidRegister);
+    }
+}
+
+// Data Processing — Register: Data-processing (1 source).
+TEST_CASE("AArch64 encodes bit counting and byte reversal") {
+    A64Vectors v;
+    const A64Reg x3 = A64::Xn(3);
+    const A64Reg x5 = A64::Xn(5);
+    const A64Reg w3 = A64::Wn(3);
+    const A64Reg w5 = A64::Wn(5);
+
+    v.Encodes(v.enc.Clz(x3, x5), 0xDAC010A3);
+    v.Encodes(v.enc.Cls(x3, x5), 0xDAC014A3);
+    v.Encodes(v.enc.Rbit(x3, x5), 0xDAC000A3);
+    v.Encodes(v.enc.Rev(x3, x5), 0xDAC00CA3);
+    v.Encodes(v.enc.Rev16(x3, x5), 0xDAC004A3);
+    v.Encodes(v.enc.Rev32(x3, x5), 0xDAC008A3);
+
+    v.Encodes(v.enc.Clz(w3, w5), 0x5AC010A3);
+    v.Encodes(v.enc.Cls(w3, w5), 0x5AC014A3);
+    v.Encodes(v.enc.Rbit(w3, w5), 0x5AC000A3);
+    v.Encodes(v.enc.Rev16(w3, w5), 0x5AC004A3);
+    // At 32 bits REV occupies the opcode REV32 has at 64, since reversing the
+    // bytes of the only word is reversing the whole register.
+    v.Encodes(v.enc.Rev(w3, w5), 0x5AC008A3);
+
+    v.Refuses(v.enc.Rev32(w3, w5), A64Status::InvalidRegister);
+    v.Refuses(v.enc.Clz(x3, w5), A64Status::InvalidRegister);
+    v.Refuses(v.enc.Rbit(A64::Sp, x5), A64Status::InvalidRegister);
+    v.Refuses(v.enc.Rev(x3, A64::Dn(5)), A64Status::InvalidRegister);
+}
+
 TEST_CASE("AArch64 encoder statuses have names for diagnostics") {
     CHECK(A64StatusName(A64Status::Ok) == "ok");
     CHECK(A64StatusName(A64Status::InvalidRegister) == "invalid register");
