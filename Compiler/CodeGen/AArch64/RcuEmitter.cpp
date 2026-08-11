@@ -161,6 +161,11 @@ constexpr unsigned kTemp2 = 12;
 // The register an integer or pointer result is returned in.
 constexpr unsigned kReturn = 0;
 
+// How many arguments AAPCS64 passes in general-purpose registers: X0 through X7,
+// which is also where a callee finds them and why kReturn is the first of them.
+// Everything past the eighth travels on the stack.
+constexpr std::size_t kIntArgRegs = 8;
+
 // The vector register a floating-point value is computed in. AAPCS64 preserves
 // only the low half of V8 through V15 across a call, so the caller-saved half
 // of the file starts at V16 and nothing here has to be saved by a callee.
@@ -176,6 +181,14 @@ constexpr unsigned kFpTemp2 = 17;
 [[nodiscard]] bool IsScalarInteger(const TypeRef &t) {
     return t.IsInteger() || t.IsBool() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
            t.kind == TypeRef::Kind::Char32 || t.kind == TypeRef::Kind::Pointer;
+}
+
+// Whether this call names one of the four reinterpretations the front end
+// lowers as a call: a value moves between the register files and no branch is
+// taken. They are the x86-64 back end's four names, spelled out rather than
+// matched by prefix so that a program's own function is never mistaken for one.
+[[nodiscard]] bool IsFloatBitsBuiltin(const std::string &name) {
+    return name == "FloatBits32" || name == "FloatBits64" || name == "FloatFromBits32" || name == "FloatFromBits64";
 }
 
 // The access width a scalar of `size` bytes is moved at: the four widths a
@@ -356,10 +369,17 @@ private:
 
     // Every function this module defines gets its symbol before any body is
     // emitted, so a call can name a function declared further down the file and
-    // a body can be placed at whatever offset it turns out to start at.
+    // a body can be placed at whatever offset it turns out to start at. An
+    // extern declaration is predeclared too, for the same reason and one more:
+    // the library it names belongs to its symbol, and a call site reached before
+    // the declaration would otherwise create that symbol without it.
     void PredeclareFunctions() {
         for (const auto &func : mod.funcs) {
-            if (func.isExtern || funcSyms.contains(func.name)) {
+            if (func.isExtern) {
+                GetOrAddExtern(func.name, RcuSymKind::ExternFunc, func.dll);
+                continue;
+            }
+            if (funcSyms.contains(func.name)) {
                 continue;
             }
             RcuSymbol sym;
@@ -1040,6 +1060,150 @@ private:
         }
     }
 
+    // AAPCS64 calls
+    //
+    // One convention, whatever the LIR says. `CallingConvention` names the two
+    // x86-64 ABIs and resolves `Default` and `.C` into one of them by target OS,
+    // and on AArch64 that is a distinction with nothing behind it: the
+    // architecture has one procedure call standard, and a Rux function and a C
+    // function are called the same way by it. So nothing here reads
+    // `instr.callConv` — there is no second answer for it to select.
+    //
+    // Nothing has to be saved around a call either. Every value this generator
+    // computes lives in a stack slot between instructions, and the registers it
+    // computes in — X9 through X12, V16 and V17 — are ones AAPCS64 lets a callee
+    // clobber, so a call destroys nothing that is live. X30 is the exception, and
+    // the prologue has already written it into the frame record.
+
+    // Whether a value of this type travels in the general-purpose file, which is
+    // the whole of what this task passes and returns. A float travels in the
+    // vector file and an aggregate wider than a register travels partly or
+    // wholly in memory; both are Task 25's and are refused here rather than
+    // passed somewhere the callee will not look.
+    [[nodiscard]] bool IsGeneralPurposeValue(const TypeRef &type) const {
+        return !IsFloat(type) && !(IsAggregate(type) && RuntimeSize(type) > 8);
+    }
+
+    // Report every value of a call this task cannot place, and answer whether
+    // any of them was reported: half a call is worse than none, so a call with
+    // one unlowerable argument emits nothing at all.
+    bool CheckCallTypes(const LirInstr &instr, const std::vector<LirReg> &args) {
+        bool lowerable = true;
+        for (const LirReg arg : args) {
+            const TypeRef type = TypeOfReg(arg);
+            if (!IsGeneralPurposeValue(type)) {
+                NotImplemented(std::format("passing an argument of type '{}'", type.ToString()));
+                lowerable = false;
+            }
+        }
+        if (instr.dst != LirNoReg && !instr.type.IsOpaque() && !IsGeneralPurposeValue(instr.type)) {
+            NotImplemented(std::format("a call returning '{}'", instr.type.ToString()));
+            lowerable = false;
+        }
+        return lowerable;
+    }
+
+    // The stack an outgoing call needs for the arguments no register takes. Each
+    // one occupies a doubleword of its own, and the total is rounded to the
+    // sixteen bytes the stack pointer is a multiple of at every public
+    // interface — which is what makes the adjustment a FrameAdjust at all.
+    [[nodiscard]] static std::int32_t OutgoingArgBytes(const std::size_t argCount) {
+        const std::size_t onStack = argCount > kIntArgRegs ? argCount - kIntArgRegs : 0;
+        return AlignUp(static_cast<std::int32_t>(onStack * 8), 16);
+    }
+
+    // Put the arguments where the callee will look for them. The stack ones go
+    // first, while no argument register holds anything yet: they are read out of
+    // their slots through X9, and their addresses are computed — where a
+    // displacement needs it — through the encoder's own scratch register, so
+    // neither pass disturbs the other.
+    void EmitCallArgs(const std::vector<LirReg> &args) {
+        for (std::size_t i = kIntArgRegs; i < args.size(); ++i) {
+            const A64Reg value = A64::Xn(kTemp);
+            LoadFromSlot(value, args[i], TypeOfReg(args[i]));
+            StoreScalar(value, A64::Sp, static_cast<std::int64_t>((i - kIntArgRegs) * 8), 8);
+        }
+        for (std::size_t i = 0; i < std::min(args.size(), kIntArgRegs); ++i) {
+            LoadFromSlot(A64::Xn(static_cast<unsigned>(i)), args[i], TypeOfReg(args[i]));
+        }
+    }
+
+    // The symbol a direct call names: a function this module defines, or an
+    // external one. An extern declaration's `dll` reached its symbol when the
+    // module was predeclared, so a call to it carries that library whether the
+    // declaration was read before this call site or after it.
+    std::uint32_t CallTarget(const std::string &name) {
+        if (const auto it = funcSyms.find(name); it != funcSyms.end()) {
+            return it->second;
+        }
+        return GetOrAddExtern(name, RcuSymKind::ExternFunc);
+    }
+
+    // Open the outgoing argument area, fill the argument registers, branch, close
+    // the area again, and keep what came back.
+    void GenCall(const LirInstr &instr, const std::vector<LirReg> &args, const bool indirect) {
+        if (!CheckCallTypes(instr, args)) {
+            return;
+        }
+        const std::int32_t outgoing = OutgoingArgBytes(args.size());
+        if (outgoing > 0) {
+            Must(enc.FrameAdjust(-outgoing), "the outgoing argument area");
+        }
+        EmitCallArgs(args);
+        if (indirect) {
+            // The address is fetched after the arguments and into X9 rather than
+            // an argument register, so that fetching it cannot disturb them.
+            const A64Reg target = A64::Xn(kTemp);
+            LoadPointer(target, instr.srcs[0]);
+            Must(enc.Blr(target), "an indirect call");
+        }
+        else {
+            const std::uint32_t callSite = enc.Size();
+            Must(enc.Bl(0), "a call");
+            AddTextReloc(callSite, CallTarget(instr.strArg), RcuRelType::AArch64Call26);
+        }
+        if (outgoing > 0) {
+            Must(enc.FrameAdjust(outgoing), "the outgoing argument area");
+        }
+        // A narrow return arrives extended to at least a word, with the bits
+        // above it unspecified, so the store writes only the bytes the type
+        // occupies and reads none of the rest.
+        if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
+            StoreToSlot(A64::Xn(kReturn), instr.dst, instr.type);
+        }
+    }
+
+    // Bring the parameters in from where the caller left them. The first eight
+    // general-purpose ones arrive in X0 through X7; the rest are on the caller's
+    // stack, which sits directly above this frame — the frame record is at the
+    // bottom of it, so what the caller wrote at its own stack pointer is at
+    // X29 plus the frame size. Each is stored into the slot the prepass gave it,
+    // and every later mention of it is a read of that slot.
+    void EmitParamSpills(const LirFunc &func) {
+        std::size_t index = 0;
+        for (const auto &param : func.params) {
+            if (!IsGeneralPurposeValue(param.type)) {
+                NotImplemented(std::format("a parameter of type '{}'", param.type.ToString()));
+                ++index;
+                continue;
+            }
+            if (index < kIntArgRegs) {
+                StoreToSlot(A64::Xn(static_cast<unsigned>(index)), param.reg, param.type);
+                ++index;
+                continue;
+            }
+            // Read at the width the parameter's own type occupies rather than a
+            // whole doubleword: a C caller writes a narrow argument into the low
+            // bytes of its stack slot and leaves the rest as it found it.
+            const auto incoming =
+                static_cast<std::int64_t>(frameSize) + static_cast<std::int64_t>((index - kIntArgRegs) * 8);
+            const A64Reg value = A64::Xn(kTemp);
+            LoadScalar(value, A64::Fp, incoming, AccessWidth(RuntimeSize(param.type)), param.type.IsSigned());
+            StoreToSlot(value, param.reg, param.type);
+            ++index;
+        }
+    }
+
     // Integer arithmetic
     //
     // Every one of these computes in a whole 64-bit register whatever width its
@@ -1511,6 +1675,29 @@ private:
             StoreToSlot(result, instr.dst, TypeRef::MakeBool());
             break;
         }
+        case LirOpcode::Call: {
+            // Four names the front end lowers as calls are not calls at all but
+            // one FMOV between the register files, and belong with the rest of
+            // the conversions in Task 26. Naming them says so; emitting a branch
+            // to them would name a symbol nothing defines. They are matched
+            // whole, as the x86-64 back end matches them, so that a program's
+            // own function whose name merely begins the same way is a call.
+            if (IsFloatBitsBuiltin(instr.strArg)) {
+                NotImplemented(std::format("the '{}' built-in", instr.strArg));
+                break;
+            }
+            GenCall(instr, instr.srcs, false);
+            break;
+        }
+        case LirOpcode::CallIndirect: {
+            if (instr.srcs.empty()) {
+                Report(std::format("AArch64 code generation reached an indirect call with no callee in '{}'",
+                                   currentFunc));
+                break;
+            }
+            GenCall(instr, {instr.srcs.begin() + 1, instr.srcs.end()}, true);
+            break;
+        }
         case LirOpcode::Phi:
             // Nothing: the value arrived in this register's slot along the edge
             // that reached this block, written by the predecessor's terminator.
@@ -1567,7 +1754,10 @@ private:
         }
         case LirTermKind::Return: {
             if (term.retVal && *term.retVal != LirNoReg) {
-                if (!IsScalarInteger(term.retType)) {
+                // X0 carries anything that fits a general-purpose register,
+                // which is what the caller reads it out of, and the load
+                // extends a narrow value the way AAPCS64 asks a callee to.
+                if (!IsGeneralPurposeValue(term.retType)) {
                     NotImplemented(std::format("returning a value of type '{}'", term.retType.ToString()));
                 }
                 else {
@@ -1621,10 +1811,6 @@ private:
             currentFunc.clear();
             return;
         }
-        if (!func.params.empty()) {
-            NotImplemented("function parameters");
-        }
-
         PrepassFunc(func);
         widenedSites.clear();
 
@@ -1642,6 +1828,7 @@ private:
         while (true) {
             jumpPatches.clear();
             EmitPrologue();
+            EmitParamSpills(func);
             blockOffsets.assign(func.blocks.size(), 0);
             for (std::uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
                 blockOffsets[bi] = enc.Size();

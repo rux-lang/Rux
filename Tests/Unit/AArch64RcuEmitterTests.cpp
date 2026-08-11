@@ -162,6 +162,61 @@ LirPackage CompileToAArch64Lir(const std::string &source) {
     return (word >> 10U & 0xFFFU) * 8U;
 }
 
+// The index of the first `bl` in a body, which is where a direct call site is
+// found without counting the instructions ahead of it.
+[[nodiscard]] std::optional<std::size_t> BranchAndLinkIndex(const std::vector<std::uint32_t> &words) {
+    for (std::size_t i = 0; i < words.size(); ++i) {
+        if ((words[i] & 0xFC000000U) == 0x94000000U) {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+// The register `ldr xN, [x29, #imm]` loads, or nothing when the word is some
+// other instruction. An argument register is read back out of the load that
+// filled it rather than out of a whole expected word, since which slot the
+// value came from is the frame layout's business rather than this test's.
+[[nodiscard]] std::optional<unsigned> SlotLoadRegister(const std::uint32_t word) {
+    if ((word & 0xFFC003E0U) != 0xF94003A0U) {
+        return std::nullopt;
+    }
+    return word & 0x1FU;
+}
+
+// The register `str xN, [x29, #imm]` stores, on the same terms: this is how a
+// parameter spill is read back.
+[[nodiscard]] std::optional<unsigned> SlotStoreRegister(const std::uint32_t word) {
+    if ((word & 0xFFC003E0U) != 0xF90003A0U) {
+        return std::nullopt;
+    }
+    return word & 0x1FU;
+}
+
+// The frame `stp x29, x30, [sp, #-N]!` opens, or nothing when the word is some
+// other instruction. The immediate counts pairs of doublewords below the stack
+// pointer, so the frame it names is that scaled back and made positive — which
+// is also the displacement an incoming stack argument sits at.
+[[nodiscard]] std::optional<std::int32_t> PreIndexedFrameSize(const std::uint32_t word) {
+    constexpr std::uint32_t registers = 30U << 10U | 31U << 5U | 29U; // x30, sp, x29
+    if ((word & 0xFFC00000U) != 0xA9800000U || (word & 0x7FFFU) != registers) {
+        return std::nullopt;
+    }
+    const auto imm7 = static_cast<std::int32_t>((word >> 15U & 0x7FU) << 25U) >> 25;
+    return -imm7 * 8;
+}
+
+// The byte displacement an `ldr x9, [x29, #imm]` or an `ldrh w9, [x29, #imm]`
+// names, which is how an incoming stack argument is read back at the width its
+// own type occupies. The immediate counts units of that width.
+[[nodiscard]] std::optional<std::int32_t> IncomingDisplacement(const std::uint32_t word, const unsigned width) {
+    const std::uint32_t opcode = width == 8 ? 0xF94003A9U : 0x794003A9U;
+    if ((word & 0xFFC003FFU) != opcode) {
+        return std::nullopt;
+    }
+    return static_cast<std::int32_t>((word >> 10U & 0xFFFU) * width);
+}
+
 // A one-function package, for the two constructs no source program reaches yet:
 // the LIR's switch terminator, which the front end never emits, and a phi whose
 // copies form a cycle, which takes two phis in one block naming each other.
@@ -1409,4 +1464,313 @@ TEST_CASE("AArch64 RCU emitter lowers a switch to a compare chain and traps wher
     // The default block traps: a program that arrives where nothing can arrive
     // stops at the instruction rather than wherever falling through led.
     CHECK_EQ(HexWord(words.back()), HexWord(0x00000000U)); // udf #0
+}
+
+// AAPCS64 calls
+//
+// One convention for both sides of every call: the cases below read the caller
+// and the callee out of the same object and check that what one wrote is where
+// the other looks. Nothing here depends on a calling convention the LIR names,
+// because AArch64 has one and a Rux function and a C function are called by it
+// alike.
+
+TEST_CASE("AArch64 RCU emitter passes the first eight integer arguments in the registers AAPCS64 names") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Eight(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int) -> int {
+            return h;
+        }
+
+        func Main() -> int {
+            return Eight(1, 2, 3, 4, 5, 6, 7, 8);
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    // The caller fills X0 through X7 in order, and those eight loads are the
+    // eight instructions the branch follows.
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    REQUIRE_GE(*call, 8);
+    for (unsigned reg = 0; reg < 8; ++reg) {
+        const std::uint32_t word = caller[*call - 8 + reg];
+        const auto loaded = SlotLoadRegister(word);
+        REQUIRE_MESSAGE(loaded.has_value(), HexWord(word));
+        CHECK_EQ(*loaded, reg);
+    }
+
+    // Eight arguments need no stack of their own, so nothing moves the stack
+    // pointer between the prologue that opened the frame and the branch.
+    for (const auto word : caller) {
+        CHECK_FALSE(StackPointerAdjustment(word, true).has_value());
+        CHECK_FALSE(StackPointerAdjustment(word, false).has_value());
+    }
+
+    // The callee spills the same eight registers into its frame before it does
+    // anything else, which is what makes every later mention of a parameter a
+    // read of a slot.
+    const auto callee = FunctionWords(objects.front(), "Eight");
+    REQUIRE_GT(callee.size(), 10);
+    for (unsigned reg = 0; reg < 8; ++reg) {
+        const std::uint32_t word = callee[2 + reg];
+        const auto stored = SlotStoreRegister(word);
+        REQUIRE_MESSAGE(stored.has_value(), HexWord(word));
+        CHECK_EQ(*stored, reg);
+    }
+}
+
+TEST_CASE("AArch64 RCU emitter sends the ninth argument and everything past it on the stack") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Ten(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: int, j: uint16) -> uint16 {
+            return j;
+        }
+
+        func Main() -> int {
+            var result = Ten(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    // Two arguments past the eighth take a doubleword each, and the area they
+    // sit in is rounded to the sixteen bytes the stack pointer is a multiple of.
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    // Five instructions open the area and fill it, and the eight argument
+    // registers are loaded after them, so the branch is the fourteenth.
+    REQUIRE_GE(*call, 13);
+    const std::size_t open = *call - 13;
+    const auto opened = StackPointerAdjustment(caller[open], true);
+    REQUIRE_MESSAGE(opened.has_value(), HexWord(caller[open]));
+    CHECK_EQ(*opened, 16);
+    REQUIRE_LT(*call + 1, caller.size());
+    const auto closed = StackPointerAdjustment(caller[*call + 1], false);
+    REQUIRE_MESSAGE(closed.has_value(), HexWord(caller[*call + 1]));
+    CHECK_EQ(*closed, 16);
+
+    // Both stack arguments are written a whole doubleword at a time, so the
+    // narrow one occupies its slot's low bytes and leaves the next slot alone.
+    CHECK_EQ(HexWord(caller[open + 2]), HexWord(0xF90003E9U)); // str x9, [sp]
+    CHECK_EQ(HexWord(caller[open + 4]), HexWord(0xF90007E9U)); // str x9, [sp, #8]
+    // The narrow one is read out of its own slot at its own width before it is
+    // written out at the stack slot's.
+    CHECK_EQ(HexWord(caller[open + 3] & 0xFFC003FFU), HexWord(0x794003A9U)); // ldrh w9, [x29]
+
+    // The callee finds them directly above its own frame: the frame record sits
+    // at the bottom of the frame, so what the caller wrote at its stack pointer
+    // is at X29 plus the frame size.
+    const auto callee = FunctionWords(objects.front(), "Ten");
+    REQUIRE_GT(callee.size(), 12);
+    const auto frame = PreIndexedFrameSize(callee.front());
+    REQUIRE_MESSAGE(frame.has_value(), HexWord(callee.front()));
+    CHECK_EQ(IncomingDisplacement(callee[10], 8), std::optional<std::int32_t>(*frame));
+    // A narrow one is read at the width its own type occupies rather than a
+    // whole doubleword, since a C caller leaves the bytes above it as it found
+    // them.
+    CHECK_EQ(IncomingDisplacement(callee[12], 2), std::optional<std::int32_t>(*frame + 8));
+}
+
+TEST_CASE("AArch64 RCU emitter returns a value in X0 and extends a narrow one on the way out") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Byte(a: uint8, b: uint8) -> uint8 {
+            return a + b;
+        }
+
+        func Short(a: int16) -> int16 {
+            return a;
+        }
+
+        func Main() -> int {
+            var wrapped = Byte(200, 100);
+            var negative = Short(-3);
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    // The load that fills X0 extends by the returned type, which is the whole
+    // of what AAPCS64 asks a callee to do: unsigned zeroes the register above
+    // the value, signed sign-extends it.
+    const auto byteReturn = FunctionWords(objects.front(), "Byte");
+    CHECK_EQ(HexWord(byteReturn[byteReturn.size() - 3] & 0xFFC003E0U), HexWord(0x394003A0U)); // ldrb w0, [x29]
+    const auto shortReturn = FunctionWords(objects.front(), "Short");
+    CHECK_EQ(HexWord(shortReturn[shortReturn.size() - 3] & 0xFFC003E0U), HexWord(0x798003A0U)); // ldrsh x0, [x29]
+
+    // The caller keeps only the bytes the type occupies, so nothing it does
+    // afterwards depends on the bits above them.
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    CHECK_EQ(HexWord(caller[*call + 1] & 0xFFC003E0U), HexWord(0x390003A0U)); // strb w0, [x29]
+}
+
+TEST_CASE("AArch64 RCU emitter branches to a function this module defines through a relocation") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Callee() -> int {
+            return 7;
+        }
+
+        func Main() -> int {
+            return Callee();
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto &object = objects.front();
+
+    // The branch is emitted with no displacement at all: where Callee ended up
+    // is the relocation's answer rather than this generator's.
+    const auto caller = FunctionWords(object, "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    CHECK_EQ(HexWord(caller[*call]), HexWord(0x94000000U)); // bl #0
+
+    const RcuSymbol *main = FindSymbol(object, "Main");
+    REQUIRE(main != nullptr);
+    const auto relocs = RelocsFor(object, RCU_TEXT_IDX, "Callee");
+    REQUIRE_EQ(relocs.size(), 1);
+    CHECK_EQ(relocs.front().type, RcuRelType::AArch64Call26);
+    CHECK_EQ(relocs.front().sectionOffset, main->value + *call * 4);
+    CHECK_EQ(TextWordAt(object, relocs.front().sectionOffset), 0x94000000U);
+}
+
+TEST_CASE("AArch64 RCU emitter calls through a register when the callee is a value") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Add(a: int, b: int) -> int {
+            return a + b;
+        }
+
+        func Apply(f: func(int, int) -> int, a: int, b: int) -> int {
+            return f(a, b);
+        }
+
+        func Main() -> int {
+            return Apply(Add, 1, 2);
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    const auto words = FunctionWords(objects.front(), "Apply");
+    const auto indirect = std::ranges::find(words, 0xD63F0120U); // blr x9
+    REQUIRE_MESSAGE(indirect != words.end(), "blr x9");
+    const auto index = static_cast<std::size_t>(indirect - words.begin());
+    REQUIRE_GE(index, 3);
+
+    // The address is fetched after the argument registers and into X9 rather
+    // than one of them, so fetching it cannot disturb what it is called with.
+    CHECK_EQ(SlotLoadRegister(words[index - 3]), std::optional<unsigned>(0));
+    CHECK_EQ(SlotLoadRegister(words[index - 2]), std::optional<unsigned>(1));
+    CHECK_EQ(SlotLoadRegister(words[index - 1]), std::optional<unsigned>(9));
+
+    // Nothing names a symbol: an indirect call has no target to relocate.
+    CHECK_FALSE(BranchAndLinkIndex(words).has_value());
+}
+
+TEST_CASE("AArch64 RCU emitter carries the library an extern declaration names to its symbol") {
+    const auto package = CompileToAArch64Lir(R"(
+        #Link("libc.so.6")
+        extern {
+            func abs(n: int32) -> int32;
+        }
+
+        func Main() -> int {
+            var magnitude = abs(-5);
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto &object = objects.front();
+
+    // The declaration was predeclared with its library, so the call site found
+    // that symbol rather than creating a second one without it.
+    const RcuSymbol *symbol = FindSymbol(object, "abs");
+    REQUIRE(symbol != nullptr);
+    CHECK_EQ(symbol->kind, RcuSymKind::ExternFunc);
+    CHECK_EQ(symbol->visibility, RcuSymVis::Global);
+    CHECK_EQ(symbol->sectionIdx, RCU_SEC_EXTERNAL);
+    CHECK_EQ(symbol->typeName, "libc.so.6");
+
+    const auto relocs = RelocsFor(object, RCU_TEXT_IDX, "abs");
+    REQUIRE_EQ(relocs.size(), 1);
+    CHECK_EQ(relocs.front().type, RcuRelType::AArch64Call26);
+    CHECK_EQ(TextWordAt(object, relocs.front().sectionOffset), 0x94000000U); // bl #0
+}
+
+TEST_CASE("AArch64 RCU emitter ends a path at a call that does not return") {
+    const auto package = CompileToAArch64Lir(R"(
+        #NoReturn()
+        func Die() {
+            Die();
+        }
+
+        func Main() -> int {
+            Die();
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    // The branch is the last thing on the path and the trap is what stands
+    // where a fall-through would have been: no epilogue is emitted after a call
+    // control does not come back from.
+    const auto words = FunctionWords(objects.front(), "Main");
+    REQUIRE_GE(words.size(), 2);
+    CHECK_EQ(HexWord(words.back()), HexWord(0x00000000U));                          // udf #0
+    CHECK_EQ(HexWord(words[words.size() - 2] & 0xFC000000U), HexWord(0x94000000U)); // bl
+    CHECK_EQ(std::ranges::count(words, 0xD65F03C0U), 0);                            // ret
+
+    // The function it names is the same shape, and is the whole of it: a frame
+    // record, the branch and the trap.
+    const auto callee = FunctionWords(objects.front(), "Die");
+    REQUIRE_EQ(callee.size(), 4);
+    CHECK_EQ(HexWord(callee.back()), HexWord(0x00000000U)); // udf #0
+}
+
+TEST_CASE("AArch64 RCU emitter emits no call at all when one argument cannot be placed") {
+    // A float travels in the vector file, which is Task 25's, and the ninth
+    // argument is where this one sits — so a generator that placed what it
+    // could would have opened a stack area and filled eight registers for a
+    // call that must not happen.
+    const auto package = CompileToAArch64Lir(R"(
+        func Mixed(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: float64, j: int) -> int {
+            return j;
+        }
+
+        func Main() -> int {
+            var result = Mixed(1, 2, 3, 4, 5, 6, 7, 8, 9.5, 10);
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    const auto reports = JoinMessages(emitter.Diagnostics());
+    CHECK_MESSAGE(reports.contains("passing an argument of type 'float64'"), reports);
+    CHECK_MESSAGE(reports.contains("'Main'"), reports);
+
+    const auto words = FunctionWords(objects.front(), "Main");
+    CHECK_FALSE(BranchAndLinkIndex(words).has_value());
+    for (const auto word : words) {
+        CHECK_FALSE(StackPointerAdjustment(word, true).has_value());
+    }
 }
