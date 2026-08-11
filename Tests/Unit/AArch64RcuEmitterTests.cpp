@@ -11,6 +11,7 @@
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
+#include "Semantic/CompileTimeContext.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
@@ -37,8 +38,16 @@ LirPackage CompileToAArch64Lir(const std::string &source) {
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
 
+    // The whole front end is told which machine this is for, not just the
+    // parser: an `asm func` body is checked against the target's own
+    // instruction set, so a semantic stage left on the host would refuse every
+    // AArch64 mnemonic that is not also an x86-64 one.
+    CompileTimeContext context;
+    context.target = target;
+    context.targetTriple = "linux-aarch64";
+
     std::vector<Module *> modules = {&parsed.module};
-    SemanticAnalyzer analyzer(modules, {}, "test", "linux");
+    SemanticAnalyzer analyzer(modules, {}, "test", context);
     auto semaModel = analyzer.Analyze();
     REQUIRE_FALSE(semaModel.HasErrors());
 
@@ -427,36 +436,37 @@ TEST_CASE("AArch64 RCU emitter keeps the stack pointer 16-byte aligned across a 
     CHECK_EQ(HexWord(words[tail - 1]), HexWord(0xA9407BFD)); // ldp x29, x30, [sp]
 }
 
-// The intrinsic an assertion is written as, and the type its message travels
-// in, declared here rather than imported: these cases are compiled as a package
-// of one module with no dependencies, and `Core` is where both usually live.
-constexpr std::string_view kAssertIntrinsic = R"(
-        struct Slice<T> {
-            data: *T;
-            length: uint;
+// A struct and two values of it, which is the one construct a source program
+// reaches that this back end still refuses: comparing two values that are not a
+// bit pattern in one register is a run of comparisons the x86-64 back end emits
+// and this one does not, and it is what BACKLOG.md Task 31 closes.
+constexpr std::string_view kAggregateCompare = R"(
+        struct Point {
+            x: int;
+            y: int;
         }
-
-        intrinsic func Assert(condition: bool, message: Slice<char8>);
 )";
 
 TEST_CASE("AArch64 RCU emitter reports an unimplemented opcode by name") {
-    // An assertion, which reaches the back end as the `assert` opcode that
-    // Task 27 lowers.
     const auto package = CompileToAArch64Lir(std::format(R"(
         {}
         func Main() -> int {{
-            Assert(1 == 1, "one");
+            let a = Point {{ x: 1, y: 2 }};
+            let b = Point {{ x: 1, y: 2 }};
+            if a == b {{
+                return 1;
+            }}
             return 0;
         }}
     )",
-                                                         kAssertIntrinsic));
+                                                         kAggregateCompare));
 
     AArch64RcuEmitter emitter(package, "test");
     const auto objects = emitter.Generate();
     CHECK_EQ(objects.size(), 1);
 
     const auto reports = JoinMessages(emitter.Diagnostics());
-    CHECK_MESSAGE(reports.contains("'assert' opcode"), reports);
+    CHECK_MESSAGE(reports.contains("'cmpeq' opcode on 'Point'"), reports);
     CHECK_MESSAGE(reports.contains("not implemented yet"), reports);
     CHECK_MESSAGE(reports.contains("'Main'"), reports);
     for (const auto &diagnostic : emitter.Diagnostics()) {
@@ -465,19 +475,21 @@ TEST_CASE("AArch64 RCU emitter reports an unimplemented opcode by name") {
 }
 
 TEST_CASE("AArch64 RCU emitter names each unimplemented construct once") {
-    // Three assertions, which are three instructions of the one opcode this
+    // Three comparisons, which are three instructions of the one opcode this
     // back end does not lower yet: what a report names is the construct, so
     // reaching it again says nothing new.
     const auto package = CompileToAArch64Lir(std::format(R"(
         {}
         func Main() -> int {{
-            Assert(1 == 1, "one");
-            Assert(2 == 2, "two");
-            Assert(3 == 3, "three");
+            let a = Point {{ x: 1, y: 2 }};
+            let b = Point {{ x: 1, y: 2 }};
+            let first = a == b;
+            let second = a == b;
+            let third = a == b;
             return 0;
         }}
     )",
-                                                         kAssertIntrinsic));
+                                                         kAggregateCompare));
 
     AArch64RcuEmitter emitter(package, "test");
     const auto objects = emitter.Generate();
@@ -491,7 +503,7 @@ TEST_CASE("AArch64 RCU emitter names each unimplemented construct once") {
     std::ranges::sort(sorted);
     CHECK_EQ(std::ranges::unique(sorted).begin(), sorted.end());
     REQUIRE_EQ(messages.size(), 1);
-    CHECK_MESSAGE(messages.front().contains("'assert' opcode"), messages.front());
+    CHECK_MESSAGE(messages.front().contains("'cmpeq' opcode on 'Point'"), messages.front());
 }
 
 // Constants, globals and the read-only pool
@@ -2517,4 +2529,350 @@ TEST_CASE("AArch64 RCU emitter reads an enum as the integer its discriminant is"
     CHECK_MESSAGE(std::ranges::find(words, 0xD2800289U) != words.end(), "mov x9, #20");
     CHECK_MESSAGE(std::ranges::find(words, 0xEB0C013FU) != words.end(), "cmp x9, x12");
     CHECK_MESSAGE(std::ranges::find(words, 0x9A9F17E9U) != words.end(), "cset x9, eq");
+}
+
+// Assertions, inline assembly and static data
+//
+// A failed assertion is the one construct in this back end that is a property
+// of the operating system rather than of the architecture, and an `asm func` is
+// the one body it selects no instructions for. The cases below read both, and
+// the vtable the third criterion of BACKLOG.md Task 27 names beside them.
+
+namespace {
+// The two intrinsics an assertion and a panic are written as, and the type
+// their message travels in, declared here rather than imported: these cases are
+// compiled as a package of one module with no dependencies, and `Core` is where
+// all three usually live.
+constexpr std::string_view kAssertIntrinsics = R"(
+        struct Slice<T> {
+            data: *T;
+            length: uint;
+        }
+
+        intrinsic func Assert(condition: bool, message: Slice<char8>);
+        intrinsic func Panic(message: Slice<char8>);
+)";
+
+// The words a write to standard error takes once its buffer and length are in
+// place: the descriptor, the call number, and the trap that asks for it. Linux
+// numbers a write 64 and takes the number in X8.
+constexpr std::uint32_t kMovX0StdErr = 0xD2800040U; // mov x0, #2
+constexpr std::uint32_t kMovX8Write = 0xD2800808U;  // mov x8, #64
+constexpr std::uint32_t kSvc0 = 0xD4000001U;        // svc #0
+constexpr std::uint32_t kAdrpX1 = 0x90000001U;      // adrp x1, <symbol>
+constexpr std::uint32_t kAddX1Lo12 = 0x91000021U;   // add  x1, x1, #:lo12:<symbol>
+constexpr std::uint32_t kLdpX1X2 = 0xA9400941U;     // ldp  x1, x2, [x10]
+constexpr std::uint32_t kBrk1 = 0xD4200020U;        // brk  #1
+
+// The immediate of `mov xN, #imm` in the one-instruction move-wide form, or
+// nothing when the word is some other instruction. A message's length is
+// materialized this way, and how long a message is depends on where in this
+// file the source it came from sits.
+[[nodiscard]] std::optional<std::uint32_t> MoveWideImm(const std::uint32_t word, const unsigned reg) {
+    if ((word & 0xFFE0001FU) != (0xD2800000U | reg)) {
+        return std::nullopt;
+    }
+    return word >> 5U & 0xFFFFU;
+}
+
+// The index of the one `brk` in a body, which is where an assertion's failure
+// path ends and therefore how the words before it are found without counting
+// the instructions ahead of them.
+[[nodiscard]] std::optional<std::size_t> TrapIndex(const std::vector<std::uint32_t> &words) {
+    const auto found = std::ranges::find(words, kBrk1);
+    if (found == words.end()) {
+        return std::nullopt;
+    }
+    return static_cast<std::size_t>(found - words.begin());
+}
+
+// How many times a run of bytes appears in the read-only section, which is what
+// says whether two assertions shared one interned prefix or were each given a
+// copy of it.
+[[nodiscard]] std::size_t RodataOccurrences(const RcuFile &object, const std::string_view text) {
+    const auto &rodata = object.sections[RCU_RODATA_IDX].data;
+    const std::string_view bytes(reinterpret_cast<const char *>(rodata.data()), rodata.size());
+    std::size_t count = 0;
+    for (std::size_t at = bytes.find(text); at != std::string_view::npos; at = bytes.find(text, at + 1)) {
+        ++count;
+    }
+    return count;
+}
+} // namespace
+
+TEST_CASE("AArch64 RCU emitter writes a failed assertion's three parts and traps") {
+    const auto package = CompileToAArch64Lir(std::format(R"(
+        {}
+        func Main() -> int {{
+            Assert(1 == 1, "one");
+            return 0;
+        }}
+    )",
+                                                         kAssertIntrinsics));
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto &object = objects.front();
+    const auto words = FunctionWords(object, "Main");
+
+    const auto trap = TrapIndex(words);
+    REQUIRE_MESSAGE(trap.has_value(), "no brk in the body");
+    REQUIRE(*trap >= 19);
+
+    // Read backwards from the trap: the location, the message and the prefix,
+    // each of them one write, and each write ending in the same three words.
+    const std::size_t location = *trap - 6;
+    const std::size_t message = *trap - 11;
+    const std::size_t prefix = *trap - 17;
+    for (const std::size_t write : {prefix, message, location}) {
+        const std::size_t end = write == message ? message + 2 : write + 3;
+        CHECK_EQ(HexWord(words[end]), HexWord(kMovX0StdErr));
+        CHECK_EQ(HexWord(words[end + 1]), HexWord(kMovX8Write));
+        CHECK_EQ(HexWord(words[end + 2]), HexWord(kSvc0));
+    }
+
+    // The prefix and the location are addresses this object knows, reached as a
+    // page and an offset with both immediates left to their relocations; the
+    // lengths are what the two texts actually are.
+    CHECK_EQ(HexWord(words[prefix]), HexWord(kAdrpX1));
+    CHECK_EQ(HexWord(words[prefix + 1]), HexWord(kAddX1Lo12));
+    CHECK_EQ(MoveWideImm(words[prefix + 2], 2), std::string("Assertion failed: ").size());
+    CHECK_EQ(HexWord(words[location]), HexWord(kAdrpX1));
+    CHECK_EQ(HexWord(words[location + 1]), HexWord(kAddX1Lo12));
+    CHECK_MESSAGE(MoveWideImm(words[location + 2], 2).has_value(), HexWord(words[location + 2]));
+
+    // The message is neither: what the operand holds is the address of a
+    // `Slice<char8>`, and one LDP takes both of its fields into the two
+    // registers the call reads them from.
+    CHECK_EQ(words[message] & 0xFFC003FFU, 0xF94003AAU); // ldr x10, [x29, #imm]
+    CHECK_EQ(HexWord(words[message + 1]), HexWord(kLdpX1X2));
+
+    // A condition that held branches over the whole of it, landing on the
+    // instruction after the trap.
+    const std::size_t condition = *trap - 18;
+    CHECK_EQ(words[condition] & 0xFF00001FU, 0xB5000009U); // cbnz x9, <after the trap>
+    CHECK_EQ(BranchDisplacement(words[condition]), static_cast<std::int32_t>(*trap + 1 - condition));
+
+    // Both texts are in the read-only section, spelled the way the x86-64 back
+    // end spells them, and the location names the function, the file and the
+    // position the front end recorded.
+    CHECK_EQ(RodataOccurrences(object, "Assertion failed: "), 1);
+    CHECK_EQ(RodataOccurrences(object, "\n  at Main (test.rux:"), 1);
+}
+
+TEST_CASE("AArch64 RCU emitter interns one assertion prefix for every site") {
+    const auto package = CompileToAArch64Lir(std::format(R"(
+        {}
+        func Main() -> int {{
+            Assert(1 == 1, "one");
+            Assert(2 == 2, "two");
+            return 0;
+        }}
+    )",
+                                                         kAssertIntrinsics));
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto &object = objects.front();
+
+    // One prefix behind both sites, and a location of its own for each: the
+    // prefix is the same string twice and the two locations differ in the line
+    // they name.
+    CHECK_EQ(RodataOccurrences(object, "Assertion failed: "), 1);
+    CHECK_EQ(RodataOccurrences(object, "\n  at Main (test.rux:"), 2);
+
+    // Two traps and two branches over them, which is what says the second
+    // assertion is a path of its own rather than a jump into the first.
+    const auto words = FunctionWords(object, "Main");
+    CHECK_EQ(std::ranges::count(words, kBrk1), 2);
+    CHECK_EQ(std::ranges::count(words, kSvc0), 6);
+}
+
+TEST_CASE("AArch64 RCU emitter reaches a panic with no condition and no branch") {
+    const auto package = CompileToAArch64Lir(std::format(R"(
+        {}
+        func Main() -> int {{
+            Panic("stop");
+            return 0;
+        }}
+    )",
+                                                         kAssertIntrinsics));
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto &object = objects.front();
+    const auto words = FunctionWords(object, "Main");
+
+    const auto trap = TrapIndex(words);
+    REQUIRE_MESSAGE(trap.has_value(), "no brk in the body");
+    CHECK_EQ(std::ranges::count(words, kSvc0), 3);
+    CHECK_EQ(RodataOccurrences(object, "Panic: "), 1);
+    CHECK_EQ(RodataOccurrences(object, "Assertion failed: "), 0);
+
+    // Nothing is tested and nothing is skipped: a panic always trapped, so no
+    // conditional branch stands anywhere in the body.
+    for (const std::uint32_t word : words) {
+        CHECK_MESSAGE((word & 0xFF000010U) != 0x54000000U, HexWord(word)); // b.<cond>
+        CHECK_MESSAGE((word & 0x7E000000U) != 0x34000000U, HexWord(word)); // cbz / cbnz
+    }
+}
+
+TEST_CASE("AArch64 RCU emitter asks each kernel for a write by its own numbering") {
+    const auto package = CompileToAArch64Lir(std::format(R"(
+        {}
+        func Main() -> int {{
+            Assert(1 == 1, "one");
+            return 0;
+        }}
+    )",
+                                                         kAssertIntrinsics));
+
+    AArch64RcuEmitter darwin(package, "test", Target::OS::MacOS);
+    const auto objects = darwin.Generate();
+    CHECK_MESSAGE(darwin.Diagnostics().empty(), JoinMessages(darwin.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // Darwin numbers a write 4, takes the number in X16 and is asked through a
+    // trap of its own, so not one word of the three that surround the buffer is
+    // the same as Linux's.
+    CHECK_EQ(std::ranges::count(words, 0xD2800090U), 3); // mov x16, #4
+    CHECK_EQ(std::ranges::count(words, 0xD4001001U), 3); // svc #0x80
+    CHECK_EQ(std::ranges::count(words, kMovX8Write), 0);
+    CHECK_EQ(std::ranges::count(words, kSvc0), 0);
+    CHECK_EQ(std::ranges::count(words, kMovX0StdErr), 3); // the descriptor is the same
+}
+
+TEST_CASE("AArch64 RCU emitter emits an asm func as a raw blob") {
+    const auto package = CompileToAArch64Lir(R"(
+        asm func Add(a: int64, b: int64) -> int64 {
+            add x0, x0, x1
+            ret
+        }
+
+        func Main() -> int {
+            return Add(40, 2) as int;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto &object = objects.front();
+
+    // Exactly what the program wrote down: no frame record, no frame pointer,
+    // no spill of the arguments AAPCS64 already put in the right registers.
+    const std::vector<std::uint32_t> expected = {
+        0x8B010000, // add x0, x0, x1
+        0xD65F03C0, // ret
+    };
+    const auto words = FunctionWords(object, "Add");
+    REQUIRE_EQ(words.size(), expected.size());
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        CHECK_EQ(HexWord(words[i]), HexWord(expected[i]));
+    }
+
+    // The caller is an ordinary body, so the two live in one .text and the
+    // symbol of each names its own bytes.
+    const RcuSymbol *symbol = FindSymbol(object, "Add");
+    REQUIRE(symbol != nullptr);
+    CHECK_EQ(symbol->sectionIdx, RCU_TEXT_IDX);
+    CHECK_EQ(symbol->size, expected.size() * 4);
+    CHECK(FunctionWords(object, "Main").size() > expected.size());
+}
+
+TEST_CASE("AArch64 RCU emitter relocates a symbol an asm func names") {
+    const auto package = CompileToAArch64Lir(R"(
+        asm func Triple(x: int64) -> int64 {
+            mov x1, #3
+            mul x0, x0, x1
+            ret
+        }
+
+        asm func TripleThenAdd(x: int64) -> int64 {
+            stp x0, x30, [sp, #-16]!
+            bl Triple
+            ldp x1, x30, [sp], #16
+            add x0, x0, x1
+            ret
+        }
+
+        func Main() -> int {
+            return TripleThenAdd(10) as int;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto &object = objects.front();
+
+    // The branch carries no displacement of its own; the relocation on it names
+    // the callee, and the callee is this module's own symbol rather than an
+    // extern the reference invented.
+    const auto words = FunctionWords(object, "TripleThenAdd");
+    const auto branch = BranchAndLinkIndex(words);
+    REQUIRE_MESSAGE(branch.has_value(), "no bl in the body");
+    CHECK_EQ(BranchDisplacement(words[*branch]), 0);
+
+    const auto relocs = RelocsFor(object, RCU_TEXT_IDX, "Triple");
+    REQUIRE_EQ(relocs.size(), 1);
+    CHECK_EQ(relocs.front().type, RcuRelType::AArch64Call26);
+    const RcuSymbol *callee = FindSymbol(object, "Triple");
+    REQUIRE(callee != nullptr);
+    CHECK_EQ(callee->sectionIdx, RCU_TEXT_IDX);
+
+    const RcuSymbol *caller = FindSymbol(object, "TripleThenAdd");
+    REQUIRE(caller != nullptr);
+    CHECK_EQ(relocs.front().sectionOffset, caller->value + *branch * 4);
+}
+
+TEST_CASE("AArch64 RCU emitter lays a vtable out as a run of relocated function pointers") {
+    const auto package = CompileToAArch64Lir(R"(
+        interface Figure {
+            func Area() -> int;
+        }
+
+        struct Square {
+            size: int;
+        }
+
+        extend Square : Figure {
+            func Area(self) -> int {
+                return self.size * self.size;
+            }
+        }
+
+        func Main() -> int {
+            var square = Square { size: 5 };
+            var figure: Figure = square;
+            return figure.Area();
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto &object = objects.front();
+
+    // A vtable is one read-only symbol holding a doubleword per method, each of
+    // them zero in the object and each named by an Abs64 relocation: a slot
+    // holds a whole address, which is the one thing on AArch64 that is not a
+    // field of an instruction.
+    const auto vtable = std::ranges::find_if(object.symbols, [](const RcuSymbol &symbol) {
+        return symbol.sectionIdx == RCU_RODATA_IDX && symbol.name.contains("Square") && symbol.name.contains("Figure");
+    });
+    REQUIRE_MESSAGE(vtable != object.symbols.end(), "no vtable symbol");
+    REQUIRE_EQ(vtable->size, 8);
+    CHECK_EQ(vtable->value % 8, 0);
+
+    const auto slots = RodataOf(object, vtable->name);
+    CHECK(std::ranges::all_of(slots, [](const std::uint8_t byte) { return byte == 0; }));
+
+    const auto relocs = RelocsFor(object, RCU_RODATA_IDX, "Square::Area");
+    REQUIRE_EQ(relocs.size(), 1);
+    CHECK_EQ(relocs.front().type, RcuRelType::Abs64);
+    CHECK_EQ(relocs.front().sectionOffset, vtable->value);
 }

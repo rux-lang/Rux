@@ -1,60 +1,121 @@
-// Explicit Win64 assembly functions exercise the calling-convention override.
-// Default assembly functions use the target ABI (SysV on Linux).
+import Core::{ #target, #Error };
 
-#Abi(.Win64)
-asm func Add(a: int64, b: int64) -> int64 {
-    mov rax, rcx
-    add rax, rdx
-    ret
-}
+// The same five functions on both architectures, so that `Main` below is one
+// program rather than two. On x86-64 they carry an explicit Win64 convention,
+// which exercises the calling-convention override; AArch64 has one convention
+// and nothing to override, so its bodies take their arguments where AAPCS64
+// leaves them, in x0 and x1, and return in x0.
+when #target.arch {
+    .X86_64 => {
+        #Abi(.Win64)
+        asm func Add(a: int64, b: int64) -> int64 {
+            mov rax, rcx
+            add rax, rdx
+            ret
+        }
 
-#Abi(.Win64)
-asm func MulSub(a: int64, b: int64) -> int64 {
-    mov rax, rcx
-    imul rax, rdx
-    sub rax, 1
-    ret
-}
+        #Abi(.Win64)
+        asm func MulSub(a: int64, b: int64) -> int64 {
+            mov rax, rcx
+            imul rax, rdx
+            sub rax, 1
+            ret
+        }
 
-// Loop with a local label, a conditional jump and a decrement.
-#Abi(.Win64)
-asm func SumTo(n: int64) -> int64 {
-    xor rax, rax
-    mov rdx, rcx
-next:
-    test rdx, rdx
-    jz done
-    add rax, rdx
-    dec rdx
-    jmp next
-done:
-    ret
-}
+        // Loop with a local label, a conditional jump and a decrement.
+        #Abi(.Win64)
+        asm func SumTo(n: int64) -> int64 {
+            xor rax, rax
+            mov rdx, rcx
+        next:
+            test rdx, rdx
+            jz done
+            add rax, rdx
+            dec rdx
+            jmp next
+        done:
+            ret
+        }
 
-// Spill and reload through the stack, then shift.
-#Abi(.Win64)
-asm func DoubleViaStack(a: int64) -> int64 {
-    mov qword [rsp - 8], rcx
-    mov rax, qword [rsp - 8]
-    shl rax, 1
-    ret
-}
+        // Spill and reload through the stack, then shift.
+        #Abi(.Win64)
+        asm func DoubleViaStack(a: int64) -> int64 {
+            mov qword [rsp - 8], rcx
+            mov rax, qword [rsp - 8]
+            shl rax, 1
+            ret
+        }
 
-// Calls another asm function; preserves the argument across the call.
-#Abi(.Win64)
-asm func Triple(x: int64) -> int64 {
-    mov rax, rcx
-    imul rax, 3
-    ret
-}
+        // Calls another asm function; preserves the argument across the call.
+        #Abi(.Win64)
+        asm func Triple(x: int64) -> int64 {
+            mov rax, rcx
+            imul rax, 3
+            ret
+        }
 
-#Abi(.Win64)
-asm func TripleThenAdd(x: int64) -> int64 {
-    push rcx
-    call Triple
-    pop rcx
-    add rax, rcx
-    ret
+        #Abi(.Win64)
+        asm func TripleThenAdd(x: int64) -> int64 {
+            push rcx
+            call Triple
+            pop rcx
+            add rax, rcx
+            ret
+        }
+    },
+    .AArch64 => {
+        asm func Add(a: int64, b: int64) -> int64 {
+            add x0, x0, x1
+            ret
+        }
+
+        asm func MulSub(a: int64, b: int64) -> int64 {
+            mul x0, x0, x1
+            sub x0, x0, #1
+            ret
+        }
+
+        // Loop with a local label, a conditional branch and a decrement.
+        asm func SumTo(n: int64) -> int64 {
+            mov x1, x0
+            mov x0, xzr
+        next:
+            cbz x1, done
+            add x0, x0, x1
+            sub x1, x1, #1
+            b next
+        done:
+            ret
+        }
+
+        // Spill and reload through the stack, then shift. AAPCS64 promises no
+        // red zone, so the slot is one the function opens for itself.
+        asm func DoubleViaStack(a: int64) -> int64 {
+            sub sp, sp, #16
+            str x0, [sp]
+            ldr x0, [sp]
+            add sp, sp, #16
+            lsl x0, x0, #1
+            ret
+        }
+
+        // Calls another asm function; preserves the argument and the link
+        // register across the call, which is what a leaf body does not have to.
+        asm func Triple(x: int64) -> int64 {
+            mov x1, #3
+            mul x0, x0, x1
+            ret
+        }
+
+        asm func TripleThenAdd(x: int64) -> int64 {
+            stp x0, x30, [sp, #-16]!
+            bl Triple
+            ldp x1, x30, [sp], #16
+            add x0, x0, x1
+            ret
+        }
+    },
+    else => #Error("Unsupported architecture for the inline-assembly test")
 }
 
 func Main() -> int {

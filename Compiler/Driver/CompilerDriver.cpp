@@ -600,7 +600,8 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     std::vector<RcuFile> rcuFiles;
     std::vector<Diagnostic> codegenDiagnostics;
     if (isAArch64) {
-        AArch64RcuEmitter aarch64Emitter(lirPackage, std::string(opts.manifest.package.name.Text()));
+        AArch64RcuEmitter aarch64Emitter(lirPackage, std::string(opts.manifest.package.name.Text()),
+                                         compileTimeContext.target.os);
         rcuFiles = aarch64Emitter.Generate();
         codegenDiagnostics = aarch64Emitter.Diagnostics();
     }

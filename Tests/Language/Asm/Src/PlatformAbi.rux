@@ -1,10 +1,15 @@
 import Core::{ Architecture, OperatingSystem, #target };
 
-// The Linux ABI check only exists on Linux: its inline assembly uses the System
-// V argument registers and the Linux getpid syscall, neither of which means
-// anything elsewhere. On every other system the check trivially passes.
-when #target.os == OperatingSystem::Linux &&
-     #target.arch == Architecture::X86_64 {
+// The Linux ABI check only exists on Linux: its inline assembly uses the
+// argument registers the platform ABI names and the Linux getpid syscall,
+// neither of which means anything elsewhere. On every other system the check
+// trivially passes.
+//
+// Each architecture writes the whole check, because both halves of it differ:
+// x86-64 takes its arguments in rdi and rsi and asks the kernel for call 39
+// through `syscall`, and AArch64 takes them in x0 and x1 and asks for call 172
+// through `svc`.
+when #target.os == OperatingSystem::Linux && #target.arch == Architecture::X86_64 {
     asm func LinuxAdd(a: int64, b: int64) -> int64 {
         mov rax, rdi
         add rax, rsi
@@ -14,6 +19,27 @@ when #target.os == OperatingSystem::Linux &&
     asm func LinuxGetPid() -> int64 {
         mov rax, 39
         syscall
+        ret
+    }
+
+    func PlatformAbiCheck() -> int {
+        if LinuxAdd(20, 22) != 42 {
+            return 1;
+        }
+        if LinuxGetPid() <= 0 {
+            return 2;
+        }
+        return 0;
+    }
+} else when #target.os == OperatingSystem::Linux && #target.arch == Architecture::AArch64 {
+    asm func LinuxAdd(a: int64, b: int64) -> int64 {
+        add x0, x0, x1
+        ret
+    }
+
+    asm func LinuxGetPid() -> int64 {
+        mov x8, #172
+        svc #0
         ret
     }
 

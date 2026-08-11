@@ -1,38 +1,78 @@
-// SSE/SSE2 asm functions with an explicit Win64 convention. The first
-// float64 arguments arrive in xmm0, xmm1, ... and results use xmm0.
+import Core::{ #target, #Error };
 
-// Square root of a double: sqrtsd computes it in place in xmm0.
-#Abi(.Win64)
-asm func Sqrt(x: float64) -> float64 {
-    sqrtsd xmm0, xmm0
-    ret
-}
+// Floating-point asm functions. On x86-64 they are SSE2 with an explicit Win64
+// convention, whose first float64 arguments arrive in xmm0, xmm1, ... and whose
+// result comes back in xmm0; on AArch64 they are the scalar floating-point
+// instructions, whose arguments AAPCS64 leaves in d0, d1, ... and whose result
+// goes back in d0.
+when #target.arch {
+    .X86_64 => {
+        // Square root of a double: sqrtsd computes it in place in xmm0.
+        #Abi(.Win64)
+        asm func Sqrt(x: float64) -> float64 {
+            sqrtsd xmm0, xmm0
+            ret
+        }
 
-// a * b + c, exercising a second and third float argument (xmm1, xmm2).
-#Abi(.Win64)
-asm func MulAdd(a: float64, b: float64, c: float64) -> float64 {
-    mulsd xmm0, xmm1
-    addsd xmm0, xmm2
-    ret
-}
+        // a * b + c, exercising a second and third float argument (xmm1, xmm2).
+        #Abi(.Win64)
+        asm func MulAdd(a: float64, b: float64, c: float64) -> float64 {
+            mulsd xmm0, xmm1
+            addsd xmm0, xmm2
+            ret
+        }
 
-// Round-trip a double through a GP register with movq, then take min/max.
-#Abi(.Win64)
-asm func MinOf(a: float64, b: float64) -> float64 {
-    minsd xmm0, xmm1
-    ret
-}
+        // Round-trip a double through a GP register with movq, then take min/max.
+        #Abi(.Win64)
+        asm func MinOf(a: float64, b: float64) -> float64 {
+            minsd xmm0, xmm1
+            ret
+        }
 
-// Convert an integer argument (rcx) to a double result: cvtsi2sd + movq back.
-#Abi(.Win64)
-asm func IntToFloat(n: int64) -> float64 {
-    cvtsi2sd xmm0, rcx
-    ret
-}
+        // Convert an integer argument (rcx) to a double result: cvtsi2sd + movq back.
+        #Abi(.Win64)
+        asm func IntToFloat(n: int64) -> float64 {
+            cvtsi2sd xmm0, rcx
+            ret
+        }
 
-// Truncate a double back to an integer (returned in rax).
-#Abi(.Win64)
-asm func FloatToInt(x: float64) -> int64 {
-    cvttsd2si rax, xmm0
-    ret
+        // Truncate a double back to an integer (returned in rax).
+        #Abi(.Win64)
+        asm func FloatToInt(x: float64) -> int64 {
+            cvttsd2si rax, xmm0
+            ret
+        }
+    },
+    .AArch64 => {
+        // Square root of a double, computed in place in d0.
+        asm func Sqrt(x: float64) -> float64 {
+            fsqrt d0, d0
+            ret
+        }
+
+        // a * b + c, exercising a second and third float argument (d1, d2).
+        asm func MulAdd(a: float64, b: float64, c: float64) -> float64 {
+            fmul d0, d0, d1
+            fadd d0, d0, d2
+            ret
+        }
+
+        asm func MinOf(a: float64, b: float64) -> float64 {
+            fmin d0, d0, d1
+            ret
+        }
+
+        // An integer argument in x0 to a double result in d0.
+        asm func IntToFloat(n: int64) -> float64 {
+            scvtf d0, x0
+            ret
+        }
+
+        // Truncate a double back to an integer, which comes back in x0.
+        asm func FloatToInt(x: float64) -> int64 {
+            fcvtzs x0, d0
+            ret
+        }
+    },
+    else => #Error("Unsupported architecture for the inline-assembly test")
 }

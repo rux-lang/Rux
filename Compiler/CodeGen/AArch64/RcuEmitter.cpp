@@ -2,6 +2,7 @@
 
 #include "CodeGen/AArch64/RcuEmitter.h"
 
+#include "CodeGen/AArch64/Assembler.h"
 #include "CodeGen/AArch64/Encoder.h"
 #include "CodeGen/AArch64/Registers.h"
 #include "CodeGen/FloatLiteral.h"
@@ -16,6 +17,7 @@
 #include <cstdint>
 #include <cstring>
 #include <format>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -98,6 +100,48 @@ struct CondBranch {
 [[nodiscard]] CondBranch OnZero(const A64Reg reg) {
     return {CondBranch::Form::Zero, A64Condition::Eq, reg};
 }
+
+[[nodiscard]] CondBranch OnNotZero(const A64Reg reg) {
+    return {CondBranch::Form::NotZero, A64Condition::Eq, reg};
+}
+
+// How a write is asked of the kernel on this system: the number the call is
+// known by, the register that number travels in, and the immediate SVC carries.
+// A failed assertion prints its message before it traps, and that print is the
+// one thing in this back end that is a property of the operating system rather
+// than of the architecture — AAPCS64 settles everything else.
+//
+// The three answers are the three families of AArch64 kernel: Linux keeps its
+// own numbering and takes the number in X8, the BSDs share the historical UNIX
+// numbering and take it the same way, and Darwin takes it in X16 and is asked
+// through a trap of its own. An operating system with no entry has no assertion
+// message, which is a report rather than a wrong system call.
+struct WriteSyscall {
+    std::uint64_t number = 64;
+    unsigned numberReg = 8;
+    std::uint16_t trap = 0;
+};
+
+[[nodiscard]] std::optional<WriteSyscall> WriteSyscallFor(const Target::OS os) {
+    switch (os) {
+    case Target::OS::Linux:
+    case Target::OS::Android:
+        return WriteSyscall{64, 8, 0};
+    case Target::OS::MacOS:
+    case Target::OS::iOS:
+        return WriteSyscall{4, 16, 0x80};
+    case Target::OS::DragonFlyBSD:
+    case Target::OS::FreeBSD:
+    case Target::OS::NetBSD:
+    case Target::OS::OpenBSD:
+        return WriteSyscall{4, 8, 0};
+    default:
+        return std::nullopt;
+    }
+}
+
+// The file descriptor a failed assertion writes to.
+constexpr std::uint64_t kStandardError = 2;
 
 // The condition an integer or pointer comparison holds under. Equality reads
 // the same flags whatever the operands mean; the four orderings do not, so the
@@ -278,11 +322,12 @@ class AArch64CodeGen {
 public:
     explicit AArch64CodeGen(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
                             const std::vector<std::string> &inputPackageInterfaceNames, std::string inputPackageName,
-                            std::vector<Diagnostic> &inputDiagnostics)
+                            const Target::OS inputTargetOs, std::vector<Diagnostic> &inputDiagnostics)
         : mod(module)
         , structDecls(inputStructDecls)
         , packageInterfaceNames(inputPackageInterfaceNames)
         , pkgName(std::move(inputPackageName))
+        , targetOs(inputTargetOs)
         , diagnostics(inputDiagnostics)
         , enc(textData) {
     }
@@ -294,6 +339,7 @@ private:
     const std::vector<LirStructDecl> &structDecls;
     const std::vector<std::string> &packageInterfaceNames;
     std::string pkgName;
+    Target::OS targetOs;
     std::vector<Diagnostic> &diagnostics;
 
     // Section data buffers
@@ -2075,6 +2121,80 @@ private:
     // files: the two registers hold the same number of bits — a word pairs with
     // an S register and a doubleword with a D one — and nothing is converted on
     // the way. Which direction it is decides which file the slot is read at.
+    // Assertions
+    //
+    // A failed assertion says what failed and where, then stops the process
+    // where it failed. Saying it is a write to standard error, which this back
+    // end reaches the only way a program with no C runtime can: the system call
+    // itself. Stopping is BRK, which is what UD2 is on x86-64 — an instruction
+    // no operand makes valid, so a debugger attached to the process lands on
+    // the assertion rather than on whatever unwinding it to a handler reached.
+    //
+    // Three writes rather than one, for the reason the x86-64 back end makes
+    // three: the prefix and the location are constants this object interns, the
+    // message is a slice the program built at runtime, and joining them would
+    // mean allocating somewhere to join them in.
+
+    // fd, buffer and length are already in X0, X1 and X2.
+    void EmitWriteSyscall(const WriteSyscall &call) {
+        Must(enc.LoadImm64(A64::Xn(call.numberReg), call.number), "a system call number");
+        Must(enc.Svc(call.trap), "a system call");
+    }
+
+    // Write a run of bytes this object holds: its address is a page and an
+    // offset, and its length is known here rather than at run time.
+    void EmitWriteStatic(const WriteSyscall &call, const std::string &text) {
+        LoadSymbolAddress(A64::Xn(1), InternStr(text));
+        Must(enc.LoadImm64(A64::Xn(2), text.size()), "the length of an assertion message");
+        Must(enc.LoadImm64(A64::Xn(0), kStandardError), "the standard error descriptor");
+        EmitWriteSyscall(call);
+    }
+
+    void GenAssert(const LirInstr &instr) {
+        const bool isAssertion = instr.op == LirOpcode::Assert;
+        if (instr.srcs.size() < (isAssertion ? 2U : 1U)) {
+            Report(std::format("AArch64 code generation reached a '{}' with too few operands in '{}'",
+                               LirOpcodeName(instr.op), currentFunc));
+            return;
+        }
+        const auto call = WriteSyscallFor(targetOs);
+        if (!call) {
+            NotImplemented("an assertion on this operating system");
+            return;
+        }
+
+        // A condition that held skips the whole failure path, which is the one
+        // thing about this opcode that costs a running program anything. A
+        // panic has no condition and no branch.
+        std::uint32_t heldBranch = 0;
+        if (isAssertion) {
+            LoadFromSlot(A64::Xn(kTemp), instr.srcs[0], TypeRef::MakeBool());
+            heldBranch = EmitBranchOver(OnNotZero(A64::Xn(kTemp)));
+        }
+
+        const std::string function = instr.sourceFunction.empty() ? "<unknown>" : instr.sourceFunction;
+        const std::string file = instr.sourceFile.empty() ? "<unknown>" : instr.sourceFile;
+        EmitWriteStatic(*call, isAssertion ? "Assertion failed: " : "Panic: ");
+
+        // The message is a `Slice<char8>` the caller built, so what the operand
+        // holds is its address and the two doublewords behind it are what the
+        // call takes. They are loaded through a register the call does not use,
+        // since X0 through X2 are filled in the order the kernel reads them.
+        const LirReg messageReg = instr.srcs[isAssertion ? 1 : 0];
+        LoadPointer(A64::Xn(kAddr), messageReg);
+        Must(enc.Ldp(A64::Xn(1), A64::Xn(2), A64::Xn(kAddr), 0), "an assertion message");
+        Must(enc.LoadImm64(A64::Xn(0), kStandardError), "the standard error descriptor");
+        EmitWriteSyscall(*call);
+
+        EmitWriteStatic(*call,
+                        std::format("\n  at {} ({}:{}:{})\n", function, file, instr.sourceLine, instr.sourceColumn));
+
+        Must(enc.Brk(1), "an assertion trap");
+        if (isAssertion) {
+            PatchBranchOver(heldBranch);
+        }
+    }
+
     void GenFloatBits(const LirInstr &instr) {
         const bool single = instr.strArg.ends_with("32");
         const bool toBits = instr.strArg.starts_with("FloatBits");
@@ -2147,6 +2267,10 @@ private:
             StoreToSlot(addr, instr.dst, TypeRef::MakePointer(instr.type));
             break;
         }
+        case LirOpcode::Assert:
+        case LirOpcode::Panic:
+            GenAssert(instr);
+            break;
         case LirOpcode::GlobalAddr: {
             std::uint32_t symIdx = 0;
             if (const auto data = dataSyms.find(instr.strArg); data != dataSyms.end()) {
@@ -2770,6 +2894,47 @@ private:
         }
     }
 
+    // Inline assembly
+    //
+    // An `asm func` is the one body this generator does not select instructions
+    // for: the program wrote them down, and CodeGen/AArch64/Assembler.cpp
+    // encodes exactly those. What arrives back is machine code and the
+    // references it could not settle on its own — a branch to another function,
+    // the address of a global — which become ordinary text relocations here.
+
+    // The symbol an `asm func` names: a function of this module, a constant or
+    // global of it, an extern already declared, or, failing all three, an
+    // extern function this reference declares.
+    std::uint32_t ResolveAsmSymbol(const std::string &name) {
+        if (const auto it = funcSyms.find(name); it != funcSyms.end()) {
+            return it->second;
+        }
+        if (const auto it = dataSyms.find(name); it != dataSyms.end()) {
+            return it->second;
+        }
+        if (const auto it = externSyms.find(name); it != externSyms.end()) {
+            return it->second;
+        }
+        return GetOrAddExtern(name, RcuSymKind::ExternFunc);
+    }
+
+    // A raw blob: no prologue, no epilogue and no frame, because a body written
+    // in assembly has already said what it does with the stack. Its arguments
+    // are wherever AAPCS64 left them and its result is wherever it puts one.
+    void GenAsmFunc(const LirFunc &func) {
+        const std::uint32_t funcStart = enc.Size();
+        const std::uint32_t symIdx = DefineFunction(func, funcStart);
+
+        AsmAssembly assembled = AssembleAArch64AsmFunc(func.asmBody, mod.name, textData);
+        for (const auto &fixup : assembled.fixups) {
+            textRelocs.push_back({fixup.offset, ResolveAsmSymbol(fixup.symbol), fixup.relType, fixup.addend});
+        }
+        for (auto &diagnostic : assembled.diagnostics) {
+            diagnostics.push_back(std::move(diagnostic));
+        }
+        symbols[symIdx].size = enc.Size() - funcStart;
+    }
+
     void GenFunc(const LirFunc &func) {
         if (func.isExtern) {
             GetOrAddExtern(func.name, RcuSymKind::ExternFunc, func.dll);
@@ -2777,7 +2942,7 @@ private:
         }
         currentFunc = func.name;
         if (func.isAsm) {
-            NotImplemented("an `asm func` body");
+            GenAsmFunc(func);
             currentFunc.clear();
             return;
         }
@@ -3048,9 +3213,11 @@ RcuFile AArch64CodeGen::Generate() {
 }
 } // namespace
 
-AArch64RcuEmitter::AArch64RcuEmitter(const LirPackage &package, std::string inputPackageName)
+AArch64RcuEmitter::AArch64RcuEmitter(const LirPackage &package, std::string inputPackageName,
+                                     const Target::OS inputTargetOs)
     : lir(package)
-    , packageName(std::move(inputPackageName)) {
+    , packageName(std::move(inputPackageName))
+    , targetOs(inputTargetOs) {
 }
 
 std::vector<RcuFile> AArch64RcuEmitter::Generate() const {
@@ -3066,7 +3233,7 @@ std::vector<RcuFile> AArch64RcuEmitter::Generate() const {
         interfaceNames.insert(interfaceNames.end(), module.interfaceNames.begin(), module.interfaceNames.end());
     }
     for (const auto &module : lir.modules) {
-        AArch64CodeGen gen(module, structDecls, interfaceNames, packageName, diagnostics);
+        AArch64CodeGen gen(module, structDecls, interfaceNames, packageName, targetOs, diagnostics);
         result.push_back(gen.Generate());
     }
     return result;
