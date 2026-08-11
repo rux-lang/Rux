@@ -62,12 +62,15 @@ inline double ElapsedSeconds(const std::chrono::steady_clock::time_point start,
 
 // ---- Reporting --------------------------------------------------------------
 
+// `targetTriple` is the "os-arch" triple the artifact was built for. The
+// detailed report always names it; the one-line summary mentions it only when
+// it is not the host, so an ordinary build reads as it always has.
 [[nodiscard]] std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_view profileName,
-                                           const BuildStats &stats, bool colorEnabled);
+                                           std::string_view targetTriple, const BuildStats &stats, bool colorEnabled);
 [[nodiscard]] std::string FormatBuildSummary(const std::filesystem::path &exePath, std::string_view profileName,
-                                             const BuildStats &stats, bool colorEnabled);
-void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats,
-                     bool colorEnabled);
-void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats,
-                       bool colorEnabled);
+                                             std::string_view targetTriple, const BuildStats &stats, bool colorEnabled);
+void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName, std::string_view targetTriple,
+                     const BuildStats &stats, bool colorEnabled);
+void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view profileName,
+                       std::string_view targetTriple, const BuildStats &stats, bool colorEnabled);
 } // namespace Rux::Driver

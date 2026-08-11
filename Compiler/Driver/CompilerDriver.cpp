@@ -563,19 +563,10 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     // executable directly, so the x86-specific RCU and object/linker stages
     // below are intentionally bypassed.
     if (useAArch64Backend) {
-        const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, !opts.isTest);
-        const ManifestPackageType packageType = opts.manifest.package.type;
-        const bool sharedLibrary = packageType == ManifestPackageType::SharedLibrary;
-        const ArtifactKind artifactKind = sharedLibrary ? ArtifactKind::SharedLibrary
-                                        : packageType == ManifestPackageType::StaticLibrary
-                                            ? ArtifactKind::StaticLibrary
-                                            : ArtifactKind::Executable;
-        const std::string outputName =
-            packageType == ManifestPackageType::StaticLibrary
-                ? StaticLibraryFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os)
-            : sharedLibrary ? SharedLibraryFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os)
-                            : ExecutableFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os);
-        artifactPath = binDir / outputName;
+        const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, opts.targetName, !opts.isTest);
+        const OS targetOs = compileTimeContext.target.os;
+        const ArtifactKind artifactKind = PackageArtifactKind(opts.manifest.package.type);
+        artifactPath = binDir / OutputFileName(opts.manifest.package.name.Text(), artifactKind, targetOs);
         AArch64NativeEmitter emitter(lirPackage, std::string(opts.manifest.package.name.Text()),
                                      compileTimeContext.target);
         const bool release = compileTimeContext.buildMode == Target::BuildMode::Release;
@@ -587,9 +578,9 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
             }
             return false;
         }
-        if (artifactKind == ArtifactKind::SharedLibrary && compileTimeContext.target.os == OS::Windows) {
-            secondaryArtifactPaths.push_back(
-                binDir / StaticLibraryFileName(opts.manifest.package.name.Text(), compileTimeContext.target.os));
+        if (artifactKind == ArtifactKind::SharedLibrary && targetOs == OS::Windows) {
+            secondaryArtifactPaths.push_back(binDir /
+                                             StaticLibraryFileName(opts.manifest.package.name.Text(), targetOs));
         }
         stats.codegen = ElapsedMs(codegenStart);
         return true;
@@ -631,18 +622,10 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     if (opts.verbose) {
         std::print("Linking {}\n", opts.manifest.package.name.Text());
     }
-    const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, !opts.isTest);
-    const ManifestPackageType packageType = opts.manifest.package.type;
-    const ArtifactKind artifactKind = packageType == ManifestPackageType::SharedLibrary ? ArtifactKind::SharedLibrary
-                                    : packageType == ManifestPackageType::StaticLibrary ? ArtifactKind::StaticLibrary
-                                                                                        : ArtifactKind::Executable;
+    const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, opts.targetName, !opts.isTest);
+    const ArtifactKind artifactKind = PackageArtifactKind(opts.manifest.package.type);
     const OS targetOs = TargetTripleOs(opts.targetName);
-    const std::string outputName = artifactKind == ArtifactKind::SharedLibrary
-                                     ? SharedLibraryFileName(opts.manifest.package.name.Text(), targetOs)
-                                 : artifactKind == ArtifactKind::StaticLibrary
-                                     ? StaticLibraryFileName(opts.manifest.package.name.Text(), targetOs)
-                                     : ExecutableFileName(opts.manifest.package.name.Text(), targetOs);
-    artifactPath = binDir / outputName;
+    artifactPath = binDir / OutputFileName(opts.manifest.package.name.Text(), artifactKind, targetOs);
     Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name.Text()), {root}, artifactKind, targetOs);
     if (!linker.Link(artifactPath)) {
         for (const auto &err : linker.Errors()) {

@@ -24,6 +24,12 @@ ReportStyle Style(const bool enabled) {
     }
     return {.green = "\033[32m", .cyan = "\033[36m", .bold = "\033[1m", .dim = "\033[2m", .reset = "\033[0m"};
 }
+
+// The triple a report names. An embedder that leaves it unset built for the
+// host, which is what the report said before it carried a target at all.
+std::string ReportedTriple(const std::string_view targetTriple) {
+    return targetTriple.empty() ? HostTargetTriple() : CanonicalTargetTriple(targetTriple);
+}
 } // namespace
 
 std::size_t CountLines(std::string_view source) {
@@ -118,7 +124,7 @@ std::string FormatDuration(std::chrono::milliseconds elapsed) {
 }
 
 std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_view profileName,
-                             const BuildStats &stats, const bool colorEnabled) {
+                             const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
     const auto totalMs = stats.total.count();
     const double seconds = stats.totalSeconds;
     const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
@@ -129,10 +135,11 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_v
     const double compileSpeed = seconds > 0.0 ? static_cast<double>(totalLines) / seconds : 0.0;
     const double throughput = seconds > 0.0 ? static_cast<double>(totalSourceSize) / 1024.0 / 1024.0 / seconds : 0.0;
 
+    const std::string triple = ReportedTriple(targetTriple);
     const auto style = Style(colorEnabled);
     std::ostringstream output;
     output << style.bold << "Rux Compiler " << RUX_VERSION << style.reset << '\n'
-           << "Target: " << TargetName() << '\n'
+           << "Target: " << TargetDisplayName(triple) << " (" << triple << ")\n"
            << "Mode: " << style.bold << profileName << style.reset << "\n\n"
            << style.green << style.bold << "Build finished successfully." << style.reset << "\n\n"
            << "Total build time:            " << style.bold << totalMs << " ms" << style.reset << '\n'
@@ -168,7 +175,9 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_v
 }
 
 std::string FormatBuildSummary(const std::filesystem::path &exePath, std::string_view profileName,
-                               const BuildStats &stats, const bool colorEnabled) {
+                               const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
+    const std::string triple = ReportedTriple(targetTriple);
+    const std::string crossTarget = triple == HostTargetTriple() ? std::string{} : " for " + triple;
     const auto totalMs = stats.total.count();
     const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
     const std::size_t totalLines = stats.localLines + stats.dependencyLines;
@@ -178,8 +187,8 @@ std::string FormatBuildSummary(const std::filesystem::path &exePath, std::string
     const auto style = Style(colorEnabled);
     std::ostringstream output;
     output << style.green << style.bold << "Built" << style.reset << ' ' << style.bold << profileName << style.reset
-           << " [" << style.cyan << exePath.string() << style.reset << "] in " << style.bold << totalMs << " ms"
-           << style.reset << '\n'
+           << crossTarget << " [" << style.cyan << exePath.string() << style.reset << "] in " << style.bold << totalMs
+           << " ms" << style.reset << '\n'
            << style.dim << FormatNumber(totalFiles) << " files | " << FormatNumber(totalLines) << " LOC | "
            << FormatCompactNumber(static_cast<double>(totalTokens)) << " tokens | " << FormatCompactNumber(compileSpeed)
            << " LOC/s | " << exePath.filename().string() << ' ' << FormatSize(stats.executableSize) << style.reset
@@ -187,15 +196,15 @@ std::string FormatBuildSummary(const std::filesystem::path &exePath, std::string
     return output.str();
 }
 
-void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats,
-                     const bool colorEnabled) {
-    const auto report = FormatBuildStats(exePath, profileName, stats, colorEnabled);
+void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName,
+                     const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
+    const auto report = FormatBuildStats(exePath, profileName, targetTriple, stats, colorEnabled);
     std::fwrite(report.data(), sizeof(char), report.size(), stdout);
 }
 
-void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view profileName, const BuildStats &stats,
-                       const bool colorEnabled) {
-    const auto report = FormatBuildSummary(exePath, profileName, stats, colorEnabled);
+void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view profileName,
+                       const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
+    const auto report = FormatBuildSummary(exePath, profileName, targetTriple, stats, colorEnabled);
     std::fwrite(report.data(), sizeof(char), report.size(), stdout);
 }
 } // namespace Rux::Driver

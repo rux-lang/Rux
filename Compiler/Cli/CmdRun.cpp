@@ -108,7 +108,7 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     CompileOptions copts;
     copts.manifestPath = *manifestPath;
     copts.manifest = *manifest;
-    copts.targetName = std::move(targetName);
+    copts.targetName = targetName;
     copts.profileName = std::string(profileName);
     copts.defines = std::move(defines);
     copts.quiet = buildQuiet;
@@ -119,7 +119,7 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         return 1;
     }
     if (!buildQuiet) {
-        const auto report = FormatBuildSummary(result.primaryArtifactPath, profileName, result.stats,
+        const auto report = FormatBuildSummary(result.primaryArtifactPath, profileName, targetName, result.stats,
                                                ColorEnabled(opts.color, OutputStream::Stderr));
         std::fwrite(report.data(), sizeof(char), report.size(), stderr);
     }

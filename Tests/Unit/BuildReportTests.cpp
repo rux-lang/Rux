@@ -1,4 +1,5 @@
 #include "Driver/BuildReport.h"
+#include "Driver/BuildTarget.h"
 
 #include <doctest.h>
 
@@ -65,23 +66,43 @@ TEST_CASE("Build summary applies semantic ANSI styling only when enabled") {
     stats.executableSize = 91 * 1024;
     const std::filesystem::path executable = "Bin/Debug/App.exe";
 
-    const auto plain = FormatBuildSummary(executable, "Debug", stats, false);
+    const auto plain = FormatBuildSummary(executable, "Debug", HostTargetTriple(), stats, false);
     CHECK_FALSE(plain.contains("\033["));
     CHECK(plain.contains("Built Debug [Bin/Debug/App.exe] in 275 ms"));
 
-    const auto colored = FormatBuildSummary(executable, "Debug", stats, true);
+    const auto colored = FormatBuildSummary(executable, "Debug", HostTargetTriple(), stats, true);
     CHECK(colored.contains("\033[32m\033[1mBuilt\033[0m"));
     CHECK(colored.contains("\033[36mBin/Debug/App.exe\033[0m"));
     CHECK(colored.contains("\033[2m93 files"));
 }
 
+TEST_CASE("Build summary names the target only when it is not the host") {
+    BuildStats stats;
+    stats.total = std::chrono::milliseconds(275);
+    const std::filesystem::path executable = "Bin/Debug/linux-aarch64/App";
+
+    CHECK(FormatBuildSummary(executable, "Debug", "linux-aarch64", stats, false)
+              .contains("Built Debug for linux-aarch64 ["));
+    // An unset target means the host, which is how the summary read before it
+    // carried a target at all.
+    CHECK(FormatBuildSummary(executable, "Debug", {}, stats, false).contains("Built Debug ["));
+}
+
 TEST_CASE("Detailed build report styles success and section headings") {
     BuildStats stats;
-    const auto plain = FormatBuildStats("Bin/App.exe", "Release", stats, false);
-    const auto colored = FormatBuildStats("Bin/App.exe", "Release", stats, true);
+    const auto plain = FormatBuildStats("Bin/App.exe", "Release", HostTargetTriple(), stats, false);
+    const auto colored = FormatBuildStats("Bin/App.exe", "Release", HostTargetTriple(), stats, true);
 
     CHECK_FALSE(plain.contains("\033["));
     CHECK(colored.contains("\033[32m\033[1mBuild finished successfully.\033[0m"));
     CHECK(colored.contains("\033[36m\033[1mOutput:\033[0m"));
     CHECK(colored.contains("\033[36m\033[1mPerformance:\033[0m"));
+}
+
+TEST_CASE("Detailed build report names the target it built for") {
+    BuildStats stats;
+    const auto report =
+        FormatBuildStats("Bin/Release/windows-aarch64/App.exe", "Release", "windows-arm64", stats, false);
+
+    CHECK(report.contains("Target: Windows AArch64 (windows-aarch64)\n"));
 }

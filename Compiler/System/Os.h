@@ -106,12 +106,19 @@ namespace Rux::System {
 
 // ---- Output file naming -----------------------------------------------------------
 
+// These name a file the way the *target* operating system spells it, so a cross
+// build produces `App.exe` on a Linux host and `libApp.dylib` for macOS. The
+// host default is a convenience for tools naming their own files, not a
+// fallback a build should rely on.
+
 // Executable file name for `os`: appends ".exe" on Windows, unchanged elsewhere.
 [[nodiscard]] std::string ExecutableFileName(std::string name, Target::OS os = Target::HostOS);
 
-// Shared-library file name for `os`: appends ".dll" on Windows; unchanged
-// elsewhere (ELF/Mach-O outputs currently carry no prefix or extension).
+// Shared-library file name for `os`: "Name.dll" on Windows, "libName.dylib" on
+// macOS, "libName.so" on every other target.
 [[nodiscard]] std::string SharedLibraryFileName(std::string name, Target::OS os = Target::HostOS);
 
+// Static-library file name for `os`: "Name.lib" on Windows, "libName.a"
+// elsewhere.
 [[nodiscard]] std::string StaticLibraryFileName(std::string name, Target::OS os = Target::HostOS);
 } // namespace Rux::System

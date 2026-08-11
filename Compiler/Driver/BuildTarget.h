@@ -3,6 +3,7 @@
 // Helpers for resolving the active build target (OS/arch triple), pruning the
 // AST to that target, and locating workspace/registry directories.
 
+#include "Linker/ArtifactKind.h"
 #include "Package/Manifest.h"
 #include "Syntax/Ast/Ast.h"
 #include "Target/Target.h"
@@ -19,6 +20,10 @@ namespace Rux::Driver {
 
 // Human-readable name of the host target, e.g. "Windows x86-64".
 [[nodiscard]] std::string TargetName();
+
+// Human-readable name of an "os-arch" triple, e.g. "Windows x86-64". Unknown
+// components fall back to the host the way TargetTripleOs does.
+[[nodiscard]] std::string TargetDisplayName(std::string_view target);
 
 // Lower-case "os-arch" triple of the host, e.g. "windows-x86_64".
 [[nodiscard]] std::string HostTargetTriple();
@@ -90,8 +95,26 @@ void ReportManifestDiagnostics(const ManifestResult &result);
 
 // Resolve the build output directory (defaults to "Bin"), optionally appending
 // the selected profile. Test runs use a profile-independent output directory.
+//
+// A target other than the host adds its triple as a final component, so builds
+// for two targets do not overwrite each other. The host keeps the shorter path
+// it has always had, and an empty `targetTriple` — used by target-independent
+// output such as a published `.ruxpkg` — adds nothing.
 [[nodiscard]] std::filesystem::path ResolveBuildOutputDir(const std::filesystem::path &root, const Manifest &manifest,
-                                                          std::string_view profileName, bool includeProfile = true);
+                                                          std::string_view profileName, std::string_view targetTriple,
+                                                          bool includeProfile = true);
+
+// ---- Output artifacts -------------------------------------------------------
+
+// The artifact `type` produces. A SourceLibrary has none — it is compiled into
+// its dependents — and callers must reject it before asking.
+[[nodiscard]] ArtifactKind PackageArtifactKind(ManifestPackageType type);
+
+// File name of that artifact on the target operating system: `App.exe` for a
+// Windows executable, `libApp.dylib` for a macOS shared library. The name
+// follows the target, never the host, so a cross build is spelled the way the
+// machine it was built for expects.
+[[nodiscard]] std::string OutputFileName(std::string_view packageName, ArtifactKind kind, Target::OS os);
 
 // Per-user directory where installed registry packages are cached.
 [[nodiscard]] std::filesystem::path RegistryPackagesDir();

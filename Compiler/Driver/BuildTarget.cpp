@@ -15,11 +15,15 @@ using namespace Target;
 using namespace System;
 
 std::string TargetName() {
-    if constexpr (HostArch == Arch::Unknown) {
-        return std::string{ToString(HostOS)};
-    }
+    return TargetDisplayName(HostTargetTriple());
+}
 
-    return std::format("{} {}", ToString(HostOS), ToDisplayString(HostArch));
+std::string TargetDisplayName(const std::string_view target) {
+    const Arch arch = TargetTripleArch(target);
+    if (arch == Arch::Unknown) {
+        return std::string{ToString(TargetTripleOs(target))};
+    }
+    return std::format("{} {}", ToString(TargetTripleOs(target)), ToDisplayString(arch));
 }
 
 std::string HostTargetTriple() {
@@ -276,7 +280,8 @@ std::optional<Manifest> LoadManifest(const std::filesystem::path &path) {
 }
 
 std::filesystem::path ResolveBuildOutputDir(const std::filesystem::path &root, const Manifest &manifest,
-                                            std::string_view profileName, const bool includeProfile) {
+                                            std::string_view profileName, const std::string_view targetTriple,
+                                            const bool includeProfile) {
     std::filesystem::path output =
         manifest.build.output.empty() ? std::filesystem::path("Bin") : std::filesystem::path(manifest.build.output);
     if (output.is_relative()) {
@@ -285,7 +290,38 @@ std::filesystem::path ResolveBuildOutputDir(const std::filesystem::path &root, c
     if (includeProfile) {
         output /= profileName;
     }
+    // Only a foreign target takes a subdirectory. Keeping the host on its
+    // historical path means no manifest, script or test has to learn a new
+    // location for the build everyone already runs.
+    if (const auto triple = CanonicalTargetTriple(targetTriple); !triple.empty() && triple != HostTargetTriple()) {
+        output /= triple;
+    }
     return output.lexically_normal();
+}
+
+ArtifactKind PackageArtifactKind(const ManifestPackageType type) {
+    switch (type) {
+    case ManifestPackageType::SharedLibrary:
+        return ArtifactKind::SharedLibrary;
+    case ManifestPackageType::StaticLibrary:
+        return ArtifactKind::StaticLibrary;
+    case ManifestPackageType::Executable:
+    case ManifestPackageType::SourceLibrary:
+        break;
+    }
+    return ArtifactKind::Executable;
+}
+
+std::string OutputFileName(const std::string_view packageName, const ArtifactKind kind, const OS os) {
+    switch (kind) {
+    case ArtifactKind::SharedLibrary:
+        return SharedLibraryFileName(std::string(packageName), os);
+    case ArtifactKind::StaticLibrary:
+        return StaticLibraryFileName(std::string(packageName), os);
+    case ArtifactKind::Executable:
+        break;
+    }
+    return ExecutableFileName(std::string(packageName), os);
 }
 
 std::filesystem::path RegistryPackagesDir() {

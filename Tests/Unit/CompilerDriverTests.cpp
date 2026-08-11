@@ -151,8 +151,39 @@ TEST_CASE("test output directories omit the build profile") {
     manifest.build.output = "Artifacts";
     const std::filesystem::path root = "Workspace";
 
-    CHECK(ResolveBuildOutputDir(root, manifest, "Release") == root / "Artifacts" / "Release");
-    CHECK(ResolveBuildOutputDir(root, manifest, "Release", false) == root / "Artifacts");
+    CHECK(ResolveBuildOutputDir(root, manifest, "Release", HostTargetTriple()) == root / "Artifacts" / "Release");
+    CHECK(ResolveBuildOutputDir(root, manifest, "Release", HostTargetTriple(), false) == root / "Artifacts");
+}
+
+TEST_CASE("output directories separate a foreign target from the host") {
+    Manifest manifest;
+    manifest.build.output = "Artifacts";
+    const std::filesystem::path root = "Workspace";
+    constexpr std::string_view foreign = "windows-aarch64";
+
+    CHECK(ResolveBuildOutputDir(root, manifest, "Release", foreign) == root / "Artifacts" / "Release" / foreign);
+    CHECK(ResolveBuildOutputDir(root, manifest, "Release", foreign, false) == root / "Artifacts" / foreign);
+    // An alias resolves to the one canonical directory, so `--target
+    // windows-arm64` and `--target windows-aarch64` are the same build.
+    CHECK(ResolveBuildOutputDir(root, manifest, "Release", "windows-arm64") ==
+          ResolveBuildOutputDir(root, manifest, "Release", foreign));
+    // Target-independent output, such as a published `.ruxpkg`, adds nothing.
+    CHECK(ResolveBuildOutputDir(root, manifest, {}, {}, false) == root / "Artifacts");
+}
+
+TEST_CASE("artifact names follow the target operating system, not the host") {
+    CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::Executable),
+                         TargetTripleOs("windows-x86_64")) == "App.exe");
+    CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::Executable),
+                         TargetTripleOs("linux-aarch64")) == "App");
+    CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::SharedLibrary),
+                         TargetTripleOs("macos-aarch64")) == "libApp.dylib");
+    CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::SharedLibrary),
+                         TargetTripleOs("windows-x86_64")) == "App.dll");
+    CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::StaticLibrary),
+                         TargetTripleOs("freebsd-x86_64")) == "libApp.a");
+    CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::StaticLibrary),
+                         TargetTripleOs("windows-x86_64")) == "App.lib");
 }
 
 TEST_CASE("compiler driver loads path dependencies when checking") {
@@ -237,6 +268,9 @@ TEST_CASE("compiler driver builds one architecture for a foreign operating syste
     CHECK(result.ok);
     CHECK(diagnostics.empty());
     CHECK(result.primaryArtifactPath.filename().string() == ExecutableFileName("App", TargetTripleOs(foreign)));
+    // A foreign target gets its own directory, so it cannot overwrite the host
+    // build sitting one level up.
+    CHECK(result.primaryArtifactPath.parent_path().filename() == foreign);
     CHECK(std::filesystem::is_regular_file(result.primaryArtifactPath));
 }
 
