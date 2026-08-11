@@ -65,108 +65,201 @@ struct Timespec {
     nanoseconds: int64;
 }
 
-// Rux functions use the System V ABI on x86-64 BSD targets. The syscall
-// instruction keeps the first three argument registers and takes the fourth
-// argument in r10. BSD kernels report syscall errors by setting carry with
-// positive errno in rax; these wrappers return Linux-style -errno values for
-// parity.
+// BSD kernels report an error from every system call the same way on both
+// architectures: they set the carry flag and leave a positive errno in the
+// result register. These wrappers return Linux-style -errno values for parity.
+// Where the call number and the arguments go differs, so each architecture
+// writes the whole wrapper.
+//
+// x86-64: Rux functions use the System V ABI, whose first three argument
+// registers the `syscall` instruction keeps. The fourth argument moves from rcx
+// to r10, and a seventh function argument arrives at [rsp + 8], after the
+// return address.
+//
+// AArch64: Rux functions use AAPCS64, whose first eight argument registers
+// cover even the widest wrapper. `svc #0` takes the call number in x8 and the
+// arguments in x0 through x5, so each wrapper moves the number aside and then
+// shifts the arguments down by one register, lowest first, which is the order
+// in which each register has been read before it is written.
+when #target.arch {
+    .X86_64 => {
+        // Executes a raw BSD system call without arguments.
+        #Abi(.SysV)
+        asm func Syscall0(number: uint64) -> int64 {
+            mov rax, rdi
+            syscall
+            jnc done
+            neg rax
+        done:
+            ret
+        }
 
-// Executes a raw BSD system call without arguments.
-#Abi(.SysV)
-asm func Syscall0(number: uint64) -> int64 {
-    mov rax, rdi
-    syscall
-    jnc done
-    neg rax
-done:
-    ret
-}
+        // Executes a raw BSD system call with one argument.
+        #Abi(.SysV)
+        asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
+            mov rax, rdi
+            mov rdi, rsi
+            syscall
+            jnc done
+            neg rax
+        done:
+            ret
+        }
 
-// Executes a raw BSD system call with one argument.
-#Abi(.SysV)
-asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
-    mov rax, rdi
-    mov rdi, rsi
-    syscall
-    jnc done
-    neg rax
-done:
-    ret
-}
+        // Executes a raw BSD system call with two arguments.
+        #Abi(.SysV)
+        asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
+            mov rax, rdi
+            mov rdi, rsi
+            mov rsi, rdx
+            syscall
+            jnc done
+            neg rax
+        done:
+            ret
+        }
 
-// Executes a raw BSD system call with two arguments.
-#Abi(.SysV)
-asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
-    mov rax, rdi
-    mov rdi, rsi
-    mov rsi, rdx
-    syscall
-    jnc done
-    neg rax
-done:
-    ret
-}
+        // Executes a raw BSD system call with three arguments.
+        #Abi(.SysV)
+        asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
+            mov rax, rdi
+            mov rdi, rsi
+            mov rsi, rdx
+            mov rdx, rcx
+            syscall
+            jnc done
+            neg rax
+        done:
+            ret
+        }
 
-// Executes a raw BSD system call with three arguments.
-#Abi(.SysV)
-asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
-    mov rax, rdi
-    mov rdi, rsi
-    mov rsi, rdx
-    mov rdx, rcx
-    syscall
-    jnc done
-    neg rax
-done:
-    ret
-}
+        // Executes a raw BSD system call with four arguments.
+        #Abi(.SysV)
+        asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
+            mov rax, rdi
+            mov rdi, rsi
+            mov rsi, rdx
+            mov rdx, rcx
+            mov r10, r8
+            syscall
+            jnc done
+            neg rax
+        done:
+            ret
+        }
 
-// Executes a raw BSD system call with four arguments.
-#Abi(.SysV)
-asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
-    mov rax, rdi
-    mov rdi, rsi
-    mov rsi, rdx
-    mov rdx, rcx
-    mov r10, r8
-    syscall
-    jnc done
-    neg rax
-done:
-    ret
-}
+        // Executes a raw BSD system call with five arguments.
+        #Abi(.SysV)
+        asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
+            mov rax, rdi
+            mov rdi, rsi
+            mov rsi, rdx
+            mov rdx, rcx
+            mov r10, r8
+            mov r8, r9
+            syscall
+            jnc done
+            neg rax
+        done:
+            ret
+        }
 
-// Executes a raw BSD system call with five arguments.
-#Abi(.SysV)
-asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
-    mov rax, rdi
-    mov rdi, rsi
-    mov rsi, rdx
-    mov rdx, rcx
-    mov r10, r8
-    mov r8, r9
-    syscall
-    jnc done
-    neg rax
-done:
-    ret
-}
+        // Executes a raw BSD system call with six arguments.
+        #Abi(.SysV)
+        asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
+            mov rax, rdi
+            mov rdi, rsi
+            mov rsi, rdx
+            mov rdx, rcx
+            mov r10, r8
+            mov r8, r9
+            mov r9, qword [rsp + 8]
+            syscall
+            jnc done
+            neg rax
+        done:
+            ret
+        }
+    },
+    .AArch64 => {
+        // Executes a raw BSD system call without arguments.
+        asm func Syscall0(number: uint64) -> int64 {
+            mov x8, x0
+            svc #0
+            cneg x0, x0, cs
+            ret
+        }
 
-// Executes a raw BSD system call with six arguments.
-#Abi(.SysV)
-asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
-    mov rax, rdi
-    mov rdi, rsi
-    mov rsi, rdx
-    mov rdx, rcx
-    mov r10, r8
-    mov r8, r9
-    mov r9, qword [rsp + 8]
-    syscall
-    jnc done
-    neg rax
-done:
-    ret
+        // Executes a raw BSD system call with one argument.
+        asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
+            mov x8, x0
+            mov x0, x1
+            svc #0
+            cneg x0, x0, cs
+            ret
+        }
+
+        // Executes a raw BSD system call with two arguments.
+        asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
+            mov x8, x0
+            mov x0, x1
+            mov x1, x2
+            svc #0
+            cneg x0, x0, cs
+            ret
+        }
+
+        // Executes a raw BSD system call with three arguments.
+        asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
+            mov x8, x0
+            mov x0, x1
+            mov x1, x2
+            mov x2, x3
+            svc #0
+            cneg x0, x0, cs
+            ret
+        }
+
+        // Executes a raw BSD system call with four arguments.
+        asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
+            mov x8, x0
+            mov x0, x1
+            mov x1, x2
+            mov x2, x3
+            mov x3, x4
+            svc #0
+            cneg x0, x0, cs
+            ret
+        }
+
+        // Executes a raw BSD system call with five arguments.
+        asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
+            mov x8, x0
+            mov x0, x1
+            mov x1, x2
+            mov x2, x3
+            mov x3, x4
+            mov x4, x5
+            svc #0
+            cneg x0, x0, cs
+            ret
+        }
+
+        // Executes a raw BSD system call with six arguments.
+        asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
+            mov x8, x0
+            mov x0, x1
+            mov x1, x2
+            mov x2, x3
+            mov x3, x4
+            mov x4, x5
+            mov x5, x6
+            svc #0
+            cneg x0, x0, cs
+            ret
+        }
+    },
+    else => #Error("Unsupported BSD architecture")
 }
 
 func SignExtendFd(fd: int32) -> uint64 {

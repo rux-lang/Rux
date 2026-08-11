@@ -56,7 +56,7 @@ The CMake target graph enforces these dependencies. Prefer adding a dependency t
 
 Operating-system APIs are confined to `Compiler/System`; the CI isolation guard is `Tests/Policy/PlatformIsolation/Check.sh`. New uses of `getenv`, `<windows.h>`, `fork`, or similar APIs belong behind a `System` interface.
 
-The language parses the same for every target, with one exception: an `asm func` body is machine text rather than Rux, so `Parser` takes the target architecture and reads the body with that architecture's register table (`Target/AsmRegisters.h`). The mnemonics are checked later — a body whose instructions belong to the other architecture is reported during semantic analysis, after `when` folding has dropped the branches this build never reaches.
+The language parses the same for every target, with one exception: an `asm func` body is machine text rather than Rux, so `Parser` takes the target architecture and reads the body with that architecture's register table (`Target/AsmRegisters.h`). The mnemonics are checked later — a body whose instructions belong to the other architecture is an error reported during semantic analysis, after `when` folding has dropped the branches this build never reaches. A function that must reach both machines therefore writes a body per architecture under `when #target.arch`, as the platform packages' system-call wrappers do.
 
 ## Architecture Naming
 

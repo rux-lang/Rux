@@ -29,6 +29,7 @@ set(RUX_TEST_SOURCES
     PackageIdentityTests.cpp
     PackageScaffoldTests.cpp
     PackageVersionTests.cpp
+    PlatformAsmTests.cpp
     ProcessTests.cpp
     PrimitiveConstantsTests.cpp
     RcuTests.cpp

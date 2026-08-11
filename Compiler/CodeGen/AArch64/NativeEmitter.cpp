@@ -1,5 +1,6 @@
 #include "CodeGen/AArch64/NativeEmitter.h"
 
+#include "CodeGen/AArch64/Assembler.h"
 #include "CodeGen/Layout.h"
 #include "Linker/ArchiveWriter.h"
 #include "System/Process.h"
@@ -109,20 +110,8 @@ public:
     }
 
     [[nodiscard]] std::optional<std::string> Generate(std::vector<Diagnostic> &diagnostics) {
-        for (const auto *function : functions) {
-            if (reachable.contains(function->name) && function->isAsm && !function->isExtern &&
-                !CanLowerAsm(*function)) {
-                diagnostics.push_back(ErrorDiagnostic(std::format(
-                    "asm function '{}' contains x86-64 instructions and is unavailable on AArch64", function->name)));
-            }
-        }
-        if (!diagnostics.empty()) {
-            return std::nullopt;
-        }
-
         std::string out;
         out += "#include <math.h>\n";
-        out += "#include <errno.h>\n";
         out += "#include <stdint.h>\n";
         out += "#include <stdio.h>\n";
         out += "#include <stdlib.h>\n";
@@ -130,7 +119,6 @@ public:
         out += "#if defined(_WIN32)\n#define RX_EXPORT __declspec(dllexport)\n#else\n"
                "#define RX_EXPORT __attribute__((visibility(\"default\")))\n#endif\n";
         out += "typedef unsigned char *rx_ptr;\n";
-        out += "extern long syscall(long, ...);\n";
         out += "static uint64_t rx_word(const void *value, size_t size) { uint64_t result = 0; "
                "memcpy(&result, value, size < 8 ? size : 8); return result; }\n";
 
@@ -141,8 +129,12 @@ public:
         for (const auto *function : functions) {
             if (!function->isExtern && reachable.contains(function->name) &&
                 functionDecls.at(function->name) == function && emittedDefinitions.insert(function->name).second) {
-                function->isAsm ? EmitAsmFunction(out, *function) : EmitFunction(out, *function);
+                function->isAsm ? EmitAsmFunction(out, *function, diagnostics) : EmitFunction(out, *function);
             }
+        }
+        if (std::ranges::any_of(diagnostics,
+                                [](const Diagnostic &d) { return d.severity == Diagnostic::Severity::Error; })) {
+            return std::nullopt;
         }
 
         if (artifactKind == ArtifactKind::Executable) {
@@ -162,6 +154,9 @@ private:
     ArtifactKind artifactKind;
     std::vector<const LirFunc *> functions;
     std::unordered_map<std::string, std::string> functionNames;
+    // The module a function was written in, which is the source name an `asm
+    // func` body's diagnostics are reported against.
+    std::unordered_map<std::string, std::string> functionModules;
     std::unordered_map<std::string, const LirFunc *> functionDecls;
     std::unordered_map<std::string, StructLayout> layouts;
     std::unordered_map<std::string, TypeRef> namedBaseTypes;
@@ -377,6 +372,7 @@ private:
             for (const auto &function : module.funcs) {
                 functions.push_back(&function);
                 functionDecls[function.name] = &function;
+                functionModules.try_emplace(function.name, module.name);
                 if (function.isExtern) {
                     functionNames.try_emplace(function.name, std::format("rx_ext{}", functionIndex++));
                 }
@@ -440,16 +436,6 @@ private:
                 }
             }
         }
-    }
-
-    static bool CanLowerAsm(const LirFunc &function) {
-        static constexpr std::string_view supported[] = {
-            "Add",    "MulSub", "SumTo",      "DoubleViaStack", "Triple",    "TripleThenAdd", "Sqrt",
-            "MulAdd", "MinOf",  "IntToFloat", "FloatToInt",     "FloatBits", "FromBits",      "BitsOf",
-        };
-        return std::ranges::contains(supported, function.name) || function.name.starts_with("Sqrt__") ||
-               (function.name.starts_with("Syscall") && function.name.size() == 8 && function.name.back() >= '0' &&
-                function.name.back() <= '6');
     }
 
     void EmitAggregateTypes(std::string &out) {
@@ -626,8 +612,25 @@ private:
         out += "\n";
     }
 
-    void EmitAsmFunction(std::string &out, const LirFunc &function) {
-        out += std::format("\n{} {}(", FunctionReturnType(function), functionNames.at(function.name));
+    // An `asm func` body is machine code, and C has no spelling for it. What it
+    // does have is a naked function — no prologue, no epilogue, nothing between
+    // the caller and what is written inside — so the body goes through this
+    // compiler's own AArch64 assembler and arrives here as the words it encoded,
+    // one `.inst` each. Clang never reads the instructions: it places them.
+    void EmitAsmFunction(std::string &out, const LirFunc &function, std::vector<Diagnostic> &diagnostics) {
+        std::vector<std::uint8_t> code;
+        const AsmAssembly assembled = AssembleAArch64AsmFunc(function.asmBody, functionModules.at(function.name), code);
+        diagnostics.insert(diagnostics.end(), assembled.diagnostics.begin(), assembled.diagnostics.end());
+        // A body naming a symbol needs a relocation, which only an object the
+        // linker sees can carry. The C route has no place to put one.
+        for (const auto &fixup : assembled.fixups) {
+            diagnostics.push_back(ErrorDiagnostic(
+                std::format("asm function '{}' references '{}', which the AArch64 C back end cannot relocate",
+                            function.name, fixup.symbol)));
+        }
+
+        out += std::format("\n__attribute__((naked)) {} {}(", FunctionReturnType(function),
+                           functionNames.at(function.name));
         for (std::size_t i = 0; i < function.params.size(); ++i) {
             if (i != 0) {
                 out += ", ";
@@ -637,56 +640,15 @@ private:
         if (function.params.empty()) {
             out += "void";
         }
-        out += ") {\n";
-        const std::string &name = function.name;
-        if (name == "Add") {
-            out += "  return a0 + a1;\n";
+        out += ") {\n  __asm__ volatile(\n";
+        for (std::size_t offset = 0; offset + 4 <= code.size(); offset += 4) {
+            const auto word = static_cast<std::uint32_t>(code[offset]) |
+                              static_cast<std::uint32_t>(code[offset + 1]) << 8U |
+                              static_cast<std::uint32_t>(code[offset + 2]) << 16U |
+                              static_cast<std::uint32_t>(code[offset + 3]) << 24U;
+            out += std::format("      \".inst 0x{:08X}\\n\"\n", word);
         }
-        else if (name == "MulSub") {
-            out += "  return a0 * a1 - 1;\n";
-        }
-        else if (name == "SumTo") {
-            out += "  int64_t result = 0; while (a0) result += a0--; return result;\n";
-        }
-        else if (name == "DoubleViaStack") {
-            out += "  return a0 << 1;\n";
-        }
-        else if (name == "Triple") {
-            out += "  return a0 * 3;\n";
-        }
-        else if (name == "TripleThenAdd") {
-            out += "  return a0 * 4;\n";
-        }
-        else if (name == "Sqrt" || name.starts_with("Sqrt__")) {
-            out += std::format("  return {}(a0);\n",
-                               function.returnType.kind == TypeRef::Kind::Float32 ? "sqrtf" : "sqrt");
-        }
-        else if (name == "MulAdd") {
-            out += "  return a0 * a1 + a2;\n";
-        }
-        else if (name == "MinOf") {
-            out += "  return a0 < a1 ? a0 : a1;\n";
-        }
-        else if (name == "IntToFloat") {
-            out += "  return (double)a0;\n";
-        }
-        else if (name == "FloatToInt") {
-            out += "  return (int64_t)a0;\n";
-        }
-        else if (name == "FloatBits" || name == "BitsOf") {
-            out += "  uint64_t result = 0; memcpy(&result, &a0, sizeof(a0)); return result;\n";
-        }
-        else if (name == "FromBits") {
-            out += "  double result = 0; memcpy(&result, &a0, sizeof(result)); return result;\n";
-        }
-        else if (name.starts_with("Syscall")) {
-            out += "  long result = syscall((long)a0";
-            for (std::size_t i = 1; i < function.params.size(); ++i) {
-                out += std::format(", (uint64_t)a{}", i);
-            }
-            out += "); return result == -1 ? -(int64_t)errno : (int64_t)result;\n";
-        }
-        out += "}\n";
+        out += "      \"\");\n}\n";
     }
 
     static std::string Reg(const LirReg reg) {

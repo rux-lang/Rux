@@ -3,6 +3,11 @@
 // An x86-64 body compiled for AArch64. Nothing in the syntax says which
 // machine a body was written for, so the mnemonics have to: `mov` and `ret`
 // are both machines' and say nothing, `imul` is x86-64's alone.
+//
+// It is an error rather than a warning, because `when #target.arch` is how one
+// function reaches both machines and a body left written for the other one is a
+// function this build cannot produce. Analysis stops there, which is why the
+// assembler's own reading of these three lines is not reported below it.
 asm func Triple(x: int64) -> int64 {
     mov rax, rdi
     imul rax, 3

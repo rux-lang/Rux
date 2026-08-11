@@ -1,4 +1,4 @@
-import Core::{ Architecture, #target, #Error };
+import Core::{ #target, #Error };
 
 // Standard file descriptors.
 const StdIn: int32 = 0;
@@ -6,7 +6,7 @@ const StdOut: int32 = 1;
 const StdErr: int32 = 2;
 
 when #target.arch {
-    Architecture::X86_64 => {
+    .X86_64 => {
         const SysRead: uint64 = 0;
         const SysWrite: uint64 = 1;
         const SysClose: uint64 = 3;
@@ -18,7 +18,7 @@ when #target.arch {
         const SysExit: uint64 = 60;
         const SysClockGetTime: uint64 = 228;
     },
-    Architecture::AArch64 => {
+    .AArch64 => {
         const SysRead: uint64 = 63;
         const SysWrite: uint64 = 64;
         const SysClose: uint64 = 57;
@@ -51,79 +51,163 @@ struct Timespec {
     nanoseconds: int64;
 }
 
-// Rux functions use the System V ABI on Linux x86-64. The kernel keeps the first
-// three argument registers, but takes its fourth argument in r10 instead of
-// rcx. A seventh function argument is passed at [rsp + 8], after the return
-// address. On AArch64, the native backend lowers these wrappers through libc's
-// syscall function. Linux returns either a non-negative result or -errno.
-// Executes a raw Linux system call without arguments.
-asm func Syscall0(number: uint64) -> int64 {
-    mov rax, rdi
-    syscall
-    ret
-}
+// Linux returns either a non-negative result or -errno from every system call,
+// on both architectures. What differs is where the call number and the
+// arguments go, so each architecture writes the whole wrapper.
+//
+// x86-64: Rux functions use the System V ABI, whose first three argument
+// registers the kernel keeps. The fourth argument moves from rcx to r10, and a
+// seventh function argument arrives at [rsp + 8], after the return address.
+//
+// AArch64: Rux functions use AAPCS64, whose first eight argument registers
+// cover even the widest wrapper. The kernel takes the call number in x8 and the
+// arguments in x0 through x5, so each wrapper moves the number aside and then
+// shifts the arguments down by one register, lowest first, which is the order
+// in which each register has been read before it is written.
+when #target.arch {
+    .X86_64 => {
+        // Executes a raw Linux system call without arguments.
+        asm func Syscall0(number: uint64) -> int64 {
+            mov rax, rdi
+            syscall
+            ret
+        }
 
-// Executes a raw Linux system call with one argument.
-asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
-    mov rax, rdi
-    mov rdi, rsi
-    syscall
-    ret
-}
+        // Executes a raw Linux system call with one argument.
+        asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
+            mov rax, rdi
+            mov rdi, rsi
+            syscall
+            ret
+        }
 
-// Executes a raw Linux system call with two arguments.
-asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
-    mov rax, rdi
-    mov rdi, rsi
-    mov rsi, rdx
-    syscall
-    ret
-}
+        // Executes a raw Linux system call with two arguments.
+        asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
+            mov rax, rdi
+            mov rdi, rsi
+            mov rsi, rdx
+            syscall
+            ret
+        }
 
-// Executes a raw Linux system call with three arguments.
-asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
-    mov rax, rdi
-    mov rdi, rsi
-    mov rsi, rdx
-    mov rdx, rcx
-    syscall
-    ret
-}
+        // Executes a raw Linux system call with three arguments.
+        asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
+            mov rax, rdi
+            mov rdi, rsi
+            mov rsi, rdx
+            mov rdx, rcx
+            syscall
+            ret
+        }
 
-// Executes a raw Linux system call with four arguments.
-asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
-    mov rax, rdi
-    mov rdi, rsi
-    mov rsi, rdx
-    mov rdx, rcx
-    mov r10, r8
-    syscall
-    ret
-}
+        // Executes a raw Linux system call with four arguments.
+        asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
+            mov rax, rdi
+            mov rdi, rsi
+            mov rsi, rdx
+            mov rdx, rcx
+            mov r10, r8
+            syscall
+            ret
+        }
 
-// Executes a raw Linux system call with five arguments.
-asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
-    mov rax, rdi
-    mov rdi, rsi
-    mov rsi, rdx
-    mov rdx, rcx
-    mov r10, r8
-    mov r8, r9
-    syscall
-    ret
-}
+        // Executes a raw Linux system call with five arguments.
+        asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
+            mov rax, rdi
+            mov rdi, rsi
+            mov rsi, rdx
+            mov rdx, rcx
+            mov r10, r8
+            mov r8, r9
+            syscall
+            ret
+        }
 
-// Executes a raw Linux system call with six arguments.
-asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
-    mov rax, rdi
-    mov rdi, rsi
-    mov rsi, rdx
-    mov rdx, rcx
-    mov r10, r8
-    mov r8, r9
-    mov r9, qword [rsp + 8]
-    syscall
-    ret
+        // Executes a raw Linux system call with six arguments.
+        asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
+            mov rax, rdi
+            mov rdi, rsi
+            mov rsi, rdx
+            mov rdx, rcx
+            mov r10, r8
+            mov r8, r9
+            mov r9, qword [rsp + 8]
+            syscall
+            ret
+        }
+    },
+    .AArch64 => {
+        // Executes a raw Linux system call without arguments.
+        asm func Syscall0(number: uint64) -> int64 {
+            mov x8, x0
+            svc #0
+            ret
+        }
+
+        // Executes a raw Linux system call with one argument.
+        asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
+            mov x8, x0
+            mov x0, x1
+            svc #0
+            ret
+        }
+
+        // Executes a raw Linux system call with two arguments.
+        asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
+            mov x8, x0
+            mov x0, x1
+            mov x1, x2
+            svc #0
+            ret
+        }
+
+        // Executes a raw Linux system call with three arguments.
+        asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
+            mov x8, x0
+            mov x0, x1
+            mov x1, x2
+            mov x2, x3
+            svc #0
+            ret
+        }
+
+        // Executes a raw Linux system call with four arguments.
+        asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
+            mov x8, x0
+            mov x0, x1
+            mov x1, x2
+            mov x2, x3
+            mov x3, x4
+            svc #0
+            ret
+        }
+
+        // Executes a raw Linux system call with five arguments.
+        asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
+            mov x8, x0
+            mov x0, x1
+            mov x1, x2
+            mov x2, x3
+            mov x3, x4
+            mov x4, x5
+            svc #0
+            ret
+        }
+
+        // Executes a raw Linux system call with six arguments.
+        asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
+            mov x8, x0
+            mov x0, x1
+            mov x1, x2
+            mov x2, x3
+            mov x3, x4
+            mov x4, x5
+            mov x5, x6
+            svc #0
+            ret
+        }
+    },
+    else => #Error("Unsupported Linux architecture")
 }
 
 func SignExtendFd(fd: int32) -> uint64 {

@@ -15,3 +15,6 @@ LicenseFile = "LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"
 Homepage = "https://rux-lang.dev/docs/api/math"
 ReadmeFile = "README.md"
+
+[Dependencies]
+Core = { Namespace = "Rux", Version = "0.1.0" }

@@ -2747,7 +2747,10 @@ private:
     //
     // This runs after `when` folding, so a body a build never reaches is never
     // reported, and it stops at the first offender so a body written for the
-    // wrong machine costs one diagnostic rather than one per line.
+    // wrong machine costs one diagnostic rather than one per line. A body that
+    // reaches this far is one the build needs and no assembler can encode, so
+    // it is an error: `when #target.arch` is how a function written twice
+    // reaches both machines, and every first-party body uses it.
     void CheckAsmBodyArchitecture(const FuncDecl &d) const {
         const Target::Arch target = context.target.arch;
         for (const auto &instr : d.asmBody) {
@@ -2758,9 +2761,9 @@ private:
             if (mnemonicArch == Target::Arch::Unknown || mnemonicArch == target) {
                 continue;
             }
-            EmitWarning(instr.location,
-                        std::format("'{}' is an {} instruction, but asm func '{}' is compiled for {}", instr.mnemonic,
-                                    Target::ToDisplayString(mnemonicArch), d.name, Target::ToDisplayString(target)));
+            EmitError(instr.location,
+                      std::format("'{}' is an {} instruction, but asm func '{}' is compiled for {}", instr.mnemonic,
+                                  Target::ToDisplayString(mnemonicArch), d.name, Target::ToDisplayString(target)));
             return;
         }
     }

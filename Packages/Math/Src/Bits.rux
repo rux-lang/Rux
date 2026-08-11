@@ -1,20 +1,44 @@
+import Core::{ #target, #Error };
+
 // The bit-level primitives the rest of the package is built on. Nothing here is
-// meant to be called from outside it.
+// meant to be called from outside it. Both directions are one register-to-
+// register move of a bit pattern, but which registers those are is the calling
+// convention's business, so each architecture writes its own pair.
+when #target.arch {
+    .X86_64 => {
+        // Reading the bits of a float is portable: both the Win64 and System V
+        // ABIs pass the first float argument in xmm0 and return an integer in
+        // rax.
+        asm func FloatBits(x: float64) -> uint64 {
+            movq rax, xmm0
+            ret
+        }
 
-// Reading the bits of a float is portable: both the Win64 and System V ABIs
-// pass the first float argument in xmm0 and return an integer in rax.
-asm func FloatBits(x: float64) -> uint64 {
-    movq rax, xmm0
-    ret
-}
+        // Writing them back is not, because the integer arrives in rcx under
+        // Win64 and in rdi under System V. Pinning the convention keeps one
+        // body for every target, at the cost of the one #Abi override in the
+        // package.
+        #Abi(.Win64)
+        asm func FromBits(bits: uint64) -> float64 {
+            movq xmm0, rcx
+            ret
+        }
+    },
+    .AArch64 => {
+        // AAPCS64 is the one convention on every AArch64 target, so neither
+        // direction needs an override: the float travels in d0 and the integer
+        // in x0, and FMOV between them moves the bits rather than the value.
+        asm func FloatBits(x: float64) -> uint64 {
+            fmov x0, d0
+            ret
+        }
 
-// Writing them back is not, because the integer arrives in rcx under Win64
-// and in rdi under System V. Pinning the convention keeps one body for every
-// target, at the cost of the one #Abi override in the package.
-#Abi(.Win64)
-asm func FromBits(bits: uint64) -> float64 {
-    movq xmm0, rcx
-    ret
+        asm func FromBits(bits: uint64) -> float64 {
+            fmov d0, x0
+            ret
+        }
+    },
+    else => #Error("Unsupported architecture")
 }
 
 // The halves of the bit pattern, the way fdlibm reads them. The high word

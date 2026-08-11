@@ -1,15 +1,37 @@
-// Square root, computed by the SSE hardware instruction. Both the Win64 and
-// System V ABIs pass the first float argument in xmm0 and return the result
-// in xmm0, so no #Abi override is needed. sqrtss/sqrtsd are correctly
-// rounded and already produce the IEEE-754 results for the special cases:
-// Sqrt(NaN) = NaN, Sqrt(+Inf) = +Inf, Sqrt(-0.0) = -0.0, Sqrt(x < 0) = NaN.
+import Core::{ #target, #Error };
 
-asm func Sqrt(x: float32) -> float32 {
-    sqrtss xmm0, xmm0
-    ret
-}
+// Square root, computed by the hardware instruction. Every architecture here
+// has one that is correctly rounded and already produces the IEEE-754 results
+// for the special cases: Sqrt(NaN) = NaN, Sqrt(+Inf) = +Inf, Sqrt(-0.0) = -0.0,
+// Sqrt(x < 0) = NaN. The argument arrives in the register the result is
+// returned in under every convention involved, so no #Abi override is needed
+// and the whole body is the instruction itself.
+when #target.arch {
+    .X86_64 => {
+        // Both the Win64 and System V ABIs pass the first float argument in
+        // xmm0 and return the result there.
+        asm func Sqrt(x: float32) -> float32 {
+            sqrtss xmm0, xmm0
+            ret
+        }
 
-asm func Sqrt(x: float64) -> float64 {
-    sqrtsd xmm0, xmm0
-    ret
+        asm func Sqrt(x: float64) -> float64 {
+            sqrtsd xmm0, xmm0
+            ret
+        }
+    },
+    .AArch64 => {
+        // AAPCS64 passes the first float argument in v0 and returns the result
+        // there, under the S view for float32 and the D view for float64.
+        asm func Sqrt(x: float32) -> float32 {
+            fsqrt s0, s0
+            ret
+        }
+
+        asm func Sqrt(x: float64) -> float64 {
+            fsqrt d0, d0
+            ret
+        }
+    },
+    else => #Error("Unsupported architecture")
 }
