@@ -1,6 +1,7 @@
 #include "Driver/CompilerDriver.h"
 
 #include "CodeGen/AArch64/NativeEmitter.h"
+#include "CodeGen/AArch64/RcuEmitter.h"
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Driver/BuildTarget.h"
@@ -508,6 +509,10 @@ bool CompilerDriver::Analyze() {
     return true;
 }
 
+bool CompilerDriver::UseNativeAArch64Backend() const {
+    return opts.nativeAArch64Backend || Driver::NativeAArch64BackendRequested();
+}
+
 bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
                                       std::vector<std::filesystem::path> &secondaryArtifactPaths) {
     // Analysis runs for every supported triple; only code generation is limited
@@ -546,11 +551,13 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     stats.lir = ElapsedMs(lirStart);
 
     const auto codegenStart = std::chrono::steady_clock::now();
-    const bool useAArch64Backend = compileTimeContext.target.arch == Target::Arch::AArch64;
+    const bool isAArch64 = compileTimeContext.target.arch == Target::Arch::AArch64;
+    const bool useAArch64Backend = isAArch64 && !UseNativeAArch64Backend();
 
-    // Assembly dump (optional). The AArch64 backend emits its dump below while
-    // invoking the native compiler.
-    if (opts.dumpAsm && !useAArch64Backend) {
+    // Assembly dump (optional). AssemblyPrinter prints x86-64; the Clang
+    // emitter writes its own dump below while invoking the native compiler,
+    // and the native AArch64 back end has no printer of its own yet.
+    if (opts.dumpAsm && !isAArch64) {
         if (opts.verbose) {
             std::print("Emitting assembly for {}\n", opts.manifest.package.name.Text());
         }
@@ -590,11 +597,21 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     if (opts.verbose) {
         std::print("Emitting RCU objects for {}\n", opts.manifest.package.name.Text());
     }
-    RcuEmitter rcuEmitter(lirPackage, std::string(opts.manifest.package.name.Text()), compileTimeContext.target.os);
-    auto rcuFiles = rcuEmitter.Generate();
-    if (!rcuEmitter.Diagnostics().empty()) {
+    std::vector<RcuFile> rcuFiles;
+    std::vector<Diagnostic> codegenDiagnostics;
+    if (isAArch64) {
+        AArch64RcuEmitter aarch64Emitter(lirPackage, std::string(opts.manifest.package.name.Text()));
+        rcuFiles = aarch64Emitter.Generate();
+        codegenDiagnostics = aarch64Emitter.Diagnostics();
+    }
+    else {
+        RcuEmitter rcuEmitter(lirPackage, std::string(opts.manifest.package.name.Text()), compileTimeContext.target.os);
+        rcuFiles = rcuEmitter.Generate();
+        codegenDiagnostics = rcuEmitter.Diagnostics();
+    }
+    {
         bool hasError = false;
-        for (const auto &diag : rcuEmitter.Diagnostics()) {
+        for (const auto &diag : codegenDiagnostics) {
             Emit(diag);
             hasError = hasError || diag.IsError();
         }

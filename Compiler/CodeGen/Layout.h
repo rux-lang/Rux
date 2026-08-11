@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace Rux::Layout {
@@ -49,6 +50,15 @@ using LayoutMap = std::unordered_map<std::string, StructLayout>;
 
 // Compute the layout of `s`, resolving named field types through `known`.
 [[nodiscard]] StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known);
+
+// Size of a LIR type as the running program lays it out, which is what a stack
+// slot and a copy are measured in. SizeOf alone cannot answer for a named type:
+// an interface value is a fat pointer whether or not the module declaring it is
+// in hand, and a struct is whatever its computed layout came to. Both back ends
+// size their frames by this, so the rule is stated once here rather than beside
+// each of them.
+[[nodiscard]] int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts,
+                                const std::unordered_set<std::string> &interfaceNames);
 
 // System V AMD64 integer argument registers (in order)
 inline constexpr std::string_view kIntArgRegs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};

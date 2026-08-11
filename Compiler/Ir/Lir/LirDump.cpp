@@ -9,83 +9,6 @@
 #include <string_view>
 
 namespace Rux {
-static std::string_view OpcodeStr(LirOpcode op) {
-    switch (op) {
-    case LirOpcode::Const:
-        return "const";
-    case LirOpcode::Alloca:
-        return "alloca";
-    case LirOpcode::Load:
-        return "load";
-    case LirOpcode::Store:
-        return "store";
-    case LirOpcode::Add:
-        return "add";
-    case LirOpcode::Sub:
-        return "sub";
-    case LirOpcode::Mul:
-        return "mul";
-    case LirOpcode::Div:
-        return "div";
-    case LirOpcode::Mod:
-        return "mod";
-    case LirOpcode::Pow:
-        return "pow";
-    case LirOpcode::And:
-        return "and";
-    case LirOpcode::Or:
-        return "or";
-    case LirOpcode::Xor:
-        return "xor";
-    case LirOpcode::Shl:
-        return "shl";
-    case LirOpcode::Shr:
-        return "shr";
-    case LirOpcode::Lshr:
-        return "lshr";
-    case LirOpcode::Neg:
-        return "neg";
-    case LirOpcode::Not:
-        return "not";
-    case LirOpcode::BitNot:
-        return "bitnot";
-    case LirOpcode::CmpEq:
-        return "cmpeq";
-    case LirOpcode::CmpNe:
-        return "cmpne";
-    case LirOpcode::CmpLt:
-        return "cmplt";
-    case LirOpcode::CmpLe:
-        return "cmple";
-    case LirOpcode::CmpGt:
-        return "cmpgt";
-    case LirOpcode::CmpGe:
-        return "cmpge";
-    case LirOpcode::Cast:
-        return "cast";
-    case LirOpcode::Call:
-        return "call";
-    case LirOpcode::CallIndirect:
-        return "call_ind";
-    case LirOpcode::Assert:
-        return "assert";
-    case LirOpcode::Panic:
-        return "panic";
-    case LirOpcode::FieldPtr:
-        return "fieldptr";
-    case LirOpcode::IndexPtr:
-        return "indexptr";
-    case LirOpcode::Phi:
-        return "phi";
-    case LirOpcode::GlobalAddr:
-        return "globaladdr";
-    case LirOpcode::StringAddr:
-        return "stringaddr";
-    default:
-        return "?";
-    }
-}
-
 // Dump
 static std::string RegStr(LirReg r) {
     return r == LirNoReg ? "<void>" : std::format("%{}", r);
@@ -191,7 +114,7 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
     }
     default: {
         // Unary (one src), binary (two srcs), or zero-operand/global addr (zero srcs)
-        std::string_view opName = OpcodeStr(i.op);
+        std::string_view opName = LirOpcodeName(i.op);
         if (i.srcs.size() == 1) {
             out << std::format("{} = {} {} {}\n", RegStr(i.dst), opName, i.type.ToString(), RegStr(i.srcs[0]));
         }

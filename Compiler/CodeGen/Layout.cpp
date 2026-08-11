@@ -146,4 +146,27 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known)
     result.alignment = maxAlign;
     return result;
 }
+
+int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unordered_set<std::string> &interfaceNames) {
+    if (!t.IsRange() && t.kind == TypeRef::Kind::Named) {
+        const std::string base = BaseTypeName(t.name);
+        // An interface value is a data pointer and a vtable pointer, and the
+        // runtime aggregates below have a shape the declaring module does not
+        // get to change; either answers before a struct layout does, so a user
+        // type sharing one of those names does not quietly resize it.
+        if (interfaceNames.contains(base)) {
+            return 16;
+        }
+        if (base == "Slice" || base == "String" || base == "StringArray" || base == "SystemTime") {
+            return 16;
+        }
+        if (base == "StringBuilder") {
+            return 24;
+        }
+        if (const auto it = layouts.find(base); it != layouts.end()) {
+            return it->second.totalSize;
+        }
+    }
+    return SizeOf(t);
+}
 } // namespace Rux::Layout

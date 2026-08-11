@@ -168,6 +168,11 @@ TargetContext TargetContextForTriple(const std::string_view target) {
                          .cpu_features = native ? Target::HostCpuFeatures : Target::CpuFeature::None};
 }
 
+bool NativeAArch64BackendRequested() {
+    const auto requested = System::GetEnv("RUX_AARCH64_RCU");
+    return requested && !requested->empty() && *requested != "0";
+}
+
 std::string UnsupportedBackendReason(const std::string_view target) {
     const auto triple = CanonicalTargetTriple(target);
     const Arch arch = TargetTripleArch(triple);
@@ -176,6 +181,13 @@ std::string UnsupportedBackendReason(const std::string_view target) {
     // the platform Clang driver, which only produces artifacts for the machine
     // the compiler runs on; Phases 3-5 of BACKLOG.md replace it.
     if (arch == Arch::X86_64) {
+        return {};
+    }
+    // The native AArch64 back end encodes and links in-process the way the
+    // x86-64 one does, so once a build has opted into it `linux-aarch64` is
+    // reachable from any host. It is the only AArch64 target that back end
+    // reaches; the rest keep the Clang path and its host requirement.
+    if (arch == Arch::AArch64 && TargetTripleOs(triple) == OS::Linux && NativeAArch64BackendRequested()) {
         return {};
     }
     if (arch != HostArch) {

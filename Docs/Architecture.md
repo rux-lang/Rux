@@ -16,37 +16,37 @@ Source -> Lexer -> Syntax -> SemanticModel
                     +-----------+-----------+
                     |                       |
                     v                       v
-             x86-64 CodeGen           Native AArch64 CodeGen
+             x86-64 CodeGen               AArch64 CodeGen
                     |                       |
                     v                       v
-              RCU Object -> Linker    Clang -> ELF / Mach-O / PE
+              RCU Object -> Linker    RCU Object -> Linker, or Clang -> ELF / Mach-O / PE
 ```
 
 The driver loads the root manifest and dependencies before entering this pipeline. Diagnostics can stop the process after any frontend stage; object emission and linking only run when analysis and lowering succeed.
 
 ## Component Ownership
 
-| Component              | Owns                                                                                      | May depend on                             |
-| ---------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `Diagnostics`          | Diagnostic values and rendering primitives                                                | Standard library only                     |
-| `Source`               | Source loading and source locations                                                       | Diagnostics                               |
-| `System`               | Host OS, process, filesystem, networking, environment, and JSON                           | Standard library and host APIs            |
-| `Target`               | Header-only target triples, ABI, layout, and instruction models                           | Standard library only                     |
-| `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                                  | Standard library                          |
-| `Lexer`                | Tokens and lexical analysis                                                               | Diagnostics                               |
-| `Syntax`               | AST and parser                                                                            | Lexer, Diagnostics, and Target            |
-| `Semantic`             | Symbols, types, conditional compilation, and validated semantic model                     | Syntax and Diagnostics                    |
-| `Ir/Hir`               | High-level IR and its transformations                                                     | Semantic and Lexer                        |
-| `Ir/Lir`               | Control-flow-explicit low-level IR                                                        | Semantic                                  |
-| `Lowering`             | AST/semantic model → HIR → LIR                                                            | Frontend and IR components                |
-| `CodeGen`              | Layout rules and the assembly result shared by machine backends                           | LIR                                       |
-| `CodeGen/X86_64`       | x86-64 code generation, inline assembly, and RCU construction                             | LIR, Object, Diagnostics                  |
-| `CodeGen/AArch64`      | AArch64 instruction encoding and inline assembly; lowering still through the Clang driver | LIR, Object, System, Diagnostics, Archive |
-| `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                            | Target                                    |
-| `Archive`              | Deterministic native archive containers and symbol indexes                                | Object                                    |
-| `Linker`               | PE, ELF, Mach-O, relocatable-object, and library output                                   | Object, Archive, and System               |
-| `Driver`               | End-to-end compilation orchestration and build reports                                    | All compiler stages                       |
-| `Formatter` / `Linter` | Source formatting and lint diagnostics                                                    | Syntax; the linter also uses Semantic     |
+| Component              | Owns                                                                               | May depend on                             |
+| ---------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------- |
+| `Diagnostics`          | Diagnostic values and rendering primitives                                         | Standard library only                     |
+| `Source`               | Source loading and source locations                                                | Diagnostics                               |
+| `System`               | Host OS, process, filesystem, networking, environment, and JSON                    | Standard library and host APIs            |
+| `Target`               | Header-only target triples, ABI, layout, and instruction models                    | Standard library only                     |
+| `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                           | Standard library                          |
+| `Lexer`                | Tokens and lexical analysis                                                        | Diagnostics                               |
+| `Syntax`               | AST and parser                                                                     | Lexer, Diagnostics, and Target            |
+| `Semantic`             | Symbols, types, conditional compilation, and validated semantic model              | Syntax and Diagnostics                    |
+| `Ir/Hir`               | High-level IR and its transformations                                              | Semantic and Lexer                        |
+| `Ir/Lir`               | Control-flow-explicit low-level IR                                                 | Semantic                                  |
+| `Lowering`             | AST/semantic model → HIR → LIR                                                     | Frontend and IR components                |
+| `CodeGen`              | Layout rules, literal decoding, and the assembly result shared by machine backends | LIR                                       |
+| `CodeGen/X86_64`       | x86-64 code generation, inline assembly, and RCU construction                      | LIR, Object, Diagnostics                  |
+| `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, and RCU construction                | LIR, Object, System, Diagnostics, Archive |
+| `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                     | Target                                    |
+| `Archive`              | Deterministic native archive containers and symbol indexes                         | Object                                    |
+| `Linker`               | PE, ELF, Mach-O, relocatable-object, and library output                            | Object, Archive, and System               |
+| `Driver`               | End-to-end compilation orchestration and build reports                             | All compiler stages                       |
+| `Formatter` / `Linter` | Source formatting and lint diagnostics                                             | Syntax; the linter also uses Semantic     |
 
 The CMake target graph enforces these dependencies. Prefer adding a dependency to the narrowest owning component rather than reaching through `RuxCore`.
 

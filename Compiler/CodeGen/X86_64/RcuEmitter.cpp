@@ -3,20 +3,16 @@
 #include "CodeGen/X86_64/RcuEmitter.h"
 
 #include "CodeGen/FloatLiteral.h"
+#include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
 #include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/X86_64/Assembler.h"
 #include "CodeGen/X86_64/Encoder.h"
-#include "Driver/Version.h"
+#include "Object/Rcu/RcuMetadata.h"
 #include "Object/Rcu/RcuStringTable.h"
 
-#include <charconv>
-#include <chrono>
 #include <cstring>
 #include <format>
-#include <limits>
-#include <optional>
-#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -40,84 +36,6 @@ TypeRef UnsignedIntegerType(const TypeRef &type) {
     default:
         return type;
     }
-}
-
-std::string_view NumericLiteralSuffix(std::string_view text) {
-    static constexpr std::string_view suffixes[] = {
-        "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "i", "u",
-    };
-    for (const auto suffix : suffixes) {
-        if (text.size() > suffix.size() && text.substr(text.size() - suffix.size()) == suffix) {
-            return suffix;
-        }
-    }
-    return {};
-}
-
-std::optional<std::uint64_t> ParseIntegerLiteralBits(std::string_view text) {
-    const std::string_view suffix = NumericLiteralSuffix(text);
-    if (!suffix.empty()) {
-        text.remove_suffix(suffix.size());
-    }
-
-    bool negative = false;
-    if (!text.empty() && (text.front() == '-' || text.front() == '+')) {
-        negative = text.front() == '-';
-        text.remove_prefix(1);
-    }
-
-    std::string cleaned;
-    cleaned.reserve(text.size());
-    for (const char c : text) {
-        if (c != '_') {
-            cleaned.push_back(c);
-        }
-    }
-
-    int base = 10;
-    std::string_view digits(cleaned);
-    if (digits.size() > 2 && digits[0] == '0') {
-        switch (digits[1]) {
-        case 'x':
-        case 'X':
-            base = 16;
-            digits.remove_prefix(2);
-            break;
-        case 'b':
-        case 'B':
-            base = 2;
-            digits.remove_prefix(2);
-            break;
-        case 'o':
-        case 'O':
-            base = 8;
-            digits.remove_prefix(2);
-            break;
-        default:
-            break;
-        }
-    }
-    if (digits.empty()) {
-        return std::nullopt;
-    }
-
-    std::uint64_t value = 0;
-    const auto *first = digits.data();
-    const auto *last = first + digits.size();
-    const auto [ptr, ec] = std::from_chars(first, last, value, base);
-    if (ec != std::errc{} || ptr != last) {
-        return std::nullopt;
-    }
-    if (!negative) {
-        return value;
-    }
-
-    constexpr std::uint64_t maxNegativeMagnitude =
-        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) + 1;
-    if (value > maxNegativeMagnitude) {
-        return std::nullopt;
-    }
-    return std::uint64_t{0} - value;
 }
 
 // RCU Code Generator: LirModule → RcuFile
@@ -221,29 +139,7 @@ private:
     }
 
     [[nodiscard]] int SizeOfRuntime(const TypeRef &t) const {
-        if (t.IsRange()) {
-            return SizeOf(t);
-        }
-        if (t.kind == TypeRef::Kind::Named) {
-            const std::string base = BaseTypeName(t.name);
-            if (interfaceNames.count(base)) {
-                return 16;
-            }
-            if (base == "Slice") {
-                return 16;
-            }
-            if (base == "String" || base == "StringArray" || base == "SystemTime") {
-                return 16;
-            }
-            if (base == "StringBuilder") {
-                return 24;
-            }
-            auto it = layouts.find(base);
-            if (it != layouts.end()) {
-                return it->second.totalSize;
-            }
-        }
-        return SizeOf(t);
+        return RuntimeSizeOf(t, layouts, interfaceNames);
     }
 
     [[nodiscard]] int StackValueSize(const TypeRef &t) const {
@@ -3148,27 +3044,8 @@ RcuFile RcuCodeGen::Generate() {
     RcuFile file;
     file.sourcePath = mod.name;
     file.packageName = pkgName;
-    file.buildTimestamp = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count());
-    // Parse rux version from RUX_VERSION string "M.m.p"
-    {
-        std::string ver = RUX_VERSION;
-        unsigned M = 0, mi = 0, p = 0;
-        auto parseNum = [](const char *s, unsigned &out) -> const char * {
-            while (*s && (*s < '0' || *s > '9')) {
-                ++s;
-            }
-            while (*s >= '0' && *s <= '9') {
-                out = out * 10 + static_cast<unsigned>(*s - '0');
-                ++s;
-            }
-            return s;
-        };
-        const char *c1 = parseNum(ver.c_str(), M);
-        const char *c2 = parseNum(c1, mi);
-        parseNum(c2, p);
-        file.ruxVersion = (M << 16) | (mi << 8) | p;
-    }
+    file.buildTimestamp = RcuBuildTimestamp();
+    file.ruxVersion = RcuCompilerVersion();
 
     // Build sections (always 3: .text, .rodata, .data)
     {
