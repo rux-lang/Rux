@@ -1462,7 +1462,8 @@ bool AArch64NativeEmitter::EmitArtifact(const std::filesystem::path &outputPath,
             }
         }
         std::string archiveError;
-        if (!WriteNativeArchive(std::span<const NativeObject>(&object, 1), target.os, outputPath, archiveError)) {
+        if (!WriteNativeArchive(std::span<const NativeObject>(&object, 1), target.os, target.arch, outputPath,
+                                archiveError)) {
             diagnostics.push_back(ErrorDiagnostic(std::move(archiveError)));
             return false;
         }

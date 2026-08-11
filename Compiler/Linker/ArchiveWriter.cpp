@@ -4,6 +4,7 @@
 #include <array>
 #include <charconv>
 #include <cstdint>
+#include <format>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -193,7 +194,12 @@ bool BuildArchive(const std::span<const NativeObject> objects, const ArchiveForm
 } // namespace
 
 bool WriteNativeArchive(const std::span<const NativeObject> objects, const Target::OS targetOs,
-                        const std::filesystem::path &outputPath, std::string &error) {
+                        const Target::Arch targetArch, const std::filesystem::path &outputPath, std::string &error) {
+    if (RcuArchFor(targetArch) == RcuArch::Unknown) {
+        error = std::format("cannot write a static library for {}: no object encoding exists for this architecture",
+                            Target::ToDisplayString(targetArch));
+        return false;
+    }
     std::vector<std::uint8_t> archive;
     const auto format = targetOs == Target::OS::Windows ? ArchiveFormat::Coff
                       : targetOs == Target::OS::MacOS   ? ArchiveFormat::Bsd
@@ -205,7 +211,15 @@ bool WriteNativeArchive(const std::span<const NativeObject> objects, const Targe
 }
 
 bool WriteWindowsImportLibrary(const std::string_view libraryName, const std::span<const std::string> exports,
-                               const std::filesystem::path &outputPath, std::string &error) {
+                               const Target::Arch targetArch, const std::filesystem::path &outputPath,
+                               std::string &error) {
+    const std::uint16_t machine = CoffMachine(targetArch);
+    if (machine == 0) {
+        error = std::format("cannot write an import library for {}: no COFF machine identifier exists for this "
+                            "architecture",
+                            Target::ToDisplayString(targetArch));
+        return false;
+    }
     std::vector<NativeObject> members;
     members.reserve(exports.size());
     for (const auto &symbol : exports) {
@@ -216,7 +230,7 @@ bool WriteWindowsImportLibrary(const std::string_view libraryName, const std::sp
         PutLittle16(member.bytes, 0);
         PutLittle16(member.bytes, 0xffff);
         PutLittle16(member.bytes, 0);
-        PutLittle16(member.bytes, 0x8664);
+        PutLittle16(member.bytes, machine);
         PutLittle32(member.bytes, 0);
         const auto dataSize = static_cast<std::uint32_t>(symbol.size() + 1 + libraryName.size() + 1);
         PutLittle32(member.bytes, dataSize);

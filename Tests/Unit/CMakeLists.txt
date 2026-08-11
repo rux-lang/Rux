@@ -28,6 +28,7 @@ set(RUX_TEST_SOURCES
     PackageVersionTests.cpp
     ProcessTests.cpp
     PrimitiveConstantsTests.cpp
+    RcuTests.cpp
     RegistryTests.cpp
     SemanticTests.cpp
 )

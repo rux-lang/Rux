@@ -625,8 +625,10 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, opts.targetName, !opts.isTest);
     const ArtifactKind artifactKind = PackageArtifactKind(opts.manifest.package.type);
     const OS targetOs = TargetTripleOs(opts.targetName);
+    const Arch targetArch = TargetTripleArch(opts.targetName);
     artifactPath = binDir / OutputFileName(opts.manifest.package.name.Text(), artifactKind, targetOs);
-    Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name.Text()), {root}, artifactKind, targetOs);
+    Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name.Text()), {root}, artifactKind, targetOs,
+                  targetArch);
     if (!linker.Link(artifactPath)) {
         for (const auto &err : linker.Errors()) {
             Emit(ErrorDiagnostic(err.message));

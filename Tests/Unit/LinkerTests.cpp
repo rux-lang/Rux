@@ -38,7 +38,7 @@ TEST_CASE("ELF linker preserves an extern library declared in another object") {
     std::filesystem::remove(output, ec);
 
     Linker linker({std::move(caller), std::move(declarations)}, "LinkerTest", {}, ArtifactKind::Executable,
-                  Target::OS::Linux);
+                  Target::OS::Linux, Target::Arch::X86_64);
     REQUIRE(linker.Link(output));
 
     std::ifstream stream(output, std::ios::binary);
@@ -74,7 +74,8 @@ TEST_CASE("ELF shared linker emits ET_DYN exports without an executable entry") 
     std::error_code ec;
     std::filesystem::remove(output, ec);
 
-    Linker linker({std::move(library)}, "LinkerTest", {}, ArtifactKind::SharedLibrary, Target::OS::Linux);
+    Linker linker({std::move(library)}, "LinkerTest", {}, ArtifactKind::SharedLibrary, Target::OS::Linux,
+                  Target::Arch::X86_64);
     REQUIRE(linker.Link(output));
 
     std::ifstream stream(output, std::ios::binary);
@@ -127,6 +128,76 @@ TEST_CASE("ELF shared linker emits ET_DYN exports without an executable entry") 
     std::filesystem::remove(output, ec);
 }
 
+TEST_CASE("Linker rejects an object built for another architecture") {
+    RcuFile foreign;
+    foreign.arch = RcuArch::AArch64;
+    foreign.sourcePath = "Main.rux";
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 4;
+    text.data = {0x40, 0x05, 0x80, 0xD2,  // mov x0, #42
+                 0xC0, 0x03, 0x5F, 0xD6}; // ret
+    foreign.sections.push_back(std::move(text));
+    foreign.symbols.push_back({"Main", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+
+    const auto output = std::filesystem::temp_directory_path() / "rux-linker-arch-mismatch-test";
+    std::error_code ec;
+    std::filesystem::remove(output, ec);
+
+    Linker linker({foreign}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Linux, Target::Arch::X86_64);
+    CHECK_FALSE(linker.Link(output));
+    REQUIRE(linker.Errors().size() == 1);
+    CHECK(linker.Errors().front().message == "object Main.rux was compiled for AArch64, but the link target is x86-64");
+    CHECK_FALSE(std::filesystem::exists(output));
+
+    // The matching target is refused too, but for the reason that no AArch64
+    // executable writer exists yet rather than as a mismatch.
+    Linker native({std::move(foreign)}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Linux,
+                  Target::Arch::AArch64);
+    CHECK_FALSE(native.Link(output));
+    REQUIRE(native.Errors().size() == 1);
+    CHECK(native.Errors().front().message == "linking an executable for AArch64 is not implemented yet");
+
+    std::filesystem::remove(output, ec);
+}
+
+TEST_CASE("native object writer stamps the target architecture into every format") {
+    RcuFile file;
+    file.arch = RcuArch::AArch64;
+    file.sourcePath = "Library.rux";
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 4;
+    text.data = {0xC0, 0x03, 0x5F, 0xD6}; // ret
+    file.sections.push_back(std::move(text));
+    file.symbols.push_back({"Answer", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+
+    NativeObject object;
+    std::string error;
+    REQUIRE(WriteNativeObject(file, Target::OS::Linux, Target::Arch::AArch64, object, error));
+    CHECK(object.bytes[18] == 183); // EM_AARCH64
+    CHECK(object.bytes[19] == 0);
+
+    REQUIRE(WriteNativeObject(file, Target::OS::Windows, Target::Arch::AArch64, object, error));
+    CHECK(object.bytes[0] == 0x64); // IMAGE_FILE_MACHINE_ARM64
+    CHECK(object.bytes[1] == 0xAA);
+
+    REQUIRE(WriteNativeObject(file, Target::OS::MacOS, Target::Arch::AArch64, object, error));
+    CHECK(object.bytes[4] == 0x0C); // CPU_TYPE_ARM64
+    CHECK(object.bytes[7] == 0x01);
+
+    CHECK_FALSE(WriteNativeObject(file, Target::OS::Linux, Target::Arch::X86_64, object, error));
+    CHECK(error == "object was compiled for AArch64, but the target is x86-64");
+
+    file.sections[0].relocs.push_back({0, 0, RcuRelType::AArch64Call26, 0});
+    CHECK_FALSE(WriteNativeObject(file, Target::OS::Linux, Target::Arch::AArch64, object, error));
+    CHECK(error == "relocation AARCH64_CALL26 in section .text is not supported by the object writer yet");
+}
+
 TEST_CASE("native archive writers emit deterministic target-specific indexes") {
     NativeObject object;
     object.name = "Library.o";
@@ -145,12 +216,12 @@ TEST_CASE("native archive writers emit deterministic target-specific indexes") {
     }
 
     std::string error;
-    REQUIRE(WriteNativeArchive({&object, 1}, Target::OS::Linux, gnuFirst, error));
-    REQUIRE(WriteNativeArchive({&object, 1}, Target::OS::Linux, gnuSecond, error));
-    REQUIRE(WriteNativeArchive({&object, 1}, Target::OS::MacOS, bsd, error));
-    REQUIRE(WriteNativeArchive({&object, 1}, Target::OS::Windows, coff, error));
+    REQUIRE(WriteNativeArchive({&object, 1}, Target::OS::Linux, Target::Arch::X86_64, gnuFirst, error));
+    REQUIRE(WriteNativeArchive({&object, 1}, Target::OS::Linux, Target::Arch::X86_64, gnuSecond, error));
+    REQUIRE(WriteNativeArchive({&object, 1}, Target::OS::MacOS, Target::Arch::X86_64, bsd, error));
+    REQUIRE(WriteNativeArchive({&object, 1}, Target::OS::Windows, Target::Arch::X86_64, coff, error));
     const std::array<std::string, 1> exports = {"Answer"};
-    REQUIRE(WriteWindowsImportLibrary("Native.dll", exports, importLibrary, error));
+    REQUIRE(WriteWindowsImportLibrary("Native.dll", exports, Target::Arch::X86_64, importLibrary, error));
 
     const auto read = [](const std::filesystem::path &path) {
         std::ifstream stream(path, std::ios::binary);

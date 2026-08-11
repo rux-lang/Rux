@@ -8,10 +8,12 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <limits>
 #include <numeric>
 #include <span>
 #include <string_view>
+#include <utility>
 
 namespace Rux {
 namespace {
@@ -82,6 +84,40 @@ std::uint32_t AddString(std::vector<std::uint8_t> &table, const std::string_view
     return offset;
 }
 
+// ELF e_machine: EM_X86_64 and EM_AARCH64.
+std::uint16_t ElfMachine(const Target::Arch targetArch) noexcept {
+    switch (targetArch) {
+    case Target::Arch::X86_64:
+        return 62;
+    case Target::Arch::AArch64:
+        return 183;
+    default:
+        return 0;
+    }
+}
+
+// Mach-O cputype/cpusubtype: CPU_TYPE_X86_64 with CPU_SUBTYPE_X86_64_ALL, and
+// CPU_TYPE_ARM64 with CPU_SUBTYPE_ARM64_ALL.
+std::pair<std::uint32_t, std::uint32_t> MachOCpuType(const Target::Arch targetArch) noexcept {
+    switch (targetArch) {
+    case Target::Arch::X86_64:
+        return {0x0100'0007, 3};
+    case Target::Arch::AArch64:
+        return {0x0100'000C, 0};
+    default:
+        return {0, 0};
+    }
+}
+
+// All three writers share one relocation vocabulary today: the
+// architecture-neutral kinds, which patch a whole little-endian field. The
+// AArch64 kinds encode instruction fields and are mapped when the AArch64 back
+// end can produce them.
+bool IsWritableRelocation(const std::uint16_t type) noexcept {
+    return type == RcuRelType::None || type == RcuRelType::Abs64 || type == RcuRelType::Abs32 ||
+           type == RcuRelType::Rel32;
+}
+
 std::vector<std::size_t> SymbolOrder(const RcuFile &file) {
     std::vector<std::size_t> order(file.symbols.size());
     std::iota(order.begin(), order.end(), 0);
@@ -101,7 +137,7 @@ void ApplyInlineAddend(std::vector<std::uint8_t> &data, const RcuReloc &relocati
     }
 }
 
-bool WriteCoff(const RcuFile &file, NativeObject &output, std::string &error) {
+bool WriteCoff(const RcuFile &file, const Target::Arch targetArch, NativeObject &output, std::string &error) {
     if (file.sections.size() > std::numeric_limits<std::uint16_t>::max()) {
         error = "too many sections for a COFF object";
         return false;
@@ -133,7 +169,7 @@ bool WriteCoff(const RcuFile &file, NativeObject &output, std::string &error) {
 
     std::vector<std::uint8_t> stringTable(4);
     Bytes out;
-    out.U16(0x8664);
+    out.U16(CoffMachine(targetArch));
     out.U16(static_cast<std::uint16_t>(sectionCount));
     out.U32(0);
     out.U32(symbolTableOffset);
@@ -218,7 +254,7 @@ struct ElfSection {
     std::uint64_t offset = 0;
 };
 
-bool WriteElf(const RcuFile &file, NativeObject &output, std::string &error) {
+bool WriteElf(const RcuFile &file, const Target::Arch targetArch, NativeObject &output, std::string &error) {
     (void)error;
     std::vector<ElfSection> sections(1);
     for (const auto &input : file.sections) {
@@ -348,7 +384,7 @@ bool WriteElf(const RcuFile &file, NativeObject &output, std::string &error) {
     }
     const std::array<std::uint8_t, 16> ident = {0x7f, 'E', 'L', 'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::copy(ident.begin(), ident.end(), out.data.begin());
-    out.Patch32(16, 1U | (62U << 16U));
+    out.Patch32(16, 1U | (static_cast<std::uint32_t>(ElfMachine(targetArch)) << 16U));
     out.Patch32(20, 1);
     out.Patch64(24, 0);
     out.Patch64(32, 0);
@@ -366,7 +402,7 @@ bool WriteElf(const RcuFile &file, NativeObject &output, std::string &error) {
     return true;
 }
 
-bool WriteMachO(const RcuFile &file, NativeObject &output, std::string &error) {
+bool WriteMachO(const RcuFile &file, const Target::Arch targetArch, NativeObject &output, std::string &error) {
     if (file.sections.size() > 255) {
         error = "too many sections for a Mach-O object";
         return false;
@@ -400,10 +436,11 @@ bool WriteMachO(const RcuFile &file, NativeObject &output, std::string &error) {
     const auto stringOffset = symbolOffset + static_cast<std::uint32_t>(file.symbols.size() * 16);
     std::vector<std::uint8_t> strings(1);
 
+    const auto [cpuType, cpuSubtype] = MachOCpuType(targetArch);
     Bytes out;
     out.U32(0xfeedfacf);
-    out.U32(0x01000007);
-    out.U32(3);
+    out.U32(cpuType);
+    out.U32(cpuSubtype);
     out.U32(1);
     out.U32(2);
     out.U32(commandsSize);
@@ -481,19 +518,51 @@ bool WriteMachO(const RcuFile &file, NativeObject &output, std::string &error) {
 }
 } // namespace
 
-bool WriteNativeObject(const RcuFile &file, const Target::OS targetOs, NativeObject &output, std::string &error) {
+std::uint16_t CoffMachine(const Target::Arch targetArch) noexcept {
+    switch (targetArch) {
+    case Target::Arch::X86_64:
+        return 0x8664;
+    case Target::Arch::AArch64:
+        return 0xAA64;
+    default:
+        return 0;
+    }
+}
+
+bool WriteNativeObject(const RcuFile &file, const Target::OS targetOs, const Target::Arch targetArch,
+                       NativeObject &output, std::string &error) {
     output = {};
+    const std::uint8_t expectedArch = RcuArchFor(targetArch);
+    if (expectedArch == RcuArch::Unknown) {
+        error = std::format("cannot write an object for {}: no object encoding exists for this architecture",
+                            Target::ToDisplayString(targetArch));
+        return false;
+    }
+    if (file.arch != expectedArch) {
+        error = std::format("object was compiled for {}, but the target is {}", RcuArchName(file.arch),
+                            RcuArchName(expectedArch));
+        return false;
+    }
+    for (const auto &section : file.sections) {
+        for (const auto &relocation : section.relocs) {
+            if (!IsWritableRelocation(relocation.type)) {
+                error = std::format("relocation {} in section {} is not supported by the object writer yet",
+                                    RcuRelTypeName(relocation.type), section.name);
+                return false;
+            }
+        }
+    }
     output.name = std::filesystem::path(file.sourcePath).stem().string();
     if (output.name.empty()) {
         output.name = "out";
     }
     output.name += targetOs == Target::OS::Windows ? ".obj" : ".o";
     if (targetOs == Target::OS::Windows) {
-        return WriteCoff(file, output, error);
+        return WriteCoff(file, targetArch, output, error);
     }
     if (targetOs == Target::OS::MacOS) {
-        return WriteMachO(file, output, error);
+        return WriteMachO(file, targetArch, output, error);
     }
-    return WriteElf(file, output, error);
+    return WriteElf(file, targetArch, output, error);
 }
 } // namespace Rux
