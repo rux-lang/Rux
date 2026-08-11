@@ -126,11 +126,21 @@ LirPackage CompileToAArch64Lir(const std::string &source) {
            static_cast<std::uint32_t>(text[offset + 2]) << 16U | static_cast<std::uint32_t>(text[offset + 3]) << 24U;
 }
 
-// The immediate of `add x9, x29, #imm`, or nothing when the word is some other
+// The immediate of `add xN, x29, #imm`, or nothing when the word is some other
 // instruction. An alloca's address is the frame pointer plus a displacement,
 // and which displacement is the frame layout's business rather than this test's.
-[[nodiscard]] std::optional<std::uint32_t> FramePointerAddImm(const std::uint32_t word) {
-    if ((word & 0xFFC003FFU) != 0x910003A9U) {
+[[nodiscard]] std::optional<std::uint32_t> FramePointerAddImm(const std::uint32_t word, const unsigned reg = 9) {
+    if ((word & 0xFFC003FFU) != (0x910003A0U | reg)) {
+        return std::nullopt;
+    }
+    return word >> 10U & 0xFFFU;
+}
+
+// The same for `add xN, sp, #imm`, which is how the address of something in the
+// outgoing argument area is reached: the area is opened relative to the stack
+// pointer and the frame pointer knows nothing about it.
+[[nodiscard]] std::optional<std::uint32_t> StackPointerAddImm(const std::uint32_t word, const unsigned reg) {
+    if ((word & 0xFFC003FFU) != (0x910003E0U | reg)) {
         return std::nullopt;
     }
     return word >> 10U & 0xFFFU;
@@ -191,6 +201,30 @@ LirPackage CompileToAArch64Lir(const std::string &source) {
         return std::nullopt;
     }
     return word & 0x1FU;
+}
+
+// The byte displacement a doubleword access to the frame names, whichever
+// register it moves — SlotDisplacement answers only for the X9 this generator
+// computes in, and a composite is moved in the registers it is passed in.
+[[nodiscard]] std::uint32_t SlotAccessDisplacement(const std::uint32_t word) {
+    return (word >> 10U & 0xFFFU) * 8U;
+}
+
+// One access to a stack slot in the vector file: which register it names and
+// which byte of the frame it reached. `bits` selects the S or the D form, which
+// is also what says how wide one member of a homogeneous aggregate is.
+struct VectorSlotAccess {
+    unsigned reg = 0;
+    std::uint32_t displacement = 0;
+};
+
+[[nodiscard]] std::optional<VectorSlotAccess> VectorSlotAccessOf(const std::uint32_t word, const unsigned bits,
+                                                                 const bool store) {
+    const std::uint32_t opcode = (bits == 64 ? 0xFD0003A0U : 0xBD0003A0U) | (store ? 0U : 0x00400000U);
+    if ((word & 0xFFC003E0U) != opcode) {
+        return std::nullopt;
+    }
+    return VectorSlotAccess{word & 0x1FU, (word >> 10U & 0xFFFU) * (bits / 8U)};
 }
 
 // The frame `stp x29, x30, [sp, #-N]!` opens, or nothing when the word is some
@@ -1746,31 +1780,410 @@ TEST_CASE("AArch64 RCU emitter ends a path at a call that does not return") {
     CHECK_EQ(HexWord(callee.back()), HexWord(0x00000000U)); // udf #0
 }
 
-TEST_CASE("AArch64 RCU emitter emits no call at all when one argument cannot be placed") {
-    // A float travels in the vector file, which is Task 25's, and the ninth
-    // argument is where this one sits — so a generator that placed what it
-    // could would have opened a stack area and filled eight registers for a
-    // call that must not happen.
+TEST_CASE("AArch64 RCU emitter passes the first eight floats in the vector registers and returns in V0") {
     const auto package = CompileToAArch64Lir(R"(
-        func Mixed(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: float64, j: int) -> int {
-            return j;
+        func Eight(a: float64, b: float64, c: float64, d: float64,
+                   e: float64, f: float64, g: float64, h: float64) -> float64 {
+            return h;
         }
 
         func Main() -> int {
-            var result = Mixed(1, 2, 3, 4, 5, 6, 7, 8, 9.5, 10);
+            var last = Eight(1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5);
             return 0;
         }
     )");
 
     AArch64RcuEmitter emitter(package, "test");
     const auto objects = emitter.Generate();
-    const auto reports = JoinMessages(emitter.Diagnostics());
-    CHECK_MESSAGE(reports.contains("passing an argument of type 'float64'"), reports);
-    CHECK_MESSAGE(reports.contains("'Main'"), reports);
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
 
-    const auto words = FunctionWords(objects.front(), "Main");
-    CHECK_FALSE(BranchAndLinkIndex(words).has_value());
-    for (const auto word : words) {
+    // The caller fills D0 through D7 in order, and those eight loads are the
+    // eight instructions the branch follows. Nothing touches the stack: the
+    // vector file carries all eight on its own.
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    REQUIRE_GE(*call, 8);
+    for (unsigned reg = 0; reg < 8; ++reg) {
+        const std::uint32_t word = caller[*call - 8 + reg];
+        const auto loaded = VectorSlotAccessOf(word, 64, false);
+        REQUIRE_MESSAGE(loaded.has_value(), HexWord(word));
+        CHECK_EQ(loaded->reg, reg);
+    }
+    for (const auto word : caller) {
         CHECK_FALSE(StackPointerAdjustment(word, true).has_value());
     }
+
+    // The callee spills the same eight, and answers in the register the first
+    // argument arrived in.
+    const auto callee = FunctionWords(objects.front(), "Eight");
+    REQUIRE_GT(callee.size(), 10);
+    for (unsigned reg = 0; reg < 8; ++reg) {
+        const std::uint32_t word = callee[2 + reg];
+        const auto stored = VectorSlotAccessOf(word, 64, true);
+        REQUIRE_MESSAGE(stored.has_value(), HexWord(word));
+        CHECK_EQ(stored->reg, reg);
+    }
+    const auto returned = VectorSlotAccessOf(callee[callee.size() - 3], 64, false);
+    REQUIRE_MESSAGE(returned.has_value(), HexWord(callee[callee.size() - 3]));
+    CHECK_EQ(returned->reg, 0);
+}
+
+TEST_CASE("AArch64 RCU emitter counts the two register files apart") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Mixed(a: int, b: float64, c: int, d: float32, e: int) -> float32 {
+            return d;
+        }
+
+        func Main() -> int {
+            var narrow = Mixed(1, 2.5, 3, 4.5f32, 5);
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    // Neither file knows what the other has taken: the three integers are X0
+    // through X2 and the two floats are V0 and V1, with the single-precision
+    // one read at its own width.
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    REQUIRE_GE(*call, 5);
+    CHECK_EQ(SlotLoadRegister(caller[*call - 5]), std::optional<unsigned>(0));
+    REQUIRE(VectorSlotAccessOf(caller[*call - 4], 64, false).has_value());
+    CHECK_EQ(VectorSlotAccessOf(caller[*call - 4], 64, false)->reg, 0);
+    CHECK_EQ(SlotLoadRegister(caller[*call - 3]), std::optional<unsigned>(1));
+    REQUIRE(VectorSlotAccessOf(caller[*call - 2], 32, false).has_value());
+    CHECK_EQ(VectorSlotAccessOf(caller[*call - 2], 32, false)->reg, 1);
+    CHECK_EQ(SlotLoadRegister(caller[*call - 1]), std::optional<unsigned>(2));
+
+    // A float32 result comes back in S0, which is the same register the second
+    // argument was passed in and a different width from it.
+    const auto callee = FunctionWords(objects.front(), "Mixed");
+    const auto returned = VectorSlotAccessOf(callee[callee.size() - 3], 32, false);
+    REQUIRE_MESSAGE(returned.has_value(), HexWord(callee[callee.size() - 3]));
+    CHECK_EQ(returned->reg, 0);
+}
+
+TEST_CASE("AArch64 RCU emitter passes a homogeneous float aggregate in consecutive vector registers") {
+    const auto package = CompileToAArch64Lir(R"(
+        struct Pair { x: float64; y: float64; }
+        struct Quad { a: float32; b: float32; c: float32; d: float32; }
+
+        func TakePair(p: Pair) -> float64 {
+            return p.y;
+        }
+
+        func TakeQuad(q: Quad) -> float32 {
+            return q.d;
+        }
+
+        func MakePair(v: float64) -> Pair {
+            return Pair { x: v, y: v };
+        }
+
+        func Main() -> int {
+            var pair = Pair { x: 1.5, y: 2.5 };
+            var quad = Quad { a: 1.0f32, b: 2.0f32, c: 3.0f32, d: 4.0f32 };
+            var y = TakePair(pair);
+            var d = TakeQuad(quad);
+            var made = MakePair(3.5);
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    // Two doubles are D0 and D1, read eight bytes apart because that is how
+    // wide one member is; four singles are S0 through S3, four bytes apart.
+    const auto pairCallee = FunctionWords(objects.front(), "TakePair");
+    const auto first = VectorSlotAccessOf(pairCallee[2], 64, true);
+    const auto second = VectorSlotAccessOf(pairCallee[3], 64, true);
+    REQUIRE_MESSAGE(first.has_value(), HexWord(pairCallee[2]));
+    REQUIRE_MESSAGE(second.has_value(), HexWord(pairCallee[3]));
+    CHECK_EQ(first->reg, 0);
+    CHECK_EQ(second->reg, 1);
+    CHECK_EQ(second->displacement, first->displacement + 8);
+
+    const auto quadCallee = FunctionWords(objects.front(), "TakeQuad");
+    for (unsigned member = 0; member < 4; ++member) {
+        const auto spilled = VectorSlotAccessOf(quadCallee[2 + member], 32, true);
+        REQUIRE_MESSAGE(spilled.has_value(), HexWord(quadCallee[2 + member]));
+        CHECK_EQ(spilled->reg, member);
+        CHECK_EQ(spilled->displacement, VectorSlotAccessOf(quadCallee[2], 32, true)->displacement + 4 * member);
+    }
+
+    // Sixteen bytes of floats come back in two vector registers rather than
+    // through memory the caller named: an aggregate this large is returned
+    // indirectly only when it is made of something else.
+    const auto maker = FunctionWords(objects.front(), "MakePair");
+    const auto returnedLow = VectorSlotAccessOf(maker[maker.size() - 4], 64, false);
+    const auto returnedHigh = VectorSlotAccessOf(maker[maker.size() - 3], 64, false);
+    REQUIRE_MESSAGE(returnedLow.has_value(), HexWord(maker[maker.size() - 4]));
+    REQUIRE_MESSAGE(returnedHigh.has_value(), HexWord(maker[maker.size() - 3]));
+    CHECK_EQ(returnedLow->reg, 0);
+    CHECK_EQ(returnedHigh->reg, 1);
+    CHECK_EQ(returnedHigh->displacement, returnedLow->displacement + 8);
+    for (const auto word : maker) {
+        CHECK_FALSE(SlotStoreRegister(word) == std::optional<unsigned>(8));
+    }
+}
+
+TEST_CASE("AArch64 RCU emitter carries a composite of no more than sixteen bytes in whole registers") {
+    const auto package = CompileToAArch64Lir(R"(
+        struct Small { a: int32; b: int32; }
+        struct Mid { a: int64; b: int32; }
+
+        func TakeSmall(s: Small) -> int32 {
+            return s.b;
+        }
+
+        func TakeMid(m: Mid) -> int32 {
+            return m.b;
+        }
+
+        func MakeMid(n: int64) -> Mid {
+            return Mid { a: n, b: 7i32 };
+        }
+
+        func Main() -> int {
+            var small = Small { a: 1i32, b: 2i32 };
+            var mid = Mid { a: 3i64, b: 4i32 };
+            var fromSmall = TakeSmall(small);
+            var fromMid = TakeMid(mid);
+            var made = MakeMid(5i64);
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    // Eight bytes are one register, and twelve are two: a composite is broken
+    // into whole doublewords, and the second of them carries the four bytes of
+    // padding its slot was rounded up by rather than the value beside it.
+    const auto smallCallee = FunctionWords(objects.front(), "TakeSmall");
+    CHECK_EQ(SlotStoreRegister(smallCallee[2]), std::optional<unsigned>(0));
+    CHECK_FALSE(SlotStoreRegister(smallCallee[3]) == std::optional<unsigned>(1));
+
+    const auto midCallee = FunctionWords(objects.front(), "TakeMid");
+    CHECK_EQ(SlotStoreRegister(midCallee[2]), std::optional<unsigned>(0));
+    CHECK_EQ(SlotStoreRegister(midCallee[3]), std::optional<unsigned>(1));
+    CHECK_EQ(SlotAccessDisplacement(midCallee[3]), SlotAccessDisplacement(midCallee[2]) + 8);
+
+    // The same shape backwards: twelve bytes come back in X0 and X1, and the
+    // caller keeps both.
+    const auto maker = FunctionWords(objects.front(), "MakeMid");
+    CHECK_EQ(SlotLoadRegister(maker[maker.size() - 4]), std::optional<unsigned>(0));
+    CHECK_EQ(SlotLoadRegister(maker[maker.size() - 3]), std::optional<unsigned>(1));
+}
+
+TEST_CASE("AArch64 RCU emitter passes a composite past sixteen bytes as the address of a copy") {
+    const auto package = CompileToAArch64Lir(R"(
+        struct Big { a: int64; b: int64; c: int64; }
+
+        func TakeBig(b: Big) -> int64 {
+            return b.a;
+        }
+
+        func Main() -> int {
+            var big = Big { a: 1i64, b: 2i64, c: 3i64 };
+            var first = TakeBig(big);
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    // Twenty-four bytes of copy, rounded to the sixteen the stack pointer is a
+    // multiple of, and the address of that copy is what X0 carries.
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    REQUIRE_GE(*call, 1);
+    CHECK_EQ(StackPointerAddImm(caller[*call - 1], 0), std::optional<std::uint32_t>(0));
+    std::optional<std::int64_t> opened;
+    for (const auto word : caller) {
+        if (const auto adjustment = StackPointerAdjustment(word, true); adjustment.has_value()) {
+            opened = adjustment;
+            break;
+        }
+    }
+    CHECK_EQ(opened, std::optional<std::int64_t>(32));
+
+    // The callee reads the copy into its own frame once and never writes
+    // through the address again, so a parameter it modifies is its own.
+    const auto callee = FunctionWords(objects.front(), "TakeBig");
+    CHECK_EQ(HexWord(callee[2]), HexWord(0xAA0003EBU)); // mov x11, x0
+    CHECK(std::ranges::any_of(callee, [](const std::uint32_t word) { return IsPairAccess(word); }));
+}
+
+TEST_CASE("AArch64 RCU emitter returns a large composite through the memory the caller names in X8") {
+    const auto package = CompileToAArch64Lir(R"(
+        struct Big { a: int64; b: int64; c: int64; }
+
+        func MakeBig(n: int64) -> Big {
+            return Big { a: n, b: n, c: n };
+        }
+
+        func Main() -> int {
+            var big = MakeBig(4i64);
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    // The caller names the memory before it branches, and keeps nothing
+    // afterwards: the callee has already written the whole value there.
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    REQUIRE_GE(*call, 1);
+    CHECK(FramePointerAddImm(caller[*call - 1], 8).has_value());
+    REQUIRE_LT(*call + 1, caller.size());
+    CHECK_FALSE(SlotStoreRegister(caller[*call + 1]) == std::optional<unsigned>(0));
+
+    // The callee keeps that address the way it keeps a parameter, and nothing
+    // it returns travels in a register: no load ever fills X0.
+    const auto callee = FunctionWords(objects.front(), "MakeBig");
+    CHECK_EQ(SlotStoreRegister(callee[2]), std::optional<unsigned>(8));
+    for (const auto word : callee) {
+        CHECK_FALSE(SlotLoadRegister(word) == std::optional<unsigned>(0));
+    }
+}
+
+TEST_CASE("AArch64 RCU emitter leaves the general-purpose file behind once an argument overflows it") {
+    const auto package = CompileToAArch64Lir(R"(
+        struct Mid { a: int64; b: int32; }
+
+        func Saturates(a: int, b: int, c: int, d: int, e: int, f: int, g: int, pair: Mid, last: int) -> int {
+            return last;
+        }
+
+        func Main() -> int {
+            var mid = Mid { a: 8i64, b: 9i32 };
+            var result = Saturates(1, 2, 3, 4, 5, 6, 7, mid, 10);
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    // Seven integers take X0 through X6, and the composite behind them needs
+    // two registers where one is left — so it goes to the stack, and the
+    // integer after it follows even though X7 is still free. That is the rule
+    // the standard states as saturating the counter, and it is what a caller
+    // written argument by argument gets wrong.
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    REQUIRE_GE(*call, 7);
+    for (unsigned reg = 0; reg < 7; ++reg) {
+        CHECK_EQ(SlotLoadRegister(caller[*call - 7 + reg]), std::optional<unsigned>(reg));
+    }
+    for (const auto word : caller) {
+        CHECK_FALSE(SlotLoadRegister(word) == std::optional<unsigned>(7));
+    }
+
+    // The callee finds both above its own frame: the composite in the first two
+    // doublewords of the caller's area, and the integer in the third.
+    const auto callee = FunctionWords(objects.front(), "Saturates");
+    const auto frame = PreIndexedFrameSize(callee.front());
+    REQUIRE_MESSAGE(frame.has_value(), HexWord(callee.front()));
+    const auto found = std::ranges::find_if(callee, [frame](const std::uint32_t word) {
+        return IncomingDisplacement(word, 8) == std::optional<std::int32_t>(*frame + 16);
+    });
+    CHECK_MESSAGE(found != callee.end(), "the ninth argument is read sixteen bytes into the area");
+}
+
+TEST_CASE("AArch64 RCU emitter leaves the vector file behind without touching the other one") {
+    const auto package = CompileToAArch64Lir(R"(
+        struct Pair { x: float64; y: float64; }
+
+        func FivePairs(p: Pair, q: Pair, r: Pair, s: Pair, t: Pair, n: int) -> float64 {
+            return t.y;
+        }
+
+        func Main() -> int {
+            var pair = Pair { x: 1.5, y: 2.5 };
+            var last = FivePairs(pair, pair, pair, pair, pair, 42);
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    // Five pairs need ten vector registers where eight remain, so the fifth goes
+    // to the stack whole — and the integer behind it still takes X0, because a
+    // file that ran out says nothing about the other one.
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    REQUIRE_GE(*call, 9);
+    CHECK_EQ(SlotLoadRegister(caller[*call - 1]), std::optional<unsigned>(0));
+    for (unsigned member = 0; member < 8; ++member) {
+        const std::uint32_t word = caller[*call - 9 + member];
+        const auto loaded = VectorSlotAccessOf(word, 64, false);
+        REQUIRE_MESSAGE(loaded.has_value(), HexWord(word));
+        CHECK_EQ(loaded->reg, member);
+    }
+
+    // Sixteen bytes of stack for the pair that did not fit, and nothing more:
+    // the integer went to X0 rather than to the area behind it.
+    std::optional<std::int64_t> opened;
+    for (const auto word : caller) {
+        if (const auto adjustment = StackPointerAdjustment(word, true); adjustment.has_value()) {
+            opened = adjustment;
+            break;
+        }
+    }
+    CHECK_EQ(opened, std::optional<std::int64_t>(16));
+}
+
+TEST_CASE("AArch64 RCU emitter passes an anonymous float argument in a vector register") {
+    // AAPCS64 states no separate rule for the arguments a variadic declaration
+    // does not name: on Linux a float still travels in the vector file, which
+    // is where `va_arg` reads it back from. Apple and Windows deviate and
+    // neither is reachable through this back end yet.
+    const auto package = CompileToAArch64Lir(R"(
+        #Link("libc.so.6")
+        extern {
+            func printf(format: *char8, ...) -> int32;
+        }
+
+        func Main() -> int {
+            var text = "value";
+            var written = printf(text.data, 2.5, 7);
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    REQUIRE_GE(*call, 3);
+    CHECK_EQ(SlotLoadRegister(caller[*call - 3]), std::optional<unsigned>(0));
+    const auto anonymous = VectorSlotAccessOf(caller[*call - 2], 64, false);
+    REQUIRE_MESSAGE(anonymous.has_value(), HexWord(caller[*call - 2]));
+    CHECK_EQ(anonymous->reg, 0);
+    CHECK_EQ(SlotLoadRegister(caller[*call - 1]), std::optional<unsigned>(1));
 }

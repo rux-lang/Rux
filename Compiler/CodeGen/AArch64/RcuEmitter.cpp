@@ -164,7 +164,20 @@ constexpr unsigned kReturn = 0;
 // How many arguments AAPCS64 passes in general-purpose registers: X0 through X7,
 // which is also where a callee finds them and why kReturn is the first of them.
 // Everything past the eighth travels on the stack.
-constexpr std::size_t kIntArgRegs = 8;
+constexpr unsigned kIntArgRegs = 8;
+
+// How many it passes in vector registers: V0 through V7, on the same terms.
+constexpr unsigned kFpArgRegs = 8;
+
+// The register a caller puts the address of an indirect result in. It is
+// neither an argument register nor a result one — a callee returning something
+// too large for registers reads it and writes there, and returns nothing.
+constexpr unsigned kIndirectResult = 8;
+
+// The most members a homogeneous floating-point aggregate has. A composite of
+// five floats is a composite, and travels the way any other composite of its
+// size does.
+constexpr unsigned kMaxHfaMembers = 4;
 
 // The vector register a floating-point value is computed in. AAPCS64 preserves
 // only the low half of V8 through V15 across a call, so the caller-saved half
@@ -175,9 +188,40 @@ constexpr unsigned kFpTemp = 16;
 // two values at once and produces no floating-point result: a comparison.
 constexpr unsigned kFpTemp2 = 17;
 
+// Where AAPCS64 puts one argument: `count` registers of one file starting at
+// `first`, or `bytes` bytes at `offset` in the outgoing argument area. An
+// argument no register can carry travels as the address of a copy the caller
+// makes, and `byReference` says so — the location then describes where that
+// address goes rather than where the value does, and `copyOffset` says where in
+// the same area the copy itself sits.
+struct ArgLocation {
+    enum class Kind : std::uint8_t {
+        General, // X registers
+        Vector,  // V registers
+        Stack,   // the outgoing argument area
+    };
+
+    Kind kind = Kind::General;
+    unsigned first = 0;
+    unsigned count = 1;
+    unsigned memberBytes = 8; // width of one register's worth, in the vector file
+    bool byReference = false;
+    std::int32_t offset = 0;     // byte offset into the area, when Stack
+    std::int32_t bytes = 8;      // bytes taken there
+    std::int32_t copyOffset = 0; // byte offset of the copy, when byReference
+    std::int32_t copyBytes = 0;
+};
+
+// One call's whole argument list, and the area the caller opens for the part of
+// it that does not travel in registers.
+struct CallLayout {
+    std::vector<ArgLocation> args;
+    std::int32_t areaBytes = 0;
+};
+
 // Whether a value of this type fits one general-purpose register and moves
 // without any float or aggregate handling — which is the whole of what this
-// back end lowers so far.
+// back end's arithmetic lowers so far.
 [[nodiscard]] bool IsScalarInteger(const TypeRef &t) {
     return t.IsInteger() || t.IsBool() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
            t.kind == TypeRef::Kind::Char32 || t.kind == TypeRef::Kind::Pointer;
@@ -280,6 +324,12 @@ private:
     LayoutMap layouts;
     std::unordered_set<std::string> interfaceNames;
 
+    // The declaration each struct layout came from, by name. A layout keeps
+    // offsets and sizes, and argument classification needs the field types
+    // themselves: whether a composite is made of floats alone is a question
+    // about its members rather than about its shape.
+    std::unordered_map<std::string, const LirStructDecl *> structFields;
+
     // Per-function state, the same set the x86-64 generator keeps: where each
     // virtual register spills to, where an alloca's storage sits, what type
     // each register holds, where each block began, and which branches are still
@@ -298,6 +348,10 @@ private:
     std::unordered_map<std::uint32_t, std::unordered_map<std::uint32_t, std::vector<PhiMove>>> phiMoves;
     std::int32_t phiTempOff = 0;
     int phiTempBytes = 0;
+
+    // Where the prologue kept the address a result too large for registers is
+    // written to, or zero in a function whose result comes back in them.
+    std::int32_t indirectResultOff = 0;
 
     // The conditional branches of this function that a previous pass over it
     // found too far from their target to reach in one instruction.
@@ -710,6 +764,18 @@ private:
         return offset;
     }
 
+    // How much frame one value of this type takes. An aggregate is rounded up to
+    // a whole number of doublewords, because that is the unit a register's worth
+    // of one is written back in: the padding then belongs to the slot rather
+    // than to the value that would otherwise sit in those bytes.
+    [[nodiscard]] int SlotBytes(const TypeRef &type) const {
+        const int size = RuntimeSize(type);
+        if (size <= 0) {
+            return 8;
+        }
+        return IsAggregate(type) ? AlignUp(size, 8) : size;
+    }
+
     std::int32_t AllocSlot(const LirReg reg, const int bytes) {
         if (const auto it = slotMap.find(reg); it != slotMap.end()) {
             return it->second;
@@ -794,11 +860,18 @@ private:
         phiMoves.clear();
         phiTempOff = 0;
         phiTempBytes = 0;
+        indirectResultOff = 0;
         nextOff = kFrameRecordSize;
 
+        // The address a large result is written to arrives in a register and is
+        // needed at every return, so it is kept in the frame the way a parameter
+        // is. Nothing else is reserved for a function that returns in registers.
+        if (ReturnsInMemory(func.returnType)) {
+            indirectResultOff = AllocRegion(8);
+        }
         for (const auto &p : func.params) {
             regTypes[p.reg] = p.type;
-            AllocSlot(p.reg, std::max(8, RuntimeSize(p.type)));
+            AllocSlot(p.reg, std::max(8, SlotBytes(p.type)));
         }
         for (std::uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
             for (const auto &instr : func.blocks[bi].instrs) {
@@ -822,8 +895,7 @@ private:
                     continue;
                 }
                 regTypes[instr.dst] = instr.type;
-                const int size = RuntimeSize(instr.type);
-                AllocSlot(instr.dst, size > 0 ? size : 8);
+                AllocSlot(instr.dst, SlotBytes(instr.type));
             }
         }
         if (phiTempBytes > 0) {
@@ -1075,56 +1147,332 @@ private:
     // clobber, so a call destroys nothing that is live. X30 is the exception, and
     // the prologue has already written it into the frame record.
 
-    // Whether a value of this type travels in the general-purpose file, which is
-    // the whole of what this task passes and returns. A float travels in the
-    // vector file and an aggregate wider than a register travels partly or
-    // wholly in memory; both are Task 25's and are refused here rather than
-    // passed somewhere the callee will not look.
-    [[nodiscard]] bool IsGeneralPurposeValue(const TypeRef &type) const {
-        return !IsFloat(type) && !(IsAggregate(type) && RuntimeSize(type) > 8);
-    }
-
-    // Report every value of a call this task cannot place, and answer whether
-    // any of them was reported: half a call is worse than none, so a call with
-    // one unlowerable argument emits nothing at all.
-    bool CheckCallTypes(const LirInstr &instr, const std::vector<LirReg> &args) {
-        bool lowerable = true;
-        for (const LirReg arg : args) {
-            const TypeRef type = TypeOfReg(arg);
-            if (!IsGeneralPurposeValue(type)) {
-                NotImplemented(std::format("passing an argument of type '{}'", type.ToString()));
-                lowerable = false;
+    // How many members of a single floating-point type a value is built out of,
+    // reported through `count`. This is the question AAPCS64 asks of every
+    // argument first, because a homogeneous floating-point aggregate of no more
+    // than four members travels in the vector file whatever it weighs, while any
+    // other composite of the same size travels in the general-purpose one or in
+    // memory. Nesting does not end the homogeneity — a struct of two tuples of
+    // two floats is four members — but a type of any other kind does.
+    [[nodiscard]] bool CollectFloatMembers(const TypeRef &type, TypeRef::Kind &memberKind, unsigned &count) const {
+        if (count > kMaxHfaMembers) {
+            return false; // a fifth member ends it, however deep it was reached
+        }
+        if (IsFloat(type)) {
+            if (count == 0) {
+                memberKind = type.kind;
             }
+            else if (type.kind != memberKind) {
+                return false; // a float32 beside a float64 is not homogeneous
+            }
+            ++count;
+            return true;
         }
-        if (instr.dst != LirNoReg && !instr.type.IsOpaque() && !IsGeneralPurposeValue(instr.type)) {
-            NotImplemented(std::format("a call returning '{}'", instr.type.ToString()));
-            lowerable = false;
+        switch (type.kind) {
+        case TypeRef::Kind::Tuple:
+            for (const auto &element : type.inner) {
+                if (!CollectFloatMembers(element, memberKind, count)) {
+                    return false;
+                }
+            }
+            return !type.inner.empty();
+        case TypeRef::Kind::Array: {
+            if (type.inner.empty() || !type.arrayLength || *type.arrayLength == 0) {
+                return false;
+            }
+            for (std::uint64_t i = 0; i < *type.arrayLength; ++i) {
+                if (!CollectFloatMembers(type.inner[0], memberKind, count)) {
+                    return false;
+                }
+            }
+            return true;
         }
-        return lowerable;
+        case TypeRef::Kind::Named: {
+            // An interface value is a pair of pointers whatever the type behind
+            // it holds, and a struct answers from its declaration: a computed
+            // layout keeps sizes and offsets rather than the field types this
+            // needs, so the declarations are kept beside it.
+            const std::string base = BaseTypeName(type.name);
+            if (interfaceNames.contains(base)) {
+                return false;
+            }
+            const auto decl = structFields.find(base);
+            if (decl == structFields.end()) {
+                return false;
+            }
+            for (const auto &field : decl->second->fields) {
+                if (!CollectFloatMembers(field.type, memberKind, count)) {
+                    return false;
+                }
+            }
+            return !decl->second->fields.empty();
+        }
+        default:
+            return false;
+        }
     }
 
-    // The stack an outgoing call needs for the arguments no register takes. Each
-    // one occupies a doubleword of its own, and the total is rounded to the
-    // sixteen bytes the stack pointer is a multiple of at every public
-    // interface — which is what makes the adjustment a FrameAdjust at all.
-    [[nodiscard]] static std::int32_t OutgoingArgBytes(const std::size_t argCount) {
-        const std::size_t onStack = argCount > kIntArgRegs ? argCount - kIntArgRegs : 0;
-        return AlignUp(static_cast<std::int32_t>(onStack * 8), 16);
+    // The same, as the two numbers a caller needs: how many vector registers the
+    // value takes and how wide one of them is, or zero for a value made of
+    // something else. A float is one member of itself, which is what lets a
+    // scalar and an aggregate of them share every branch below.
+    [[nodiscard]] unsigned FloatMembers(const TypeRef &type, unsigned &memberBytes) const {
+        TypeRef::Kind memberKind = TypeRef::Kind::Float64;
+        unsigned count = 0;
+        if (!CollectFloatMembers(type, memberKind, count) || count == 0 || count > kMaxHfaMembers) {
+            return 0;
+        }
+        memberBytes = memberKind == TypeRef::Kind::Float32 ? 4 : 8;
+        return count;
     }
 
-    // Put the arguments where the callee will look for them. The stack ones go
-    // first, while no argument register holds anything yet: they are read out of
-    // their slots through X9, and their addresses are computed — where a
-    // displacement needs it — through the encoder's own scratch register, so
-    // neither pass disturbs the other.
-    void EmitCallArgs(const std::vector<LirReg> &args) {
-        for (std::size_t i = kIntArgRegs; i < args.size(); ++i) {
+    // Whether a result comes back in memory the caller names rather than in
+    // registers, which is every composite past sixteen bytes that is not a
+    // homogeneous floating-point aggregate — four doubles are four registers,
+    // and four doubles are thirty-two bytes.
+    [[nodiscard]] bool ReturnsInMemory(const TypeRef &type) const {
+        unsigned memberBytes = 8;
+        return IsAggregate(type) && RuntimeSize(type) > 16 && FloatMembers(type, memberBytes) == 0;
+    }
+
+    // Where a returned value comes back, which is argument classification asked
+    // of one value at the front of an empty list: an HFA in V0 and up, and
+    // anything else in X0 and, where sixteen bytes need it, X1.
+    [[nodiscard]] ArgLocation ResultLocation(const TypeRef &type) const {
+        ArgLocation loc;
+        unsigned memberBytes = 8;
+        if (const unsigned members = FloatMembers(type, memberBytes); members > 0) {
+            loc.kind = ArgLocation::Kind::Vector;
+            loc.count = members;
+            loc.memberBytes = memberBytes;
+            return loc;
+        }
+        loc.kind = ArgLocation::Kind::General;
+        loc.count = RegistersFor(RuntimeSize(type));
+        return loc;
+    }
+
+    // How many whole registers a value of `size` bytes occupies, which is what a
+    // composite small enough to travel in them is broken into.
+    [[nodiscard]] static unsigned RegistersFor(const int size) {
+        return size > 8 ? static_cast<unsigned>((size + 7) / 8) : 1;
+    }
+
+    // Where AAPCS64 puts each argument of one call.
+    //
+    // Two counters walk the list, one per register file, and a third names the
+    // next free byte of the outgoing area. A value that does not fit the file it
+    // belongs to goes to the area — and so does every later value of that file,
+    // fit or not, because the standard saturates the counter rather than looking
+    // for a register the argument behind it left free. That is the rule a
+    // hand-written caller most often gets wrong, and it is the reason this is one
+    // walk over the whole list rather than a decision made argument by argument.
+    //
+    // An anonymous argument — one past the last a variadic declaration named —
+    // is classified exactly like a named one here, which is what AAPCS64 asks
+    // for and what a Linux `printf` reads: a float still arrives in a V register
+    // and `va_arg` finds it in the vector half of the register save area. Two
+    // systems deviate and neither is reachable yet: Apple's variant puts every
+    // anonymous argument on the stack, and Windows on AArch64 puts anonymous
+    // floating-point values in general-purpose registers. Both are one branch
+    // here, taken on the target operating system and on the index of the first
+    // anonymous argument — which `LirFunc::isVariadic` and the callee's
+    // parameter count supply — and both belong with Task 34, where the other
+    // AArch64 systems stop going through Clang.
+    [[nodiscard]] CallLayout ClassifyArguments(const std::vector<TypeRef> &types) const {
+        CallLayout layout;
+        layout.args.reserve(types.size());
+        unsigned nextGeneral = 0;
+        unsigned nextVector = 0;
+        std::int32_t nextStack = 0;
+
+        // The area's own rule: a value is aligned at least to a doubleword and
+        // at most to sixteen bytes, and occupies a whole number of doublewords.
+        const auto onStack = [&nextStack](const int size, const int align) {
+            ArgLocation loc;
+            loc.kind = ArgLocation::Kind::Stack;
+            nextStack = AlignUp(nextStack, align);
+            loc.offset = nextStack;
+            loc.bytes = AlignUp(std::max(size, 1), 8);
+            nextStack += loc.bytes;
+            return loc;
+        };
+
+        // An integer, a pointer, or a composite whole registers can carry: as
+        // many of them as remain, and the area otherwise. A composite aligned to
+        // sixteen bytes starts at an even register, so that the pair it occupies
+        // is the pair an LDP would name.
+        const auto inGeneralFile = [&](const int size, const int align, const unsigned needed) {
+            if (align >= 16) {
+                nextGeneral += nextGeneral % 2;
+            }
+            if (nextGeneral + needed <= kIntArgRegs) {
+                ArgLocation loc;
+                loc.kind = ArgLocation::Kind::General;
+                loc.first = nextGeneral;
+                loc.count = needed;
+                nextGeneral += needed;
+                return loc;
+            }
+            nextGeneral = kIntArgRegs;
+            return onStack(size, align);
+        };
+
+        for (const TypeRef &type : types) {
+            const int size = RuntimeSize(type);
+            const int align = std::clamp(RuntimeAlign(type), 8, 16);
+            unsigned memberBytes = 8;
+            const unsigned members = FloatMembers(type, memberBytes);
+            if (members > 0) {
+                if (nextVector + members <= kFpArgRegs) {
+                    ArgLocation loc;
+                    loc.kind = ArgLocation::Kind::Vector;
+                    loc.first = nextVector;
+                    loc.count = members;
+                    loc.memberBytes = memberBytes;
+                    nextVector += members;
+                    layout.args.push_back(loc);
+                    continue;
+                }
+                nextVector = kFpArgRegs;
+                layout.args.push_back(onStack(size, align));
+                continue;
+            }
+            if (IsAggregate(type) && size > 16) {
+                // What travels is the address of a copy, which goes wherever a
+                // pointer in this position would have gone.
+                ArgLocation loc = inGeneralFile(8, 8, 1);
+                loc.byReference = true;
+                loc.copyBytes = size;
+                layout.args.push_back(loc);
+                continue;
+            }
+            layout.args.push_back(inGeneralFile(size, align, RegistersFor(size)));
+        }
+
+        // The copies sit above the arguments themselves. Where an argument sits
+        // is the callee's business and is fixed by the walk above; where its
+        // copy sits is nobody's but this generator's, so it is decided last.
+        for (std::size_t i = 0; i < layout.args.size(); ++i) {
+            if (!layout.args[i].byReference) {
+                continue;
+            }
+            const int align = std::clamp(RuntimeAlign(types[i]), 8, 16);
+            nextStack = AlignUp(nextStack, align);
+            layout.args[i].copyOffset = nextStack;
+            nextStack += AlignUp(std::max(layout.args[i].copyBytes, 1), 8);
+        }
+        // The stack pointer is a multiple of sixteen at every public interface,
+        // which is what makes the adjustment a FrameAdjust at all.
+        layout.areaBytes = AlignUp(nextStack, 16);
+        return layout;
+    }
+
+    // Move one argument between the registers AAPCS64 puts it in and the slot it
+    // lives in here: out of the slot where a caller fills them, into the slot
+    // where a callee spills them. What the two directions have in common is the
+    // location, so this is one function and a direction rather than two that
+    // would have to be kept in step.
+    void MoveRegisterArgument(const ArgLocation &loc, const LirReg reg, const TypeRef &type, const bool toRegisters) {
+        const auto disp = static_cast<std::int64_t>(Disp(reg));
+        if (loc.kind == ArgLocation::Kind::Vector) {
+            // The members of an HFA sit at their own width in memory and in one
+            // register each, so a pair of float32s is two S registers loaded
+            // four bytes apart.
+            for (unsigned i = 0; i < loc.count; ++i) {
+                const A64Reg member = A64::Vn(loc.first + i, loc.memberBytes * 8U);
+                const std::int64_t offset = disp + static_cast<std::int64_t>(i) * loc.memberBytes;
+                if (toRegisters) {
+                    LoadScalar(member, A64::Fp, offset, loc.memberBytes, false);
+                }
+                else {
+                    StoreScalar(member, A64::Fp, offset, loc.memberBytes);
+                }
+            }
+            return;
+        }
+        if (loc.count > 1) {
+            // A composite of no more than sixteen bytes is a whole number of
+            // doublewords here, since its slot was rounded up to one: the last
+            // register carries that padding rather than the value beside it.
+            for (unsigned i = 0; i < loc.count; ++i) {
+                const A64Reg word = A64::Xn(loc.first + i);
+                const std::int64_t offset = disp + static_cast<std::int64_t>(i) * 8;
+                if (toRegisters) {
+                    LoadScalar(word, A64::Fp, offset, 8, false);
+                }
+                else {
+                    StoreScalar(word, A64::Fp, offset, 8);
+                }
+            }
+            return;
+        }
+        // One register, at the width and the signedness the type asks for: the
+        // load extends a narrow value the way AAPCS64 asks a caller to, and the
+        // store writes only the bytes the type occupies.
+        if (toRegisters) {
+            LoadFromSlot(A64::Xn(loc.first), reg, type);
+        }
+        else {
+            StoreToSlot(A64::Xn(loc.first), reg, type);
+        }
+    }
+
+    // Put the arguments where the callee will look for them. Everything that
+    // travels in memory goes first, while no argument register holds anything
+    // yet: a value is read out of its slot through X9 and an aggregate is moved
+    // through X10 and X11, none of which an argument ever occupies, so neither
+    // pass disturbs the other.
+    void EmitCallArgs(const std::vector<LirReg> &args, const std::vector<TypeRef> &types, const CallLayout &layout) {
+        for (std::size_t i = 0; i < args.size(); ++i) {
+            const ArgLocation &loc = layout.args[i];
+            const bool paired = RuntimeAlign(types[i]) >= 8;
+            if (loc.byReference) {
+                // The copy belongs to the caller, so a callee that writes to its
+                // own parameter writes to that rather than to the value here.
+                const A64Reg source = A64::Xn(kSrcAddr);
+                SlotAddress(source, args[i]);
+                CopyBlock(A64::Sp, loc.copyOffset, source, 0, loc.copyBytes, paired);
+                if (loc.kind == ArgLocation::Kind::Stack) {
+                    const A64Reg address = A64::Xn(kTemp);
+                    Must(enc.AddSubLargeImm(address, A64::Sp, loc.copyOffset), "the address of an argument copy");
+                    StoreScalar(address, A64::Sp, loc.offset, 8);
+                }
+                continue;
+            }
+            if (loc.kind != ArgLocation::Kind::Stack) {
+                continue;
+            }
+            const int size = RuntimeSize(types[i]);
+            if (IsAggregate(types[i]) && size > 8) {
+                const A64Reg source = A64::Xn(kSrcAddr);
+                SlotAddress(source, args[i]);
+                CopyBlock(A64::Sp, loc.offset, source, 0, size, paired);
+                continue;
+            }
+            if (IsFloat(types[i])) {
+                // A float occupies the low bytes of its doubleword and leaves
+                // the rest as it found them, exactly as a narrow integer does.
+                const A64Reg value = types[i].kind == TypeRef::Kind::Float32 ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
+                LoadFpFromSlot(value, args[i]);
+                StoreScalar(value, A64::Sp, loc.offset, value.bits / 8U);
+                continue;
+            }
             const A64Reg value = A64::Xn(kTemp);
-            LoadFromSlot(value, args[i], TypeOfReg(args[i]));
-            StoreScalar(value, A64::Sp, static_cast<std::int64_t>((i - kIntArgRegs) * 8), 8);
+            LoadFromSlot(value, args[i], types[i]);
+            StoreScalar(value, A64::Sp, loc.offset, 8);
         }
-        for (std::size_t i = 0; i < std::min(args.size(), kIntArgRegs); ++i) {
-            LoadFromSlot(A64::Xn(static_cast<unsigned>(i)), args[i], TypeOfReg(args[i]));
+        for (std::size_t i = 0; i < args.size(); ++i) {
+            const ArgLocation &loc = layout.args[i];
+            if (loc.kind == ArgLocation::Kind::Stack) {
+                continue;
+            }
+            if (loc.byReference) {
+                Must(enc.AddSubLargeImm(A64::Xn(loc.first), A64::Sp, loc.copyOffset),
+                     "the address of an argument copy");
+                continue;
+            }
+            MoveRegisterArgument(loc, args[i], types[i], true);
         }
     }
 
@@ -1142,14 +1490,25 @@ private:
     // Open the outgoing argument area, fill the argument registers, branch, close
     // the area again, and keep what came back.
     void GenCall(const LirInstr &instr, const std::vector<LirReg> &args, const bool indirect) {
-        if (!CheckCallTypes(instr, args)) {
-            return;
+        std::vector<TypeRef> types;
+        types.reserve(args.size());
+        for (const LirReg arg : args) {
+            types.push_back(TypeOfReg(arg));
         }
-        const std::int32_t outgoing = OutgoingArgBytes(args.size());
-        if (outgoing > 0) {
-            Must(enc.FrameAdjust(-outgoing), "the outgoing argument area");
+        const CallLayout layout = ClassifyArguments(types);
+        const bool keepsResult = instr.dst != LirNoReg && !instr.type.IsOpaque();
+        const bool indirectResult = keepsResult && ReturnsInMemory(instr.type);
+
+        if (layout.areaBytes > 0) {
+            Must(enc.FrameAdjust(-layout.areaBytes), "the outgoing argument area");
         }
-        EmitCallArgs(args);
+        EmitCallArgs(args, types, layout);
+        if (indirectResult) {
+            // A result too large for registers is written where the caller says,
+            // and the slot the value already has is somewhere it may be written:
+            // nothing else reads that slot until the call has returned.
+            SlotAddress(A64::Xn(kIndirectResult), instr.dst);
+        }
         if (indirect) {
             // The address is fetched after the arguments and into X9 rather than
             // an argument register, so that fetching it cannot disturb them.
@@ -1162,45 +1521,73 @@ private:
             Must(enc.Bl(0), "a call");
             AddTextReloc(callSite, CallTarget(instr.strArg), RcuRelType::AArch64Call26);
         }
-        if (outgoing > 0) {
-            Must(enc.FrameAdjust(outgoing), "the outgoing argument area");
+        if (layout.areaBytes > 0) {
+            Must(enc.FrameAdjust(layout.areaBytes), "the outgoing argument area");
         }
-        // A narrow return arrives extended to at least a word, with the bits
-        // above it unspecified, so the store writes only the bytes the type
-        // occupies and reads none of the rest.
-        if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
-            StoreToSlot(A64::Xn(kReturn), instr.dst, instr.type);
+        // What came back is kept where every later mention of it will look. A
+        // narrow return arrives extended to at least a word with the bits above
+        // it unspecified, so the store writes only the bytes the type occupies
+        // and reads none of the rest; a result too large for registers needs
+        // nothing at all, since the callee has already written it here.
+        if (keepsResult && !indirectResult) {
+            MoveRegisterArgument(ResultLocation(instr.type), instr.dst, instr.type, false);
         }
     }
 
-    // Bring the parameters in from where the caller left them. The first eight
-    // general-purpose ones arrive in X0 through X7; the rest are on the caller's
-    // stack, which sits directly above this frame — the frame record is at the
-    // bottom of it, so what the caller wrote at its own stack pointer is at
-    // X29 plus the frame size. Each is stored into the slot the prepass gave it,
-    // and every later mention of it is a read of that slot.
+    // Bring the parameters in from where the caller left them, which is the same
+    // classification the caller made read the other way round. What arrived in
+    // registers is stored into the slot the prepass gave it; what arrived on the
+    // caller's stack is copied down into that slot, since the caller's area sits
+    // directly above this frame — the frame record is at the bottom of it, so
+    // what the caller wrote at its own stack pointer is at X29 plus the frame
+    // size. Every later mention of a parameter is then a read of its slot.
     void EmitParamSpills(const LirFunc &func) {
-        std::size_t index = 0;
+        std::vector<TypeRef> types;
+        types.reserve(func.params.size());
         for (const auto &param : func.params) {
-            if (!IsGeneralPurposeValue(param.type)) {
-                NotImplemented(std::format("a parameter of type '{}'", param.type.ToString()));
-                ++index;
+            types.push_back(param.type);
+        }
+        const CallLayout layout = ClassifyArguments(types);
+
+        for (std::size_t i = 0; i < func.params.size(); ++i) {
+            const LirParam &param = func.params[i];
+            const ArgLocation &loc = layout.args[i];
+            const int size = RuntimeSize(param.type);
+            const bool paired = RuntimeAlign(param.type) >= 8;
+            const std::int64_t incoming = static_cast<std::int64_t>(frameSize) + loc.offset;
+            if (loc.byReference) {
+                // The caller's copy is the caller's: it is read into this frame
+                // once, and nothing here ever writes through the address again.
+                const A64Reg source = A64::Xn(kSrcAddr);
+                if (loc.kind == ArgLocation::Kind::Stack) {
+                    LoadScalar(source, A64::Fp, incoming, 8, false);
+                }
+                else {
+                    Must(enc.Mov(source, A64::Xn(loc.first)), "the address of an argument");
+                }
+                CopyBlock(A64::Fp, Disp(param.reg), source, 0, size, paired);
                 continue;
             }
-            if (index < kIntArgRegs) {
-                StoreToSlot(A64::Xn(static_cast<unsigned>(index)), param.reg, param.type);
-                ++index;
+            if (loc.kind != ArgLocation::Kind::Stack) {
+                MoveRegisterArgument(loc, param.reg, param.type, false);
+                continue;
+            }
+            if (IsAggregate(param.type) && size > 8) {
+                CopyBlock(A64::Fp, Disp(param.reg), A64::Fp, incoming, size, paired);
+                continue;
+            }
+            if (IsFloat(param.type)) {
+                const A64Reg value = param.type.kind == TypeRef::Kind::Float32 ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
+                LoadScalar(value, A64::Fp, incoming, value.bits / 8U, false);
+                StoreFpToSlot(value, param.reg);
                 continue;
             }
             // Read at the width the parameter's own type occupies rather than a
             // whole doubleword: a C caller writes a narrow argument into the low
             // bytes of its stack slot and leaves the rest as it found it.
-            const auto incoming =
-                static_cast<std::int64_t>(frameSize) + static_cast<std::int64_t>((index - kIntArgRegs) * 8);
             const A64Reg value = A64::Xn(kTemp);
-            LoadScalar(value, A64::Fp, incoming, AccessWidth(RuntimeSize(param.type)), param.type.IsSigned());
+            LoadScalar(value, A64::Fp, incoming, AccessWidth(size), param.type.IsSigned());
             StoreToSlot(value, param.reg, param.type);
-            ++index;
         }
     }
 
@@ -1754,14 +2141,19 @@ private:
         }
         case LirTermKind::Return: {
             if (term.retVal && *term.retVal != LirNoReg) {
-                // X0 carries anything that fits a general-purpose register,
-                // which is what the caller reads it out of, and the load
-                // extends a narrow value the way AAPCS64 asks a callee to.
-                if (!IsGeneralPurposeValue(term.retType)) {
-                    NotImplemented(std::format("returning a value of type '{}'", term.retType.ToString()));
+                if (indirectResultOff != 0) {
+                    // The caller named the memory and the prologue kept the
+                    // address; the value is copied there and no register carries
+                    // any of it back.
+                    const A64Reg destination = A64::Xn(kAddr);
+                    LoadScalar(destination, A64::Fp, indirectResultOff, 8, false);
+                    CopyBlock(destination, 0, A64::Fp, Disp(*term.retVal), RuntimeSize(term.retType),
+                              RuntimeAlign(term.retType) >= 8);
                 }
                 else {
-                    LoadFromSlot(A64::Xn(kReturn), *term.retVal, term.retType);
+                    // X0 and V0 carry everything else, the load extending a
+                    // narrow value the way AAPCS64 asks a callee to.
+                    MoveRegisterArgument(ResultLocation(term.retType), *term.retVal, term.retType, true);
                 }
             }
             EmitEpilogue();
@@ -1828,6 +2220,9 @@ private:
         while (true) {
             jumpPatches.clear();
             EmitPrologue();
+            if (indirectResultOff != 0) {
+                StoreScalar(A64::Xn(kIndirectResult), A64::Fp, indirectResultOff, 8);
+            }
             EmitParamSpills(func);
             blockOffsets.assign(func.blocks.size(), 0);
             for (std::uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
@@ -1991,6 +2386,7 @@ private:
         }
         for (const auto &s : structDecls) {
             layouts[s.name] = ComputeStructLayout(s, layouts);
+            structFields[s.name] = &s;
         }
 
         PredeclareFunctions();
