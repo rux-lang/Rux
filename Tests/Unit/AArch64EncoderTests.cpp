@@ -150,6 +150,36 @@ TEST_CASE("AArch64 shift and extend kinds carry their encoding field values") {
     CHECK(static_cast<int>(A64ExtendKind::Sxtx) == 7);
 }
 
+TEST_CASE("AArch64 barrier options carry their CRm field values") {
+    CHECK(static_cast<int>(A64Barrier::Oshld) == 1);
+    CHECK(static_cast<int>(A64Barrier::Osh) == 3);
+    CHECK(static_cast<int>(A64Barrier::Nsh) == 7);
+    CHECK(static_cast<int>(A64Barrier::Ish) == 11);
+    CHECK(static_cast<int>(A64Barrier::Ld) == 13);
+    CHECK(static_cast<int>(A64Barrier::St) == 14);
+    CHECK(static_cast<int>(A64Barrier::Sy) == 15);
+}
+
+// System register encodings from the ARM Architecture Reference Manual, D19.2:
+// the 15-bit o0:op1:CRn:CRm:op2 an MRS or MSR names a register by.
+TEST_CASE("AArch64 system registers encode as fifteen bits of field") {
+    CHECK(A64::SysReg(3, 3, 4, 2, 0) == 0x5A10);
+    CHECK(A64::Nzcv == 0x5A10);
+    CHECK(A64::SysReg(3, 3, 13, 0, 2) == 0x5E82);
+    CHECK(A64::TpidrEl0 == 0x5E82);
+
+    // MIDR_EL1 is the one register of interest whose op1 is zero, and FPCR the
+    // one whose CRm is not; both exercise a field the two named ones leave at a
+    // constant.
+    CHECK(A64::SysReg(3, 0, 0, 0, 0) == 0x4000);
+    CHECK(A64::SysReg(3, 3, 4, 4, 0) == 0x5A20);
+
+    // op0 is 2 or 3 for everything these instructions reach, so only its low
+    // bit travels; every other field is masked to its own width.
+    CHECK(A64::SysReg(2, 0, 0, 0, 0) == 0);
+    CHECK(A64::SysReg(3, 7, 15, 15, 7) == 0x7FFF);
+}
+
 // Expected N:immr:imms triples cross-checked against the logical-immediate
 // forms in the ARM Architecture Reference Manual, C4.1.93 (AND immediate) and
 // the DecodeBitMasks pseudocode in J1.3.
@@ -1135,6 +1165,246 @@ TEST_CASE("AArch64 encodes LDR from a PC-relative literal") {
     v.Refuses(v.enc.LdrLiteral(A64::Bn(0), 0), A64Status::InvalidRegister);
     v.Refuses(v.enc.LdrLiteral(A64::Hn(0), 0), A64Status::InvalidRegister);
     v.Refuses(v.enc.LdrLiteral(A64::Sp, 0), A64Status::InvalidRegister);
+}
+
+// Branches, Exception Generating and System instructions: Unconditional branch
+// (immediate) and Conditional branch (immediate).
+TEST_CASE("AArch64 encodes immediate branches") {
+    A64Vectors v;
+
+    SUBCASE("B and BL over the 26-bit field") {
+        v.Encodes(v.enc.B(0), 0x14000000);
+        v.Encodes(v.enc.B(4), 0x14000001);
+        v.Encodes(v.enc.B(-4), 0x17FFFFFF);
+        v.Encodes(v.enc.B(1024), 0x14000100);
+        v.Encodes(v.enc.B(-1024), 0x17FFFF00);
+        v.Encodes(v.enc.Bl(0), 0x94000000);
+        v.Encodes(v.enc.Bl(4), 0x94000001);
+        v.Encodes(v.enc.Bl(-4), 0x97FFFFFF);
+        // +/-128 MiB, the whole reach of a call needing no veneer.
+        v.Encodes(v.enc.B(134217724), 0x15FFFFFF);
+        v.Encodes(v.enc.B(-134217728), 0x16000000);
+        v.Encodes(v.enc.Bl(134217724), 0x95FFFFFF);
+        v.Encodes(v.enc.Bl(-134217728), 0x96000000);
+    }
+
+    SUBCASE("B.cond at every condition") {
+        v.Encodes(v.enc.BCond(A64Condition::Eq, 8), 0x54000040);
+        v.Encodes(v.enc.BCond(A64Condition::Ne, 8), 0x54000041);
+        v.Encodes(v.enc.BCond(A64Condition::Cs, 8), 0x54000042);
+        v.Encodes(v.enc.BCond(A64Condition::Cc, 8), 0x54000043);
+        v.Encodes(v.enc.BCond(A64Condition::Mi, 8), 0x54000044);
+        v.Encodes(v.enc.BCond(A64Condition::Pl, 8), 0x54000045);
+        v.Encodes(v.enc.BCond(A64Condition::Vs, 8), 0x54000046);
+        v.Encodes(v.enc.BCond(A64Condition::Vc, 8), 0x54000047);
+        v.Encodes(v.enc.BCond(A64Condition::Hi, 8), 0x54000048);
+        v.Encodes(v.enc.BCond(A64Condition::Ls, 8), 0x54000049);
+        v.Encodes(v.enc.BCond(A64Condition::Ge, 8), 0x5400004A);
+        v.Encodes(v.enc.BCond(A64Condition::Lt, 8), 0x5400004B);
+        v.Encodes(v.enc.BCond(A64Condition::Gt, 8), 0x5400004C);
+        v.Encodes(v.enc.BCond(A64Condition::Le, 8), 0x5400004D);
+        // Neither of the unconditional codes is being inverted here, so both
+        // encode as written rather than being refused as they are in CSET.
+        v.Encodes(v.enc.BCond(A64Condition::Al, 8), 0x5400004E);
+        v.Encodes(v.enc.BCond(A64Condition::Nv, 8), 0x5400004F);
+        // The boundaries of the 19-bit field: +/-1 MiB.
+        v.Encodes(v.enc.BCond(A64Condition::Eq, 1048572), 0x547FFFE0);
+        v.Encodes(v.enc.BCond(A64Condition::Eq, -1048576), 0x54800000);
+    }
+
+    SUBCASE("refusals") {
+        // An offset that names no instruction is not rounded to one, and one
+        // past the end of the field does not wrap into a branch elsewhere.
+        v.Refuses(v.enc.B(2), A64Status::Unaligned);
+        v.Refuses(v.enc.Bl(-1), A64Status::Unaligned);
+        v.Refuses(v.enc.BCond(A64Condition::Eq, 6), A64Status::Unaligned);
+        v.Refuses(v.enc.B(134217728), A64Status::OutOfRange);
+        v.Refuses(v.enc.B(-134217732), A64Status::OutOfRange);
+        v.Refuses(v.enc.Bl(134217728), A64Status::OutOfRange);
+        v.Refuses(v.enc.BCond(A64Condition::Ne, 1048576), A64Status::OutOfRange);
+        v.Refuses(v.enc.BCond(A64Condition::Ne, -1048580), A64Status::OutOfRange);
+    }
+}
+
+// Branches, Exception Generating and System instructions: Compare and branch
+// (immediate) and Test and branch (immediate).
+TEST_CASE("AArch64 encodes compare-and-branch and test-and-branch") {
+    A64Vectors v;
+
+    SUBCASE("CBZ and CBNZ") {
+        v.Encodes(v.enc.Cbz(A64::Xn(0), 16), 0xB4000080);
+        v.Encodes(v.enc.Cbz(A64::Xn(19), 16), 0xB4000093);
+        v.Encodes(v.enc.Cbnz(A64::Wn(0), 16), 0x35000080);
+        v.Encodes(v.enc.Cbnz(A64::Wn(30), 16), 0x3500009E);
+        v.Encodes(v.enc.Cbz(A64::Wzr, 16), 0x3400009F);
+        v.Encodes(v.enc.Cbz(A64::Xn(0), 1048572), 0xB47FFFE0);
+        v.Encodes(v.enc.Cbnz(A64::Xn(0), -1048576), 0xB5800000);
+    }
+
+    SUBCASE("TBZ and TBNZ split the bit index across two fields") {
+        v.Encodes(v.enc.Tbz(A64::Xn(3), 0, 12), 0x36000063);
+        v.Encodes(v.enc.Tbz(A64::Xn(3), 1, 12), 0x36080063);
+        v.Encodes(v.enc.Tbnz(A64::Xn(3), 0, 12), 0x37000063);
+        // Bit 31 is the last one b40 holds alone; bit 32 is the first to set b5,
+        // which sits where every other instruction keeps sf.
+        v.Encodes(v.enc.Tbz(A64::Xn(3), 31, 12), 0x36F80063);
+        v.Encodes(v.enc.Tbz(A64::Xn(3), 32, 12), 0xB6000063);
+        v.Encodes(v.enc.Tbz(A64::Xn(3), 63, 12), 0xB6F80063);
+        v.Encodes(v.enc.Tbnz(A64::Xn(3), 31, 12), 0x37F80063);
+        v.Encodes(v.enc.Tbnz(A64::Xn(3), 32, 12), 0xB7000063);
+        v.Encodes(v.enc.Tbnz(A64::Xn(3), 63, 12), 0xB7F80063);
+        // A W register reaches only the low half, and encodes identically to
+        // the X register it is a view of.
+        v.Encodes(v.enc.Tbz(A64::Wn(5), 0, -12), 0x3607FFA5);
+        v.Encodes(v.enc.Tbz(A64::Wn(5), 31, -12), 0x36FFFFA5);
+        // The boundaries of the 14-bit field: +/-32 KiB.
+        v.Encodes(v.enc.Tbz(A64::Xn(0), 0, 32764), 0x3603FFE0);
+        v.Encodes(v.enc.Tbnz(A64::Xn(0), 63, -32768), 0xB7FC0000);
+    }
+
+    SUBCASE("refusals") {
+        v.Refuses(v.enc.Cbz(A64::Xn(0), 2), A64Status::Unaligned);
+        v.Refuses(v.enc.Cbz(A64::Xn(0), 1048576), A64Status::OutOfRange);
+        v.Refuses(v.enc.Cbnz(A64::Xn(0), -1048580), A64Status::OutOfRange);
+        v.Refuses(v.enc.Tbz(A64::Xn(0), 0, 2), A64Status::Unaligned);
+        v.Refuses(v.enc.Tbz(A64::Xn(0), 0, 32768), A64Status::OutOfRange);
+        v.Refuses(v.enc.Tbnz(A64::Xn(0), 0, -32772), A64Status::OutOfRange);
+        // The bit index has to name a bit the register has.
+        v.Refuses(v.enc.Tbz(A64::Wn(0), 32, 12), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Tbz(A64::Xn(0), 64, 12), A64Status::InvalidImmediate);
+        // Neither form compares the stack pointer or anything but a general
+        // register.
+        v.Refuses(v.enc.Cbz(A64::Sp, 16), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Cbz(A64::Dn(0), 16), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Tbz(A64::Wsp, 0, 12), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Tbnz(A64::Qn(0), 0, 12), A64Status::InvalidRegister);
+    }
+}
+
+// Branches, Exception Generating and System instructions: Unconditional branch
+// (register).
+TEST_CASE("AArch64 encodes branches through a register") {
+    A64Vectors v;
+
+    v.Encodes(v.enc.Br(A64::Xn(0)), 0xD61F0000);
+    v.Encodes(v.enc.Br(A64::Ip0), 0xD61F0200);
+    v.Encodes(v.enc.Br(A64::Lr), 0xD61F03C0);
+    v.Encodes(v.enc.Br(A64::Xzr), 0xD61F03E0);
+    v.Encodes(v.enc.Blr(A64::Xn(0)), 0xD63F0000);
+    v.Encodes(v.enc.Blr(A64::Ip0), 0xD63F0200);
+    v.Encodes(v.enc.Blr(A64::Lr), 0xD63F03C0);
+    v.Encodes(v.enc.Ret(A64::Xn(0)), 0xD65F0000);
+    v.Encodes(v.enc.Ret(A64::Lr), 0xD65F03C0);
+    // An epilogue returns through the link register, so that is what RET is
+    // written without an operand.
+    v.Encodes(v.enc.Ret(), 0xD65F03C0);
+
+    // The target is an address, so it is 64-bit and never the stack pointer.
+    v.Refuses(v.enc.Br(A64::Wn(0)), A64Status::InvalidRegister);
+    v.Refuses(v.enc.Blr(A64::Sp), A64Status::InvalidRegister);
+    v.Refuses(v.enc.Ret(A64::Dn(0)), A64Status::InvalidRegister);
+}
+
+// Branches, Exception Generating and System instructions: Exception generation.
+TEST_CASE("AArch64 encodes exception generation") {
+    A64Vectors v;
+
+    v.Encodes(v.enc.Svc(0), 0xD4000001);
+    v.Encodes(v.enc.Svc(1), 0xD4000021);
+    // The syscall wrappers issue SVC #0; the rest of the field is there for a
+    // debugger rather than for the kernel.
+    v.Encodes(v.enc.Svc(0x1234), 0xD4024681);
+    v.Encodes(v.enc.Svc(0xFFFF), 0xD41FFFE1);
+    v.Encodes(v.enc.Brk(0), 0xD4200000);
+    v.Encodes(v.enc.Brk(1), 0xD4200020);
+    v.Encodes(v.enc.Brk(0x1234), 0xD4224680);
+    v.Encodes(v.enc.Brk(0xFFFF), 0xD43FFFE0);
+    v.Encodes(v.enc.Hlt(0), 0xD4400000);
+    v.Encodes(v.enc.Hlt(0x1234), 0xD4424680);
+    v.Encodes(v.enc.Hlt(0xFFFF), 0xD45FFFE0);
+
+    // UDF is a hole in the instruction space rather than an instruction, so its
+    // word is the immediate and nothing else — which is why a jump into zeroed
+    // memory traps on the first word it reaches.
+    v.Encodes(v.enc.Udf(0), 0x00000000);
+    v.Encodes(v.enc.Udf(1), 0x00000001);
+    v.Encodes(v.enc.Udf(0xFFFF), 0x0000FFFF);
+}
+
+// Branches, Exception Generating and System instructions: Hints and barriers.
+TEST_CASE("AArch64 encodes hints and barriers") {
+    A64Vectors v;
+
+    SUBCASE("hints") {
+        v.Encodes(v.enc.Nop(), 0xD503201F);
+        v.Encodes(v.enc.Hint(0), 0xD503201F);
+        v.Encodes(v.enc.Hint(1), 0xD503203F);
+        v.Encodes(v.enc.Hint(3), 0xD503207F);
+        // The immediate is CRm and op2 together, so it carries into the field
+        // above at every multiple of eight.
+        v.Encodes(v.enc.Hint(8), 0xD503211F);
+        v.Encodes(v.enc.Hint(127), 0xD5032FFF);
+        v.Refuses(v.enc.Hint(128), A64Status::InvalidImmediate);
+    }
+
+    SUBCASE("barriers at every named option") {
+        v.Encodes(v.enc.Dmb(), 0xD5033FBF);
+        v.Encodes(v.enc.Dmb(A64Barrier::Oshld), 0xD50331BF);
+        v.Encodes(v.enc.Dmb(A64Barrier::Oshst), 0xD50332BF);
+        v.Encodes(v.enc.Dmb(A64Barrier::Osh), 0xD50333BF);
+        v.Encodes(v.enc.Dmb(A64Barrier::Nshld), 0xD50335BF);
+        v.Encodes(v.enc.Dmb(A64Barrier::Nshst), 0xD50336BF);
+        v.Encodes(v.enc.Dmb(A64Barrier::Nsh), 0xD50337BF);
+        v.Encodes(v.enc.Dmb(A64Barrier::Ishld), 0xD50339BF);
+        v.Encodes(v.enc.Dmb(A64Barrier::Ishst), 0xD5033ABF);
+        v.Encodes(v.enc.Dmb(A64Barrier::Ish), 0xD5033BBF);
+        v.Encodes(v.enc.Dmb(A64Barrier::Ld), 0xD5033DBF);
+        v.Encodes(v.enc.Dmb(A64Barrier::St), 0xD5033EBF);
+        v.Encodes(v.enc.Dmb(A64Barrier::Sy), 0xD5033FBF);
+
+        // DSB differs from DMB in op2 alone, so the option field encodes the
+        // same way in both.
+        v.Encodes(v.enc.Dsb(), 0xD5033F9F);
+        v.Encodes(v.enc.Dsb(A64Barrier::Osh), 0xD503339F);
+        v.Encodes(v.enc.Dsb(A64Barrier::Ish), 0xD5033B9F);
+        v.Encodes(v.enc.Dsb(A64Barrier::Ld), 0xD5033D9F);
+        v.Encodes(v.enc.Dsb(A64Barrier::Sy), 0xD5033F9F);
+
+        // ISB has one meaningful option, and it is the default.
+        v.Encodes(v.enc.Isb(), 0xD5033FDF);
+        v.Encodes(v.enc.Isb(A64Barrier::Sy), 0xD5033FDF);
+    }
+}
+
+// Branches, Exception Generating and System instructions: System register move.
+TEST_CASE("AArch64 encodes moves to and from a system register") {
+    A64Vectors v;
+
+    v.Encodes(v.enc.Mrs(A64::Xn(0), A64::Nzcv), 0xD53B4200);
+    v.Encodes(v.enc.Mrs(A64::Xn(1), A64::Nzcv), 0xD53B4201);
+    v.Encodes(v.enc.Mrs(A64::Lr, A64::Nzcv), 0xD53B421E);
+    v.Encodes(v.enc.Mrs(A64::Xzr, A64::Nzcv), 0xD53B421F);
+    v.Encodes(v.enc.Msr(A64::Nzcv, A64::Xn(0)), 0xD51B4200);
+    v.Encodes(v.enc.Msr(A64::Nzcv, A64::Lr), 0xD51B421E);
+
+    v.Encodes(v.enc.Mrs(A64::Xn(0), A64::TpidrEl0), 0xD53BD040);
+    v.Encodes(v.enc.Mrs(A64::Lr, A64::TpidrEl0), 0xD53BD05E);
+    v.Encodes(v.enc.Msr(A64::TpidrEl0, A64::Xn(0)), 0xD51BD040);
+
+    // Any register the 15-bit encoding names is reachable, not only the two
+    // that have a constant.
+    v.Encodes(v.enc.Mrs(A64::Xn(1), A64::SysReg(3, 3, 4, 4, 0)), 0xD53B4401); // FPCR
+    v.Encodes(v.enc.Mrs(A64::Xn(1), A64::SysReg(3, 3, 4, 4, 1)), 0xD53B4421); // FPSR
+    v.Encodes(v.enc.Msr(A64::SysReg(3, 3, 4, 4, 0), A64::Xn(2)), 0xD51B4402); // FPCR
+    v.Encodes(v.enc.Mrs(A64::Xn(1), A64::SysReg(3, 0, 0, 0, 0)), 0xD5380001); // MIDR_EL1
+    v.Encodes(v.enc.Mrs(A64::Xn(1), A64::SysReg(3, 3, 0, 0, 1)), 0xD53B0021); // CTR_EL0
+
+    // The transferred register is 64-bit whatever the width of the system
+    // register, and code 31 is the zero register there.
+    v.Refuses(v.enc.Mrs(A64::Wn(0), A64::Nzcv), A64Status::InvalidRegister);
+    v.Refuses(v.enc.Mrs(A64::Sp, A64::Nzcv), A64Status::InvalidRegister);
+    v.Refuses(v.enc.Msr(A64::Nzcv, A64::Wn(0)), A64Status::InvalidRegister);
+    v.Refuses(v.enc.Msr(A64::Nzcv, A64::Dn(0)), A64Status::InvalidRegister);
 }
 
 TEST_CASE("AArch64 encoder statuses have names for diagnostics") {

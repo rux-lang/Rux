@@ -470,6 +470,95 @@ A64Status EncodeMemPair(const A64Enc &enc, const A64Reg rt, const A64Reg rt2, co
              std::uint32_t{rn.code} << 5U | rt.code);
     return A64Status::Ok;
 }
+
+// A branch immediate counts instructions from the branch itself, so a byte
+// offset divides by four before it is measured against the field it has to fit.
+// `imm` is left alone unless the offset encodes.
+A64Status BranchOffset(const std::int64_t offset, const unsigned bits, std::uint32_t &imm) {
+    if (offset % A64Enc::InstrSize != 0) {
+        return A64Status::Unaligned;
+    }
+    const std::int64_t instrs = offset / A64Enc::InstrSize;
+    if (!FitsSigned(instrs, bits)) {
+        return A64Status::OutOfRange;
+    }
+    imm = static_cast<std::uint32_t>(static_cast<std::uint64_t>(instrs) & LowMask(bits));
+    return A64Status::Ok;
+}
+
+// B / BL: op | 00101 | imm26.
+A64Status EncodeBranchImm(const A64Enc &enc, const std::int64_t offset, const bool link) {
+    std::uint32_t imm = 0;
+    if (const A64Status status = BranchOffset(offset, 26, imm); status != A64Status::Ok) {
+        return status;
+    }
+    enc.Word((link ? 1U : 0U) << 31U | 0x05U << 26U | imm);
+    return A64Status::Ok;
+}
+
+// Compare and branch: sf | 011010 | op | imm19 | Rt.
+A64Status EncodeCompareBranch(const A64Enc &enc, const A64Reg rt, const std::int64_t offset, const bool notZero) {
+    if (!ZrOperand(rt, rt.bits) || (rt.bits != 32 && rt.bits != 64)) {
+        return A64Status::InvalidRegister;
+    }
+    std::uint32_t imm = 0;
+    if (const A64Status status = BranchOffset(offset, 19, imm); status != A64Status::Ok) {
+        return status;
+    }
+    enc.Word(rt.Sf() << 31U | 0x1AU << 25U | (notZero ? 1U : 0U) << 24U | imm << 5U | rt.code);
+    return A64Status::Ok;
+}
+
+// Test and branch: b5 | 011011 | op | b40 | imm14 | Rt. The bit index is split
+// with its top bit above the opcode, where every other instruction keeps sf.
+A64Status EncodeTestBranch(const A64Enc &enc, const A64Reg rt, const unsigned bit, const std::int64_t offset,
+                           const bool notZero) {
+    if (!ZrOperand(rt, rt.bits) || (rt.bits != 32 && rt.bits != 64)) {
+        return A64Status::InvalidRegister;
+    }
+    if (bit >= rt.bits) {
+        return A64Status::InvalidImmediate;
+    }
+    std::uint32_t imm = 0;
+    if (const A64Status status = BranchOffset(offset, 14, imm); status != A64Status::Ok) {
+        return status;
+    }
+    enc.Word((bit >> 5U) << 31U | 0x1BU << 25U | (notZero ? 1U : 0U) << 24U | (bit & 31U) << 19U | imm << 5U | rt.code);
+    return A64Status::Ok;
+}
+
+// Unconditional branch to a register: 1101011 | opc | 11111 | 000000 | Rn | 00000.
+A64Status EncodeBranchReg(const A64Enc &enc, const A64Reg rn, const unsigned opc) {
+    if (!ZrOperand(rn, 64)) {
+        return A64Status::InvalidRegister;
+    }
+    enc.Word(0xD61F0000U | opc << 21U | std::uint32_t{rn.code} << 5U);
+    return A64Status::Ok;
+}
+
+// Exception generation: 11010100 | opc | imm16 | op2 | LL. Each instruction
+// fixes both trailing fields, so the two of them travel together as `tail`.
+A64Status EncodeException(const A64Enc &enc, const std::uint16_t imm16, const unsigned opc, const unsigned tail) {
+    enc.Word(0xD4000000U | opc << 21U | std::uint32_t{imm16} << 5U | tail);
+    return A64Status::Ok;
+}
+
+// Hints and barriers: 11010101 | 00000011 | 0011 | CRm | op2 | 11111, with the
+// hint page sitting at CRn 0010 and the barrier page at 0011.
+A64Status EncodeSystemNoReg(const A64Enc &enc, const unsigned crn, const unsigned crm, const unsigned op2) {
+    enc.Word(0xD5030000U | crn << 12U | crm << 8U | op2 << 5U | 0x1FU);
+    return A64Status::Ok;
+}
+
+// MRS / MSR (register): 1101010100 | L | 1 | o0 | op1 | CRn | CRm | op2 | Rt,
+// which is the 15-bit system-register encoding laid down whole.
+A64Status EncodeSysRegMove(const A64Enc &enc, const A64Reg rt, const std::uint16_t sysreg, const bool read) {
+    if (!ZrOperand(rt, 64)) {
+        return A64Status::InvalidRegister;
+    }
+    enc.Word(0xD5100000U | (read ? 1U : 0U) << 21U | (std::uint32_t{sysreg} & 0x7FFFU) << 5U | rt.code);
+    return A64Status::Ok;
+}
 } // namespace
 
 std::string_view A64StatusName(const A64Status status) {
@@ -1206,5 +1295,101 @@ A64Status A64Enc::LdrLiteral(const A64Reg rt, const std::int64_t offset) const {
     }
     Word(opc << 30U | 0x18U << 24U | v << 26U | static_cast<std::uint32_t>(imm & 0x7FFFF) << 5U | rt.code);
     return A64Status::Ok;
+}
+
+A64Status A64Enc::B(const std::int64_t offset) const {
+    return EncodeBranchImm(*this, offset, false);
+}
+
+A64Status A64Enc::Bl(const std::int64_t offset) const {
+    return EncodeBranchImm(*this, offset, true);
+}
+
+// B.cond: 0101010 | 0 | imm19 | 0 | cond.
+A64Status A64Enc::BCond(const A64Condition cond, const std::int64_t offset) const {
+    std::uint32_t imm = 0;
+    if (const A64Status status = BranchOffset(offset, 19, imm); status != A64Status::Ok) {
+        return status;
+    }
+    Word(0x54U << 24U | imm << 5U | static_cast<std::uint32_t>(cond));
+    return A64Status::Ok;
+}
+
+A64Status A64Enc::Cbz(const A64Reg rt, const std::int64_t offset) const {
+    return EncodeCompareBranch(*this, rt, offset, false);
+}
+
+A64Status A64Enc::Cbnz(const A64Reg rt, const std::int64_t offset) const {
+    return EncodeCompareBranch(*this, rt, offset, true);
+}
+
+A64Status A64Enc::Tbz(const A64Reg rt, const unsigned bit, const std::int64_t offset) const {
+    return EncodeTestBranch(*this, rt, bit, offset, false);
+}
+
+A64Status A64Enc::Tbnz(const A64Reg rt, const unsigned bit, const std::int64_t offset) const {
+    return EncodeTestBranch(*this, rt, bit, offset, true);
+}
+
+A64Status A64Enc::Br(const A64Reg rn) const {
+    return EncodeBranchReg(*this, rn, 0);
+}
+
+A64Status A64Enc::Blr(const A64Reg rn) const {
+    return EncodeBranchReg(*this, rn, 1);
+}
+
+A64Status A64Enc::Ret(const A64Reg rn) const {
+    return EncodeBranchReg(*this, rn, 2);
+}
+
+A64Status A64Enc::Svc(const std::uint16_t imm16) const {
+    return EncodeException(*this, imm16, 0, 1);
+}
+
+A64Status A64Enc::Brk(const std::uint16_t imm16) const {
+    return EncodeException(*this, imm16, 1, 0);
+}
+
+A64Status A64Enc::Hlt(const std::uint16_t imm16) const {
+    return EncodeException(*this, imm16, 2, 0);
+}
+
+// UDF: 0000000000000000 | imm16. The whole of the rest of the word is zero,
+// which is what makes a page of zeroed memory trap on its first instruction.
+A64Status A64Enc::Udf(const std::uint16_t imm16) const {
+    Word(imm16);
+    return A64Status::Ok;
+}
+
+A64Status A64Enc::Nop() const {
+    return Hint(0);
+}
+
+A64Status A64Enc::Hint(const unsigned imm7) const {
+    if (imm7 > 0x7FU) {
+        return A64Status::InvalidImmediate;
+    }
+    return EncodeSystemNoReg(*this, 2, imm7 >> 3U, imm7 & 7U);
+}
+
+A64Status A64Enc::Dsb(const A64Barrier option) const {
+    return EncodeSystemNoReg(*this, 3, static_cast<unsigned>(option), 4);
+}
+
+A64Status A64Enc::Dmb(const A64Barrier option) const {
+    return EncodeSystemNoReg(*this, 3, static_cast<unsigned>(option), 5);
+}
+
+A64Status A64Enc::Isb(const A64Barrier option) const {
+    return EncodeSystemNoReg(*this, 3, static_cast<unsigned>(option), 6);
+}
+
+A64Status A64Enc::Mrs(const A64Reg rt, const std::uint16_t sysreg) const {
+    return EncodeSysRegMove(*this, rt, sysreg, true);
+}
+
+A64Status A64Enc::Msr(const std::uint16_t sysreg, const A64Reg rt) const {
+    return EncodeSysRegMove(*this, rt, sysreg, false);
 }
 } // namespace Rux

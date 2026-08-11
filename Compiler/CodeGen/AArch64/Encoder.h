@@ -413,6 +413,76 @@ public:
     // must be a multiple of four; `rt` may be W, X, S, D or Q.
     [[nodiscard]] A64Status LdrLiteral(A64Reg rt, std::int64_t offset) const;
 
+    // Branches.
+    //
+    // `offset` is a byte distance from the branch to its target, since that is
+    // what a code generator and a label fixup both have in hand, but every
+    // branch immediate counts instructions: an offset that is not a multiple of
+    // four names no instruction at all and is Unaligned rather than rounded to
+    // one, and one past the end of the field is OutOfRange rather than
+    // truncated into a branch somewhere else. The reach of a branch is the
+    // width of its field in instructions — +/-128 MiB for B and BL, +/-1 MiB
+    // for the conditional and compare forms, and +/-32 KiB for the
+    // test-and-branch pair.
+
+    // B and BL, which differ only in whether the return address is written to
+    // X30. Both reach the whole of a typical image, so a call needs no veneer
+    // until the target is more than 128 MiB away.
+    [[nodiscard]] A64Status B(std::int64_t offset) const;
+    [[nodiscard]] A64Status Bl(std::int64_t offset) const;
+
+    // B.cond. AL and NV both branch unconditionally and are accepted as
+    // written, since neither is being inverted here.
+    [[nodiscard]] A64Status BCond(A64Condition cond, std::int64_t offset) const;
+
+    // Compare and branch on zero, which read a register directly rather than
+    // the condition flags and so need no CMP before them. `rt` is a W or an X
+    // register and selects the width compared.
+    [[nodiscard]] A64Status Cbz(A64Reg rt, std::int64_t offset) const;
+    [[nodiscard]] A64Status Cbnz(A64Reg rt, std::int64_t offset) const;
+
+    // Test one bit and branch. The bit index is split across two fields, the
+    // top of it sitting where every other instruction keeps sf, so the width of
+    // `rt` does not reach the encoding at all: it only bounds `bit`, which must
+    // name a bit the register has.
+    [[nodiscard]] A64Status Tbz(A64Reg rt, unsigned bit, std::int64_t offset) const;
+    [[nodiscard]] A64Status Tbnz(A64Reg rt, unsigned bit, std::int64_t offset) const;
+
+    // Branch to an address held in a 64-bit register: BR for a computed jump,
+    // BLR for an indirect call, and RET, which is the form a processor may
+    // predict as a return and which defaults to the link register.
+    [[nodiscard]] A64Status Br(A64Reg rn) const;
+    [[nodiscard]] A64Status Blr(A64Reg rn) const;
+    [[nodiscard]] A64Status Ret(A64Reg rn = A64::Lr) const;
+
+    // Exception generation. SVC is the system call; BRK traps to a debugger and
+    // is what a failed assertion ends on; HLT enters debug state; UDF is the
+    // permanently undefined encoding, which is a hole in the instruction space
+    // rather than an instruction and so carries no other field at all.
+    [[nodiscard]] A64Status Svc(std::uint16_t imm16) const;
+    [[nodiscard]] A64Status Brk(std::uint16_t imm16) const;
+    [[nodiscard]] A64Status Hlt(std::uint16_t imm16) const;
+    [[nodiscard]] A64Status Udf(std::uint16_t imm16) const;
+
+    // Hints, which every implementation may ignore. `imm7` is the CRm and op2
+    // fields together, so NOP is HINT #0 and the space above the architected
+    // hints is reserved rather than invalid.
+    [[nodiscard]] A64Status Nop() const;
+    [[nodiscard]] A64Status Hint(unsigned imm7) const;
+
+    // Barriers. DMB orders memory accesses, DSB waits for them to complete, and
+    // ISB discards anything already fetched past it; ISB takes an option field
+    // that has no meaning other than the full-system one.
+    [[nodiscard]] A64Status Dmb(A64Barrier option = A64Barrier::Sy) const;
+    [[nodiscard]] A64Status Dsb(A64Barrier option = A64Barrier::Sy) const;
+    [[nodiscard]] A64Status Isb(A64Barrier option = A64Barrier::Sy) const;
+
+    // Moves to and from a system register, named by the 15-bit encoding
+    // A64::SysReg assembles. The transferred register is always 64-bit, even
+    // for a register with fewer bits defined than that.
+    [[nodiscard]] A64Status Mrs(A64Reg rt, std::uint16_t sysreg) const;
+    [[nodiscard]] A64Status Msr(std::uint16_t sysreg, A64Reg rt) const;
+
 private:
     std::vector<std::uint8_t> &out;
 };

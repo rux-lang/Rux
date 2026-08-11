@@ -1,10 +1,10 @@
 #pragma once
 
-// AArch64 register model and the operand modifiers an instruction applies to a
-// register: shift kinds, extend kinds and condition codes. Pure description
-// with no encoding logic — the encoders in CodeGen/AArch64/Encoder.{h,cpp}
-// consume it, and the assembler and code generator build their operands from
-// it.
+// AArch64 register model and the operand vocabulary an instruction draws on:
+// shift kinds, extend kinds, index modes, condition codes, barrier options and
+// system registers. Pure description with no encoding logic — the encoders in
+// CodeGen/AArch64/Encoder.{h,cpp} consume it, and the assembler and code
+// generator build their operands from it.
 
 #include <cstdint>
 
@@ -89,6 +89,25 @@ enum class A64IndexMode : std::uint8_t {
     Offset,    // [Xn, #imm]  — the base is read and left alone
     PostIndex, // [Xn], #imm  — the access uses the base, which is then advanced
     PreIndex,  // [Xn, #imm]! — the base is advanced first, and the access uses it
+};
+
+// How far a memory barrier reaches and which accesses it orders. The
+// enumerator values are the four-bit `CRm` field a DMB, DSB or ISB carries; the
+// four codes with no name here are reserved and behave as the full-system
+// barrier the domain they sit in would give.
+enum class A64Barrier : std::uint8_t {
+    Oshld = 1,  // outer shareable, loads
+    Oshst = 2,  // outer shareable, stores
+    Osh = 3,    // outer shareable, loads and stores
+    Nshld = 5,  // non-shareable, loads
+    Nshst = 6,  // non-shareable, stores
+    Nsh = 7,    // non-shareable, loads and stores
+    Ishld = 9,  // inner shareable, loads
+    Ishst = 10, // inner shareable, stores
+    Ish = 11,   // inner shareable, loads and stores
+    Ld = 13,    // full system, loads
+    St = 14,    // full system, stores
+    Sy = 15,    // full system, loads and stores
 };
 
 // Condition codes, in the order the four-bit `cond` field encodes them.
@@ -176,6 +195,22 @@ inline constexpr A64Reg Ip1 = Xn(17);
 inline constexpr A64Reg PlatformReg = Xn(18);
 inline constexpr A64Reg Fp = Xn(29);
 inline constexpr A64Reg Lr = Xn(30);
+
+// The 15-bit system-register encoding an MRS or MSR carries, assembled from
+// the five fields ARM names a system register by. The high bit of `op0` is one
+// for every register these instructions reach, so it is the low bit that
+// travels and the field is 15 bits rather than 16.
+[[nodiscard]] constexpr std::uint16_t SysReg(const unsigned op0, const unsigned op1, const unsigned crn,
+                                             const unsigned crm, const unsigned op2) noexcept {
+    return static_cast<std::uint16_t>((op0 & 1U) << 14U | (op1 & 7U) << 11U | (crn & 15U) << 7U | (crm & 15U) << 3U |
+                                      (op2 & 7U));
+}
+
+// The two system registers the back end needs: the condition flags, which a
+// context switch of the flag state has to move through a register, and the
+// thread pointer, which is where thread-local storage begins.
+inline constexpr std::uint16_t Nzcv = SysReg(3, 3, 4, 2, 0);
+inline constexpr std::uint16_t TpidrEl0 = SysReg(3, 3, 13, 0, 2);
 
 // Condition-code spellings that name the same encoding.
 inline constexpr A64Condition Hs = A64Condition::Cs;
