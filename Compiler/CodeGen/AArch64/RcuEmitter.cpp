@@ -8,6 +8,7 @@
 #include "CodeGen/FloatLiteral.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
+#include "CodeGen/LinearScan.h"
 #include "CodeGen/PhiMoveResolver.h"
 #include "Object/Rcu/RcuMetadata.h"
 
@@ -248,6 +249,28 @@ constexpr unsigned kFpTemp2 = 17;
 // a remainder needs its quotient somewhere neither operand is.
 constexpr unsigned kFpTemp3 = 18;
 
+// The registers a value can live in between instructions rather than be read
+// out of the frame at every mention: X19 through X28, which AAPCS64 asks a
+// callee to preserve. That is what makes them the right ones and the only ones
+// — everything this generator computes in is clobbered by the next call, so a
+// value in one of those would have to be written back before every branch,
+// which is the frame it was trying to avoid.
+//
+// The three registers left out of the run are left out for reasons of their
+// own. X29 and X30 are the frame record, which the prologue already holds. X18
+// is the platform register: a system is entitled to keep something of its own
+// there, and the standard says a program may neither read nor write it, so
+// nothing here ever names it.
+constexpr unsigned kFirstCalleeSaved = 19;
+constexpr unsigned kCalleeSavedCount = 10;
+
+// The same for floating-point values: V8 through V15, of which AAPCS64
+// preserves the low 64 bits. That is exactly what this back end would put
+// there — a float64 is a doubleword and a float32 is half of one — so the half
+// the standard leaves to a caller is a half nothing here uses.
+constexpr unsigned kFirstCalleeSavedVector = 8;
+constexpr unsigned kCalleeSavedVectorCount = 8;
+
 // Where AAPCS64 puts one argument: `count` registers of one file starting at
 // `first`, or `bytes` bytes at `offset` in the outgoing argument area. An
 // argument no register can carry travels as the address of a copy the caller
@@ -408,6 +431,22 @@ private:
     // Where the prologue kept the address a result too large for registers is
     // written to, or zero in a function whose result comes back in them.
     std::int32_t indirectResultOff = 0;
+
+    // The virtual registers this function keeps in a machine register rather
+    // than in the frame, one map per register file, each holding an index into
+    // the run that file's pool starts at. A register that reached neither map
+    // is read out of its slot, which every register still has.
+    std::unordered_map<LirReg, int> generalHomes;
+    std::unordered_map<LirReg, int> vectorHomes;
+
+    // The indices those maps handed out, ascending and each named once: the
+    // prologue writes exactly these into the frame and the epilogue reads
+    // exactly these back, so a function that allocated nothing saves nothing.
+    std::vector<int> savedGeneral;
+    std::vector<int> savedVector;
+
+    // Where that save area begins, or zero in a function with nothing to save.
+    std::int32_t calleeSaveOff = 0;
 
     // The conditional branches of this function that a previous pass over it
     // found too far from their target to reach in one instruction.
@@ -1278,6 +1317,76 @@ private:
         return bytes > 0 ? bytes : 8;
     }
 
+    // Register allocation
+    //
+    // Which virtual registers are worth a machine register is the shared linear
+    // scan's question; which of them are eligible to be asked about is this back
+    // end's, and the answer has two halves, one per register file.
+    //
+    // A function of more than one block is refused outright, which is the
+    // restriction the x86-64 back end also carries. A value in a register would
+    // have to be correct at every edge, and a phi lowers to copies between
+    // slots here, so the two would disagree the moment control branched.
+    // Widening this is a pass of its own rather than a condition to relax.
+    void AllocateFunctionRegisters(const LirFunc &func) {
+        generalHomes.clear();
+        vectorHomes.clear();
+        savedGeneral.clear();
+        savedVector.clear();
+        calleeSaveOff = 0;
+        if (func.blocks.size() != 1) {
+            return;
+        }
+
+        ParamTypeMap paramTypes;
+        for (const auto &param : func.params) {
+            paramTypes[param.reg] = param.type;
+        }
+
+        std::vector<LiveInterval> general;
+        std::vector<LiveInterval> vector;
+        for (const auto &interval : ComputeLiveIntervals(func, paramTypes)) {
+            // A value with no size of its own is nothing's — an opaque result
+            // no mention keeps — and a value past a doubleword needs more than
+            // one register, which this allocation does not hand out.
+            const int size = RuntimeSize(interval.type);
+            if (IsFloat(interval.type)) {
+                vector.push_back(interval);
+            }
+            else if (IsRegisterValue(interval.type) && size > 0 && size <= 8) {
+                general.push_back(interval);
+            }
+        }
+
+        const RegisterAssignment integers = AllocateRegisters(general, kCalleeSavedCount);
+        const RegisterAssignment floats = AllocateRegisters(vector, kCalleeSavedVectorCount);
+        generalHomes = integers.physRegs;
+        vectorHomes = floats.physRegs;
+        savedGeneral = integers.usedPhysRegs;
+        savedVector = floats.usedPhysRegs;
+    }
+
+    // The machine register a virtual one lives in, or nothing where it lives in
+    // the frame. A general-purpose home is always read and written whole: what
+    // narrows a value is the mention that reads it, not the register itself.
+    [[nodiscard]] std::optional<A64Reg> GeneralHome(const LirReg reg) const {
+        const auto it = generalHomes.find(reg);
+        if (it == generalHomes.end()) {
+            return std::nullopt;
+        }
+        return A64::Xn(kFirstCalleeSaved + static_cast<unsigned>(it->second));
+    }
+
+    // A vector home is read at the precision of the value in it, which is fixed
+    // by that register's type and so is the same at every mention.
+    [[nodiscard]] std::optional<A64Reg> VectorHome(const LirReg reg, const unsigned bits) const {
+        const auto it = vectorHomes.find(reg);
+        if (it == vectorHomes.end()) {
+            return std::nullopt;
+        }
+        return A64::Vn(kFirstCalleeSavedVector + static_cast<unsigned>(it->second), bits);
+    }
+
     void PrepassFunc(const LirFunc &func) {
         slotMap.clear();
         allocaData.clear();
@@ -1288,11 +1397,22 @@ private:
         indirectResultOff = 0;
         nextOff = kFrameRecordSize;
 
+        AllocateFunctionRegisters(func);
+
         // The address a large result is written to arrives in a register and is
         // needed at every return, so it is kept in the frame the way a parameter
         // is. Nothing else is reserved for a function that returns in registers.
         if (ReturnsInMemory(func.returnType)) {
             indirectResultOff = AllocRegion(8);
+        }
+
+        // The registers the allocation handed out are the caller's, so what this
+        // function puts in them is written into its own frame first. One
+        // doubleword each, in one run, and next to the frame record so that the
+        // pair forms reach the whole of it in all but a very large frame.
+        const auto savedCount = static_cast<int>(savedGeneral.size() + savedVector.size());
+        if (savedCount > 0) {
+            calleeSaveOff = AllocRegion(savedCount * 8);
         }
         for (const auto &p : func.params) {
             regTypes[p.reg] = p.type;
@@ -1336,6 +1456,63 @@ private:
     // and stores the record afterwards. Either way X29 ends up at the bottom of
     // the frame, and SP is a multiple of 16 at every instruction boundary,
     // since nothing between the two moves it by anything else.
+    // The registers the allocation handed out, in the order it handed them out.
+    // Two runs rather than one list, because STP names two registers of one
+    // file: a general-purpose register and a vector one have no pair form
+    // between them however adjacent their slots are.
+    [[nodiscard]] std::vector<A64Reg> SavedRegisters(const bool vectorFile) const {
+        std::vector<A64Reg> regs;
+        if (vectorFile) {
+            regs.reserve(savedVector.size());
+            for (const int index : savedVector) {
+                regs.push_back(A64::Dn(kFirstCalleeSavedVector + static_cast<unsigned>(index)));
+            }
+            return regs;
+        }
+        regs.reserve(savedGeneral.size());
+        for (const int index : savedGeneral) {
+            regs.push_back(A64::Xn(kFirstCalleeSaved + static_cast<unsigned>(index)));
+        }
+        return regs;
+    }
+
+    // Write one run of them into the save area or read it back, two at a time
+    // wherever the pair immediate reaches — which is all of it unless the area
+    // sits more than 504 bytes up a large frame, where the single forms take
+    // over and ResolveMemOperand reaches whatever displacement is left.
+    void EmitCalleeSaveRun(const std::vector<A64Reg> &regs, std::int32_t &offset, const bool restore) {
+        std::size_t index = 0;
+        while (index + 1 < regs.size() && InPairRange(offset)) {
+            const A64Reg first = regs[index];
+            const A64Reg second = regs[index + 1];
+            Must(restore ? enc.Ldp(first, second, A64::Fp, offset) : enc.Stp(first, second, A64::Fp, offset),
+                 "the callee-saved registers");
+            offset += 16;
+            index += 2;
+        }
+        for (; index < regs.size(); ++index) {
+            if (restore) {
+                LoadScalar(regs[index], A64::Fp, offset, 8, false);
+            }
+            else {
+                StoreScalar(regs[index], A64::Fp, offset, 8);
+            }
+            offset += 8;
+        }
+    }
+
+    // A vector register is saved as its D view: AAPCS64 preserves the low 64
+    // bits of V8 through V15 and no more, and 64 bits is every float this back
+    // end puts in one.
+    void EmitCalleeSaves(const bool restore) {
+        if (calleeSaveOff == 0) {
+            return;
+        }
+        std::int32_t offset = calleeSaveOff;
+        EmitCalleeSaveRun(SavedRegisters(false), offset, restore);
+        EmitCalleeSaveRun(SavedRegisters(true), offset, restore);
+    }
+
     void EmitPrologue() {
         if (frameSize <= kInlineFrameLimit) {
             Must(enc.Stp(A64::Fp, A64::Lr, A64::Sp, -frameSize, A64IndexMode::PreIndex), "the frame record");
@@ -1345,9 +1522,11 @@ private:
             Must(enc.Stp(A64::Fp, A64::Lr, A64::Sp, 0), "the frame record");
         }
         Must(enc.Mov(A64::Fp, A64::Sp), "the frame pointer");
+        EmitCalleeSaves(false);
     }
 
     void EmitEpilogue() {
+        EmitCalleeSaves(true);
         if (frameSize <= kInlineFrameLimit) {
             Must(enc.Ldp(A64::Fp, A64::Lr, A64::Sp, frameSize, A64IndexMode::PostIndex), "the frame record");
         }
@@ -1444,29 +1623,174 @@ private:
         Must(status, "a load");
     }
 
-    // Stack slots, which are the above with the frame pointer as the base.
+    // Where a virtual register's value is, which is a slot in the frame or a
+    // machine register the allocation gave it. The two are the same to every
+    // caller below: one emits an access and the other a move, and what a
+    // mention asks for — a width and a signedness — is the same question either
+    // way.
+    //
+    // A general-purpose home holds the whole register and nothing narrows on
+    // the way in, exactly as the x86-64 back end does. What makes that correct
+    // is that the reads narrow: a store into a slot writes only the bytes the
+    // type occupies and a load out of it extends them again, so a `uint8` sum
+    // wraps because the load reads a byte — and a load out of a register
+    // extends the same byte for the same reason.
+
+    // Bring the value out of `src` at the width `width` and the signedness
+    // `sign`, which is the extension the load out of a slot would have made.
+    void EmitExtendFromHome(const A64Reg dst, const A64Reg src, const unsigned width, const bool sign) {
+        const A64Reg wide = A64::Xn(dst.code);
+        const A64Reg narrow = A64::Wn(dst.code);
+        const A64Reg source = A64::Wn(src.code);
+        A64Status status = A64Status::Ok;
+        switch (width) {
+        case 1:
+            status = sign ? enc.Sxtb(wide, source) : enc.Uxtb(narrow, source);
+            break;
+        case 2:
+            status = sign ? enc.Sxth(wide, source) : enc.Uxth(narrow, source);
+            break;
+        case 4:
+            // The unsigned word is a MOV of the W view, which zeroes the half
+            // of the register above it — a whole instruction the extends have
+            // no cheaper form of.
+            status = sign ? enc.Sxtw(wide, source) : enc.Mov(narrow, source);
+            break;
+        default:
+            status = enc.Mov(wide, A64::Xn(src.code));
+            break;
+        }
+        Must(status, "a value out of its register");
+    }
+
+    void StoreWidthToSlot(const A64Reg value, const LirReg reg, const unsigned width) {
+        if (const std::optional<A64Reg> home = GeneralHome(reg)) {
+            if (home->code != value.code) {
+                Must(enc.Mov(*home, A64::Xn(value.code)), "a value into its register");
+            }
+            return;
+        }
+        StoreScalar(value, A64::Fp, Disp(reg), width);
+    }
+
+    void LoadWidthFromSlot(const A64Reg dst, const LirReg reg, const unsigned width, const bool sign) {
+        if (const std::optional<A64Reg> home = GeneralHome(reg)) {
+            EmitExtendFromHome(dst, *home, width, sign);
+            return;
+        }
+        LoadScalar(dst, A64::Fp, Disp(reg), width, sign);
+    }
 
     void StoreToSlot(const A64Reg value, const LirReg reg, const TypeRef &type) {
-        StoreScalar(value, A64::Fp, Disp(reg), AccessWidth(RuntimeSize(type)));
+        StoreWidthToSlot(value, reg, AccessWidth(RuntimeSize(type)));
     }
 
     void StoreFpToSlot(const A64Reg value, const LirReg reg) {
+        if (const std::optional<A64Reg> home = VectorHome(reg, value.bits)) {
+            if (home->code != value.code) {
+                Must(enc.Fmov(*home, value), "a float into its register");
+            }
+            return;
+        }
         StoreScalar(value, A64::Fp, Disp(reg), value.bits / 8U);
     }
 
     void LoadFromSlot(const A64Reg dst, const LirReg reg, const TypeRef &type) {
-        LoadScalar(dst, A64::Fp, Disp(reg), AccessWidth(RuntimeSize(type)), type.IsSigned());
+        LoadWidthFromSlot(dst, reg, AccessWidth(RuntimeSize(type)), type.IsSigned());
     }
 
     void LoadFpFromSlot(const A64Reg dst, const LirReg reg) {
+        if (const std::optional<A64Reg> home = VectorHome(reg, dst.bits)) {
+            if (home->code != dst.code) {
+                Must(enc.Fmov(dst, *home), "a float out of its register");
+            }
+            return;
+        }
         LoadScalar(dst, A64::Fp, Disp(reg), dst.bits / 8U, false);
     }
 
-    // A pointer is a doubleword whatever it points at, so bringing one out of
-    // its slot is one access at a fixed width rather than LoadFromSlot's
-    // type-driven one.
+    // A pointer is a doubleword whatever it points at, so bringing one out is
+    // one access at a fixed width rather than LoadFromSlot's type-driven one.
     void LoadPointer(const A64Reg dst, const LirReg reg) {
-        LoadScalar(dst, A64::Fp, Disp(reg), 8, false);
+        LoadWidthFromSlot(dst, reg, 8, false);
+    }
+
+    // Operands and results
+    //
+    // Everything above brings a value to a register the caller named, which is
+    // what a fixed place — an argument register, a result register — asks for.
+    // Selection asks something weaker: it wants the value in *some* register,
+    // and a value already in one is already there. The three below answer that,
+    // and answering it is where the allocation pays for itself, because a
+    // mention of a register that has a home costs no instruction at all.
+
+    // The register an operand can be read from, and whatever it took to put it
+    // there. A home holds the whole register, so it answers a mention that
+    // wants the whole of it; a narrower mention extends out of it into the
+    // scratch, which is the same instruction count a slot would have cost.
+    [[nodiscard]] A64Reg ReadWidthOperand(const LirReg reg, const unsigned width, const bool sign,
+                                          const A64Reg scratch) {
+        if (const std::optional<A64Reg> home = GeneralHome(reg)) {
+            if (width == 8) {
+                return *home;
+            }
+            EmitExtendFromHome(scratch, *home, width, sign);
+            return scratch;
+        }
+        LoadScalar(scratch, A64::Fp, Disp(reg), width, sign);
+        return scratch;
+    }
+
+    [[nodiscard]] A64Reg ReadOperand(const LirReg reg, const TypeRef &type, const A64Reg scratch) {
+        return ReadWidthOperand(reg, AccessWidth(RuntimeSize(type)), type.IsSigned(), scratch);
+    }
+
+    // The same where only the low bytes of the value matter — a store writes
+    // the width its type occupies and reads nothing above it — so the
+    // extension every other mention needs is not emitted at all.
+    [[nodiscard]] A64Reg ReadRawOperand(const LirReg reg, const unsigned width, const A64Reg scratch) {
+        if (const std::optional<A64Reg> home = GeneralHome(reg)) {
+            return *home;
+        }
+        LoadScalar(scratch, A64::Fp, Disp(reg), width, false);
+        return scratch;
+    }
+
+    // The same for an address, which is a doubleword whatever it points at and
+    // so is never the narrow case.
+    [[nodiscard]] A64Reg ReadPointerOperand(const LirReg reg, const A64Reg scratch) {
+        return ReadWidthOperand(reg, 8, false, scratch);
+    }
+
+    [[nodiscard]] A64Reg ReadFloatOperand(const LirReg reg, const A64Reg scratch) {
+        if (const std::optional<A64Reg> home = VectorHome(reg, scratch.bits)) {
+            return *home;
+        }
+        LoadScalar(scratch, A64::Fp, Disp(reg), scratch.bits / 8U, false);
+        return scratch;
+    }
+
+    // Where a result is computed. Naming the home means the instruction that
+    // produces the value writes it where every later mention will read it, so
+    // the store the frame would have needed is not emitted and StoreToSlot
+    // below finds the value already home.
+    //
+    // Only the instruction that finishes a value may take this: a sequence
+    // that still has an operand to read must not write a register another
+    // value may be living in, and the pool is shared by every interval that
+    // does not overlap.
+    [[nodiscard]] A64Reg ResultRegister(const LirReg reg, const A64Reg scratch) const {
+        if (const std::optional<A64Reg> home = GeneralHome(reg)) {
+            return A64::Gpr(home->code, scratch.bits);
+        }
+        return scratch;
+    }
+
+    [[nodiscard]] A64Reg FloatResultRegister(const LirReg reg, const A64Reg scratch) const {
+        if (const std::optional<A64Reg> home = VectorHome(reg, scratch.bits)) {
+            return *home;
+        }
+        return scratch;
     }
 
     // The address of a value's own slot, for the cases where an aggregate is
@@ -1799,6 +2123,20 @@ private:
     // location, so this is one function and a direction rather than two that
     // would have to be kept in step.
     void MoveRegisterArgument(const ArgLocation &loc, const LirReg reg, const TypeRef &type, const bool toRegisters) {
+        // A float of its own goes through the slot helpers rather than the HFA
+        // walk below, so that a value the allocation gave a register to is
+        // moved between two registers and reaches no memory. An aggregate of
+        // one float is still an aggregate and still takes the walk.
+        if (loc.kind == ArgLocation::Kind::Vector && loc.count == 1 && IsFloat(type)) {
+            const A64Reg value = A64::Vn(loc.first, loc.memberBytes * 8U);
+            if (toRegisters) {
+                LoadFpFromSlot(value, reg);
+            }
+            else {
+                StoreFpToSlot(value, reg);
+            }
+            return;
+        }
         const auto disp = static_cast<std::int64_t>(Disp(reg));
         if (loc.kind == ArgLocation::Kind::Vector) {
             // The members of an HFA sit at their own width in memory and in one
@@ -2035,54 +2373,62 @@ private:
         return it == regTypes.end() ? TypeRef::MakeInt64() : it->second;
     }
 
-    // Bring the two operands of a binary integer instruction into X9 and X12,
-    // each extended by the type it is read at. A type no arithmetic instruction
-    // here reaches — an aggregate, which is nothing's — is reported instead,
-    // and `false` means nothing was emitted.
-    bool LoadBinaryOperands(const LirInstr &instr, const TypeRef &lhsType, const TypeRef &rhsType) {
+    // The two operands of a binary instruction, in whatever registers they turn
+    // out to be readable from: their homes where the allocation gave them one
+    // and the mention wants the whole register, and X9 and X12 otherwise. A
+    // type no arithmetic instruction here reaches — an aggregate, which is
+    // nothing's — is reported instead, and an empty answer means nothing was
+    // emitted and nothing may be selected.
+    struct BinaryOperands {
+        A64Reg lhs;
+        A64Reg rhs;
+    };
+
+    [[nodiscard]] std::optional<BinaryOperands> LoadBinaryOperands(const LirInstr &instr, const TypeRef &lhsType,
+                                                                   const TypeRef &rhsType) {
         if (!IsRegisterValue(lhsType)) {
             NotImplemented(std::format("the '{}' opcode on '{}'", LirOpcodeName(instr.op), lhsType.ToString()));
-            return false;
+            return std::nullopt;
         }
         if (instr.srcs.size() < 2) {
             Report(std::format("AArch64 code generation reached a '{}' with one operand in '{}'",
                                LirOpcodeName(instr.op), currentFunc));
-            return false;
+            return std::nullopt;
         }
-        LoadFromSlot(A64::Xn(kTemp), instr.srcs[0], lhsType);
-        LoadFromSlot(A64::Xn(kTemp2), instr.srcs[1], rhsType);
-        return true;
+        const A64Reg lhs = ReadOperand(instr.srcs[0], lhsType, A64::Xn(kTemp));
+        const A64Reg rhs = ReadOperand(instr.srcs[1], rhsType, A64::Xn(kTemp2));
+        return BinaryOperands{lhs, rhs};
     }
 
-    // The same for the one-operand forms, which read X9 alone.
-    bool LoadUnaryOperand(const LirInstr &instr, const TypeRef &type) {
+    // The same for the one-operand forms, which read X9 where they read a
+    // scratch register at all.
+    [[nodiscard]] std::optional<A64Reg> LoadUnaryOperand(const LirInstr &instr, const TypeRef &type) {
         if (!IsRegisterValue(type)) {
             NotImplemented(std::format("the '{}' opcode on '{}'", LirOpcodeName(instr.op), type.ToString()));
-            return false;
+            return std::nullopt;
         }
         if (instr.srcs.empty()) {
             Report(std::format("AArch64 code generation reached a '{}' with no operand in '{}'",
                                LirOpcodeName(instr.op), currentFunc));
-            return false;
+            return std::nullopt;
         }
-        LoadFromSlot(A64::Xn(kTemp), instr.srcs[0], type);
-        return true;
+        return ReadOperand(instr.srcs[0], type, A64::Xn(kTemp));
     }
 
-    // The same for a floating-point instruction, which computes in V16 and V17.
-    // Both operands of one are of the instruction's own type — the front end
-    // refuses to mix a float with anything else, and refuses to mix the two
-    // precisions with each other — so one type selects both registers and the
-    // precision of every instruction that reads them.
-    bool LoadFloatOperands(const LirInstr &instr, const TypeRef &type) {
+    // The same for a floating-point instruction, whose scratch registers are
+    // V16 and V17. Both operands of one are of the instruction's own type — the
+    // front end refuses to mix a float with anything else, and refuses to mix
+    // the two precisions with each other — so one type selects both registers
+    // and the precision of every instruction that reads them.
+    [[nodiscard]] std::optional<BinaryOperands> LoadFloatOperands(const LirInstr &instr, const TypeRef &type) {
         if (instr.srcs.size() < 2) {
             Report(std::format("AArch64 code generation reached a '{}' with one operand in '{}'",
                                LirOpcodeName(instr.op), currentFunc));
-            return false;
+            return std::nullopt;
         }
-        LoadFpFromSlot(FpReg(type, kFpTemp), instr.srcs[0]);
-        LoadFpFromSlot(FpReg(type, kFpTemp2), instr.srcs[1]);
-        return true;
+        const A64Reg lhs = ReadFloatOperand(instr.srcs[0], FpReg(type, kFpTemp));
+        const A64Reg rhs = ReadFloatOperand(instr.srcs[1], FpReg(type, kFpTemp2));
+        return BinaryOperands{lhs, rhs};
     }
 
     // Instruction selection
@@ -2200,19 +2546,19 @@ private:
         const bool toBits = instr.strArg.starts_with("FloatBits");
         const TypeRef floatType = single ? TypeRef::MakeFloat32() : TypeRef::MakeFloat64();
         const unsigned width = single ? 4 : 8;
-        const A64Reg vector = FpReg(floatType, kFpTemp);
-        const A64Reg general = single ? A64::Wn(kTemp) : A64::Xn(kTemp);
         const bool keepsResult = instr.dst != LirNoReg && !instr.type.IsOpaque();
         if (toBits) {
-            LoadFpFromSlot(vector, instr.srcs[0]);
-            Must(enc.Fmov(general, vector), "a reinterpretation of a float");
+            const A64Reg vector = ReadFloatOperand(instr.srcs[0], FpReg(floatType, kFpTemp));
+            const A64Reg result = ResultRegister(instr.dst, A64::Xn(kTemp));
+            Must(enc.Fmov(A64::Gpr(result.code, single ? 32 : 64), vector), "a reinterpretation of a float");
             if (keepsResult) {
-                StoreScalar(general, A64::Fp, Disp(instr.dst), width);
+                StoreWidthToSlot(result, instr.dst, width);
             }
             return;
         }
-        LoadScalar(A64::Xn(kTemp), A64::Fp, Disp(instr.srcs[0]), width, false);
-        Must(enc.Fmov(vector, general), "a reinterpretation of an integer");
+        const A64Reg general = ReadRawOperand(instr.srcs[0], width, A64::Xn(kTemp));
+        const A64Reg vector = FloatResultRegister(instr.dst, FpReg(floatType, kFpTemp));
+        Must(enc.Fmov(vector, A64::Gpr(general.code, single ? 32 : 64)), "a reinterpretation of an integer");
         if (keepsResult) {
             StoreFpToSlot(vector, instr.dst);
         }
@@ -2228,12 +2574,13 @@ private:
             // themselves, so it is interned and its address materialized, and
             // the slot holds a pointer.
             if (instr.type.kind == TypeRef::Kind::Str) {
-                LoadSymbolAddress(A64::Xn(kTemp), InternStr(instr.strArg));
-                StoreToSlot(A64::Xn(kTemp), instr.dst, instr.type);
+                const A64Reg text = ResultRegister(instr.dst, A64::Xn(kTemp));
+                LoadSymbolAddress(text, InternStr(instr.strArg));
+                StoreToSlot(text, instr.dst, instr.type);
                 break;
             }
             if (IsFloat(instr.type)) {
-                const A64Reg value = instr.type.kind == TypeRef::Kind::Float32 ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
+                const A64Reg value = FloatResultRegister(instr.dst, FpReg(instr.type, kFpTemp));
                 LoadFloatConstant(value, instr.type, instr.strArg);
                 StoreFpToSlot(value, instr.dst);
                 break;
@@ -2248,7 +2595,7 @@ private:
             // materialized at full width whatever the type, and the store
             // writes only the bytes the type occupies, so the shortest sequence
             // for the value is the one that gets emitted.
-            const A64Reg value = A64::Xn(kTemp);
+            const A64Reg value = ResultRegister(instr.dst, A64::Xn(kTemp));
             Must(enc.LoadImm64(value, ConstantBits(instr)), "a constant");
             StoreToSlot(value, instr.dst, instr.type);
             break;
@@ -2262,7 +2609,7 @@ private:
             // The storage was reserved by the prepass and sits above the frame
             // record, so its address is the frame pointer plus a displacement
             // rather than minus one as it is on x86-64.
-            const A64Reg addr = A64::Xn(kTemp);
+            const A64Reg addr = ResultRegister(instr.dst, A64::Xn(kTemp));
             Must(enc.AddSubLargeImm(addr, A64::Fp, it->second), "the address of a local");
             StoreToSlot(addr, instr.dst, TypeRef::MakePointer(instr.type));
             break;
@@ -2282,15 +2629,17 @@ private:
             else {
                 symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternData);
             }
-            LoadSymbolAddress(A64::Xn(kTemp), symIdx);
-            StoreToSlot(A64::Xn(kTemp), instr.dst, TypeRef::MakePointer(instr.type));
+            const A64Reg addr = ResultRegister(instr.dst, A64::Xn(kTemp));
+            LoadSymbolAddress(addr, symIdx);
+            StoreToSlot(addr, instr.dst, TypeRef::MakePointer(instr.type));
             break;
         }
         case LirOpcode::StringAddr: {
             const TypeRef elemType = instr.type.inner.empty() ? TypeRef::MakeChar8() : instr.type.inner[0];
             const std::uint32_t symIdx = InternStr(EncodeStringLiteral(instr.strArg, RuntimeSize(elemType)));
-            LoadSymbolAddress(A64::Xn(kTemp), symIdx);
-            StoreToSlot(A64::Xn(kTemp), instr.dst, instr.type);
+            const A64Reg addr = ResultRegister(instr.dst, A64::Xn(kTemp));
+            LoadSymbolAddress(addr, symIdx);
+            StoreToSlot(addr, instr.dst, instr.type);
             break;
         }
         case LirOpcode::Load: {
@@ -2303,7 +2652,7 @@ private:
             // pointer the program computed, which is an ADRP and a load rather
             // than an ADRP, an ADD and then a load.
             if (!instr.strArg.empty()) {
-                const A64Reg value = A64::Xn(kTemp);
+                const A64Reg value = ResultRegister(instr.dst, A64::Xn(kTemp));
                 A64SymbolRef ref{};
                 Must(enc.LoadFromSymbol(value, ref), "a load from a symbol");
                 const std::uint32_t symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternData);
@@ -2312,8 +2661,7 @@ private:
                 StoreToSlot(value, instr.dst, type);
                 break;
             }
-            const A64Reg addr = A64::Xn(kAddr);
-            LoadPointer(addr, instr.srcs[0]);
+            const A64Reg addr = ReadPointerOperand(instr.srcs[0], A64::Xn(kAddr));
             // An aggregate is copied into the destination's slot rather than
             // brought into a register, since no register holds one.
             if (IsAggregate(type) && size > 8) {
@@ -2321,12 +2669,12 @@ private:
                 break;
             }
             if (IsFloat(type)) {
-                const A64Reg value = type.kind == TypeRef::Kind::Float32 ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
+                const A64Reg value = FloatResultRegister(instr.dst, FpReg(type, kFpTemp));
                 LoadScalar(value, addr, 0, value.bits / 8U, false);
                 StoreFpToSlot(value, instr.dst);
                 break;
             }
-            const A64Reg value = A64::Xn(kTemp);
+            const A64Reg value = ResultRegister(instr.dst, A64::Xn(kTemp));
             LoadScalar(value, addr, 0, AccessWidth(size), type.IsSigned());
             StoreToSlot(value, instr.dst, type);
             break;
@@ -2339,12 +2687,11 @@ private:
             const LirReg valReg = instr.srcs[0];
             const TypeRef &type = instr.type;
             const int size = RuntimeSize(type);
-            const A64Reg addr = A64::Xn(kAddr);
-            LoadPointer(addr, instr.srcs[1]);
+            const A64Reg addr = ReadPointerOperand(instr.srcs[1], A64::Xn(kAddr));
             if (IsAggregate(type) && size > 8) {
-                const A64Reg source = A64::Xn(kSrcAddr);
+                A64Reg source = A64::Xn(kSrcAddr);
                 if (IsRegPointerTo(valReg, type)) {
-                    LoadPointer(source, valReg);
+                    source = ReadPointerOperand(valReg, source);
                 }
                 else {
                     SlotAddress(source, valReg);
@@ -2353,13 +2700,11 @@ private:
                 break;
             }
             if (IsFloat(type)) {
-                const A64Reg value = type.kind == TypeRef::Kind::Float32 ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
-                LoadFpFromSlot(value, valReg);
+                const A64Reg value = ReadFloatOperand(valReg, FpReg(type, kFpTemp));
                 StoreScalar(value, addr, 0, value.bits / 8U);
                 break;
             }
-            const A64Reg value = A64::Xn(kTemp);
-            LoadFromSlot(value, valReg, type);
+            const A64Reg value = ReadRawOperand(valReg, AccessWidth(size), A64::Xn(kTemp));
             StoreScalar(value, addr, 0, AccessWidth(size));
             break;
         }
@@ -2368,10 +2713,13 @@ private:
             const auto baseType = regTypes.find(base);
             const int offset =
                 baseType == regTypes.end() ? 0 : FieldOffsetOf(baseType->second, instr.strArg, layouts, interfaceNames);
-            const A64Reg addr = A64::Xn(kTemp);
-            LoadPointer(addr, base);
+            const A64Reg source = ReadPointerOperand(base, A64::Xn(kTemp));
+            const A64Reg addr = ResultRegister(instr.dst, A64::Xn(kTemp));
             if (offset != 0) {
-                Must(enc.AddSubLargeImm(addr, addr, offset), "the address of a field");
+                Must(enc.AddSubLargeImm(addr, source, offset), "the address of a field");
+            }
+            else if (addr.code != source.code) {
+                Must(enc.Mov(addr, source), "the address of a field");
             }
             StoreToSlot(addr, instr.dst, TypeRef::MakePointer(instr.type));
             break;
@@ -2386,22 +2734,21 @@ private:
             const bool known = instr.type.kind == TypeRef::Kind::Pointer && !instr.type.inner.empty();
             const int elemSize = std::max(known ? RuntimeSize(instr.type.inner[0]) : 8, 1);
 
-            const A64Reg addr = A64::Xn(kTemp);
-            const A64Reg index = A64::Xn(kAddr);
-            LoadPointer(addr, instr.srcs[0]);
-            LoadFromSlot(index, instr.srcs[1], TypeOfReg(instr.srcs[1]));
+            const A64Reg source = ReadPointerOperand(instr.srcs[0], A64::Xn(kTemp));
+            const A64Reg index = ReadOperand(instr.srcs[1], TypeOfReg(instr.srcs[1]), A64::Xn(kAddr));
+            const A64Reg addr = ResultRegister(instr.dst, A64::Xn(kTemp));
 
             // A power-of-two element scales inside the addition itself;
             // anything else is a multiply, which MADD folds into the same
             // instruction as the addition.
             const auto shift = static_cast<unsigned>(std::countr_zero(static_cast<unsigned>(elemSize)));
             if (std::has_single_bit(static_cast<unsigned>(elemSize)) && shift < 64) {
-                Must(enc.Add(addr, addr, index, A64ShiftKind::Lsl, shift), "an element address");
+                Must(enc.Add(addr, source, index, A64ShiftKind::Lsl, shift), "an element address");
             }
             else {
                 const A64Reg width = A64::Xn(kTemp2);
                 Must(enc.LoadImm64(width, static_cast<std::uint64_t>(elemSize)), "an element width");
-                Must(enc.Madd(addr, index, width, addr), "an element address");
+                Must(enc.Madd(addr, index, width, source), "an element address");
             }
             StoreToSlot(addr, instr.dst, TypeRef::MakePointer(instr.type));
             break;
@@ -2423,67 +2770,71 @@ private:
                     NotImplemented(std::format("the '{}' opcode on '{}'", LirOpcodeName(instr.op), type.ToString()));
                     break;
                 }
-                if (!LoadFloatOperands(instr, type)) {
+                const auto operands = LoadFloatOperands(instr, type);
+                if (!operands) {
                     break;
                 }
-                const A64Reg lhs = FpReg(type, kFpTemp);
-                const A64Reg rhs = FpReg(type, kFpTemp2);
+                const A64Reg out = FloatResultRegister(instr.dst, FpReg(type, kFpTemp));
                 A64Status status = A64Status::Ok;
                 if (instr.op == LirOpcode::Add) {
-                    status = enc.Fadd(lhs, lhs, rhs);
+                    status = enc.Fadd(out, operands->lhs, operands->rhs);
                 }
                 else if (instr.op == LirOpcode::Sub) {
-                    status = enc.Fsub(lhs, lhs, rhs);
+                    status = enc.Fsub(out, operands->lhs, operands->rhs);
                 }
                 else {
-                    status = enc.Fmul(lhs, lhs, rhs);
+                    status = enc.Fmul(out, operands->lhs, operands->rhs);
                 }
                 Must(status, LirOpcodeName(instr.op));
-                StoreFpToSlot(lhs, instr.dst);
+                StoreFpToSlot(out, instr.dst);
                 break;
             }
-            if (!LoadBinaryOperands(instr, type, type)) {
+            const auto operands = LoadBinaryOperands(instr, type, type);
+            if (!operands) {
                 break;
             }
-            const A64Reg lhs = A64::Xn(kTemp);
-            const A64Reg rhs = A64::Xn(kTemp2);
+            const A64Reg lhs = operands->lhs;
+            const A64Reg rhs = operands->rhs;
+            const A64Reg out = ResultRegister(instr.dst, A64::Xn(kTemp));
             A64Status status = A64Status::Ok;
             switch (instr.op) {
             case LirOpcode::Add:
-                status = enc.Add(lhs, lhs, rhs);
+                status = enc.Add(out, lhs, rhs);
                 break;
             case LirOpcode::Sub:
-                status = enc.Sub(lhs, lhs, rhs);
+                status = enc.Sub(out, lhs, rhs);
                 break;
             case LirOpcode::Mul:
-                status = enc.Mul(lhs, lhs, rhs);
+                status = enc.Mul(out, lhs, rhs);
                 break;
             case LirOpcode::And:
-                status = enc.And(lhs, lhs, rhs);
+                status = enc.And(out, lhs, rhs);
                 break;
             case LirOpcode::Or:
-                status = enc.Orr(lhs, lhs, rhs);
+                status = enc.Orr(out, lhs, rhs);
                 break;
             default:
-                status = enc.Eor(lhs, lhs, rhs);
+                status = enc.Eor(out, lhs, rhs);
                 break;
             }
             Must(status, LirOpcodeName(instr.op));
-            StoreToSlot(lhs, instr.dst, type);
+            StoreToSlot(out, instr.dst, type);
             break;
         }
         case LirOpcode::Div:
         case LirOpcode::Mod: {
             const TypeRef &type = instr.type;
             if (IsFloat(type)) {
-                if (!LoadFloatOperands(instr, type)) {
+                const auto operands = LoadFloatOperands(instr, type);
+                if (!operands) {
                     break;
                 }
-                const A64Reg lhs = FpReg(type, kFpTemp);
-                const A64Reg rhs = FpReg(type, kFpTemp2);
+                const A64Reg lhs = operands->lhs;
+                const A64Reg rhs = operands->rhs;
+                const A64Reg out = FloatResultRegister(instr.dst, FpReg(type, kFpTemp));
                 if (instr.op == LirOpcode::Div) {
-                    Must(enc.Fdiv(lhs, lhs, rhs), LirOpcodeName(instr.op));
-                    StoreFpToSlot(lhs, instr.dst);
+                    Must(enc.Fdiv(out, lhs, rhs), LirOpcodeName(instr.op));
+                    StoreFpToSlot(out, instr.dst);
                     break;
                 }
                 // A floating-point remainder is no instruction either: it is
@@ -2497,21 +2848,24 @@ private:
                 const A64Reg quotient = FpReg(type, kFpTemp3);
                 Must(enc.Fdiv(quotient, lhs, rhs), LirOpcodeName(instr.op));
                 Must(enc.Frintz(quotient, quotient), LirOpcodeName(instr.op));
-                Must(enc.Fmsub(lhs, quotient, rhs, lhs), LirOpcodeName(instr.op));
-                StoreFpToSlot(lhs, instr.dst);
+                Must(enc.Fmsub(out, quotient, rhs, lhs), LirOpcodeName(instr.op));
+                StoreFpToSlot(out, instr.dst);
                 break;
             }
-            if (!LoadBinaryOperands(instr, type, type)) {
+            const auto operands = LoadBinaryOperands(instr, type, type);
+            if (!operands) {
                 break;
             }
-            const A64Reg lhs = A64::Xn(kTemp);
-            const A64Reg rhs = A64::Xn(kTemp2);
-            // The quotient goes somewhere neither operand is, since a
-            // remainder needs both of them back afterwards.
-            const A64Reg quotient = A64::Xn(kAddr);
+            const A64Reg lhs = operands->lhs;
+            const A64Reg rhs = operands->rhs;
+            // A division writes its answer where the answer lives; a remainder
+            // needs both operands back afterwards, so its quotient goes
+            // somewhere neither of them is.
+            const bool divide = instr.op == LirOpcode::Div;
+            const A64Reg quotient = divide ? ResultRegister(instr.dst, A64::Xn(kAddr)) : A64::Xn(kAddr);
             Must(type.IsSigned() ? enc.Sdiv(quotient, lhs, rhs) : enc.Udiv(quotient, lhs, rhs),
                  LirOpcodeName(instr.op));
-            if (instr.op == LirOpcode::Div) {
+            if (divide) {
                 StoreToSlot(quotient, instr.dst, type);
                 break;
             }
@@ -2519,8 +2873,9 @@ private:
             // the quotient times the divisor, which MSUB is one instruction
             // of. The sign follows from the division, so the signed and the
             // unsigned remainder differ only in which divide came first.
-            Must(enc.Msub(lhs, quotient, rhs, lhs), LirOpcodeName(instr.op));
-            StoreToSlot(lhs, instr.dst, type);
+            const A64Reg remainder = ResultRegister(instr.dst, A64::Xn(kTemp));
+            Must(enc.Msub(remainder, quotient, rhs, lhs), LirOpcodeName(instr.op));
+            StoreToSlot(remainder, instr.dst, type);
             break;
         }
         case LirOpcode::Pow: {
@@ -2576,27 +2931,30 @@ private:
             // The amount is read at its own type, since nothing says it has the
             // type of the value being shifted.
             const bool logical = instr.op == LirOpcode::Lshr;
-            if (!LoadBinaryOperands(instr, logical ? UnsignedIntegerType(type) : type, TypeOfReg(instr.srcs[1]))) {
+            const auto operands =
+                LoadBinaryOperands(instr, logical ? UnsignedIntegerType(type) : type, TypeOfReg(instr.srcs[1]));
+            if (!operands) {
                 break;
             }
-            const A64Reg value = A64::Xn(kTemp);
-            const A64Reg amount = A64::Xn(kTemp2);
+            const A64Reg value = operands->lhs;
+            const A64Reg amount = operands->rhs;
+            const A64Reg out = ResultRegister(instr.dst, A64::Xn(kTemp));
             // The variable shifts mask the amount to the width of the register
             // they shift, so an over-long shift wraps rather than being
             // undefined — and since both back ends shift a 64-bit register, it
             // wraps at the same 64 the x86-64 shifts do.
             A64Status status = A64Status::Ok;
             if (instr.op == LirOpcode::Shl) {
-                status = enc.Lslv(value, value, amount);
+                status = enc.Lslv(out, value, amount);
             }
             else if (logical || !type.IsSigned()) {
-                status = enc.Lsrv(value, value, amount);
+                status = enc.Lsrv(out, value, amount);
             }
             else {
-                status = enc.Asrv(value, value, amount);
+                status = enc.Asrv(out, value, amount);
             }
             Must(status, LirOpcodeName(instr.op));
-            StoreToSlot(value, instr.dst, type);
+            StoreToSlot(out, instr.dst, type);
             break;
         }
         case LirOpcode::Neg: {
@@ -2611,44 +2969,47 @@ private:
                 // right for a zero and for a NaN alike — where the x86-64 back
                 // end needs a mask in .rodata to XOR against, this back end
                 // needs no constant at all.
-                const A64Reg value = FpReg(type, kFpTemp);
-                LoadFpFromSlot(value, instr.srcs[0]);
-                Must(enc.Fneg(value, value), LirOpcodeName(instr.op));
-                StoreFpToSlot(value, instr.dst);
+                const A64Reg value = ReadFloatOperand(instr.srcs[0], FpReg(type, kFpTemp));
+                const A64Reg out = FloatResultRegister(instr.dst, FpReg(type, kFpTemp));
+                Must(enc.Fneg(out, value), LirOpcodeName(instr.op));
+                StoreFpToSlot(out, instr.dst);
                 break;
             }
-            if (!LoadUnaryOperand(instr, type)) {
+            const auto value = LoadUnaryOperand(instr, type);
+            if (!value) {
                 break;
             }
-            const A64Reg value = A64::Xn(kTemp);
-            Must(enc.Neg(value, value), LirOpcodeName(instr.op));
-            StoreToSlot(value, instr.dst, type);
+            const A64Reg out = ResultRegister(instr.dst, A64::Xn(kTemp));
+            Must(enc.Neg(out, *value), LirOpcodeName(instr.op));
+            StoreToSlot(out, instr.dst, type);
             break;
         }
         case LirOpcode::Not: {
             // Logical negation, whose result is a boolean rather than a value
             // of the operand's type: anything that compares equal to zero
             // becomes one and everything else becomes zero.
-            if (!LoadUnaryOperand(instr, instr.type)) {
+            const auto value = LoadUnaryOperand(instr, instr.type);
+            if (!value) {
                 break;
             }
-            const A64Reg value = A64::Xn(kTemp);
-            Must(enc.SubsImm(A64::Xzr, value, 0), LirOpcodeName(instr.op));
-            Must(enc.Cset(value, A64Condition::Eq), LirOpcodeName(instr.op));
-            StoreToSlot(value, instr.dst, TypeRef::MakeBool());
+            const A64Reg out = ResultRegister(instr.dst, A64::Xn(kTemp));
+            Must(enc.SubsImm(A64::Xzr, *value, 0), LirOpcodeName(instr.op));
+            Must(enc.Cset(out, A64Condition::Eq), LirOpcodeName(instr.op));
+            StoreToSlot(out, instr.dst, TypeRef::MakeBool());
             break;
         }
         case LirOpcode::BitNot: {
             const TypeRef &type = instr.type;
-            if (!LoadUnaryOperand(instr, type)) {
+            const auto value = LoadUnaryOperand(instr, type);
+            if (!value) {
                 break;
             }
-            const A64Reg value = A64::Xn(kTemp);
+            const A64Reg out = ResultRegister(instr.dst, A64::Xn(kTemp));
             // On a boolean `~` is the logical negation, so that `~true` is
             // `false`: complementing the whole register would leave 0xFE in the
             // byte the slot keeps, which loads back as true again.
-            Must(type.IsBool() ? enc.EorImm(value, value, 1) : enc.Mvn(value, value), LirOpcodeName(instr.op));
-            StoreToSlot(value, instr.dst, type);
+            Must(type.IsBool() ? enc.EorImm(out, *value, 1) : enc.Mvn(out, *value), LirOpcodeName(instr.op));
+            StoreToSlot(out, instr.dst, type);
             break;
         }
         case LirOpcode::CmpEq:
@@ -2670,26 +3031,28 @@ private:
             const TypeRef &operandType = found != regTypes.end() ? found->second : instr.type;
             A64Condition cond = A64Condition::Eq;
             if (IsFloat(operandType)) {
-                if (!LoadFloatOperands(instr, operandType)) {
+                const auto operands = LoadFloatOperands(instr, operandType);
+                if (!operands) {
                     break;
                 }
-                Must(enc.Fcmp(FpReg(operandType, kFpTemp), FpReg(operandType, kFpTemp2)), LirOpcodeName(instr.op));
+                Must(enc.Fcmp(operands->lhs, operands->rhs), LirOpcodeName(instr.op));
                 cond = FloatCondition(instr.op);
             }
             else {
                 // Both operands are read at the left one's type, which is what
                 // makes a narrow comparison a comparison of what the two slots
                 // mean rather than of the bytes above them.
-                if (!LoadBinaryOperands(instr, operandType, operandType)) {
+                const auto operands = LoadBinaryOperands(instr, operandType, operandType);
+                if (!operands) {
                     break;
                 }
-                Must(enc.Cmp(A64::Xn(kTemp), A64::Xn(kTemp2)), LirOpcodeName(instr.op));
+                Must(enc.Cmp(operands->lhs, operands->rhs), LirOpcodeName(instr.op));
                 cond = IntegerCondition(instr.op, operandType.IsSigned());
             }
             // The flags become a value in the one instruction that names a
             // condition and writes a register: a boolean here is the byte the
             // store below writes, and CSET is where it comes from.
-            const A64Reg result = A64::Xn(kTemp);
+            const A64Reg result = ResultRegister(instr.dst, A64::Xn(kTemp));
             Must(enc.Cset(result, cond), LirOpcodeName(instr.op));
             StoreToSlot(result, instr.dst, TypeRef::MakeBool());
             break;
@@ -2716,14 +3079,12 @@ private:
                     NotImplemented(std::format("a cast from '{}' to '{}'", srcType.ToString(), dstType.ToString()));
                     break;
                 }
-                const A64Reg value = A64::Xn(kTemp);
-                LoadFromSlot(value, instr.srcs[0], srcType);
+                const A64Reg value = ReadOperand(instr.srcs[0], srcType, A64::Xn(kTemp));
                 StoreToSlot(value, instr.dst, dstType);
                 break;
             }
             if (srcFloat && dstFloat) {
-                const A64Reg value = FpReg(srcType, kFpTemp);
-                LoadFpFromSlot(value, instr.srcs[0]);
+                const A64Reg value = ReadFloatOperand(instr.srcs[0], FpReg(srcType, kFpTemp));
                 if (srcType.kind == dstType.kind) {
                     StoreFpToSlot(value, instr.dst);
                     break;
@@ -2731,7 +3092,7 @@ private:
                 // FCVT names the source precision in its type field and the
                 // destination in its opcode, so it cannot convert a precision
                 // to itself and the two registers are never the same view.
-                const A64Reg result = FpReg(dstType, kFpTemp2);
+                const A64Reg result = FloatResultRegister(instr.dst, FpReg(dstType, kFpTemp2));
                 Must(enc.Fcvt(result, value), "a conversion between precisions");
                 StoreFpToSlot(result, instr.dst);
                 break;
@@ -2742,9 +3103,8 @@ private:
                 // destination picks the instruction, so a `uint64` above 2^63
                 // converts rather than saturating the way the x86-64 back end's
                 // one signed conversion leaves it.
-                const A64Reg value = FpReg(srcType, kFpTemp);
-                LoadFpFromSlot(value, instr.srcs[0]);
-                const A64Reg result = A64::Xn(kTemp);
+                const A64Reg value = ReadFloatOperand(instr.srcs[0], FpReg(srcType, kFpTemp));
+                const A64Reg result = ResultRegister(instr.dst, A64::Xn(kTemp));
                 Must(dstType.IsSigned() ? enc.Fcvtzs(result, value) : enc.Fcvtzu(result, value),
                      "a conversion to an integer");
                 StoreToSlot(result, instr.dst, dstType);
@@ -2757,9 +3117,8 @@ private:
             // An integer to a float, read at the source's own signedness for
             // the same reason: the load has already extended a narrow value, so
             // only a 64-bit unsigned one is a question, and UCVTF answers it.
-            const A64Reg value = A64::Xn(kTemp);
-            LoadFromSlot(value, instr.srcs[0], srcType);
-            const A64Reg result = FpReg(dstType, kFpTemp);
+            const A64Reg value = ReadOperand(instr.srcs[0], srcType, A64::Xn(kTemp));
+            const A64Reg result = FloatResultRegister(instr.dst, FpReg(dstType, kFpTemp));
             Must(srcType.IsSigned() ? enc.Scvtf(result, value) : enc.Ucvtf(result, value),
                  "a conversion from an integer");
             StoreFpToSlot(result, instr.dst);

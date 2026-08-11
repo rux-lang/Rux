@@ -39,7 +39,7 @@ The driver loads the root manifest and dependencies before entering this pipelin
 | `Ir/Hir`               | High-level IR and its transformations                                              | Semantic and Lexer                        |
 | `Ir/Lir`               | Control-flow-explicit low-level IR                                                 | Semantic                                  |
 | `Lowering`             | AST/semantic model → HIR → LIR                                                     | Frontend and IR components                |
-| `CodeGen`              | Layout rules, literal decoding, and the assembly result shared by machine backends | LIR                                       |
+| `CodeGen`              | Layout rules, literal decoding, register allocation, and the assembly result       | LIR                                       |
 | `CodeGen/X86_64`       | x86-64 code generation, inline assembly, and RCU construction                      | LIR, Object, Diagnostics                  |
 | `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, and RCU construction                | LIR, Object, System, Diagnostics, Archive |
 | `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                     | Target                                    |

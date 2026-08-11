@@ -5,6 +5,7 @@
 #include "CodeGen/FloatLiteral.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
+#include "CodeGen/LinearScan.h"
 #include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/X86_64/Assembler.h"
 #include "CodeGen/X86_64/Encoder.h"
@@ -21,6 +22,10 @@ namespace Rux {
 using namespace Layout;
 
 namespace {
+// How many registers the linear scan hands out here: RBX and R12 through R15,
+// the callee-saved five, which is what lets a value stay in one across a call.
+constexpr int kCalleeSavedRegs = 5;
+
 // RCU Code Generator: LirModule → RcuFile
 struct JumpPatch {
     uint32_t patchOff;
@@ -1099,134 +1104,31 @@ private:
         physRegMap.clear();
         usedPhysRegs.clear();
 
-        // 1. Collect type information and calculate intervals for virtual registers
-        struct LiveInterval {
-            LirReg reg;
-            int start = -1;
-            int end = -1;
-            TypeRef type;
-        };
-
-        std::unordered_map<LirReg, LiveInterval> intervals;
-        int instIdx = 0;
-
-        std::unordered_map<LirReg, TypeRef> tempRegTypes;
-
-        // Params
+        // The registers this function keeps in the callee-saved five, which is
+        // the shared linear scan run over a candidate list this back end
+        // chooses: a single-block function only, since nothing here keeps a
+        // value in a register across an edge, and a scalar that fits one
+        // register, since nothing here holds a float or an aggregate in the
+        // general-purpose file.
+        ParamTypeMap paramTypes;
         for (const auto &p : func.params) {
-            tempRegTypes[p.reg] = IsWin64AddressParam(p.type) ? TypeRef::MakePointer(p.type) : p.type;
-            intervals[p.reg] = {p.reg, 0, 0, tempRegTypes[p.reg]};
+            paramTypes[p.reg] = IsWin64AddressParam(p.type) ? TypeRef::MakePointer(p.type) : p.type;
         }
-
-        // Instructions
-        for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
-            for (const auto &instr : func.blocks[bi].instrs) {
-                if (instr.dst != LirNoReg) {
-                    if (instr.op == LirOpcode::Alloca) {
-                        tempRegTypes[instr.dst] = TypeRef::MakePointer(instr.type);
-                    }
-                    else {
-                        tempRegTypes[instr.dst] = instr.type;
-                    }
-                }
-
-                for (LirReg src : instr.srcs) {
-                    TypeRef srcT = tempRegTypes.contains(src) ? tempRegTypes[src] : TypeRef::MakeInt64();
-                    if (intervals.find(src) == intervals.end()) {
-                        intervals[src] = {src, instIdx, instIdx, srcT};
-                    }
-                    else {
-                        intervals[src].end = instIdx;
-                    }
-                }
-
-                if (instr.dst != LirNoReg) {
-                    if (intervals.find(instr.dst) == intervals.end()) {
-                        intervals[instr.dst] = {instr.dst, instIdx, instIdx, tempRegTypes[instr.dst]};
-                    }
-                    else {
-                        intervals[instr.dst].end = instIdx;
-                    }
-                }
-
-                if (instr.op == LirOpcode::Phi) {
-                    for (const auto &[src, pred] : instr.phiPreds) {
-                        TypeRef srcT = tempRegTypes.contains(src) ? tempRegTypes[src] : TypeRef::MakeInt64();
-                        if (intervals.find(src) == intervals.end()) {
-                            intervals[src] = {src, instIdx, instIdx, srcT};
-                        }
-                        else {
-                            intervals[src].end = instIdx;
-                        }
-                    }
-                }
-
-                instIdx++;
-            }
-
-            if (func.blocks[bi].term) {
-                const auto &term = *func.blocks[bi].term;
-                if (term.cond != LirNoReg) {
-                    TypeRef condT = tempRegTypes.contains(term.cond) ? tempRegTypes[term.cond] : TypeRef::MakeInt64();
-                    if (intervals.find(term.cond) == intervals.end()) {
-                        intervals[term.cond] = {term.cond, instIdx, instIdx, condT};
-                    }
-                    else {
-                        intervals[term.cond].end = instIdx;
-                    }
-                }
-                if (term.retVal && *term.retVal != LirNoReg) {
-                    TypeRef retT =
-                        tempRegTypes.contains(*term.retVal) ? tempRegTypes[*term.retVal] : TypeRef::MakeInt64();
-                    if (intervals.find(*term.retVal) == intervals.end()) {
-                        intervals[*term.retVal] = {*term.retVal, instIdx, instIdx, retT};
-                    }
-                    else {
-                        intervals[*term.retVal].end = instIdx;
-                    }
-                }
-                instIdx++;
-            }
-        }
-
-        // 2. Perform Register Allocation (Linear Scan)
         std::vector<LiveInterval> candidates;
         if (func.blocks.size() == 1) {
-            for (const auto &[reg, iv] : intervals) {
+            for (const auto &iv : ComputeLiveIntervals(func, paramTypes)) {
                 if (IsFloat(iv.type) || IsAggregate(iv.type) || SizeOfRuntime(iv.type) > 8) {
                     continue;
                 }
                 candidates.push_back(iv);
             }
         }
+        const RegisterAssignment assignment = AllocateRegisters(candidates, kCalleeSavedRegs);
+        physRegMap = assignment.physRegs;
+        usedPhysRegs = assignment.usedPhysRegs;
 
-        std::sort(candidates.begin(), candidates.end(),
-                  [](const LiveInterval &a, const LiveInterval &b) { return a.start < b.start; });
-
-        constexpr int numPhysRegs = 5;
-        std::vector<int> regEndTimes(numPhysRegs, -1);
-
-        for (const auto &iv : candidates) {
-            int allocatedIdx = -1;
-            for (int r = 0; r < numPhysRegs; ++r) {
-                if (regEndTimes[r] < iv.start) {
-                    allocatedIdx = r;
-                    break;
-                }
-            }
-
-            if (allocatedIdx != -1) {
-                physRegMap[iv.reg] = allocatedIdx;
-                regEndTimes[allocatedIdx] = iv.end;
-                if (std::find(usedPhysRegs.begin(), usedPhysRegs.end(), allocatedIdx) == usedPhysRegs.end()) {
-                    usedPhysRegs.push_back(allocatedIdx);
-                }
-            }
-        }
-
-        std::sort(usedPhysRegs.begin(), usedPhysRegs.end());
-
-        // 3. Allocate Stack Slots
+        // The frame itself. What the allocation handed out is pushed by the
+        // prologue and sits below every slot, so the slots start above it.
         nextOff = static_cast<int32_t>(usedPhysRegs.size() * 8);
         hiddenReturnOff = 0;
 

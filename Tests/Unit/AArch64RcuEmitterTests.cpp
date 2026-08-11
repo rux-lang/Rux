@@ -145,6 +145,42 @@ LirPackage CompileToAArch64Lir(const std::string &source) {
     return word >> 10U & 0xFFFU;
 }
 
+// Whether the function holds a floating-point instruction of this opcode,
+// whichever registers it names: `sources` is how many of its three register
+// fields hold an operand, which is what decides how much of the word is masked
+// away. The precision is part of the opcode rather than of the registers, so it
+// is checked rather than masked.
+[[nodiscard]] bool HasFloatForm(const std::vector<std::uint32_t> &words, const std::uint32_t opcode,
+                                const unsigned sources = 2) {
+    const std::uint32_t mask = sources == 2 ? 0xFFE0FC00U : 0xFFFFFC00U;
+    return std::ranges::any_of(words, [mask, opcode](const std::uint32_t w) { return (w & mask) == opcode; });
+}
+
+// Whether the function holds a CSET of this condition, whichever register
+// receives the boolean it produces.
+[[nodiscard]] bool HasCset(const std::vector<std::uint32_t> &words, const std::uint32_t cset) {
+    return std::ranges::any_of(words, [cset](const std::uint32_t w) { return (w & 0xFFFFFFE0U) == cset; });
+}
+
+// Whether the function holds a three-register data-processing instruction of
+// this opcode, whichever registers it names: which those are is the
+// allocation's business, so they are masked out rather than written down.
+[[nodiscard]] bool HasRegisterForm(const std::vector<std::uint32_t> &words, const std::uint32_t opcode) {
+    return std::ranges::any_of(words, [opcode](const std::uint32_t w) { return (w & 0xFFE0FC00U) == opcode; });
+}
+
+// The immediate of `add xD, xN, #imm` where the base is neither the frame
+// pointer nor the stack pointer, which is what a field of an aggregate is
+// reached at. Which register holds the base is the allocation's business, so
+// this names neither of the two.
+[[nodiscard]] std::optional<std::uint32_t> FieldAddImm(const std::uint32_t word) {
+    const std::uint32_t base = word >> 5U & 31U;
+    if ((word & 0xFFC00000U) != 0x91000000U || base == 29 || base == 31) {
+        return std::nullopt;
+    }
+    return word >> 10U & 0xFFFU;
+}
+
 // The same for `add xN, sp, #imm`, which is how the address of something in the
 // outgoing argument area is reached: the area is opened relative to the stack
 // pointer and the frame pointer knows nothing about it.
@@ -192,24 +228,32 @@ LirPackage CompileToAArch64Lir(const std::string &source) {
     return std::nullopt;
 }
 
-// The register `ldr xN, [x29, #imm]` loads, or nothing when the word is some
-// other instruction. An argument register is read back out of the load that
-// filled it rather than out of a whole expected word, since which slot the
-// value came from is the frame layout's business rather than this test's.
-[[nodiscard]] std::optional<unsigned> SlotLoadRegister(const std::uint32_t word) {
-    if ((word & 0xFFC003E0U) != 0xF94003A0U) {
-        return std::nullopt;
+// The register a value arrives in, or nothing when the word puts a value
+// nowhere. Two instructions do it: `ldr xN, [x29, #imm]` where the value lives
+// in the frame, and `mov xN, xM` where the allocation gave it a register of its
+// own. Which of the two a particular value takes is the allocation's business
+// rather than this test's, and either way the register named is the one filled.
+[[nodiscard]] std::optional<unsigned> ArgumentFilled(const std::uint32_t word) {
+    if ((word & 0xFFC003E0U) == 0xF94003A0U) {
+        return word & 0x1FU;
     }
-    return word & 0x1FU;
+    if ((word & 0xFFE0FFE0U) == 0xAA0003E0U) {
+        return word & 0x1FU; // orr xN, xzr, xM
+    }
+    return std::nullopt;
 }
 
-// The register `str xN, [x29, #imm]` stores, on the same terms: this is how a
-// parameter spill is read back.
-[[nodiscard]] std::optional<unsigned> SlotStoreRegister(const std::uint32_t word) {
-    if ((word & 0xFFC003E0U) != 0xF90003A0U) {
-        return std::nullopt;
+// The register a value leaves, on the same terms: `str xN, [x29, #imm]` where
+// it is spilled to the frame, and `mov xM, xN` where it is moved to a register.
+// This is how a parameter spill and a kept result are read back.
+[[nodiscard]] std::optional<unsigned> ArgumentDrained(const std::uint32_t word) {
+    if ((word & 0xFFC003E0U) == 0xF90003A0U) {
+        return word & 0x1FU;
     }
-    return word & 0x1FU;
+    if ((word & 0xFFE0FFE0U) == 0xAA0003E0U) {
+        return word >> 16U & 0x1FU; // orr xM, xzr, xN
+    }
+    return std::nullopt;
 }
 
 // The byte displacement a doubleword access to the frame names, whichever
@@ -236,6 +280,46 @@ struct VectorSlotAccess {
     return VectorSlotAccess{word & 0x1FU, (word >> 10U & 0xFFFU) * (bits / 8U)};
 }
 
+// The vector register a value arrives in, on the same terms as ArgumentFilled:
+// `ldr dN, [x29, #imm]` where the value lives in the frame, and `fmov dN, dM`
+// where the allocation gave it a register of its own.
+[[nodiscard]] std::optional<unsigned> VectorArgumentFilled(const std::uint32_t word, const unsigned bits) {
+    if (const auto access = VectorSlotAccessOf(word, bits, false)) {
+        return access->reg;
+    }
+    if ((word & 0xFFFFFC00U) == (bits == 64 ? 0x1E604000U : 0x1E204000U)) {
+        return word & 0x1FU;
+    }
+    return std::nullopt;
+}
+
+// The vector register a value leaves, on the same terms as ArgumentDrained.
+[[nodiscard]] std::optional<unsigned> VectorArgumentDrained(const std::uint32_t word, const unsigned bits) {
+    if (const auto access = VectorSlotAccessOf(word, bits, true)) {
+        return access->reg;
+    }
+    if ((word & 0xFFFFFC00U) == (bits == 64 ? 0x1E604000U : 0x1E204000U)) {
+        return word >> 5U & 0x1FU;
+    }
+    return std::nullopt;
+}
+
+// The same for the general-purpose file.
+[[nodiscard]] std::size_t DrainStart(const std::vector<std::uint32_t> &words) {
+    const auto found = std::ranges::find_if(
+        words, [](const std::uint32_t w) { return ArgumentDrained(w) == std::optional<unsigned>(0); });
+    return static_cast<std::size_t>(found - words.begin());
+}
+
+// Where a run of consecutive argument registers is taken out of, which is the
+// first word that drains the first of them: what stands before it is the
+// prologue's, whose length depends on how many registers the allocation took.
+[[nodiscard]] std::size_t VectorDrainStart(const std::vector<std::uint32_t> &words, const unsigned bits) {
+    const auto found = std::ranges::find_if(
+        words, [bits](const std::uint32_t w) { return VectorArgumentDrained(w, bits) == std::optional<unsigned>(0); });
+    return static_cast<std::size_t>(found - words.begin());
+}
+
 // The frame `stp x29, x30, [sp, #-N]!` opens, or nothing when the word is some
 // other instruction. The immediate counts pairs of doublewords below the stack
 // pointer, so the frame it names is that scaled back and made positive — which
@@ -258,6 +342,57 @@ struct VectorSlotAccess {
         return std::nullopt;
     }
     return static_cast<std::int32_t>((word >> 10U & 0xFFFU) * width);
+}
+
+// The registers a prologue writes into the frame before it does anything else,
+// which for a function with no parameters is exactly the ones the allocation
+// handed out: the run of frame stores that follows `mov x29, sp`. A single
+// register goes in an STR and a pair in an STP, and the two files are kept
+// apart because the pool each is allocated from is its own.
+struct PreservedRegisters {
+    std::vector<unsigned> general;
+    std::vector<unsigned> vector;
+};
+
+[[nodiscard]] PreservedRegisters SavedRegisters(const std::vector<std::uint32_t> &words) {
+    PreservedRegisters saved;
+    for (std::size_t i = 2; i < words.size(); ++i) {
+        const std::uint32_t word = words[i];
+        if ((word & 0xFFC003E0U) == 0xF90003A0U) { // str xN, [x29, #imm]
+            saved.general.push_back(word & 31U);
+        }
+        else if ((word & 0xFFC003E0U) == 0xA90003A0U) { // stp xN, xM, [x29, #imm]
+            saved.general.push_back(word & 31U);
+            saved.general.push_back(word >> 10U & 31U);
+        }
+        else if ((word & 0xFFC003E0U) == 0xFD0003A0U) { // str dN, [x29, #imm]
+            saved.vector.push_back(word & 31U);
+        }
+        else if ((word & 0xFFC003E0U) == 0x6D0003A0U) { // stp dN, dM, [x29, #imm]
+            saved.vector.push_back(word & 31U);
+            saved.vector.push_back(word >> 10U & 31U);
+        }
+        else {
+            break;
+        }
+    }
+    return saved;
+}
+
+// Whether the function reads `reg` back out of the frame, which is what an
+// epilogue does with everything the prologue above preserved.
+[[nodiscard]] bool RestoresRegister(const std::vector<std::uint32_t> &words, const unsigned reg, const bool isVector) {
+    const std::uint32_t single = isVector ? 0xFD4003A0U : 0xF94003A0U;
+    const std::uint32_t pair = isVector ? 0x6D4003A0U : 0xA94003A0U;
+    return std::ranges::any_of(words, [reg, single, pair](const std::uint32_t w) {
+        if ((w & 0xFFC003E0U) == single) {
+            return (w & 31U) == reg;
+        }
+        if ((w & 0xFFC003E0U) == pair) {
+            return (w & 31U) == reg || (w >> 10U & 31U) == reg;
+        }
+        return false;
+    });
 }
 
 // A one-function package, for the two constructs no source program reaches yet:
@@ -331,13 +466,18 @@ TEST_CASE("AArch64 RCU emitter generates a complete function returning a constan
     CHECK_EQ(object.sections[RCU_RODATA_IDX].name, ".rodata");
     CHECK_EQ(object.sections[RCU_DATA_IDX].name, ".data");
 
-    // One 8-byte slot above the 16-byte frame record rounds the frame to 32.
+    // The constant is the one value this function holds, so the allocation
+    // gives it X19 and the constant is materialized there rather than in the
+    // scratch register and stored. One doubleword preserves X19 for the caller
+    // and one is the slot the value keeps anyway, which above the 16-byte frame
+    // record rounds the frame to 32.
     const std::vector<std::uint32_t> expected = {
         0xA9BE7BFD, // stp  x29, x30, [sp, #-32]!
         0x910003FD, // mov  x29, sp
-        0xD2800549, // mov  x9, #42
-        0xF9000BA9, // str  x9, [x29, #16]
-        0xF9400BA0, // ldr  x0, [x29, #16]
+        0xF9000BB3, // str  x19, [x29, #16]
+        0xD2800553, // mov  x19, #42
+        0xAA1303E0, // mov  x0, x19
+        0xF9400BB3, // ldr  x19, [x29, #16]
         0xA8C27BFD, // ldp  x29, x30, [sp], #32
         0xD65F03C0, // ret
     };
@@ -528,19 +668,20 @@ TEST_CASE("AArch64 RCU emitter materializes a boolean, a character and a null po
     REQUIRE_EQ(objects.size(), 1);
     const auto words = FunctionWords(objects.front(), "Main");
 
-    // Each is one bit pattern in X9 and one store of the bytes its type
-    // occupies: a boolean and a character are single bytes, and a pointer is a
-    // doubleword.
+    // Each is one bit pattern in the register the allocation gave it and one
+    // store of the bytes its type occupies: a boolean and a character are
+    // single bytes, and a pointer is a doubleword.
     const std::vector<std::uint32_t> expected = {
-        0xD2800029, // mov  x9, #1
-        0xD2800F09, // mov  x9, #120
-        0xD2800009, // mov  x9, #0
+        0xD2800034, // mov  x20, #1
+        0xD2800F14, // mov  x20, #120
+        0xD2800014, // mov  x20, #0
     };
     for (const auto word : expected) {
         CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
     }
-    // The narrow ones store a byte through the W view of the same register.
-    CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFC003FFU) == 0x390003A9U; }));
+    // The narrow ones store a byte through the W view of that same register,
+    // and nothing narrows it first: a byte store reads no more than a byte.
+    CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFC003FFU) == 0x39000274U; }));
 }
 
 TEST_CASE("AArch64 RCU emitter takes the address of an alloca from the frame pointer") {
@@ -555,11 +696,11 @@ TEST_CASE("AArch64 RCU emitter takes the address of an alloca from the frame poi
     const auto words = FunctionWords(objects.front(), "Main");
 
     const auto found =
-        std::ranges::find_if(words, [](const std::uint32_t w) { return FramePointerAddImm(w).has_value(); });
+        std::ranges::find_if(words, [](const std::uint32_t w) { return FramePointerAddImm(w, 19).has_value(); });
     REQUIRE_MESSAGE(found != words.end(), "the alloca's address is an ADD from X29");
     // The frame record sits at the bottom of the frame, so every local is above
     // it and no alloca is ever reached at a displacement of zero.
-    CHECK_GE(*FramePointerAddImm(*found), 16);
+    CHECK_GE(*FramePointerAddImm(*found, 19), 16);
 }
 
 TEST_CASE("AArch64 RCU emitter loads an encodable float with FMOV and pools the rest") {
@@ -576,9 +717,11 @@ TEST_CASE("AArch64 RCU emitter loads an encodable float with FMOV and pools the 
     const auto &object = objects.front();
     const auto words = FunctionWords(object, "Main");
 
-    // The two FMOV forms name their value outright and reach no memory at all.
-    CHECK_MESSAGE(std::ranges::find(words, 0x1E6F1010U) != words.end(), "fmov d16, #1.5");
-    CHECK_MESSAGE(std::ranges::find(words, 0x1E209010U) != words.end(), "fmov s16, #2.5");
+    // The two FMOV forms name their value outright and reach no memory at all,
+    // and each names the callee-saved vector register the allocation handed the
+    // value rather than the scratch one.
+    CHECK_MESSAGE(std::ranges::find(words, 0x1E6F1008U) != words.end(), "fmov d8, #1.5");
+    CHECK_MESSAGE(std::ranges::find(words, 0x1E209008U) != words.end(), "fmov s8, #2.5");
 
     // 1e300 is not one of the 256 values FMOV encodes, so it is a doubleword in
     // .rodata reached by ADRP plus a scaled LDR, one relocation on each.
@@ -589,7 +732,7 @@ TEST_CASE("AArch64 RCU emitter loads an encodable float with FMOV and pools the 
     CHECK_EQ(pooled[1].sectionOffset, pooled[0].sectionOffset + 4);
     CHECK_EQ(HexWord(TextWordAt(object, pooled[0].sectionOffset) & 0x9F00001FU), HexWord(0x90000010U)); // adrp x16
     CHECK_EQ(HexWord(TextWordAt(object, pooled[1].sectionOffset) & 0xFFC003FFU),
-             HexWord(0xFD400210U)); // ldr d16, [x16]
+             HexWord(0xFD400208U)); // ldr d8, [x16]
 
     // The pooled value is the doubleword the literal denotes, little-endian.
     const auto bytes = RodataOf(object, "__f64_0");
@@ -630,9 +773,13 @@ TEST_CASE("AArch64 RCU emitter interns each distinct string once") {
     for (std::size_t i = 0; i < repeated.size(); i += 2) {
         CHECK_EQ(repeated[i].type, RcuRelType::AArch64AdrPrelPgHi21);
         CHECK_EQ(repeated[i + 1].type, RcuRelType::AArch64AddAbsLo12Nc);
-        CHECK_EQ(HexWord(TextWordAt(object, repeated[i].sectionOffset) & 0x9F00001FU), HexWord(0x90000009U)); // adrp x9
+        const std::uint32_t adrp = TextWordAt(object, repeated[i].sectionOffset);
+        CHECK_EQ(HexWord(adrp & 0x9F000000U), HexWord(0x90000000U)); // adrp xN
+        // The ADD reads and writes the register the ADRP wrote, whichever the
+        // allocation gave this literal.
+        const std::uint32_t reg = adrp & 0x1FU;
         CHECK_EQ(HexWord(TextWordAt(object, repeated[i + 1].sectionOffset) & 0xFFC003FFU),
-                 HexWord(0x91000129U)); // add x9, x9, #0
+                 HexWord(0x91000000U | reg << 5U | reg)); // add xN, xN, #0
     }
 }
 
@@ -743,14 +890,18 @@ TEST_CASE("AArch64 RCU emitter loads and stores at the width its type occupies")
     // store names the W view of the register it truncates, a signed load
     // extends into the X one, and an unsigned load into the W one, which
     // zeroes the half of the register above it.
-    const std::vector<std::uint32_t> expected = {
-        0x39000149, // strb  w9, [x10]
-        0x39800149, // ldrsb x9, [x10]
-        0x79000149, // strh  w9, [x10]
-        0x79400149, // ldrh  w9, [x10]
+    const std::vector<std::pair<std::uint32_t, const char *>> expected = {
+        {0x39000000U, "strb  wN, [xM]"},
+        {0x39800000U, "ldrsb xN, [xM]"},
+        {0x79000000U, "strh  wN, [xM]"},
+        {0x79400000U, "ldrh  wN, [xM]"},
     };
-    for (const auto word : expected) {
-        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    for (const auto &form : expected) {
+        CHECK_MESSAGE(std::ranges::any_of(words,
+                                          [&form](const std::uint32_t w) {
+                                              return (w & 0xFFC00000U) == form.first && (w >> 10U & 0xFFFU) == 0;
+                                          }),
+                      form.second);
     }
 }
 
@@ -771,11 +922,14 @@ TEST_CASE("AArch64 RCU emitter reaches a field at the offset its layout gives") 
 
     // The second field of a pair of doublewords sits at eight, which is one
     // ADD on the pointer the base register holds.
-    CHECK_MESSAGE(std::ranges::find(words, 0x91002129U) != words.end(), "add x9, x9, #8");
-    // The first sits at zero, so it costs no instruction at all: an ADD of any
-    // other offset would mean the layout was recomputed rather than read.
-    CHECK_FALSE(std::ranges::any_of(
-        words, [](const std::uint32_t w) { return (w & 0xFFC003FFU) == 0x91000129U && (w >> 10U & 0xFFFU) != 8; }));
+    CHECK_MESSAGE(std::ranges::any_of(words, [](const std::uint32_t w) { return FieldAddImm(w) == 8U; }),
+                  "add xD, xN, #8");
+    // The first sits at zero, so it costs no ADD at all: one of any other
+    // offset would mean the layout was recomputed rather than read.
+    CHECK_FALSE(std::ranges::any_of(words, [](const std::uint32_t w) {
+        const auto imm = FieldAddImm(w);
+        return imm.has_value() && *imm != 8U;
+    }));
 }
 
 TEST_CASE("AArch64 RCU emitter scales an index by the width of one element") {
@@ -794,7 +948,8 @@ TEST_CASE("AArch64 RCU emitter scales an index by the width of one element") {
 
     // A four-byte element is a power of two, so the scale is a shift inside
     // the addition and no multiply is emitted at all.
-    CHECK_MESSAGE(std::ranges::find(words, 0x8B0A0929U) != words.end(), "add x9, x9, x10, lsl #2");
+    CHECK_MESSAGE(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFE0FC00U) == 0x8B000800U; }),
+                  "add xD, xN, xM, lsl #2");
     CHECK_FALSE(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFE08000U) == 0x9B000000U; }));
 }
 
@@ -818,7 +973,10 @@ TEST_CASE("AArch64 RCU emitter multiplies by an element width no shift reaches")
     // Twenty-four bytes is no shift, so the width goes into a register and
     // MADD folds the multiply into the addition it was going to take anyway.
     CHECK_MESSAGE(std::ranges::find(words, 0xD280030CU) != words.end(), "mov x12, #24");
-    CHECK_MESSAGE(std::ranges::find(words, 0x9B0C2549U) != words.end(), "madd x9, x10, x12, x9");
+    CHECK_MESSAGE(
+        std::ranges::any_of(
+            words, [](const std::uint32_t w) { return (w & 0xFFE08000U) == 0x9B000000U && (w >> 16U & 31U) == 12; }),
+        "madd xD, xN, x12, xA");
 }
 
 TEST_CASE("AArch64 RCU emitter moves an aligned aggregate in pairs") {
@@ -839,8 +997,10 @@ TEST_CASE("AArch64 RCU emitter moves an aligned aggregate in pairs") {
 
     // Sixteen bytes at an alignment of eight is one pair each way rather than
     // the four single accesses the descent below would otherwise take.
-    CHECK_MESSAGE(std::ranges::find(words, 0xA9403149U) != words.end(), "ldp x9, x12, [x10]");
-    CHECK_MESSAGE(std::ranges::find(words, 0xA9003149U) != words.end(), "stp x9, x12, [x10]");
+    CHECK_MESSAGE(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFC07C1FU) == 0xA9403009U; }),
+                  "ldp x9, x12, [xN, #imm]");
+    CHECK_MESSAGE(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFC07C1FU) == 0xA9003009U; }),
+                  "stp x9, x12, [xN, #imm]");
 }
 
 TEST_CASE("AArch64 RCU emitter copies a byte-aligned aggregate a chunk at a time") {
@@ -861,30 +1021,44 @@ TEST_CASE("AArch64 RCU emitter copies a byte-aligned aggregate a chunk at a time
     CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
     const auto words = FunctionWords(objects.front(), "Main");
 
-    // The only pairs left in the function are the frame record's, which is the
-    // prologue's and the epilogue's business rather than the copy's.
+    // The only pairs left in the function are the prologue's and the
+    // epilogue's: the frame record, and the callee-saved registers the
+    // allocation took, which are saved two at a time for the same reason a
+    // copy would have used a pair.
     for (const auto word : words) {
         if (!IsPairAccess(word)) {
             continue;
         }
-        CHECK_EQ(word & 31U, 29);        // x29
-        CHECK_EQ(word >> 10U & 31U, 30); // x30
+        const std::uint32_t first = word & 31U;
+        const std::uint32_t second = word >> 10U & 31U;
+        const bool frameRecord = first == 29 && second == 30;
+        const bool calleeSaved = first >= 19 && first <= 28 && second >= 19 && second <= 28;
+        const bool prologue = frameRecord || calleeSaved;
+        CHECK_MESSAGE(prologue, HexWord(word));
     }
-    // Eight of the nine bytes go in one doubleword and the ninth on its own.
-    CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFC003E0U) == 0xF9400140U; }));
-    CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFC003E0U) == 0x39400140U; }));
+    // Eight of the nine bytes go in one doubleword and the ninth on its own,
+    // both through the scratch register a block copy moves through.
+    CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFC0001FU) == 0xF9400009U; }));
+    CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFC0001FU) == 0x39400009U; }));
 }
 
 TEST_CASE("AArch64 RCU emitter reaches a slot past the addressing range through a scratch register") {
     // Enough locals to put the last one past the 32 KiB a scaled doubleword
     // offset reaches, so neither immediate form of LDR can name it.
+    // The last of them is an aggregate, which no register holds: every scalar
+    // above it lives in the frame only because the allocation ran out of
+    // registers, and the copy is what reaches its slot at a displacement.
     std::string body;
     for (int i = 0; i < 4200; ++i) {
         body += std::format("    var v{}: int = {};\n", i, i);
     }
     const auto package = CompileToAArch64Lir(std::format(R"(
+        struct Pair {{ first: int; second: int; }}
+
         func Main() -> int {{
-{}            return v4199;
+{}            var pair = Pair {{first: 1, second: 2}};
+            var copy = pair;
+            return copy.second;
         }}
     )",
                                                          body));
@@ -896,9 +1070,10 @@ TEST_CASE("AArch64 RCU emitter reaches a slot past the addressing range through 
 
     // The displacement moves into X16, which then addresses at zero — the
     // fallback the encoder's ResolveMemOperand emits, reached here rather than
-    // hand-rolled beside the access.
+    // hand-rolled beside the access. Which side of the copy needs it is the
+    // frame layout's business, so the access itself is read as either.
     CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFF8003FFU) == 0x910003B0U; }));
-    CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFFFFFE0U) == 0xF9400200U; }));
+    CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFBFFFE0U) == 0xF9000200U; }));
 }
 
 // Integer arithmetic, bitwise and shift opcodes
@@ -928,17 +1103,20 @@ TEST_CASE("AArch64 RCU emitter lowers each binary integer operator to one instru
     CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
     const auto words = FunctionWords(objects.front(), "Main");
 
-    const std::vector<std::uint32_t> expected = {
-        0x8B0C0129, // add x9, x9, x12
-        0xCB0C0129, // sub x9, x9, x12
-        0x9B0C7D29, // mul x9, x9, x12
-        0x8A0C0129, // and x9, x9, x12
-        0xAA0C0129, // orr x9, x9, x12
-        0xCA0C0129, // eor x9, x9, x12
+    const std::vector<std::pair<std::uint32_t, const char *>> expected = {
+        {0x8B000000U, "add xD, xN, xM"}, {0xCB000000U, "sub xD, xN, xM"}, {0x9B007C00U, "mul xD, xN, xM"},
+        {0x8A000000U, "and xD, xN, xM"}, {0xCA000000U, "eor xD, xN, xM"},
     };
-    for (const auto word : expected) {
-        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    for (const auto &form : expected) {
+        CHECK_MESSAGE(HasRegisterForm(words, form.first), form.second);
     }
+    // ORR is also how a register-to-register MOV is spelled, so the one this
+    // program's `|` produced is the one whose first operand is not the zero
+    // register.
+    CHECK_MESSAGE(
+        std::ranges::any_of(
+            words, [](const std::uint32_t w) { return (w & 0xFFE0FC00U) == 0xAA000000U && (w >> 5U & 31U) != 31; }),
+        "orr xD, xN, xM");
 }
 
 TEST_CASE("AArch64 RCU emitter divides with the instruction the operand's signedness names") {
@@ -961,8 +1139,8 @@ TEST_CASE("AArch64 RCU emitter divides with the instruction the operand's signed
 
     // The operands arrive extended by their own types, so the divide itself is
     // the only thing that has to know which of the two it is.
-    CHECK_MESSAGE(std::ranges::find(words, 0x9ACC0D2AU) != words.end(), "sdiv x10, x9, x12");
-    CHECK_MESSAGE(std::ranges::find(words, 0x9ACC092AU) != words.end(), "udiv x10, x9, x12");
+    CHECK_MESSAGE(HasRegisterForm(words, 0x9AC00C00U), "sdiv xD, xN, xM");
+    CHECK_MESSAGE(HasRegisterForm(words, 0x9AC00800U), "udiv xD, xN, xM");
 }
 
 TEST_CASE("AArch64 RCU emitter synthesizes a remainder from a divide and a multiply-subtract") {
@@ -982,8 +1160,13 @@ TEST_CASE("AArch64 RCU emitter synthesizes a remainder from a divide and a multi
 
     // AArch64 has no remainder instruction: it is the dividend less the
     // quotient times the divisor, and MSUB is that whole expression.
-    CHECK_MESSAGE(std::ranges::find(words, 0x9ACC0D2AU) != words.end(), "sdiv x10, x9, x12");
-    CHECK_MESSAGE(std::ranges::find(words, 0x9B0CA549U) != words.end(), "msub x9, x10, x12, x9");
+    CHECK_MESSAGE(HasRegisterForm(words, 0x9AC00C00U), "sdiv xD, xN, xM");
+    // The quotient goes to X10, which is neither operand, because a remainder
+    // needs both of them back — and MSUB reads it there.
+    CHECK_MESSAGE(
+        std::ranges::any_of(
+            words, [](const std::uint32_t w) { return (w & 0xFFE08000U) == 0x9B008000U && (w >> 5U & 31U) == 10; }),
+        "msub xD, x10, xM, xA");
     // The multiply is folded into the subtraction rather than standing beside
     // it, so a plain MUL anywhere would mean two instructions where one does.
     CHECK_FALSE(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFE0FC00U) == 0x9B007C00U; }));
@@ -1004,18 +1187,23 @@ TEST_CASE("AArch64 RCU emitter wraps a narrow result at the width its type occup
     CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
     const auto words = FunctionWords(objects.front(), "Main");
 
-    // Two byte loads, the addition at a whole register's width, and a byte
-    // store: 300 wraps to 44 because the byte above it is never written, which
-    // is exactly how the x86-64 back end wraps it and costs no masking here
-    // either.
-    const auto sum = std::ranges::find(words, 0x8B0C0129U); // add x9, x9, x12
-    REQUIRE_MESSAGE(sum != words.end(), "add x9, x9, x12");
+    // Two byte-wide reads, the addition at a whole register's width, and a
+    // byte store: 300 wraps to 44 because the byte above it is never written,
+    // which is exactly how the x86-64 back end wraps it and costs no masking
+    // here either.
+    const auto sum = std::ranges::find_if(words, [](const std::uint32_t w) {
+        return (w & 0xFFE0FC00U) == 0x8B000000U && (w >> 5U & 31U) == 9 && (w >> 16U & 31U) == 12;
+    });
+    REQUIRE_MESSAGE(sum != words.end(), "add xD, x9, x12");
     const auto index = static_cast<std::size_t>(sum - words.begin());
     REQUIRE_GE(index, 2);
     REQUIRE_LT(index + 1, words.size());
-    CHECK_EQ(HexWord(words[index - 2] & 0xFFC003FFU), HexWord(0x394003A9U)); // ldrb w9, [x29, #imm]
-    CHECK_EQ(HexWord(words[index - 1] & 0xFFC003FFU), HexWord(0x394003ACU)); // ldrb w12, [x29, #imm]
-    CHECK_EQ(HexWord(words[index + 1] & 0xFFC003FFU), HexWord(0x390003A9U)); // strb w9, [x29, #imm]
+    // Both operands live in registers the allocation gave them, so what reads
+    // one as a byte is UXTB rather than LDRB: the same extension, out of a
+    // register rather than out of a slot.
+    CHECK_EQ(HexWord(words[index - 2] & 0xFFFFFC1FU), HexWord(0x53001C09U)); // uxtb w9, wN
+    CHECK_EQ(HexWord(words[index - 1] & 0xFFFFFC1FU), HexWord(0x53001C0CU)); // uxtb w12, wN
+    CHECK_EQ(HexWord(words[index + 1] & 0xFFC00000U), HexWord(0x39000000U)); // strb wD, [xN, #imm]
 }
 
 TEST_CASE("AArch64 RCU emitter reads a right shift at the signedness its opcode asks for") {
@@ -1038,19 +1226,22 @@ TEST_CASE("AArch64 RCU emitter reads a right shift at the signedness its opcode 
     // The variable shifts mask the amount to the width of the register they
     // shift, so nothing masks it here and an over-long shift wraps at the same
     // 64 the x86-64 back end's does.
-    const auto arithmetic = std::ranges::find(words, 0x9ACC2929U); // asr x9, x9, x12
-    const auto logical = std::ranges::find(words, 0x9ACC2529U);    // lsr x9, x9, x12
-    REQUIRE_MESSAGE(arithmetic != words.end(), "asr x9, x9, x12");
-    REQUIRE_MESSAGE(logical != words.end(), "lsr x9, x9, x12");
-    CHECK_MESSAGE(std::ranges::find(words, 0x9ACC2129U) != words.end(), "lsl x9, x9, x12");
+    const auto shift = [&words](const std::uint32_t opcode) {
+        return std::ranges::find_if(words, [opcode](const std::uint32_t w) { return (w & 0xFFFFFFE0U) == opcode; });
+    };
+    const auto arithmetic = shift(0x9ACC2920U); // asr xD, x9, x12
+    const auto logical = shift(0x9ACC2520U);    // lsr xD, x9, x12
+    REQUIRE_MESSAGE(arithmetic != words.end(), "asr xD, x9, x12");
+    REQUIRE_MESSAGE(logical != words.end(), "lsr xD, x9, x12");
+    CHECK_MESSAGE(shift(0x9ACC2120U) != words.end(), "lsl xD, x9, x12");
 
-    // What separates the two right shifts is the load two instructions above
-    // each: `>>` sign-extends its operand and `>>>` reads the same signed type
-    // as unsigned, which is the whole of the difference between them.
-    const auto signedLoad = *(arithmetic - 2);
-    const auto unsignedLoad = *(logical - 2);
-    CHECK_EQ(HexWord(signedLoad & 0xFFC003FFU), HexWord(0xB98003A9U));   // ldrsw x9, [x29, #imm]
-    CHECK_EQ(HexWord(unsignedLoad & 0xFFC003FFU), HexWord(0xB94003A9U)); // ldr   w9, [x29, #imm]
+    // What separates the two right shifts is how the value reaches X9 two
+    // instructions above each: `>>` sign-extends its operand and `>>>` reads
+    // the same signed type as unsigned, which is the whole of the difference
+    // between them. Both operands live in a register the allocation gave them,
+    // so the extension is out of one rather than out of a slot.
+    CHECK_EQ(HexWord(*(arithmetic - 2) & 0xFFFFFC1FU), HexWord(0x93407C09U)); // sxtw x9, wN
+    CHECK_EQ(HexWord(*(logical - 2) & 0xFFE0FFFFU), HexWord(0x2A0003E9U));    // mov  w9, wN
 }
 
 TEST_CASE("AArch64 RCU emitter negates, complements and tests in one instruction each") {
@@ -1071,19 +1262,22 @@ TEST_CASE("AArch64 RCU emitter negates, complements and tests in one instruction
     CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
     const auto words = FunctionWords(objects.front(), "Main");
 
-    const std::vector<std::uint32_t> expected = {
-        0xCB0903E9, // neg  x9, x9        — SUB from the zero register
-        0xAA2903E9, // mvn  x9, x9        — ORN from the zero register
-        0xF100013F, // cmp  x9, #0
-        0x9A9F17E9, // cset x9, eq        — the logical negation, as a boolean
-        0xD2400129, // eor  x9, x9, #1    — `~` on a boolean is that negation too
+    const std::vector<std::tuple<std::uint32_t, std::uint32_t, const char *>> expected = {
+        {0xFFE0FFE0U, 0xCB0003E0U, "neg  xD, xN     — SUB from the zero register"},
+        {0xFFE0FFE0U, 0xAA2003E0U, "mvn  xD, xN     — ORN from the zero register"},
+        {0xFFFFFC1FU, 0xF100001FU, "cmp  xN, #0"},
+        {0xFFFFFFE0U, 0x9A9F17E0U, "cset xD, eq     — the logical negation, as a boolean"},
+        {0xFFFFFC00U, 0xD2400000U, "eor  xD, xN, #1 — `~` on a boolean is that negation too"},
     };
-    for (const auto word : expected) {
-        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    for (const auto &form : expected) {
+        const auto mask = std::get<0>(form);
+        const auto value = std::get<1>(form);
+        CHECK_MESSAGE(std::ranges::any_of(words, [mask, value](const std::uint32_t w) { return (w & mask) == value; }),
+                      std::get<2>(form));
     }
     // A boolean is a byte in its slot, so complementing the whole register
     // would leave 0xFE there and read back as true again.
-    CHECK_EQ(std::ranges::count(words, 0xAA2903E9U), 1);
+    CHECK_EQ(std::ranges::count_if(words, [](const std::uint32_t w) { return (w & 0xFFE0FFE0U) == 0xAA2003E0U; }), 1);
 }
 
 TEST_CASE("AArch64 RCU emitter calls one synthesized exponentiation helper") {
@@ -1165,19 +1359,20 @@ TEST_CASE("AArch64 RCU emitter reads a comparison at the signedness of its opera
     // One comparison and one CSET each, and the condition is where the
     // signedness of the operands shows: equality reads the same flags either
     // way, and the orderings do not.
-    CHECK_EQ(std::ranges::count(words, 0xEB0C013FU), 5); // cmp  x9, x12
-    const std::vector<std::uint32_t> expected = {
-        0x9A9FA7E9, // cset x9, lt   — a signed `<`
-        0x9A9FB7E9, // cset x9, ge   — a signed `>=`
-        0x9A9F17E9, // cset x9, eq
-        0x9A9F27E9, // cset x9, lo   — the same two comparisons, unsigned
-        0x9A9F37E9, // cset x9, hs
+    CHECK_EQ(std::ranges::count_if(words, [](const std::uint32_t w) { return (w & 0xFFE0FC1FU) == 0xEB00001FU; }),
+             5); // cmp xN, xM
+    const std::vector<std::pair<std::uint32_t, const char *>> expected = {
+        {0x9A9FA7E0U, "cset xD, lt   — a signed `<`"},
+        {0x9A9FB7E0U, "cset xD, ge   — a signed `>=`"},
+        {0x9A9F17E0U, "cset xD, eq"},
+        {0x9A9F27E0U, "cset xD, lo   — the same two comparisons, unsigned"},
+        {0x9A9F37E0U, "cset xD, hs"},
     };
-    for (const auto word : expected) {
-        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    for (const auto &form : expected) {
+        CHECK_MESSAGE(HasCset(words, form.first), form.second);
     }
     // A boolean is one byte of its slot, so the result is stored as one.
-    CHECK_EQ(std::ranges::count_if(words, [](const std::uint32_t w) { return (w & 0xFFC003FFU) == 0x390003A9U; }), 5);
+    CHECK_EQ(std::ranges::count_if(words, [](const std::uint32_t w) { return (w & 0xFFC00000U) == 0x39000000U; }), 5);
 }
 
 TEST_CASE("AArch64 RCU emitter compares floats with conditions a NaN does not satisfy") {
@@ -1202,21 +1397,23 @@ TEST_CASE("AArch64 RCU emitter compares floats with conditions a NaN does not sa
 
     // FCMP compares in the register file that holds a float, at the precision
     // the operands are; the general-purpose register only receives the answer.
-    CHECK_EQ(std::ranges::count(words, 0x1E712200U), 3); // fcmp d16, d17
-    CHECK_EQ(std::ranges::count(words, 0x1E312200U), 1); // fcmp s16, s17
+    CHECK_EQ(std::ranges::count_if(words, [](const std::uint32_t w) { return (w & 0xFFE0FC1FU) == 0x1E602000U; }),
+             3); // fcmp dN, dM
+    CHECK_EQ(std::ranges::count_if(words, [](const std::uint32_t w) { return (w & 0xFFE0FC1FU) == 0x1E202000U; }),
+             1); // fcmp sN, sM
 
     // MI and LS rather than LT and LE: an unordered comparison leaves C and V
     // set, which LT and LE are satisfied by and these two are not, so `<` and
     // `<=` against a NaN answer false — and `!=` answers true — exactly as the
     // x86-64 back end's ordered/parity pairs do.
-    const std::vector<std::uint32_t> expected = {
-        0x9A9F57E9, // cset x9, mi   — `<`
-        0x9A9F87E9, // cset x9, ls   — `<=`
-        0x9A9F07E9, // cset x9, ne   — `!=`, the one comparison a NaN satisfies
-        0x9A9FD7E9, // cset x9, gt   — `>`
+    const std::vector<std::pair<std::uint32_t, const char *>> expected = {
+        {0x9A9F57E0U, "cset xD, mi   — `<`"},
+        {0x9A9F87E0U, "cset xD, ls   — `<=`"},
+        {0x9A9F07E0U, "cset xD, ne   — `!=`, the one comparison a NaN satisfies"},
+        {0x9A9FD7E0U, "cset xD, gt   — `>`"},
     };
-    for (const auto word : expected) {
-        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    for (const auto &form : expected) {
+        CHECK_MESSAGE(HasCset(words, form.first), form.second);
     }
 }
 
@@ -1526,6 +1723,135 @@ TEST_CASE("AArch64 RCU emitter lowers a switch to a compare chain and traps wher
     CHECK_EQ(HexWord(words.back()), HexWord(0x00000000U)); // udf #0
 }
 
+// Register allocation
+//
+// Which values a function keeps in machine registers is the shared linear
+// scan's answer; what this back end adds is the pool each register file is
+// allocated from and the prologue that preserves it. Every program below is a
+// function of no parameters, so the run of frame stores after `mov x29, sp` is
+// exactly what the allocation took and nothing else.
+
+TEST_CASE("AArch64 RCU emitter preserves the callee-saved registers it allocated") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var a: int = 1;
+            var b: int = 2;
+            var c = a + b;
+            var d = c * a;
+            return c + d;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    const auto saved = SavedRegisters(words);
+    CHECK(saved.vector.empty());
+    REQUIRE_FALSE(saved.general.empty());
+    // X19 through X28 and nothing else: X29 and X30 are the frame record the
+    // prologue already wrote, X18 is the platform register no program may
+    // touch, and everything below it is a caller's to clobber.
+    for (const unsigned reg : saved.general) {
+        CHECK_MESSAGE(reg >= 19, reg);
+        CHECK_MESSAGE(reg <= 28, reg);
+        // What the prologue preserved the epilogue gives back.
+        CHECK_MESSAGE(RestoresRegister(words, reg, false), reg);
+    }
+    // The allocation starts at the bottom of the pool, so the first register a
+    // function needs is always X19.
+    CHECK_EQ(std::ranges::count(saved.general, 19U), 1);
+}
+
+TEST_CASE("AArch64 RCU emitter preserves the low half of every vector register it allocates") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var a: float64 = 1.5;
+            var b: float64 = 2.5;
+            var c = a + b;
+            var d = c * a;
+            var e = c - d;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    const auto saved = SavedRegisters(words);
+    REQUIRE_FALSE(saved.vector.empty());
+    for (const unsigned reg : saved.vector) {
+        CHECK_MESSAGE(reg >= 8, reg);
+        CHECK_MESSAGE(reg <= 15, reg);
+        CHECK_MESSAGE(RestoresRegister(words, reg, true), reg);
+    }
+    // A doubleword each, which is the whole of what AAPCS64 asks a callee to
+    // preserve of V8 through V15 — and the whole of what this back end puts
+    // there, since a float64 is a doubleword and a float32 is half of one.
+    CHECK_EQ(std::ranges::count_if(words, [](const std::uint32_t w) { return (w & 0xFFC003E0U) == 0x3D0003A0U; }),
+             0); // no str qN, [x29, #imm]
+}
+
+TEST_CASE("AArch64 RCU emitter never allocates the platform register") {
+    // Fourteen values live at once, which is more than the ten X19 through X28
+    // supply: what the pool does not reach stays in the frame rather than
+    // reaching past the end of it.
+    std::string body;
+    std::string sum;
+    for (int i = 0; i < 14; ++i) {
+        body += std::format("            var v{}: int = {};\n", i, i);
+        sum += std::format("{}v{}", i == 0 ? "" : " + ", i);
+    }
+    const auto package = CompileToAArch64Lir(std::format(R"(
+        func Main() -> int {{
+{}            return {};
+        }}
+    )",
+                                                         body, sum));
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    const auto saved = SavedRegisters(words);
+    CHECK_LE(saved.general.size(), 10);
+    CHECK_FALSE(std::ranges::contains(saved.general, 18U));
+    for (const unsigned reg : saved.general) {
+        CHECK_MESSAGE(reg >= 19, reg);
+        CHECK_MESSAGE(reg <= 28, reg);
+    }
+}
+
+TEST_CASE("AArch64 RCU emitter keeps every value in the frame where control branches") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var a: int = 1;
+            var b: int = 2;
+            if a < b {
+                b = a + b;
+            }
+            return b;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // A value in a register would have to be correct at every edge, and a phi
+    // lowers to copies between slots here, so a function of more than one block
+    // allocates nothing at all — and preserves nothing, which is how a prologue
+    // says so.
+    const auto saved = SavedRegisters(words);
+    CHECK(saved.general.empty());
+    CHECK(saved.vector.empty());
+}
+
 // AAPCS64 calls
 //
 // One convention for both sides of every call: the cases below read the caller
@@ -1557,7 +1883,7 @@ TEST_CASE("AArch64 RCU emitter passes the first eight integer arguments in the r
     REQUIRE_GE(*call, 8);
     for (unsigned reg = 0; reg < 8; ++reg) {
         const std::uint32_t word = caller[*call - 8 + reg];
-        const auto loaded = SlotLoadRegister(word);
+        const auto loaded = ArgumentFilled(word);
         REQUIRE_MESSAGE(loaded.has_value(), HexWord(word));
         CHECK_EQ(*loaded, reg);
     }
@@ -1569,16 +1895,20 @@ TEST_CASE("AArch64 RCU emitter passes the first eight integer arguments in the r
         CHECK_FALSE(StackPointerAdjustment(word, false).has_value());
     }
 
-    // The callee spills the same eight registers into its frame before it does
-    // anything else, which is what makes every later mention of a parameter a
-    // read of a slot.
+    // The callee takes the same eight registers out of them in the same order
+    // and before it does anything else, which is what makes every later mention
+    // of a parameter a read of wherever it put it.
     const auto callee = FunctionWords(objects.front(), "Eight");
-    REQUIRE_GT(callee.size(), 10);
+    const auto first = std::ranges::find_if(
+        callee, [](const std::uint32_t w) { return ArgumentDrained(w) == std::optional<unsigned>(0); });
+    REQUIRE(first != callee.end());
+    const auto spills = static_cast<std::size_t>(first - callee.begin());
+    REQUIRE_GE(callee.size(), spills + 8);
     for (unsigned reg = 0; reg < 8; ++reg) {
-        const std::uint32_t word = callee[2 + reg];
-        const auto stored = SlotStoreRegister(word);
-        REQUIRE_MESSAGE(stored.has_value(), HexWord(word));
-        CHECK_EQ(*stored, reg);
+        const std::uint32_t word = callee[spills + reg];
+        const auto drained = ArgumentDrained(word);
+        REQUIRE_MESSAGE(drained.has_value(), HexWord(word));
+        CHECK_EQ(*drained, reg);
     }
 }
 
@@ -1630,11 +1960,16 @@ TEST_CASE("AArch64 RCU emitter sends the ninth argument and everything past it o
     REQUIRE_GT(callee.size(), 12);
     const auto frame = PreIndexedFrameSize(callee.front());
     REQUIRE_MESSAGE(frame.has_value(), HexWord(callee.front()));
-    CHECK_EQ(IncomingDisplacement(callee[10], 8), std::optional<std::int32_t>(*frame));
+    const auto reads = [&callee](const unsigned width, const std::int32_t displacement) {
+        return std::ranges::any_of(callee, [width, displacement](const std::uint32_t w) {
+            return IncomingDisplacement(w, width) == std::optional<std::int32_t>(displacement);
+        });
+    };
+    CHECK(reads(8, *frame));
     // A narrow one is read at the width its own type occupies rather than a
     // whole doubleword, since a C caller leaves the bytes above it as it found
     // them.
-    CHECK_EQ(IncomingDisplacement(callee[12], 2), std::optional<std::int32_t>(*frame + 8));
+    CHECK(reads(2, *frame + 8));
 }
 
 TEST_CASE("AArch64 RCU emitter returns a value in X0 and extends a narrow one on the way out") {
@@ -1658,20 +1993,31 @@ TEST_CASE("AArch64 RCU emitter returns a value in X0 and extends a narrow one on
     const auto objects = emitter.Generate();
     CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
 
-    // The load that fills X0 extends by the returned type, which is the whole
-    // of what AAPCS64 asks a callee to do: unsigned zeroes the register above
-    // the value, signed sign-extends it.
+    // What fills X0 extends by the returned type, which is the whole of what
+    // AAPCS64 asks a callee to do: unsigned zeroes the register above the
+    // value, signed sign-extends it. The value being returned lives in a
+    // register the allocation gave it, so the extension is out of one rather
+    // than out of a slot — the same instruction either way.
     const auto byteReturn = FunctionWords(objects.front(), "Byte");
-    CHECK_EQ(HexWord(byteReturn[byteReturn.size() - 3] & 0xFFC003E0U), HexWord(0x394003A0U)); // ldrb w0, [x29]
+    CHECK_MESSAGE(
+        std::ranges::any_of(byteReturn, [](const std::uint32_t w) { return (w & 0xFFFFFC1FU) == 0x53001C00U; }),
+        "uxtb w0, wN");
     const auto shortReturn = FunctionWords(objects.front(), "Short");
-    CHECK_EQ(HexWord(shortReturn[shortReturn.size() - 3] & 0xFFC003E0U), HexWord(0x798003A0U)); // ldrsh x0, [x29]
+    CHECK_MESSAGE(
+        std::ranges::any_of(shortReturn, [](const std::uint32_t w) { return (w & 0xFFFFFC1FU) == 0x93403C00U; }),
+        "sxth x0, wN");
 
-    // The caller keeps only the bytes the type occupies, so nothing it does
-    // afterwards depends on the bits above them.
+    // The caller keeps what came back and writes only the bytes the type
+    // occupies into the local it belongs to, so nothing it does afterwards
+    // depends on the bits above them.
     const auto caller = FunctionWords(objects.front(), "Main");
     const auto call = BranchAndLinkIndex(caller);
     REQUIRE(call.has_value());
-    CHECK_EQ(HexWord(caller[*call + 1] & 0xFFC003E0U), HexWord(0x390003A0U)); // strb w0, [x29]
+    REQUIRE_LT(*call + 2, caller.size());
+    const auto kept = ArgumentDrained(caller[*call + 1]);
+    REQUIRE_MESSAGE(kept == std::optional<unsigned>(0), HexWord(caller[*call + 1]));
+    const std::uint32_t result = caller[*call + 1] & 0x1FU;
+    CHECK_EQ(HexWord(caller[*call + 2] & 0xFFC0001FU), HexWord(0x39000000U | result)); // strb wN, [xM]
 }
 
 TEST_CASE("AArch64 RCU emitter branches to a function this module defines through a relocation") {
@@ -1733,9 +2079,9 @@ TEST_CASE("AArch64 RCU emitter calls through a register when the callee is a val
 
     // The address is fetched after the argument registers and into X9 rather
     // than one of them, so fetching it cannot disturb what it is called with.
-    CHECK_EQ(SlotLoadRegister(words[index - 3]), std::optional<unsigned>(0));
-    CHECK_EQ(SlotLoadRegister(words[index - 2]), std::optional<unsigned>(1));
-    CHECK_EQ(SlotLoadRegister(words[index - 1]), std::optional<unsigned>(9));
+    CHECK_EQ(ArgumentFilled(words[index - 3]), std::optional<unsigned>(0));
+    CHECK_EQ(ArgumentFilled(words[index - 2]), std::optional<unsigned>(1));
+    CHECK_EQ(ArgumentFilled(words[index - 1]), std::optional<unsigned>(9));
 
     // Nothing names a symbol: an indirect call has no target to relocate.
     CHECK_FALSE(BranchAndLinkIndex(words).has_value());
@@ -1832,9 +2178,9 @@ TEST_CASE("AArch64 RCU emitter passes the first eight floats in the vector regis
     REQUIRE_GE(*call, 8);
     for (unsigned reg = 0; reg < 8; ++reg) {
         const std::uint32_t word = caller[*call - 8 + reg];
-        const auto loaded = VectorSlotAccessOf(word, 64, false);
-        REQUIRE_MESSAGE(loaded.has_value(), HexWord(word));
-        CHECK_EQ(loaded->reg, reg);
+        const auto filled = VectorArgumentFilled(word, 64);
+        REQUIRE_MESSAGE(filled.has_value(), HexWord(word));
+        CHECK_EQ(*filled, reg);
     }
     for (const auto word : caller) {
         CHECK_FALSE(StackPointerAdjustment(word, true).has_value());
@@ -1843,16 +2189,16 @@ TEST_CASE("AArch64 RCU emitter passes the first eight floats in the vector regis
     // The callee spills the same eight, and answers in the register the first
     // argument arrived in.
     const auto callee = FunctionWords(objects.front(), "Eight");
-    REQUIRE_GT(callee.size(), 10);
+    const std::size_t spills = VectorDrainStart(callee, 64);
+    REQUIRE_GE(callee.size(), spills + 8);
     for (unsigned reg = 0; reg < 8; ++reg) {
-        const std::uint32_t word = callee[2 + reg];
-        const auto stored = VectorSlotAccessOf(word, 64, true);
-        REQUIRE_MESSAGE(stored.has_value(), HexWord(word));
-        CHECK_EQ(stored->reg, reg);
+        const std::uint32_t word = callee[spills + reg];
+        const auto drained = VectorArgumentDrained(word, 64);
+        REQUIRE_MESSAGE(drained.has_value(), HexWord(word));
+        CHECK_EQ(*drained, reg);
     }
-    const auto returned = VectorSlotAccessOf(callee[callee.size() - 3], 64, false);
-    REQUIRE_MESSAGE(returned.has_value(), HexWord(callee[callee.size() - 3]));
-    CHECK_EQ(returned->reg, 0);
+    CHECK(std::ranges::any_of(
+        callee, [](const std::uint32_t w) { return VectorArgumentFilled(w, 64) == std::optional<unsigned>(0); }));
 }
 
 TEST_CASE("AArch64 RCU emitter counts the two register files apart") {
@@ -1878,20 +2224,17 @@ TEST_CASE("AArch64 RCU emitter counts the two register files apart") {
     const auto call = BranchAndLinkIndex(caller);
     REQUIRE(call.has_value());
     REQUIRE_GE(*call, 5);
-    CHECK_EQ(SlotLoadRegister(caller[*call - 5]), std::optional<unsigned>(0));
-    REQUIRE(VectorSlotAccessOf(caller[*call - 4], 64, false).has_value());
-    CHECK_EQ(VectorSlotAccessOf(caller[*call - 4], 64, false)->reg, 0);
-    CHECK_EQ(SlotLoadRegister(caller[*call - 3]), std::optional<unsigned>(1));
-    REQUIRE(VectorSlotAccessOf(caller[*call - 2], 32, false).has_value());
-    CHECK_EQ(VectorSlotAccessOf(caller[*call - 2], 32, false)->reg, 1);
-    CHECK_EQ(SlotLoadRegister(caller[*call - 1]), std::optional<unsigned>(2));
+    CHECK_EQ(ArgumentFilled(caller[*call - 5]), std::optional<unsigned>(0));
+    CHECK_EQ(VectorArgumentFilled(caller[*call - 4], 64), std::optional<unsigned>(0));
+    CHECK_EQ(ArgumentFilled(caller[*call - 3]), std::optional<unsigned>(1));
+    CHECK_EQ(VectorArgumentFilled(caller[*call - 2], 32), std::optional<unsigned>(1));
+    CHECK_EQ(ArgumentFilled(caller[*call - 1]), std::optional<unsigned>(2));
 
     // A float32 result comes back in S0, which is the same register the second
     // argument was passed in and a different width from it.
     const auto callee = FunctionWords(objects.front(), "Mixed");
-    const auto returned = VectorSlotAccessOf(callee[callee.size() - 3], 32, false);
-    REQUIRE_MESSAGE(returned.has_value(), HexWord(callee[callee.size() - 3]));
-    CHECK_EQ(returned->reg, 0);
+    CHECK(std::ranges::any_of(
+        callee, [](const std::uint32_t w) { return VectorArgumentFilled(w, 32) == std::optional<unsigned>(0); }));
 }
 
 TEST_CASE("AArch64 RCU emitter passes a homogeneous float aggregate in consecutive vector registers") {
@@ -1927,36 +2270,50 @@ TEST_CASE("AArch64 RCU emitter passes a homogeneous float aggregate in consecuti
 
     // Two doubles are D0 and D1, read eight bytes apart because that is how
     // wide one member is; four singles are S0 through S3, four bytes apart.
+    // No register holds an aggregate, so an HFA is spilled to the frame
+    // whatever the allocation did with the scalars around it.
     const auto pairCallee = FunctionWords(objects.front(), "TakePair");
-    const auto first = VectorSlotAccessOf(pairCallee[2], 64, true);
-    const auto second = VectorSlotAccessOf(pairCallee[3], 64, true);
-    REQUIRE_MESSAGE(first.has_value(), HexWord(pairCallee[2]));
-    REQUIRE_MESSAGE(second.has_value(), HexWord(pairCallee[3]));
+    const std::size_t pairSpills = VectorDrainStart(pairCallee, 64);
+    REQUIRE_GE(pairCallee.size(), pairSpills + 2);
+    const auto first = VectorSlotAccessOf(pairCallee[pairSpills], 64, true);
+    const auto second = VectorSlotAccessOf(pairCallee[pairSpills + 1], 64, true);
+    REQUIRE_MESSAGE(first.has_value(), HexWord(pairCallee[pairSpills]));
+    REQUIRE_MESSAGE(second.has_value(), HexWord(pairCallee[pairSpills + 1]));
     CHECK_EQ(first->reg, 0);
     CHECK_EQ(second->reg, 1);
     CHECK_EQ(second->displacement, first->displacement + 8);
 
     const auto quadCallee = FunctionWords(objects.front(), "TakeQuad");
+    const std::size_t quadSpills = VectorDrainStart(quadCallee, 32);
+    REQUIRE_GE(quadCallee.size(), quadSpills + 4);
+    const auto base = VectorSlotAccessOf(quadCallee[quadSpills], 32, true);
+    REQUIRE_MESSAGE(base.has_value(), HexWord(quadCallee[quadSpills]));
     for (unsigned member = 0; member < 4; ++member) {
-        const auto spilled = VectorSlotAccessOf(quadCallee[2 + member], 32, true);
-        REQUIRE_MESSAGE(spilled.has_value(), HexWord(quadCallee[2 + member]));
+        const auto spilled = VectorSlotAccessOf(quadCallee[quadSpills + member], 32, true);
+        REQUIRE_MESSAGE(spilled.has_value(), HexWord(quadCallee[quadSpills + member]));
         CHECK_EQ(spilled->reg, member);
-        CHECK_EQ(spilled->displacement, VectorSlotAccessOf(quadCallee[2], 32, true)->displacement + 4 * member);
+        CHECK_EQ(spilled->displacement, base->displacement + 4 * member);
     }
 
     // Sixteen bytes of floats come back in two vector registers rather than
     // through memory the caller named: an aggregate this large is returned
     // indirectly only when it is made of something else.
     const auto maker = FunctionWords(objects.front(), "MakePair");
-    const auto returnedLow = VectorSlotAccessOf(maker[maker.size() - 4], 64, false);
-    const auto returnedHigh = VectorSlotAccessOf(maker[maker.size() - 3], 64, false);
-    REQUIRE_MESSAGE(returnedLow.has_value(), HexWord(maker[maker.size() - 4]));
-    REQUIRE_MESSAGE(returnedHigh.has_value(), HexWord(maker[maker.size() - 3]));
-    CHECK_EQ(returnedLow->reg, 0);
-    CHECK_EQ(returnedHigh->reg, 1);
+    std::optional<VectorSlotAccess> returnedLow;
+    std::optional<VectorSlotAccess> returnedHigh;
+    for (std::size_t i = 0; i + 1 < maker.size(); ++i) {
+        const auto low = VectorSlotAccessOf(maker[i], 64, false);
+        const auto high = VectorSlotAccessOf(maker[i + 1], 64, false);
+        if (low && high && low->reg == 0 && high->reg == 1) {
+            returnedLow = low;
+            returnedHigh = high;
+        }
+    }
+    REQUIRE_MESSAGE(returnedLow.has_value(), "ldr d0, [x29, #imm]");
+    REQUIRE_MESSAGE(returnedHigh.has_value(), "ldr d1, [x29, #imm]");
     CHECK_EQ(returnedHigh->displacement, returnedLow->displacement + 8);
     for (const auto word : maker) {
-        CHECK_FALSE(SlotStoreRegister(word) == std::optional<unsigned>(8));
+        CHECK_FALSE(ArgumentDrained(word) == std::optional<unsigned>(8));
     }
 }
 
@@ -1995,19 +2352,25 @@ TEST_CASE("AArch64 RCU emitter carries a composite of no more than sixteen bytes
     // into whole doublewords, and the second of them carries the four bytes of
     // padding its slot was rounded up by rather than the value beside it.
     const auto smallCallee = FunctionWords(objects.front(), "TakeSmall");
-    CHECK_EQ(SlotStoreRegister(smallCallee[2]), std::optional<unsigned>(0));
-    CHECK_FALSE(SlotStoreRegister(smallCallee[3]) == std::optional<unsigned>(1));
+    const std::size_t smallSpills = DrainStart(smallCallee);
+    REQUIRE_GE(smallCallee.size(), smallSpills + 2);
+    CHECK_FALSE(ArgumentDrained(smallCallee[smallSpills + 1]) == std::optional<unsigned>(1));
 
     const auto midCallee = FunctionWords(objects.front(), "TakeMid");
-    CHECK_EQ(SlotStoreRegister(midCallee[2]), std::optional<unsigned>(0));
-    CHECK_EQ(SlotStoreRegister(midCallee[3]), std::optional<unsigned>(1));
-    CHECK_EQ(SlotAccessDisplacement(midCallee[3]), SlotAccessDisplacement(midCallee[2]) + 8);
+    const std::size_t midSpills = DrainStart(midCallee);
+    REQUIRE_GE(midCallee.size(), midSpills + 2);
+    CHECK_EQ(ArgumentDrained(midCallee[midSpills + 1]), std::optional<unsigned>(1));
+    CHECK_EQ(SlotAccessDisplacement(midCallee[midSpills + 1]), SlotAccessDisplacement(midCallee[midSpills]) + 8);
 
     // The same shape backwards: twelve bytes come back in X0 and X1, and the
     // caller keeps both.
     const auto maker = FunctionWords(objects.front(), "MakeMid");
-    CHECK_EQ(SlotLoadRegister(maker[maker.size() - 4]), std::optional<unsigned>(0));
-    CHECK_EQ(SlotLoadRegister(maker[maker.size() - 3]), std::optional<unsigned>(1));
+    bool returnsPair = false;
+    for (std::size_t i = 0; i + 1 < maker.size(); ++i) {
+        returnsPair = returnsPair || (ArgumentFilled(maker[i]) == std::optional<unsigned>(0) &&
+                                      ArgumentFilled(maker[i + 1]) == std::optional<unsigned>(1));
+    }
+    CHECK(returnsPair);
 }
 
 TEST_CASE("AArch64 RCU emitter passes a composite past sixteen bytes as the address of a copy") {
@@ -2048,7 +2411,7 @@ TEST_CASE("AArch64 RCU emitter passes a composite past sixteen bytes as the addr
     // The callee reads the copy into its own frame once and never writes
     // through the address again, so a parameter it modifies is its own.
     const auto callee = FunctionWords(objects.front(), "TakeBig");
-    CHECK_EQ(HexWord(callee[2]), HexWord(0xAA0003EBU)); // mov x11, x0
+    CHECK(std::ranges::find(callee, 0xAA0003EBU) != callee.end()); // mov x11, x0
     CHECK(std::ranges::any_of(callee, [](const std::uint32_t word) { return IsPairAccess(word); }));
 }
 
@@ -2078,14 +2441,15 @@ TEST_CASE("AArch64 RCU emitter returns a large composite through the memory the 
     REQUIRE_GE(*call, 1);
     CHECK(FramePointerAddImm(caller[*call - 1], 8).has_value());
     REQUIRE_LT(*call + 1, caller.size());
-    CHECK_FALSE(SlotStoreRegister(caller[*call + 1]) == std::optional<unsigned>(0));
+    CHECK_FALSE(ArgumentDrained(caller[*call + 1]) == std::optional<unsigned>(0));
 
     // The callee keeps that address the way it keeps a parameter, and nothing
     // it returns travels in a register: no load ever fills X0.
     const auto callee = FunctionWords(objects.front(), "MakeBig");
-    CHECK_EQ(SlotStoreRegister(callee[2]), std::optional<unsigned>(8));
+    CHECK(std::ranges::any_of(callee,
+                              [](const std::uint32_t w) { return ArgumentDrained(w) == std::optional<unsigned>(8); }));
     for (const auto word : callee) {
-        CHECK_FALSE(SlotLoadRegister(word) == std::optional<unsigned>(0));
+        CHECK_FALSE(ArgumentFilled(word) == std::optional<unsigned>(0));
     }
 }
 
@@ -2118,10 +2482,10 @@ TEST_CASE("AArch64 RCU emitter leaves the general-purpose file behind once an ar
     REQUIRE(call.has_value());
     REQUIRE_GE(*call, 7);
     for (unsigned reg = 0; reg < 7; ++reg) {
-        CHECK_EQ(SlotLoadRegister(caller[*call - 7 + reg]), std::optional<unsigned>(reg));
+        CHECK_EQ(ArgumentFilled(caller[*call - 7 + reg]), std::optional<unsigned>(reg));
     }
     for (const auto word : caller) {
-        CHECK_FALSE(SlotLoadRegister(word) == std::optional<unsigned>(7));
+        CHECK_FALSE(ArgumentFilled(word) == std::optional<unsigned>(7));
     }
 
     // The callee finds both above its own frame: the composite in the first two
@@ -2161,7 +2525,7 @@ TEST_CASE("AArch64 RCU emitter leaves the vector file behind without touching th
     const auto call = BranchAndLinkIndex(caller);
     REQUIRE(call.has_value());
     REQUIRE_GE(*call, 9);
-    CHECK_EQ(SlotLoadRegister(caller[*call - 1]), std::optional<unsigned>(0));
+    CHECK_EQ(ArgumentFilled(caller[*call - 1]), std::optional<unsigned>(0));
     for (unsigned member = 0; member < 8; ++member) {
         const std::uint32_t word = caller[*call - 9 + member];
         const auto loaded = VectorSlotAccessOf(word, 64, false);
@@ -2207,11 +2571,11 @@ TEST_CASE("AArch64 RCU emitter passes an anonymous float argument in a vector re
     const auto call = BranchAndLinkIndex(caller);
     REQUIRE(call.has_value());
     REQUIRE_GE(*call, 3);
-    CHECK_EQ(SlotLoadRegister(caller[*call - 3]), std::optional<unsigned>(0));
-    const auto anonymous = VectorSlotAccessOf(caller[*call - 2], 64, false);
+    CHECK_EQ(ArgumentFilled(caller[*call - 3]), std::optional<unsigned>(0));
+    const auto anonymous = VectorArgumentFilled(caller[*call - 2], 64);
     REQUIRE_MESSAGE(anonymous.has_value(), HexWord(caller[*call - 2]));
-    CHECK_EQ(anonymous->reg, 0);
-    CHECK_EQ(SlotLoadRegister(caller[*call - 1]), std::optional<unsigned>(1));
+    CHECK_EQ(*anonymous, 0);
+    CHECK_EQ(ArgumentFilled(caller[*call - 1]), std::optional<unsigned>(1));
 }
 
 // Floating point and conversions
@@ -2249,20 +2613,14 @@ TEST_CASE("AArch64 RCU emitter lowers each floating-point operator to one instru
     CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
     const auto words = FunctionWords(objects.front(), "Main");
 
-    const std::vector<std::uint32_t> expected = {
-        0x1E712A10, // fadd d16, d16, d17
-        0x1E713A10, // fsub d16, d16, d17
-        0x1E710A10, // fmul d16, d16, d17
-        0x1E711A10, // fdiv d16, d16, d17
-        0x1E614210, // fneg d16, d16
-        0x1E312A10, // fadd s16, s16, s17
-        0x1E313A10, // fsub s16, s16, s17
-        0x1E310A10, // fmul s16, s16, s17
-        0x1E311A10, // fdiv s16, s16, s17
-        0x1E214210, // fneg s16, s16
+    const std::vector<std::tuple<std::uint32_t, unsigned, const char *>> expected = {
+        {0x1E602800U, 2, "fadd dD, dN, dM"}, {0x1E603800U, 2, "fsub dD, dN, dM"}, {0x1E600800U, 2, "fmul dD, dN, dM"},
+        {0x1E601800U, 2, "fdiv dD, dN, dM"}, {0x1E614000U, 1, "fneg dD, dN"},     {0x1E202800U, 2, "fadd sD, sN, sM"},
+        {0x1E203800U, 2, "fsub sD, sN, sM"}, {0x1E200800U, 2, "fmul sD, sN, sM"}, {0x1E201800U, 2, "fdiv sD, sN, sM"},
+        {0x1E214000U, 1, "fneg sD, sN"},
     };
-    for (const auto word : expected) {
-        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    for (const auto &form : expected) {
+        CHECK_MESSAGE(HasFloatForm(words, std::get<0>(form), std::get<1>(form)), std::get<2>(form));
     }
     // Negation is the instruction and not a constant: the x86-64 back end
     // reaches .rodata for a sign mask to XOR against, and nothing here does.
@@ -2288,13 +2646,15 @@ TEST_CASE("AArch64 RCU emitter synthesizes a floating-point remainder from a tru
     // which is three instructions: the truncation happens in the register
     // rather than through a 64-bit integer as it does on x86-64, and the
     // multiply folds into the subtraction that recovers the remainder.
-    const auto quotient = std::ranges::find(words, 0x1E711A12U); // fdiv d18, d16, d17
-    REQUIRE_MESSAGE(quotient != words.end(), "fdiv d18, d16, d17");
+    const auto quotient = std::ranges::find_if(
+        words, [](const std::uint32_t w) { return (w & 0xFFE0FC1FU) == (0x1E601800U | 18U); }); // fdiv d18, dN, dM
+    REQUIRE_MESSAGE(quotient != words.end(), "fdiv d18, dN, dM");
     const auto index = static_cast<std::size_t>(quotient - words.begin());
     REQUIRE_LT(index + 2, words.size());
-    CHECK_EQ(HexWord(words[index + 1]), HexWord(0x1E65C252U));         // frintz d18, d18
-    CHECK_EQ(HexWord(words[index + 2]), HexWord(0x1F51C250U));         // fmsub d16, d18, d17, d16
-    CHECK_FALSE(std::ranges::find(words, 0x1E710A12U) != words.end()); // fmul d18, d16, d17
+    CHECK_EQ(HexWord(words[index + 1]), HexWord(0x1E65C252U));               // frintz d18, d18
+    CHECK_EQ(HexWord(words[index + 2] & 0xFFE08000U), HexWord(0x1F408000U)); // fmsub dD, d18, dM, dA
+    CHECK_EQ(HexWord(words[index + 2] >> 5U & 0x1FU), HexWord(18U));         // ... from the quotient
+    CHECK_FALSE(HasFloatForm(words, 0x1E600800U));                           // fmul dD, dN, dM
 }
 
 TEST_CASE("AArch64 RCU emitter converts between the two precisions and no further") {
@@ -2313,8 +2673,8 @@ TEST_CASE("AArch64 RCU emitter converts between the two precisions and no furthe
     CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
     const auto words = FunctionWords(objects.front(), "Main");
 
-    CHECK_MESSAGE(std::ranges::find(words, 0x1E22C211U) != words.end(), "fcvt d17, s16");
-    CHECK_MESSAGE(std::ranges::find(words, 0x1E624211U) != words.end(), "fcvt s17, d16");
+    CHECK_MESSAGE(HasFloatForm(words, 0x1E22C000U, 1), "fcvt dD, sN");
+    CHECK_MESSAGE(HasFloatForm(words, 0x1E624000U, 1), "fcvt sD, dN");
     // FCVT names the source precision in one field and the destination in
     // another, so a cast to the precision already in hand has no instruction to
     // be — it is the load and the store the two casts above also carry.
@@ -2347,16 +2707,12 @@ TEST_CASE("AArch64 RCU emitter converts between files at the signedness of the i
     // its direction asks, and the signedness of the integer side picks between
     // the pairs — which is what keeps a uint64 above 2^63 an unsigned value
     // rather than the negative one a single signed instruction would give.
-    const std::vector<std::uint32_t> expected = {
-        0x9E780209, // fcvtzs x9, d16
-        0x9E790209, // fcvtzu x9, d16
-        0x9E620130, // scvtf  d16, x9
-        0x9E630130, // ucvtf  d16, x9
-        0x9E220130, // scvtf  s16, x9
-        0x9E380209, // fcvtzs x9, s16
+    const std::vector<std::pair<std::uint32_t, const char *>> expected = {
+        {0x9E780000U, "fcvtzs xD, dN"}, {0x9E790000U, "fcvtzu xD, dN"}, {0x9E620000U, "scvtf  dD, xN"},
+        {0x9E630000U, "ucvtf  dD, xN"}, {0x9E220000U, "scvtf  sD, xN"}, {0x9E380000U, "fcvtzs xD, sN"},
     };
-    for (const auto word : expected) {
-        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    for (const auto &form : expected) {
+        CHECK_MESSAGE(HasFloatForm(words, form.first, 1), form.second);
     }
 }
 
@@ -2375,22 +2731,18 @@ TEST_CASE("AArch64 RCU emitter casts between integers with the load and the stor
     CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
     const auto words = FunctionWords(objects.front(), "Main");
 
-    // A widening cast is the sign-extending load its source type already asks
-    // for followed by the store its destination type already asks for, so
-    // nothing at all stands between them; a narrowing one is the same pair the
-    // other way round. Both are what makes every integer conversion free.
-    const auto hasPair = [&words](const std::uint32_t load, const std::uint32_t store) {
-        for (std::size_t i = 0; i + 1 < words.size(); ++i) {
-            if ((words[i] & 0xFFC003FFU) == load && (words[i + 1] & 0xFFC003FFU) == store) {
-                return true;
-            }
-        }
-        return false;
-    };
-    // ldrsh x9, [x29, #imm] then str x9, [x29, #imm]
-    CHECK_MESSAGE(hasPair(0x798003A9U, 0xF90003A9U), "a widening cast is one load and one store");
-    // ldr x9, [x29, #imm] then strb w9, [x29, #imm]
-    CHECK_MESSAGE(hasPair(0xF94003A9U, 0x390003A9U), "a narrowing cast is one load and one store");
+    // A conversion between integers is never an instruction of its own. A
+    // widening one is the sign-extension its source type already asks of every
+    // mention, which is SXTH out of the register the allocation gave the
+    // int16; a narrowing one is nothing at all, since what writes the
+    // destination writes the bytes its type occupies and no more.
+    CHECK_MESSAGE(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFFFFC00U) == 0x93403C00U; }),
+                  "sxth xD, wN");
+    // One byte store, which is the uint8 local being written, and nothing that
+    // masks the value down to a byte before it.
+    CHECK_EQ(std::ranges::count_if(words, [](const std::uint32_t w) { return (w & 0xFFC00000U) == 0x39000000U; }), 1);
+    CHECK_FALSE(
+        std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFFFFC00U) == 0x53001C00U; })); // uxtb
 }
 
 TEST_CASE("AArch64 RCU emitter moves a float's bits between the register files") {
@@ -2419,14 +2771,14 @@ TEST_CASE("AArch64 RCU emitter moves a float's bits between the register files")
     CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
     const auto words = FunctionWords(objects.front(), "Main");
 
-    const std::vector<std::uint32_t> expected = {
-        0x9E660209, // fmov x9, d16
-        0x9E670130, // fmov d16, x9
-        0x1E260209, // fmov w9, s16
-        0x1E270130, // fmov s16, w9
+    const std::vector<std::pair<std::uint32_t, const char *>> expected = {
+        {0x9E660000U, "fmov xD, dN"},
+        {0x9E670000U, "fmov dD, xN"},
+        {0x1E260000U, "fmov wD, sN"},
+        {0x1E270000U, "fmov sD, wN"},
     };
-    for (const auto word : expected) {
-        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    for (const auto &form : expected) {
+        CHECK_MESSAGE(HasFloatForm(words, form.first, 1), form.second);
     }
     // No branch is taken to any of the four, so the bodies declared above are
     // never reached from here.
@@ -2525,10 +2877,15 @@ TEST_CASE("AArch64 RCU emitter reads an enum as the integer its discriminant is"
     // integer's are — which is the whole of what naming its kind would have
     // added, and is why the type is read for what it is not rather than what
     // it is.
-    CHECK_MESSAGE(std::ranges::find(words, 0xD2800149U) != words.end(), "mov x9, #10");
-    CHECK_MESSAGE(std::ranges::find(words, 0xD2800289U) != words.end(), "mov x9, #20");
-    CHECK_MESSAGE(std::ranges::find(words, 0xEB0C013FU) != words.end(), "cmp x9, x12");
-    CHECK_MESSAGE(std::ranges::find(words, 0x9A9F17E9U) != words.end(), "cset x9, eq");
+    const auto hasMoveWide = [&words](const std::uint32_t value) {
+        return std::ranges::any_of(
+            words, [value](const std::uint32_t w) { return (w & 0xFFFFFFE0U) == (0xD2800000U | value << 5U); });
+    };
+    CHECK_MESSAGE(hasMoveWide(10), "mov xD, #10");
+    CHECK_MESSAGE(hasMoveWide(20), "mov xD, #20");
+    CHECK_MESSAGE(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFE0FC1FU) == 0xEB00001FU; }),
+                  "cmp xN, xM");
+    CHECK_MESSAGE(HasCset(words, 0x9A9F17E0U), "cset xD, eq");
 }
 
 // Assertions, inline assembly and static data
@@ -2645,7 +3002,7 @@ TEST_CASE("AArch64 RCU emitter writes a failed assertion's three parts and traps
     // The message is neither: what the operand holds is the address of a
     // `Slice<char8>`, and one LDP takes both of its fields into the two
     // registers the call reads them from.
-    CHECK_EQ(words[message] & 0xFFC003FFU, 0xF94003AAU); // ldr x10, [x29, #imm]
+    CHECK_EQ(ArgumentFilled(words[message]), std::optional<unsigned>(10)); // the address, into X10
     CHECK_EQ(HexWord(words[message + 1]), HexWord(kLdpX1X2));
 
     // A condition that held branches over the whole of it, landing on the
