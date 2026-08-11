@@ -31,6 +31,43 @@ constexpr int SoleHalfword(const std::uint64_t value, const unsigned halfwords) 
     return -1;
 }
 
+// The `hw`-th 16-bit halfword of a value, counting from the bottom.
+constexpr std::uint16_t Halfword(const std::uint64_t value, const unsigned hw) {
+    return static_cast<std::uint16_t>(value >> (hw * 16U));
+}
+
+// The shortest move chain for a value at a given register width, and which
+// root it grows from. A chain costs one instruction per halfword its root does
+// not already leave behind: MOVZ zeroes the other halfwords and MOVN fills them
+// with ones, so the two roots count the halfwords that are not 0 and not
+// 0xFFFF. A value every halfword of which is what its root leaves behind is the
+// root alone rather than an empty sequence.
+struct MovChain {
+    unsigned length = 1;
+    bool invert = false;
+};
+
+constexpr MovChain ShortestMovChain(const std::uint64_t value, const unsigned bits) {
+    unsigned zeroRooted = 0;
+    unsigned onesRooted = 0;
+    for (unsigned hw = 0; hw < bits / 16U; ++hw) {
+        const std::uint16_t part = Halfword(value, hw);
+        zeroRooted += part != 0 ? 1U : 0U;
+        onesRooted += part != 0xFFFFU ? 1U : 0U;
+    }
+    const bool invert = onesRooted < zeroRooted;
+    const unsigned length = invert ? onesRooted : zeroRooted;
+    return MovChain{length != 0 ? length : 1U, invert};
+}
+
+// A register a composite sequence can address through, or leave an address in.
+// Neither reading of code 31 is one: the zero register discards what it is
+// given, and the stack pointer is not something a sequence may take for its
+// own.
+constexpr bool AddressableReg(const A64Reg &reg) {
+    return reg.IsGeneral() && reg.bits == 64 && reg.code != 31;
+}
+
 // A general-purpose operand of width `bits` in a field that reads code 31 as
 // the zero register. SP has no encoding there, so passing it is an error rather
 // than a silent rename.
@@ -1695,5 +1732,213 @@ A64Status A64Enc::Scvtf(const A64Reg rd, const A64Reg rn) const {
 
 A64Status A64Enc::Ucvtf(const A64Reg rd, const A64Reg rn) const {
     return EncodeFpIntConv(*this, rd, rn, false, 0, 3);
+}
+
+A64Status A64Enc::LoadImm64(const A64Reg rd, const std::uint64_t value) const {
+    if (!ZrOperand(rd, rd.bits) || (rd.bits != 32 && rd.bits != 64)) {
+        return A64Status::InvalidRegister;
+    }
+    // A W register has no room for a value wider than a word, and names
+    // nothing that could hold one either.
+    if (rd.bits == 32 && (value >> 32U) != 0) {
+        return A64Status::InvalidImmediate;
+    }
+
+    unsigned bits = rd.bits;
+    MovChain chain = ShortestMovChain(value, bits);
+    bool logical = TryEncodeBitmaskImm(value, bits == 64).has_value();
+    // Writing a W register zeroes the rest of the X register it is a view of,
+    // so a 64-bit destination holding a value that fits in a word has a second
+    // sequence available to it — often a shorter one, since the halfwords above
+    // the word cost nothing there and the 32-bit logical immediates are a
+    // different set from the 64-bit ones.
+    if (bits == 64 && (value >> 32U) == 0 && (logical ? 1U : chain.length) > 1) {
+        const MovChain narrow = ShortestMovChain(value, 32);
+        const bool narrowLogical = TryEncodeBitmaskImm(value, false).has_value();
+        if ((narrowLogical ? 1U : narrow.length) < (logical ? 1U : chain.length)) {
+            bits = 32;
+            chain = narrow;
+            logical = narrowLogical;
+        }
+    }
+
+    // One logical immediate beats a chain of two or more. It loses to a chain
+    // of one only because MOVZ is the canonical spelling of the values that
+    // both forms reach.
+    const A64Reg dest = A64::Gpr(rd.code, bits);
+    if (logical && chain.length > 1) {
+        return OrrImm(dest, A64::Gpr(31, bits), value);
+    }
+
+    const std::uint16_t rest = chain.invert ? 0xFFFFU : 0U;
+    bool rooted = false;
+    for (unsigned hw = 0; hw < bits / 16U; ++hw) {
+        const std::uint16_t part = Halfword(value, hw);
+        if (part == rest) {
+            continue;
+        }
+        const unsigned shift = hw * 16U;
+        // MOVN writes the inverse of the halfword it is given, so the root
+        // carries the complement of the value it is putting there.
+        const A64Status status =
+            rooted ? Movk(dest, part, shift)
+                   : (chain.invert ? Movn(dest, static_cast<std::uint16_t>(~part), shift) : Movz(dest, part, shift));
+        if (status != A64Status::Ok) {
+            return status;
+        }
+        rooted = true;
+    }
+    if (!rooted) {
+        return chain.invert ? Movn(dest, 0) : Movz(dest, 0);
+    }
+    return A64Status::Ok;
+}
+
+A64Status A64Enc::LoadAddress(const A64Reg rd, A64SymbolRef &ref) const {
+    if (!AddressableReg(rd)) {
+        return A64Status::InvalidRegister;
+    }
+    // Both immediates are zero here and belong to the relocations rather than
+    // to the encoding, which is why the sequence is fixed at two instructions
+    // whatever the symbol turns out to be.
+    const std::uint32_t adrp = Size();
+    if (const A64Status status = Adrp(rd, 0); status != A64Status::Ok) {
+        return status;
+    }
+    const std::uint32_t lo12 = Size();
+    if (const A64Status status = AddImm(rd, rd, 0); status != A64Status::Ok) {
+        return status;
+    }
+    ref = A64SymbolRef{adrp, lo12};
+    return A64Status::Ok;
+}
+
+A64Status A64Enc::LoadFromSymbol(const A64Reg rt, A64SymbolRef &ref, const A64Reg base) const {
+    // The access is checked before the page address is emitted, so a transfer
+    // register with no whole-register form leaves no half a sequence behind.
+    if (!AddressableReg(base) || !WholeRegisterForm(rt, true)) {
+        return A64Status::InvalidRegister;
+    }
+    const std::uint32_t adrp = Size();
+    if (const A64Status status = Adrp(base, 0); status != A64Status::Ok) {
+        return status;
+    }
+    const std::uint32_t lo12 = Size();
+    if (const A64Status status = Ldr(rt, base, 0); status != A64Status::Ok) {
+        return status;
+    }
+    ref = A64SymbolRef{adrp, lo12};
+    return A64Status::Ok;
+}
+
+A64Status A64Enc::StoreToSymbol(const A64Reg rt, A64SymbolRef &ref, const A64Reg base) const {
+    if (!AddressableReg(base) || !WholeRegisterForm(rt, false)) {
+        return A64Status::InvalidRegister;
+    }
+    // The page address arrives in `base` one instruction before the store reads
+    // it, so a store out of that same register would have overwritten the
+    // address it was about to use.
+    if (rt.IsGeneral() && rt.code == base.code) {
+        return A64Status::InvalidRegister;
+    }
+    const std::uint32_t adrp = Size();
+    if (const A64Status status = Adrp(base, 0); status != A64Status::Ok) {
+        return status;
+    }
+    const std::uint32_t lo12 = Size();
+    if (const A64Status status = Str(rt, base, 0); status != A64Status::Ok) {
+        return status;
+    }
+    ref = A64SymbolRef{adrp, lo12};
+    return A64Status::Ok;
+}
+
+A64Status A64Enc::AddSubLargeImm(const A64Reg rd, const A64Reg rn, const std::int64_t value,
+                                 const A64Reg scratch) const {
+    if (!SpOperand(rd, 64) || !SpOperand(rn, 64)) {
+        return A64Status::InvalidRegister;
+    }
+    const bool subtract = value < 0;
+    // Negated in unsigned arithmetic, so the most negative value has a
+    // magnitude too — which it does not in two's complement.
+    const std::uint64_t magnitude =
+        subtract ? 0U - static_cast<std::uint64_t>(value) : static_cast<std::uint64_t>(value);
+
+    if (magnitude == 0) {
+        return rd == rn ? A64Status::Ok : Mov(rd, rn);
+    }
+    if (TryEncodeArithImm12(magnitude)) {
+        return subtract ? SubImm(rd, rn, magnitude) : AddImm(rd, rn, magnitude);
+    }
+    // The two shift positions of imm12 abut, so every value below 2^24 is the
+    // sum of one immediate of each — one instruction cheaper than materializing
+    // it, and costing no scratch register at all. Neither half is zero here,
+    // since a value with a zero half is one the single form already reached.
+    if (magnitude < (1ULL << 24U)) {
+        const std::uint64_t high = magnitude & ~0xFFFULL;
+        const std::uint64_t low = magnitude & 0xFFFULL;
+        if (const A64Status status = subtract ? SubImm(rd, rn, high) : AddImm(rd, rn, high); status != A64Status::Ok) {
+            return status;
+        }
+        return subtract ? SubImm(rd, rd, low) : AddImm(rd, rd, low);
+    }
+
+    // Out of reach of the immediate forms: the magnitude goes into the scratch
+    // register, which must not be the source the register form has yet to read.
+    if (!AddressableReg(scratch) || scratch.code == rn.code) {
+        return A64Status::InvalidRegister;
+    }
+    if (const A64Status status = LoadImm64(scratch, magnitude); status != A64Status::Ok) {
+        return status;
+    }
+    // The shifted-register forms read code 31 as the zero register throughout,
+    // so an operand that is SP takes the extended-register form instead, whose
+    // UXTX option reads the whole of the index and shifts it by nothing.
+    if (rd.IsStackPointer() || rn.IsStackPointer()) {
+        return subtract ? SubExt(rd, rn, scratch, A64ExtendKind::Uxtx) : AddExt(rd, rn, scratch, A64ExtendKind::Uxtx);
+    }
+    return subtract ? Sub(rd, rn, scratch) : Add(rd, rn, scratch);
+}
+
+A64Status A64Enc::FrameAdjust(const std::int64_t delta, const A64Reg scratch) const {
+    if (delta % 16 != 0) {
+        return A64Status::Unaligned;
+    }
+    return AddSubLargeImm(A64::Sp, A64::Sp, delta, scratch);
+}
+
+A64Status A64Enc::ResolveMemOperand(const A64Reg base, const std::int64_t offset, const unsigned accessBytes,
+                                    A64MemOperand &operand, const A64Reg scratch) const {
+    if (!SpOperand(base, 64)) {
+        return A64Status::InvalidRegister;
+    }
+    // The width scales the offset of the scaled form, so it has to be one an
+    // access actually has: a power of two from a byte to a Q register.
+    if (accessBytes == 0 || accessBytes > 16 || (accessBytes & (accessBytes - 1U)) != 0) {
+        return A64Status::InvalidImmediate;
+    }
+
+    const auto bytes = static_cast<std::int64_t>(accessBytes);
+    if (offset >= 0 && offset % bytes == 0 && offset / bytes <= 0xFFF) {
+        operand = A64MemOperand{base, offset, false};
+        return A64Status::Ok;
+    }
+    // What a negative or unaligned displacement falls back to, at every width.
+    if (FitsSigned(offset, 9)) {
+        operand = A64MemOperand{base, offset, true};
+        return A64Status::Ok;
+    }
+
+    if (!AddressableReg(scratch) || scratch.code == base.code) {
+        return A64Status::InvalidRegister;
+    }
+    // The whole displacement moves into the scratch register, which then
+    // addresses at zero. AddSubLargeImm may want a scratch of its own, and the
+    // one it is writing is free the moment it has been written.
+    if (const A64Status status = AddSubLargeImm(scratch, base, offset, scratch); status != A64Status::Ok) {
+        return status;
+    }
+    operand = A64MemOperand{scratch, 0, false};
+    return A64Status::Ok;
 }
 } // namespace Rux

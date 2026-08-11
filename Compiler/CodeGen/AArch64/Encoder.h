@@ -81,6 +81,29 @@ struct A64MovwImm {
 // encoding serves the S and the D form and no width travels with the value.
 [[nodiscard]] std::optional<std::uint8_t> TryEncodeFpImm8(double value);
 
+// Where the two instructions of a symbol reference landed, so the code
+// generator can hang a relocation on each. The ADRP takes
+// AArch64AdrPrelPgHi21, and whichever instruction supplies the low twelve bits
+// takes AArch64AddAbsLo12Nc or AArch64LdstAbsLo12Nc.
+//
+// Both are byte offsets into the buffer, and an AArch64 relocation patches
+// fields of a whole instruction word rather than a displacement inside it, so
+// each names its instruction rather than a place within it.
+struct A64SymbolRef {
+    std::uint32_t adrp = 0;
+    std::uint32_t lo12 = 0;
+};
+
+// How an access should address memory once ResolveMemOperand has emitted
+// whatever it took to bring the address in reach: the register to address
+// through, a displacement one of the two immediate forms encodes, and which of
+// the two that is — the scaled Ldr / Str page, or the unscaled Ldur / Stur one.
+struct A64MemOperand {
+    A64Reg base;
+    std::int64_t offset = 0;
+    bool unscaled = false;
+};
+
 // Instruction-stream writer.
 //
 // Owns nothing: words are appended to the caller's buffer, so the code
@@ -583,6 +606,92 @@ public:
     [[nodiscard]] A64Status Frintm(A64Reg rd, A64Reg rn) const;
     [[nodiscard]] A64Status Frintz(A64Reg rd, A64Reg rn) const;
     [[nodiscard]] A64Status Frinta(A64Reg rd, A64Reg rn) const;
+
+    // Composite sequences.
+    //
+    // The multi-instruction idioms a code generator reaches for constantly: a
+    // constant too wide for any immediate, the address of a symbol, an access
+    // at an offset no addressing mode reaches. They live here so the back end
+    // never hand-rolls an encoding, and they are the AArch64 counterpart of the
+    // x86-64 encoder's RIP-relative helpers that hand back a relocation offset.
+    //
+    // Scratch registers. AAPCS64 reserves X16 and X17 for a linker to clobber
+    // inside a veneer, so nothing may hold a value in them across a call and
+    // they are the two registers a sequence can take without being given one.
+    // Every sequence that can need a scratch takes it as a trailing parameter
+    // defaulting to A64::Ip0 and never touches A64::Ip1, so a caller with
+    // something live in X16 — an inline-assembly body, or a second sequence
+    // half-finished — names another register instead. A scratch is a 64-bit
+    // register that is neither reading of code 31, since the zero register
+    // discards what it is given and the stack pointer is not a sequence's to
+    // take, and it must not be an operand the sequence has yet to read; either
+    // is InvalidRegister rather than silently wrong code. Both are checked only
+    // on the path that reaches for the scratch, since a sequence that encodes
+    // without one never touches it.
+    //
+    // None of these writes the condition flags, so one may sit between a
+    // comparison and the branch that reads it. Each validates before it emits,
+    // so a refusal leaves the buffer exactly as a refused single encoder does.
+
+    // Materialize a constant, in the shortest sequence that reaches it: one
+    // logical-immediate ORR where the value has such an encoding, and otherwise
+    // a MOVZ or MOVN root followed by a MOVK for each halfword the root did not
+    // already leave in place. The root is inverted when that makes for fewer
+    // halfwords, so a small negative number costs one instruction rather than
+    // four. A single move wins ties, since MOVZ is the canonical spelling of
+    // the values both forms reach.
+    //
+    // `rd` may be a W register, which loads the 32-bit chain and takes at most
+    // two instructions; a value with bits a W register cannot hold is
+    // InvalidImmediate rather than silently truncated.
+    [[nodiscard]] A64Status LoadImm64(A64Reg rd, std::uint64_t value) const;
+
+    // ADRP plus ADD: the address of a symbol, formed from the page it sits on
+    // and its offset within that page. Both immediates are emitted as zero and
+    // filled in by the relocations `ref` locates, so the sequence is the same
+    // whatever the symbol turns out to be. `rd` is a register the address can
+    // afterwards be used from, so neither reading of code 31 is one.
+    [[nodiscard]] A64Status LoadAddress(A64Reg rd, A64SymbolRef &ref) const;
+
+    // ADRP plus LDR or STR: the value at a symbol rather than its address,
+    // which is one instruction fewer than forming the address and then using
+    // it. `base` holds the page and is the scratch of these two sequences by
+    // another name, under the same rule; a load may name the register it is
+    // loading into, but a store may not, since the address would be gone before
+    // the value was written. The access width comes from `rt`, exactly as it does in Ldr and
+    // Str, and Task 30 picks the width-specific relocation back out of the
+    // instruction the fixup names.
+    [[nodiscard]] A64Status LoadFromSymbol(A64Reg rt, A64SymbolRef &ref, A64Reg base = A64::Ip0) const;
+    [[nodiscard]] A64Status StoreToSymbol(A64Reg rt, A64SymbolRef &ref, A64Reg base = A64::Ip0) const;
+
+    // rd = rn + `value`, for any 64-bit value: a negative one subtracts, and
+    // both operands may be SP. One ADD or SUB where the magnitude encodes as an
+    // imm12; two where it is below 2^24, since the shifted and unshifted forms
+    // together cover every such value and neither costs a register; and
+    // otherwise the magnitude into `scratch` and a register form.
+    [[nodiscard]] A64Status AddSubLargeImm(A64Reg rd, A64Reg rn, std::int64_t value, A64Reg scratch = A64::Ip0) const;
+
+    // Move SP by `delta` bytes: negative to open a frame, positive to close
+    // one, and zero to emit nothing at all. AAPCS64 requires SP to be a
+    // multiple of 16 wherever it addresses memory, which in a Rux frame is
+    // everywhere, so a `delta` that would break that is Unaligned rather than
+    // rounded — and each instruction of a multi-instruction adjustment moves SP
+    // by a multiple of 16 in turn, so the requirement holds between them too.
+    [[nodiscard]] A64Status FrameAdjust(std::int64_t delta, A64Reg scratch = A64::Ip0) const;
+
+    // Decide how an access `accessBytes` wide should reach `base + offset`,
+    // emitting whatever that takes and reporting the addressing left to write
+    // in `operand`. The scaled form is preferred, since it reaches furthest and
+    // is the canonical spelling; a negative or unaligned displacement falls back
+    // to the unscaled one; and an offset out of reach of both moves into
+    // `scratch`, which then addresses at zero.
+    //
+    // The access itself is the caller's to emit, because the mnemonic carries
+    // the width and the signedness this cannot know: pass `operand.base` and
+    // `operand.offset` to Ldr, Ldrb, Str and their kin when `operand.unscaled`
+    // is false, and to Ldur, Ldurb, Stur and theirs when it is true.
+    [[nodiscard]] A64Status ResolveMemOperand(A64Reg base, std::int64_t offset, unsigned accessBytes,
+                                              A64MemOperand &operand, A64Reg scratch = A64::Ip0) const;
 
 private:
     std::vector<std::uint8_t> &out;

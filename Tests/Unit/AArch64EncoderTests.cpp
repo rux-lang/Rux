@@ -30,6 +30,21 @@ struct A64Vectors {
         CHECK(status == expected);
         CHECK(code.empty());
     }
+
+    // Every word emitted so far, in order, and nothing after them.
+    void Emitted(const std::vector<std::uint32_t> &expected) {
+        REQUIRE(code.size() == expected.size() * 4);
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            CHECK(enc.WordAt(static_cast<std::uint32_t>(i) * 4) == expected[i]);
+        }
+        code.clear();
+    }
+
+    // A composite sequence and every word it must emit.
+    void EncodesAll(const A64Status status, const std::vector<std::uint32_t> &expected) {
+        CHECK(status == A64Status::Ok);
+        Emitted(expected);
+    }
 };
 } // namespace
 
@@ -1708,6 +1723,223 @@ TEST_CASE("AArch64 encodes floating-point rounding") {
 
     v.Refuses(v.enc.Frintn(A64::Sn(0), A64::Dn(1)), A64Status::InvalidRegister);
     v.Refuses(v.enc.Frintp(A64::Xn(0), A64::Xn(1)), A64Status::InvalidRegister);
+}
+
+// The composite sequences, whose words are those of the instructions they are
+// built from and whose interest is in which of them they choose.
+TEST_CASE("AArch64 loads a constant in the shortest sequence that reaches it") {
+    A64Vectors v;
+
+    SUBCASE("one move where one reaches") {
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(0), 0), {0xD2800000});
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(0), 42), {0xD2800540});
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(0), 0xFFFF), {0xD29FFFE0});
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(0), 0x12340000), {0xD2A24680});
+        // A value that is mostly ones is one MOVN rather than a chain, at any
+        // halfword.
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(1), ~0ULL), {0x92800001});
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(1), ~0x1234ULL), {0x92824681});
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(6), 0xFFFFEDCCFFFFFFFFULL), {0x92C24666});
+    }
+
+    SUBCASE("a MOVK for every halfword the root does not leave behind") {
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(2), 0x12345678), {0xD28ACF02, 0xF2A24682});
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(2), 0x1234567890ABCDEFULL),
+                     {0xD299BDE2, 0xF2B21562, 0xF2CACF02, 0xF2E24682});
+    }
+
+    SUBCASE("one logical immediate where the chain would be longer") {
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(3), 0x5555555555555555ULL), {0xB200F3E3});
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(3), 0xFFFF0000FFFF0000ULL), {0xB2103FE3});
+        // A run of ones that stays inside the low word encodes at either
+        // width, and the register's own width is the canonical spelling.
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(4), 0x0FFFFFF0), {0xB27C5FE4});
+        // A value that fits in a word can also be loaded through the W view of
+        // the register, which zeroes the rest of it: the halfwords above the
+        // word cost nothing there, and the 32-bit logical immediates are a
+        // different set from the 64-bit ones, since a rotation that would wrap
+        // out of the word is one of theirs and none of the others.
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(4), 0xABCDFFFF), {0x12AA8644});
+        v.EncodesAll(v.enc.LoadImm64(A64::Xn(4), 0xFFF000FF), {0x320C4FE4});
+    }
+
+    SUBCASE("a W destination takes the 32-bit chain") {
+        v.EncodesAll(v.enc.LoadImm64(A64::Wn(5), 0xDEADBEEF), {0x5297DDE5, 0x72BBD5A5});
+        v.EncodesAll(v.enc.LoadImm64(A64::Wn(5), 0xFFFF0000), {0x52BFFFE5});
+    }
+
+    SUBCASE("refusals") {
+        // A W register holds 32 bits and zeroes the rest of the X register it
+        // is a view of, so a wider value is refused rather than truncated.
+        v.Refuses(v.enc.LoadImm64(A64::Wn(0), 0x100000000ULL), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.LoadImm64(A64::Sp, 0), A64Status::InvalidRegister);
+        v.Refuses(v.enc.LoadImm64(A64::Dn(0), 0), A64Status::InvalidRegister);
+    }
+}
+
+TEST_CASE("AArch64 reaches a symbol through a page and an offset within it") {
+    A64Vectors v;
+    A64SymbolRef ref{};
+
+    SUBCASE("the address of a symbol is ADRP plus ADD") {
+        v.EncodesAll(v.enc.LoadAddress(A64::Xn(9), ref), {0x90000009, 0x91000129});
+        CHECK(ref.adrp == 0);
+        CHECK(ref.lo12 == 4);
+    }
+
+    SUBCASE("the relocation offsets name the instructions wherever they land") {
+        CHECK(v.enc.Nop() == A64Status::Ok);
+        CHECK(v.enc.LoadAddress(A64::Xn(9), ref) == A64Status::Ok);
+        CHECK(ref.adrp == 4);
+        CHECK(ref.lo12 == 8);
+        CHECK(v.enc.WordAt(ref.adrp) == 0x90000009);
+        CHECK(v.enc.WordAt(ref.lo12) == 0x91000129);
+    }
+
+    SUBCASE("the value at a symbol is ADRP plus the access itself") {
+        // A load may name the register holding the page, since the address has
+        // been read by the time the value is written.
+        v.EncodesAll(v.enc.LoadFromSymbol(A64::Xn(2), ref, A64::Xn(2)), {0x90000002, 0xF9400042});
+        CHECK(ref.lo12 == 4);
+        // The default base is the first intra-procedure-call scratch register.
+        v.EncodesAll(v.enc.LoadFromSymbol(A64::Dn(5), ref), {0x90000010, 0xFD400205});
+        v.EncodesAll(v.enc.StoreToSymbol(A64::Wn(1), ref), {0x90000010, 0xB9000201});
+    }
+
+    SUBCASE("refusals") {
+        // A store out of the register holding the page would have overwritten
+        // the address before it was used.
+        v.Refuses(v.enc.StoreToSymbol(A64::Xn(16), ref), A64Status::InvalidRegister);
+        // Neither reading of code 31 holds an address a sequence can use.
+        v.Refuses(v.enc.LoadAddress(A64::Sp, ref), A64Status::InvalidRegister);
+        v.Refuses(v.enc.LoadAddress(A64::Xzr, ref), A64Status::InvalidRegister);
+        v.Refuses(v.enc.LoadAddress(A64::Wn(0), ref), A64Status::InvalidRegister);
+        v.Refuses(v.enc.LoadFromSymbol(A64::Xn(0), ref, A64::Wn(3)), A64Status::InvalidRegister);
+        // The access is checked before the page address is emitted, so a
+        // refusal leaves no half a sequence behind.
+        v.Refuses(v.enc.LoadFromSymbol(A64::Sp, ref), A64Status::InvalidRegister);
+        v.Refuses(v.enc.StoreToSymbol(A64::Sp, ref), A64Status::InvalidRegister);
+    }
+}
+
+TEST_CASE("AArch64 adds a value no immediate field can hold") {
+    A64Vectors v;
+    const A64Reg x0 = A64::Xn(0);
+    const A64Reg x1 = A64::Xn(1);
+
+    SUBCASE("one instruction where the magnitude encodes") {
+        v.EncodesAll(v.enc.AddSubLargeImm(x0, x1, 4), {0x91001020});
+        v.EncodesAll(v.enc.AddSubLargeImm(x0, x1, -4), {0xD1001020});
+        v.EncodesAll(v.enc.AddSubLargeImm(A64::Sp, A64::Sp, -4096), {0xD14007FF});
+        // Nothing to add is nothing to emit, unless the value has to move.
+        v.EncodesAll(v.enc.AddSubLargeImm(x0, x0, 0), {});
+        v.EncodesAll(v.enc.AddSubLargeImm(x0, x1, 0), {0xAA0103E0});
+    }
+
+    SUBCASE("two where the two shift positions cover it between them") {
+        v.EncodesAll(v.enc.AddSubLargeImm(x0, x1, 0x1001), {0x91400420, 0x91000400});
+        v.EncodesAll(v.enc.AddSubLargeImm(x0, x1, -0x1001), {0xD1400420, 0xD1000400});
+    }
+
+    SUBCASE("a scratch register where neither immediate form reaches") {
+        v.EncodesAll(v.enc.AddSubLargeImm(x0, x1, 0x1000000), {0xD2A02010, 0x8B100020});
+        // Only the extended-register form can name SP, so an operand that is
+        // the stack pointer takes it, reading the whole of the scratch.
+        v.EncodesAll(v.enc.AddSubLargeImm(A64::Sp, A64::Sp, 0x1000000), {0xD2A02010, 0x8B3063FF});
+        // The most negative value has a magnitude, unlike in two's complement.
+        v.EncodesAll(v.enc.AddSubLargeImm(x0, x1, INT64_MIN), {0xD2F00010, 0xCB100020});
+        // A caller holding something in the default scratch names another.
+        v.EncodesAll(v.enc.AddSubLargeImm(x0, A64::Ip0, 0x1000000, A64::Ip1), {0xD2A02011, 0x8B110200});
+    }
+
+    SUBCASE("refusals") {
+        // The scratch is checked only on the path that reaches for it.
+        v.EncodesAll(v.enc.AddSubLargeImm(x0, A64::Ip0, 4), {0x91001200});
+        v.Refuses(v.enc.AddSubLargeImm(x0, A64::Ip0, 0x1000000), A64Status::InvalidRegister);
+        v.Refuses(v.enc.AddSubLargeImm(x0, x1, 0x1000000, A64::Sp), A64Status::InvalidRegister);
+        v.Refuses(v.enc.AddSubLargeImm(x0, x1, 0x1000000, A64::Xzr), A64Status::InvalidRegister);
+        v.Refuses(v.enc.AddSubLargeImm(A64::Wn(0), A64::Wn(1), 4), A64Status::InvalidRegister);
+        v.Refuses(v.enc.AddSubLargeImm(A64::Xzr, x1, 4), A64Status::InvalidRegister);
+    }
+}
+
+TEST_CASE("AArch64 moves the stack pointer by a whole frame") {
+    A64Vectors v;
+    v.EncodesAll(v.enc.FrameAdjust(-16), {0xD10043FF});
+    v.EncodesAll(v.enc.FrameAdjust(16), {0x910043FF});
+    v.EncodesAll(v.enc.FrameAdjust(0), {});
+    // Each instruction of a multi-instruction adjustment moves SP by a multiple
+    // of 16 in turn, so it is aligned between them as well as after them.
+    v.EncodesAll(v.enc.FrameAdjust(-1052672), {0xD14407FF});
+    v.EncodesAll(v.enc.FrameAdjust(-16777232), {0xD2800210, 0xF2A02010, 0xCB3063FF});
+
+    v.Refuses(v.enc.FrameAdjust(-24), A64Status::Unaligned);
+    v.Refuses(v.enc.FrameAdjust(8), A64Status::Unaligned);
+}
+
+TEST_CASE("AArch64 resolves a memory operand to an addressing mode that reaches it") {
+    A64Vectors v;
+    A64MemOperand mem;
+
+    SUBCASE("the scaled form where the offset divides and fits") {
+        CHECK(v.enc.ResolveMemOperand(A64::Sp, 32760, 8, mem) == A64Status::Ok);
+        CHECK(mem.base == A64::Sp);
+        CHECK(mem.offset == 32760);
+        CHECK_FALSE(mem.unscaled);
+        CHECK(v.code.empty());
+        v.Encodes(v.enc.Ldr(A64::Xn(0), mem.base, static_cast<std::uint64_t>(mem.offset)), 0xF97FFFE0);
+    }
+
+    SUBCASE("the unscaled form for what does not divide or is below the base") {
+        CHECK(v.enc.ResolveMemOperand(A64::Xn(1), 4, 8, mem) == A64Status::Ok);
+        CHECK(mem.unscaled);
+        CHECK(mem.offset == 4);
+        CHECK(v.enc.ResolveMemOperand(A64::Xn(1), -256, 8, mem) == A64Status::Ok);
+        CHECK(mem.base == A64::Xn(1));
+        CHECK(mem.offset == -256);
+        CHECK(mem.unscaled);
+        CHECK(v.code.empty());
+        v.Encodes(v.enc.Ldur(A64::Xn(0), mem.base, mem.offset), 0xF8500020);
+    }
+
+    SUBCASE("a scratch register for what neither form reaches") {
+        CHECK(v.enc.ResolveMemOperand(A64::Sp, 32768, 8, mem) == A64Status::Ok);
+        CHECK(mem.base == A64::Ip0);
+        CHECK(mem.offset == 0);
+        CHECK_FALSE(mem.unscaled);
+        v.Emitted({0x914023F0});
+
+        CHECK(v.enc.ResolveMemOperand(A64::Sp, -257, 8, mem) == A64Status::Ok);
+        CHECK(mem.base == A64::Ip0);
+        v.Emitted({0xD10407F0});
+
+        // The scratch is the destination of its own adjustment, so the sequence
+        // that materializes the address may take more than one instruction.
+        CHECK(v.enc.ResolveMemOperand(A64::Sp, 100000, 8, mem) == A64Status::Ok);
+        v.Emitted({0x914063F0, 0x911A8210});
+    }
+
+    SUBCASE("the width decides how far the scaled form reaches") {
+        CHECK(v.enc.ResolveMemOperand(A64::Xn(1), 4095, 1, mem) == A64Status::Ok);
+        CHECK_FALSE(mem.unscaled);
+        CHECK(mem.offset == 4095);
+        CHECK(v.code.empty());
+        // One byte further and the field is full, though a doubleword access
+        // would still have thousands of its own to go.
+        CHECK(v.enc.ResolveMemOperand(A64::Xn(1), 4096, 1, mem) == A64Status::Ok);
+        CHECK(mem.base == A64::Ip0);
+        v.Emitted({0x91400430});
+    }
+
+    SUBCASE("refusals") {
+        v.Refuses(v.enc.ResolveMemOperand(A64::Xzr, 0, 8, mem), A64Status::InvalidRegister);
+        v.Refuses(v.enc.ResolveMemOperand(A64::Xn(1), 0, 3, mem), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.ResolveMemOperand(A64::Xn(1), 0, 32, mem), A64Status::InvalidImmediate);
+        // The scratch is refused where it would overwrite the base it is
+        // computed from, and where it is no scratch at all.
+        v.Refuses(v.enc.ResolveMemOperand(A64::Ip0, 32768, 8, mem), A64Status::InvalidRegister);
+        v.Refuses(v.enc.ResolveMemOperand(A64::Xn(1), 32768, 8, mem, A64::Sp), A64Status::InvalidRegister);
+    }
 }
 
 TEST_CASE("AArch64 encoder statuses have names for diagnostics") {
