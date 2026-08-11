@@ -242,10 +242,10 @@ struct ElfImage {
     }
 };
 
-ElfImage LinkAArch64Executable(RcuFile object, const std::filesystem::path &output) {
+ElfImage LinkAArch64Executable(std::vector<RcuFile> objects, const std::filesystem::path &output) {
     std::error_code ec;
     std::filesystem::remove(output, ec);
-    Linker linker({std::move(object)}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Linux,
+    Linker linker(std::move(objects), "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Linux,
                   Target::Arch::AArch64);
     REQUIRE(linker.Link(output));
     std::ifstream stream(output, std::ios::binary);
@@ -254,6 +254,24 @@ ElfImage LinkAArch64Executable(RcuFile object, const std::filesystem::path &outp
     stream.close();
     std::filesystem::remove(output, ec);
     return image;
+}
+
+ElfImage LinkAArch64Executable(RcuFile object, const std::filesystem::path &output) {
+    std::vector<RcuFile> objects;
+    objects.push_back(std::move(object));
+    return LinkAArch64Executable(std::move(objects), output);
+}
+
+// An AArch64 section carrying `data`, ready to be pushed onto an object.
+RcuSection MakeSection(const std::string &name, const uint32_t type, const uint32_t flags, const uint16_t alignment,
+                       std::vector<uint8_t> data) {
+    RcuSection section;
+    section.name = name;
+    section.type = type;
+    section.flags = flags;
+    section.alignment = alignment;
+    section.data = std::move(data);
+    return section;
 }
 } // namespace
 
@@ -477,4 +495,60 @@ TEST_CASE("native archive writers emit deterministic target-specific indexes") {
     for (const auto &path : {gnuFirst, gnuSecond, bsd, coff, importLibrary}) {
         std::filesystem::remove(path, ec);
     }
+}
+
+TEST_CASE("ELF linker starts each object's sections on the alignment that object asked for") {
+    // A pooled floating-point constant is reached by a scaled LDR whose twelve
+    // bits count doublewords, so an address that does not divide by eight has
+    // no encoding at all. The first object's read-only data ends on an odd
+    // byte, which leaves the second object's constant aligned only if the
+    // linker pads between the two.
+    RcuFile first;
+    first.arch = RcuArch::AArch64;
+    std::vector<uint8_t> entry;
+    AppendWord(entry, 0xD65F03C0); // ret
+    first.sections.push_back(
+        MakeSection(".text", RcuSecType::Text, RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read, 4, entry));
+    first.sections.push_back(
+        MakeSection(".rodata", RcuSecType::RoData, RcuSecFlag::Alloc | RcuSecFlag::Read, 8, {'h', 'i', 0}));
+    first.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+
+    RcuFile second;
+    second.arch = RcuArch::AArch64;
+    std::vector<uint8_t> loader;
+    AppendWord(loader, 0x90000010); // adrp x16, Pooled
+    AppendWord(loader, 0xFD400210); // ldr  d16, [x16, :lo12:Pooled]
+    RcuSection text =
+        MakeSection(".text", RcuSecType::Text, RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read, 4, loader);
+    text.relocs.push_back({0, 0, RcuRelType::AArch64AdrPrelPgHi21, 0});
+    text.relocs.push_back({4, 0, RcuRelType::AArch64LdstAbsLo12Nc, 0});
+    second.sections.push_back(std::move(text));
+
+    constexpr uint64_t payload = 0x0123456789ABCDEFULL;
+    std::vector<uint8_t> pooled;
+    for (unsigned i = 0; i < 8; ++i) {
+        pooled.push_back(static_cast<uint8_t>(payload >> (i * 8U)));
+    }
+    second.sections.push_back(
+        MakeSection(".rodata", RcuSecType::RoData, RcuSecFlag::Alloc | RcuSecFlag::Read, 8, std::move(pooled)));
+    second.symbols.push_back({"Pooled", "float64", 0, 8, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
+
+    std::vector<RcuFile> objects;
+    objects.push_back(std::move(first));
+    objects.push_back(std::move(second));
+    // Linking at all is half the assertion: an unaligned constant is reported
+    // rather than truncated, so this fails before it reads anything back.
+    const ElfImage image = LinkAArch64Executable(std::move(objects),
+                                                 std::filesystem::temp_directory_path() / "rux-elf-aarch64-align-test");
+
+    // The second object's text follows the entry stub and the first object's
+    // single instruction.
+    const uint64_t site = image.Entry() + 24 + 4;
+    const uint32_t adrp = image.Word(site);
+    const auto pageOffset = static_cast<int32_t>(((adrp >> 5U & 0x7FFFFU) << 2U | (adrp >> 29U & 3U)) << 11U) >> 11;
+    const uint64_t page = (site & ~uint64_t{0xFFF}) + (static_cast<int64_t>(pageOffset) << 12U);
+    const uint64_t address = page + ((image.Word(site + 4) >> 10U & 0xFFFU) << 3U);
+
+    CHECK(address % 8 == 0);
+    CHECK(image.Read64(image.OffsetOf(address)) == payload);
 }

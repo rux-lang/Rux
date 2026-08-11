@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <doctest.h>
 #include <format>
 #include <optional>
@@ -84,6 +85,55 @@ LirPackage CompileToAArch64Lir(const std::string &source) {
     }
     const std::int64_t imm12 = (word >> 10U) & 0xFFFU;
     return (word & (1U << 22U)) != 0 ? imm12 << 12U : imm12;
+}
+
+// A symbol by name, or nothing when the object carries none.
+[[nodiscard]] const RcuSymbol *FindSymbol(const RcuFile &object, const std::string_view name) {
+    const auto found = std::ranges::find_if(object.symbols, [name](const RcuSymbol &s) { return s.name == name; });
+    return found == object.symbols.end() ? nullptr : &*found;
+}
+
+// The bytes a read-only symbol names, which is how a constant's contents are
+// checked without depending on where in .rodata it landed.
+[[nodiscard]] std::vector<std::uint8_t> RodataOf(const RcuFile &object, const std::string_view name) {
+    const RcuSymbol *symbol = FindSymbol(object, name);
+    REQUIRE_MESSAGE(symbol != nullptr, name);
+    REQUIRE_EQ(symbol->sectionIdx, RCU_RODATA_IDX);
+    const auto &rodata = object.sections[RCU_RODATA_IDX].data;
+    REQUIRE(symbol->value + symbol->size <= rodata.size());
+    return {rodata.begin() + symbol->value, rodata.begin() + symbol->value + symbol->size};
+}
+
+// The relocations of a section that name `symbol`, in the order they were
+// recorded, so a two-instruction symbol reference is one pair to check.
+[[nodiscard]] std::vector<RcuReloc> RelocsFor(const RcuFile &object, const std::uint16_t sectionIdx,
+                                              const std::string_view symbol) {
+    std::vector<RcuReloc> found;
+    for (const auto &reloc : object.sections[sectionIdx].relocs) {
+        if (reloc.symbolIndex < object.symbols.size() && object.symbols[reloc.symbolIndex].name == symbol) {
+            found.push_back(reloc);
+        }
+    }
+    return found;
+}
+
+// The word at a byte offset into .text, which is where a relocation says an
+// instruction it patches sits.
+[[nodiscard]] std::uint32_t TextWordAt(const RcuFile &object, const std::uint32_t offset) {
+    const auto &text = object.sections[RCU_TEXT_IDX].data;
+    REQUIRE(offset + 4 <= text.size());
+    return static_cast<std::uint32_t>(text[offset]) | static_cast<std::uint32_t>(text[offset + 1]) << 8U |
+           static_cast<std::uint32_t>(text[offset + 2]) << 16U | static_cast<std::uint32_t>(text[offset + 3]) << 24U;
+}
+
+// The immediate of `add x9, x29, #imm`, or nothing when the word is some other
+// instruction. An alloca's address is the frame pointer plus a displacement,
+// and which displacement is the frame layout's business rather than this test's.
+[[nodiscard]] std::optional<std::uint32_t> FramePointerAddImm(const std::uint32_t word) {
+    if ((word & 0xFFC003FFU) != 0x910003A9U) {
+        return std::nullopt;
+    }
+    return word >> 10U & 0xFFFU;
 }
 
 // The one message an emitter is expected to have produced, joined so a failure
@@ -271,4 +321,215 @@ TEST_CASE("AArch64 RCU emitter names each unimplemented construct once") {
     std::ranges::sort(sorted);
     CHECK_EQ(std::ranges::unique(sorted).begin(), sorted.end());
     CHECK_MESSAGE(!messages.empty(), "a loop reaches opcodes this back end does not lower yet");
+}
+
+// Constants, globals and the read-only pool
+//
+// The opcodes below are the ones a value has to pass through before anything
+// can be done with it, and the store that puts it to use belongs to the next
+// group. The programs here therefore still report the opcodes they reach past
+// the constant, which is why these cases assert what was emitted for the
+// constant rather than that nothing was reported.
+
+TEST_CASE("AArch64 RCU emitter materializes a boolean, a character and a null pointer") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            let flag: bool = true;
+            let letter: char8 = c8'x';
+            let nothing: *int32 = null;
+            return 0;
+        }
+    )");
+
+    const auto objects = AArch64RcuEmitter(package, "test").Generate();
+    REQUIRE_EQ(objects.size(), 1);
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // Each is one bit pattern in X9 and one store of the bytes its type
+    // occupies: a boolean and a character are single bytes, and a pointer is a
+    // doubleword.
+    const std::vector<std::uint32_t> expected = {
+        0xD2800029, // mov  x9, #1
+        0xD2800F09, // mov  x9, #120
+        0xD2800009, // mov  x9, #0
+    };
+    for (const auto word : expected) {
+        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    }
+    // The narrow ones store a byte through the W view of the same register.
+    CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFC003FFU) == 0x390003A9U; }));
+}
+
+TEST_CASE("AArch64 RCU emitter takes the address of an alloca from the frame pointer") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            let value: int = 7;
+            return 0;
+        }
+    )");
+
+    const auto objects = AArch64RcuEmitter(package, "test").Generate();
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    const auto found =
+        std::ranges::find_if(words, [](const std::uint32_t w) { return FramePointerAddImm(w).has_value(); });
+    REQUIRE_MESSAGE(found != words.end(), "the alloca's address is an ADD from X29");
+    // The frame record sits at the bottom of the frame, so every local is above
+    // it and no alloca is ever reached at a displacement of zero.
+    CHECK_GE(*FramePointerAddImm(*found), 16);
+}
+
+TEST_CASE("AArch64 RCU emitter loads an encodable float with FMOV and pools the rest") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            let near: float64 = 1.5;
+            let far: float64 = 1e300;
+            let single: float32 = 2.5f32;
+            return 0;
+        }
+    )");
+
+    const auto objects = AArch64RcuEmitter(package, "test").Generate();
+    const auto &object = objects.front();
+    const auto words = FunctionWords(object, "Main");
+
+    // The two FMOV forms name their value outright and reach no memory at all.
+    CHECK_MESSAGE(std::ranges::find(words, 0x1E6F1010U) != words.end(), "fmov d16, #1.5");
+    CHECK_MESSAGE(std::ranges::find(words, 0x1E209010U) != words.end(), "fmov s16, #2.5");
+
+    // 1e300 is not one of the 256 values FMOV encodes, so it is a doubleword in
+    // .rodata reached by ADRP plus a scaled LDR, one relocation on each.
+    const auto pooled = RelocsFor(object, RCU_TEXT_IDX, "__f64_0");
+    REQUIRE_EQ(pooled.size(), 2);
+    CHECK_EQ(pooled[0].type, RcuRelType::AArch64AdrPrelPgHi21);
+    CHECK_EQ(pooled[1].type, RcuRelType::AArch64LdstAbsLo12Nc);
+    CHECK_EQ(pooled[1].sectionOffset, pooled[0].sectionOffset + 4);
+    CHECK_EQ(HexWord(TextWordAt(object, pooled[0].sectionOffset) & 0x9F00001FU), HexWord(0x90000010U)); // adrp x16
+    CHECK_EQ(HexWord(TextWordAt(object, pooled[1].sectionOffset) & 0xFFC003FFU),
+             HexWord(0xFD400210U)); // ldr d16, [x16]
+
+    // The pooled value is the doubleword the literal denotes, little-endian.
+    const auto bytes = RodataOf(object, "__f64_0");
+    REQUIRE_EQ(bytes.size(), 8);
+    const double expected = 1e300;
+    std::uint64_t bits = 0;
+    std::memcpy(&bits, &expected, 8);
+    for (std::size_t i = 0; i < 8; ++i) {
+        CHECK_EQ(bytes[i], static_cast<std::uint8_t>(bits >> (8 * i) & 0xFFU));
+    }
+}
+
+TEST_CASE("AArch64 RCU emitter interns each distinct string once") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            let first = "hi";
+            let second = "hi";
+            let third = "no";
+            return 0;
+        }
+    )");
+
+    const auto objects = AArch64RcuEmitter(package, "test").Generate();
+    const auto &object = objects.front();
+
+    // Two distinct literals, so two symbols and no third: the repeat is the
+    // first one's symbol again.
+    CHECK(FindSymbol(object, "__str0") != nullptr);
+    CHECK(FindSymbol(object, "__str1") != nullptr);
+    CHECK(FindSymbol(object, "__str2") == nullptr);
+    CHECK_EQ(RodataOf(object, "__str0"), std::vector<std::uint8_t>{'h', 'i', 0});
+    CHECK_EQ(RodataOf(object, "__str1"), std::vector<std::uint8_t>{'n', 'o', 0});
+
+    // Both uses of the repeated literal reach it through the same symbol, so it
+    // carries two ADRP/ADD pairs rather than one.
+    const auto repeated = RelocsFor(object, RCU_TEXT_IDX, "__str0");
+    REQUIRE_EQ(repeated.size(), 4);
+    for (std::size_t i = 0; i < repeated.size(); i += 2) {
+        CHECK_EQ(repeated[i].type, RcuRelType::AArch64AdrPrelPgHi21);
+        CHECK_EQ(repeated[i + 1].type, RcuRelType::AArch64AddAbsLo12Nc);
+        CHECK_EQ(HexWord(TextWordAt(object, repeated[i].sectionOffset) & 0x9F00001FU), HexWord(0x90000009U)); // adrp x9
+        CHECK_EQ(HexWord(TextWordAt(object, repeated[i + 1].sectionOffset) & 0xFFC003FFU),
+                 HexWord(0x91000129U)); // add x9, x9, #0
+    }
+}
+
+TEST_CASE("AArch64 RCU emitter writes a constant array into read-only data") {
+    const auto package = CompileToAArch64Lir(R"(
+        const WORDS: uint32[4] = [1u32, 2u32, 3u32, 0xFFFFFFFFu32];
+
+        func Main() -> int {
+            let first = WORDS[0];
+            return 0;
+        }
+    )");
+
+    const auto objects = AArch64RcuEmitter(package, "test").Generate();
+    const auto &object = objects.front();
+
+    const std::vector<std::uint8_t> expected = {1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF};
+    CHECK_EQ(RodataOf(object, "WORDS"), expected);
+
+    // Reaching it is the same ADRP/ADD pair a string takes, against the
+    // constant's own symbol rather than an interned one.
+    const auto address = RelocsFor(object, RCU_TEXT_IDX, "WORDS");
+    REQUIRE_EQ(address.size(), 2);
+    CHECK_EQ(address[0].type, RcuRelType::AArch64AdrPrelPgHi21);
+    CHECK_EQ(address[1].type, RcuRelType::AArch64AddAbsLo12Nc);
+}
+
+TEST_CASE("AArch64 RCU emitter publishes a constant slice as a header pointing at its elements") {
+    // Slice is the standard library's, and this suite compiles no packages, so
+    // the declaration the constant needs is written out here.
+    const auto package = CompileToAArch64Lir(R"(
+        struct Slice<T> { data: *T; length: uint; }
+
+        const TEXT: Slice<char8> = "abc";
+
+        func Main() -> int {
+            let length = TEXT.length;
+            return 0;
+        }
+    )");
+
+    const auto objects = AArch64RcuEmitter(package, "test").Generate();
+    const auto &object = objects.front();
+
+    CHECK_EQ(RodataOf(object, "TEXT$elements"), std::vector<std::uint8_t>{'a', 'b', 'c', 0});
+
+    // The header is a null data pointer the linker fills in and a length that
+    // is already there, so a program reading the length never depends on the
+    // relocation having been applied.
+    const auto header = RodataOf(object, "TEXT");
+    REQUIRE_EQ(header.size(), 16);
+    for (std::size_t i = 0; i < 8; ++i) {
+        CHECK_EQ(header[i], 0);
+    }
+    CHECK_EQ(header[8], 3);
+
+    const auto elements = RelocsFor(object, RCU_RODATA_IDX, "TEXT$elements");
+    REQUIRE_EQ(elements.size(), 1);
+    CHECK_EQ(elements[0].type, RcuRelType::Abs64);
+    CHECK_EQ(elements[0].sectionOffset, FindSymbol(object, "TEXT")->value);
+}
+
+TEST_CASE("AArch64 RCU emitter gives a scalar constant a symbol in the data section") {
+    const auto package = CompileToAArch64Lir(R"(
+        pub const LIMIT: int32 = 7;
+
+        func Main() -> int {
+            return 0;
+        }
+    )");
+
+    const auto objects = AArch64RcuEmitter(package, "test").Generate();
+    const auto &object = objects.front();
+
+    const RcuSymbol *limit = FindSymbol(object, "LIMIT");
+    REQUIRE(limit != nullptr);
+    CHECK_EQ(limit->sectionIdx, RCU_DATA_IDX);
+    CHECK_EQ(limit->size, 8);
+    CHECK_EQ(limit->visibility, RcuSymVis::Global);
+    // The value is inlined at every use, so what stands behind the symbol is
+    // storage to take the address of rather than the number itself.
+    CHECK_EQ(object.sections[RCU_DATA_IDX].data.size(), 8);
 }

@@ -4,6 +4,7 @@
 
 #include "CodeGen/AArch64/Encoder.h"
 #include "CodeGen/AArch64/Registers.h"
+#include "CodeGen/FloatLiteral.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
 #include "Object/Rcu/RcuMetadata.h"
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
+#include <cstring>
 #include <format>
 #include <string>
 #include <string_view>
@@ -52,6 +54,11 @@ constexpr unsigned kTemp = 9;
 
 // The register an integer or pointer result is returned in.
 constexpr unsigned kReturn = 0;
+
+// The vector register a floating-point value is computed in. AAPCS64 preserves
+// only the low half of V8 through V15 across a call, so the caller-saved half
+// of the file starts at V16 and nothing here has to be saved by a callee.
+constexpr unsigned kFpTemp = 16;
 
 // Whether a value of this type fits one general-purpose register and moves
 // without any float or aggregate handling — which is the whole of what this
@@ -116,6 +123,15 @@ private:
     // Declared symbols, by name → symbol index
     std::unordered_map<std::string, std::uint32_t> externSyms;
     std::unordered_map<std::string, std::uint32_t> funcSyms;
+    std::unordered_map<std::string, std::uint32_t> dataSyms;
+
+    // Interned read-only constants, by the literal that produced them → symbol
+    // index, so a value written twice is emitted once. The counter names them
+    // apart; the names are local to the object and mean nothing outside it.
+    std::unordered_map<std::string, std::uint32_t> strSyms;
+    std::unordered_map<std::string, std::uint32_t> f32Syms;
+    std::unordered_map<std::string, std::uint32_t> f64Syms;
+    unsigned constIdx = 0;
 
     // Struct field layouts and the interfaces whose values are fat pointers
     LayoutMap layouts;
@@ -233,6 +249,104 @@ private:
         const std::uint32_t idx = AddSymbol(std::move(sym));
         funcSyms[func.name] = idx;
         return idx;
+    }
+
+    // The read-only pool
+    //
+    // A value the instruction set cannot name goes into .rodata and is reached
+    // through a symbol, and a value written twice in the same module is emitted
+    // once: the literal the source wrote is the key, so two spellings of the
+    // same number stay two constants, exactly as they do in the x86-64 pool.
+
+    // Pad .rodata out to `align` and report where the next constant starts.
+    std::uint32_t AlignRodata(const int align) {
+        while (rodataData.size() % static_cast<std::size_t>(align) != 0) {
+            rodataData.push_back(0);
+        }
+        return static_cast<std::uint32_t>(rodataData.size());
+    }
+
+    std::uint32_t AddRodataConst(const std::string &name, const std::uint32_t offset) {
+        RcuSymbol sym;
+        sym.name = name;
+        sym.sectionIdx = RCU_RODATA_IDX;
+        sym.value = offset;
+        sym.size = static_cast<std::uint32_t>(rodataData.size()) - offset;
+        sym.kind = RcuSymKind::Const;
+        sym.visibility = RcuSymVis::Local;
+        return AddSymbol(std::move(sym));
+    }
+
+    // `bytes` is already encoded at its element width; the terminator is one
+    // more element of zeroes, which AlignRodata's zero fill cannot be relied on
+    // to supply.
+    std::uint32_t InternStr(const std::string &bytes) {
+        if (const auto it = strSyms.find(bytes); it != strSyms.end()) {
+            return it->second;
+        }
+        const auto offset = static_cast<std::uint32_t>(rodataData.size());
+        for (const unsigned char byte : bytes) {
+            rodataData.push_back(byte);
+        }
+        rodataData.push_back(0);
+        const std::uint32_t idx = AddRodataConst(std::format("__str{}", constIdx++), offset);
+        strSyms[bytes] = idx;
+        return idx;
+    }
+
+    std::uint32_t InternF32(const std::string &literal) {
+        if (const auto it = f32Syms.find(literal); it != f32Syms.end()) {
+            return it->second;
+        }
+        const std::uint32_t offset = AlignRodata(4);
+        const float value = ParseFloatLiteral<float>(literal);
+        std::uint32_t bits = 0;
+        std::memcpy(&bits, &value, 4);
+        for (int i = 0; i < 4; ++i) {
+            rodataData.push_back(static_cast<std::uint8_t>(bits >> (8 * i) & 0xFFU));
+        }
+        const std::uint32_t idx = AddRodataConst(std::format("__f32_{}", constIdx++), offset);
+        f32Syms[literal] = idx;
+        return idx;
+    }
+
+    std::uint32_t InternF64(const std::string &literal) {
+        if (const auto it = f64Syms.find(literal); it != f64Syms.end()) {
+            return it->second;
+        }
+        const std::uint32_t offset = AlignRodata(8);
+        const double value = ParseFloatLiteral<double>(literal);
+        std::uint64_t bits = 0;
+        std::memcpy(&bits, &value, 8);
+        for (int i = 0; i < 8; ++i) {
+            rodataData.push_back(static_cast<std::uint8_t>(bits >> (8 * i) & 0xFFU));
+        }
+        const std::uint32_t idx = AddRodataConst(std::format("__f64_{}", constIdx++), offset);
+        f64Syms[literal] = idx;
+        return idx;
+    }
+
+    // Relocations
+
+    void AddTextReloc(const std::uint32_t sectionOff, const std::uint32_t symIdx, const std::uint16_t type,
+                      const std::int32_t addend = 0) {
+        textRelocs.push_back({sectionOff, symIdx, type, addend});
+    }
+
+    void AddRodataReloc(const std::uint32_t sectionOff, const std::uint32_t symIdx, const std::uint16_t type,
+                        const std::int32_t addend = 0) {
+        rodataRelocs.push_back({sectionOff, symIdx, type, addend});
+    }
+
+    // The address of a symbol: the page it sits on, then its offset within that
+    // page. Both immediates are emitted as zero and belong to the two
+    // relocations hung on them, so the sequence is the same two instructions
+    // whatever the symbol turns out to be and wherever the linker puts it.
+    void LoadSymbolAddress(const A64Reg rd, const std::uint32_t symIdx) {
+        A64SymbolRef ref{};
+        Must(enc.LoadAddress(rd, ref), "the address of a symbol");
+        AddTextReloc(ref.adrp, symIdx, RcuRelType::AArch64AdrPrelPgHi21);
+        AddTextReloc(ref.lo12, symIdx, RcuRelType::AArch64AddAbsLo12Nc);
     }
 
     void PatchJumps() {
@@ -391,6 +505,19 @@ private:
         Must(status, "a spill to a stack slot");
     }
 
+    // Spill a floating-point value. The width is the register's own — an S
+    // register is a word and a D register a doubleword — and nothing is
+    // narrowed on the way, since a float has no representation at a width other
+    // than its own.
+    void StoreFpToSlot(const A64Reg value, const LirReg reg) {
+        const unsigned width = value.bits / 8;
+        A64MemOperand mem{};
+        Must(enc.ResolveMemOperand(A64::Fp, Disp(reg), width, mem), "a stack slot address");
+        Must(mem.unscaled ? enc.Stur(value, mem.base, mem.offset)
+                          : enc.Str(value, mem.base, static_cast<std::uint64_t>(mem.offset)),
+             "a spill to a stack slot");
+    }
+
     // Load `reg`'s slot into the 64-bit register `dst`, widening as the type
     // says: a signed value sign-extends, and an unsigned one is loaded into the
     // W view, which zeroes the half of the register above it.
@@ -446,22 +573,94 @@ private:
         return ParseIntegerLiteralBits(instr.strArg.empty() ? "0" : instr.strArg).value_or(0);
     }
 
+    // Bring a floating-point constant into `dst`. FMOV names 256 values
+    // outright, which covers most of what a program writes down; anything else
+    // — an exact fraction the encoding misses, or a value with more precision
+    // than it carries — is a word or a doubleword in the read-only pool,
+    // reached in two instructions rather than the four or five a MOVZ chain
+    // through a general-purpose register would take.
+    void LoadFloatConstant(const A64Reg dst, const TypeRef &type, const std::string &literal) {
+        const bool single = type.kind == TypeRef::Kind::Float32;
+        const double value = single ? ParseFloatLiteral<float>(literal) : ParseFloatLiteral<double>(literal);
+        if (TryEncodeFpImm8(value)) {
+            Must(enc.FmovImm(dst, value), "a floating-point constant");
+            return;
+        }
+        const std::uint32_t symIdx = single ? InternF32(literal) : InternF64(literal);
+        A64SymbolRef ref{};
+        Must(enc.LoadFromSymbol(dst, ref), "a floating-point constant");
+        AddTextReloc(ref.adrp, symIdx, RcuRelType::AArch64AdrPrelPgHi21);
+        AddTextReloc(ref.lo12, symIdx, RcuRelType::AArch64LdstAbsLo12Nc);
+    }
+
     void GenInstr(const LirInstr &instr) {
         switch (instr.op) {
         case LirOpcode::Const: {
             if (instr.dst == LirNoReg) {
                 break;
             }
+            // A `str` is the address of its bytes rather than the bytes
+            // themselves, so it is interned and its address materialized, and
+            // the slot holds a pointer.
+            if (instr.type.kind == TypeRef::Kind::Str) {
+                LoadSymbolAddress(A64::Xn(kTemp), InternStr(instr.strArg));
+                StoreToSlot(A64::Xn(kTemp), instr.dst, instr.type);
+                break;
+            }
+            if (IsFloat(instr.type)) {
+                const A64Reg value = instr.type.kind == TypeRef::Kind::Float32 ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
+                LoadFloatConstant(value, instr.type, instr.strArg);
+                StoreFpToSlot(value, instr.dst);
+                break;
+            }
             if (!IsScalarInteger(instr.type)) {
                 NotImplemented(std::format("a constant of type '{}'", instr.type.ToString()));
                 break;
             }
-            // The constant is materialized at full width whatever the type, and
-            // the store below writes only the bytes the type occupies, so the
-            // shortest sequence for the value is the one that gets emitted.
+            // Everything else — an integer of any width, a boolean, a character
+            // and the null pointer alike — is a bit pattern a general-purpose
+            // register holds. It is materialized at full width whatever the
+            // type, and the store writes only the bytes the type occupies, so
+            // the shortest sequence for the value is the one that gets emitted.
             const A64Reg value = A64::Xn(kTemp);
             Must(enc.LoadImm64(value, ConstantBits(instr)), "a constant");
             StoreToSlot(value, instr.dst, instr.type);
+            break;
+        }
+        case LirOpcode::Alloca: {
+            const auto it = allocaData.find(instr.dst);
+            if (it == allocaData.end()) {
+                Report(std::format("AArch64 code generation reached an alloca with no storage in '{}'", currentFunc));
+                break;
+            }
+            // The storage was reserved by the prepass and sits above the frame
+            // record, so its address is the frame pointer plus a displacement
+            // rather than minus one as it is on x86-64.
+            const A64Reg addr = A64::Xn(kTemp);
+            Must(enc.AddSubLargeImm(addr, A64::Fp, it->second), "the address of a local");
+            StoreToSlot(addr, instr.dst, TypeRef::MakePointer(instr.type));
+            break;
+        }
+        case LirOpcode::GlobalAddr: {
+            std::uint32_t symIdx = 0;
+            if (const auto data = dataSyms.find(instr.strArg); data != dataSyms.end()) {
+                symIdx = data->second;
+            }
+            else if (const auto func = funcSyms.find(instr.strArg); func != funcSyms.end()) {
+                symIdx = func->second;
+            }
+            else {
+                symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternData);
+            }
+            LoadSymbolAddress(A64::Xn(kTemp), symIdx);
+            StoreToSlot(A64::Xn(kTemp), instr.dst, TypeRef::MakePointer(instr.type));
+            break;
+        }
+        case LirOpcode::StringAddr: {
+            const TypeRef elemType = instr.type.inner.empty() ? TypeRef::MakeChar8() : instr.type.inner[0];
+            const std::uint32_t symIdx = InternStr(EncodeStringLiteral(instr.strArg, RuntimeSize(elemType)));
+            LoadSymbolAddress(A64::Xn(kTemp), symIdx);
+            StoreToSlot(A64::Xn(kTemp), instr.dst, instr.type);
             break;
         }
         default:
@@ -527,6 +726,137 @@ private:
         currentFunc.clear();
     }
 
+    // Module-level data
+    //
+    // A vtable is a run of function pointers, each of which is a whole address
+    // rather than a field of an instruction, so these are the one place this
+    // back end emits the architecture-neutral Abs64 the x86-64 one uses
+    // everywhere.
+    void EmitVtables() {
+        for (const auto &vt : mod.vtables) {
+            AlignRodata(8);
+
+            RcuSymbol sym;
+            sym.name = vt.label;
+            sym.sectionIdx = RCU_RODATA_IDX;
+            sym.value = static_cast<std::uint32_t>(rodataData.size());
+            sym.size = static_cast<std::uint32_t>(vt.methods.size() * 8);
+            sym.kind = RcuSymKind::Const;
+            sym.visibility = RcuSymVis::Global;
+            dataSyms[vt.label] = AddSymbol(std::move(sym));
+
+            for (const auto &method : vt.methods) {
+                const auto slotOff = static_cast<std::uint32_t>(rodataData.size());
+                rodataData.insert(rodataData.end(), 8, 0);
+                const auto it = funcSyms.find(method);
+                AddRodataReloc(slotOff,
+                               it != funcSyms.end() ? it->second : GetOrAddExtern(method, RcuSymKind::ExternFunc),
+                               RcuRelType::Abs64);
+            }
+        }
+    }
+
+    // Append one element of a constant sequence, little-endian, at the width
+    // its type occupies. The literal is read the same way a `const` instruction
+    // reads one, so the two agree on what a suffix and a base mean.
+    void AppendConstElement(const std::string &literal, const TypeRef &type) {
+        const int size = SizeOf(type);
+        std::uint64_t bits = 0;
+        if (type.kind == TypeRef::Kind::Float64) {
+            const double value = ParseFloatLiteral<double>(literal);
+            std::memcpy(&bits, &value, 8);
+        }
+        else if (type.kind == TypeRef::Kind::Float32) {
+            const float value = ParseFloatLiteral<float>(literal);
+            std::uint32_t narrow = 0;
+            std::memcpy(&narrow, &value, 4);
+            bits = narrow;
+        }
+        else if (type.IsBool()) {
+            bits = literal == "true" || literal == "1" ? 1 : 0;
+        }
+        else {
+            bits = ParseIntegerLiteralBits(literal).value_or(0);
+        }
+        for (int i = 0; i < size; ++i) {
+            rodataData.push_back(static_cast<std::uint8_t>(bits >> (8 * i) & 0xFFU));
+        }
+    }
+
+    // A slice constant becomes two read-only symbols: its elements, and a
+    // {data, length} header under the constant's own name whose data field is
+    // relocated to point at them. Code then reaches the elements the same way
+    // it reaches those of any other slice.
+    void EmitConstSlice(const LirConstDecl &c) {
+        const int elemSize = std::max(SizeOf(c.elementType), 1);
+        const std::uint32_t elemsOff = AlignRodata(std::min(elemSize, 8));
+        std::uint64_t length = 0;
+        if (c.isTextSlice) {
+            for (const unsigned char byte : c.text) {
+                rodataData.push_back(byte);
+            }
+            rodataData.push_back(0); // keep C interop's terminator
+            length = c.text.size();
+        }
+        else {
+            for (const auto &element : c.elements) {
+                AppendConstElement(element, c.elementType);
+            }
+            length = c.elements.size();
+        }
+        const std::uint32_t elemsSym = AddRodataConst(c.name + "$elements", elemsOff);
+
+        const std::uint32_t headerOff = AlignRodata(8);
+        rodataData.insert(rodataData.end(), 16, 0);
+        AddRodataReloc(headerOff, elemsSym, RcuRelType::Abs64);
+        for (int i = 0; i < 8; ++i) {
+            rodataData[headerOff + 8 + i] = static_cast<std::uint8_t>(length >> (8 * i) & 0xFFU);
+        }
+
+        RcuSymbol header;
+        header.name = c.name;
+        header.sectionIdx = RCU_RODATA_IDX;
+        header.value = headerOff;
+        header.size = 16;
+        header.kind = RcuSymKind::Const;
+        header.visibility = c.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
+        header.typeName = c.type.ToString();
+        dataSyms[c.name] = AddSymbol(std::move(header));
+    }
+
+    void EmitConstArray(const LirConstDecl &c) {
+        const std::uint32_t arrayOff = AlignRodata(AlignOf(c.elementType));
+        for (const auto &element : c.elements) {
+            AppendConstElement(element, c.elementType);
+        }
+
+        RcuSymbol array;
+        array.name = c.name;
+        array.sectionIdx = RCU_RODATA_IDX;
+        array.value = arrayOff;
+        array.size = static_cast<std::uint32_t>(rodataData.size()) - arrayOff;
+        array.kind = RcuSymKind::Const;
+        array.visibility = c.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
+        array.typeName = c.type.ToString();
+        dataSyms[c.name] = AddSymbol(std::move(array));
+    }
+
+    // A scalar constant is inlined at every use, so its symbol exists only for
+    // something to take the address of, and eight zeroed bytes in .data are
+    // what stands behind it.
+    void EmitScalarConst(const LirConstDecl &c) {
+        RcuSymbol sym;
+        sym.name = c.name;
+        sym.sectionIdx = RCU_DATA_IDX;
+        sym.value = static_cast<std::uint32_t>(dataData.size());
+        sym.size = 8;
+        sym.kind = RcuSymKind::Const;
+        sym.visibility = c.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
+        sym.typeName = c.type.ToString();
+        dataData.insert(dataData.end(), 8, 0);
+        dataSyms[c.name] = AddSymbol(std::move(sym));
+    }
+
     void GenModule() {
         for (const auto &name : packageInterfaceNames) {
             interfaceNames.insert(name);
@@ -539,15 +869,20 @@ private:
         for (const auto &ev : mod.externVars) {
             GetOrAddExtern(ev.name, RcuSymKind::ExternData);
         }
-        // The read-only pool and the data section are BACKLOG.md task 20's, and
-        // the vtables go with them, so a module carrying either is refused
-        // rather than linked against symbols nothing wrote.
-        if (!mod.consts.empty()) {
-            NotImplemented("module constants and the read-only data pool");
+        for (const auto &c : mod.consts) {
+            // A constant of sequence type is addressed rather than inlined, so
+            // it needs its contents behind its name and not a placeholder.
+            if (!c.hasSequenceData) {
+                EmitScalarConst(c);
+            }
+            else if (c.type.kind == TypeRef::Kind::Array) {
+                EmitConstArray(c);
+            }
+            else {
+                EmitConstSlice(c);
+            }
         }
-        if (!mod.vtables.empty()) {
-            NotImplemented("interface vtables");
-        }
+        EmitVtables();
         for (const auto &func : mod.funcs) {
             GenFunc(func);
         }

@@ -418,8 +418,32 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     std::vector<ObjLayout> layouts(objects.size());
     Buf mergedText, mergedRodata, mergedData;
+    // Each object's section starts on the boundary that object asked for. An
+    // object aligns its own constants relative to the start of its section, so
+    // a preceding object ending on an odd byte would carry the whole of the
+    // next one off its alignment — which on AArch64 is not a matter of speed:
+    // the low twelve bits of a symbol's address go into a scaled load's
+    // immediate, and an address that does not divide by the access width has no
+    // encoding at all.
+    const auto padToAlignment = [](Buf &buf, const uint16_t alignment) {
+        const size_t boundary = std::max<uint16_t>(alignment, 1);
+        while (buf.size() % boundary != 0) {
+            buf.push_back(0);
+        }
+    };
     for (size_t i = 0; i < objects.size(); ++i) {
         const auto &obj = objects[i];
+        for (const auto &sec : obj.sections) {
+            if (sec.type == RcuSecType::Text) {
+                padToAlignment(mergedText, sec.alignment);
+            }
+            else if (sec.type == RcuSecType::RoData) {
+                padToAlignment(mergedRodata, sec.alignment);
+            }
+            else if (sec.type == RcuSecType::Data) {
+                padToAlignment(mergedData, sec.alignment);
+            }
+        }
         layouts[i] = {static_cast<uint32_t>(mergedText.size()), static_cast<uint32_t>(mergedRodata.size()),
                       static_cast<uint32_t>(mergedData.size())};
         for (const auto &sec : obj.sections) {
