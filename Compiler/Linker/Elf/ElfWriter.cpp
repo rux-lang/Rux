@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <format>
 #include <fstream>
 #include <map>
 #include <ranges>
@@ -46,6 +47,162 @@ static constexpr const char *kDefaultLib = "libc.so.1";
 static constexpr const char *kElfInterp = "/lib64/ld-linux-x86-64.so.2";
 static constexpr const char *kDefaultLib = "libc.so.6";
 #endif
+
+// Linux names its loader after the architecture it runs on, so the path above
+// is the x86-64 one and AArch64 needs its own. The BSDs and illumos use a
+// single path for every architecture they support, so there the two agree.
+#if RUX_OS_LINUX
+static constexpr const char *kElfInterpAArch64 = "/lib/ld-linux-aarch64.so.1";
+#else
+static constexpr const char *kElfInterpAArch64 = kElfInterp;
+#endif
+
+// The interpreter the image being linked names in its PT_INTERP.
+[[nodiscard]] static constexpr const char *ElfInterpFor(const Target::Arch arch) noexcept {
+    return arch == Target::Arch::AArch64 ? kElfInterpAArch64 : kElfInterp;
+}
+
+// The machine code of an AArch64 entry stub. Written as words rather than
+// assembled, because the linker owns no code generator: the sequence is
+// mov x9, sp / and x9, x9, #-16 / mov sp, x9 / bl Main / mov x8, #nr / svc #0.
+namespace A64Entry {
+constexpr uint32_t MovX9Sp = 0x910003E9;
+constexpr uint32_t AndX9Neg16 = 0x927CED29;
+constexpr uint32_t MovSpX9 = 0x9100013F;
+constexpr uint32_t Bl = 0x94000000;
+constexpr uint32_t MovzX8 = 0xD2800008;
+constexpr uint32_t Svc0 = 0xD4000001;
+} // namespace A64Entry
+
+// Reads back a little-endian instruction word an AArch64 relocation is about
+// to rewrite a field of.
+[[nodiscard]] static uint32_t ReadU32(const Buf &b, const size_t off) {
+    return static_cast<uint32_t>(b[off]) | static_cast<uint32_t>(b[off + 1]) << 8U |
+           static_cast<uint32_t>(b[off + 2]) << 16U | static_cast<uint32_t>(b[off + 3]) << 24U;
+}
+
+// True when `value` fits in `bits` bits read as two's complement.
+[[nodiscard]] static bool FitsSigned(const int64_t value, const unsigned bits) {
+    const int64_t limit = int64_t{1} << (bits - 1);
+    return value >= -limit && value < limit;
+}
+
+// Replaces `width` bits of `word` starting at `lsb` with `value`.
+[[nodiscard]] static uint32_t WithField(const uint32_t word, const unsigned lsb, const unsigned width,
+                                        const uint32_t value) {
+    const uint32_t mask = width == 32 ? ~0U : ((1U << width) - 1U) << lsb;
+    return (word & ~mask) | ((value << lsb) & mask);
+}
+
+// The number of low bits an LDR / STR immediate drops, which is the log2 of
+// its access width. The width lives in the instruction rather than in the
+// relocation, split between the two-bit size field and, for the 128-bit vector
+// forms, the opc bit that extends it.
+[[nodiscard]] static unsigned LoadStoreScale(const uint32_t word) {
+    const unsigned size = word >> 30U & 3U;
+    const bool vector = (word >> 26U & 1U) != 0;
+    if (vector && size == 0 && (word >> 23U & 1U) != 0) {
+        return 4; // Q form: 16 bytes
+    }
+    return size;
+}
+
+// Applies one AArch64 relocation, whose defining property is that it names a
+// whole instruction and rewrites an immediate field inside it rather than
+// overwriting a displacement laid out in the byte stream. Every kind therefore
+// reads the word back, replaces its field and writes it again, and a value the
+// field cannot hold is reported rather than truncated.
+//
+// `siteVA` is P, `targetVA + addend` is S + A, in the notation of the ELF for
+// the Arm 64-bit Architecture document that names these relocations.
+[[nodiscard]] static bool ApplyAArch64Reloc(Buf &buf, const size_t patchAt, const uint16_t type,
+                                            const uint64_t targetVA, const int64_t addend, const uint64_t siteVA,
+                                            const std::string &symbolName, std::string &error) {
+    const uint64_t value = targetVA + static_cast<uint64_t>(addend);
+    const auto delta = static_cast<int64_t>(value - siteVA);
+    const auto fail = [&](const std::string_view what) {
+        error = std::format("{} relocation against '{}' is out of range: {}", RcuRelTypeName(type), symbolName, what);
+        return false;
+    };
+
+    if (type == RcuRelType::AArch64Prel32 || type == RcuRelType::AArch64Prel64) {
+        const size_t width = type == RcuRelType::AArch64Prel64 ? 8 : 4;
+        if (patchAt + width > buf.size()) {
+            return true;
+        }
+        if (width == 8) {
+            Patch64(buf, patchAt, static_cast<uint64_t>(delta));
+        }
+        else {
+            if (!FitsSigned(delta, 32)) {
+                return fail("the displacement does not fit in 32 bits");
+            }
+            Patch32(buf, patchAt, static_cast<uint32_t>(delta));
+        }
+        return true;
+    }
+
+    if (patchAt + 4 > buf.size()) {
+        return true;
+    }
+    const uint32_t word = ReadU32(buf, patchAt);
+    const auto patch = [&](const uint32_t patched) {
+        Patch32(buf, patchAt, patched);
+        return true;
+    };
+    switch (type) {
+    case RcuRelType::AArch64Call26:
+    case RcuRelType::AArch64Jump26:
+        if (delta % 4 != 0 || !FitsSigned(delta >> 2, 26)) {
+            return fail("a branch reaches 128 MB either way");
+        }
+        return patch(WithField(word, 0, 26, static_cast<uint32_t>(delta >> 2)));
+    case RcuRelType::AArch64CondBr19:
+        if (delta % 4 != 0 || !FitsSigned(delta >> 2, 19)) {
+            return fail("a conditional branch reaches 1 MB either way");
+        }
+        return patch(WithField(word, 5, 19, static_cast<uint32_t>(delta >> 2)));
+    case RcuRelType::AArch64TstBr14:
+        if (delta % 4 != 0 || !FitsSigned(delta >> 2, 14)) {
+            return fail("a test-and-branch reaches 32 KB either way");
+        }
+        return patch(WithField(word, 5, 14, static_cast<uint32_t>(delta >> 2)));
+    case RcuRelType::AArch64AdrPrelPgHi21: {
+        // ADRP names the 4 KB page the symbol sits on, relative to the page
+        // the instruction itself sits on, and the 21-bit result is split with
+        // its low two bits high in the word.
+        const int64_t pages =
+            (static_cast<int64_t>(value & ~0xFFFull) - static_cast<int64_t>(siteVA & ~0xFFFull)) >> 12;
+        if (!FitsSigned(pages, 21)) {
+            return fail("an ADRP reaches 4 GB either way");
+        }
+        const auto immediate = static_cast<uint32_t>(pages) & 0x1FFFFFU;
+        return patch(WithField(WithField(word, 29, 2, immediate & 3U), 5, 19, immediate >> 2U));
+    }
+    case RcuRelType::AArch64AddAbsLo12Nc:
+        return patch(WithField(word, 10, 12, static_cast<uint32_t>(value & 0xFFFU)));
+    case RcuRelType::AArch64LdstAbsLo12Nc: {
+        const unsigned scale = LoadStoreScale(word);
+        if ((value & ((1ull << scale) - 1)) != 0) {
+            return fail("the symbol is not aligned to the access width");
+        }
+        return patch(WithField(word, 10, 12, static_cast<uint32_t>((value & 0xFFFU) >> scale)));
+    }
+    case RcuRelType::AArch64MovwUabsG0:
+    case RcuRelType::AArch64MovwUabsG1:
+    case RcuRelType::AArch64MovwUabsG2:
+    case RcuRelType::AArch64MovwUabsG3: {
+        // The four together carry the whole 64-bit value, one halfword each,
+        // so no single one of them checks for the bits the others take.
+        const unsigned shift = 16U * (type - RcuRelType::AArch64MovwUabsG0);
+        return patch(WithField(word, 5, 16, static_cast<uint32_t>(value >> shift & 0xFFFFU)));
+    }
+    default:
+        error = std::format("relocation {} against '{}' is not supported by the ELF writer", RcuRelTypeName(type),
+                            symbolName);
+        return false;
+    }
+}
 
 // Classic SysV ELF symbol hash (used by DT_HASH).
 static uint32_t ElfHash(const std::string &name) {
@@ -180,6 +337,21 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // pull in exit() as an implicit import (mirroring the PE writer's use of
     // ExitProcess for its entry stub).
     const bool dynamic = isShared || !importLib.empty();
+    const bool aarch64 = targetArch == Target::Arch::AArch64;
+    if (dynamic && aarch64) {
+        // Task 29 brings the AArch64 PLT and GOT. Until it does, the AArch64
+        // path lays out freestanding static images only, and a program that
+        // reaches for a shared library is told which import took it there
+        // rather than being handed an image with unbound calls in it. A shared
+        // library is refused earlier still, by Linker::CheckArchitecture.
+        const auto names = importLib | std::views::keys;
+        const auto first = std::ranges::min_element(names);
+        Error(first == names.end()
+                  ? std::string("dynamic linking for AArch64 is not implemented yet")
+                  : std::format("dynamic linking for AArch64 is not implemented yet: '{}' is imported from '{}'",
+                                *first, importLib.at(*first)));
+        return false;
+    }
     if (dynamic && !isShared) {
         importLib.try_emplace("exit", kDefaultLib);
     }
@@ -187,26 +359,54 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // 3. Entry preamble (__rux_start): align the stack and call Main. A static
     //    program then exits with a raw syscall (no libc); a dynamic one tail
     //    calls libc exit() with Main's return value so stdio is flushed.
+    //
+    //    The two architectures differ in where Main leaves its result and in
+    //    how they reach a syscall. x86-64 returns in EAX and has to move the
+    //    value to EDI to pass it on; AArch64 returns in X0, which is already
+    //    where both the exit syscall and a call to exit() read their argument
+    //    from, so the value never moves. Both offsets below name the call
+    //    instruction itself rather than a field inside it, since an AArch64
+    //    relocation rewrites a whole word.
     Buf textPre;
-    size_t callMainDisp = 0;
-    size_t kCallExitDisp = 0;
+    size_t callMainOffset = 0;
+    size_t callExitOffset = 0;
     if (!isShared) {
-        textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
-        callMainDisp = textPre.size() + 1;
-        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
-        textPre.insert(textPre.end(), {0x89, 0xC7});                   // mov edi, eax (exit code)
-        if (dynamic) {
-            kCallExitDisp = textPre.size() + 1;
-            textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call exit@plt
-            textPre.insert(textPre.end(), {0xCC});                         // int3 (unreachable)
+        if (aarch64) {
+            // The kernel enters a fresh process with SP already 16-byte
+            // aligned, but AAPCS64 requires that alignment wherever SP
+            // addresses memory, which in a Rux frame is everywhere, so the
+            // stub establishes the invariant rather than inheriting it. AND
+            // cannot read SP, hence the round trip through X9.
+            WriteU32(textPre, A64Entry::MovX9Sp);
+            WriteU32(textPre, A64Entry::AndX9Neg16);
+            WriteU32(textPre, A64Entry::MovSpX9);
+            callMainOffset = textPre.size();
+            WriteU32(textPre, A64Entry::Bl); // bl Main
+            // Linux and Android number exit 93 on AArch64; the BSDs kept the
+            // traditional 1. Task 29 replaces this tail with a call to libc
+            // exit() for a dynamic image.
+            const uint32_t exitSyscall = targetOs == Target::OS::Linux || targetOs == Target::OS::Android ? 93U : 1U;
+            WriteU32(textPre, A64Entry::MovzX8 | exitSyscall << 5U); // mov x8, #nr
+            WriteU32(textPre, A64Entry::Svc0);                       // svc #0
         }
         else {
+            textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
+            callMainOffset = textPre.size();
+            textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
+            textPre.insert(textPre.end(), {0x89, 0xC7});                   // mov edi, eax (exit code)
+            if (dynamic) {
+                callExitOffset = textPre.size();
+                textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call exit@plt
+                textPre.insert(textPre.end(), {0xCC});                         // int3 (unreachable)
+            }
+            else {
 #if RUX_IS_BSD || RUX_IS_SUNOS
-            textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD/Illumos exit)
+                textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD/Illumos exit)
 #else
-            textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
+                textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
 #endif
-            textPre.insert(textPre.end(), {0x0F, 0x05}); // syscall
+                textPre.insert(textPre.end(), {0x0F, 0x05}); // syscall
+            }
         }
     }
     const auto preambleSize = static_cast<uint32_t>(textPre.size());
@@ -238,6 +438,26 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     Buf textBuf;
     textBuf.insert(textBuf.end(), textPre.begin(), textPre.end());
     textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
+
+    // Points one call in the entry stub at `targetVA`, in whichever form that
+    // architecture's call takes: an x86-64 displacement measured from the
+    // instruction after it, or an AArch64 BL whose imm26 counts instructions
+    // from the branch itself.
+    const auto patchEntryCall = [&](const size_t instrOffset, const uint64_t textVA, const uint64_t targetVA,
+                                    const std::string &symbolName) {
+        const uint64_t siteVA = textVA + instrOffset;
+        if (!aarch64) {
+            Patch32(textBuf, instrOffset + 1, static_cast<uint32_t>(targetVA - (siteVA + 5)));
+            return true;
+        }
+        std::string error;
+        if (!ApplyAArch64Reloc(textBuf, instrOffset, RcuRelType::AArch64Call26, targetVA, 0, siteVA, symbolName,
+                               error)) {
+            Error(std::move(error));
+            return false;
+        }
+        return true;
+    };
 
     // Maps each defined (non-extern) symbol to its virtual address, given the
     // final segment placement. Local data/constant labels are intentionally
@@ -335,7 +555,10 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
                     const size_t patchAt = baseInBuf + reloc.sectionOffset;
                     const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
-                    if (reloc.type == RcuRelType::Rel32) {
+                    if (reloc.type == RcuRelType::None) {
+                        continue;
+                    }
+                    if (!aarch64 && reloc.type == RcuRelType::Rel32) {
                         if (patchAt + 4 > buf->size()) {
                             continue;
                         }
@@ -359,6 +582,17 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                             continue;
                         }
                         Patch32(*buf, patchAt, static_cast<uint32_t>(targetVA + reloc.addend));
+                    }
+                    else {
+                        // Everything left names an instruction and rewrites a
+                        // field inside it. An x86-64 kind reaching here is an
+                        // x86-64 displacement in an AArch64 object, which is a
+                        // code-generator bug rather than something to patch.
+                        std::string error;
+                        if (!ApplyAArch64Reloc(*buf, patchAt, reloc.type, targetVA, reloc.addend, siteVA, sym.name,
+                                               error)) {
+                            Error(std::move(error));
+                        }
                     }
                 }
             }
@@ -418,9 +652,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         for (int i = 0; i < 8; ++i) {
             WriteU8(hdr, 0);
         }
-        WriteU16(hdr, isShared ? 3 : 2); // ET_DYN or ET_EXEC
-        WriteU16(hdr, 0x3E);             // EM_X86_64
-        WriteU32(hdr, 1);                // e_version
+        WriteU16(hdr, isShared ? 3 : 2);      // ET_DYN or ET_EXEC
+        WriteU16(hdr, aarch64 ? 0xB7 : 0x3E); // EM_AARCH64 or EM_X86_64
+        WriteU32(hdr, 1);                     // e_version
         WriteU64(hdr, entryVA);
         WriteU64(hdr, phoff);
         WriteU64(hdr, 0);  // e_shoff
@@ -497,8 +731,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             Error("undefined symbol 'Main' — no entry point found");
             return false;
         }
-        const uint64_t nextInst = textVA + callMainDisp + 4;
-        Patch32(textBuf, callMainDisp, static_cast<uint32_t>(it->second - nextInst));
+        if (!patchEntryCall(callMainOffset, textVA, it->second, "Main")) {
+            return false;
+        }
 
         applyRelocs(symMap, textBuf, rodataBuf, mergedData, textVA, rdataVA + noteRodataDelta, dataVA, nullptr);
         if (!errors.empty()) {
@@ -676,7 +911,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // Interp string.
     Buf interp;
     if (!isShared) {
-        WriteCStr(interp, kElfInterp);
+        WriteCStr(interp, ElfInterpFor(targetArch));
     }
 
     // Fixed-size buffers whose bytes are patched once addresses are known.
@@ -849,8 +1084,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             Error("undefined symbol 'Main' — no entry point found");
             return false;
         }
-        const uint64_t nextInst = textVA + callMainDisp + 4;
-        Patch32(textBuf, callMainDisp, static_cast<uint32_t>(mainIt->second - nextInst));
+        if (!patchEntryCall(callMainOffset, textVA, mainIt->second, "Main")) {
+            return false;
+        }
 
         // Wire the entry stub's `call exit@plt` to libc exit's PLT stub.
         const auto exitIt = symMap.find("exit");
@@ -858,8 +1094,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             Error("internal: implicit libc 'exit' import was not resolved");
             return false;
         }
-        const uint64_t exitNext = textVA + kCallExitDisp + 4;
-        Patch32(textBuf, kCallExitDisp, static_cast<uint32_t>(exitIt->second - exitNext));
+        if (!patchEntryCall(callExitOffset, textVA, exitIt->second, "exit")) {
+            return false;
+        }
     }
 
     Buf relaDyn;

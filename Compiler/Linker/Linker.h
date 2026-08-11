@@ -19,9 +19,9 @@ struct LinkerError {
 // always compiled; Link() dispatches on `targetOs` at run time.
 //
 // The target architecture is given explicitly rather than taken from the host,
-// and every input object must have been compiled for it. Only x86-64 machine
-// code can be laid out today; the AArch64 writers arrive with the native
-// AArch64 back end.
+// and every input object must have been compiled for it. x86-64 is laid out in
+// every format; AArch64 so far only as a static ELF executable, since that is
+// what the native AArch64 back end can fill today.
 class Linker {
 public:
     explicit Linker(std::vector<RcuFile> inputObjects, std::string inputPackageName,
