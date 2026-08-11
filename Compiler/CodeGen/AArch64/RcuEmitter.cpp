@@ -7,6 +7,7 @@
 #include "CodeGen/FloatLiteral.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
+#include "CodeGen/PhiMoveResolver.h"
 #include "Object/Rcu/RcuMetadata.h"
 
 #include <algorithm>
@@ -34,9 +35,101 @@ namespace {
 struct JumpPatch {
     std::uint32_t patchOff = 0; // byte offset of the branch instruction
     std::uint32_t targetBlock = 0;
-    unsigned lsb = 0;   // low bit of the immediate field
-    unsigned width = 0; // width of that field, in bits
+    unsigned lsb = 0;       // low bit of the immediate field
+    unsigned width = 0;     // width of that field, in bits
+    std::uint64_t site = 0; // which branch of the function this is
 };
+
+// Which branch of a function a patch site is, which has to be a name the next
+// pass over the same function arrives at again: an offset changes when a branch
+// ahead of it is widened, and the block and the position inside its terminator
+// do not.
+constexpr std::uint64_t kNoSite = ~0ULL;
+
+[[nodiscard]] constexpr std::uint64_t BranchSite(const std::uint32_t block, const unsigned ordinal) {
+    return static_cast<std::uint64_t>(block) << 32U | ordinal;
+}
+
+// A one-instruction conditional branch: the condition-code form, and the
+// compare-and-branch pair that tests a register against zero. All three keep a
+// 19-bit signed immediate at bit 5, so all three reach a megabyte of code and
+// all three are widened the same way when the target turns out to be further.
+struct CondBranch {
+    enum class Form : std::uint8_t {
+        Condition, // B.<cond>
+        Zero,      // CBZ
+        NotZero,   // CBNZ
+    };
+
+    Form form = Form::Condition;
+    A64Condition cond = A64Condition::Eq;
+    A64Reg reg{};
+
+    // The branch taken exactly where this one is not, which is what a widened
+    // site branches over its own `B` with.
+    [[nodiscard]] CondBranch Inverted() const {
+        switch (form) {
+        case Form::Zero:
+            return {Form::NotZero, cond, reg};
+        case Form::NotZero:
+            return {Form::Zero, cond, reg};
+        default:
+            return {Form::Condition, A64::InvertCondition(cond), reg};
+        }
+    }
+};
+
+[[nodiscard]] CondBranch OnCondition(const A64Condition cond) {
+    return {CondBranch::Form::Condition, cond, {}};
+}
+
+[[nodiscard]] CondBranch OnZero(const A64Reg reg) {
+    return {CondBranch::Form::Zero, A64Condition::Eq, reg};
+}
+
+// The condition an integer or pointer comparison holds under. Equality reads
+// the same flags whatever the operands mean; the four orderings do not, so the
+// signedness of the operands chooses between two sets of conditions.
+[[nodiscard]] A64Condition IntegerCondition(const LirOpcode op, const bool isSigned) {
+    switch (op) {
+    case LirOpcode::CmpEq:
+        return A64Condition::Eq;
+    case LirOpcode::CmpNe:
+        return A64Condition::Ne;
+    case LirOpcode::CmpLt:
+        return isSigned ? A64Condition::Lt : A64::Lo;
+    case LirOpcode::CmpLe:
+        return isSigned ? A64Condition::Le : A64Condition::Ls;
+    case LirOpcode::CmpGt:
+        return isSigned ? A64Condition::Gt : A64Condition::Hi;
+    default:
+        return isSigned ? A64Condition::Ge : A64::Hs;
+    }
+}
+
+// The condition a floating-point comparison holds under. FCMP leaves N=0, Z=0,
+// C=1 and V=1 when either operand is a NaN, and every condition below except NE
+// is false in that state: an ordered comparison against a NaN answers false and
+// `!=` answers true, which is the same pair of answers the x86-64 back end
+// arrives at by testing the parity flag beside each comparison. MI and LS are
+// what makes that hold for `<` and `<=`, where the signed LT and LE would be
+// satisfied by an unordered result.
+[[nodiscard]] A64Condition FloatCondition(const LirOpcode op) {
+    switch (op) {
+    case LirOpcode::CmpEq:
+        return A64Condition::Eq;
+    case LirOpcode::CmpNe:
+        return A64Condition::Ne;
+    case LirOpcode::CmpLt:
+        return A64Condition::Mi;
+    case LirOpcode::CmpLe:
+        return A64Condition::Ls;
+    case LirOpcode::CmpGt:
+        return A64Condition::Gt;
+    default:
+        return A64Condition::Ge;
+    }
+}
 
 // The frame record — the caller's frame pointer and the return address — that
 // every prologue stores and every epilogue restores.
@@ -72,6 +165,10 @@ constexpr unsigned kReturn = 0;
 // only the low half of V8 through V15 across a call, so the caller-saved half
 // of the file starts at V16 and nothing here has to be saved by a callee.
 constexpr unsigned kFpTemp = 16;
+
+// The second vector register, for the one floating-point operation that reads
+// two values at once and produces no floating-point result: a comparison.
+constexpr unsigned kFpTemp2 = 17;
 
 // Whether a value of this type fits one general-purpose register and moves
 // without any float or aggregate handling — which is the whole of what this
@@ -181,6 +278,17 @@ private:
     std::vector<JumpPatch> jumpPatches;
     std::int32_t nextOff = 0;
     std::int32_t frameSize = 0;
+
+    // The parallel copies each edge of the control-flow graph carries, by the
+    // block the edge leaves and then the block it enters, and the frame region
+    // one destination is preserved in where the copies form a cycle.
+    std::unordered_map<std::uint32_t, std::unordered_map<std::uint32_t, std::vector<PhiMove>>> phiMoves;
+    std::int32_t phiTempOff = 0;
+    int phiTempBytes = 0;
+
+    // The conditional branches of this function that a previous pass over it
+    // found too far from their target to reach in one instruction.
+    std::unordered_set<std::uint64_t> widenedSites;
 
     // The function being generated, so a report can say where it was reached.
     std::string currentFunc;
@@ -464,7 +572,21 @@ private:
         AddTextReloc(ref.lo12, symIdx, RcuRelType::AArch64AddAbsLo12Nc);
     }
 
-    void PatchJumps() {
+    // Branches
+    //
+    // A branch to a block further down the function is emitted before the block
+    // it names has an offset, so the immediate is filled in once the whole body
+    // is laid out. Which form the branch took is decided before that, though,
+    // and the conditional forms reach only a megabyte: whether one of them
+    // reaches is a question this pass over the function cannot answer, so a site
+    // that did not is recorded and the function emitted again — see GenFunc.
+
+    // Fill in every branch immediate, and report whether all of them fitted.
+    // A conditional site that did not is remembered as one to widen; nothing
+    // else can be, since the 26 bits a `B` carries reach 128 megabytes and no
+    // function is that long.
+    bool PatchJumps() {
+        bool ok = true;
         for (const auto &patch : jumpPatches) {
             if (patch.targetBlock >= blockOffsets.size()) {
                 continue;
@@ -472,8 +594,74 @@ private:
             const auto target = static_cast<std::int32_t>(blockOffsets[patch.targetBlock]);
             const std::int32_t instructions =
                 (target - static_cast<std::int32_t>(patch.patchOff)) / static_cast<std::int32_t>(A64Enc::InstrSize);
+            const std::int32_t limit = 1 << (patch.width - 1);
+            if (instructions < -limit || instructions >= limit) {
+                ok = false;
+                if (patch.site == kNoSite) {
+                    Report(
+                        std::format("AArch64 code generation reached a branch too far to encode in '{}'", currentFunc));
+                    continue;
+                }
+                widenedSites.insert(patch.site);
+                continue;
+            }
             enc.PatchField(patch.patchOff, patch.lsb, patch.width, static_cast<std::uint32_t>(instructions));
         }
+        return ok;
+    }
+
+    void EmitJumpTo(const std::uint32_t targetBlock) {
+        const std::uint32_t patchOff = enc.Size();
+        Must(enc.B(0), "a branch");
+        jumpPatches.push_back({patchOff, targetBlock, 0, 26, kNoSite});
+    }
+
+    void EmitCondBranch(const CondBranch &branch, const std::int64_t offset) {
+        switch (branch.form) {
+        case CondBranch::Form::Zero:
+            Must(enc.Cbz(branch.reg, offset), "a branch on zero");
+            break;
+        case CondBranch::Form::NotZero:
+            Must(enc.Cbnz(branch.reg, offset), "a branch on a nonzero value");
+            break;
+        default:
+            Must(enc.BCond(branch.cond, offset), "a conditional branch");
+            break;
+        }
+    }
+
+    // A conditional branch to a block, in the one-instruction form or — where a
+    // previous pass found the target out of reach — as the inverse of that
+    // branch over an unconditional one, which reaches anywhere.
+    void EmitCondBranchTo(const CondBranch &branch, const std::uint32_t targetBlock, const std::uint64_t site) {
+        if (widenedSites.contains(site)) {
+            EmitCondBranch(branch.Inverted(), 2 * A64Enc::InstrSize);
+            EmitJumpTo(targetBlock);
+            return;
+        }
+        const std::uint32_t patchOff = enc.Size();
+        EmitCondBranch(branch, 0);
+        jumpPatches.push_back({patchOff, targetBlock, 5, 19, site});
+    }
+
+    // A conditional branch over the instructions emitted right after it, whose
+    // target is therefore known as soon as they are: the copies one edge of a
+    // branch carries and the other must not run. Only a function with a hundred
+    // thousand instructions' worth of copies on one edge could put that target
+    // out of reach, which is a report rather than a case to widen.
+    [[nodiscard]] std::uint32_t EmitBranchOver(const CondBranch &branch) {
+        const std::uint32_t patchOff = enc.Size();
+        EmitCondBranch(branch, 0);
+        return patchOff;
+    }
+
+    void PatchBranchOver(const std::uint32_t patchOff) {
+        const std::uint32_t instructions = (enc.Size() - patchOff) / A64Enc::InstrSize;
+        if (instructions >= 1U << 18U) {
+            Report(std::format("AArch64 code generation reached a branch too far to encode in '{}'", currentFunc));
+            return;
+        }
+        enc.PatchField(patchOff, 5, 19, instructions);
     }
 
     // Frame layout
@@ -583,14 +771,27 @@ private:
         slotMap.clear();
         allocaData.clear();
         regTypes.clear();
+        phiMoves.clear();
+        phiTempOff = 0;
+        phiTempBytes = 0;
         nextOff = kFrameRecordSize;
 
         for (const auto &p : func.params) {
             regTypes[p.reg] = p.type;
             AllocSlot(p.reg, std::max(8, RuntimeSize(p.type)));
         }
-        for (const auto &block : func.blocks) {
-            for (const auto &instr : block.instrs) {
+        for (std::uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
+            for (const auto &instr : func.blocks[bi].instrs) {
+                // A phi's copies belong to the edges that reach it, so they are
+                // collected by predecessor here and emitted there. The region
+                // that breaks a cycle among them holds one value of the widest
+                // type any of them moves.
+                if (instr.op == LirOpcode::Phi) {
+                    for (const auto &[src, pred] : instr.phiPreds) {
+                        phiMoves[pred][bi].push_back({instr.dst, src, instr.type});
+                    }
+                    phiTempBytes = std::max(phiTempBytes, std::max(8, RuntimeSize(instr.type)));
+                }
                 if (instr.dst == LirNoReg) {
                     continue;
                 }
@@ -604,6 +805,9 @@ private:
                 const int size = RuntimeSize(instr.type);
                 AllocSlot(instr.dst, size > 0 ? size : 8);
             }
+        }
+        if (phiTempBytes > 0) {
+            phiTempOff = AllocRegion(phiTempBytes);
         }
         frameSize = AlignUp(nextOff, 16);
     }
@@ -778,6 +982,61 @@ private:
                 StoreScalar(first, dst, dstOff + offset, static_cast<unsigned>(chunk));
                 offset += chunk;
             }
+        }
+    }
+
+    // Move one value between two places in the frame, at whatever width and in
+    // whichever register file its type asks for: an aggregate is a block copy,
+    // a float goes through a vector register because that is the only thing that
+    // holds one, and everything else is a load and a store.
+    void CopyFrameValue(const std::int32_t dstOff, const std::int32_t srcOff, const TypeRef &type) {
+        const int size = RuntimeSize(type);
+        if (IsAggregate(type) && size > 8) {
+            CopyBlock(A64::Fp, dstOff, A64::Fp, srcOff, size, RuntimeAlign(type) >= 8);
+            return;
+        }
+        if (IsFloat(type)) {
+            const A64Reg value = type.kind == TypeRef::Kind::Float32 ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
+            LoadScalar(value, A64::Fp, srcOff, value.bits / 8U, false);
+            StoreScalar(value, A64::Fp, dstOff, value.bits / 8U);
+            return;
+        }
+        const A64Reg value = A64::Xn(kTemp);
+        const unsigned width = AccessWidth(size);
+        LoadScalar(value, A64::Fp, srcOff, width, type.IsSigned());
+        StoreScalar(value, A64::Fp, dstOff, width);
+    }
+
+    // Phi moves
+    //
+    // A phi is not an instruction: the value it names is whatever the edge that
+    // reached it wrote into its slot, so what a phi lowers to is a copy in each
+    // predecessor, emitted on the edge itself. The copies of one edge are
+    // parallel — every one of them reads the values that held before any of them
+    // ran — so they can form a cycle no order of stores satisfies, and
+    // ResolvePhiMoves, which both back ends share, sequences them and says where
+    // a destination has to be preserved first.
+
+    [[nodiscard]] bool HasPhiMoves(const std::uint32_t from, const std::uint32_t to) const {
+        const auto edges = phiMoves.find(from);
+        return edges != phiMoves.end() && edges->second.contains(to);
+    }
+
+    void EmitPhiMoves(const std::uint32_t from, const std::uint32_t to) {
+        const auto edges = phiMoves.find(from);
+        if (edges == phiMoves.end()) {
+            return;
+        }
+        const auto moves = edges->second.find(to);
+        if (moves == edges->second.end()) {
+            return;
+        }
+        for (const auto &step : ResolvePhiMoves(moves->second)) {
+            if (step.kind == PhiMoveStep::Kind::SaveDestination) {
+                CopyFrameValue(phiTempOff, Disp(step.dst), step.type);
+                continue;
+            }
+            CopyFrameValue(Disp(step.dst), step.sourceIsTemporary ? phiTempOff : Disp(step.src), step.type);
         }
     }
 
@@ -1207,14 +1466,105 @@ private:
             StoreToSlot(value, instr.dst, type);
             break;
         }
+        case LirOpcode::CmpEq:
+        case LirOpcode::CmpNe:
+        case LirOpcode::CmpLt:
+        case LirOpcode::CmpLe:
+        case LirOpcode::CmpGt:
+        case LirOpcode::CmpGe: {
+            if (instr.srcs.size() < 2) {
+                Report(std::format("AArch64 code generation reached a '{}' with one operand in '{}'",
+                                   LirOpcodeName(instr.op), currentFunc));
+                break;
+            }
+            // What is being compared is the type of the operands rather than
+            // the boolean the comparison produces, and the operands agree, so
+            // the left one decides both which instruction compares them and
+            // which condition then reads the flags it left.
+            const auto found = regTypes.find(instr.srcs[0]);
+            const TypeRef &operandType = found != regTypes.end() ? found->second : instr.type;
+            A64Condition cond = A64Condition::Eq;
+            if (IsFloat(operandType)) {
+                const bool single = operandType.kind == TypeRef::Kind::Float32;
+                const A64Reg lhs = single ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
+                const A64Reg rhs = single ? A64::Sn(kFpTemp2) : A64::Dn(kFpTemp2);
+                LoadFpFromSlot(lhs, instr.srcs[0]);
+                LoadFpFromSlot(rhs, instr.srcs[1]);
+                Must(enc.Fcmp(lhs, rhs), LirOpcodeName(instr.op));
+                cond = FloatCondition(instr.op);
+            }
+            else {
+                // Both operands are read at the left one's type, which is what
+                // makes a narrow comparison a comparison of what the two slots
+                // mean rather than of the bytes above them.
+                if (!LoadBinaryOperands(instr, operandType, operandType)) {
+                    break;
+                }
+                Must(enc.Cmp(A64::Xn(kTemp), A64::Xn(kTemp2)), LirOpcodeName(instr.op));
+                cond = IntegerCondition(instr.op, operandType.IsSigned());
+            }
+            // The flags become a value in the one instruction that names a
+            // condition and writes a register: a boolean here is the byte the
+            // store below writes, and CSET is where it comes from.
+            const A64Reg result = A64::Xn(kTemp);
+            Must(enc.Cset(result, cond), LirOpcodeName(instr.op));
+            StoreToSlot(result, instr.dst, TypeRef::MakeBool());
+            break;
+        }
+        case LirOpcode::Phi:
+            // Nothing: the value arrived in this register's slot along the edge
+            // that reached this block, written by the predecessor's terminator.
+            break;
         default:
             NotImplemented(std::format("the '{}' opcode", LirOpcodeName(instr.op)));
             break;
         }
     }
 
-    void GenTerm(const LirTerminator &term) {
+    // Compare the value in X9 against a case label. An immediate the arith form
+    // reaches is one instruction; anything else — a label past 4095, or a
+    // negative one — is materialized first, which is why the encoder's refusal
+    // is read rather than assumed away.
+    void CompareAgainstCase(const std::string &value) {
+        const std::uint64_t bits = ParseIntegerLiteralBits(value).value_or(0);
+        if (enc.SubsImm(A64::Xzr, A64::Xn(kTemp), bits) == A64Status::Ok) {
+            return;
+        }
+        const A64Reg label = A64::Xn(kTemp2);
+        Must(enc.LoadImm64(label, bits), "a case label");
+        Must(enc.Cmp(A64::Xn(kTemp), label), "a case comparison");
+    }
+
+    void GenTerm(const std::uint32_t blockIdx, const LirTerminator &term) {
         switch (term.kind) {
+        case LirTermKind::Jump: {
+            EmitPhiMoves(blockIdx, term.trueTarget);
+            EmitJumpTo(term.trueTarget);
+            break;
+        }
+        case LirTermKind::Branch: {
+            // The condition is read at its own type, since a `bool8` occupies
+            // one byte of its slot and the bytes above it stand for nothing.
+            const auto found = regTypes.find(term.cond);
+            LoadFromSlot(A64::Xn(kTemp), term.cond, found != regTypes.end() ? found->second : TypeRef::MakeBool());
+            const A64Reg cond = A64::Xn(kTemp);
+            // With no copies on either edge, the whole terminator is a branch on
+            // zero to one target and a branch to the other. With copies on
+            // either edge, each edge needs instructions of its own that the
+            // other must not run, so both become a short run ending in a jump.
+            if (!HasPhiMoves(blockIdx, term.trueTarget) && !HasPhiMoves(blockIdx, term.falseTarget)) {
+                EmitCondBranchTo(OnZero(cond), term.falseTarget, BranchSite(blockIdx, 0));
+                EmitJumpTo(term.trueTarget);
+                break;
+            }
+            const std::uint32_t toFalse = EmitBranchOver(OnZero(cond));
+            EmitPhiMoves(blockIdx, term.trueTarget);
+            EmitJumpTo(term.trueTarget);
+            PatchBranchOver(toFalse);
+            EmitPhiMoves(blockIdx, term.falseTarget);
+            EmitJumpTo(term.falseTarget);
+            break;
+        }
         case LirTermKind::Return: {
             if (term.retVal && *term.retVal != LirNoReg) {
                 if (!IsScalarInteger(term.retType)) {
@@ -1227,8 +1577,35 @@ private:
             EmitEpilogue();
             break;
         }
-        default:
-            NotImplemented(std::format("the '{}' terminator", LirTermKindName(term.kind)));
+        case LirTermKind::Switch: {
+            // A chain of comparisons, which is what a jump table would be built
+            // out of anyway and is all the x86-64 back end emits: the labels a
+            // `match` produces are few and rarely contiguous.
+            const auto found = regTypes.find(term.cond);
+            LoadFromSlot(A64::Xn(kTemp), term.cond, found != regTypes.end() ? found->second : TypeRef::MakeInt64());
+            unsigned ordinal = 0;
+            for (const auto &branch : term.cases) {
+                CompareAgainstCase(branch.value);
+                // A case whose edge carries copies is entered through them,
+                // which the comparison that failed has to skip over.
+                if (!HasPhiMoves(blockIdx, branch.target)) {
+                    EmitCondBranchTo(OnCondition(A64Condition::Eq), branch.target, BranchSite(blockIdx, ordinal++));
+                    continue;
+                }
+                const std::uint32_t toNext = EmitBranchOver(OnCondition(A64Condition::Ne));
+                EmitPhiMoves(blockIdx, branch.target);
+                EmitJumpTo(branch.target);
+                PatchBranchOver(toNext);
+            }
+            EmitPhiMoves(blockIdx, term.defaultTarget);
+            EmitJumpTo(term.defaultTarget);
+            break;
+        }
+        case LirTermKind::Unreachable:
+            // The permanently undefined encoding, which is what UD2 is on
+            // x86-64: control reaching here is a compiler bug, and a trap says
+            // so at the instruction rather than wherever falling through led.
+            Must(enc.Udf(0), "an unreachable terminator");
             break;
         }
     }
@@ -1249,22 +1626,42 @@ private:
         }
 
         PrepassFunc(func);
-        jumpPatches.clear();
-        const std::uint32_t funcStart = enc.Size();
-        const std::uint32_t symIdx = DefineFunction(func, funcStart);
+        widenedSites.clear();
 
-        EmitPrologue();
-        blockOffsets.assign(func.blocks.size(), 0);
-        for (std::uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
-            blockOffsets[bi] = enc.Size();
-            for (const auto &instr : func.blocks[bi].instrs) {
-                GenInstr(instr);
+        // The body is emitted, and emitted again if any conditional branch in it
+        // turned out not to reach its target: which form such a branch takes has
+        // to be chosen before the offsets that decide it are known, so the
+        // choice is corrected rather than guessed. Each pass widens every site
+        // the pass before it found short and never narrows one back, so the
+        // number of passes is bounded by the number of branches, and a function
+        // small enough to have none — which is very nearly all of them — is
+        // emitted exactly once.
+        const std::uint32_t funcStart = enc.Size();
+        const std::size_t relocCount = textRelocs.size();
+        const std::uint32_t symIdx = DefineFunction(func, funcStart);
+        while (true) {
+            jumpPatches.clear();
+            EmitPrologue();
+            blockOffsets.assign(func.blocks.size(), 0);
+            for (std::uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
+                blockOffsets[bi] = enc.Size();
+                for (const auto &instr : func.blocks[bi].instrs) {
+                    GenInstr(instr);
+                }
+                if (func.blocks[bi].term) {
+                    GenTerm(bi, *func.blocks[bi].term);
+                }
             }
-            if (func.blocks[bi].term) {
-                GenTerm(*func.blocks[bi].term);
+            const std::size_t widened = widenedSites.size();
+            if (PatchJumps() || widenedSites.size() == widened) {
+                break;
             }
+            // Nothing this pass produced is kept: the constants it interned are
+            // reached by name and are found again, but its instructions and the
+            // relocations hung on them are about to be emitted a second time.
+            textData.resize(funcStart);
+            textRelocs.resize(relocCount);
         }
-        PatchJumps();
 
         symbols[symIdx].size = enc.Size() - funcStart;
         currentFunc.clear();

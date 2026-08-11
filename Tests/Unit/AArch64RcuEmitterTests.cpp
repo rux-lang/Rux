@@ -142,6 +142,64 @@ LirPackage CompileToAArch64Lir(const std::string &source) {
     return (word & 0xFE000000U) == 0xA8000000U;
 }
 
+// The instruction displacement a branch carries, sign-extended out of the field
+// its own form keeps it in: twenty-six bits at bit zero for B, and nineteen at
+// bit five for every conditional form.
+[[nodiscard]] std::int32_t BranchDisplacement(const std::uint32_t word) {
+    if ((word & 0xFC000000U) == 0x14000000U) {
+        return static_cast<std::int32_t>((word & 0x03FFFFFFU) << 6U) >> 6;
+    }
+    return static_cast<std::int32_t>((word >> 5U & 0x7FFFFU) << 13U) >> 13;
+}
+
+// The byte displacement of `ldr x9, [x29, #imm]` or of `str x9, [x29, #imm]`,
+// which is how a copy from one place in the frame to another is read back. The
+// immediate counts doublewords, so it is scaled by the width of the access.
+[[nodiscard]] std::optional<std::uint32_t> SlotDisplacement(const std::uint32_t word, const bool store) {
+    if ((word & 0xFFC003FFU) != (store ? 0xF90003A9U : 0xF94003A9U)) {
+        return std::nullopt;
+    }
+    return (word >> 10U & 0xFFFU) * 8U;
+}
+
+// A one-function package, for the two constructs no source program reaches yet:
+// the LIR's switch terminator, which the front end never emits, and a phi whose
+// copies form a cycle, which takes two phis in one block naming each other.
+[[nodiscard]] LirPackage PackageOf(LirFunc func) {
+    LirModule module;
+    module.name = "test.rux";
+    module.funcs.push_back(std::move(func));
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+    return package;
+}
+
+[[nodiscard]] LirInstr ConstInstr(const LirReg dst, const std::string_view value, TypeRef type) {
+    LirInstr instr;
+    instr.op = LirOpcode::Const;
+    instr.dst = dst;
+    instr.type = std::move(type);
+    instr.strArg = value;
+    return instr;
+}
+
+[[nodiscard]] LirInstr PhiInstr(const LirReg dst, const std::vector<std::pair<LirReg, std::uint32_t>> &preds) {
+    LirInstr instr;
+    instr.op = LirOpcode::Phi;
+    instr.dst = dst;
+    instr.type = TypeRef::MakeInt64();
+    instr.phiPreds = preds;
+    return instr;
+}
+
+[[nodiscard]] LirTerminator ReturnTerm(const LirReg value) {
+    LirTerminator term;
+    term.kind = LirTermKind::Return;
+    term.retVal = value;
+    term.retType = TypeRef::MakeInt64();
+    return term;
+}
+
 // The one message an emitter is expected to have produced, joined so a failure
 // prints what was actually reported rather than a count.
 [[nodiscard]] std::string JoinMessages(const std::vector<Diagnostic> &diagnostics) {
@@ -305,13 +363,16 @@ TEST_CASE("AArch64 RCU emitter reports an unimplemented opcode by name") {
 }
 
 TEST_CASE("AArch64 RCU emitter names each unimplemented construct once") {
+    // Three conversions, which are three instructions of the one opcode this
+    // back end does not lower yet: what a report names is the construct, so
+    // reaching it again says nothing new.
     const auto package = CompileToAArch64Lir(R"(
         func Main() -> int {
-            var total: int = 0;
-            for i in 0..8 {
-                total = total + i;
-            }
-            return total;
+            var narrow: int32 = 1;
+            var first: int = narrow as int;
+            var second: int = narrow as int;
+            var third: int64 = narrow as int64;
+            return 0;
         }
     )");
 
@@ -326,7 +387,8 @@ TEST_CASE("AArch64 RCU emitter names each unimplemented construct once") {
     auto sorted = messages;
     std::ranges::sort(sorted);
     CHECK_EQ(std::ranges::unique(sorted).begin(), sorted.end());
-    CHECK_MESSAGE(!messages.empty(), "a loop reaches opcodes this back end does not lower yet");
+    REQUIRE_EQ(messages.size(), 1);
+    CHECK_MESSAGE(messages.front().contains("'cast' opcode"), messages.front());
 }
 
 // Constants, globals and the read-only pool
@@ -962,4 +1024,389 @@ TEST_CASE("AArch64 RCU emitter calls one synthesized exponentiation helper") {
         CHECK_EQ(call.type, RcuRelType::AArch64Call26);
         CHECK_EQ(HexWord(TextWordAt(object, call.sectionOffset) & 0xFC000000U), HexWord(0x94000000U)); // bl
     }
+}
+
+TEST_CASE("AArch64 RCU emitter reads a comparison at the signedness of its operands") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var a: int = 3;
+            var b: int = 4;
+            var below = a < b;
+            var atLeast = a >= b;
+            var same = a == b;
+            var u: uint = 3;
+            var v: uint = 4;
+            var uBelow = u < v;
+            var uAtLeast = u >= v;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // One comparison and one CSET each, and the condition is where the
+    // signedness of the operands shows: equality reads the same flags either
+    // way, and the orderings do not.
+    CHECK_EQ(std::ranges::count(words, 0xEB0C013FU), 5); // cmp  x9, x12
+    const std::vector<std::uint32_t> expected = {
+        0x9A9FA7E9, // cset x9, lt   — a signed `<`
+        0x9A9FB7E9, // cset x9, ge   — a signed `>=`
+        0x9A9F17E9, // cset x9, eq
+        0x9A9F27E9, // cset x9, lo   — the same two comparisons, unsigned
+        0x9A9F37E9, // cset x9, hs
+    };
+    for (const auto word : expected) {
+        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    }
+    // A boolean is one byte of its slot, so the result is stored as one.
+    CHECK_EQ(std::ranges::count_if(words, [](const std::uint32_t w) { return (w & 0xFFC003FFU) == 0x390003A9U; }), 5);
+}
+
+TEST_CASE("AArch64 RCU emitter compares floats with conditions a NaN does not satisfy") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var a: float64 = 1.5;
+            var b: float64 = 2.5;
+            var below = a < b;
+            var atMost = a <= b;
+            var unequal = a != b;
+            var s: float32 = 1.5f32;
+            var t: float32 = 2.5f32;
+            var above = s > t;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // FCMP compares in the register file that holds a float, at the precision
+    // the operands are; the general-purpose register only receives the answer.
+    CHECK_EQ(std::ranges::count(words, 0x1E712200U), 3); // fcmp d16, d17
+    CHECK_EQ(std::ranges::count(words, 0x1E312200U), 1); // fcmp s16, s17
+
+    // MI and LS rather than LT and LE: an unordered comparison leaves C and V
+    // set, which LT and LE are satisfied by and these two are not, so `<` and
+    // `<=` against a NaN answer false — and `!=` answers true — exactly as the
+    // x86-64 back end's ordered/parity pairs do.
+    const std::vector<std::uint32_t> expected = {
+        0x9A9F57E9, // cset x9, mi   — `<`
+        0x9A9F87E9, // cset x9, ls   — `<=`
+        0x9A9F07E9, // cset x9, ne   — `!=`, the one comparison a NaN satisfies
+        0x9A9FD7E9, // cset x9, gt   — `>`
+    };
+    for (const auto word : expected) {
+        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    }
+}
+
+TEST_CASE("AArch64 RCU emitter branches on a boolean and patches both edges") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var a: int = 3;
+            var b: int = 4;
+            if a < b {
+                return 7;
+            }
+            return 9;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // A boolean in a register is a value that is zero or is not, so the branch
+    // needs no comparison of its own: CBZ takes the edge the condition failed
+    // and the B beside it takes the other.
+    const auto branch =
+        std::ranges::find_if(words, [](const std::uint32_t w) { return (w & 0xFF00001FU) == 0xB4000009U; });
+    REQUIRE_MESSAGE(branch != words.end(), "cbz x9, #imm");
+    const auto index = static_cast<std::size_t>(branch - words.begin());
+    REQUIRE_LT(index + 1, words.size());
+    CHECK_EQ(HexWord(words[index - 1] & 0xFFC003FFU), HexWord(0x394003A9U)); // ldrb w9, [x29, #imm]
+    CHECK_EQ(HexWord(words[index + 1] & 0xFC000000U), HexWord(0x14000000U)); // b
+
+    // Both displacements were filled in once the blocks they name had offsets,
+    // and each one lands on the value that branch's edge returns.
+    const auto whenFalse = index + static_cast<std::size_t>(BranchDisplacement(words[index]));
+    const auto whenTrue = index + 1 + static_cast<std::size_t>(BranchDisplacement(words[index + 1]));
+    REQUIRE_LT(whenFalse, words.size());
+    REQUIRE_LT(whenTrue, words.size());
+    CHECK_EQ(HexWord(words[whenTrue]), HexWord(0xD28000E9U));  // mov x9, #7
+    CHECK_EQ(HexWord(words[whenFalse]), HexWord(0xD2800129U)); // mov x9, #9
+}
+
+TEST_CASE("AArch64 RCU emitter closes a loop with a backward branch") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var i: int = 0;
+            while i < 10 {
+                i += 1;
+            }
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // The back edge is the one branch whose target is behind it, and there is
+    // exactly one: what it names is the block that tests the condition, which is
+    // the block the conditional branch leaving the loop ends.
+    const auto backward = std::ranges::find_if(
+        words, [](const std::uint32_t w) { return (w & 0xFC000000U) == 0x14000000U && BranchDisplacement(w) < 0; });
+    REQUIRE_MESSAGE(backward != words.end(), "a backward b");
+    const auto index = static_cast<std::size_t>(backward - words.begin());
+    const auto target = static_cast<std::size_t>(index + BranchDisplacement(words[index]));
+
+    const auto exiting =
+        std::ranges::find_if(words, [](const std::uint32_t w) { return (w & 0xFF00001FU) == 0xB4000009U; });
+    REQUIRE_MESSAGE(exiting != words.end(), "cbz x9, #imm");
+    const auto test = static_cast<std::size_t>(exiting - words.begin());
+    REQUIRE_LT(target, test);
+    const std::vector<std::uint32_t> condition(words.begin() + static_cast<std::ptrdiff_t>(target),
+                                               words.begin() + static_cast<std::ptrdiff_t>(test));
+    CHECK_MESSAGE(std::ranges::find(condition, 0xEB0C013FU) != condition.end(), "cmp x9, x12");
+    CHECK_MESSAGE(std::ranges::find(condition, 0x9A9FA7E9U) != condition.end(), "cset x9, lt");
+}
+
+TEST_CASE("AArch64 RCU emitter widens a conditional branch that cannot reach its block") {
+    // A conditional branch keeps nineteen bits of instruction displacement, so
+    // it reaches a megabyte of code. Nothing a program is likely to contain puts
+    // a block further away than that, and this is what a program that does gets:
+    // enough instructions between the branch and the block it skips to that the
+    // short form has no encoding at all.
+    constexpr std::uint32_t kFiller = 100000;
+    LirFunc func;
+    func.name = "Main";
+    func.isPublic = true;
+    func.returnType = TypeRef::MakeInt64();
+
+    LirBlock entry;
+    entry.label = "entry";
+    entry.instrs.push_back(ConstInstr(0, "true", TypeRef::MakeBool()));
+    LirTerminator branch;
+    branch.kind = LirTermKind::Branch;
+    branch.cond = 0;
+    branch.trueTarget = 1;
+    branch.falseTarget = 2;
+    entry.term = branch;
+
+    LirBlock filler;
+    filler.label = "filler";
+    for (std::uint32_t i = 0; i < kFiller; ++i) {
+        filler.instrs.push_back(ConstInstr(i + 2, "1", TypeRef::MakeInt64()));
+    }
+    LirTerminator jump;
+    jump.kind = LirTermKind::Jump;
+    jump.trueTarget = 2;
+    filler.term = jump;
+
+    LirBlock exit;
+    exit.label = "exit";
+    exit.instrs.push_back(ConstInstr(1, "7", TypeRef::MakeInt64()));
+    exit.term = ReturnTerm(1);
+
+    func.blocks = {std::move(entry), std::move(filler), std::move(exit)};
+
+    const auto package = PackageOf(std::move(func));
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // The branch is the inverse of the one the terminator asked for, jumping
+    // over an unconditional branch that carries the target: two instructions
+    // rather than one, and twenty-six bits of displacement rather than nineteen.
+    const auto widened = std::ranges::find(words, 0xB5000049U); // cbnz x9, #8
+    REQUIRE_MESSAGE(widened != words.end(), "cbnz x9, #8");
+    const auto index = static_cast<std::size_t>(widened - words.begin());
+    REQUIRE_LT(index + 2, words.size());
+    CHECK_EQ(HexWord(words[index + 1] & 0xFC000000U), HexWord(0x14000000U)); // b — the false edge
+    CHECK_EQ(HexWord(words[index + 2] & 0xFC000000U), HexWord(0x14000000U)); // b — the true edge
+    CHECK_MESSAGE(std::ranges::find_if(words, [](const std::uint32_t w) { return (w & 0xFF00001FU) == 0xB4000009U; }) ==
+                      words.end(),
+                  "no cbz survived the widening");
+
+    // The false edge really was out of reach — a displacement no nineteen-bit
+    // field holds — and the true edge is the instruction after the pair.
+    CHECK_GT(BranchDisplacement(words[index + 1]), 1 << 18);
+    CHECK_EQ(BranchDisplacement(words[index + 2]), 1);
+    const auto whenFalse = index + 1 + static_cast<std::size_t>(BranchDisplacement(words[index + 1]));
+    REQUIRE_LT(whenFalse, words.size());
+    CHECK_EQ(HexWord(words[whenFalse]), HexWord(0xD28000E9U)); // mov x9, #7
+}
+
+TEST_CASE("AArch64 RCU emitter breaks a cycle of phi copies through a frame slot") {
+    // Two phis in one block naming each other: on the edge that closes the loop
+    // the copies exchange two values, which no order of stores performs — the
+    // second copy would read what the first one has already overwritten. The
+    // shared resolver saves one of them first, and the loop is here because a
+    // cycle needs an edge whose source block is the block the phis are in.
+    LirFunc func;
+    func.name = "Main";
+    func.isPublic = true;
+    func.returnType = TypeRef::MakeInt64();
+
+    LirBlock entry;
+    entry.label = "entry";
+    entry.instrs.push_back(ConstInstr(0, "1", TypeRef::MakeInt64()));
+    entry.instrs.push_back(ConstInstr(1, "2", TypeRef::MakeInt64()));
+    entry.instrs.push_back(ConstInstr(2, "0", TypeRef::MakeInt64()));
+    LirTerminator jump;
+    jump.kind = LirTermKind::Jump;
+    jump.trueTarget = 1;
+    entry.term = jump;
+
+    LirBlock loop;
+    loop.label = "loop";
+    loop.instrs.push_back(PhiInstr(3, {{0, 0}, {4, 1}})); // the two that swap
+    loop.instrs.push_back(PhiInstr(4, {{1, 0}, {3, 1}}));
+    loop.instrs.push_back(PhiInstr(5, {{2, 0}, {6, 1}})); // and one that does not
+    loop.instrs.push_back(ConstInstr(7, "1", TypeRef::MakeInt64()));
+    LirInstr add;
+    add.op = LirOpcode::Add;
+    add.dst = 6;
+    add.type = TypeRef::MakeInt64();
+    add.srcs = {5, 7};
+    loop.instrs.push_back(add);
+    loop.instrs.push_back(ConstInstr(8, "5", TypeRef::MakeInt64()));
+    LirInstr compare;
+    compare.op = LirOpcode::CmpLt;
+    compare.dst = 9;
+    compare.type = TypeRef::MakeBool();
+    compare.srcs = {6, 8};
+    loop.instrs.push_back(compare);
+    LirTerminator branch;
+    branch.kind = LirTermKind::Branch;
+    branch.cond = 9;
+    branch.trueTarget = 1;
+    branch.falseTarget = 2;
+    loop.term = branch;
+
+    LirBlock exit;
+    exit.label = "exit";
+    exit.term = ReturnTerm(3);
+
+    func.blocks = {std::move(entry), std::move(loop), std::move(exit)};
+
+    const auto package = PackageOf(std::move(func));
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // The copies belong to the edge rather than to a block, so they sit in the
+    // terminator, after a branch that the other edge takes over them.
+    const auto over =
+        std::ranges::find_if(words, [](const std::uint32_t w) { return (w & 0xFF00001FU) == 0xB4000009U; });
+    REQUIRE_MESSAGE(over != words.end(), "cbz x9, #imm");
+    const auto index = static_cast<std::size_t>(over - words.begin());
+    REQUIRE_EQ(BranchDisplacement(words[index]), 10); // eight words of copies and two branches
+
+    // Four load-and-store pairs where three copies were asked for: the one the
+    // cycle does not touch, then the save, then the two that read it.
+    std::vector<std::uint32_t> reads;
+    std::vector<std::uint32_t> writes;
+    for (std::size_t i = index + 1; i < index + 9; i += 2) {
+        const auto read = SlotDisplacement(words[i], false);
+        const auto write = SlotDisplacement(words[i + 1], true);
+        REQUIRE_MESSAGE(read.has_value(), HexWord(words[i]));
+        REQUIRE_MESSAGE(write.has_value(), HexWord(words[i + 1]));
+        reads.push_back(*read);
+        writes.push_back(*write);
+    }
+
+    // The save is a copy to a place nothing else in the frame occupies, past
+    // every slot because it was reserved after all of them; the copy that would
+    // otherwise have read a slot already overwritten reads it instead.
+    const std::uint32_t temporary = writes[1];
+    CHECK_EQ(reads[3], temporary);
+    const std::vector<std::uint32_t> slots = {reads[0], reads[1], reads[2], writes[0], writes[2], writes[3]};
+    CHECK_GT(temporary, std::ranges::max(slots));
+    CHECK_EQ(reads[1], writes[2]); // saved, then overwritten by the other value
+    CHECK_EQ(reads[2], writes[3]); // and that value's own slot takes the saved one
+    CHECK_EQ(std::ranges::count(writes, temporary), 1);
+}
+
+TEST_CASE("AArch64 RCU emitter lowers a switch to a compare chain and traps where control cannot arrive") {
+    // Neither of these reaches a source program yet — the front end lowers a
+    // `match` to comparisons of its own and only emits `unreachable` after a
+    // panic or a call that does not return, which is Task 27's — so the LIR is
+    // written out here rather than compiled.
+    LirFunc func;
+    func.name = "Main";
+    func.isPublic = true;
+    func.returnType = TypeRef::MakeInt64();
+
+    LirBlock entry;
+    entry.label = "entry";
+    entry.instrs.push_back(ConstInstr(0, "5000", TypeRef::MakeInt64()));
+    LirTerminator term;
+    term.kind = LirTermKind::Switch;
+    term.cond = 0;
+    term.defaultTarget = 3;
+    term.cases = {{"1", 1}, {"5000", 2}};
+    entry.term = term;
+
+    LirBlock first;
+    first.label = "first";
+    first.instrs.push_back(ConstInstr(1, "10", TypeRef::MakeInt64()));
+    first.term = ReturnTerm(1);
+
+    LirBlock second;
+    second.label = "second";
+    second.instrs.push_back(ConstInstr(2, "20", TypeRef::MakeInt64()));
+    second.term = ReturnTerm(2);
+
+    LirBlock unreachable;
+    unreachable.label = "unreachable";
+    LirTerminator trap;
+    trap.kind = LirTermKind::Unreachable;
+    unreachable.term = trap;
+
+    func.blocks = {std::move(entry), std::move(first), std::move(second), std::move(unreachable)};
+
+    const auto package = PackageOf(std::move(func));
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // A label the arithmetic immediate reaches is one instruction; one it does
+    // not is materialized first, which is the encoder's refusal being read
+    // rather than a rule about labels restated here.
+    const auto reachable = std::ranges::find(words, 0xF100053FU); // cmp x9, #1
+    REQUIRE_MESSAGE(reachable != words.end(), "cmp x9, #1");
+    const auto materialized = std::ranges::find(words, 0xD282710CU); // mov x12, #5000
+    REQUIRE_MESSAGE(materialized != words.end(), "mov x12, #5000");
+    const auto index = static_cast<std::size_t>(materialized - words.begin());
+    REQUIRE_LT(index + 2, words.size());
+    CHECK_EQ(HexWord(words[index + 1]), HexWord(0xEB0C013FU)); // cmp x9, x12
+
+    // Each arm is a branch on equality to its own block, and the default is the
+    // fall-through the chain ends in.
+    const auto firstArm = static_cast<std::size_t>(reachable - words.begin()) + 1;
+    const auto secondArm = index + 2;
+    CHECK_EQ(HexWord(words[firstArm] & 0xFF00001FU), HexWord(0x54000000U));  // b.eq
+    CHECK_EQ(HexWord(words[secondArm] & 0xFF00001FU), HexWord(0x54000000U)); // b.eq
+    const auto whenFirst = firstArm + static_cast<std::size_t>(BranchDisplacement(words[firstArm]));
+    const auto whenSecond = secondArm + static_cast<std::size_t>(BranchDisplacement(words[secondArm]));
+    REQUIRE_LT(whenFirst, words.size());
+    REQUIRE_LT(whenSecond, words.size());
+    CHECK_EQ(HexWord(words[whenFirst]), HexWord(0xD2800149U));  // mov x9, #10
+    CHECK_EQ(HexWord(words[whenSecond]), HexWord(0xD2800289U)); // mov x9, #20
+
+    // The default block traps: a program that arrives where nothing can arrive
+    // stops at the instruction rather than wherever falling through led.
+    CHECK_EQ(HexWord(words.back()), HexWord(0x00000000U)); // udf #0
 }
