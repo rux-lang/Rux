@@ -103,6 +103,92 @@ public:
     // `value` above `width` are discarded.
     void PatchField(std::uint32_t offset, unsigned lsb, unsigned width, std::uint32_t value) const;
 
+    // Data processing — immediate.
+    //
+    // Every encoder below reports A64Status and emits nothing at all when it
+    // refuses, so a caller can try the short form and fall back to a longer
+    // sequence without rewinding the buffer.
+    //
+    // The operand width comes from `rd`: an X register selects the 64-bit form
+    // and a W register the 32-bit one, and every other general-purpose operand
+    // must agree or the encoder reports InvalidRegister. Code 31 is read as
+    // whichever register the field it lands in actually names, so A64::Sp is
+    // refused where only XZR encodes and A64::Xzr where only SP does.
+
+    // ADD / ADDS / SUB / SUBS (immediate). `imm` is the unshifted value and the
+    // LSL #12 form is selected for it when it needs one, so the two shift
+    // positions are an encoding detail rather than an operand. ADD and SUB read
+    // and write SP; the flag-setting forms read it but write XZR, which is what
+    // makes them the CMN and CMP aliases.
+    [[nodiscard]] A64Status AddImm(A64Reg rd, A64Reg rn, std::uint64_t imm) const;
+    [[nodiscard]] A64Status AddsImm(A64Reg rd, A64Reg rn, std::uint64_t imm) const;
+    [[nodiscard]] A64Status SubImm(A64Reg rd, A64Reg rn, std::uint64_t imm) const;
+    [[nodiscard]] A64Status SubsImm(A64Reg rd, A64Reg rn, std::uint64_t imm) const;
+
+    // AND / ORR / EOR / ANDS (bitmask immediate). `imm` is the value the
+    // instruction applies, encoded through TryEncodeBitmaskImm. AND, ORR and
+    // EOR write SP; ANDS writes XZR for its TST alias.
+    [[nodiscard]] A64Status AndImm(A64Reg rd, A64Reg rn, std::uint64_t imm) const;
+    [[nodiscard]] A64Status OrrImm(A64Reg rd, A64Reg rn, std::uint64_t imm) const;
+    [[nodiscard]] A64Status EorImm(A64Reg rd, A64Reg rn, std::uint64_t imm) const;
+    [[nodiscard]] A64Status AndsImm(A64Reg rd, A64Reg rn, std::uint64_t imm) const;
+
+    // MOVZ / MOVN / MOVK. `shift` is a bit count and must name a halfword the
+    // register has: 0, 16, 32 or 48 for an X register, 0 or 16 for a W one.
+    // MOVZ writes the halfword and zeros the rest, MOVN writes the inverse of
+    // the whole register, and MOVK leaves the other halfwords alone.
+    [[nodiscard]] A64Status Movz(A64Reg rd, std::uint16_t imm16, unsigned shift = 0) const;
+    [[nodiscard]] A64Status Movn(A64Reg rd, std::uint16_t imm16, unsigned shift = 0) const;
+    [[nodiscard]] A64Status Movk(A64Reg rd, std::uint16_t imm16, unsigned shift = 0) const;
+
+    // ADR and ADRP, whose 21-bit immediate is split across two fields.
+    //
+    // Both take a byte offset from the instruction: ADR reaches +/-1 MiB, and
+    // ADRP reaches +/-4 GiB but counts whole 4 KiB pages, so its offset is the
+    // distance between the page holding the instruction and the page holding
+    // the target and must be a multiple of 4096. `rd` is always 64-bit.
+    [[nodiscard]] A64Status Adr(A64Reg rd, std::int64_t offset) const;
+    [[nodiscard]] A64Status Adrp(A64Reg rd, std::int64_t offset) const;
+
+    // SBFM / UBFM / BFM, the three bitfield instructions every alias below is
+    // built from. `immr` rotates the source right and `imms` names the top bit
+    // of the field; both must be smaller than the register width.
+    [[nodiscard]] A64Status Sbfm(A64Reg rd, A64Reg rn, unsigned immr, unsigned imms) const;
+    [[nodiscard]] A64Status Ubfm(A64Reg rd, A64Reg rn, unsigned immr, unsigned imms) const;
+    [[nodiscard]] A64Status Bfm(A64Reg rd, A64Reg rn, unsigned immr, unsigned imms) const;
+
+    // Shifts by a constant. `shift` must be smaller than the register width;
+    // the variable-register forms are LSLV, LSRV and ASRV, not these.
+    [[nodiscard]] A64Status Lsl(A64Reg rd, A64Reg rn, unsigned shift) const;
+    [[nodiscard]] A64Status Lsr(A64Reg rd, A64Reg rn, unsigned shift) const;
+    [[nodiscard]] A64Status Asr(A64Reg rd, A64Reg rn, unsigned shift) const;
+
+    // Field extraction and insertion. `width` is the number of bits moved and
+    // must be at least one; `lsb` is where the field sits in the source for the
+    // extracts and in the destination for BFI. UBFX and SBFX clear or sign
+    // extend the rest of `rd`, while BFI and BFXIL leave it alone.
+    [[nodiscard]] A64Status Ubfx(A64Reg rd, A64Reg rn, unsigned lsb, unsigned width) const;
+    [[nodiscard]] A64Status Sbfx(A64Reg rd, A64Reg rn, unsigned lsb, unsigned width) const;
+    [[nodiscard]] A64Status Bfi(A64Reg rd, A64Reg rn, unsigned lsb, unsigned width) const;
+    [[nodiscard]] A64Status Bfxil(A64Reg rd, A64Reg rn, unsigned lsb, unsigned width) const;
+
+    // Extensions of a narrow value held in a W register. `rn` is 32-bit in
+    // every form, since the bits above the field are the ones being replaced,
+    // and `rd` selects the width of the result. SXTW only ever widens, so its
+    // `rd` is 64-bit; UXTB and UXTH have no 64-bit form at all, because the
+    // 32-bit instruction already zeroes the upper half of the register.
+    [[nodiscard]] A64Status Sxtb(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Sxth(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Sxtw(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Uxtb(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Uxth(A64Reg rd, A64Reg rn) const;
+
+    // EXTR takes the `lsb` low bits of `rn` as the high part of the result and
+    // the rest from the top of `rm`; ROR is the form that reads one register
+    // twice.
+    [[nodiscard]] A64Status Extr(A64Reg rd, A64Reg rn, A64Reg rm, unsigned lsb) const;
+    [[nodiscard]] A64Status Ror(A64Reg rd, A64Reg rn, unsigned shift) const;
+
 private:
     std::vector<std::uint8_t> &out;
 };

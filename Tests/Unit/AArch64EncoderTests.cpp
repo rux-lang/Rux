@@ -7,6 +7,32 @@
 
 using namespace Rux;
 
+namespace {
+// One encoder call and the word it must produce.
+//
+// The expected words come from the encoding diagrams in the ARM Architecture
+// Reference Manual section named on each test case, and were cross-checked
+// against `llvm-mc -triple=aarch64 -show-encoding` for the same mnemonic. The
+// buffer is emptied after every vector so a refusal is visible as an empty
+// buffer rather than as a leftover word.
+struct A64Vectors {
+    std::vector<std::uint8_t> code;
+    A64Enc enc{code};
+
+    void Encodes(const A64Status status, const std::uint32_t expected) {
+        CHECK(status == A64Status::Ok);
+        REQUIRE(code.size() == 4);
+        CHECK(enc.WordAt(0) == expected);
+        code.clear();
+    }
+
+    void Refuses(const A64Status status, const A64Status expected) {
+        CHECK(status == expected);
+        CHECK(code.empty());
+    }
+};
+} // namespace
+
 TEST_CASE("AArch64 encoder writes little-endian instruction words") {
     std::vector<std::uint8_t> code;
     const A64Enc enc(code);
@@ -291,6 +317,268 @@ TEST_CASE("AArch64 MOVZ / MOVN immediates reject values needing a MOVK chain") {
     // Wider than the 32-bit instruction can reach.
     CHECK_FALSE(TryEncodeMovwImm(0x100000000ULL, false).has_value());
     CHECK(TryEncodeMovwImm(0x100000000ULL, true).has_value());
+}
+
+// C4.1.92, Add/subtract (immediate).
+TEST_CASE("AArch64 encodes add and subtract immediates") {
+    A64Vectors v;
+    const A64Reg x3 = A64::Xn(3);
+    const A64Reg x5 = A64::Xn(5);
+    const A64Reg w3 = A64::Wn(3);
+    const A64Reg w5 = A64::Wn(5);
+
+    SUBCASE("64-bit") {
+        v.Encodes(v.enc.AddImm(x3, x5, 0), 0x910000A3);
+        v.Encodes(v.enc.AddImm(x3, x5, 1), 0x910004A3);
+        v.Encodes(v.enc.AddsImm(x3, x5, 1), 0xB10004A3);
+        v.Encodes(v.enc.SubImm(x3, x5, 1), 0xD10004A3);
+        v.Encodes(v.enc.SubsImm(x3, x5, 1), 0xF10004A3);
+
+        // The boundary of the unshifted field, and the first value above it
+        // that the LSL #12 form can still reach.
+        v.Encodes(v.enc.AddImm(x3, x5, 0xFFF), 0x913FFCA3);
+        v.Encodes(v.enc.AddImm(x3, x5, 0x1000), 0x914004A3);
+        v.Encodes(v.enc.SubImm(x3, x5, 0xFFF000), 0xD17FFCA3);
+    }
+
+    SUBCASE("32-bit") {
+        v.Encodes(v.enc.AddImm(w3, w5, 1), 0x110004A3);
+        v.Encodes(v.enc.AddsImm(w3, w5, 4095), 0x313FFCA3);
+        v.Encodes(v.enc.SubImm(w3, w5, 4096), 0x514004A3);
+        v.Encodes(v.enc.SubsImm(w3, w5, 0xFFF000), 0x717FFCA3);
+    }
+
+    SUBCASE("stack pointer and zero register") {
+        v.Encodes(v.enc.SubImm(A64::Sp, A64::Sp, 16), 0xD10043FF);
+        v.Encodes(v.enc.AddImm(A64::Sp, A64::Sp, 16), 0x910043FF);
+        v.Encodes(v.enc.AddImm(A64::Sp, A64::Sp, 0x1000), 0x914007FF);
+        v.Encodes(v.enc.AddImm(A64::Wsp, A64::Wsp, 1), 0x110007FF);
+        // CMP Xn, #imm and CMN Xn, #imm: the flag-setting forms writing XZR.
+        v.Encodes(v.enc.SubsImm(A64::Xzr, A64::Sp, 1), 0xF10007FF);
+        v.Encodes(v.enc.AddsImm(A64::Xzr, x5, 1), 0xB10004BF);
+        v.Encodes(v.enc.AddsImm(A64::Wzr, w5, 4095), 0x313FFCBF);
+    }
+
+    SUBCASE("refusals") {
+        // Between the two shift positions there is nothing.
+        v.Refuses(v.enc.AddImm(x3, x5, 0x1001), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.AddImm(x3, x5, 0x1000000), A64Status::InvalidImmediate);
+        // ADDS and SUBS read the stack pointer but cannot write it, while ADD
+        // and SUB cannot write the zero register.
+        v.Refuses(v.enc.AddsImm(A64::Sp, x5, 0), A64Status::InvalidRegister);
+        v.Refuses(v.enc.AddImm(A64::Xzr, x5, 0), A64Status::InvalidRegister);
+        v.Refuses(v.enc.AddImm(x3, A64::Xzr, 0), A64Status::InvalidRegister);
+        // Mixed widths and the wrong register file.
+        v.Refuses(v.enc.AddImm(x3, w5, 0), A64Status::InvalidRegister);
+        v.Refuses(v.enc.AddImm(A64::Dn(3), x5, 0), A64Status::InvalidRegister);
+    }
+}
+
+// C4.1.93, Logical (immediate).
+TEST_CASE("AArch64 encodes logical immediates") {
+    A64Vectors v;
+    const A64Reg x3 = A64::Xn(3);
+    const A64Reg x5 = A64::Xn(5);
+    const A64Reg w3 = A64::Wn(3);
+    const A64Reg w5 = A64::Wn(5);
+
+    SUBCASE("64-bit") {
+        v.Encodes(v.enc.AndImm(x3, x5, 0xFF), 0x92401CA3);
+        v.Encodes(v.enc.OrrImm(x3, x5, 0xFF), 0xB2401CA3);
+        v.Encodes(v.enc.EorImm(x3, x5, 0xFF), 0xD2401CA3);
+        v.Encodes(v.enc.AndsImm(x3, x5, 0xFF), 0xF2401CA3);
+        v.Encodes(v.enc.AndImm(x3, x5, 1), 0x924000A3);
+        v.Encodes(v.enc.AndImm(x3, x5, 0xFFFFFFFF), 0x92407CA3);
+        // A pattern that only encodes because it replicates in 2-bit elements.
+        v.Encodes(v.enc.OrrImm(x3, x5, 0x5555555555555555ULL), 0xB200F0A3);
+    }
+
+    SUBCASE("32-bit") {
+        v.Encodes(v.enc.AndImm(w3, w5, 0xFF), 0x12001CA3);
+        v.Encodes(v.enc.OrrImm(w3, w5, 1), 0x320000A3);
+        v.Encodes(v.enc.EorImm(w3, w5, 0xFFFFFF00U), 0x52185CA3);
+        v.Encodes(v.enc.AndsImm(w3, w5, 0x3FFC), 0x721E2CA3);
+        v.Encodes(v.enc.AndImm(w3, w5, 0x80000001U), 0x120104A3);
+    }
+
+    SUBCASE("stack pointer and zero register") {
+        // AND, ORR and EOR write SP; ANDS writes XZR for its TST alias.
+        v.Encodes(v.enc.AndImm(A64::Sp, x5, 0xFF), 0x92401CBF);
+        v.Encodes(v.enc.AndImm(A64::Wsp, w5, 0xFF), 0x12001CBF);
+        v.Encodes(v.enc.AndsImm(A64::Wzr, w5, 0x3FFC), 0x721E2CBF);
+    }
+
+    SUBCASE("refusals") {
+        v.Refuses(v.enc.AndImm(x3, x5, 0), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.AndImm(x3, x5, 0xFFFFFFFFFFFFFFFFULL), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.OrrImm(x3, x5, 0x1234), A64Status::InvalidImmediate);
+        // Wider than the 32-bit instruction can reach.
+        v.Refuses(v.enc.AndImm(w3, w5, 0x1FFFFFFFFULL), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.AndsImm(A64::Sp, x5, 0xFF), A64Status::InvalidRegister);
+        v.Refuses(v.enc.AndImm(x3, A64::Sp, 0xFF), A64Status::InvalidRegister);
+        v.Refuses(v.enc.AndImm(x3, w5, 0xFF), A64Status::InvalidRegister);
+    }
+}
+
+// C4.1.94, Move wide (immediate).
+TEST_CASE("AArch64 encodes the move-wide group at every halfword") {
+    A64Vectors v;
+    const A64Reg x3 = A64::Xn(3);
+    const A64Reg w3 = A64::Wn(3);
+
+    SUBCASE("all four halfwords") {
+        v.Encodes(v.enc.Movz(x3, 1), 0xD2800023);
+        v.Encodes(v.enc.Movz(x3, 0x1234, 16), 0xD2A24683);
+        v.Encodes(v.enc.Movz(x3, 0x1234, 32), 0xD2C24683);
+        v.Encodes(v.enc.Movz(x3, 0x1234, 48), 0xD2E24683);
+        v.Encodes(v.enc.Movn(x3, 1), 0x92800023);
+        v.Encodes(v.enc.Movn(x3, 0x1234, 48), 0x92E24683);
+        v.Encodes(v.enc.Movk(x3, 1, 16), 0xF2A00023);
+        v.Encodes(v.enc.Movk(x3, 0x1234, 32), 0xF2C24683);
+    }
+
+    SUBCASE("32-bit") {
+        v.Encodes(v.enc.Movz(w3, 0), 0x52800003);
+        v.Encodes(v.enc.Movz(w3, 0xFFFF), 0x529FFFE3);
+        v.Encodes(v.enc.Movn(w3, 0x1234), 0x12824683);
+        v.Encodes(v.enc.Movk(w3, 0x1234, 16), 0x72A24683);
+    }
+
+    SUBCASE("refusals") {
+        // A W register has no third or fourth halfword.
+        v.Refuses(v.enc.Movz(w3, 1, 32), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Movz(x3, 1, 64), A64Status::InvalidImmediate);
+        // The shift names a halfword, not an arbitrary bit position.
+        v.Refuses(v.enc.Movk(x3, 1, 8), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Movz(A64::Sp, 1), A64Status::InvalidRegister);
+    }
+}
+
+// C4.1.91, PC-relative addressing.
+TEST_CASE("AArch64 encodes ADR and ADRP with a split immediate") {
+    A64Vectors v;
+    const A64Reg x9 = A64::Xn(9);
+
+    SUBCASE("ADR reaches a megabyte either way") {
+        v.Encodes(v.enc.Adr(x9, 0), 0x10000009);
+        v.Encodes(v.enc.Adr(x9, 4), 0x10000029);
+        v.Encodes(v.enc.Adr(x9, -4), 0x10FFFFE9);
+        v.Encodes(v.enc.Adr(x9, 1048572), 0x107FFFE9);
+        v.Encodes(v.enc.Adr(x9, -1048576), 0x10800009);
+    }
+
+    SUBCASE("ADRP counts pages") {
+        v.Encodes(v.enc.Adrp(x9, 0), 0x90000009);
+        v.Encodes(v.enc.Adrp(x9, 4096), 0xB0000009);
+        v.Encodes(v.enc.Adrp(x9, -4096), 0xF0FFFFE9);
+        v.Encodes(v.enc.Adrp(x9, 4294963200), 0xF07FFFE9);
+        v.Encodes(v.enc.Adrp(x9, -4294967296), 0x90800009);
+    }
+
+    SUBCASE("refusals") {
+        v.Refuses(v.enc.Adr(x9, 1048576), A64Status::OutOfRange);
+        v.Refuses(v.enc.Adr(x9, -1048580), A64Status::OutOfRange);
+        v.Refuses(v.enc.Adrp(x9, 2048), A64Status::Unaligned);
+        v.Refuses(v.enc.Adrp(x9, 4294967296), A64Status::OutOfRange);
+        v.Refuses(v.enc.Adr(A64::Wn(9), 0), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Adr(A64::Sp, 0), A64Status::InvalidRegister);
+    }
+}
+
+// C4.1.95, Bitfield, and the aliases in C6.2.
+TEST_CASE("AArch64 encodes bitfield moves and their aliases") {
+    A64Vectors v;
+    const A64Reg x3 = A64::Xn(3);
+    const A64Reg x5 = A64::Xn(5);
+    const A64Reg w3 = A64::Wn(3);
+    const A64Reg w5 = A64::Wn(5);
+
+    SUBCASE("the three instructions") {
+        v.Encodes(v.enc.Sbfm(x3, x5, 0, 7), 0x93401CA3);
+        v.Encodes(v.enc.Ubfm(x3, x5, 0, 7), 0xD3401CA3);
+        v.Encodes(v.enc.Bfm(x3, x5, 0, 7), 0xB3401CA3);
+        v.Encodes(v.enc.Sbfm(x3, x5, 5, 63), 0x9345FCA3);
+        v.Encodes(v.enc.Sbfm(w3, w5, 5, 7), 0x13051CA3);
+        v.Encodes(v.enc.Ubfm(w3, w5, 0, 0), 0x530000A3);
+    }
+
+    SUBCASE("shifts") {
+        // LSL rotates by the complement of its shift, so #0 is a plain move
+        // and #1 sits at the far end of the immr field.
+        v.Encodes(v.enc.Lsl(x3, x5, 0), 0xD340FCA3);
+        v.Encodes(v.enc.Lsl(x3, x5, 1), 0xD37FF8A3);
+        v.Encodes(v.enc.Lsl(x3, x5, 4), 0xD37CECA3);
+        v.Encodes(v.enc.Lsl(x3, x5, 63), 0xD34100A3);
+        v.Encodes(v.enc.Lsl(w3, w5, 31), 0x530100A3);
+        v.Encodes(v.enc.Lsr(x3, x5, 1), 0xD341FCA3);
+        v.Encodes(v.enc.Lsr(w3, w5, 3), 0x53037CA3);
+        v.Encodes(v.enc.Asr(x3, x5, 1), 0x9341FCA3);
+        v.Encodes(v.enc.Asr(w3, w5, 31), 0x131F7CA3);
+    }
+
+    SUBCASE("field extraction and insertion") {
+        v.Encodes(v.enc.Ubfx(x3, x5, 6, 16), 0xD34654A3);
+        v.Encodes(v.enc.Sbfx(x3, x5, 6, 16), 0x934654A3);
+        v.Encodes(v.enc.Bfi(x3, x5, 6, 16), 0xB37A3CA3);
+        v.Encodes(v.enc.Bfxil(x3, x5, 6, 16), 0xB34654A3);
+        v.Encodes(v.enc.Ubfx(w3, w5, 3, 6), 0x530320A3);
+        v.Encodes(v.enc.Sbfx(w3, w5, 3, 11), 0x130334A3);
+        v.Encodes(v.enc.Bfi(w3, w5, 3, 6), 0x331D14A3);
+        v.Encodes(v.enc.Bfxil(w3, w5, 3, 6), 0x330320A3);
+        // A field at bit 0 makes BFI and BFXIL the same instruction.
+        v.Encodes(v.enc.Bfi(x3, x5, 0, 1), 0xB34000A3);
+        v.Encodes(v.enc.Bfxil(x3, x5, 0, 1), 0xB34000A3);
+    }
+
+    SUBCASE("extensions") {
+        v.Encodes(v.enc.Sxtb(x3, w5), 0x93401CA3);
+        v.Encodes(v.enc.Sxth(x3, w5), 0x93403CA3);
+        v.Encodes(v.enc.Sxtw(x3, w5), 0x93407CA3);
+        v.Encodes(v.enc.Sxtb(w3, w5), 0x13001CA3);
+        v.Encodes(v.enc.Sxth(w3, w5), 0x13003CA3);
+        v.Encodes(v.enc.Uxtb(w3, w5), 0x53001CA3);
+        v.Encodes(v.enc.Uxth(w3, w5), 0x53003CA3);
+    }
+
+    SUBCASE("refusals") {
+        v.Refuses(v.enc.Sbfm(x3, x5, 64, 0), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Ubfm(w3, w5, 0, 32), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Lsl(x3, x5, 64), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Lsr(w3, w5, 32), A64Status::InvalidImmediate);
+        // A field must have at least one bit and must fit the register.
+        v.Refuses(v.enc.Ubfx(x3, x5, 0, 0), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Ubfx(x3, x5, 60, 8), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Bfi(w3, w5, 30, 4), A64Status::InvalidImmediate);
+        // The source of an extension is always a W register, and UXTB and UXTH
+        // have no 64-bit form.
+        v.Refuses(v.enc.Sxtb(x3, x5), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Sxtw(w3, w5), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Uxtb(x3, w5), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Ubfm(A64::Sp, x5, 0, 7), A64Status::InvalidRegister);
+    }
+}
+
+// C4.1.96, Extract.
+TEST_CASE("AArch64 encodes EXTR and its ROR alias") {
+    A64Vectors v;
+    const A64Reg x3 = A64::Xn(3);
+    const A64Reg x5 = A64::Xn(5);
+    const A64Reg x7 = A64::Xn(7);
+    const A64Reg w3 = A64::Wn(3);
+    const A64Reg w5 = A64::Wn(5);
+    const A64Reg w7 = A64::Wn(7);
+
+    v.Encodes(v.enc.Extr(x3, x5, x7, 1), 0x93C704A3);
+    v.Encodes(v.enc.Extr(x3, x5, x7, 63), 0x93C7FCA3);
+    v.Encodes(v.enc.Extr(w3, w5, w7, 31), 0x13877CA3);
+    // ROR is the form that reads one register twice.
+    v.Encodes(v.enc.Ror(x3, x5, 4), 0x93C510A3);
+    v.Encodes(v.enc.Ror(w3, w5, 3), 0x13850CA3);
+
+    v.Refuses(v.enc.Extr(x3, x5, x7, 64), A64Status::InvalidImmediate);
+    v.Refuses(v.enc.Extr(w3, w5, w7, 32), A64Status::InvalidImmediate);
+    v.Refuses(v.enc.Extr(x3, x5, w7, 0), A64Status::InvalidRegister);
+    v.Refuses(v.enc.Ror(A64::Sp, x5, 1), A64Status::InvalidRegister);
 }
 
 TEST_CASE("AArch64 encoder statuses have names for diagnostics") {
