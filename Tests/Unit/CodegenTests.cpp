@@ -2,6 +2,7 @@
 #include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
+#include "Driver/BuildTarget.h"
 #include "Ir/Hir/Hir.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
@@ -21,7 +22,7 @@ using namespace Rux;
 
 static constexpr std::string_view SliceDecl = "struct Slice<T> { data: *T; length: uint; }\n";
 
-static LirPackage CompileToLir(const std::string &source) {
+static LirPackage CompileToLirFor(const std::string &source, const std::string &platform, const TargetContext &target) {
     Lexer lexer(std::string(SliceDecl) + source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
@@ -31,15 +32,19 @@ static LirPackage CompileToLir(const std::string &source) {
     REQUIRE_FALSE(parsed.HasErrors());
 
     std::vector<Module *> modules = {&parsed.module};
-    SemanticAnalyzer analyzer(modules, {}, "test", RUX_OS_WINDOWS ? "windows" : "linux");
+    SemanticAnalyzer analyzer(modules, {}, "test", platform);
     auto semaModel = analyzer.Analyze();
     REQUIRE_FALSE(semaModel.HasErrors());
 
     AstToHirLowering hirLowering(semaModel);
     auto hirPackage = hirLowering.Generate();
 
-    HirToLirLowering lirLowering(std::move(hirPackage));
+    HirToLirLowering lirLowering(std::move(hirPackage), target);
     return lirLowering.Generate();
+}
+
+static LirPackage CompileToLir(const std::string &source) {
+    return CompileToLirFor(source, RUX_OS_WINDOWS ? "windows" : "linux", TargetContext::CreateNative());
 }
 
 static std::string CompileToAsm(const std::string &source) {
@@ -381,6 +386,62 @@ TEST_CASE("metadata blocks are rejected after compatibility attributes") {
     REQUIRE_EQ(parsed.diagnostics.size(), 1);
     CHECK_EQ(parsed.diagnostics.front().message,
              "metadata blocks '#{...}' are unsupported; use attribute calls such as '#Abi(.Win64)'");
+}
+
+TEST_CASE("extern C calls follow the target's ABI rather than the host's") {
+    const std::string source = R"(
+        #Link("hostlib")
+        extern func Emit(text: *uint8) -> int32;
+
+        func Main() -> int {
+            Emit(null);
+            return 0;
+        }
+    )";
+
+    const auto conventionOfEmitCall = [](const LirPackage &package) {
+        for (const auto &mod : package.modules) {
+            for (const auto &func : mod.funcs) {
+                for (const auto &block : func.blocks) {
+                    for (const auto &instr : block.instrs) {
+                        if (instr.op == LirOpcode::Call && instr.strArg == "Emit") {
+                            return instr.callConv;
+                        }
+                    }
+                }
+            }
+        }
+        return CallingConvention::Default;
+    };
+
+    // An extern declaration without an explicit #Abi resolves to the C ABI of
+    // the target being built for. Both cases have to hold on every host, which
+    // is the whole point: before the convention became target-driven, each of
+    // these recorded whatever the compiler was running on.
+    const auto windows = CompileToLirFor(source, "windows", Driver::TargetContextForTriple("windows-x86_64"));
+    CHECK_EQ(conventionOfEmitCall(windows), CallingConvention::Win64);
+
+    const auto linuxTarget = CompileToLirFor(source, "linux", Driver::TargetContextForTriple("linux-x86_64"));
+    CHECK_EQ(conventionOfEmitCall(linuxTarget), CallingConvention::SysV);
+}
+
+TEST_CASE("platform conventions are decided by the target OS") {
+    CHECK_EQ(PlatformCConvention(Target::OS::Windows), CallingConvention::Win64);
+    CHECK_EQ(PlatformCConvention(Target::OS::Linux), CallingConvention::SysV);
+    CHECK_EQ(PlatformCConvention(Target::OS::MacOS), CallingConvention::SysV);
+
+    CHECK_EQ(PlatformDefaultConvention(Target::OS::Linux), CallingConvention::SysV);
+    CHECK_EQ(PlatformDefaultConvention(Target::OS::Windows), CallingConvention::Win64);
+
+    // `.C` collapses against the target; concrete conventions pass through.
+    CHECK_EQ(ResolveCConvention(CallingConvention::C, Target::OS::Windows), CallingConvention::Win64);
+    CHECK_EQ(ResolveCConvention(CallingConvention::C, Target::OS::Linux), CallingConvention::SysV);
+    CHECK_EQ(ResolveCConvention(CallingConvention::SysV, Target::OS::Windows), CallingConvention::SysV);
+    CHECK_EQ(ResolveCConvention(CallingConvention::Default, Target::OS::Linux), CallingConvention::Default);
+
+    // The argument-less forms stay host-defaulted.
+    CHECK_EQ(PlatformCConvention(), PlatformCConvention(Target::HostOS));
+    CHECK_EQ(PlatformDefaultConvention(), PlatformDefaultConvention(Target::HostOS));
 }
 
 TEST_CASE("Abi attribute replaces ABI metadata blocks") {

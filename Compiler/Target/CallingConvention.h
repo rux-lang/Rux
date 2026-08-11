@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Target/Platform.h"
+#include "Target/Target.h"
 
 #include <string_view>
 
@@ -14,32 +14,39 @@ enum class CallingConvention {
     SysV,  // System V AMD64 (rdi, rsi, rdx, rcx, r8, r9)
 };
 
-// The C ABI of the platform the compiler targets (the host): Win64 on Windows,
-// System V AMD64 on every other x86-64 OS.
-constexpr CallingConvention PlatformCConvention() {
-#if RUX_OS_WINDOWS
-    return CallingConvention::Win64;
-#else
-    return CallingConvention::SysV;
-#endif
+// The C ABI of a target OS: Win64 on Windows, System V AMD64 on every other
+// x86-64 OS.
+constexpr CallingConvention PlatformCConvention(const Target::OS os) {
+    return os == Target::OS::Windows ? CallingConvention::Win64 : CallingConvention::SysV;
 }
 
 // Rux functions use the native ABI on Linux. Other targets retain their
 // existing internal ABI; explicit `.C` declarations use the platform C ABI.
+constexpr CallingConvention PlatformDefaultConvention(const Target::OS os) {
+    return os == Target::OS::Linux ? CallingConvention::SysV : CallingConvention::Win64;
+}
+
+// Host-defaulted wrappers, correct only when the target is the host. Anything
+// on a compilation path that can cross-compile must pass the target OS from its
+// TargetContext instead, or a Linux-to-Windows build picks the host's ABI.
+constexpr CallingConvention PlatformCConvention() {
+    return PlatformCConvention(Target::HostOS);
+}
+
 constexpr CallingConvention PlatformDefaultConvention() {
-#if RUX_OS_LINUX
-    return CallingConvention::SysV;
-#else
-    return CallingConvention::Win64;
-#endif
+    return PlatformDefaultConvention(Target::HostOS);
 }
 
 // Collapses `.C` to the concrete convention it stands for; every other value is
 // already concrete. Resolving `Default` is left to the caller, because its
 // meaning depends on whether the declaration is extern (the C ABI) or a Rux
 // function (the internal ABI).
+constexpr CallingConvention ResolveCConvention(const CallingConvention c, const Target::OS os) {
+    return c == CallingConvention::C ? PlatformCConvention(os) : c;
+}
+
 constexpr CallingConvention ResolveCConvention(const CallingConvention c) {
-    return c == CallingConvention::C ? PlatformCConvention() : c;
+    return ResolveCConvention(c, Target::HostOS);
 }
 
 // The `#Abi(...)` variant a convention was written as, for dumps. Empty for

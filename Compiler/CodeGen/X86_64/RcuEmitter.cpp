@@ -150,14 +150,14 @@ private:
     Target::OS targetOs;
     std::vector<Diagnostic> &diagnostics;
 
+    // `Default` means the internal Rux ABI, `.C` the target's C ABI; both are
+    // decided by the target OS, so the rules live in Target/CallingConvention.h
+    // rather than being restated per back end.
     [[nodiscard]] CallingConvention EffectiveConv(const CallingConvention c) const {
-        if (c == CallingConvention::C) {
-            return targetOs == Target::OS::Windows ? CallingConvention::Win64 : CallingConvention::SysV;
+        if (c == CallingConvention::Default) {
+            return PlatformDefaultConvention(targetOs);
         }
-        if (c != CallingConvention::Default) {
-            return c;
-        }
-        return targetOs == Target::OS::Linux ? CallingConvention::SysV : CallingConvention::Win64;
+        return ResolveCConvention(c, targetOs);
     }
 
     // Section data buffers

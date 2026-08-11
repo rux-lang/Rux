@@ -529,7 +529,7 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     if (opts.verbose) {
         std::print("Emitting LIR for {}\n", opts.manifest.package.name.Text());
     }
-    HirToLirLowering lirLowering(std::move(hirPackage));
+    HirToLirLowering lirLowering(std::move(hirPackage), compileTimeContext.target);
     auto lirPackage = lirLowering.Generate();
     if (opts.dumpLir) {
         auto lirDir = root / "Temp" / "Lir";

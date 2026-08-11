@@ -93,6 +93,10 @@ static LirOpcode CompoundOpcode(TokenKind op) {
 // Lowering
 class LirLowering {
 public:
+    explicit LirLowering(const TargetContext &target)
+        : targetContext(target) {
+    }
+
     LirPackage Run(const HirPackage &hir) {
         globalConsts.clear();
         for (const auto &mod : hir.modules) {
@@ -114,10 +118,12 @@ public:
         externSymbols.clear();
         for (const auto &mod : hir.modules) {
             for (const auto &ef : mod.externFuncs) {
-                // Extern C functions default to the platform C ABI (SysV on
+                // Extern C functions default to the target's C ABI (SysV on
                 // Linux/BSD/macOS, Win64 on Windows) so arguments land in the
-                // registers the shared library expects.
-                funcConvs[ef.name] = ef.callConv == CallingConvention::Default ? PlatformCConvention() : ef.callConv;
+                // registers the shared library expects. This follows the target
+                // being built for, not the host running the compiler.
+                funcConvs[ef.name] =
+                    ef.callConv == CallingConvention::Default ? PlatformCConvention(targetContext.os) : ef.callConv;
                 funcNames.insert(ef.name);
                 // The optional second `#Link` argument renames the imported symbol. Record it
                 // package-wide, for the same reason funcConvs is: a call may
@@ -164,6 +170,7 @@ private:
     };
 
     std::unordered_map<std::string, LabelTargets> labelTargets;
+    TargetContext targetContext;                                  // the machine being generated for
     std::unordered_map<std::string, CallingConvention> funcConvs; // name → calling convention
     std::unordered_set<std::string> funcNames;                    // every function symbol (for address-of)
     std::unordered_map<std::string, std::string> externSymbols;   // Rux name → imported symbol name
@@ -2346,14 +2353,15 @@ private:
 };
 
 // Lir public API
-HirToLirLowering::HirToLirLowering(HirPackage package)
-    : hir_(std::move(package)) {
+HirToLirLowering::HirToLirLowering(HirPackage package, TargetContext target)
+    : hir_(std::move(package))
+    , target_(target) {
 }
 
 LirPackage HirToLirLowering::Generate() {
     HirPassManager::Run(hir_);
 
-    LirLowering lowering;
+    LirLowering lowering(target_);
     return lowering.Run(hir_);
 }
 } // namespace Rux
