@@ -70,6 +70,17 @@ struct A64MovwImm {
 // by a chain of MOVK, which is a sequence rather than an encoding.
 [[nodiscard]] std::optional<A64MovwImm> TryEncodeMovwImm(std::uint64_t value, bool is64);
 
+// Encode `value` as the 8-bit immediate of FMOV (scalar, immediate): a sign, a
+// three-bit exponent and a four-bit fraction naming the 256 values
+// +/-(16 + n) / 16 * 2^e, with n below 16 and e from -3 to 4. Zero is not among
+// them, since the encoding always has the leading one of a normal number, and
+// neither is an infinity or a NaN; a constant outside the set is loaded from
+// the read-only pool instead.
+//
+// The same 256 values are exactly representable at both precisions, so one
+// encoding serves the S and the D form and no width travels with the value.
+[[nodiscard]] std::optional<std::uint8_t> TryEncodeFpImm8(double value);
+
 // Instruction-stream writer.
 //
 // Owns nothing: words are appended to the caller's buffer, so the code
@@ -482,6 +493,96 @@ public:
     // for a register with fewer bits defined than that.
     [[nodiscard]] A64Status Mrs(A64Reg rt, std::uint16_t sysreg) const;
     [[nodiscard]] A64Status Msr(std::uint16_t sysreg, A64Reg rt) const;
+
+    // Scalar floating point.
+    //
+    // The precision travels in the register, as every other width does: an S
+    // register selects the single-precision form of an instruction and a D
+    // register the double-precision one, and every other floating-point operand
+    // of that instruction carries the same width. Half precision is an
+    // architectural extension no Rux type reaches and the vector forms are out
+    // of scope, so a B, H or Q operand is InvalidRegister rather than a form
+    // that means something else.
+
+    // FMOV. Between two vector registers it moves a value at one precision;
+    // between a vector and a general-purpose register it moves the bits of one
+    // into the other, which is why those four directions pair W with S and X
+    // with D and convert nothing. The immediate form is the one FMOV that names
+    // a value rather than a register, and it reaches only what TryEncodeFpImm8
+    // encodes.
+    [[nodiscard]] A64Status Fmov(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status FmovImm(A64Reg rd, double value) const;
+
+    // Arithmetic. Every one of these rounds by the mode in FPCR, which the ABI
+    // leaves at round-to-nearest-even, so nothing here needs an explicit mode.
+    [[nodiscard]] A64Status Fadd(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Fsub(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Fmul(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Fdiv(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Fneg(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Fabs(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Fsqrt(A64Reg rd, A64Reg rn) const;
+
+    // Fused multiply-add: rd = ra +/- rn * rm rounded once, so the product is
+    // never rounded on its own. The two N forms negate the whole result.
+    [[nodiscard]] A64Status Fmadd(A64Reg rd, A64Reg rn, A64Reg rm, A64Reg ra) const;
+    [[nodiscard]] A64Status Fmsub(A64Reg rd, A64Reg rn, A64Reg rm, A64Reg ra) const;
+    [[nodiscard]] A64Status Fnmadd(A64Reg rd, A64Reg rn, A64Reg rm, A64Reg ra) const;
+    [[nodiscard]] A64Status Fnmsub(A64Reg rd, A64Reg rn, A64Reg rm, A64Reg ra) const;
+
+    // Maximum and minimum. FMAX and FMIN propagate a NaN operand, while the NM
+    // pair returns the other operand instead, which is the IEEE 754
+    // maximumNumber and minimumNumber behavior.
+    [[nodiscard]] A64Status Fmax(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Fmin(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Fmaxnm(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Fminnm(A64Reg rd, A64Reg rn, A64Reg rm) const;
+
+    // Comparison, which writes NZCV and no register. An unordered result — one
+    // operand a NaN — sets C and V, so the unsigned conditions are the ones that
+    // read a float comparison. FCMP raises an exception only for a signalling
+    // NaN and FCMPE for any NaN; the zero forms compare against +0.0, which
+    // equals -0.0, and have no second operand to name.
+    [[nodiscard]] A64Status Fcmp(A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Fcmpe(A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status FcmpZero(A64Reg rn) const;
+    [[nodiscard]] A64Status FcmpeZero(A64Reg rn) const;
+
+    // Conditional compare: when `cond` holds this is FCMP, and when it does not
+    // the flags are set to `nzcv` outright, which is how a chain of float
+    // conditions collapses into one branch. `nzcv` is four bits.
+    [[nodiscard]] A64Status Fccmp(A64Reg rn, A64Reg rm, unsigned nzcv, A64Condition cond) const;
+
+    // Conditional select, the float counterpart of CSEL. There is no CSET here:
+    // materializing a float comparison as 0 or 1 goes through the
+    // general-purpose CSET, since the flags are the same ones.
+    [[nodiscard]] A64Status Fcsel(A64Reg rd, A64Reg rn, A64Reg rm, A64Condition cond) const;
+
+    // FCVT between the two precisions. The source precision is the
+    // instruction's type field and the destination precision sits in its
+    // opcode, so converting to the precision already in hand names no
+    // instruction and is InvalidRegister.
+    [[nodiscard]] A64Status Fcvt(A64Reg rd, A64Reg rn) const;
+
+    // Conversion between a float and an integer. The two registers carry
+    // independent widths — the general-purpose one selects sf and the vector one
+    // the precision — so a 32-bit integer and a double meet in one instruction.
+    // FCVTZS and FCVTZU round toward zero, which is the truncation a language
+    // cast means; SCVTF and UCVTF round by FPCR, since a wide integer may not be
+    // representable exactly.
+    [[nodiscard]] A64Status Fcvtzs(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Fcvtzu(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Scvtf(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Ucvtf(A64Reg rd, A64Reg rn) const;
+
+    // Round to an integral float, keeping the value in its register: N to
+    // nearest with ties to even, P toward plus infinity, M toward minus
+    // infinity, Z toward zero, and A to nearest with ties away from zero.
+    [[nodiscard]] A64Status Frintn(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Frintp(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Frintm(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Frintz(A64Reg rd, A64Reg rn) const;
+    [[nodiscard]] A64Status Frinta(A64Reg rd, A64Reg rn) const;
 
 private:
     std::vector<std::uint8_t> &out;

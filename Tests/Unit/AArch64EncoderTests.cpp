@@ -1407,6 +1407,309 @@ TEST_CASE("AArch64 encodes moves to and from a system register") {
     v.Refuses(v.enc.Msr(A64::Nzcv, A64::Dn(0)), A64Status::InvalidRegister);
 }
 
+// Data Processing — Scalar Floating-Point: Floating-point data-processing
+// (1 source), Floating-point immediate, and the FMOV forms of Conversion
+// between floating-point and integer.
+TEST_CASE("AArch64 encodes floating-point moves") {
+    A64Vectors v;
+
+    SUBCASE("register to register at both precisions") {
+        v.Encodes(v.enc.Fmov(A64::Sn(0), A64::Sn(1)), 0x1E204020);
+        v.Encodes(v.enc.Fmov(A64::Sn(31), A64::Sn(30)), 0x1E2043DF);
+        v.Encodes(v.enc.Fmov(A64::Dn(0), A64::Dn(1)), 0x1E604020);
+        v.Encodes(v.enc.Fmov(A64::Dn(31), A64::Dn(30)), 0x1E6043DF);
+        v.Encodes(v.enc.Fmov(A64::Dn(12), A64::Dn(12)), 0x1E60418C);
+    }
+
+    SUBCASE("all four transfers to and from the general-purpose file") {
+        // The bits of the value move unchanged, so a word pairs with an S register
+        // and a doubleword with a D one.
+        v.Encodes(v.enc.Fmov(A64::Wn(0), A64::Sn(1)), 0x1E260020);
+        v.Encodes(v.enc.Fmov(A64::Wn(30), A64::Sn(31)), 0x1E2603FE);
+        v.Encodes(v.enc.Fmov(A64::Sn(0), A64::Wn(1)), 0x1E270020);
+        v.Encodes(v.enc.Fmov(A64::Sn(31), A64::Wn(30)), 0x1E2703DF);
+        v.Encodes(v.enc.Fmov(A64::Xn(0), A64::Dn(1)), 0x9E660020);
+        v.Encodes(v.enc.Fmov(A64::Xn(30), A64::Dn(31)), 0x9E6603FE);
+        v.Encodes(v.enc.Fmov(A64::Dn(0), A64::Xn(1)), 0x9E670020);
+        v.Encodes(v.enc.Fmov(A64::Dn(31), A64::Xn(30)), 0x9E6703DF);
+        v.Encodes(v.enc.Fmov(A64::Xzr, A64::Dn(4)), 0x9E66009F);
+
+        // A pairing of different widths, a move between two general-purpose
+        // registers, and the stack pointer all name no encoding here.
+        v.Refuses(v.enc.Fmov(A64::Xn(0), A64::Sn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fmov(A64::Wn(0), A64::Dn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fmov(A64::Dn(0), A64::Wn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fmov(A64::Xn(0), A64::Xn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fmov(A64::Sp, A64::Dn(0)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fmov(A64::Sn(0), A64::Dn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fmov(A64::Bn(0), A64::Bn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fmov(A64::Hn(0), A64::Hn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fmov(A64::Qn(0), A64::Qn(1)), A64Status::InvalidRegister);
+    }
+
+    SUBCASE("the eight binades the immediate reaches") {
+        v.Encodes(v.enc.FmovImm(A64::Dn(0), 1.0), 0x1E6E1000);
+        v.Encodes(v.enc.FmovImm(A64::Dn(0), 2.0), 0x1E601000);
+        v.Encodes(v.enc.FmovImm(A64::Dn(0), -1.0), 0x1E7E1000);
+        v.Encodes(v.enc.FmovImm(A64::Dn(3), 0.5), 0x1E6C1003);
+        v.Encodes(v.enc.FmovImm(A64::Dn(31), 31.0), 0x1E67F01F);
+        v.Encodes(v.enc.FmovImm(A64::Dn(0), 0.125), 0x1E681000);
+        v.Encodes(v.enc.FmovImm(A64::Dn(0), -0.125), 0x1E781000);
+        v.Encodes(v.enc.FmovImm(A64::Dn(0), 1.9375), 0x1E6FF000);
+        v.Encodes(v.enc.FmovImm(A64::Sn(0), 1.0), 0x1E2E1000);
+        v.Encodes(v.enc.FmovImm(A64::Sn(17), -2.5), 0x1E309011);
+        v.Encodes(v.enc.FmovImm(A64::Sn(31), 31.0), 0x1E27F01F);
+        v.Encodes(v.enc.FmovImm(A64::Sn(0), 0.125), 0x1E281000);
+
+        // Zero has no encoding, since the immediate always carries the leading one
+        // of a normal number; nor has anything outside the eight binades, or a
+        // fraction needing more than four bits. Those come from the literal pool.
+        v.Refuses(v.enc.FmovImm(A64::Dn(0), 0.0), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.FmovImm(A64::Dn(0), -0.0), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.FmovImm(A64::Dn(0), 32.0), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.FmovImm(A64::Dn(0), 0.0625), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.FmovImm(A64::Dn(0), 0.1), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.FmovImm(A64::Dn(0), 3.14159), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.FmovImm(A64::Xn(0), 1.0), A64Status::InvalidRegister);
+        v.Refuses(v.enc.FmovImm(A64::Qn(0), 1.0), A64Status::InvalidRegister);
+    }
+}
+
+// Data Processing — Scalar Floating-Point: Floating-point data-processing
+// (2 source) and (1 source).
+TEST_CASE("AArch64 encodes floating-point arithmetic") {
+    A64Vectors v;
+
+    SUBCASE("the two-source group at both precisions") {
+        v.Encodes(v.enc.Fadd(A64::Sn(0), A64::Sn(1), A64::Sn(2)), 0x1E222820);
+        v.Encodes(v.enc.Fadd(A64::Dn(0), A64::Dn(1), A64::Dn(2)), 0x1E622820);
+        v.Encodes(v.enc.Fsub(A64::Sn(0), A64::Sn(1), A64::Sn(2)), 0x1E223820);
+        v.Encodes(v.enc.Fsub(A64::Dn(0), A64::Dn(1), A64::Dn(2)), 0x1E623820);
+        v.Encodes(v.enc.Fmul(A64::Sn(0), A64::Sn(1), A64::Sn(2)), 0x1E220820);
+        v.Encodes(v.enc.Fmul(A64::Dn(0), A64::Dn(1), A64::Dn(2)), 0x1E620820);
+        v.Encodes(v.enc.Fdiv(A64::Sn(0), A64::Sn(1), A64::Sn(2)), 0x1E221820);
+        v.Encodes(v.enc.Fdiv(A64::Dn(0), A64::Dn(1), A64::Dn(2)), 0x1E621820);
+
+        // Every register field reaches the whole file.
+        v.Encodes(v.enc.Fadd(A64::Dn(31), A64::Dn(0), A64::Dn(0)), 0x1E60281F);
+        v.Encodes(v.enc.Fadd(A64::Dn(0), A64::Dn(31), A64::Dn(0)), 0x1E602BE0);
+        v.Encodes(v.enc.Fadd(A64::Dn(0), A64::Dn(0), A64::Dn(31)), 0x1E7F2800);
+        v.Encodes(v.enc.Fsub(A64::Sn(21), A64::Sn(9), A64::Sn(14)), 0x1E2E3935);
+    }
+
+    SUBCASE("the one-source group") {
+        v.Encodes(v.enc.Fneg(A64::Sn(0), A64::Sn(1)), 0x1E214020);
+        v.Encodes(v.enc.Fneg(A64::Dn(0), A64::Dn(1)), 0x1E614020);
+        v.Encodes(v.enc.Fabs(A64::Sn(0), A64::Sn(1)), 0x1E20C020);
+        v.Encodes(v.enc.Fabs(A64::Dn(0), A64::Dn(1)), 0x1E60C020);
+        v.Encodes(v.enc.Fsqrt(A64::Sn(0), A64::Sn(1)), 0x1E21C020);
+        v.Encodes(v.enc.Fsqrt(A64::Dn(0), A64::Dn(1)), 0x1E61C020);
+        v.Encodes(v.enc.Fneg(A64::Dn(31), A64::Dn(31)), 0x1E6143FF);
+        v.Encodes(v.enc.Fabs(A64::Sn(16), A64::Sn(17)), 0x1E20C230);
+    }
+
+    SUBCASE("operands that disagree on precision") {
+        // Every operand of one instruction carries the width its destination does,
+        // and half precision has no form at all here.
+        v.Refuses(v.enc.Fadd(A64::Sn(0), A64::Dn(1), A64::Sn(2)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fadd(A64::Sn(0), A64::Sn(1), A64::Dn(2)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fmul(A64::Dn(0), A64::Sn(1), A64::Dn(2)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fdiv(A64::Hn(0), A64::Hn(1), A64::Hn(2)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fadd(A64::Xn(0), A64::Xn(1), A64::Xn(2)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fneg(A64::Sn(0), A64::Dn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fsqrt(A64::Qn(0), A64::Qn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fabs(A64::Wn(0), A64::Sn(1)), A64Status::InvalidRegister);
+    }
+}
+
+// Data Processing — Scalar Floating-Point: Floating-point data-processing
+// (3 source) and (2 source).
+TEST_CASE("AArch64 encodes fused multiply-add and the min and max group") {
+    A64Vectors v;
+
+    SUBCASE("the three-source group") {
+        v.Encodes(v.enc.Fmadd(A64::Sn(0), A64::Sn(1), A64::Sn(2), A64::Sn(3)), 0x1F020C20);
+        v.Encodes(v.enc.Fmadd(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64::Dn(3)), 0x1F420C20);
+        v.Encodes(v.enc.Fmsub(A64::Sn(0), A64::Sn(1), A64::Sn(2), A64::Sn(3)), 0x1F028C20);
+        v.Encodes(v.enc.Fmsub(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64::Dn(3)), 0x1F428C20);
+        v.Encodes(v.enc.Fnmadd(A64::Sn(0), A64::Sn(1), A64::Sn(2), A64::Sn(3)), 0x1F220C20);
+        v.Encodes(v.enc.Fnmadd(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64::Dn(3)), 0x1F620C20);
+        v.Encodes(v.enc.Fnmsub(A64::Sn(0), A64::Sn(1), A64::Sn(2), A64::Sn(3)), 0x1F228C20);
+        v.Encodes(v.enc.Fnmsub(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64::Dn(3)), 0x1F628C20);
+
+        // The accumulator is a field of its own, so it reaches the whole file too.
+        v.Encodes(v.enc.Fmadd(A64::Dn(0), A64::Dn(0), A64::Dn(0), A64::Dn(31)), 0x1F407C00);
+        v.Encodes(v.enc.Fnmsub(A64::Sn(31), A64::Sn(30), A64::Sn(29), A64::Sn(28)), 0x1F3DF3DF);
+
+        v.Refuses(v.enc.Fmadd(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64::Sn(3)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fmsub(A64::Sn(0), A64::Sn(1), A64::Sn(2), A64::Xn(3)), A64Status::InvalidRegister);
+    }
+
+    SUBCASE("maximum and minimum, propagating and number") {
+        v.Encodes(v.enc.Fmax(A64::Sn(0), A64::Sn(1), A64::Sn(2)), 0x1E224820);
+        v.Encodes(v.enc.Fmax(A64::Dn(0), A64::Dn(1), A64::Dn(2)), 0x1E624820);
+        v.Encodes(v.enc.Fmin(A64::Sn(0), A64::Sn(1), A64::Sn(2)), 0x1E225820);
+        v.Encodes(v.enc.Fmin(A64::Dn(0), A64::Dn(1), A64::Dn(2)), 0x1E625820);
+        v.Encodes(v.enc.Fmaxnm(A64::Sn(0), A64::Sn(1), A64::Sn(2)), 0x1E226820);
+        v.Encodes(v.enc.Fmaxnm(A64::Dn(0), A64::Dn(1), A64::Dn(2)), 0x1E626820);
+        v.Encodes(v.enc.Fminnm(A64::Sn(0), A64::Sn(1), A64::Sn(2)), 0x1E227820);
+        v.Encodes(v.enc.Fminnm(A64::Dn(0), A64::Dn(1), A64::Dn(2)), 0x1E627820);
+        v.Encodes(v.enc.Fmax(A64::Dn(31), A64::Dn(31), A64::Dn(31)), 0x1E7F4BFF);
+
+        v.Refuses(v.enc.Fminnm(A64::Dn(0), A64::Dn(1), A64::Sn(2)), A64Status::InvalidRegister);
+    }
+}
+
+// Data Processing — Scalar Floating-Point: Floating-point compare,
+// Floating-point conditional compare and Floating-point conditional select.
+TEST_CASE("AArch64 encodes floating-point comparison and selection") {
+    A64Vectors v;
+
+    SUBCASE("comparison, with and without a second operand") {
+        v.Encodes(v.enc.Fcmp(A64::Sn(0), A64::Sn(1)), 0x1E212000);
+        v.Encodes(v.enc.Fcmp(A64::Dn(0), A64::Dn(1)), 0x1E612000);
+        v.Encodes(v.enc.Fcmp(A64::Dn(31), A64::Dn(30)), 0x1E7E23E0);
+        v.Encodes(v.enc.Fcmpe(A64::Sn(0), A64::Sn(1)), 0x1E212010);
+        v.Encodes(v.enc.Fcmpe(A64::Dn(0), A64::Dn(1)), 0x1E612010);
+
+        // The zero forms compare against +0.0, which is part of the instruction
+        // rather than an operand, so they leave the second register field empty.
+        v.Encodes(v.enc.FcmpZero(A64::Sn(0)), 0x1E202008);
+        v.Encodes(v.enc.FcmpZero(A64::Dn(0)), 0x1E602008);
+        v.Encodes(v.enc.FcmpZero(A64::Dn(31)), 0x1E6023E8);
+        v.Encodes(v.enc.FcmpeZero(A64::Sn(0)), 0x1E202018);
+        v.Encodes(v.enc.FcmpeZero(A64::Dn(17)), 0x1E602238);
+        v.Refuses(v.enc.Fcmp(A64::Sn(0), A64::Dn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fcmp(A64::Xn(0), A64::Xn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.FcmpZero(A64::Hn(0)), A64Status::InvalidRegister);
+    }
+
+    SUBCASE("conditional compare at every condition") {
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 0, A64Condition::Eq), 0x1E610400);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 1, A64Condition::Ne), 0x1E611401);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 2, A64Condition::Cs), 0x1E612402);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 3, A64Condition::Cc), 0x1E613403);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 4, A64Condition::Mi), 0x1E614404);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 5, A64Condition::Pl), 0x1E615405);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 6, A64Condition::Vs), 0x1E616406);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 7, A64Condition::Vc), 0x1E617407);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 8, A64Condition::Hi), 0x1E618408);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 9, A64Condition::Ls), 0x1E619409);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 10, A64Condition::Ge), 0x1E61A40A);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 11, A64Condition::Lt), 0x1E61B40B);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 12, A64Condition::Gt), 0x1E61C40C);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 13, A64Condition::Le), 0x1E61D40D);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 14, A64Condition::Al), 0x1E61E40E);
+        v.Encodes(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 15, A64Condition::Nv), 0x1E61F40F);
+        v.Encodes(v.enc.Fccmp(A64::Sn(0), A64::Sn(1), 15, A64Condition::Eq), 0x1E21040F);
+        v.Encodes(v.enc.Fccmp(A64::Sn(31), A64::Sn(30), 0, A64Condition::Ne), 0x1E3E17E0);
+
+        // The flags written when the condition fails are four bits and no more.
+        v.Refuses(v.enc.Fccmp(A64::Dn(0), A64::Dn(1), 16, A64Condition::Eq), A64Status::InvalidImmediate);
+        v.Refuses(v.enc.Fccmp(A64::Dn(0), A64::Sn(1), 0, A64Condition::Eq), A64Status::InvalidRegister);
+    }
+
+    SUBCASE("conditional select at every condition") {
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Eq), 0x1E620C20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Ne), 0x1E621C20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Cs), 0x1E622C20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Cc), 0x1E623C20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Mi), 0x1E624C20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Pl), 0x1E625C20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Vs), 0x1E626C20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Vc), 0x1E627C20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Hi), 0x1E628C20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Ls), 0x1E629C20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Ge), 0x1E62AC20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Lt), 0x1E62BC20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Gt), 0x1E62CC20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Le), 0x1E62DC20);
+        // AL and NV are accepted as written, unlike in the general-purpose
+        // conditional-select aliases: nothing is inverted here, so both
+        // spellings of always mean what they say.
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Al), 0x1E62EC20);
+        v.Encodes(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Dn(2), A64Condition::Nv), 0x1E62FC20);
+        v.Encodes(v.enc.Fcsel(A64::Sn(0), A64::Sn(1), A64::Sn(2), A64Condition::Gt), 0x1E22CC20);
+        v.Encodes(v.enc.Fcsel(A64::Sn(31), A64::Sn(30), A64::Sn(29), A64::Lo), 0x1E3D3FDF);
+        v.Refuses(v.enc.Fcsel(A64::Dn(0), A64::Dn(1), A64::Sn(2), A64Condition::Eq), A64Status::InvalidRegister);
+    }
+}
+
+// Data Processing — Scalar Floating-Point: Floating-point data-processing
+// (1 source) for FCVT, and Conversion between floating-point and integer.
+TEST_CASE("AArch64 encodes conversions between floats and integers") {
+    A64Vectors v;
+
+    SUBCASE("FCVT between the two precisions") {
+        v.Encodes(v.enc.Fcvt(A64::Dn(0), A64::Sn(1)), 0x1E22C020);
+        v.Encodes(v.enc.Fcvt(A64::Sn(0), A64::Dn(1)), 0x1E624020);
+        v.Encodes(v.enc.Fcvt(A64::Dn(31), A64::Sn(31)), 0x1E22C3FF);
+
+        // Converting to the precision already in hand is not an instruction.
+        v.Refuses(v.enc.Fcvt(A64::Dn(0), A64::Dn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fcvt(A64::Sn(0), A64::Sn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fcvt(A64::Hn(0), A64::Sn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fcvt(A64::Wn(0), A64::Sn(1)), A64Status::InvalidRegister);
+    }
+
+    SUBCASE("float to integer, rounding toward zero") {
+        v.Encodes(v.enc.Fcvtzs(A64::Wn(0), A64::Sn(1)), 0x1E380020);
+        v.Encodes(v.enc.Fcvtzs(A64::Wn(0), A64::Dn(1)), 0x1E780020);
+        v.Encodes(v.enc.Fcvtzs(A64::Xn(0), A64::Sn(1)), 0x9E380020);
+        v.Encodes(v.enc.Fcvtzs(A64::Xn(0), A64::Dn(1)), 0x9E780020);
+        v.Encodes(v.enc.Fcvtzu(A64::Wn(0), A64::Sn(1)), 0x1E390020);
+        v.Encodes(v.enc.Fcvtzu(A64::Wn(0), A64::Dn(1)), 0x1E790020);
+        v.Encodes(v.enc.Fcvtzu(A64::Xn(0), A64::Sn(1)), 0x9E390020);
+        v.Encodes(v.enc.Fcvtzu(A64::Xn(0), A64::Dn(1)), 0x9E790020);
+        v.Encodes(v.enc.Fcvtzs(A64::Xn(30), A64::Dn(31)), 0x9E7803FE);
+        v.Encodes(v.enc.Fcvtzu(A64::Wzr, A64::Sn(4)), 0x1E39009F);
+
+        // The direction is fixed by the instruction, so the operands cannot be
+        // written the other way round and mean the opposite conversion.
+        v.Refuses(v.enc.Fcvtzs(A64::Sn(0), A64::Wn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fcvtzs(A64::Sp, A64::Dn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Fcvtzu(A64::Wn(0), A64::Hn(1)), A64Status::InvalidRegister);
+    }
+
+    SUBCASE("integer to float") {
+        v.Encodes(v.enc.Scvtf(A64::Sn(0), A64::Wn(1)), 0x1E220020);
+        v.Encodes(v.enc.Scvtf(A64::Sn(0), A64::Xn(1)), 0x9E220020);
+        v.Encodes(v.enc.Scvtf(A64::Dn(0), A64::Wn(1)), 0x1E620020);
+        v.Encodes(v.enc.Scvtf(A64::Dn(0), A64::Xn(1)), 0x9E620020);
+        v.Encodes(v.enc.Ucvtf(A64::Sn(0), A64::Wn(1)), 0x1E230020);
+        v.Encodes(v.enc.Ucvtf(A64::Sn(0), A64::Xn(1)), 0x9E230020);
+        v.Encodes(v.enc.Ucvtf(A64::Dn(0), A64::Wn(1)), 0x1E630020);
+        v.Encodes(v.enc.Ucvtf(A64::Dn(0), A64::Xn(1)), 0x9E630020);
+        v.Encodes(v.enc.Scvtf(A64::Dn(31), A64::Xn(30)), 0x9E6203DF);
+        v.Encodes(v.enc.Ucvtf(A64::Sn(2), A64::Wzr), 0x1E2303E2);
+
+        v.Refuses(v.enc.Scvtf(A64::Wn(0), A64::Sn(1)), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Ucvtf(A64::Dn(0), A64::Sp), A64Status::InvalidRegister);
+        v.Refuses(v.enc.Scvtf(A64::Dn(0), A64::Dn(1)), A64Status::InvalidRegister);
+    }
+}
+
+// Data Processing — Scalar Floating-Point: Floating-point data-processing
+// (1 source), the round-to-integral group.
+TEST_CASE("AArch64 encodes floating-point rounding") {
+    A64Vectors v;
+    v.Encodes(v.enc.Frintn(A64::Sn(0), A64::Sn(1)), 0x1E244020);
+    v.Encodes(v.enc.Frintn(A64::Dn(0), A64::Dn(1)), 0x1E644020);
+    v.Encodes(v.enc.Frintp(A64::Sn(0), A64::Sn(1)), 0x1E24C020);
+    v.Encodes(v.enc.Frintp(A64::Dn(0), A64::Dn(1)), 0x1E64C020);
+    v.Encodes(v.enc.Frintm(A64::Sn(0), A64::Sn(1)), 0x1E254020);
+    v.Encodes(v.enc.Frintm(A64::Dn(0), A64::Dn(1)), 0x1E654020);
+    v.Encodes(v.enc.Frintz(A64::Sn(0), A64::Sn(1)), 0x1E25C020);
+    v.Encodes(v.enc.Frintz(A64::Dn(0), A64::Dn(1)), 0x1E65C020);
+    v.Encodes(v.enc.Frinta(A64::Sn(0), A64::Sn(1)), 0x1E264020);
+    v.Encodes(v.enc.Frinta(A64::Dn(0), A64::Dn(1)), 0x1E664020);
+    v.Encodes(v.enc.Frintz(A64::Dn(31), A64::Dn(30)), 0x1E65C3DF);
+    v.Encodes(v.enc.Frinta(A64::Sn(16), A64::Sn(17)), 0x1E264230);
+
+    v.Refuses(v.enc.Frintn(A64::Sn(0), A64::Dn(1)), A64Status::InvalidRegister);
+    v.Refuses(v.enc.Frintp(A64::Xn(0), A64::Xn(1)), A64Status::InvalidRegister);
+}
+
 TEST_CASE("AArch64 encoder statuses have names for diagnostics") {
     CHECK(A64StatusName(A64Status::Ok) == "ok");
     CHECK(A64StatusName(A64Status::InvalidRegister) == "invalid register");

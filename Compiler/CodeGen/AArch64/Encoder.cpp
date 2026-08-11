@@ -559,6 +559,108 @@ A64Status EncodeSysRegMove(const A64Enc &enc, const A64Reg rt, const std::uint16
     enc.Word(0xD5100000U | (read ? 1U : 0U) << 21U | (std::uint32_t{sysreg} & 0x7FFFU) << 5U | rt.code);
     return A64Status::Ok;
 }
+
+// The two-bit `ptype` field naming the precision a floating-point instruction
+// works at. Half precision has an encoding here, but it needs an architectural
+// extension and no Rux type reaches it, so it is left unallocated and a B, H or
+// Q operand has no form at all.
+constexpr std::optional<std::uint32_t> FpType(const A64Reg &reg) {
+    if (!reg.IsVector()) {
+        return std::nullopt;
+    }
+    switch (reg.bits) {
+    case 32:
+        return 0U;
+    case 64:
+        return 1U;
+    default:
+        return std::nullopt;
+    }
+}
+
+// A floating-point operand at the width the instruction works at. The vector
+// file has no second reading of any register code, so unlike ZrOperand and
+// SpOperand this is a width check and nothing more.
+constexpr bool FpOperand(const A64Reg &reg, const unsigned bits) {
+    return reg.IsVector() && reg.bits == bits;
+}
+
+// Floating-point data processing (1 source):
+// M | 0 | S | 11110 | ptype | 1 | opcode | 10000 | Rn | Rd. `ptype` is the
+// precision read, which for everything but FCVT is also the one written.
+void EncodeFpDataProc1(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const std::uint32_t type,
+                       const unsigned opcode) {
+    enc.Word(0x1E204000U | type << 22U | opcode << 15U | std::uint32_t{rn.code} << 5U | rd.code);
+}
+
+// The one-source operations that read and write the same precision.
+A64Status EncodeFpUnary(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const unsigned opcode) {
+    const std::optional<std::uint32_t> type = FpType(rd);
+    if (!type || !FpOperand(rn, rd.bits)) {
+        return A64Status::InvalidRegister;
+    }
+    EncodeFpDataProc1(enc, rd, rn, *type, opcode);
+    return A64Status::Ok;
+}
+
+// Floating-point data processing (2 source):
+// M | 0 | S | 11110 | ptype | 1 | Rm | opcode | 10 | Rn | Rd.
+A64Status EncodeFpDataProc2(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm,
+                            const unsigned opcode) {
+    const std::optional<std::uint32_t> type = FpType(rd);
+    if (!type || !FpOperand(rn, rd.bits) || !FpOperand(rm, rd.bits)) {
+        return A64Status::InvalidRegister;
+    }
+    enc.Word(0x1E200800U | *type << 22U | std::uint32_t{rm.code} << 16U | opcode << 12U | std::uint32_t{rn.code} << 5U |
+             rd.code);
+    return A64Status::Ok;
+}
+
+// Floating-point data processing (3 source):
+// M | 0 | S | 11111 | ptype | o1 | Rm | o0 | Ra | Rn | Rd. `o1` negates the
+// result and `o0` the product, which is what tells the four fused
+// multiply-adds apart.
+A64Status EncodeFpDataProc3(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Reg ra,
+                            const bool negateResult, const bool negateProduct) {
+    const std::optional<std::uint32_t> type = FpType(rd);
+    if (!type || !FpOperand(rn, rd.bits) || !FpOperand(rm, rd.bits) || !FpOperand(ra, rd.bits)) {
+        return A64Status::InvalidRegister;
+    }
+    enc.Word(0x1F000000U | *type << 22U | (negateResult ? 1U : 0U) << 21U | std::uint32_t{rm.code} << 16U |
+             (negateProduct ? 1U : 0U) << 15U | std::uint32_t{ra.code} << 10U | std::uint32_t{rn.code} << 5U | rd.code);
+    return A64Status::Ok;
+}
+
+// Floating-point compare: M | 0 | S | 11110 | ptype | 1 | Rm | 00 | 1000 | Rn |
+// opcode2. The zero forms say so in `opcode2` and leave `Rm` empty, since the
+// value they compare against is part of the instruction rather than an operand.
+A64Status EncodeFpCompare(const A64Enc &enc, const A64Reg rn, const A64Reg rm, const bool zero, const bool signalling) {
+    const std::optional<std::uint32_t> type = FpType(rn);
+    if (!type || (!zero && !FpOperand(rm, rn.bits))) {
+        return A64Status::InvalidRegister;
+    }
+    enc.Word(0x1E202000U | *type << 22U | (zero ? 0U : std::uint32_t{rm.code}) << 16U | std::uint32_t{rn.code} << 5U |
+             (signalling ? 16U : 0U) | (zero ? 8U : 0U));
+    return A64Status::Ok;
+}
+
+// Conversion between floating point and integer:
+// sf | 0 | S | 11110 | ptype | 1 | rmode | opcode | 000000 | Rn | Rd. The
+// integer width comes from the general-purpose register and the precision from
+// the vector one, so the two are independent. Which operand is which is fixed
+// by the instruction rather than read off the registers, so writing one
+// backwards is refused instead of encoding the opposite conversion.
+A64Status EncodeFpIntConv(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const bool toGeneral,
+                          const unsigned rmode, const unsigned opcode) {
+    const A64Reg gpr = toGeneral ? rd : rn;
+    const std::optional<std::uint32_t> type = FpType(toGeneral ? rn : rd);
+    if (!type || !ZrOperand(gpr, gpr.bits) || (gpr.bits != 32 && gpr.bits != 64)) {
+        return A64Status::InvalidRegister;
+    }
+    enc.Word(0x1E200000U | gpr.Sf() << 31U | *type << 22U | rmode << 19U | opcode << 16U |
+             std::uint32_t{rn.code} << 5U | rd.code);
+    return A64Status::Ok;
+}
 } // namespace
 
 std::string_view A64StatusName(const A64Status status) {
@@ -663,6 +765,28 @@ std::optional<A64MovwImm> TryEncodeMovwImm(const std::uint64_t value, const bool
         return A64MovwImm{static_cast<std::uint16_t>(inverted >> shift), static_cast<std::uint8_t>(hw), true};
     }
     return std::nullopt;
+}
+
+std::optional<std::uint8_t> TryEncodeFpImm8(const double value) {
+    const auto bits = std::bit_cast<std::uint64_t>(value);
+    const std::uint64_t sign = bits >> 63U;
+    const std::uint64_t exponent = (bits >> 52U) & 0x7FFU;
+    const std::uint64_t fraction = bits & LowMask(52);
+
+    // The immediate supplies the top four bits of the fraction and nothing
+    // below them.
+    if ((fraction & LowMask(48)) != 0) {
+        return std::nullopt;
+    }
+    // The exponent is one bit written twice over, inverted once and repeated
+    // eight times, followed by two bits of the immediate. That pattern is what
+    // confines the value to eight binades around one, and what leaves zero,
+    // the infinities and the NaNs outside the set.
+    const std::uint64_t repeated = (exponent >> 9U) & 1U;
+    if (((exponent >> 10U) & 1U) == repeated || ((exponent >> 2U) & 0xFFU) != (repeated != 0 ? 0xFFU : 0U)) {
+        return std::nullopt;
+    }
+    return static_cast<std::uint8_t>(sign << 7U | repeated << 6U | (exponent & 3U) << 4U | (fraction >> 48U));
 }
 
 std::uint32_t A64Enc::Size() const {
@@ -1391,5 +1515,185 @@ A64Status A64Enc::Mrs(const A64Reg rt, const std::uint16_t sysreg) const {
 
 A64Status A64Enc::Msr(const std::uint16_t sysreg, const A64Reg rt) const {
     return EncodeSysRegMove(*this, rt, sysreg, false);
+}
+
+A64Status A64Enc::Fmov(const A64Reg rd, const A64Reg rn) const {
+    if (rd.IsVector() && rn.IsVector()) {
+        return EncodeFpUnary(*this, rd, rn, 0x00);
+    }
+    // The transfers to and from the general-purpose file move the bits of a
+    // value rather than the value itself, so the two registers hold the same
+    // number of them: a word pairs with an S register and a doubleword with a
+    // D one, and every other pairing is unallocated.
+    if (rd.IsVector() == rn.IsVector() || rd.bits != rn.bits) {
+        return A64Status::InvalidRegister;
+    }
+    return EncodeFpIntConv(*this, rd, rn, !rd.IsVector(), 0, rd.IsVector() ? 7U : 6U);
+}
+
+// FMOV (scalar, immediate): M | 0 | S | 11110 | ptype | 1 | imm8 | 100 | 00000 | Rd.
+A64Status A64Enc::FmovImm(const A64Reg rd, const double value) const {
+    const std::optional<std::uint32_t> type = FpType(rd);
+    if (!type) {
+        return A64Status::InvalidRegister;
+    }
+    const std::optional<std::uint8_t> imm8 = TryEncodeFpImm8(value);
+    if (!imm8) {
+        return A64Status::InvalidImmediate;
+    }
+    Word(0x1E201000U | *type << 22U | std::uint32_t{*imm8} << 13U | rd.code);
+    return A64Status::Ok;
+}
+
+A64Status A64Enc::Fadd(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeFpDataProc2(*this, rd, rn, rm, 0x2);
+}
+
+A64Status A64Enc::Fsub(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeFpDataProc2(*this, rd, rn, rm, 0x3);
+}
+
+A64Status A64Enc::Fmul(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeFpDataProc2(*this, rd, rn, rm, 0x0);
+}
+
+A64Status A64Enc::Fdiv(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeFpDataProc2(*this, rd, rn, rm, 0x1);
+}
+
+A64Status A64Enc::Fmax(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeFpDataProc2(*this, rd, rn, rm, 0x4);
+}
+
+A64Status A64Enc::Fmin(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeFpDataProc2(*this, rd, rn, rm, 0x5);
+}
+
+A64Status A64Enc::Fmaxnm(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeFpDataProc2(*this, rd, rn, rm, 0x6);
+}
+
+A64Status A64Enc::Fminnm(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeFpDataProc2(*this, rd, rn, rm, 0x7);
+}
+
+A64Status A64Enc::Fabs(const A64Reg rd, const A64Reg rn) const {
+    return EncodeFpUnary(*this, rd, rn, 0x01);
+}
+
+A64Status A64Enc::Fneg(const A64Reg rd, const A64Reg rn) const {
+    return EncodeFpUnary(*this, rd, rn, 0x02);
+}
+
+A64Status A64Enc::Fsqrt(const A64Reg rd, const A64Reg rn) const {
+    return EncodeFpUnary(*this, rd, rn, 0x03);
+}
+
+A64Status A64Enc::Frintn(const A64Reg rd, const A64Reg rn) const {
+    return EncodeFpUnary(*this, rd, rn, 0x08);
+}
+
+A64Status A64Enc::Frintp(const A64Reg rd, const A64Reg rn) const {
+    return EncodeFpUnary(*this, rd, rn, 0x09);
+}
+
+A64Status A64Enc::Frintm(const A64Reg rd, const A64Reg rn) const {
+    return EncodeFpUnary(*this, rd, rn, 0x0A);
+}
+
+A64Status A64Enc::Frintz(const A64Reg rd, const A64Reg rn) const {
+    return EncodeFpUnary(*this, rd, rn, 0x0B);
+}
+
+A64Status A64Enc::Frinta(const A64Reg rd, const A64Reg rn) const {
+    return EncodeFpUnary(*this, rd, rn, 0x0C);
+}
+
+A64Status A64Enc::Fmadd(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Reg ra) const {
+    return EncodeFpDataProc3(*this, rd, rn, rm, ra, false, false);
+}
+
+A64Status A64Enc::Fmsub(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Reg ra) const {
+    return EncodeFpDataProc3(*this, rd, rn, rm, ra, false, true);
+}
+
+A64Status A64Enc::Fnmadd(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Reg ra) const {
+    return EncodeFpDataProc3(*this, rd, rn, rm, ra, true, false);
+}
+
+A64Status A64Enc::Fnmsub(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Reg ra) const {
+    return EncodeFpDataProc3(*this, rd, rn, rm, ra, true, true);
+}
+
+A64Status A64Enc::Fcmp(const A64Reg rn, const A64Reg rm) const {
+    return EncodeFpCompare(*this, rn, rm, false, false);
+}
+
+A64Status A64Enc::Fcmpe(const A64Reg rn, const A64Reg rm) const {
+    return EncodeFpCompare(*this, rn, rm, false, true);
+}
+
+A64Status A64Enc::FcmpZero(const A64Reg rn) const {
+    return EncodeFpCompare(*this, rn, rn, true, false);
+}
+
+A64Status A64Enc::FcmpeZero(const A64Reg rn) const {
+    return EncodeFpCompare(*this, rn, rn, true, true);
+}
+
+// Floating-point conditional compare:
+// M | 0 | S | 11110 | ptype | 1 | Rm | cond | 01 | Rn | op | nzcv.
+A64Status A64Enc::Fccmp(const A64Reg rn, const A64Reg rm, const unsigned nzcv, const A64Condition cond) const {
+    const std::optional<std::uint32_t> type = FpType(rn);
+    if (!type || !FpOperand(rm, rn.bits)) {
+        return A64Status::InvalidRegister;
+    }
+    if (nzcv > 0xFU) {
+        return A64Status::InvalidImmediate;
+    }
+    Word(0x1E200400U | *type << 22U | std::uint32_t{rm.code} << 16U | static_cast<std::uint32_t>(cond) << 12U |
+         std::uint32_t{rn.code} << 5U | nzcv);
+    return A64Status::Ok;
+}
+
+// Floating-point conditional select:
+// M | 0 | S | 11110 | ptype | 1 | Rm | cond | 11 | Rn | Rd.
+A64Status A64Enc::Fcsel(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Condition cond) const {
+    const std::optional<std::uint32_t> type = FpType(rd);
+    if (!type || !FpOperand(rn, rd.bits) || !FpOperand(rm, rd.bits)) {
+        return A64Status::InvalidRegister;
+    }
+    Word(0x1E200C00U | *type << 22U | std::uint32_t{rm.code} << 16U | static_cast<std::uint32_t>(cond) << 12U |
+         std::uint32_t{rn.code} << 5U | rd.code);
+    return A64Status::Ok;
+}
+
+A64Status A64Enc::Fcvt(const A64Reg rd, const A64Reg rn) const {
+    const std::optional<std::uint32_t> to = FpType(rd);
+    const std::optional<std::uint32_t> from = FpType(rn);
+    if (!to || !from || rd.bits == rn.bits) {
+        return A64Status::InvalidRegister;
+    }
+    // The destination precision sits in the low two bits of the opcode and the
+    // source precision in the type field, so a conversion between two registers
+    // of one precision would name the encoding of no instruction at all.
+    EncodeFpDataProc1(*this, rd, rn, *from, 0x04U | *to);
+    return A64Status::Ok;
+}
+
+A64Status A64Enc::Fcvtzs(const A64Reg rd, const A64Reg rn) const {
+    return EncodeFpIntConv(*this, rd, rn, true, 3, 0);
+}
+
+A64Status A64Enc::Fcvtzu(const A64Reg rd, const A64Reg rn) const {
+    return EncodeFpIntConv(*this, rd, rn, true, 3, 1);
+}
+
+A64Status A64Enc::Scvtf(const A64Reg rd, const A64Reg rn) const {
+    return EncodeFpIntConv(*this, rd, rn, false, 0, 2);
+}
+
+A64Status A64Enc::Ucvtf(const A64Reg rd, const A64Reg rn) const {
+    return EncodeFpIntConv(*this, rd, rn, false, 0, 3);
 }
 } // namespace Rux
