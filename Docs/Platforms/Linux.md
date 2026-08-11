@@ -59,6 +59,50 @@ The x86-64 backend writes ELF objects and images directly. The AArch64 backend u
 
 For a Debug build, run `sh Build.sh --configuration Debug`. On other Linux distributions, install equivalent tool versions through the distribution's package manager and pass `--compiler PATH` when Clang is not detected automatically. Run `sh Build.sh --help` to see every option.
 
+## Cross-Compiling and Emulation
+
+`--target <os>-<arch>` builds for a machine other than the host, and writes the
+result to its own subdirectory so builds for two targets do not overwrite each
+other — `Bin/Release/linux-aarch64/Name` rather than `Bin/Release/Name`:
+
+```sh
+./Bin/rux build --target linux-aarch64
+```
+
+`rux run` and `rux test` execute what they build. An artifact for this machine
+runs directly; one for another architecture runs under a user-mode emulator, so
+a cross build can be tested without a second machine:
+
+```sh
+sudo apt-get install -y qemu-user
+./Bin/rux run --target linux-aarch64
+```
+
+Exit codes and output pass through the emulator unchanged, which is what keeps
+the `rux test` contract — a test passes by exiting `0` — the same across targets.
+`sh Test.sh --target linux-aarch64` runs the whole Rux suite that way; the C++
+unit tests, formatting and static analysis are host-side and always run natively.
+
+Two environment variables control the emulator:
+
+| Variable            | Effect                                                                                                                                       |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RUX_EMULATOR`      | The emulator command, replacing the default (`qemu-aarch64` for AArch64). A value naming an existing file is used as written; anything else is a command line whose first word is the program and whose remaining words are passed before the artifact. |
+| `RUX_QEMU_SYSROOT`  | A sysroot passed on as `-L`, where a dynamically linked guest program finds its loader and shared libraries. A freestanding program — one importing no shared library — needs none. |
+
+A program that links against glibc needs the matching sysroot, which Debian and
+Ubuntu package as `libc6-arm64-cross`:
+
+```sh
+sudo apt-get install -y libc6-arm64-cross
+RUX_QEMU_SYSROOT=/usr/aarch64-linux-gnu ./Bin/rux test --target linux-aarch64
+```
+
+A foreign operating system has no such answer: an emulator supplies an
+instruction set, not a kernel, so `rux run --target windows-x86_64` reports that
+the artifact has to be run on that system. Native AArch64 code generation is
+still being written, so not every program compiles for `linux-aarch64` yet.
+
 ## Verifying the Build
 
 Run the compiler:

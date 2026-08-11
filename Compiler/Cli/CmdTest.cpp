@@ -66,10 +66,11 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         std::print(stderr, "error: {}\n", reason);
         return 1;
     }
-    // A test passes by exiting 0, so every test package has to run. Emulating a
-    // foreign target is BACKLOG.md task 19.
-    if (!HostCanExecuteTarget(targetName)) {
-        std::print(stderr, "error: cannot run a '{}' test artifact on '{}'\n", targetName, HostTargetTriple());
+    // A test passes by exiting 0, so every test package has to run: either on
+    // this host directly, or under an emulator that runs the target's programs.
+    const auto execution = ResolveExecutionCommand(targetName);
+    if (!execution.command) {
+        std::print(stderr, "error: {}\n", execution.error);
         return 1;
     }
     std::optional<std::filesystem::path> manifestPath;
@@ -308,15 +309,17 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             return outcome;
         }
 
+        const LaunchCommand launch = PrepareLaunch(*execution.command, exePath);
         if (opts.verbose)
-            std::print("Running `{}`\n", exePath.string());
+            std::print("Running `{}`\n", launch.CommandLine());
 
         const auto start = std::chrono::steady_clock::now();
 
         // Execute the test binary, capturing its combined stdout/stderr.
-        auto run = RunCaptured(exePath);
+        const std::vector<std::string_view> launchArgs(launch.args.begin(), launch.args.end());
+        auto run = RunCaptured(launch.program, launchArgs);
         if (!run) {
-            std::print(stderr, "error: failed to launch '{}'\n", exePath.string());
+            std::print(stderr, "error: failed to launch '{}'\n", launch.program.string());
             outcome.status = TestStatus::LaunchError;
             return outcome;
         }

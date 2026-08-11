@@ -9,6 +9,7 @@ configuration=Release
 build_directory=Build
 compiler=${CXX:-}
 rux_executable=
+target=
 skip_build=false
 fix_formatting=false
 clang_tidy_enabled=false
@@ -22,6 +23,7 @@ usage() {
         '  --build-directory PATH         CMake build directory (default: Build)' \
         '  --compiler PATH                C++ compiler passed to Build.sh (default: $CXX or detected Clang)' \
         '  --rux-executable PATH          Existing rux executable (default: Bin/rux)' \
+        '  --target TRIPLE                Check and run the Rux suites for this target (default: the host)' \
         '  --skip-build                   Reuse the existing build and executables' \
         '  --fix-formatting               Format C++ and Rux sources instead of checking them' \
         '  --clang-tidy                   Run clang-tidy over maintained C++ sources' \
@@ -39,6 +41,17 @@ require_value() {
 
 step() {
     printf '\n==> %s\n' "$1"
+}
+
+# Run a rux subcommand for the selected target. `--target` follows the
+# subcommand, while the global `--manifest` precedes it, so the option is
+# appended rather than inserted. `lint` takes no target and is invoked directly.
+rux_targeted() {
+    if [ -n "$target" ]; then
+        "$rux_path" "$@" --target "$target"
+    else
+        "$rux_path" "$@"
+    fi
 }
 
 while [ "$#" -gt 0 ]; do
@@ -61,6 +74,11 @@ while [ "$#" -gt 0 ]; do
     --rux-executable)
         require_value "$@"
         rux_executable=$2
+        shift 2
+        ;;
+    --target)
+        require_value "$@"
+        target=$2
         shift 2
         ;;
     --skip-build)
@@ -197,16 +215,16 @@ workspace_manifest=$repository_root/Rux.toml
 [ -f "$workspace_manifest" ] || die "workspace manifest not found at '$workspace_manifest'"
 
 step "Checking all Rux workspace packages"
-"$rux_path" --manifest "$workspace_manifest" check
+rux_targeted --manifest "$workspace_manifest" check
 
 step "Linting all Rux workspace packages"
 "$rux_path" --manifest "$workspace_manifest" lint
 
 step "Running all Rux test packages"
 if [ "$configuration" = Release ]; then
-    "$rux_path" test --release
+    rux_targeted test --release
 else
-    "$rux_path" test
+    rux_targeted test
 fi
 
 elapsed=$(( $(date +%s) - started_at ))

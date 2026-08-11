@@ -1,5 +1,6 @@
 #include "System/Process.h"
 
+#include "System/Os.h"
 #include "System/WinApi.h"
 #include "Target/Platform.h"
 
@@ -105,6 +106,89 @@ bool CommitDownloadedPackage(const std::filesystem::path &staging, const std::fi
     }
     std::filesystem::remove_all(backup, ec);
     return true;
+}
+
+namespace {
+// True when `path` names a file this process could execute. On POSIX the
+// permission bits alone do not answer that — the effective user does — so the
+// question goes to the kernel.
+bool IsExecutableFile(const std::filesystem::path &path) {
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(path, error)) {
+        return false;
+    }
+#if RUX_OS_WINDOWS
+    return true;
+#else
+    return ::access(path.c_str(), X_OK) == 0;
+#endif
+}
+
+// The entries of a `separator`-delimited search list, skipping empty ones.
+std::vector<std::string_view> SplitSearchList(const std::string_view list, const char separator) {
+    std::vector<std::string_view> entries;
+    std::string_view remaining = list;
+    while (!remaining.empty()) {
+        const auto end = remaining.find(separator);
+        const auto entry = remaining.substr(0, end);
+        if (!entry.empty()) {
+            entries.push_back(entry);
+        }
+        if (end == std::string_view::npos) {
+            break;
+        }
+        remaining.remove_prefix(end + 1);
+    }
+    return entries;
+}
+
+#if RUX_OS_WINDOWS
+// The extensions a bare command name may be spelled with, from PATHEXT. The
+// empty one comes first because a name may already carry its extension.
+std::vector<std::string> ExecutableSuffixes() {
+    std::vector<std::string> suffixes{std::string{}};
+    const auto configured = GetEnv("PATHEXT");
+    const std::string_view list =
+        configured && !configured->empty() ? std::string_view(*configured) : ".COM;.EXE;.BAT;.CMD";
+    for (const auto entry : SplitSearchList(list, ';')) {
+        suffixes.emplace_back(entry);
+    }
+    return suffixes;
+}
+#endif
+} // namespace
+
+std::optional<std::filesystem::path> FindExecutable(const std::string_view name) {
+    if (name.empty()) {
+        return std::nullopt;
+    }
+    // A name that already carries a directory names one file rather than
+    // something to search for: `./qemu` and `/opt/qemu/bin/qemu-aarch64` are
+    // both answers in themselves.
+    if (const std::filesystem::path named(name); named.has_parent_path()) {
+        return IsExecutableFile(named) ? std::optional(named) : std::nullopt;
+    }
+    const auto searchPath = GetEnv("PATH");
+    if (!searchPath) {
+        return std::nullopt;
+    }
+#if RUX_OS_WINDOWS
+    constexpr char separator = ';';
+    const std::vector<std::string> suffixes = ExecutableSuffixes();
+#else
+    constexpr char separator = ':';
+    const std::array<std::string, 1> suffixes{std::string{}};
+#endif
+    for (const auto directory : SplitSearchList(*searchPath, separator)) {
+        for (const auto &suffix : suffixes) {
+            std::filesystem::path candidate = std::filesystem::path(directory) / name;
+            candidate += suffix;
+            if (IsExecutableFile(candidate)) {
+                return candidate;
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 #if RUX_OS_WINDOWS

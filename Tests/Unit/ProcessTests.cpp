@@ -1,10 +1,20 @@
+#include "System/Os.h"
 #include "System/Process.h"
 
 #include <array>
 #include <doctest.h>
+#include <filesystem>
 #include <string>
 
 using namespace Rux::System;
+
+namespace {
+// The compiler this build produced: a file that is certainly executable, and
+// the only one a test can name on every host.
+std::filesystem::path RuxExecutable() {
+    return std::filesystem::path(RUX_ROOT_DIR) / "Bin" / ExecutableFileName("rux");
+}
+} // namespace
 
 TEST_CASE("UrlEncode leaves unreserved characters alone") {
     CHECK(UrlEncode("rux") == "rux");
@@ -40,4 +50,39 @@ TEST_CASE("BuildMultipartBody frames every part with the same boundary") {
     CHECK(encoded->body.ends_with("--" + boundary + "--\r\n"));
     CHECK(encoded->body.contains("Content-Disposition: form-data; name=\"manifest\"\r\n\r\n[Manifest]\n"));
     CHECK(encoded->body.contains("Content-Disposition: form-data; name=\"package\"\r\n\r\nPK\x03\x04"));
+}
+
+TEST_CASE("FindExecutable takes a name carrying a directory as the answer itself") {
+    const auto rux = RuxExecutable();
+    REQUIRE(std::filesystem::is_regular_file(rux));
+    const auto found = FindExecutable(rux.string());
+    REQUIRE(found.has_value());
+    CHECK(*found == rux);
+}
+
+TEST_CASE("FindExecutable answers nothing for what cannot be run") {
+    CHECK(!FindExecutable("").has_value());
+    // A directory is not a program, however executable its permission bits are.
+    CHECK(!FindExecutable(std::filesystem::path(RUX_ROOT_DIR).string()).has_value());
+    CHECK(!FindExecutable((RuxExecutable().parent_path() / "rux-that-was-never-built").string()).has_value());
+    CHECK(!FindExecutable("rux-emulator-that-is-not-installed").has_value());
+}
+
+TEST_CASE("FindExecutable searches PATH for a bare name") {
+    const auto rux = RuxExecutable();
+    const auto previousPath = GetEnv("PATH");
+    REQUIRE(SetEnv("PATH", rux.parent_path().string()));
+
+    // Windows spells the name without its extension, which PATHEXT supplies.
+    const auto found = FindExecutable("rux");
+    CHECK(found.has_value());
+    if (found) {
+        CHECK(*found == rux);
+    }
+    CHECK(!FindExecutable("rux-emulator-that-is-not-installed").has_value());
+
+    CHECK(previousPath.has_value());
+    if (previousPath) {
+        CHECK(SetEnv("PATH", *previousPath));
+    }
 }

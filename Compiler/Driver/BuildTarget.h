@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -66,9 +67,54 @@ namespace Rux::Driver {
 // supported triple. Callers must validate the triple first.
 [[nodiscard]] std::string UnsupportedBackendReason(std::string_view target);
 
-// True when this host can execute an artifact built for `target` directly.
-// A foreign target needs an emulator, which `run` and `test` do not use yet.
+// True when this host can execute an artifact built for `target` directly,
+// without an emulator standing between the two.
 [[nodiscard]] bool HostCanExecuteTarget(std::string_view target);
+
+// ---- Executing what was built -----------------------------------------------
+
+// How this host launches an artifact built for some target: directly when the
+// artifact was built for the host, and through a user-mode emulator when it was
+// not.
+struct ExecutionCommand {
+    std::filesystem::path emulator;        ///< Empty when the artifact runs directly.
+    std::vector<std::string> emulatorArgs; ///< Arguments the emulator takes before the artifact path.
+
+    [[nodiscard]] bool IsEmulated() const noexcept {
+        return !emulator.empty();
+    }
+};
+
+// One resolved command line: the program to start, and every argument it takes.
+struct LaunchCommand {
+    std::filesystem::path program;
+    std::vector<std::string> args;
+
+    /// The command as a shell would spell it, for verbose output.
+    [[nodiscard]] std::string CommandLine() const;
+};
+
+// The command line that runs `artifact` with `args` under `command`. The
+// artifact is the program itself when nothing emulates it, and the emulator's
+// first non-option argument when something does.
+[[nodiscard]] LaunchCommand PrepareLaunch(const ExecutionCommand &command, const std::filesystem::path &artifact,
+                                          std::span<const std::string_view> args = {});
+
+// Either how to execute a `target` artifact on this host, or why it cannot be
+// executed here. Exactly one of the two is set. Callers must validate the
+// triple first.
+struct ExecutionCommandResult {
+    std::optional<ExecutionCommand> command;
+    std::string error;
+};
+
+// Resolve the emulator, if any, that `run` and `test` launch a `target`
+// artifact through. A foreign architecture is emulated by the command named by
+// RUX_EMULATOR, or by this architecture's usual QEMU binary; RUX_QEMU_SYSROOT
+// adds the `-L` that points a dynamically linked program at its loader and
+// shared libraries. A foreign operating system has no answer: an emulator
+// supplies an instruction set, not a kernel.
+[[nodiscard]] ExecutionCommandResult ResolveExecutionCommand(std::string_view target);
 
 // ---- Platform packages ------------------------------------------------------
 

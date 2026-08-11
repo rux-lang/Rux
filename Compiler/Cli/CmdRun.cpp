@@ -89,13 +89,12 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         std::print(stderr, "error: {}\n", reason);
         return 1;
     }
-    // Executing what was built needs the host to be the target. An emulator for
-    // a foreign target is BACKLOG.md task 19.
-    if (!HostCanExecuteTarget(targetName)) {
-        std::print(stderr,
-                   "error: cannot run a '{}' artifact on '{}'; build it with 'rux build --target {}' and run "
-                   "it on that target\n",
-                   targetName, HostTargetTriple(), targetName);
+    // Executing what was built needs either the host to be the target, or an
+    // emulator that runs the target's programs here. Resolving it before the
+    // build means a missing emulator is reported without spending one.
+    const auto execution = ResolveExecutionCommand(targetName);
+    if (!execution.command) {
+        std::print(stderr, "error: {}\n", execution.error);
         return 1;
     }
     const bool buildQuiet = !opts.verbose || opts.quiet;
@@ -128,12 +127,14 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         std::print(stderr, "error: executable not found: '{}'\n", exePath.string());
         return 1;
     }
+    const LaunchCommand launch = PrepareLaunch(*execution.command, exePath, runArgs);
     if (opts.verbose && !opts.quiet) {
-        std::print("Running `{}`\n", exePath.string());
+        std::print("Running `{}`\n", launch.CommandLine());
     }
-    const auto exitCode = RunInherited(exePath, runArgs);
+    const std::vector<std::string_view> launchArgs(launch.args.begin(), launch.args.end());
+    const auto exitCode = RunInherited(launch.program, launchArgs);
     if (!exitCode) {
-        std::print(stderr, "error: failed to launch '{}'\n", exePath.string());
+        std::print(stderr, "error: failed to launch '{}'\n", launch.program.string());
         return 1;
     }
     return *exitCode;

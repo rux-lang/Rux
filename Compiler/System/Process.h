@@ -28,6 +28,16 @@ struct RunResult {
 [[nodiscard]] std::optional<RunResult> RunCaptured(const std::filesystem::path &exe,
                                                    std::span<const std::string_view> args = {});
 
+// The executable `name` resolves to, looked up the way a shell resolves a
+// command: a name carrying a directory is taken as written, a bare name is
+// searched for along PATH (and, on Windows, with each PATHEXT extension).
+// Returns nullopt when no executable of that name can be run.
+//
+// A caller that could pass the bare name to RunInherited on one platform and
+// not another uses this instead, so a missing program is a diagnostic it can
+// word rather than an exit status indistinguishable from the program's own.
+[[nodiscard]] std::optional<std::filesystem::path> FindExecutable(std::string_view name);
+
 // Base URL of the versioned registry API, whose routes live below /v1. The
 // package commands override it with --registry or RUX_REGISTRY_URL to reach a
 // local registry.

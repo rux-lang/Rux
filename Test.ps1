@@ -19,6 +19,11 @@ The CMake build directory, relative to the repository root unless absolute.
 An existing rux executable to use. By default, the script uses Bin/rux or
 Bin/rux.exe.
 
+.PARAMETER Target
+The target triple to check and run the Rux suites for, such as linux-aarch64.
+Defaults to the host. A foreign architecture runs under an emulator; see
+Docs/Platforms/Linux.md.
+
 .PARAMETER SkipBuild
 Skips Build.ps1. The existing CMake test target and rux executable are used.
 
@@ -37,6 +42,9 @@ requires PowerShell 7 because it analyzes files in parallel.
 
 .EXAMPLE
 ./Test.ps1 -SkipBuild -ClangTidy
+
+.EXAMPLE
+./Test.ps1 -SkipBuild -Target linux-aarch64
 #>
 
 [CmdletBinding()]
@@ -47,6 +55,8 @@ param(
     [string]$BuildDirectory = "Build",
 
     [string]$RuxExecutable,
+
+    [string]$Target,
 
     [switch]$SkipBuild,
 
@@ -310,10 +320,14 @@ try {
         "-C", $Configuration
     )
 
+    # `--target` follows the subcommand, while the global `--manifest` precedes
+    # it, so it is appended rather than inserted. `lint` takes no target.
+    $targetArguments = if ($Target) { @("--target", $Target) } else { @() }
+
     $rootManifest = Join-Path $repositoryRoot "Rux.toml"
     if (Test-Path -LiteralPath $rootManifest -PathType Leaf) {
         Write-Step "Checking all Rux workspace packages"
-        Invoke-Checked -FilePath $rux -ArgumentList @("--manifest", $rootManifest, "check")
+        Invoke-Checked -FilePath $rux -ArgumentList (@("--manifest", $rootManifest, "check") + $targetArguments)
 
         Write-Step "Linting all Rux workspace packages"
         Invoke-Checked -FilePath $rux -ArgumentList @("--manifest", $rootManifest, "lint")
@@ -326,7 +340,7 @@ try {
 
         Write-Step "Checking all discovered Rux packages"
         foreach ($manifest in $checkScopes) {
-            Invoke-Checked -FilePath $rux -ArgumentList @("--manifest", $manifest, "check")
+            Invoke-Checked -FilePath $rux -ArgumentList (@("--manifest", $manifest, "check") + $targetArguments)
         }
 
         Write-Step "Linting all discovered Rux packages"
@@ -340,6 +354,7 @@ try {
     if ($Configuration -eq "Release") {
         $testArguments += "--release"
     }
+    $testArguments += $targetArguments
     Invoke-Checked -FilePath $rux -ArgumentList $testArguments
 
     $elapsed = (Get-Date) - $startedAt
