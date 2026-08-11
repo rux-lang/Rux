@@ -1651,86 +1651,14 @@ private:
         }
     }
 
-    // Field offset resolution via regTypes_ + layouts_
-    int ResolveFieldOffset(LirReg base, const std::string &fieldName) {
-        auto typeIt = regTypes.find(base);
+    // Field offset resolution. The rule itself is Layout's, so the printer and
+    // the RCU emitter cannot drift apart on where a field sits.
+    [[nodiscard]] int ResolveFieldOffset(const LirReg base, const std::string &fieldName) const {
+        const auto typeIt = regTypes.find(base);
         if (typeIt == regTypes.end()) {
             return 0;
         }
-        const TypeRef &ptrType = typeIt->second;
-        if (ptrType.kind != TypeRef::Kind::Pointer || ptrType.inner.empty()) {
-            return 0;
-        }
-        const TypeRef &inner = ptrType.inner[0];
-        if (inner.IsRange()) {
-            const TypeRef &elemType = inner.inner.empty() ? TypeRef::MakeInt64() : inner.inner[0];
-            if (fieldName == "start" && inner.RangeHasStart()) {
-                return 0;
-            }
-            if (fieldName == "end" && inner.RangeHasEnd()) {
-                return inner.RangeHasStart() ? SizeOf(elemType) : 0;
-            }
-            return 0;
-        }
-        if (inner.kind == TypeRef::Kind::Tuple) {
-            std::size_t idx = 0;
-            try {
-                idx = std::stoul(fieldName);
-            }
-            catch (...) {
-                return 0;
-            }
-            if (idx >= inner.inner.size()) {
-                return 0;
-            }
-            int offset = 0;
-            for (std::size_t i = 0; i < idx && i < inner.inner.size(); ++i) {
-                const int sz = SizeOf(inner.inner[i]);
-                const int al = sz > 0 ? std::min(sz, 8) : 1;
-                if (al > 1) {
-                    offset = AlignUp(offset, al);
-                }
-                offset += sz > 0 ? sz : 8;
-            }
-            const int fieldSize = SizeOf(inner.inner[idx]);
-            const int fieldAlign = fieldSize > 0 ? std::min(fieldSize, 8) : 1;
-            if (fieldAlign > 1) {
-                offset = AlignUp(offset, fieldAlign);
-            }
-            return offset;
-        }
-        if (inner.kind != TypeRef::Kind::Named) {
-            return 0;
-        }
-        const std::string baseName = BaseTypeName(inner.name);
-        if (interfaceNames.contains(baseName)) {
-            if (fieldName == "data") {
-                return 0;
-            }
-            if (fieldName == "vtable") {
-                return 8;
-            }
-            return 0;
-        }
-        if (baseName == "Slice") {
-            if (fieldName == "data") {
-                return 0;
-            }
-            if (fieldName == "length") {
-                return 8;
-            }
-            return 0;
-        }
-        auto layIt = layouts.find(baseName);
-        if (layIt == layouts.end()) {
-            return 0;
-        }
-        for (const auto &f : layIt->second.fields) {
-            if (f.name == fieldName) {
-                return f.offset;
-            }
-        }
-        return 0;
+        return FieldOffsetOf(typeIt->second, fieldName, layouts, interfaceNames);
     }
 
     // Call emission

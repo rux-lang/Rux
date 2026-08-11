@@ -1079,87 +1079,14 @@ private:
         enc.Byte(0xD8); // mov rax, r11
     }
 
-    // Struct field lookup
-    int FieldOffset(LirReg base, const std::string &fieldName) {
-        auto typeIt = regTypes.find(base);
+    // Struct field lookup. The rule itself is Layout's, so both back ends and
+    // the assembly printer agree on where a field sits by construction.
+    [[nodiscard]] int FieldOffset(const LirReg base, const std::string &fieldName) const {
+        const auto typeIt = regTypes.find(base);
         if (typeIt == regTypes.end()) {
             return 0;
         }
-        const TypeRef &pt = typeIt->second;
-        if (pt.kind != TypeRef::Kind::Pointer || pt.inner.empty()) {
-            return 0;
-        }
-        const TypeRef &inner = pt.inner[0];
-        if (inner.IsRange()) {
-            const TypeRef &elemType = inner.inner.empty() ? TypeRef::MakeInt64() : inner.inner[0];
-            int elemSize = SizeOf(elemType);
-            if (fieldName == "start" && inner.RangeHasStart()) {
-                return 0;
-            }
-            if (fieldName == "end" && inner.RangeHasEnd()) {
-                return inner.RangeHasStart() ? elemSize : 0;
-            }
-            return 0;
-        }
-        if (inner.kind == TypeRef::Kind::Tuple) {
-            std::size_t idx = 0;
-            try {
-                idx = std::stoul(fieldName);
-            }
-            catch (...) {
-                return 0;
-            }
-            int offset = 0;
-            if (idx >= inner.inner.size()) {
-                return 0;
-            }
-            for (std::size_t i = 0; i < idx && i < inner.inner.size(); ++i) {
-                const int sz = SizeOf(inner.inner[i]);
-                const int al = sz > 0 ? std::min(sz, 8) : 1;
-                if (al > 1) {
-                    offset = AlignUp(offset, al);
-                }
-                offset += sz > 0 ? sz : 8;
-            }
-            const int fieldSize = SizeOf(inner.inner[idx]);
-            const int fieldAlign = fieldSize > 0 ? std::min(fieldSize, 8) : 1;
-            if (fieldAlign > 1) {
-                offset = AlignUp(offset, fieldAlign);
-            }
-            return offset;
-        }
-        if (inner.kind != TypeRef::Kind::Named) {
-            return 0;
-        }
-        const std::string baseName = BaseTypeName(inner.name);
-        if (interfaceNames.count(baseName)) {
-            if (fieldName == "data") {
-                return 0;
-            }
-            if (fieldName == "vtable") {
-                return 8;
-            }
-            return 0;
-        }
-        if (baseName == "Slice") {
-            if (fieldName == "data") {
-                return 0;
-            }
-            if (fieldName == "length") {
-                return 8;
-            }
-            return 0;
-        }
-        auto layIt = layouts.find(baseName);
-        if (layIt == layouts.end()) {
-            return 0;
-        }
-        for (const auto &field : layIt->second.fields) {
-            if (field.name == fieldName) {
-                return field.offset;
-            }
-        }
-        return 0;
+        return FieldOffsetOf(typeIt->second, fieldName, layouts, interfaceNames);
     }
 
     // Pre-pass: allocate stack slots

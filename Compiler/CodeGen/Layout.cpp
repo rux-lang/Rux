@@ -1,6 +1,23 @@
 #include "CodeGen/Layout.h"
 
+#include <charconv>
+
 namespace Rux::Layout {
+namespace {
+// Offset of tuple element `index`, laid out exactly the way SizeOf lays a tuple
+// out: each element aligned to its own size, capped at a doubleword.
+[[nodiscard]] int TupleElementOffset(const TypeRef &tuple, const std::size_t index) {
+    int offset = 0;
+    for (std::size_t i = 0; i < index; ++i) {
+        const int size = SizeOf(tuple.inner[i]);
+        offset = AlignUp(offset, size > 0 ? std::min(size, 8) : 1);
+        offset += size > 0 ? size : 8;
+    }
+    const int size = SizeOf(tuple.inner[index]);
+    return AlignUp(offset, size > 0 ? std::min(size, 8) : 1);
+}
+} // namespace
+
 std::string EncodeStringLiteral(const std::string_view value, int elementSize) {
     if (elementSize != 2 && elementSize != 4) {
         elementSize = 1;
@@ -168,5 +185,56 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
         }
     }
     return SizeOf(t);
+}
+
+int FieldOffsetOf(const TypeRef &pointerType, const std::string_view fieldName, const LayoutMap &layouts,
+                  const std::unordered_set<std::string> &interfaceNames) {
+    if (pointerType.kind != TypeRef::Kind::Pointer || pointerType.inner.empty()) {
+        return 0;
+    }
+    const TypeRef &pointee = pointerType.inner[0];
+
+    // A range is its bounds in declaration order, so `end` follows `start`
+    // wherever there is a `start` to follow and sits at the front otherwise.
+    if (pointee.IsRange()) {
+        if (fieldName != "end" || !pointee.RangeHasEnd() || !pointee.RangeHasStart()) {
+            return 0;
+        }
+        return pointee.inner.empty() ? SizeOf(TypeRef::MakeInt64()) : SizeOf(pointee.inner[0]);
+    }
+
+    if (pointee.kind == TypeRef::Kind::Tuple) {
+        std::size_t index = 0;
+        const char *first = fieldName.data();
+        const char *last = first + fieldName.size();
+        const auto [stopped, ec] = std::from_chars(first, last, index);
+        if (ec != std::errc{} || stopped != last || index >= pointee.inner.size()) {
+            return 0;
+        }
+        return TupleElementOffset(pointee, index);
+    }
+
+    if (pointee.kind != TypeRef::Kind::Named) {
+        return 0;
+    }
+    const std::string base = BaseTypeName(pointee.name);
+    // An interface value and a slice are both a pointer and a word beside it,
+    // under names the runtime fixes rather than a declaration.
+    if (interfaceNames.contains(base)) {
+        return fieldName == "vtable" ? 8 : 0;
+    }
+    if (base == "Slice") {
+        return fieldName == "length" ? 8 : 0;
+    }
+    const auto layout = layouts.find(base);
+    if (layout == layouts.end()) {
+        return 0;
+    }
+    for (const auto &field : layout->second.fields) {
+        if (field.name == fieldName) {
+            return field.offset;
+        }
+    }
+    return 0;
 }
 } // namespace Rux::Layout

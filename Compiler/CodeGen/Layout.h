@@ -60,6 +60,19 @@ using LayoutMap = std::unordered_map<std::string, StructLayout>;
 [[nodiscard]] int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts,
                                 const std::unordered_set<std::string> &interfaceNames);
 
+// Byte offset of `fieldName` inside the value `pointerType` addresses, which is
+// what a FieldPtr adds to its base. `pointerType` is the type the base register
+// holds, so a pointer is expected and anything else has no field to find.
+//
+// Four shapes answer, in the order a name is looked up in them: a range, whose
+// bounds are its fields; a tuple, whose field name is a decimal index; the two
+// runtime fat pointers, an interface value and a slice, whose field names
+// belong to the runtime rather than to any declaration; and a struct, which
+// answers from its computed layout. A name none of them has is offset zero,
+// which is the start of the value itself.
+[[nodiscard]] int FieldOffsetOf(const TypeRef &pointerType, std::string_view fieldName, const LayoutMap &layouts,
+                                const std::unordered_set<std::string> &interfaceNames);
+
 // System V AMD64 integer argument registers (in order)
 inline constexpr std::string_view kIntArgRegs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
 // Microsoft x64 integer argument registers (in order)
