@@ -1,6 +1,7 @@
 #include "Linker/ArchiveWriter.h"
 #include "Linker/Linker.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <doctest.h>

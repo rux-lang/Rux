@@ -66,12 +66,19 @@ endif ()
 # to the vendored doctest header.
 target_include_directories(rux-tests SYSTEM PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty)
 
-# doctest's assertion macros expand __COUNTER__ inside our translation units,
-# which -Wpedantic flags as a C2y extension under Clang. The RuxWarnings
-# interface flags land after target options, so the suppression is attached to
-# the sources, whose options come last on the command line.
+# Two vendored-doctest warnings have to be suppressed on our own translation
+# units. The RuxWarnings interface flags land after target options, so the
+# suppressions are attached to the sources, whose options come last on the
+# command line.
+#
+# -Wno-c2y-extensions: doctest's assertion macros expand __COUNTER__ inside our
+# translation units, which -Wpedantic flags as a C2y extension under Clang.
+#
+# -Wno-#warnings: doctest.h includes <ciso646>, which libstdc++ 15 deprecated
+# with a #warning directive. The SYSTEM include directory above does not help,
+# because Clang emits #warning even from system headers.
 set_source_files_properties(${RUX_TEST_SOURCES} PROPERTIES
-    COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-c2y-extensions>")
+    COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-c2y-extensions;-Wno-#warnings>")
 
 # The golden diagnostics runner reads its cases from the source tree.
 target_compile_definitions(rux-tests PRIVATE
