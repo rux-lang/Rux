@@ -223,6 +223,43 @@ TEST_CASE("compiler driver loads path dependencies when building") {
     }
 }
 
+TEST_CASE("compiler driver builds one architecture for a foreign operating system") {
+    // x86-64 objects and executables are produced in-process, so every
+    // supported operating system is reachable from every host.
+    constexpr std::string_view foreign = Target::HostOS == Target::OS::Windows ? "linux-x86_64" : "windows-x86_64";
+    DependencyFixture fixture;
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.targetName = foreign;
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.primaryArtifactPath.filename().string() == ExecutableFileName("App", TargetTripleOs(foreign)));
+    CHECK(std::filesystem::is_regular_file(result.primaryArtifactPath));
+}
+
+TEST_CASE("compiler driver refuses a target no back end can reach from this host") {
+    // The AArch64 back end still lowers through the host Clang driver, so it
+    // only serves a host of the same architecture and operating system.
+    constexpr std::string_view unreachable =
+        Target::HostArch == Target::Arch::AArch64 && Target::HostOS != Target::OS::Windows ? "windows-aarch64"
+                                                                                           : "linux-aarch64";
+    DependencyFixture fixture;
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.targetName = unreachable;
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CHECK_FALSE(result.ok);
+    REQUIRE(diagnostics.size() == 1);
+    CHECK(diagnostics.front().IsError());
+    CHECK(diagnostics.front().message.contains("aarch64"));
+    CHECK(diagnostics.front().message.contains("not implemented yet"));
+}
+
 TEST_CASE("compiler driver links a SharedLibrary package as a native shared library") {
     DependencyFixture fixture;
     fixture.SetApplicationType(ManifestPackageType::SharedLibrary);

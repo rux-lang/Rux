@@ -1,10 +1,12 @@
 #include "Driver/Version.h"
 #include "System/Os.h"
 #include "System/Process.h"
+#include "Target/Target.h"
 
 #include <array>
 #include <doctest.h>
 #include <filesystem>
+#include <string>
 #include <string_view>
 
 using namespace Rux;
@@ -12,6 +14,12 @@ using namespace Rux;
 namespace {
 std::filesystem::path RuxExecutable() {
     return std::filesystem::path(RUX_ROOT_DIR) / "Bin" / System::ExecutableFileName("rux");
+}
+
+// A checked-in package to point option-handling checks at, so they do not
+// depend on the directory the test binary happens to run from.
+std::string ArithmeticManifest() {
+    return (std::filesystem::path(RUX_ROOT_DIR) / "Tests" / "Language" / "Arithmetic" / "Rux.toml").string();
 }
 
 template <std::size_t N>
@@ -54,6 +62,36 @@ TEST_CASE("command help accepts equals options and reports one command") {
     CHECK(result.output.contains("\"name\":\"build\""));
     CHECK_FALSE(result.output.contains("\"name\":\"check\""));
     CHECK(result.output.contains("--emit <kind[,kind...]>"));
+}
+
+TEST_CASE("build, run and test share one target option") {
+    for (const std::string_view command : {"run", "test"}) {
+        const auto json = Run(std::array<std::string_view, 3>{"help", command, "--json"});
+        CHECK(json.exitCode == 0);
+        CHECK(json.output.contains("--target <triple>"));
+    }
+    // An unknown triple is rejected the same way whichever command names it.
+    const auto manifest = ArithmeticManifest();
+    for (const std::string_view command : {"build", "run", "test"}) {
+        const auto unknown =
+            Run(std::array<std::string_view, 5>{"--manifest", manifest, command, "--target", "plan9-x86_64"});
+        CHECK(unknown.exitCode == 1);
+        CHECK(unknown.output.contains("unsupported target 'plan9-x86_64'"));
+    }
+}
+
+TEST_CASE("a target without a back end for this host names the architecture") {
+    // The AArch64 back end still lowers through the host Clang driver, so an
+    // AArch64 target it cannot serve is refused before the build starts.
+    constexpr std::string_view unreachable =
+        Target::HostArch == Target::Arch::AArch64 && Target::HostOS != Target::OS::Windows ? "windows-aarch64"
+                                                                                           : "linux-aarch64";
+    const auto manifest = ArithmeticManifest();
+    const auto result = Run(std::array<std::string_view, 5>{"--manifest", manifest, "build", "--target", unreachable});
+
+    CHECK(result.exitCode == 1);
+    CHECK(result.output.contains("aarch64"));
+    CHECK(result.output.contains("not implemented yet"));
 }
 
 TEST_CASE("structured commands emit a complete JSON document on operational failure") {

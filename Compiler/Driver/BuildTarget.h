@@ -47,6 +47,16 @@ namespace Rux::Driver {
 [[nodiscard]] Target::Arch TargetTripleArch(std::string_view target);
 [[nodiscard]] TargetContext TargetContextForTriple(std::string_view target);
 
+// Why no back end can generate machine code for `target` on this host, or an
+// empty string when one can. Selecting a target is otherwise free: `check`,
+// `doc`, `install` and `update` only read the target, so they accept every
+// supported triple. Callers must validate the triple first.
+[[nodiscard]] std::string UnsupportedBackendReason(std::string_view target);
+
+// True when this host can execute an artifact built for `target` directly.
+// A foreign target needs an emulator, which `run` and `test` do not use yet.
+[[nodiscard]] bool HostCanExecuteTarget(std::string_view target);
+
 // ---- Platform packages ------------------------------------------------------
 
 // Names that denote a platform package rather than a normal dependency.

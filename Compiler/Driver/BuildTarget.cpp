@@ -164,6 +164,34 @@ TargetContext TargetContextForTriple(const std::string_view target) {
                          .cpu_features = native ? Target::HostCpuFeatures : Target::CpuFeature::None};
 }
 
+std::string UnsupportedBackendReason(const std::string_view target) {
+    const auto triple = CanonicalTargetTriple(target);
+    const Arch arch = TargetTripleArch(triple);
+    // x86-64 artifacts are encoded and linked in-process, so any supported
+    // operating system is reachable from any host. AArch64 still lowers through
+    // the platform Clang driver, which only produces artifacts for the machine
+    // the compiler runs on; Phases 3-5 of BACKLOG.md replace it.
+    if (arch == Arch::X86_64) {
+        return {};
+    }
+    if (arch != HostArch) {
+        return std::format("code generation for architecture '{}' is not implemented yet; building for '{}' "
+                           "requires an {} host",
+                           ToString(arch), triple, ToString(arch));
+    }
+    if (TargetTripleOs(triple) != HostOS) {
+        return std::format("code generation for '{}' is not implemented yet; the {} back end targets the host "
+                           "operating system only",
+                           triple, ToDisplayString(arch));
+    }
+    return {};
+}
+
+bool HostCanExecuteTarget(const std::string_view target) {
+    const auto triple = CanonicalTargetTriple(target);
+    return TargetTripleArch(triple) == HostArch && TargetTripleOs(triple) == HostOS;
+}
+
 bool IsPlatformPackageName(const std::string_view name) {
     return name == "Windows" || name == "Linux" || name == "macOS" || name == "MacOS" || name == "BSD" ||
            name == "Bsd" || name == "Illumos";

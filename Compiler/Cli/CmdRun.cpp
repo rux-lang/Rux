@@ -24,6 +24,7 @@ using namespace System;
 
 int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opts) {
     bool isRelease = false;
+    std::string_view target;
     std::vector<std::string_view> runArgs;
     std::map<std::string, std::string> defines;
     bool passThroughMode = false;
@@ -39,6 +40,10 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         }
         if (arg == "--release") {
             isRelease = true;
+            continue;
+        }
+        if (arg == "--target" && i + 1 < args.size()) {
+            target = args[++i];
             continue;
         }
         if (arg == "--define" && i + 1 < args.size()) {
@@ -74,10 +79,23 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     }
     // Build first (quiet unless verbose)
     const std::string_view profileName = isRelease ? "Release" : "Debug";
-    std::string targetName = HostTargetTriple();
+    std::string targetName = target.empty() ? HostTargetTriple() : CanonicalTargetTriple(target);
     if (!IsSupportedTargetTriple(targetName)) {
         std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", targetName,
                    SupportedTargetTriples());
+        return 1;
+    }
+    if (const auto reason = UnsupportedBackendReason(targetName); !reason.empty()) {
+        std::print(stderr, "error: {}\n", reason);
+        return 1;
+    }
+    // Executing what was built needs the host to be the target. An emulator for
+    // a foreign target is BACKLOG.md task 19.
+    if (!HostCanExecuteTarget(targetName)) {
+        std::print(stderr,
+                   "error: cannot run a '{}' artifact on '{}'; build it with 'rux build --target {}' and run "
+                   "it on that target\n",
+                   targetName, HostTargetTriple(), targetName);
         return 1;
     }
     const bool buildQuiet = !opts.verbose || opts.quiet;

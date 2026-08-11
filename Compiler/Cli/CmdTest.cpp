@@ -29,11 +29,16 @@ using namespace System;
 
 int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &opts) {
     bool isRelease = false;
+    std::string_view target;
     std::map<std::string, std::string> defines;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const auto arg = args[i];
         if (arg == "--release") {
             isRelease = true;
+            continue;
+        }
+        if (arg == "--target" && i + 1 < args.size()) {
+            target = args[++i];
             continue;
         }
         if (arg == "--define" && i + 1 < args.size()) {
@@ -49,6 +54,22 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             return 0;
         }
         PrintUnknownOption(arg, "test");
+        return 1;
+    }
+    std::string targetName = target.empty() ? HostTargetTriple() : CanonicalTargetTriple(target);
+    if (!IsSupportedTargetTriple(targetName)) {
+        std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", targetName,
+                   SupportedTargetTriples());
+        return 1;
+    }
+    if (const auto reason = UnsupportedBackendReason(targetName); !reason.empty()) {
+        std::print(stderr, "error: {}\n", reason);
+        return 1;
+    }
+    // A test passes by exiting 0, so every test package has to run. Emulating a
+    // foreign target is BACKLOG.md task 19.
+    if (!HostCanExecuteTarget(targetName)) {
+        std::print(stderr, "error: cannot run a '{}' test artifact on '{}'\n", targetName, HostTargetTriple());
         return 1;
     }
     std::optional<std::filesystem::path> manifestPath;
@@ -266,7 +287,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         CompileOptions copts;
         copts.manifestPath = pkgDir / "Rux.toml";
         copts.manifest = std::move(*pkgManifest);
-        copts.targetName = HostTargetTriple();
+        copts.targetName = targetName;
         copts.profileName = std::string(profileName);
         copts.defines = defines;
         copts.localPackageRoots = localPackageRoots;

@@ -122,15 +122,8 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
                    SupportedTargetTriples());
         return 1;
     }
-    const std::string hostTarget = HostTargetTriple();
-    if (hostTarget != "unknown" && targetName != hostTarget) {
-        // Target selection is currently used for source/dependency choice.
-        // Linking foreign executable formats is kept explicit until the
-        // backends support it end-to-end.
-        std::print(stderr,
-                   "error: cross-target build from '{}' to '{}' is not "
-                   "supported yet\n",
-                   hostTarget, targetName);
+    if (const auto reason = UnsupportedBackendReason(targetName); !reason.empty()) {
+        std::print(stderr, "error: {}\n", reason);
         return 1;
     }
     const std::string_view profileName = isRelease ? "Release" : "Debug";
