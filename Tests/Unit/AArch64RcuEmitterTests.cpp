@@ -427,23 +427,36 @@ TEST_CASE("AArch64 RCU emitter keeps the stack pointer 16-byte aligned across a 
     CHECK_EQ(HexWord(words[tail - 1]), HexWord(0xA9407BFD)); // ldp x29, x30, [sp]
 }
 
-TEST_CASE("AArch64 RCU emitter reports an unimplemented opcode by name") {
-    // A widening conversion, which reaches the back end as the `cast` opcode
-    // that Task 26 lowers.
-    const auto package = CompileToAArch64Lir(R"(
-        func Main() -> int {
-            var narrow: int32 = 1;
-            var wide: int = narrow as int;
-            return wide;
+// The intrinsic an assertion is written as, and the type its message travels
+// in, declared here rather than imported: these cases are compiled as a package
+// of one module with no dependencies, and `Core` is where both usually live.
+constexpr std::string_view kAssertIntrinsic = R"(
+        struct Slice<T> {
+            data: *T;
+            length: uint;
         }
-    )");
+
+        intrinsic func Assert(condition: bool, message: Slice<char8>);
+)";
+
+TEST_CASE("AArch64 RCU emitter reports an unimplemented opcode by name") {
+    // An assertion, which reaches the back end as the `assert` opcode that
+    // Task 27 lowers.
+    const auto package = CompileToAArch64Lir(std::format(R"(
+        {}
+        func Main() -> int {{
+            Assert(1 == 1, "one");
+            return 0;
+        }}
+    )",
+                                                         kAssertIntrinsic));
 
     AArch64RcuEmitter emitter(package, "test");
     const auto objects = emitter.Generate();
     CHECK_EQ(objects.size(), 1);
 
     const auto reports = JoinMessages(emitter.Diagnostics());
-    CHECK_MESSAGE(reports.contains("'cast' opcode"), reports);
+    CHECK_MESSAGE(reports.contains("'assert' opcode"), reports);
     CHECK_MESSAGE(reports.contains("not implemented yet"), reports);
     CHECK_MESSAGE(reports.contains("'Main'"), reports);
     for (const auto &diagnostic : emitter.Diagnostics()) {
@@ -452,18 +465,19 @@ TEST_CASE("AArch64 RCU emitter reports an unimplemented opcode by name") {
 }
 
 TEST_CASE("AArch64 RCU emitter names each unimplemented construct once") {
-    // Three conversions, which are three instructions of the one opcode this
+    // Three assertions, which are three instructions of the one opcode this
     // back end does not lower yet: what a report names is the construct, so
     // reaching it again says nothing new.
-    const auto package = CompileToAArch64Lir(R"(
-        func Main() -> int {
-            var narrow: int32 = 1;
-            var first: int = narrow as int;
-            var second: int = narrow as int;
-            var third: int64 = narrow as int64;
+    const auto package = CompileToAArch64Lir(std::format(R"(
+        {}
+        func Main() -> int {{
+            Assert(1 == 1, "one");
+            Assert(2 == 2, "two");
+            Assert(3 == 3, "three");
             return 0;
-        }
-    )");
+        }}
+    )",
+                                                         kAssertIntrinsic));
 
     AArch64RcuEmitter emitter(package, "test");
     const auto objects = emitter.Generate();
@@ -477,7 +491,7 @@ TEST_CASE("AArch64 RCU emitter names each unimplemented construct once") {
     std::ranges::sort(sorted);
     CHECK_EQ(std::ranges::unique(sorted).begin(), sorted.end());
     REQUIRE_EQ(messages.size(), 1);
-    CHECK_MESSAGE(messages.front().contains("'cast' opcode"), messages.front());
+    CHECK_MESSAGE(messages.front().contains("'assert' opcode"), messages.front());
 }
 
 // Constants, globals and the read-only pool
@@ -2186,4 +2200,321 @@ TEST_CASE("AArch64 RCU emitter passes an anonymous float argument in a vector re
     REQUIRE_MESSAGE(anonymous.has_value(), HexWord(caller[*call - 2]));
     CHECK_EQ(anonymous->reg, 0);
     CHECK_EQ(SlotLoadRegister(caller[*call - 1]), std::optional<unsigned>(1));
+}
+
+// Floating point and conversions
+//
+// The operands of a floating-point instruction arrive in V16 and V17 and its
+// result goes back to the frame, which is the vector-file counterpart of the
+// X9/X12 pair the integer opcodes compute in. The precision travels in the
+// register: an S operand selects the single-precision form of an instruction
+// and a D operand the double-precision one, so the two precisions differ by one
+// field of one word and are checked as the same instruction twice.
+
+TEST_CASE("AArch64 RCU emitter lowers each floating-point operator to one instruction") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var wide: float64 = 10.0;
+            var other: float64 = 4.0;
+            var sum = wide + other;
+            var difference = wide - other;
+            var product = wide * other;
+            var quotient = wide / other;
+            var negated = -wide;
+            var narrow: float32 = 10.0f32;
+            var narrowOther: float32 = 4.0f32;
+            var narrowSum = narrow + narrowOther;
+            var narrowDifference = narrow - narrowOther;
+            var narrowProduct = narrow * narrowOther;
+            var narrowQuotient = narrow / narrowOther;
+            var narrowNegated = -narrow;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    const std::vector<std::uint32_t> expected = {
+        0x1E712A10, // fadd d16, d16, d17
+        0x1E713A10, // fsub d16, d16, d17
+        0x1E710A10, // fmul d16, d16, d17
+        0x1E711A10, // fdiv d16, d16, d17
+        0x1E614210, // fneg d16, d16
+        0x1E312A10, // fadd s16, s16, s17
+        0x1E313A10, // fsub s16, s16, s17
+        0x1E310A10, // fmul s16, s16, s17
+        0x1E311A10, // fdiv s16, s16, s17
+        0x1E214210, // fneg s16, s16
+    };
+    for (const auto word : expected) {
+        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    }
+    // Negation is the instruction and not a constant: the x86-64 back end
+    // reaches .rodata for a sign mask to XOR against, and nothing here does.
+    CHECK(objects.front().sections[RCU_RODATA_IDX].data.empty());
+}
+
+TEST_CASE("AArch64 RCU emitter synthesizes a floating-point remainder from a truncated quotient") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var left: float64 = 10.0;
+            var right: float64 = 4.0;
+            var remainder = left % right;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // The dividend less its quotient truncated toward zero times the divisor,
+    // which is three instructions: the truncation happens in the register
+    // rather than through a 64-bit integer as it does on x86-64, and the
+    // multiply folds into the subtraction that recovers the remainder.
+    const auto quotient = std::ranges::find(words, 0x1E711A12U); // fdiv d18, d16, d17
+    REQUIRE_MESSAGE(quotient != words.end(), "fdiv d18, d16, d17");
+    const auto index = static_cast<std::size_t>(quotient - words.begin());
+    REQUIRE_LT(index + 2, words.size());
+    CHECK_EQ(HexWord(words[index + 1]), HexWord(0x1E65C252U));         // frintz d18, d18
+    CHECK_EQ(HexWord(words[index + 2]), HexWord(0x1F51C250U));         // fmsub d16, d18, d17, d16
+    CHECK_FALSE(std::ranges::find(words, 0x1E710A12U) != words.end()); // fmul d18, d16, d17
+}
+
+TEST_CASE("AArch64 RCU emitter converts between the two precisions and no further") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var narrow: float32 = 2.5f32;
+            var widened = narrow as float64;
+            var narrowed = widened as float32;
+            var unchanged = widened as float64;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    CHECK_MESSAGE(std::ranges::find(words, 0x1E22C211U) != words.end(), "fcvt d17, s16");
+    CHECK_MESSAGE(std::ranges::find(words, 0x1E624211U) != words.end(), "fcvt s17, d16");
+    // FCVT names the source precision in one field and the destination in
+    // another, so a cast to the precision already in hand has no instruction to
+    // be — it is the load and the store the two casts above also carry.
+    CHECK_EQ(std::ranges::count_if(words, [](const std::uint32_t w) { return (w & 0xFF3F3C00U) == 0x1E220000U; }), 2);
+}
+
+TEST_CASE("AArch64 RCU emitter converts between files at the signedness of the integer side") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var value: float64 = 7.9;
+            var signedResult = value as int64;
+            var unsignedResult = value as uint64;
+            var signedSource: int64 = -7;
+            var fromSigned = signedSource as float64;
+            var unsignedSource: uint64 = 7u64;
+            var fromUnsigned = unsignedSource as float64;
+            var single = signedSource as float32;
+            var narrow: float32 = 2.5f32;
+            var fromNarrow = narrow as int64;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // Each of the four conversions rounds toward zero or by the current mode as
+    // its direction asks, and the signedness of the integer side picks between
+    // the pairs — which is what keeps a uint64 above 2^63 an unsigned value
+    // rather than the negative one a single signed instruction would give.
+    const std::vector<std::uint32_t> expected = {
+        0x9E780209, // fcvtzs x9, d16
+        0x9E790209, // fcvtzu x9, d16
+        0x9E620130, // scvtf  d16, x9
+        0x9E630130, // ucvtf  d16, x9
+        0x9E220130, // scvtf  s16, x9
+        0x9E380209, // fcvtzs x9, s16
+    };
+    for (const auto word : expected) {
+        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    }
+}
+
+TEST_CASE("AArch64 RCU emitter casts between integers with the load and the store alone") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var narrow: int16 = -5i16;
+            var widened = narrow as int64;
+            var truncated = widened as uint8;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // A widening cast is the sign-extending load its source type already asks
+    // for followed by the store its destination type already asks for, so
+    // nothing at all stands between them; a narrowing one is the same pair the
+    // other way round. Both are what makes every integer conversion free.
+    const auto hasPair = [&words](const std::uint32_t load, const std::uint32_t store) {
+        for (std::size_t i = 0; i + 1 < words.size(); ++i) {
+            if ((words[i] & 0xFFC003FFU) == load && (words[i + 1] & 0xFFC003FFU) == store) {
+                return true;
+            }
+        }
+        return false;
+    };
+    // ldrsh x9, [x29, #imm] then str x9, [x29, #imm]
+    CHECK_MESSAGE(hasPair(0x798003A9U, 0xF90003A9U), "a widening cast is one load and one store");
+    // ldr x9, [x29, #imm] then strb w9, [x29, #imm]
+    CHECK_MESSAGE(hasPair(0xF94003A9U, 0x390003A9U), "a narrowing cast is one load and one store");
+}
+
+TEST_CASE("AArch64 RCU emitter moves a float's bits between the register files") {
+    // The four names the front end lowers as calls but which are not calls:
+    // each is one FMOV, which pairs a word with an S register and a doubleword
+    // with a D one and converts nothing on the way.
+    const auto package = CompileToAArch64Lir(R"(
+        func FloatBits64(value: float64) -> uint64 { return 0u64; }
+        func FloatFromBits64(bits: uint64) -> float64 { return 0.0; }
+        func FloatBits32(value: float32) -> uint32 { return 0u32; }
+        func FloatFromBits32(bits: uint32) -> float32 { return 0.0f32; }
+
+        func Main() -> int {
+            var wide: float64 = 2.5;
+            var wideBits = FloatBits64(wide);
+            var backToWide = FloatFromBits64(wideBits);
+            var narrow: float32 = 2.5f32;
+            var narrowBits = FloatBits32(narrow);
+            var backToNarrow = FloatFromBits32(narrowBits);
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    const std::vector<std::uint32_t> expected = {
+        0x9E660209, // fmov x9, d16
+        0x9E670130, // fmov d16, x9
+        0x1E260209, // fmov w9, s16
+        0x1E270130, // fmov s16, w9
+    };
+    for (const auto word : expected) {
+        CHECK_MESSAGE(std::ranges::find(words, word) != words.end(), HexWord(word));
+    }
+    // No branch is taken to any of the four, so the bodies declared above are
+    // never reached from here.
+    CHECK_FALSE(BranchAndLinkIndex(words).has_value());
+}
+
+TEST_CASE("AArch64 RCU emitter calls one synthesized floating-point exponentiation helper") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var base: float64 = 2.0;
+            var exponent: float64 = 10.0;
+            var first = base ** exponent;
+            var second = base ** exponent;
+            var narrowBase: float32 = 2.0f32;
+            var narrowExponent: float32 = 10.0f32;
+            var narrow = narrowBase ** narrowExponent;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto &object = objects.front();
+
+    // Both helpers are emitted once and after every user function, so each of
+    // the three uses is a BL carrying a relocation against a local text symbol.
+    const RcuSymbol *wide = FindSymbol(object, "__rux_powf64");
+    const RcuSymbol *narrow = FindSymbol(object, "__rux_powf32");
+    REQUIRE(wide != nullptr);
+    REQUIRE(narrow != nullptr);
+    CHECK_EQ(wide->visibility, RcuSymVis::Local);
+    CHECK_EQ(narrow->visibility, RcuSymVis::Local);
+    CHECK_GT(wide->value, 0);
+    CHECK_GT(wide->size, 0);
+
+    const auto wideCalls = RelocsFor(object, RCU_TEXT_IDX, "__rux_powf64");
+    const auto narrowCalls = RelocsFor(object, RCU_TEXT_IDX, "__rux_powf32");
+    REQUIRE_EQ(wideCalls.size(), 3); // two from Main, one from the f32 helper
+    REQUIRE_EQ(narrowCalls.size(), 1);
+    for (const auto &reloc : wideCalls) {
+        CHECK_EQ(reloc.type, RcuRelType::AArch64Call26);
+        CHECK_EQ(HexWord(TextWordAt(object, reloc.sectionOffset)), HexWord(0x94000000U)); // bl with no displacement
+    }
+
+    // The single-precision helper widens both arguments, defers, and narrows
+    // the answer — which is what keeps its result correctly rounded, and is
+    // what makes it the one synthesized body with a frame of its own.
+    const auto body = FunctionWords(object, "__rux_powf32");
+    const std::vector<std::uint32_t> expected = {
+        0xA9BF7BFD, // stp  x29, x30, [sp, #-16]!
+        0x910003FD, // mov  x29, sp
+        0x1E22C000, // fcvt d0, s0
+        0x1E22C021, // fcvt d1, s1
+        0x94000000, // bl   __rux_powf64
+        0x1E624000, // fcvt s0, d0
+        0xA8C17BFD, // ldp  x29, x30, [sp], #16
+        0xD65F03C0, // ret
+    };
+    REQUIRE_EQ(body.size(), expected.size());
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        CHECK_EQ(HexWord(body[i]), HexWord(expected[i]));
+    }
+
+    // The double-precision body reaches the read-only pool for the constants
+    // its two series need and takes X16 as the page register each time, which
+    // is the one register a sequence may claim without being given one.
+    const auto wideBody = FunctionWords(object, "__rux_powf64");
+    CHECK_GT(std::ranges::count_if(wideBody, [](const std::uint32_t w) { return (w & 0x9F00001FU) == 0x90000010U; }),
+             20);
+}
+
+TEST_CASE("AArch64 RCU emitter reads an enum as the integer its discriminant is") {
+    const auto package = CompileToAArch64Lir(R"(
+        enum Direction {
+            North = 10,
+            South = 20
+        }
+
+        func Main() -> int {
+            var heading = Direction::North;
+            var same = heading == Direction::North;
+            var value = heading as int;
+            var back = 20 as Direction;
+            return 0;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // An enum value is a bit pattern in a general-purpose register, so its
+    // constant, its comparison and its casts are the same instructions an
+    // integer's are — which is the whole of what naming its kind would have
+    // added, and is why the type is read for what it is not rather than what
+    // it is.
+    CHECK_MESSAGE(std::ranges::find(words, 0xD2800149U) != words.end(), "mov x9, #10");
+    CHECK_MESSAGE(std::ranges::find(words, 0xD2800289U) != words.end(), "mov x9, #20");
+    CHECK_MESSAGE(std::ranges::find(words, 0xEB0C013FU) != words.end(), "cmp x9, x12");
+    CHECK_MESSAGE(std::ranges::find(words, 0x9A9F17E9U) != words.end(), "cset x9, eq");
 }

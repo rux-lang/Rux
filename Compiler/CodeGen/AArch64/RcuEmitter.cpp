@@ -40,6 +40,18 @@ struct JumpPatch {
     std::uint64_t site = 0; // which branch of the function this is
 };
 
+// A forward branch inside a synthesized helper body, waiting for the label it
+// names. A helper is emitted once and its labels are its own, so a site is a
+// buffer offset and an index rather than the block-and-ordinal name a function
+// body's branches need — but the immediate is reached the same way, through the
+// field the branch's own form keeps it in.
+struct HelperBranch {
+    std::uint32_t site = 0;
+    unsigned lsb = 0;
+    unsigned width = 0;
+    unsigned label = 0;
+};
+
 // Which branch of a function a patch site is, which has to be a name the next
 // pass over the same function arrives at again: an offset changes when a branch
 // ahead of it is widened, and the block and the position inside its terminator
@@ -188,6 +200,10 @@ constexpr unsigned kFpTemp = 16;
 // two values at once and produces no floating-point result: a comparison.
 constexpr unsigned kFpTemp2 = 17;
 
+// The third, for the one floating-point operation that is not an instruction:
+// a remainder needs its quotient somewhere neither operand is.
+constexpr unsigned kFpTemp3 = 18;
+
 // Where AAPCS64 puts one argument: `count` registers of one file starting at
 // `first`, or `bytes` bytes at `offset` in the outgoing argument area. An
 // argument no register can carry travels as the address of a copy the caller
@@ -218,14 +234,6 @@ struct CallLayout {
     std::vector<ArgLocation> args;
     std::int32_t areaBytes = 0;
 };
-
-// Whether a value of this type fits one general-purpose register and moves
-// without any float or aggregate handling — which is the whole of what this
-// back end's arithmetic lowers so far.
-[[nodiscard]] bool IsScalarInteger(const TypeRef &t) {
-    return t.IsInteger() || t.IsBool() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
-           t.kind == TypeRef::Kind::Char32 || t.kind == TypeRef::Kind::Pointer;
-}
 
 // Whether this call names one of the four reinterpretations the front end
 // lowers as a call: a value moves between the register files and no branch is
@@ -308,9 +316,11 @@ private:
     std::unordered_map<std::string, std::uint32_t> funcSyms;
     std::unordered_map<std::string, std::uint32_t> dataSyms;
 
-    // The synthesized integer exponentiation helper, or kNoSymbol until a `**`
-    // reaches it.
+    // The synthesized exponentiation helpers, one per type `**` is written at,
+    // each kNoSymbol until a `**` of that type reaches it.
     std::uint32_t ipowSym = kNoSymbol;
+    std::uint32_t fpowSym = kNoSymbol;
+    std::uint32_t fpow32Sym = kNoSymbol;
 
     // Interned read-only constants, by the literal that produced them → symbol
     // index, so a value written twice is emitted once. The counter names them
@@ -475,17 +485,32 @@ private:
     // once, after every user function, so a call ahead of it resolves through a
     // relocation like any other local text symbol.
 
-    std::uint32_t EnsureIntPowHelper() {
-        if (ipowSym == kNoSymbol) {
+    std::uint32_t DeclareHelper(const std::string_view name, std::uint32_t &slot) {
+        if (slot == kNoSymbol) {
             RcuSymbol sym;
-            sym.name = "__rux_ipow";
+            sym.name = name;
             sym.sectionIdx = RCU_TEXT_IDX;
-            sym.value = 0; // filled in by EmitIntPowHelper
+            sym.value = 0; // filled in when the body is emitted
             sym.kind = RcuSymKind::Func;
             sym.visibility = RcuSymVis::Local;
-            ipowSym = AddSymbol(std::move(sym));
+            slot = AddSymbol(std::move(sym));
         }
-        return ipowSym;
+        return slot;
+    }
+
+    std::uint32_t EnsureIntPowHelper() {
+        return DeclareHelper("__rux_ipow", ipowSym);
+    }
+
+    std::uint32_t EnsureFloatPowHelper() {
+        return DeclareHelper("__rux_powf64", fpowSym);
+    }
+
+    // The single-precision helper defers to the double-precision one, so
+    // reaching it declares both.
+    std::uint32_t EnsureFloatPowF32Helper() {
+        EnsureFloatPowHelper();
+        return DeclareHelper("__rux_powf32", fpow32Sym);
     }
 
     // X0 = X0 ** X1, with a signed exponent.
@@ -545,6 +570,342 @@ private:
         enc.PatchField(squareBranch, 5, 14, instructions(squareBranch, square));
 
         symbols[ipowSym].size = enc.Size() - start;
+        currentFunc.clear();
+    }
+
+    // D0 = D0 ** D1.
+    //
+    // 2 ** (y * log2 |x|), which is what the x86-64 helper computes as well.
+    // There the whole of it is eight x87 instructions, because that unit
+    // computes a logarithm and an exponential outright and carries a 64-bit
+    // significand while it does; AArch64 has neither, so the same identity is
+    // spelled out in double precision, with each of its three parts carried in
+    // a pair of doubles wherever one double's 53 bits would not do.
+    //
+    // The three parts are the reduction of |x| to 2^k * m with m near one, the
+    // series for log2(m), and the exponential. The exponent is the one place
+    // extra precision is not optional: the result's relative error is ln2 times
+    // the absolute error of `y * log2 |x|`, and that product reaches 1024 for a
+    // result still inside the double range, so 53 bits of it would leave the
+    // last ten bits of the answer meaningless. Everything below that is a
+    // double: the answer is within one unit in the last place of the correctly
+    // rounded one for the exponents a program writes down, and within about ten
+    // at the extremes of the range, where the low half of the logarithm runs
+    // out of bits first.
+    //
+    // Nothing is saved and no frame is opened: the helper touches X0 through
+    // X4, V0 through V7 and V16 through V31, which AAPCS64 leaves to a caller,
+    // and X16, which the constant loads take as their page register.
+    void EmitFloatPowHelper() {
+        if (fpowSym == kNoSymbol) {
+            return;
+        }
+        currentFunc = "__rux_powf64";
+        constexpr std::string_view what = "the floating-point exponentiation helper";
+        const TypeRef f64 = TypeRef::MakeFloat64();
+
+        enum : unsigned {
+            LOne,
+            LRet,
+            LInf,
+            LNonzero,
+            LMagnitude,
+            LNan,
+            LNormal,
+            LReduced,
+            LOverflow,
+            LUnderflow,
+            LSign,
+            LabelCount,
+        };
+
+        std::vector<std::uint32_t> labels(LabelCount, 0);
+        std::vector<HelperBranch> branches;
+        const auto place = [&](const unsigned label) { labels[label] = enc.Size(); };
+        const auto branchIf = [&](const A64Condition cond, const unsigned label) {
+            branches.push_back({enc.Size(), 5, 19, label});
+            Must(enc.BCond(cond, 0), what);
+        };
+        const auto branchIfZero = [&](const A64Reg reg, const unsigned label) {
+            branches.push_back({enc.Size(), 5, 19, label});
+            Must(enc.Cbz(reg, 0), what);
+        };
+        const auto jump = [&](const unsigned label) {
+            branches.push_back({enc.Size(), 0, 26, label});
+            Must(enc.B(0), what);
+        };
+        // A constant into a vector register, through FMOV where the encoding
+        // names the value and through the read-only pool where it does not.
+        const auto constant = [&](const unsigned reg, const std::string &literal) {
+            LoadFloatConstant(A64::Dn(reg), f64, literal);
+        };
+        // Horner over a coefficient list, highest degree first: the accumulator
+        // starts at the leading coefficient and each step multiplies by `z` and
+        // adds the next one, which FMADD does in one instruction and one
+        // rounding.
+        const auto horner = [&](const unsigned acc, const unsigned scratch, const unsigned z,
+                                const std::vector<std::string> &coefficients) {
+            constant(acc, coefficients.front());
+            for (std::size_t i = 1; i < coefficients.size(); ++i) {
+                constant(scratch, coefficients[i]);
+                Must(enc.Fmadd(A64::Dn(acc), A64::Dn(acc), A64::Dn(z), A64::Dn(scratch)), what);
+            }
+        };
+
+        const std::uint32_t start = enc.Size();
+        symbols[fpowSym].value = start;
+
+        // The special cases, in the order the x86-64 helper takes them so that
+        // both give C's answers and the same ones as each other: an exponent of
+        // either zero answers one whatever the base is, a NaN base answers
+        // itself, and a zero base answers zero or an infinity by the sign of
+        // the exponent — ignoring the sign of the zero, as that helper does.
+        Must(enc.FcmpZero(A64::Dn(1)), what);
+        branchIf(A64Condition::Eq, LOne);
+        Must(enc.Fcmp(A64::Dn(0), A64::Dn(0)), what);
+        branchIf(A64Condition::Vs, LRet);
+        Must(enc.FcmpZero(A64::Dn(0)), what);
+        branchIf(A64Condition::Ne, LNonzero);
+        Must(enc.FcmpZero(A64::Dn(1)), what);
+        branchIf(A64Condition::Mi, LInf);
+        Must(enc.Fmov(A64::Dn(0), A64::Xzr), what);
+        Must(enc.Ret(), what);
+
+        place(LInf);
+        Must(enc.Movz(A64::Xn(0), 0x7FF0, 48), what);
+        Must(enc.Fmov(A64::Dn(0), A64::Xn(0)), what);
+        Must(enc.Ret(), what);
+
+        // A negative base raised to a fractional power has no real answer, and
+        // to an integral one it has the magnitude of its own absolute value
+        // with the sign of the exponent's parity. Which of the two it is comes
+        // from a round trip through a 64-bit integer, as it does on x86-64: an
+        // exponent too large for one is treated as fractional there and here
+        // alike, which is a NaN for an exponent that is mathematically an
+        // even integer and the one place both helpers leave C behind.
+        place(LNonzero);
+        Must(enc.LoadImm64(A64::Xn(2), 0), what); // the sign to apply at the end
+        Must(enc.FcmpZero(A64::Dn(0)), what);
+        branchIf(A64Condition::Pl, LMagnitude);
+        Must(enc.Fcvtzs(A64::Xn(0), A64::Dn(1)), what);
+        Must(enc.Scvtf(A64::Dn(2), A64::Xn(0)), what);
+        Must(enc.Fcmp(A64::Dn(2), A64::Dn(1)), what);
+        branchIf(A64Condition::Ne, LNan);
+        Must(enc.AndImm(A64::Xn(2), A64::Xn(0), 1), what);
+
+        // |x| = 2^k * mm, with mm in [sqrt(0.5), sqrt(2)) so that the series
+        // below converges at the same rate either side of one. A subnormal has
+        // no exponent field to read, so it is scaled into the normal range
+        // first and the scaling taken back out of k.
+        place(LMagnitude);
+        Must(enc.Fabs(A64::Dn(0), A64::Dn(0)), what);
+        Must(enc.Fmov(A64::Xn(0), A64::Dn(0)), what);
+        Must(enc.LoadImm64(A64::Xn(3), 0), what); // k
+        Must(enc.Movz(A64::Xn(1), 0x0010, 48), what);
+        Must(enc.Cmp(A64::Xn(0), A64::Xn(1)), what);
+        branchIf(A64::Hs, LNormal);
+        Must(enc.Movz(A64::Xn(4), 0x4350, 48), what); // 2^54
+        Must(enc.Fmov(A64::Dn(2), A64::Xn(4)), what);
+        Must(enc.Fmul(A64::Dn(0), A64::Dn(0), A64::Dn(2)), what);
+        Must(enc.Fmov(A64::Xn(0), A64::Dn(0)), what);
+        Must(enc.LoadImm64(A64::Xn(3), static_cast<std::uint64_t>(-54)), what);
+
+        place(LNormal);
+        Must(enc.Lsr(A64::Xn(4), A64::Xn(0), 52), what);
+        Must(enc.Add(A64::Xn(3), A64::Xn(3), A64::Xn(4)), what);
+        Must(enc.SubImm(A64::Xn(3), A64::Xn(3), 1023), what);
+        Must(enc.AndImm(A64::Xn(4), A64::Xn(0), 0x000FFFFFFFFFFFFFULL), what);
+        Must(enc.OrrImm(A64::Xn(4), A64::Xn(4), 0x3FF0000000000000ULL), what);
+        Must(enc.Fmov(A64::Dn(2), A64::Xn(4)), what); // mm in [1, 2)
+        constant(3, "1.4142135623730951");
+        Must(enc.Fcmp(A64::Dn(2), A64::Dn(3)), what);
+        branchIf(A64Condition::Ls, LReduced);
+        constant(3, "0.5");
+        Must(enc.Fmul(A64::Dn(2), A64::Dn(2), A64::Dn(3)), what);
+        Must(enc.AddImm(A64::Xn(3), A64::Xn(3), 1), what);
+
+        // log2(mm) = (2 / ln2) * s * (1 + s^2/3 + s^4/5 + ...) with
+        // s = (mm - 1) / (mm + 1), which is the series that converges fastest
+        // over this interval: |s| stays below 0.172, so its square is below
+        // 0.03 and thirteen terms reach the precision the product needs.
+        //
+        // Both ends of the quotient are carried exactly. The numerator is
+        // exact on its own — a difference of two numbers within a factor of two
+        // of each other always is — and the denominator's lost low bit is
+        // recovered as `dlo`, so that s is a pair of doubles rather than one
+        // rounded to 53 bits, which is what a logarithm scaled by an exponent
+        // of a thousand needs.
+        place(LReduced);
+        constant(4, "1.0");
+        Must(enc.Fsub(A64::Dn(3), A64::Dn(2), A64::Dn(4)), what); // num = mm - 1
+        Must(enc.Fadd(A64::Dn(4), A64::Dn(2), A64::Dn(4)), what); // dhi = mm + 1
+        Must(enc.Fsub(A64::Dn(5), A64::Dn(4), A64::Dn(2)), what);
+        Must(enc.Fsub(A64::Dn(6), A64::Dn(4), A64::Dn(5)), what);
+        Must(enc.Fsub(A64::Dn(6), A64::Dn(2), A64::Dn(6)), what);
+        constant(7, "1.0");
+        Must(enc.Fsub(A64::Dn(7), A64::Dn(7), A64::Dn(5)), what);
+        Must(enc.Fadd(A64::Dn(6), A64::Dn(6), A64::Dn(7)), what);  // dlo
+        Must(enc.Fdiv(A64::Dn(16), A64::Dn(3), A64::Dn(4)), what); // q0
+        Must(enc.Fmsub(A64::Dn(7), A64::Dn(16), A64::Dn(4), A64::Dn(3)), what);
+        Must(enc.Fmul(A64::Dn(17), A64::Dn(16), A64::Dn(6)), what);
+        Must(enc.Fsub(A64::Dn(7), A64::Dn(7), A64::Dn(17)), what);
+        Must(enc.Fdiv(A64::Dn(17), A64::Dn(7), A64::Dn(4)), what); // q1
+        Must(enc.Fmul(A64::Dn(18), A64::Dn(16), A64::Dn(16)), what);
+        horner(19, 20, 18,
+               {"0.037037037037037035", "0.04", "0.043478260869565216", "0.047619047619047616", "0.05263157894736842",
+                "0.058823529411764705", "0.06666666666666667", "0.07692307692307693", "0.09090909090909091",
+                "0.1111111111111111", "0.14285714285714285", "0.2", "0.3333333333333333"});
+        Must(enc.Fmul(A64::Dn(19), A64::Dn(19), A64::Dn(18)), what);
+
+        // The series correction is folded into s before the scaling, so that
+        // the pair carrying the result stays normalized: it is a hundredth of
+        // the value at most, which is far above one unit in the last place, and
+        // leaving it in the low half would put it into the exponent's rounding
+        // rather than into the mantissa's.
+        Must(enc.Fmul(A64::Dn(21), A64::Dn(16), A64::Dn(19)), what);
+        Must(enc.Fnmsub(A64::Dn(22), A64::Dn(16), A64::Dn(19), A64::Dn(21)), what);
+        Must(enc.Fadd(A64::Dn(23), A64::Dn(16), A64::Dn(21)), what); // shi
+        Must(enc.Fsub(A64::Dn(24), A64::Dn(16), A64::Dn(23)), what);
+        Must(enc.Fadd(A64::Dn(24), A64::Dn(24), A64::Dn(21)), what);
+        Must(enc.Fadd(A64::Dn(24), A64::Dn(24), A64::Dn(17)), what);
+        Must(enc.Fadd(A64::Dn(24), A64::Dn(24), A64::Dn(22)), what); // slo
+        constant(25, "2.8853900817779268");                          // 2 / ln2, high half
+        Must(enc.Fmul(A64::Dn(26), A64::Dn(25), A64::Dn(23)), what);
+        Must(enc.Fnmsub(A64::Dn(27), A64::Dn(25), A64::Dn(23), A64::Dn(26)), what);
+        Must(enc.Fmadd(A64::Dn(27), A64::Dn(25), A64::Dn(24), A64::Dn(27)), what);
+        constant(28, "4.0710547481862066e-17"); // 2 / ln2, low half
+        Must(enc.Fmadd(A64::Dn(27), A64::Dn(28), A64::Dn(23), A64::Dn(27)), what);
+
+        // log2 |x| = k + that, and then w = y * log2 |x|, both as pairs. The
+        // integer k is the larger of the two terms wherever it is not zero, so
+        // the remainder of the addition is exact and needs no test.
+        Must(enc.Scvtf(A64::Dn(29), A64::Xn(3)), what);
+        Must(enc.Fadd(A64::Dn(30), A64::Dn(29), A64::Dn(26)), what);
+        Must(enc.Fsub(A64::Dn(31), A64::Dn(29), A64::Dn(30)), what);
+        Must(enc.Fadd(A64::Dn(31), A64::Dn(31), A64::Dn(26)), what);
+        Must(enc.Fadd(A64::Dn(27), A64::Dn(31), A64::Dn(27)), what);
+        Must(enc.Fmul(A64::Dn(2), A64::Dn(1), A64::Dn(30)), what);
+        Must(enc.Fnmsub(A64::Dn(3), A64::Dn(1), A64::Dn(30), A64::Dn(2)), what);
+        Must(enc.Fmadd(A64::Dn(3), A64::Dn(1), A64::Dn(27), A64::Dn(3)), what);
+
+        // A product past either end of the exponent range is an infinity or a
+        // zero outright. Testing here rather than clamping keeps the reduction
+        // below honest: its argument is a difference from a rounded integer,
+        // which means nothing once the value it came from has been changed.
+        constant(4, "1025.0");
+        Must(enc.Fcmp(A64::Dn(2), A64::Dn(4)), what);
+        branchIf(A64Condition::Gt, LOverflow);
+        constant(4, "-1100.0");
+        Must(enc.Fcmp(A64::Dn(2), A64::Dn(4)), what);
+        branchIf(A64Condition::Mi, LUnderflow);
+
+        // 2^w = 2^n * 2^r with n the nearest integer, so that |r| is at most a
+        // half and the polynomial below is asked for nothing further out. The
+        // exponential itself is fdlibm's: with the argument in natural units as
+        // a pair `ph + plo`, exp(x) = 1 + x + x*c/(2 - c) where c is x less an
+        // odd polynomial in x squared, which needs five coefficients where a
+        // direct series would need fourteen.
+        Must(enc.Frintn(A64::Dn(4), A64::Dn(2)), what);
+        Must(enc.Fsub(A64::Dn(5), A64::Dn(2), A64::Dn(4)), what);
+        Must(enc.Fadd(A64::Dn(5), A64::Dn(5), A64::Dn(3)), what);
+        constant(6, "0.6931471805599453"); // ln2, high half
+        Must(enc.Fmul(A64::Dn(7), A64::Dn(5), A64::Dn(6)), what);
+        Must(enc.Fnmsub(A64::Dn(16), A64::Dn(5), A64::Dn(6), A64::Dn(7)), what);
+        constant(6, "2.3190468138462996e-17"); // ln2, low half
+        Must(enc.Fmadd(A64::Dn(16), A64::Dn(5), A64::Dn(6), A64::Dn(16)), what);
+        Must(enc.Fadd(A64::Dn(17), A64::Dn(7), A64::Dn(16)), what);
+        Must(enc.Fmul(A64::Dn(18), A64::Dn(17), A64::Dn(17)), what);
+        horner(19, 20, 18,
+               {"4.13813679705723846039e-08", "-1.65339022054652515390e-06", "6.61375632143793436117e-05",
+                "-2.77777777770155933842e-03", "1.66666666666666019037e-01"});
+        Must(enc.Fmsub(A64::Dn(19), A64::Dn(19), A64::Dn(18), A64::Dn(17)), what); // c
+        Must(enc.Fmul(A64::Dn(20), A64::Dn(17), A64::Dn(19)), what);
+        constant(21, "2.0");
+        Must(enc.Fsub(A64::Dn(21), A64::Dn(21), A64::Dn(19)), what);
+        Must(enc.Fdiv(A64::Dn(20), A64::Dn(20), A64::Dn(21)), what);
+        Must(enc.Fneg(A64::Dn(21), A64::Dn(16)), what);
+        Must(enc.Fsub(A64::Dn(20), A64::Dn(21), A64::Dn(20)), what);
+        Must(enc.Fsub(A64::Dn(20), A64::Dn(20), A64::Dn(7)), what);
+        constant(21, "1.0");
+        Must(enc.Fsub(A64::Dn(21), A64::Dn(21), A64::Dn(20)), what); // 2^r
+
+        // 2^n is its exponent field written down, in two halves: n reaches a
+        // thousand either way, which no single exponent field holds once the
+        // bias is added, and the product of the two halves underflows through
+        // the subnormals the way the answer itself should.
+        Must(enc.Fcvtzs(A64::Xn(0), A64::Dn(4)), what);
+        Must(enc.Asr(A64::Xn(1), A64::Xn(0), 1), what);
+        Must(enc.Sub(A64::Xn(0), A64::Xn(0), A64::Xn(1)), what);
+        Must(enc.AddImm(A64::Xn(1), A64::Xn(1), 1023), what);
+        Must(enc.AddImm(A64::Xn(0), A64::Xn(0), 1023), what);
+        Must(enc.Lsl(A64::Xn(1), A64::Xn(1), 52), what);
+        Must(enc.Lsl(A64::Xn(0), A64::Xn(0), 52), what);
+        Must(enc.Fmov(A64::Dn(22), A64::Xn(1)), what);
+        Must(enc.Fmov(A64::Dn(23), A64::Xn(0)), what);
+        Must(enc.Fmul(A64::Dn(21), A64::Dn(21), A64::Dn(22)), what);
+        Must(enc.Fmul(A64::Dn(0), A64::Dn(21), A64::Dn(23)), what);
+
+        place(LSign);
+        branchIfZero(A64::Xn(2), LRet);
+        Must(enc.Fneg(A64::Dn(0), A64::Dn(0)), what);
+        place(LRet);
+        Must(enc.Ret(), what);
+
+        place(LOne);
+        constant(0, "1.0");
+        Must(enc.Ret(), what);
+
+        place(LNan);
+        Must(enc.Movz(A64::Xn(0), 0x7FF8, 48), what);
+        Must(enc.Fmov(A64::Dn(0), A64::Xn(0)), what);
+        Must(enc.Ret(), what);
+
+        place(LOverflow);
+        Must(enc.Movz(A64::Xn(0), 0x7FF0, 48), what);
+        Must(enc.Fmov(A64::Dn(0), A64::Xn(0)), what);
+        jump(LSign);
+
+        place(LUnderflow);
+        Must(enc.Fmov(A64::Dn(0), A64::Xzr), what);
+        jump(LSign);
+
+        for (const auto &branch : branches) {
+            const std::uint32_t target = (labels[branch.label] - branch.site) / A64Enc::InstrSize;
+            enc.PatchField(branch.site, branch.lsb, branch.width, target);
+        }
+
+        symbols[fpowSym].size = enc.Size() - start;
+        currentFunc.clear();
+    }
+
+    // S0 = S0 ** S1, by widening to double and narrowing the answer back.
+    //
+    // Computing in the wider precision is what keeps the single-precision
+    // result correctly rounded, and it is what the x86-64 helper does for the
+    // same reason. Unlike every other body this object synthesizes, this one
+    // makes a call, so it is the only one with a frame.
+    void EmitFloatPowF32Helper() {
+        if (fpow32Sym == kNoSymbol) {
+            return;
+        }
+        currentFunc = "__rux_powf32";
+        constexpr std::string_view what = "the single-precision exponentiation helper";
+
+        const std::uint32_t start = enc.Size();
+        symbols[fpow32Sym].value = start;
+
+        Must(enc.Stp(A64::Fp, A64::Lr, A64::Sp, -kFrameRecordSize, A64IndexMode::PreIndex), what);
+        Must(enc.Mov(A64::Fp, A64::Sp), what);
+        Must(enc.Fcvt(A64::Dn(0), A64::Sn(0)), what);
+        Must(enc.Fcvt(A64::Dn(1), A64::Sn(1)), what);
+        const std::uint32_t site = enc.Size();
+        Must(enc.Bl(0), what);
+        AddTextReloc(site, EnsureFloatPowHelper(), RcuRelType::AArch64Call26);
+        Must(enc.Fcvt(A64::Sn(0), A64::Dn(0)), what);
+        Must(enc.Ldp(A64::Fp, A64::Lr, A64::Sp, kFrameRecordSize, A64IndexMode::PostIndex), what);
+        Must(enc.Ret(), what);
+
+        symbols[fpow32Sym].size = enc.Size() - start;
         currentFunc.clear();
     }
 
@@ -804,6 +1165,24 @@ private:
             }
         }
         return AlignOf(t);
+    }
+
+    // Whether a value of this type is a bit pattern a general-purpose register
+    // holds, which is everything that is not a float, an aggregate or a string.
+    // Naming the integer kinds instead would miss the two types whose values
+    // are integers without being one: an enum, whose value is its discriminant,
+    // and the untyped `null` the front end writes as a constant of no type at
+    // all. Both are a constant, a comparison and a cast away from a program,
+    // and the x86-64 back end reads them the same way.
+    [[nodiscard]] bool IsRegisterValue(const TypeRef &t) const {
+        return !IsFloat(t) && !IsAggregate(t) && t.kind != TypeRef::Kind::Str;
+    }
+
+    // The vector register a value of this type is computed in: the S view for a
+    // float32 and the D view for a float64, which is what selects the precision
+    // of every floating-point instruction that names it.
+    [[nodiscard]] static A64Reg FpReg(const TypeRef &t, const unsigned index) {
+        return t.kind == TypeRef::Kind::Float32 ? A64::Sn(index) : A64::Dn(index);
     }
 
     // Whether a value of this type moves as a block of bytes rather than in one
@@ -1612,10 +1991,10 @@ private:
 
     // Bring the two operands of a binary integer instruction into X9 and X12,
     // each extended by the type it is read at. A type no arithmetic instruction
-    // here reaches — a float, which is Task 26's, or an aggregate, which is
-    // nothing's — is reported instead, and `false` means nothing was emitted.
+    // here reaches — an aggregate, which is nothing's — is reported instead,
+    // and `false` means nothing was emitted.
     bool LoadBinaryOperands(const LirInstr &instr, const TypeRef &lhsType, const TypeRef &rhsType) {
-        if (!IsScalarInteger(lhsType)) {
+        if (!IsRegisterValue(lhsType)) {
             NotImplemented(std::format("the '{}' opcode on '{}'", LirOpcodeName(instr.op), lhsType.ToString()));
             return false;
         }
@@ -1631,7 +2010,7 @@ private:
 
     // The same for the one-operand forms, which read X9 alone.
     bool LoadUnaryOperand(const LirInstr &instr, const TypeRef &type) {
-        if (!IsScalarInteger(type)) {
+        if (!IsRegisterValue(type)) {
             NotImplemented(std::format("the '{}' opcode on '{}'", LirOpcodeName(instr.op), type.ToString()));
             return false;
         }
@@ -1641,6 +2020,22 @@ private:
             return false;
         }
         LoadFromSlot(A64::Xn(kTemp), instr.srcs[0], type);
+        return true;
+    }
+
+    // The same for a floating-point instruction, which computes in V16 and V17.
+    // Both operands of one are of the instruction's own type — the front end
+    // refuses to mix a float with anything else, and refuses to mix the two
+    // precisions with each other — so one type selects both registers and the
+    // precision of every instruction that reads them.
+    bool LoadFloatOperands(const LirInstr &instr, const TypeRef &type) {
+        if (instr.srcs.size() < 2) {
+            Report(std::format("AArch64 code generation reached a '{}' with one operand in '{}'",
+                               LirOpcodeName(instr.op), currentFunc));
+            return false;
+        }
+        LoadFpFromSlot(FpReg(type, kFpTemp), instr.srcs[0]);
+        LoadFpFromSlot(FpReg(type, kFpTemp2), instr.srcs[1]);
         return true;
     }
 
@@ -1676,6 +2071,33 @@ private:
         AddTextReloc(ref.lo12, symIdx, RcuRelType::AArch64LdstAbsLo12Nc);
     }
 
+    // One of the four reinterpretations, which is one FMOV between the register
+    // files: the two registers hold the same number of bits — a word pairs with
+    // an S register and a doubleword with a D one — and nothing is converted on
+    // the way. Which direction it is decides which file the slot is read at.
+    void GenFloatBits(const LirInstr &instr) {
+        const bool single = instr.strArg.ends_with("32");
+        const bool toBits = instr.strArg.starts_with("FloatBits");
+        const TypeRef floatType = single ? TypeRef::MakeFloat32() : TypeRef::MakeFloat64();
+        const unsigned width = single ? 4 : 8;
+        const A64Reg vector = FpReg(floatType, kFpTemp);
+        const A64Reg general = single ? A64::Wn(kTemp) : A64::Xn(kTemp);
+        const bool keepsResult = instr.dst != LirNoReg && !instr.type.IsOpaque();
+        if (toBits) {
+            LoadFpFromSlot(vector, instr.srcs[0]);
+            Must(enc.Fmov(general, vector), "a reinterpretation of a float");
+            if (keepsResult) {
+                StoreScalar(general, A64::Fp, Disp(instr.dst), width);
+            }
+            return;
+        }
+        LoadScalar(A64::Xn(kTemp), A64::Fp, Disp(instr.srcs[0]), width, false);
+        Must(enc.Fmov(vector, general), "a reinterpretation of an integer");
+        if (keepsResult) {
+            StoreFpToSlot(vector, instr.dst);
+        }
+    }
+
     void GenInstr(const LirInstr &instr) {
         switch (instr.op) {
         case LirOpcode::Const: {
@@ -1696,15 +2118,16 @@ private:
                 StoreFpToSlot(value, instr.dst);
                 break;
             }
-            if (!IsScalarInteger(instr.type)) {
+            if (!IsRegisterValue(instr.type)) {
                 NotImplemented(std::format("a constant of type '{}'", instr.type.ToString()));
                 break;
             }
-            // Everything else — an integer of any width, a boolean, a character
-            // and the null pointer alike — is a bit pattern a general-purpose
-            // register holds. It is materialized at full width whatever the
-            // type, and the store writes only the bytes the type occupies, so
-            // the shortest sequence for the value is the one that gets emitted.
+            // Everything else — an integer of any width, a boolean, a
+            // character, an enum's discriminant and the null pointer alike — is
+            // a bit pattern a general-purpose register holds. It is
+            // materialized at full width whatever the type, and the store
+            // writes only the bytes the type occupies, so the shortest sequence
+            // for the value is the one that gets emitted.
             const A64Reg value = A64::Xn(kTemp);
             Must(enc.LoadImm64(value, ConstantBits(instr)), "a constant");
             StoreToSlot(value, instr.dst, instr.type);
@@ -1866,6 +2289,35 @@ private:
         case LirOpcode::Or:
         case LirOpcode::Xor: {
             const TypeRef &type = instr.type;
+            if (IsFloat(type)) {
+                // Only the three arithmetic operators of the six have a
+                // floating-point form; the bitwise ones are refused by the
+                // front end before they reach a back end, and the x86-64
+                // emitter's fall-through to an addition for them stands for
+                // nothing a program can write.
+                if (instr.op != LirOpcode::Add && instr.op != LirOpcode::Sub && instr.op != LirOpcode::Mul) {
+                    NotImplemented(std::format("the '{}' opcode on '{}'", LirOpcodeName(instr.op), type.ToString()));
+                    break;
+                }
+                if (!LoadFloatOperands(instr, type)) {
+                    break;
+                }
+                const A64Reg lhs = FpReg(type, kFpTemp);
+                const A64Reg rhs = FpReg(type, kFpTemp2);
+                A64Status status = A64Status::Ok;
+                if (instr.op == LirOpcode::Add) {
+                    status = enc.Fadd(lhs, lhs, rhs);
+                }
+                else if (instr.op == LirOpcode::Sub) {
+                    status = enc.Fsub(lhs, lhs, rhs);
+                }
+                else {
+                    status = enc.Fmul(lhs, lhs, rhs);
+                }
+                Must(status, LirOpcodeName(instr.op));
+                StoreFpToSlot(lhs, instr.dst);
+                break;
+            }
             if (!LoadBinaryOperands(instr, type, type)) {
                 break;
             }
@@ -1899,6 +2351,32 @@ private:
         case LirOpcode::Div:
         case LirOpcode::Mod: {
             const TypeRef &type = instr.type;
+            if (IsFloat(type)) {
+                if (!LoadFloatOperands(instr, type)) {
+                    break;
+                }
+                const A64Reg lhs = FpReg(type, kFpTemp);
+                const A64Reg rhs = FpReg(type, kFpTemp2);
+                if (instr.op == LirOpcode::Div) {
+                    Must(enc.Fdiv(lhs, lhs, rhs), LirOpcodeName(instr.op));
+                    StoreFpToSlot(lhs, instr.dst);
+                    break;
+                }
+                // A floating-point remainder is no instruction either: it is
+                // the dividend less its quotient truncated toward zero times
+                // the divisor, which is the sequence the x86-64 back end
+                // synthesizes too. Two differences, both in this one's favor:
+                // FRINTZ truncates in the register rather than through a
+                // 64-bit integer, so a quotient past the reach of one still has
+                // an answer, and FMSUB rounds the product and the subtraction
+                // once between them rather than twice.
+                const A64Reg quotient = FpReg(type, kFpTemp3);
+                Must(enc.Fdiv(quotient, lhs, rhs), LirOpcodeName(instr.op));
+                Must(enc.Frintz(quotient, quotient), LirOpcodeName(instr.op));
+                Must(enc.Fmsub(lhs, quotient, rhs, lhs), LirOpcodeName(instr.op));
+                StoreFpToSlot(lhs, instr.dst);
+                break;
+            }
             if (!LoadBinaryOperands(instr, type, type)) {
                 break;
             }
@@ -1923,12 +2401,28 @@ private:
         }
         case LirOpcode::Pow: {
             const TypeRef &type = instr.type;
-            if (!IsScalarInteger(type)) {
-                NotImplemented(std::format("the '{}' opcode on '{}'", LirOpcodeName(instr.op), type.ToString()));
-                break;
-            }
             if (instr.srcs.size() < 2) {
                 Report(std::format("AArch64 code generation reached a 'pow' with one operand in '{}'", currentFunc));
+                break;
+            }
+            if (IsFloat(type)) {
+                // The floating-point helpers take their base and their exponent
+                // in V0 and V1 and answer in V0, which is where AAPCS64 puts
+                // the first two arguments and the result of a function of two
+                // floats. Neither saves anything, for the reason the integer
+                // helper does not.
+                const bool single = type.kind == TypeRef::Kind::Float32;
+                LoadFpFromSlot(FpReg(type, 0), instr.srcs[0]);
+                LoadFpFromSlot(FpReg(type, 1), instr.srcs[1]);
+                const std::uint32_t site = enc.Size();
+                Must(enc.Bl(0), "a call to the exponentiation helper");
+                AddTextReloc(site, single ? EnsureFloatPowF32Helper() : EnsureFloatPowHelper(),
+                             RcuRelType::AArch64Call26);
+                StoreFpToSlot(FpReg(type, 0), instr.dst);
+                break;
+            }
+            if (!IsRegisterValue(type)) {
+                NotImplemented(std::format("the '{}' opcode on '{}'", LirOpcodeName(instr.op), type.ToString()));
                 break;
             }
             // The helper takes its base and its exponent where AAPCS64 puts
@@ -1983,6 +2477,22 @@ private:
         }
         case LirOpcode::Neg: {
             const TypeRef &type = instr.type;
+            if (IsFloat(type)) {
+                if (instr.srcs.empty()) {
+                    Report(std::format("AArch64 code generation reached a '{}' with no operand in '{}'",
+                                       LirOpcodeName(instr.op), currentFunc));
+                    break;
+                }
+                // FNEG flips the sign bit and reads nothing else, so it is
+                // right for a zero and for a NaN alike — where the x86-64 back
+                // end needs a mask in .rodata to XOR against, this back end
+                // needs no constant at all.
+                const A64Reg value = FpReg(type, kFpTemp);
+                LoadFpFromSlot(value, instr.srcs[0]);
+                Must(enc.Fneg(value, value), LirOpcodeName(instr.op));
+                StoreFpToSlot(value, instr.dst);
+                break;
+            }
             if (!LoadUnaryOperand(instr, type)) {
                 break;
             }
@@ -2036,12 +2546,10 @@ private:
             const TypeRef &operandType = found != regTypes.end() ? found->second : instr.type;
             A64Condition cond = A64Condition::Eq;
             if (IsFloat(operandType)) {
-                const bool single = operandType.kind == TypeRef::Kind::Float32;
-                const A64Reg lhs = single ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
-                const A64Reg rhs = single ? A64::Sn(kFpTemp2) : A64::Dn(kFpTemp2);
-                LoadFpFromSlot(lhs, instr.srcs[0]);
-                LoadFpFromSlot(rhs, instr.srcs[1]);
-                Must(enc.Fcmp(lhs, rhs), LirOpcodeName(instr.op));
+                if (!LoadFloatOperands(instr, operandType)) {
+                    break;
+                }
+                Must(enc.Fcmp(FpReg(operandType, kFpTemp), FpReg(operandType, kFpTemp2)), LirOpcodeName(instr.op));
                 cond = FloatCondition(instr.op);
             }
             else {
@@ -2062,15 +2570,85 @@ private:
             StoreToSlot(result, instr.dst, TypeRef::MakeBool());
             break;
         }
+        case LirOpcode::Cast: {
+            if (instr.srcs.empty()) {
+                Report(std::format("AArch64 code generation reached a cast with no operand in '{}'", currentFunc));
+                break;
+            }
+            const TypeRef &dstType = instr.type;
+            const auto found = regTypes.find(instr.srcs[0]);
+            const TypeRef &srcType = found != regTypes.end() ? found->second : dstType;
+            const bool srcFloat = IsFloat(srcType);
+            const bool dstFloat = IsFloat(dstType);
+
+            if (!srcFloat && !dstFloat) {
+                // An integer to an integer of any width, a pointer to a
+                // pointer, an enum to its base and back: none of these is an
+                // instruction. The load extends by what the source means and
+                // the store keeps only what the destination occupies, so a
+                // widening, a narrowing and a reinterpretation are the same
+                // pair, and each is already the pair every other opcode uses.
+                if (!IsRegisterValue(srcType) || !IsRegisterValue(dstType)) {
+                    NotImplemented(std::format("a cast from '{}' to '{}'", srcType.ToString(), dstType.ToString()));
+                    break;
+                }
+                const A64Reg value = A64::Xn(kTemp);
+                LoadFromSlot(value, instr.srcs[0], srcType);
+                StoreToSlot(value, instr.dst, dstType);
+                break;
+            }
+            if (srcFloat && dstFloat) {
+                const A64Reg value = FpReg(srcType, kFpTemp);
+                LoadFpFromSlot(value, instr.srcs[0]);
+                if (srcType.kind == dstType.kind) {
+                    StoreFpToSlot(value, instr.dst);
+                    break;
+                }
+                // FCVT names the source precision in its type field and the
+                // destination in its opcode, so it cannot convert a precision
+                // to itself and the two registers are never the same view.
+                const A64Reg result = FpReg(dstType, kFpTemp2);
+                Must(enc.Fcvt(result, value), "a conversion between precisions");
+                StoreFpToSlot(result, instr.dst);
+                break;
+            }
+            if (srcFloat) {
+                // Toward zero, which is what a cast means in this language and
+                // what the x86-64 CVTT pair does. The signedness of the
+                // destination picks the instruction, so a `uint64` above 2^63
+                // converts rather than saturating the way the x86-64 back end's
+                // one signed conversion leaves it.
+                const A64Reg value = FpReg(srcType, kFpTemp);
+                LoadFpFromSlot(value, instr.srcs[0]);
+                const A64Reg result = A64::Xn(kTemp);
+                Must(dstType.IsSigned() ? enc.Fcvtzs(result, value) : enc.Fcvtzu(result, value),
+                     "a conversion to an integer");
+                StoreToSlot(result, instr.dst, dstType);
+                break;
+            }
+            if (!IsRegisterValue(srcType)) {
+                NotImplemented(std::format("a cast from '{}' to '{}'", srcType.ToString(), dstType.ToString()));
+                break;
+            }
+            // An integer to a float, read at the source's own signedness for
+            // the same reason: the load has already extended a narrow value, so
+            // only a 64-bit unsigned one is a question, and UCVTF answers it.
+            const A64Reg value = A64::Xn(kTemp);
+            LoadFromSlot(value, instr.srcs[0], srcType);
+            const A64Reg result = FpReg(dstType, kFpTemp);
+            Must(srcType.IsSigned() ? enc.Scvtf(result, value) : enc.Ucvtf(result, value),
+                 "a conversion from an integer");
+            StoreFpToSlot(result, instr.dst);
+            break;
+        }
         case LirOpcode::Call: {
-            // Four names the front end lowers as calls are not calls at all but
-            // one FMOV between the register files, and belong with the rest of
-            // the conversions in Task 26. Naming them says so; emitting a branch
-            // to them would name a symbol nothing defines. They are matched
-            // whole, as the x86-64 back end matches them, so that a program's
-            // own function whose name merely begins the same way is a call.
-            if (IsFloatBitsBuiltin(instr.strArg)) {
-                NotImplemented(std::format("the '{}' built-in", instr.strArg));
+            // Four names the front end lowers as calls are not calls at all:
+            // each moves a bit pattern between the register files and takes no
+            // branch. They are matched whole, as the x86-64 back end matches
+            // them, so that a program's own function whose name merely begins
+            // the same way is a call.
+            if (IsFloatBitsBuiltin(instr.strArg) && instr.srcs.size() == 1) {
+                GenFloatBits(instr);
                 break;
             }
             GenCall(instr, instr.srcs, false);
@@ -2411,8 +2989,12 @@ private:
             GenFunc(func);
         }
         // The runtime helpers the generated code reached, after every user
-        // function so a call to one is always a forward reference.
+        // function so a call to one is always a forward reference. The
+        // single-precision one calls the double-precision one, so it goes
+        // first and that call is a forward reference too.
         EmitIntPowHelper();
+        EmitFloatPowF32Helper();
+        EmitFloatPowHelper();
     }
 };
 
