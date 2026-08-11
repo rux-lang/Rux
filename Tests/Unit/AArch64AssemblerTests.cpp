@@ -2,18 +2,21 @@
 // instruction selects, the branches resolved inside the body, and the
 // references left for the linker to resolve.
 //
-// Every expected word below was assembled by `clang --target=aarch64-linux-gnu`
-// and read back with llvm-objdump, so a disagreement here is a disagreement
-// with a second implementation rather than with someone's reading of the
-// manual. The encoders themselves are verified against their own vector table
-// in AArch64EncoderTests.cpp; what these cases pin down is the choice between
-// them — which of the three `ADD`s an operand list means, and which of the five
-// `LDR`s.
+// Every expected word below was assembled by a second implementation —
+// `clang --target=aarch64-linux-gnu` read back with llvm-objdump, or
+// `llvm-mc -triple=aarch64 -show-encoding` — so a disagreement here is a
+// disagreement with that implementation rather than with someone's reading of
+// the manual. The encoders themselves are verified against their own vector
+// table in AArch64EncoderTests.cpp; what these cases pin down is the choice
+// between them — which of the three `ADD`s an operand list means, and which of
+// the five `LDR`s — and, below the encoding cases, what the assembler reports
+// when no choice is the right one.
 
 #include "CodeGen/AArch64/Assembler.h"
 #include "Lexer/Lexer.h"
 #include "Object/Rcu/Rcu.h"
 #include "Syntax/Parser/Parser.h"
+#include "Target/AsmInstr.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +25,7 @@
 #include <iterator>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 using namespace Rux;
@@ -91,133 +95,236 @@ struct Assembled {
     }
     return {};
 }
+
+// The mnemonic a one-instruction sample is written with.
+[[nodiscard]] std::string_view MnemonicOf(const std::string_view source) {
+    return source.substr(0, source.find(' '));
+}
+
+// One instruction and the word it assembles to.
+struct Sample {
+    std::string_view source;
+    std::uint32_t word;
+};
+
+// One sample per encoded form, which is also the coverage record: the case
+// below walks the architecture's mnemonic table and holds every name to either
+// appearing here or being reported as unsupported.
+constexpr Sample kForms[] = {
+    {"add x0, x1, #8", 0x91002020},
+    {"add x0, x1, #1, lsl #12", 0x91400420},
+    {"adds x2, x3, x4", 0xAB040062},
+    {"sub sp, sp, #16", 0xD10043FF},
+    {"subs x0, x1, x2, lsl #3", 0xEB020C20},
+    {"add x0, x1, w2, uxtw #2", 0x8B224820},
+    {"cmp x0, #42", 0xF100A81F},
+    {"cmp x0, x1", 0xEB01001F},
+    {"cmn x0, x1", 0xAB01001F},
+    {"and x0, x1, #0xFF", 0x92401C20},
+    {"ands x0, x1, x2", 0xEA020020},
+    {"orr x0, x1, x2, lsl #4", 0xAA021020},
+    {"eor x0, x1, #1", 0xD2400020},
+    {"bic x0, x1, x2", 0x8A220020},
+    {"orn x0, x1, x2", 0xAA220020},
+    {"eon x0, x1, x2", 0xCA220020},
+    {"bics x0, x1, x2", 0xEA220020},
+    {"tst x0, #7", 0xF240081F},
+    {"tst x0, x1", 0xEA01001F},
+    {"mov x0, x1", 0xAA0103E0},
+    {"mov x0, sp", 0x910003E0},
+    {"movz x0, #0x1234, lsl #16", 0xD2A24680},
+    {"movn x0, #5", 0x928000A0},
+    {"movk x0, #0xABCD, lsl #32", 0xF2D579A0},
+    {"neg x0, x1", 0xCB0103E0},
+    {"negs x0, x1", 0xEB0103E0},
+    {"mvn x0, x1", 0xAA2103E0},
+    {"lsl x0, x1, #4", 0xD37CEC20},
+    {"lsr w0, w1, #3", 0x53037C20},
+    {"asr x0, x1, #63", 0x937FFC20},
+    {"ror x0, x1, #8", 0x93C12020},
+    {"lsl x0, x1, x2", 0x9AC22020},
+    {"lslv x0, x1, x2", 0x9AC22020},
+    {"sbfm x0, x1, #3, #7", 0x93431C20},
+    {"ubfx x0, x1, #4, #8", 0xD3442C20},
+    {"sbfx x0, x1, #4, #8", 0x93442C20},
+    {"bfi x0, x1, #4, #8", 0xB37C1C20},
+    {"bfxil x0, x1, #4, #8", 0xB3442C20},
+    {"extr x0, x1, x2, #5", 0x93C21420},
+    {"sxtb x0, w1", 0x93401C20},
+    {"sxtw x0, w1", 0x93407C20},
+    {"uxth w0, w1", 0x53003C20},
+    {"clz x0, x1", 0xDAC01020},
+    {"rbit x0, x1", 0xDAC00020},
+    {"rev x0, x1", 0xDAC00C20},
+    {"rev16 w0, w1", 0x5AC00420},
+    {"rev32 x0, x1", 0xDAC00820},
+    {"mul x0, x1, x2", 0x9B027C20},
+    {"mneg x0, x1, x2", 0x9B02FC20},
+    {"madd x0, x1, x2, x3", 0x9B020C20},
+    {"msub x0, x1, x2, x3", 0x9B028C20},
+    {"smull x0, w1, w2", 0x9B227C20},
+    {"umaddl x0, w1, w2, x3", 0x9BA20C20},
+    {"smulh x0, x1, x2", 0x9B427C20},
+    {"udiv x0, x1, x2", 0x9AC20820},
+    {"sdiv x0, x1, x2", 0x9AC20C20},
+    {"csel x0, x1, x2, eq", 0x9A820020},
+    {"csinc x0, x1, x2, ne", 0x9A821420},
+    {"cset x0, lt", 0x9A9FA7E0},
+    {"csetm w0, ge", 0x5A9FB3E0},
+    {"cinc x0, x1, hi", 0x9A819420},
+    {"cneg x0, x1, mi", 0xDA815420},
+    {"ldr x0, [x1]", 0xF9400020},
+    {"ldr x0, [x1, #16]", 0xF9400820},
+    {"ldr x0, [x1, #-8]", 0xF85F8020},
+    {"ldr w0, [x1, #4]!", 0xB8404C20},
+    {"ldr x0, [x1], #8", 0xF8408420},
+    {"ldr x0, [x1, x2]", 0xF8626820},
+    {"ldr x0, [x1, x2, lsl #3]", 0xF8627820},
+    {"ldr x0, [x1, w2, uxtw #3]", 0xF8625820},
+    {"ldrb w0, [x1, #3]", 0x39400C20},
+    {"ldrsw x0, [x1, #8]", 0xB9800820},
+    {"ldur x0, [x1, #-4]", 0xF85FC020},
+    {"str x0, [sp, #24]", 0xF9000FE0},
+    {"strh w0, [x1, x2]", 0x78226820},
+    {"stp x29, x30, [sp, #-16]!", 0xA9BF7BFD},
+    {"ldp x29, x30, [sp], #16", 0xA8C17BFD},
+    {"ldr d0, [x1, #8]", 0xFD400420},
+    {"str q0, [x1]", 0x3D800020},
+    {"br x0", 0xD61F0000},
+    {"blr x1", 0xD63F0020},
+    {"ret", 0xD65F03C0},
+    {"ret x1", 0xD65F0020},
+    {"svc #0", 0xD4000001},
+    {"brk #1", 0xD4200020},
+    {"nop", 0xD503201F},
+    {"hint #5", 0xD50320BF},
+    {"dmb ish", 0xD5033BBF},
+    {"dsb sy", 0xD5033F9F},
+    {"isb", 0xD5033FDF},
+    {"mrs x0, nzcv", 0xD53B4200},
+    {"msr nzcv, x0", 0xD51B4200},
+    {"fmov d0, d1", 0x1E604020},
+    {"fmov x0, d0", 0x9E660000},
+    {"fadd d0, d1, d2", 0x1E622820},
+    {"fsub s0, s1, s2", 0x1E223820},
+    {"fmul d0, d1, d2", 0x1E620820},
+    {"fdiv d0, d1, d2", 0x1E621820},
+    {"fmax d0, d1, d2", 0x1E624820},
+    {"fminnm s0, s1, s2", 0x1E227820},
+    {"fneg d0, d1", 0x1E614020},
+    {"fabs d0, d1", 0x1E60C020},
+    {"fsqrt d0, d1", 0x1E61C020},
+    {"fcvt s0, d1", 0x1E624020},
+    {"fcvtzs w0, d0", 0x1E780000},
+    {"scvtf d0, x1", 0x9E620020},
+    {"ucvtf s0, w1", 0x1E230020},
+    {"frintz d0, d1", 0x1E65C020},
+    {"fmadd d0, d1, d2, d3", 0x1F420C20},
+    {"fcmp d0, d1", 0x1E612000},
+    {"fccmp d0, d1, #3, eq", 0x1E610403},
+    {"fcsel d0, d1, d2, gt", 0x1E62CC20},
+    // The rest of the mnemonic table: one sample each, so that no encoded
+    // instruction is reachable only through a form nothing exercises.
+    {"asrv x0, x1, x2", 0x9AC22820},
+    {"lsrv x0, x1, x2", 0x9AC22420},
+    {"rorv x0, x1, x2", 0x9AC22C20},
+    {"bfm x0, x1, #3, #7", 0xB3431C20},
+    {"ubfm x0, x1, #3, #7", 0xD3431C20},
+    {"cinv x0, x1, ne", 0xDA810020},
+    {"csinv x0, x1, x2, eq", 0xDA820020},
+    {"csneg x0, x1, x2, eq", 0xDA820420},
+    {"cls x0, x1", 0xDAC01420},
+    {"sxth x0, w1", 0x93403C20},
+    {"uxtb w0, w1", 0x53001C20},
+    {"smaddl x0, w1, w2, x3", 0x9B220C20},
+    {"umull x0, w1, w2", 0x9BA27C20},
+    {"umulh x0, x1, x2", 0x9BC27C20},
+    {"hlt #2", 0xD4400040},
+    {"udf #0", 0x00000000},
+    {"ldrh w0, [x1, #4]", 0x79400820},
+    {"ldrsb w0, [x1, #1]", 0x39C00420},
+    {"ldrsh x0, [x1, #2]", 0x79800420},
+    {"strb w0, [x1, #1]", 0x39000420},
+    {"stur x0, [x1, #-8]", 0xF81F8020},
+    {"sturb w0, [x1, #-1]", 0x381FF020},
+    {"sturh w0, [x1, #-2]", 0x781FE020},
+    {"ldurb w0, [x1, #-1]", 0x385FF020},
+    {"ldurh w0, [x1, #-2]", 0x785FE020},
+    {"ldursb x0, [x1, #-1]", 0x389FF020},
+    {"ldursh x0, [x1, #-2]", 0x789FE020},
+    {"ldursw x0, [x1, #-4]", 0xB89FC020},
+    {"ldrsw x0, [x1, x2, lsl #2]", 0xB8A27820},
+    {"ldp w0, w1, [x2, #8]", 0x29410440},
+    {"stp d0, d1, [sp, #-16]!", 0x6DBF07E0},
+    {"fcmpe d0, d1", 0x1E612010},
+    {"fcmp d0, #0", 0x1E602008},
+    {"fcmpe d0, #0", 0x1E602018},
+    {"fmov d0, #2", 0x1E601000},
+    {"fcvtzu w0, d0", 0x1E790000},
+    {"fmin d0, d1, d2", 0x1E625820},
+    {"fmaxnm d0, d1, d2", 0x1E626820},
+    {"fmsub d0, d1, d2, d3", 0x1F428C20},
+    {"fnmadd d0, d1, d2, d3", 0x1F620C20},
+    {"fnmsub d0, d1, d2, d3", 0x1F628C20},
+    {"frinta d0, d1", 0x1E664020},
+    {"frintm d0, d1", 0x1E654020},
+    {"frintn d0, d1", 0x1E644020},
+    {"frintp d0, d1", 0x1E64C020},
+    // Arithmetic through SP, which is the extended-register form under a
+    // plain spelling: code 31 is the stack pointer there and the zero
+    // register in the shifted form the same words would otherwise mean.
+    {"add x0, sp, x1", 0x8B2163E0},
+    {"sub sp, sp, x1", 0xCB2163FF},
+    {"cmp sp, x1", 0xEB2163FF},
+    {"mov sp, x0", 0x9100001F},
+};
+
+// The mnemonics no sample above names, each covered by a case of its own: the
+// branches and the two symbol-address instructions, whose operand is a label
+// rather than a register and which are asserted where their targets are.
+constexpr std::string_view kCoveredByBranchCases[] = {
+    "b", "bl", "cbz", "cbnz", "tbz", "tbnz", "adr", "adrp",
+};
 } // namespace
 
 TEST_CASE("AArch64 assembler encodes the forms its encoders provide") {
-    static constexpr struct {
-        std::string_view source;
-        std::uint32_t word;
-    } forms[] = {
-        {"add x0, x1, #8", 0x91002020},
-        {"add x0, x1, #1, lsl #12", 0x91400420},
-        {"adds x2, x3, x4", 0xAB040062},
-        {"sub sp, sp, #16", 0xD10043FF},
-        {"subs x0, x1, x2, lsl #3", 0xEB020C20},
-        {"add x0, x1, w2, uxtw #2", 0x8B224820},
-        {"cmp x0, #42", 0xF100A81F},
-        {"cmp x0, x1", 0xEB01001F},
-        {"cmn x0, x1", 0xAB01001F},
-        {"and x0, x1, #0xFF", 0x92401C20},
-        {"ands x0, x1, x2", 0xEA020020},
-        {"orr x0, x1, x2, lsl #4", 0xAA021020},
-        {"eor x0, x1, #1", 0xD2400020},
-        {"bic x0, x1, x2", 0x8A220020},
-        {"orn x0, x1, x2", 0xAA220020},
-        {"eon x0, x1, x2", 0xCA220020},
-        {"bics x0, x1, x2", 0xEA220020},
-        {"tst x0, #7", 0xF240081F},
-        {"tst x0, x1", 0xEA01001F},
-        {"mov x0, x1", 0xAA0103E0},
-        {"mov x0, sp", 0x910003E0},
-        {"movz x0, #0x1234, lsl #16", 0xD2A24680},
-        {"movn x0, #5", 0x928000A0},
-        {"movk x0, #0xABCD, lsl #32", 0xF2D579A0},
-        {"neg x0, x1", 0xCB0103E0},
-        {"negs x0, x1", 0xEB0103E0},
-        {"mvn x0, x1", 0xAA2103E0},
-        {"lsl x0, x1, #4", 0xD37CEC20},
-        {"lsr w0, w1, #3", 0x53037C20},
-        {"asr x0, x1, #63", 0x937FFC20},
-        {"ror x0, x1, #8", 0x93C12020},
-        {"lsl x0, x1, x2", 0x9AC22020},
-        {"lslv x0, x1, x2", 0x9AC22020},
-        {"sbfm x0, x1, #3, #7", 0x93431C20},
-        {"ubfx x0, x1, #4, #8", 0xD3442C20},
-        {"sbfx x0, x1, #4, #8", 0x93442C20},
-        {"bfi x0, x1, #4, #8", 0xB37C1C20},
-        {"bfxil x0, x1, #4, #8", 0xB3442C20},
-        {"extr x0, x1, x2, #5", 0x93C21420},
-        {"sxtb x0, w1", 0x93401C20},
-        {"sxtw x0, w1", 0x93407C20},
-        {"uxth w0, w1", 0x53003C20},
-        {"clz x0, x1", 0xDAC01020},
-        {"rbit x0, x1", 0xDAC00020},
-        {"rev x0, x1", 0xDAC00C20},
-        {"rev16 w0, w1", 0x5AC00420},
-        {"rev32 x0, x1", 0xDAC00820},
-        {"mul x0, x1, x2", 0x9B027C20},
-        {"mneg x0, x1, x2", 0x9B02FC20},
-        {"madd x0, x1, x2, x3", 0x9B020C20},
-        {"msub x0, x1, x2, x3", 0x9B028C20},
-        {"smull x0, w1, w2", 0x9B227C20},
-        {"umaddl x0, w1, w2, x3", 0x9BA20C20},
-        {"smulh x0, x1, x2", 0x9B427C20},
-        {"udiv x0, x1, x2", 0x9AC20820},
-        {"sdiv x0, x1, x2", 0x9AC20C20},
-        {"csel x0, x1, x2, eq", 0x9A820020},
-        {"csinc x0, x1, x2, ne", 0x9A821420},
-        {"cset x0, lt", 0x9A9FA7E0},
-        {"csetm w0, ge", 0x5A9FB3E0},
-        {"cinc x0, x1, hi", 0x9A819420},
-        {"cneg x0, x1, mi", 0xDA815420},
-        {"ldr x0, [x1]", 0xF9400020},
-        {"ldr x0, [x1, #16]", 0xF9400820},
-        {"ldr x0, [x1, #-8]", 0xF85F8020},
-        {"ldr w0, [x1, #4]!", 0xB8404C20},
-        {"ldr x0, [x1], #8", 0xF8408420},
-        {"ldr x0, [x1, x2]", 0xF8626820},
-        {"ldr x0, [x1, x2, lsl #3]", 0xF8627820},
-        {"ldr x0, [x1, w2, uxtw #3]", 0xF8625820},
-        {"ldrb w0, [x1, #3]", 0x39400C20},
-        {"ldrsw x0, [x1, #8]", 0xB9800820},
-        {"ldur x0, [x1, #-4]", 0xF85FC020},
-        {"str x0, [sp, #24]", 0xF9000FE0},
-        {"strh w0, [x1, x2]", 0x78226820},
-        {"stp x29, x30, [sp, #-16]!", 0xA9BF7BFD},
-        {"ldp x29, x30, [sp], #16", 0xA8C17BFD},
-        {"ldr d0, [x1, #8]", 0xFD400420},
-        {"str q0, [x1]", 0x3D800020},
-        {"br x0", 0xD61F0000},
-        {"blr x1", 0xD63F0020},
-        {"ret", 0xD65F03C0},
-        {"ret x1", 0xD65F0020},
-        {"svc #0", 0xD4000001},
-        {"brk #1", 0xD4200020},
-        {"nop", 0xD503201F},
-        {"hint #5", 0xD50320BF},
-        {"dmb ish", 0xD5033BBF},
-        {"dsb sy", 0xD5033F9F},
-        {"isb", 0xD5033FDF},
-        {"mrs x0, nzcv", 0xD53B4200},
-        {"msr nzcv, x0", 0xD51B4200},
-        {"fmov d0, d1", 0x1E604020},
-        {"fmov x0, d0", 0x9E660000},
-        {"fadd d0, d1, d2", 0x1E622820},
-        {"fsub s0, s1, s2", 0x1E223820},
-        {"fmul d0, d1, d2", 0x1E620820},
-        {"fdiv d0, d1, d2", 0x1E621820},
-        {"fmax d0, d1, d2", 0x1E624820},
-        {"fminnm s0, s1, s2", 0x1E227820},
-        {"fneg d0, d1", 0x1E614020},
-        {"fabs d0, d1", 0x1E60C020},
-        {"fsqrt d0, d1", 0x1E61C020},
-        {"fcvt s0, d1", 0x1E624020},
-        {"fcvtzs w0, d0", 0x1E780000},
-        {"scvtf d0, x1", 0x9E620020},
-        {"ucvtf s0, w1", 0x1E230020},
-        {"frintz d0, d1", 0x1E65C020},
-        {"fmadd d0, d1, d2, d3", 0x1F420C20},
-        {"fcmp d0, d1", 0x1E612000},
-        {"fccmp d0, d1, #3, eq", 0x1E610403},
-        {"fcsel d0, d1, d2, gt", 0x1E62CC20},
-    };
-
-    for (const auto &[source, word] : forms) {
+    for (const auto &[source, word] : kForms) {
         const Assembled assembled = Assemble(source);
         INFO(source);
         CHECK(FirstError(assembled) == "");
         REQUIRE(assembled.Words() == 1);
         CHECK(HexWord(assembled.Word(0)) == HexWord(word));
+    }
+}
+
+TEST_CASE("AArch64 assembler answers to every mnemonic the architecture names") {
+    // Target/AsmInstr.h names more instructions than these encoders provide, so
+    // that the front end never has to know which of the two a body wrote. Every
+    // one of those names has to reach an encoder or an "unsupported" report —
+    // never the "unknown instruction" a misspelling gets, which would send an
+    // author looking for a typo in a name the architecture really has.
+    std::unordered_set<std::string_view> covered(std::begin(kCoveredByBranchCases), std::end(kCoveredByBranchCases));
+    for (const auto &sample : kForms) {
+        covered.insert(MnemonicOf(sample.source));
+    }
+
+    for (const std::string_view mnemonic : AArch64Mnemonics()) {
+        if (covered.contains(mnemonic)) {
+            continue;
+        }
+        INFO(mnemonic);
+        const Assembled assembled = Assemble(std::format("    {}\n", mnemonic));
+        CHECK(FirstError(assembled) == std::format("unsupported instruction '{}'", mnemonic));
+    }
+
+    // And the conditional branch, whose condition is part of its name rather
+    // than an operand of it.
+    for (const std::string_view condition :
+         {"eq", "ne", "cs", "hs", "cc", "lo", "mi", "pl", "vs", "vc", "hi", "ls", "ge", "lt", "gt", "le", "al", "nv"}) {
+        const Assembled assembled = Assemble(std::format("    b.{} here\nhere:\n    ret\n", condition));
+        INFO(condition);
+        CHECK(FirstError(assembled) == "");
+        REQUIRE(assembled.Words() == 2);
     }
 }
 
@@ -264,17 +371,24 @@ fwd:
 }
 
 TEST_CASE("AArch64 assembler reports a name the body does not define as a fixup") {
+    // Every relocation the AArch64 half of RcuRelType has for code, in the one
+    // instruction each is reached through.
     const Assembled assembled = Assemble(R"(
     bl External
     adrp x0, Sym
     add x0, x0, Sym
     ldr x1, [x0, Sym]
     b Elsewhere
+    b.eq Elsewhere
+    cbz x0, Elsewhere
+    cbnz x1, Elsewhere
+    tbz x0, #3, Elsewhere
+    tbnz x0, #3, Elsewhere
     ret
 )");
 
     CHECK(FirstError(assembled) == "");
-    REQUIRE(assembled.Words() == 6);
+    REQUIRE(assembled.Words() == 11);
 
     // Each instruction is emitted with an immediate of zero: the relocation
     // carries the address, and an AArch64 relocation patches fields of a whole
@@ -290,9 +404,11 @@ TEST_CASE("AArch64 assembler reports a name the body does not define as a fixup"
         std::string_view symbol;
         std::uint16_t relType;
     } expected[] = {
-        {0, "External", RcuRelType::AArch64Call26},   {4, "Sym", RcuRelType::AArch64AdrPrelPgHi21},
-        {8, "Sym", RcuRelType::AArch64AddAbsLo12Nc},  {12, "Sym", RcuRelType::AArch64LdstAbsLo12Nc},
-        {16, "Elsewhere", RcuRelType::AArch64Jump26},
+        {0, "External", RcuRelType::AArch64Call26},     {4, "Sym", RcuRelType::AArch64AdrPrelPgHi21},
+        {8, "Sym", RcuRelType::AArch64AddAbsLo12Nc},    {12, "Sym", RcuRelType::AArch64LdstAbsLo12Nc},
+        {16, "Elsewhere", RcuRelType::AArch64Jump26},   {20, "Elsewhere", RcuRelType::AArch64CondBr19},
+        {24, "Elsewhere", RcuRelType::AArch64CondBr19}, {28, "Elsewhere", RcuRelType::AArch64CondBr19},
+        {32, "Elsewhere", RcuRelType::AArch64TstBr14},  {36, "Elsewhere", RcuRelType::AArch64TstBr14},
     };
 
     REQUIRE(assembled.result.fixups.size() == std::size(expected));
@@ -346,35 +462,154 @@ TEST_CASE("AArch64 assembler materializes a constant no single MOV reaches") {
     }
 }
 
-TEST_CASE("AArch64 assembler reports what it cannot encode") {
+TEST_CASE("AArch64 assembler names the instruction a misspelling meant") {
     SUBCASE("an instruction the architecture has and the encoders do not") {
         const Assembled assembled = Assemble("    adc x0, x1, x2\n");
         CHECK(FirstError(assembled) == "unsupported instruction 'adc'");
     }
 
-    SUBCASE("a misspelling") {
+    SUBCASE("a misspelling one edit from a real instruction") {
+        // MVO is one substitution from MVN and two from MOV, since transposing
+        // two letters is two edits rather than one.
         const Assembled assembled = Assemble("    mvo x0, x1\n");
-        CHECK(FirstError(assembled) == "unsupported instruction 'mvo'");
+        CHECK(FirstError(assembled) == "unknown instruction 'mvo'; did you mean 'mvn'?");
     }
 
-    SUBCASE("the wrong number of operands") {
-        const Assembled assembled = Assemble("    mul x0, x1\n");
-        CHECK(FirstError(assembled) == "'mul' expects 3 operands, found 2");
+    SUBCASE("a misspelling of a longer name") {
+        const Assembled assembled = Assemble("    fcvtzx w0, d0\n");
+        CHECK(FirstError(assembled) == "unknown instruction 'fcvtzx'; did you mean 'fcvtzs'?");
     }
 
-    SUBCASE("an immediate the field cannot hold") {
-        const Assembled assembled = Assemble("    add x0, x1, #4097\n");
-        CHECK(FirstError(assembled) == "cannot encode 'add': invalid immediate");
+    SUBCASE("a name nothing comes close to") {
+        // Offering the nearest of a hundred instructions would be noise, so a
+        // name too far from all of them is reported without a guess.
+        const Assembled assembled = Assemble("    qwerty x0, x1\n");
+        CHECK(FirstError(assembled) == "unknown instruction 'qwerty'");
     }
+}
 
-    SUBCASE("operands whose widths disagree") {
-        const Assembled assembled = Assemble("    add x0, x1, w2\n");
-        CHECK(FirstError(assembled) == "cannot encode 'add': invalid register");
+TEST_CASE("AArch64 assembler reports an operand against the form it should have taken") {
+    // Each of these is a mistake an author makes rather than a status an
+    // encoder reports: what was written, which operand it was, and the form the
+    // instruction actually takes.
+    struct Case {
+        std::string_view body;
+        std::string_view error;
+    };
+
+    static constexpr Case cases[] = {
+        {"    mul x0, x1\n", "'mul' takes 3 operands, found 2; the form is 'MUL Rd, Rn, Rm'"},
+        {"    dmb ish, sy\n", "'dmb' takes 0 to 1 operands, found 2; the form is 'DMB {option}'"},
+        {"    mov x0, sym\n",
+         "'mov' takes a register as operand 2, found the symbol 'sym'; the form is 'MOV Rd, Rn | Rd, #imm'"},
+        {"    movz x0, x1\n",
+         "'movz' takes an immediate as operand 2, found the register 'x1'; the form is 'MOVZ Rd, #imm{, LSL #shift}'"},
+        {"    movz x0, #70000\n",
+         "'movz' takes a halfword of 0 to 65535, found 70000; the form is 'MOVZ Rd, #imm{, LSL #shift}'"},
+        {"    movz x0, #1, lsl #8\n",
+         "'movz' shifts its halfword by 0, 16, 32 or 48, found 8; the form is 'MOVZ Rd, #imm{, LSL #shift}'"},
+        {"    csel x0, x1, x2, #3\n",
+         "'csel' takes a condition as operand 4, found the immediate 3; the form is 'CSEL Rd, Rn, Rm, cond'"},
+        {"    csel x0, x1, x2, zz\n", "unknown condition 'zz'; the form is 'CSEL Rd, Rn, Rm, cond'"},
+        {"    fadd d0, x1, d2\n", "'fadd' takes a floating-point register as operand 2, found the general-purpose "
+                                  "'x1'; the form is 'FADD Vd, Vn, Vm'"},
+        {"    mul x0, d1, x2\n", "'mul' takes a general-purpose register as operand 2, found the floating-point 'd1'; "
+                                 "the form is 'MUL Rd, Rn, Rm'"},
+        {"    mul x0, w1, x2\n", "'mul' takes operands of one width, and operand 2 'w1' is 32-bit where 'x0' is "
+                                 "64-bit; the form is 'MUL Rd, Rn, Rm'"},
+        {"    mul x0, sp, x2\n", "'mul' reads register 31 as the zero register, so operand 2 cannot be 'sp' but may be "
+                                 "'xzr'; the form is 'MUL Rd, Rn, Rm'"},
+        {"    add x0, x1, #4097\n", "'add' takes an immediate of 0 to 4095 or a multiple of 4096 up to 16773120, found "
+                                    "4097; the form is 'ADD Rd, Rn, #imm | Rd, Rn, Rm{, shift #amount}'"},
+        {"    and x0, x1, #4097\n",
+         "'and' takes a bitmask immediate (a run of one bits, rotated and repeated to fill the register), and 4097 is "
+         "not one; the form is 'AND Rd, Rn, #imm | Rd, Rn, Rm{, shift #amount}'"},
+        {"    bic x0, x1, #1\n", "'bic' has no immediate form; the form is 'BIC Rd, Rn, Rm{, shift #amount}'"},
+        {"    sub x0, x1, Sym\n",
+         "'sub' takes no symbol operand; the form is 'SUB Rd, Rn, #imm | Rd, Rn, Rm{, shift #amount}'"},
+        {"    add x0, x1, x2, uxtw\n",
+         "'add' extends operand 3 with UXTW, which reads a 32-bit register, found 'x2'; the form is 'ADD Rd, Rn, #imm "
+         "| Rd, Rn, Rm{, shift #amount}'"},
+        {"    add x0, x1, w2, uxtw #5\n", "'add' shifts an extended operand by 0 to 4, found 5; the form is 'ADD Rd, "
+                                          "Rn, #imm | Rd, Rn, Rm{, shift #amount}'"},
+        {"    add x0, x1, x2, ror #4\n", "'add' shifts its second source by LSL, LSR or ASR, found ROR; the form is "
+                                         "'ADD Rd, Rn, #imm | Rd, Rn, Rm{, shift #amount}'"},
+        {"    add x0, x1, x2, lsl #64\n", "'add' takes a shift of 0 to 63, found 64; the form is 'ADD Rd, Rn, #imm | "
+                                          "Rd, Rn, Rm{, shift #amount}'"},
+        {"    orr w0, w1, w2, lsl #32\n", "'orr' takes a shift of 0 to 31, found 32; the form is 'ORR Rd, Rn, #imm | "
+                                          "Rd, Rn, Rm{, shift #amount}'"},
+        {"    neg x0, x1, lsl #64\n",
+         "'neg' takes a shift of 0 to 63, found 64; the form is 'NEG Rd, Rm{, shift #amount}'"},
+        {"    lsr w0, w1, #40\n", "'lsr' takes a shift of 0 to 31, found 40; the form is 'LSR Rd, Rn, #shift | Rd, Rn, "
+                                  "Rm'"},
+        {"    mov w0, #8589934591\n",
+         "'mov' takes an immediate a 32-bit register can hold, found 8589934591; the form is 'MOV Rd, Rn | Rd, #imm'"},
+        {"    ubfx x0, x1, #4, #0\n",
+         "'ubfx' moves at least one bit, found a width of 0; the form is 'UBFX Rd, Rn, #lsb, #width'"},
+        {"    sbfm x0, x1, #64, #7\n",
+         "'sbfm' takes a rotate of 0 to 63, found 64; the form is 'SBFM Rd, Rn, #immr, #imms'"},
+        {"    adr w0, here\n",
+         "'adr' forms an address, so its destination is 64-bit, found 'w0'; the form is 'ADR Xd, label'"},
+        {"    adrp x0, #4\n",
+         "'adrp' takes a label or a symbol as operand 2, found the immediate 4; the form is 'ADRP Xd, symbol'"},
+        {"    b #4\n", "'b' takes a label or a symbol as operand 1, found the immediate 4; the form is 'B label'"},
+        {"    br w0\n", "'br' branches to an address, so its operand is 64-bit, found 'w0'; the form is 'BR Xn'"},
+        {"    ldr x0, [w1, #8]\n", "'ldr' addresses memory through a 64-bit general-purpose register, found 'w1'; the "
+                                   "form is 'LDR Rt, [Xn{, #imm}] | Rt, [Xn, Rm{, extend}] | Rt, label'"},
+        {"    str x0, Sym\n", "'str' takes a memory operand as operand 2, found the symbol 'Sym'; the form is 'STR Rt, "
+                              "[Xn{, #imm}] | Rt, [Xn, Rm{, extend}]'"},
+        {"    ldr x0, x1\n", "'ldr' takes a memory operand as operand 2, found the register 'x1'; the form is 'LDR Rt, "
+                             "[Xn{, #imm}] | Rt, [Xn, Rm{, extend}] | Rt, label'"},
+        {"    ldur x0, [x1, x2]\n", "'ldur' has no register-offset form; the form is 'LDUR Rt, [Xn{, #imm}]'"},
+        {"    ldr x0, [x1, d2]\n", "'ldr' indexes through a general-purpose register, found 'd2'; the form is 'LDR Rt, "
+                                   "[Xn{, #imm}] | Rt, [Xn, Rm{, extend}] | Rt, label'"},
+        {"    ldr x0, [x1, w2]\n", "'ldr' extends its index with LSL, which reads a 64-bit register, found 'w2'; the "
+                                   "form is 'LDR Rt, [Xn{, #imm}] | Rt, [Xn, Rm{, extend}] | Rt, label'"},
+        {"    ldr x0, [x1, x2, lsl #2]\n",
+         "'ldr' scales its index by the width of the access, so the shift is 0 or 3, found 2; the form is 'LDR Rt, "
+         "[Xn{, #imm}] | Rt, [Xn, Rm{, extend}] | Rt, label'"},
+        {"    ldur x0, [x1, Sym]\n", "'ldur' takes no symbol operand; the form is 'LDUR Rt, [Xn{, #imm}]'"},
+        {"    ldr x0, [x1, #100000]\n",
+         "'ldr' takes an offset of -256 to 255, or a multiple of 8 from 0 to 32760, found 100000; the form is 'LDR "
+         "Rt, [Xn{, #imm}] | Rt, [Xn, Rm{, extend}] | Rt, label'"},
+        {"    ldur x0, [x1, #300]\n",
+         "'ldur' takes an offset of -256 to 255, found 300; the form is 'LDUR Rt, [Xn{, #imm}]'"},
+        {"    stp x0, x1, x2\n", "'stp' takes a memory operand as operand 3, found the register 'x2'; the form is 'STP "
+                                 "Rt, Rt2, [Xn{, #imm}]'"},
+        {"    stp x0, w1, [sp, #-16]!\n", "'stp' takes operands of one width, and operand 2 'w1' is 32-bit where 'x0' "
+                                          "is 64-bit; the form is 'STP Rt, Rt2, [Xn{, #imm}]'"},
+        {"    stp x0, x1, [sp, #7]\n", "'stp' takes an offset that is a multiple of 8 from -512 to 504, found 7; the "
+                                       "form is 'STP Rt, Rt2, [Xn{, #imm}]'"},
+        {"    b.zz here\n", "unknown condition 'zz' in 'b.zz'; the form is 'B.ZZ label'"},
+        {"    dmb #3\n", "'dmb' takes a barrier option, found the immediate 3; the form is 'DMB {option}'"},
+        {"    dmb foo\n", "unknown barrier option 'foo'; the form is 'DMB {option}'"},
+        {"    mrs x0, #3\n",
+         "'mrs' takes a system register as operand 2, found the immediate 3; the form is 'MRS Xt, sysreg'"},
+        {"    mrs x0, foo\n", "unknown system register 'foo'; the form is 'MRS Xt, sysreg'"},
+        {"    mrs w0, nzcv\n", "'mrs' moves a whole system register, so its operand is 64-bit, found 'w0'; the form is "
+                               "'MRS Xt, sysreg'"},
+        {"    fcmp d0, #1\n", "'fcmp' compares against a register or against zero, found 1; the form is 'FCMP Vn, Vm | "
+                              "Vn, #0'"},
+        {"    tbz x0, #64, here\n", "'tbz' takes a bit number of 0 to 63, found 64; the form is 'TBZ Rt, #bit, label'"},
+        {"    fccmp d0, d1, #16, eq\n",
+         "'fccmp' takes a flag value of 0 to 15, found 16; the form is 'FCCMP Vn, Vm, #nzcv, cond'"},
+        {"    hint #128\n", "'hint' takes a hint number of 0 to 127, found 128; the form is 'HINT #imm'"},
+        {"    svc #70000\n", "'svc' takes an exception code of 0 to 65535, found 70000; the form is 'SVC #imm'"},
+    };
+
+    for (const auto &[body, error] : cases) {
+        const Assembled assembled = Assemble(body);
+        INFO(body);
+        CHECK(FirstError(assembled) == error);
     }
+}
 
-    SUBCASE("an unknown condition") {
-        const Assembled assembled = Assemble("    csel x0, x1, x2, zz\n");
-        CHECK(FirstError(assembled) == "unknown condition 'zz'");
+TEST_CASE("AArch64 assembler reports what it cannot encode") {
+    SUBCASE("a combination no operand check anticipates") {
+        // CSET encodes the inverse of the condition it is written with, and AL
+        // has no inverse worth having, so the encoder is the one that knows.
+        const Assembled assembled = Assemble("    cset x0, al\n");
+        CHECK(FirstError(assembled) == "cannot encode 'cset': invalid immediate");
     }
 
     SUBCASE("a form with no relocation to carry a symbol") {

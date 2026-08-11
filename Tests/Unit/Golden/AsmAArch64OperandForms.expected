@@ -1,0 +1,7 @@
+8:5: error: 'mul' takes 3 operands, found 2; the form is 'MUL Rd, Rn, Rm'
+9:17: error: 'add' takes operands of one width, and operand 3 'w2' is 32-bit where 'x1' is 64-bit; the form is 'ADD Rd, Rn, #imm | Rd, Rn, Rm{, shift #amount}'
+10:13: error: 'mul' reads register 31 as the zero register, so operand 2 cannot be 'sp' but may be 'xzr'; the form is 'MUL Rd, Rn, Rm'
+11:17: error: 'add' takes an immediate of 0 to 4095 or a multiple of 4096 up to 16773120, found 4097; the form is 'ADD Rd, Rn, #imm | Rd, Rn, Rm{, shift #amount}'
+12:17: error: 'and' takes a bitmask immediate (a run of one bits, rotated and repeated to fill the register), and 4097 is not one; the form is 'AND Rd, Rn, #imm | Rd, Rn, Rm{, shift #amount}'
+13:13: error: 'ldr' takes an offset of -256 to 255, or a multiple of 8 from 0 to 32760, found 100000; the form is 'LDR Rt, [Xn{, #imm}] | Rt, [Xn, Rm{, extend}] | Rt, label'
+14:17: error: 'lsr' takes a shift of 0 to 31, found 40; the form is 'LSR Rd, Rn, #shift | Rd, Rn, Rm'

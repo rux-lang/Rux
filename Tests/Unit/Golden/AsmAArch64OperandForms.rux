@@ -1,0 +1,20 @@
+// rux:target linux-aarch64
+
+// The mistakes an AArch64 body makes most often. Each is reported against the
+// operand that was wrong and quotes the form the instruction actually takes,
+// since "invalid register" says nothing about which register or what would
+// have been right.
+asm func Forms(p: *int64) -> int64 {
+    mul x0, x1
+    add x0, x1, w2
+    mul x0, sp, x2
+    add x0, x1, #4097
+    and x0, x1, #4097
+    ldr x0, [x1, #100000]
+    lsr w0, w1, #40
+    ret
+}
+
+func Main() -> int {
+    return 0;
+}

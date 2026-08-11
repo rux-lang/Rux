@@ -1,0 +1,2 @@
+7:5: error: unknown instruction 'mvo'; did you mean 'mvn'?
+8:5: error: unsupported instruction 'adc'

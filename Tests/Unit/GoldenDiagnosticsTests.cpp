@@ -5,9 +5,17 @@
 // one per line as "line:column: severity: message", and the result is compared
 // against the sibling <Case>.expected file.
 //
+// A case compiled for AArch64 goes one stage further: every `asm func` a clean
+// frontend leaves behind is handed to the AArch64 assembler, so a case can pin
+// what an inline body reports. That assembler is the one with no route through
+// the driver yet — the x86-64 one already reports through `rux build` — so a
+// golden case is the only place its diagnostics can be read as a body's author
+// would see them.
+//
 // To (re)generate the expected files after an intentional diagnostics change,
 // run the test binary with RUX_UPDATE_GOLDEN=1 and review the diff.
 
+#include "CodeGen/AArch64/Assembler.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
 #include "Lexer/Lexer.h"
@@ -16,6 +24,7 @@
 #include "System/Os.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <doctest.h>
 #include <filesystem>
 #include <format>
@@ -97,6 +106,21 @@ std::string FrontendDiagnostics(std::string source, const std::string &sourceNam
     SemanticAnalyzer analyzer({&parseResult.module}, {}, "Golden", context);
     const auto semaResult = analyzer.Analyze();
     AppendDiagnostics(out, semaResult.diagnostics);
+    if (semaResult.HasErrors() || context.target.arch != Target::Arch::AArch64) {
+        return out;
+    }
+
+    // Assemble what the frontend accepted. An `asm func` body is machine code
+    // the moment it parses, so its mistakes are the assembler's to report.
+    for (const auto &item : parseResult.module.items) {
+        const auto *func = dynamic_cast<const FuncDecl *>(item.get());
+        if (func == nullptr || !func->isAsm) {
+            continue;
+        }
+        std::vector<std::uint8_t> code;
+        const AsmAssembly assembled = AssembleAArch64AsmFunc(func->asmBody, sourceName, code);
+        AppendDiagnostics(out, assembled.diagnostics);
+    }
     return out;
 }
 

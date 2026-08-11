@@ -173,7 +173,7 @@ Run the centralized binary directly for doctest filtering, for example `Bin/Test
 
 ### Golden Diagnostics (`Tests/Unit/Golden/`)
 
-Part of the unit-test binary: every `Tests/Unit/Golden/<Case>.rux` is compiled through the frontend (lex → parse → sema), the diagnostics are rendered one per line as `line:column: severity: message`, and compared against `<Case>.expected`. To add a case, drop a `.rux` file in `Tests/Unit/Golden/`, run the test binary once with `RUX_UPDATE_GOLDEN=1` to generate the `.expected` file, and review it before committing. **When you change or add a diagnostic, add or regenerate the affected golden cases.**
+Part of the unit-test binary: every `Tests/Unit/Golden/<Case>.rux` is compiled through the frontend (lex → parse → sema), the diagnostics are rendered one per line as `line:column: severity: message`, and compared against `<Case>.expected`. A case opening with `// rux:target <triple>` is compiled for that target instead of the host, so a diagnostic about a foreign machine reads the same everywhere; a case compiled for AArch64 additionally has every `asm func` a clean frontend leaves behind run through the AArch64 assembler, so inline-assembly reports are golden cases too. To add a case, drop a `.rux` file in `Tests/Unit/Golden/`, run the test binary once with `RUX_UPDATE_GOLDEN=1` to generate the `.expected` file, and review it before committing. **When you change or add a diagnostic, add or regenerate the affected golden cases.**
 
 ## 6. Code Style
 

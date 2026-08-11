@@ -16,7 +16,10 @@
 #include "Target/AsmRegisters.h"
 #include "Target/Target.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -226,5 +229,69 @@ inline const std::unordered_set<std::string_view> &AArch64Mnemonics() {
         return Target::Arch::Unknown;
     }
     return x86 ? Target::Arch::X86_64 : Target::Arch::AArch64;
+}
+
+// The instruction names `arch` answers to, for a consumer that has to walk them
+// rather than ask about one. Empty for an architecture with no inline-assembly
+// support.
+[[nodiscard]] inline const std::unordered_set<std::string_view> &AsmMnemonics(const Target::Arch arch) {
+    static const std::unordered_set<std::string_view> none;
+    switch (arch) {
+    case Target::Arch::X86_64:
+        return X86_64Mnemonics();
+    case Target::Arch::AArch64:
+        return AArch64Mnemonics();
+    default:
+        return none;
+    }
+}
+
+// The number of single-character insertions, deletions and substitutions that
+// turn `left` into `right`.
+[[nodiscard]] inline std::size_t AsmNameDistance(const std::string_view left, const std::string_view right) {
+    std::vector<std::size_t> row(right.size() + 1);
+    for (std::size_t i = 0; i <= right.size(); ++i) {
+        row[i] = i;
+    }
+    for (std::size_t i = 1; i <= left.size(); ++i) {
+        std::size_t diagonal = row[0];
+        row[0] = i;
+        for (std::size_t j = 1; j <= right.size(); ++j) {
+            const std::size_t previous = row[j];
+            const std::size_t substitute = diagonal + (left[i - 1] == right[j - 1] ? 0 : 1);
+            row[j] = std::min({row[j] + 1, row[j - 1] + 1, substitute});
+            diagonal = previous;
+        }
+    }
+    return row.back();
+}
+
+// The instruction of `arch` closest to `mnemonic`, when one is close enough to
+// be worth naming in a diagnostic. A misspelling is usually one key away, so
+// the threshold is a single edit for the short names most mnemonics have and
+// two for the longer ones; a name nothing comes that close to is a name its
+// author meant, and offering the nearest of a hundred instructions would only
+// be noise.
+//
+// Equal distances are broken alphabetically rather than by whichever the table
+// yields first: the table is unordered, and a suggestion that depends on the
+// standard library's hashing would differ between platforms for the same
+// mistake.
+[[nodiscard]] inline std::optional<std::string_view> ClosestAsmMnemonic(const Target::Arch arch,
+                                                                        const std::string_view mnemonic) {
+    const std::size_t threshold = mnemonic.size() <= 4 ? 1 : 2;
+    std::size_t bestDistance = threshold + 1;
+    std::optional<std::string_view> best;
+    for (const std::string_view candidate : AsmMnemonics(arch)) {
+        const std::size_t distance = AsmNameDistance(mnemonic, candidate);
+        if (distance > threshold) {
+            continue;
+        }
+        if (!best.has_value() || distance < bestDistance || (distance == bestDistance && candidate < *best)) {
+            bestDistance = distance;
+            best = candidate;
+        }
+    }
+    return best;
 }
 } // namespace Rux

@@ -1,0 +1,14 @@
+// rux:target linux-aarch64
+
+// A misspelling and an instruction the architecture has but this assembler
+// does not encode. The two are different mistakes: the first is worth guessing
+// at, and the second is a gap to be filled rather than a name to be corrected.
+asm func Names(x: int64) -> int64 {
+    mvo x0, x1
+    adc x0, x1, x2
+    ret
+}
+
+func Main() -> int {
+    return 0;
+}
