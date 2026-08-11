@@ -54,10 +54,31 @@ void AppendDiagnostics(std::string &out, std::span<const Diagnostic> diags) {
     }
 }
 
+// The target a case is compiled for. A case that says nothing is compiled for
+// the host, which is what every case about the language rather than the
+// machine wants; one that opens with `// rux:target <triple>` names its own,
+// so a diagnostic about a foreign target can be asserted from any host.
+std::string CaseTarget(const std::string &source) {
+    static constexpr std::string_view directive = "// rux:target ";
+    if (source.starts_with(directive)) {
+        const auto end = source.find('\n');
+        std::string triple = source.substr(directive.size(), end - directive.size());
+        while (!triple.empty() && (triple.back() == ' ' || triple.back() == '\t')) {
+            triple.pop_back();
+        }
+        return triple;
+    }
+    return Driver::HostTargetTriple();
+}
+
 // Run the frontend over one in-memory source file and render its diagnostics.
 // Later stages only run when the earlier ones are clean, mirroring the driver.
 std::string FrontendDiagnostics(std::string source, const std::string &sourceName) {
     std::string out;
+
+    CompileTimeContext context;
+    context.targetTriple = CaseTarget(source);
+    context.target = Driver::TargetContextForTriple(context.targetTriple);
 
     Lexer lexer(std::move(source), sourceName);
     auto lexResult = lexer.Tokenize();
@@ -66,15 +87,14 @@ std::string FrontendDiagnostics(std::string source, const std::string &sourceNam
         return out;
     }
 
-    Parser parser(std::move(lexResult.tokens), sourceName);
+    Parser parser(std::move(lexResult.tokens), sourceName, context.target.arch);
     auto parseResult = parser.Parse();
     AppendDiagnostics(out, parseResult.diagnostics);
     if (parseResult.HasErrors()) {
         return out;
     }
 
-    SemanticAnalyzer analyzer({&parseResult.module}, {}, "Golden",
-                              std::string(Driver::TargetOsName(Driver::HostTargetTriple())));
+    SemanticAnalyzer analyzer({&parseResult.module}, {}, "Golden", context);
     const auto semaResult = analyzer.Analyze();
     AppendDiagnostics(out, semaResult.diagnostics);
     return out;

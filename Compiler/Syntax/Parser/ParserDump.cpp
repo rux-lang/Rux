@@ -309,7 +309,7 @@ private:
                 out << instr.mnemonic;
                 for (std::size_t i = 0; i < instr.operands.size(); ++i) {
                     out << (i == 0 ? " " : ", ");
-                    PrintAsmOperand(instr.operands[i]);
+                    PrintAsmOperand(instr.operands[i], instr.arch);
                 }
                 out << '\n';
             }
@@ -324,16 +324,60 @@ private:
         }
     }
 
-    void PrintAsmOperand(const AsmOperand &op) {
+    // The shift or extend an AArch64 operand carries, printed as it was
+    // written. Nothing is printed for an operand that carries neither, which
+    // is every x86-64 one.
+    void PrintAsmShift(const AsmOperand &op) {
+        static constexpr std::string_view shiftNames[5] = {"", "lsl", "lsr", "asr", "ror"};
+        static constexpr std::string_view extendNames[9] = {"",     "uxtb", "uxth", "uxtw", "uxtx",
+                                                            "sxtb", "sxth", "sxtw", "sxtx"};
+        if (op.shift != AsmShiftKind::None) {
+            out << ", " << shiftNames[static_cast<std::size_t>(op.shift)] << " #" << op.shiftAmount;
+        }
+        else if (op.extend != AsmExtendKind::None) {
+            out << ", " << extendNames[static_cast<std::size_t>(op.extend)];
+            if (op.shiftAmount != 0) {
+                out << " #" << op.shiftAmount;
+            }
+        }
+    }
+
+    void PrintAsmOperand(const AsmOperand &op, const Target::Arch arch) {
         switch (op.kind) {
         case AsmOperand::Kind::Reg:
         case AsmOperand::Kind::Sym:
             out << op.name;
+            PrintAsmShift(op);
             break;
         case AsmOperand::Kind::Imm:
+            if (arch == Target::Arch::AArch64) {
+                out << '#';
+            }
             out << op.imm;
+            PrintAsmShift(op);
             break;
         case AsmOperand::Kind::Mem: {
+            if (arch == Target::Arch::AArch64) {
+                out << '[' << op.memBase;
+                if (!op.memIndex.empty()) {
+                    out << ", " << op.memIndex;
+                    PrintAsmShift(op);
+                }
+                else if (op.imm != 0 && op.indexMode != AsmIndexMode::PostIndex) {
+                    out << ", #" << op.imm;
+                }
+                if (!op.memSym.empty()) {
+                    out << ", " << op.memSym;
+                }
+                out << ']';
+                if (op.indexMode == AsmIndexMode::PreIndex) {
+                    out << '!';
+                }
+                else if (op.indexMode == AsmIndexMode::PostIndex) {
+                    out << ", #" << op.imm;
+                }
+                break;
+            }
             out << '[';
             bool wrote = false;
             if (!op.memBase.empty()) {

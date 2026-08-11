@@ -1,0 +1,14 @@
+// rux:target linux-aarch64
+
+// An x86-64 body compiled for AArch64. Nothing in the syntax says which
+// machine a body was written for, so the mnemonics have to: `mov` and `ret`
+// are both machines' and say nothing, `imul` is x86-64's alone.
+asm func Triple(x: int64) -> int64 {
+    mov rax, rdi
+    imul rax, 3
+    ret
+}
+
+func Main() -> int {
+    return 0;
+}

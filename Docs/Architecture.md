@@ -34,7 +34,7 @@ The driver loads the root manifest and dependencies before entering this pipelin
 | `Target`               | Header-only target triples, ABI, layout, and instruction models       | Standard library only                 |
 | `Package`              | `Rux.toml`, dependency metadata, and workspace discovery              | Standard library                      |
 | `Lexer`                | Tokens and lexical analysis                                           | Diagnostics                           |
-| `Syntax`               | AST and parser                                                        | Lexer and Diagnostics                 |
+| `Syntax`               | AST and parser                                                        | Lexer, Diagnostics, and Target        |
 | `Semantic`             | Symbols, types, conditional compilation, and validated semantic model | Syntax and Diagnostics                |
 | `Ir/Hir`               | High-level IR and its transformations                                 | Semantic and Lexer                    |
 | `Ir/Lir`               | Control-flow-explicit low-level IR                                    | Semantic                              |
@@ -55,6 +55,8 @@ The CMake target graph enforces these dependencies. Prefer adding a dependency t
 `Target` describes the output machine. `System` describes the host running the compiler. Code generation and linking must use target data rather than host preprocessor checks. For example, emitting a Linux executable while running on Windows is a target decision; locating `%LocalAppData%` is a host decision.
 
 Operating-system APIs are confined to `Compiler/System`; the CI isolation guard is `Tests/Policy/PlatformIsolation/Check.sh`. New uses of `getenv`, `<windows.h>`, `fork`, or similar APIs belong behind a `System` interface.
+
+The language parses the same for every target, with one exception: an `asm func` body is machine text rather than Rux, so `Parser` takes the target architecture and reads the body with that architecture's register table (`Target/AsmRegisters.h`). The mnemonics are checked later — a body whose instructions belong to the other architecture is reported during semantic analysis, after `when` folding has dropped the branches this build never reaches.
 
 ## Architecture Naming
 

@@ -1,0 +1,1 @@
+8:5: warning: 'imul' is an x86-64 instruction, but asm func 'Triple' is compiled for AArch64

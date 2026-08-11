@@ -19,11 +19,18 @@ struct ParseResult {
 
 class Parser {
 public:
-    explicit Parser(std::vector<Token> inputTokens, std::string inputSourceName = "<input>");
+    // `inputArch` is the architecture the source is being compiled for. It only
+    // reaches `asm func` bodies, whose register names and operand syntax are
+    // the machine's rather than the language's; everything else parses the same
+    // for every target. It defaults to the host so an embedder or a focused
+    // test that names no target still reads the assembly it would write.
+    explicit Parser(std::vector<Token> inputTokens, std::string inputSourceName = "<input>",
+                    Target::Arch inputArch = Target::HostArch);
 
     // Convenience: lex and parse in one step.
     [[nodiscard]] static std::optional<ParseResult> FromLexResult(const LexerResult &lex,
-                                                                  const std::string &sourceName = "<input>");
+                                                                  const std::string &sourceName = "<input>",
+                                                                  Target::Arch arch = Target::HostArch);
     [[nodiscard]] ParseResult Parse();
 
     // Dump the parsed AST to a file for debugging.
@@ -33,6 +40,7 @@ public:
 private:
     std::vector<Token> tokens;
     std::string sourceName;
+    Target::Arch arch = Target::HostArch;
     std::size_t pos = 0;
     std::vector<ParserDiagnostic> diagnostics;
     bool structInitAllowed = true; // disabled inside if/while/for/match conditions
@@ -120,6 +128,9 @@ private:
     [[nodiscard]] bool CanStartAsmOperand() const noexcept;
     AsmOperand ParseAsmOperand();
     void ParseAsmMemory(AsmOperand &op);
+    // AArch64: the `, LSL #3` / `, UXTW #2` tail a register or immediate
+    // operand may carry. Consumes nothing when the next tokens are not one.
+    void ParseAsmShift(AsmOperand &op);
     std::int64_t ParseAsmInt();
 
     // Shared declaration helpers

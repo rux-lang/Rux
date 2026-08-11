@@ -241,7 +241,7 @@ bool CompilerDriver::LexAndParseSources() {
         if (lexResult.HasErrors()) {
             continue;
         }
-        Parser parser(std::move(lexResult.tokens), file.path.string());
+        Parser parser(std::move(lexResult.tokens), file.path.string(), compileTimeContext.target.arch);
         auto parseResult = parser.Parse();
         if (EmitAll(parseResult.diagnostics)) {
             parseErrors = true;
@@ -429,7 +429,7 @@ bool CompilerDriver::LoadDependencies() {
                 return false;
             }
             const auto depParsingStart = std::chrono::steady_clock::now();
-            Parser depParser(std::move(depLex.tokens), depFile.path.string());
+            Parser depParser(std::move(depLex.tokens), depFile.path.string(), compileTimeContext.target.arch);
             auto depParse = depParser.Parse();
             stats.parsing += ElapsedMs(depParsingStart);
             EmitAll(depParse.diagnostics);

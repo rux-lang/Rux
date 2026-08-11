@@ -2718,8 +2718,11 @@ private:
         }
 
         if (d.isAsm) {
-            // An asm function's body is raw x86-64, not Rux statements; it is
-            // validated when the assembler encodes it, not here.
+            // An asm function's body is raw machine instructions, not Rux
+            // statements, so it is validated when the assembler encodes it —
+            // except for the one thing the assembler for the target cannot
+            // say, which is that the body was written for the other one.
+            CheckAsmBodyArchitecture(d);
         }
         else if (!d.body) {
             if (d.intrinsicName.empty()) {
@@ -2735,6 +2738,31 @@ private:
         currentFunctionNoReturn = savedNoReturn;
         currentTypeParams = savedTypeParams;
         currentFunctionDecl = savedFunctionDecl;
+    }
+
+    // An `asm func` body is written for one architecture, and nothing in the
+    // syntax says which: the mnemonics do. Report the first instruction that
+    // names an instruction of the architecture the compilation is not for,
+    // which is the whole body's mistake rather than that one line's.
+    //
+    // This runs after `when` folding, so a body a build never reaches is never
+    // reported, and it stops at the first offender so a body written for the
+    // wrong machine costs one diagnostic rather than one per line.
+    void CheckAsmBodyArchitecture(const FuncDecl &d) const {
+        const Target::Arch target = context.target.arch;
+        for (const auto &instr : d.asmBody) {
+            if (instr.mnemonic.empty()) {
+                continue; // a label definition
+            }
+            const Target::Arch mnemonicArch = AsmMnemonicArch(instr.mnemonic);
+            if (mnemonicArch == Target::Arch::Unknown || mnemonicArch == target) {
+                continue;
+            }
+            EmitWarning(instr.location,
+                        std::format("'{}' is an {} instruction, but asm func '{}' is compiled for {}", instr.mnemonic,
+                                    Target::ToDisplayString(mnemonicArch), d.name, Target::ToDisplayString(target)));
+            return;
+        }
     }
 
     void CheckStructDecl(const StructDecl &d) {

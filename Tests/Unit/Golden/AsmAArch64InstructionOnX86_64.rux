@@ -1,0 +1,13 @@
+// rux:target linux-x86_64
+
+// The same mistake the other way round: an AArch64 body compiled for x86-64.
+// The operand syntax is read far enough to reach the mnemonic that names the
+// machine, so the report is about the architecture rather than about '#'.
+asm func Load(p: *int64) -> int64 {
+    ldr x0, [x0, #8]
+    ret
+}
+
+func Main() -> int {
+    return 0;
+}

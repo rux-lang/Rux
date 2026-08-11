@@ -20,16 +20,18 @@ bool ParseResult::HasErrors() const noexcept {
 }
 
 // Constructor / FromLexResult
-Parser::Parser(std::vector<Token> inputTokens, std::string inputSourceName)
+Parser::Parser(std::vector<Token> inputTokens, std::string inputSourceName, const Target::Arch inputArch)
     : tokens(std::move(inputTokens))
-    , sourceName(std::move(inputSourceName)) {
+    , sourceName(std::move(inputSourceName))
+    , arch(inputArch) {
 }
 
-std::optional<ParseResult> Parser::FromLexResult(const LexerResult &lex, const std::string &sourceName) {
+std::optional<ParseResult> Parser::FromLexResult(const LexerResult &lex, const std::string &sourceName,
+                                                 const Target::Arch arch) {
     if (lex.HasErrors()) {
         return std::nullopt;
     }
-    Parser p(lex.tokens, sourceName);
+    Parser p(lex.tokens, sourceName, arch);
     return p.Parse();
 }
 
