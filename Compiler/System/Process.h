@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 namespace Rux::System {
@@ -20,13 +21,15 @@ struct RunResult {
 // by `rux run`). Returns the child's exit code, or nullopt when the process
 // could not be launched.
 [[nodiscard]] std::optional<int> RunInherited(const std::filesystem::path &exe,
-                                              std::span<const std::string_view> args = {});
+                                              std::span<const std::string_view> args = {},
+                                              std::error_code *launchError = nullptr);
 
 // Run `exe`, stdin redirected from the null device, and its combined
 // stdout+stderr captured (used by tests and `rux test`). Returns nullopt when
 // the process could not be launched.
 [[nodiscard]] std::optional<RunResult> RunCaptured(const std::filesystem::path &exe,
-                                                   std::span<const std::string_view> args = {});
+                                                   std::span<const std::string_view> args = {},
+                                                   std::error_code *launchError = nullptr);
 
 // Base URL of the versioned registry API, whose routes live below /v1. The
 // package commands override it with --registry or RUX_REGISTRY_URL to reach a

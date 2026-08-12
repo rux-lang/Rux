@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <format>
@@ -247,7 +248,8 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
     return HttpResponse{.status = static_cast<unsigned>(status), .body = std::move(result)};
 }
 
-std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<const std::string_view> args) {
+std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<const std::string_view> args,
+                                std::error_code *launchError) {
     std::string cmdLine = "\"" + exe.string() + "\"";
     for (const auto &a : args) {
         cmdLine += " \"";
@@ -262,6 +264,9 @@ std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<cons
     si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
     si.dwFlags = STARTF_USESTDHANDLES;
     if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi)) {
+        if (launchError != nullptr) {
+            *launchError = {static_cast<int>(GetLastError()), std::system_category()};
+        }
         return std::nullopt;
     }
     WaitForSingleObject(pi.hProcess, INFINITE);
@@ -272,13 +277,17 @@ std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<cons
     return static_cast<int>(exitCode);
 }
 
-std::optional<RunResult> RunCaptured(const std::filesystem::path &exe, const std::span<const std::string_view> args) {
+std::optional<RunResult> RunCaptured(const std::filesystem::path &exe, const std::span<const std::string_view> args,
+                                     std::error_code *launchError) {
     SECURITY_ATTRIBUTES sa{};
     sa.nLength = sizeof(sa);
     sa.bInheritHandle = TRUE;
     HANDLE readPipe = nullptr;
     HANDLE writePipe = nullptr;
     if (!CreatePipe(&readPipe, &writePipe, &sa, 0)) {
+        if (launchError != nullptr) {
+            *launchError = {static_cast<int>(GetLastError()), std::system_category()};
+        }
         return std::nullopt;
     }
     // The read end must stay in this process only.
@@ -299,10 +308,14 @@ std::optional<RunResult> RunCaptured(const std::filesystem::path &exe, const std
     si.hStdError = writePipe;
     si.dwFlags = STARTF_USESTDHANDLES;
     if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi)) {
+        const DWORD error = GetLastError();
         CloseHandle(readPipe);
         CloseHandle(writePipe);
         if (hNul != INVALID_HANDLE_VALUE) {
             CloseHandle(hNul);
+        }
+        if (launchError != nullptr) {
+            *launchError = {static_cast<int>(error), std::system_category()};
         }
         return std::nullopt;
     }
@@ -488,7 +501,8 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
     return HttpResponse{.status = code, .body = ReadWholeFile(responsePath).value_or(std::string{})};
 }
 
-std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<const std::string_view> args) {
+std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<const std::string_view> args,
+                                std::error_code *launchError) {
     std::vector<std::string> argStrings;
     argStrings.push_back(exe.string());
     for (const auto &a : args) {
@@ -504,6 +518,9 @@ std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<cons
 
     const pid_t pid = fork();
     if (pid < 0) {
+        if (launchError != nullptr) {
+            *launchError = {errno, std::generic_category()};
+        }
         return std::nullopt;
     }
     if (pid == 0) {
@@ -516,7 +533,8 @@ std::optional<int> RunInherited(const std::filesystem::path &exe, std::span<cons
     return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
 }
 
-std::optional<RunResult> RunCaptured(const std::filesystem::path &exe, const std::span<const std::string_view> args) {
+std::optional<RunResult> RunCaptured(const std::filesystem::path &exe, const std::span<const std::string_view> args,
+                                     std::error_code *launchError) {
     const std::string exeStr = exe.string();
     std::vector<std::string> argStrings;
     argStrings.reserve(args.size() + 1);
@@ -530,12 +548,19 @@ std::optional<RunResult> RunCaptured(const std::filesystem::path &exe, const std
     argv.push_back(nullptr);
     int fds[2];
     if (pipe(fds) != 0) {
+        if (launchError != nullptr) {
+            *launchError = {errno, std::generic_category()};
+        }
         return std::nullopt;
     }
     const pid_t pid = fork();
     if (pid < 0) {
+        const int error = errno;
         close(fds[0]);
         close(fds[1]);
+        if (launchError != nullptr) {
+            *launchError = {error, std::generic_category()};
+        }
         return std::nullopt;
     }
     if (pid == 0) {

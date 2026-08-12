@@ -169,8 +169,9 @@ TEST_CASE("PE linker preserves the x86-64 executable layout and patched targets"
     REQUIRE(Read16(image, 0) == 0x5A4D); // MZ
     const size_t peOffset = Read32(image, 0x3C);
     REQUIRE(peOffset + 24 <= image.size());
-    CHECK(Read32(image, peOffset) == 0x0000'4550); // PE\0\0
-    CHECK(Read16(image, peOffset + 4) == 0x8664);  // IMAGE_FILE_MACHINE_AMD64
+    CHECK(Read32(image, peOffset) == 0x0000'4550);       // PE\0\0
+    CHECK(Read16(image, peOffset + 4) == 0x8664);        // IMAGE_FILE_MACHINE_AMD64
+    CHECK((Read16(image, peOffset + 22) & 0x0001) != 0); // IMAGE_FILE_RELOCS_STRIPPED
     const uint16_t sectionCount = Read16(image, peOffset + 6);
     REQUIRE(sectionCount == 3);
     CHECK(Read16(image, peOffset + 20) == 240);
@@ -345,7 +346,8 @@ TEST_CASE("PE linker preserves both x86-64 DLL entry stub forms") {
     std::filesystem::remove(importLibrary, error);
 
     const size_t peOffset = Read32(image, 0x3C);
-    REQUIRE(Read16(image, peOffset + 4) == 0x8664); // IMAGE_FILE_MACHINE_AMD64
+    REQUIRE(Read16(image, peOffset + 4) == 0x8664);      // IMAGE_FILE_MACHINE_AMD64
+    CHECK((Read16(image, peOffset + 22) & 0x0001) != 0); // IMAGE_FILE_RELOCS_STRIPPED
     const size_t optional = peOffset + 24;
     REQUIRE(Read16(image, optional) == 0x020B); // PE32+
     REQUIRE(Read16(image, optional + 68) == 2); // IMAGE_SUBSYSTEM_WINDOWS_GUI
@@ -497,7 +499,8 @@ TEST_CASE("PE linker emits and resolves a Windows AArch64 executable") {
 
     const size_t peOffset = Read32(image, 0x3C);
     REQUIRE(Read32(image, peOffset) == 0x0000'4550);
-    CHECK(Read16(image, peOffset + 4) == 0xAA64); // IMAGE_FILE_MACHINE_ARM64
+    CHECK(Read16(image, peOffset + 4) == 0xAA64);        // IMAGE_FILE_MACHINE_ARM64
+    CHECK((Read16(image, peOffset + 22) & 0x0001) != 0); // IMAGE_FILE_RELOCS_STRIPPED
     REQUIRE(Read16(image, peOffset + 20) == 240);
     const size_t optional = peOffset + 24;
     CHECK(Read16(image, optional) == 0x020B); // PE32+
@@ -596,6 +599,85 @@ TEST_CASE("PE linker emits and resolves a Windows AArch64 executable") {
     CHECK(Read64(image, dataSection.rawOffset) == imageBase + secondRva);
 }
 
+TEST_CASE("PE linker eight-byte aligns Windows AArch64 thunk tables across DLL groups") {
+    const auto output = PeTestPath();
+    auto importedLibrary = output;
+    importedLibrary.replace_filename(output.stem().string() + "-imports.dll");
+    auto importLibrary = importedLibrary;
+    importLibrary.replace_extension(".lib");
+    std::error_code filesystemError;
+    std::filesystem::remove(output, filesystemError);
+    std::filesystem::remove(importedLibrary, filesystemError);
+    std::filesystem::remove(importLibrary, filesystemError);
+
+    RcuFile library;
+    library.arch = RcuArch::AArch64;
+    library.sourcePath = "Imported.rux";
+    RcuSection libraryText;
+    libraryText.name = ".text";
+    libraryText.type = RcuSecType::Text;
+    libraryText.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    libraryText.alignment = 4;
+    AppendWord(libraryText.data, 0xD65F03C0); // ret
+    library.sections.push_back(std::move(libraryText));
+    library.symbols.push_back({"Imported", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+
+    Linker libraryLinker({std::move(library)}, importedLibrary.stem().string(), {}, ArtifactKind::SharedLibrary,
+                         Target::OS::Windows, Target::Arch::AArch64);
+    REQUIRE(libraryLinker.Link(importedLibrary));
+
+    RcuFile executable;
+    executable.arch = RcuArch::AArch64;
+    executable.sourcePath = "Main.rux";
+    RcuSection executableText;
+    executableText.name = ".text";
+    executableText.type = RcuSecType::Text;
+    executableText.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    executableText.alignment = 4;
+    AppendWord(executableText.data, 0x94000000); // bl Imported
+    AppendWord(executableText.data, 0x52800000); // mov w0, #0
+    AppendWord(executableText.data, 0xD65F03C0); // ret
+    executableText.relocs.push_back({0, 1, RcuRelType::AArch64Call26, 0});
+    executable.sections.push_back(std::move(executableText));
+    executable.symbols.push_back({"Main", "int", 0, 12, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    executable.symbols.push_back({"Imported", importedLibrary.filename().string(), 0, 0, RCU_SEC_EXTERNAL,
+                                  RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+    Linker executableLinker({std::move(executable)}, "AlignedImports", {importedLibrary.parent_path()},
+                            ArtifactKind::Executable, Target::OS::Windows, Target::Arch::AArch64);
+    REQUIRE(executableLinker.Link(output));
+    const auto image = ReadFile(output);
+    std::filesystem::remove(output, filesystemError);
+    std::filesystem::remove(importedLibrary, filesystemError);
+    std::filesystem::remove(importLibrary, filesystemError);
+
+    const size_t peOffset = Read32(image, 0x3C);
+    const size_t optional = peOffset + 24;
+    const uint32_t importRva = Read32(image, optional + 112 + 8);
+    const uint32_t importSize = Read32(image, optional + 112 + 12);
+    const uint32_t iatRva = Read32(image, optional + 112 + 12 * 8);
+    CHECK(importSize == 60); // two DLL descriptors plus the null descriptor
+    CHECK(iatRva % 8 == 0);
+
+    const size_t sectionTable = optional + Read16(image, peOffset + 20);
+    const uint16_t sectionCount = Read16(image, peOffset + 6);
+    size_t importOffset = image.size();
+    for (uint16_t i = 0; i < sectionCount; ++i) {
+        const size_t section = sectionTable + static_cast<size_t>(i) * 40;
+        const uint32_t sectionRva = Read32(image, section + 12);
+        const uint32_t sectionSize = std::max(Read32(image, section + 8), Read32(image, section + 16));
+        if (importRva >= sectionRva && importRva < sectionRva + sectionSize) {
+            importOffset = Read32(image, section + 20) + importRva - sectionRva;
+            break;
+        }
+    }
+    REQUIRE(importOffset != image.size());
+    for (size_t descriptor = 0; descriptor < 2; ++descriptor) {
+        CHECK(Read32(image, importOffset + descriptor * 20) % 8 == 0);      // OriginalFirstThunk
+        CHECK(Read32(image, importOffset + descriptor * 20 + 16) % 8 == 0); // FirstThunk
+    }
+}
+
 TEST_CASE("PE linker emits Windows AArch64 DLL entries exports and import libraries") {
     for (const bool definesDllMain : {false, true}) {
         CAPTURE(definesDllMain);
@@ -638,6 +720,7 @@ TEST_CASE("PE linker emits Windows AArch64 DLL entries exports and import librar
         const size_t peOffset = Read32(image, 0x3C);
         REQUIRE(Read16(image, peOffset + 4) == 0xAA64);      // IMAGE_FILE_MACHINE_ARM64
         CHECK((Read16(image, peOffset + 22) & 0x2000) != 0); // IMAGE_FILE_DLL
+        CHECK((Read16(image, peOffset + 22) & 0x0001) != 0); // IMAGE_FILE_RELOCS_STRIPPED
         const size_t optional = peOffset + 24;
         CHECK(Read64(image, optional + 24) == 0x1'8000'0000ULL);
         CHECK(Read16(image, optional + 68) == 2);          // GUI subsystem

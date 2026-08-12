@@ -50,6 +50,21 @@ namespace {
         return Arch::Unknown;
     }
 }
+
+[[nodiscard]] Arch WindowsImageArchitecture(const USHORT machine) noexcept {
+    switch (machine) {
+    case IMAGE_FILE_MACHINE_AMD64:
+        return Arch::X86_64;
+    case IMAGE_FILE_MACHINE_I386:
+        return Arch::X86_32;
+    case IMAGE_FILE_MACHINE_ARM64:
+        return Arch::AArch64;
+    case IMAGE_FILE_MACHINE_ARMNT:
+        return Arch::ARM32;
+    default:
+        return Arch::Unknown;
+    }
+}
 #endif
 
 #if RUX_ARCH_X86 || RUX_ARCH_X86_64
@@ -259,6 +274,22 @@ HostArchitectureInfo GetHostArchitectureInfo() noexcept {
     GetNativeSystemInfo(&systemInfo);
     if (const Arch nativeArch = WindowsArchitecture(systemInfo.wProcessorArchitecture); nativeArch != Arch::Unknown) {
         info.nativeArch = nativeArch;
+    }
+    // An x86-64 process under Windows-on-ARM may see an AMD64 compatibility
+    // view through GetNativeSystemInfo. IsWow64Process2 reports the actual
+    // native machine explicitly. Resolve it dynamically so Rux retains the
+    // system-information fallback on Windows versions predating that API.
+    using IsWow64Process2Fn = BOOL(WINAPI *)(HANDLE, USHORT *, USHORT *);
+    const HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
+    const auto isWow64Process2 = kernel32 == nullptr
+                                   ? nullptr
+                                   : reinterpret_cast<IsWow64Process2Fn>(GetProcAddress(kernel32, "IsWow64Process2"));
+    USHORT processMachine = IMAGE_FILE_MACHINE_UNKNOWN;
+    USHORT nativeMachine = IMAGE_FILE_MACHINE_UNKNOWN;
+    if (isWow64Process2 != nullptr && isWow64Process2(GetCurrentProcess(), &processMachine, &nativeMachine)) {
+        if (const Arch nativeArch = WindowsImageArchitecture(nativeMachine); nativeArch != Arch::Unknown) {
+            info.nativeArch = nativeArch;
+        }
     }
 #elif RUX_OS_MACOS && RUX_ARCH_X86_64
     int translated = 0;

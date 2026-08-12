@@ -26,9 +26,14 @@ namespace Rux {
 
 // DLL-specific
 [[maybe_unused]] static constexpr uint16_t kSubsystemGUI = 2; // windows GUI (used for DLLs)
-// IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_LARGE_ADDRESS_AWARE |
-// IMAGE_FILE_DLL
-[[maybe_unused]] static constexpr uint16_t kCharacteristicsDll = 0x2022u;
+// These images have no base-relocation table, so IMAGE_FILE_RELOCS_STRIPPED
+// must describe the fixed-base contract in the COFF header as well as through
+// the absence of DYNAMIC_BASE below.
+// IMAGE_FILE_RELOCS_STRIPPED | IMAGE_FILE_EXECUTABLE_IMAGE |
+// IMAGE_FILE_LARGE_ADDRESS_AWARE
+[[maybe_unused]] static constexpr uint16_t kCharacteristicsExecutable = 0x0023u;
+// The same flags plus IMAGE_FILE_DLL.
+[[maybe_unused]] static constexpr uint16_t kCharacteristicsDll = 0x2023u;
 
 // IMAGE_SCN_ characteristics
 [[maybe_unused]] static constexpr uint32_t kScnText = 0x6000'0020u;  // CNT_CODE | MEM_EXECUTE | MEM_READ
@@ -281,9 +286,7 @@ static Buf BuildPeCoffHeader(const PeArchitectureConfig &architecture, const uin
     WriteU32(header, 0);
     WriteU32(header, 0);   // no COFF symbol table
     WriteU16(header, 240); // SizeOfOptionalHeader for PE32+
-    // EXE: EXECUTABLE | LARGE_ADDRESS_AWARE
-    // DLL: EXECUTABLE | LARGE_ADDRESS_AWARE | DLL
-    WriteU16(header, isDll ? kCharacteristicsDll : static_cast<uint16_t>(0x0022u));
+    WriteU16(header, isDll ? kCharacteristicsDll : kCharacteristicsExecutable);
     return header;
 }
 
@@ -698,6 +701,11 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     const auto importDirOff = static_cast<uint32_t>(rdataBuf.size());
     const size_t importDirPos = rdataBuf.size();
     WriteZeros(rdataBuf, (importsByDll.size() + 1) * 20);
+    // IMAGE_IMPORT_DESCRIPTOR is 20 bytes, so an even number of DLL groups
+    // leaves the directory plus its null descriptor only four-byte aligned.
+    // Each PE32+ thunk is a uint64_t and an AArch64 import stub addresses its
+    // IAT entry with a scaled 64-bit LDR; align both thunk-table families.
+    PadTo(rdataBuf, 8);
     std::vector<std::string> importDllNames;
     std::vector<std::vector<size_t>> importDllMembers;
     importDllNames.reserve(importsByDll.size());
@@ -713,6 +721,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         intPos[g] = rdataBuf.size();
         WriteZeros(rdataBuf, (importDllMembers[g].size() + 1) * 8);
     }
+    PadTo(rdataBuf, 8);
     const auto iatOff = static_cast<uint32_t>(rdataBuf.size());
     std::vector<uint32_t> iatGroupOff(importDllNames.size());
     std::vector<size_t> iatPos(importDllNames.size());

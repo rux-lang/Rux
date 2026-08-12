@@ -118,9 +118,16 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         }
         std::print("Running `{}`\n", commandLine);
     }
-    const auto exitCode = RunInherited(exePath, runArgs);
+    std::error_code launchError;
+    const auto exitCode = RunInherited(exePath, runArgs, &launchError);
     if (!exitCode) {
-        std::print(stderr, "error: failed to launch '{}'\n", exePath.string());
+        if (launchError) {
+            std::print(stderr, "error: failed to launch '{}': {} (system error {})\n", exePath.string(),
+                       launchError.message(), launchError.value());
+        }
+        else {
+            std::print(stderr, "error: failed to launch '{}'\n", exePath.string());
+        }
         return 1;
     }
     return *exitCode;

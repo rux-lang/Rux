@@ -18,9 +18,10 @@ struct HostArchitectureInfo {
 };
 
 // Runtime architecture information for the current host. On Windows this uses
-// native-system information so an x86-64 process under Windows-on-ARM or
-// Rosetta on Apple Silicon reports AArch64 as `nativeArch`. Other hosts report
-// the process architecture for both fields.
+// the native machine reported by IsWow64Process2, with native-system
+// information as a compatibility fallback; on macOS it detects Rosetta. An
+// x86-64 process translated on either OS therefore reports AArch64 as
+// `nativeArch`. Other hosts report the process architecture for both fields.
 [[nodiscard]] HostArchitectureInfo GetHostArchitectureInfo() noexcept;
 
 // CPU feature flags, cache line size, and core counts of the executing machine.

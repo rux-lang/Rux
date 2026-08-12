@@ -1,8 +1,11 @@
 #include "System/Process.h"
+#include "Target/Platform.h"
 
 #include <array>
 #include <doctest.h>
+#include <filesystem>
 #include <string>
+#include <system_error>
 
 using namespace Rux::System;
 
@@ -41,3 +44,15 @@ TEST_CASE("BuildMultipartBody frames every part with the same boundary") {
     CHECK(encoded->body.contains("Content-Disposition: form-data; name=\"manifest\"\r\n\r\n[Manifest]\n"));
     CHECK(encoded->body.contains("Content-Disposition: form-data; name=\"package\"\r\n\r\nPK\x03\x04"));
 }
+
+#if RUX_OS_WINDOWS
+TEST_CASE("failed Windows subprocess launch preserves the system error") {
+    const auto missing = std::filesystem::temp_directory_path() / "rux-missing-subprocess-for-launch-error.exe";
+    std::error_code filesystemError;
+    std::filesystem::remove(missing, filesystemError);
+
+    std::error_code launchError;
+    CHECK_FALSE(RunCaptured(missing, {}, &launchError).has_value());
+    CHECK(launchError);
+}
+#endif

@@ -317,9 +317,16 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         const auto start = std::chrono::steady_clock::now();
 
         // Execute the test binary, capturing its combined stdout/stderr.
-        auto run = RunCaptured(exePath);
+        std::error_code launchError;
+        auto run = RunCaptured(exePath, {}, &launchError);
         if (!run) {
-            std::print(stderr, "error: failed to launch '{}'\n", exePath.string());
+            if (launchError) {
+                std::print(stderr, "error: failed to launch '{}': {} (system error {})\n", exePath.string(),
+                           launchError.message(), launchError.value());
+            }
+            else {
+                std::print(stderr, "error: failed to launch '{}'\n", exePath.string());
+            }
             outcome.status = TestStatus::LaunchError;
             return outcome;
         }
