@@ -166,13 +166,17 @@ TEST_CASE("output directories separate a foreign target from the host") {
     Manifest manifest;
     manifest.build.output = "Artifacts";
     const std::filesystem::path root = "Workspace";
-    constexpr std::string_view foreign = "windows-aarch64";
+    // The host is one triple, so naming a second one leaves a target that is
+    // foreign wherever this runs — on an AArch64 machine as much as on x86-64.
+    const bool hostIsWindowsArm = HostTargetTriple() == "windows-aarch64";
+    const std::string foreign = hostIsWindowsArm ? "linux-aarch64" : "windows-aarch64";
+    const std::string alias = hostIsWindowsArm ? "linux-arm64" : "windows-arm64";
 
     CHECK(ResolveBuildOutputDir(root, manifest, "Release", foreign) == root / "Artifacts" / "Release" / foreign);
     CHECK(ResolveBuildOutputDir(root, manifest, "Release", foreign, false) == root / "Artifacts" / foreign);
     // An alias resolves to the one canonical directory, so `--target
     // windows-arm64` and `--target windows-aarch64` are the same build.
-    CHECK(ResolveBuildOutputDir(root, manifest, "Release", "windows-arm64") ==
+    CHECK(ResolveBuildOutputDir(root, manifest, "Release", alias) ==
           ResolveBuildOutputDir(root, manifest, "Release", foreign));
     // Target-independent output, such as a published `.ruxpkg`, adds nothing.
     CHECK(ResolveBuildOutputDir(root, manifest, {}, {}, false) == root / "Artifacts");
@@ -507,10 +511,14 @@ TEST_CASE("compiler driver builds an executable for linux-aarch64") {
 
     CHECK(result.ok);
     CHECK(diagnostics.empty());
-    // The artifact is named for the target operating system and sits in the
-    // target's own directory, one level below the host build.
+    // The artifact is named for the target operating system and, when the
+    // target is foreign, sits in the target's own directory one level below the
+    // host build. On an AArch64 Linux machine this is the host's own build, and
+    // the host keeps its historical path.
     CHECK(result.primaryArtifactPath.filename().string() == ExecutableFileName("App", Target::OS::Linux));
-    CHECK(result.primaryArtifactPath.parent_path().filename() == "linux-aarch64");
+    if (HostTargetTriple() != "linux-aarch64") {
+        CHECK(result.primaryArtifactPath.parent_path().filename() == "linux-aarch64");
+    }
     REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
 
     std::ifstream executable(result.primaryArtifactPath, std::ios::binary);

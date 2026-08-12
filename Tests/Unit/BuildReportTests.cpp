@@ -79,10 +79,12 @@ TEST_CASE("Build summary applies semantic ANSI styling only when enabled") {
 TEST_CASE("Build summary names the target only when it is not the host") {
     BuildStats stats;
     stats.total = std::chrono::milliseconds(275);
-    const std::filesystem::path executable = "Bin/Debug/linux-aarch64/App";
+    // The host is one triple, so naming a second one leaves a target that is
+    // foreign wherever this runs — on an AArch64 machine as much as on x86-64.
+    const std::string foreign = HostTargetTriple() == "windows-aarch64" ? "linux-aarch64" : "windows-aarch64";
+    const std::filesystem::path executable = std::filesystem::path("Bin/Debug") / foreign / "App";
 
-    CHECK(FormatBuildSummary(executable, "Debug", "linux-aarch64", stats, false)
-              .contains("Built Debug for linux-aarch64 ["));
+    CHECK(FormatBuildSummary(executable, "Debug", foreign, stats, false).contains("Built Debug for " + foreign + " ["));
     // An unset target means the host, which is how the summary read before it
     // carried a target at all.
     CHECK(FormatBuildSummary(executable, "Debug", {}, stats, false).contains("Built Debug ["));
