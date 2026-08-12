@@ -45,12 +45,17 @@ bool Linker::CheckArchitecture() {
         return true;
     }
     // Beyond x86-64, both ELF and PE lay out AArch64 executable and shared
-    // library images. Mach-O does not have an AArch64 image writer yet.
+    // library images. Mach-O currently supports freestanding AArch64
+    // executables; its dynamic executable and dylib paths remain gated.
     if (targetOs == Target::OS::Windows && targetArch == Target::Arch::AArch64) {
         return true;
     }
     const bool elf = targetOs != Target::OS::Windows && targetOs != Target::OS::MacOS;
     if (elf && targetArch == Target::Arch::AArch64) {
+        return true;
+    }
+    if (targetOs == Target::OS::MacOS && targetArch == Target::Arch::AArch64 &&
+        artifactKind == ArtifactKind::Executable) {
         return true;
     }
     Error(std::format("linking {} for {} is not implemented yet",

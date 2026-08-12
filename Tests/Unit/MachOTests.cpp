@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -26,10 +27,11 @@ RcuSection TextSection(std::vector<std::uint8_t> bytes) {
     return text;
 }
 
-std::vector<std::uint8_t> LinkBytes(RcuFile object, const ArtifactKind kind, const std::filesystem::path &output) {
+std::vector<std::uint8_t> LinkBytes(RcuFile object, const ArtifactKind kind, const std::filesystem::path &output,
+                                    const Target::Arch targetArch = Target::Arch::X86_64) {
     std::error_code fileError;
     std::filesystem::remove(output, fileError);
-    Linker linker({std::move(object)}, "MachOTest", {}, kind, Target::OS::MacOS, Target::Arch::X86_64);
+    Linker linker({std::move(object)}, "MachOTest", {}, kind, Target::OS::MacOS, targetArch);
     const bool linked = linker.Link(output);
     CAPTURE(linker.Errors().empty() ? std::string{} : linker.Errors().front().message);
     REQUIRE(linked);
@@ -42,8 +44,9 @@ std::vector<std::uint8_t> LinkBytes(RcuFile object, const ArtifactKind kind, con
     return bytes;
 }
 
-MachOImage LinkAndRead(RcuFile object, const ArtifactKind kind, const std::filesystem::path &output) {
-    const std::vector<std::uint8_t> bytes = LinkBytes(std::move(object), kind, output);
+MachOImage LinkAndRead(RcuFile object, const ArtifactKind kind, const std::filesystem::path &output,
+                       const Target::Arch targetArch = Target::Arch::X86_64) {
+    const std::vector<std::uint8_t> bytes = LinkBytes(std::move(object), kind, output, targetArch);
     MachOImage image;
     std::string error;
     const bool parsed = ReadMachO64(bytes, image, error);
@@ -266,4 +269,191 @@ TEST_CASE("Mach-O reader identifies AArch64 and validates the code-signature ran
     write32(44, 17);
     CHECK_FALSE(ReadMachO64(bytes, image, error));
     CHECK(error == "Mach-O code signature extends beyond the image");
+}
+
+TEST_CASE("Mach-O links deterministic signed freestanding AArch64 executables") {
+    RcuFile program;
+    program.arch = RcuArch::AArch64;
+    auto text = TextSection({
+        0xA0, 0x04, 0x80, 0x52,                                                 // Main: mov w0, #37
+        0xC0, 0x03, 0x5F, 0xD6,                                                 // ret
+        0x00, 0x00, 0x00, 0x94,                                                 // bl Helper
+        0x00, 0x00, 0x00, 0x90,                                                 // adrp x0, Value
+        0x00, 0x00, 0x00, 0x91,                                                 // add x0, x0, Value@pageoff
+        0x01, 0x00, 0x40, 0xF9,                                                 // ldr x1, [x0, Value@pageoff]
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0x03, 0x5F, 0xD6, // Helper: ret
+    });
+    text.relocs.push_back({8, 1, RcuRelType::AArch64Call26, 0});
+    text.relocs.push_back({12, 2, RcuRelType::AArch64AdrPrelPgHi21, 0});
+    text.relocs.push_back({16, 2, RcuRelType::AArch64AddAbsLo12Nc, 0});
+    text.relocs.push_back({20, 2, RcuRelType::AArch64LdstAbsLo12Nc, 0});
+    program.sections.push_back(std::move(text));
+
+    RcuSection rodata;
+    rodata.name = ".rodata";
+    rodata.type = RcuSecType::RoData;
+    rodata.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
+    rodata.alignment = 8;
+    rodata.data.resize(12);
+    rodata.relocs.push_back({0, 0, RcuRelType::AArch64Prel32, 0});
+    rodata.relocs.push_back({4, 0, RcuRelType::Abs64, 0});
+    program.sections.push_back(std::move(rodata));
+
+    RcuSection data;
+    data.name = ".data";
+    data.type = RcuSecType::Data;
+    data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+    data.alignment = 8;
+    data.data.resize(16);
+    program.sections.push_back(std::move(data));
+    program.symbols.push_back({"Main", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    program.symbols.push_back({"Helper", "", 32, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
+    program.symbols.push_back({"Value", "", 8, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Local});
+
+    const auto temporary = std::filesystem::temp_directory_path();
+    const std::vector<std::uint8_t> first =
+        LinkBytes(program, ArtifactKind::Executable, temporary / "rux-macho-aarch64-first", Target::Arch::AArch64);
+    const std::vector<std::uint8_t> second =
+        LinkBytes(program, ArtifactKind::Executable, temporary / "rux-macho-aarch64-second", Target::Arch::AArch64);
+    CHECK(first == second);
+
+    MachOImage image;
+    std::string error;
+    REQUIRE_MESSAGE(ReadMachO64(first, image, error), error);
+    CHECK(image.Architecture() == MachOArchitecture::AArch64);
+    CHECK(image.cpuSubtype == 0);
+    CHECK(image.fileType == 2);
+    CHECK(image.HasCommand(0x05)); // LC_UNIXTHREAD
+    CHECK(image.HasCommand(0x32)); // LC_BUILD_VERSION
+    CHECK_FALSE(image.mainEntryOffset);
+    REQUIRE(image.threadStateFlavor);
+    REQUIRE(image.threadStateCount);
+    CHECK(*image.threadStateFlavor == 6); // ARM_THREAD_STATE64
+    CHECK(*image.threadStateCount == 68);
+    REQUIRE(image.buildVersion);
+    CHECK(image.buildVersion->platform == 1);
+    CHECK(image.buildVersion->minimumOs == 0x001A'0000);
+    CHECK(image.buildVersion->sdk == 0x001A'0000);
+    CHECK(image.buildVersion->toolCount == 0);
+    REQUIRE(image.threadEntryAddress);
+    const MachOSection *imageText = image.Section("__TEXT", "__text");
+    const MachOSection *imageRodata = image.Section("__TEXT", "__const");
+    const MachOSection *imageData = image.Section("__DATA", "__data");
+    REQUIRE(imageText != nullptr);
+    REQUIRE(imageRodata != nullptr);
+    REQUIRE(imageData != nullptr);
+    CHECK(*image.threadEntryAddress == imageText->address);
+    CHECK(image.Segment("__TEXT")->vmSize % 0x4000 == 0);
+    CHECK(image.Segment("__DATA")->fileOffset % 0x4000 == 0);
+    CHECK(image.Segment("__LINKEDIT")->fileOffset % 0x4000 == 0);
+
+    CHECK(Detail::U32(first, imageText->offset) == 0x9400'0003);     // entry stub: bl Main
+    CHECK(Detail::U32(first, imageText->offset + 4) == 0xD280'0030); // mov x16, #1
+    CHECK(Detail::U32(first, imageText->offset + 8) == 0xD400'1001); // svc #0x80
+    CHECK(Detail::U32(first, imageText->offset + 20) == 0x9400'0006);
+
+    const std::uint32_t adrp = Detail::U32(first, imageText->offset + 24);
+    std::int64_t pages = static_cast<std::int64_t>(((adrp >> 29U) & 3U) | ((adrp >> 5U) & 0x7FFFFU) << 2U);
+    if ((pages & (1 << 20)) != 0) {
+        pages |= ~((std::int64_t{1} << 21) - 1);
+    }
+    const std::uint64_t adrpSite = imageText->address + 24;
+    const std::uint64_t dataAddress = imageData->address + 8;
+    CHECK((adrpSite & ~0xFFFULL) + pages * 0x1000 == (dataAddress & ~0xFFFULL));
+    CHECK((Detail::U32(first, imageText->offset + 28) >> 10U & 0xFFFU) == (dataAddress & 0xFFFU));
+    CHECK((Detail::U32(first, imageText->offset + 32) >> 10U & 0xFFFU) == ((dataAddress & 0xFFFU) >> 3U));
+    CHECK(static_cast<std::int32_t>(Detail::U32(first, imageRodata->offset)) ==
+          static_cast<std::int64_t>(imageText->address + 12) - static_cast<std::int64_t>(imageRodata->address));
+    CHECK(Detail::U64(first, imageRodata->offset + 4) == imageText->address + 12);
+
+    REQUIRE(image.codeSignature);
+    REQUIRE(image.codeDirectory);
+    CHECK(image.codeSignature->offset + image.codeSignature->size == first.size());
+    CHECK(image.codeDirectory->codeLimit == image.codeSignature->offset);
+    const std::size_t signatureSlots =
+        (image.codeSignature->offset + MachO::codeSignaturePageSize - 1) / MachO::codeSignaturePageSize;
+    REQUIRE(image.codeDirectory->codeHashes.size() == signatureSlots);
+    for (std::size_t slot = 0; slot < signatureSlots; ++slot) {
+        const std::size_t offset = slot * MachO::codeSignaturePageSize;
+        const std::size_t size =
+            std::min<std::size_t>(MachO::codeSignaturePageSize, image.codeSignature->offset - offset);
+        const Crypto::Sha256Digest expected = Crypto::Sha256(std::span(first).subspan(offset, size));
+        CHECK(image.codeDirectory->codeHashes[slot] == std::vector<std::uint8_t>(expected.begin(), expected.end()));
+    }
+}
+
+TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid inputs") {
+    const auto linkError = [](RcuFile program, const std::string_view suffix) {
+        Linker linker({std::move(program)}, "MachOTest", {}, ArtifactKind::Executable, Target::OS::MacOS,
+                      Target::Arch::AArch64);
+        CHECK_FALSE(
+            linker.Link(std::filesystem::temp_directory_path() / ("rux-macho-aarch64-error-" + std::string(suffix))));
+        REQUIRE_FALSE(linker.Errors().empty());
+        return linker.Errors().front().message;
+    };
+
+    SUBCASE("missing entry point") {
+        RcuFile program;
+        program.arch = RcuArch::AArch64;
+        program.sections.push_back(TextSection({0xC0, 0x03, 0x5F, 0xD6}));
+        CHECK(linkError(std::move(program), "entry").contains("no entry point found"));
+    }
+    SUBCASE("imported function") {
+        RcuFile program;
+        program.arch = RcuArch::AArch64;
+        auto text = TextSection({0, 0, 0, 0});
+        text.relocs.push_back({0, 1, RcuRelType::AArch64Call26, 0});
+        program.sections.push_back(std::move(text));
+        program.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        program.symbols.push_back(
+            {"puts", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+        CHECK(linkError(std::move(program), "function-import") ==
+              "external function 'puts' cannot be imported by the Mach-O AArch64 linker yet");
+    }
+    SUBCASE("imported data") {
+        RcuFile program;
+        program.arch = RcuArch::AArch64;
+        auto text = TextSection({0, 0, 0, 0});
+        text.relocs.push_back({0, 1, RcuRelType::Abs64, 0});
+        program.sections.push_back(std::move(text));
+        program.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        program.symbols.push_back(
+            {"errno", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
+        CHECK(linkError(std::move(program), "data-import") ==
+              "external data symbol 'errno' cannot be imported by the Mach-O linker");
+    }
+    SUBCASE("out-of-range branch") {
+        RcuFile program;
+        program.arch = RcuArch::AArch64;
+        auto text = TextSection({0, 0, 0, 0});
+        text.relocs.push_back({0, 0, RcuRelType::AArch64Call26, std::numeric_limits<std::int32_t>::max()});
+        program.sections.push_back(std::move(text));
+        program.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        CHECK(linkError(std::move(program), "branch-range")
+                  .contains("AARCH64_CALL26 relocation against 'Main' is out of range"));
+    }
+    SUBCASE("absolute 32-bit overflow") {
+        RcuFile program;
+        program.arch = RcuArch::AArch64;
+        auto text = TextSection({0, 0, 0, 0});
+        text.relocs.push_back({0, 0, RcuRelType::Abs32, 0});
+        program.sections.push_back(std::move(text));
+        program.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        CHECK(linkError(std::move(program), "abs32-overflow") ==
+              "ABS_32 relocation against 'Main' does not fit in 32 bits");
+    }
+    SUBCASE("misaligned low12 access") {
+        RcuFile program;
+        program.arch = RcuArch::AArch64;
+        auto text = TextSection({0x00, 0x00, 0x40, 0xF9});
+        text.relocs.push_back({0, 1, RcuRelType::AArch64LdstAbsLo12Nc, 0});
+        program.sections.push_back(std::move(text));
+        RcuSection data;
+        data.type = RcuSecType::Data;
+        data.data.resize(8);
+        program.sections.push_back(std::move(data));
+        program.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        program.symbols.push_back({"Value", "", 1, 1, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Local});
+        CHECK(linkError(std::move(program), "low12-alignment").contains("symbol is not aligned to the access width"));
+    }
 }

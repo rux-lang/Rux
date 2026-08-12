@@ -1,7 +1,9 @@
-// Mach-O executable writer for macOS x86-64. Freestanding programs retain a
-// static LC_UNIXTHREAD entry point; programs that reference #Link externs use
-// dyld, eager symbol binding, and standard symbol stubs.
+// Mach-O executable writer for macOS x86-64 and freestanding AArch64.
+// Freestanding programs retain a static LC_UNIXTHREAD entry point; x86-64
+// programs that reference #Link externs use dyld, eager symbol binding, and
+// standard symbol stubs.
 
+#include "Linker/AArch64Relocation.h"
 #include "Linker/Linker.h"
 #include "Linker/LinkerInternal.h"
 #include "Linker/MachO/CodeSignature.h"
@@ -36,14 +38,16 @@ struct MachOArchitectureProfile {
     uint32_t cpuType;
     uint32_t cpuSubtype;
     uint64_t vmPageAlignment;
+    uint32_t fileAlignment;
     MachOEntryStrategy dynamicEntryStrategy;
     MachOEntryStrategy staticEntryStrategy;
     uint32_t instructionStubSize;
     uint32_t instructionStubAlignment;
-    std::array<uint16_t, 3> supportedRelocations;
+    std::array<uint16_t, 8> supportedRelocations;
     uint32_t threadStateFlavor;
     uint32_t threadStateCount;
     uint32_t threadProgramCounterIndex;
+    bool emitBuildVersion;
 };
 
 constexpr MachOArchitectureProfile kX86_64Profile{
@@ -51,6 +55,7 @@ constexpr MachOArchitectureProfile kX86_64Profile{
     .cpuType = 0x0100'0007,
     .cpuSubtype = 0x0000'0003,
     .vmPageAlignment = 0x1000,
+    .fileAlignment = 16,
     .dynamicEntryStrategy = MachOEntryStrategy::Main,
     .staticEntryStrategy = MachOEntryStrategy::UnixThread,
     .instructionStubSize = 6,
@@ -59,11 +64,34 @@ constexpr MachOArchitectureProfile kX86_64Profile{
     .threadStateFlavor = 4,
     .threadStateCount = 42,
     .threadProgramCounterIndex = 16,
+    .emitBuildVersion = false,
+};
+
+constexpr MachOArchitectureProfile kAArch64Profile{
+    .architecture = Target::Arch::AArch64,
+    .cpuType = 0x0100'000C,
+    .cpuSubtype = 0,
+    .vmPageAlignment = 0x4000,
+    .fileAlignment = 16,
+    .dynamicEntryStrategy = MachOEntryStrategy::Main,
+    .staticEntryStrategy = MachOEntryStrategy::UnixThread,
+    .instructionStubSize = 12,
+    .instructionStubAlignment = 4,
+    .supportedRelocations = {RcuRelType::Abs64, RcuRelType::Abs32, RcuRelType::AArch64Prel32, RcuRelType::AArch64Call26,
+                             RcuRelType::AArch64Jump26, RcuRelType::AArch64AdrPrelPgHi21,
+                             RcuRelType::AArch64AddAbsLo12Nc, RcuRelType::AArch64LdstAbsLo12Nc},
+    .threadStateFlavor = 6, // ARM_THREAD_STATE64
+    .threadStateCount = 68,
+    .threadProgramCounterIndex = 32,
+    .emitBuildVersion = true,
 };
 
 const MachOArchitectureProfile *ArchitectureProfile(const Target::Arch architecture) {
     if (architecture == kX86_64Profile.architecture) {
         return &kX86_64Profile;
+    }
+    if (architecture == kAArch64Profile.architecture) {
+        return &kAArch64Profile;
     }
     return nullptr;
 }
@@ -119,6 +147,20 @@ bool ApplyMachORelocation(const MachOArchitectureProfile &profile, Buf &buffer, 
         error = "relocation " + std::string(RcuRelTypeName(type)) + " against '" + std::string(symbolName) +
                 "' overflows a 64-bit Mach-O address";
         return false;
+    }
+    if (profile.architecture == Target::Arch::AArch64) {
+        const size_t width = type == RcuRelType::Abs64 ? 8 : 4;
+        if (patchOffset > buffer.size() || buffer.size() - patchOffset < width) {
+            error = std::string(RcuRelTypeName(type)) + " relocation against '" + std::string(symbolName) +
+                    "' is outside its Mach-O section";
+            return false;
+        }
+        if (type == RcuRelType::Abs32 && value > std::numeric_limits<uint32_t>::max()) {
+            error = "ABS_32 relocation against '" + std::string(symbolName) + "' does not fit in 32 bits";
+            return false;
+        }
+        return ApplyAArch64Relocation(buffer, patchOffset, type, value, 0, relocationVA, symbolName,
+                                      "Mach-O AArch64 profile", error);
     }
     if (type == RcuRelType::Abs64) {
         if (patchOffset > buffer.size() || buffer.size() - patchOffset < 8) {
@@ -385,6 +427,16 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         return false;
     }
 
+    if (targetArch == Target::Arch::AArch64 && !importLib.empty()) {
+        std::vector<std::string> unsupportedImports(importLib.size());
+        std::ranges::copy(importLib | std::views::keys, unsupportedImports.begin());
+        std::ranges::sort(unsupportedImports);
+        for (const auto &name : unsupportedImports) {
+            Error("external function '" + name + "' cannot be imported by the Mach-O AArch64 linker yet");
+        }
+        return false;
+    }
+
     const bool dynamic = isShared || !importLib.empty();
 
     std::vector<std::string> importNames;
@@ -436,10 +488,9 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         }
     }
 
-    // Entry point. Dynamic executables are entered as a normal function by
-    // dyld, so preserve its return address and provide Win64 shadow space for
-    // Rux's current default macOS calling convention. Static executables keep
-    // the raw exit syscall path.
+    // Entry point. Dynamic x86-64 executables are entered as a normal function
+    // by dyld. Static executables call Main and issue the native macOS exit
+    // syscall directly; the AArch64 syscall number lives in X16.
     Buf textPrefix;
     size_t callMainDisp = 0;
     if (isShared) {
@@ -452,6 +503,12 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         textPrefix.insert(textPrefix.end(), {0xE8, 0, 0, 0, 0});       // call Main
         textPrefix.insert(textPrefix.end(), {0x48, 0x83, 0xC4, 0x28}); // add rsp, 40
         textPrefix.push_back(0xC3);                                    // ret to dyld
+    }
+    else if (targetArch == Target::Arch::AArch64) {
+        callMainDisp = textPrefix.size();
+        WriteU32(textPrefix, 0x9400'0000); // bl Main
+        WriteU32(textPrefix, 0xD280'0030); // mov x16, #1 (SYS_exit)
+        WriteU32(textPrefix, 0xD400'1001); // svc #0x80
     }
     else {
         textPrefix.insert(textPrefix.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16
@@ -583,6 +640,10 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         ++commandCount;
         commandsSize += threadCommandSize;
     }
+    if (architecture->emitBuildVersion) {
+        ++commandCount;
+        commandsSize += 24; // LC_BUILD_VERSION
+    }
     ++commandCount;
     commandsSize += 16; // LC_CODE_SIGNATURE
 
@@ -604,7 +665,7 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     };
 
     const uint64_t headerSize = 32 + static_cast<uint64_t>(commandsSize);
-    const auto textOffsetValue = alignLayout(headerSize, 16, "text offset");
+    const auto textOffsetValue = alignLayout(headerSize, architecture->fileAlignment, "text offset");
     if (!textOffsetValue) {
         return false;
     }
@@ -871,18 +932,29 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
             Error("undefined symbol 'Main' — no entry point found");
             return false;
         }
-        const uint64_t callMainNextInstruction = textVA + callMainDisp + 4;
-        const uint64_t magnitude = mainIt->second >= callMainNextInstruction ? mainIt->second - callMainNextInstruction
-                                                                             : callMainNextInstruction - mainIt->second;
-        if ((mainIt->second >= callMainNextInstruction &&
-             magnitude > static_cast<uint64_t>(std::numeric_limits<int32_t>::max())) ||
-            (mainIt->second < callMainNextInstruction && magnitude > uint64_t{1} << 31U)) {
-            Error("Mach-O entry stub cannot reach 'Main'");
-            return false;
+        if (targetArch == Target::Arch::AArch64) {
+            std::string relocationError;
+            if (!ApplyAArch64Relocation(textBuffer, callMainDisp, RcuRelType::AArch64Call26, mainIt->second, 0,
+                                        textVA + callMainDisp, "Main", "Mach-O AArch64 entry stub", relocationError)) {
+                Error(std::move(relocationError));
+                return false;
+            }
         }
-        const int64_t displacement = mainIt->second >= callMainNextInstruction ? static_cast<int64_t>(magnitude)
-                                                                               : -static_cast<int64_t>(magnitude);
-        Patch32(textBuffer, callMainDisp, static_cast<uint32_t>(static_cast<int32_t>(displacement)));
+        else {
+            const uint64_t callMainNextInstruction = textVA + callMainDisp + 4;
+            const uint64_t magnitude = mainIt->second >= callMainNextInstruction
+                                         ? mainIt->second - callMainNextInstruction
+                                         : callMainNextInstruction - mainIt->second;
+            if ((mainIt->second >= callMainNextInstruction &&
+                 magnitude > static_cast<uint64_t>(std::numeric_limits<int32_t>::max())) ||
+                (mainIt->second < callMainNextInstruction && magnitude > uint64_t{1} << 31U)) {
+                Error("Mach-O entry stub cannot reach 'Main'");
+                return false;
+            }
+            const int64_t displacement = mainIt->second >= callMainNextInstruction ? static_cast<int64_t>(magnitude)
+                                                                                   : -static_cast<int64_t>(magnitude);
+            Patch32(textBuffer, callMainDisp, static_cast<uint32_t>(static_cast<int32_t>(displacement)));
+        }
     }
 
     // Resolve object relocations against defined symbols or import stubs.
@@ -1162,6 +1234,15 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         for (uint32_t reg = 0; reg < architecture->threadStateCount / 2; ++reg) {
             WriteU64(loadCommands, reg == architecture->threadProgramCounterIndex ? textVA : 0);
         }
+    }
+
+    if (architecture->emitBuildVersion) {
+        WriteU32(loadCommands, 0x32); // LC_BUILD_VERSION
+        WriteU32(loadCommands, 24);
+        WriteU32(loadCommands, 1);           // PLATFORM_MACOS
+        WriteU32(loadCommands, 0x001A'0000); // macOS 26.0 deployment target
+        WriteU32(loadCommands, 0x001A'0000); // macOS 26.0 SDK baseline
+        WriteU32(loadCommands, 0);           // no build-tool records
     }
 
     WriteU32(loadCommands, 0x1D); // LC_CODE_SIGNATURE

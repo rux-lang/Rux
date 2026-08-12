@@ -66,6 +66,13 @@ struct MachORange {
     std::uint32_t size = 0;
 };
 
+struct MachOBuildVersion {
+    std::uint32_t platform = 0;
+    std::uint32_t minimumOs = 0;
+    std::uint32_t sdk = 0;
+    std::uint32_t toolCount = 0;
+};
+
 struct MachOCodeDirectory {
     std::uint32_t version = 0;
     std::uint32_t flags = 0;
@@ -92,7 +99,10 @@ struct MachOImage {
     std::vector<MachOSymbol> symbols;
     std::optional<MachODyldInfo> dyldInfo;
     std::optional<std::uint64_t> mainEntryOffset;
+    std::optional<std::uint32_t> threadStateFlavor;
+    std::optional<std::uint32_t> threadStateCount;
     std::optional<std::uint64_t> threadEntryAddress;
+    std::optional<MachOBuildVersion> buildVersion;
     std::optional<MachORange> codeSignature;
     std::optional<MachOCodeDirectory> codeDirectory;
 
@@ -201,6 +211,7 @@ inline std::optional<std::string> CommandString(const std::span<const std::uint8
     constexpr std::uint32_t kUnixThread = 0x05;
     constexpr std::uint32_t kDyldInfoOnly = 0x8000'0022;
     constexpr std::uint32_t kMain = 0x8000'0028;
+    constexpr std::uint32_t kBuildVersion = 0x32;
     constexpr std::uint32_t kCodeSignature = 0x1D;
     using namespace Detail;
 
@@ -303,12 +314,35 @@ inline std::optional<std::string> CommandString(const std::span<const std::uint8
             }
             image.mainEntryOffset = U64(bytes, cursor + 8);
         }
-        else if (command == kUnixThread && image.Architecture() == MachOArchitecture::X86_64) {
-            if (size < 16 + 17 * 8) {
-                error = "truncated Mach-O x86-64 thread state";
+        else if (command == kUnixThread) {
+            if (size < 16) {
+                error = "truncated Mach-O thread state";
                 return false;
             }
-            image.threadEntryAddress = U64(bytes, cursor + 16 + 16 * 8);
+            image.threadStateFlavor = U32(bytes, cursor + 8);
+            image.threadStateCount = U32(bytes, cursor + 12);
+            if (image.Architecture() == MachOArchitecture::X86_64) {
+                if (size < 16 + 17 * 8) {
+                    error = "truncated Mach-O x86-64 thread state";
+                    return false;
+                }
+                image.threadEntryAddress = U64(bytes, cursor + 16 + 16 * 8);
+            }
+            else if (image.Architecture() == MachOArchitecture::AArch64) {
+                if (size < 16 + 68 * 4) {
+                    error = "truncated Mach-O AArch64 thread state";
+                    return false;
+                }
+                image.threadEntryAddress = U64(bytes, cursor + 16 + 32 * 8);
+            }
+        }
+        else if (command == kBuildVersion) {
+            if (size < 24) {
+                error = "truncated Mach-O build-version command";
+                return false;
+            }
+            image.buildVersion = MachOBuildVersion{U32(bytes, cursor + 8), U32(bytes, cursor + 12),
+                                                   U32(bytes, cursor + 16), U32(bytes, cursor + 20)};
         }
         else if (command == kDyldInfoOnly) {
             if (size < 48) {
