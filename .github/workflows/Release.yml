@@ -233,6 +233,10 @@ jobs:
           ./Bin/rux lint
           ./Bin/rux test --release
 
+      - name: Run Apple Silicon native runtime fixtures
+        if: matrix.arch == 'aarch64'
+        run: sh Tests/Native/MacOSAArch64/Verify.sh ./Bin/rux
+
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:

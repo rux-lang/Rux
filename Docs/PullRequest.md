@@ -30,9 +30,10 @@ Opening or updating a PR triggers the full per-OS CI matrix — every supported 
 Not every workflow blocks merging. The **required** checks are:
 
 - **Linux** (`Linux.yml`)
+- **macOS** (`macOS.yml`)
 - **Windows** (`Windows.yml`)
 
-The macOS and FreeBSD workflows run too and are worth watching, but they are **informational** — they won't block the merge button. Both required checks must be green before a PR is eligible to merge.
+The FreeBSD workflow runs too and is worth watching, but it is **informational** — it won't block the merge button. All three required platform checks must be green before a PR is eligible to merge.
 
 ## 3. Review
 

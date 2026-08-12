@@ -41,7 +41,7 @@ Each `needs: verify-version`, then builds Release **and runs the test suite** â€
 
 The additional `rux-windows-x86_64-msi` workflow artifact carries the x86-64 MSI into the publish job. An AArch64 MSI is not produced because the current WiX package is authored for x64; AArch64 Windows is distributed as a ZIP.
 
-Each job runs language tests from the repository root. Test manifests use local path dependencies, and transitive first-party dependencies resolve from workspace members with registry fallback disabled, so release validation is deterministic and network-independent. The Windows AArch64 entry additionally runs the native executable exit-code and DLL load/call/unload fixtures before packaging. The Linux job also checks every maintained Rux source with `rux fmt --check` before packaging.
+Each job runs language tests from the repository root. Test manifests use local path dependencies, and transitive first-party dependencies resolve from workspace members with registry fallback disabled, so release validation is deterministic and network-independent. The Windows AArch64 entry additionally runs the native executable exit-code and DLL load/call/unload fixtures before packaging. The macOS 26 AArch64 entry runs the Apple Silicon freestanding exit-code, fixed/variadic libSystem, assertion/panic, and dylib load/call/unload fixtures; each image's ARM64 header and in-process ad-hoc signature are checked before execution. These native acceptance steps must pass before the corresponding AArch64 asset can reach the publish job. The Linux job also checks every maintained Rux source with `rux fmt --check` before packaging.
 
 ### 3. `release` (publish)
 
@@ -61,7 +61,7 @@ Each job runs language tests from the repository root. Test manifests use local 
 1. Ensure `dev` is green and promoted to `main` (see [Branch Architecture](Branches.md)).
 2. Bump `VERSION` in `CMakeLists.txt`.
 3. Update [`CHANGELOG.md`](../CHANGELOG.md).
-4. Confirm the Linux and Windows required checks are green on `main`.
+4. Confirm the Linux, macOS, and Windows required checks are green on `main`.
 5. Commit the version and changelog updates on `main`.
 6. Create an annotated tag matching the new `VERSION`, then push it:
    ```sh

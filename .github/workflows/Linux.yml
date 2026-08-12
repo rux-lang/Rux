@@ -155,3 +155,9 @@ jobs:
           test "$1" -eq 127 -a "$2" -eq 69 -a "$3" -eq 76 -a "$4" -eq 70
           shift 18
           test "$1" -eq 183 -a "$2" -eq 0
+
+      - name: Build and inspect macos-aarch64 output
+        shell: pwsh
+        run: |
+          ./Bin/rux check --target macos-aarch64
+          ./Tests/Native/MacOSAArch64/VerifyCross.ps1 -Rux ./Bin/rux

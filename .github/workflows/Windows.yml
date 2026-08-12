@@ -163,3 +163,9 @@ jobs:
         run: |
           ./Tests/Native/WindowsAArch64ExitCode/Verify.ps1 -Rux ./Bin/rux.exe
           ./Tests/Native/WindowsAArch64Dll/Verify.ps1 -Rux ./Bin/rux.exe
+
+      - name: Build and inspect macos-aarch64 output
+        shell: pwsh
+        run: |
+          ./Bin/rux.exe check --target macos-aarch64
+          ./Tests/Native/MacOSAArch64/VerifyCross.ps1 -Rux ./Bin/rux.exe

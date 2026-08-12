@@ -36,7 +36,8 @@ images with or without C function imports, and signed shared libraries. All
 three artifact kinds are available through `rux build --target macos-aarch64`
 on every supported compiler host. `rux check --target macos-aarch64` selects
 the Apple target conditions and ARM64 ABI without producing or executing an
-artifact.
+artifact. Generated images declare macOS 26 as their initial deployment and SDK
+baseline; supporting older deployment targets is a separate feature.
 
 The `arm64` alias canonicalizes to `aarch64`, so these commands select the same
 target and output directory:
@@ -122,9 +123,28 @@ ARM64 Mach-O header and embedded ad-hoc signature before direct execution; they 
 not use an emulator, `codesign`, Xcode command-line tools, or an external
 assembler, linker, or archiver.
 
+Linux and Windows CI use the non-executing cross verifier instead:
+
+```powershell
+./Tests/Native/MacOSAArch64/VerifyCross.ps1 -Rux ./Bin/rux.exe # omit .exe on Linux
+```
+
+It builds the signed executable and dylib fixtures twice, checks deterministic
+bytes, parses their ARM64 Mach-O headers and load commands, and recomputes every
+CodeDirectory SHA-256 page hash. It never launches the foreign artifacts.
+
 `rux run` always builds and launches the compiler process's host triple and has
 no `--target` option. `rux test --target` requires macOS plus an architecture
 reported for either the compiler process or the native OS. Consequently, an
 x86-64 compiler running under Rosetta on Apple Silicon may directly test
 `macos-aarch64`; a physical Intel Mac may only build/check that target and
 transfer it to Apple Silicon for testing.
+
+The required `macOS.yml` workflow runs the complete compiler, unit, workspace,
+and native fixture suites on `macos-26`, then repeats target tests and fixtures
+with the downloaded x86-64 compiler under Rosetta. The release workflow runs the
+same native Apple Silicon acceptance before publishing
+`rux-macos-aarch64.tar.gz`. GitHub's `macos-26` runner is the normal acceptance
+environment; EC2 Mac is reserved for prolonged debugging, crash capture, or
+demonstrated GitHub-runner instability and is not required for development,
+merging, or releases.

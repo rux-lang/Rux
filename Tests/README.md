@@ -57,6 +57,17 @@ Both scripts reject non-Apple-Silicon hosts. Their Mach-O preflight reads the
 ARM64 header and ad-hoc signature bytes itself; it does not invoke an assembler,
 linker, signing tool, emulator, or Apple inspection utility.
 
+Linux and Windows can exercise the non-launching cross-build path with PowerShell:
+
+```powershell
+./Tests/Native/MacOSAArch64/VerifyCross.ps1 -Rux ./Bin/rux.exe # omit .exe on Linux
+```
+
+The cross verifier builds a signed executable and dylib twice, compares their
+bytes for determinism, validates their ARM64 Mach-O headers and load commands,
+and recomputes every SHA-256 code-slot hash in the embedded CodeDirectory. It
+never launches the foreign images.
+
 ## Adding Coverage
 
 - Put syntax, semantics, code generation, and runtime language behavior in `Language/<Feature>/`.
