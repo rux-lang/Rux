@@ -353,24 +353,24 @@ TEST_CASE("Mach-O links deterministic signed freestanding AArch64 executables") 
     CHECK(image.Segment("__DATA")->fileOffset % 0x4000 == 0);
     CHECK(image.Segment("__LINKEDIT")->fileOffset % 0x4000 == 0);
 
-    CHECK(Detail::U32(first, imageText->offset) == 0x9400'0003);     // entry stub: bl Main
+    CHECK(Detail::U32(first, imageText->offset) == 0x9400'0004);     // entry stub: bl Main
     CHECK(Detail::U32(first, imageText->offset + 4) == 0xD280'0030); // mov x16, #1
     CHECK(Detail::U32(first, imageText->offset + 8) == 0xD400'1001); // svc #0x80
-    CHECK(Detail::U32(first, imageText->offset + 20) == 0x9400'0006);
+    CHECK(Detail::U32(first, imageText->offset + 24) == 0x9400'0006);
 
-    const std::uint32_t adrp = Detail::U32(first, imageText->offset + 24);
+    const std::uint32_t adrp = Detail::U32(first, imageText->offset + 28);
     std::int64_t pages = static_cast<std::int64_t>(((adrp >> 29U) & 3U) | ((adrp >> 5U) & 0x7FFFFU) << 2U);
     if ((pages & (1 << 20)) != 0) {
         pages |= ~((std::int64_t{1} << 21) - 1);
     }
-    const std::uint64_t adrpSite = imageText->address + 24;
+    const std::uint64_t adrpSite = imageText->address + 28;
     const std::uint64_t dataAddress = imageData->address + 8;
     CHECK((adrpSite & ~0xFFFULL) + pages * 0x1000 == (dataAddress & ~0xFFFULL));
-    CHECK((Detail::U32(first, imageText->offset + 28) >> 10U & 0xFFFU) == (dataAddress & 0xFFFU));
-    CHECK((Detail::U32(first, imageText->offset + 32) >> 10U & 0xFFFU) == ((dataAddress & 0xFFFU) >> 3U));
+    CHECK((Detail::U32(first, imageText->offset + 32) >> 10U & 0xFFFU) == (dataAddress & 0xFFFU));
+    CHECK((Detail::U32(first, imageText->offset + 36) >> 10U & 0xFFFU) == ((dataAddress & 0xFFFU) >> 3U));
     CHECK(static_cast<std::int32_t>(Detail::U32(first, imageRodata->offset)) ==
-          static_cast<std::int64_t>(imageText->address + 12) - static_cast<std::int64_t>(imageRodata->address));
-    CHECK(Detail::U64(first, imageRodata->offset + 4) == imageText->address + 12);
+          static_cast<std::int64_t>(imageText->address + 16) - static_cast<std::int64_t>(imageRodata->address));
+    CHECK(Detail::U64(first, imageRodata->offset + 4) == imageText->address + 16);
 
     REQUIRE(image.codeSignature);
     REQUIRE(image.codeDirectory);
@@ -386,6 +386,65 @@ TEST_CASE("Mach-O links deterministic signed freestanding AArch64 executables") 
         const Crypto::Sha256Digest expected = Crypto::Sha256(std::span(first).subspan(offset, size));
         CHECK(image.codeDirectory->codeHashes[slot] == std::vector<std::uint8_t>(expected.begin(), expected.end()));
     }
+}
+
+TEST_CASE("Mach-O preserves AArch64 section alignment between input objects") {
+    RcuFile prefixObject;
+    prefixObject.arch = RcuArch::AArch64;
+    RcuSection prefixRodata;
+    prefixRodata.name = ".rodata";
+    prefixRodata.type = RcuSecType::RoData;
+    prefixRodata.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
+    prefixRodata.alignment = 1;
+    prefixRodata.data.push_back(0xA5);
+    prefixObject.sections.push_back(std::move(prefixRodata));
+
+    RcuFile program;
+    program.arch = RcuArch::AArch64;
+    auto text = TextSection({
+        0x10,
+        0x00,
+        0x00,
+        0x90, // adrp x16, __f64_0
+        0x08,
+        0x02,
+        0x40,
+        0xFD, // ldr d8, [x16, :lo12:__f64_0]
+        0x00,
+        0x00,
+        0x80,
+        0x52, // mov w0, #0
+        0xC0,
+        0x03,
+        0x5F,
+        0xD6, // ret
+    });
+    text.relocs.push_back({0, 1, RcuRelType::AArch64AdrPrelPgHi21, 0});
+    text.relocs.push_back({4, 1, RcuRelType::AArch64LdstAbsLo12Nc, 0});
+    program.sections.push_back(std::move(text));
+
+    RcuSection constants;
+    constants.name = ".rodata";
+    constants.type = RcuSecType::RoData;
+    constants.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
+    constants.alignment = 8;
+    constants.data.resize(8);
+    program.sections.push_back(std::move(constants));
+    program.symbols.push_back({"Main", "int", 0, 16, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    program.symbols.push_back({"__f64_0", "", 0, 8, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
+
+    const auto output = std::filesystem::temp_directory_path() / "rux-macho-aarch64-object-alignment";
+    const std::vector<std::uint8_t> bytes = LinkBytes({std::move(prefixObject), std::move(program)},
+                                                      ArtifactKind::Executable, output, Target::Arch::AArch64);
+
+    MachOImage image;
+    std::string error;
+    REQUIRE_MESSAGE(ReadMachO64(bytes, image, error), error);
+    const MachOSection *rodata = image.Section("__TEXT", "__const");
+    REQUIRE(rodata != nullptr);
+    CHECK(rodata->size == 16);
+    CHECK(bytes[rodata->offset] == 0xA5);
+    CHECK((rodata->address + 8) % 8 == 0);
 }
 
 TEST_CASE("Mach-O links imported AArch64 executables with eager Apple stubs") {
@@ -469,10 +528,10 @@ TEST_CASE("Mach-O links imported AArch64 executables with eager Apple stubs") {
         return static_cast<std::uint64_t>(static_cast<std::int64_t>(address) + immediate * 4);
     };
     CHECK(branchTarget(imageText->address + 8, Detail::U32(first, imageText->offset + 8)) ==
-          imageText->address + 20); // dynamic entry calls Main
-    CHECK(branchTarget(imageText->address + 20, Detail::U32(first, imageText->offset + 20)) == stubs->address);
-    CHECK(branchTarget(imageText->address + 24, Detail::U32(first, imageText->offset + 24)) == stubs->address + 12);
-    CHECK(branchTarget(imageText->address + 28, Detail::U32(first, imageText->offset + 28)) == stubs->address);
+          imageText->address + 32); // dynamic entry calls aligned Main
+    CHECK(branchTarget(imageText->address + 32, Detail::U32(first, imageText->offset + 32)) == stubs->address);
+    CHECK(branchTarget(imageText->address + 36, Detail::U32(first, imageText->offset + 36)) == stubs->address + 12);
+    CHECK(branchTarget(imageText->address + 40, Detail::U32(first, imageText->offset + 40)) == stubs->address);
 
     for (std::size_t index = 0; index < 2; ++index) {
         const std::size_t fileOffset = stubs->offset + index * 12;
@@ -607,7 +666,7 @@ TEST_CASE("Mach-O links signed AArch64 dylibs with exports imports and rebases")
     REQUIRE(stubs != nullptr);
     REQUIRE(pointers != nullptr);
     REQUIRE(imageData != nullptr);
-    CHECK(imageText->size == 16); // no executable entry stub
+    CHECK(imageText->size == 20); // no entry stub; Helper starts at its requested alignment
     CHECK(stubs->size == 12);
     CHECK(stubs->reserved2 == 12);
     CHECK(pointers->size == 8);
@@ -620,7 +679,7 @@ TEST_CASE("Mach-O links signed AArch64 dylibs with exports imports and rebases")
         }
         return static_cast<std::uint64_t>(static_cast<std::int64_t>(address) + immediate * 4);
     };
-    CHECK(branchTarget(imageText->address, Detail::U32(first, imageText->offset)) == imageText->address + 12);
+    CHECK(branchTarget(imageText->address, Detail::U32(first, imageText->offset)) == imageText->address + 16);
     CHECK(branchTarget(imageText->address + 4, Detail::U32(first, imageText->offset + 4)) == stubs->address);
     CHECK(Detail::U64(first, imageData->offset) == imageText->address);
 

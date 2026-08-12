@@ -540,6 +540,34 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     Buf mergedData;
     for (size_t i = 0; i < objects.size(); ++i) {
         const auto &object = objects[i];
+
+        // RCU symbol values are relative to section starts whose alignment is
+        // part of the object contract. Preserve that alignment when input
+        // sections are concatenated; otherwise an odd-sized section from one
+        // object can make a scaled AArch64 load from the next object
+        // impossible to encode.
+        uint16_t textAlignment = 1;
+        uint16_t rodataAlignment = 1;
+        uint16_t dataAlignment = 1;
+        for (const auto &section : object.sections) {
+            if (section.type == RcuSecType::Text) {
+                textAlignment = std::max(textAlignment, section.alignment);
+            }
+            else if (section.type == RcuSecType::RoData) {
+                rodataAlignment = std::max(rodataAlignment, section.alignment);
+            }
+            else if (section.type == RcuSecType::Data) {
+                dataAlignment = std::max(dataAlignment, section.alignment);
+            }
+        }
+        const auto padToAlignment = [](Buf &buffer, const uint16_t alignment, const uint64_t prefixSize = 0) {
+            while ((prefixSize + buffer.size()) % alignment != 0) {
+                buffer.push_back(0);
+            }
+        };
+        padToAlignment(mergedText, textAlignment, prefixSize);
+        padToAlignment(mergedRodata, rodataAlignment);
+        padToAlignment(mergedData, dataAlignment);
         layouts[i] = {mergedText.size(), mergedRodata.size(), mergedData.size()};
         for (const auto &section : object.sections) {
             if (section.type == RcuSecType::Text) {
