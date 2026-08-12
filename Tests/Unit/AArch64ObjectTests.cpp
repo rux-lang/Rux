@@ -1,6 +1,5 @@
 // The relocatable half of the AArch64 back end: ELF `.o` and Windows COFF
 // `.obj` files that static-library archives carry and another linker resolves.
-// BACKLOG.md Task 3.
 //
 // Everything here is read back out of the bytes the writer produced, through
 // the section header table, the way a linker reads them -- not out of the

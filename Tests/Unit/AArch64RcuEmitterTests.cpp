@@ -798,7 +798,7 @@ TEST_CASE("Windows AArch64 probes a large outgoing copy and restores it without 
 // A struct and two values of it, which is the one construct a source program
 // reaches that this back end still refuses: comparing two values that are not a
 // bit pattern in one register is a run of comparisons the x86-64 back end emits
-// and this one does not, and it is what BACKLOG.md Task 31 closes.
+// and this one does not.
 constexpr std::string_view kAggregateCompare = R"(
         struct Point {
             x: int;
@@ -1872,8 +1872,8 @@ TEST_CASE("AArch64 RCU emitter breaks a cycle of phi copies through a frame slot
 TEST_CASE("AArch64 RCU emitter lowers a switch to a compare chain and traps where control cannot arrive") {
     // Neither of these reaches a source program yet — the front end lowers a
     // `match` to comparisons of its own and only emits `unreachable` after a
-    // panic or a call that does not return, which is Task 27's — so the LIR is
-    // written out here rather than compiled.
+    // panic or a call that does not return — so the LIR is written out here
+    // rather than compiled.
     LirFunc func;
     func.name = "Main";
     func.isPublic = true;
@@ -3255,8 +3255,8 @@ TEST_CASE("AArch64 RCU emitter reads an enum as the integer its discriminant is"
 //
 // A failed assertion is the one construct in this back end that is a property
 // of the operating system rather than of the architecture, and an `asm func` is
-// the one body it selects no instructions for. The cases below read both, and
-// the vtable the third criterion of BACKLOG.md Task 27 names beside them.
+// the one body it selects no instructions for. The cases below read both and
+// verify the static data and vtable relocations emitted beside them.
 
 namespace {
 // The two intrinsics an assertion and a panic are written as, and the type
@@ -3722,12 +3722,12 @@ TEST_CASE("AArch64 RCU emitter lays a vtable out as a run of relocated function 
 
 // Whole-function images
 //
-// One function per code-generation task of BACKLOG.md Phases 3 and 4, asserted
-// word for word from the prologue to the RET. Every test above names the one
-// instruction the opcode it is about must produce and masks away everything the
-// allocation decides; the cases below name all of it, so a change in frame
-// layout, in allocation order or in the shape of a prologue is visible here even
-// when every masked test still passes.
+// Representative code-generation paths asserted word for word from the
+// prologue to the RET. Every test above names the one instruction the opcode it
+// is about must produce and masks away everything the allocation decides; the
+// cases below name all of it, so a change in frame layout, in allocation order
+// or in the shape of a prologue is visible here even when every masked test
+// still passes.
 //
 // The disassembly beside each word is `llvm-mc -triple=aarch64 -disassemble`
 // reading that word back, which is what makes these images reviewable rather
@@ -3736,7 +3736,7 @@ TEST_CASE("AArch64 RCU emitter lays a vtable out as a run of relocated function 
 // delete the case.
 
 TEST_CASE("AArch64 RCU emitter emits every word of a function reading a pooled constant") {
-    // Task 20. A double no FMOV immediate reaches is one .rodata symbol read
+    // A double no FMOV immediate reaches is one .rodata symbol read
     // through an ADRP / LDR pair, and the pair's immediates are zero in the
     // object because the two relocations below are what fill them in.
     const auto package = CompileToAArch64Lir(R"(
@@ -3772,7 +3772,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function reading a pooled c
 }
 
 TEST_CASE("AArch64 RCU emitter emits every word of a function reading a field of a local aggregate") {
-    // Task 21. The aggregate is a frame slot the alloca's address is taken of,
+    // The aggregate is a frame slot the alloca's address is taken of,
     // each field is written through that address at the offset the layout gives,
     // and the read is the same address plus the same offset.
     const auto package = CompileToAArch64Lir(R"(
@@ -3812,7 +3812,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function reading a field of
 }
 
 TEST_CASE("AArch64 RCU emitter emits every word of a function multiplying and adding") {
-    // Task 22. Two arguments arrive in registers, are spilled to the slots their
+    // Two arguments arrive in registers, are spilled to the slots their
     // addresses name, and the arithmetic reads them back: one MUL and one ADD,
     // with nothing between them the operators did not ask for.
     const auto package = CompileToAArch64Lir(R"(
@@ -3851,7 +3851,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function multiplying and ad
 }
 
 TEST_CASE("AArch64 RCU emitter emits every word of a function comparing and branching") {
-    // Task 23. A comparison is CMP and CSET, the boolean it produces is narrowed
+    // A comparison is CMP and CSET, the boolean it produces is narrowed
     // to the byte its type occupies, and the branch on it is a CBZ over a B —
     // the far edge is the fallthrough and the near one is jumped over. Every
     // value crossing a block boundary is in the frame, so both exits reload what
@@ -3907,7 +3907,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function comparing and bran
 }
 
 TEST_CASE("AArch64 RCU emitter emits every word of a function calling another with two arguments") {
-    // Task 24. The two arguments are materialized where the allocation put them
+    // The two arguments are materialized where the allocation put them
     // and moved into X0 and X1 at the call, the result is read out of X0, and
     // the callee is named by a CALL26 whose field is zero until it is linked.
     const auto package = CompileToAArch64Lir(R"(
@@ -3948,7 +3948,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function calling another wi
 }
 
 TEST_CASE("AArch64 RCU emitter emits every word of a function taking a float pair in the vector registers") {
-    // Task 25. A composite of two doubles is a homogeneous aggregate, so it
+    // A composite of two doubles is a homogeneous aggregate, so it
     // arrives in D0 and D1 rather than through memory; the prologue writes the
     // pair into a frame slot and the body reads the fields back out of it as it
     // would any other aggregate.
@@ -3992,7 +3992,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function taking a float pai
 }
 
 TEST_CASE("AArch64 RCU emitter emits every word of a function widening an integer to a double") {
-    // Task 26. A cast between the two register files is one SCVTF, and its
+    // A cast between the two register files is one SCVTF, and its
     // signedness is the integer side's.
     const auto package = CompileToAArch64Lir(R"(
         func Widen(n: int) -> float64 {
@@ -4024,7 +4024,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function widening an intege
 }
 
 TEST_CASE("AArch64 RCU emitter emits every word of an asm func") {
-    // Task 27. An `asm func` is the body the source wrote and nothing else: no
+    // An `asm func` is the body the source wrote and nothing else: no
     // prologue opens a frame the body did not ask for, and no epilogue follows
     // the RET the body already wrote.
     const auto package = CompileToAArch64Lir(R"(
@@ -4046,7 +4046,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of an asm func") {
 }
 
 TEST_CASE("AArch64 RCU emitter emits every word of a function whose values live across two calls") {
-    // Task 28. Everything live across a call is in a callee-saved register the
+    // Everything live across a call is in a callee-saved register the
     // prologue preserved and the epilogue restored, which is what the allocator
     // is for: four of them here, in two pairs, and no spill of a live value into
     // the frame between the calls.

@@ -5,9 +5,9 @@
 //
 // Two things are asserted. The system-call wrappers assemble to the words each
 // kernel's ABI asks for, which is what makes `linux-aarch64` reach the kernel
-// at all before anything can run there (BACKLOG.md task 31 runs them). And no
-// first-party body is left written for the other architecture, which is the
-// premise under which a foreign mnemonic is an error rather than a warning.
+// at all before anything can run there. And no first-party body is left written
+// for the other architecture, which is the premise under which a foreign
+// mnemonic is an error rather than a warning.
 //
 // Every expected word below came from `llvm-mc -triple=aarch64 -show-encoding`
 // on the mnemonic named beside it, so a disagreement here is a disagreement
