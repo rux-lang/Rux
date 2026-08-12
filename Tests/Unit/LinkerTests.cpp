@@ -1,5 +1,7 @@
+#include "ElfReader.h"
 #include "Linker/ArchiveWriter.h"
 #include "Linker/Linker.h"
+#include "Target/ElfProfile.h"
 
 #include <algorithm>
 #include <array>
@@ -14,6 +16,7 @@
 #include <vector>
 
 using namespace Rux;
+using Rux::Testing::ElfImage;
 
 TEST_CASE("ELF linker preserves an extern library declared in another object") {
     RcuFile caller;
@@ -44,8 +47,8 @@ TEST_CASE("ELF linker preserves an extern library declared in another object") {
 
     std::ifstream stream(output, std::ios::binary);
     REQUIRE(stream.is_open());
-    const std::string executable((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-    CHECK(executable.find("libm.so.6") != std::string::npos);
+    const ElfImage image{{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()}};
+    CHECK(std::ranges::contains(image.NeededLibraries(), "libm.so.6"));
 
     stream.close();
     std::filesystem::remove(output, ec);
@@ -78,24 +81,76 @@ TEST_CASE("ELF linker names the loader and C library of the target, not of the h
 
         std::ifstream stream(output, std::ios::binary);
         REQUIRE(stream.is_open());
-        std::string image((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+        ElfImage image{{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()}};
         stream.close();
         std::filesystem::remove(output, ec);
         return image;
     };
 
-    const std::string linux = link(Target::OS::Linux);
-    CHECK(static_cast<uint8_t>(linux[7]) == 0); // EI_OSABI: System V
-    CHECK(linux.find("/lib64/ld-linux-x86-64.so.2") != std::string::npos);
-    CHECK(linux.find("libc.so.6") != std::string::npos);
+    const ElfImage linux = link(Target::OS::Linux);
+    CHECK(linux.OsAbi() == 0); // ELFOSABI_SYSV
+    CHECK(linux.Interpreter() == "/lib64/ld-linux-x86-64.so.2");
+    CHECK(std::ranges::contains(linux.NeededLibraries(), "libc.so.6"));
 
-    const std::string freebsd = link(Target::OS::FreeBSD);
-    CHECK(static_cast<uint8_t>(freebsd[7]) == 9); // EI_OSABI: FreeBSD
-    CHECK(freebsd.find("/libexec/ld-elf.so.1") != std::string::npos);
-    CHECK(freebsd.find("libc.so.7") != std::string::npos);
+    const ElfImage freebsd = link(Target::OS::FreeBSD);
+    CHECK(freebsd.OsAbi() == 9); // ELFOSABI_FREEBSD
+    CHECK(freebsd.Interpreter() == "/libexec/ld-elf.so.1");
+    CHECK(std::ranges::contains(freebsd.NeededLibraries(), "libc.so.7"));
     // BSD libc expects the process globals crt1 would define; an image that
     // starts at Main defines them itself.
-    CHECK(freebsd.find("__progname") != std::string::npos);
+    const auto symbols = freebsd.DynamicSymbols();
+    CHECK(std::ranges::contains(symbols, "__progname", &ElfImage::DynamicSymbol::name));
+}
+
+TEST_CASE("ELF target profiles own OS and architecture policy") {
+    const auto linuxX86 = Target::Elf64ProfileFor(Target::OS::Linux, Target::Arch::X86_64);
+    REQUIRE(linuxX86.has_value());
+    CHECK(linuxX86->osAbi == 0);
+    CHECK(linuxX86->machine == 0x3E);
+    CHECK(linuxX86->maximumLoadAlignment == 0x1000);
+    CHECK(linuxX86->freestandingExitSyscall == 60);
+    CHECK(linuxX86->dynamicRelocations.jumpSlot == 7);
+    CHECK(linuxX86->pltInstructionShape == Target::ElfPltInstructionShape::X86_64);
+
+    const auto linuxAarch64 = Target::Elf64ProfileFor(Target::OS::Linux, Target::Arch::AArch64);
+    REQUIRE(linuxAarch64.has_value());
+    CHECK(linuxAarch64->machine == 0xB7);
+    CHECK(linuxAarch64->maximumLoadAlignment == 0x10000);
+    CHECK(linuxAarch64->freestandingExitSyscall == 93);
+    CHECK(linuxAarch64->dynamicRelocations.jumpSlot == 1026);
+    CHECK(linuxAarch64->pltInstructionShape == Target::ElfPltInstructionShape::AArch64);
+
+    // This profile is available to direct linker development only. The public
+    // compiler-driver gate stays closed until the later backlog task.
+    const auto freebsdAarch64 = Target::Elf64ProfileFor(Target::OS::FreeBSD, Target::Arch::AArch64);
+    REQUIRE(freebsdAarch64.has_value());
+    CHECK(freebsdAarch64->targetName == "freebsd-aarch64");
+    CHECK(freebsdAarch64->osAbi == 9);
+    CHECK(freebsdAarch64->machine == 0xB7);
+    CHECK(freebsdAarch64->interpreter == "/libexec/ld-elf.so.1");
+    CHECK(freebsdAarch64->defaultLibc == "libc.so.7");
+    CHECK(freebsdAarch64->freestandingExitSyscall == 1);
+    CHECK(freebsdAarch64->dynamicRelocations.jumpSlot == 1026);
+    CHECK(freebsdAarch64->dynamicRelocations.globDat == 1025);
+    CHECK(freebsdAarch64->dynamicRelocations.relative == 1027);
+    CHECK(freebsdAarch64->definesBsdProcessGlobals);
+
+    CHECK_FALSE(Target::Elf64ProfileFor(Target::OS::OpenBSD, Target::Arch::AArch64).has_value());
+}
+
+TEST_CASE("ELF linker rejects a target without an explicit profile") {
+    RcuFile object;
+    object.arch = RcuArch::AArch64;
+    const auto output = std::filesystem::temp_directory_path() / "rux-elf-unsupported-profile-test";
+    std::error_code ec;
+    std::filesystem::remove(output, ec);
+
+    Linker linker({std::move(object)}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::OpenBSD,
+                  Target::Arch::AArch64);
+    CHECK_FALSE(linker.Link(output));
+    REQUIRE(linker.Errors().size() == 1);
+    CHECK(linker.Errors().front().message == "ELF writer does not implement the complete target 'openbsd-aarch64'");
+    CHECK_FALSE(std::filesystem::exists(output));
 }
 
 TEST_CASE("ELF shared linker emits ET_DYN exports without an executable entry") {
@@ -128,49 +183,12 @@ TEST_CASE("ELF shared linker emits ET_DYN exports without an executable entry") 
 
     std::ifstream stream(output, std::ios::binary);
     REQUIRE(stream.is_open());
-    const std::vector<uint8_t> image((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-    REQUIRE(image.size() >= 32);
-    CHECK(image[16] == 3); // ET_DYN
-    CHECK(image[17] == 0);
-    CHECK(std::ranges::all_of(image | std::views::drop(24) | std::views::take(8),
-                              [](const uint8_t byte) { return byte == 0; }));
-    const std::string contents(image.begin(), image.end());
-    CHECK(contents.find("Answer") != std::string::npos);
-    CHECK(contents.find("librux-linker-test.so") != std::string::npos);
-
-    const auto read64 = [&image](const size_t offset) {
-        uint64_t value = 0;
-        for (size_t i = 0; i < 8; ++i) {
-            value |= static_cast<uint64_t>(image[offset + i]) << (i * 8U);
-        }
-        return value;
-    };
-    const auto read32 = [&image](const size_t offset) {
-        uint32_t value = 0;
-        for (size_t i = 0; i < 4; ++i) {
-            value |= static_cast<uint32_t>(image[offset + i]) << (i * 8U);
-        }
-        return value;
-    };
-    const size_t programHeaderOffset = static_cast<size_t>(read64(32));
-    const size_t programHeaderCount = image[56] | (static_cast<size_t>(image[57]) << 8U);
-    size_t dynamicOffset = 0;
-    size_t dynamicSize = 0;
-    for (size_t i = 0; i < programHeaderCount; ++i) {
-        const size_t header = programHeaderOffset + i * 56;
-        if (read32(header) == 2) { // PT_DYNAMIC
-            dynamicOffset = static_cast<size_t>(read64(header + 8));
-            dynamicSize = static_cast<size_t>(read64(header + 32));
-        }
-    }
-    REQUIRE(dynamicSize != 0);
-    uint64_t dynamicRelocationSize = 0;
-    for (size_t offset = dynamicOffset; offset < dynamicOffset + dynamicSize; offset += 16) {
-        if (read64(offset) == 8) { // DT_RELASZ
-            dynamicRelocationSize = read64(offset + 8);
-        }
-    }
-    CHECK(dynamicRelocationSize == 24);
+    const ElfImage image{{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()}};
+    CHECK(image.Type() == 3); // ET_DYN
+    CHECK(image.Entry() == 0);
+    const auto symbols = image.DynamicSymbols();
+    CHECK(std::ranges::contains(symbols, "Answer", &ElfImage::DynamicSymbol::name));
+    CHECK(image.DynamicRelocations().size() == 1);
 
     stream.close();
     std::filesystem::remove(output, ec);
@@ -218,148 +236,6 @@ void AppendWord(std::vector<uint8_t> &data, const uint32_t word) {
         data.push_back(static_cast<uint8_t>(word >> (i * 8U)));
     }
 }
-
-// An ELF64 image read back for inspection, with the accessors the AArch64
-// cases below share.
-struct ElfImage {
-    std::vector<uint8_t> bytes;
-
-    [[nodiscard]] uint32_t Read32(const size_t offset) const {
-        uint32_t value = 0;
-        for (size_t i = 0; i < 4; ++i) {
-            value |= static_cast<uint32_t>(bytes[offset + i]) << (i * 8U);
-        }
-        return value;
-    }
-
-    [[nodiscard]] uint64_t Read64(const size_t offset) const {
-        uint64_t value = 0;
-        for (size_t i = 0; i < 8; ++i) {
-            value |= static_cast<uint64_t>(bytes[offset + i]) << (i * 8U);
-        }
-        return value;
-    }
-
-    [[nodiscard]] uint16_t Read16(const size_t offset) const {
-        return static_cast<uint16_t>(bytes[offset] | bytes[offset + 1] << 8U);
-    }
-
-    [[nodiscard]] uint16_t Machine() const {
-        return Read16(18);
-    }
-
-    [[nodiscard]] uint16_t Type() const {
-        return Read16(16);
-    }
-
-    // One entry of the program header table, in the order the fields sit in.
-    struct Segment {
-        uint32_t type;
-        uint32_t flags;
-        uint64_t offset;
-        uint64_t address;
-        uint64_t fileSize;
-        uint64_t memorySize;
-        uint64_t alignment;
-    };
-
-    [[nodiscard]] std::vector<Segment> Segments() const {
-        const auto table = static_cast<size_t>(Read64(32));
-        std::vector<Segment> segments;
-        for (size_t i = 0; i < Read16(56); ++i) {
-            const size_t header = table + i * 56;
-            segments.push_back({Read32(header), Read32(header + 4), Read64(header + 8), Read64(header + 16),
-                                Read64(header + 32), Read64(header + 40), Read64(header + 48)});
-        }
-        return segments;
-    }
-
-    // The one segment of a kind the image carries, or nothing when it carries
-    // none: PT_PHDR, PT_INTERP and PT_DYNAMIC are each written at most once.
-    [[nodiscard]] std::optional<Segment> SegmentOfType(const uint32_t type) const {
-        const auto segments = Segments();
-        const auto found = std::ranges::find(segments, type, &Segment::type);
-        return found == segments.end() ? std::nullopt : std::optional(*found);
-    }
-
-    [[nodiscard]] uint64_t Entry() const {
-        return Read64(24);
-    }
-
-    // The file offset a virtual address maps to, found through the PT_LOAD
-    // segment that covers it.
-    [[nodiscard]] size_t OffsetOf(const uint64_t virtualAddress) const {
-        for (const auto &segment : Segments()) {
-            if (segment.type != 1) { // PT_LOAD
-                continue;
-            }
-            if (virtualAddress >= segment.address && virtualAddress < segment.address + segment.memorySize) {
-                return static_cast<size_t>(segment.offset + (virtualAddress - segment.address));
-            }
-        }
-        return 0;
-    }
-
-    // The virtual address of the writable PT_LOAD, which is where .data lands.
-    [[nodiscard]] uint64_t WritableSegmentAddress() const {
-        for (const auto &segment : Segments()) {
-            if (segment.type == 1 && (segment.flags & 0x2U) != 0) {
-                return segment.address;
-            }
-        }
-        return 0;
-    }
-
-    [[nodiscard]] uint32_t Word(const uint64_t virtualAddress) const {
-        return Read32(OffsetOf(virtualAddress));
-    }
-
-    [[nodiscard]] uint64_t Giant(const uint64_t virtualAddress) const {
-        return Read64(OffsetOf(virtualAddress));
-    }
-
-    // The p_align every PT_LOAD declares, or zero when they disagree.
-    [[nodiscard]] uint64_t LoadAlignment() const {
-        uint64_t alignment = 0;
-        for (const auto &segment : Segments()) {
-            if (segment.type != 1) { // PT_LOAD
-                continue;
-            }
-            if (alignment != 0 && alignment != segment.alignment) {
-                return 0;
-            }
-            alignment = segment.alignment;
-        }
-        return alignment;
-    }
-
-    // The value of a .dynamic tag, found through PT_DYNAMIC.
-    [[nodiscard]] uint64_t DynamicTag(const uint64_t tag) const {
-        const auto dynamic = SegmentOfType(2); // PT_DYNAMIC
-        if (!dynamic) {
-            return 0;
-        }
-        const auto offset = static_cast<size_t>(dynamic->offset);
-        for (size_t at = offset; at + 16 <= offset + dynamic->fileSize; at += 16) {
-            if (Read64(at) == tag) {
-                return Read64(at + 8);
-            }
-        }
-        return 0;
-    }
-
-    // The address an ADRP / LDR / ADD trio at `virtualAddress` reaches, read
-    // back out of the three immediate fields. Both halves of the split must
-    // agree, which is what makes this an assertion rather than a decode.
-    [[nodiscard]] uint64_t GotSlotReachedBy(const uint64_t virtualAddress) const {
-        const uint32_t adrp = Word(virtualAddress);
-        const auto immediate = static_cast<int32_t>(((adrp >> 5U & 0x7FFFFU) << 2U | (adrp >> 29U & 3U)) << 11U) >> 11;
-        const uint64_t page = (virtualAddress & ~uint64_t{0xFFF}) + (static_cast<int64_t>(immediate) << 12U);
-        const uint64_t viaLoad = page + ((Word(virtualAddress + 4) >> 10U & 0xFFFU) << 3U);
-        const uint64_t viaAdd = page + (Word(virtualAddress + 8) >> 10U & 0xFFFU);
-        return viaLoad == viaAdd ? viaLoad : 0;
-    }
-};
 
 ElfImage LinkAArch64Image(std::vector<RcuFile> objects, const std::filesystem::path &output, const ArtifactKind kind) {
     std::error_code ec;
@@ -542,8 +418,7 @@ TEST_CASE("ELF linker points an AArch64 dynamic executable at its interpreter") 
     // PT_INTERP names the AArch64 loader, with the terminator the kernel reads
     // the name up to.
     REQUIRE(interp->fileSize == kAArch64Interpreter.size() + 1);
-    const auto begin = image.bytes.begin() + static_cast<std::ptrdiff_t>(interp->offset);
-    CHECK(std::string(begin, begin + static_cast<std::ptrdiff_t>(interp->fileSize) - 1) == kAArch64Interpreter);
+    CHECK(image.Interpreter() == kAArch64Interpreter);
     CHECK(image.bytes[static_cast<size_t>(interp->offset + interp->fileSize) - 1] == 0);
     CHECK(interp->alignment == 1);
 
@@ -559,7 +434,7 @@ TEST_CASE("ELF linker points an AArch64 dynamic executable at its interpreter") 
     CHECK(dynamic->fileSize % 16 == 0);
     CHECK(image.Read64(static_cast<size_t>(dynamic->offset + dynamic->fileSize) - 16) == 0); // DT_NULL
     CHECK(image.DynamicTag(5) != 0);                                                         // DT_STRTAB
-    CHECK(std::string(image.bytes.begin(), image.bytes.end()).find("libm.so.6") != std::string::npos);
+    CHECK(std::ranges::contains(image.NeededLibraries(), "libm.so.6"));
 }
 
 TEST_CASE("ELF linker writes an AArch64 executable that exits through its entry stub") {
@@ -723,6 +598,8 @@ TEST_CASE("ELF linker binds an AArch64 import through a PLT stub and its GOT slo
     CHECK(image.DynamicTag(20) == 7);     // DT_PLTREL = DT_RELA
     CHECK(image.DynamicTag(2) == 2 * 24); // DT_PLTRELSZ: one entry per import
     CHECK(image.DynamicTag(4) != 0);      // DT_HASH
+    const auto pltRelocations = image.PltRelocations();
+    REQUIRE(pltRelocations.size() == 2);
 
     // The trio every stub reaches its GOT slot with, whatever address the two
     // immediates carry: the page in X16, the slot's contents in X17 and the
@@ -759,8 +636,9 @@ TEST_CASE("ELF linker binds an AArch64 import through a PLT stub and its GOT slo
 
         // .rela.plt names that slot with R_AARCH64_JUMP_SLOT and the import's
         // own .dynsym index, in the order the resolver counts them in.
-        CHECK(image.Giant(jmprel + i * 24) == slot);
-        CHECK(image.Giant(jmprel + i * 24 + 8) == (static_cast<uint64_t>(i + 1) << 32 | 1026));
+        CHECK(pltRelocations[i].offset == slot);
+        CHECK(pltRelocations[i].symbolIndex == i + 1);
+        CHECK(pltRelocations[i].type == 1026); // R_AARCH64_JUMP_SLOT
     }
 
     // The call site is bound to sqrt's stub, the second of the two.
@@ -804,11 +682,11 @@ TEST_CASE("ELF linker writes an AArch64 shared library whose pointers rebase the
 
     // The one absolute pointer in .data is left to the loader as an
     // R_AARCH64_RELATIVE carrying its link-time value as the addend.
-    const uint64_t rela = image.DynamicTag(7); // DT_RELA
-    REQUIRE(rela != 0);
+    const auto relocations = image.DynamicRelocations();
+    REQUIRE(relocations.size() == 1);
     CHECK(image.DynamicTag(8) == 24); // DT_RELASZ
-    CHECK(image.Giant(rela + 8) == 1027);
-    CHECK(image.Giant(rela + 16) == image.Giant(image.Giant(rela)));
+    CHECK(relocations[0].type == 1027);
+    CHECK(static_cast<uint64_t>(relocations[0].addend) == image.Giant(relocations[0].offset));
 }
 
 TEST_CASE("ELF linker leaves a pointer to an import in an AArch64 shared library to the loader") {

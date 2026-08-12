@@ -11,8 +11,10 @@
 #include "Linker/AArch64Relocation.h"
 #include "Linker/Linker.h"
 #include "Linker/LinkerInternal.h"
+#include "Target/ElfProfile.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <format>
 #include <fstream>
@@ -24,73 +26,6 @@
 #include <vector>
 
 namespace Rux {
-// The interpreter the image being linked names in its PT_INTERP. It follows
-// the target and not the host: an image cross-linked from macOS or FreeBSD
-// must still name the loader the target's kernel goes looking for. Linux names
-// its loader after the architecture it runs on, so the two AArch64 and x86-64
-// paths differ there; the BSDs and illumos use one path for every architecture
-// they support.
-[[nodiscard]] static constexpr const char *ElfInterpFor(const Target::OS os, const Target::Arch arch) noexcept {
-    switch (os) {
-    case Target::OS::FreeBSD:
-        return "/libexec/ld-elf.so.1";
-    case Target::OS::DragonFlyBSD:
-        return "/libexec/ld-elf.so.2";
-    case Target::OS::OpenBSD:
-        return "/usr/libexec/ld.so";
-    case Target::OS::NetBSD:
-        return "/libexec/ld.elf_so";
-    case Target::OS::Solaris:
-    case Target::OS::Illumos:
-        return "/lib/amd64/ld.so.1";
-    default:
-        return arch == Target::Arch::AArch64 ? "/lib/ld-linux-aarch64.so.1" : "/lib64/ld-linux-x86-64.so.2";
-    }
-}
-
-// EI_OSABI, the byte of e_ident naming the ABI the image expects of the system
-// that loads it.
-[[nodiscard]] static constexpr std::uint8_t ElfOsAbiFor(const Target::OS os) noexcept {
-    switch (os) {
-    case Target::OS::FreeBSD:
-        return 9;
-    case Target::OS::OpenBSD:
-        return 12;
-    case Target::OS::NetBSD:
-        return 2;
-    case Target::OS::Solaris:
-    case Target::OS::Illumos:
-        return 6;
-    default:
-        return 0; // System V (Linux, DragonFly)
-    }
-}
-
-// The BSDs, which share a set of ELF conventions the other ELF systems do not.
-[[nodiscard]] static constexpr bool IsBsdTarget(const Target::OS os) noexcept {
-    return os == Target::OS::FreeBSD || os == Target::OS::OpenBSD || os == Target::OS::NetBSD ||
-           os == Target::OS::DragonFlyBSD;
-}
-
-// The shared library an import that names none of its own comes from, which is
-// the target's C library.
-[[nodiscard]] static constexpr const char *DefaultLibFor(const Target::OS os) noexcept {
-    switch (os) {
-    case Target::OS::FreeBSD:
-        return "libc.so.7";
-    case Target::OS::DragonFlyBSD:
-        return "libc.so.8";
-    case Target::OS::OpenBSD:
-        return "libc.so.103.0";
-    case Target::OS::NetBSD:
-        return "libc.so.12";
-    case Target::OS::Solaris:
-    case Target::OS::Illumos:
-        return "libc.so.1";
-    default:
-        return "libc.so.6";
-    }
-}
 
 // The machine code of an AArch64 entry stub. Written as words rather than
 // assembled, because the linker owns no code generator: the sequence is
@@ -119,24 +54,7 @@ constexpr uint32_t LdrX17X16 = 0xF9400211; // ldr x17, [x16, :lo12:&got]
 constexpr uint32_t AddX16 = 0x91000210;    // add x16, x16, :lo12:&got
 constexpr uint32_t BrX17 = 0xD61F0220;     // br x17
 constexpr uint32_t Nop = 0xD503201F;
-constexpr size_t HeaderSize = 32;
-constexpr size_t EntrySize = 16;
 } // namespace A64Plt
-
-// The dynamic relocation numbers the loader reads out of .rela.plt and
-// .rela.dyn. Both architectures need the same three kinds and number them
-// differently, so the writer looks them up rather than spelling either set in
-// the code that emits an entry.
-struct DynRelocTypes {
-    uint32_t jumpSlot;
-    uint32_t globDat;
-    uint32_t relative;
-};
-
-[[nodiscard]] static constexpr DynRelocTypes DynRelocsFor(const Target::Arch arch) noexcept {
-    return arch == Target::Arch::AArch64 ? DynRelocTypes{1026, 1025, 1027} // R_AARCH64_JUMP_SLOT / GLOB_DAT / RELATIVE
-                                         : DynRelocTypes{7, 6, 8};         // R_X86_64_JUMP_SLOT / GLOB_DAT / RELATIVE
-}
 
 // Classic SysV ELF symbol hash (used by DT_HASH).
 static uint32_t ElfHash(const std::string &name) {
@@ -194,15 +112,25 @@ static Buf BuildOsNote(const Target::OS os) {
 }
 
 bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
+    const auto selectedProfile = Target::Elf64ProfileFor(targetOs, targetArch);
+    if (!selectedProfile) {
+        std::string targetName = std::format("{}-{}", Target::ToString(targetOs), Target::ToString(targetArch));
+        std::ranges::transform(targetName, targetName.begin(),
+                               [](const unsigned char character) { return std::tolower(character); });
+        Error(std::format("ELF writer does not implement the complete target '{}'", targetName));
+        return false;
+    }
+    const Target::Elf64Profile &profile = *selectedProfile;
     const bool isShared = artifactKind == ArtifactKind::SharedLibrary;
-    const bool aarch64 = targetArch == Target::Arch::AArch64;
-    const uint64_t imageBase = isShared ? 0 : 0x400000;
+    const bool aarch64 = profile.arch == Target::Arch::AArch64;
+    const bool aarch64Plt = profile.pltInstructionShape == Target::ElfPltInstructionShape::AArch64;
+    const uint64_t imageBase = isShared ? profile.sharedImageBase : profile.executableImageBase;
     // The alignment every loadable segment starts on, which is the largest page
     // an image may be mapped with. Two segments sharing a page cannot carry
     // different permissions, so an AArch64 image — where the kernel may be
     // configured for 4 KB, 16 KB or 64 KB pages — separates them by the largest
     // of the three rather than by the one this kernel happens to use.
-    const uint64_t kPage = aarch64 ? 0x10000 : 0x1000;
+    const uint64_t kPage = profile.maximumLoadAlignment;
     static constexpr uint32_t kPfX = 0x1;
     static constexpr uint32_t kPfW = 0x2;
     static constexpr uint32_t kPfR = 0x4;
@@ -258,9 +186,10 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                 }
                 if (sym.kind == RcuSymKind::ExternFunc) {
                     const auto explicitIt = explicitImportLib.find(sym.name);
-                    const std::string &lib = explicitIt != explicitImportLib.end()
-                                               ? explicitIt->second
-                                               : (sym.typeName.empty() ? DefaultLibFor(targetOs) : sym.typeName);
+                    const std::string &lib =
+                        explicitIt != explicitImportLib.end()
+                            ? explicitIt->second
+                            : (sym.typeName.empty() ? std::string(profile.defaultLibc) : sym.typeName);
                     const auto [it, inserted] = importLib.try_emplace(sym.name, lib);
                     if (!inserted && it->second != lib) {
                         Error("external symbol '" + sym.name + "' is referenced from both '" + it->second + "' and '" +
@@ -284,9 +213,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // pull in exit() as an implicit import (mirroring the PE writer's use of
     // ExitProcess for its entry stub).
     const bool dynamic = isShared || !importLib.empty();
-    const DynRelocTypes dynRelocs = DynRelocsFor(targetArch);
+    const Target::ElfDynamicRelocations dynRelocs = profile.dynamicRelocations;
     if (dynamic && !isShared) {
-        importLib.try_emplace("exit", DefaultLibFor(targetOs));
+        importLib.try_emplace("exit", profile.defaultLibc);
     }
 
     // 3. Entry preamble (__rux_start): align the stack and call Main. A static
@@ -321,12 +250,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                 WriteU32(textPre, A64Entry::Brk0); // unreachable
             }
             else {
-                // Linux and Android number exit 93 on AArch64; the BSDs kept
-                // the traditional 1.
-                const uint32_t exitSyscall =
-                    targetOs == Target::OS::Linux || targetOs == Target::OS::Android ? 93U : 1U;
-                WriteU32(textPre, A64Entry::MovzX8 | exitSyscall << 5U); // mov x8, #nr
-                WriteU32(textPre, A64Entry::Svc0);                       // svc #0
+                WriteU32(textPre, A64Entry::MovzX8 | profile.freestandingExitSyscall << 5U); // mov x8, #nr
+                WriteU32(textPre, A64Entry::Svc0);                                           // svc #0
             }
         }
         else {
@@ -340,10 +265,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                 textPre.insert(textPre.end(), {0xCC});                         // int3 (unreachable)
             }
             else {
-                // Linux and Android number exit 60 on x86-64; the BSDs and
-                // illumos kept the traditional 1.
-                const uint8_t exitSyscall =
-                    targetOs == Target::OS::Linux || targetOs == Target::OS::Android ? 0x3C : 0x01;
+                const auto exitSyscall = static_cast<uint8_t>(profile.freestandingExitSyscall);
                 textPre.insert(textPre.end(), {0xB8, exitSyscall, 0x00, 0x00, 0x00}); // mov eax, #nr
                 textPre.insert(textPre.end(), {0x0F, 0x05});                          // syscall
             }
@@ -618,7 +540,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         };
 
         Buf hdr;
-        const uint8_t osabi = ElfOsAbiFor(targetOs);
+        const uint8_t osabi = profile.osAbi;
         static constexpr uint8_t kIdent[7] = {0x7F, 'E', 'L', 'F', 2, 1, 1};
         for (const uint8_t b : kIdent) {
             WriteU8(hdr, b);
@@ -627,9 +549,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         for (int i = 0; i < 8; ++i) {
             WriteU8(hdr, 0);
         }
-        WriteU16(hdr, isShared ? 3 : 2);      // ET_DYN or ET_EXEC
-        WriteU16(hdr, aarch64 ? 0xB7 : 0x3E); // EM_AARCH64 or EM_X86_64
-        WriteU32(hdr, 1);                     // e_version
+        WriteU16(hdr, isShared ? 3 : 2); // ET_DYN or ET_EXEC
+        WriteU16(hdr, profile.machine);  // EM_AARCH64 or EM_X86_64
+        WriteU32(hdr, 1);                // e_version
         WriteU64(hdr, entryVA);
         WriteU64(hdr, phoff);
         WriteU64(hdr, 0);  // e_shoff
@@ -765,7 +687,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         }
     }
 
-    if (IsBsdTarget(targetOs)) {
+    if (profile.definesBsdProcessGlobals) {
         const auto exportPointerDataSymbol = [&](std::string name) {
             while (mergedData.size() % 8) {
                 mergedData.push_back(0);
@@ -887,7 +809,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // Interp string.
     Buf interp;
     if (!isShared) {
-        WriteCStr(interp, ElfInterpFor(targetOs, targetArch));
+        WriteCStr(interp, profile.interpreter.data());
     }
 
     // Fixed-size buffers whose bytes are patched once addresses are known.
@@ -905,8 +827,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // x86-64 opens the PLT with one 16-byte resolver trampoline; the AArch64
     // header is twice that, since it pushes the stub's GOT pointer and the
     // return address before it reaches the resolver the way its own stubs do.
-    const size_t pltHeaderSz = aarch64 ? A64Plt::HeaderSize : 16;
-    const size_t pltEntrySz = aarch64 ? A64Plt::EntrySize : 16;
+    const size_t pltHeaderSz = profile.pltHeaderSize;
+    const size_t pltEntrySz = profile.pltEntrySize;
     const size_t pltSz = pltHeaderSz + n * pltEntrySz;
     const size_t gotSz = (3 + n) * 8;
     // The stub an import's calls are bound to, which is what its name resolves
@@ -999,7 +921,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         return true;
     };
 
-    if (aarch64) {
+    if (aarch64Plt) {
         // PLT[0]: push the stub's GOT pointer and the return address where the
         // resolver reads them, then enter the resolver through .got.plt[2].
         WriteU32(plt, A64Plt::StpX16X30);
@@ -1053,7 +975,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     WriteU64(got, 0);
     WriteU64(got, 0);
     for (size_t i = 0; i < n; ++i) {
-        WriteU64(got, aarch64 ? pltVA : pltVA + pltStubOffset(i) + 6);
+        WriteU64(got, aarch64Plt ? pltVA : pltVA + pltStubOffset(i) + 6);
     }
 
     // 8. .rela.plt — one JUMP_SLOT per import, in GOT order, which is also the
