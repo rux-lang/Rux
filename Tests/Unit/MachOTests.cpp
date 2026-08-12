@@ -1,4 +1,6 @@
+#include "Crypto/Sha256.h"
 #include "Linker/Linker.h"
+#include "Linker/MachO/CodeSignature.h"
 #include "MachOReader.h"
 
 #include <algorithm>
@@ -24,33 +26,103 @@ RcuSection TextSection(std::vector<std::uint8_t> bytes) {
     return text;
 }
 
-MachOImage LinkAndRead(RcuFile object, const ArtifactKind kind, const std::filesystem::path &output) {
+std::vector<std::uint8_t> LinkBytes(RcuFile object, const ArtifactKind kind, const std::filesystem::path &output) {
     std::error_code fileError;
     std::filesystem::remove(output, fileError);
     Linker linker({std::move(object)}, "MachOTest", {}, kind, Target::OS::MacOS, Target::Arch::X86_64);
     const bool linked = linker.Link(output);
-    if (!linked) {
-        // Task 3 replaces this final host-tool signing step. Until then, the
-        // complete unsigned image written immediately before it remains the
-        // portable structure under test on non-macOS hosts.
-        REQUIRE(linker.Errors().size() == 1);
-        REQUIRE(linker.Errors().front().message.contains("codesign"));
-    }
+    CAPTURE(linker.Errors().empty() ? std::string{} : linker.Errors().front().message);
+    REQUIRE(linked);
 
     std::ifstream stream(output, std::ios::binary);
     REQUIRE(stream.is_open());
     const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
     stream.close();
     std::filesystem::remove(output, fileError);
+    return bytes;
+}
 
+MachOImage LinkAndRead(RcuFile object, const ArtifactKind kind, const std::filesystem::path &output) {
+    const std::vector<std::uint8_t> bytes = LinkBytes(std::move(object), kind, output);
     MachOImage image;
     std::string error;
     const bool parsed = ReadMachO64(bytes, image, error);
     CAPTURE(error);
     REQUIRE(parsed);
+
+    REQUIRE(image.codeSignature);
+    REQUIRE(image.codeDirectory);
+    CHECK(image.codeSignature->offset == image.codeDirectory->codeLimit);
+    CHECK(image.codeSignature->offset + image.codeSignature->size == bytes.size());
+    CHECK(image.codeDirectory->version == 0x0002'0400);
+    CHECK(image.codeDirectory->flags == 0x0002'0002);
+    CHECK(image.codeDirectory->identifier == "MachOTest");
+    CHECK(image.codeDirectory->hashSize == Crypto::sha256DigestLength);
+    CHECK(image.codeDirectory->hashType == 2);
+    CHECK(image.codeDirectory->pageSizePower == 12);
+    REQUIRE(image.Segment("__TEXT") != nullptr);
+    CHECK(image.codeDirectory->executableSegmentBase == image.Segment("__TEXT")->fileOffset);
+    CHECK(image.codeDirectory->executableSegmentLimit == image.Segment("__TEXT")->fileSize);
+    CHECK(image.codeDirectory->executableSegmentFlags == (kind == ArtifactKind::Executable ? 1 : 0));
+    const std::size_t expectedSlots =
+        (image.codeSignature->offset + MachO::codeSignaturePageSize - 1) / MachO::codeSignaturePageSize;
+    REQUIRE(image.codeDirectory->codeHashes.size() == expectedSlots);
+    for (std::size_t slot = 0; slot < expectedSlots; ++slot) {
+        const std::size_t offset = slot * MachO::codeSignaturePageSize;
+        const std::size_t size =
+            std::min<std::size_t>(MachO::codeSignaturePageSize, image.codeSignature->offset - offset);
+        const Crypto::Sha256Digest expected = Crypto::Sha256(std::span(bytes).subspan(offset, size));
+        CHECK(image.codeDirectory->codeHashes[slot] == std::vector<std::uint8_t>(expected.begin(), expected.end()));
+    }
     return image;
 }
 } // namespace
+
+TEST_CASE("Mach-O ad-hoc signature builder covers empty and partial pages") {
+    std::vector<std::uint8_t> signature;
+    std::string error;
+    REQUIRE(MachO::BuildAdHocCodeSignature({}, "Empty", 0, 0, 0, signature, error));
+    CHECK(signature.size() == MachO::AdHocCodeSignatureSize(0, "Empty", error));
+    CHECK(Detail::BigU32(signature, 0) == 0xFADE'0CC0);
+    CHECK(Detail::BigU32(signature, 12) == 0); // CSSLOT_CODEDIRECTORY
+    const std::size_t emptyDirectory = Detail::BigU32(signature, 16);
+    CHECK(Detail::BigU32(signature, emptyDirectory + 28) == 0);
+
+    const std::vector<std::uint8_t> partial(MachO::codeSignaturePageSize + 1, 0xA5);
+    REQUIRE(MachO::BuildAdHocCodeSignature(partial, "Partial", 0, partial.size(), 1, signature, error));
+    const std::size_t directory = Detail::BigU32(signature, 16);
+    CHECK(Detail::BigU32(signature, directory + 28) == 2);
+    CHECK(Detail::BigU32(signature, directory + 32) == partial.size());
+    const std::size_t identifierOffset = Detail::BigU32(signature, directory + 20);
+    CHECK(std::string(reinterpret_cast<const char *>(signature.data() + directory + identifierOffset)) == "Partial");
+}
+
+TEST_CASE("Mach-O ad-hoc signature builder diagnoses malformed inputs") {
+    std::vector<std::uint8_t> signature;
+    std::string error;
+    CHECK_FALSE(MachO::BuildAdHocCodeSignature({}, "", 0, 0, 0, signature, error));
+    CHECK(error == "Mach-O code-signature identifier cannot be empty");
+
+    const std::string embeddedNull("bad\0identifier", 14);
+    CHECK_FALSE(MachO::BuildAdHocCodeSignature({}, embeddedNull, 0, 0, 0, signature, error));
+    CHECK(error == "Mach-O code-signature identifier cannot contain a null byte");
+    CHECK(MachO::AdHocCodeSignatureSize(std::uint64_t{1} << 32U, "TooLarge", error) == 0);
+    CHECK(error == "Mach-O signed prefix does not fit in the CodeDirectory code-limit field");
+}
+
+TEST_CASE("Mach-O signed output is deterministic") {
+    RcuFile program;
+    program.arch = RcuArch::X86_64;
+    program.sections.push_back(TextSection({0x31, 0xC0, 0xC3}));
+    program.symbols.push_back({"Main", "int", 0, 3, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+
+    const auto temporary = std::filesystem::temp_directory_path();
+    const std::vector<std::uint8_t> first =
+        LinkBytes(program, ArtifactKind::Executable, temporary / "rux-macho-deterministic-first");
+    const std::vector<std::uint8_t> second =
+        LinkBytes(std::move(program), ArtifactKind::Executable, temporary / "rux-macho-deterministic-second");
+    CHECK(first == second);
+}
 
 TEST_CASE("Mach-O reader reports the freestanding x86-64 thread entry") {
     RcuFile program;

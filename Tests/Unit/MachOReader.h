@@ -66,6 +66,20 @@ struct MachORange {
     std::uint32_t size = 0;
 };
 
+struct MachOCodeDirectory {
+    std::uint32_t version = 0;
+    std::uint32_t flags = 0;
+    std::uint32_t codeLimit = 0;
+    std::uint8_t hashSize = 0;
+    std::uint8_t hashType = 0;
+    std::uint8_t pageSizePower = 0;
+    std::uint64_t executableSegmentBase = 0;
+    std::uint64_t executableSegmentLimit = 0;
+    std::uint64_t executableSegmentFlags = 0;
+    std::string identifier;
+    std::vector<std::vector<std::uint8_t>> codeHashes;
+};
+
 struct MachOImage {
     std::uint32_t cpuType = 0;
     std::uint32_t cpuSubtype = 0;
@@ -80,6 +94,7 @@ struct MachOImage {
     std::optional<std::uint64_t> mainEntryOffset;
     std::optional<std::uint64_t> threadEntryAddress;
     std::optional<MachORange> codeSignature;
+    std::optional<MachOCodeDirectory> codeDirectory;
 
     [[nodiscard]] MachOArchitecture Architecture() const noexcept {
         if (cpuType == 0x0100'0007) {
@@ -140,6 +155,15 @@ inline std::uint32_t U32(const std::span<const std::uint8_t> bytes, const std::s
 
 inline std::uint64_t U64(const std::span<const std::uint8_t> bytes, const std::size_t offset) {
     return static_cast<std::uint64_t>(U32(bytes, offset)) | static_cast<std::uint64_t>(U32(bytes, offset + 4)) << 32U;
+}
+
+inline std::uint32_t BigU32(const std::span<const std::uint8_t> bytes, const std::size_t offset) {
+    return static_cast<std::uint32_t>(bytes[offset]) << 24U | static_cast<std::uint32_t>(bytes[offset + 1]) << 16U |
+           static_cast<std::uint32_t>(bytes[offset + 2]) << 8U | static_cast<std::uint32_t>(bytes[offset + 3]);
+}
+
+inline std::uint64_t BigU64(const std::span<const std::uint8_t> bytes, const std::size_t offset) {
+    return static_cast<std::uint64_t>(BigU32(bytes, offset)) << 32U | BigU32(bytes, offset + 4);
 }
 
 inline std::string FixedString(const std::span<const std::uint8_t> bytes, const std::size_t offset,
@@ -343,6 +367,71 @@ inline std::optional<std::string> CommandString(const std::span<const std::uint8
     if (image.codeSignature && !InBounds(bytes, image.codeSignature->offset, image.codeSignature->size)) {
         error = "Mach-O code signature extends beyond the image";
         return false;
+    }
+    if (image.codeSignature && image.codeSignature->size >= 20 &&
+        BigU32(bytes, image.codeSignature->offset) == 0xFADE'0CC0) {
+        const std::size_t signatureOffset = image.codeSignature->offset;
+        const std::size_t signatureEnd = signatureOffset + image.codeSignature->size;
+        const std::uint32_t blobLength = BigU32(bytes, signatureOffset + 4);
+        const std::uint32_t blobCount = BigU32(bytes, signatureOffset + 8);
+        if (blobLength != image.codeSignature->size || blobCount == 0 ||
+            blobCount > (image.codeSignature->size - 12) / 8) {
+            error = "invalid Mach-O embedded-signature superblob";
+            return false;
+        }
+        std::optional<std::size_t> directoryOffset;
+        for (std::uint32_t index = 0; index < blobCount; ++index) {
+            const std::size_t entry = signatureOffset + 12 + static_cast<std::size_t>(index) * 8;
+            if (BigU32(bytes, entry) == 0) {
+                directoryOffset = signatureOffset + BigU32(bytes, entry + 4);
+                break;
+            }
+        }
+        if (!directoryOffset || *directoryOffset < signatureOffset || *directoryOffset > signatureEnd ||
+            signatureEnd - *directoryOffset < 88 || BigU32(bytes, *directoryOffset) != 0xFADE'0C02) {
+            error = "Mach-O signature has no valid CodeDirectory";
+            return false;
+        }
+        const std::uint32_t directoryLength = BigU32(bytes, *directoryOffset + 4);
+        const std::uint32_t hashOffset = BigU32(bytes, *directoryOffset + 16);
+        const std::uint32_t identifierOffset = BigU32(bytes, *directoryOffset + 20);
+        const std::uint32_t specialSlots = BigU32(bytes, *directoryOffset + 24);
+        const std::uint32_t codeSlots = BigU32(bytes, *directoryOffset + 28);
+        const std::uint8_t hashSize = bytes[*directoryOffset + 36];
+        if (directoryLength > signatureEnd - *directoryOffset || identifierOffset >= directoryLength ||
+            hashOffset > directoryLength || specialSlots != 0 || hashSize == 0 ||
+            codeSlots > (directoryLength - hashOffset) / hashSize) {
+            error = "invalid Mach-O CodeDirectory offsets or slot counts";
+            return false;
+        }
+        std::size_t identifierEnd = *directoryOffset + identifierOffset;
+        const std::size_t hashBegin = *directoryOffset + hashOffset;
+        while (identifierEnd < hashBegin && bytes[identifierEnd] != 0) {
+            ++identifierEnd;
+        }
+        if (identifierEnd == hashBegin) {
+            error = "unterminated Mach-O CodeDirectory identifier";
+            return false;
+        }
+        MachOCodeDirectory directory;
+        directory.version = BigU32(bytes, *directoryOffset + 8);
+        directory.flags = BigU32(bytes, *directoryOffset + 12);
+        directory.codeLimit = BigU32(bytes, *directoryOffset + 32);
+        directory.hashSize = hashSize;
+        directory.hashType = bytes[*directoryOffset + 37];
+        directory.pageSizePower = bytes[*directoryOffset + 39];
+        directory.executableSegmentBase = BigU64(bytes, *directoryOffset + 64);
+        directory.executableSegmentLimit = BigU64(bytes, *directoryOffset + 72);
+        directory.executableSegmentFlags = BigU64(bytes, *directoryOffset + 80);
+        directory.identifier =
+            std::string(reinterpret_cast<const char *>(bytes.data() + *directoryOffset + identifierOffset),
+                        identifierEnd - (*directoryOffset + identifierOffset));
+        for (std::uint32_t slot = 0; slot < codeSlots; ++slot) {
+            const std::size_t slotOffset = hashBegin + static_cast<std::size_t>(slot) * hashSize;
+            directory.codeHashes.emplace_back(bytes.begin() + static_cast<std::ptrdiff_t>(slotOffset),
+                                              bytes.begin() + static_cast<std::ptrdiff_t>(slotOffset + hashSize));
+        }
+        image.codeDirectory = std::move(directory);
     }
     return true;
 }

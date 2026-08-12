@@ -3,7 +3,7 @@
 #
 # Rux produces its own machine code, its own object files and its own
 # executables: nothing in the compiler may shell out to an assembler, a C
-# compiler, a linker or an archiver. This script fails when a file under
+# compiler, a linker, an archiver or a signing tool. This script fails when a file under
 # Compiler/ names one of those programs, and when a file outside
 # Compiler/System/ launches a process at all.
 #
@@ -33,7 +33,7 @@ launch_exceptions="$launch_exceptions"'|^Compiler/Cli/CmdTest\.cpp:'
 prefix='([A-Za-z0-9_.]+-)*'
 version='([-.]?[0-9]+)?'
 long_tool='clang(\+\+)?|gcc|g\+\+|lld(-link)?|ld\.lld|llvm-[a-z0-9-]+'
-long_tool="$long_tool"'|ranlib|libtool|xcrun|dlltool|armasm64|ml64|gas'
+long_tool="$long_tool"'|ranlib|libtool|xcrun|codesign|dlltool|armasm64|ml64|gas'
 short_tool='cc|c\+\+|ld|as|ar|link|cl|lib'
 toolchain_pattern='"[^"]*[/\\]'"$prefix"'('"$long_tool"'|'"$short_tool"')'"$version"'(\.exe)?"'
 toolchain_pattern="$toolchain_pattern"'|"'"$prefix"'('"$long_tool"')'"$version"'(\.exe)?"'
@@ -46,7 +46,7 @@ launch_pattern='\b(RunInherited|RunCaptured) *\('
 named=$(grep -rnE "$toolchain_pattern" Compiler --include='*.cpp' --include='*.h' || true)
 
 if [ -n "$named" ]; then
-    echo "error: an external assembler, compiler, linker or archiver is named in Compiler/ —" >&2
+    echo "error: an external assembler, compiler, linker, archiver or signing tool is named in Compiler/ —" >&2
     echo "       Rux emits its own objects and links its own executables:" >&2
     echo "$named" >&2
     exit 1

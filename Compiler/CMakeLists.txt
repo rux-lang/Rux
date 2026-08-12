@@ -46,6 +46,9 @@ if (WIN32)
     target_link_libraries(RuxSystem PRIVATE winhttp)
 endif ()
 
+rux_add_component(RuxCrypto
+    Crypto/Sha256.cpp)
+
 rux_add_component(RuxPackage
     Package/Artifact.cpp
     Package/Checksum.cpp
@@ -53,6 +56,7 @@ rux_add_component(RuxPackage
     Package/Manifest.cpp
     Package/Package.cpp
     Package/Version.cpp)
+target_link_libraries(RuxPackage PUBLIC RuxCrypto)
 
 rux_add_component(RuxLexer
     Lexer/Token.cpp
@@ -133,11 +137,12 @@ target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxCodeGenCommon RuxObjectRcu Rux
 rux_add_component(RuxLinker
     Linker/AArch64Relocation.cpp
     Linker/Linker.cpp
+    Linker/MachO/CodeSignature.cpp
     Linker/NativeObjectWriter.cpp
     Linker/Pe/PeWriter.cpp
     Linker/Elf/ElfWriter.cpp
     Linker/MachO/MachOWriter.cpp)
-target_link_libraries(RuxLinker PUBLIC RuxObjectRcu RuxSystem RuxArchive)
+target_link_libraries(RuxLinker PUBLIC RuxObjectRcu RuxSystem RuxArchive RuxCrypto)
 
 rux_add_component(RuxDriver
     Driver/CompilerDriver.cpp
@@ -185,7 +190,7 @@ set_target_properties(rux PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_SOURCE_DIR}/Bin)
 
 if (MSVC OR (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
-    set_property(TARGET rux RuxDiagnostics RuxSource RuxSystem RuxPackage
+    set_property(TARGET rux RuxDiagnostics RuxSource RuxSystem RuxCrypto RuxPackage
         RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxDocumentation RuxLinter RuxHir RuxHirPasses RuxLir
         RuxLowering RuxObjectRcu RuxCodeGenCommon RuxCodeGenX86_64 RuxCodeGenAArch64 RuxArchive
         RuxLinker RuxDriver PROPERTY

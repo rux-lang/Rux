@@ -27,7 +27,7 @@ Source -> Lexer -> Syntax -> SemanticModel
                             Linker -> ELF / Mach-O / PE
 ```
 
-The two back ends are symmetric: each encodes instruction bytes itself, each builds an RCU object, and both hand that object to the same linker. No stage invokes an external assembler, compiler, linker, or archiver.
+The two back ends are symmetric: each encodes instruction bytes itself, each builds an RCU object, and both hand that object to the same linker. No stage invokes an external assembler, compiler, linker, archiver, or signing tool.
 
 The driver loads the root manifest and dependencies before entering this pipeline. Diagnostics can stop the process after any frontend stage; object emission and linking only run when analysis and lowering succeed.
 
@@ -67,7 +67,7 @@ The Mach-O image writer keeps file layout separate from target instruction polic
 
 Operating-system APIs are confined to `Compiler/System`; the CI isolation guard is `Tests/Policy/PlatformIsolation/Check.sh`. New uses of `getenv`, `<windows.h>`, `fork`, or similar APIs belong behind a `System` interface.
 
-Process launches are confined the same way, and for a stronger reason: Rux encodes its own machine code and links its own artifacts, so no stage may call out to an assembler, a C compiler, a linker or an archiver. `Tests/Policy/NoExternalToolchain/Check.sh` is that guard. No file under `Compiler/` names such a program, and the only stages that launch anything at all are `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp`. `run` always builds and launches the host target; `test --target` launches output only when the target OS matches and the target architecture is executable directly by the compiler process or native OS.
+Process launches are confined the same way, and for a stronger reason: Rux encodes its own machine code, links its own artifacts, and signs Mach-O images, so no stage may call out to an assembler, a C compiler, a linker, an archiver, or a signing tool. `Tests/Policy/NoExternalToolchain/Check.sh` is that guard. No file under `Compiler/` names such a program, and the only stages that launch anything at all are `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp`. `run` always builds and launches the host target; `test --target` launches output only when the target OS matches and the target architecture is executable directly by the compiler process or native OS.
 
 The language parses the same for every target, with one exception: an `asm func` body is machine text rather than Rux, so `Parser` takes the target architecture and reads the body with that architecture's register table (`Target/AsmRegisters.h`). The mnemonics are checked later — a body whose instructions belong to the other architecture is an error reported during semantic analysis, after `when` folding has dropped the branches this build never reaches. A function that must reach both machines therefore writes a body per architecture under `when #target.arch`, as the platform packages' system-call wrappers do.
 
@@ -89,7 +89,7 @@ Canonical target names combine the lowercase OS identifier with the machine iden
 
 The principal ownership namespaces currently enforced at cross-platform and orchestration boundaries are `Rux::Target`, `Rux::System`, and `Rux::Driver`. New standalone tools use `Rux::Formatting` and `Rux::Linting`. Existing language model types remain in `Rux` while those large APIs are migrated incrementally; new code must not add declarations to `Misc` or recreate a generic `Utils` component.
 
-The build exposes focused targets such as `RuxSyntax`, `RuxSemantic`, `RuxHir`, `RuxLir`, `RuxLowering`, `RuxCodeGenCommon`, `RuxCodeGenX86_64`, `RuxCodeGenAArch64`, `RuxObjectRcu`, `RuxArchive`, `RuxLinker`, and `RuxDriver`. `RuxCore` is an interface-only compatibility aggregation target.
+The build exposes focused targets such as `RuxCrypto`, `RuxSyntax`, `RuxSemantic`, `RuxHir`, `RuxLir`, `RuxLowering`, `RuxCodeGenCommon`, `RuxCodeGenX86_64`, `RuxCodeGenAArch64`, `RuxObjectRcu`, `RuxArchive`, `RuxLinker`, and `RuxDriver`. `RuxCrypto` owns narrow byte-oriented cryptographic primitives shared across otherwise unrelated stages; package checksum formatting remains in `RuxPackage`, while Mach-O signing remains in `RuxLinker`. `RuxCore` is an interface-only compatibility aggregation target.
 
 `RuxCore` is convenient for the unit-test executable and embedders, but compiler components must link to their actual dependencies. It must not become a shortcut that introduces cycles between stages.
 
@@ -104,6 +104,8 @@ rux      -> RuxDriver
 ```
 
 Package commands use `Package/Manifest` for the strict versioned [`Rux.toml` contract](Manifest.md), `System/Process` and `System/Json` for registry transport and response parsing, and `Driver/Registry` for the registry's read contract: the resolver index, an exact version's checksum, and the artifact bytes. `Package/Checksum` verifies a download against the digest the registry published, and `Package/Artifact` both builds and unpacks the `.ruxpkg` archive under one contract. Manifest failures carry source-located diagnostics rather than escaping as exceptions.
+
+The Mach-O image writer builds ad-hoc signatures entirely inside `RuxLinker`. It reserves `LC_CODE_SIGNATURE` during layout, hashes the final signed prefix in 4 KiB pages with `RuxCrypto` SHA-256, emits a version 0x20400 CodeDirectory and embedded-signature superblob in big-endian form, and includes the result in `__LINKEDIT`. The same target bytes are therefore produced on every compiler host without invoking an Apple signing tool.
 
 Build and check resolve path dependencies directly and registry dependencies from the shared package cache, which is keyed by identity and exact version so several versions of a package coexist:
 

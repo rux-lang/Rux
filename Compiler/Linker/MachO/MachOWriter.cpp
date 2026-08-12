@@ -4,11 +4,11 @@
 
 #include "Linker/Linker.h"
 #include "Linker/LinkerInternal.h"
+#include "Linker/MachO/CodeSignature.h"
 
 #include <algorithm>
 #include <array>
 #include <cstdint>
-#include <cstdlib>
 #include <fstream>
 #include <limits>
 #include <map>
@@ -583,6 +583,8 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         ++commandCount;
         commandsSize += threadCommandSize;
     }
+    ++commandCount;
+    commandsSize += 16; // LC_CODE_SIGNATURE
 
     const auto alignLayout = [&](const uint64_t value, const uint64_t alignment,
                                  const std::string_view description) -> std::optional<uint64_t> {
@@ -602,9 +604,7 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     };
 
     const uint64_t headerSize = 32 + static_cast<uint64_t>(commandsSize);
-    constexpr uint64_t codeSignatureCommandSlack = 32;
-    const auto headerWithSlack = checkedAdd(headerSize, codeSignatureCommandSlack, "header size");
-    const auto textOffsetValue = headerWithSlack ? alignLayout(*headerWithSlack, 16, "text offset") : std::nullopt;
+    const auto textOffsetValue = alignLayout(headerSize, 16, "text offset");
     if (!textOffsetValue) {
         return false;
     }
@@ -773,8 +773,25 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     linkeditBuffer.insert(linkeditBuffer.end(), indirectSymbols.begin(), indirectSymbols.end());
     const uint64_t stringTableOffset = linkeditOffset + linkeditBuffer.size();
     linkeditBuffer.insert(linkeditBuffer.end(), stringTable.begin(), stringTable.end());
+    const auto codeSignatureOffsetValue =
+        alignLayout(linkeditOffset + linkeditBuffer.size(), 16, "code-signature offset");
+    if (!codeSignatureOffsetValue) {
+        return false;
+    }
+    const uint64_t codeSignatureOffset = *codeSignatureOffsetValue;
+    std::string signatureError;
+    const uint64_t codeSignatureSize = MachO::AdHocCodeSignatureSize(codeSignatureOffset, packageName, signatureError);
+    if (codeSignatureSize == 0) {
+        Error(std::move(signatureError));
+        return false;
+    }
+    const auto signedFileEnd = checkedAdd(codeSignatureOffset, codeSignatureSize, "code-signature size");
+    if (!signedFileEnd) {
+        return false;
+    }
+    const uint64_t linkeditFileSize = *signedFileEnd - linkeditOffset;
     const auto linkeditVMSizeValue =
-        alignLayout(std::max<uint64_t>(linkeditBuffer.size(), 1), architecture->vmPageAlignment, "link-edit segment");
+        alignLayout(std::max<uint64_t>(linkeditFileSize, 1), architecture->vmPageAlignment, "link-edit segment");
     if (!linkeditVMSizeValue) {
         return false;
     }
@@ -797,7 +814,9 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         !requireU32(stringTableOffset, "string-table offset") || !requireU32(bindStream.size(), "bind metadata size") ||
         !requireU32(exportTrie.size(), "export metadata size") ||
         !requireU32(dynamicSymbols.size() / 16, "symbol count") ||
-        !requireU32(stringTable.size(), "string-table size")) {
+        !requireU32(stringTable.size(), "string-table size") ||
+        !requireU32(codeSignatureOffset, "code-signature offset") ||
+        !requireU32(codeSignatureSize, "code-signature size")) {
         return false;
     }
 
@@ -1053,15 +1072,15 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     WriteU32(loadCommands, 0);
     WriteU32(loadCommands, 0);
 
-    // __LINKEDIT contains dyld bind opcodes and the dynamic symbol metadata;
-    // codesign appends its signature here and updates this segment.
+    // __LINKEDIT contains dyld metadata followed by the deterministic
+    // in-process ad-hoc signature.
     WriteU32(loadCommands, 0x19);
     WriteU32(loadCommands, segmentCommandSize);
     WriteMachName(loadCommands, "__LINKEDIT");
     WriteU64(loadCommands, linkeditVA);
     WriteU64(loadCommands, linkeditVMSize);
     WriteU64(loadCommands, linkeditOffset);
-    WriteU64(loadCommands, linkeditBuffer.size());
+    WriteU64(loadCommands, linkeditFileSize);
     WriteU32(loadCommands, 0x01);
     WriteU32(loadCommands, 0x01);
     WriteU32(loadCommands, 0);
@@ -1145,31 +1164,15 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         }
     }
 
+    WriteU32(loadCommands, 0x1D); // LC_CODE_SIGNATURE
+    WriteU32(loadCommands, 16);
+    WriteU32(loadCommands, static_cast<uint32_t>(codeSignatureOffset));
+    WriteU32(loadCommands, static_cast<uint32_t>(codeSignatureSize));
+
     if (loadCommands.size() != commandsSize) {
         Error("internal: Mach-O load-command size mismatch");
         return false;
     }
-
-    std::filesystem::create_directories(outputPath.parent_path());
-    std::ofstream output(outputPath, std::ios::binary | std::ios::trunc);
-    if (!output) {
-        Error("cannot open output file: " + outputPath.string());
-        return false;
-    }
-
-    const auto writeBuffer = [&](const Buf &buffer) {
-        if (!buffer.empty()) {
-            output.write(reinterpret_cast<const char *>(buffer.data()), static_cast<std::streamsize>(buffer.size()));
-        }
-    };
-    const auto padToOffset = [&](const uint64_t offset) {
-        static constexpr uint8_t zeros[4096] = {};
-        while (static_cast<uint64_t>(output.tellp()) < offset) {
-            const uint64_t remaining = offset - static_cast<uint64_t>(output.tellp());
-            output.write(reinterpret_cast<const char *>(zeros),
-                         static_cast<std::streamsize>(std::min<uint64_t>(remaining, sizeof(zeros))));
-        }
-    };
 
     Buf header;
     WriteU32(header, 0xFEED'FACF); // MH_MAGIC_64
@@ -1181,20 +1184,39 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     WriteU32(header, dynamic ? 0x0000'0005 : 0x0000'0001); // MH_DYLDLINK | MH_NOUNDEFS
     WriteU32(header, 0);
 
-    writeBuffer(header);
-    writeBuffer(loadCommands);
-    padToOffset(textOffset);
-    writeBuffer(textBuffer);
-    padToOffset(stubsOffset);
-    writeBuffer(stubs);
-    padToOffset(rodataOffset);
-    writeBuffer(mergedRodata);
-    padToOffset(pointersOffset);
-    writeBuffer(importPointers);
-    padToOffset(dataOffset);
-    writeBuffer(mergedData);
-    padToOffset(linkeditOffset);
-    writeBuffer(linkeditBuffer);
+    Buf image = std::move(header);
+    image.insert(image.end(), loadCommands.begin(), loadCommands.end());
+    const auto appendAt = [&](const uint64_t offset, const Buf &buffer) {
+        image.resize(static_cast<std::size_t>(offset), 0);
+        image.insert(image.end(), buffer.begin(), buffer.end());
+    };
+    appendAt(textOffset, textBuffer);
+    appendAt(stubsOffset, stubs);
+    appendAt(rodataOffset, mergedRodata);
+    appendAt(pointersOffset, importPointers);
+    appendAt(dataOffset, mergedData);
+    appendAt(linkeditOffset, linkeditBuffer);
+    image.resize(static_cast<std::size_t>(codeSignatureOffset), 0);
+
+    Buf codeSignature;
+    if (!MachO::BuildAdHocCodeSignature(image, packageName, 0, textSegmentFileEnd, isShared ? 0 : 1, codeSignature,
+                                        signatureError)) {
+        Error(std::move(signatureError));
+        return false;
+    }
+    if (codeSignature.size() != codeSignatureSize) {
+        Error("internal: Mach-O code-signature layout changed while writing the image");
+        return false;
+    }
+    image.insert(image.end(), codeSignature.begin(), codeSignature.end());
+
+    std::filesystem::create_directories(outputPath.parent_path());
+    std::ofstream output(outputPath, std::ios::binary | std::ios::trunc);
+    if (!output) {
+        Error("cannot open output file: " + outputPath.string());
+        return false;
+    }
+    output.write(reinterpret_cast<const char *>(image.data()), static_cast<std::streamsize>(image.size()));
 
     output.close();
     if (!output) {
@@ -1212,12 +1234,6 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
             Error("cannot mark output executable: " + errorCode.message());
             return false;
         }
-    }
-
-    const std::string signCommand = "codesign --force --sign - \"" + outputPath.string() + "\" 2>/dev/null";
-    if (std::system(signCommand.c_str()) != 0) {
-        Error("ad-hoc codesign failed (need Xcode command line tools); binary will not run on Apple Silicon");
-        return false;
     }
 
     return true;

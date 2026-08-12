@@ -22,9 +22,9 @@ Two repository-policy workflows run alongside the per-OS matrix:
 
 ### The External-Toolchain Guard
 
-`Tests/Policy/NoExternalToolchain/Check.sh` protects the property the whole compiler is built around: Rux encodes its own machine code, writes its own object files and links its own executables, so no part of it may shell out to a build tool. The check greps `Compiler/` for two things and fails on either —
+`Tests/Policy/NoExternalToolchain/Check.sh` protects the property the whole compiler is built around: Rux encodes its own machine code, writes its own object files, links its own executables, and signs Mach-O images in-process, so no part of it may shell out to a build tool. The check greps `Compiler/` for two things and fails on either —
 
-- a string literal naming an assembler, C compiler, linker or archiver, under any spelling a real one carries: a path (`/usr/bin/clang`), a cross prefix (`aarch64-linux-gnu-gcc`), a version suffix (`clang-22`) or a Windows extension (`link.exe`). Two-letter names like `as`, `cc` and `ld` are assembler mnemonics and register names throughout `CodeGen/`, so they count only when the literal also carries a directory or an extension;
+- a string literal naming an assembler, C compiler, linker, archiver, or signing tool, under any spelling a real one carries: a path (`/usr/bin/clang`), a cross prefix (`aarch64-linux-gnu-gcc`), a version suffix (`clang-22`) or a Windows extension (`link.exe`). Two-letter names like `as`, `cc` and `ld` are assembler mnemonics and register names throughout `CodeGen/`, so they count only when the literal also carries a directory or an extension;
 - a call to `System::RunInherited` or `System::RunCaptured` — the two entry points every process launch goes through — from outside `Compiler/System/`.
 
 No file is allowed to name a toolchain program. The second check has a short allowlist at the top of the script, and a file joins it only with a reason written beside it: running a program is not the same as building one, so `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp` are its two permanent entries, directly executing the host artifact or a directly executable same-OS target test.
