@@ -52,9 +52,10 @@ std::string ReadString(const std::vector<uint8_t> &image, size_t offset) {
     return value;
 }
 
-std::filesystem::path PeTestPath() {
+std::filesystem::path PeTestPath(const std::string_view extension = ".exe") {
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-    return std::filesystem::temp_directory_path() / ("rux-pe-baseline-" + std::to_string(nonce) + ".exe");
+    return std::filesystem::temp_directory_path() /
+           ("rux-pe-baseline-" + std::to_string(nonce) + std::string(extension));
 }
 } // namespace
 
@@ -266,4 +267,91 @@ TEST_CASE("PE linker preserves the x86-64 executable layout and patched targets"
     CHECK(Read64(image, rdataSection.rawOffset) == imageBase + mainRva + 21);
     CHECK(dataSection.rva % 32 == 0);
     CHECK(Read64(image, dataSection.rawOffset) == imageBase + secondRva);
+}
+
+TEST_CASE("PE linker preserves both x86-64 DLL entry stub forms") {
+    RcuFile library;
+    library.sourcePath = "Library.rux";
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 16;
+
+    SUBCASE("calls DllMain when it is defined") {
+        text.data = {0xC3, 0xC3};
+        library.symbols.push_back({"DllMain", "", 0, 1, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        library.symbols.push_back({"Exported", "", 1, 1, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    }
+    SUBCASE("returns TRUE when DllMain is absent") {
+        text.data = {0xC3};
+        library.symbols.push_back({"Exported", "", 0, 1, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    }
+    library.sections.push_back(std::move(text));
+
+    const bool definesDllMain =
+        std::ranges::any_of(library.symbols, [](const RcuSymbol &symbol) { return symbol.name == "DllMain"; });
+    const auto output = PeTestPath(".dll");
+    auto importLibrary = output;
+    importLibrary.replace_extension(".lib");
+    std::error_code error;
+    std::filesystem::remove(output, error);
+    std::filesystem::remove(importLibrary, error);
+
+    Linker linker({std::move(library)}, "PeBaseline", {}, ArtifactKind::SharedLibrary, Target::OS::Windows,
+                  Target::Arch::X86_64);
+    REQUIRE(linker.Link(output));
+
+    std::ifstream stream(output, std::ios::binary);
+    REQUIRE(stream.is_open());
+    const std::vector<uint8_t> image((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    stream.close();
+    std::filesystem::remove(output, error);
+    std::filesystem::remove(importLibrary, error);
+
+    const size_t peOffset = Read32(image, 0x3C);
+    REQUIRE(Read16(image, peOffset + 4) == 0x8664); // IMAGE_FILE_MACHINE_AMD64
+    const size_t optional = peOffset + 24;
+    REQUIRE(Read16(image, optional) == 0x020B); // PE32+
+    REQUIRE(Read16(image, optional + 68) == 2); // IMAGE_SUBSYSTEM_WINDOWS_GUI
+    const uint32_t entryRva = Read32(image, optional + 16);
+    const size_t sectionTable = optional + Read16(image, peOffset + 20);
+    const uint32_t textRva = Read32(image, sectionTable + 12);
+    const uint32_t textOffset = Read32(image, sectionTable + 20);
+    const size_t entryOffset = textOffset + entryRva - textRva;
+    REQUIRE(entryOffset + 16 <= image.size());
+
+    CHECK(std::vector<uint8_t>(image.begin() + static_cast<std::ptrdiff_t>(entryOffset),
+                               image.begin() + static_cast<std::ptrdiff_t>(entryOffset + 4)) ==
+          std::vector<uint8_t>{0x48, 0x83, 0xEC, 0x28}); // sub rsp, 0x28
+    CHECK(std::vector<uint8_t>(image.begin() + static_cast<std::ptrdiff_t>(entryOffset + 9),
+                               image.begin() + static_cast<std::ptrdiff_t>(entryOffset + 14)) ==
+          std::vector<uint8_t>{0x48, 0x83, 0xC4, 0x28, 0xC3}); // add rsp, 0x28; ret
+    CHECK(image[entryOffset + 14] == 0xCC);                    // x86-64 alignment padding
+
+    if (definesDllMain) {
+        CHECK(image[entryOffset + 4] == 0xE8); // call DllMain
+        const int32_t displacement = static_cast<int32_t>(Read32(image, entryOffset + 5));
+        CHECK(entryRva + 9 + displacement == entryRva + 16);
+    }
+    else {
+        CHECK(std::vector<uint8_t>(image.begin() + static_cast<std::ptrdiff_t>(entryOffset + 4),
+                                   image.begin() + static_cast<std::ptrdiff_t>(entryOffset + 9)) ==
+              std::vector<uint8_t>{0xB8, 1, 0, 0, 0}); // mov eax, TRUE
+    }
+}
+
+TEST_CASE("PE linker preserves the missing x86-64 entry diagnostic") {
+    RcuFile object;
+    object.sourcePath = "NoMain.rux";
+    const auto output = PeTestPath();
+    std::error_code error;
+    std::filesystem::remove(output, error);
+
+    Linker linker({std::move(object)}, "PeBaseline", {}, ArtifactKind::Executable, Target::OS::Windows,
+                  Target::Arch::X86_64);
+    CHECK_FALSE(linker.Link(output));
+    REQUIRE(linker.Errors().size() == 1);
+    CHECK(linker.Errors().front().message == "undefined symbol 'Main' — no entry point found");
+    CHECK_FALSE(std::filesystem::exists(output));
 }

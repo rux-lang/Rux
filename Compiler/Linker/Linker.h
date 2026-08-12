@@ -54,7 +54,7 @@ private:
 
     // Object-format writers, one per target family. Each is always compiled;
     // Link() selects the one matching `targetOs`.
-    [[nodiscard]] bool LinkPe64(const std::filesystem::path &outputPath);
+    [[nodiscard]] bool LinkPe32Plus(const std::filesystem::path &outputPath);
     [[nodiscard]] bool LinkElf64(const std::filesystem::path &outputPath);
     [[nodiscard]] bool LinkMachO64(const std::filesystem::path &outputPath);
     [[nodiscard]] bool WriteStaticLibrary(const std::filesystem::path &outputPath);

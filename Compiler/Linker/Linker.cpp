@@ -65,7 +65,7 @@ bool Linker::Link(const std::filesystem::path &outputPath) {
     }
     switch (targetOs) {
     case Target::OS::Windows: {
-        if (!LinkPe64(outputPath)) {
+        if (!LinkPe32Plus(outputPath)) {
             return false;
         }
         if (artifactKind == ArtifactKind::SharedLibrary) {

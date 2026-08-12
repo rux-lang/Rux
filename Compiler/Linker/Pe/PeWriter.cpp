@@ -19,7 +19,6 @@ namespace Rux {
 [[maybe_unused]] static constexpr uint64_t kImageBase = 0x1'4000'0000ULL;
 [[maybe_unused]] static constexpr uint32_t kSecAlign = 0x1000; // 4 KB section alignment
 [[maybe_unused]] static constexpr uint32_t kFileAlign = 0x200; // 512 B file alignment
-[[maybe_unused]] static constexpr uint16_t kMachineAmd64 = 0x8664;
 [[maybe_unused]] static constexpr uint16_t kMagicPE32P = 0x020B;
 [[maybe_unused]] static constexpr uint16_t kSubsystemCUI = 3; // console
 
@@ -39,6 +38,180 @@ namespace Rux {
 // ASLR. Absolute relocations such as vtable function pointers must remain
 // valid at the preferred image base.
 [[maybe_unused]] static constexpr uint16_t kDllChars = 0x8100u;
+
+struct PeStubPatch {
+    size_t stubOffset = 0;
+    size_t fieldOffset = 0;
+    uint16_t type = RcuRelType::Rel32;
+};
+
+struct PeMissingEntryPatch {
+    size_t opcodeOffset = 0;
+    uint8_t opcode = 0;
+    uint32_t value = 0;
+};
+
+struct PeStubs {
+    Buf bytes;
+    PeStubPatch userEntry;
+    std::optional<PeStubPatch> exitProcess;
+    std::vector<PeStubPatch> imports;
+    std::optional<PeMissingEntryPatch> missingDllEntry;
+};
+
+using BuildPeEntryStub = PeStubs (*)(bool);
+using AppendPeImportThunk = void (*)(PeStubs &);
+using ApplyPeRelocation = bool (*)(Buf &, size_t, uint64_t, uint64_t, int64_t, uint16_t);
+
+struct PeArchitectureConfig {
+    uint16_t machine = 0;
+    uint8_t codePadding = 0;
+    BuildPeEntryStub buildEntryStub = nullptr;
+    AppendPeImportThunk appendImportThunk = nullptr;
+    ApplyPeRelocation applyRelocation = nullptr;
+};
+
+static PeStubs BuildX86_64EntryStub(const bool isDll) {
+    PeStubs stubs;
+    if (isDll) {
+        // sub rsp, 0x28; call DllMain; add rsp, 0x28; ret
+        stubs.bytes.insert(stubs.bytes.end(), {0x48, 0x83, 0xEC, 0x28, 0xE8, 0, 0, 0, 0, 0x48, 0x83, 0xC4, 0x28, 0xC3});
+        stubs.userEntry = {0, 5, RcuRelType::Rel32};
+        stubs.missingDllEntry = PeMissingEntryPatch{4, 0xB8, 1}; // mov eax, TRUE
+    }
+    else {
+        // sub rsp, 0x28; call Main; mov ecx, eax; call ExitProcess; int3
+        stubs.bytes.insert(stubs.bytes.end(),
+                           {0x48, 0x83, 0xEC, 0x28, 0xE8, 0, 0, 0, 0, 0x89, 0xC1, 0xE8, 0, 0, 0, 0, 0xCC});
+        stubs.userEntry = {0, 5, RcuRelType::Rel32};
+        stubs.exitProcess = PeStubPatch{0, 12, RcuRelType::Rel32};
+    }
+
+    return stubs;
+}
+
+static void AppendX86_64ImportThunk(PeStubs &stubs) {
+    const size_t offset = stubs.bytes.size();
+    stubs.bytes.insert(stubs.bytes.end(), {0xFF, 0x25, 0, 0, 0, 0}); // jmp qword ptr [rip+disp32]
+    stubs.imports.push_back({offset, offset + 2, RcuRelType::Rel32});
+}
+
+static bool ApplyX86_64PeRelocation(Buf &buffer, const size_t patchAt, const uint64_t siteVa, const uint64_t targetVa,
+                                    const int64_t addend, const uint16_t type) {
+    if (type == RcuRelType::Rel32) {
+        if (patchAt + 4 > buffer.size()) {
+            return false;
+        }
+        const auto displacement = static_cast<int32_t>(targetVa + addend - (siteVa + 4));
+        Patch32(buffer, patchAt, static_cast<uint32_t>(displacement));
+        return true;
+    }
+    if (type == RcuRelType::Abs64) {
+        if (patchAt + 8 > buffer.size()) {
+            return false;
+        }
+        Patch64(buffer, patchAt, targetVa + static_cast<uint64_t>(addend));
+        return true;
+    }
+    if (type == RcuRelType::Abs32) {
+        if (patchAt + 4 > buffer.size()) {
+            return false;
+        }
+        Patch32(buffer, patchAt, static_cast<uint32_t>(targetVa + addend));
+        return true;
+    }
+    return false;
+}
+
+static const PeArchitectureConfig *PeArchitectureFor(const Target::Arch arch) {
+    static constexpr PeArchitectureConfig x86_64{
+        .machine = 0x8664, // IMAGE_FILE_MACHINE_AMD64
+        .codePadding = 0xCC,
+        .buildEntryStub = BuildX86_64EntryStub,
+        .appendImportThunk = AppendX86_64ImportThunk,
+        .applyRelocation = ApplyX86_64PeRelocation,
+    };
+    switch (arch) {
+    case Target::Arch::X86_64:
+        return &x86_64;
+    default:
+        return nullptr;
+    }
+}
+
+static PeStubs BuildPeStubs(const PeArchitectureConfig &architecture, const bool isDll, const size_t importCount) {
+    PeStubs stubs = architecture.buildEntryStub(isDll);
+    stubs.imports.reserve(importCount);
+    for (size_t i = 0; i < importCount; ++i) {
+        architecture.appendImportThunk(stubs);
+    }
+    return stubs;
+}
+
+static bool PatchPeStubs(const PeArchitectureConfig &architecture, const PeStubs &stubs, Buf &text,
+                         const uint64_t textVa, const uint64_t rdataVa, const std::vector<uint32_t> &iatEntryOffsets,
+                         const std::unordered_map<std::string, size_t> &importIndexes,
+                         const std::unordered_map<std::string, uint64_t> &symbols, const bool isDll,
+                         std::string &error) {
+    for (size_t i = 0; i < stubs.imports.size(); ++i) {
+        const auto &patch = stubs.imports[i];
+        if (!architecture.applyRelocation(text, patch.fieldOffset, textVa + patch.fieldOffset,
+                                          rdataVa + iatEntryOffsets[i], 0, patch.type)) {
+            error = "internal: could not patch PE import stub";
+            return false;
+        }
+    }
+
+    const std::string_view entryName = isDll ? "DllMain" : "Main";
+    const auto entry = symbols.find(std::string(entryName));
+    if (entry != symbols.end()) {
+        const auto &patch = stubs.userEntry;
+        if (!architecture.applyRelocation(text, patch.fieldOffset, textVa + patch.fieldOffset, entry->second, 0,
+                                          patch.type)) {
+            error = "internal: could not patch PE entry stub";
+            return false;
+        }
+    }
+    else if (stubs.missingDllEntry) {
+        text[stubs.missingDllEntry->opcodeOffset] = stubs.missingDllEntry->opcode;
+        Patch32(text, stubs.userEntry.fieldOffset, stubs.missingDllEntry->value);
+    }
+    else {
+        error = "undefined symbol 'Main' — no entry point found";
+        return false;
+    }
+
+    if (stubs.exitProcess) {
+        const auto exitIndex = importIndexes.find("ExitProcess");
+        if (exitIndex == importIndexes.end()) {
+            error = "internal: ExitProcess import is missing from PE entry stub";
+            return false;
+        }
+        const auto &patch = *stubs.exitProcess;
+        const uint64_t exitThunkVa = textVa + stubs.imports[exitIndex->second].stubOffset;
+        if (!architecture.applyRelocation(text, patch.fieldOffset, textVa + patch.fieldOffset, exitThunkVa, 0,
+                                          patch.type)) {
+            error = "internal: could not patch PE process-exit stub";
+            return false;
+        }
+    }
+    return true;
+}
+
+static Buf BuildPeCoffHeader(const PeArchitectureConfig &architecture, const uint16_t sectionCount,
+                             const uint32_t timestamp, const bool isDll) {
+    Buf header;
+    WriteU16(header, architecture.machine);
+    WriteU16(header, sectionCount);
+    WriteU32(header, timestamp);
+    WriteU32(header, 0);
+    WriteU32(header, 0);   // no COFF symbol table
+    WriteU16(header, 240); // SizeOfOptionalHeader for PE32+
+    // EXE: EXECUTABLE | LARGE_ADDRESS_AWARE
+    // DLL: EXECUTABLE | LARGE_ADDRESS_AWARE | DLL
+    WriteU16(header, isDll ? kCharacteristicsDll : static_cast<uint16_t>(0x0022u));
+    return header;
+}
 
 static bool FileExists(const std::filesystem::path &path) {
     std::error_code ec;
@@ -258,7 +431,12 @@ FindDllFile(const std::string &dll, const std::vector<std::filesystem::path> &se
     return std::nullopt;
 }
 
-bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
+bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
+    const PeArchitectureConfig *architecture = PeArchitectureFor(targetArch);
+    if (architecture == nullptr) {
+        Error("internal: no PE32+ architecture configuration for target");
+        return false;
+    }
     const bool isDll = artifactKind == ArtifactKind::SharedLibrary;
     // Executables conventionally occupy 0x140000000. A fixed-base DLL must
     // not request the same address as its importing executable because this
@@ -358,61 +536,10 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
         return false;
     }
 
-    // 2. Build .text preamble (entry thunk + import thunks)
-
-    Buf textPre;
-
-    if (isDll) {
-        // DLL entry point: _DllMainCRTStartup / DllMain proxy
-        // Win64 DLL entry: BOOL WINAPI DllMain(HINSTANCE, DWORD, LPVOID)
-        // args: rcx=hModule, rdx=fdwReason, r8=lpvReserved
-        // We call user's DllMain if it exists, otherwise just return TRUE
-        // (1).
-        //
-        // Thunk layout:
-        //   sub  rsp, 0x28
-        //   call DllMain       ; E8 disp32  (patched; if DllMain defined)
-        //   mov  eax, 1        ; return TRUE if DllMain missing or returned
-        //   0 add  rsp, 0x28 ret
-        //
-        // If DllMain is not defined in user code we emit a minimal stub
-        // that just returns TRUE — standard DLL behaviour when no
-        // initialisation needed.
-        textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x28}); // sub rsp, 0x28
-        const size_t kCallDllMainDisp = textPre.size() + 1;
-        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call DllMain
-        // If DllMain returned 0 (init failed), still propagate it;
-        // otherwise keep eax. For simplicity, we trust DllMain's return value directly.
-        textPre.insert(textPre.end(), {0x48, 0x83, 0xC4, 0x28}); // add rsp, 0x28
-        textPre.push_back(0xC3);                                 // ret
-        (void)kCallDllMainDisp;                                  // used below during patching
-    }
-    else {
-        // EXE entry thunk (__rux_start):
-        //   sub rsp, 0x28       ; 48 83 EC 28
-        //   call Main           ; E8 xx xx xx xx
-        //   mov ecx, eax        ; 89 C1
-        //   call ExitProcess    ; E8 xx xx xx xx
-        //   int3                ; CC
-        textPre.insert(textPre.end(), {0x48, 0x83, 0xEC, 0x28});
-    }
-    const size_t kCallMainDisp = isDll ? 5 : textPre.size() + 1; // offset of 4-byte disp field
-    if (!isDll) {
-        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00});
-        textPre.insert(textPre.end(), {0x89, 0xC1});
-    }
-    const size_t kCallExitDisp = textPre.size() + 1;
-    if (!isDll) {
-        textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00});
-        textPre.push_back(0xCC);
-    }
-
-    // Import thunks: jmp qword ptr [rip+disp32] = FF 25 xx xx xx xx
-    std::vector<size_t> thunkOff(numImports);
-    for (size_t i = 0; i < numImports; ++i) {
-        thunkOff[i] = textPre.size();
-        textPre.insert(textPre.end(), {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00});
-    }
+    // 2. Build the architecture-owned entry and import stubs. Their patch
+    // metadata keeps the shared PE layout independent of instruction sizes.
+    PeStubs stubs = BuildPeStubs(*architecture, isDll, numImports);
+    Buf &textPre = stubs.bytes;
 
     // The entry and import thunks have a variable length. Keep the first RCU
     // text section aligned even when the number of imports changes: codegen
@@ -426,7 +553,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
             }
         }
     }
-    PadTo(textPre, textAlignment, 0xCC);
+    PadTo(textPre, textAlignment, architecture->codePadding);
 
     const auto preambleSize = static_cast<uint32_t>(textPre.size());
 
@@ -641,7 +768,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
 
     // Add all imported function thunks first
     for (size_t i = 0; i < numImports; ++i) {
-        symMap[importNames[i]] = imageBase + textRva + thunkOff[i];
+        symMap[importNames[i]] = imageBase + textRva + stubs.imports[i].stubOffset;
     }
 
     // Add symbols defined in each RCU file. Local data/constant symbols are
@@ -707,56 +834,11 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
     textBuf.insert(textBuf.end(), textPre.begin(), textPre.end());
     textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
 
-    // Patch import thunks: jmp [rip + disp32] → IAT entry
-    for (size_t i = 0; i < numImports; ++i) {
-        uint64_t thunkVA = imageBase + textRva + thunkOff[i];
-        uint64_t iatEntryVA = imageBase + rdataRva + iatEntryOff[i];
-        auto disp = static_cast<int32_t>(iatEntryVA - (thunkVA + 6));
-        Patch32(textBuf, thunkOff[i] + 2, static_cast<uint32_t>(disp));
-    }
-
-    // Patch entry thunk: call Main (EXE) or DllMain (DLL)
-    if (isDll) {
-        // DllMain is optional: if not defined, patch the call to target the
-        // instruction immediately after it so it falls through to `ret`
-        // returning whatever eax happened to hold (Windows
-        // default-initialises to 0, but the sub/add rsp frame means the
-        // caller sees TRUE from a fresh eax on many ABIs). We make it
-        // explicit: if no DllMain, patch to call a tiny inline stub that
-        // sets eax=1 then returns.
-        //
-        // Simple approach: if DllMain absent, replace the call+6-byte nop
-        // with `mov eax, 1; nop` so the stub just returns TRUE.
-        auto it = symMap.find("DllMain");
-        if (it != symMap.end()) {
-            uint64_t dllMainVA = it->second;
-            uint64_t nextInst = imageBase + textRva + kCallMainDisp + 4;
-            Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(dllMainVA - nextInst));
-        }
-        else {
-            // No DllMain: replace `E8 00 00 00 00` with `B8 01 00 00 00`
-            // (mov eax, 1)
-            textBuf[kCallMainDisp - 1] = 0xB8; // change opcode from E8 (call) to B8 (mov eax,
-            // imm32)
-            Patch32(textBuf, kCallMainDisp, 1); // imm = 1 (TRUE)
-        }
-    }
-    else {
-        auto it = symMap.find("Main");
-        if (it == symMap.end()) {
-            Error("undefined symbol 'Main' — no entry point found");
-            return false;
-        }
-        uint64_t mainVA = it->second;
-        uint64_t nextInst = imageBase + textRva + kCallMainDisp + 4;
-        Patch32(textBuf, kCallMainDisp, static_cast<uint32_t>(mainVA - nextInst));
-    }
-
-    // Patch entry thunk: call ExitProcess thunk (EXE only)
-    if (!isDll) {
-        uint64_t exitVA = imageBase + textRva + thunkOff[importIdx["ExitProcess"]];
-        uint64_t nextInst = imageBase + textRva + kCallExitDisp + 4;
-        Patch32(textBuf, kCallExitDisp, static_cast<uint32_t>(exitVA - nextInst));
+    std::string stubError;
+    if (!PatchPeStubs(*architecture, stubs, textBuf, imageBase + textRva, imageBase + rdataRva, iatEntryOff, importIdx,
+                      symMap, isDll, stubError)) {
+        Error(std::move(stubError));
+        return false;
     }
 
     // 9. Patch user code relocations
@@ -826,25 +908,7 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
                 }
                 const size_t patchAt = baseInBuf + reloc.sectionOffset;
                 const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
-                if (reloc.type == RcuRelType::Rel32) {
-                    if (patchAt + 4 > buf->size()) {
-                        continue;
-                    }
-                    auto disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
-                    Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
-                }
-                else if (reloc.type == RcuRelType::Abs64) {
-                    if (patchAt + 8 > buf->size()) {
-                        continue;
-                    }
-                    Patch64(*buf, patchAt, targetVA + static_cast<uint64_t>(reloc.addend));
-                }
-                else if (reloc.type == RcuRelType::Abs32) {
-                    if (patchAt + 4 > buf->size()) {
-                        continue;
-                    }
-                    Patch32(*buf, patchAt, static_cast<uint32_t>(targetVA + reloc.addend));
-                }
+                architecture->applyRelocation(*buf, patchAt, siteVA, targetVA, reloc.addend, reloc.type);
             }
         }
     }
@@ -897,15 +961,8 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
     writeRaw("PE\0\0", 4); // PE signature
 
     // COFF File Header (20 bytes)
-    wU16(kMachineAmd64);
-    wU16(static_cast<uint16_t>(numSections));
-    wU32(static_cast<uint32_t>(std::time(nullptr)));
-    wU32(0);
-    wU32(0);   // no COFF symbol table
-    wU16(240); // SizeOfOptionalHeader for PE32+
-    // EXE: EXECUTABLE | LARGE_ADDRESS_AWARE
-    // DLL: EXECUTABLE | LARGE_ADDRESS_AWARE | DLL
-    wU16(isDll ? kCharacteristicsDll : static_cast<uint16_t>(0x0022u));
+    wBuf(BuildPeCoffHeader(*architecture, static_cast<uint16_t>(numSections), static_cast<uint32_t>(std::time(nullptr)),
+                           isDll));
 
     // Optional Header PE32+ (240 bytes)
     wU16(kMagicPE32P);
