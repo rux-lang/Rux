@@ -154,6 +154,7 @@ constexpr uint16_t RCU_SEC_ABSOLUTE = 0xFFFE;
 constexpr uint16_t RCU_TEXT_IDX = 0;
 constexpr uint16_t RCU_RODATA_IDX = 1;
 constexpr uint16_t RCU_DATA_IDX = 2;
+constexpr uint16_t RCU_BSS_IDX = 3;
 
 // In-memory structures
 

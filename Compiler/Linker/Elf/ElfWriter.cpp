@@ -141,12 +141,19 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     //    cross-module call produces an ExternFunc relocation whose target is
     //    defined in another object; those are not dynamic-library imports.
     std::unordered_set<std::string> definedSymbols;
+    std::unordered_set<std::string> strongDefinitions;
     for (const auto &obj : objects) {
         for (const auto &sym : obj.symbols) {
             if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData && !sym.name.empty()) {
                 definedSymbols.insert(sym.name);
+                if (sym.visibility == RcuSymVis::Global && !strongDefinitions.insert(sym.name).second) {
+                    Error("duplicate symbol '" + sym.name + "'");
+                }
             }
         }
+    }
+    if (!errors.empty()) {
+        return false;
     }
 
     // 2. Collect explicit library assignments from declarations first. A
@@ -275,11 +282,13 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     // 4. Merge per-object sections.
     struct ObjLayout {
-        uint32_t textOff, rodataOff, dataOff;
+        uint32_t textOff, rodataOff, dataOff, bssOff;
     };
 
     std::vector<ObjLayout> layouts(objects.size());
     Buf mergedText, mergedRodata, mergedData;
+    uint64_t mergedBssSize = 0;
+    uint16_t bssAlignment = 1;
     // Each object's section starts on the boundary that object asked for. An
     // object aligns its own constants relative to the start of its section, so
     // a preceding object ending on an odd byte would carry the whole of the
@@ -287,9 +296,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // the low twelve bits of a symbol's address go into a scaled load's
     // immediate, and an address that does not divide by the access width has no
     // encoding at all.
-    const auto padToAlignment = [](Buf &buf, const uint16_t alignment) {
+    const auto padToAlignment = [](Buf &buf, const uint16_t alignment, const size_t prefixSize = 0) {
         const size_t boundary = std::max<uint16_t>(alignment, 1);
-        while (buf.size() % boundary != 0) {
+        while ((prefixSize + buf.size()) % boundary != 0) {
             buf.push_back(0);
         }
     };
@@ -297,7 +306,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         const auto &obj = objects[i];
         for (const auto &sec : obj.sections) {
             if (sec.type == RcuSecType::Text) {
-                padToAlignment(mergedText, sec.alignment);
+                padToAlignment(mergedText, sec.alignment, preambleSize);
             }
             else if (sec.type == RcuSecType::RoData) {
                 padToAlignment(mergedRodata, sec.alignment);
@@ -305,9 +314,13 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             else if (sec.type == RcuSecType::Data) {
                 padToAlignment(mergedData, sec.alignment);
             }
+            else if (sec.type == RcuSecType::Bss) {
+                mergedBssSize = alignUp(mergedBssSize, std::max<uint16_t>(sec.alignment, 1));
+                bssAlignment = std::max(bssAlignment, sec.alignment);
+            }
         }
         layouts[i] = {static_cast<uint32_t>(mergedText.size()), static_cast<uint32_t>(mergedRodata.size()),
-                      static_cast<uint32_t>(mergedData.size())};
+                      static_cast<uint32_t>(mergedData.size()), static_cast<uint32_t>(mergedBssSize)};
         for (const auto &sec : obj.sections) {
             if (sec.type == RcuSecType::Text) {
                 mergedText.insert(mergedText.end(), sec.data.begin(), sec.data.end());
@@ -317,6 +330,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             }
             else if (sec.type == RcuSecType::Data) {
                 mergedData.insert(mergedData.end(), sec.data.begin(), sec.data.end());
+            }
+            else if (sec.type == RcuSecType::Bss) {
+                mergedBssSize += sec.data.size();
             }
         }
     }
@@ -349,7 +365,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // final segment placement. Local data/constant labels are intentionally
     // skipped: generated labels such as __f64_0 recur per object and must
     // resolve relative to their owning object via the section-index path.
-    const auto buildDefinedSymMap = [&](uint64_t textVA, uint64_t roVA, uint64_t dataVA) {
+    const auto buildDefinedSymMap = [&](uint64_t textVA, uint64_t roVA, uint64_t dataVA, uint64_t bssVA) {
         std::unordered_map<std::string, uint64_t> m;
         for (size_t i = 0; i < objects.size(); ++i) {
             const auto &obj = objects[i];
@@ -371,6 +387,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                 else if (sym.sectionIdx == RCU_DATA_IDX) {
                     va = dataVA + lay.dataOff + sym.value;
                 }
+                else if (sym.sectionIdx == RCU_BSS_IDX) {
+                    va = bssVA + lay.bssOff + sym.value;
+                }
                 else {
                     continue;
                 }
@@ -389,7 +408,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     // Applies every object's relocations against the resolved symbol map.
     const auto applyRelocs = [&](const std::unordered_map<std::string, uint64_t> &symMap, Buf &txt, Buf &ro, Buf &dat,
-                                 uint64_t textVA, uint64_t roVA, uint64_t dataVA, Buf *dynamicRelocations) {
+                                 uint64_t textVA, uint64_t roVA, uint64_t dataVA, uint64_t bssVA,
+                                 Buf *dynamicRelocations) {
         for (size_t i = 0; i < objects.size(); ++i) {
             const auto &obj = objects[i];
             const auto &lay = layouts[i];
@@ -418,9 +438,19 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
                 for (const auto &reloc : sec.relocs) {
                     if (reloc.symbolIndex >= obj.symbols.size()) {
+                        Error(std::format("relocation at offset {} in section '{}' has invalid symbol index {}",
+                                          reloc.sectionOffset, sec.name, reloc.symbolIndex));
                         continue;
                     }
                     const auto &sym = obj.symbols[reloc.symbolIndex];
+                    const size_t relocationSize =
+                        reloc.type == RcuRelType::Abs64 || reloc.type == RcuRelType::AArch64Prel64 ? 8 : 4;
+                    if (reloc.type != RcuRelType::None && (reloc.sectionOffset > sec.data.size() ||
+                                                           relocationSize > sec.data.size() - reloc.sectionOffset)) {
+                        Error(std::format("{} relocation against '{}' at offset {} exceeds section '{}'",
+                                          RcuRelTypeName(reloc.type), sym.name, reloc.sectionOffset, sec.name));
+                        continue;
+                    }
                     uint64_t targetVA = 0;
                     if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
                         auto it = symMap.find(sym.name);
@@ -441,6 +471,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                     }
                     else if (sym.sectionIdx == RCU_DATA_IDX) {
                         targetVA = dataVA + lay.dataOff + sym.value;
+                    }
+                    else if (sym.sectionIdx == RCU_BSS_IDX) {
+                        targetVA = bssVA + lay.bssOff + sym.value;
                     }
                     else {
                         continue;
@@ -607,7 +640,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     if (!dynamic) {
         // --- Static executable: no imports, no interpreter. ---
-        const auto phnum = static_cast<uint16_t>(2 + (!mergedData.empty() ? 1 : 0) + (hasNote ? 1 : 0));
+        const bool hasRodata = hasNote || !mergedRodata.empty();
+        const bool hasWritable = !mergedData.empty() || mergedBssSize != 0;
+        const auto phnum = static_cast<uint16_t>(1 + (hasRodata ? 1 : 0) + (hasWritable ? 1 : 0) + (hasNote ? 1 : 0));
         constexpr uint64_t phoff = 64;
         const uint64_t textOff = alignUp(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
         const uint64_t textVA = imageBase + textOff;
@@ -619,10 +654,13 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
         const uint64_t rdataOff = alignUp(textOff + textBuf.size(), kPage);
         const uint64_t rdataVA = imageBase + rdataOff;
-        const uint64_t dataOff = alignUp(rdataOff + rodataBuf.size(), kPage);
+        const uint64_t afterReadOnly = hasRodata ? rdataOff + rodataBuf.size() : textOff + textBuf.size();
+        const uint64_t dataOff = alignUp(afterReadOnly, kPage);
         const uint64_t dataVA = imageBase + dataOff;
+        const uint64_t bssVA = alignUp(dataVA + mergedData.size(), std::max<uint16_t>(bssAlignment, 1));
+        const uint64_t writableMemorySize = bssVA + mergedBssSize - dataVA;
 
-        auto symMap = buildDefinedSymMap(textVA, rdataVA + noteRodataDelta, dataVA);
+        auto symMap = buildDefinedSymMap(textVA, rdataVA + noteRodataDelta, dataVA, bssVA);
         auto it = symMap.find("Main");
         if (it == symMap.end()) {
             Error("undefined symbol 'Main' — no entry point found");
@@ -632,19 +670,21 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             return false;
         }
 
-        applyRelocs(symMap, textBuf, rodataBuf, mergedData, textVA, rdataVA + noteRodataDelta, dataVA, nullptr);
+        applyRelocs(symMap, textBuf, rodataBuf, mergedData, textVA, rdataVA + noteRodataDelta, dataVA, bssVA, nullptr);
         if (!errors.empty()) {
             return false;
         }
 
         Buf phdrs;
         writePhdr(phdrs, 1, kPfR | kPfX, textOff, textVA, textBuf.size(), textBuf.size(), kPage);
-        writePhdr(phdrs, 1, kPfR, rdataOff, rdataVA, rodataBuf.size(), rodataBuf.size(), kPage);
+        if (hasRodata) {
+            writePhdr(phdrs, 1, kPfR, rdataOff, rdataVA, rodataBuf.size(), rodataBuf.size(), kPage);
+        }
         if (hasNote) {
             writePhdr(phdrs, 4, kPfR, rdataOff, rdataVA, osNote.size(), osNote.size(), 4);
         }
-        if (!mergedData.empty()) {
-            writePhdr(phdrs, 1, kPfR | kPfW, dataOff, dataVA, mergedData.size(), mergedData.size(), kPage);
+        if (hasWritable) {
+            writePhdr(phdrs, 1, kPfR | kPfW, dataOff, dataVA, mergedData.size(), writableMemorySize, kPage);
         }
 
         return emitFile(phnum, phdrs, {{textOff, &textBuf}, {rdataOff, &rodataBuf}, {dataOff, &mergedData}}, textVA,
@@ -876,6 +916,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // actually write (an empty .data would leave the trailing alignment gap
     // unwritten).
     const uint64_t rwFileEnd = mergedData.empty() ? (gotOff + gotSz) : (dataOff + mergedData.size());
+    const uint64_t bssOff = alignUp(dataOff + mergedData.size(), std::max<uint16_t>(bssAlignment, 1));
+    const uint64_t rwMemoryEnd = bssOff + mergedBssSize;
 
     const uint64_t interpVA = imageBase + interpOff;
     const uint64_t hashVA = imageBase + hashOff;
@@ -889,6 +931,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     const uint64_t dynamicVA = imageBase + dynamicOff;
     const uint64_t gotVA = imageBase + gotOff;
     const uint64_t dataVA = imageBase + dataOff;
+    const uint64_t bssVA = imageBase + bssOff;
 
     for (const auto &symbol : exportedDataSymbols) {
         Patch64(dynsym, symbol.dynsymValueOffset, dataVA + symbol.dataOffset);
@@ -1024,7 +1067,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     }
 
     // 10. Resolve symbols: defined symbols plus each import at its PLT stub.
-    auto symMap = buildDefinedSymMap(textVA, rodataVA, dataVA);
+    auto symMap = buildDefinedSymMap(textVA, rodataVA, dataVA, bssVA);
     for (size_t i = 0; i < n; ++i) {
         symMap[importNames[i]] = pltVA + pltStubOffset(i);
     }
@@ -1058,7 +1101,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     }
 
     Buf relaDyn;
-    applyRelocs(symMap, textBuf, mergedRodata, mergedData, textVA, rodataVA, dataVA, isShared ? &relaDyn : nullptr);
+    applyRelocs(symMap, textBuf, mergedRodata, mergedData, textVA, rodataVA, dataVA, bssVA,
+                isShared ? &relaDyn : nullptr);
     if (!errors.empty()) {
         return false;
     }
@@ -1075,7 +1119,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         writePhdr(phdrs, 3, kPfR, interpOff, interpVA, interp.size(), interp.size(), 1); // PT_INTERP
     }
     writePhdr(phdrs, 1, kPfR | kPfX, 0, imageBase, rxFileEnd, rxFileEnd, kPage); // PT_LOAD (r-x)
-    writePhdr(phdrs, 1, kPfR | kPfW, dynamicOff, dynamicVA, rwFileEnd - dynamicOff, rwFileEnd - dynamicOff,
+    writePhdr(phdrs, 1, kPfR | kPfW, dynamicOff, dynamicVA, rwFileEnd - dynamicOff,
+              std::max(rwFileEnd, rwMemoryEnd) - dynamicOff,
               kPage);                                                         // PT_LOAD (rw-)
     writePhdr(phdrs, 2, kPfR | kPfW, dynamicOff, dynamicVA, dynSz, dynSz, 8); // PT_DYNAMIC
     if (hasNote) {
