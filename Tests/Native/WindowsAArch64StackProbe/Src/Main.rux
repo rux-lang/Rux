@@ -1,0 +1,14 @@
+func Main() -> int {
+    // The PE header initially commits one 4 KiB page. This frame crosses eight
+    // more, so reaching all three positions requires the prologue to advance
+    // the Windows guard page rather than jumping over it.
+    var frame: uint8[32768];
+    frame[0] = 11;
+    frame[16384] = 22;
+    frame[32767] = 33;
+
+    if frame[0] != 11 || frame[16384] != 22 || frame[32767] != 33 {
+        return 1;
+    }
+    return 0;
+}

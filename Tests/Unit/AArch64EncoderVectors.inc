@@ -1521,6 +1521,25 @@ A64_VECTORS("AArch64 moves the stack pointer by a whole frame") {
     A64_REFUSES(Unaligned, FrameAdjust(8));
 }
 
+A64_VECTORS("AArch64 probes each page of a large downward stack adjustment") {
+    // Immediately below a page there is no guard page to advance, so this is
+    // byte-for-byte the ordinary frame adjustment.
+    A64_EMITS((0xD13FC3FF), ProbeStack(4080));
+
+    // At the boundary the destination page is touched, and immediately above
+    // it the aligned tail is applied only after that touch.
+    A64_EMITS((0xD14007FF, 0xF90003FF), ProbeStack(4096));
+    A64_EMITS((0xD14007FF, 0xF90003FF, 0xD10043FF), ProbeStack(4112));
+
+    // Every complete page is entered and touched in order. No scratch register
+    // is materialized regardless of the total size.
+    A64_EMITS((0xD14007FF, 0xF90003FF, 0xD14007FF, 0xF90003FF, 0xD14007FF, 0xF90003FF), ProbeStack(12288));
+
+    A64_EMITS((), ProbeStack(0));
+    A64_REFUSES(Unaligned, ProbeStack(4088));
+    A64_REFUSES(InvalidImmediate, ProbeStack(-16));
+}
+
 A64_VECTORS("AArch64 resolves a memory operand to an addressing mode that reaches it") {
     A64MemOperand mem;
 

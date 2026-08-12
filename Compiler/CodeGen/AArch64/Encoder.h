@@ -679,6 +679,17 @@ public:
     // by a multiple of 16 in turn, so the requirement holds between them too.
     [[nodiscard]] A64Status FrameAdjust(std::int64_t delta, A64Reg scratch = A64::Ip0) const;
 
+    // Open `bytes` of stack while touching every 4 KiB page the adjustment
+    // crosses. Windows grows a thread's committed stack one guard page at a
+    // time, so a large single SUB may skip the guard and fail immediately.
+    // Each full-page step is followed by a store through SP; a final partial
+    // step reaches only the final page, which the allocation's first real
+    // access will touch. The sequence names no live register and keeps SP
+    // 16-byte aligned after every instruction. `bytes` is a positive size
+    // rather than a delta: closing an area never needs probing and remains a
+    // FrameAdjust.
+    [[nodiscard]] A64Status ProbeStack(std::int64_t bytes) const;
+
     // Decide how an access `accessBytes` wide should reach `base + offset`,
     // emitting whatever that takes and reporting the addressing left to write
     // in `operand`. The scaled form is preferred, since it reaches furthest and

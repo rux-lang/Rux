@@ -1521,12 +1521,21 @@ private:
         EmitCalleeSaveRun(SavedRegisters(true), offset, restore);
     }
 
+    // Windows commits a thread stack one guard page at a time. Its downward
+    // adjustments therefore take the encoder's inline probing path, while the
+    // other systems keep the exact FrameAdjust sequence they emitted before.
+    // Small Windows areas pass through ProbeStack too, but it deliberately
+    // becomes the same single adjustment below one page.
+    void OpenStackArea(const std::int32_t bytes, const std::string_view what) {
+        Must(targetOs == Target::OS::Windows ? enc.ProbeStack(bytes) : enc.FrameAdjust(-bytes), what);
+    }
+
     void EmitPrologue() {
         if (frameSize <= kInlineFrameLimit) {
             Must(enc.Stp(A64::Fp, A64::Lr, A64::Sp, -frameSize, A64IndexMode::PreIndex), "the frame record");
         }
         else {
-            Must(enc.FrameAdjust(-frameSize), "the frame");
+            OpenStackArea(frameSize, "the frame");
             Must(enc.Stp(A64::Fp, A64::Lr, A64::Sp, 0), "the frame record");
         }
         Must(enc.Mov(A64::Fp, A64::Sp), "the frame pointer");
@@ -2409,7 +2418,7 @@ private:
         const bool indirectResult = keepsResult && ReturnsInMemory(instr.type);
 
         if (layout.areaBytes > 0) {
-            Must(enc.FrameAdjust(-layout.areaBytes), "the outgoing argument area");
+            OpenStackArea(layout.areaBytes, "the outgoing argument area");
         }
         EmitCallArgs(args, types, layout);
         if (indirectResult) {

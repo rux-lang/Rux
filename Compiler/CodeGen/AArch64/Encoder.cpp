@@ -1907,6 +1907,28 @@ A64Status A64Enc::FrameAdjust(const std::int64_t delta, const A64Reg scratch) co
     return AddSubLargeImm(A64::Sp, A64::Sp, delta, scratch);
 }
 
+A64Status A64Enc::ProbeStack(const std::int64_t bytes) const {
+    constexpr std::int64_t pageBytes = 4096;
+    if (bytes < 0) {
+        return A64Status::InvalidImmediate;
+    }
+    if (bytes % 16 != 0) {
+        return A64Status::Unaligned;
+    }
+
+    std::int64_t remaining = bytes;
+    while (remaining >= pageBytes) {
+        if (const A64Status status = SubImm(A64::Sp, A64::Sp, pageBytes); status != A64Status::Ok) {
+            return status;
+        }
+        if (const A64Status status = Str(A64::Xzr, A64::Sp); status != A64Status::Ok) {
+            return status;
+        }
+        remaining -= pageBytes;
+    }
+    return FrameAdjust(-remaining);
+}
+
 A64Status A64Enc::ResolveMemOperand(const A64Reg base, const std::int64_t offset, const unsigned accessBytes,
                                     A64MemOperand &operand, const A64Reg scratch) const {
     if (!SpOperand(base, 64)) {

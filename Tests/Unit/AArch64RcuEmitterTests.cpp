@@ -17,6 +17,7 @@
 #include "Syntax/Parser/Parser.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <doctest.h>
@@ -96,6 +97,10 @@ LirPackage CompileToAArch64Lir(const std::string &source, const std::string_view
     const std::int64_t imm12 = (word >> 10U) & 0xFFFU;
     return (word & (1U << 22U)) != 0 ? imm12 << 12U : imm12;
 }
+
+// The page touch in a Windows stack-probing sequence. XZR supplies the value,
+// so probing consumes no register that can hold an argument or result.
+constexpr std::uint32_t kStackProbeTouch = 0xF90003FFU; // str xzr, [sp]
 
 // A symbol by name, or nothing when the object carries none.
 [[nodiscard]] const RcuSymbol *FindSymbol(const RcuFile &object, const std::string_view name) {
@@ -618,6 +623,176 @@ TEST_CASE("AArch64 RCU emitter keeps the stack pointer 16-byte aligned across a 
     CHECK_EQ(closed, opened);
     REQUIRE_GT(tail, 0);
     CHECK_EQ(HexWord(words[tail - 1]), HexWord(0xA9407BFD)); // ldp x29, x30, [sp]
+
+    // Linux keeps its existing frame emission byte-for-byte: page touches are
+    // selected only for Windows.
+    CHECK(std::ranges::find(words, kStackProbeTouch) == words.end());
+}
+
+TEST_CASE("Windows AArch64 selects stack probing at the 4 KiB frame boundary") {
+    struct BoundaryCase {
+        int arrayBytes;
+        std::int64_t frameBytes;
+        std::size_t probes;
+    };
+
+    // The frame record, alloca pointer slot, and return constant occupy the 48 bytes
+    // above these arrays. The three resulting frames sit immediately below,
+    // at, and immediately above one Windows stack page.
+    constexpr std::array cases{
+        BoundaryCase{4032, 4080, 0},
+        BoundaryCase{4048, 4096, 1},
+        BoundaryCase{4064, 4112, 1},
+    };
+
+    for (const BoundaryCase &boundary : cases) {
+        CAPTURE(boundary.arrayBytes);
+        CAPTURE(boundary.frameBytes);
+        const auto package = CompileToAArch64Lir(std::format(R"(
+            func Main() -> int {{
+                var frame: uint8[{}];
+                return 0;
+            }}
+        )",
+                                                             boundary.arrayBytes),
+                                                 "windows-aarch64");
+
+        AArch64RcuEmitter emitter(package, "test", Target::OS::Windows);
+        const auto objects = emitter.Generate();
+        CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+        const auto words = FunctionWords(objects.front(), "Main");
+
+        std::int64_t opened = 0;
+        std::size_t probes = 0;
+        std::size_t index = 0;
+        while (index < words.size()) {
+            const auto step = StackPointerAdjustment(words[index], true);
+            if (!step) {
+                break;
+            }
+            opened += *step;
+            ++index;
+            if (*step == 4096) {
+                REQUIRE_LT(index, words.size());
+                CHECK_EQ(HexWord(words[index]), HexWord(kStackProbeTouch));
+                ++probes;
+                ++index;
+            }
+        }
+        CHECK_EQ(opened, boundary.frameBytes);
+        CHECK_EQ(probes, boundary.probes);
+        REQUIRE_LT(index, words.size());
+        CHECK_EQ(HexWord(words[index]), HexWord(0xA9007BFD)); // stp x29, x30, [sp]
+    }
+}
+
+TEST_CASE("Windows AArch64 probes every page before opening a multi-page function frame") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Main() -> int {
+            var pages: uint8[12288];
+            pages[0] = 1;
+            pages[4096] = 2;
+            pages[12287] = 3;
+            return 0;
+        }
+    )",
+                                             "windows-aarch64");
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::Windows);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // Each full page is entered by one aligned SUB and touched immediately.
+    // The frame contains three pages of local storage plus its record and
+    // slots, so there are at least three pairs before the final aligned tail.
+    std::int64_t opened = 0;
+    std::size_t probes = 0;
+    std::size_t index = 0;
+    while (index < words.size()) {
+        const auto step = StackPointerAdjustment(words[index], true);
+        if (!step) {
+            break;
+        }
+        CHECK_EQ(*step % 16, 0);
+        opened += *step;
+        ++index;
+        if (*step == 4096) {
+            REQUIRE_LT(index, words.size());
+            CHECK_EQ(HexWord(words[index]), HexWord(kStackProbeTouch));
+            ++probes;
+            ++index;
+        }
+    }
+    CHECK_GE(probes, 3);
+    CHECK_GE(opened, 12288);
+    CHECK_EQ(opened % 16, 0);
+
+    // The ordinary frame record and frame pointer follow the completed probe,
+    // preserving the x29/x30 chain used by every other AArch64 frame.
+    REQUIRE_LT(index + 1, words.size());
+    CHECK_EQ(HexWord(words[index]), HexWord(0xA9007BFD));     // stp x29, x30, [sp]
+    CHECK_EQ(HexWord(words[index + 1]), HexWord(0x910003FD)); // mov x29, sp
+
+    // Returning restores the full frame with ordinary ADDs. Growing SP cannot
+    // encounter a guard page, so no page touch belongs in the epilogue.
+    CHECK_EQ(HexWord(words.back()), HexWord(0xD65F03C0)); // ret
+    std::int64_t closed = 0;
+    std::size_t tail = words.size() - 1;
+    while (tail > 0) {
+        const auto step = StackPointerAdjustment(words[tail - 1], false);
+        if (!step) {
+            break;
+        }
+        closed += *step;
+        --tail;
+    }
+    CHECK_EQ(closed, opened);
+    REQUIRE_GT(tail, 0);
+    CHECK_EQ(HexWord(words[tail - 1]), HexWord(0xA9407BFD)); // ldp x29, x30, [sp]
+}
+
+TEST_CASE("Windows AArch64 probes a large outgoing copy and restores it without touching result registers") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Take(payload: uint8[8192]) -> int {
+            return payload[0] as int;
+        }
+
+        func Main() -> int {
+            var payload: uint8[8192];
+            payload[0] = 37;
+            return Take(payload);
+        }
+    )",
+                                             "windows-aarch64");
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::Windows);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+
+    // Ignore the function-frame probes before MOV x29, sp. The by-reference
+    // copy opens an exact two-page outgoing area later, and each page is
+    // touched before the unrolled copy begins.
+    const auto framePointer = std::ranges::find(caller, 0x910003FDU);
+    REQUIRE(framePointer != caller.end());
+    const auto bodyStart = static_cast<std::size_t>(framePointer - caller.begin() + 1);
+    REQUIRE_LT(bodyStart, *call);
+    const auto outgoingTouches =
+        std::ranges::count(std::ranges::subrange(caller.begin() + static_cast<std::ptrdiff_t>(bodyStart),
+                                                 caller.begin() + static_cast<std::ptrdiff_t>(*call)),
+                           kStackProbeTouch);
+    CHECK_EQ(outgoingTouches, 2);
+
+    // The call result arrives in X0. Closing the area is a single ordinary ADD
+    // that names only SP, followed by the store that keeps X0 in its slot.
+    REQUIRE_LT(*call + 2, caller.size());
+    CHECK_EQ(StackPointerAdjustment(caller[*call + 1], false), std::optional<std::int64_t>(8192));
+    CHECK_EQ(ArgumentDrained(caller[*call + 2]), std::optional<unsigned>(0));
+    CHECK(std::ranges::find(caller.begin() + static_cast<std::ptrdiff_t>(*call + 1), caller.end(), kStackProbeTouch) ==
+          caller.end());
 }
 
 // A struct and two values of it, which is the one construct a source program

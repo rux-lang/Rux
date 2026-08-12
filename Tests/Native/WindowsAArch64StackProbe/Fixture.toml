@@ -1,0 +1,13 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "WindowsAArch64StackProbe"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Native fixture: Windows AArch64 multi-page stack frame"
+
+[Dependencies]
+
+[Build]
+Output = "../../../Bin/Tests/Native"
