@@ -1,0 +1,12 @@
+#Link("libc.so.7")
+extern {
+    func strlen(text: *char8) -> uint;
+    func printf(format: *char8, ...) -> int32;
+}
+
+func Main() -> int {
+    if strlen("fixed-call".data) != 10u { return 1; }
+
+    let written = printf("freebsd-aarch64:%d:%.1f\n".data, 42, 2.5);
+    return written == 23 ? 0 : 2;
+}

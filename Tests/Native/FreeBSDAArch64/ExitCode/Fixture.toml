@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "FreeBSDAArch64ExitCode"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Native fixture: freestanding FreeBSD AArch64 exit code"
+
+[Build]
+Output = "../../../../Bin/Tests/Native"

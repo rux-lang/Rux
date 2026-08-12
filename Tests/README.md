@@ -57,6 +57,17 @@ Both scripts reject non-Apple-Silicon hosts. Their Mach-O preflight reads the
 ARM64 header and ad-hoc signature bytes itself; it does not invoke an assembler,
 linker, signing tool, emulator, or Apple inspection utility.
 
+On native FreeBSD AArch64, run the freestanding, libc ABI, assertion, panic,
+BSD syscall, and shared-library fixtures with:
+
+```sh
+sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux
+```
+
+The script rejects other kernels and architectures. Its repository-owned ELF
+reader checks every generated image before execution, so generation and ELF
+layout failures are reported separately from loader and runtime failures.
+
 Linux and Windows can exercise the non-launching cross-build path with PowerShell:
 
 ```powershell

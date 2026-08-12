@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "FreeBSDAArch64Loader"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Native fixture: load, call, and unload a FreeBSD AArch64 shared library"
+
+[Build]
+Output = "../../../../../Bin/Tests/Native"

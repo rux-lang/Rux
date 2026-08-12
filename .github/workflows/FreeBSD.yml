@@ -120,9 +120,8 @@ jobs:
             chmod +x Bin/rux
             ./Bin/rux check
             ./Bin/rux lint
-            # There is no AArch64 FreeBSD ELF writer, so freebsd-aarch64 cannot
-            # be built or run yet. Checking and linting need no back end and
-            # still cover this machine.
             if [ "${{ matrix.arch }}" = x86_64 ]; then
               ./Bin/rux test --release
+            else
+              sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux
             fi

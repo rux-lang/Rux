@@ -1,0 +1,6 @@
+import Core::Assert;
+
+func Main() -> int {
+    Assert(false, "native FreeBSD AArch64 assertion fixture");
+    return 0;
+}

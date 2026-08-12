@@ -74,6 +74,18 @@ Run the compiler:
 ./Bin/rux version
 ```
 
+On a native FreeBSD AArch64 machine, run the focused runtime acceptance
+fixtures directly. They cover freestanding exit, fixed and variadic libc calls,
+assertion and panic diagnostics, raw BSD syscalls, and shared-library loading:
+
+```sh
+sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux
+```
+
+The verifier preflights every ELF image using its repository-owned byte reader
+before launching it. It invokes no external compiler, linker, ELF inspection
+tool, or emulator.
+
 Run the complete repository verification workflow:
 
 ```sh

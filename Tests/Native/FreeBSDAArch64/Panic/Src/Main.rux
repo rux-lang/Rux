@@ -1,0 +1,5 @@
+import Core::Panic;
+
+func Main() -> int {
+    Panic("native FreeBSD AArch64 panic fixture");
+}

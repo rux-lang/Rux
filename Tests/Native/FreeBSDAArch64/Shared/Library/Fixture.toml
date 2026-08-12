@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "FreeBSDAArch64Fixture"
+Version = "0.1.0"
+Type = "SharedLibrary"
+Description = "Native fixture: FreeBSD AArch64 shared-library export"
+
+[Build]
+Output = "../../../../../Bin/Tests/Native"

@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "FreeBSDAArch64Panic"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Native fixture: FreeBSD AArch64 panic output and termination"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+
+[Build]
+Output = "../../../../Bin/Tests/Native"
