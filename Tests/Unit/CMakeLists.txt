@@ -74,6 +74,14 @@ endif ()
 # to the vendored doctest header.
 target_include_directories(rux-tests SYSTEM PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty)
 
+# By default doctest forward-declares std::ostream instead of including it, and
+# only switches to the real headers when it detects libc++. On Windows the
+# MSVC standard library declares operator<< for std::string_view in
+# <string_view> but leaves std::ostream undefined, so any assertion doctest has
+# to stringify a string_view for fails to compile. Asking doctest for the real
+# <ostream> fixes that everywhere instead of one test file at a time.
+target_compile_definitions(rux-tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
+
 # Two vendored-doctest warnings have to be suppressed on our own translation
 # units. The RuxWarnings interface flags land after target options, so the
 # suppressions are attached to the sources, whose options come last on the

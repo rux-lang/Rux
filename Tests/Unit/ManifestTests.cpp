@@ -7,7 +7,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <ostream>
 #include <string>
 #include <string_view>
 #include <vector>

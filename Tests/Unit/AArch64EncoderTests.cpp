@@ -11,10 +11,6 @@
 
 #include <cstdint>
 #include <doctest.h>
-// The INFO() below streams a std::string_view, and the MSVC standard library
-// declares that operator<< in <string_view> without defining std::ostream, so
-// the test has to bring the definition in itself.
-#include <ostream>
 #include <string>
 #include <string_view>
 #include <vector>
