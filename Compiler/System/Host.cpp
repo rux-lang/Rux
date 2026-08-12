@@ -35,6 +35,23 @@ namespace Rux::System {
 using namespace Target;
 
 namespace {
+#if RUX_OS_WINDOWS
+[[nodiscard]] Arch WindowsArchitecture(const WORD architecture) noexcept {
+    switch (architecture) {
+    case PROCESSOR_ARCHITECTURE_AMD64:
+        return Arch::X86_64;
+    case PROCESSOR_ARCHITECTURE_INTEL:
+        return Arch::X86_32;
+    case PROCESSOR_ARCHITECTURE_ARM64:
+        return Arch::AArch64;
+    case PROCESSOR_ARCHITECTURE_ARM:
+        return Arch::ARM32;
+    default:
+        return Arch::Unknown;
+    }
+}
+#endif
+
 #if RUX_ARCH_X86 || RUX_ARCH_X86_64
 
 [[nodiscard]] inline bool HasOSXSAVE() noexcept {
@@ -234,6 +251,18 @@ namespace {
     return info;
 }
 } // namespace
+
+HostArchitectureInfo GetHostArchitectureInfo() noexcept {
+    HostArchitectureInfo info{.processArch = HostArch, .nativeArch = HostArch};
+#if RUX_OS_WINDOWS
+    SYSTEM_INFO systemInfo{};
+    GetNativeSystemInfo(&systemInfo);
+    if (const Arch nativeArch = WindowsArchitecture(systemInfo.wProcessorArchitecture); nativeArch != Arch::Unknown) {
+        info.nativeArch = nativeArch;
+    }
+#endif
+    return info;
+}
 
 RuntimeCpuInfo GetRuntimeCpuInfo() noexcept {
     return CachedCpuInfo();

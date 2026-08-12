@@ -1,5 +1,6 @@
 #include "Driver/BuildTarget.h"
 
+#include "System/Host.h"
 #include "System/Os.h"
 #include "System/Process.h"
 #include "Target/Target.h"
@@ -201,7 +202,20 @@ std::string UnsupportedBackendReason(const std::string_view target) {
 
 bool HostCanExecuteTarget(const std::string_view target) {
     const auto triple = CanonicalTargetTriple(target);
-    return TargetTripleArch(triple) == HostArch && TargetTripleOs(triple) == HostOS;
+    return DetermineExecutionStrategy(HostOS, GetHostArchitectureInfo(), TargetTripleOs(triple),
+                                      TargetTripleArch(triple)) == ExecutionStrategy::Direct;
+}
+
+ExecutionStrategy DetermineExecutionStrategy(const OS hostOs, const HostArchitectureInfo hostArchitectures,
+                                             const OS targetOs, const Arch targetArch) noexcept {
+    if (targetOs != hostOs) {
+        return ExecutionStrategy::UnsupportedOperatingSystem;
+    }
+    if (targetArch == hostArchitectures.processArch ||
+        (hostOs == OS::Windows && targetArch == hostArchitectures.nativeArch)) {
+        return ExecutionStrategy::Direct;
+    }
+    return hostOs == OS::Windows ? ExecutionStrategy::ConfiguredEmulator : ExecutionStrategy::DefaultEmulator;
 }
 
 namespace {
@@ -278,13 +292,15 @@ LaunchCommand PrepareLaunch(const ExecutionCommand &command, const std::filesyst
 
 ExecutionCommandResult ResolveExecutionCommand(const std::string_view target) {
     const auto triple = CanonicalTargetTriple(target);
-    if (HostCanExecuteTarget(triple)) {
+    const ExecutionStrategy strategy =
+        DetermineExecutionStrategy(HostOS, GetHostArchitectureInfo(), TargetTripleOs(triple), TargetTripleArch(triple));
+    if (strategy == ExecutionStrategy::Direct) {
         return {.command = ExecutionCommand{}, .error = {}};
     }
     const auto host = HostTargetTriple();
     // A user-mode emulator runs another machine's programs against this
     // system's kernel, so it answers a foreign architecture and nothing else.
-    if (TargetTripleOs(triple) != HostOS) {
+    if (strategy == ExecutionStrategy::UnsupportedOperatingSystem) {
         return {.command = std::nullopt,
                 .error = std::format("cannot run a '{}' artifact on '{}'; build it with 'rux build --target {}' and "
                                      "run it on that target",
@@ -297,6 +313,12 @@ ExecutionCommandResult ResolveExecutionCommand(const std::string_view target) {
     }
     const bool named = !words.empty();
     if (!named) {
+        if (strategy == ExecutionStrategy::ConfiguredEmulator) {
+            return {.command = std::nullopt,
+                    .error = std::format("cannot run a '{}' artifact on '{}': Windows cannot launch that architecture "
+                                         "directly; set RUX_EMULATOR to an explicitly configured compatible emulator",
+                                         triple, host)};
+        }
         const auto fallback = DefaultEmulatorName(TargetTripleArch(triple));
         if (fallback.empty()) {
             return {.command = std::nullopt,

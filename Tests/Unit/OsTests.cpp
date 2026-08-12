@@ -52,6 +52,20 @@ TEST_CASE("PeakMemoryBytes reports a nonzero value on supported hosts") {
 #endif
 }
 
+TEST_CASE("host architecture information identifies the running compiler process") {
+    const auto architectures = GetHostArchitectureInfo();
+    CHECK(architectures.processArch == HostArch);
+    CHECK(architectures.nativeArch != Arch::Unknown);
+    if constexpr (HostOS != OS::Windows) {
+        CHECK(architectures.nativeArch == HostArch);
+    }
+    if constexpr (HostOS == OS::Windows && HostArch == Arch::X86_64) {
+        if (architectures.nativeArch == Arch::AArch64) {
+            CHECK(Rux::Driver::HostCanExecuteTarget("windows-aarch64"));
+        }
+    }
+}
+
 TEST_CASE("ExecutableFileName appends .exe only for Windows targets") {
     CHECK(ExecutableFileName("rux", OS::Windows) == "rux.exe");
     CHECK(ExecutableFileName("rux", OS::Linux) == "rux");
@@ -139,6 +153,31 @@ TEST_CASE("the host's own artifacts run with nothing between them and the host")
     CHECK(resolved.error.empty());
 }
 
+TEST_CASE("execution strategy distinguishes the compiler process from native Windows") {
+    using Rux::Driver::DetermineExecutionStrategy;
+    using Rux::Driver::ExecutionStrategy;
+
+    constexpr Rux::System::HostArchitectureInfo emulatedX64{.processArch = Arch::X86_64, .nativeArch = Arch::AArch64};
+    CHECK(DetermineExecutionStrategy(OS::Windows, emulatedX64, OS::Windows, Arch::X86_64) == ExecutionStrategy::Direct);
+    CHECK(DetermineExecutionStrategy(OS::Windows, emulatedX64, OS::Windows, Arch::AArch64) ==
+          ExecutionStrategy::Direct);
+
+    constexpr Rux::System::HostArchitectureInfo physicalX64{.processArch = Arch::X86_64, .nativeArch = Arch::X86_64};
+    CHECK(DetermineExecutionStrategy(OS::Windows, physicalX64, OS::Windows, Arch::AArch64) ==
+          ExecutionStrategy::ConfiguredEmulator);
+}
+
+TEST_CASE("non-Windows execution strategy preserves QEMU fallback and operating-system isolation") {
+    using Rux::Driver::DetermineExecutionStrategy;
+    using Rux::Driver::ExecutionStrategy;
+
+    constexpr Rux::System::HostArchitectureInfo linuxX64{.processArch = Arch::X86_64, .nativeArch = Arch::X86_64};
+    CHECK(DetermineExecutionStrategy(OS::Linux, linuxX64, OS::Linux, Arch::AArch64) ==
+          ExecutionStrategy::DefaultEmulator);
+    CHECK(DetermineExecutionStrategy(OS::Linux, linuxX64, OS::Windows, Arch::X86_64) ==
+          ExecutionStrategy::UnsupportedOperatingSystem);
+}
+
 TEST_CASE("a foreign operating system is refused rather than emulated") {
     const auto foreign = ForeignOsTriple();
     const auto resolved = ResolveExecutionCommand(foreign);
@@ -148,9 +187,23 @@ TEST_CASE("a foreign operating system is refused rather than emulated") {
     CHECK(resolved.error.contains("rux build --target"));
 }
 
-TEST_CASE("a foreign architecture resolves to its QEMU binary, or names the package holding it") {
+TEST_CASE("a foreign architecture follows the host's emulator policy") {
     ClearEmulatorEnvironment();
-    const auto resolved = ResolveExecutionCommand(ForeignArchTriple());
+    const auto foreign = ForeignArchTriple();
+    const auto resolved = ResolveExecutionCommand(foreign);
+    const auto strategy =
+        DetermineExecutionStrategy(HostOS, GetHostArchitectureInfo(), HostOS, TargetTripleArch(foreign));
+    if (strategy == ExecutionStrategy::Direct) {
+        REQUIRE(resolved.command.has_value());
+        CHECK_FALSE(resolved.command->IsEmulated());
+        return;
+    }
+    if (strategy == ExecutionStrategy::ConfiguredEmulator) {
+        CHECK_FALSE(resolved.command.has_value());
+        CHECK(resolved.error.contains("RUX_EMULATOR"));
+        CHECK(resolved.error.contains("explicitly configured compatible emulator"));
+        return;
+    }
     // Whether the emulator is installed is a property of the machine running
     // the suite, so both answers are correct — but only one shape of each.
     if (resolved.command) {
@@ -166,6 +219,11 @@ TEST_CASE("a foreign architecture resolves to its QEMU binary, or names the pack
 TEST_CASE("RUX_EMULATOR names the emulator, and its extra words are the emulator's own arguments") {
     ClearEmulatorEnvironment();
     const auto foreign = ForeignArchTriple();
+    // An x86-64 test binary under Windows-on-ARM can launch this suite's
+    // AArch64 "foreign" target directly, so no emulator is resolved there.
+    if (HostCanExecuteTarget(foreign)) {
+        return;
+    }
 
     // A value naming an existing file is one program however it is spelled, so
     // a path holding spaces is not split into pieces.
@@ -190,6 +248,9 @@ TEST_CASE("RUX_EMULATOR names the emulator, and its extra words are the emulator
 TEST_CASE("RUX_QEMU_SYSROOT becomes the emulator's -L, and a directory that is not there is an error") {
     ClearEmulatorEnvironment();
     const auto foreign = ForeignArchTriple();
+    if (HostCanExecuteTarget(foreign)) {
+        return;
+    }
     REQUIRE(SetEnv("RUX_EMULATOR", RuxExecutable().string()));
 
     const std::filesystem::path sysroot{RUX_ROOT_DIR};

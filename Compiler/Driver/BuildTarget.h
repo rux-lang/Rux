@@ -6,6 +6,7 @@
 #include "Linker/ArtifactKind.h"
 #include "Package/Manifest.h"
 #include "Syntax/Ast/Ast.h"
+#include "System/Host.h"
 #include "Target/Target.h"
 
 #include <filesystem>
@@ -67,9 +68,25 @@ namespace Rux::Driver {
 
 // ---- Executing what was built -----------------------------------------------
 
+// The platform-level choice made before resolving an emulator executable.
+// Windows does not assume that a QEMU user-mode binary is available, while
+// non-Windows hosts retain the existing architecture-specific QEMU fallback.
+enum class ExecutionStrategy : std::uint8_t {
+    Direct,
+    ConfiguredEmulator,
+    DefaultEmulator,
+    UnsupportedOperatingSystem,
+};
+
+// Pure execution decision used by ResolveExecutionCommand. Keeping the host
+// values injectable makes Windows-on-ARM behavior testable on every CTest host.
+[[nodiscard]] ExecutionStrategy DetermineExecutionStrategy(Target::OS hostOs,
+                                                           System::HostArchitectureInfo hostArchitectures,
+                                                           Target::OS targetOs, Target::Arch targetArch) noexcept;
+
 // How this host launches an artifact built for some target: directly when the
-// artifact was built for the host, and through a user-mode emulator when it was
-// not.
+// operating system can launch it natively, and through a user-mode emulator
+// when it cannot.
 struct ExecutionCommand {
     std::filesystem::path emulator;        ///< Empty when the artifact runs directly.
     std::vector<std::string> emulatorArgs; ///< Arguments the emulator takes before the artifact path.

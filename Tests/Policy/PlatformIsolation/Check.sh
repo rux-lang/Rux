@@ -19,7 +19,7 @@ pattern='<windows\.h>|System/WinApi\.h'
 pattern="$pattern"'|\bgetenv\b|_dupenv_s|GetEnvironmentVariable'
 pattern="$pattern"'|\bisatty\b|\bioctl\b|GetConsole|SetConsoleMode|GetStdHandle *\('
 pattern="$pattern"'|CreateProcess[AW]? *\(|\b_?popen *\(|\bfork *\('
-pattern="$pattern"'|getrusage|GetProcessMemoryInfo|temp_directory_path'
+pattern="$pattern"'|getrusage|GetProcessMemoryInfo|GetNativeSystemInfo|temp_directory_path'
 
 violations=$(grep -rnE "$pattern" Compiler --include='*.cpp' --include='*.h' | grep -v '^Compiler/System/' || true)
 
