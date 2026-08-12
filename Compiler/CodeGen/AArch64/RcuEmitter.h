@@ -29,9 +29,8 @@
 namespace Rux {
 class AArch64RcuEmitter {
 public:
-    // `linux-aarch64` is the only target Driver::UnsupportedBackendReason lets
-    // this back end reach, so that is what an unspecified system means — unlike
-    // the x86-64 emitter, whose default is the host it happens to run on.
+    // An unspecified system retains the generic AAPCS64/Linux policy. Real
+    // driver builds always pass the target OS explicitly.
     explicit AArch64RcuEmitter(const LirPackage &package, std::string inputPackageName = {},
                                Target::OS inputTargetOs = Target::OS::Linux);
     [[nodiscard]] std::vector<RcuFile> Generate() const;

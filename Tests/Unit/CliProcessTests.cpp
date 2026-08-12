@@ -1,5 +1,6 @@
 #include "Driver/BuildTarget.h"
 #include "Driver/Version.h"
+#include "MachOReader.h"
 #include "System/Os.h"
 #include "System/Process.h"
 
@@ -102,15 +103,40 @@ TEST_CASE("run is host-only while build and test accept a target") {
     }
 }
 
-TEST_CASE("a target without a back end names itself") {
-    // AArch64 Mach-O is refused before the build starts, on every host.
+TEST_CASE("CLI checks and builds the canonical macOS AArch64 target through its ARM64 alias") {
     const auto manifest = ArithmeticManifest();
-    const auto result =
-        Run(std::array<std::string_view, 5>{"--manifest", manifest, "build", "--target", "macos-aarch64"});
+    const auto check =
+        Run(std::array<std::string_view, 6>{"--manifest", manifest, "check", "--target", "macos-arm64", "--quiet"});
+    REQUIRE(check.exitCode == 0);
 
-    CHECK(result.exitCode == 1);
-    CHECK(result.output.contains("macos-aarch64"));
-    CHECK(result.output.contains("not implemented yet"));
+    const auto result = Run(std::array<std::string_view, 7>{"--manifest", manifest, "build", "--release", "--target",
+                                                            "macos-arm64", "--quiet"});
+
+    REQUIRE(result.exitCode == 0);
+    CHECK_FALSE(result.output.contains("cannot run"));
+
+    auto output = std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release";
+    if (Driver::HostTargetTriple() != "macos-aarch64") {
+        output /= "macos-aarch64";
+    }
+    output /= "Arithmetic";
+    REQUIRE(std::filesystem::is_regular_file(output));
+
+    std::ifstream input(output, std::ios::binary);
+    const std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    Testing::MachOImage image;
+    std::string error;
+    const bool parsed = Testing::ReadMachO64(bytes, image, error);
+    CAPTURE(error);
+    REQUIRE(parsed);
+    CHECK(image.Architecture() == Testing::MachOArchitecture::AArch64);
+    CHECK(image.fileType == 2); // MH_EXECUTE
+    REQUIRE(image.codeSignature);
+    CHECK(image.codeSignature->offset + image.codeSignature->size == bytes.size());
+
+    const auto rejected = Run(std::array<std::string_view, 3>{"run", "--target", "macos-aarch64"});
+    CHECK(rejected.exitCode == 2);
+    CHECK(rejected.output.contains("unknown option '--target' for command 'run'"));
 }
 
 TEST_CASE("target tests reject a foreign operating system before discovering packages") {

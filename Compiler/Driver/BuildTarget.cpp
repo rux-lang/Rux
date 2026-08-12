@@ -179,20 +179,17 @@ std::string UnsupportedBackendReason(const std::string_view target) {
     if (arch == Arch::X86_64) {
         return {};
     }
-    // The AArch64 ELF and PE writers are architecture-aware. Mach-O remains
-    // x86-64-only, so keep that target explicit rather than letting it reach
-    // code generation and fail with an artifact-dependent diagnostic.
+    // The AArch64 ELF, PE, and Mach-O writers are architecture-aware. Other
+    // operating systems remain explicit rather than falling through to a host
+    // toolchain or failing with an artifact-dependent diagnostic.
     if (arch == Arch::AArch64) {
         const OS os = TargetTripleOs(triple);
-        if (os == OS::Linux || os == OS::Windows) {
+        if (os == OS::Linux || os == OS::Windows || os == OS::MacOS) {
             return {};
         }
-        if (os == OS::MacOS) {
-            return std::format("code generation for '{}' is not implemented yet; the {} back end has no Mach-O writer",
-                               triple, ToDisplayString(arch));
-        }
         return std::format(
-            "code generation for '{}' is not implemented yet; the {} back end supports Linux ELF and Windows PE",
+            "code generation for '{}' is not implemented yet; the {} back end supports Linux ELF, Windows PE, and "
+            "macOS Mach-O",
             triple, ToDisplayString(arch));
     }
     return std::format("code generation for architecture '{}' is not implemented yet; there is no back end for '{}'",

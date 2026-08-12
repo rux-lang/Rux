@@ -1,5 +1,6 @@
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
+#include "MachOReader.h"
 #include "System/Os.h"
 #include "System/Process.h"
 #include "Target/Target.h"
@@ -27,10 +28,12 @@ public:
         root = TempDirectory() / ("rux-dependency-test-" + std::to_string(nonce));
         appRoot = root / "App";
         depRoot = root / "Dependency";
+        nonTargetRoot = root / "WindowsOnly";
         transitiveRoot = root / "Transitive";
 
         std::filesystem::create_directories(appRoot / "Src");
         std::filesystem::create_directories(depRoot / "Src");
+        std::filesystem::create_directories(nonTargetRoot / "Src");
         std::filesystem::create_directories(transitiveRoot / "Src");
 
         dependency.package.name = *IdentitySegment::Parse("Dependency");
@@ -81,6 +84,37 @@ func Main() -> int {
 
     void SetDependencyTargets(std::vector<Target::OS> targetOS) {
         application.dependencies.front().targetOS = std::move(targetOS);
+    }
+
+    void ConfigureMacOSTargetDependencies() {
+        application.dependencies.front().targetOS = {Target::OS::MacOS};
+
+        Manifest nonTarget;
+        nonTarget.package.name = *IdentitySegment::Parse("WindowsOnly");
+        nonTarget.package.version = *SemanticVersion::Parse("0.1.0");
+        nonTarget.package.type = ManifestPackageType::SourceLibrary;
+        REQUIRE(nonTarget.Save(nonTargetRoot / "Rux.toml"));
+        REQUIRE(WriteFile(nonTargetRoot / "Src" / "Api.rux", R"(
+module Api {
+    pub func Answer() -> int {
+        return 7;
+    }
+}
+)"));
+        REQUIRE(application.AddPathDependency(*IdentitySegment::Parse("WindowsOnly"), "../WindowsOnly"));
+        application.dependencies.back().targetOS = {Target::OS::Windows};
+
+        SetApplicationSource(R"(
+import Dependency::Api::Answer;
+
+pub func SelectedAnswer() -> int {
+    return Answer();
+}
+
+func Main() -> int {
+    return SelectedAnswer();
+}
+)");
     }
 
     void UseRegistryDeclaredTransitiveDependency() {
@@ -141,6 +175,7 @@ private:
     std::filesystem::path root;
     std::filesystem::path appRoot;
     std::filesystem::path depRoot;
+    std::filesystem::path nonTargetRoot;
     std::filesystem::path transitiveRoot;
     Manifest application;
     Manifest dependency;
@@ -212,11 +247,76 @@ ArchiveArchitectures InspectWindowsAArch64Archive(const std::filesystem::path &p
     return architectures;
 }
 
-// Whether a back end covers this host, which is what a case that builds for the
-// host needs. AArch64 Mach-O is the remaining unsupported host image format.
-// Those cases are skipped rather than deleted: what they assert is about the
-// driver, not about the machine running it.
-constexpr bool kHostHasBackend = Target::HostArch != Target::Arch::AArch64 || Target::HostOS != Target::OS::MacOS;
+struct MachOArchiveContents {
+    std::size_t objects = 0;
+    std::size_t relocations = 0;
+};
+
+MachOArchiveContents InspectMacOSAArch64Archive(const std::filesystem::path &path) {
+    const auto archive = ReadBinaryFile(path);
+    if (archive.size() < 8 || std::string(archive.begin(), archive.begin() + 8) != "!<arch>\n") {
+        return {};
+    }
+
+    MachOArchiveContents contents;
+    for (std::size_t at = 8; at + 60 <= archive.size();) {
+        std::string size;
+        for (std::size_t i = 48; i < 58 && archive[at + i] != ' '; ++i) {
+            size.push_back(static_cast<char>(archive[at + i]));
+        }
+        if (size.empty()) {
+            break;
+        }
+        const auto memberSize = static_cast<std::size_t>(std::stoul(size));
+        const std::size_t body = at + 60;
+        if (body + memberSize > archive.size()) {
+            break;
+        }
+        if (memberSize >= 32 && Read32(archive, body) == 0xFEED'FACF && Read32(archive, body + 4) == 0x0100'000C &&
+            Read32(archive, body + 12) == 1) {
+            ++contents.objects;
+            const std::uint32_t commandCount = Read32(archive, body + 16);
+            std::size_t command = body + 32;
+            for (std::uint32_t index = 0; index < commandCount && command + 8 <= body + memberSize; ++index) {
+                const std::uint32_t commandSize = Read32(archive, command + 4);
+                if (commandSize < 8 || commandSize > body + memberSize - command) {
+                    break;
+                }
+                if (Read32(archive, command) == 0x19 && commandSize >= 72) { // LC_SEGMENT_64
+                    const std::uint32_t sectionCount = Read32(archive, command + 64);
+                    for (std::uint32_t section = 0; section < sectionCount; ++section) {
+                        const std::size_t sectionHeader = command + 72 + static_cast<std::size_t>(section) * 80;
+                        if (sectionHeader + 64 > command + commandSize) {
+                            break;
+                        }
+                        contents.relocations += Read32(archive, sectionHeader + 60);
+                    }
+                }
+                command += commandSize;
+            }
+        }
+        at = body + memberSize + (memberSize & 1U);
+    }
+    return contents;
+}
+
+Testing::MachOImage ReadMacOSAArch64Image(const std::filesystem::path &path) {
+    const auto bytes = ReadBinaryFile(path);
+    Testing::MachOImage image;
+    std::string error;
+    const bool parsed = Testing::ReadMachO64(bytes, image, error);
+    CAPTURE(error);
+    REQUIRE(parsed);
+    CHECK(image.Architecture() == Testing::MachOArchitecture::AArch64);
+    REQUIRE(image.buildVersion);
+    CHECK(image.buildVersion->platform == 1);         // PLATFORM_MACOS
+    CHECK(image.buildVersion->minimumOs == 0x1A0000); // macOS 26.0
+    REQUIRE(image.codeSignature);
+    REQUIRE(image.codeDirectory);
+    CHECK(image.codeSignature->offset + image.codeSignature->size == bytes.size());
+    CHECK(image.codeDirectory->codeLimit == image.codeSignature->offset);
+    return image;
+}
 
 } // namespace
 
@@ -312,7 +412,7 @@ func Main() -> int {
     CHECK(result.stats.dependencyFiles == 0);
 }
 
-TEST_CASE("compiler driver loads path dependencies when building" * doctest::skip(!kHostHasBackend)) {
+TEST_CASE("compiler driver loads path dependencies when building") {
     DependencyFixture fixture;
     std::vector<Diagnostic> diagnostics;
 
@@ -454,24 +554,124 @@ TEST_CASE("compiler driver builds a Windows AArch64 static library") {
     CHECK(InspectWindowsAArch64Archive(result.primaryArtifactPath).objects > 0);
 }
 
-TEST_CASE("compiler driver still refuses AArch64 Mach-O image builds") {
+TEST_CASE("compiler driver builds a signed macOS AArch64 executable with target source dependencies") {
     DependencyFixture fixture;
+    fixture.ConfigureMacOSTargetDependencies();
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
+    options.targetName = "macos-aarch64";
+    options.profileName = "Release";
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CAPTURE(diagnostics.empty() ? std::string{} : diagnostics.front().message);
+    REQUIRE(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.stats.dependencyFiles == 1);
+    CHECK(result.primaryArtifactPath.filename() == "App");
+    if (HostTargetTriple() != "macos-aarch64") {
+        CHECK(result.primaryArtifactPath.parent_path().filename() == "macos-aarch64");
+        CHECK(result.primaryArtifactPath.parent_path().parent_path().filename() == "Release");
+    }
+    REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
+    const auto image = ReadMacOSAArch64Image(result.primaryArtifactPath);
+    CHECK(image.fileType == 2);    // MH_EXECUTE
+    CHECK(image.HasCommand(0x32)); // LC_BUILD_VERSION
+    CHECK(image.HasCommand(0x05)); // LC_UNIXTHREAD for the freestanding entry
+    CHECK_FALSE(image.mainEntryOffset);
+}
+
+TEST_CASE("compiler driver canonicalizes the macOS ARM64 alias and builds a signed shared library") {
+    DependencyFixture fixture;
+    fixture.ConfigureMacOSTargetDependencies();
+    fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.targetName = "macos-arm64";
+    options.profileName = "Release";
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CAPTURE(diagnostics.empty() ? std::string{} : diagnostics.front().message);
+    REQUIRE(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.stats.dependencyFiles == 1);
+    CHECK(result.secondaryArtifactPaths.empty());
+    CHECK(result.primaryArtifactPath.filename() == "libApp.dylib");
+    if (HostTargetTriple() != "macos-aarch64") {
+        CHECK(result.primaryArtifactPath.parent_path().filename() == "macos-aarch64");
+    }
+    REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
+    const auto image = ReadMacOSAArch64Image(result.primaryArtifactPath);
+    CHECK(image.fileType == 6);    // MH_DYLIB
+    CHECK(image.HasCommand(0x0D)); // LC_ID_DYLIB
+    CHECK(image.HasCommand(0x02)); // LC_SYMTAB
+    CHECK_FALSE(image.mainEntryOffset);
+    CHECK_FALSE(image.threadEntryAddress);
+
+    const auto report = FormatBuildStats(result.primaryArtifactPath, "Release", "macos-arm64", result.stats, false);
+    CHECK(report.contains("Target: macOS AArch64 (macos-aarch64)\n"));
+}
+
+TEST_CASE("compiler driver builds macOS AArch64 static libraries with relocatable object members") {
+    DependencyFixture fixture;
+    fixture.ConfigureMacOSTargetDependencies();
+    fixture.SetApplicationType(ManifestPackageType::StaticLibrary);
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.targetName = "macos-aarch64";
+    options.profileName = "Release";
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CAPTURE(diagnostics.empty() ? std::string{} : diagnostics.front().message);
+    REQUIRE(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.stats.dependencyFiles == 1);
+    CHECK(result.secondaryArtifactPaths.empty());
+    CHECK(result.primaryArtifactPath.filename() == "libApp.a");
+    if (HostTargetTriple() != "macos-aarch64") {
+        CHECK(result.primaryArtifactPath.parent_path().filename() == "macos-aarch64");
+    }
+    REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
+    const auto contents = InspectMacOSAArch64Archive(result.primaryArtifactPath);
+    CHECK(contents.objects > 0);
+    CHECK(contents.relocations > 0);
+}
+
+TEST_CASE("compiler driver checks a macOS AArch64 source library with only target dependencies") {
+    DependencyFixture fixture;
+    fixture.ConfigureMacOSTargetDependencies();
+    fixture.SetApplicationType(ManifestPackageType::SourceLibrary);
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(true, diagnostics);
+    options.targetName = "macos-aarch64";
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CAPTURE(diagnostics.empty() ? std::string{} : diagnostics.front().message);
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.stats.dependencyFiles == 1);
+    CHECK(result.primaryArtifactPath.empty());
+}
+
+TEST_CASE("compiler driver target dependency errors name macOS AArch64 rather than the host") {
+    DependencyFixture fixture;
+    fixture.SetDependencyTargets({Target::OS::Windows});
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(true, diagnostics);
     options.targetName = "macos-aarch64";
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
     CHECK_FALSE(result.ok);
     REQUIRE(diagnostics.size() == 1);
-    CHECK(diagnostics.front().IsError());
     CHECK(diagnostics.front().message.contains("macos-aarch64"));
-    CHECK(diagnostics.front().message.contains("not implemented yet"));
-    CHECK(diagnostics.front().message.contains("no Mach-O writer"));
+    CHECK(diagnostics.front().message.contains("TargetOS"));
 }
 
-TEST_CASE("compiler driver links a SharedLibrary package as a native shared library" *
-          doctest::skip(!kHostHasBackend)) {
+TEST_CASE("compiler driver links a SharedLibrary package as a native shared library") {
     DependencyFixture fixture;
     fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
     std::vector<Diagnostic> diagnostics;
@@ -489,7 +689,7 @@ TEST_CASE("compiler driver links a SharedLibrary package as a native shared libr
     }
 }
 
-TEST_CASE("compiler driver builds a StaticLibrary package as a native archive" * doctest::skip(!kHostHasBackend)) {
+TEST_CASE("compiler driver builds a StaticLibrary package as a native archive") {
     DependencyFixture fixture;
     fixture.SetApplicationType(ManifestPackageType::StaticLibrary);
     std::vector<Diagnostic> diagnostics;
@@ -574,7 +774,7 @@ TEST_CASE("compiler driver resolves transitive dependencies from local workspace
     CHECK(result.stats.dependencyFiles == 2);
 }
 
-TEST_CASE("compiler driver supplies manifest and command-line build context" * doctest::skip(!kHostHasBackend)) {
+TEST_CASE("compiler driver supplies manifest and command-line build context") {
     DependencyFixture fixture;
     fixture.SetManifestDefine("allocator", "system");
     fixture.SetApplicationSource(R"(
@@ -655,25 +855,20 @@ TEST_CASE("the unsupported-target diagnostic follows the back end that would pro
     CHECK(UnsupportedBackendReason("windows-x86_64").empty());
     CHECK(UnsupportedBackendReason("macos-x86_64").empty());
 
-    // AArch64 reaches ELF and Windows PE, under either spelling of the triple,
-    // from a host of either architecture.
+    // AArch64 reaches ELF, Windows PE, and Mach-O under either spelling of the
+    // triple, from a host of either architecture.
     CHECK(UnsupportedBackendReason("linux-aarch64").empty());
     CHECK(UnsupportedBackendReason("linux-arm64").empty());
     CHECK(UnsupportedBackendReason("windows-aarch64").empty());
     CHECK(UnsupportedBackendReason("windows-arm64").empty());
-
-    // AArch64 Mach-O is still refused rather than lowered by an external
-    // toolchain, including on a macOS AArch64 host.
-    const std::string macos = UnsupportedBackendReason("macos-aarch64");
-    CHECK(macos.contains("macos-aarch64"));
-    CHECK(macos.contains("not implemented yet"));
-    CHECK(macos.contains("no Mach-O writer"));
+    CHECK(UnsupportedBackendReason("macos-aarch64").empty());
+    CHECK(UnsupportedBackendReason("macos-arm64").empty());
 
     // Enabling PE does not widen the existing ELF support to other systems.
     const std::string freebsd = UnsupportedBackendReason("freebsd-aarch64");
     CHECK(freebsd.contains("freebsd-aarch64"));
     CHECK(freebsd.contains("not implemented yet"));
-    CHECK(freebsd.contains("Linux ELF and Windows PE"));
+    CHECK(freebsd.contains("Linux ELF, Windows PE, and macOS Mach-O"));
 
     // An architecture with no back end at all names itself rather than a host.
     const std::string riscv = UnsupportedBackendReason("linux-riscv64");

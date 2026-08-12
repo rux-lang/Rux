@@ -8,7 +8,7 @@
 
 Rux is a fast, compiled, strongly typed, multi-paradigm programming language. The compiler is self-contained: its own x86-64 and AArch64 code generators, its own object format, and its own PE/ELF/Mach-O linkers produce a native executable with no assembler, no C compiler, and no external linker anywhere in the pipeline.
 
-Cross-compilation needs no external toolchain: `rux build --target <os>-<arch>` produces another system's artifact from any host, while `rux check --target` performs target analysis without executing it. `rux run` is host-only, and `rux test --target` executes only a same-OS architecture reported for the compiler process or native OS. The x86-64 back end reaches every supported operating system; the AArch64 back end reaches `linux-aarch64` through ELF and `windows-aarch64` through PE/COFF. AArch64 Mach-O and non-Linux ELF images are not implemented yet.
+Cross-compilation needs no external toolchain: `rux build --target <os>-<arch>` produces another system's artifact from any host, while `rux check --target` performs target analysis without executing it. `rux run` is host-only, and `rux test --target` executes only a same-OS architecture reported for the compiler process or native OS. The x86-64 back end reaches every supported operating system; the AArch64 back end reaches `linux-aarch64` through ELF, `windows-aarch64` through PE/COFF, and `macos-aarch64` through Mach-O. Non-Linux ELF images are not implemented yet.
 
 [![FreeBSD](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml)
 [![Linux](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml)
