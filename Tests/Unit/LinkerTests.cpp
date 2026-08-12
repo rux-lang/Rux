@@ -152,14 +152,8 @@ TEST_CASE("Linker rejects an object built for another architecture") {
     CHECK(linker.Errors().front().message == "object Main.rux was compiled for AArch64, but the link target is x86-64");
     CHECK_FALSE(std::filesystem::exists(output));
 
-    // The ELF writer lays this object out as an executable, but not as a
-    // shared library: that needs the PLT and GOT Task 29 brings.
-    Linker shared({foreign}, "LinkerTest", {}, ArtifactKind::SharedLibrary, Target::OS::Linux, Target::Arch::AArch64);
-    CHECK_FALSE(shared.Link(output));
-    REQUIRE(shared.Errors().size() == 1);
-    CHECK(shared.Errors().front().message == "linking a shared library for AArch64 is not implemented yet");
-
-    // Nor as a PE image: the Windows writer still assumes x86-64 code.
+    // The ELF writer lays this object out for AArch64, but the PE writer does
+    // not: the Windows path still assumes x86-64 code.
     Linker windows({std::move(foreign)}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Windows,
                    Target::Arch::AArch64);
     CHECK_FALSE(windows.Link(output));
@@ -240,13 +234,67 @@ struct ElfImage {
     [[nodiscard]] uint32_t Word(const uint64_t virtualAddress) const {
         return Read32(OffsetOf(virtualAddress));
     }
+
+    [[nodiscard]] uint64_t Giant(const uint64_t virtualAddress) const {
+        return Read64(OffsetOf(virtualAddress));
+    }
+
+    // The p_align every PT_LOAD declares, or zero when they disagree.
+    [[nodiscard]] uint64_t LoadAlignment() const {
+        const auto programHeaders = static_cast<size_t>(Read64(32));
+        const size_t count = bytes[56] | static_cast<size_t>(bytes[57]) << 8U;
+        uint64_t alignment = 0;
+        for (size_t i = 0; i < count; ++i) {
+            const size_t header = programHeaders + i * 56;
+            if (Read32(header) != 1) { // PT_LOAD
+                continue;
+            }
+            const uint64_t declared = Read64(header + 48);
+            if (alignment != 0 && alignment != declared) {
+                return 0;
+            }
+            alignment = declared;
+        }
+        return alignment;
+    }
+
+    // The value of a .dynamic tag, found through PT_DYNAMIC.
+    [[nodiscard]] uint64_t DynamicTag(const uint64_t tag) const {
+        const auto programHeaders = static_cast<size_t>(Read64(32));
+        const size_t count = bytes[56] | static_cast<size_t>(bytes[57]) << 8U;
+        for (size_t i = 0; i < count; ++i) {
+            const size_t header = programHeaders + i * 56;
+            if (Read32(header) != 2) { // PT_DYNAMIC
+                continue;
+            }
+            const size_t offset = static_cast<size_t>(Read64(header + 8));
+            const size_t size = static_cast<size_t>(Read64(header + 32));
+            for (size_t at = offset; at + 16 <= offset + size; at += 16) {
+                if (Read64(at) == tag) {
+                    return Read64(at + 8);
+                }
+            }
+        }
+        return 0;
+    }
+
+    // The address an ADRP / LDR / ADD trio at `virtualAddress` reaches, read
+    // back out of the three immediate fields. Both halves of the split must
+    // agree, which is what makes this an assertion rather than a decode.
+    [[nodiscard]] uint64_t GotSlotReachedBy(const uint64_t virtualAddress) const {
+        const uint32_t adrp = Word(virtualAddress);
+        const auto immediate = static_cast<int32_t>(((adrp >> 5U & 0x7FFFFU) << 2U | (adrp >> 29U & 3U)) << 11U) >> 11;
+        const uint64_t page = (virtualAddress & ~uint64_t{0xFFF}) + (static_cast<int64_t>(immediate) << 12U);
+        const uint64_t viaLoad = page + ((Word(virtualAddress + 4) >> 10U & 0xFFFU) << 3U);
+        const uint64_t viaAdd = page + (Word(virtualAddress + 8) >> 10U & 0xFFFU);
+        return viaLoad == viaAdd ? viaLoad : 0;
+    }
 };
 
-ElfImage LinkAArch64Executable(std::vector<RcuFile> objects, const std::filesystem::path &output) {
+ElfImage LinkAArch64Image(std::vector<RcuFile> objects, const std::filesystem::path &output, const ArtifactKind kind) {
     std::error_code ec;
     std::filesystem::remove(output, ec);
-    Linker linker(std::move(objects), "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Linux,
-                  Target::Arch::AArch64);
+    Linker linker(std::move(objects), "LinkerTest", {}, kind, Target::OS::Linux, Target::Arch::AArch64);
     REQUIRE(linker.Link(output));
     std::ifstream stream(output, std::ios::binary);
     REQUIRE(stream.is_open());
@@ -254,6 +302,10 @@ ElfImage LinkAArch64Executable(std::vector<RcuFile> objects, const std::filesyst
     stream.close();
     std::filesystem::remove(output, ec);
     return image;
+}
+
+ElfImage LinkAArch64Executable(std::vector<RcuFile> objects, const std::filesystem::path &output) {
+    return LinkAArch64Image(std::move(objects), output, ArtifactKind::Executable);
 }
 
 ElfImage LinkAArch64Executable(RcuFile object, const std::filesystem::path &output) {
@@ -392,7 +444,7 @@ TEST_CASE("ELF linker patches AArch64 relocations into instruction fields") {
     CHECK(assembled == answer);
 }
 
-TEST_CASE("ELF linker refuses an AArch64 program that imports from a shared library") {
+TEST_CASE("ELF linker binds an AArch64 import through a PLT stub and its GOT slot") {
     RcuFile object;
     object.arch = RcuArch::AArch64;
     RcuSection text;
@@ -407,17 +459,106 @@ TEST_CASE("ELF linker refuses an AArch64 program that imports from a shared libr
     object.symbols.push_back({"Main", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
     object.symbols.push_back({"sqrt", "libm.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
-    const auto output = std::filesystem::temp_directory_path() / "rux-elf-aarch64-dynamic-test";
-    std::error_code ec;
-    std::filesystem::remove(output, ec);
+    const ElfImage image =
+        LinkAArch64Executable(std::move(object), std::filesystem::temp_directory_path() / "rux-elf-aarch64-plt-test");
 
-    Linker linker({std::move(object)}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Linux,
-                  Target::Arch::AArch64);
-    CHECK_FALSE(linker.Link(output));
-    REQUIRE(linker.Errors().size() == 1);
-    CHECK(linker.Errors().front().message ==
-          "dynamic linking for AArch64 is not implemented yet: 'sqrt' is imported from 'libm.so.6'");
-    CHECK_FALSE(std::filesystem::exists(output));
+    CHECK(image.Machine() == 0xB7); // EM_AARCH64
+    // Two segments may not share a page and carry different permissions, so an
+    // AArch64 image separates them by the largest page it may be mapped with.
+    CHECK(image.LoadAlignment() == 0x10000);
+    CHECK(std::string(image.bytes.begin(), image.bytes.end()).find("/lib/ld-linux-aarch64.so.1") != std::string::npos);
+
+    // A dynamic program leaves through libc exit() rather than through a raw
+    // syscall, so buffered stdio is flushed; Main's result is already in X0.
+    const uint64_t entry = image.Entry();
+    const uint32_t callExit = image.Word(entry + 16);
+    CHECK((callExit & 0xFC000000U) == 0x94000000U);
+    CHECK(image.Word(entry + 20) == 0xD4200000); // brk #0, unreachable
+    const auto exitOffset = static_cast<int32_t>((callExit & 0x03FFFFFFU) << 6U) >> 6;
+    const uint64_t exitStub = entry + 16 + 4 * static_cast<int64_t>(exitOffset);
+
+    // exit and sqrt are the only imports and their stubs follow the header in
+    // sorted order, so exit's stub is the first and names the PLT itself.
+    const uint64_t pltVA = exitStub - 32;
+    CHECK(pltVA % 16 == 0);
+    const uint64_t got = image.DynamicTag(3);     // DT_PLTGOT
+    const uint64_t jmprel = image.DynamicTag(23); // DT_JMPREL
+    REQUIRE(got != 0);
+    REQUIRE(jmprel != 0);
+    CHECK(image.DynamicTag(20) == 7);     // DT_PLTREL = DT_RELA
+    CHECK(image.DynamicTag(2) == 2 * 24); // DT_PLTRELSZ: one entry per import
+    CHECK(image.DynamicTag(4) != 0);      // DT_HASH
+
+    // PLT[0] pushes the stub's GOT pointer and the return address where the
+    // resolver reads them, then enters the resolver through .got.plt[2].
+    CHECK(image.Word(pltVA) == 0xA9BF7BF0); // stp x16, x30, [sp, #-16]!
+    CHECK(image.GotSlotReachedBy(pltVA + 4) == got + 16);
+    CHECK(image.Word(pltVA + 16) == 0xD61F0220); // br x17
+    CHECK(image.Word(pltVA + 20) == 0xD503201F); // nop
+    CHECK(image.Word(pltVA + 28) == 0xD503201F);
+
+    // Each stub reaches its own GOT slot with the same ADRP / LDR / ADD trio and
+    // branches through it, and the slot an unbound call reads points back at
+    // PLT[0], which is where an AArch64 stub resumes.
+    for (size_t i = 0; i < 2; ++i) {
+        const uint64_t stub = pltVA + 32 + i * 16;
+        const uint64_t slot = got + (3 + i) * 8;
+        CHECK(image.GotSlotReachedBy(stub) == slot);
+        CHECK(image.Word(stub + 12) == 0xD61F0220); // br x17
+        CHECK(image.Giant(slot) == pltVA);
+
+        // .rela.plt names that slot with R_AARCH64_JUMP_SLOT and the import's
+        // own .dynsym index, in the order the resolver counts them in.
+        CHECK(image.Giant(jmprel + i * 24) == slot);
+        CHECK(image.Giant(jmprel + i * 24 + 8) == (static_cast<uint64_t>(i + 1) << 32 | 1026));
+    }
+
+    // The call site is bound to sqrt's stub, the second of the two.
+    const uint64_t main = entry + 24;
+    const uint32_t call = image.Word(main);
+    CHECK((call & 0xFC000000U) == 0x94000000U);
+    const auto callOffset = static_cast<int32_t>((call & 0x03FFFFFFU) << 6U) >> 6;
+    CHECK(main + 4 * static_cast<int64_t>(callOffset) == pltVA + 48);
+}
+
+TEST_CASE("ELF linker writes an AArch64 shared library whose pointers rebase themselves") {
+    RcuFile library;
+    library.arch = RcuArch::AArch64;
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 4;
+    AppendWord(text.data, 0xD2800540); // mov x0, #42
+    AppendWord(text.data, 0xD65F03C0); // ret
+    library.sections.push_back(std::move(text));
+    RcuSection data;
+    data.name = ".data";
+    data.type = RcuSecType::Data;
+    data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+    data.alignment = 8;
+    data.data.resize(8);
+    data.relocs.push_back({0, 0, RcuRelType::Abs64, 0}); // a pointer to Answer
+    library.sections.push_back(std::move(data));
+    library.symbols.push_back({"Answer", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+
+    const ElfImage image =
+        LinkAArch64Image({std::move(library)}, std::filesystem::temp_directory_path() / "librux-linker-aarch64-test.so",
+                         ArtifactKind::SharedLibrary);
+
+    CHECK(image.Machine() == 0xB7);                        // EM_AARCH64
+    CHECK((image.bytes[16] | image.bytes[17] << 8U) == 3); // ET_DYN
+    CHECK(image.Entry() == 0);
+    CHECK(image.LoadAlignment() == 0x10000);
+    CHECK(image.DynamicTag(9) == 24); // DT_RELAENT
+
+    // The one absolute pointer in .data is left to the loader as an
+    // R_AARCH64_RELATIVE carrying its link-time value as the addend.
+    const uint64_t rela = image.DynamicTag(7); // DT_RELA
+    REQUIRE(rela != 0);
+    CHECK(image.DynamicTag(8) == 24); // DT_RELASZ
+    CHECK(image.Giant(rela + 8) == 1027);
+    CHECK(image.Giant(rela + 16) == image.Giant(image.Giant(rela)));
 }
 
 TEST_CASE("native object writer stamps the target architecture into every format") {

@@ -64,7 +64,8 @@ static constexpr const char *kElfInterpAArch64 = kElfInterp;
 
 // The machine code of an AArch64 entry stub. Written as words rather than
 // assembled, because the linker owns no code generator: the sequence is
-// mov x9, sp / and x9, x9, #-16 / mov sp, x9 / bl Main / mov x8, #nr / svc #0.
+// mov x9, sp / and x9, x9, #-16 / mov sp, x9 / bl Main, closed by either
+// mov x8, #nr / svc #0 or bl exit / brk #0.
 namespace A64Entry {
 constexpr uint32_t MovX9Sp = 0x910003E9;
 constexpr uint32_t AndX9Neg16 = 0x927CED29;
@@ -72,7 +73,40 @@ constexpr uint32_t MovSpX9 = 0x9100013F;
 constexpr uint32_t Bl = 0x94000000;
 constexpr uint32_t MovzX8 = 0xD2800008;
 constexpr uint32_t Svc0 = 0xD4000001;
+constexpr uint32_t Brk0 = 0xD4200000;
 } // namespace A64Entry
+
+// The machine code of an AArch64 PLT stub, whose immediates the writer fills in
+// through the same relocation kinds the code generator emits. Both the header
+// and a per-symbol stub reach their GOT slot with the ADRP / LDR / ADD / BR
+// sequence AAELF64 prescribes; the header prepends the push of X16 and the
+// return address that the dynamic resolver reads its arguments from, so it is
+// two stubs long where a stub is four instructions.
+namespace A64Plt {
+constexpr uint32_t StpX16X30 = 0xA9BF7BF0; // stp x16, x30, [sp, #-16]!
+constexpr uint32_t AdrpX16 = 0x90000010;   // adrp x16, page(&got)
+constexpr uint32_t LdrX17X16 = 0xF9400211; // ldr x17, [x16, :lo12:&got]
+constexpr uint32_t AddX16 = 0x91000210;    // add x16, x16, :lo12:&got
+constexpr uint32_t BrX17 = 0xD61F0220;     // br x17
+constexpr uint32_t Nop = 0xD503201F;
+constexpr size_t HeaderSize = 32;
+constexpr size_t EntrySize = 16;
+} // namespace A64Plt
+
+// The dynamic relocation numbers the loader reads out of .rela.plt and
+// .rela.dyn. Both architectures need the same three kinds and number them
+// differently, so the writer looks them up rather than spelling either set in
+// the code that emits an entry.
+struct DynRelocTypes {
+    uint32_t jumpSlot;
+    uint32_t globDat;
+    uint32_t relative;
+};
+
+[[nodiscard]] static constexpr DynRelocTypes DynRelocsFor(const Target::Arch arch) noexcept {
+    return arch == Target::Arch::AArch64 ? DynRelocTypes{1026, 1025, 1027} // R_AARCH64_JUMP_SLOT / GLOB_DAT / RELATIVE
+                                         : DynRelocTypes{7, 6, 8};         // R_X86_64_JUMP_SLOT / GLOB_DAT / RELATIVE
+}
 
 // Reads back a little-endian instruction word an AArch64 relocation is about
 // to rewrite a field of.
@@ -254,8 +288,14 @@ static Buf BuildOsNote() {
 
 bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     const bool isShared = artifactKind == ArtifactKind::SharedLibrary;
+    const bool aarch64 = targetArch == Target::Arch::AArch64;
     const uint64_t imageBase = isShared ? 0 : 0x400000;
-    static constexpr uint64_t kPage = 0x1000;
+    // The alignment every loadable segment starts on, which is the largest page
+    // an image may be mapped with. Two segments sharing a page cannot carry
+    // different permissions, so an AArch64 image — where the kernel may be
+    // configured for 4 KB, 16 KB or 64 KB pages — separates them by the largest
+    // of the three rather than by the one this kernel happens to use.
+    const uint64_t kPage = aarch64 ? 0x10000 : 0x1000;
     static constexpr uint32_t kPfX = 0x1;
     static constexpr uint32_t kPfW = 0x2;
     static constexpr uint32_t kPfR = 0x4;
@@ -337,21 +377,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // pull in exit() as an implicit import (mirroring the PE writer's use of
     // ExitProcess for its entry stub).
     const bool dynamic = isShared || !importLib.empty();
-    const bool aarch64 = targetArch == Target::Arch::AArch64;
-    if (dynamic && aarch64) {
-        // Task 29 brings the AArch64 PLT and GOT. Until it does, the AArch64
-        // path lays out freestanding static images only, and a program that
-        // reaches for a shared library is told which import took it there
-        // rather than being handed an image with unbound calls in it. A shared
-        // library is refused earlier still, by Linker::CheckArchitecture.
-        const auto names = importLib | std::views::keys;
-        const auto first = std::ranges::min_element(names);
-        Error(first == names.end()
-                  ? std::string("dynamic linking for AArch64 is not implemented yet")
-                  : std::format("dynamic linking for AArch64 is not implemented yet: '{}' is imported from '{}'",
-                                *first, importLib.at(*first)));
-        return false;
-    }
+    const DynRelocTypes dynRelocs = DynRelocsFor(targetArch);
     if (dynamic && !isShared) {
         importLib.try_emplace("exit", kDefaultLib);
     }
@@ -382,12 +408,19 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             WriteU32(textPre, A64Entry::MovSpX9);
             callMainOffset = textPre.size();
             WriteU32(textPre, A64Entry::Bl); // bl Main
-            // Linux and Android number exit 93 on AArch64; the BSDs kept the
-            // traditional 1. Task 29 replaces this tail with a call to libc
-            // exit() for a dynamic image.
-            const uint32_t exitSyscall = targetOs == Target::OS::Linux || targetOs == Target::OS::Android ? 93U : 1U;
-            WriteU32(textPre, A64Entry::MovzX8 | exitSyscall << 5U); // mov x8, #nr
-            WriteU32(textPre, A64Entry::Svc0);                       // svc #0
+            if (dynamic) {
+                callExitOffset = textPre.size();
+                WriteU32(textPre, A64Entry::Bl);   // bl exit@plt
+                WriteU32(textPre, A64Entry::Brk0); // unreachable
+            }
+            else {
+                // Linux and Android number exit 93 on AArch64; the BSDs kept
+                // the traditional 1.
+                const uint32_t exitSyscall =
+                    targetOs == Target::OS::Linux || targetOs == Target::OS::Android ? 93U : 1U;
+                WriteU32(textPre, A64Entry::MovzX8 | exitSyscall << 5U); // mov x8, #nr
+                WriteU32(textPre, A64Entry::Svc0);                       // svc #0
+            }
         }
         else {
             textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
@@ -518,6 +551,13 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         return m;
     };
 
+    // .dynsym index of each imported function, filled in once the dynamic
+    // symbol table is laid out below. A pointer to an import stored in a data
+    // section resolves to the local PLT stub, which is the right answer only
+    // for the image that owns that stub, so in an ET_DYN the slot is left to
+    // the loader through a GLOB_DAT naming the symbol instead.
+    std::unordered_map<std::string, uint32_t> importDynsymIndex;
+
     // Applies every object's relocations against the resolved symbol map.
     const auto applyRelocs = [&](const std::unordered_map<std::string, uint64_t> &symMap, Buf &txt, Buf &ro, Buf &dat,
                                  uint64_t textVA, uint64_t roVA, uint64_t dataVA, Buf *dynamicRelocations) {
@@ -596,9 +636,15 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                         const uint64_t value = targetVA + static_cast<uint64_t>(reloc.addend);
                         Patch64(*buf, patchAt, value);
                         if (dynamicRelocations != nullptr) {
+                            const auto importIt = importDynsymIndex.find(sym.name);
+                            const bool imported =
+                                importIt != importDynsymIndex.end() &&
+                                (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData);
                             WriteU64(*dynamicRelocations, siteVA); // r_offset
-                            WriteU64(*dynamicRelocations, 8);      // R_X86_64_RELATIVE
-                            WriteU64(*dynamicRelocations, value);  // r_addend
+                            WriteU64(*dynamicRelocations,
+                                     imported ? static_cast<uint64_t>(importIt->second) << 32 | dynRelocs.globDat
+                                              : dynRelocs.relative);             // r_info
+                            WriteU64(*dynamicRelocations, imported ? 0 : value); // r_addend
                         }
                     }
                     else if (reloc.type == RcuRelType::Abs32) {
@@ -878,6 +924,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     Buf dynsym;
     WriteZeros(dynsym, 24); // null symbol
     for (size_t i = 0; i < n; ++i) {
+        importDynsymIndex[importNames[i]] = static_cast<uint32_t>(i + 1);
         WriteU32(dynsym, nameStrOff[i]); // st_name
         WriteU8(dynsym, 0x12);           // st_info: STB_GLOBAL | STT_FUNC
         WriteU8(dynsym, 0);              // st_other
@@ -950,9 +997,17 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         }
     }
     const size_t relaDynSz = relativeRelocationCount * 24;
-    const size_t pltSz = (n + 1) * 16;
+    // x86-64 opens the PLT with one 16-byte resolver trampoline; the AArch64
+    // header is twice that, since it pushes the stub's GOT pointer and the
+    // return address before it reaches the resolver the way its own stubs do.
+    const size_t pltHeaderSz = aarch64 ? A64Plt::HeaderSize : 16;
+    const size_t pltEntrySz = aarch64 ? A64Plt::EntrySize : 16;
+    const size_t pltSz = pltHeaderSz + n * pltEntrySz;
     const size_t gotSz = (3 + n) * 8;
-    const size_t dynSz = (neededLibs.size() + 11 + (isShared ? 1 : 0) + (relaDynSz != 0 ? 3 : 0)) * 16;
+    // The stub an import's calls are bound to, which is what its name resolves
+    // to everywhere in the image.
+    const auto pltStubOffset = [&](const size_t index) { return pltHeaderSz + index * pltEntrySz; };
+    const size_t dynSz = (neededLibs.size() + 12 + (isShared ? 1 : 0) + (relaDynSz != 0 ? 2 : 0)) * 16;
 
     // 5. Assign file offsets; every section's VA is imageBase + its file offset.
     constexpr uint64_t phoff = 64;
@@ -1012,48 +1067,96 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         Patch64(dynsym, symbol.dynsymValueOffset, dataVA + symbol.dataOffset);
     }
 
-    // 6. .plt — PLT[0] is the resolver trampoline; PLT[k] (k>=1) binds import
-    //    k-1 lazily through its GOT slot.
+    // 6. .plt — the header is the resolver trampoline; the stub after it binds
+    //    its import lazily through the import's own GOT slot.
     Buf plt;
-    // PLT[0]: push [rip+GOT+8]; jmp [rip+GOT+16]; pad to 16.
-    WriteU8(plt, 0xFF);
-    WriteU8(plt, 0x35);
-    WriteU32(plt, static_cast<uint32_t>((gotVA + 8) - (pltVA + 6)));
-    WriteU8(plt, 0xFF);
-    WriteU8(plt, 0x25);
-    WriteU32(plt, static_cast<uint32_t>((gotVA + 16) - (pltVA + 12)));
-    for (const uint8_t b : {0x0F, 0x1F, 0x40, 0x00}) {
-        // nop dword [rax+0]
-        WriteU8(plt, b);
+    // An AArch64 stub reaches its GOT slot with the same ADRP / LDR / ADD trio
+    // the code generator emits, so the three immediates are filled in by the
+    // relocation applier rather than computed here. The LDR's scale comes out
+    // of the instruction, which is why the slot has to be doubleword aligned —
+    // and being a GOT entry, it is.
+    const auto writeAArch64PltStub = [&](const uint64_t gotEntryVA) {
+        const size_t at = plt.size();
+        WriteU32(plt, A64Plt::AdrpX16);
+        WriteU32(plt, A64Plt::LdrX17X16);
+        WriteU32(plt, A64Plt::AddX16);
+        WriteU32(plt, A64Plt::BrX17);
+        static constexpr uint16_t kFields[3] = {RcuRelType::AArch64AdrPrelPgHi21, RcuRelType::AArch64LdstAbsLo12Nc,
+                                                RcuRelType::AArch64AddAbsLo12Nc};
+        for (size_t i = 0; i < 3; ++i) {
+            std::string error;
+            if (!ApplyAArch64Reloc(plt, at + i * 4, kFields[i], gotEntryVA, 0, pltVA + at + i * 4, "PLT", error)) {
+                Error(std::move(error));
+                return false;
+            }
+        }
+        return true;
+    };
+
+    if (aarch64) {
+        // PLT[0]: push the stub's GOT pointer and the return address where the
+        // resolver reads them, then enter the resolver through .got.plt[2].
+        WriteU32(plt, A64Plt::StpX16X30);
+        if (!writeAArch64PltStub(gotVA + 16)) {
+            return false;
+        }
+        WriteU32(plt, A64Plt::Nop);
+        WriteU32(plt, A64Plt::Nop);
+        WriteU32(plt, A64Plt::Nop);
+        for (size_t i = 0; i < n; ++i) {
+            if (!writeAArch64PltStub(gotVA + (3 + i) * 8)) {
+                return false;
+            }
+        }
     }
-    for (size_t i = 0; i < n; ++i) {
-        const uint64_t entryVA = pltVA + (i + 1) * 16;
-        const uint64_t gotEntryVA = gotVA + (3 + i) * 8;
-        WriteU8(plt, 0xFF); // jmp [rip+got]
+    else {
+        // PLT[0]: push [rip+GOT+8]; jmp [rip+GOT+16]; pad to 16.
+        WriteU8(plt, 0xFF);
+        WriteU8(plt, 0x35);
+        WriteU32(plt, static_cast<uint32_t>((gotVA + 8) - (pltVA + 6)));
+        WriteU8(plt, 0xFF);
         WriteU8(plt, 0x25);
-        WriteU32(plt, static_cast<uint32_t>(gotEntryVA - (entryVA + 6)));
-        WriteU8(plt, 0x68); // push i
-        WriteU32(plt, static_cast<uint32_t>(i));
-        WriteU8(plt, 0xE9); // jmp PLT[0]
-        WriteU32(plt, static_cast<uint32_t>(pltVA - (entryVA + 16)));
+        WriteU32(plt, static_cast<uint32_t>((gotVA + 16) - (pltVA + 12)));
+        for (const uint8_t b : {0x0F, 0x1F, 0x40, 0x00}) {
+            // nop dword [rax+0]
+            WriteU8(plt, b);
+        }
+        for (size_t i = 0; i < n; ++i) {
+            const uint64_t entryVA = pltVA + pltStubOffset(i);
+            const uint64_t gotEntryVA = gotVA + (3 + i) * 8;
+            WriteU8(plt, 0xFF); // jmp [rip+got]
+            WriteU8(plt, 0x25);
+            WriteU32(plt, static_cast<uint32_t>(gotEntryVA - (entryVA + 6)));
+            WriteU8(plt, 0x68); // push i
+            WriteU32(plt, static_cast<uint32_t>(i));
+            WriteU8(plt, 0xE9); // jmp PLT[0]
+            WriteU32(plt, static_cast<uint32_t>(pltVA - (entryVA + 16)));
+        }
+    }
+    if (plt.size() != pltSz) {
+        Error("internal: ELF .plt size mismatch");
+        return false;
     }
 
     // 7. .got.plt — [0]=&_DYNAMIC, [1]/[2] filled by the loader, then one slot
-    //    per import initialised to its PLT push sequence for lazy binding.
+    //    per import holding where an unbound call resumes. x86-64 resumes at
+    //    the stub's own `push`; an AArch64 stub has nothing to push, so it
+    //    resumes in the header, which pushed the GOT pointer for it.
     Buf got;
     WriteU64(got, dynamicVA);
     WriteU64(got, 0);
     WriteU64(got, 0);
     for (size_t i = 0; i < n; ++i) {
-        WriteU64(got, pltVA + (i + 1) * 16 + 6); // address of `push i`
+        WriteU64(got, aarch64 ? pltVA : pltVA + pltStubOffset(i) + 6);
     }
 
-    // 8. .rela.plt — one R_X86_64_JUMP_SLOT per import.
+    // 8. .rela.plt — one JUMP_SLOT per import, in GOT order, which is also the
+    //    order the resolver turns a stub's GOT slot back into an index in.
     Buf rela;
     for (size_t i = 0; i < n; ++i) {
-        WriteU64(rela, gotVA + (3 + i) * 8);                         // r_offset
-        WriteU64(rela, (static_cast<uint64_t>(i + 1) << 32) | 7ull); // r_info: sym (i+1), R_X86_64_JUMP_SLOT
-        WriteU64(rela, 0);                                           // r_addend
+        WriteU64(rela, gotVA + (3 + i) * 8);                                     // r_offset
+        WriteU64(rela, static_cast<uint64_t>(i + 1) << 32 | dynRelocs.jumpSlot); // r_info
+        WriteU64(rela, 0);                                                       // r_addend
     }
 
     // 9. .dynamic
@@ -1073,10 +1176,13 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     writeDyn(6, dynsymVA);       // DT_SYMTAB
     writeDyn(10, dynstr.size()); // DT_STRSZ
     writeDyn(11, 24);            // DT_SYMENT
+    // DT_RELAENT covers .rela.plt as well as .rela.dyn, and DT_PLTREL says the
+    // former is RELA, so the entry size is always meaningful even in an image
+    // with no .rela.dyn at all.
+    writeDyn(9, 24); // DT_RELAENT
     if (relaDynSz != 0) {
         writeDyn(7, relaDynVA); // DT_RELA
         writeDyn(8, relaDynSz); // DT_RELASZ
-        writeDyn(9, 24);        // DT_RELAENT
     }
     writeDyn(3, gotVA);   // DT_PLTGOT
     writeDyn(2, relaSz);  // DT_PLTRELSZ
@@ -1092,7 +1198,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // 10. Resolve symbols: defined symbols plus each import at its PLT stub.
     auto symMap = buildDefinedSymMap(textVA, rodataVA, dataVA);
     for (size_t i = 0; i < n; ++i) {
-        symMap[importNames[i]] = pltVA + (i + 1) * 16;
+        symMap[importNames[i]] = pltVA + pltStubOffset(i);
     }
     for (const auto &symbol : sharedExports) {
         const auto it = symMap.find(symbol.name);

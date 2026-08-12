@@ -44,12 +44,10 @@ bool Linker::CheckArchitecture() {
     if (targetArch == Target::Arch::X86_64 || artifactKind == ArtifactKind::StaticLibrary) {
         return true;
     }
-    // Beyond x86-64, only the ELF writer lays out machine code, and only for a
-    // static executable: an AArch64 shared library needs the PLT and GOT that
-    // Task 29 brings, and the PE and Mach-O writers still assume x86-64 entry
-    // preambles and relocation forms.
+    // Beyond x86-64, only the ELF writer lays out machine code; the PE and
+    // Mach-O writers still assume x86-64 entry preambles and relocation forms.
     const bool elf = targetOs != Target::OS::Windows && targetOs != Target::OS::MacOS;
-    if (elf && targetArch == Target::Arch::AArch64 && artifactKind == ArtifactKind::Executable) {
+    if (elf && targetArch == Target::Arch::AArch64) {
         return true;
     }
     Error(std::format("linking {} for {} is not implemented yet",
