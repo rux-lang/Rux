@@ -11,9 +11,11 @@
 //
 // The target operating system does not replace AAPCS64, but it selects platform
 // variants within it: Windows C variadic calls use only the general-purpose
-// argument file. It also decides how a failed assertion prints its message;
-// Unix syscall details and Windows API imports are platform properties rather
-// than architecture properties.
+// argument file, while Apple fixed arguments use naturally packed stack slots,
+// do not skip an odd general register for 16-byte alignment, and extend narrow
+// integers in the caller. It also decides how a failed assertion prints its
+// message; Unix syscall details and Windows API imports are platform properties
+// rather than architecture properties.
 
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Lir/Lir.h"

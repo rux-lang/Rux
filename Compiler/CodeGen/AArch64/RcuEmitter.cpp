@@ -3,6 +3,7 @@
 #include "CodeGen/AArch64/RcuEmitter.h"
 
 #include "CodeGen/AArch64/Assembler.h"
+#include "CodeGen/AArch64/CallLayout.h"
 #include "CodeGen/AArch64/Encoder.h"
 #include "CodeGen/AArch64/Registers.h"
 #include "CodeGen/FloatLiteral.h"
@@ -359,6 +360,7 @@ public:
         , packageInterfaceNames(inputPackageInterfaceNames)
         , pkgName(std::move(inputPackageName))
         , targetOs(inputTargetOs)
+        , callPolicy(AArch64CallPolicyFor(inputTargetOs))
         , diagnostics(inputDiagnostics)
         , enc(textData) {
     }
@@ -371,6 +373,7 @@ private:
     const std::vector<std::string> &packageInterfaceNames;
     std::string pkgName;
     Target::OS targetOs;
+    AArch64CallLayoutPolicy callPolicy;
     std::vector<Diagnostic> &diagnostics;
 
     // Section data buffers
@@ -2100,26 +2103,27 @@ private:
         unsigned nextVector = 0;
         std::int32_t nextStack = 0;
 
-        // The area's own rule: a value is aligned at least to a doubleword and
-        // at most to sixteen bytes, and occupies a whole number of doublewords.
-        const auto onStack = [&nextStack](const int size, const int align) {
+        // Generic AAPCS64 gives every stack argument a whole number of
+        // doublewords. Apple instead uses the argument's natural alignment and
+        // exact size; only the completed area is padded back to the public
+        // stack alignment.
+        const auto onStack = [this, &nextStack](const int size, const int naturalAlign) {
             ArgLocation loc;
             loc.kind = ArgLocation::Kind::Stack;
+            const int align = callPolicy.StackAlignment(naturalAlign);
             nextStack = AlignUp(nextStack, align);
             loc.offset = nextStack;
-            loc.bytes = AlignUp(std::max(size, 1), 8);
+            loc.bytes = callPolicy.StackBytes(size);
             nextStack += loc.bytes;
             return loc;
         };
 
         // An integer, a pointer, or a composite whole registers can carry: as
-        // many of them as remain, and the area otherwise. A composite aligned to
-        // sixteen bytes starts at an even register, so that the pair it occupies
-        // is the pair an LDP would name.
+        // many of them as remain, and the area otherwise. Generic AAPCS64 makes
+        // a 16-byte-aligned composite start at an even register; Apple permits
+        // it to start in the next register even when that register is odd.
         const auto inGeneralFile = [&](const int size, const int align, const unsigned needed) {
-            if (align >= 16) {
-                nextGeneral += nextGeneral % 2;
-            }
+            nextGeneral = callPolicy.FirstGeneralRegister(nextGeneral, align);
             if (nextGeneral + needed <= kIntArgRegs) {
                 ArgLocation loc;
                 loc.kind = ArgLocation::Kind::General;
@@ -2134,7 +2138,7 @@ private:
 
         for (const TypeRef &type : types) {
             const int size = RuntimeSize(type);
-            const int align = std::clamp(RuntimeAlign(type), 8, 16);
+            const int align = std::clamp(RuntimeAlign(type), 1, 16);
             unsigned memberBytes = 8;
             const unsigned members = FloatMembers(type, memberBytes);
             if (members > 0) {
@@ -2171,7 +2175,7 @@ private:
             if (!layout.args[i].byReference) {
                 continue;
             }
-            const int align = std::clamp(RuntimeAlign(types[i]), 8, 16);
+            const int align = callPolicy.StackAlignment(RuntimeAlign(types[i]));
             nextStack = AlignUp(nextStack, align);
             layout.args[i].copyOffset = nextStack;
             nextStack += AlignUp(std::max(layout.args[i].copyBytes, 1), 8);
@@ -2299,6 +2303,15 @@ private:
         // load extends a narrow value the way AAPCS64 asks a caller to, and the
         // store writes only the bytes the type occupies.
         if (toRegisters) {
+            // Apple makes this extension the caller's responsibility. The
+            // generic path deliberately keeps its previous eager extension,
+            // which is permitted and keeps Linux and Windows output stable.
+            const bool appleNarrowInteger =
+                callPolicy.callerExtendsNarrowIntegers && !IsAggregate(type) && !IsFloat(type) && RuntimeSize(type) < 4;
+            if (appleNarrowInteger) {
+                LoadWidthFromSlot(A64::Xn(loc.first), reg, AccessWidth(RuntimeSize(type)), type.IsSigned());
+                return;
+            }
             LoadFromSlot(A64::Xn(loc.first), reg, type);
         }
         else {
@@ -2362,7 +2375,7 @@ private:
                 continue;
             }
             const int size = RuntimeSize(types[i]);
-            if (IsAggregate(types[i]) && size > 8) {
+            if (IsAggregate(types[i]) && (size > 8 || callPolicy.compactStackArguments)) {
                 const A64Reg source = A64::Xn(kSrcAddr);
                 SlotAddress(source, args[i]);
                 CopyBlock(A64::Sp, loc.offset, source, 0, size, paired);
@@ -2378,7 +2391,8 @@ private:
             }
             const A64Reg value = A64::Xn(kTemp);
             LoadFromSlot(value, args[i], types[i]);
-            StoreScalar(value, A64::Sp, loc.offset, 8);
+            const unsigned width = callPolicy.compactStackArguments ? AccessWidth(size) : 8U;
+            StoreScalar(value, A64::Sp, loc.offset, width);
         }
         for (std::size_t i = 0; i < args.size(); ++i) {
             const ArgLocation &loc = layout.args[i];

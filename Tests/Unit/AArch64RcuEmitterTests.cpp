@@ -6,6 +6,7 @@
 // disagreement with a second implementation rather than with someone's reading
 // of the ARM manual.
 
+#include "CodeGen/AArch64/CallLayout.h"
 #include "CodeGen/AArch64/Encoder.h"
 #include "CodeGen/AArch64/RcuEmitter.h"
 #include "Driver/BuildTarget.h"
@@ -306,13 +307,17 @@ struct VectorSlotAccess {
     return (word & 0xFFFFFC00U) == opcode ? std::optional<unsigned>(word & 0x1FU) : std::nullopt;
 }
 
-// The byte offset of `str x9, [sp, #imm]`, used for the real part of Windows'
-// imaginary variadic argument stack.
-[[nodiscard]] std::optional<std::uint32_t> StackArgumentStored(const std::uint32_t word) {
-    if ((word & 0xFFC003FFU) != 0xF90003E9U) {
+// The byte offset of `str[b|h] {w|x}9, [sp, #imm]`, used by outgoing stack
+// arguments. The immediate is scaled by the selected access width.
+[[nodiscard]] std::optional<std::uint32_t> StackArgumentStored(const std::uint32_t word, const unsigned width = 8) {
+    const std::uint32_t opcode = width == 1 ? 0x390003E9U
+                               : width == 2 ? 0x790003E9U
+                               : width == 4 ? 0xB90003E9U
+                                            : 0xF90003E9U;
+    if ((word & 0xFFC003FFU) != opcode) {
         return std::nullopt;
     }
-    return (word >> 10U & 0xFFFU) * 8U;
+    return (word >> 10U & 0xFFFU) * width;
 }
 
 // The vector register a value leaves, on the same terms as ArgumentDrained.
@@ -355,11 +360,15 @@ struct VectorSlotAccess {
     return -imm7 * 8;
 }
 
-// The byte displacement an `ldr x9, [x29, #imm]` or an `ldrh w9, [x29, #imm]`
-// names, which is how an incoming stack argument is read back at the width its
-// own type occupies. The immediate counts units of that width.
-[[nodiscard]] std::optional<std::int32_t> IncomingDisplacement(const std::uint32_t word, const unsigned width) {
-    const std::uint32_t opcode = width == 8 ? 0xF94003A9U : 0x794003A9U;
+// The byte displacement an incoming stack-argument load names. The access uses
+// the parameter's width and extension, and its immediate counts units of that
+// width.
+[[nodiscard]] std::optional<std::int32_t> IncomingDisplacement(const std::uint32_t word, const unsigned width,
+                                                               const bool sign = false) {
+    const std::uint32_t opcode = width == 1 ? (sign ? 0x398003A9U : 0x394003A9U)
+                               : width == 2 ? (sign ? 0x798003A9U : 0x794003A9U)
+                               : width == 4 ? (sign ? 0xB98003A9U : 0xB94003A9U)
+                                            : 0xF94003A9U;
     if ((word & 0xFFC003FFU) != opcode) {
         return std::nullopt;
     }
@@ -2078,6 +2087,147 @@ TEST_CASE("AArch64 RCU emitter keeps every value in the frame where control bran
 // the other looks. Nothing here depends on a calling convention the LIR names,
 // because AArch64 has one and a Rux function and a C function are called by it
 // alike.
+
+TEST_CASE("Apple AArch64 selects its fixed-argument layout from the target OS") {
+    constexpr AArch64CallLayoutPolicy apple = AArch64CallPolicyFor(Target::OS::MacOS);
+    constexpr AArch64CallLayoutPolicy ios = AArch64CallPolicyFor(Target::OS::iOS);
+    constexpr AArch64CallLayoutPolicy linux = AArch64CallPolicyFor(Target::OS::Linux);
+    constexpr AArch64CallLayoutPolicy windows = AArch64CallPolicyFor(Target::OS::Windows);
+
+    CHECK_EQ(apple.StackAlignment(1), 1);
+    CHECK_EQ(apple.StackBytes(1), 1);
+    CHECK_EQ(apple.FirstGeneralRegister(1, 16), 1);
+    CHECK(apple.callerExtendsNarrowIntegers);
+    CHECK_EQ(ios.FirstGeneralRegister(1, 16), 1);
+    CHECK(ios.compactStackArguments);
+
+    for (const AArch64CallLayoutPolicy policy : {linux, windows}) {
+        CHECK_EQ(policy.StackAlignment(1), 8);
+        CHECK_EQ(policy.StackBytes(1), 8);
+        CHECK_EQ(policy.FirstGeneralRegister(1, 16), 2);
+        CHECK_FALSE(policy.callerExtendsNarrowIntegers);
+    }
+}
+
+TEST_CASE("Apple AArch64 packs fixed stack arguments at natural alignment") {
+    auto lowered = CompileToAArch64Lir(R"(
+        func Packed(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int,
+                    i: int8, j: uint16, k: int32, l: int64) -> int64 {
+            return l;
+        }
+
+        func Main() -> int {
+            var result = Packed(1, 2, 3, 4, 5, 6, 7, 8, -9, 10, 11, 12);
+            return 0;
+        }
+    )");
+
+    // Put the definition and use in separate RCU objects. Each module then
+    // classifies its own side of the call, as separately compiled packages do.
+    LirPackage package;
+    package.modules.resize(2);
+    package.modules[0].name = "callee.rux";
+    package.modules[1].name = "caller.rux";
+    for (auto &func : lowered.modules.front().funcs) {
+        const std::size_t module = func.name == "Packed" ? 0 : 1;
+        package.modules[module].funcs.push_back(std::move(func));
+    }
+
+    const auto emitFor = [&package](const Target::OS os) {
+        AArch64RcuEmitter emitter(package, "test", os);
+        auto objects = emitter.Generate();
+        CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+        return objects;
+    };
+    const auto appleObjects = emitFor(Target::OS::MacOS);
+    const auto linuxObjects = emitFor(Target::OS::Linux);
+    const auto windowsObjects = emitFor(Target::OS::Windows);
+
+    const auto objectWith = [](const std::vector<RcuFile> &objects, const std::string_view symbol) -> const RcuFile & {
+        const auto found = std::ranges::find_if(objects, [symbol](const RcuFile &object) {
+            const RcuSymbol *candidate = FindSymbol(object, symbol);
+            return candidate != nullptr && candidate->sectionIdx != RCU_SEC_EXTERNAL;
+        });
+        REQUIRE(found != objects.end());
+        return *found;
+    };
+
+    const auto outgoingArea = [](const std::vector<std::uint32_t> &words) {
+        for (const std::uint32_t word : words) {
+            if (const auto bytes = StackPointerAdjustment(word, true)) {
+                return *bytes;
+            }
+        }
+        return std::int64_t{0};
+    };
+    const auto hasStore = [](const std::vector<std::uint32_t> &words, const unsigned width,
+                             const std::uint32_t offset) {
+        return std::ranges::any_of(words, [width, offset](const std::uint32_t word) {
+            return StackArgumentStored(word, width) == std::optional<std::uint32_t>(offset);
+        });
+    };
+
+    const auto appleCaller = FunctionWords(objectWith(appleObjects, "Main"), "Main");
+    CHECK_EQ(outgoingArea(appleCaller), 16);
+    CHECK(hasStore(appleCaller, 1, 0));
+    CHECK(hasStore(appleCaller, 2, 2));
+    CHECK(hasStore(appleCaller, 4, 4));
+    CHECK(hasStore(appleCaller, 8, 8));
+
+    // The callee makes the same target-selected walk independently and reads
+    // the four values immediately above its valid X29/X30 frame record.
+    const auto appleCallee = FunctionWords(objectWith(appleObjects, "Packed"), "Packed");
+    const auto frame = PreIndexedFrameSize(appleCallee.front());
+    REQUIRE_MESSAGE(frame.has_value(), HexWord(appleCallee.front()));
+    const auto hasIncoming = [&appleCallee, frame](const unsigned width, const bool sign, const std::int32_t offset) {
+        return std::ranges::any_of(appleCallee, [width, sign, offset, frame](const std::uint32_t word) {
+            return IncomingDisplacement(word, width, sign) ==
+                   std::optional<std::int32_t>(static_cast<std::int32_t>(*frame) + offset);
+        });
+    };
+    CHECK(hasIncoming(1, true, 0));
+    CHECK(hasIncoming(2, false, 2));
+    CHECK(hasIncoming(4, true, 4));
+    CHECK(hasIncoming(8, true, 8));
+
+    // Linux and non-variadic Windows retain the previous generic AAPCS64
+    // doubleword layout for the same LIR call.
+    for (const auto *objects : {&linuxObjects, &windowsObjects}) {
+        const auto caller = FunctionWords(objectWith(*objects, "Main"), "Main");
+        CHECK_EQ(outgoingArea(caller), 32);
+        for (std::uint32_t slot = 0; slot < 4; ++slot) {
+            CHECK(hasStore(caller, 8, slot * 8));
+        }
+    }
+}
+
+TEST_CASE("Apple AArch64 callers extend fixed narrow integer arguments") {
+    const auto package = CompileToAArch64Lir(R"(
+        func Narrow(signedByte: int8, unsignedShort: uint16) -> int {
+            return 0;
+        }
+
+        func Main() -> int {
+            return Narrow(-1, 65535);
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::MacOS);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    const auto beforeCall = std::ranges::subrange(caller.begin(), caller.begin() + static_cast<std::ptrdiff_t>(*call));
+
+    // SXT[BH] writes the full X register for signed values; UXT[BH] writes W
+    // and therefore zeroes the upper half. The destination fields are X0 and
+    // W1, the registers in which the declared parameters travel.
+    CHECK(
+        std::ranges::any_of(beforeCall, [](const std::uint32_t word) { return (word & 0xFFFFFC1FU) == 0x93401C00U; }));
+    CHECK(
+        std::ranges::any_of(beforeCall, [](const std::uint32_t word) { return (word & 0xFFFFFC1FU) == 0x53003C01U; }));
+}
 
 TEST_CASE("AArch64 RCU emitter passes the first eight integer arguments in the registers AAPCS64 names") {
     const auto package = CompileToAArch64Lir(R"(

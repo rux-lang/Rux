@@ -61,6 +61,8 @@ The CMake target graph enforces these dependencies. Prefer adding a dependency t
 
 The Mach-O image writer keeps file layout separate from target instruction policy. A private architecture profile owns the CPU type and subtype, VM page alignment, executable entry strategy, instruction-stub size and alignment, and the relocation patch kinds that architecture accepts. Segment, section, dyld, symbol, and link-edit layout consumes that profile and otherwise remains architecture-neutral. Unit tests inspect the resulting header and load commands with the repository's compact Mach-O reader, so structural coverage is portable and never depends on Apple tools such as `otool`.
 
+The AArch64 RCU emitter similarly selects procedure-call layout from the target OS rather than the compiler host. Generic AAPCS64 and Windows retain doubleword stack argument slots and the standard even-register rule for 16-byte-aligned arguments. Apple fixed arguments use naturally aligned, exact-width stack slots, may start a 16-byte-aligned value in an odd-numbered X register, and extend sub-32-bit integers in the caller. Every variant finishes with a 16-byte-aligned stack pointer, reserves X18, and maintains the X29/X30 frame chain.
+
 ## Host and Target Boundaries
 
 `Target` describes the output machine. `System` describes the host running the compiler. Code generation and linking must use target data rather than host preprocessor checks. For example, emitting a Linux executable while running on Windows is a target decision; locating `%LocalAppData%` is a host decision.
