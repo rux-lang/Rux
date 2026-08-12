@@ -6,6 +6,7 @@
 // layout the writer used to place them.
 
 #include "Linker/ArchiveWriter.h"
+#include "Linker/Linker.h"
 #include "Linker/NativeObjectWriter.h"
 
 #include <array>
@@ -95,6 +96,24 @@ public:
 
     [[nodiscard]] std::size_t RelocationCount(const std::size_t header) const {
         return static_cast<std::size_t>(Giant(header + kShSize) / 24);
+    }
+
+    [[nodiscard]] std::string SymbolName(const std::size_t index) const {
+        const auto symbols = FindSection(".symtab");
+        REQUIRE(symbols.has_value());
+        const auto symbolHeader = SectionHeader(*symbols);
+        const auto strings = Word(symbolHeader + kShLink);
+        const auto symbol = static_cast<std::size_t>(Giant(symbolHeader + kShOffset)) + index * 24;
+        auto at = static_cast<std::size_t>(Giant(SectionHeader(strings) + kShOffset)) + Word(symbol);
+        std::string name;
+        for (; Byte(at) != 0; ++at) {
+            name.push_back(static_cast<char>(Byte(at)));
+        }
+        return name;
+    }
+
+    [[nodiscard]] const std::vector<std::uint8_t> &Bytes() const {
+        return bytes;
     }
 
 private:
@@ -278,7 +297,6 @@ public:
         return bytes;
     }
 
-private:
     [[nodiscard]] std::size_t MemberSize(const std::size_t member) const {
         const char *first = reinterpret_cast<const char *>(bytes.data() + member + 48);
         std::size_t value = 0;
@@ -384,10 +402,10 @@ RcuFile ObjectOf(const std::vector<std::pair<std::uint32_t, std::uint16_t>> &ins
     return file;
 }
 
-ElfObject WriteAArch64(const RcuFile &file) {
+ElfObject WriteAArch64(const RcuFile &file, const Target::OS os = Target::OS::Linux) {
     NativeObject object;
     std::string error;
-    REQUIRE_MESSAGE(WriteNativeObject(file, Target::OS::Linux, Target::Arch::AArch64, object, error), error);
+    REQUIRE_MESSAGE(WriteNativeObject(file, os, Target::Arch::AArch64, object, error), error);
     return ElfObject(std::move(object.bytes));
 }
 
@@ -425,6 +443,7 @@ TEST_CASE("AArch64 object writer stamps an ET_REL header for EM_AARCH64") {
     CHECK(elf.Byte(4) == 2);    // ELFCLASS64
     CHECK(elf.Byte(5) == 1);    // ELFDATA2LSB, which AArch64 is linked as
     CHECK(elf.Byte(6) == 1);    // EV_CURRENT
+    CHECK(elf.Byte(7) == 0);    // ELFOSABI_SYSV
     CHECK(elf.Half(16) == 1);   // ET_REL: this is an input to a link, not an image
     CHECK(elf.Half(18) == 183); // EM_AARCH64
     CHECK(elf.Word(48) == 0);   // e_flags: AArch64 defines none
@@ -444,6 +463,21 @@ TEST_CASE("AArch64 object writer stamps an ET_REL header for EM_AARCH64") {
     REQUIRE(elf.FindSection(".text").has_value());
     REQUIRE(elf.FindSection(".symtab").has_value());
     REQUIRE(elf.FindSection(".strtab").has_value());
+
+    // The same RCU bytes are cross-emitted with the target OS identity. A
+    // FreeBSD object differs from Linux only in EI_OSABI; neither host state
+    // nor an installed target toolchain participates.
+    const ElfObject freebsd = WriteAArch64(file, Target::OS::FreeBSD);
+    CHECK(freebsd.Byte(7) == 9);    // ELFOSABI_FREEBSD
+    CHECK(freebsd.Half(16) == 1);   // ET_REL
+    CHECK(freebsd.Half(18) == 183); // EM_AARCH64
+    CHECK(freebsd.Word(48) == 0);   // no AArch64 e_flags
+    REQUIRE(freebsd.Bytes().size() == elf.Bytes().size());
+    for (std::size_t i = 0; i < elf.Bytes().size(); ++i) {
+        if (i != 7) {
+            CHECK(freebsd.Bytes()[i] == elf.Bytes()[i]);
+        }
+    }
 }
 
 TEST_CASE("AArch64 object writer numbers every relocation an instruction carries") {
@@ -510,6 +544,153 @@ TEST_CASE("AArch64 object writer picks a load-store relocation by access width")
     // own, and it is read the same way out of a store as out of a load.
     CHECK(elf.Relocation(header, 4)[0] == 299); // R_AARCH64_LDST128_ABS_LO12_NC
     CHECK(elf.Relocation(header, 5)[0] == 299);
+}
+
+TEST_CASE("FreeBSD AArch64 objects reject malformed relocation sites") {
+    const auto write = [](const std::uint32_t instruction, const std::uint16_t type, const std::int32_t addend = 0) {
+        RcuFile file = ObjectOf({{instruction, type}});
+        file.sections[0].relocs[0].addend = addend;
+        NativeObject object;
+        std::string error;
+        CHECK_FALSE(WriteNativeObject(file, Target::OS::FreeBSD, Target::Arch::AArch64, object, error));
+        return error;
+    };
+
+    CHECK(write(0xD503201F, RcuRelType::AArch64Call26) ==
+          "AARCH64_CALL26 relocation against 'Target' in section .text requires BL and a four-byte-aligned addend");
+    CHECK(write(0x94000000, RcuRelType::AArch64Jump26) ==
+          "AARCH64_JUMP26 relocation against 'Target' in section .text requires B and a four-byte-aligned addend");
+    CHECK(write(0x94000000, RcuRelType::AArch64Call26, 2) ==
+          "AARCH64_CALL26 relocation against 'Target' in section .text requires BL and a four-byte-aligned addend");
+    CHECK(write(0xD503201F, RcuRelType::AArch64CondBr19) ==
+          "AARCH64_CONDBR19 relocation against 'Target' in section .text requires a conditional or "
+          "compare-and-branch instruction and a four-byte-aligned addend");
+    CHECK(write(0xD503201F, RcuRelType::AArch64TstBr14) ==
+          "AARCH64_TSTBR14 relocation against 'Target' in section .text requires a test-and-branch instruction and "
+          "a four-byte-aligned addend");
+    CHECK(write(0x10000000, RcuRelType::AArch64AdrPrelPgHi21) ==
+          "AARCH64_ADR_PREL_PG_HI21 relocation against 'Target' in section .text requires an ADRP instruction");
+    CHECK(write(0x91400000, RcuRelType::AArch64AddAbsLo12Nc) ==
+          "AARCH64_ADD_ABS_LO12_NC relocation against 'Target' in section .text requires an unshifted ADD-immediate "
+          "instruction");
+    CHECK(write(0x91000000, RcuRelType::AArch64LdstAbsLo12Nc) ==
+          "AARCH64_LDST_ABS_LO12_NC relocation against 'Target' in section .text requires an unsigned-offset load "
+          "or store instruction");
+    CHECK(write(0xF9400000, RcuRelType::AArch64LdstAbsLo12Nc, 3) ==
+          "AARCH64_LDST_ABS_LO12_NC relocation against 'Target' in section .text has an addend that is not aligned "
+          "to the access width");
+    CHECK(write(0xD2800000, RcuRelType::AArch64MovwUabsG1) ==
+          "AARCH64_MOVW_UABS_G1 relocation against 'Target' in section .text requires the matching MOVW halfword "
+          "instruction");
+
+    RcuFile field = ObjectOf({{0, RcuRelType::Abs64}});
+    NativeObject object;
+    std::string error;
+    CHECK_FALSE(WriteNativeObject(field, Target::OS::FreeBSD, Target::Arch::AArch64, object, error));
+    CHECK(error == "ABS_64 relocation against 'Target' in section .text extends beyond the section data");
+
+    RcuFile unsupported = ObjectOf({{0xD503201F, 0xFFFF}});
+    CHECK_FALSE(WriteNativeObject(unsupported, Target::OS::FreeBSD, Target::Arch::AArch64, object, error));
+    CHECK(error == "relocation ? in section .text is not supported by the ELF object writer");
+}
+
+TEST_CASE("FreeBSD AArch64 objects preserve section alignment symbol order and RELA addends") {
+    RcuFile file;
+    file.arch = RcuArch::AArch64;
+    file.sourcePath = "Aligned.rux";
+    RcuSection text = TextSection({0xC0, 0x03, 0x5F, 0xD6}); // ret
+    text.alignment = 64;
+    file.sections.push_back(std::move(text));
+    RcuSection data;
+    data.name = ".data";
+    data.type = RcuSecType::Data;
+    data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+    data.alignment = 32;
+    data.data.resize(8);
+    data.relocs.push_back({0, 0, RcuRelType::Abs64, -17});
+    file.sections.push_back(std::move(data));
+
+    // RCU presents the global first. ELF must put the local before it and set
+    // sh_info to the index of the first global symbol.
+    file.symbols.push_back({"Answer", "", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    file.symbols.push_back({"Hidden", "", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
+
+    const ElfObject elf = WriteAArch64(file, Target::OS::FreeBSD);
+    const auto textSection = elf.FindSection(".text");
+    const auto dataSection = elf.FindSection(".data");
+    const auto symbols = elf.FindSection(".symtab");
+    const auto relocations = elf.FindSection(".rela.data");
+    REQUIRE(textSection.has_value());
+    REQUIRE(dataSection.has_value());
+    REQUIRE(symbols.has_value());
+    REQUIRE(relocations.has_value());
+
+    const auto textHeader = elf.SectionHeader(*textSection);
+    const auto dataHeader = elf.SectionHeader(*dataSection);
+    CHECK(elf.Giant(textHeader + kShAlign) == 64);
+    CHECK(elf.Giant(textHeader + kShOffset) % 64 == 0);
+    CHECK(elf.Giant(dataHeader + kShAlign) == 32);
+    CHECK(elf.Giant(dataHeader + kShOffset) % 32 == 0);
+    CHECK(elf.Word(elf.SectionHeader(*symbols) + kShInfo) == 2);
+    CHECK(elf.SymbolName(1) == "Hidden");
+    CHECK(elf.SymbolName(2) == "Answer");
+    CHECK(elf.Relocation(elf.SectionHeader(*relocations), 0) == std::array<std::int64_t, 3>{257, 2, -17});
+}
+
+TEST_CASE("FreeBSD AArch64 static archives index deterministic ELF members") {
+    const auto makeObject = [](const std::string &source, const std::string &symbol) {
+        RcuFile file;
+        file.arch = RcuArch::AArch64;
+        file.sourcePath = source;
+        file.sections.push_back(TextSection({0xC0, 0x03, 0x5F, 0xD6})); // ret
+        file.symbols.push_back({symbol, "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        return file;
+    };
+    const auto objects = [&] { return std::vector{makeObject("Zulu.rux", "Zulu"), makeObject("Alpha.rux", "Alpha")}; };
+
+    const auto directory = std::filesystem::temp_directory_path();
+    const auto firstPath = directory / "rux-freebsd-aarch64-static-first.a";
+    const auto secondPath = directory / "rux-freebsd-aarch64-static-second.a";
+    std::error_code filesystemError;
+    std::filesystem::remove(firstPath, filesystemError);
+    std::filesystem::remove(secondPath, filesystemError);
+
+    Linker first(objects(), "Static", {}, ArtifactKind::StaticLibrary, Target::OS::FreeBSD, Target::Arch::AArch64);
+    Linker second(objects(), "Static", {}, ArtifactKind::StaticLibrary, Target::OS::FreeBSD, Target::Arch::AArch64);
+    REQUIRE(first.Link(firstPath));
+    REQUIRE(second.Link(secondPath));
+
+    const CoffArchive archive(ReadBytes(firstPath));
+    CHECK(archive.Bytes() == ReadBytes(secondPath));
+    CHECK(archive.MemberName(0).starts_with("/"));
+    CHECK(archive.MemberName(1).starts_with("Zulu.o/"));
+    CHECK(archive.MemberName(2).starts_with("Alpha.o/"));
+
+    const auto index = archive.MemberData(0);
+    CHECK(archive.BigWord(index) == 2);
+    CHECK(archive.BigWord(index + 4) == archive.Member(2)); // Alpha sorts first
+    CHECK(archive.BigWord(index + 8) == archive.Member(1));
+    CHECK(archive.String(index + 12) == "Alpha");
+    CHECK(archive.String(index + 18) == "Zulu");
+
+    for (const std::size_t member : {1U, 2U}) {
+        const auto header = archive.Member(member);
+        CHECK(std::string(archive.Bytes().begin() + static_cast<std::ptrdiff_t>(header + 40),
+                          archive.Bytes().begin() + static_cast<std::ptrdiff_t>(header + 48)) == "100644  ");
+        const auto data = archive.MemberData(member);
+        CHECK(archive.Bytes()[data + 4] == 2); // ELFCLASS64
+        CHECK(archive.Bytes()[data + 5] == 1); // ELFDATA2LSB
+        CHECK(archive.Bytes()[data + 7] == 9); // ELFOSABI_FREEBSD
+        CHECK(archive.Half(data + 16) == 1);   // ET_REL
+        CHECK(archive.Half(data + 18) == 183); // EM_AARCH64
+        CHECK(archive.Word(data + 48) == 0);   // AArch64 e_flags
+    }
+    const auto indexSize = archive.MemberSize(archive.Member(0));
+    CHECK((indexSize & 1U) == 1);
+    CHECK(archive.Bytes()[archive.MemberData(0) + indexSize] == '\n');
+
+    std::filesystem::remove(firstPath, filesystemError);
+    std::filesystem::remove(secondPath, filesystemError);
 }
 
 TEST_CASE("AArch64 relocation sections carry explicit addends and name their target") {

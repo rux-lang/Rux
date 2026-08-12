@@ -2,6 +2,7 @@
 
 #include "Linker/AArch64Relocation.h"
 #include "Linker/LinkerInternal.h"
+#include "Target/ElfProfile.h"
 
 #include <algorithm>
 #include <array>
@@ -86,18 +87,6 @@ std::uint32_t AddString(std::vector<std::uint8_t> &table, const std::string_view
     table.insert(table.end(), value.begin(), value.end());
     table.push_back(0);
     return offset;
-}
-
-// ELF e_machine: EM_X86_64 and EM_AARCH64.
-std::uint16_t ElfMachine(const Target::Arch targetArch) noexcept {
-    switch (targetArch) {
-    case Target::Arch::X86_64:
-        return 62;
-    case Target::Arch::AArch64:
-        return 183;
-    default:
-        return 0;
-    }
 }
 
 // Mach-O cputype/cpusubtype: CPU_TYPE_X86_64 with CPU_SUBTYPE_X86_64_ALL, and
@@ -325,6 +314,24 @@ bool IsAArch64Branch26(const std::uint32_t word) noexcept {
     return (word & 0x7C00'0000U) == 0x1400'0000U;
 }
 
+bool IsAArch64Call26(const std::uint32_t word) noexcept {
+    return (word & 0xFC00'0000U) == 0x9400'0000U;
+}
+
+bool IsAArch64Jump26(const std::uint32_t word) noexcept {
+    return (word & 0xFC00'0000U) == 0x1400'0000U;
+}
+
+bool IsAArch64CondBranch19(const std::uint32_t word) noexcept {
+    const bool condition = (word & 0xFF00'0010U) == 0x5400'0000U;
+    const bool compare = (word & 0x7E00'0000U) == 0x3400'0000U;
+    return condition || compare;
+}
+
+bool IsAArch64TestBranch14(const std::uint32_t word) noexcept {
+    return (word & 0x7E00'0000U) == 0x3600'0000U;
+}
+
 bool IsAArch64Adrp(const std::uint32_t word) noexcept {
     return (word & 0x9F00'0000U) == 0x9000'0000U;
 }
@@ -335,6 +342,87 @@ bool IsAArch64UnshiftedAddImmediate(const std::uint32_t word) noexcept {
 
 bool IsAArch64UnsignedOffsetLoadStore(const std::uint32_t word) noexcept {
     return (word & 0x3B00'0000U) == 0x3900'0000U;
+}
+
+bool IsAArch64MoveWide(const std::uint32_t word, const unsigned halfword) noexcept {
+    const bool moveWide = (word & 0x1F80'0000U) == 0x1280'0000U;
+    const bool validWidth = halfword < 2 || (word & 0x8000'0000U) != 0;
+    return moveWide && validWidth && ((word >> 21U) & 3U) == halfword;
+}
+
+bool ValidateAArch64ElfRelocation(const RcuSection &section, const RcuReloc &relocation,
+                                  const std::string_view symbolName, std::string &error) {
+    const auto fail = [&](const std::string_view reason) {
+        error = std::format("{} relocation against '{}' in section {} {}", RcuRelTypeName(relocation.type), symbolName,
+                            section.name, reason);
+        return false;
+    };
+
+    std::size_t fieldWidth = 0;
+    switch (relocation.type) {
+    case RcuRelType::None:
+        return true;
+    case RcuRelType::Abs64:
+    case RcuRelType::AArch64Prel64:
+        fieldWidth = 8;
+        break;
+    case RcuRelType::Abs32:
+    case RcuRelType::Rel32:
+    case RcuRelType::AArch64Prel32:
+        fieldWidth = 4;
+        break;
+    default:
+        break;
+    }
+    if (fieldWidth != 0) {
+        return static_cast<std::size_t>(relocation.sectionOffset) + fieldWidth <= section.data.size()
+                 ? true
+                 : fail("extends beyond the section data");
+    }
+
+    if (relocation.sectionOffset % 4 != 0 ||
+        static_cast<std::size_t>(relocation.sectionOffset) + 4 > section.data.size()) {
+        return fail("does not name an aligned four-byte instruction");
+    }
+    const std::uint32_t word = InstructionAt(section.data, relocation.sectionOffset);
+    const bool alignedAddend = relocation.addend % 4 == 0;
+    switch (relocation.type) {
+    case RcuRelType::AArch64Call26:
+        return IsAArch64Call26(word) && alignedAddend ? true : fail("requires BL and a four-byte-aligned addend");
+    case RcuRelType::AArch64Jump26:
+        return IsAArch64Jump26(word) && alignedAddend ? true : fail("requires B and a four-byte-aligned addend");
+    case RcuRelType::AArch64CondBr19:
+        return IsAArch64CondBranch19(word) && alignedAddend
+                 ? true
+                 : fail("requires a conditional or compare-and-branch instruction and a four-byte-aligned addend");
+    case RcuRelType::AArch64TstBr14:
+        return IsAArch64TestBranch14(word) && alignedAddend
+                 ? true
+                 : fail("requires a test-and-branch instruction and a four-byte-aligned addend");
+    case RcuRelType::AArch64AdrPrelPgHi21:
+        return IsAArch64Adrp(word) ? true : fail("requires an ADRP instruction");
+    case RcuRelType::AArch64AddAbsLo12Nc:
+        return IsAArch64UnshiftedAddImmediate(word) ? true : fail("requires an unshifted ADD-immediate instruction");
+    case RcuRelType::AArch64LdstAbsLo12Nc: {
+        if (!IsAArch64UnsignedOffsetLoadStore(word)) {
+            return fail("requires an unsigned-offset load or store instruction");
+        }
+        const unsigned scale = AArch64LoadStoreScale(word);
+        const auto mask = (std::uint64_t{1} << scale) - 1U;
+        return (static_cast<std::uint64_t>(relocation.addend) & mask) == 0
+                 ? true
+                 : fail("has an addend that is not aligned to the access width");
+    }
+    case RcuRelType::AArch64MovwUabsG0:
+    case RcuRelType::AArch64MovwUabsG1:
+    case RcuRelType::AArch64MovwUabsG2:
+    case RcuRelType::AArch64MovwUabsG3: {
+        const unsigned halfword = relocation.type - RcuRelType::AArch64MovwUabsG0;
+        return IsAArch64MoveWide(word, halfword) ? true : fail("requires the matching MOVW halfword instruction");
+    }
+    default:
+        return true;
+    }
 }
 
 void ClearAArch64RelocationField(Buf &data, const RcuReloc &relocation, const std::uint32_t word) {
@@ -625,8 +713,9 @@ struct ElfSection {
     std::uint64_t offset = 0;
 };
 
-bool WriteElf(const RcuFile &file, const Target::Arch targetArch, NativeObject &output, std::string &error) {
+bool WriteElf(const RcuFile &file, const Target::Elf64Profile &profile, NativeObject &output, std::string &error) {
     (void)error;
+    const Target::Arch targetArch = profile.arch;
     // Section 0 is the reserved null entry, which is all zeros: a section index
     // of 0 means "none", so the header standing in for it must not describe a
     // section of its own.
@@ -761,9 +850,9 @@ bool WriteElf(const RcuFile &file, const Target::Arch targetArch, NativeObject &
         out.U64(section.alignment);
         out.U64(section.entrySize);
     }
-    const std::array<std::uint8_t, 16> ident = {0x7f, 'E', 'L', 'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    const std::array<std::uint8_t, 16> ident = {0x7f, 'E', 'L', 'F', 2, 1, 1, profile.osAbi, 0, 0, 0, 0, 0, 0, 0, 0};
     std::copy(ident.begin(), ident.end(), out.data.begin());
-    out.Patch32(16, 1U | (static_cast<std::uint32_t>(ElfMachine(targetArch)) << 16U));
+    out.Patch32(16, 1U | (static_cast<std::uint32_t>(profile.machine) << 16U));
     out.Patch32(20, 1);
     out.Patch64(24, 0);
     out.Patch64(32, 0);
@@ -962,6 +1051,11 @@ bool WriteNativeObject(const RcuFile &file, const Target::OS targetOs, const Tar
                                     RcuRelTypeName(relocation.type), section.name, container);
                 return false;
             }
+            if (targetArch == Target::Arch::AArch64 && targetOs != Target::OS::Windows &&
+                targetOs != Target::OS::MacOS &&
+                !ValidateAArch64ElfRelocation(section, relocation, file.symbols[relocation.symbolIndex].name, error)) {
+                return false;
+            }
         }
     }
     output.name = std::filesystem::path(file.sourcePath).stem().string();
@@ -975,6 +1069,12 @@ bool WriteNativeObject(const RcuFile &file, const Target::OS targetOs, const Tar
     if (targetOs == Target::OS::MacOS) {
         return WriteMachO(file, targetArch, output, error);
     }
-    return WriteElf(file, targetArch, output, error);
+    const auto profile = Target::Elf64ProfileFor(targetOs, targetArch);
+    if (!profile) {
+        error = std::format("ELF object writer does not implement the complete target '{}-{}'",
+                            Target::ToString(targetOs), Target::ToString(targetArch));
+        return false;
+    }
+    return WriteElf(file, *profile, output, error);
 }
 } // namespace Rux
