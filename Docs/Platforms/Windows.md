@@ -79,20 +79,26 @@ Once the repository is cloned, later sessions can replace the snippet in step 4 
 ```
 
 `Build.ps1` selects `windows-x86_64` or `windows-aarch64` from the native host
-architecture. `windows-aarch64` has no code generator: the AArch64 back end
-writes ELF, so it reaches `linux-aarch64` only, and building a Rux program for
-`windows-aarch64` is refused with `code generation for 'windows-aarch64' is not
-implemented yet`. `rux check`, `rux fmt`, `rux lint` and `rux doc` need no back
-end and work as they do everywhere. An AArch64 Windows machine can still build
-`rux` itself, and can cross-build Rux programs with `--target windows-x86_64` or
-`--target linux-aarch64`. An AArch64 PE writer is what makes the native target
-buildable, and is not written yet.
+architecture. The compiler contains the Windows AArch64 code generator and
+PE/COFF support for executables, DLLs with import libraries, and static
+libraries. The driver does not expose those artifact paths yet, so building a
+Rux program for `windows-aarch64` remains explicitly refused until the target's
+driver and CLI enablement lands. `rux check`, `rux fmt`, `rux lint` and `rux
+doc` need no back end and work as they do everywhere. An AArch64 Windows
+machine can still build `rux` itself, and can cross-build Rux programs with
+`--target windows-x86_64` or `--target linux-aarch64`.
 
 ## Native Package Artifacts
 
 An `Executable` package writes `Name.exe`, a `SharedLibrary` writes `Name.dll` plus the `Name.lib` import library, and a `StaticLibrary` writes `Name.lib`. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
 
-The x86-64 backend writes PE/COFF objects and libraries directly, from a host of either architecture. There is no AArch64 PE writer, so those artifact kinds have no `windows-aarch64` form yet.
+The x86-64 and AArch64 backends write PE/COFF objects and libraries directly,
+without an external toolchain. Windows AArch64 driver enablement is still
+pending, so these forms are not available through `rux build` yet. Both PE
+architectures currently use fixed image bases: executables use `0x140000000`
+and DLLs use `0x180000000`. The linker does not emit a `.reloc` table and does
+not enable ASLR; DLLs therefore must load successfully at their preferred
+base.
 
 For a Debug build, run `.\Build.ps1 -Configuration Debug`. Run `Get-Help .\Build.ps1 -Full` to see every option.
 

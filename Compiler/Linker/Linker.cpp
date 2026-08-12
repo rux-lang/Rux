@@ -42,13 +42,12 @@ bool Linker::CheckArchitecture() {
         }
     }
     if (targetArch == Target::Arch::X86_64 || artifactKind == ArtifactKind::StaticLibrary ||
-        (targetOs == Target::OS::Windows && targetArch == Target::Arch::AArch64 &&
-         artifactKind == ArtifactKind::Executable)) {
+        (targetOs == Target::OS::Windows && targetArch == Target::Arch::AArch64)) {
         return true;
     }
-    // Beyond x86-64, ELF lays out AArch64 executables and shared libraries;
-    // PE currently lays out AArch64 executables only. The driver continues to
-    // refuse windows-aarch64 builds until DLL parity and CLI enablement land.
+    // Beyond x86-64, ELF lays out AArch64 executables and shared libraries.
+    // The driver continues to refuse windows-aarch64 builds until its CLI
+    // enablement lands, even though the linker can now write both PE kinds.
     const bool elf = targetOs != Target::OS::Windows && targetOs != Target::OS::MacOS;
     if (elf && targetArch == Target::Arch::AArch64) {
         return true;
@@ -75,7 +74,8 @@ bool Linker::Link(const std::filesystem::path &outputPath) {
             std::vector<std::string> exports;
             for (const auto &object : objects) {
                 for (const auto &symbol : object.symbols) {
-                    if (symbol.visibility != RcuSymVis::Local && symbol.sectionIdx != RCU_SEC_EXTERNAL) {
+                    if (symbol.kind == RcuSymKind::Func && symbol.visibility != RcuSymVis::Local &&
+                        !symbol.name.empty() && symbol.name != "DllMain") {
                         exports.push_back(symbol.name);
                     }
                 }

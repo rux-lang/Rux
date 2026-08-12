@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "WindowsAArch64Dll"
+Version = "0.1.0"
+Type = "SharedLibrary"
+Description = "Native fixture: Windows AArch64 DLL export"
+
+[Build]
+Output = "../../../../Bin/Tests/Native"

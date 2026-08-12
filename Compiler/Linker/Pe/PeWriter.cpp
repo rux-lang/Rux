@@ -53,9 +53,8 @@ struct PeImportThunk {
 };
 
 struct PeMissingEntryPatch {
-    size_t opcodeOffset = 0;
-    uint8_t opcode = 0;
-    uint32_t value = 0;
+    size_t offset = 0;
+    Buf bytes;
 };
 
 struct PeStubs {
@@ -85,7 +84,7 @@ static PeStubs BuildX86_64EntryStub(const bool isDll) {
         // sub rsp, 0x28; call DllMain; add rsp, 0x28; ret
         stubs.bytes.insert(stubs.bytes.end(), {0x48, 0x83, 0xEC, 0x28, 0xE8, 0, 0, 0, 0, 0x48, 0x83, 0xC4, 0x28, 0xC3});
         stubs.userEntry = {0, 5, RcuRelType::Rel32};
-        stubs.missingDllEntry = PeMissingEntryPatch{4, 0xB8, 1}; // mov eax, TRUE
+        stubs.missingDllEntry = PeMissingEntryPatch{4, {0xB8, 1, 0, 0, 0}}; // mov eax, TRUE
     }
     else {
         // sub rsp, 0x28; call Main; mov ecx, eax; call ExitProcess; int3
@@ -137,7 +136,20 @@ static bool ApplyX86_64PeRelocation(Buf &buffer, const size_t patchAt, const uin
 static PeStubs BuildAArch64EntryStub(const bool isDll) {
     PeStubs stubs;
     if (isDll) {
-        return stubs; // Task 10 owns the Windows ARM64 DLL entry path.
+        // stp x29, x30, [sp, #-16]!; mov x29, sp; bl DllMain;
+        // ldp x29, x30, [sp], #16; ret
+        //
+        // The loader's x0-x2 arguments reach DllMain untouched. The frame
+        // saves the loader's return address across BL and keeps SP aligned.
+        for (const uint32_t word : {0xA9BF7BFDu, 0x910003FDu, 0x94000000u, 0xA8C17BFDu, 0xD65F03C0u}) {
+            WriteU32(stubs.bytes, word);
+        }
+        stubs.userEntry = {0, 8, RcuRelType::AArch64Call26};
+
+        Buf returnTrue;
+        WriteU32(returnTrue, 0x52800020u); // mov w0, #TRUE
+        stubs.missingDllEntry = PeMissingEntryPatch{8, std::move(returnTrue)};
+        return stubs;
     }
 
     // stp x29, x30, [sp, #-16]!; mov x29, sp; bl Main; bl ExitProcess; brk #0
@@ -236,8 +248,8 @@ static bool PatchPeStubs(const PeArchitectureConfig &architecture, const PeStubs
         }
     }
     else if (stubs.missingDllEntry) {
-        text[stubs.missingDllEntry->opcodeOffset] = stubs.missingDllEntry->opcode;
-        Patch32(text, stubs.userEntry.fieldOffset, stubs.missingDllEntry->value);
+        const auto &replacement = *stubs.missingDllEntry;
+        std::ranges::copy(replacement.bytes, text.begin() + static_cast<std::ptrdiff_t>(replacement.offset));
     }
     else {
         error = "undefined symbol 'Main' — no entry point found";

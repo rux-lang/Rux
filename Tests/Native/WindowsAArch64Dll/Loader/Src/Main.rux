@@ -1,0 +1,19 @@
+import Windows::{ FreeLibrary, GetProcAddress, LoadLibraryA };
+
+func Main() -> int {
+    let libraryName = "WindowsAArch64Dll.dll";
+    let library = LoadLibraryA(libraryName.data);
+    if library == null { return 1; }
+
+    let exportName = "Answer";
+    let address = GetProcAddress(library, exportName.data);
+    if address == null {
+        FreeLibrary(library);
+        return 2;
+    }
+
+    let answer = address as func() -> int;
+    let result = answer();
+    if !FreeLibrary(library) { return 3; }
+    return result == 42 ? 0 : 4;
+}

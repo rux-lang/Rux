@@ -36,6 +36,11 @@ uint32_t Read32(const std::vector<uint8_t> &image, const size_t offset) {
     return value;
 }
 
+uint32_t ReadBig32(const std::vector<uint8_t> &bytes, const size_t offset) {
+    return static_cast<uint32_t>(bytes.at(offset)) << 24U | static_cast<uint32_t>(bytes.at(offset + 1)) << 16U |
+           static_cast<uint32_t>(bytes.at(offset + 2)) << 8U | static_cast<uint32_t>(bytes.at(offset + 3));
+}
+
 uint64_t Read64(const std::vector<uint8_t> &image, const size_t offset) {
     uint64_t value = 0;
     for (size_t i = 0; i < 8; ++i) {
@@ -62,6 +67,30 @@ std::filesystem::path PeTestPath(const std::string_view extension = ".exe") {
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
     return std::filesystem::temp_directory_path() /
            ("rux-pe-baseline-" + std::to_string(nonce) + std::string(extension));
+}
+
+std::vector<uint8_t> ReadFile(const std::filesystem::path &path) {
+    std::ifstream stream(path, std::ios::binary);
+    return {(std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>()};
+}
+
+struct ArchiveMember {
+    size_t header = 0;
+    size_t data = 0;
+    size_t size = 0;
+};
+
+std::vector<ArchiveMember> ReadArchiveMembers(const std::vector<uint8_t> &archive) {
+    std::vector<ArchiveMember> members;
+    size_t cursor = 8;
+    while (cursor + 60 <= archive.size()) {
+        const std::string sizeText(archive.begin() + static_cast<std::ptrdiff_t>(cursor + 48),
+                                   archive.begin() + static_cast<std::ptrdiff_t>(cursor + 58));
+        const size_t size = std::stoull(sizeText);
+        members.push_back({cursor, cursor + 60, size});
+        cursor += 60 + size + (size & 1U);
+    }
+    return members;
 }
 } // namespace
 
@@ -565,6 +594,145 @@ TEST_CASE("PE linker emits and resolves a Windows AArch64 executable") {
     CHECK(Read32(image, mainOffset + 28) == 0x52800920); // distinctive exit code 73
     CHECK(Read64(image, rdataSection.rawOffset + 8) == imageBase + helperRva);
     CHECK(Read64(image, dataSection.rawOffset) == imageBase + secondRva);
+}
+
+TEST_CASE("PE linker emits Windows AArch64 DLL entries exports and import libraries") {
+    for (const bool definesDllMain : {false, true}) {
+        CAPTURE(definesDllMain);
+        RcuFile library;
+        library.arch = RcuArch::AArch64;
+        library.sourcePath = "Library.rux";
+
+        RcuSection text;
+        text.name = ".text";
+        text.type = RcuSecType::Text;
+        text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+        text.alignment = 16;
+        if (definesDllMain) {
+            AppendWord(text.data, 0xD65F03C0); // DllMain: ret
+            library.symbols.push_back({"DllMain", "", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        }
+        const uint32_t exportedOffset = static_cast<uint32_t>(text.data.size());
+        AppendWord(text.data, 0x52800540); // Exported: mov w0, #42
+        AppendWord(text.data, 0xD65F03C0); // ret
+        library.symbols.push_back(
+            {"Exported", "int", exportedOffset, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        library.sections.push_back(std::move(text));
+
+        const auto output = PeTestPath(".dll");
+        auto importLibrary = output;
+        importLibrary.replace_extension(".lib");
+        std::error_code filesystemError;
+        std::filesystem::remove(output, filesystemError);
+        std::filesystem::remove(importLibrary, filesystemError);
+
+        Linker linker({std::move(library)}, "AArch64Library", {}, ArtifactKind::SharedLibrary, Target::OS::Windows,
+                      Target::Arch::AArch64);
+        REQUIRE(linker.Link(output));
+        REQUIRE(std::filesystem::is_regular_file(importLibrary));
+        const auto image = ReadFile(output);
+        const auto archive = ReadFile(importLibrary);
+        std::filesystem::remove(output, filesystemError);
+        std::filesystem::remove(importLibrary, filesystemError);
+
+        const size_t peOffset = Read32(image, 0x3C);
+        REQUIRE(Read16(image, peOffset + 4) == 0xAA64);      // IMAGE_FILE_MACHINE_ARM64
+        CHECK((Read16(image, peOffset + 22) & 0x2000) != 0); // IMAGE_FILE_DLL
+        const size_t optional = peOffset + 24;
+        CHECK(Read64(image, optional + 24) == 0x1'8000'0000ULL);
+        CHECK(Read16(image, optional + 68) == 2);          // GUI subsystem
+        CHECK((Read16(image, optional + 70) & 0x40) == 0); // fixed base, no ASLR
+        const uint32_t entryRva = Read32(image, optional + 16);
+        const uint32_t exportRva = Read32(image, optional + 112);
+        REQUIRE(exportRva != 0);
+
+        const size_t sectionTable = optional + Read16(image, peOffset + 20);
+        const uint16_t sectionCount = Read16(image, peOffset + 6);
+        std::vector<PeSection> sections;
+        for (uint16_t i = 0; i < sectionCount; ++i) {
+            const size_t offset = sectionTable + static_cast<size_t>(i) * 40;
+            PeSection section;
+            for (size_t c = 0; c < 8 && image[offset + c] != 0; ++c) {
+                section.name.push_back(static_cast<char>(image[offset + c]));
+            }
+            section.virtualSize = Read32(image, offset + 8);
+            section.rva = Read32(image, offset + 12);
+            section.rawSize = Read32(image, offset + 16);
+            section.rawOffset = Read32(image, offset + 20);
+            sections.push_back(std::move(section));
+        }
+        const auto rvaToOffset = [&](const uint32_t rva) -> size_t {
+            const auto section = std::ranges::find_if(sections, [&](const PeSection &candidate) {
+                return rva >= candidate.rva && rva < candidate.rva + std::max(candidate.virtualSize, candidate.rawSize);
+            });
+            REQUIRE(section != sections.end());
+            return section->rawOffset + rva - section->rva;
+        };
+
+        const size_t entryOffset = rvaToOffset(entryRva);
+        CHECK(Read32(image, entryOffset) == 0xA9BF7BFD);      // save x29/x30 and align
+        CHECK(Read32(image, entryOffset + 4) == 0x910003FD);  // mov x29, sp
+        CHECK(Read32(image, entryOffset + 12) == 0xA8C17BFD); // restore x29/x30
+        CHECK(Read32(image, entryOffset + 16) == 0xD65F03C0); // ret to the loader
+        if (definesDllMain) {
+            CHECK(AArch64BranchTarget(image, entryOffset + 8, entryRva + 8) == entryRva + 32);
+        }
+        else {
+            CHECK(Read32(image, entryOffset + 8) == 0x52800020); // mov w0, #TRUE
+        }
+
+        const size_t exportOffset = rvaToOffset(exportRva);
+        CHECK(Read32(image, exportOffset + 20) == 1);
+        CHECK(Read32(image, exportOffset + 24) == 1);
+        const uint32_t functionArrayRva = Read32(image, exportOffset + 28);
+        const uint32_t nameArrayRva = Read32(image, exportOffset + 32);
+        const uint32_t exportedRva = Read32(image, rvaToOffset(functionArrayRva));
+        CHECK(ReadString(image, rvaToOffset(Read32(image, rvaToOffset(nameArrayRva)))) == "Exported");
+        CHECK(Read32(image, rvaToOffset(exportedRva)) == 0x52800540); // ARM64 exported function body
+        CHECK(exportedRva == entryRva + 32 + exportedOffset);
+
+        REQUIRE(std::string(archive.begin(), archive.begin() + 8) == "!<arch>\n");
+        const auto members = ReadArchiveMembers(archive);
+        REQUIRE(members.size() == 3);
+        CHECK(ReadBig32(archive, members[0].data) == 2); // Exported and __imp_Exported
+        CHECK(ReadBig32(archive, members[0].data + 4) == members[2].header);
+        CHECK(ReadBig32(archive, members[0].data + 8) == members[2].header);
+        CHECK(Read32(archive, members[1].data) == 1); // one object member
+        CHECK(Read32(archive, members[1].data + 4) == members[2].header);
+        CHECK(Read32(archive, members[1].data + 8) == 2); // two indexed symbols
+        CHECK(Read16(archive, members[1].data + 12) == 1);
+        CHECK(Read16(archive, members[1].data + 14) == 1);
+        CHECK(ReadString(archive, members[1].data + 16) == "Exported");
+        CHECK(ReadString(archive, members[1].data + 25) == "__imp_Exported");
+        CHECK(Read16(archive, members[2].data + 6) == 0xAA64); // short import member machine
+        CHECK(ReadString(archive, members[2].data + 20) == "Exported");
+    }
+}
+
+TEST_CASE("PE linker keeps Windows AArch64 static-library members architecture-stamped") {
+    RcuFile library;
+    library.arch = RcuArch::AArch64;
+    library.sourcePath = "Static.rux";
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 4;
+    AppendWord(text.data, 0xD65F03C0);
+    library.sections.push_back(std::move(text));
+    library.symbols.push_back({"Answer", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+
+    const auto output = PeTestPath(".lib");
+    std::error_code filesystemError;
+    std::filesystem::remove(output, filesystemError);
+    Linker linker({std::move(library)}, "Static", {}, ArtifactKind::StaticLibrary, Target::OS::Windows,
+                  Target::Arch::AArch64);
+    REQUIRE(linker.Link(output));
+    const auto archive = ReadFile(output);
+    std::filesystem::remove(output, filesystemError);
+    const auto members = ReadArchiveMembers(archive);
+    REQUIRE(members.size() == 3);
+    CHECK(Read16(archive, members[2].data) == 0xAA64); // normal COFF object machine
 }
 
 TEST_CASE("PE linker diagnoses invalid Windows AArch64 relocations") {

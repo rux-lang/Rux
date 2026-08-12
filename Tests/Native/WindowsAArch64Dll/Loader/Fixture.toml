@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "WindowsAArch64DllLoader"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Native fixture: load and call a Windows AArch64 DLL"
+
+[Dependencies]
+Windows = { Path = "../../../../Packages/Windows" }
+
+[Build]
+Output = "../../../../Bin/Tests/Native"
