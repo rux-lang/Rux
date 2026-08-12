@@ -363,11 +363,20 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     // Collect definitions first so cross-module references are resolved as
     // ordinary Rux symbols instead of dynamic imports.
     std::unordered_set<std::string> definedSymbols;
+    std::unordered_set<std::string> externalDefinitions;
     for (const auto &object : objects) {
         for (const auto &symbol : object.symbols) {
-            if (symbol.kind != RcuSymKind::ExternFunc && symbol.kind != RcuSymKind::ExternData &&
-                symbol.visibility != RcuSymVis::Local && symbol.sectionIdx != RCU_SEC_EXTERNAL &&
-                !symbol.name.empty() && !definedSymbols.insert(symbol.name).second) {
+            if (symbol.kind == RcuSymKind::ExternFunc || symbol.kind == RcuSymKind::ExternData ||
+                symbol.sectionIdx == RCU_SEC_EXTERNAL || symbol.name.empty()) {
+                continue;
+            }
+            // Private Rux functions are local in their defining RCU object but
+            // are still referenced as externs from other source-file objects.
+            // Generated local data and constant labels remain object-relative.
+            if (symbol.visibility != RcuSymVis::Local || symbol.kind == RcuSymKind::Func) {
+                definedSymbols.insert(symbol.name);
+            }
+            if (symbol.visibility != RcuSymVis::Local && !externalDefinitions.insert(symbol.name).second) {
                 Error("duplicate definition of symbol '" + symbol.name + "'");
             }
         }

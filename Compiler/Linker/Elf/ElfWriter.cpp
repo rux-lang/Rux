@@ -144,12 +144,17 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     std::unordered_set<std::string> strongDefinitions;
     for (const auto &obj : objects) {
         for (const auto &sym : obj.symbols) {
-            if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData &&
-                sym.visibility != RcuSymVis::Local && !sym.name.empty()) {
+            if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData || sym.name.empty()) {
+                continue;
+            }
+            // Private Rux functions are local in their defining RCU object but
+            // are still referenced as externs from other source-file objects.
+            // Generated local data and constant labels remain object-relative.
+            if (sym.visibility != RcuSymVis::Local || sym.kind == RcuSymKind::Func) {
                 definedSymbols.insert(sym.name);
-                if (sym.visibility == RcuSymVis::Global && !strongDefinitions.insert(sym.name).second) {
-                    Error("duplicate symbol '" + sym.name + "'");
-                }
+            }
+            if (sym.visibility == RcuSymVis::Global && !strongDefinitions.insert(sym.name).second) {
+                Error("duplicate symbol '" + sym.name + "'");
             }
         }
     }
@@ -377,7 +382,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                 if (sym.name.empty() || sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
                     continue;
                 }
-                if (sym.visibility == RcuSymVis::Local && sym.name != "Main") {
+                if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func && sym.name != "Main") {
                     continue;
                 }
                 uint64_t va = 0;

@@ -133,6 +133,58 @@ TEST_CASE("Mach-O signed output is deterministic") {
     CHECK(first == second);
 }
 
+TEST_CASE("Mach-O linker resolves local functions defined in another object") {
+    const auto link = [](const std::uint8_t objectArch, const Target::Arch targetArch,
+                         std::vector<std::uint8_t> mainCode, std::vector<std::uint8_t> helperCode,
+                         const std::uint32_t relocationOffset, const std::uint16_t relocationType,
+                         const std::string_view suffix) {
+        RcuFile caller;
+        caller.arch = objectArch;
+        RcuSection callerText = TextSection(std::move(mainCode));
+        callerText.alignment = targetArch == Target::Arch::AArch64 ? 4 : 16;
+        callerText.relocs.push_back({relocationOffset, 1, relocationType, 0});
+        const auto mainSize = static_cast<std::uint32_t>(callerText.data.size());
+        caller.sections.push_back(std::move(callerText));
+        caller.symbols.push_back({"Main", "int", 0, mainSize, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        caller.symbols.push_back(
+            {"PrivateHelper", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+        RcuFile definitions;
+        definitions.arch = objectArch;
+        RcuSection helperText = TextSection(std::move(helperCode));
+        helperText.alignment = targetArch == Target::Arch::AArch64 ? 4 : 16;
+        const auto helperSize = static_cast<std::uint32_t>(helperText.data.size());
+        definitions.sections.push_back(std::move(helperText));
+        definitions.symbols.push_back(
+            {"PrivateHelper", "int", 0, helperSize, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
+
+        const std::vector<std::uint8_t> bytes = LinkBytes(
+            {std::move(caller), std::move(definitions)}, ArtifactKind::Executable,
+            std::filesystem::temp_directory_path() / ("rux-macho-cross-object-local-function-" + std::string(suffix)),
+            targetArch);
+        MachOImage image;
+        std::string error;
+        const bool parsed = ReadMachO64(bytes, image, error);
+        CAPTURE(error);
+        REQUIRE(parsed);
+        return image;
+    };
+
+    const MachOImage x86 = link(RcuArch::X86_64, Target::Arch::X86_64,
+                                {0xE8, 0, 0, 0, 0, 0x31, 0xC0, 0xC3}, // call PrivateHelper; xor eax, eax; ret
+                                {0xC3}, 1, RcuRelType::Rel32, "x86-64");
+    CHECK(x86.Architecture() == MachOArchitecture::X86_64);
+    CHECK_FALSE(x86.dyldInfo.has_value());
+    CHECK(x86.Section("__TEXT", "__stubs") == nullptr);
+
+    const MachOImage aarch64 = link(RcuArch::AArch64, Target::Arch::AArch64,
+                                    {0x00, 0x00, 0x00, 0x94, 0xC0, 0x03, 0x5F, 0xD6}, // bl PrivateHelper; ret
+                                    {0xC0, 0x03, 0x5F, 0xD6}, 0, RcuRelType::AArch64Call26, "aarch64");
+    CHECK(aarch64.Architecture() == MachOArchitecture::AArch64);
+    CHECK_FALSE(aarch64.dyldInfo.has_value());
+    CHECK(aarch64.Section("__TEXT", "__stubs") == nullptr);
+}
+
 TEST_CASE("Mach-O reader reports the freestanding x86-64 thread entry") {
     RcuFile program;
     program.arch = RcuArch::X86_64;

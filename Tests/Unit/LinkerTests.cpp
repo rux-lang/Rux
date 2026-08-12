@@ -54,6 +54,74 @@ TEST_CASE("ELF linker preserves an extern library declared in another object") {
     std::filesystem::remove(output, ec);
 }
 
+TEST_CASE("ELF linker resolves local functions defined in another object") {
+    const auto link = [](const std::uint8_t objectArch, const Target::Arch targetArch,
+                         std::vector<std::uint8_t> mainCode, std::vector<std::uint8_t> helperCode,
+                         const std::uint32_t relocationOffset, const std::uint16_t relocationType,
+                         const std::string_view suffix) {
+        RcuFile caller;
+        caller.arch = objectArch;
+        RcuSection callerText;
+        callerText.name = ".text";
+        callerText.type = RcuSecType::Text;
+        callerText.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+        callerText.alignment = targetArch == Target::Arch::AArch64 ? 4 : 16;
+        callerText.data = std::move(mainCode);
+        callerText.relocs.push_back({relocationOffset, 1, relocationType, 0});
+        const auto mainSize = static_cast<std::uint32_t>(callerText.data.size());
+        caller.sections.push_back(std::move(callerText));
+        caller.symbols.push_back({"Main", "int", 0, mainSize, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        caller.symbols.push_back(
+            {"PrivateHelper", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+        RcuFile definitions;
+        definitions.arch = objectArch;
+        RcuSection helperText;
+        helperText.name = ".text";
+        helperText.type = RcuSecType::Text;
+        helperText.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+        helperText.alignment = targetArch == Target::Arch::AArch64 ? 4 : 16;
+        helperText.data = std::move(helperCode);
+        const auto helperSize = static_cast<std::uint32_t>(helperText.data.size());
+        definitions.sections.push_back(std::move(helperText));
+        definitions.symbols.push_back(
+            {"PrivateHelper", "int", 0, helperSize, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
+
+        const auto output =
+            std::filesystem::temp_directory_path() / ("rux-elf-cross-object-local-function-" + std::string(suffix));
+        std::error_code ec;
+        std::filesystem::remove(output, ec);
+        Linker linker({std::move(caller), std::move(definitions)}, "LinkerTest", {}, ArtifactKind::Executable,
+                      Target::OS::Linux, targetArch);
+        const bool linked = linker.Link(output);
+        CAPTURE(linker.Errors().empty() ? std::string{} : linker.Errors().front().message);
+        REQUIRE(linked);
+
+        std::ifstream stream(output, std::ios::binary);
+        REQUIRE(stream.is_open());
+        ElfImage image{{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()}};
+        stream.close();
+        std::filesystem::remove(output, ec);
+        return image;
+    };
+
+    const ElfImage x86 = link(RcuArch::X86_64, Target::Arch::X86_64,
+                              {0xE8, 0, 0, 0, 0, 0x31, 0xC0, 0xC3}, // call PrivateHelper; xor eax, eax; ret
+                              {0xC3}, 1, RcuRelType::Rel32, "x86-64");
+    CHECK(x86.Machine() == 0x3E);
+    CHECK_FALSE(x86.SegmentOfType(2).has_value()); // no PT_DYNAMIC
+    CHECK_FALSE(x86.SegmentOfType(3).has_value()); // no PT_INTERP
+    CHECK(x86.NeededLibraries().empty());
+
+    const ElfImage aarch64 = link(RcuArch::AArch64, Target::Arch::AArch64,
+                                  {0x00, 0x00, 0x00, 0x94, 0xC0, 0x03, 0x5F, 0xD6}, // bl PrivateHelper; ret
+                                  {0xC0, 0x03, 0x5F, 0xD6}, 0, RcuRelType::AArch64Call26, "aarch64");
+    CHECK(aarch64.Machine() == 0xB7);
+    CHECK_FALSE(aarch64.SegmentOfType(2).has_value()); // no PT_DYNAMIC
+    CHECK_FALSE(aarch64.SegmentOfType(3).has_value()); // no PT_INTERP
+    CHECK(aarch64.NeededLibraries().empty());
+}
+
 TEST_CASE("ELF linker names the loader and C library of the target, not of the host") {
     // A dynamic image whose one import names no library of its own, so the
     // writer supplies the target's C library and the loader that binds it.
