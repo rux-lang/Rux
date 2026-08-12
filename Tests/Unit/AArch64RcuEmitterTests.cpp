@@ -235,6 +235,16 @@ constexpr std::uint32_t kStackProbeTouch = 0xF90003FFU; // str xzr, [sp]
     return std::nullopt;
 }
 
+[[nodiscard]] std::vector<std::size_t> BranchAndLinkIndices(const std::vector<std::uint32_t> &words) {
+    std::vector<std::size_t> result;
+    for (std::size_t i = 0; i < words.size(); ++i) {
+        if ((words[i] & 0xFC000000U) == 0x94000000U) {
+            result.push_back(i);
+        }
+    }
+    return result;
+}
+
 // The register a value arrives in, or nothing when the word puts a value
 // nowhere. Two instructions do it: `ldr xN, [x29, #imm]` where the value lives
 // in the frame, and `mov xN, xM` where the allocation gave it a register of its
@@ -318,6 +328,33 @@ struct VectorSlotAccess {
         return std::nullopt;
     }
     return (word >> 10U & 0xFFFU) * width;
+}
+
+[[nodiscard]] std::optional<std::uint32_t> StackArgumentStoredBy(const std::uint32_t word, const unsigned width,
+                                                                 const unsigned reg) {
+    const std::uint32_t opcode = width == 1 ? 0x390003E0U
+                               : width == 2 ? 0x790003E0U
+                               : width == 4 ? 0xB90003E0U
+                                            : 0xF90003E0U;
+    if ((word & 0xFFC003E0U) != opcode || (word & 0x1FU) != reg) {
+        return std::nullopt;
+    }
+    return (word >> 10U & 0xFFFU) * width;
+}
+
+[[nodiscard]] std::optional<std::uint32_t> VectorStackArgumentStored(const std::uint32_t word, const unsigned bits) {
+    const std::uint32_t opcode = bits == 32 ? 0xBD0003E0U : 0xFD0003E0U;
+    if ((word & 0xFFC003E0U) != opcode) {
+        return std::nullopt;
+    }
+    return (word >> 10U & 0xFFFU) * (bits / 8U);
+}
+
+[[nodiscard]] std::optional<std::uint32_t> StackPairArgumentStored(const std::uint32_t word) {
+    if ((word & 0xFFC003E0U) != 0xA90003E0U) {
+        return std::nullopt;
+    }
+    return (word >> 15U & 0x7FU) * 8U;
 }
 
 // The vector register a value leaves, on the same terms as ArgumentDrained.
@@ -2912,6 +2949,197 @@ TEST_CASE("AArch64 RCU emitter leaves the vector file behind without touching th
         }
     }
     CHECK_EQ(opened, std::optional<std::int64_t>(16));
+}
+
+TEST_CASE("Apple AArch64 variadic calls keep fixed arguments in registers and promote the stack tail") {
+    const auto package = CompileToAArch64Lir(R"(
+        struct Wide { first: int64; second: int64; }
+
+        #Link("libSystem.B.dylib")
+        extern {
+            func Format(format: *char8, scale: float64, ...) -> int32;
+        }
+
+        func Main() -> int {
+            var narrow: int16 = -2i16;
+            var byte: uint8 = 3u8;
+            var wide = Wide { first: 4i64, second: 5i64 };
+            Format(null, 1.5, 2.5f32, narrow, byte, wide);
+            return 0;
+        }
+    )",
+                                             "macos-aarch64");
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::MacOS);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    const auto beforeCall = std::ranges::subrange(caller.begin(), caller.begin() + static_cast<std::ptrdiff_t>(*call));
+
+    // The declared pointer and double use X0 and V0. The anonymous f32 was
+    // promoted to f64 during lowering and is stored at stack offset zero;
+    // neither it nor the integer promotions consume another argument register.
+    CHECK(std::ranges::any_of(
+        beforeCall, [](const std::uint32_t word) { return ArgumentFilled(word) == std::optional<unsigned>(0); }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return VectorArgumentFilled(word, 64) == std::optional<unsigned>(0);
+    }));
+    for (unsigned reg = 1; reg < 8; ++reg) {
+        CHECK_FALSE(std::ranges::any_of(beforeCall, [reg](const std::uint32_t word) {
+            return ArgumentFilled(word) == std::optional<unsigned>(reg) ||
+                   VectorArgumentFilled(word, 32) == std::optional<unsigned>(reg) ||
+                   VectorArgumentFilled(word, 64) == std::optional<unsigned>(reg);
+        }));
+    }
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return VectorStackArgumentStored(word, 64) == std::optional<std::uint32_t>(0);
+    }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return StackArgumentStoredBy(word, 4, 9) == std::optional<std::uint32_t>(8);
+    }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return StackArgumentStoredBy(word, 4, 9) == std::optional<std::uint32_t>(16);
+    }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return StackPairArgumentStored(word) == std::optional<std::uint32_t>(24);
+    }));
+    CHECK(std::ranges::any_of(caller, [](const std::uint32_t word) {
+        return StackPointerAdjustment(word, true) == std::optional<std::int64_t>(48);
+    }));
+}
+
+TEST_CASE("Apple AArch64 variadic boundary follows packed fixed stack arguments") {
+    const auto package = CompileToAArch64Lir(R"(
+        struct Wide { first: int64; second: int64; }
+
+        #Link("libSystem.B.dylib")
+        extern {
+            func Collect(a: int64, b: int64, c: int64, d: int64,
+                         e: int64, f: int64, g: int64, h: int64,
+                         small: uint8, medium: uint16, ...) -> int32;
+        }
+
+        func Main() -> int {
+            var wide = Wide { first: 11i64, second: 12i64 };
+            Collect(1i64, 2i64, 3i64, 4i64, 5i64, 6i64, 7i64, 8i64, 9u8, 10u16, wide);
+            return 0;
+        }
+    )",
+                                             "macos-aarch64");
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::MacOS);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    const auto beforeCall = std::ranges::subrange(caller.begin(), caller.begin() + static_cast<std::ptrdiff_t>(*call));
+    for (unsigned reg = 0; reg < 8; ++reg) {
+        CHECK(std::ranges::any_of(beforeCall, [reg](const std::uint32_t word) {
+            return ArgumentFilled(word) == std::optional<unsigned>(reg);
+        }));
+    }
+
+    // Apple packs the two fixed stack arguments at offsets 0 and 2. The
+    // anonymous boundary rounds that packed prefix to eight; the 16-byte value
+    // then occupies the two consecutive slots beginning there.
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return StackArgumentStoredBy(word, 1, 9) == std::optional<std::uint32_t>(0);
+    }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return StackArgumentStoredBy(word, 2, 9) == std::optional<std::uint32_t>(2);
+    }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return StackPairArgumentStored(word) == std::optional<std::uint32_t>(8);
+    }));
+    CHECK(std::ranges::any_of(caller, [](const std::uint32_t word) {
+        return StackPointerAdjustment(word, true) == std::optional<std::int64_t>(32);
+    }));
+}
+
+TEST_CASE("Apple AArch64 zero-fixed variadic calls restart their stack layout") {
+    const auto package = CompileToAArch64Lir(R"(
+        #Link("libSystem.B.dylib")
+        extern func Log(...) -> int32;
+
+        func Main() -> int {
+            Log(1, 2.5);
+            Log(3, 4.5);
+            return 0;
+        }
+    )",
+                                             "macos-aarch64");
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::MacOS);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto calls = BranchAndLinkIndices(caller);
+    REQUIRE_EQ(calls.size(), 2);
+    for (const std::size_t call : calls) {
+        const auto opened =
+            std::find_if(caller.rbegin() + static_cast<std::ptrdiff_t>(caller.size() - call), caller.rend(),
+                         [](const std::uint32_t word) { return StackPointerAdjustment(word, true).has_value(); });
+        REQUIRE(opened != caller.rend());
+        CHECK_EQ(StackPointerAdjustment(*opened, true), std::optional<std::int64_t>(16));
+    }
+    CHECK_EQ(std::ranges::count_if(caller,
+                                   [](const std::uint32_t word) {
+                                       return StackArgumentStoredBy(word, 8, 9) == std::optional<std::uint32_t>(0);
+                                   }),
+             2);
+    CHECK_EQ(std::ranges::count_if(caller,
+                                   [](const std::uint32_t word) {
+                                       return VectorStackArgumentStored(word, 64) == std::optional<std::uint32_t>(8);
+                                   }),
+             2);
+}
+
+TEST_CASE("AArch64 emitter rejects inconsistent C variadic call metadata") {
+    const auto makePackage = [] {
+        return CompileToAArch64Lir(R"(
+            #Link("libSystem.B.dylib")
+            extern func Log(value: int32, ...) -> int32;
+
+            func Main() -> int {
+                Log(1, 2);
+                return 0;
+            }
+        )",
+                                   "macos-aarch64");
+    };
+    const auto findCall = [](LirPackage &package) -> LirInstr & {
+        for (auto &function : package.modules.front().funcs) {
+            for (auto &block : function.blocks) {
+                for (auto &instruction : block.instrs) {
+                    if (instruction.op == LirOpcode::Call && instruction.strArg == "Log") {
+                        return instruction;
+                    }
+                }
+            }
+        }
+        FAIL("expected a direct call to Log");
+        return package.modules.front().funcs.front().blocks.front().instrs.front();
+    };
+
+    auto missingCount = makePackage();
+    findCall(missingCount).cVariadicFixedParamCount.reset();
+    AArch64RcuEmitter missingEmitter(missingCount, "test", Target::OS::MacOS);
+    (void)missingEmitter.Generate();
+    CHECK(JoinMessages(missingEmitter.Diagnostics()).find("inconsistent C variadic call metadata") !=
+          std::string::npos);
+
+    auto excessiveCount = makePackage();
+    findCall(excessiveCount).cVariadicFixedParamCount = 3;
+    AArch64RcuEmitter excessiveEmitter(excessiveCount, "test", Target::OS::MacOS);
+    (void)excessiveEmitter.Generate();
+    CHECK(JoinMessages(excessiveEmitter.Diagnostics()).find("invalid C variadic fixed-parameter count") !=
+          std::string::npos);
 }
 
 TEST_CASE("Windows AArch64 sprintf-style variadic calls use consecutive general-purpose slots") {

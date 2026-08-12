@@ -2090,10 +2090,13 @@ private:
     // An anonymous argument on standard AAPCS64 is classified exactly like a
     // named one: a float still arrives in a V register and `va_arg` finds it in
     // the vector half of the register save area. Windows selects the separate
-    // imaginary-stack walk above; non-variadic Windows calls remain here.
-    [[nodiscard]] CallLayout ClassifyArguments(const std::vector<TypeRef> &types,
-                                               const bool isCVariadic = false) const {
-        if (targetOs == Target::OS::Windows && isCVariadic) {
+    // imaginary-stack walk above. Apple instead classifies the declared prefix
+    // normally, then assigns every anonymous argument to one or more eight-byte
+    // stack slots. Its va_list is consequently a pointer into that stack area.
+    [[nodiscard]] CallLayout
+    ClassifyArguments(const std::vector<TypeRef> &types,
+                      const std::optional<std::uint32_t> fixedParamCount = std::nullopt) const {
+        if (targetOs == Target::OS::Windows && fixedParamCount) {
             return ClassifyWindowsVariadicArguments(types);
         }
 
@@ -2102,6 +2105,7 @@ private:
         unsigned nextGeneral = 0;
         unsigned nextVector = 0;
         std::int32_t nextStack = 0;
+        const bool appleVariadic = fixedParamCount && (targetOs == Target::OS::MacOS || targetOs == Target::OS::iOS);
 
         // Generic AAPCS64 gives every stack argument a whole number of
         // doublewords. Apple instead uses the argument's natural alignment and
@@ -2136,9 +2140,25 @@ private:
             return onStack(size, align);
         };
 
-        for (const TypeRef &type : types) {
+        for (std::size_t i = 0; i < types.size(); ++i) {
+            const TypeRef &type = types[i];
             const int size = RuntimeSize(type);
             const int align = std::clamp(RuntimeAlign(type), 1, 16);
+
+            if (appleVariadic && i >= *fixedParamCount) {
+                if (i == *fixedParamCount) {
+                    nextStack = AlignUp(nextStack, 8);
+                }
+                ArgLocation loc =
+                    onStack(IsAggregate(type) && size > 16 ? 8 : AlignUp(std::max(size, 1), 8), std::max(align, 8));
+                if (IsAggregate(type) && size > 16) {
+                    loc.byReference = true;
+                    loc.copyBytes = size;
+                }
+                layout.args.push_back(loc);
+                continue;
+            }
+
             unsigned memberBytes = 8;
             const unsigned members = FloatMembers(type, memberBytes);
             if (members > 0) {
@@ -2422,12 +2442,24 @@ private:
     // Open the outgoing argument area, fill the argument registers, branch, close
     // the area again, and keep what came back.
     void GenCall(const LirInstr &instr, const std::vector<LirReg> &args, const bool indirect) {
+        if (instr.isCVariadic != instr.cVariadicFixedParamCount.has_value()) {
+            Report(std::format("AArch64 code generation reached inconsistent C variadic call metadata in '{}'",
+                               currentFunc));
+            return;
+        }
+        if (instr.cVariadicFixedParamCount &&
+            (indirect || *instr.cVariadicFixedParamCount > static_cast<std::uint32_t>(args.size()))) {
+            Report(std::format("AArch64 code generation reached an invalid C variadic fixed-parameter count in '{}'",
+                               currentFunc));
+            return;
+        }
+
         std::vector<TypeRef> types;
         types.reserve(args.size());
         for (const LirReg arg : args) {
             types.push_back(TypeOfReg(arg));
         }
-        const CallLayout layout = ClassifyArguments(types, instr.isCVariadic);
+        const CallLayout layout = ClassifyArguments(types, instr.cVariadicFixedParamCount);
         const bool keepsResult = instr.dst != LirNoReg && !instr.type.IsOpaque();
         const bool indirectResult = keepsResult && ReturnsInMemory(instr.type);
 

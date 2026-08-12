@@ -116,7 +116,7 @@ public:
         funcConvs.clear();
         funcNames.clear();
         externSymbols.clear();
-        cVariadicFuncs.clear();
+        cVariadicFixedParamCounts.clear();
         for (const auto &mod : hir.modules) {
             for (const auto &ef : mod.externFuncs) {
                 // Extern C functions default to the target's C ABI so arguments
@@ -128,7 +128,7 @@ public:
                                        : ResolveCConvention(ef.callConv, targetContext.os, targetContext.arch);
                 funcNames.insert(ef.name);
                 if (ef.isVariadic) {
-                    cVariadicFuncs.insert(ef.name);
+                    cVariadicFixedParamCounts[ef.name] = static_cast<std::uint32_t>(ef.params.size());
                 }
                 // The optional second `#Link` argument renames the imported symbol. Record it
                 // package-wide, for the same reason funcConvs is: a call may
@@ -178,14 +178,56 @@ private:
     TargetContext targetContext;                                  // the machine being generated for
     std::unordered_map<std::string, CallingConvention> funcConvs; // name → calling convention
     std::unordered_set<std::string> funcNames;                    // every function symbol (for address-of)
-    std::unordered_map<std::string, std::string> externSymbols;   // Rux name → imported symbol name
-    std::unordered_set<std::string> cVariadicFuncs;               // C-style variadic extern names
+    std::unordered_map<std::string, std::uint32_t> cVariadicFixedParamCounts;
+    std::unordered_map<std::string, std::string> externSymbols; // Rux name → imported symbol name
 
     // The name a function reaches the linker under: the second `#Link` argument
     // override when one was given, otherwise the Rux name itself.
     const std::string &SymbolFor(const std::string &name) const {
         const auto it = externSymbols.find(name);
         return it == externSymbols.end() ? name : it->second;
+    }
+
+    [[nodiscard]] static std::optional<TypeRef> AppleCVariadicPromotion(const TypeRef &type) {
+        switch (type.kind) {
+        case TypeRef::Kind::Float32:
+            return TypeRef::MakeFloat64();
+        case TypeRef::Kind::Bool8:
+        case TypeRef::Kind::Bool16:
+        case TypeRef::Kind::Char8:
+        case TypeRef::Kind::Char16:
+        case TypeRef::Kind::Int8:
+        case TypeRef::Kind::Int16:
+        case TypeRef::Kind::UInt8:
+        case TypeRef::Kind::UInt16:
+            return TypeRef::MakeInt32();
+        default:
+            return std::nullopt;
+        }
+    }
+
+    // Preserve the declaration boundary on every target. Apple ARM64 also
+    // applies C's default argument promotions before its anonymous stack-only
+    // placement; keeping the promotion in LIR makes the value's ABI type
+    // explicit and lets code generation move it like any other converted value.
+    void SetCVariadicCallMetadata(LirInstr &call, const std::string &name, const HirCallExpr &expr) {
+        const auto found = cVariadicFixedParamCounts.find(name);
+        if (found == cVariadicFixedParamCounts.end()) {
+            return;
+        }
+        call.isCVariadic = true;
+        call.cVariadicFixedParamCount = found->second;
+
+        const bool appleAArch64 = targetContext.arch == Target::Arch::AArch64 &&
+                                  (targetContext.os == Target::OS::MacOS || targetContext.os == Target::OS::iOS);
+        if (!appleAArch64) {
+            return;
+        }
+        for (std::size_t i = found->second; i < call.srcs.size() && i < expr.args.size(); ++i) {
+            if (const auto promoted = AppleCVariadicPromotion(expr.args[i]->type)) {
+                call.srcs[i] = EmitCast(call.srcs[i], expr.args[i]->type, *promoted);
+            }
+        }
     }
 
     // Block / register allocation
@@ -2074,7 +2116,7 @@ private:
             if (it != funcConvs.end()) {
                 ci.callConv = it->second;
             }
-            ci.isCVariadic = cVariadicFuncs.contains(v->name);
+            SetCVariadicCallMetadata(ci, v->name, e);
             // The convention is keyed by the Rux name; the call itself has to
             // relocate against the imported symbol.
             ci.strArg = SymbolFor(v->name);
@@ -2088,7 +2130,7 @@ private:
             if (it != funcConvs.end()) {
                 ci.callConv = it->second;
             }
-            ci.isCVariadic = cVariadicFuncs.contains(callee);
+            SetCVariadicCallMetadata(ci, callee, e);
             ci.strArg = SymbolFor(callee);
         }
         else {

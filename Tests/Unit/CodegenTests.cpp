@@ -516,6 +516,7 @@ TEST_CASE("C variadic call metadata survives package-wide extern lookup and Link
     CHECK_EQ(found->strArg, "native_format");
     CHECK_EQ(found->callConv, CallingConvention::AAPCS64);
     CHECK(found->isCVariadic);
+    CHECK_EQ(found->cVariadicFixedParamCount, std::optional<std::uint32_t>(1));
 }
 
 TEST_CASE("Rux variadics remain slice calls rather than C variadic calls") {
@@ -535,6 +536,7 @@ TEST_CASE("Rux variadics remain slice calls rather than C variadic calls") {
             for (const auto &instruction : block.instrs) {
                 if (instruction.op == LirOpcode::Call && instruction.strArg == "Sum") {
                     CHECK_FALSE(instruction.isCVariadic);
+                    CHECK_FALSE(instruction.cVariadicFixedParamCount.has_value());
                     CHECK_EQ(instruction.callConv, CallingConvention::Default);
                     return;
                 }
@@ -568,6 +570,7 @@ TEST_CASE("LIR dumps resolved convention and C variadic call metadata") {
     call.strArg = "native_format";
     call.callConv = CallingConvention::AAPCS64;
     call.isCVariadic = true;
+    call.cVariadicFixedParamCount = 0;
     entry.instrs.push_back(std::move(call));
     caller.blocks.push_back(std::move(entry));
     module.funcs.push_back(std::move(caller));
@@ -583,7 +586,7 @@ TEST_CASE("LIR dumps resolved convention and C variadic call metadata") {
     std::filesystem::remove(path, error);
 
     CHECK(dump.find("extern func native_format(...) cc=aapcs64") != std::string::npos);
-    CHECK(dump.find("call opaque @native_format() cc=aapcs64 c_variadic") != std::string::npos);
+    CHECK(dump.find("call opaque @native_format() cc=aapcs64 c_variadic fixed=0") != std::string::npos);
 }
 
 TEST_CASE("Abi attribute replaces ABI metadata blocks") {

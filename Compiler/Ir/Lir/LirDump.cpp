@@ -28,6 +28,9 @@ static std::string CallMetadata(const LirInstr &instr) {
     }
     if (instr.isCVariadic) {
         metadata += " c_variadic";
+        if (instr.cVariadicFixedParamCount) {
+            metadata += std::format(" fixed={}", *instr.cVariadicFixedParamCount);
+        }
     }
     return metadata;
 }
