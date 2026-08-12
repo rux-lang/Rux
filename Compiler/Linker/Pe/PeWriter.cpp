@@ -414,6 +414,20 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
         textPre.insert(textPre.end(), {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00});
     }
 
+    // The entry and import thunks have a variable length. Keep the first RCU
+    // text section aligned even when the number of imports changes: codegen
+    // records that alignment in the object, and the image writer must not
+    // discard it merely because it prepends linker-generated code.
+    uint16_t textAlignment = 1;
+    for (const auto &obj : objects) {
+        for (const auto &sec : obj.sections) {
+            if (sec.type == RcuSecType::Text) {
+                textAlignment = std::max(textAlignment, sec.alignment);
+            }
+        }
+    }
+    PadTo(textPre, textAlignment, 0xCC);
+
     const auto preambleSize = static_cast<uint32_t>(textPre.size());
 
     // 3. Merge RCU sections
@@ -427,6 +441,28 @@ bool Linker::LinkPe64(const std::filesystem::path &outputPath) {
 
     for (size_t i = 0; i < objects.size(); ++i) {
         const auto &obj = objects[i];
+
+        // RCU section offsets are relative to a section whose alignment is
+        // part of the object contract. Preserve it between input objects for
+        // all three PE sections; otherwise a preceding object's odd size can
+        // misalign every symbol in the next object.
+        uint16_t objectTextAlignment = 1;
+        uint16_t objectRodataAlignment = 1;
+        uint16_t objectDataAlignment = 1;
+        for (const auto &sec : obj.sections) {
+            if (sec.type == RcuSecType::Text) {
+                objectTextAlignment = std::max(objectTextAlignment, sec.alignment);
+            }
+            else if (sec.type == RcuSecType::RoData) {
+                objectRodataAlignment = std::max(objectRodataAlignment, sec.alignment);
+            }
+            else if (sec.type == RcuSecType::Data) {
+                objectDataAlignment = std::max(objectDataAlignment, sec.alignment);
+            }
+        }
+        PadTo(mergedText, objectTextAlignment, 0xCC);
+        PadTo(mergedRodata, objectRodataAlignment);
+        PadTo(mergedData, objectDataAlignment);
         layouts[i] = {static_cast<uint32_t>(mergedText.size()), static_cast<uint32_t>(mergedRodata.size()),
                       static_cast<uint32_t>(mergedData.size())};
         for (const auto &sec : obj.sections) {

@@ -1,6 +1,7 @@
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 #include "System/Os.h"
+#include "System/Process.h"
 #include "Target/Target.h"
 
 #include <array>
@@ -275,6 +276,41 @@ TEST_CASE("compiler driver builds one architecture for a foreign operating syste
     // build sitting one level up.
     CHECK(result.primaryArtifactPath.parent_path().filename() == foreign);
     CHECK(std::filesystem::is_regular_file(result.primaryArtifactPath));
+}
+
+TEST_CASE("Windows x86-64 Factorial reaches Main's normal return" *
+          doctest::skip(Target::HostOS != Target::OS::Windows)) {
+    DependencyFixture fixture;
+    fixture.SetApplicationSource(R"(
+func Factorial(n: uint) -> uint {
+    var result: uint = 1;
+    for i in 2..=n {
+        result *= i as uint;
+    }
+    return result;
+}
+
+func Main() -> int {
+    if Factorial(0) != 1 || Factorial(5) != 120 || Factorial(10) != 3628800 {
+        return 1;
+    }
+    return 73;
+}
+)");
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.targetName = "windows-x86_64";
+    options.profileName = "Release";
+
+    const auto build = CompilerDriver(std::move(options)).Compile();
+
+    REQUIRE(build.ok);
+    REQUIRE(diagnostics.empty());
+    REQUIRE(std::filesystem::is_regular_file(build.primaryArtifactPath));
+    const auto run = RunCaptured(build.primaryArtifactPath);
+    REQUIRE(run.has_value());
+    CHECK_MESSAGE(run->exitCode == 73, "Factorial terminated before Main returned normally: exit ", run->exitCode,
+                  ", output: ", run->output);
 }
 
 TEST_CASE("compiler driver refuses a target no back end covers") {
