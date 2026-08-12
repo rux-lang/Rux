@@ -281,9 +281,12 @@ HostArchitectureInfo GetHostArchitectureInfo() noexcept {
     // system-information fallback on Windows versions predating that API.
     using IsWow64Process2Fn = BOOL(WINAPI *)(HANDLE, USHORT *, USHORT *);
     const HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
-    const auto isWow64Process2 = kernel32 == nullptr
-                                   ? nullptr
-                                   : reinterpret_cast<IsWow64Process2Fn>(GetProcAddress(kernel32, "IsWow64Process2"));
+    // GetProcAddress returns FARPROC, whose signature never matches the symbol
+    // being resolved; go through void * so the cast stays a plain pointer
+    // conversion instead of an incompatible function-type cast.
+    void *const isWow64Process2Address =
+        kernel32 == nullptr ? nullptr : reinterpret_cast<void *>(GetProcAddress(kernel32, "IsWow64Process2"));
+    const auto isWow64Process2 = reinterpret_cast<IsWow64Process2Fn>(isWow64Process2Address);
     USHORT processMachine = IMAGE_FILE_MACHINE_UNKNOWN;
     USHORT nativeMachine = IMAGE_FILE_MACHINE_UNKNOWN;
     if (isWow64Process2 != nullptr && isWow64Process2(GetCurrentProcess(), &processMachine, &nativeMachine)) {
