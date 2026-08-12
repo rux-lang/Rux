@@ -12,7 +12,6 @@
 #include <filesystem>
 #include <optional>
 #include <set>
-#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -62,70 +61,15 @@ namespace Rux::Driver {
 // first.
 [[nodiscard]] std::string UnsupportedBackendReason(std::string_view target);
 
-// True when this host can execute an artifact built for `target` directly,
-// without an emulator standing between the two.
+// True when this host can execute an artifact built for `target` directly.
 [[nodiscard]] bool HostCanExecuteTarget(std::string_view target);
 
-// ---- Executing what was built -----------------------------------------------
-
-// The platform-level choice made before resolving an emulator executable.
-// Windows does not assume that a QEMU user-mode binary is available, while
-// non-Windows hosts retain the existing architecture-specific QEMU fallback.
-enum class ExecutionStrategy : std::uint8_t {
-    Direct,
-    ConfiguredEmulator,
-    DefaultEmulator,
-    UnsupportedOperatingSystem,
-};
-
-// Pure execution decision used by ResolveExecutionCommand. Keeping the host
-// values injectable makes Windows-on-ARM behavior testable on every CTest host.
-[[nodiscard]] ExecutionStrategy DetermineExecutionStrategy(Target::OS hostOs,
-                                                           System::HostArchitectureInfo hostArchitectures,
-                                                           Target::OS targetOs, Target::Arch targetArch) noexcept;
-
-// How this host launches an artifact built for some target: directly when the
-// operating system can launch it natively, and through a user-mode emulator
-// when it cannot.
-struct ExecutionCommand {
-    std::filesystem::path emulator;        ///< Empty when the artifact runs directly.
-    std::vector<std::string> emulatorArgs; ///< Arguments the emulator takes before the artifact path.
-
-    [[nodiscard]] bool IsEmulated() const noexcept {
-        return !emulator.empty();
-    }
-};
-
-// One resolved command line: the program to start, and every argument it takes.
-struct LaunchCommand {
-    std::filesystem::path program;
-    std::vector<std::string> args;
-
-    /// The command as a shell would spell it, for verbose output.
-    [[nodiscard]] std::string CommandLine() const;
-};
-
-// The command line that runs `artifact` with `args` under `command`. The
-// artifact is the program itself when nothing emulates it, and the emulator's
-// first non-option argument when something does.
-[[nodiscard]] LaunchCommand PrepareLaunch(const ExecutionCommand &command, const std::filesystem::path &artifact,
-                                          std::span<const std::string_view> args = {});
-
-// Either how to execute a `target` artifact on this host, or why it cannot be
-// executed here. Exactly one of the two is set. Callers must validate the
-// triple first.
-struct ExecutionCommandResult {
-    std::optional<ExecutionCommand> command;
-    std::string error;
-};
-
-// Resolve the emulator, if any, that `run` and `test` launch a `target`
-// artifact through. A foreign architecture is emulated by the command named by
-// RUX_EMULATOR, or by this architecture's usual QEMU binary; RUX_QEMU_SYSROOT
-// adds the `-L` that points a dynamically linked program at its loader and
-// shared libraries. A foreign operating system has no answer: an emulator
-// supplies an instruction set, not a kernel.
-[[nodiscard]] ExecutionCommandResult ResolveExecutionCommand(std::string_view target);
+// Pure form of HostCanExecuteTarget. A target is directly executable when its
+// OS matches and its architecture is either the compiler process architecture
+// or the native OS architecture. Keeping the host values injectable makes
+// translated-host behavior testable on every CTest host.
+[[nodiscard]] bool CanExecuteTargetDirectly(Target::OS hostOs, System::HostArchitectureInfo hostArchitectures,
+                                            Target::OS targetOs, Target::Arch targetArch) noexcept;
 
 // ---- Platform packages ------------------------------------------------------
 

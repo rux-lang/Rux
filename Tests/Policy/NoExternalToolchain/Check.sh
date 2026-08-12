@@ -20,8 +20,8 @@ cd "$(dirname "$0")/../../.."
 # Files still permitted to launch a process. Running a program is not the same
 # as building one: both entries run what the compiler just produced.
 #
-#   Cli/CmdRun.cpp   runs the artifact, natively or under an emulator.
-#   Cli/CmdTest.cpp  runs each test artifact the same way.
+#   Cli/CmdRun.cpp   directly runs the host artifact.
+#   Cli/CmdTest.cpp  directly runs each executable target test artifact.
 launch_exceptions='^Compiler/Cli/CmdRun\.cpp:'
 launch_exceptions="$launch_exceptions"'|^Compiler/Cli/CmdTest\.cpp:'
 

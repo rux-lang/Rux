@@ -79,15 +79,22 @@ TEST_CASE("command help accepts equals options and reports one command") {
     CHECK(result.output.contains("--emit <kind[,kind...]>"));
 }
 
-TEST_CASE("build, run and test share one target option") {
-    for (const std::string_view command : {"run", "test"}) {
-        const auto json = Run(std::array<std::string_view, 3>{"help", command, "--json"});
-        CHECK(json.exitCode == 0);
-        CHECK(json.output.contains("--target <triple>"));
-    }
-    // An unknown triple is rejected the same way whichever command names it.
+TEST_CASE("run is host-only while build and test accept a target") {
+    const auto runHelp = Run(std::array<std::string_view, 3>{"help", "run", "--json"});
+    CHECK(runHelp.exitCode == 0);
+    CHECK_FALSE(runHelp.output.contains("--target <triple>"));
+    const auto testHelp = Run(std::array<std::string_view, 3>{"help", "test", "--json"});
+    CHECK(testHelp.exitCode == 0);
+    CHECK(testHelp.output.contains("--target <triple>"));
+
+    CHECK(Run(std::array<std::string_view, 2>{"run", "--target"}).exitCode == 2);
+    const auto rejected = Run(std::array<std::string_view, 3>{"run", "--target", "linux-aarch64"});
+    CHECK(rejected.exitCode == 2);
+    CHECK(rejected.output.contains("unknown option '--target' for command 'run'"));
+
+    // An unknown triple is rejected by commands that still select targets.
     const auto manifest = ArithmeticManifest();
-    for (const std::string_view command : {"build", "run", "test"}) {
+    for (const std::string_view command : {"build", "test"}) {
         const auto unknown =
             Run(std::array<std::string_view, 5>{"--manifest", manifest, command, "--target", "plan9-x86_64"});
         CHECK(unknown.exitCode == 1);
@@ -104,6 +111,18 @@ TEST_CASE("a target without a back end names itself") {
     CHECK(result.exitCode == 1);
     CHECK(result.output.contains("macos-aarch64"));
     CHECK(result.output.contains("not implemented yet"));
+}
+
+TEST_CASE("target tests reject a foreign operating system before discovering packages") {
+    const std::string foreignTarget =
+        Driver::HostTargetTriple().starts_with("windows-") ? "linux-x86_64" : "windows-x86_64";
+    const auto result = Run(std::array<std::string_view, 3>{"test", "--target", foreignTarget});
+
+    CHECK(result.exitCode == 1);
+    CHECK(result.output.contains("test suite cannot execute on this host"));
+    CHECK(result.output.contains("rux build --target " + foreignTarget));
+    CHECK(result.output.contains("then test on a native"));
+    CHECK_FALSE(result.output.contains("Running "));
 }
 
 TEST_CASE("CLI cross-builds a Windows AArch64 executable without trying to run it") {

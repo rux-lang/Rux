@@ -82,18 +82,17 @@ Once the repository is cloned, later sessions can replace the snippet in step 4 
 
 ## Cross-Compiling for Windows AArch64
 
-Pass the canonical target to build, check, run, or test an AArch64 package from either compiler architecture (`windows-arm64` is accepted as an alias):
+Pass the canonical target to build or check an AArch64 package from either compiler architecture (`windows-arm64` is accepted as an alias). Target tests are also available when the underlying Windows machine is AArch64:
 
 ```powershell
 ./Bin/rux.exe build --release --target windows-aarch64
 ./Bin/rux.exe check --target windows-aarch64
-./Bin/rux.exe run --release --target windows-aarch64
 ./Bin/rux.exe test --release --target windows-aarch64
 ```
 
 Run workspace commands from the repository root; use `--manifest <path>` before the subcommand for an individual package. A foreign-target build is placed below a canonical target directory, such as `Bin/Release/windows-aarch64/Name.exe`, so it does not overwrite the host artifact.
 
-On AArch64 Windows, both a native AArch64 compiler and an x86-64 compiler running under Windows emulation can launch the generated AArch64 programs directly. Rux queries the native OS architecture separately from the compiler process architecture, which is why an emulated x86-64 `rux.exe` can run `rux test --target windows-aarch64`. On physical x86-64 Windows, `build` and `check` still work, but `run` and `test` report that the host cannot execute the target unless `RUX_EMULATOR` names an explicitly configured compatible emulator.
+`rux run` always builds and launches the compiler's host triple and does not accept `--target`. On AArch64 Windows, both a native AArch64 compiler and an x86-64 compiler process running under Windows translation can launch generated AArch64 tests directly. Rux queries the native OS architecture separately from the compiler process architecture, which is why that x86-64 `rux.exe` can run `rux test --target windows-aarch64`. On physical x86-64 Windows, `build` and `check` still work, but target tests fail before compiling the suite and direct the user to test on an AArch64 machine.
 
 GitHub's `windows-11-arm` runner is the default native and cross-target test environment. An Azure Windows 11 ARM64 VM is reserved for interactive crash dumps, prolonged debugging, or demonstrated GitHub-runner instability; it is not required for acceptance.
 

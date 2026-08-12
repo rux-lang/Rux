@@ -260,6 +260,12 @@ HostArchitectureInfo GetHostArchitectureInfo() noexcept {
     if (const Arch nativeArch = WindowsArchitecture(systemInfo.wProcessorArchitecture); nativeArch != Arch::Unknown) {
         info.nativeArch = nativeArch;
     }
+#elif RUX_OS_MACOS && RUX_ARCH_X86_64
+    int translated = 0;
+    std::size_t size = sizeof(translated);
+    if (sysctlbyname("sysctl.proc_translated", &translated, &size, nullptr, 0) == 0 && translated == 1) {
+        info.nativeArch = Arch::AArch64;
+    }
 #endif
     return info;
 }

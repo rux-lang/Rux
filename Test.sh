@@ -23,7 +23,7 @@ usage() {
         '  --build-directory PATH         CMake build directory (default: Build)' \
         '  --compiler PATH                C++ compiler passed to Build.sh (default: $CXX or detected Clang)' \
         '  --rux-executable PATH          Existing rux executable (default: Bin/rux)' \
-        '  --target TRIPLE                Check and run the Rux suites for this target (default: the host)' \
+        '  --target TRIPLE                Check and directly run suites for this target (default: the host)' \
         '  --skip-build                   Reuse the existing build and executables' \
         '  --fix-formatting               Format C++ and Rux sources instead of checking them' \
         '  --clang-tidy                   Run clang-tidy over maintained C++ sources' \
@@ -43,7 +43,7 @@ step() {
     printf '\n==> %s\n' "$1"
 }
 
-# Run a rux subcommand for the selected target. `--target` follows the
+# Run a target-aware rux subcommand for the selected target. `--target` follows the
 # subcommand, while the global `--manifest` precedes it, so the option is
 # appended rather than inserted. `lint` takes no target and is invoked directly.
 rux_targeted() {

@@ -70,3 +70,10 @@ sh Test.sh --compiler "$(brew --prefix llvm@22)/bin/clang++" --clang-tidy
 ```
 
 Use `sh Format.sh` to format maintained C++ and Rux sources, or `sh Format.sh --check` to check them without making changes.
+
+`rux run` always builds and launches the compiler process's host triple and has
+no `--target` option. `rux test --target` requires macOS plus an architecture
+reported for either the compiler process or the native OS. Consequently, an
+x86-64 compiler running under Rosetta on Apple Silicon may directly test
+`macos-aarch64` once that image writer is available; a physical Intel Mac may
+only build/check that target and transfer it to Apple Silicon for testing.

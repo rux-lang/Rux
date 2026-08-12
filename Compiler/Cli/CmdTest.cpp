@@ -62,15 +62,17 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                    SupportedTargetTriples());
         return 1;
     }
-    if (const auto reason = UnsupportedBackendReason(targetName); !reason.empty()) {
-        std::print(stderr, "error: {}\n", reason);
+    // A test passes only by executing on this OS and either the compiler
+    // process architecture or the native architecture underneath translation.
+    if (!HostCanExecuteTarget(targetName)) {
+        std::print(stderr,
+                   "error: the '{}' test suite cannot execute on this host ('{}'); use 'rux build --target {}' or "
+                   "'rux check --target {}' here, then test on a native '{}' machine\n",
+                   targetName, HostTargetTriple(), targetName, targetName, targetName);
         return 1;
     }
-    // A test passes by exiting 0, so every test package has to run: either on
-    // this host directly, or under an emulator that runs the target's programs.
-    const auto execution = ResolveExecutionCommand(targetName);
-    if (!execution.command) {
-        std::print(stderr, "error: {}\n", execution.error);
+    if (const auto reason = UnsupportedBackendReason(targetName); !reason.empty()) {
+        std::print(stderr, "error: {}\n", reason);
         return 1;
     }
     std::optional<std::filesystem::path> manifestPath;
@@ -309,17 +311,15 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             return outcome;
         }
 
-        const LaunchCommand launch = PrepareLaunch(*execution.command, exePath);
         if (opts.verbose)
-            std::print("Running `{}`\n", launch.CommandLine());
+            std::print("Running `{}`\n", exePath.string());
 
         const auto start = std::chrono::steady_clock::now();
 
         // Execute the test binary, capturing its combined stdout/stderr.
-        const std::vector<std::string_view> launchArgs(launch.args.begin(), launch.args.end());
-        auto run = RunCaptured(launch.program, launchArgs);
+        auto run = RunCaptured(exePath);
         if (!run) {
-            std::print(stderr, "error: failed to launch '{}'\n", launch.program.string());
+            std::print(stderr, "error: failed to launch '{}'\n", exePath.string());
             outcome.status = TestStatus::LaunchError;
             return outcome;
         }

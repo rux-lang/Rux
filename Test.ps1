@@ -20,9 +20,9 @@ An existing rux executable to use. By default, the script uses Bin/rux or
 Bin/rux.exe.
 
 .PARAMETER Target
-The target triple to check and run the Rux suites for, such as linux-aarch64.
-Defaults to the host. A foreign architecture runs under an emulator; see
-Docs/Platforms/Linux.md.
+The target triple to check and run the Rux suites for. Defaults to the host.
+Target tests require the same OS and an architecture executable directly by
+the compiler process or native OS.
 
 .PARAMETER SkipBuild
 Skips Build.ps1. The existing CMake test target and rux executable are used.
@@ -44,7 +44,7 @@ requires PowerShell 7 because it analyzes files in parallel.
 ./Test.ps1 -SkipBuild -ClangTidy
 
 .EXAMPLE
-./Test.ps1 -SkipBuild -Target linux-aarch64
+./Test.ps1 -SkipBuild -Target windows-aarch64
 #>
 
 [CmdletBinding()]

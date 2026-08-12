@@ -11,16 +11,16 @@
 namespace Rux::System {
 // Architectures relevant to child-process execution. `processArch` describes
 // this compiler binary; `nativeArch` describes the operating system's native
-// machine, which can differ when the compiler runs under emulation.
+// machine, which can differ when the compiler runs under translation.
 struct HostArchitectureInfo {
     Target::Arch processArch = Target::Arch::Unknown;
     Target::Arch nativeArch = Target::Arch::Unknown;
 };
 
 // Runtime architecture information for the current host. On Windows this uses
-// native-system information so an x86-64 process under Windows-on-ARM reports
-// AArch64 as `nativeArch`. Other hosts currently report the process architecture
-// for both fields.
+// native-system information so an x86-64 process under Windows-on-ARM or
+// Rosetta on Apple Silicon reports AArch64 as `nativeArch`. Other hosts report
+// the process architecture for both fields.
 [[nodiscard]] HostArchitectureInfo GetHostArchitectureInfo() noexcept;
 
 // CPU feature flags, cache line size, and core counts of the executing machine.

@@ -143,9 +143,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # Windows-on-ARM runs this x86-64 compiler under emulation. The compiler
-      # detects the native OS architecture and launches its AArch64 output
-      # directly, without an external build toolchain or runtime emulator.
+      # Windows-on-ARM translates this x86-64 compiler process. The compiler's
+      # direct-execution predicate detects the native OS architecture and
+      # launches its AArch64 output directly.
       - name: Download x86-64 compiler artifact
         uses: actions/download-artifact@v8
         with:

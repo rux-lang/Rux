@@ -631,7 +631,7 @@ when #config.Has("allocator") &&
 // The three questions a cross build asks before it produces anything: which
 // machine the option names, whether a back end reaches it from this host, and
 // where the artifact lands. None of the cases below run what they build, so
-// they hold on a host with no emulator installed.
+// they hold on every compiler host.
 
 TEST_CASE("a target triple resolves to the machine it names rather than to the host") {
     const TargetContext aarch64 = TargetContextForTriple("linux-aarch64");

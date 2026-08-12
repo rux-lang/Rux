@@ -324,8 +324,7 @@ constexpr std::array remove_exs = {"Json"sv, "Random"sv};
 constexpr std::array run_usage = {"[options] [-- args...]"sv};
 constexpr std::array run_opts = {
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
-    OptionDoc{.flags = "--release"sv, .desc = "Build with release profile"sv},
-    OptionDoc{.flags = "--target <triple>"sv, .desc = "Build for the specified target platform before running"sv}};
+    OptionDoc{.flags = "--release"sv, .desc = "Build with release profile"sv}};
 constexpr std::array run_exs = {""sv, "--release"sv, "-- --port 8080"sv};
 
 // Test

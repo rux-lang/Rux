@@ -62,7 +62,7 @@ Both backends write ELF objects and images directly, from a host of either archi
 
 For a Debug build, run `sh Build.sh --configuration Debug`. On other Linux distributions, install equivalent tool versions through the distribution's package manager and pass `--compiler PATH` when Clang is not detected automatically. Run `sh Build.sh --help` to see every option.
 
-## Cross-Compiling and Emulation
+## Cross-Compiling and Testing
 
 `--target <os>-<arch>` builds for a machine other than the host, and writes the
 result to its own subdirectory so builds for two targets do not overwrite each
@@ -72,48 +72,31 @@ other — `Bin/Release/linux-aarch64/Name` rather than `Bin/Release/Name`:
 ./Bin/rux build --target linux-aarch64
 ```
 
-`rux run` and `rux test` execute what they build. An artifact for this machine
-runs directly; one for another architecture runs under a user-mode emulator, so
-a cross build can be tested without a second machine:
+`rux run` is host-only and has no `--target` option. Use `build` or `check` to
+select a cross target, then transfer the artifact to a native target machine:
 
 ```sh
-sudo apt-get install -y qemu-user
-./Bin/rux run --target linux-aarch64
+./Bin/rux check --target linux-aarch64
+./Bin/rux build --release --target linux-aarch64
 ```
 
-Exit codes and output pass through the emulator unchanged, which is what keeps
-the `rux test` contract — a test passes by exiting `0` — the same across targets.
-`sh Test.sh --target linux-aarch64` runs the whole Rux suite that way; the C++
-unit tests, formatting and static analysis are host-side and always run natively.
-
-Two environment variables control the emulator:
-
-| Variable            | Effect                                                                                                                                       |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RUX_EMULATOR`      | The emulator command, replacing the default (`qemu-aarch64` for AArch64). A value naming an existing file is used as written; anything else is a command line whose first word is the program and whose remaining words are passed before the artifact. |
-| `RUX_QEMU_SYSROOT`  | A sysroot passed on as `-L`, where a dynamically linked guest program finds its loader and shared libraries. A freestanding program — one importing no shared library — needs none. |
-
-A program that links against glibc needs the matching sysroot, which Debian and
-Ubuntu package as `libc6-arm64-cross`:
-
-```sh
-sudo apt-get install -y libc6-arm64-cross
-RUX_QEMU_SYSROOT=/usr/aarch64-linux-gnu ./Bin/rux test --target linux-aarch64
-```
-
-A foreign operating system has no such answer: an emulator supplies an
-instruction set, not a kernel, so `rux run --target windows-x86_64` reports that
-the artifact has to be run on that system — it is built, not executed.
+`rux test --target` is narrower than cross-compilation. It runs only when the
+target OS matches the host OS and the target architecture equals either the
+compiler process architecture or the native OS architecture. On a physical
+x86-64 Linux host, `rux test --target linux-aarch64` therefore fails before
+compiling the suite and recommends build/check plus native testing. Installing
+an instruction-set emulator does not change that decision.
 
 A Linux host reaches these targets, whichever architecture it runs on:
 
-| Target                                                | Builds | Runs here                      |
-| ----------------------------------------------------- | ------ | ------------------------------ |
-| `linux-x86_64`, `linux-aarch64`                       | Yes    | Natively, or under `qemu-user` |
-| `windows-x86_64`, `windows-aarch64`, `macos-x86_64`   | Yes    | No — foreign operating system  |
-| `freebsd-x86_64`, `openbsd-x86_64`, `netbsd-x86_64`   | Yes    | No — foreign operating system  |
-| `dragonfly-x86_64`, `illumos-x86_64`                  | Yes    | No — foreign operating system  |
-| `macos-aarch64`, `freebsd-aarch64`                    | No     | —                              |
+| Target                                                | Builds | Target tests on this host                         |
+| ----------------------------------------------------- | ------ | ------------------------------------------------- |
+| Host Linux architecture                              | Yes    | Yes                                               |
+| Other Linux architecture                             | Yes    | Only when reported as the native OS architecture |
+| `windows-x86_64`, `windows-aarch64`, `macos-x86_64`  | Yes    | No — foreign operating system                    |
+| `freebsd-x86_64`, `openbsd-x86_64`, `netbsd-x86_64`  | Yes    | No — foreign operating system                    |
+| `dragonfly-x86_64`, `illumos-x86_64`                 | Yes    | No — foreign operating system                    |
+| `macos-aarch64`, `freebsd-aarch64`                   | No     | —                                                 |
 
 The x86-64 back end reaches every supported operating system, because all three
 object writers are parameterized for it. The AArch64 back end reaches
@@ -126,9 +109,7 @@ for every named target.
 Nothing in a cross build reaches for a cross toolchain, because there is no
 toolchain to reach for: the same encoder, object writer and linker run whichever
 machine invokes them, and a `linux-aarch64` image records the loader and library
-names it needs without opening a host library to do it. A sysroot is needed to
-*run* a cross build, not to produce one, and only when the program imports a
-shared library.
+names it needs without opening a host library to do it.
 
 ## Verifying the Build
 

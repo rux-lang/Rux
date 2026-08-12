@@ -9,7 +9,7 @@ Each supported platform has its own workflow under [`.github/workflows/`](../.gi
 | Workflow      | Platform                        | Runner            | Toolchain install         |
 | ------------- | ------------------------------- | ----------------- | ------------------------- |
 | `FreeBSD.yml` | FreeBSD 14.4 x86-64 and AArch64 | QEMU VM on Ubuntu | `pkg llvm22`              |
-| `Linux.yml`   | Ubuntu 24.04 x86-64 and AArch64, plus an x86-64 → AArch64 cross job under QEMU | GitHub-hosted     | `apt.llvm.org` → Clang 22 |
+| `Linux.yml`   | Ubuntu 24.04 x86-64 and AArch64, plus an x86-64 → AArch64 build/check job | GitHub-hosted     | `apt.llvm.org` → Clang 22 |
 | `macOS.yml`   | macOS 26 x86-64 and AArch64     | GitHub-hosted     | Homebrew `llvm@22`        |
 | `Windows.yml` | Windows 2025 and Windows 11 ARM, plus an x86-64 compiler → AArch64 target cross job | GitHub-hosted | Runner's bundled Clang |
 
@@ -27,7 +27,7 @@ Two repository-policy workflows run alongside the per-OS matrix:
 - a string literal naming an assembler, C compiler, linker or archiver, under any spelling a real one carries: a path (`/usr/bin/clang`), a cross prefix (`aarch64-linux-gnu-gcc`), a version suffix (`clang-22`) or a Windows extension (`link.exe`). Two-letter names like `as`, `cc` and `ld` are assembler mnemonics and register names throughout `CodeGen/`, so they count only when the literal also carries a directory or an extension;
 - a call to `System::RunInherited` or `System::RunCaptured` — the two entry points every process launch goes through — from outside `Compiler/System/`.
 
-No file is allowed to name a toolchain program. The second check has a short allowlist at the top of the script, and a file joins it only with a reason written beside it: running a program is not the same as building one, so `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp` are its two permanent entries, executing the artifact the compiler just produced, natively or under an emulator.
+No file is allowed to name a toolchain program. The second check has a short allowlist at the top of the script, and a file joins it only with a reason written beside it: running a program is not the same as building one, so `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp` are its two permanent entries, directly executing the host artifact or a directly executable same-OS target test.
 
 The guard runs as its own job in `CodeQuality.yml` and as the first step of `Test.sh` and `Test.ps1`, beside the platform-isolation check.
 
@@ -71,16 +71,15 @@ downloaded by the matching test job. Using `Linux.yml` as the reference shape:
 `Linux.yml` and `Windows.yml` each add a third job to those two.
 
 3. **Linux cross job** (`needs: build`, `ubuntu-24.04`)
-   - Install `qemu-user` and `libc6-arm64-cross`. No cross toolchain is installed and none is wanted: the compiler encodes and links AArch64 artifacts itself, and only the loader and the C library they run against come from outside.
    - Download the x86-64 binary built by the build job.
-   - Run `rux check --target linux-aarch64` and `rux test --release --target linux-aarch64`. Every test builds for AArch64 on this x86-64 host and runs under `qemu-aarch64`, with `RUX_QEMU_SYSROOT=/usr/aarch64-linux-gnu` pointing the emulator at the guest's loader. `rux lint` takes no target and is not repeated here.
+   - Run `rux check --target linux-aarch64`, build a representative AArch64 executable, and inspect its repository-produced ELF header for `EM_AARCH64`. The x86-64 host never launches the output. `rux lint` takes no target and is not repeated here.
 
 4. **Windows cross job** (`needs: build`, `windows-11-arm`)
    - Download the x86-64 Windows compiler and run it through Windows-on-ARM emulation. No compiler toolchain is installed in this job.
    - Run `rux check --target windows-aarch64` and `rux test --release --target windows-aarch64`. The emulated compiler detects that the underlying OS is AArch64, so the programs it produces execute natively.
    - Build and run the dedicated executable exit-code and DLL load/call/unload fixtures. These protect process launch, PE entry, imports, exports, and import-library handling beyond the workspace suite.
 
-Neither cross job installs a C compiler, assembler, linker, or archiver: Rux encodes and links both AArch64 formats itself. The native Windows AArch64 job runs the complete language/package suite and the same native fixtures, and the release workflow repeats that validation before packaging `rux-windows-aarch64.zip`. macOS and FreeBSD AArch64 compilers still cannot emit native AArch64 images because those image writers are not implemented.
+Neither cross job installs a C compiler, assembler, linker, or archiver: Rux encodes and links both AArch64 formats itself. The Linux job is build/check-only, while the Windows job runs on an AArch64 OS and can execute its output directly. The native Windows AArch64 job runs the complete language/package suite and the same native fixtures, and the release workflow repeats that validation before packaging `rux-windows-aarch64.zip`. macOS and FreeBSD AArch64 compilers still cannot emit native AArch64 images because those image writers are not implemented.
 
 ### Platform-Specific Quirks
 
@@ -120,16 +119,14 @@ ctest --test-dir Build --output-on-failure -C Release
 
 Adjust the compiler executable for the host platform. Run the test command from the repository root so it finds the workspace manifest and the centralized `Tests/` tree.
 
-The cross job needs the emulator and the guest C library, and then is one command:
+To reproduce the Linux cross job, build and check the target without launching it:
 
 ```sh
-sudo apt-get install -y qemu-user libc6-arm64-cross
-export RUX_QEMU_SYSROOT=/usr/aarch64-linux-gnu
 ./Bin/rux check --target linux-aarch64
-./Bin/rux test --release --target linux-aarch64
+./Bin/rux --manifest Tests/Language/Arithmetic/Rux.toml build --release --target linux-aarch64
 ```
 
-`sh Test.sh --target linux-aarch64` runs the same suites through the whole gate, adding the policy checks, the format pass and the C++ unit tests, which stay on the host.
+On an AArch64 Linux machine, `sh Test.sh --target linux-aarch64` adds the policy checks, format pass, C++ unit tests, and directly executed Rux target tests. A physical x86-64 machine refuses that target test run before compiling the suite.
 
 The Windows required check is the same flow, prefixed by the developer-environment step CI uses. From PowerShell at the repository root:
 
@@ -158,7 +155,7 @@ On AArch64 Windows, the cross-target portion can be reproduced with either a nat
 ./Tests/Native/WindowsAArch64Dll/Verify.ps1 -Rux ./Bin/rux.exe
 ```
 
-The last two commands are repository fixtures rather than installed-compiler commands. A physical x86-64 Windows host can build and check this target, but needs a compatible emulator configured explicitly before it can run AArch64 output.
+The last two commands are repository fixtures rather than installed-compiler commands. A physical x86-64 Windows host can build and check this target, but Rux refuses to execute AArch64 target tests there; transfer the output to an AArch64 Windows machine for testing.
 
 ## Infrastructure Notes
 

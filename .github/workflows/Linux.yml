@@ -130,23 +130,11 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    env:
-      # Where a dynamically linked AArch64 program finds its loader and its
-      # shared libraries; libc6-arm64-cross supplies it.
-      RUX_QEMU_SYSROOT: /usr/aarch64-linux-gnu
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           persist-credentials: false
-
-      # qemu-user runs the AArch64 artifacts this x86-64 host produces. No
-      # cross toolchain is installed: the compiler encodes and links them
-      # itself, and only the loader and the C library come from outside.
-      - name: Install QEMU and the AArch64 sysroot
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-user libc6-arm64-cross
 
       - name: Download binary artifact
         uses: actions/download-artifact@v8
@@ -158,7 +146,12 @@ jobs:
       - name: Make binary executable
         run: chmod +x Bin/rux
 
-      - name: Verify Rux workspace for linux-aarch64
+      - name: Build and inspect linux-aarch64 output
         run: |
           ./Bin/rux check --target linux-aarch64
-          ./Bin/rux test --release --target linux-aarch64
+          ./Bin/rux --manifest Tests/Language/Arithmetic/Rux.toml build --release --target linux-aarch64
+          artifact=Bin/Tests/Language/Release/linux-aarch64/Arithmetic
+          set -- $(od -An -v -t u1 -N 20 "$artifact")
+          test "$1" -eq 127 -a "$2" -eq 69 -a "$3" -eq 76 -a "$4" -eq 70
+          shift 18
+          test "$1" -eq 183 -a "$2" -eq 0

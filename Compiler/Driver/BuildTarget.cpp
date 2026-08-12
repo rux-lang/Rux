@@ -2,7 +2,6 @@
 
 #include "System/Host.h"
 #include "System/Os.h"
-#include "System/Process.h"
 #include "Target/Target.h"
 
 #include <algorithm>
@@ -202,159 +201,14 @@ std::string UnsupportedBackendReason(const std::string_view target) {
 
 bool HostCanExecuteTarget(const std::string_view target) {
     const auto triple = CanonicalTargetTriple(target);
-    return DetermineExecutionStrategy(HostOS, GetHostArchitectureInfo(), TargetTripleOs(triple),
-                                      TargetTripleArch(triple)) == ExecutionStrategy::Direct;
+    return CanExecuteTargetDirectly(HostOS, GetHostArchitectureInfo(), TargetTripleOs(triple),
+                                    TargetTripleArch(triple));
 }
 
-ExecutionStrategy DetermineExecutionStrategy(const OS hostOs, const HostArchitectureInfo hostArchitectures,
-                                             const OS targetOs, const Arch targetArch) noexcept {
-    if (targetOs != hostOs) {
-        return ExecutionStrategy::UnsupportedOperatingSystem;
-    }
-    if (targetArch == hostArchitectures.processArch ||
-        (hostOs == OS::Windows && targetArch == hostArchitectures.nativeArch)) {
-        return ExecutionStrategy::Direct;
-    }
-    return hostOs == OS::Windows ? ExecutionStrategy::ConfiguredEmulator : ExecutionStrategy::DefaultEmulator;
-}
-
-namespace {
-/// The QEMU user-mode binary that runs `arch` programs. An architecture with no
-/// entry has no default, and only RUX_EMULATOR can name one for it.
-std::string_view DefaultEmulatorName(const Arch arch) {
-    switch (arch) {
-    case Arch::AArch64:
-        return "qemu-aarch64";
-    case Arch::ARM32:
-        return "qemu-arm";
-    case Arch::RISCV32:
-        return "qemu-riscv32";
-    case Arch::RISCV64:
-        return "qemu-riscv64";
-    case Arch::X86_32:
-        return "qemu-i386";
-    case Arch::X86_64:
-        return "qemu-x86_64";
-    case Arch::Unknown:
-        break;
-    }
-    return {};
-}
-
-/// The words of an emulator command line. A value that names an existing file
-/// is one program however it is spelled, so a path containing spaces survives;
-/// anything else is split on whitespace, which is how a program and its options
-/// are written.
-std::vector<std::string> SplitCommandWords(const std::string &value) {
-    std::error_code error;
-    if (std::filesystem::exists(value, error)) {
-        return {value};
-    }
-    std::vector<std::string> words;
-    std::string_view remaining = value;
-    while (!remaining.empty()) {
-        const auto start = remaining.find_first_not_of(" \t");
-        if (start == std::string_view::npos) {
-            break;
-        }
-        remaining.remove_prefix(start);
-        const auto end = remaining.find_first_of(" \t");
-        words.emplace_back(remaining.substr(0, end));
-        if (end == std::string_view::npos) {
-            break;
-        }
-        remaining.remove_prefix(end);
-    }
-    return words;
-}
-} // namespace
-
-std::string LaunchCommand::CommandLine() const {
-    std::string text = program.string();
-    for (const auto &argument : args) {
-        text += ' ';
-        text += argument;
-    }
-    return text;
-}
-
-LaunchCommand PrepareLaunch(const ExecutionCommand &command, const std::filesystem::path &artifact,
-                            const std::span<const std::string_view> args) {
-    LaunchCommand launch{.program = command.IsEmulated() ? command.emulator : artifact, .args = command.emulatorArgs};
-    if (command.IsEmulated()) {
-        launch.args.push_back(artifact.string());
-    }
-    for (const auto argument : args) {
-        launch.args.emplace_back(argument);
-    }
-    return launch;
-}
-
-ExecutionCommandResult ResolveExecutionCommand(const std::string_view target) {
-    const auto triple = CanonicalTargetTriple(target);
-    const ExecutionStrategy strategy =
-        DetermineExecutionStrategy(HostOS, GetHostArchitectureInfo(), TargetTripleOs(triple), TargetTripleArch(triple));
-    if (strategy == ExecutionStrategy::Direct) {
-        return {.command = ExecutionCommand{}, .error = {}};
-    }
-    const auto host = HostTargetTriple();
-    // A user-mode emulator runs another machine's programs against this
-    // system's kernel, so it answers a foreign architecture and nothing else.
-    if (strategy == ExecutionStrategy::UnsupportedOperatingSystem) {
-        return {.command = std::nullopt,
-                .error = std::format("cannot run a '{}' artifact on '{}'; build it with 'rux build --target {}' and "
-                                     "run it on that target",
-                                     triple, host, triple)};
-    }
-
-    std::vector<std::string> words;
-    if (const auto configured = System::GetEnv("RUX_EMULATOR")) {
-        words = SplitCommandWords(*configured);
-    }
-    const bool named = !words.empty();
-    if (!named) {
-        if (strategy == ExecutionStrategy::ConfiguredEmulator) {
-            return {.command = std::nullopt,
-                    .error = std::format("cannot run a '{}' artifact on '{}': Windows cannot launch that architecture "
-                                         "directly; set RUX_EMULATOR to an explicitly configured compatible emulator",
-                                         triple, host)};
-        }
-        const auto fallback = DefaultEmulatorName(TargetTripleArch(triple));
-        if (fallback.empty()) {
-            return {.command = std::nullopt,
-                    .error = std::format("cannot run a '{}' artifact on '{}': no emulator is known for that "
-                                         "architecture; set RUX_EMULATOR to one that runs '{}' programs",
-                                         triple, host, triple)};
-        }
-        words.emplace_back(fallback);
-    }
-
-    const auto program = System::FindExecutable(words.front());
-    if (!program) {
-        return {.command = std::nullopt,
-                .error = named ? std::format("cannot run a '{}' artifact on '{}': the emulator '{}' named by "
-                                             "RUX_EMULATOR was not found",
-                                             triple, host, words.front())
-                               : std::format("cannot run a '{}' artifact on '{}': the emulator '{}' is not on PATH; "
-                                             "install it — it is in the 'qemu-user' package on most distributions — "
-                                             "or set RUX_EMULATOR to an emulator that runs '{}' programs",
-                                             triple, host, words.front(), triple)};
-    }
-
-    ExecutionCommand command{.emulator = *program, .emulatorArgs = {words.begin() + 1, words.end()}};
-    // The sysroot is where a dynamically linked guest program finds its loader
-    // and its shared libraries; a freestanding one needs none, which is why an
-    // unset variable is not an error.
-    if (const auto sysroot = System::GetEnvPath("RUX_QEMU_SYSROOT"); sysroot && !sysroot->empty()) {
-        std::error_code error;
-        if (!std::filesystem::is_directory(*sysroot, error)) {
-            return {.command = std::nullopt,
-                    .error = std::format("RUX_QEMU_SYSROOT '{}' is not a directory", sysroot->string())};
-        }
-        command.emulatorArgs.emplace_back("-L");
-        command.emulatorArgs.push_back(sysroot->string());
-    }
-    return {.command = std::move(command), .error = {}};
+bool CanExecuteTargetDirectly(const OS hostOs, const HostArchitectureInfo hostArchitectures, const OS targetOs,
+                              const Arch targetArch) noexcept {
+    return targetOs == hostOs &&
+           (targetArch == hostArchitectures.processArch || targetArch == hostArchitectures.nativeArch);
 }
 
 bool IsPlatformPackageName(const std::string_view name) {
