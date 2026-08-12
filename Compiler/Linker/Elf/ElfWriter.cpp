@@ -8,6 +8,7 @@
 // linker binds to the real libc routine. Imported calls use the SysV ABI
 // directly — the linker adds no register-shuffle glue.
 
+#include "Linker/AArch64Relocation.h"
 #include "Linker/Linker.h"
 #include "Linker/LinkerInternal.h"
 
@@ -135,123 +136,6 @@ struct DynRelocTypes {
 [[nodiscard]] static constexpr DynRelocTypes DynRelocsFor(const Target::Arch arch) noexcept {
     return arch == Target::Arch::AArch64 ? DynRelocTypes{1026, 1025, 1027} // R_AARCH64_JUMP_SLOT / GLOB_DAT / RELATIVE
                                          : DynRelocTypes{7, 6, 8};         // R_X86_64_JUMP_SLOT / GLOB_DAT / RELATIVE
-}
-
-// Reads back a little-endian instruction word an AArch64 relocation is about
-// to rewrite a field of.
-[[nodiscard]] static uint32_t ReadU32(const Buf &b, const size_t off) {
-    return static_cast<uint32_t>(b[off]) | static_cast<uint32_t>(b[off + 1]) << 8U |
-           static_cast<uint32_t>(b[off + 2]) << 16U | static_cast<uint32_t>(b[off + 3]) << 24U;
-}
-
-// True when `value` fits in `bits` bits read as two's complement.
-[[nodiscard]] static bool FitsSigned(const int64_t value, const unsigned bits) {
-    const int64_t limit = int64_t{1} << (bits - 1);
-    return value >= -limit && value < limit;
-}
-
-// Replaces `width` bits of `word` starting at `lsb` with `value`.
-[[nodiscard]] static uint32_t WithField(const uint32_t word, const unsigned lsb, const unsigned width,
-                                        const uint32_t value) {
-    const uint32_t mask = width == 32 ? ~0U : ((1U << width) - 1U) << lsb;
-    return (word & ~mask) | ((value << lsb) & mask);
-}
-
-// Applies one AArch64 relocation, whose defining property is that it names a
-// whole instruction and rewrites an immediate field inside it rather than
-// overwriting a displacement laid out in the byte stream. Every kind therefore
-// reads the word back, replaces its field and writes it again, and a value the
-// field cannot hold is reported rather than truncated.
-//
-// `siteVA` is P, `targetVA + addend` is S + A, in the notation of the ELF for
-// the Arm 64-bit Architecture document that names these relocations.
-[[nodiscard]] static bool ApplyAArch64Reloc(Buf &buf, const size_t patchAt, const uint16_t type,
-                                            const uint64_t targetVA, const int64_t addend, const uint64_t siteVA,
-                                            const std::string &symbolName, std::string &error) {
-    const uint64_t value = targetVA + static_cast<uint64_t>(addend);
-    const auto delta = static_cast<int64_t>(value - siteVA);
-    const auto fail = [&](const std::string_view what) {
-        error = std::format("{} relocation against '{}' is out of range: {}", RcuRelTypeName(type), symbolName, what);
-        return false;
-    };
-
-    if (type == RcuRelType::AArch64Prel32 || type == RcuRelType::AArch64Prel64) {
-        const size_t width = type == RcuRelType::AArch64Prel64 ? 8 : 4;
-        if (patchAt + width > buf.size()) {
-            return true;
-        }
-        if (width == 8) {
-            Patch64(buf, patchAt, static_cast<uint64_t>(delta));
-        }
-        else {
-            if (!FitsSigned(delta, 32)) {
-                return fail("the displacement does not fit in 32 bits");
-            }
-            Patch32(buf, patchAt, static_cast<uint32_t>(delta));
-        }
-        return true;
-    }
-
-    if (patchAt + 4 > buf.size()) {
-        return true;
-    }
-    const uint32_t word = ReadU32(buf, patchAt);
-    const auto patch = [&](const uint32_t patched) {
-        Patch32(buf, patchAt, patched);
-        return true;
-    };
-    switch (type) {
-    case RcuRelType::AArch64Call26:
-    case RcuRelType::AArch64Jump26:
-        if (delta % 4 != 0 || !FitsSigned(delta >> 2, 26)) {
-            return fail("a branch reaches 128 MB either way");
-        }
-        return patch(WithField(word, 0, 26, static_cast<uint32_t>(delta >> 2)));
-    case RcuRelType::AArch64CondBr19:
-        if (delta % 4 != 0 || !FitsSigned(delta >> 2, 19)) {
-            return fail("a conditional branch reaches 1 MB either way");
-        }
-        return patch(WithField(word, 5, 19, static_cast<uint32_t>(delta >> 2)));
-    case RcuRelType::AArch64TstBr14:
-        if (delta % 4 != 0 || !FitsSigned(delta >> 2, 14)) {
-            return fail("a test-and-branch reaches 32 KB either way");
-        }
-        return patch(WithField(word, 5, 14, static_cast<uint32_t>(delta >> 2)));
-    case RcuRelType::AArch64AdrPrelPgHi21: {
-        // ADRP names the 4 KB page the symbol sits on, relative to the page
-        // the instruction itself sits on, and the 21-bit result is split with
-        // its low two bits high in the word.
-        const int64_t pages =
-            (static_cast<int64_t>(value & ~0xFFFull) - static_cast<int64_t>(siteVA & ~0xFFFull)) >> 12;
-        if (!FitsSigned(pages, 21)) {
-            return fail("an ADRP reaches 4 GB either way");
-        }
-        const auto immediate = static_cast<uint32_t>(pages) & 0x1FFFFFU;
-        return patch(WithField(WithField(word, 29, 2, immediate & 3U), 5, 19, immediate >> 2U));
-    }
-    case RcuRelType::AArch64AddAbsLo12Nc:
-        return patch(WithField(word, 10, 12, static_cast<uint32_t>(value & 0xFFFU)));
-    case RcuRelType::AArch64LdstAbsLo12Nc: {
-        const unsigned scale = AArch64LoadStoreScale(word);
-        if ((value & ((1ull << scale) - 1)) != 0) {
-            return fail("the symbol is not aligned to the access width");
-        }
-        return patch(WithField(word, 10, 12, static_cast<uint32_t>((value & 0xFFFU) >> scale)));
-    }
-    case RcuRelType::AArch64MovwUabsG0:
-    case RcuRelType::AArch64MovwUabsG1:
-    case RcuRelType::AArch64MovwUabsG2:
-    case RcuRelType::AArch64MovwUabsG3: {
-        // The four together carry the whole 64-bit value, one halfword each,
-        // so no single one of them checks for the bits the others take.
-        const unsigned shift = 16U * (type - RcuRelType::AArch64MovwUabsG0);
-        return patch(WithField(word, 5, 16, static_cast<uint32_t>(value >> shift & 0xFFFFU)));
-    }
-    default:
-        error = std::format("relocation {} against '{}' is not supported by the ELF writer", RcuRelTypeName(type),
-                            symbolName);
-        return false;
-    }
 }
 
 // Classic SysV ELF symbol hash (used by DT_HASH).
@@ -531,8 +415,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             return true;
         }
         std::string error;
-        if (!ApplyAArch64Reloc(textBuf, instrOffset, RcuRelType::AArch64Call26, targetVA, 0, siteVA, symbolName,
-                               error)) {
+        if (!ApplyAArch64Relocation(textBuf, instrOffset, RcuRelType::AArch64Call26, targetVA, 0, siteVA, symbolName,
+                                    "ELF writer", error)) {
             Error(std::move(error));
             return false;
         }
@@ -657,7 +541,16 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                             continue;
                         }
                         const uint64_t value = targetVA + static_cast<uint64_t>(reloc.addend);
-                        Patch64(*buf, patchAt, value);
+                        if (aarch64) {
+                            std::string error;
+                            if (!ApplyAArch64Relocation(*buf, patchAt, reloc.type, targetVA, reloc.addend, siteVA,
+                                                        sym.name, "ELF writer", error)) {
+                                Error(std::move(error));
+                            }
+                        }
+                        else {
+                            Patch64(*buf, patchAt, value);
+                        }
                         if (dynamicRelocations != nullptr) {
                             const auto importIt = importDynsymIndex.find(sym.name);
                             const bool imported =
@@ -670,7 +563,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                             WriteU64(*dynamicRelocations, imported ? 0 : value); // r_addend
                         }
                     }
-                    else if (reloc.type == RcuRelType::Abs32) {
+                    else if (!aarch64 && reloc.type == RcuRelType::Abs32) {
                         if (patchAt + 4 > buf->size()) {
                             continue;
                         }
@@ -682,8 +575,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                         // x86-64 displacement in an AArch64 object, which is a
                         // code-generator bug rather than something to patch.
                         std::string error;
-                        if (!ApplyAArch64Reloc(*buf, patchAt, reloc.type, targetVA, reloc.addend, siteVA, sym.name,
-                                               error)) {
+                        if (!ApplyAArch64Relocation(*buf, patchAt, reloc.type, targetVA, reloc.addend, siteVA, sym.name,
+                                                    "ELF writer", error)) {
                             Error(std::move(error));
                         }
                     }
@@ -1097,7 +990,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                                                 RcuRelType::AArch64AddAbsLo12Nc};
         for (size_t i = 0; i < 3; ++i) {
             std::string error;
-            if (!ApplyAArch64Reloc(plt, at + i * 4, kFields[i], gotEntryVA, 0, pltVA + at + i * 4, "PLT", error)) {
+            if (!ApplyAArch64Relocation(plt, at + i * 4, kFields[i], gotEntryVA, 0, pltVA + at + i * 4, "PLT",
+                                        "ELF writer", error)) {
                 Error(std::move(error));
                 return false;
             }

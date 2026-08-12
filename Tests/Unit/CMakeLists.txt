@@ -7,6 +7,7 @@ set(RUX_TEST_SOURCES
     AArch64AssemblerTests.cpp
     AArch64EncoderTests.cpp
     AArch64ObjectTests.cpp
+    AArch64RelocationTests.cpp
     AArch64RcuEmitterTests.cpp
     ArtifactTests.cpp
     AsmParserTests.cpp

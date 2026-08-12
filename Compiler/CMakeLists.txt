@@ -131,6 +131,7 @@ rux_add_component(RuxCodeGenAArch64
 target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
 
 rux_add_component(RuxLinker
+    Linker/AArch64Relocation.cpp
     Linker/Linker.cpp
     Linker/NativeObjectWriter.cpp
     Linker/Pe/PeWriter.cpp
