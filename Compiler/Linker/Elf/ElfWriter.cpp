@@ -10,7 +10,6 @@
 
 #include "Linker/Linker.h"
 #include "Linker/LinkerInternal.h"
-#include "Target/Platform.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -24,42 +23,72 @@
 #include <vector>
 
 namespace Rux {
-// Dynamic-linker interpreter path and default C library for the host ELF OS.
-#if RUX_OS_LINUX
-static constexpr const char *kElfInterp = "/lib64/ld-linux-x86-64.so.2";
-static constexpr const char *kDefaultLib = "libc.so.6";
-#elif RUX_OS_FREEBSD
-static constexpr const char *kElfInterp = "/libexec/ld-elf.so.1";
-static constexpr const char *kDefaultLib = "libc.so.7";
-#elif RUX_OS_DRAGONFLY
-static constexpr const char *kElfInterp = "/libexec/ld-elf.so.2";
-static constexpr const char *kDefaultLib = "libc.so.8";
-#elif RUX_OS_OPENBSD
-static constexpr const char *kElfInterp = "/usr/libexec/ld.so";
-static constexpr const char *kDefaultLib = "libc.so.103.0";
-#elif RUX_OS_NETBSD
-static constexpr const char *kElfInterp = "/libexec/ld.elf_so";
-static constexpr const char *kDefaultLib = "libc.so.12";
-#elif RUX_IS_SUNOS
-static constexpr const char *kElfInterp = "/lib/amd64/ld.so.1";
-static constexpr const char *kDefaultLib = "libc.so.1";
-#else
-static constexpr const char *kElfInterp = "/lib64/ld-linux-x86-64.so.2";
-static constexpr const char *kDefaultLib = "libc.so.6";
-#endif
+// The interpreter the image being linked names in its PT_INTERP. It follows
+// the target and not the host: an image cross-linked from macOS or FreeBSD
+// must still name the loader the target's kernel goes looking for. Linux names
+// its loader after the architecture it runs on, so the two AArch64 and x86-64
+// paths differ there; the BSDs and illumos use one path for every architecture
+// they support.
+[[nodiscard]] static constexpr const char *ElfInterpFor(const Target::OS os, const Target::Arch arch) noexcept {
+    switch (os) {
+    case Target::OS::FreeBSD:
+        return "/libexec/ld-elf.so.1";
+    case Target::OS::DragonFlyBSD:
+        return "/libexec/ld-elf.so.2";
+    case Target::OS::OpenBSD:
+        return "/usr/libexec/ld.so";
+    case Target::OS::NetBSD:
+        return "/libexec/ld.elf_so";
+    case Target::OS::Solaris:
+    case Target::OS::Illumos:
+        return "/lib/amd64/ld.so.1";
+    default:
+        return arch == Target::Arch::AArch64 ? "/lib/ld-linux-aarch64.so.1" : "/lib64/ld-linux-x86-64.so.2";
+    }
+}
 
-// Linux names its loader after the architecture it runs on, so the path above
-// is the x86-64 one and AArch64 needs its own. The BSDs and illumos use a
-// single path for every architecture they support, so there the two agree.
-#if RUX_OS_LINUX
-static constexpr const char *kElfInterpAArch64 = "/lib/ld-linux-aarch64.so.1";
-#else
-static constexpr const char *kElfInterpAArch64 = kElfInterp;
-#endif
+// EI_OSABI, the byte of e_ident naming the ABI the image expects of the system
+// that loads it.
+[[nodiscard]] static constexpr std::uint8_t ElfOsAbiFor(const Target::OS os) noexcept {
+    switch (os) {
+    case Target::OS::FreeBSD:
+        return 9;
+    case Target::OS::OpenBSD:
+        return 12;
+    case Target::OS::NetBSD:
+        return 2;
+    case Target::OS::Solaris:
+    case Target::OS::Illumos:
+        return 6;
+    default:
+        return 0; // System V (Linux, DragonFly)
+    }
+}
 
-// The interpreter the image being linked names in its PT_INTERP.
-[[nodiscard]] static constexpr const char *ElfInterpFor(const Target::Arch arch) noexcept {
-    return arch == Target::Arch::AArch64 ? kElfInterpAArch64 : kElfInterp;
+// The BSDs, which share a set of ELF conventions the other ELF systems do not.
+[[nodiscard]] static constexpr bool IsBsdTarget(const Target::OS os) noexcept {
+    return os == Target::OS::FreeBSD || os == Target::OS::OpenBSD || os == Target::OS::NetBSD ||
+           os == Target::OS::DragonFlyBSD;
+}
+
+// The shared library an import that names none of its own comes from, which is
+// the target's C library.
+[[nodiscard]] static constexpr const char *DefaultLibFor(const Target::OS os) noexcept {
+    switch (os) {
+    case Target::OS::FreeBSD:
+        return "libc.so.7";
+    case Target::OS::DragonFlyBSD:
+        return "libc.so.8";
+    case Target::OS::OpenBSD:
+        return "libc.so.103.0";
+    case Target::OS::NetBSD:
+        return "libc.so.12";
+    case Target::OS::Solaris:
+    case Target::OS::Illumos:
+        return "libc.so.1";
+    default:
+        return "libc.so.6";
+    }
 }
 
 // The machine code of an AArch64 entry stub. Written as words rather than
@@ -240,36 +269,43 @@ static uint32_t ElfHash(const std::string &name) {
 }
 
 // Builds the OS-identification ELF note some BSDs require in order to
-// execute the binary. Empty on OSes that need none.
-static Buf BuildOsNote() {
+// execute the binary, for the system the image is linked for. Empty on OSes
+// that need none.
+static Buf BuildOsNote(const Target::OS os) {
     Buf n;
-#if RUX_OS_NETBSD
-    WriteU32(n, 7); // name size ("NetBSD\0")
-    WriteU32(n, 4); // desc size
-    WriteU32(n, 1); // type (OS version)
-    for (const char c : std::string("NetBSD\0\0", 8)) {
-        // padded to 8
-        WriteU8(n, static_cast<uint8_t>(c));
+    switch (os) {
+    case Target::OS::NetBSD:
+        WriteU32(n, 7); // name size ("NetBSD\0")
+        WriteU32(n, 4); // desc size
+        WriteU32(n, 1); // type (OS version)
+        for (const char c : std::string("NetBSD\0\0", 8)) {
+            // padded to 8
+            WriteU8(n, static_cast<uint8_t>(c));
+        }
+        WriteU32(n, 1000000000u);
+        break;
+    case Target::OS::OpenBSD:
+        WriteU32(n, 8); // name size ("OpenBSD\0")
+        WriteU32(n, 4); // desc size
+        WriteU32(n, 1); // type (NT_OPENBSD_IDENT)
+        for (const char c : std::string("OpenBSD\0", 8)) {
+            WriteU8(n, static_cast<uint8_t>(c));
+        }
+        WriteU32(n, 0); // any version
+        break;
+    case Target::OS::DragonFlyBSD:
+        WriteU32(n, 10); // name size ("DragonFly\0")
+        WriteU32(n, 4);  // desc size
+        WriteU32(n, 1);  // type
+        for (const char c : std::string("DragonFly\0\0\0", 12)) {
+            // padded to 12
+            WriteU8(n, static_cast<uint8_t>(c));
+        }
+        WriteU32(n, 0);
+        break;
+    default:
+        break;
     }
-    WriteU32(n, 1000000000u);
-#elif RUX_OS_OPENBSD
-    WriteU32(n, 8); // name size ("OpenBSD\0")
-    WriteU32(n, 4); // desc size
-    WriteU32(n, 1); // type (NT_OPENBSD_IDENT)
-    for (const char c : std::string("OpenBSD\0", 8)) {
-        WriteU8(n, static_cast<uint8_t>(c));
-    }
-    WriteU32(n, 0); // any version
-#elif RUX_OS_DRAGONFLY
-    WriteU32(n, 10); // name size ("DragonFly\0")
-    WriteU32(n, 4);  // desc size
-    WriteU32(n, 1);  // type
-    for (const char c : std::string("DragonFly\0\0\0", 12)) {
-        // padded to 12
-        WriteU8(n, static_cast<uint8_t>(c));
-    }
-    WriteU32(n, 0);
-#endif
     return n;
 }
 
@@ -340,7 +376,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                     const auto explicitIt = explicitImportLib.find(sym.name);
                     const std::string &lib = explicitIt != explicitImportLib.end()
                                                ? explicitIt->second
-                                               : (sym.typeName.empty() ? kDefaultLib : sym.typeName);
+                                               : (sym.typeName.empty() ? DefaultLibFor(targetOs) : sym.typeName);
                     const auto [it, inserted] = importLib.try_emplace(sym.name, lib);
                     if (!inserted && it->second != lib) {
                         Error("external symbol '" + sym.name + "' is referenced from both '" + it->second + "' and '" +
@@ -366,7 +402,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     const bool dynamic = isShared || !importLib.empty();
     const DynRelocTypes dynRelocs = DynRelocsFor(targetArch);
     if (dynamic && !isShared) {
-        importLib.try_emplace("exit", kDefaultLib);
+        importLib.try_emplace("exit", DefaultLibFor(targetOs));
     }
 
     // 3. Entry preamble (__rux_start): align the stack and call Main. A static
@@ -420,12 +456,12 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                 textPre.insert(textPre.end(), {0xCC});                         // int3 (unreachable)
             }
             else {
-#if RUX_IS_BSD || RUX_IS_SUNOS
-                textPre.insert(textPre.end(), {0xB8, 0x01, 0x00, 0x00, 0x00}); // mov eax, 1  (BSD/Illumos exit)
-#else
-                textPre.insert(textPre.end(), {0xB8, 0x3C, 0x00, 0x00, 0x00}); // mov eax, 60 (Linux exit)
-#endif
-                textPre.insert(textPre.end(), {0x0F, 0x05}); // syscall
+                // Linux and Android number exit 60 on x86-64; the BSDs and
+                // illumos kept the traditional 1.
+                const uint8_t exitSyscall =
+                    targetOs == Target::OS::Linux || targetOs == Target::OS::Android ? 0x3C : 0x01;
+                textPre.insert(textPre.end(), {0xB8, exitSyscall, 0x00, 0x00, 0x00}); // mov eax, #nr
+                textPre.insert(textPre.end(), {0x0F, 0x05});                          // syscall
             }
         }
     }
@@ -664,7 +700,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     }
     std::ranges::sort(importNames);
 
-    const Buf osNote = BuildOsNote();
+    const Buf osNote = BuildOsNote(targetOs);
     const bool hasNote = !osNote.empty();
 
     // Common file emitter shared by both paths.
@@ -689,18 +725,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         };
 
         Buf hdr;
-        const uint8_t osabi =
-#if RUX_OS_FREEBSD
-            9; // FreeBSD
-#elif RUX_OS_OPENBSD
-            12; // OpenBSD
-#elif RUX_OS_NETBSD
-            2; // NetBSD
-#elif RUX_IS_SUNOS
-            6; // Solaris/Illumos
-#else
-            0; // System V (Linux, DragonFly)
-#endif
+        const uint8_t osabi = ElfOsAbiFor(targetOs);
         static constexpr uint8_t kIdent[7] = {0x7F, 'E', 'L', 'F', 2, 1, 1};
         for (const uint8_t b : kIdent) {
             WriteU8(hdr, b);
@@ -847,21 +872,21 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         }
     }
 
-#if RUX_IS_BSD
-    const auto exportPointerDataSymbol = [&](std::string name) {
-        while (mergedData.size() % 8) {
-            mergedData.push_back(0);
-        }
-        const auto dataOffset = static_cast<uint32_t>(mergedData.size());
-        WriteU64(mergedData, 0);
-        exportedDataSymbols.push_back({std::move(name), dataOffset, 0});
-    };
-    // BSD libc is normally entered through crt1, which provides these
-    // process globals. Rux dynamic ET_EXEC output starts directly at Main, so
-    // export null-initialized definitions for libc to bind against.
-    exportPointerDataSymbol("environ");
-    exportPointerDataSymbol("__progname");
-#endif
+    if (IsBsdTarget(targetOs)) {
+        const auto exportPointerDataSymbol = [&](std::string name) {
+            while (mergedData.size() % 8) {
+                mergedData.push_back(0);
+            }
+            const auto dataOffset = static_cast<uint32_t>(mergedData.size());
+            WriteU64(mergedData, 0);
+            exportedDataSymbols.push_back({std::move(name), dataOffset, 0});
+        };
+        // BSD libc is normally entered through crt1, which provides these
+        // process globals. Rux dynamic ET_EXEC output starts directly at Main,
+        // so export null-initialized definitions for libc to bind against.
+        exportPointerDataSymbol("environ");
+        exportPointerDataSymbol("__progname");
+    }
 
     // Deterministic set of needed libraries.
     std::vector<std::string> neededLibs;
@@ -969,7 +994,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // Interp string.
     Buf interp;
     if (!isShared) {
-        WriteCStr(interp, ElfInterpFor(targetArch));
+        WriteCStr(interp, ElfInterpFor(targetOs, targetArch));
     }
 
     // Fixed-size buffers whose bytes are patched once addresses are known.

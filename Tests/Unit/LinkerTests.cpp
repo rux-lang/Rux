@@ -51,6 +51,53 @@ TEST_CASE("ELF linker preserves an extern library declared in another object") {
     std::filesystem::remove(output, ec);
 }
 
+TEST_CASE("ELF linker names the loader and C library of the target, not of the host") {
+    // A dynamic image whose one import names no library of its own, so the
+    // writer supplies the target's C library and the loader that binds it.
+    // Every answer below follows the target alone: the same host links both.
+    const auto link = [](const Target::OS os) {
+        RcuFile caller;
+        RcuSection text;
+        text.name = ".text";
+        text.type = RcuSecType::Text;
+        text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+        text.alignment = 16;
+        text.data = {0xE8, 0x00, 0x00, 0x00, 0x00, // call sqrt
+                     0x31, 0xC0,                   // xor eax, eax
+                     0xC3};                        // ret
+        text.relocs.push_back({1, 1, RcuRelType::Rel32, 0});
+        caller.sections.push_back(std::move(text));
+        caller.symbols.push_back({"Main", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        caller.symbols.push_back({"sqrt", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+        const auto output = std::filesystem::temp_directory_path() / "rux-elf-target-loader-test";
+        std::error_code ec;
+        std::filesystem::remove(output, ec);
+        Linker linker({std::move(caller)}, "LinkerTest", {}, ArtifactKind::Executable, os, Target::Arch::X86_64);
+        REQUIRE(linker.Link(output));
+
+        std::ifstream stream(output, std::ios::binary);
+        REQUIRE(stream.is_open());
+        std::string image((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+        stream.close();
+        std::filesystem::remove(output, ec);
+        return image;
+    };
+
+    const std::string linux = link(Target::OS::Linux);
+    CHECK(static_cast<uint8_t>(linux[7]) == 0); // EI_OSABI: System V
+    CHECK(linux.find("/lib64/ld-linux-x86-64.so.2") != std::string::npos);
+    CHECK(linux.find("libc.so.6") != std::string::npos);
+
+    const std::string freebsd = link(Target::OS::FreeBSD);
+    CHECK(static_cast<uint8_t>(freebsd[7]) == 9); // EI_OSABI: FreeBSD
+    CHECK(freebsd.find("/libexec/ld-elf.so.1") != std::string::npos);
+    CHECK(freebsd.find("libc.so.7") != std::string::npos);
+    // BSD libc expects the process globals crt1 would define; an image that
+    // starts at Main defines them itself.
+    CHECK(freebsd.find("__progname") != std::string::npos);
+}
+
 TEST_CASE("ELF shared linker emits ET_DYN exports without an executable entry") {
     RcuFile library;
     RcuSection text;
