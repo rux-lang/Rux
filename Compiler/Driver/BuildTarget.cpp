@@ -174,7 +174,7 @@ bool NativeAArch64BackendRequested() {
     return requested && !requested->empty() && *requested != "0";
 }
 
-std::string UnsupportedBackendReason(const std::string_view target) {
+std::string UnsupportedBackendReason(const std::string_view target, const bool nativeAArch64Backend) {
     const auto triple = CanonicalTargetTriple(target);
     const Arch arch = TargetTripleArch(triple);
     // x86-64 artifacts are encoded and linked in-process, so any supported
@@ -188,7 +188,7 @@ std::string UnsupportedBackendReason(const std::string_view target) {
     // x86-64 one does, so once a build has opted into it `linux-aarch64` is
     // reachable from any host. It is the only AArch64 target that back end
     // reaches; the rest keep the Clang path and its host requirement.
-    if (arch == Arch::AArch64 && TargetTripleOs(triple) == OS::Linux && NativeAArch64BackendRequested()) {
+    if (arch == Arch::AArch64 && TargetTripleOs(triple) == OS::Linux && nativeAArch64Backend) {
         return {};
     }
     if (arch != HostArch) {
@@ -202,6 +202,10 @@ std::string UnsupportedBackendReason(const std::string_view target) {
                            triple, ToDisplayString(arch));
     }
     return {};
+}
+
+std::string UnsupportedBackendReason(const std::string_view target) {
+    return UnsupportedBackendReason(target, NativeAArch64BackendRequested());
 }
 
 bool HostCanExecuteTarget(const std::string_view target) {

@@ -591,9 +591,15 @@ TEST_CASE("native object writer stamps the target architecture into every format
     CHECK_FALSE(WriteNativeObject(file, Target::OS::Linux, Target::Arch::X86_64, object, error));
     CHECK(error == "object was compiled for AArch64, but the target is x86-64");
 
+    // A relocation naming a field inside an instruction is an ELF-only form.
+    // The AArch64 targets that use the other two containers still lower through
+    // the platform toolchain, so neither has a number for one.
     file.sections[0].relocs.push_back({0, 0, RcuRelType::AArch64Call26, 0});
-    CHECK_FALSE(WriteNativeObject(file, Target::OS::Linux, Target::Arch::AArch64, object, error));
-    CHECK(error == "relocation AARCH64_CALL26 in section .text is not supported by the object writer yet");
+    REQUIRE(WriteNativeObject(file, Target::OS::Linux, Target::Arch::AArch64, object, error));
+    CHECK_FALSE(WriteNativeObject(file, Target::OS::Windows, Target::Arch::AArch64, object, error));
+    CHECK(error == "relocation AARCH64_CALL26 in section .text is not supported by the COFF object writer");
+    CHECK_FALSE(WriteNativeObject(file, Target::OS::MacOS, Target::Arch::AArch64, object, error));
+    CHECK(error == "relocation AARCH64_CALL26 in section .text is not supported by the Mach-O object writer");
 }
 
 TEST_CASE("native archive writers emit deterministic target-specific indexes") {

@@ -329,6 +329,44 @@ TEST_CASE("compiler driver builds a StaticLibrary package as a native archive") 
     CHECK(magic == std::array<char, 8>{'!', '<', 'a', 'r', 'c', 'h', '>', '\n'});
 }
 
+TEST_CASE("compiler driver builds a StaticLibrary package for linux-aarch64") {
+    DependencyFixture fixture;
+    fixture.SetApplicationType(ManifestPackageType::StaticLibrary);
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.targetName = "linux-aarch64";
+    options.nativeAArch64Backend = true;
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.primaryArtifactPath.filename().string() == StaticLibraryFileName("App", Target::OS::Linux));
+    REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
+
+    std::ifstream archive(result.primaryArtifactPath, std::ios::binary);
+    const std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(archive)), std::istreambuf_iterator<char>());
+    // Walk the archive's members past the symbol index and read each object's
+    // ELF header: a cross build must stamp EM_AARCH64 into every one of them,
+    // not the host's EM_X86_64.
+    std::size_t objects = 0;
+    for (std::size_t at = 8; at + 60 <= bytes.size();) {
+        std::string size;
+        for (std::size_t i = 48; i < 58 && bytes[at + i] != ' '; ++i) {
+            size.push_back(static_cast<char>(bytes[at + i]));
+        }
+        const auto memberSize = static_cast<std::size_t>(std::stoul(size));
+        const std::size_t body = at + 60;
+        if (memberSize >= 20 && bytes[body] == 0x7F && bytes[body + 1] == 'E') {
+            CHECK(bytes[body + 18] == 183); // EM_AARCH64
+            CHECK(bytes[body + 19] == 0);
+            ++objects;
+        }
+        at = body + memberSize + (memberSize & 1U);
+    }
+    CHECK(objects > 0);
+}
+
 TEST_CASE("compiler driver checks a SourceLibrary package but refuses to build it") {
     DependencyFixture fixture;
     fixture.SetApplicationType(ManifestPackageType::SourceLibrary);

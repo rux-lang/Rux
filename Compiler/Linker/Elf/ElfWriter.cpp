@@ -128,19 +128,6 @@ struct DynRelocTypes {
     return (word & ~mask) | ((value << lsb) & mask);
 }
 
-// The number of low bits an LDR / STR immediate drops, which is the log2 of
-// its access width. The width lives in the instruction rather than in the
-// relocation, split between the two-bit size field and, for the 128-bit vector
-// forms, the opc bit that extends it.
-[[nodiscard]] static unsigned LoadStoreScale(const uint32_t word) {
-    const unsigned size = word >> 30U & 3U;
-    const bool vector = (word >> 26U & 1U) != 0;
-    if (vector && size == 0 && (word >> 23U & 1U) != 0) {
-        return 4; // Q form: 16 bytes
-    }
-    return size;
-}
-
 // Applies one AArch64 relocation, whose defining property is that it names a
 // whole instruction and rewrites an immediate field inside it rather than
 // overwriting a displacement laid out in the byte stream. Every kind therefore
@@ -216,7 +203,7 @@ struct DynRelocTypes {
     case RcuRelType::AArch64AddAbsLo12Nc:
         return patch(WithField(word, 10, 12, static_cast<uint32_t>(value & 0xFFFU)));
     case RcuRelType::AArch64LdstAbsLo12Nc: {
-        const unsigned scale = LoadStoreScale(word);
+        const unsigned scale = AArch64LoadStoreScale(word);
         if ((value & ((1ull << scale) - 1)) != 0) {
             return fail("the symbol is not aligned to the access width");
         }

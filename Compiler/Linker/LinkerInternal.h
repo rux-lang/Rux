@@ -1,6 +1,8 @@
 #pragma once
 
-// Byte-buffer helpers shared by the PE, ELF, and Mach-O object writers.
+// Byte-buffer helpers shared by the PE, ELF, and Mach-O object writers, plus
+// the one instruction decode the relocatable-object writer and the ELF image
+// writer both need.
 
 #include <cstdint>
 #include <cstring>
@@ -70,5 +72,19 @@ inline void Patch64(Buf &b, size_t off, uint64_t v) {
     for (int i = 0; i < 8; ++i) {
         b[off + i] = static_cast<uint8_t>(v >> (i * 8));
     }
+}
+
+// The log2 of the number of bytes an unsigned-offset AArch64 load or store
+// moves, read out of the instruction itself. The scaled 12-bit immediate an
+// LDR or STR carries counts elements of that width, so both the writer that
+// patches the immediate and the writer that names the relocation for another
+// linker to patch have to agree on it.
+[[nodiscard]] inline unsigned AArch64LoadStoreScale(const uint32_t word) noexcept {
+    const unsigned size = word >> 30U & 3U;
+    const bool vector = (word >> 26U & 1U) != 0;
+    if (vector && size == 0 && (word >> 23U & 1U) != 0) {
+        return 4; // Q form: 16 bytes
+    }
+    return size;
 }
 } // namespace Rux

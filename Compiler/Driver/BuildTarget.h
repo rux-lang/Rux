@@ -65,6 +65,11 @@ namespace Rux::Driver {
 // empty string when one can. Selecting a target is otherwise free: `check`,
 // `doc`, `install` and `update` only read the target, so they accept every
 // supported triple. Callers must validate the triple first.
+//
+// `nativeAArch64Backend` is the in-process form of the opt-in above, for an
+// embedder that set CompileOptions::nativeAArch64Backend rather than the
+// environment variable; it defaults to whatever this process was asked for.
+[[nodiscard]] std::string UnsupportedBackendReason(std::string_view target, bool nativeAArch64Backend);
 [[nodiscard]] std::string UnsupportedBackendReason(std::string_view target);
 
 // True when this host can execute an artifact built for `target` directly,

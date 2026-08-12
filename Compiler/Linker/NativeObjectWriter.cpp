@@ -1,5 +1,7 @@
 #include "Linker/NativeObjectWriter.h"
 
+#include "Linker/LinkerInternal.h"
+
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -11,6 +13,7 @@
 #include <format>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -109,13 +112,118 @@ std::pair<std::uint32_t, std::uint32_t> MachOCpuType(const Target::Arch targetAr
     }
 }
 
-// All three writers share one relocation vocabulary today: the
-// architecture-neutral kinds, which patch a whole little-endian field. The
-// AArch64 kinds encode instruction fields and are mapped when the AArch64 back
-// end can produce them.
-bool IsWritableRelocation(const std::uint16_t type) noexcept {
+// The architecture-neutral relocation kinds, which name a whole little-endian
+// field. Every container has a number for them; the AArch64 kinds name a field
+// inside an instruction and only the ELF writer below maps them.
+bool IsFieldRelocation(const std::uint16_t type) noexcept {
     return type == RcuRelType::None || type == RcuRelType::Abs64 || type == RcuRelType::Abs32 ||
            type == RcuRelType::Rel32;
+}
+
+// R_AARCH64_LDST<n>_ABS_LO12_NC, one number per access width, because a linker
+// placing the symbol's low 12 bits into the immediate has to scale them down by
+// the width the instruction moves. The 8-bit form is numbered next to
+// ADD_ABS_LO12_NC and the wider ones sit together well after it, with the
+// 128-bit vector form later still.
+std::uint32_t ElfAArch64LdstRelocationType(const std::uint32_t word) noexcept {
+    switch (AArch64LoadStoreScale(word)) {
+    case 0:
+        return 278; // R_AARCH64_LDST8_ABS_LO12_NC
+    case 1:
+        return 284; // R_AARCH64_LDST16_ABS_LO12_NC
+    case 2:
+        return 285; // R_AARCH64_LDST32_ABS_LO12_NC
+    case 3:
+        return 286; // R_AARCH64_LDST64_ABS_LO12_NC
+    default:
+        return 299; // R_AARCH64_LDST128_ABS_LO12_NC
+    }
+}
+
+// The ELF relocation number a kind takes for `targetArch`, or nullopt when that
+// architecture has none for it. `word` is the four bytes the relocation sits
+// on, which only the load-store form reads.
+//
+// The MOVW kinds map to the _NC forms deliberately: the four of them together
+// carry one 64-bit value, a halfword each, so a checking G0 would reject every
+// address above 65535. G3 has no _NC spelling because it holds the top
+// halfword and there is nothing left over for it to drop.
+std::optional<std::uint32_t> ElfRelocationType(const std::uint16_t type, const Target::Arch targetArch,
+                                               const std::uint32_t word) noexcept {
+    if (targetArch == Target::Arch::X86_64) {
+        switch (type) {
+        case RcuRelType::None:
+            return 0; // R_X86_64_NONE
+        case RcuRelType::Abs64:
+            return 1; // R_X86_64_64
+        case RcuRelType::Abs32:
+            return 10; // R_X86_64_32
+        case RcuRelType::Rel32:
+            return 2; // R_X86_64_PC32
+        default:
+            return std::nullopt;
+        }
+    }
+    switch (type) {
+    case RcuRelType::None:
+        return 0; // R_AARCH64_NONE
+    case RcuRelType::Abs64:
+        return 257; // R_AARCH64_ABS64
+    case RcuRelType::Abs32:
+        return 258; // R_AARCH64_ABS32
+    case RcuRelType::AArch64Prel64:
+        return 260; // R_AARCH64_PREL64
+    case RcuRelType::Rel32:
+    case RcuRelType::AArch64Prel32:
+        return 261; // R_AARCH64_PREL32
+    case RcuRelType::AArch64MovwUabsG0:
+        return 264; // R_AARCH64_MOVW_UABS_G0_NC
+    case RcuRelType::AArch64MovwUabsG1:
+        return 266; // R_AARCH64_MOVW_UABS_G1_NC
+    case RcuRelType::AArch64MovwUabsG2:
+        return 268; // R_AARCH64_MOVW_UABS_G2_NC
+    case RcuRelType::AArch64MovwUabsG3:
+        return 269; // R_AARCH64_MOVW_UABS_G3
+    case RcuRelType::AArch64AdrPrelPgHi21:
+        return 275; // R_AARCH64_ADR_PREL_PG_HI21
+    case RcuRelType::AArch64AddAbsLo12Nc:
+        return 277; // R_AARCH64_ADD_ABS_LO12_NC
+    case RcuRelType::AArch64TstBr14:
+        return 279; // R_AARCH64_TSTBR14
+    case RcuRelType::AArch64CondBr19:
+        return 280; // R_AARCH64_CONDBR19
+    case RcuRelType::AArch64Jump26:
+        return 282; // R_AARCH64_JUMP26
+    case RcuRelType::AArch64Call26:
+        return 283; // R_AARCH64_CALL26
+    case RcuRelType::AArch64LdstAbsLo12Nc:
+        return ElfAArch64LdstRelocationType(word);
+    default:
+        return std::nullopt;
+    }
+}
+
+// The instruction a relocation names, or zero when the site lies past the end
+// of its section. Only the load-store relocation reads it, and the alternative
+// to reading it would be a relocation kind per access width in RCU itself.
+std::uint32_t InstructionAt(const std::vector<std::uint8_t> &data, const std::uint32_t offset) noexcept {
+    if (static_cast<std::size_t>(offset) + 4 > data.size()) {
+        return 0;
+    }
+    std::uint32_t word = 0;
+    for (std::size_t i = 0; i < 4; ++i) {
+        word |= static_cast<std::uint32_t>(data[offset + i]) << (i * 8U);
+    }
+    return word;
+}
+
+// The addend an ELF RELA entry carries. R_X86_64_PC32 is measured from the end
+// of the four-byte field it patches, so reaching the symbol takes a -4; every
+// AArch64 relocation is measured from the start of the instruction or field it
+// names and takes none.
+std::int64_t ElfAddend(const RcuReloc &relocation, const Target::Arch targetArch) noexcept {
+    const bool biased = targetArch == Target::Arch::X86_64 && relocation.type == RcuRelType::Rel32;
+    return biased ? relocation.addend - 4 : relocation.addend;
 }
 
 std::vector<std::size_t> SymbolOrder(const RcuFile &file) {
@@ -126,8 +234,10 @@ std::vector<std::size_t> SymbolOrder(const RcuFile &file) {
     return order;
 }
 
-void ApplyInlineAddend(std::vector<std::uint8_t> &data, const RcuReloc &relocation, const bool elf) {
-    const std::int64_t addend = relocation.type == RcuRelType::Rel32 && elf ? relocation.addend - 4 : relocation.addend;
+// COFF and Mach-O have no addend field, so the addend lives in the bytes the
+// relocation points at. ELF is RELA and carries it in the entry instead.
+void ApplyInlineAddend(std::vector<std::uint8_t> &data, const RcuReloc &relocation) {
+    const std::int64_t addend = relocation.addend;
     const std::size_t width = relocation.type == RcuRelType::Abs64 ? 8 : 4;
     if (static_cast<std::size_t>(relocation.sectionOffset) + width > data.size()) {
         return;
@@ -152,7 +262,7 @@ bool WriteCoff(const RcuFile &file, const Target::Arch targetArch, NativeObject 
     for (std::size_t i = 0; i < sectionCount; ++i) {
         sectionData.push_back(file.sections[i].data);
         for (const auto &relocation : file.sections[i].relocs) {
-            ApplyInlineAddend(sectionData.back(), relocation, false);
+            ApplyInlineAddend(sectionData.back(), relocation);
         }
         rawOffsets[i] = sectionData.back().empty() ? 0 : static_cast<std::uint32_t>(cursor);
         cursor += sectionData.back().size();
@@ -256,7 +366,12 @@ struct ElfSection {
 
 bool WriteElf(const RcuFile &file, const Target::Arch targetArch, NativeObject &output, std::string &error) {
     (void)error;
+    // Section 0 is the reserved null entry, which is all zeros: a section index
+    // of 0 means "none", so the header standing in for it must not describe a
+    // section of its own.
     std::vector<ElfSection> sections(1);
+    sections.front().type = 0;
+    sections.front().alignment = 0;
     for (const auto &input : file.sections) {
         ElfSection section;
         section.name = input.name == ".rodata" ? ".rodata" : input.name;
@@ -310,17 +425,20 @@ bool WriteElf(const RcuFile &file, const Target::Arch targetArch, NativeObject &
         ElfSection relocationSection;
         relocationSection.name = ".rela" + file.sections[i].name;
         relocationSection.type = 4;
+        // SHF_INFO_LINK: sh_info names the section these entries patch rather
+        // than being a count, which is what a linker reads it as.
+        relocationSection.flags = 0x40;
         relocationSection.alignment = 8;
         relocationSection.entrySize = 24;
         relocationSection.info = static_cast<std::uint32_t>(i + 1);
         Bytes relocations;
         for (const auto &relocation : file.sections[i].relocs) {
-            const std::uint32_t type = relocation.type == RcuRelType::Abs64 ? 1
-                                     : relocation.type == RcuRelType::Abs32 ? 10
-                                                                            : 2;
+            const std::uint32_t type = ElfRelocationType(relocation.type, targetArch,
+                                                         InstructionAt(file.sections[i].data, relocation.sectionOffset))
+                                           .value_or(0);
             relocations.U64(relocation.sectionOffset);
             relocations.U64((static_cast<std::uint64_t>(symbolRemap[relocation.symbolIndex]) << 32U) | type);
-            relocations.I64(relocation.type == RcuRelType::Rel32 ? relocation.addend - 4 : relocation.addend);
+            relocations.I64(ElfAddend(relocation, targetArch));
         }
         relocationSection.data = std::move(relocations.data);
         sections.push_back(std::move(relocationSection));
@@ -418,7 +536,7 @@ bool WriteMachO(const RcuFile &file, const Target::Arch targetArch, NativeObject
     for (std::size_t i = 0; i < sectionCount; ++i) {
         sectionData.push_back(file.sections[i].data);
         for (const auto &relocation : file.sections[i].relocs) {
-            ApplyInlineAddend(sectionData.back(), relocation, false);
+            ApplyInlineAddend(sectionData.back(), relocation);
         }
         sectionOffsets[i] = static_cast<std::uint32_t>(cursor);
         cursor += sectionData.back().size();
@@ -543,11 +661,22 @@ bool WriteNativeObject(const RcuFile &file, const Target::OS targetOs, const Tar
                             RcuArchName(expectedArch));
         return false;
     }
+    // Only ELF names an instruction field in a relocation. A Windows or macOS
+    // AArch64 target still lowers through the platform toolchain, so nothing
+    // produces one of those kinds for COFF or Mach-O to encode.
+    const bool elf = targetOs != Target::OS::Windows && targetOs != Target::OS::MacOS;
+    const std::string_view container = targetOs == Target::OS::Windows ? "COFF"
+                                     : targetOs == Target::OS::MacOS   ? "Mach-O"
+                                                                       : "ELF";
     for (const auto &section : file.sections) {
         for (const auto &relocation : section.relocs) {
-            if (!IsWritableRelocation(relocation.type)) {
-                error = std::format("relocation {} in section {} is not supported by the object writer yet",
-                                    RcuRelTypeName(relocation.type), section.name);
+            const bool writable = IsFieldRelocation(relocation.type) ||
+                                  (elf && ElfRelocationType(relocation.type, targetArch,
+                                                            InstructionAt(section.data, relocation.sectionOffset))
+                                              .has_value());
+            if (!writable) {
+                error = std::format("relocation {} in section {} is not supported by the {} object writer",
+                                    RcuRelTypeName(relocation.type), section.name, container);
                 return false;
             }
         }
