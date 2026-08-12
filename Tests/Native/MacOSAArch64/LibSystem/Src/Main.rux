@@ -1,0 +1,19 @@
+#Link("libSystem.B.dylib")
+extern {
+    func strlen(text: *char8) -> uint;
+    func snprintf(buffer: *char8, size: uint, format: *char8, ...) -> int32;
+}
+
+func Main() -> int {
+    if strlen("fixed-call".data) != 10u { return 1; }
+
+    var buffer: char8[64];
+    let written = snprintf(@buffer[0], 64u, "%s:%d:%.1f".data, "variadic".data, 42, 2.5);
+    if written != 15 { return 2; }
+    if strlen(@buffer[0]) != 15u { return 3; }
+    if buffer[0] != c8'v' || buffer[8] != c8':' || buffer[11] != c8':' ||
+        buffer[12] != c8'2' || buffer[13] != c8'.' || buffer[14] != c8'5' || buffer[15] != c8'\0' {
+        return 4;
+    }
+    return 0;
+}

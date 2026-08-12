@@ -1,0 +1,6 @@
+import Core::Assert;
+
+func Main() -> int {
+    Assert(false, "native Apple Silicon assertion fixture");
+    return 0;
+}

@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "MacOSAArch64Dylib"
+Version = "0.1.0"
+Type = "SharedLibrary"
+Description = "Native fixture: macOS AArch64 dynamic library export"
+
+[Build]
+Output = "../../../../../Bin/Tests/Native"

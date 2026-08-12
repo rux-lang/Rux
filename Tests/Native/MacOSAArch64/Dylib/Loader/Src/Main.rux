@@ -1,0 +1,22 @@
+#Link("libSystem.B.dylib")
+extern {
+    func dlopen(path: *char8, mode: int32) -> *opaque;
+    func dlsym(handle: *opaque, symbol: *char8) -> *opaque;
+    func dlclose(handle: *opaque) -> int32;
+}
+
+func Main() -> int {
+    let library = dlopen("./libMacOSAArch64Dylib.dylib".data, 2);
+    if library == null { return 1; }
+
+    let address = dlsym(library, "Answer".data);
+    if address == null {
+        dlclose(library);
+        return 2;
+    }
+
+    let answer = address as func() -> int;
+    let result = answer();
+    if dlclose(library) != 0 { return 3; }
+    return result == 42 ? 0 : 4;
+}

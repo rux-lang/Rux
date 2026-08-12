@@ -162,7 +162,7 @@ Package tests live at `Tests/Packages/<Package>/<Test>/`. Their manifests use lo
 
 ### Native End-to-End Fixtures (`Tests/Native/`)
 
-Native fixtures use `Fixture.toml` so `rux test` does not discover them as ordinary packages. Their platform script builds a specific target, launches the result, and verifies OS-visible behavior such as an exact exit code, assertion output, stack probing, or loading and calling an exported DLL function. The Windows AArch64 cross job runs the exit-code and DLL fixtures with an x86-64 compiler on an AArch64 OS; the native and release jobs repeat them with the native compiler.
+Native fixtures use `Fixture.toml` so `rux test` does not discover them as ordinary packages. Their platform script builds a specific target, launches the result, and verifies OS-visible behavior such as an exact exit code, assertion or panic output, C ABI calls, stack probing, or loading and calling an exported shared-library function. The Windows AArch64 cross job runs the exit-code and DLL fixtures with an x86-64 compiler on an AArch64 OS; the native and release jobs repeat them with the native compiler. On Apple Silicon, `Tests/Native/MacOSAArch64/Verify.sh` runs the macOS ARM64 fixture set with a native compiler, while `VerifyRosetta.sh` runs an x86-64 compiler under Rosetta and launches the produced ARM64 images directly. The scripts reject Intel Macs and inspect the Mach-O architecture and in-process ad-hoc signature before execution.
 
 ### Unit Tests (`Tests/Unit/`)
 

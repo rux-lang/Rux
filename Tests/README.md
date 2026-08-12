@@ -1,6 +1,6 @@
 # Tests
 
-All repository tests live below this directory and fall into four explicit categories:
+All repository tests live below this directory and fall into five explicit categories:
 
 | Path                         | Owner and runner                                                        |
 | ---------------------------- | ----------------------------------------------------------------------- |
@@ -8,6 +8,7 @@ All repository tests live below this directory and fall into four explicit categ
 | `Packages/<Package>/<Test>/` | Black-box first-party package behavior; `rux test`                      |
 | `Unit/`                      | Compiler internals and `Unit/Golden/` diagnostic fixtures; CTest        |
 | `Policy/`                    | Source-tree invariants enforced directly by scripts or CI               |
+| `Native/`                    | Target-specific runtime acceptance driven by platform scripts           |
 
 ## Rux Test Packages
 
@@ -30,6 +31,31 @@ Test manifests are intentionally uniform:
 - Registry dependencies are forbidden in test manifests.
 
 During workspace tests, transitive dependencies in publishable first-party package manifests are resolved from matching local workspace members. Registry fallback is disabled, so the suite does not require `rux install`, a populated package cache, or network access.
+
+## Native Runtime Fixtures
+
+Native fixtures use `Fixture.toml`, rather than `Rux.toml`, so ordinary workspace
+test discovery never launches platform-specific programs. The scripts under
+`Native/` build a named target, inspect the artifact, launch it only on compatible
+native hardware, and validate exact OS-visible results.
+
+On Apple Silicon, run the macOS AArch64 executable, libSystem ABI, assertion,
+panic, and dynamic-library fixtures with a native compiler:
+
+```sh
+sh Tests/Native/MacOSAArch64/Verify.sh ./Bin/rux
+```
+
+An x86-64 compiler can run the same fixture set under Rosetta while its emitted
+ARM64 artifacts still execute directly on the underlying machine:
+
+```sh
+sh Tests/Native/MacOSAArch64/VerifyRosetta.sh /path/to/x86_64/rux
+```
+
+Both scripts reject non-Apple-Silicon hosts. Their Mach-O preflight reads the
+ARM64 header and ad-hoc signature bytes itself; it does not invoke an assembler,
+linker, signing tool, emulator, or Apple inspection utility.
 
 ## Adding Coverage
 

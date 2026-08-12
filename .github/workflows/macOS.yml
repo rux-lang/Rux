@@ -113,9 +113,38 @@ jobs:
           ./Bin/rux check
           ./Bin/rux lint
 
-      # There is no AArch64 Mach-O writer, so macos-aarch64 cannot be built or
-      # run yet. Checking and linting need no back end and still cover this
-      # machine.
+      # The ordinary workspace runtime suite remains on the x86-64 job here;
+      # the dedicated step below exercises the AArch64 back end and native
+      # Apple Silicon runtime behaviors.
       - name: Run Rux tests
         if: matrix.arch == 'x86_64'
         run: ./Bin/rux test --release
+
+      - name: Run Apple Silicon native runtime fixtures
+        if: matrix.arch == 'aarch64'
+        run: sh Tests/Native/MacOSAArch64/Verify.sh ./Bin/rux
+
+  runtime-cross:
+    name: Runtime fixtures (x86-64 compiler, AArch64 target)
+    needs: build
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Download x86-64 compiler artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-macos-x86_64
+          path: Bin
+
+      # Artifacts do not preserve executable permissions. VerifyRosetta also
+      # checks that this is a thin x86-64 compiler before launching it through
+      # Rosetta; every produced fixture is launched directly as ARM64.
+      - name: Run Apple Silicon cross-compiler runtime fixtures
+        run: |
+          chmod +x Bin/rux
+          sh Tests/Native/MacOSAArch64/VerifyRosetta.sh ./Bin/rux

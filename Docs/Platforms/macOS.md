@@ -98,6 +98,30 @@ sh Test.sh --compiler "$(brew --prefix llvm@22)/bin/clang++" --clang-tidy
 
 Use `sh Format.sh` to format maintained C++ and Rux sources, or `sh Format.sh --check` to check them without making changes.
 
+### Apple Silicon runtime acceptance
+
+Byte-level unit tests cover Mach-O layout on every compiler host. Apple Silicon
+adds native fixtures for behavior that image inspection cannot establish: a
+freestanding exit status, fixed and variadic libSystem calls, assertion and panic
+diagnostics, and loading, calling, then unloading an exported dylib. Run all of
+them from the repository root with a native AArch64 compiler:
+
+```sh
+sh Tests/Native/MacOSAArch64/Verify.sh ./Bin/rux
+```
+
+To reproduce the cross-compiler path, pass a thin x86-64 macOS compiler to the
+Rosetta wrapper:
+
+```sh
+sh Tests/Native/MacOSAArch64/VerifyRosetta.sh /path/to/x86_64/rux
+```
+
+Both commands require an underlying Apple Silicon Mac. The scripts preflight the
+ARM64 Mach-O header and embedded ad-hoc signature before direct execution; they do
+not use an emulator, `codesign`, Xcode command-line tools, or an external
+assembler, linker, or archiver.
+
 `rux run` always builds and launches the compiler process's host triple and has
 no `--target` option. `rux test --target` requires macOS plus an architecture
 reported for either the compiler process or the native OS. Consequently, an
