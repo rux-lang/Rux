@@ -9,6 +9,7 @@
 #include <doctest.h>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -145,12 +146,77 @@ private:
     Manifest dependency;
 };
 
+std::vector<unsigned char> ReadBinaryFile(const std::filesystem::path &path) {
+    std::ifstream input(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+uint16_t Read16(const std::vector<unsigned char> &bytes, const std::size_t offset) {
+    return static_cast<uint16_t>(bytes[offset]) | static_cast<uint16_t>(bytes[offset + 1] << 8U);
+}
+
+uint32_t Read32(const std::vector<unsigned char> &bytes, const std::size_t offset) {
+    uint32_t value = 0;
+    for (std::size_t i = 0; i < 4; ++i) {
+        value |= static_cast<uint32_t>(bytes[offset + i]) << (i * 8U);
+    }
+    return value;
+}
+
+void CheckWindowsAArch64Pe(const std::filesystem::path &path) {
+    const auto image = ReadBinaryFile(path);
+    REQUIRE(image.size() >= 0x40);
+    REQUIRE(image[0] == 'M');
+    REQUIRE(image[1] == 'Z');
+    const std::size_t peOffset = Read32(image, 0x3C);
+    REQUIRE(peOffset + 6 <= image.size());
+    CHECK(Read32(image, peOffset) == 0x00004550); // PE\0\0
+    CHECK(Read16(image, peOffset + 4) == 0xAA64); // IMAGE_FILE_MACHINE_ARM64
+}
+
+struct ArchiveArchitectures {
+    std::size_t objects = 0;
+    std::size_t imports = 0;
+};
+
+ArchiveArchitectures InspectWindowsAArch64Archive(const std::filesystem::path &path) {
+    const auto archive = ReadBinaryFile(path);
+    if (archive.size() < 8 || std::string(archive.begin(), archive.begin() + 8) != "!<arch>\n") {
+        return {};
+    }
+
+    ArchiveArchitectures architectures;
+    for (std::size_t at = 8; at + 60 <= archive.size();) {
+        std::string size;
+        for (std::size_t i = 48; i < 58 && archive[at + i] != ' '; ++i) {
+            size.push_back(static_cast<char>(archive[at + i]));
+        }
+        if (size.empty()) {
+            break;
+        }
+        const auto memberSize = static_cast<std::size_t>(std::stoul(size));
+        const std::size_t body = at + 60;
+        if (body + memberSize > archive.size()) {
+            break;
+        }
+        if (memberSize >= 2 && Read16(archive, body) == 0xAA64) {
+            ++architectures.objects;
+        }
+        // A DLL import-library member has the short import header signature
+        // followed by the machine at byte six.
+        if (memberSize >= 8 && Read32(archive, body) == 0xFFFF0000 && Read16(archive, body + 6) == 0xAA64) {
+            ++architectures.imports;
+        }
+        at = body + memberSize + (memberSize & 1U);
+    }
+    return architectures;
+}
+
 // Whether a back end covers this host, which is what a case that builds for the
-// host needs. The AArch64 back end writes ELF, so an AArch64 macOS or Windows
-// host has none until the Mach-O and PE writers take an architecture
-// (BACKLOG.md "Follow-on"). Those cases are skipped there rather than deleted:
-// what they assert is about the driver, not about the machine running it.
-constexpr bool kHostHasBackend = Target::HostArch != Target::Arch::AArch64 || Target::HostOS == Target::OS::Linux;
+// host needs. AArch64 Mach-O is the remaining unsupported host image format.
+// Those cases are skipped rather than deleted: what they assert is about the
+// driver, not about the machine running it.
+constexpr bool kHostHasBackend = Target::HostArch != Target::Arch::AArch64 || Target::HostOS != Target::OS::MacOS;
 
 } // namespace
 
@@ -185,17 +251,17 @@ TEST_CASE("output directories separate a foreign target from the host") {
 
 TEST_CASE("artifact names follow the target operating system, not the host") {
     CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::Executable),
-                         TargetTripleOs("windows-x86_64")) == "App.exe");
+                         TargetTripleOs("windows-aarch64")) == "App.exe");
     CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::Executable),
                          TargetTripleOs("linux-aarch64")) == "App");
     CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::SharedLibrary),
                          TargetTripleOs("macos-aarch64")) == "libApp.dylib");
     CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::SharedLibrary),
-                         TargetTripleOs("windows-x86_64")) == "App.dll");
+                         TargetTripleOs("windows-arm64")) == "App.dll");
     CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::StaticLibrary),
                          TargetTripleOs("freebsd-x86_64")) == "libApp.a");
     CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::StaticLibrary),
-                         TargetTripleOs("windows-x86_64")) == "App.lib");
+                         TargetTripleOs("windows-aarch64")) == "App.lib");
 }
 
 TEST_CASE("compiler driver loads path dependencies when checking") {
@@ -313,22 +379,95 @@ func Main() -> int {
                   ", output: ", run->output);
 }
 
-TEST_CASE("compiler driver refuses a target no back end covers") {
-    // The AArch64 back end writes ELF, so an AArch64 target on any other
-    // operating system is refused before code generation starts — on a host of
-    // that same kind too, which is what makes this a property of the target.
+TEST_CASE("compiler driver builds a Windows AArch64 executable") {
     DependencyFixture fixture;
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.targetName = "windows-aarch64";
+    options.profileName = "Release";
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    REQUIRE(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.secondaryArtifactPaths.empty());
+    CHECK(result.primaryArtifactPath.filename() == "App.exe");
+    if (HostTargetTriple() != "windows-aarch64") {
+        CHECK(result.primaryArtifactPath.parent_path().filename() == "windows-aarch64");
+        CHECK(result.primaryArtifactPath.parent_path().parent_path().filename() == "Release");
+    }
+    else {
+        CHECK(result.primaryArtifactPath.parent_path().filename() == "Release");
+    }
+    REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
+    CheckWindowsAArch64Pe(result.primaryArtifactPath);
+}
+
+TEST_CASE("compiler driver builds a Windows AArch64 shared library and import library through the arm64 alias") {
+    DependencyFixture fixture;
+    fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.targetName = "windows-arm64";
+    options.profileName = "Release";
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    REQUIRE(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.primaryArtifactPath.filename() == "App.dll");
+    if (HostTargetTriple() != "windows-aarch64") {
+        CHECK(result.primaryArtifactPath.parent_path().filename() == "windows-aarch64");
+    }
+    REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
+    CheckWindowsAArch64Pe(result.primaryArtifactPath);
+
+    REQUIRE(result.secondaryArtifactPaths.size() == 1);
+    const auto &importLibrary = result.secondaryArtifactPaths.front();
+    CHECK(importLibrary.parent_path() == result.primaryArtifactPath.parent_path());
+    CHECK(importLibrary.filename() == "App.lib");
+    REQUIRE(std::filesystem::is_regular_file(importLibrary));
+    const auto archive = ReadBinaryFile(importLibrary);
+    REQUIRE(archive.size() >= 8);
+    CHECK(std::string(archive.begin(), archive.begin() + 8) == "!<arch>\n");
+    CHECK(InspectWindowsAArch64Archive(importLibrary).imports > 0);
+}
+
+TEST_CASE("compiler driver builds a Windows AArch64 static library") {
+    DependencyFixture fixture;
+    fixture.SetApplicationType(ManifestPackageType::StaticLibrary);
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.targetName = "windows-aarch64";
+    options.profileName = "Release";
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    REQUIRE(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.secondaryArtifactPaths.empty());
+    CHECK(result.primaryArtifactPath.filename() == "App.lib");
+    if (HostTargetTriple() != "windows-aarch64") {
+        CHECK(result.primaryArtifactPath.parent_path().filename() == "windows-aarch64");
+    }
+    REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
+    CHECK(InspectWindowsAArch64Archive(result.primaryArtifactPath).objects > 0);
+}
+
+TEST_CASE("compiler driver still refuses AArch64 Mach-O image builds") {
+    DependencyFixture fixture;
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.targetName = "macos-aarch64";
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
     CHECK_FALSE(result.ok);
     REQUIRE(diagnostics.size() == 1);
     CHECK(diagnostics.front().IsError());
-    CHECK(diagnostics.front().message.contains("windows-aarch64"));
+    CHECK(diagnostics.front().message.contains("macos-aarch64"));
     CHECK(diagnostics.front().message.contains("not implemented yet"));
+    CHECK(diagnostics.front().message.contains("no Mach-O writer"));
 }
 
 TEST_CASE("compiler driver links a SharedLibrary package as a native shared library" *
@@ -502,8 +641,8 @@ TEST_CASE("a target triple resolves to the machine it names rather than to the h
     CHECK(aarch64.pointer_size == 8);
     CHECK(aarch64.endianness == Target::Endian::Little);
 
-    // An alias resolves to the same description, and an operating system the
-    // triple names is carried even where no back end reaches it yet.
+    // An alias resolves to the same description, and each operating system the
+    // triple names selects its own object format.
     CHECK(TargetContextForTriple("linux-arm64").arch == Target::Arch::AArch64);
     CHECK(TargetContextForTriple("windows-aarch64").object_format == Target::ObjectFormat::COFF);
     CHECK(TargetContextForTriple("macos-aarch64").object_format == Target::ObjectFormat::MachO);
@@ -516,20 +655,25 @@ TEST_CASE("the unsupported-target diagnostic follows the back end that would pro
     CHECK(UnsupportedBackendReason("windows-x86_64").empty());
     CHECK(UnsupportedBackendReason("macos-x86_64").empty());
 
-    // AArch64 reaches Linux, under either spelling of the triple, from a host
-    // of either architecture.
+    // AArch64 reaches ELF and Windows PE, under either spelling of the triple,
+    // from a host of either architecture.
     CHECK(UnsupportedBackendReason("linux-aarch64").empty());
     CHECK(UnsupportedBackendReason("linux-arm64").empty());
+    CHECK(UnsupportedBackendReason("windows-aarch64").empty());
+    CHECK(UnsupportedBackendReason("windows-arm64").empty());
 
-    // The other AArch64 systems are refused rather than lowered by an external
-    // toolchain, and they are refused on a host of their own kind too: the
-    // Mach-O and PE writers take no architecture yet.
-    for (const std::string_view triple : {"macos-aarch64", "windows-aarch64"}) {
-        const std::string refused = UnsupportedBackendReason(triple);
-        CHECK(refused.contains(triple));
-        CHECK(refused.contains("not implemented yet"));
-        CHECK(refused.contains("Linux only"));
-    }
+    // AArch64 Mach-O is still refused rather than lowered by an external
+    // toolchain, including on a macOS AArch64 host.
+    const std::string macos = UnsupportedBackendReason("macos-aarch64");
+    CHECK(macos.contains("macos-aarch64"));
+    CHECK(macos.contains("not implemented yet"));
+    CHECK(macos.contains("no Mach-O writer"));
+
+    // Enabling PE does not widen the existing ELF support to other systems.
+    const std::string freebsd = UnsupportedBackendReason("freebsd-aarch64");
+    CHECK(freebsd.contains("freebsd-aarch64"));
+    CHECK(freebsd.contains("not implemented yet"));
+    CHECK(freebsd.contains("Linux ELF and Windows PE"));
 
     // An architecture with no back end at all names itself rather than a host.
     const std::string riscv = UnsupportedBackendReason("linux-riscv64");

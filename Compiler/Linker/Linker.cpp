@@ -41,13 +41,14 @@ bool Linker::CheckArchitecture() {
             return false;
         }
     }
-    if (targetArch == Target::Arch::X86_64 || artifactKind == ArtifactKind::StaticLibrary ||
-        (targetOs == Target::OS::Windows && targetArch == Target::Arch::AArch64)) {
+    if (targetArch == Target::Arch::X86_64 || artifactKind == ArtifactKind::StaticLibrary) {
         return true;
     }
-    // Beyond x86-64, ELF lays out AArch64 executables and shared libraries.
-    // The driver continues to refuse windows-aarch64 builds until its CLI
-    // enablement lands, even though the linker can now write both PE kinds.
+    // Beyond x86-64, both ELF and PE lay out AArch64 executable and shared
+    // library images. Mach-O does not have an AArch64 image writer yet.
+    if (targetOs == Target::OS::Windows && targetArch == Target::Arch::AArch64) {
+        return true;
+    }
     const bool elf = targetOs != Target::OS::Windows && targetOs != Target::OS::MacOS;
     if (elf && targetArch == Target::Arch::AArch64) {
         return true;

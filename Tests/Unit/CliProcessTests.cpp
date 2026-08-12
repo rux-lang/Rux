@@ -1,3 +1,4 @@
+#include "Driver/BuildTarget.h"
 #include "Driver/Version.h"
 #include "System/Os.h"
 #include "System/Process.h"
@@ -5,8 +6,11 @@
 #include <array>
 #include <doctest.h>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using namespace Rux;
 
@@ -26,6 +30,18 @@ System::RunResult Run(const std::array<std::string_view, N> &arguments) {
     const auto result = System::RunCaptured(RuxExecutable(), arguments);
     REQUIRE(result.has_value());
     return *result;
+}
+
+uint16_t Read16(const std::vector<unsigned char> &bytes, const std::size_t offset) {
+    return static_cast<uint16_t>(bytes[offset]) | static_cast<uint16_t>(bytes[offset + 1] << 8U);
+}
+
+uint32_t Read32(const std::vector<unsigned char> &bytes, const std::size_t offset) {
+    uint32_t value = 0;
+    for (std::size_t i = 0; i < 4; ++i) {
+        value |= static_cast<uint32_t>(bytes[offset + i]) << (i * 8U);
+    }
+    return value;
 }
 } // namespace
 
@@ -80,8 +96,7 @@ TEST_CASE("build, run and test share one target option") {
 }
 
 TEST_CASE("a target without a back end names itself") {
-    // The AArch64 back end writes ELF, so an AArch64 target on another
-    // operating system is refused before the build starts, on every host.
+    // AArch64 Mach-O is refused before the build starts, on every host.
     const auto manifest = ArithmeticManifest();
     const auto result =
         Run(std::array<std::string_view, 5>{"--manifest", manifest, "build", "--target", "macos-aarch64"});
@@ -89,6 +104,32 @@ TEST_CASE("a target without a back end names itself") {
     CHECK(result.exitCode == 1);
     CHECK(result.output.contains("macos-aarch64"));
     CHECK(result.output.contains("not implemented yet"));
+}
+
+TEST_CASE("CLI cross-builds a Windows AArch64 executable without trying to run it") {
+    const auto manifest = ArithmeticManifest();
+    const auto result = Run(std::array<std::string_view, 7>{"--manifest", manifest, "build", "--release", "--target",
+                                                            "windows-aarch64", "--quiet"});
+
+    REQUIRE(result.exitCode == 0);
+    CHECK_FALSE(result.output.contains("cannot run"));
+
+    auto output = std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release";
+    if (Driver::HostTargetTriple() != "windows-aarch64") {
+        output /= "windows-aarch64";
+    }
+    output /= "Arithmetic.exe";
+    REQUIRE(std::filesystem::is_regular_file(output));
+
+    std::ifstream input(output, std::ios::binary);
+    const std::vector<unsigned char> image((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    REQUIRE(image.size() >= 0x40);
+    REQUIRE(image[0] == 'M');
+    REQUIRE(image[1] == 'Z');
+    const std::size_t peOffset = Read32(image, 0x3C);
+    REQUIRE(peOffset + 6 <= image.size());
+    CHECK(Read32(image, peOffset) == 0x00004550); // PE\0\0
+    CHECK(Read16(image, peOffset + 4) == 0xAA64); // IMAGE_FILE_MACHINE_ARM64
 }
 
 TEST_CASE("structured commands emit a complete JSON document on operational failure") {
