@@ -50,7 +50,9 @@ static LirPackage CompileToLir(const std::string &source) {
 }
 
 static std::string CompileToAsm(const std::string &source) {
-    AssemblyPrinter printer(CompileToLir(source));
+    const std::string_view target = RUX_OS_WINDOWS ? "windows-x86_64" : "linux-x86_64";
+    AssemblyPrinter printer(
+        CompileToLirFor(source, RUX_OS_WINDOWS ? "windows" : "linux", Driver::TargetContextForTriple(target)));
     return printer.Generate();
 }
 
