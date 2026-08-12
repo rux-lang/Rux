@@ -6,7 +6,9 @@
 
 # Rux Programming Language
 
-Rux is a fast, compiled, strongly typed, multi-paradigm programming language. On x86-64 the compiler is self-contained — its own code generator, object format, and PE/ELF/Mach-O linkers produce a native executable with no external toolchain; AArch64 targets lower natively and link through the platform Clang driver.
+Rux is a fast, compiled, strongly typed, multi-paradigm programming language. The compiler is self-contained: its own x86-64 and AArch64 code generators, its own object format, and its own PE/ELF/Mach-O linkers produce a native executable with no assembler, no C compiler, and no external linker anywhere in the pipeline.
+
+Cross-compilation needs no second machine: `--target <os>-<arch>` builds for another system from any host, and `rux run` and `rux test` execute a foreign-architecture build under a user-mode emulator. The x86-64 back end reaches every supported operating system; the AArch64 back end reaches `linux-aarch64`, with AArch64 Mach-O and PE output still to come.
 
 [![FreeBSD](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml)
 [![Linux](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml)
@@ -16,7 +18,7 @@ Rux is a fast, compiled, strongly typed, multi-paradigm programming language. On
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](LICENSE.md)
 
-Each platform badge above covers a native build-and-test run on both supported architectures, x86-64 and AArch64, and prebuilt binaries are published for every one of them.
+Each platform badge above covers a native build-and-test run on both supported architectures, x86-64 and AArch64, and prebuilt binaries are published for every one of them. The Linux badge additionally covers a `linux-aarch64` cross build produced on an x86-64 runner and run under QEMU. On AArch64 macOS, Windows, and FreeBSD the compiler builds and runs natively but cannot yet generate code for its own target, so those jobs run `rux check` and `rux lint` rather than the program suite.
 
 > [!IMPORTANT]
 > Rux is under active, pre-1.0 development. Language features, compiler behavior, and package formats may change between minor releases. Check the [changelog](CHANGELOG.md) when upgrading.

@@ -34,9 +34,8 @@ target has no code generator: the AArch64 back end writes ELF, so it reaches
 generation for 'macos-aarch64' is not implemented yet`; `rux check`, `rux fmt`,
 `rux lint` and `rux doc` need no back end and work as they do everywhere. An
 Apple Silicon Mac can still build `rux` itself, and can cross-build Rux programs
-with `--target macos-x86_64` or `--target linux-aarch64`. The AArch64 Mach-O
-writer listed under "Follow-on" in `BACKLOG.md` is what makes the native target
-buildable.
+with `--target macos-x86_64` or `--target linux-aarch64`. An AArch64 Mach-O
+writer is what makes the native target buildable, and is not written yet.
 
 ## Native Package Artifacts
 

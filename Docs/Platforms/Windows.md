@@ -85,8 +85,8 @@ writes ELF, so it reaches `linux-aarch64` only, and building a Rux program for
 implemented yet`. `rux check`, `rux fmt`, `rux lint` and `rux doc` need no back
 end and work as they do everywhere. An AArch64 Windows machine can still build
 `rux` itself, and can cross-build Rux programs with `--target windows-x86_64` or
-`--target linux-aarch64`. The AArch64 PE writer listed under "Follow-on" in
-`BACKLOG.md` is what makes the native target buildable.
+`--target linux-aarch64`. An AArch64 PE writer is what makes the native target
+buildable, and is not written yet.
 
 ## Native Package Artifacts
 

@@ -48,14 +48,17 @@ sh Build.sh
 
 The LLVM installer names the compiler `clang++-22`; `Build.sh` detects it automatically. The script creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
 
-On AArch64, Rux selects the `linux-aarch64` target automatically and uses the
-platform Clang driver for final native lowering and linking.
+On AArch64, Rux selects the `linux-aarch64` target automatically and compiles it
+the same way it compiles `linux-x86_64`: instructions are encoded in-process,
+written into an RCU object, and linked by Rux's own ELF writer. No assembler, C
+compiler, or external linker is involved on either architecture, so nothing
+beyond the tools listed above needs to be installed to build Rux programs.
 
 ## Native Package Artifacts
 
 An `Executable` package writes `Name`, a `SharedLibrary` writes `libName.so` with its SONAME, and a `StaticLibrary` writes `libName.a` with a GNU archive symbol index. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
 
-The x86-64 backend writes ELF objects and images directly. The AArch64 backend uses Clang for relocatable-object and shared-library emission, then the common deterministic archive layer for static output.
+Both backends write ELF objects and images directly, from a host of either architecture: executables, shared libraries with their relocation and PLT tables, and relocatable objects gathered by the common deterministic archive layer into a static library.
 
 For a Debug build, run `sh Build.sh --configuration Debug`. On other Linux distributions, install equivalent tool versions through the distribution's package manager and pass `--compiler PATH` when Clang is not detected automatically. Run `sh Build.sh --help` to see every option.
 
@@ -100,8 +103,32 @@ RUX_QEMU_SYSROOT=/usr/aarch64-linux-gnu ./Bin/rux test --target linux-aarch64
 
 A foreign operating system has no such answer: an emulator supplies an
 instruction set, not a kernel, so `rux run --target windows-x86_64` reports that
-the artifact has to be run on that system. Native AArch64 code generation is
-still being written, so not every program compiles for `linux-aarch64` yet.
+the artifact has to be run on that system — it is built, not executed.
+
+A Linux host reaches these targets, whichever architecture it runs on:
+
+| Target                                                | Builds | Runs here                      |
+| ----------------------------------------------------- | ------ | ------------------------------ |
+| `linux-x86_64`, `linux-aarch64`                       | Yes    | Natively, or under `qemu-user` |
+| `windows-x86_64`, `macos-x86_64`                      | Yes    | No — foreign operating system  |
+| `freebsd-x86_64`, `openbsd-x86_64`, `netbsd-x86_64`   | Yes    | No — foreign operating system  |
+| `dragonfly-x86_64`, `illumos-x86_64`                  | Yes    | No — foreign operating system  |
+| `macos-aarch64`, `windows-aarch64`, `freebsd-aarch64` | No     | —                              |
+
+The x86-64 back end reaches every supported operating system, because all three
+object writers are parameterized for it. The AArch64 back end writes ELF, so it
+covers `linux-aarch64` and no other AArch64 system yet: those three targets are
+refused with `code generation for '<triple>' is not implemented yet`. AArch64
+Mach-O and PE writers are what open them, and are not written yet. `rux check`,
+`rux fmt`, `rux lint` and `rux doc` need no back end and work for every named
+target.
+
+Nothing in a cross build reaches for a cross toolchain, because there is no
+toolchain to reach for: the same encoder, object writer and linker run whichever
+machine invokes them, and a `linux-aarch64` image records the loader and library
+names it needs without opening a host library to do it. A sysroot is needed to
+*run* a cross build, not to produce one, and only when the program imports a
+shared library.
 
 ## Verifying the Build
 

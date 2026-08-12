@@ -77,7 +77,7 @@ downloaded by the matching test job. Using `Linux.yml` as the reference shape:
 
 Neither the cross job nor the native AArch64 test job installs a C toolchain: the compiler encodes and links AArch64 artifacts itself, and both jobs fail if that stops being true.
 
-The AArch64 back end writes ELF, so `linux-aarch64` is the only AArch64 target it covers. The macOS, Windows and FreeBSD AArch64 test jobs therefore run `rux check` and `rux lint`, which need no back end, and leave `rux test` to their x86-64 counterparts; an AArch64 build for one of those systems is refused with `code generation for '<triple>' is not implemented yet`. The AArch64 Mach-O and PE writers listed under "Follow-on" in `BACKLOG.md` are what reopen those jobs.
+The AArch64 back end writes ELF, so `linux-aarch64` is the only AArch64 target it covers. The macOS, Windows and FreeBSD AArch64 test jobs therefore run `rux check` and `rux lint`, which need no back end, and leave `rux test` to their x86-64 counterparts; an AArch64 build for one of those systems is refused with `code generation for '<triple>' is not implemented yet`. AArch64 Mach-O and PE writers are what reopen those jobs, and are not written yet.
 
 ### Platform-Specific Quirks
 

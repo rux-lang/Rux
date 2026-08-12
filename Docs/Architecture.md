@@ -16,13 +16,22 @@ Source -> Lexer -> Syntax -> SemanticModel
                     +-----------+-----------+
                     |                       |
                     v                       v
-             x86-64 CodeGen               AArch64 CodeGen
+             x86-64 CodeGen          AArch64 CodeGen
                     |                       |
-                    v                       v
-              RCU Object -> Linker    RCU Object -> Linker, or Clang -> ELF / Mach-O / PE
+                    +----------+------------+
+                               |
+                               v
+                          RCU Object
+                               |
+                               v
+                            Linker -> ELF / Mach-O / PE
 ```
 
+The two back ends are symmetric: each encodes instruction bytes itself, each builds an RCU object, and both hand that object to the same linker. No stage invokes an external assembler, compiler, linker, or archiver.
+
 The driver loads the root manifest and dependencies before entering this pipeline. Diagnostics can stop the process after any frontend stage; object emission and linking only run when analysis and lowering succeed.
+
+Which triples a back end reaches is decided by the object and image writer, not by the host: x86-64 reaches every supported operating system, and AArch64 reaches `linux-aarch64`, since ELF is the only format its objects and images are written for. Any other AArch64 triple is refused with a diagnostic naming the target rather than falling back to a host toolchain.
 
 ## Component Ownership
 
@@ -40,8 +49,8 @@ The driver loads the root manifest and dependencies before entering this pipelin
 | `Ir/Lir`               | Control-flow-explicit low-level IR                                                 | Semantic                                  |
 | `Lowering`             | AST/semantic model → HIR → LIR                                                     | Frontend and IR components                |
 | `CodeGen`              | Layout rules, literal decoding, register allocation, and the assembly result       | LIR                                       |
-| `CodeGen/X86_64`       | x86-64 code generation, inline assembly, and RCU construction                      | LIR, Object, Diagnostics                  |
-| `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, and RCU construction                | LIR, Object, System, Diagnostics, Archive |
+| `CodeGen/X86_64`       | x86-64 instruction encoding, inline assembly, and RCU construction                 | LIR, Object, Diagnostics                  |
+| `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, and RCU construction                | LIR, Object, Diagnostics                  |
 | `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                     | Target                                    |
 | `Archive`              | Deterministic native archive containers and symbol indexes                         | Object                                    |
 | `Linker`               | PE, ELF, Mach-O, relocatable-object, and library output                            | Object, Archive, and System               |
@@ -56,7 +65,7 @@ The CMake target graph enforces these dependencies. Prefer adding a dependency t
 
 Operating-system APIs are confined to `Compiler/System`; the CI isolation guard is `Tests/Policy/PlatformIsolation/Check.sh`. New uses of `getenv`, `<windows.h>`, `fork`, or similar APIs belong behind a `System` interface.
 
-Process launches are confined the same way, and for a stronger reason: Rux encodes its own machine code and links its own artifacts, so no stage may call out to an assembler, a C compiler, a linker or an archiver. `Tests/Policy/NoExternalToolchain/Check.sh` is that guard, and the files still allowed to name or launch such a program are listed at the top of it.
+Process launches are confined the same way, and for a stronger reason: Rux encodes its own machine code and links its own artifacts, so no stage may call out to an assembler, a C compiler, a linker or an archiver. `Tests/Policy/NoExternalToolchain/Check.sh` is that guard. No file under `Compiler/` names such a program, and the only stages that launch anything at all are `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp`, which run the artifact the compiler just produced — directly, or under the emulator named by `RUX_EMULATOR` when the target is not the host machine.
 
 The language parses the same for every target, with one exception: an `asm func` body is machine text rather than Rux, so `Parser` takes the target architecture and reads the body with that architecture's register table (`Target/AsmRegisters.h`). The mnemonics are checked later — a body whose instructions belong to the other architecture is an error reported during semantic analysis, after `when` folding has dropped the branches this build never reaches. A function that must reach both machines therefore writes a body per architecture under `when #target.arch`, as the platform packages' system-call wrappers do.
 
