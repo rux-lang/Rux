@@ -9,7 +9,7 @@ Each supported platform has its own workflow under [`.github/workflows/`](../.gi
 | Workflow      | Platform                        | Runner            | Toolchain install         |
 | ------------- | ------------------------------- | ----------------- | ------------------------- |
 | `FreeBSD.yml` | FreeBSD 14.4 x86-64 and AArch64 | QEMU VM on Ubuntu | `pkg llvm22`              |
-| `Linux.yml`   | Ubuntu 24.04 x86-64 and AArch64 | GitHub-hosted     | `apt.llvm.org` → Clang 22 |
+| `Linux.yml`   | Ubuntu 24.04 x86-64 and AArch64, plus an x86-64 → AArch64 cross job under QEMU | GitHub-hosted     | `apt.llvm.org` → Clang 22 |
 | `macOS.yml`   | macOS 26 x86-64 and AArch64     | GitHub-hosted     | Homebrew `llvm@22`        |
 | `Windows.yml` | Windows 2025 and Windows 11 ARM | GitHub-hosted     | Runner's bundled Clang    |
 
@@ -17,8 +17,19 @@ Their status is shown by the badges at the top of the [README](../README.md).
 
 Two repository-policy workflows run alongside the per-OS matrix:
 
-- **`CodeQuality.yml`** — repository-wide checks: the platform-isolation guard (`Tests/Policy/PlatformIsolation/Check.sh`, which fails when OS APIs like `getenv`/`<windows.h>`/`fork` are used outside `Compiler/System/`), a `clang-format-22 --dry-run -Werror` pass, and parallel `clang-tidy-22` static analysis over the maintained C++ translation units in CMake's compilation database.
+- **`CodeQuality.yml`** — repository-wide checks: the platform-isolation guard (`Tests/Policy/PlatformIsolation/Check.sh`, which fails when OS APIs like `getenv`/`<windows.h>`/`fork` are used outside `Compiler/System/`), the external-toolchain guard (`Tests/Policy/NoExternalToolchain/Check.sh`, described below), a `clang-format-22 --dry-run -Werror` pass, and parallel `clang-tidy-22` static analysis over the maintained C++ translation units in CMake's compilation database.
 - **`PullRequestPolicy.yml`** — rejects pull requests targeting `main` and directs contributors to the `dev` integration branch.
+
+### The External-Toolchain Guard
+
+`Tests/Policy/NoExternalToolchain/Check.sh` protects the property the whole compiler is built around: Rux encodes its own machine code, writes its own object files and links its own executables, so no part of it may shell out to a build tool. The check greps `Compiler/` for two things and fails on either —
+
+- a string literal naming an assembler, C compiler, linker or archiver, under any spelling a real one carries: a path (`/usr/bin/clang`), a cross prefix (`aarch64-linux-gnu-gcc`), a version suffix (`clang-22`) or a Windows extension (`link.exe`). Two-letter names like `as`, `cc` and `ld` are assembler mnemonics and register names throughout `CodeGen/`, so they count only when the literal also carries a directory or an extension;
+- a call to `System::RunInherited` or `System::RunCaptured` — the two entry points every process launch goes through — from outside `Compiler/System/`.
+
+Each has a short allowlist at the top of the script, and a file joins one only with a reason written beside it. Running a program is not the same as building one, so `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp` are permanent entries: they execute the artifact the compiler just produced, natively or under an emulator. `CodeGen/AArch64/NativeEmitter.cpp` is the temporary one — the Clang path AArch64 used before it had a back end — and it leaves both lists when the file is deleted.
+
+The guard runs as its own job in `CodeQuality.yml` and as the first step of `Test.sh` and `Test.ps1`, beside the platform-isolation check.
 
 Every platform build configures with `-DRUX_BUILD_TESTS=ON` and runs the C++ unit tests (doctest via `ctest`) before uploading the binary artifact; see [Development Workflow](Workflow.md) for the test layout.
 The Linux test job additionally checks every maintained Rux source with `rux fmt --check`, complementing the C++ formatting job without compiling the compiler a second time in `CodeQuality.yml`.
@@ -57,11 +68,20 @@ downloaded by the matching test job. Using `Linux.yml` as the reference shape:
    - On Linux, verify Rux formatting across every package and test manifest.
    - Run `rux check`, `rux lint`, and `rux test --release` from the repo root. Workspace mode discovers every language and package test below `Tests/`, resolves first-party dependencies locally, and disables registry fallback.
 
+`Linux.yml` adds a third job to those two.
+
+3. **Cross job** (`needs: build`, `ubuntu-24.04`)
+   - Install `qemu-user` and `libc6-arm64-cross`. No cross toolchain is installed and none is wanted: the compiler encodes and links AArch64 artifacts itself, and only the loader and the C library they run against come from outside.
+   - Download the x86-64 binary built by the build job.
+   - Run `rux check --target linux-aarch64` and `rux test --release --target linux-aarch64`. Every test builds for AArch64 on this x86-64 host and runs under `qemu-aarch64`, with `RUX_QEMU_SYSROOT=/usr/aarch64-linux-gnu` pointing the emulator at the guest's loader. `rux lint` takes no target and is not repeated here.
+
+Both the cross job and the native AArch64 test job set `RUX_AARCH64_RCU=1`, which selects the native AArch64 back end over the Clang path that preceded it. That is why the AArch64 test job installs no Clang: what it downloads produces machine code without one, and the job fails if that stops being true.
+
 ### Platform-Specific Quirks
 
 The native-runner workflows differ only in how the compiler is obtained; the emulated ones differ in _where the whole job runs_:
 
-- **Ubuntu** — installs Clang 22 from `apt.llvm.org` and builds with `clang++-22` on `ubuntu-24.04` (x86-64) and `ubuntu-24.04-arm` (AArch64).
+- **Ubuntu** — installs Clang 22 from `apt.llvm.org` and builds with `clang++-22` on `ubuntu-24.04` (x86-64) and `ubuntu-24.04-arm` (AArch64). Clang is the host C++ compiler that builds `rux`, and nothing else: the AArch64 test and cross jobs run the compiler's own back end. The cross job is Linux-only, since `linux-aarch64` is the one foreign target the back end reaches today.
 - **Windows** — uses the runner's bundled Clang on `windows-2025` (x86-64) and `windows-11-arm` (AArch64). Before configuring, `.github/scripts/Enter-VsDevEnv.ps1` locates Visual Studio with `vswhere` and imports the native `vcvarsall.bat` environment for the matching x86-64 or ARM64 toolset, and Clang is given the explicit MSVC target triple.
 - **macOS** — Apple Clang lags upstream and lacks full C++26 support, so the workflow installs LLVM `llvm@22` from Homebrew and points `CMAKE_CXX_COMPILER` at the Homebrew `clang++`.
 - **FreeBSD** — GitHub has no native FreeBSD runner, so each job boots an x86-64 or AArch64 FreeBSD 14.4 QEMU VM via `vmactions/freebsd-vm` on an Ubuntu host. Because Build and Test are separate jobs, each boots a _fresh_ VM; the Test VM installs the Clang runtime libraries needed by the prebuilt binary.
@@ -70,7 +90,7 @@ The native-runner workflows differ only in how the compiler is obtained; the emu
 
 The following must pass before a PR can merge (configured in branch protection — see [Branch Architecture](Branches.md)):
 
-- **`Linux.yml`** (Ubuntu 24.04 x86-64 and AArch64)
+- **`Linux.yml`** (Ubuntu 24.04 x86-64 and AArch64, and the AArch64 cross job)
 - **`Windows.yml`** (Windows x86-64 and AArch64)
 
 The remaining workflows — `macOS.yml` and `FreeBSD.yml` — run on every push and PR and report status, but are **informational**: they broaden platform coverage without blocking merges, since non-required platforms can be slower or occasionally flaky. A red informational check is still worth investigating before merging.
@@ -93,6 +113,17 @@ ctest --test-dir Build --output-on-failure -C Release
 ```
 
 Adjust the compiler executable for the host platform. Run the test command from the repository root so it finds the workspace manifest and the centralized `Tests/` tree.
+
+The cross job needs the emulator and the guest C library, and then is one command:
+
+```sh
+sudo apt-get install -y qemu-user libc6-arm64-cross
+export RUX_AARCH64_RCU=1 RUX_QEMU_SYSROOT=/usr/aarch64-linux-gnu
+./Bin/rux check --target linux-aarch64
+./Bin/rux test --release --target linux-aarch64
+```
+
+`sh Test.sh --target linux-aarch64` runs the same suites through the whole gate, adding the policy checks, the format pass and the C++ unit tests, which stay on the host.
 
 The Windows required check is the same flow, prefixed by the developer-environment step CI uses. From PowerShell at the repository root:
 

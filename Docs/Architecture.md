@@ -56,6 +56,8 @@ The CMake target graph enforces these dependencies. Prefer adding a dependency t
 
 Operating-system APIs are confined to `Compiler/System`; the CI isolation guard is `Tests/Policy/PlatformIsolation/Check.sh`. New uses of `getenv`, `<windows.h>`, `fork`, or similar APIs belong behind a `System` interface.
 
+Process launches are confined the same way, and for a stronger reason: Rux encodes its own machine code and links its own artifacts, so no stage may call out to an assembler, a C compiler, a linker or an archiver. `Tests/Policy/NoExternalToolchain/Check.sh` is that guard, and the files still allowed to name or launch such a program are listed at the top of it.
+
 The language parses the same for every target, with one exception: an `asm func` body is machine text rather than Rux, so `Parser` takes the target architecture and reads the body with that architecture's register table (`Target/AsmRegisters.h`). The mnemonics are checked later — a body whose instructions belong to the other architecture is an error reported during semantic analysis, after `when` folding has dropped the branches this build never reaches. A function that must reach both machines therefore writes a body per architecture under `when #target.arch`, as the platform packages' system-call wrappers do.
 
 ## Architecture Naming

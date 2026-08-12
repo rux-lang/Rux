@@ -34,6 +34,21 @@ jobs:
       - name: Check platform isolation
         run: sh Tests/Policy/PlatformIsolation/Check.sh
 
+  no-external-toolchain:
+    name: No external toolchain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Rux assembles and links its own artifacts: no assembler, C compiler,
+      # linker or archiver may be invoked from Compiler/.
+      - name: Check for external toolchain use
+        run: sh Tests/Policy/NoExternalToolchain/Check.sh
+
   format:
     name: clang-format
     runs-on: ubuntu-24.04

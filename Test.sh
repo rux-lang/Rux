@@ -154,8 +154,9 @@ fi
 started_at=$(date +%s)
 cd "$repository_root"
 
-step "Checking platform isolation"
+step "Checking source-tree policy"
 sh Tests/Policy/PlatformIsolation/Check.sh
+sh Tests/Policy/NoExternalToolchain/Check.sh
 
 if [ "$skip_build" = false ]; then
     if [ -n "$compiler" ]; then

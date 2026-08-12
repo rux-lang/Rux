@@ -211,9 +211,10 @@ $clangTidyExecutable = if ($ClangTidy) {
 $startedAt = Get-Date
 Push-Location $repositoryRoot
 try {
-    Write-Step "Checking platform isolation"
+    Write-Step "Checking source-tree policy"
     # A login shell ensures Git for Windows adds dirname and grep to PATH.
     Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/PlatformIsolation/Check.sh")
+    Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/NoExternalToolchain/Check.sh")
 
     if (-not $SkipBuild) {
         & (Join-Path $repositoryRoot "Build.ps1") `

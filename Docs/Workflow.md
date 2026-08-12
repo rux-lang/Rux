@@ -77,7 +77,7 @@ There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan
 | `Tests/Language/`       | Executable Rux language and compiler-behavior tests (`rux test`)                |
 | `Tests/Packages/`       | Executable first-party package tests grouped as `<Package>/<Test>` (`rux test`) |
 | `Tests/Unit/`           | C++ unit tests and their `Golden/` diagnostic fixtures (doctest + CTest)        |
-| `Tests/Policy/`         | Repository-policy checks, including platform isolation                          |
+| `Tests/Policy/`         | Repository-policy checks: platform isolation and external-toolchain use         |
 | `Packaging/`            | Linux and Windows installer scripts plus the Windows MSI project                |
 | `Bin/`                  | Compiler and centralized test executables; **git-ignored**                      |
 | `CMakeLists.txt`        | Top-level build entry: project `VERSION` + `add_subdirectory(Compiler)`         |
@@ -107,6 +107,8 @@ Supporting layers around the pipeline:
 - **Packages & manifests** — `Package/Package.cpp`, `Package/Manifest.cpp` (parse `Rux.toml`, resolve dependencies).
 - **Target and system layers** — `Target/` models the machine being compiled for; `System/` isolates services of the host running the compiler. Direct OS
   API calls (`getenv`, `<windows.h>`, `fork`, ...) are allowed only in `System/`; CI enforces this with `Tests/Policy/PlatformIsolation/Check.sh`.
+- **No external toolchain** — the compiler assembles and links its own artifacts, so nothing under `Compiler/` may name or launch an assembler, C compiler,
+  linker or archiver. `Tests/Policy/NoExternalToolchain/Check.sh` enforces that, with the remaining exceptions listed at the top of the script.
 
 ## 5. Testing
 
