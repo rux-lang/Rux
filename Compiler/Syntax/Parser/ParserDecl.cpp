@@ -742,8 +742,13 @@ std::vector<AsmInstr> Parser::ParseAsmBody() {
         instr.mnemonic = LowerAsmName(Advance().text);
 
         // AArch64 writes a branch's condition into its name — `B.EQ` — and the
-        // lexer hands the three pieces over separately.
-        if (arch == Target::Arch::AArch64 && Check(TokenKind::Dot) && IsAsmNameToken(Peek(1))) {
+        // lexer hands the three pieces over separately. Nothing in x86-64
+        // syntax joins a mnemonic to a name with a dot, so the form is read
+        // there too, for the reason CanStartAsmOperand reads '#' there: a
+        // `when #target.arch` arm for another architecture has to parse before
+        // it can be discarded, and what survives is reported as the foreign
+        // instruction it is rather than as a stray token.
+        if (Check(TokenKind::Dot) && IsAsmNameToken(Peek(1))) {
             Advance(); // '.'
             instr.mnemonic += '.';
             instr.mnemonic += LowerAsmName(Advance().text);

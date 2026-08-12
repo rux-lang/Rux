@@ -8,6 +8,18 @@ asm func Load(p: *int64) -> int64 {
     ret
 }
 
+// A conditional branch carries its condition in its name, joined by a dot that
+// no x86-64 mnemonic has. It is read here for the same reason '#' is: a
+// `when #target.arch` arm written for another architecture has to parse before
+// it can be discarded, and what is not discarded is named as what it is.
+asm func Negative(a: int64) -> int64 {
+    cmp x0, xzr
+    b.lt done
+    mov x0, xzr
+done:
+    ret
+}
+
 func Main() -> int {
     return 0;
 }

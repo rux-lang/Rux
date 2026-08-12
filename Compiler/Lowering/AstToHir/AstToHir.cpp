@@ -220,6 +220,12 @@ private:
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methodsByType;
     std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> typeInterfaceVtables;
+    // The `extend` block each method was declared in. A method of a block that
+    // names no type parameter of its own is emitted once, with the block, and
+    // must not also be monomorphized: both copies would carry the same mangled
+    // name, and the receiver a monomorphization assumes is not the one the
+    // block lowers.
+    std::unordered_map<const FuncDecl *, const ImplDecl *> methodImpl;
     std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
 
     // Free functions live in a single flat lookup table, so a module path is
@@ -441,6 +447,7 @@ private:
                 implDecl->typeName.starts_with("Slice<") ? implDecl->typeName : BaseTypeName(implDecl->typeName);
             for (const auto &method : implDecl->methods) {
                 methodsByType[typeName][method->name].push_back(method.get());
+                methodImpl[method.get()] = implDecl;
             }
             if (implDecl->interfaceName) {
                 typeInterfaceVtables[typeName][*implDecl->interfaceName] =
@@ -1490,10 +1497,20 @@ private:
         return out.empty() ? "_" : out;
     }
 
+    // Whether the `extend` block a method was declared in already names every
+    // type argument its receiver has — `extend Slice<int>` rather than
+    // `extend List<T>`. Such a block is lowered as it stands, so its methods
+    // need no monomorphization even though the receiver substitutes a struct's
+    // type parameter.
+    [[nodiscard]] bool MethodIsFromConcreteImpl(const FuncDecl &method) const {
+        const auto it = methodImpl.find(&method);
+        return it != methodImpl.end() && ImplTypeParams(*it->second).empty();
+    }
+
     std::string ConcreteMethodCalleeName(const std::string &typeName, const TypeRef &receiverType,
                                          const FuncDecl &method) {
         const auto substitutions = MethodTypeSubstitutions(receiverType);
-        if (substitutions.empty()) {
+        if (substitutions.empty() || MethodIsFromConcreteImpl(method)) {
             return CalleeName(typeName, method.name, receiverType, method);
         }
 

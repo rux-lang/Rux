@@ -2181,6 +2181,32 @@ private:
         }
     }
 
+    // The same movement into the registers a location names, from a value that
+    // lives at an address rather than in a slot of its own. A `ret` whose
+    // operand is the alloca holding the value is the one place that happens:
+    // the slot there holds the address, so reading the slot would return the
+    // pointer instead of what it points at.
+    void LoadResultFromAddress(const ArgLocation &loc, const A64Reg base, const TypeRef &type) {
+        if (loc.kind == ArgLocation::Kind::Vector) {
+            for (unsigned i = 0; i < loc.count; ++i) {
+                const A64Reg member = A64::Vn(loc.first + i, loc.memberBytes * 8U);
+                LoadScalar(member, base, static_cast<std::int64_t>(i) * loc.memberBytes, loc.memberBytes, false);
+            }
+            return;
+        }
+        if (loc.count > 1) {
+            for (unsigned i = 0; i < loc.count; ++i) {
+                LoadScalar(A64::Xn(loc.first + i), base, static_cast<std::int64_t>(i) * 8, 8, false);
+            }
+            return;
+        }
+        // One register: an aggregate that fits in it carries whatever padding
+        // follows it, and a scalar is read at its own width and signedness.
+        const bool aggregate = IsAggregate(type);
+        LoadScalar(A64::Xn(loc.first), base, 0, aggregate ? 8U : AccessWidth(RuntimeSize(type)),
+                   !aggregate && type.IsSigned());
+    }
+
     // Put the arguments where the callee will look for them. Everything that
     // travels in memory goes first, while no argument register holds anything
     // yet: a value is read out of its slot through X9 and an aggregate is moved
@@ -3202,14 +3228,29 @@ private:
         }
         case LirTermKind::Return: {
             if (term.retVal && *term.retVal != LirNoReg) {
+                // A value built in place is named by the alloca that holds it,
+                // so the operand is a pointer to the result rather than the
+                // result: it is read through that address, and its slot is the
+                // address itself.
+                const bool throughPointer = IsRegPointerTo(*term.retVal, term.retType);
                 if (indirectResultOff != 0) {
                     // The caller named the memory and the prologue kept the
                     // address; the value is copied there and no register carries
                     // any of it back.
                     const A64Reg destination = A64::Xn(kAddr);
                     LoadScalar(destination, A64::Fp, indirectResultOff, 8, false);
-                    CopyBlock(destination, 0, A64::Fp, Disp(*term.retVal), RuntimeSize(term.retType),
-                              RuntimeAlign(term.retType) >= 8);
+                    A64Reg source = A64::Xn(kSrcAddr);
+                    if (throughPointer) {
+                        source = ReadPointerOperand(*term.retVal, source);
+                    }
+                    else {
+                        SlotAddress(source, *term.retVal);
+                    }
+                    CopyBlock(destination, 0, source, 0, RuntimeSize(term.retType), RuntimeAlign(term.retType) >= 8);
+                }
+                else if (throughPointer) {
+                    LoadResultFromAddress(ResultLocation(term.retType),
+                                          ReadPointerOperand(*term.retVal, A64::Xn(kSrcAddr)), term.retType);
                 }
                 else {
                     // X0 and V0 carry everything else, the load extending a

@@ -1,0 +1,327 @@
+import Core::{ #target, #Error };
+
+// Every body below is AArch64 machine code, written to exercise the four
+// things an `asm func` can do that the code generator never emits on its own:
+// arithmetic across both register widths, memory reached through the caller's
+// pointers and through a frame the body opens for itself, control flow through
+// every branch form the assembler encodes, and a system call.
+//
+// Nothing here is portable, so on any other architecture the package is one
+// function that passes. The x86-64 side of inline assembly is Tests/Language/Asm.
+when #target.arch {
+    .AArch64 => {
+        // Arithmetic
+        //
+        // The register and immediate forms of the same operator, so that a
+        // wrong immediate encoding shows as a wrong answer rather than as a
+        // refusal.
+
+        // (a + b) - 1, then doubled: add and sub in both forms.
+        asm func AddSub(a: int64, b: int64) -> int64 {
+            add x0, x0, x1
+            sub x0, x0, #1
+            add x0, x0, x0
+            ret
+        }
+
+        // a * b - c and a * b + c, which are one instruction each.
+        asm func MulAddSub(a: int64, b: int64, c: int64) -> int64 {
+            madd x3, x0, x1, x2
+            msub x4, x0, x1, x2
+            sub x0, x3, x4
+            ret
+        }
+
+        // The quotient and the remainder, the second built out of the first.
+        asm func DivRem(a: int64, b: int64) -> int64 {
+            sdiv x2, x0, x1
+            msub x3, x2, x1, x0
+            add x0, x2, x3
+            ret
+        }
+
+        // The three shifts, so that the arithmetic one is told apart from the
+        // logical one by a negative operand.
+        asm func Shifts(x: int64) -> int64 {
+            lsl x1, x0, #3
+            asr x2, x0, #1
+            lsr x3, x0, #60
+            add x0, x1, x2
+            add x0, x0, x3
+            ret
+        }
+
+        // and, orr, eor and bic against a bitmask immediate and a register.
+        asm func Bitwise(a: int64, b: int64) -> int64 {
+            and x2, x0, x1
+            orr x3, x0, x1
+            eor x4, x2, x3
+            mov x6, #0xF
+            bic x5, x4, x6
+            mvn x0, x5
+            ret
+        }
+
+        // The W registers are the same file at 32 bits: the result wraps
+        // because the top half is discarded, not because anything masks it.
+        asm func Narrow(a: int32, b: int32) -> int32 {
+            mul w0, w0, w1
+            add w0, w0, #1
+            ret
+        }
+
+        // The sign and zero extensions of a byte and a halfword.
+        asm func Extend(x: int64) -> int64 {
+            sxtb x1, w0
+            uxth w2, w0
+            add x0, x1, x2
+            ret
+        }
+
+        // A constant wider than any immediate, assembled a quarter at a time.
+        asm func WideConstant() -> int64 {
+            movz x0, #0x1234, lsl #48
+            movk x0, #0x5678, lsl #32
+            movk x0, #0x9ABC, lsl #16
+            movk x0, #0xDEF0
+            ret
+        }
+
+        // Memory
+        //
+        // The caller's pointer arrives in x0, so these read and write the
+        // storage `Main` owns, and the frame ones open a frame of their own —
+        // AAPCS64 promises no red zone.
+
+        // Two doublewords in one instruction, added.
+        asm func SumPair(values: *int64) -> int64 {
+            ldp x1, x2, [x0]
+            add x0, x1, x2
+            ret
+        }
+
+        // The same instruction in the other direction, at an offset.
+        asm func WritePair(values: *int64, a: int64, b: int64) {
+            stp x1, x2, [x0, #16]
+            ret
+        }
+
+        // The narrow loads, each extending the way its own mnemonic says.
+        asm func NarrowLoads(bytes: *uint8) -> int64 {
+            ldrb w1, [x0]
+            ldrsb x2, [x0, #1]
+            ldrh w3, [x0, #2]
+            ldrsh x4, [x0, #4]
+            add x0, x1, x2
+            add x0, x0, x3
+            add x0, x0, x4
+            ret
+        }
+
+        // A signed word widened on the way in, and a byte written back out.
+        asm func WidenAndTag(words: *int32) -> int64 {
+            ldrsw x1, [x0]
+            mov w2, #255
+            strb w2, [x0, #4]
+            mov x0, x1
+            ret
+        }
+
+        // A frame this body opens, spills both arguments into, and reads back
+        // through the pre- and post-indexed forms of the pair instructions.
+        asm func RoundTrip(a: int64, b: int64) -> int64 {
+            stp x0, x1, [sp, #-32]!
+            ldp x2, x3, [sp], #32
+            sub x0, x2, x3
+            ret
+        }
+
+        // Branches
+        //
+        // Every conditional form the assembler encodes, and a call.
+
+        // The flags and the one instruction that reads them into a register.
+        asm func Max(a: int64, b: int64) -> int64 {
+            cmp x0, x1
+            csel x0, x0, x1, gt
+            ret
+        }
+
+        // A loop whose exit is the zero test itself.
+        asm func SumTo(n: int64) -> int64 {
+            mov x1, x0
+            mov x0, xzr
+        next:
+            cbz x1, done
+            add x0, x0, x1
+            sub x1, x1, #1
+            cbnz x1, next
+        done:
+            ret
+        }
+
+        // A single bit decides the branch, which no comparison precedes.
+        asm func LowBit(x: int64) -> int64 {
+            tbz x0, #0, even
+            mov x0, #1
+            ret
+        even:
+            tbnz x0, #1, two
+            mov x0, #0
+            ret
+        two:
+            mov x0, #2
+            ret
+        }
+
+        // A three-way ladder over the condition codes, and the boolean form of
+        // the same flags beside it.
+        asm func Ladder(a: int64, b: int64) -> int64 {
+            cmp x0, x1
+            b.lt less
+            b.gt greater
+            mov x0, #0
+            ret
+        less:
+            mov x0, #-1
+            ret
+        greater:
+            cset x0, ne
+            ret
+        }
+
+        // A call to another body: the link register is this function's to
+        // preserve, which a leaf never has to.
+        asm func Twice(x: int64) -> int64 {
+            add x0, x0, x0
+            ret
+        }
+
+        asm func TwiceThenSquare(x: int64) -> int64 {
+            stp x29, x30, [sp, #-16]!
+            bl Twice
+            mul x0, x0, x0
+            ldp x29, x30, [sp], #16
+            ret
+        }
+
+        // System calls
+        //
+        // The kernel takes the call number in x8 and the arguments in x0
+        // onwards, and leaves the result in x0 — a negative errno where the
+        // call failed.
+
+        // getpid, which cannot fail and whose answer is always positive.
+        asm func RawGetPid() -> int64 {
+            mov x8, #172
+            svc #0
+            ret
+        }
+
+        // write to a descriptor that is not open, which is -EBADF. Reading the
+        // error back is what proves the result register rather than the
+        // argument registers.
+        asm func WriteToClosedFd(buffer: *uint8) -> int64 {
+            mov x1, x0
+            mov x0, #-1
+            mov x2, #1
+            mov x8, #64
+            svc #0
+            ret
+        }
+
+        func Main() -> int {
+            // Arithmetic
+            if AddSub(20i64, 3i64) != 44i64 {
+                return 1;
+            }
+            if MulAddSub(6i64, 7i64, 5i64) != 84i64 {
+                return 2;
+            }
+            if DivRem(47i64, 5i64) != 11i64 {
+                return 3;
+            }
+            if Shifts(-16i64) != -121i64 {
+                return 4;
+            }
+            if Bitwise(0xF0i64, 0x3Ci64) != -193i64 {
+                return 5;
+            }
+            if Narrow(65536i32, 65536i32) != 1i32 {
+                return 6;
+            }
+            if Extend(0x1FFi64) != 510i64 {
+                return 7;
+            }
+            if WideConstant() != 0x123456789ABCDEF0i64 {
+                return 8;
+            }
+
+            // Memory
+            var words: int64[4] = [11i64, 31i64, 0i64, 0i64];
+            let cells = @words[0];
+            if SumPair(cells) != 42i64 {
+                return 9;
+            }
+            WritePair(cells, 5i64, 9i64);
+            if words[2] != 5i64 || words[3] != 9i64 {
+                return 10;
+            }
+
+            var bytes: uint8[6] = [1u8, 255u8, 2u8, 0u8, 0u8, 128u8];
+            if NarrowLoads(@bytes[0]) != -32766i64 {
+                return 11;
+            }
+
+            var halves: int32[2] = [-7i32, 0i32];
+            if WidenAndTag(@halves[0]) != -7i64 {
+                return 12;
+            }
+            if halves[1] != 255i32 {
+                return 13;
+            }
+
+            if RoundTrip(30i64, 12i64) != 18i64 {
+                return 14;
+            }
+
+            // Branches
+            if Max(4i64, 9i64) != 9i64 || Max(9i64, 4i64) != 9i64 {
+                return 15;
+            }
+            if SumTo(100i64) != 5050i64 {
+                return 16;
+            }
+            if LowBit(5i64) != 1i64 || LowBit(2i64) != 2i64 || LowBit(4i64) != 0i64 {
+                return 17;
+            }
+            if Ladder(1i64, 2i64) != -1i64 {
+                return 18;
+            }
+            if Ladder(2i64, 1i64) != 1i64 {
+                return 19;
+            }
+            if Ladder(3i64, 3i64) != 0i64 {
+                return 20;
+            }
+            if TwiceThenSquare(5i64) != 100i64 {
+                return 21;
+            }
+
+            // System calls
+            if RawGetPid() <= 0i64 {
+                return 22;
+            }
+            if WriteToClosedFd(@bytes[0]) != -9i64 {
+                return 23;
+            }
+
+            return 0;
+        }
+    },
+    else => {
+        func Main() -> int {
+            return 0;
+        }
+    }
+}
