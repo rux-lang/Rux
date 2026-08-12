@@ -1,5 +1,6 @@
 #include "Driver/BuildTarget.h"
 #include "Driver/Version.h"
+#include "ElfReader.h"
 #include "MachOReader.h"
 #include "System/Os.h"
 #include "System/Process.h"
@@ -31,6 +32,11 @@ System::RunResult Run(const std::array<std::string_view, N> &arguments) {
     const auto result = System::RunCaptured(RuxExecutable(), arguments);
     REQUIRE(result.has_value());
     return *result;
+}
+
+std::vector<unsigned char> ReadBinaryFile(const std::filesystem::path &path) {
+    std::ifstream input(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
 }
 
 uint16_t Read16(const std::vector<unsigned char> &bytes, const std::size_t offset) {
@@ -137,6 +143,35 @@ TEST_CASE("CLI checks and builds the canonical macOS AArch64 target through its 
     const auto rejected = Run(std::array<std::string_view, 3>{"run", "--target", "macos-aarch64"});
     CHECK(rejected.exitCode == 2);
     CHECK(rejected.output.contains("unknown option '--target' for command 'run'"));
+}
+
+TEST_CASE("CLI checks and builds the canonical FreeBSD AArch64 target through its ARM64 alias") {
+    const auto manifest = ArithmeticManifest();
+    const auto check =
+        Run(std::array<std::string_view, 6>{"--manifest", manifest, "check", "--target", "freebsd-arm64", "--quiet"});
+    REQUIRE(check.exitCode == 0);
+
+    const auto result = Run(std::array<std::string_view, 7>{"--manifest", manifest, "build", "--release", "--target",
+                                                            "freebsd-arm64", "--quiet"});
+
+    REQUIRE(result.exitCode == 0);
+    CHECK_FALSE(result.output.contains("not implemented"));
+    CHECK_FALSE(result.output.contains("cannot run"));
+
+    auto output = std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release";
+    if (Driver::HostTargetTriple() != "freebsd-aarch64") {
+        output /= "freebsd-aarch64";
+    }
+    output /= "Arithmetic";
+    REQUIRE(std::filesystem::is_regular_file(output));
+
+    Testing::ElfImage image{ReadBinaryFile(output)};
+    REQUIRE(image.bytes.size() >= 64);
+    CHECK(image.OsAbi() == 9);     // ELFOSABI_FREEBSD
+    CHECK(image.Type() == 2);      // ET_EXEC
+    CHECK(image.Machine() == 183); // EM_AARCH64
+    CHECK(image.Entry() != 0);
+    CHECK(image.Interpreter().empty());
 }
 
 TEST_CASE("target tests reject a foreign operating system before discovering packages") {

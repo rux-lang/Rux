@@ -184,12 +184,12 @@ std::string UnsupportedBackendReason(const std::string_view target) {
     // toolchain or failing with an artifact-dependent diagnostic.
     if (arch == Arch::AArch64) {
         const OS os = TargetTripleOs(triple);
-        if (os == OS::Linux || os == OS::Windows || os == OS::MacOS) {
+        if (os == OS::Linux || os == OS::FreeBSD || os == OS::Windows || os == OS::MacOS) {
             return {};
         }
         return std::format(
-            "code generation for '{}' is not implemented yet; the {} back end supports Linux ELF, Windows PE, and "
-            "macOS Mach-O",
+            "code generation for '{}' is not implemented yet; the {} back end supports Linux and FreeBSD ELF, "
+            "Windows PE, and macOS Mach-O",
             triple, ToDisplayString(arch));
     }
     return std::format("code generation for architecture '{}' is not implemented yet; there is no back end for '{}'",

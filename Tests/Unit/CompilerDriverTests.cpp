@@ -1,5 +1,7 @@
+#include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
+#include "ElfReader.h"
 #include "MachOReader.h"
 #include "System/Os.h"
 #include "System/Process.h"
@@ -11,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <ranges>
 #include <string>
 #include <utility>
 #include <vector>
@@ -108,6 +111,41 @@ module Api {
 import Dependency::Api::Answer;
 
 pub func SelectedAnswer() -> int {
+    return Answer();
+}
+
+func Main() -> int {
+    return SelectedAnswer();
+}
+)");
+    }
+
+    void ConfigureFreeBSDTargetDependencies() {
+        application.dependencies.front().targetOS = {Target::OS::FreeBSD};
+
+        Manifest nonTarget;
+        nonTarget.package.name = *IdentitySegment::Parse("WindowsOnly");
+        nonTarget.package.version = *SemanticVersion::Parse("0.1.0");
+        nonTarget.package.type = ManifestPackageType::SourceLibrary;
+        REQUIRE(nonTarget.Save(nonTargetRoot / "Rux.toml"));
+        REQUIRE(WriteFile(nonTargetRoot / "Src" / "Api.rux", R"(
+module Api {
+    pub func Answer() -> int {
+        return MissingWindowsImplementation;
+    }
+}
+)"));
+        REQUIRE(application.AddPathDependency(*IdentitySegment::Parse("WindowsOnly"), "../WindowsOnly"));
+        application.dependencies.back().targetOS = {Target::OS::Windows};
+
+        SetApplicationSource(R"(
+import Dependency::Api::Answer;
+
+#Link("libc.so.7")
+extern func puts(str: *char8) -> int32;
+
+pub func SelectedAnswer() -> int {
+    puts("FreeBSD AArch64 driver test".data);
     return Answer();
 }
 
@@ -316,6 +354,48 @@ Testing::MachOImage ReadMacOSAArch64Image(const std::filesystem::path &path) {
     CHECK(image.codeSignature->offset + image.codeSignature->size == bytes.size());
     CHECK(image.codeDirectory->codeLimit == image.codeSignature->offset);
     return image;
+}
+
+Testing::ElfImage ReadFreeBSDAArch64Image(const std::filesystem::path &path) {
+    Testing::ElfImage image{ReadBinaryFile(path)};
+    REQUIRE(image.bytes.size() >= 64);
+    CHECK(image.bytes[0] == 0x7F);
+    CHECK(image.bytes[1] == 'E');
+    CHECK(image.bytes[4] == 2); // ELFCLASS64
+    CHECK(image.OsAbi() == 9);  // ELFOSABI_FREEBSD
+    CHECK(image.Machine() == 183);
+    return image;
+}
+
+std::size_t InspectFreeBSDAArch64Archive(const std::filesystem::path &path) {
+    const auto archive = ReadBinaryFile(path);
+    if (archive.size() < 8 || std::string(archive.begin(), archive.begin() + 8) != "!<arch>\n") {
+        return 0;
+    }
+
+    std::size_t objects = 0;
+    for (std::size_t at = 8; at + 60 <= archive.size();) {
+        std::string size;
+        for (std::size_t i = 48; i < 58 && archive[at + i] != ' '; ++i) {
+            size.push_back(static_cast<char>(archive[at + i]));
+        }
+        if (size.empty()) {
+            break;
+        }
+        const auto memberSize = static_cast<std::size_t>(std::stoul(size));
+        const std::size_t body = at + 60;
+        if (body + memberSize > archive.size()) {
+            break;
+        }
+        if (memberSize >= 20 && archive[body] == 0x7F && archive[body + 1] == 'E') {
+            CHECK(archive[body + 7] == 9);            // ELFOSABI_FREEBSD
+            CHECK(Read16(archive, body + 16) == 1);   // ET_REL
+            CHECK(Read16(archive, body + 18) == 183); // EM_AARCH64
+            ++objects;
+        }
+        at = body + memberSize + (memberSize & 1U);
+    }
+    return objects;
 }
 
 } // namespace
@@ -671,6 +751,140 @@ TEST_CASE("compiler driver target dependency errors name macOS AArch64 rather th
     CHECK(diagnostics.front().message.contains("TargetOS"));
 }
 
+TEST_CASE("compiler driver builds a FreeBSD AArch64 executable with target-conditioned dependencies") {
+    DependencyFixture fixture;
+    fixture.ConfigureFreeBSDTargetDependencies();
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.targetName = "freebsd-aarch64";
+    options.profileName = "Release";
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CAPTURE(diagnostics.empty() ? std::string{} : diagnostics.front().message);
+    REQUIRE(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.stats.dependencyFiles == 1);
+    CHECK(result.secondaryArtifactPaths.empty());
+    CHECK(result.primaryArtifactPath.filename() == "App");
+    if (HostTargetTriple() != "freebsd-aarch64") {
+        CHECK(result.primaryArtifactPath.parent_path().filename() == "freebsd-aarch64");
+        CHECK(result.primaryArtifactPath.parent_path().parent_path().filename() == "Release");
+    }
+    REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
+
+    const auto image = ReadFreeBSDAArch64Image(result.primaryArtifactPath);
+    CHECK(image.Type() == 2); // ET_EXEC
+    CHECK(image.Entry() != 0);
+    CHECK(image.Entry() % 4 == 0);
+    CHECK(image.Interpreter() == "/libexec/ld-elf.so.1");
+    CHECK(std::ranges::contains(image.NeededLibraries(), "libc.so.7"));
+    const auto relocations = image.PltRelocations();
+    REQUIRE_FALSE(relocations.empty());
+    CHECK(std::ranges::all_of(relocations, [](const Testing::ElfImage::Rela &relocation) {
+        return relocation.type == 1026; // R_AARCH64_JUMP_SLOT
+    }));
+}
+
+TEST_CASE("compiler driver canonicalizes FreeBSD ARM64 as AArch64 and builds a shared library") {
+    DependencyFixture fixture;
+    fixture.ConfigureFreeBSDTargetDependencies();
+    fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.targetName = "freebsd-arm64";
+    options.profileName = "Release";
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CAPTURE(diagnostics.empty() ? std::string{} : diagnostics.front().message);
+    REQUIRE(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.stats.dependencyFiles == 1);
+    CHECK(result.secondaryArtifactPaths.empty());
+    CHECK(result.primaryArtifactPath.filename() == "libApp.so");
+    if (HostTargetTriple() != "freebsd-aarch64") {
+        CHECK(result.primaryArtifactPath.parent_path().filename() == "freebsd-aarch64");
+    }
+    REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
+
+    const auto image = ReadFreeBSDAArch64Image(result.primaryArtifactPath);
+    CHECK(image.Type() == 3); // ET_DYN
+    CHECK(image.Entry() == 0);
+    CHECK(image.Interpreter().empty());
+    CHECK(image.Soname() == "libApp.so");
+    CHECK(std::ranges::contains(image.NeededLibraries(), "libc.so.7"));
+    const auto symbols = image.DynamicSymbols();
+    CHECK(std::ranges::contains(symbols, "SelectedAnswer", &Testing::ElfImage::DynamicSymbol::name));
+    const auto relocations = image.PltRelocations();
+    REQUIRE_FALSE(relocations.empty());
+    CHECK(std::ranges::all_of(relocations, [](const Testing::ElfImage::Rela &relocation) {
+        return relocation.type == 1026; // R_AARCH64_JUMP_SLOT
+    }));
+
+    CHECK(CanonicalTargetTriple("freebsd-arm64") == "freebsd-aarch64");
+    const auto report = FormatBuildStats(result.primaryArtifactPath, "Release", "freebsd-arm64", result.stats, false);
+    CHECK(report.contains("Target: FreeBSD AArch64 (freebsd-aarch64)\n"));
+}
+
+TEST_CASE("compiler driver builds a FreeBSD AArch64 static library from relocatable ELF members") {
+    DependencyFixture fixture;
+    fixture.ConfigureFreeBSDTargetDependencies();
+    fixture.SetApplicationType(ManifestPackageType::StaticLibrary);
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.targetName = "freebsd-aarch64";
+    options.profileName = "Release";
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CAPTURE(diagnostics.empty() ? std::string{} : diagnostics.front().message);
+    REQUIRE(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.stats.dependencyFiles == 1);
+    CHECK(result.secondaryArtifactPaths.empty());
+    CHECK(result.primaryArtifactPath.filename() == "libApp.a");
+    if (HostTargetTriple() != "freebsd-aarch64") {
+        CHECK(result.primaryArtifactPath.parent_path().filename() == "freebsd-aarch64");
+    }
+    REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
+    CHECK(InspectFreeBSDAArch64Archive(result.primaryArtifactPath) > 0);
+}
+
+TEST_CASE("compiler driver checks FreeBSD AArch64 source libraries and reports missing target dependencies") {
+    SUBCASE("a matching FreeBSD dependency is selected without loading a host package") {
+        DependencyFixture fixture;
+        fixture.ConfigureFreeBSDTargetDependencies();
+        fixture.SetApplicationType(ManifestPackageType::SourceLibrary);
+        std::vector<Diagnostic> diagnostics;
+        auto options = fixture.Options(true, diagnostics);
+        options.targetName = "freebsd-aarch64";
+
+        const auto result = CompilerDriver(std::move(options)).Compile();
+
+        CAPTURE(diagnostics.empty() ? std::string{} : diagnostics.front().message);
+        CHECK(result.ok);
+        CHECK(diagnostics.empty());
+        CHECK(result.stats.dependencyFiles == 1);
+        CHECK(result.primaryArtifactPath.empty());
+    }
+
+    SUBCASE("an unavailable dependency names the requested target") {
+        DependencyFixture fixture;
+        fixture.SetDependencyTargets({Target::OS::Windows});
+        std::vector<Diagnostic> diagnostics;
+        auto options = fixture.Options(true, diagnostics);
+        options.targetName = "freebsd-aarch64";
+
+        const auto result = CompilerDriver(std::move(options)).Compile();
+
+        CHECK_FALSE(result.ok);
+        REQUIRE(diagnostics.size() == 1);
+        CHECK(diagnostics.front().message.contains("freebsd-aarch64"));
+        CHECK(diagnostics.front().message.contains("TargetOS"));
+    }
+}
+
 TEST_CASE("compiler driver links a SharedLibrary package as a native shared library") {
     DependencyFixture fixture;
     fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
@@ -855,20 +1069,25 @@ TEST_CASE("the unsupported-target diagnostic follows the back end that would pro
     CHECK(UnsupportedBackendReason("windows-x86_64").empty());
     CHECK(UnsupportedBackendReason("macos-x86_64").empty());
 
-    // AArch64 reaches ELF, Windows PE, and Mach-O under either spelling of the
-    // triple, from a host of either architecture.
+    // AArch64 reaches Linux and FreeBSD ELF, Windows PE, and Mach-O under
+    // either spelling of the triple, from a host of either architecture.
     CHECK(UnsupportedBackendReason("linux-aarch64").empty());
     CHECK(UnsupportedBackendReason("linux-arm64").empty());
     CHECK(UnsupportedBackendReason("windows-aarch64").empty());
     CHECK(UnsupportedBackendReason("windows-arm64").empty());
     CHECK(UnsupportedBackendReason("macos-aarch64").empty());
     CHECK(UnsupportedBackendReason("macos-arm64").empty());
+    CHECK(UnsupportedBackendReason("freebsd-aarch64").empty());
+    CHECK(UnsupportedBackendReason("freebsd-arm64").empty());
 
-    // Enabling PE does not widen the existing ELF support to other systems.
-    const std::string freebsd = UnsupportedBackendReason("freebsd-aarch64");
-    CHECK(freebsd.contains("freebsd-aarch64"));
-    CHECK(freebsd.contains("not implemented yet"));
-    CHECK(freebsd.contains("Linux ELF, Windows PE, and macOS Mach-O"));
+    // FreeBSD support does not widen ELF output to the other System V targets.
+    for (const std::string_view target :
+         {"openbsd-aarch64", "netbsd-aarch64", "dragonfly-aarch64", "illumos-aarch64"}) {
+        const std::string reason = UnsupportedBackendReason(target);
+        CHECK(reason.contains(std::string(target)));
+        CHECK(reason.contains("not implemented yet"));
+        CHECK(reason.contains("Linux and FreeBSD ELF, Windows PE, and macOS Mach-O"));
+    }
 
     // An architecture with no back end at all names itself rather than a host.
     const std::string riscv = UnsupportedBackendReason("linux-riscv64");

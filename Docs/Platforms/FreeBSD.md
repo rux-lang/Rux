@@ -26,18 +26,43 @@ sh Build.sh
 
 The FreeBSD package names the compiler `clang++22`; `Build.sh` detects it automatically. The script creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
 
-On AArch64, Rux selects the `freebsd-aarch64` target automatically, and that
-target has no code generator: the AArch64 back end targets Linux, so building
-for `freebsd-aarch64` is refused with `code generation for 'freebsd-aarch64' is
-not implemented yet`. `rux check`, `rux fmt`, `rux lint` and `rux doc` need no
-back end and work as they do everywhere, and the machine can still build `rux`
-itself and cross-build for `freebsd-x86_64` or `linux-aarch64`.
+On AArch64, Rux selects the `freebsd-aarch64` target automatically. The same
+target is available explicitly to `build` and `check` on every supported host;
+`freebsd-arm64` is accepted as an alias and canonicalized to
+`freebsd-aarch64` before target conditions, reports, and output paths are
+selected.
 
 ## Native Package Artifacts
 
 An `Executable` package writes `Name`, a `SharedLibrary` writes `libName.so` with its SONAME, and a `StaticLibrary` writes `libName.a` with a GNU archive symbol index. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
 
-The x86-64 backend writes ELF objects and images directly, from a host of either architecture. The AArch64 back end writes the same ELF forms for `linux-aarch64`; a FreeBSD arm of it is not written yet.
+Both back ends write FreeBSD ELF objects and images directly, from a host of
+either architecture. FreeBSD AArch64 executables use `/libexec/ld-elf.so.1`
+and `libc.so.7` when they import functions. Shared libraries omit executable
+entry and interpreter state, and static libraries contain FreeBSD AArch64
+relocatable ELF members. No target sysroot, assembler, compiler, linker, or
+archiver is consulted.
+
+## Cross-Compiling
+
+Use the canonical target or its `arm64` compatibility alias:
+
+```sh
+./Bin/rux check --target freebsd-aarch64
+./Bin/rux build --release --target freebsd-arm64
+```
+
+A foreign build uses a target-separated directory. With the default output,
+the example above writes `Bin/Release/freebsd-aarch64/Name`; a native
+`freebsd-aarch64` build keeps the historical `Bin/Release/Name` path. Build
+reports always identify the canonical `freebsd-aarch64` target.
+
+`rux run` remains host-only and has no `--target` option. `rux test --target
+freebsd-aarch64` runs only on FreeBSD when AArch64 is either the compiler
+process architecture or the native OS architecture. On every other host it
+refuses before compilation and recommends cross-building, transferring the
+artifact, and testing it on a native FreeBSD AArch64 machine; Rux never selects
+an emulator.
 
 For a Debug build, run `sh Build.sh --configuration Debug`. Run `sh Build.sh --help` to see every option.
 

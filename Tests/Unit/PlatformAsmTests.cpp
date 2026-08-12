@@ -284,7 +284,7 @@ TEST_CASE("FreeBSD AArch64 BSD constants match the 14.4 syscall and mmap surface
     }
 }
 
-TEST_CASE("FreeBSD AArch64 BSD package checks both target conditions while the artifact gate remains closed") {
+TEST_CASE("FreeBSD AArch64 BSD package checks both target conditions through the public artifact path") {
     const std::filesystem::path manifestPath = PackageTestManifest("Bsd", "Syscall");
     auto loaded = Manifest::Load(manifestPath);
     REQUIRE_MESSAGE(loaded.Ok(), manifestPath.string());
@@ -316,10 +316,10 @@ TEST_CASE("FreeBSD AArch64 BSD package checks both target conditions while the a
     CHECK(errors.empty());
     CHECK(result.primaryArtifactPath.empty());
 
-    // The exact inline bodies were assembled to AArch64 bytes above. Task 7
-    // owns opening artifact generation after the direct linker is ready.
-    const std::string gate = Driver::UnsupportedBackendReason("freebsd-aarch64");
-    CHECK(gate.find("not implemented yet") != std::string::npos);
+    // The exact inline bodies were assembled to AArch64 bytes above, and the
+    // public driver now exposes the same target to artifact-producing commands.
+    CHECK(Driver::UnsupportedBackendReason("freebsd-aarch64").empty());
+    CHECK(Driver::UnsupportedBackendReason("freebsd-arm64").empty());
 }
 
 TEST_CASE("Math's AArch64 bodies are the one instruction each operation names") {
