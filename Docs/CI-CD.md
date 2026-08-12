@@ -11,7 +11,7 @@ Each supported platform has its own workflow under [`.github/workflows/`](../.gi
 | `FreeBSD.yml` | FreeBSD 14.4 x86-64 and AArch64 | QEMU VM on Ubuntu | `pkg llvm22`              |
 | `Linux.yml`   | Ubuntu 24.04 x86-64 and AArch64, plus an x86-64 → AArch64 cross job under QEMU | GitHub-hosted     | `apt.llvm.org` → Clang 22 |
 | `macOS.yml`   | macOS 26 x86-64 and AArch64     | GitHub-hosted     | Homebrew `llvm@22`        |
-| `Windows.yml` | Windows 2025 and Windows 11 ARM | GitHub-hosted     | Runner's bundled Clang    |
+| `Windows.yml` | Windows 2025 and Windows 11 ARM, plus an x86-64 compiler → AArch64 target cross job | GitHub-hosted | Runner's bundled Clang |
 
 Their status is shown by the badges at the top of the [README](../README.md).
 
@@ -68,23 +68,26 @@ downloaded by the matching test job. Using `Linux.yml` as the reference shape:
    - On Linux, verify Rux formatting across every package and test manifest.
    - Run `rux check`, `rux lint`, and `rux test --release` from the repo root. Workspace mode discovers every language and package test below `Tests/`, resolves first-party dependencies locally, and disables registry fallback.
 
-`Linux.yml` adds a third job to those two.
+`Linux.yml` and `Windows.yml` each add a third job to those two.
 
-3. **Cross job** (`needs: build`, `ubuntu-24.04`)
+3. **Linux cross job** (`needs: build`, `ubuntu-24.04`)
    - Install `qemu-user` and `libc6-arm64-cross`. No cross toolchain is installed and none is wanted: the compiler encodes and links AArch64 artifacts itself, and only the loader and the C library they run against come from outside.
    - Download the x86-64 binary built by the build job.
    - Run `rux check --target linux-aarch64` and `rux test --release --target linux-aarch64`. Every test builds for AArch64 on this x86-64 host and runs under `qemu-aarch64`, with `RUX_QEMU_SYSROOT=/usr/aarch64-linux-gnu` pointing the emulator at the guest's loader. `rux lint` takes no target and is not repeated here.
 
-Neither the cross job nor the native AArch64 test job installs a C toolchain: the compiler encodes and links AArch64 artifacts itself, and both jobs fail if that stops being true.
+4. **Windows cross job** (`needs: build`, `windows-11-arm`)
+   - Download the x86-64 Windows compiler and run it through Windows-on-ARM emulation. No compiler toolchain is installed in this job.
+   - Run `rux check --target windows-aarch64` and `rux test --release --target windows-aarch64`. The emulated compiler detects that the underlying OS is AArch64, so the programs it produces execute natively.
+   - Build and run the dedicated executable exit-code and DLL load/call/unload fixtures. These protect process launch, PE entry, imports, exports, and import-library handling beyond the workspace suite.
 
-The AArch64 back end writes ELF, so `linux-aarch64` is the only AArch64 target it covers. The macOS, Windows and FreeBSD AArch64 test jobs therefore run `rux check` and `rux lint`, which need no back end, and leave `rux test` to their x86-64 counterparts; an AArch64 build for one of those systems is refused with `code generation for '<triple>' is not implemented yet`. AArch64 Mach-O and PE writers are what reopen those jobs, and are not written yet.
+Neither cross job installs a C compiler, assembler, linker, or archiver: Rux encodes and links both AArch64 formats itself. The native Windows AArch64 job runs the complete language/package suite and the same native fixtures, and the release workflow repeats that validation before packaging `rux-windows-aarch64.zip`. macOS and FreeBSD AArch64 compilers still cannot emit native AArch64 images because those image writers are not implemented.
 
 ### Platform-Specific Quirks
 
 The native-runner workflows differ only in how the compiler is obtained; the emulated ones differ in _where the whole job runs_:
 
-- **Ubuntu** — installs Clang 22 from `apt.llvm.org` and builds with `clang++-22` on `ubuntu-24.04` (x86-64) and `ubuntu-24.04-arm` (AArch64). Clang is the host C++ compiler that builds `rux`, and nothing else: the AArch64 test and cross jobs run the compiler's own back end. The cross job is Linux-only, since `linux-aarch64` is the one foreign target the back end reaches today.
-- **Windows** — uses the runner's bundled Clang on `windows-2025` (x86-64) and `windows-11-arm` (AArch64). Before configuring, `.github/scripts/Enter-VsDevEnv.ps1` locates Visual Studio with `vswhere` and imports the native `vcvarsall.bat` environment for the matching x86-64 or ARM64 toolset, and Clang is given the explicit MSVC target triple.
+- **Ubuntu** — installs Clang 22 from `apt.llvm.org` and builds with `clang++-22` on `ubuntu-24.04` (x86-64) and `ubuntu-24.04-arm` (AArch64). Clang is the host C++ compiler that builds `rux`, and nothing else: the AArch64 test and cross jobs run the compiler's own back end.
+- **Windows** — uses the runner's bundled Clang on `windows-2025` (x86-64) and `windows-11-arm` (AArch64). Before native builds, `.github/scripts/Enter-VsDevEnv.ps1` locates Visual Studio with `vswhere` and imports the matching x86-64 or ARM64 toolset, and Clang is given the explicit MSVC target triple. The cross job needs neither setup step: it downloads the already-built x86-64 compiler and relies on Windows-on-ARM only to run that compiler.
 - **macOS** — Apple Clang lags upstream and lacks full C++26 support, so the workflow installs LLVM `llvm@22` from Homebrew and points `CMAKE_CXX_COMPILER` at the Homebrew `clang++`.
 - **FreeBSD** — GitHub has no native FreeBSD runner, so each job boots an x86-64 or AArch64 FreeBSD 14.4 QEMU VM via `vmactions/freebsd-vm` on an Ubuntu host. Because Build and Test are separate jobs, each boots a _fresh_ VM; the Test VM installs the Clang runtime libraries needed by the prebuilt binary.
 
@@ -92,8 +95,9 @@ The native-runner workflows differ only in how the compiler is obtained; the emu
 
 The following must pass before a PR can merge (configured in branch protection — see [Branch Architecture](Branches.md)):
 
+- **`CodeQuality.yml`** (platform isolation, no external toolchain, formatting, and static analysis)
 - **`Linux.yml`** (Ubuntu 24.04 x86-64 and AArch64, and the AArch64 cross job)
-- **`Windows.yml`** (Windows x86-64 and AArch64)
+- **`Windows.yml`** (Windows x86-64 and AArch64, and the x86-64 compiler → AArch64 target cross job)
 
 The remaining workflows — `macOS.yml` and `FreeBSD.yml` — run on every push and PR and report status, but are **informational**: they broaden platform coverage without blocking merges, since non-required platforms can be slower or occasionally flaky. A red informational check is still worth investigating before merging.
 
@@ -145,9 +149,20 @@ ctest --test-dir Build --output-on-failure -C Release
 ./Bin/rux.exe test --release
 ```
 
+On AArch64 Windows, the cross-target portion can be reproduced with either a native or emulated x86-64 `rux.exe`:
+
+```powershell
+./Bin/rux.exe check --target windows-aarch64
+./Bin/rux.exe test --release --target windows-aarch64
+./Tests/Native/WindowsAArch64ExitCode/Verify.ps1 -Rux ./Bin/rux.exe
+./Tests/Native/WindowsAArch64Dll/Verify.ps1 -Rux ./Bin/rux.exe
+```
+
+The last two commands are repository fixtures rather than installed-compiler commands. A physical x86-64 Windows host can build and check this target, but needs a compatible emulator configured explicitly before it can run AArch64 output.
+
 ## Infrastructure Notes
 
-- **Runner images** — Linux uses `ubuntu-24.04` and `ubuntu-24.04-arm`; Windows uses `windows-2025` and `windows-11-arm`; macOS uses `macos-26-intel` and `macos-26`. FreeBSD runs on an `ubuntu-24.04` host and boots x86-64/AArch64 guests in QEMU. There are **no self-hosted runners**.
+- **Runner images** — Linux uses `ubuntu-24.04` and `ubuntu-24.04-arm`; Windows uses `windows-2025` and `windows-11-arm`; macOS uses `macos-26-intel` and `macos-26`. FreeBSD runs on an `ubuntu-24.04` host and boots x86-64/AArch64 guests in QEMU. GitHub's `windows-11-arm` runner is the default Windows AArch64 environment. An Azure Windows 11 ARM64 VM is reserved for interactive crash dumps, prolonged debugging, or demonstrated GitHub-runner instability; it is not an acceptance dependency. There are **no self-hosted runners** in the normal matrix.
 - **Workflow security** — validation jobs have read-only repository permissions and checkouts do not persist credentials. Only the release publishing job receives `contents: write`.
 - **Tool versions** — CMake and Ninja are pinned centrally in each workflow so runner-image changes do not silently change the build toolchain.
 - **Architecture names** — prose and check labels use x86-64/AArch64; matrix values and artifact names use `x86_64`/`aarch64`. Runner, Visual Studio, and VM inputs retain the exact spellings required by those external tools.

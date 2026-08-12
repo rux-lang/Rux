@@ -119,13 +119,47 @@ jobs:
           ./Bin/rux.exe check
           ./Bin/rux.exe lint
 
-      # The AArch64 back end writes ELF, so windows-aarch64 has no back end and
-      # nothing here can be built or run. Checking and linting need none, so
-      # both still cover this machine; the AArch64 PE writer listed under
-      # "Follow-on" in BACKLOG.md is what reopens the rest.
       - name: Run Rux tests
-        if: matrix.arch == 'x86_64'
         shell: pwsh
         run: |
           ./.github/scripts/Enter-VsDevEnv.ps1 -Arch ${{ matrix.vs_arch }}
           ./Bin/rux.exe test --release
+
+      - name: Run Windows AArch64 native fixtures
+        if: matrix.arch == 'aarch64'
+        shell: pwsh
+        run: |
+          ./Tests/Native/WindowsAArch64ExitCode/Verify.ps1 -Rux ./Bin/rux.exe
+          ./Tests/Native/WindowsAArch64Dll/Verify.ps1 -Rux ./Bin/rux.exe
+
+  cross:
+    name: Cross (x86-64 compiler, AArch64 target)
+    needs: build
+    runs-on: windows-11-arm
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Windows-on-ARM runs this x86-64 compiler under emulation. The compiler
+      # detects the native OS architecture and launches its AArch64 output
+      # directly, without an external build toolchain or runtime emulator.
+      - name: Download x86-64 compiler artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-windows-x86_64
+          path: Bin
+
+      - name: Verify Rux workspace for windows-aarch64
+        shell: pwsh
+        run: |
+          ./Bin/rux.exe check --target windows-aarch64
+          ./Bin/rux.exe test --release --target windows-aarch64
+
+      - name: Run Windows AArch64 cross fixtures
+        shell: pwsh
+        run: |
+          ./Tests/Native/WindowsAArch64ExitCode/Verify.ps1 -Rux ./Bin/rux.exe
+          ./Tests/Native/WindowsAArch64Dll/Verify.ps1 -Rux ./Bin/rux.exe

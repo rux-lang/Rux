@@ -44,7 +44,7 @@ With no `-DCMAKE_BUILD_TYPE`, the project defaults to a **Release** build (set i
    ```
 6. **Format** all maintained C++ and Rux sources: `sh Format.sh` (PowerShell: `./Format.ps1`).
 
-The repository provides matching platform entry points. PowerShell users can run `./Build.ps1`, `./Format.ps1`, and `./Test.ps1`; Linux, macOS, and FreeBSD users can run `sh Build.sh`, `sh Format.sh`, and `sh Test.sh`. The build scripts configure and build the compiler and C++ test target while generating the compilation database. The format scripts handle maintained C++ and Rux sources. The test scripts run the policy, formatting, build, CTest, lint, and Rux-test workflow. Use `./Test.ps1 -SkipBuild` or `sh Test.sh --skip-build` to reuse an existing build. Add `-ClangTidy` or `--clang-tidy` for the slower static-analysis pass; the Code Quality workflow always runs it. `-Target linux-aarch64` or `--target linux-aarch64` checks and runs the Rux suites for another target, under an emulator when its architecture is not the host's; see [Rux on Linux](Platforms/Linux.md#cross-compiling-and-emulation).
+The repository provides matching platform entry points. PowerShell users can run `./Build.ps1`, `./Format.ps1`, and `./Test.ps1`; Linux, macOS, and FreeBSD users can run `sh Build.sh`, `sh Format.sh`, and `sh Test.sh`. The build scripts configure and build the compiler and C++ test target while generating the compilation database. The format scripts handle maintained C++ and Rux sources. The test scripts run the policy, formatting, build, CTest, lint, and Rux-test workflow. Use `./Test.ps1 -SkipBuild` or `sh Test.sh --skip-build` to reuse an existing build. Add `-ClangTidy` or `--clang-tidy` for the slower static-analysis pass; the Code Quality workflow always runs it. `-Target linux-aarch64` / `--target linux-aarch64` checks and runs the Rux suites through QEMU on an x86-64 Linux host. On AArch64 Windows, `./Test.ps1 -SkipBuild -Target windows-aarch64` performs the corresponding native or Windows-on-ARM cross run; see [Rux on Windows](Platforms/Windows.md#cross-compiling-for-windows-aarch64).
 
 ### Debug vs. Release Builds
 
@@ -78,6 +78,7 @@ There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan
 | `Tests/Packages/`       | Executable first-party package tests grouped as `<Package>/<Test>` (`rux test`) |
 | `Tests/Unit/`           | C++ unit tests and their `Golden/` diagnostic fixtures (doctest + CTest)        |
 | `Tests/Policy/`         | Repository-policy checks: platform isolation and external-toolchain use         |
+| `Tests/Native/`         | Target-specific end-to-end fixtures driven by platform scripts                  |
 | `Packaging/`            | Linux and Windows installer scripts plus the Windows MSI project                |
 | `Bin/`                  | Compiler and centralized test executables; **git-ignored**                      |
 | `CMakeLists.txt`        | Top-level build entry: project `VERSION` + `add_subdirectory(Compiler)`         |
@@ -98,8 +99,8 @@ A source file flows through these stages, front to back. Each stage owns a small
 | HIR passes        | `Ir/Hir/Passes/`                                    | HIR optimization                         |
 | LIR lowering      | `Lowering/HirToLir/`                                | HIR → control-flow-explicit LIR          |
 | Code generation   | `CodeGen/{X86_64,AArch64}/`                         | LIR → target-native representation       |
-| Object emission   | `Object/Rcu/`                                       | x86-64 RCU serialization and diagnostics |
-| Linking           | `Linker/{Pe,Elf,MachO}/`, archive writers, or Clang | Objects/LIR lowering → target artifact   |
+| Object emission   | `Object/Rcu/`                                       | RCU serialization and diagnostics        |
+| Linking           | `Linker/{Pe,Elf,MachO}/` and archive writers       | Objects/LIR lowering → target artifact   |
 
 Supporting layers around the pipeline:
 
@@ -112,7 +113,7 @@ Supporting layers around the pipeline:
 
 ## 5. Testing
 
-There are two suites: Rux-language test packages (run with `rux test`) and C++ unit tests for the compiler internals (run with `ctest`).
+There are two broad suites: Rux-language/package tests (run with `rux test`) and C++ unit tests for the compiler internals (run with `ctest`). Target-specific native fixtures supplement them where a complete OS interaction needs a dedicated driver script.
 
 ### Language and Package Tests (`Tests/Language/`, `Tests/Packages/`)
 
@@ -158,6 +159,10 @@ Output = "../../../Bin/Tests/Language"
 **When you add a language feature, add a matching test package under `Tests/Language/`.**
 
 Package tests live at `Tests/Packages/<Package>/<Test>/`. Their manifests use local path dependencies back to the package they cover and direct output to the corresponding central binary folder. For example, a Math test uses `Math = { Path = "../../../../Packages/Math" }` and `Output = "../../../../Bin/Tests/Packages/Math"`.
+
+### Native End-to-End Fixtures (`Tests/Native/`)
+
+Native fixtures use `Fixture.toml` so `rux test` does not discover them as ordinary packages. Their platform script builds a specific target, launches the result, and verifies OS-visible behavior such as an exact exit code, assertion output, stack probing, or loading and calling an exported DLL function. The Windows AArch64 cross job runs the exit-code and DLL fixtures with an x86-64 compiler on an AArch64 OS; the native and release jobs repeat them with the native compiler.
 
 ### Unit Tests (`Tests/Unit/`)
 

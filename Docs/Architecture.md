@@ -31,7 +31,7 @@ The two back ends are symmetric: each encodes instruction bytes itself, each bui
 
 The driver loads the root manifest and dependencies before entering this pipeline. Diagnostics can stop the process after any frontend stage; object emission and linking only run when analysis and lowering succeed.
 
-Which triples a back end reaches is decided by the object and image writer, not by the host: x86-64 reaches every supported operating system, and AArch64 reaches `linux-aarch64`, since ELF is the only format its objects and images are written for. Any other AArch64 triple is refused with a diagnostic naming the target rather than falling back to a host toolchain.
+Which triples a back end reaches is decided by the object and image writer, not by the host: x86-64 reaches every supported operating system, while AArch64 reaches `linux-aarch64` through ELF and `windows-aarch64` through PE/COFF. The Windows writer produces executables, DLLs with import libraries, and static libraries entirely in-process. AArch64 targets without an image writer, including macOS and FreeBSD, are refused with a diagnostic naming the target rather than falling back to a host toolchain.
 
 ## Component Ownership
 

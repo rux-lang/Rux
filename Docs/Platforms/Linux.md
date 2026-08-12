@@ -110,18 +110,18 @@ A Linux host reaches these targets, whichever architecture it runs on:
 | Target                                                | Builds | Runs here                      |
 | ----------------------------------------------------- | ------ | ------------------------------ |
 | `linux-x86_64`, `linux-aarch64`                       | Yes    | Natively, or under `qemu-user` |
-| `windows-x86_64`, `macos-x86_64`                      | Yes    | No — foreign operating system  |
+| `windows-x86_64`, `windows-aarch64`, `macos-x86_64`   | Yes    | No — foreign operating system  |
 | `freebsd-x86_64`, `openbsd-x86_64`, `netbsd-x86_64`   | Yes    | No — foreign operating system  |
 | `dragonfly-x86_64`, `illumos-x86_64`                  | Yes    | No — foreign operating system  |
-| `macos-aarch64`, `windows-aarch64`, `freebsd-aarch64` | No     | —                              |
+| `macos-aarch64`, `freebsd-aarch64`                    | No     | —                              |
 
 The x86-64 back end reaches every supported operating system, because all three
-object writers are parameterized for it. The AArch64 back end writes ELF, so it
-covers `linux-aarch64` and no other AArch64 system yet: those three targets are
-refused with `code generation for '<triple>' is not implemented yet`. AArch64
-Mach-O and PE writers are what open them, and are not written yet. `rux check`,
-`rux fmt`, `rux lint` and `rux doc` need no back end and work for every named
-target.
+object writers are parameterized for it. The AArch64 back end reaches
+`linux-aarch64` through ELF and `windows-aarch64` through PE/COFF. AArch64
+Mach-O and non-Linux ELF images are not written yet, so the remaining AArch64
+targets are refused with `code generation for '<triple>' is not implemented
+yet`. `rux check`, `rux fmt`, `rux lint` and `rux doc` need no back end and work
+for every named target.
 
 Nothing in a cross build reaches for a cross toolchain, because there is no
 toolchain to reach for: the same encoder, object writer and linker run whichever

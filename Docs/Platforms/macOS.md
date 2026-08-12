@@ -29,13 +29,15 @@ The script creates a Release build in `Build/` and writes the compiler to `Bin/r
 For a Debug build, add `--configuration Debug`. Run `sh Build.sh --help` to see every option.
 
 On Apple Silicon, Rux selects the `macos-aarch64` target by default, and that
-target has no code generator: the AArch64 back end writes ELF, so it reaches
-`linux-aarch64` only. Building for `macos-aarch64` is refused with `code
-generation for 'macos-aarch64' is not implemented yet`; `rux check`, `rux fmt`,
-`rux lint` and `rux doc` need no back end and work as they do everywhere. An
-Apple Silicon Mac can still build `rux` itself, and can cross-build Rux programs
-with `--target macos-x86_64` or `--target linux-aarch64`. An AArch64 Mach-O
-writer is what makes the native target buildable, and is not written yet.
+target has no image writer. The AArch64 back end reaches `linux-aarch64`
+through ELF and `windows-aarch64` through PE/COFF, but cannot yet write Mach-O.
+Building for `macos-aarch64` is refused with `code generation for
+'macos-aarch64' is not implemented yet`; `rux check`, `rux fmt`, `rux lint` and
+`rux doc` need no back end and work as they do everywhere. An Apple Silicon Mac
+can still build `rux` itself, and can cross-build Rux programs with `--target
+macos-x86_64`, `--target linux-aarch64`, or `--target windows-aarch64`. An
+AArch64 Mach-O writer is what makes the native target buildable, and is not
+written yet.
 
 ## Native Package Artifacts
 

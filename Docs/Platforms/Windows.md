@@ -78,27 +78,30 @@ Once the repository is cloned, later sessions can replace the snippet in step 4 
 ./.github/scripts/Enter-VsDevEnv.ps1 -Arch amd64   # arm64 on an AArch64 host
 ```
 
-`Build.ps1` selects `windows-x86_64` or `windows-aarch64` from the native host
-architecture. The compiler contains the Windows AArch64 code generator and
-PE/COFF support for executables, DLLs with import libraries, and static
-libraries. The driver does not expose those artifact paths yet, so building a
-Rux program for `windows-aarch64` remains explicitly refused until the target's
-driver and CLI enablement lands. `rux check`, `rux fmt`, `rux lint` and `rux
-doc` need no back end and work as they do everywhere. An AArch64 Windows
-machine can still build `rux` itself, and can cross-build Rux programs with
-`--target windows-x86_64` or `--target linux-aarch64`.
+`Build.ps1` selects `windows-x86_64` or `windows-aarch64` from the native host architecture. Both compilers can emit Windows x86-64 and Classic Windows AArch64 programs. The AArch64 backend and PE/COFF writer produce executables, DLLs with import libraries, and static libraries in-process; no external assembler, compiler, linker, or archiver is invoked.
+
+## Cross-Compiling for Windows AArch64
+
+Pass the canonical target to build, check, run, or test an AArch64 package from either compiler architecture (`windows-arm64` is accepted as an alias):
+
+```powershell
+./Bin/rux.exe build --release --target windows-aarch64
+./Bin/rux.exe check --target windows-aarch64
+./Bin/rux.exe run --release --target windows-aarch64
+./Bin/rux.exe test --release --target windows-aarch64
+```
+
+Run workspace commands from the repository root; use `--manifest <path>` before the subcommand for an individual package. A foreign-target build is placed below a canonical target directory, such as `Bin/Release/windows-aarch64/Name.exe`, so it does not overwrite the host artifact.
+
+On AArch64 Windows, both a native AArch64 compiler and an x86-64 compiler running under Windows emulation can launch the generated AArch64 programs directly. Rux queries the native OS architecture separately from the compiler process architecture, which is why an emulated x86-64 `rux.exe` can run `rux test --target windows-aarch64`. On physical x86-64 Windows, `build` and `check` still work, but `run` and `test` report that the host cannot execute the target unless `RUX_EMULATOR` names an explicitly configured compatible emulator.
+
+GitHub's `windows-11-arm` runner is the default native and cross-target test environment. An Azure Windows 11 ARM64 VM is reserved for interactive crash dumps, prolonged debugging, or demonstrated GitHub-runner instability; it is not required for acceptance.
 
 ## Native Package Artifacts
 
 An `Executable` package writes `Name.exe`, a `SharedLibrary` writes `Name.dll` plus the `Name.lib` import library, and a `StaticLibrary` writes `Name.lib`. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
 
-The x86-64 and AArch64 backends write PE/COFF objects and libraries directly,
-without an external toolchain. Windows AArch64 driver enablement is still
-pending, so these forms are not available through `rux build` yet. Both PE
-architectures currently use fixed image bases: executables use `0x140000000`
-and DLLs use `0x180000000`. The linker does not emit a `.reloc` table and does
-not enable ASLR; DLLs therefore must load successfully at their preferred
-base.
+The x86-64 and AArch64 backends write PE/COFF objects and libraries directly, without an external toolchain. Both PE architectures currently use fixed image bases: executables use `0x140000000` and DLLs use `0x180000000`. The linker does not emit a `.reloc` table and does not enable ASLR; DLLs therefore must load successfully at their preferred base. ARM64 unwind metadata (`.pdata` / `.xdata`), base relocations, ASLR, and broader PE hardening remain follow-up work.
 
 For a Debug build, run `.\Build.ps1 -Configuration Debug`. Run `Get-Help .\Build.ps1 -Full` to see every option.
 
@@ -123,3 +126,12 @@ Static analysis is intentionally opt-in because it is slower and requires PowerS
 ```
 
 Use `.\Format.ps1` to format maintained C++ and Rux sources, or `.\Format.ps1 -Check` to check them without making changes.
+
+On AArch64 Windows, reproduce the CI cross-target coverage with an x86-64 or native compiler:
+
+```powershell
+.\Bin\rux.exe check --target windows-aarch64
+.\Bin\rux.exe test --release --target windows-aarch64
+.\Tests\Native\WindowsAArch64ExitCode\Verify.ps1 -Rux .\Bin\rux.exe
+.\Tests\Native\WindowsAArch64Dll\Verify.ps1 -Rux .\Bin\rux.exe
+```

@@ -120,11 +120,9 @@ jobs:
             chmod +x Bin/rux
             ./Bin/rux check
             ./Bin/rux lint
-            # The AArch64 back end writes ELF for Linux, so freebsd-aarch64 has
-            # no back end and there is nothing here to build or run. Checking
-            # and linting need none, so both still cover this machine. The
-            # Mach-O and PE writers listed under "Follow-on" in BACKLOG.md, and
-            # a FreeBSD arm of the ELF one, are what reopen it.
+            # There is no AArch64 FreeBSD ELF writer, so freebsd-aarch64 cannot
+            # be built or run yet. Checking and linting need no back end and
+            # still cover this machine.
             if [ "${{ matrix.arch }}" = x86_64 ]; then
               ./Bin/rux test --release
             fi

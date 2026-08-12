@@ -41,7 +41,7 @@ Each `needs: verify-version`, then builds Release **and runs the test suite** â€
 
 The additional `rux-windows-x86_64-msi` workflow artifact carries the x86-64 MSI into the publish job. An AArch64 MSI is not produced because the current WiX package is authored for x64; AArch64 Windows is distributed as a ZIP.
 
-Each job runs language tests from the repository root. Test manifests use local path dependencies, and transitive first-party dependencies resolve from workspace members with registry fallback disabled, so release validation is deterministic and network-independent. The Linux job also checks every maintained Rux source with `rux fmt --check` before packaging.
+Each job runs language tests from the repository root. Test manifests use local path dependencies, and transitive first-party dependencies resolve from workspace members with registry fallback disabled, so release validation is deterministic and network-independent. The Windows AArch64 entry additionally runs the native executable exit-code and DLL load/call/unload fixtures before packaging. The Linux job also checks every maintained Rux source with `rux fmt --check` before packaging.
 
 ### 3. `release` (publish)
 
