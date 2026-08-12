@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -49,6 +50,10 @@ struct MachODyldInfo {
     std::uint32_t rebaseSize = 0;
     std::uint32_t bindOffset = 0;
     std::uint32_t bindSize = 0;
+    std::uint32_t weakBindOffset = 0;
+    std::uint32_t weakBindSize = 0;
+    std::uint32_t lazyBindOffset = 0;
+    std::uint32_t lazyBindSize = 0;
     std::uint32_t exportOffset = 0;
     std::uint32_t exportSize = 0;
 };
@@ -59,6 +64,13 @@ struct MachOSymbol {
     std::uint8_t section = 0;
     std::uint16_t description = 0;
     std::uint64_t value = 0;
+};
+
+struct MachOBind {
+    std::uint8_t segmentIndex = 0;
+    std::uint64_t segmentOffset = 0;
+    std::uint32_t libraryOrdinal = 0;
+    std::string symbol;
 };
 
 struct MachORange {
@@ -97,6 +109,8 @@ struct MachOImage {
     std::vector<MachOLoadCommand> commands;
     std::vector<MachOSegment> segments;
     std::vector<MachOSymbol> symbols;
+    std::vector<std::uint32_t> indirectSymbols;
+    std::vector<MachOBind> binds;
     std::optional<MachODyldInfo> dyldInfo;
     std::optional<std::uint64_t> mainEntryOffset;
     std::optional<std::uint32_t> threadStateFlavor;
@@ -202,12 +216,31 @@ inline std::optional<std::string> CommandString(const std::span<const std::uint8
     }
     return std::string(reinterpret_cast<const char *>(bytes.data() + begin), cursor - begin);
 }
+
+inline bool ReadUleb128(const std::span<const std::uint8_t> bytes, std::size_t &cursor, const std::size_t end,
+                        std::uint64_t &value) {
+    value = 0;
+    unsigned shift = 0;
+    while (cursor < end && shift < 64) {
+        const std::uint8_t byte = bytes[cursor++];
+        if (shift == 63 && (byte & 0x7E) != 0) {
+            return false;
+        }
+        value |= static_cast<std::uint64_t>(byte & 0x7F) << shift;
+        if ((byte & 0x80) == 0) {
+            return true;
+        }
+        shift += 7;
+    }
+    return false;
+}
 } // namespace Detail
 
 [[nodiscard]] inline bool ReadMachO64(const std::span<const std::uint8_t> bytes, MachOImage &image,
                                       std::string &error) {
     constexpr std::uint32_t kSegment64 = 0x19;
     constexpr std::uint32_t kSymtab = 0x02;
+    constexpr std::uint32_t kDysymtab = 0x0B;
     constexpr std::uint32_t kUnixThread = 0x05;
     constexpr std::uint32_t kDyldInfoOnly = 0x8000'0022;
     constexpr std::uint32_t kMain = 0x8000'0028;
@@ -236,6 +269,8 @@ inline std::optional<std::string> CommandString(const std::span<const std::uint8
     std::uint32_t symbolCount = 0;
     std::optional<std::uint32_t> stringOffset;
     std::uint32_t stringSize = 0;
+    std::optional<std::uint32_t> indirectSymbolsOffset;
+    std::uint32_t indirectSymbolCount = 0;
     std::size_t cursor = 32;
     const std::size_t commandEnd = cursor + image.declaredCommandSize;
     for (std::uint32_t index = 0; index < image.declaredCommandCount; ++index) {
@@ -350,7 +385,9 @@ inline std::optional<std::string> CommandString(const std::span<const std::uint8
                 return false;
             }
             image.dyldInfo = MachODyldInfo{U32(bytes, cursor + 8),  U32(bytes, cursor + 12), U32(bytes, cursor + 16),
-                                           U32(bytes, cursor + 20), U32(bytes, cursor + 40), U32(bytes, cursor + 44)};
+                                           U32(bytes, cursor + 20), U32(bytes, cursor + 24), U32(bytes, cursor + 28),
+                                           U32(bytes, cursor + 32), U32(bytes, cursor + 36), U32(bytes, cursor + 40),
+                                           U32(bytes, cursor + 44)};
         }
         else if (command == kSymtab) {
             if (size < 24) {
@@ -361,6 +398,14 @@ inline std::optional<std::string> CommandString(const std::span<const std::uint8
             symbolCount = U32(bytes, cursor + 12);
             stringOffset = U32(bytes, cursor + 16);
             stringSize = U32(bytes, cursor + 20);
+        }
+        else if (command == kDysymtab) {
+            if (size < 80) {
+                error = "truncated Mach-O dynamic-symbol-table command";
+                return false;
+            }
+            indirectSymbolsOffset = U32(bytes, cursor + 56);
+            indirectSymbolCount = U32(bytes, cursor + 60);
         }
         else if (command == kCodeSignature) {
             if (size < 16) {
@@ -396,6 +441,94 @@ inline std::optional<std::string> CommandString(const std::span<const std::uint8
             }
             image.symbols.push_back(
                 {*name, bytes[offset + 4], bytes[offset + 5], U16(bytes, offset + 6), U64(bytes, offset + 8)});
+        }
+    }
+    if (indirectSymbolsOffset) {
+        const std::size_t tableSize = static_cast<std::size_t>(indirectSymbolCount) * 4;
+        if (!InBounds(bytes, *indirectSymbolsOffset, tableSize)) {
+            error = "Mach-O indirect-symbol table extends beyond the image";
+            return false;
+        }
+        for (std::uint32_t index = 0; index < indirectSymbolCount; ++index) {
+            image.indirectSymbols.push_back(U32(bytes, *indirectSymbolsOffset + static_cast<std::size_t>(index) * 4));
+        }
+    }
+    if (image.dyldInfo && image.dyldInfo->bindSize != 0) {
+        if (!InBounds(bytes, image.dyldInfo->bindOffset, image.dyldInfo->bindSize)) {
+            error = "Mach-O bind stream extends beyond the image";
+            return false;
+        }
+        std::size_t bindCursor = image.dyldInfo->bindOffset;
+        const std::size_t bindEnd = bindCursor + image.dyldInfo->bindSize;
+        std::uint8_t segmentIndex = 0;
+        std::uint64_t segmentOffset = 0;
+        std::uint32_t libraryOrdinal = 0;
+        std::string symbol;
+        bool done = false;
+        while (bindCursor < bindEnd && !done) {
+            const std::uint8_t byte = bytes[bindCursor++];
+            const std::uint8_t opcode = byte & 0xF0;
+            const std::uint8_t immediate = byte & 0x0F;
+            switch (opcode) {
+            case 0x00: // BIND_OPCODE_DONE
+                done = true;
+                break;
+            case 0x10: // BIND_OPCODE_SET_DYLIB_ORDINAL_IMM
+                libraryOrdinal = immediate;
+                break;
+            case 0x20: { // BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB
+                std::uint64_t ordinal = 0;
+                if (!ReadUleb128(bytes, bindCursor, bindEnd, ordinal) ||
+                    ordinal > std::numeric_limits<std::uint32_t>::max()) {
+                    error = "invalid Mach-O bind library ordinal";
+                    return false;
+                }
+                libraryOrdinal = static_cast<std::uint32_t>(ordinal);
+                break;
+            }
+            case 0x40: { // BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM
+                const std::size_t begin = bindCursor;
+                while (bindCursor < bindEnd && bytes[bindCursor] != 0) {
+                    ++bindCursor;
+                }
+                if (bindCursor == bindEnd) {
+                    error = "unterminated Mach-O bind symbol";
+                    return false;
+                }
+                symbol.assign(reinterpret_cast<const char *>(bytes.data() + begin), bindCursor - begin);
+                ++bindCursor;
+                break;
+            }
+            case 0x50: // BIND_OPCODE_SET_TYPE_IMM
+                break;
+            case 0x70: { // BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB
+                segmentIndex = immediate;
+                if (!ReadUleb128(bytes, bindCursor, bindEnd, segmentOffset)) {
+                    error = "invalid Mach-O bind segment offset";
+                    return false;
+                }
+                break;
+            }
+            case 0x90: // BIND_OPCODE_DO_BIND
+                if (symbol.empty()) {
+                    error = "Mach-O bind action has no symbol";
+                    return false;
+                }
+                image.binds.push_back({segmentIndex, segmentOffset, libraryOrdinal, symbol});
+                if (segmentOffset > std::numeric_limits<std::uint64_t>::max() - 8) {
+                    error = "Mach-O bind segment offset overflows";
+                    return false;
+                }
+                segmentOffset += 8;
+                break;
+            default:
+                error = "unsupported Mach-O bind opcode in portable reader";
+                return false;
+            }
+        }
+        if (!done) {
+            error = "unterminated Mach-O bind stream";
+            return false;
         }
     }
     if (image.codeSignature && !InBounds(bytes, image.codeSignature->offset, image.codeSignature->size)) {

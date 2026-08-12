@@ -1,7 +1,6 @@
-// Mach-O executable writer for macOS x86-64 and freestanding AArch64.
-// Freestanding programs retain a static LC_UNIXTHREAD entry point; x86-64
-// programs that reference #Link externs use dyld, eager symbol binding, and
-// standard symbol stubs.
+// Mach-O executable writer for macOS x86-64 and AArch64. Freestanding programs
+// retain a static LC_UNIXTHREAD entry point; programs that reference #Link
+// externs use dyld, eager symbol binding, and architecture-owned symbol stubs.
 
 #include "Linker/AArch64Relocation.h"
 #include "Linker/Linker.h"
@@ -418,22 +417,14 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
                     }
                 }
                 else if (symbol.kind == RcuSymKind::ExternData) {
-                    Error("external data symbol '" + symbol.name + "' cannot be imported by the Mach-O linker");
+                    Error("external data symbol '" + symbol.name + "' cannot be imported by the Mach-O " +
+                          std::string(Target::ToDisplayString(targetArch)) +
+                          " linker because GOT-aware lowering is not implemented");
                 }
             }
         }
     }
     if (!errors.empty()) {
-        return false;
-    }
-
-    if (targetArch == Target::Arch::AArch64 && !importLib.empty()) {
-        std::vector<std::string> unsupportedImports(importLib.size());
-        std::ranges::copy(importLib | std::views::keys, unsupportedImports.begin());
-        std::ranges::sort(unsupportedImports);
-        for (const auto &name : unsupportedImports) {
-            Error("external function '" + name + "' cannot be imported by the Mach-O AArch64 linker yet");
-        }
         return false;
     }
 
@@ -488,9 +479,10 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         }
     }
 
-    // Entry point. Dynamic x86-64 executables are entered as a normal function
-    // by dyld. Static executables call Main and issue the native macOS exit
-    // syscall directly; the AArch64 syscall number lives in X16.
+    // Dynamic executables are entered as a normal function by dyld. The AArch64
+    // shim preserves dyld's frame/link registers across the Rux call. Static
+    // executables call Main and issue the native macOS exit syscall directly;
+    // the AArch64 syscall number lives in X16.
     Buf textPrefix;
     size_t callMainDisp = 0;
     if (isShared) {
@@ -498,11 +490,21 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         // initializers; Rux 0.4.0 does not synthesize one.
     }
     else if (dynamic) {
-        textPrefix.insert(textPrefix.end(), {0x48, 0x83, 0xEC, 0x28}); // sub rsp, 40
-        callMainDisp = textPrefix.size() + 1;
-        textPrefix.insert(textPrefix.end(), {0xE8, 0, 0, 0, 0});       // call Main
-        textPrefix.insert(textPrefix.end(), {0x48, 0x83, 0xC4, 0x28}); // add rsp, 40
-        textPrefix.push_back(0xC3);                                    // ret to dyld
+        if (targetArch == Target::Arch::AArch64) {
+            WriteU32(textPrefix, 0xA9BF'7BFD); // stp x29, x30, [sp, #-16]!
+            WriteU32(textPrefix, 0x9100'03FD); // mov x29, sp
+            callMainDisp = textPrefix.size();
+            WriteU32(textPrefix, 0x9400'0000); // bl Main
+            WriteU32(textPrefix, 0xA8C1'7BFD); // ldp x29, x30, [sp], #16
+            WriteU32(textPrefix, 0xD65F'03C0); // ret to dyld
+        }
+        else {
+            textPrefix.insert(textPrefix.end(), {0x48, 0x83, 0xEC, 0x28}); // sub rsp, 40
+            callMainDisp = textPrefix.size() + 1;
+            textPrefix.insert(textPrefix.end(), {0xE8, 0, 0, 0, 0});       // call Main
+            textPrefix.insert(textPrefix.end(), {0x48, 0x83, 0xC4, 0x28}); // add rsp, 40
+            textPrefix.push_back(0xC3);                                    // ret to dyld
+        }
     }
     else if (targetArch == Target::Arch::AArch64) {
         callMainDisp = textPrefix.size();
@@ -551,12 +553,20 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     Buf textBuffer = textPrefix;
     textBuffer.insert(textBuffer.end(), mergedText.begin(), mergedText.end());
 
-    // The architecture owns the instruction sequence and its fixed size. Each
-    // x86-64 stub is `jmp qword ptr [rip + disp32]`; dyld eagerly fills the
-    // matching non-lazy pointer before transferring control.
+    // The architecture owns the instruction sequence and its fixed size. An
+    // x86-64 stub jumps through a RIP-relative pointer. An Apple ARM64 stub uses
+    // X16 for ADRP/LDR/BR. dyld eagerly fills the matching non-lazy pointer
+    // before transferring control.
     Buf stubs;
     for (size_t i = 0; i < importNames.size(); ++i) {
-        stubs.insert(stubs.end(), {0xFF, 0x25, 0, 0, 0, 0});
+        if (targetArch == Target::Arch::AArch64) {
+            WriteU32(stubs, 0x9000'0010); // adrp x16, pointer@page
+            WriteU32(stubs, 0xF940'0210); // ldr x16, [x16, pointer@pageoff]
+            WriteU32(stubs, 0xD61F'0200); // br x16
+        }
+        else {
+            stubs.insert(stubs.end(), {0xFF, 0x25, 0, 0, 0, 0});
+        }
     }
     if (stubs.size() != importNames.size() * architecture->instructionStubSize) {
         Error("internal: Mach-O instruction stub does not match its architecture profile");
@@ -884,14 +894,28 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     // Patch each stub to its corresponding pointer slot.
     for (size_t i = 0; i < importNames.size(); ++i) {
         const uint64_t stubOffset = i * architecture->instructionStubSize;
-        const uint64_t stubNextInstruction = stubsVA + stubOffset + architecture->instructionStubSize;
         const uint64_t pointerAddress = pointersVA + i * 8;
-        const uint64_t displacement = pointerAddress - stubNextInstruction;
-        if (displacement > static_cast<uint64_t>(std::numeric_limits<int32_t>::max())) {
-            Error("Mach-O instruction stub for '" + importNames[i] + "' cannot reach its pointer slot");
-            return false;
+        if (targetArch == Target::Arch::AArch64) {
+            std::string relocationError;
+            const uint64_t adrpVA = stubsVA + stubOffset;
+            if (!ApplyAArch64Relocation(stubs, stubOffset, RcuRelType::AArch64AdrPrelPgHi21, pointerAddress, 0, adrpVA,
+                                        importNames[i], "Mach-O AArch64 instruction stub", relocationError) ||
+                !ApplyAArch64Relocation(stubs, stubOffset + 4, RcuRelType::AArch64LdstAbsLo12Nc, pointerAddress, 0,
+                                        adrpVA + 4, importNames[i], "Mach-O AArch64 instruction stub",
+                                        relocationError)) {
+                Error(std::move(relocationError));
+                return false;
+            }
         }
-        Patch32(stubs, stubOffset + 2, static_cast<uint32_t>(displacement));
+        else {
+            const uint64_t stubNextInstruction = stubsVA + stubOffset + architecture->instructionStubSize;
+            const uint64_t displacement = pointerAddress - stubNextInstruction;
+            if (displacement > static_cast<uint64_t>(std::numeric_limits<int32_t>::max())) {
+                Error("Mach-O instruction stub for '" + importNames[i] + "' cannot reach its pointer slot");
+                return false;
+            }
+            Patch32(stubs, stubOffset + 2, static_cast<uint32_t>(displacement));
+        }
     }
 
     std::unordered_map<std::string, uint64_t> symbolMap;

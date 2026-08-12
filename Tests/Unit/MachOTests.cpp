@@ -382,6 +382,134 @@ TEST_CASE("Mach-O links deterministic signed freestanding AArch64 executables") 
     }
 }
 
+TEST_CASE("Mach-O links imported AArch64 executables with eager Apple stubs") {
+    RcuFile program;
+    program.arch = RcuArch::AArch64;
+    auto text = TextSection({
+        0x00, 0x00, 0x00, 0x94, // Main: bl puts
+        0x00, 0x00, 0x00, 0x94, // bl strlen
+        0x00, 0x00, 0x00, 0x94, // bl puts (deduplicated import)
+        0x00, 0x00, 0x80, 0x52, // mov w0, #0
+        0xC0, 0x03, 0x5F, 0xD6, // ret
+    });
+    text.relocs.push_back({0, 1, RcuRelType::AArch64Call26, 0});
+    text.relocs.push_back({4, 2, RcuRelType::AArch64Call26, 0});
+    text.relocs.push_back({8, 1, RcuRelType::AArch64Call26, 0});
+    program.sections.push_back(std::move(text));
+    program.symbols.push_back({"Main", "int", 0, 20, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    program.symbols.push_back(
+        {"puts", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+    program.symbols.push_back(
+        {"strlen", "/opt/Rux/libExample.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+    const auto temporary = std::filesystem::temp_directory_path();
+    const std::vector<std::uint8_t> first = LinkBytes(
+        program, ArtifactKind::Executable, temporary / "rux-macho-aarch64-import-first", Target::Arch::AArch64);
+    const std::vector<std::uint8_t> second = LinkBytes(
+        program, ArtifactKind::Executable, temporary / "rux-macho-aarch64-import-second", Target::Arch::AArch64);
+    CHECK(first == second);
+
+    MachOImage image;
+    std::string error;
+    REQUIRE_MESSAGE(ReadMachO64(first, image, error), error);
+    CHECK(image.Architecture() == MachOArchitecture::AArch64);
+    CHECK(image.fileType == 2);
+    CHECK(image.HasCommand(0x0E));        // LC_LOAD_DYLINKER
+    CHECK(image.HasCommand(0x0C));        // LC_LOAD_DYLIB
+    CHECK(image.HasCommand(0x8000'0022)); // LC_DYLD_INFO_ONLY
+    CHECK(image.HasCommand(0x02));        // LC_SYMTAB
+    CHECK(image.HasCommand(0x0B));        // LC_DYSYMTAB
+    CHECK(image.HasCommand(0x8000'0028)); // LC_MAIN
+    CHECK_FALSE(image.HasCommand(0x05));  // LC_UNIXTHREAD
+    REQUIRE(image.mainEntryOffset);
+
+    std::vector<std::string> dylibCommands;
+    for (const auto &command : image.commands) {
+        if (command.command == 0x0C) {
+            dylibCommands.push_back(command.value);
+        }
+        if (command.command == 0x0E) {
+            CHECK(command.value == "/usr/lib/dyld");
+        }
+    }
+    CHECK((dylibCommands == std::vector<std::string>{"/opt/Rux/libExample.dylib", "/usr/lib/libSystem.B.dylib"}));
+
+    const MachOSection *imageText = image.Section("__TEXT", "__text");
+    const MachOSection *stubs = image.Section("__TEXT", "__stubs");
+    const MachOSection *pointers = image.Section("__DATA", "__nl_symbol_ptr");
+    REQUIRE(imageText != nullptr);
+    REQUIRE(stubs != nullptr);
+    REQUIRE(pointers != nullptr);
+    CHECK(*image.mainEntryOffset == imageText->offset);
+    CHECK(stubs->size == 24);
+    CHECK(stubs->alignmentPower == 2);
+    CHECK(stubs->reserved1 == 0);
+    CHECK(stubs->reserved2 == 12);
+    CHECK(pointers->size == 16);
+    CHECK(pointers->alignmentPower == 3);
+    CHECK(pointers->reserved1 == 2);
+    CHECK((pointers->flags & 0xFF) == 0x06); // S_NON_LAZY_SYMBOL_POINTERS
+
+    CHECK(Detail::U32(first, imageText->offset) == 0xA9BF'7BFD);     // stp x29, x30, [sp, #-16]!
+    CHECK(Detail::U32(first, imageText->offset + 4) == 0x9100'03FD); // mov x29, sp
+    CHECK(Detail::U32(first, imageText->offset + 12) == 0xA8C1'7BFD);
+    CHECK(Detail::U32(first, imageText->offset + 16) == 0xD65F'03C0);
+
+    const auto branchTarget = [&](const std::uint64_t address, const std::uint32_t instruction) {
+        std::int64_t immediate = instruction & 0x03FF'FFFFU;
+        if ((immediate & (std::int64_t{1} << 25)) != 0) {
+            immediate |= ~((std::int64_t{1} << 26) - 1);
+        }
+        return static_cast<std::uint64_t>(static_cast<std::int64_t>(address) + immediate * 4);
+    };
+    CHECK(branchTarget(imageText->address + 8, Detail::U32(first, imageText->offset + 8)) ==
+          imageText->address + 20); // dynamic entry calls Main
+    CHECK(branchTarget(imageText->address + 20, Detail::U32(first, imageText->offset + 20)) == stubs->address);
+    CHECK(branchTarget(imageText->address + 24, Detail::U32(first, imageText->offset + 24)) == stubs->address + 12);
+    CHECK(branchTarget(imageText->address + 28, Detail::U32(first, imageText->offset + 28)) == stubs->address);
+
+    for (std::size_t index = 0; index < 2; ++index) {
+        const std::size_t fileOffset = stubs->offset + index * 12;
+        const std::uint64_t stubAddress = stubs->address + index * 12;
+        const std::uint32_t adrp = Detail::U32(first, fileOffset);
+        std::int64_t pages = static_cast<std::int64_t>(((adrp >> 29U) & 3U) | ((adrp >> 5U) & 0x7FFFFU) << 2U);
+        if ((pages & (std::int64_t{1} << 20)) != 0) {
+            pages |= ~((std::int64_t{1} << 21) - 1);
+        }
+        const std::uint32_t load = Detail::U32(first, fileOffset + 4);
+        const std::uint64_t pointerAddress =
+            (stubAddress & ~0xFFFULL) + pages * 0x1000 + static_cast<std::uint64_t>((load >> 10U) & 0xFFFU) * 8;
+        CHECK((adrp & 0x9F00'001FU) == 0x9000'0010);              // ADRP X16
+        CHECK((load & 0xFFC0'03FFU) == 0xF940'0210);              // LDR X16, [X16, #imm]
+        CHECK(Detail::U32(first, fileOffset + 8) == 0xD61F'0200); // BR X16
+        CHECK(pointerAddress == pointers->address + index * 8);
+    }
+
+    REQUIRE(image.symbols.size() == 2);
+    CHECK(image.symbols[0].name == "_puts");
+    const std::uint16_t putsOrdinal = image.symbols[0].description >> 8;
+    CHECK(putsOrdinal == 2); // sorted libSystem ordinal
+    CHECK(image.symbols[1].name == "_strlen");
+    const std::uint16_t strlenOrdinal = image.symbols[1].description >> 8;
+    CHECK(strlenOrdinal == 1);
+    CHECK((image.indirectSymbols == std::vector<std::uint32_t>{0, 1, 0, 1}));
+    REQUIRE(image.binds.size() == 2);
+    CHECK(image.binds[0].symbol == "_puts");
+    CHECK(image.binds[0].libraryOrdinal == 2);
+    CHECK(image.binds[0].segmentIndex == 2);
+    CHECK(image.binds[0].segmentOffset == 0);
+    CHECK(image.binds[1].symbol == "_strlen");
+    CHECK(image.binds[1].libraryOrdinal == 1);
+    CHECK(image.binds[1].segmentIndex == 2);
+    CHECK(image.binds[1].segmentOffset == 8);
+    REQUIRE(image.dyldInfo);
+    CHECK(image.dyldInfo->bindSize > 0);
+    CHECK(image.dyldInfo->lazyBindSize == 0);
+    CHECK(image.dyldInfo->weakBindSize == 0);
+    REQUIRE(image.codeSignature);
+    CHECK(image.codeSignature->offset + image.codeSignature->size == first.size());
+}
+
 TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid inputs") {
     const auto linkError = [](RcuFile program, const std::string_view suffix) {
         Linker linker({std::move(program)}, "MachOTest", {}, ArtifactKind::Executable, Target::OS::MacOS,
@@ -398,18 +526,6 @@ TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid i
         program.sections.push_back(TextSection({0xC0, 0x03, 0x5F, 0xD6}));
         CHECK(linkError(std::move(program), "entry").contains("no entry point found"));
     }
-    SUBCASE("imported function") {
-        RcuFile program;
-        program.arch = RcuArch::AArch64;
-        auto text = TextSection({0, 0, 0, 0});
-        text.relocs.push_back({0, 1, RcuRelType::AArch64Call26, 0});
-        program.sections.push_back(std::move(text));
-        program.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
-        program.symbols.push_back(
-            {"puts", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
-        CHECK(linkError(std::move(program), "function-import") ==
-              "external function 'puts' cannot be imported by the Mach-O AArch64 linker yet");
-    }
     SUBCASE("imported data") {
         RcuFile program;
         program.arch = RcuArch::AArch64;
@@ -420,7 +536,8 @@ TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid i
         program.symbols.push_back(
             {"errno", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
         CHECK(linkError(std::move(program), "data-import") ==
-              "external data symbol 'errno' cannot be imported by the Mach-O linker");
+              "external data symbol 'errno' cannot be imported by the Mach-O AArch64 linker because GOT-aware "
+              "lowering is not implemented");
     }
     SUBCASE("out-of-range branch") {
         RcuFile program;
