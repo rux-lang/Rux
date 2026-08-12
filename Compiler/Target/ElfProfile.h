@@ -36,6 +36,7 @@ struct Elf64Profile {
     std::uint32_t freestandingExitSyscall;
     ElfDynamicRelocations dynamicRelocations;
     bool definesBsdProcessGlobals;
+    bool definesElfAuxVector;
     ElfPltInstructionShape pltInstructionShape;
     std::size_t pltHeaderSize;
     std::size_t pltEntrySize;
@@ -62,6 +63,7 @@ struct Elf64Profile {
                          aarch64 ? 93U : 60U,
                          aarch64 ? ElfDynamicRelocations{1026, 1025, 1027} : ElfDynamicRelocations{7, 6, 8},
                          false,
+                         false,
                          aarch64 ? ElfPltInstructionShape::AArch64 : ElfPltInstructionShape::X86_64,
                          aarch64 ? 32U : 16U,
                          16};
@@ -80,6 +82,7 @@ struct Elf64Profile {
         profile.defaultLibc = "libc.so.7";
         profile.freestandingExitSyscall = 1;
         profile.definesBsdProcessGlobals = true;
+        profile.definesElfAuxVector = true;
         return profile;
     case OS::DragonFlyBSD:
         profile.targetName = "dragonfly-x86_64";

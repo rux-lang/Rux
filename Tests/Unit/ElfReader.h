@@ -198,6 +198,29 @@ struct ElfImage {
         return symbols;
     }
 
+    [[nodiscard]] std::optional<std::uint32_t> HashedDynamicSymbolIndex(const std::string &name) const {
+        const std::uint64_t hashAddress = DynamicTag(4); // DT_HASH
+        if (hashAddress == 0) {
+            return std::nullopt;
+        }
+        const std::size_t hash = OffsetOf(hashAddress);
+        const std::uint32_t bucketCount = Read32(hash);
+        const std::uint32_t symbolCount = Read32(hash + 4);
+        if (bucketCount == 0) {
+            return std::nullopt;
+        }
+        const auto symbols = DynamicSymbols();
+        std::uint32_t index = Read32(hash + 8 + ElfHash(name) % bucketCount * 4);
+        for (std::uint32_t traversed = 0;
+             index != 0 && index < symbolCount && index < symbols.size() && traversed < symbolCount; ++traversed) {
+            if (symbols[index].name == name) {
+                return index;
+            }
+            index = Read32(hash + 8 + static_cast<std::size_t>(bucketCount + index) * 4);
+        }
+        return std::nullopt;
+    }
+
     [[nodiscard]] std::vector<Rela> Relocations(const std::uint64_t address, const std::uint64_t size) const {
         std::vector<Rela> relocations;
         for (std::uint64_t at = 0; at < size; at += 24) {
@@ -228,6 +251,19 @@ struct ElfImage {
     }
 
 private:
+    [[nodiscard]] static std::uint32_t ElfHash(const std::string &name) {
+        std::uint32_t hash = 0;
+        for (const unsigned char character : name) {
+            hash = (hash << 4U) + character;
+            const std::uint32_t high = hash & 0xF0000000U;
+            if (high != 0) {
+                hash ^= high >> 24U;
+            }
+            hash &= ~high;
+        }
+        return hash;
+    }
+
     [[nodiscard]] std::string StringAtAddress(const std::uint64_t address) const {
         return StringAtOffset(OffsetOf(address));
     }

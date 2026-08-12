@@ -118,6 +118,7 @@ TEST_CASE("ELF target profiles own OS and architecture policy") {
     CHECK(linuxAarch64->maximumLoadAlignment == 0x10000);
     CHECK(linuxAarch64->freestandingExitSyscall == 93);
     CHECK(linuxAarch64->dynamicRelocations.jumpSlot == 1026);
+    CHECK_FALSE(linuxAarch64->definesElfAuxVector);
     CHECK(linuxAarch64->pltInstructionShape == Target::ElfPltInstructionShape::AArch64);
 
     // This profile is available to direct linker development only. The public
@@ -134,6 +135,7 @@ TEST_CASE("ELF target profiles own OS and architecture policy") {
     CHECK(freebsdAarch64->dynamicRelocations.globDat == 1025);
     CHECK(freebsdAarch64->dynamicRelocations.relative == 1027);
     CHECK(freebsdAarch64->definesBsdProcessGlobals);
+    CHECK(freebsdAarch64->definesElfAuxVector);
 
     CHECK_FALSE(Target::Elf64ProfileFor(Target::OS::OpenBSD, Target::Arch::AArch64).has_value());
 }

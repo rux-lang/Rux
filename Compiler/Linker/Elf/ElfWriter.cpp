@@ -177,9 +177,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // Collect the functions actually referenced by relocations. Prefer the
     // library recorded by an extern declaration in any object, then the
     // call-site metadata, and finally the host's default libc.
-    // Imported data is not supported: a direct RIP-relative reference to a
-    // library datum would require a copy relocation, which needs the object's
-    // size.
+    // Imported data is not supported: direct lowering does not address the
+    // datum through a GOT entry, and a copy relocation additionally needs the
+    // defining object's size.
     std::unordered_map<std::string, std::string> importLib; // func -> library
     for (const auto &obj : objects) {
         for (const auto &sec : obj.sections) {
@@ -204,7 +204,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                     }
                 }
                 else if (sym.kind == RcuSymKind::ExternData) {
-                    Error("external data symbol '" + sym.name + "' cannot be imported by the ELF linker");
+                    Error("external data symbol '" + sym.name + "' cannot be imported for target '" +
+                          std::string(profile.targetName) +
+                          "' because GOT-aware data lowering and symbol-size metadata are not implemented");
                 }
             }
         }
@@ -727,7 +729,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         }
     }
 
-    if (profile.definesBsdProcessGlobals) {
+    if (profile.definesBsdProcessGlobals && !isShared) {
         const auto exportPointerDataSymbol = [&](std::string name) {
             while (mergedData.size() % 8) {
                 mergedData.push_back(0);
@@ -736,11 +738,15 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             WriteU64(mergedData, 0);
             exportedDataSymbols.push_back({std::move(name), dataOffset, 0});
         };
-        // BSD libc is normally entered through crt1, which provides these
-        // process globals. Rux dynamic ET_EXEC output starts directly at Main,
-        // so export null-initialized definitions for libc to bind against.
-        exportPointerDataSymbol("environ");
+        // BSD startup normally provides these pointer definitions through
+        // crt1. Rux dynamic ET_EXEC output starts directly at Main, so it owns
+        // writable, null-initialized storage for them; FreeBSD rtld's
+        // set_program_var also initializes the auxiliary-vector pointer.
         exportPointerDataSymbol("__progname");
+        exportPointerDataSymbol("environ");
+        if (profile.definesElfAuxVector) {
+            exportPointerDataSymbol("__elf_aux_vector");
+        }
     }
 
     // Deterministic set of needed libraries.
@@ -965,8 +971,10 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     };
 
     if (aarch64Plt) {
-        // PLT[0]: push the stub's GOT pointer and the return address where the
-        // resolver reads them, then enter the resolver through .got.plt[2].
+        // FreeBSD's AArch64 _rtld_bind_start contract enters with X16 naming
+        // GOT[2], X17 holding the resolver, and a stack pair containing the
+        // calling stub's &GOT[index] followed by X30. The standard AAELF64
+        // shape establishes the same state for Linux AArch64.
         WriteU32(plt, A64Plt::StpX16X30);
         if (!writeAArch64PltStub(gotVA + 16)) {
             return false;
