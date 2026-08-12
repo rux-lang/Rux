@@ -41,11 +41,14 @@ bool Linker::CheckArchitecture() {
             return false;
         }
     }
-    if (targetArch == Target::Arch::X86_64 || artifactKind == ArtifactKind::StaticLibrary) {
+    if (targetArch == Target::Arch::X86_64 || artifactKind == ArtifactKind::StaticLibrary ||
+        (targetOs == Target::OS::Windows && targetArch == Target::Arch::AArch64 &&
+         artifactKind == ArtifactKind::Executable)) {
         return true;
     }
-    // Beyond x86-64, only the ELF writer lays out machine code; the PE and
-    // Mach-O writers still assume x86-64 entry preambles and relocation forms.
+    // Beyond x86-64, ELF lays out AArch64 executables and shared libraries;
+    // PE currently lays out AArch64 executables only. The driver continues to
+    // refuse windows-aarch64 builds until DLL parity and CLI enablement land.
     const bool elf = targetOs != Target::OS::Windows && targetOs != Target::OS::MacOS;
     if (elf && targetArch == Target::Arch::AArch64) {
         return true;

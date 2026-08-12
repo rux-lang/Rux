@@ -200,13 +200,13 @@ TEST_CASE("Linker rejects an object built for another architecture") {
     CHECK(linker.Errors().front().message == "object Main.rux was compiled for AArch64, but the link target is x86-64");
     CHECK_FALSE(std::filesystem::exists(output));
 
-    // The ELF writer lays this object out for AArch64, but the PE writer does
-    // not: the Windows path still assumes x86-64 code.
+    // Task 9 enables the lower-level PE executable writer while the compiler
+    // driver remains gated until all Windows AArch64 artifact kinds exist.
     Linker windows({std::move(foreign)}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Windows,
                    Target::Arch::AArch64);
-    CHECK_FALSE(windows.Link(output));
-    REQUIRE(windows.Errors().size() == 1);
-    CHECK(windows.Errors().front().message == "linking an executable for AArch64 is not implemented yet");
+    CHECK(windows.Link(output));
+    CHECK(windows.Errors().empty());
+    CHECK(std::filesystem::exists(output));
 
     std::filesystem::remove(output, ec);
 }

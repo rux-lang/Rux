@@ -44,6 +44,12 @@ uint64_t Read64(const std::vector<uint8_t> &image, const size_t offset) {
     return value;
 }
 
+void AppendWord(std::vector<uint8_t> &bytes, const uint32_t word) {
+    for (unsigned i = 0; i < 4; ++i) {
+        bytes.push_back(static_cast<uint8_t>(word >> (i * 8U)));
+    }
+}
+
 std::string ReadString(const std::vector<uint8_t> &image, size_t offset) {
     std::string value;
     while (offset < image.size() && image[offset] != 0) {
@@ -353,5 +359,248 @@ TEST_CASE("PE linker preserves the missing x86-64 entry diagnostic") {
     CHECK_FALSE(linker.Link(output));
     REQUIRE(linker.Errors().size() == 1);
     CHECK(linker.Errors().front().message == "undefined symbol 'Main' — no entry point found");
+    CHECK_FALSE(std::filesystem::exists(output));
+}
+
+namespace {
+int64_t SignExtend(const uint64_t value, const unsigned bits) {
+    const uint64_t sign = uint64_t{1} << (bits - 1);
+    return static_cast<int64_t>((value ^ sign) - sign);
+}
+
+uint32_t AArch64BranchTarget(const std::vector<uint8_t> &image, const size_t instructionOffset,
+                             const uint32_t instructionRva) {
+    const uint32_t word = Read32(image, instructionOffset);
+    return static_cast<uint32_t>(static_cast<int64_t>(instructionRva) + SignExtend(word & 0x03FF'FFFFU, 26) * 4);
+}
+
+uint32_t AArch64AddressTarget(const std::vector<uint8_t> &image, const size_t adrpOffset, const uint32_t adrpRva) {
+    const uint32_t adrp = Read32(image, adrpOffset);
+    const uint32_t ldrOrAdd = Read32(image, adrpOffset + 4);
+    const uint32_t immediate = (adrp >> 29U & 3U) | (adrp >> 5U & 0x7FFFFU) << 2U;
+    const int64_t page = static_cast<int64_t>(adrpRva & ~0xFFFU) + SignExtend(immediate, 21) * 0x1000;
+    const bool load = (ldrOrAdd & 0xFFC0'0000U) == 0xF940'0000U;
+    const uint32_t low = ldrOrAdd >> 10U & 0xFFFU;
+    return static_cast<uint32_t>(page + (load ? low << 3U : low));
+}
+} // namespace
+
+TEST_CASE("PE linker emits and resolves a Windows AArch64 executable") {
+    RcuFile first;
+    first.arch = RcuArch::AArch64;
+    first.sourcePath = "Main.rux";
+
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 16;
+    for (const uint32_t word : {
+             0x94000000u, // bl Helper
+             0x94000000u, // bl GetCurrentProcessId
+             0x94000000u, // bl Second
+             0x90000000u, // adrp x0, Constant
+             0x91000000u, // add x0, x0, Constant@lo12
+             0x90000001u, // adrp x1, Constant
+             0xF9400021u, // ldr x1, [x1, Constant@lo12]
+             0x52800920u, // mov w0, #73
+             0xD65F03C0u, // ret
+             0xD65F03C0u, // Helper: ret
+         }) {
+        AppendWord(text.data, word);
+    }
+    text.relocs = {
+        {0, 1, RcuRelType::AArch64Call26, 0},         {4, 2, RcuRelType::AArch64Call26, 0},
+        {8, 3, RcuRelType::AArch64Call26, 0},         {12, 4, RcuRelType::AArch64AdrPrelPgHi21, 0},
+        {16, 4, RcuRelType::AArch64AddAbsLo12Nc, 0},  {20, 4, RcuRelType::AArch64AdrPrelPgHi21, 0},
+        {24, 4, RcuRelType::AArch64LdstAbsLo12Nc, 0},
+    };
+    first.sections.push_back(std::move(text));
+
+    RcuSection rodata;
+    rodata.name = ".rdata";
+    rodata.type = RcuSecType::RoData;
+    rodata.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
+    rodata.alignment = 16;
+    rodata.data = {0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0, 0, 0, 0, 0, 0, 0, 0};
+    rodata.relocs.push_back({8, 1, RcuRelType::Abs64, 0}); // vtable-like function pointer
+    first.sections.push_back(std::move(rodata));
+
+    first.symbols.push_back({"Main", "int", 0, 36, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    first.symbols.push_back({"Helper", "", 36, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
+    first.symbols.push_back(
+        {"GetCurrentProcessId", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+    first.symbols.push_back({"Second", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+    first.symbols.push_back({"Constant", "", 0, 8, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
+
+    RcuFile second;
+    second.arch = RcuArch::AArch64;
+    second.sourcePath = "Second.rux";
+    RcuSection secondText;
+    secondText.name = ".text";
+    secondText.type = RcuSecType::Text;
+    secondText.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    secondText.alignment = 32;
+    AppendWord(secondText.data, 0xD65F03C0); // ret
+    second.sections.push_back(std::move(secondText));
+    RcuSection data;
+    data.name = ".data";
+    data.type = RcuSecType::Data;
+    data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+    data.alignment = 8;
+    data.data.resize(8);
+    data.relocs.push_back({0, 0, RcuRelType::Abs64, 0});
+    second.sections.push_back(std::move(data));
+    second.symbols.push_back({"Second", "", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+
+    const auto output = PeTestPath();
+    std::error_code error;
+    std::filesystem::remove(output, error);
+    Linker linker({std::move(first), std::move(second)}, "AArch64Pe", {}, ArtifactKind::Executable, Target::OS::Windows,
+                  Target::Arch::AArch64);
+    REQUIRE(linker.Link(output));
+
+    std::ifstream stream(output, std::ios::binary);
+    REQUIRE(stream.is_open());
+    const std::vector<uint8_t> image((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    stream.close();
+    std::filesystem::remove(output, error);
+
+    const size_t peOffset = Read32(image, 0x3C);
+    REQUIRE(Read32(image, peOffset) == 0x0000'4550);
+    CHECK(Read16(image, peOffset + 4) == 0xAA64); // IMAGE_FILE_MACHINE_ARM64
+    REQUIRE(Read16(image, peOffset + 20) == 240);
+    const size_t optional = peOffset + 24;
+    CHECK(Read16(image, optional) == 0x020B); // PE32+
+    const uint32_t entryRva = Read32(image, optional + 16);
+    const uint64_t imageBase = Read64(image, optional + 24);
+    CHECK(imageBase == 0x1'4000'0000ULL);
+    CHECK(Read32(image, optional + 32) == 0x1000);     // section alignment
+    CHECK(Read32(image, optional + 36) == 0x200);      // file alignment
+    CHECK(Read16(image, optional + 68) == 3);          // console subsystem
+    CHECK((Read16(image, optional + 70) & 0x40) == 0); // no DYNAMIC_BASE / ASLR
+    CHECK(Read64(image, optional + 72) == 0x100000);   // stack reserve
+    CHECK(Read64(image, optional + 80) == 0x1000);     // stack commit
+    CHECK(Read64(image, optional + 88) == 0x100000);   // heap reserve
+    CHECK(Read64(image, optional + 96) == 0x1000);     // heap commit
+
+    const uint16_t sectionCount = Read16(image, peOffset + 6);
+    REQUIRE(sectionCount == 3);
+    std::vector<PeSection> sections;
+    const size_t sectionTable = optional + 240;
+    for (uint16_t i = 0; i < sectionCount; ++i) {
+        const size_t offset = sectionTable + static_cast<size_t>(i) * 40;
+        PeSection section;
+        for (size_t c = 0; c < 8 && image[offset + c] != 0; ++c) {
+            section.name.push_back(static_cast<char>(image[offset + c]));
+        }
+        section.virtualSize = Read32(image, offset + 8);
+        section.rva = Read32(image, offset + 12);
+        section.rawSize = Read32(image, offset + 16);
+        section.rawOffset = Read32(image, offset + 20);
+        CHECK(section.rva % 0x1000 == 0);
+        CHECK(section.rawOffset % 0x200 == 0);
+        CHECK(static_cast<uint64_t>(section.rawOffset) + section.rawSize <= image.size());
+        CHECK(static_cast<uint64_t>(section.rva) + section.virtualSize <= Read32(image, optional + 56));
+        sections.push_back(std::move(section));
+    }
+    const auto findSection = [&](const std::string_view name) -> const PeSection & {
+        return *std::ranges::find_if(sections, [&](const PeSection &section) { return section.name == name; });
+    };
+    const auto &textSection = findSection(".text");
+    const auto &rdataSection = findSection(".rdata");
+    const auto &dataSection = findSection(".data");
+    CHECK(entryRva >= textSection.rva);
+    CHECK(entryRva < textSection.rva + textSection.virtualSize);
+    const auto rvaToOffset = [&](const uint32_t rva) -> size_t {
+        for (const auto &section : sections) {
+            if (rva >= section.rva && rva < section.rva + std::max(section.virtualSize, section.rawSize)) {
+                return section.rawOffset + rva - section.rva;
+            }
+        }
+        return image.size();
+    };
+
+    const uint32_t importRva = Read32(image, optional + 112 + 8);
+    const uint32_t iatRva = Read32(image, optional + 112 + 12 * 8);
+    CHECK(importRva >= rdataSection.rva);
+    CHECK(iatRva >= rdataSection.rva);
+    const size_t importOffset = rvaToOffset(importRva);
+    const uint32_t lookupRva = Read32(image, importOffset);
+    const uint32_t dllNameRva = Read32(image, importOffset + 12);
+    const uint32_t firstThunkRva = Read32(image, importOffset + 16);
+    CHECK(ReadString(image, rvaToOffset(dllNameRva)) == "KERNEL32.DLL");
+    CHECK(firstThunkRva == iatRva);
+    std::unordered_map<std::string, uint32_t> iatEntries;
+    for (uint32_t index = 0;; ++index) {
+        const uint64_t nameRva = Read64(image, rvaToOffset(lookupRva) + index * 8);
+        if (nameRva == 0) {
+            break;
+        }
+        iatEntries[ReadString(image, rvaToOffset(static_cast<uint32_t>(nameRva)) + 2)] = iatRva + index * 8;
+    }
+    REQUIRE(iatEntries.size() == 2);
+
+    const size_t entryOffset = rvaToOffset(entryRva);
+    CHECK(Read32(image, entryOffset) == 0xA9BF7BFD);      // aligned frame
+    CHECK(Read32(image, entryOffset + 4) == 0x910003FD);  // mov x29, sp
+    CHECK(Read32(image, entryOffset + 16) == 0xD4200000); // cannot fall through
+    const uint32_t mainRva = AArch64BranchTarget(image, entryOffset + 8, entryRva + 8);
+    const uint32_t exitThunkRva = AArch64BranchTarget(image, entryOffset + 12, entryRva + 12);
+    CHECK(mainRva % 16 == 0);
+    CHECK(AArch64AddressTarget(image, rvaToOffset(exitThunkRva), exitThunkRva) == iatEntries["ExitProcess"]);
+    CHECK(Read32(image, rvaToOffset(exitThunkRva) + 8) == 0xD61F0200); // br x16
+
+    const size_t mainOffset = rvaToOffset(mainRva);
+    const uint32_t helperRva = AArch64BranchTarget(image, mainOffset, mainRva);
+    const uint32_t importedThunkRva = AArch64BranchTarget(image, mainOffset + 4, mainRva + 4);
+    const uint32_t secondRva = AArch64BranchTarget(image, mainOffset + 8, mainRva + 8);
+    CHECK(helperRva == mainRva + 36);
+    CHECK(secondRva % 32 == 0);
+    CHECK(AArch64AddressTarget(image, rvaToOffset(importedThunkRva), importedThunkRva) ==
+          iatEntries["GetCurrentProcessId"]);
+    CHECK(Read32(image, rvaToOffset(importedThunkRva) + 8) == 0xD61F0200);
+    CHECK(AArch64AddressTarget(image, mainOffset + 12, mainRva + 12) == rdataSection.rva);
+    CHECK(AArch64AddressTarget(image, mainOffset + 20, mainRva + 20) == rdataSection.rva);
+    CHECK(Read32(image, mainOffset + 28) == 0x52800920); // distinctive exit code 73
+    CHECK(Read64(image, rdataSection.rawOffset + 8) == imageBase + helperRva);
+    CHECK(Read64(image, dataSection.rawOffset) == imageBase + secondRva);
+}
+
+TEST_CASE("PE linker diagnoses invalid Windows AArch64 relocations") {
+    RcuFile object;
+    object.arch = RcuArch::AArch64;
+    object.sourcePath = "Invalid.rux";
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 4;
+    AppendWord(text.data, 0x94000000);
+    object.sections.push_back(std::move(text));
+    object.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+
+    SUBCASE("out-of-range branch") {
+        object.sections[0].relocs.push_back({0, 0, RcuRelType::AArch64Call26, 1 << 27});
+    }
+    SUBCASE("x86-64 relocation in an AArch64 object") {
+        object.sections[0].relocs.push_back({0, 0, RcuRelType::Rel32, 0});
+    }
+
+    const auto output = PeTestPath();
+    std::error_code error;
+    std::filesystem::remove(output, error);
+    Linker linker({std::move(object)}, "Invalid", {}, ArtifactKind::Executable, Target::OS::Windows,
+                  Target::Arch::AArch64);
+    CHECK_FALSE(linker.Link(output));
+    REQUIRE(linker.Errors().size() == 1);
+    if (linker.Errors().front().message.starts_with("AARCH64_CALL26")) {
+        CHECK(linker.Errors().front().message.contains("out of range"));
+        CHECK(linker.Errors().front().message.contains("128 MB"));
+    }
+    else {
+        CHECK(linker.Errors().front().message ==
+              "relocation REL_32 against 'Main' is not supported by the PE32+ writer");
+    }
     CHECK_FALSE(std::filesystem::exists(output));
 }

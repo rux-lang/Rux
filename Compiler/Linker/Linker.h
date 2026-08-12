@@ -20,8 +20,8 @@ struct LinkerError {
 //
 // The target architecture is given explicitly rather than taken from the host,
 // and every input object must have been compiled for it. x86-64 is laid out in
-// every format; AArch64 so far only as a static ELF executable, since that is
-// what the native AArch64 back end can fill today.
+// every format; AArch64 supports ELF images and PE executables, while PE DLL
+// and Mach-O image support remain explicitly gated.
 class Linker {
 public:
     explicit Linker(std::vector<RcuFile> inputObjects, std::string inputPackageName,

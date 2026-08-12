@@ -1,10 +1,12 @@
 // PE32+ object writer and Windows DLL import resolution.
 
+#include "Linker/AArch64Relocation.h"
 #include "Linker/Linker.h"
 #include "Linker/LinkerInternal.h"
 #include "System/Os.h"
 
 #include <algorithm>
+#include <format>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -45,6 +47,11 @@ struct PeStubPatch {
     uint16_t type = RcuRelType::Rel32;
 };
 
+struct PeImportThunk {
+    size_t stubOffset = 0;
+    std::vector<PeStubPatch> patches;
+};
+
 struct PeMissingEntryPatch {
     size_t opcodeOffset = 0;
     uint8_t opcode = 0;
@@ -55,13 +62,14 @@ struct PeStubs {
     Buf bytes;
     PeStubPatch userEntry;
     std::optional<PeStubPatch> exitProcess;
-    std::vector<PeStubPatch> imports;
+    std::vector<PeImportThunk> imports;
     std::optional<PeMissingEntryPatch> missingDllEntry;
 };
 
 using BuildPeEntryStub = PeStubs (*)(bool);
 using AppendPeImportThunk = void (*)(PeStubs &);
-using ApplyPeRelocation = bool (*)(Buf &, size_t, uint64_t, uint64_t, int64_t, uint16_t);
+using ApplyPeRelocation = bool (*)(Buf &, size_t, uint64_t, uint64_t, int64_t, uint16_t, std::string_view,
+                                   std::string &);
 
 struct PeArchitectureConfig {
     uint16_t machine = 0;
@@ -93,11 +101,12 @@ static PeStubs BuildX86_64EntryStub(const bool isDll) {
 static void AppendX86_64ImportThunk(PeStubs &stubs) {
     const size_t offset = stubs.bytes.size();
     stubs.bytes.insert(stubs.bytes.end(), {0xFF, 0x25, 0, 0, 0, 0}); // jmp qword ptr [rip+disp32]
-    stubs.imports.push_back({offset, offset + 2, RcuRelType::Rel32});
+    stubs.imports.push_back({offset, {{offset, offset + 2, RcuRelType::Rel32}}});
 }
 
 static bool ApplyX86_64PeRelocation(Buf &buffer, const size_t patchAt, const uint64_t siteVa, const uint64_t targetVa,
-                                    const int64_t addend, const uint16_t type) {
+                                    const int64_t addend, const uint16_t type, const std::string_view symbolName,
+                                    std::string &error) {
     if (type == RcuRelType::Rel32) {
         if (patchAt + 4 > buffer.size()) {
             return false;
@@ -120,7 +129,52 @@ static bool ApplyX86_64PeRelocation(Buf &buffer, const size_t patchAt, const uin
         Patch32(buffer, patchAt, static_cast<uint32_t>(targetVa + addend));
         return true;
     }
+    error = std::format("relocation {} against '{}' is not supported by the PE32+ writer", RcuRelTypeName(type),
+                        symbolName);
     return false;
+}
+
+static PeStubs BuildAArch64EntryStub(const bool isDll) {
+    PeStubs stubs;
+    if (isDll) {
+        return stubs; // Task 10 owns the Windows ARM64 DLL entry path.
+    }
+
+    // stp x29, x30, [sp, #-16]!; mov x29, sp; bl Main; bl ExitProcess; brk #0
+    // The loader supplies a 16-byte-aligned SP. Preserve that alignment and a
+    // conventional frame chain, leave Main's result in w0 for ExitProcess,
+    // and trap if the no-return import unexpectedly returns.
+    for (const uint32_t word : {0xA9BF7BFDu, 0x910003FDu, 0x94000000u, 0x94000000u, 0xD4200000u}) {
+        WriteU32(stubs.bytes, word);
+    }
+    stubs.userEntry = {0, 8, RcuRelType::AArch64Call26};
+    stubs.exitProcess = PeStubPatch{0, 12, RcuRelType::AArch64Call26};
+    return stubs;
+}
+
+static void AppendAArch64ImportThunk(PeStubs &stubs) {
+    const size_t offset = stubs.bytes.size();
+    // adrp x16, IAT-page; ldr x16, [x16, IAT-pageoff]; br x16
+    // x16 is AAPCS64's intra-procedure-call scratch register, so the thunk
+    // leaves x0-x7 (and therefore every argument register) untouched.
+    for (const uint32_t word : {0x90000010u, 0xF9400210u, 0xD61F0200u}) {
+        WriteU32(stubs.bytes, word);
+    }
+    stubs.imports.push_back(
+        {offset,
+         {{offset, offset, RcuRelType::AArch64AdrPrelPgHi21}, {offset, offset + 4, RcuRelType::AArch64LdstAbsLo12Nc}}});
+}
+
+static bool ApplyAArch64PeRelocation(Buf &buffer, const size_t patchAt, const uint64_t siteVa, const uint64_t targetVa,
+                                     const int64_t addend, const uint16_t type, const std::string_view symbolName,
+                                     std::string &error) {
+    const size_t width = type == RcuRelType::Abs64 || type == RcuRelType::AArch64Prel64 ? 8 : 4;
+    if (patchAt > buffer.size() || width > buffer.size() - patchAt) {
+        error = std::format("{} relocation against '{}' has a patch outside its PE section", RcuRelTypeName(type),
+                            symbolName);
+        return false;
+    }
+    return ApplyAArch64Relocation(buffer, patchAt, type, targetVa, addend, siteVa, symbolName, "PE32+ writer", error);
 }
 
 static const PeArchitectureConfig *PeArchitectureFor(const Target::Arch arch) {
@@ -131,9 +185,18 @@ static const PeArchitectureConfig *PeArchitectureFor(const Target::Arch arch) {
         .appendImportThunk = AppendX86_64ImportThunk,
         .applyRelocation = ApplyX86_64PeRelocation,
     };
+    static constexpr PeArchitectureConfig aarch64{
+        .machine = 0xAA64, // IMAGE_FILE_MACHINE_ARM64
+        .codePadding = 0,
+        .buildEntryStub = BuildAArch64EntryStub,
+        .appendImportThunk = AppendAArch64ImportThunk,
+        .applyRelocation = ApplyAArch64PeRelocation,
+    };
     switch (arch) {
     case Target::Arch::X86_64:
         return &x86_64;
+    case Target::Arch::AArch64:
+        return &aarch64;
     default:
         return nullptr;
     }
@@ -150,15 +213,16 @@ static PeStubs BuildPeStubs(const PeArchitectureConfig &architecture, const bool
 
 static bool PatchPeStubs(const PeArchitectureConfig &architecture, const PeStubs &stubs, Buf &text,
                          const uint64_t textVa, const uint64_t rdataVa, const std::vector<uint32_t> &iatEntryOffsets,
+                         const std::vector<std::string> &importNames,
                          const std::unordered_map<std::string, size_t> &importIndexes,
                          const std::unordered_map<std::string, uint64_t> &symbols, const bool isDll,
                          std::string &error) {
     for (size_t i = 0; i < stubs.imports.size(); ++i) {
-        const auto &patch = stubs.imports[i];
-        if (!architecture.applyRelocation(text, patch.fieldOffset, textVa + patch.fieldOffset,
-                                          rdataVa + iatEntryOffsets[i], 0, patch.type)) {
-            error = "internal: could not patch PE import stub";
-            return false;
+        for (const auto &patch : stubs.imports[i].patches) {
+            if (!architecture.applyRelocation(text, patch.fieldOffset, textVa + patch.fieldOffset,
+                                              rdataVa + iatEntryOffsets[i], 0, patch.type, importNames[i], error)) {
+                return false;
+            }
         }
     }
 
@@ -167,8 +231,7 @@ static bool PatchPeStubs(const PeArchitectureConfig &architecture, const PeStubs
     if (entry != symbols.end()) {
         const auto &patch = stubs.userEntry;
         if (!architecture.applyRelocation(text, patch.fieldOffset, textVa + patch.fieldOffset, entry->second, 0,
-                                          patch.type)) {
-            error = "internal: could not patch PE entry stub";
+                                          patch.type, entryName, error)) {
             return false;
         }
     }
@@ -190,8 +253,7 @@ static bool PatchPeStubs(const PeArchitectureConfig &architecture, const PeStubs
         const auto &patch = *stubs.exitProcess;
         const uint64_t exitThunkVa = textVa + stubs.imports[exitIndex->second].stubOffset;
         if (!architecture.applyRelocation(text, patch.fieldOffset, textVa + patch.fieldOffset, exitThunkVa, 0,
-                                          patch.type)) {
-            error = "internal: could not patch PE process-exit stub";
+                                          patch.type, "ExitProcess", error)) {
             return false;
         }
     }
@@ -587,7 +649,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
                 objectDataAlignment = std::max(objectDataAlignment, sec.alignment);
             }
         }
-        PadTo(mergedText, objectTextAlignment, 0xCC);
+        PadTo(mergedText, objectTextAlignment, architecture->codePadding);
         PadTo(mergedRodata, objectRodataAlignment);
         PadTo(mergedData, objectDataAlignment);
         layouts[i] = {static_cast<uint32_t>(mergedText.size()), static_cast<uint32_t>(mergedRodata.size()),
@@ -835,8 +897,8 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
 
     std::string stubError;
-    if (!PatchPeStubs(*architecture, stubs, textBuf, imageBase + textRva, imageBase + rdataRva, iatEntryOff, importIdx,
-                      symMap, isDll, stubError)) {
+    if (!PatchPeStubs(*architecture, stubs, textBuf, imageBase + textRva, imageBase + rdataRva, iatEntryOff,
+                      importNames, importIdx, symMap, isDll, stubError)) {
         Error(std::move(stubError));
         return false;
     }
@@ -870,7 +932,12 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
             }
 
             for (const auto &reloc : sec.relocs) {
+                if (reloc.type == RcuRelType::None) {
+                    continue;
+                }
                 if (reloc.symbolIndex >= obj.symbols.size()) {
+                    Error(std::format("relocation in object {} refers to missing symbol index {}", obj.sourcePath,
+                                      reloc.symbolIndex));
                     continue;
                 }
                 const auto &sym = obj.symbols[reloc.symbolIndex];
@@ -908,7 +975,11 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
                 }
                 const size_t patchAt = baseInBuf + reloc.sectionOffset;
                 const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
-                architecture->applyRelocation(*buf, patchAt, siteVA, targetVA, reloc.addend, reloc.type);
+                std::string relocationError;
+                if (!architecture->applyRelocation(*buf, patchAt, siteVA, targetVA, reloc.addend, reloc.type, sym.name,
+                                                   relocationError)) {
+                    Error(std::move(relocationError));
+                }
             }
         }
     }
