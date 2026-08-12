@@ -9,11 +9,10 @@
 // the construct rather than emitting something plausible, so an object this
 // produces is either right or absent.
 //
-// The target operating system is not what chooses a calling convention here —
-// AAPCS64 is the single one on every AArch64 target — but it is what a failed
-// assertion asks to print its message: the write it makes is a system call, and
-// the number, the register that number travels in and the immediate SVC carries
-// are all a property of the kernel rather than of the architecture.
+// The target operating system does not replace AAPCS64, but it selects platform
+// variants within it: Windows C variadic calls use only the general-purpose
+// argument file. It also decides how a failed assertion prints its message;
+// syscall details are properties of the kernel rather than the architecture.
 
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Lir/Lir.h"

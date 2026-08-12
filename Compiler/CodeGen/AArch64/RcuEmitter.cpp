@@ -282,6 +282,7 @@ struct ArgLocation {
         General, // X registers
         Vector,  // V registers
         Stack,   // the outgoing argument area
+        Slots,   // Windows C variadic imaginary-stack slots
     };
 
     Kind kind = Kind::General;
@@ -300,6 +301,7 @@ struct ArgLocation {
 struct CallLayout {
     std::vector<ArgLocation> args;
     std::int32_t areaBytes = 0;
+    bool windowsVariadic = false;
 };
 
 // Whether this call names one of the four reinterpretations the front end
@@ -2017,18 +2019,66 @@ private:
     // hand-written caller most often gets wrong, and it is the reason this is one
     // walk over the whole list rather than a decision made argument by argument.
     //
-    // An anonymous argument — one past the last a variadic declaration named —
-    // is classified exactly like a named one here, which is what AAPCS64 asks
-    // for and what a Linux `printf` reads: a float still arrives in a V register
-    // and `va_arg` finds it in the vector half of the register save area. Two
-    // systems deviate and neither is reachable yet: Apple's variant puts every
-    // anonymous argument on the stack, and Windows on AArch64 puts anonymous
-    // floating-point values in general-purpose registers. Both are one branch
-    // here, taken on the target operating system and on the index of the first
-    // anonymous argument — which `LirFunc::isVariadic` and the callee's
-    // parameter count supply — and both belong with the Mach-O and PE writers
-    // that make those systems reachable at all (BACKLOG.md "Follow-on").
-    [[nodiscard]] CallLayout ClassifyArguments(const std::vector<TypeRef> &types) const {
+    // A Windows C variadic call is the one platform variant reachable before
+    // the PE writer itself is: every argument, including the named ones, is
+    // allocated to an imaginary stack. Its first eight doublewords become X0
+    // through X7 and the remainder stays on the real stack. This deliberately
+    // records one argument as a run of slots instead of as one register-or-stack
+    // choice: a two-word composite starting in the eighth slot straddles X7 and
+    // the first real stack slot.
+    [[nodiscard]] CallLayout ClassifyWindowsVariadicArguments(const std::vector<TypeRef> &types) const {
+        CallLayout layout;
+        layout.args.reserve(types.size());
+        layout.windowsVariadic = true;
+        std::int32_t nextSlot = 0;
+
+        for (const TypeRef &type : types) {
+            const int size = RuntimeSize(type);
+            ArgLocation loc;
+            loc.kind = ArgLocation::Kind::Slots;
+            if (IsAggregate(type) && size > 16) {
+                // The imaginary stack holds the address of a caller-owned copy,
+                // just as the ordinary procedure-call rules do.
+                loc.byReference = true;
+                loc.copyBytes = size;
+                loc.bytes = 8;
+            }
+            else {
+                loc.bytes = AlignUp(std::max(size, 1), 8);
+            }
+            const int align = loc.byReference ? 8 : std::clamp(RuntimeAlign(type), 8, 16);
+            nextSlot = AlignUp(nextSlot, align);
+            loc.offset = nextSlot;
+            nextSlot += loc.bytes;
+            layout.args.push_back(loc);
+        }
+
+        // Only the bytes above the register window need real outgoing storage.
+        // Copies follow that storage and retain their natural alignment.
+        std::int32_t nextStack = std::max(nextSlot - static_cast<std::int32_t>(kIntArgRegs * 8), 0);
+        for (std::size_t i = 0; i < layout.args.size(); ++i) {
+            if (!layout.args[i].byReference) {
+                continue;
+            }
+            const int align = std::clamp(RuntimeAlign(types[i]), 8, 16);
+            nextStack = AlignUp(nextStack, align);
+            layout.args[i].copyOffset = nextStack;
+            nextStack += AlignUp(std::max(layout.args[i].copyBytes, 1), 8);
+        }
+        layout.areaBytes = AlignUp(nextStack, 16);
+        return layout;
+    }
+
+    // An anonymous argument on standard AAPCS64 is classified exactly like a
+    // named one: a float still arrives in a V register and `va_arg` finds it in
+    // the vector half of the register save area. Windows selects the separate
+    // imaginary-stack walk above; non-variadic Windows calls remain here.
+    [[nodiscard]] CallLayout ClassifyArguments(const std::vector<TypeRef> &types,
+                                               const bool isCVariadic = false) const {
+        if (targetOs == Target::OS::Windows && isCVariadic) {
+            return ClassifyWindowsVariadicArguments(types);
+        }
+
         CallLayout layout;
         layout.args.reserve(types.size());
         unsigned nextGeneral = 0;
@@ -2115,6 +2165,66 @@ private:
         // which is what makes the adjustment a FrameAdjust at all.
         layout.areaBytes = AlignUp(nextStack, 16);
         return layout;
+    }
+
+    // Fill the imaginary stack of a Windows C variadic call. Stack slots are
+    // written before registers so the X9 scratch used for them cannot disturb
+    // an already-filled argument. A scalar float crosses to the general file
+    // by bit-preserving FMOV; an HFA or any other composite is read as ordinary
+    // consecutive doublewords, with no SIMD classification at all.
+    void EmitWindowsVariadicCallArgs(const std::vector<LirReg> &args, const std::vector<TypeRef> &types,
+                                     const CallLayout &layout) {
+        const auto loadSlot = [&](const std::size_t index, const std::int32_t sourceOffset, const A64Reg dst) {
+            const ArgLocation &loc = layout.args[index];
+            if (loc.byReference) {
+                Must(enc.AddSubLargeImm(dst, A64::Sp, loc.copyOffset), "the address of an argument copy");
+                return;
+            }
+            if (IsAggregate(types[index])) {
+                LoadScalar(dst, A64::Fp, static_cast<std::int64_t>(Disp(args[index])) + sourceOffset, 8, false);
+                return;
+            }
+            if (IsFloat(types[index])) {
+                const A64Reg value = FpReg(types[index], kFpTemp);
+                LoadFpFromSlot(value, args[index]);
+                Must(enc.Fmov(A64::Gpr(dst.code, value.bits), value), "a variadic floating-point argument");
+                return;
+            }
+            LoadFromSlot(dst, args[index], types[index]);
+        };
+
+        // Caller-owned copies are part of the real outgoing area irrespective
+        // of whether their addresses land in a register or a stack slot.
+        for (std::size_t i = 0; i < args.size(); ++i) {
+            const ArgLocation &loc = layout.args[i];
+            if (!loc.byReference) {
+                continue;
+            }
+            const A64Reg source = A64::Xn(kSrcAddr);
+            SlotAddress(source, args[i]);
+            CopyBlock(A64::Sp, loc.copyOffset, source, 0, loc.copyBytes, RuntimeAlign(types[i]) >= 8);
+        }
+
+        constexpr std::int32_t registerBytes = static_cast<std::int32_t>(kIntArgRegs * 8);
+        for (const bool toRegisters : {false, true}) {
+            for (std::size_t i = 0; i < args.size(); ++i) {
+                const ArgLocation &loc = layout.args[i];
+                for (std::int32_t byte = 0; byte < loc.bytes; byte += 8) {
+                    const std::int32_t imaginaryOffset = loc.offset + byte;
+                    if ((imaginaryOffset < registerBytes) != toRegisters) {
+                        continue;
+                    }
+                    if (toRegisters) {
+                        loadSlot(i, byte, A64::Xn(static_cast<unsigned>(imaginaryOffset / 8)));
+                    }
+                    else {
+                        const A64Reg value = A64::Xn(kTemp);
+                        loadSlot(i, byte, value);
+                        StoreScalar(value, A64::Sp, imaginaryOffset - registerBytes, 8);
+                    }
+                }
+            }
+        }
     }
 
     // Move one argument between the registers AAPCS64 puts it in and the slot it
@@ -2213,6 +2323,10 @@ private:
     // through X10 and X11, none of which an argument ever occupies, so neither
     // pass disturbs the other.
     void EmitCallArgs(const std::vector<LirReg> &args, const std::vector<TypeRef> &types, const CallLayout &layout) {
+        if (layout.windowsVariadic) {
+            EmitWindowsVariadicCallArgs(args, types, layout);
+            return;
+        }
         for (std::size_t i = 0; i < args.size(); ++i) {
             const ArgLocation &loc = layout.args[i];
             const bool paired = RuntimeAlign(types[i]) >= 8;
@@ -2284,7 +2398,7 @@ private:
         for (const LirReg arg : args) {
             types.push_back(TypeOfReg(arg));
         }
-        const CallLayout layout = ClassifyArguments(types);
+        const CallLayout layout = ClassifyArguments(types, instr.isCVariadic);
         const bool keepsResult = instr.dst != LirNoReg && !instr.type.IsOpaque();
         const bool indirectResult = keepsResult && ReturnsInMemory(instr.type);
 

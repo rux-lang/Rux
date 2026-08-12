@@ -28,12 +28,12 @@
 using namespace Rux;
 
 namespace {
-LirPackage CompileToAArch64Lir(const std::string &source) {
+LirPackage CompileToAArch64Lir(const std::string &source, const std::string_view targetTriple = "linux-aarch64") {
     Lexer lexer(source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
-    const TargetContext target = Driver::TargetContextForTriple("linux-aarch64");
+    const TargetContext target = Driver::TargetContextForTriple(targetTriple);
     Parser parser(std::move(lexed.tokens), "test.rux", target.arch);
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
@@ -44,7 +44,7 @@ LirPackage CompileToAArch64Lir(const std::string &source) {
     // AArch64 mnemonic that is not also an x86-64 one.
     CompileTimeContext context;
     context.target = target;
-    context.targetTriple = "linux-aarch64";
+    context.targetTriple = targetTriple;
 
     std::vector<Module *> modules = {&parsed.module};
     SemanticAnalyzer analyzer(modules, {}, "test", context);
@@ -291,6 +291,22 @@ struct VectorSlotAccess {
         return word & 0x1FU;
     }
     return std::nullopt;
+}
+
+// A floating-point value transferred by bit pattern into the general-purpose
+// argument file, which is the distinctive Windows C variadic operation.
+[[nodiscard]] std::optional<unsigned> FloatBitsArgumentFilled(const std::uint32_t word, const unsigned bits) {
+    const std::uint32_t opcode = bits == 64 ? 0x9E660000U : 0x1E260000U; // fmov xD, dN / fmov wD, sN
+    return (word & 0xFFFFFC00U) == opcode ? std::optional<unsigned>(word & 0x1FU) : std::nullopt;
+}
+
+// The byte offset of `str x9, [sp, #imm]`, used for the real part of Windows'
+// imaginary variadic argument stack.
+[[nodiscard]] std::optional<std::uint32_t> StackArgumentStored(const std::uint32_t word) {
+    if ((word & 0xFFC003FFU) != 0xF90003E9U) {
+        return std::nullopt;
+    }
+    return (word >> 10U & 0xFFFU) * 8U;
 }
 
 // The vector register a value leaves, on the same terms as ArgumentDrained.
@@ -2570,6 +2586,150 @@ TEST_CASE("AArch64 RCU emitter leaves the vector file behind without touching th
         }
     }
     CHECK_EQ(opened, std::optional<std::int64_t>(16));
+}
+
+TEST_CASE("Windows AArch64 sprintf-style variadic calls use consecutive general-purpose slots") {
+    const auto package = CompileToAArch64Lir(R"(
+        #Link("ucrtbase.dll")
+        extern {
+            func sprintf(buffer: *char8, format: *char8, ...) -> int32;
+        }
+
+        func Main() -> int {
+            var buffer = "result";
+            var format = "values";
+            var written = sprintf(buffer.data, format.data, 2.5, 7, 3.5f32);
+            return 0;
+        }
+    )",
+                                             "windows-aarch64");
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::Windows);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+
+    // The two fixed pointers and all three anonymous arguments occupy one
+    // eight-byte slot each. Both floating-point values cross into X registers
+    // by bit pattern; no V argument register receives either one.
+    const auto beforeCall = std::ranges::subrange(caller.begin(), caller.begin() + static_cast<std::ptrdiff_t>(*call));
+    CHECK(std::ranges::any_of(
+        beforeCall, [](const std::uint32_t word) { return ArgumentFilled(word) == std::optional<unsigned>(0); }));
+    CHECK(std::ranges::any_of(
+        beforeCall, [](const std::uint32_t word) { return ArgumentFilled(word) == std::optional<unsigned>(1); }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return FloatBitsArgumentFilled(word, 64) == std::optional<unsigned>(2);
+    }));
+    CHECK(std::ranges::any_of(
+        beforeCall, [](const std::uint32_t word) { return ArgumentFilled(word) == std::optional<unsigned>(3); }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return FloatBitsArgumentFilled(word, 32) == std::optional<unsigned>(4);
+    }));
+    for (const auto word : caller) {
+        for (const unsigned bits : {32U, 64U}) {
+            const auto vector = VectorArgumentFilled(word, bits);
+            CHECK(vector.value_or(8) >= 8);
+        }
+    }
+}
+
+TEST_CASE("Windows AArch64 variadic aggregates straddle the register window and stack") {
+    const auto package = CompileToAArch64Lir(R"(
+        struct FloatPair { x: float64; y: float64; }
+        struct IntPair { x: int64; y: int64; }
+
+        #Link("variadic.dll")
+        extern {
+            func Collect(first: int, ...) -> int32;
+        }
+
+        func Main() -> int {
+            var floats = FloatPair { x: 1.5, y: 2.5 };
+            var integers = IntPair { x: 8i64, y: 9i64 };
+            var result = Collect(1, 2, 3, 4, 5, 6, 7, floats, integers);
+            return 0;
+        }
+    )",
+                                             "windows-aarch64");
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::Windows);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+
+    // Seven scalar slots fill X0-X6. The HFA receives no special treatment:
+    // its first doubleword fills X7 and its second becomes stack slot zero.
+    // The ordinary aggregate follows in stack slots eight and sixteen.
+    for (unsigned reg = 0; reg < 8; ++reg) {
+        CHECK(std::ranges::any_of(
+            caller.begin(), caller.begin() + static_cast<std::ptrdiff_t>(*call),
+            [reg](const std::uint32_t word) { return ArgumentFilled(word) == std::optional<unsigned>(reg); }));
+    }
+    std::vector<std::uint32_t> stackOffsets;
+    for (std::size_t i = 0; i < *call; ++i) {
+        if (const auto offset = StackArgumentStored(caller[i])) {
+            stackOffsets.push_back(*offset);
+        }
+        CHECK_FALSE(VectorArgumentFilled(caller[i], 64).value_or(8) < 8);
+    }
+    CHECK_EQ(stackOffsets, std::vector<std::uint32_t>({0, 8, 16}));
+
+    // Twenty-four real argument bytes are rounded so SP remains aligned at the
+    // public call boundary.
+    CHECK(std::ranges::any_of(caller, [](const std::uint32_t word) {
+        return StackPointerAdjustment(word, true) == std::optional<std::int64_t>(32);
+    }));
+}
+
+TEST_CASE("Windows AArch64 variadic calls copy large aggregates and keep indirect returns in X8") {
+    const auto package = CompileToAArch64Lir(R"(
+        struct Big { a: int64; b: int64; c: int64; }
+
+        #Link("variadic.dll")
+        extern {
+            func Transform(scale: float64, ...) -> Big;
+        }
+
+        func Main() -> int {
+            var input = Big { a: 1i64, b: 2i64, c: 3i64 };
+            var output = Transform(2.5, input);
+            return 0;
+        }
+    )",
+                                             "windows-aarch64");
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::Windows);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    REQUIRE_GE(*call, 3);
+
+    // The named float still uses the general file, and the aggregate is copied
+    // into the outgoing area with its address in the next consecutive slot.
+    CHECK(std::ranges::any_of(
+        caller.begin(), caller.begin() + static_cast<std::ptrdiff_t>(*call),
+        [](const std::uint32_t word) { return FloatBitsArgumentFilled(word, 64) == std::optional<unsigned>(0); }));
+    CHECK(std::ranges::any_of(
+        caller.begin(), caller.begin() + static_cast<std::ptrdiff_t>(*call),
+        [](const std::uint32_t word) { return StackPointerAddImm(word, 1) == std::optional<std::uint32_t>(0); }));
+
+    // Return classification is independent of the variadic argument variant:
+    // the caller names its large result in X8 immediately before the branch.
+    CHECK(FramePointerAddImm(caller[*call - 1], 8).has_value());
+    REQUIRE_LT(*call + 1, caller.size());
+    CHECK_FALSE(ArgumentDrained(caller[*call + 1]) == std::optional<unsigned>(0));
+    CHECK(std::ranges::any_of(caller, [](const std::uint32_t word) {
+        return StackPointerAdjustment(word, true) == std::optional<std::int64_t>(32);
+    }));
 }
 
 TEST_CASE("AArch64 RCU emitter passes an anonymous float argument in a vector register") {
