@@ -449,3 +449,90 @@ when #config.Has("allocator") &&
     CHECK(diagnostics.empty());
     CHECK(std::filesystem::is_regular_file(result.primaryArtifactPath));
 }
+
+// Cross-target plumbing
+//
+// The three questions a cross build asks before it produces anything: which
+// machine the option names, whether a back end reaches it from this host, and
+// where the artifact lands. None of the cases below run what they build, so
+// they hold on a host with no emulator installed.
+
+TEST_CASE("a target triple resolves to the machine it names rather than to the host") {
+    const TargetContext aarch64 = TargetContextForTriple("linux-aarch64");
+    CHECK(aarch64.arch == Target::Arch::AArch64);
+    CHECK(aarch64.os == Target::OS::Linux);
+    CHECK(aarch64.object_format == Target::ObjectFormat::ELF);
+    CHECK(aarch64.pointer_size == 8);
+    CHECK(aarch64.endianness == Target::Endian::Little);
+
+    // An alias resolves to the same description, and an operating system the
+    // triple names is carried even where no back end reaches it yet.
+    CHECK(TargetContextForTriple("linux-arm64").arch == Target::Arch::AArch64);
+    CHECK(TargetContextForTriple("windows-aarch64").object_format == Target::ObjectFormat::COFF);
+    CHECK(TargetContextForTriple("macos-aarch64").object_format == Target::ObjectFormat::MachO);
+}
+
+TEST_CASE("the unsupported-target diagnostic follows the back end that would produce the artifact") {
+    // x86-64 is encoded and linked in-process, so every supported operating
+    // system is reachable from every host.
+    CHECK(UnsupportedBackendReason("linux-x86_64", false).empty());
+    CHECK(UnsupportedBackendReason("windows-x86_64", false).empty());
+    CHECK(UnsupportedBackendReason(HostTargetTriple(), false).empty());
+
+    // So is linux-aarch64, once the build has opted into the native back end,
+    // under either spelling of the triple.
+    CHECK(UnsupportedBackendReason("linux-aarch64", true).empty());
+    CHECK(UnsupportedBackendReason("linux-arm64", true).empty());
+
+    // Without that opt-in it goes through the platform Clang driver, which
+    // produces artifacts for the machine the compiler runs on and no other. So
+    // does every AArch64 target the native back end does not reach.
+    if constexpr (Target::HostArch != Target::Arch::AArch64) {
+        const std::string refused = UnsupportedBackendReason("linux-aarch64", false);
+        CHECK(refused.contains("aarch64"));
+        CHECK(refused.contains("not implemented yet"));
+    }
+    if constexpr (Target::HostOS != Target::OS::Windows) {
+        CHECK_FALSE(UnsupportedBackendReason("windows-aarch64", true).empty());
+    }
+    if constexpr (Target::HostOS != Target::OS::MacOS) {
+        CHECK_FALSE(UnsupportedBackendReason("macos-aarch64", true).empty());
+    }
+}
+
+TEST_CASE("compiler driver builds an executable for linux-aarch64") {
+    DependencyFixture fixture;
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.targetName = "linux-aarch64";
+    options.nativeAArch64Backend = true;
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
+    // The artifact is named for the target operating system and sits in the
+    // target's own directory, one level below the host build.
+    CHECK(result.primaryArtifactPath.filename().string() == ExecutableFileName("App", Target::OS::Linux));
+    CHECK(result.primaryArtifactPath.parent_path().filename() == "linux-aarch64");
+    REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
+
+    std::ifstream executable(result.primaryArtifactPath, std::ios::binary);
+    const std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(executable)),
+                                           std::istreambuf_iterator<char>());
+    REQUIRE(bytes.size() > 64);
+    CHECK(bytes[0] == 0x7F);
+    CHECK(bytes[1] == 'E');
+    CHECK(bytes[4] == 2);                        // ELFCLASS64
+    CHECK((bytes[16] | bytes[17] << 8U) == 2);   // ET_EXEC
+    CHECK((bytes[18] | bytes[19] << 8U) == 183); // EM_AARCH64
+
+    // A whole program was linked, not just assembled: the header names an entry
+    // point, and the code it points at is AArch64 rather than the host's.
+    std::uint64_t entry = 0;
+    for (std::size_t i = 0; i < 8; ++i) {
+        entry |= static_cast<std::uint64_t>(bytes[24 + i]) << (i * 8U);
+    }
+    CHECK(entry != 0);
+    CHECK(entry % 4 == 0);
+}

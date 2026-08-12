@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -171,7 +172,7 @@ void AppendWord(std::vector<uint8_t> &data, const uint32_t word) {
     }
 }
 
-// An ELF64 image read back for inspection, with the accessors the two AArch64
+// An ELF64 image read back for inspection, with the accessors the AArch64
 // cases below share.
 struct ElfImage {
     std::vector<uint8_t> bytes;
@@ -192,8 +193,46 @@ struct ElfImage {
         return value;
     }
 
+    [[nodiscard]] uint16_t Read16(const size_t offset) const {
+        return static_cast<uint16_t>(bytes[offset] | bytes[offset + 1] << 8U);
+    }
+
     [[nodiscard]] uint16_t Machine() const {
-        return static_cast<uint16_t>(bytes[18] | bytes[19] << 8U);
+        return Read16(18);
+    }
+
+    [[nodiscard]] uint16_t Type() const {
+        return Read16(16);
+    }
+
+    // One entry of the program header table, in the order the fields sit in.
+    struct Segment {
+        uint32_t type;
+        uint32_t flags;
+        uint64_t offset;
+        uint64_t address;
+        uint64_t fileSize;
+        uint64_t memorySize;
+        uint64_t alignment;
+    };
+
+    [[nodiscard]] std::vector<Segment> Segments() const {
+        const auto table = static_cast<size_t>(Read64(32));
+        std::vector<Segment> segments;
+        for (size_t i = 0; i < Read16(56); ++i) {
+            const size_t header = table + i * 56;
+            segments.push_back({Read32(header), Read32(header + 4), Read64(header + 8), Read64(header + 16),
+                                Read64(header + 32), Read64(header + 40), Read64(header + 48)});
+        }
+        return segments;
+    }
+
+    // The one segment of a kind the image carries, or nothing when it carries
+    // none: PT_PHDR, PT_INTERP and PT_DYNAMIC are each written at most once.
+    [[nodiscard]] std::optional<Segment> SegmentOfType(const uint32_t type) const {
+        const auto segments = Segments();
+        const auto found = std::ranges::find(segments, type, &Segment::type);
+        return found == segments.end() ? std::nullopt : std::optional(*found);
     }
 
     [[nodiscard]] uint64_t Entry() const {
@@ -203,16 +242,12 @@ struct ElfImage {
     // The file offset a virtual address maps to, found through the PT_LOAD
     // segment that covers it.
     [[nodiscard]] size_t OffsetOf(const uint64_t virtualAddress) const {
-        const auto programHeaders = static_cast<size_t>(Read64(32));
-        const size_t count = bytes[56] | static_cast<size_t>(bytes[57]) << 8U;
-        for (size_t i = 0; i < count; ++i) {
-            const size_t header = programHeaders + i * 56;
-            if (Read32(header) != 1) { // PT_LOAD
+        for (const auto &segment : Segments()) {
+            if (segment.type != 1) { // PT_LOAD
                 continue;
             }
-            const uint64_t base = Read64(header + 16);
-            if (virtualAddress >= base && virtualAddress < base + Read64(header + 40)) {
-                return static_cast<size_t>(Read64(header + 8) + (virtualAddress - base));
+            if (virtualAddress >= segment.address && virtualAddress < segment.address + segment.memorySize) {
+                return static_cast<size_t>(segment.offset + (virtualAddress - segment.address));
             }
         }
         return 0;
@@ -220,12 +255,9 @@ struct ElfImage {
 
     // The virtual address of the writable PT_LOAD, which is where .data lands.
     [[nodiscard]] uint64_t WritableSegmentAddress() const {
-        const auto programHeaders = static_cast<size_t>(Read64(32));
-        const size_t count = bytes[56] | static_cast<size_t>(bytes[57]) << 8U;
-        for (size_t i = 0; i < count; ++i) {
-            const size_t header = programHeaders + i * 56;
-            if (Read32(header) == 1 && (Read32(header + 4) & 0x2U) != 0) {
-                return Read64(header + 16);
+        for (const auto &segment : Segments()) {
+            if (segment.type == 1 && (segment.flags & 0x2U) != 0) {
+                return segment.address;
             }
         }
         return 0;
@@ -241,38 +273,29 @@ struct ElfImage {
 
     // The p_align every PT_LOAD declares, or zero when they disagree.
     [[nodiscard]] uint64_t LoadAlignment() const {
-        const auto programHeaders = static_cast<size_t>(Read64(32));
-        const size_t count = bytes[56] | static_cast<size_t>(bytes[57]) << 8U;
         uint64_t alignment = 0;
-        for (size_t i = 0; i < count; ++i) {
-            const size_t header = programHeaders + i * 56;
-            if (Read32(header) != 1) { // PT_LOAD
+        for (const auto &segment : Segments()) {
+            if (segment.type != 1) { // PT_LOAD
                 continue;
             }
-            const uint64_t declared = Read64(header + 48);
-            if (alignment != 0 && alignment != declared) {
+            if (alignment != 0 && alignment != segment.alignment) {
                 return 0;
             }
-            alignment = declared;
+            alignment = segment.alignment;
         }
         return alignment;
     }
 
     // The value of a .dynamic tag, found through PT_DYNAMIC.
     [[nodiscard]] uint64_t DynamicTag(const uint64_t tag) const {
-        const auto programHeaders = static_cast<size_t>(Read64(32));
-        const size_t count = bytes[56] | static_cast<size_t>(bytes[57]) << 8U;
-        for (size_t i = 0; i < count; ++i) {
-            const size_t header = programHeaders + i * 56;
-            if (Read32(header) != 2) { // PT_DYNAMIC
-                continue;
-            }
-            const size_t offset = static_cast<size_t>(Read64(header + 8));
-            const size_t size = static_cast<size_t>(Read64(header + 32));
-            for (size_t at = offset; at + 16 <= offset + size; at += 16) {
-                if (Read64(at) == tag) {
-                    return Read64(at + 8);
-                }
+        const auto dynamic = SegmentOfType(2); // PT_DYNAMIC
+        if (!dynamic) {
+            return 0;
+        }
+        const auto offset = static_cast<size_t>(dynamic->offset);
+        for (size_t at = offset; at + 16 <= offset + dynamic->fileSize; at += 16) {
+            if (Read64(at) == tag) {
+                return Read64(at + 8);
             }
         }
         return 0;
@@ -325,7 +348,172 @@ RcuSection MakeSection(const std::string &name, const uint32_t type, const uint3
     section.data = std::move(data);
     return section;
 }
+
+// A freestanding AArch64 object with one section of each kind: a Main that
+// returns 42, eight bytes of read-only data and eight bytes of writable data,
+// which is one loadable segment each.
+RcuFile MakeAArch64Object() {
+    RcuFile object;
+    object.arch = RcuArch::AArch64;
+    std::vector<uint8_t> code;
+    AppendWord(code, 0xD2800540); // mov x0, #42
+    AppendWord(code, 0xD65F03C0); // ret
+    object.sections.push_back(MakeSection(".text", RcuSecType::Text,
+                                          RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read, 4, std::move(code)));
+    object.sections.push_back(
+        MakeSection(".rodata", RcuSecType::RoData, RcuSecFlag::Alloc | RcuSecFlag::Read, 8, {1, 2, 3, 4, 5, 6, 7, 8}));
+    object.sections.push_back(MakeSection(".data", RcuSecType::Data,
+                                          RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, 8,
+                                          {9, 10, 11, 12, 13, 14, 15, 16}));
+    object.symbols.push_back({"Main", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    object.symbols.push_back({"Table", "int", 0, 8, RCU_RODATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
+    object.symbols.push_back({"Counter", "int", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
+    return object;
+}
+
+// The AArch64 loader an image asks for by name, with the terminator it is
+// written with.
+constexpr std::string_view kAArch64Interpreter = "/lib/ld-linux-aarch64.so.1";
 } // namespace
+
+TEST_CASE("ELF linker fills every field of an AArch64 executable's header") {
+    const ElfImage image = LinkAArch64Executable(MakeAArch64Object(), std::filesystem::temp_directory_path() /
+                                                                          "rux-elf-aarch64-header-test");
+
+    // e_ident: the magic, ELFCLASS64, ELFDATA2LSB and EV_CURRENT. The byte
+    // after them is the ABI, which follows the host rather than the target —
+    // it is the kernel that reads it — and the seven after that are reserved.
+    REQUIRE(image.bytes.size() > 64);
+    CHECK(std::string(image.bytes.begin(), image.bytes.begin() + 4) == std::string("\x7F"
+                                                                                   "ELF",
+                                                                                   4));
+    CHECK(image.bytes[4] == 2);
+    CHECK(image.bytes[5] == 1);
+    CHECK(image.bytes[6] == 1);
+    CHECK(std::ranges::all_of(image.bytes | std::views::drop(9) | std::views::take(7),
+                              [](const uint8_t byte) { return byte == 0; }));
+
+    CHECK(image.Type() == 2);       // ET_EXEC
+    CHECK(image.Machine() == 0xB7); // EM_AARCH64
+    CHECK(image.Read32(20) == 1);   // e_version
+    CHECK(image.Read64(32) == 64);  // e_phoff: the table follows the header
+    CHECK(image.Read32(48) == 0);   // e_flags: AArch64 defines none for an ELF64 image
+    CHECK(image.Read16(52) == 64);  // e_ehsize
+    CHECK(image.Read16(54) == 56);  // e_phentsize
+    CHECK(image.Read16(56) == image.Segments().size());
+
+    // This writer emits no section header table at all: an executable is read
+    // by the loader, which reads program headers, and nothing else has to
+    // parse it. Every field describing that table is therefore zero, and a
+    // reader must not be told there is a table of zero-sized entries.
+    CHECK(image.Read64(40) == 0); // e_shoff
+    CHECK(image.Read16(58) == 0); // e_shentsize
+    CHECK(image.Read16(60) == 0); // e_shnum
+    CHECK(image.Read16(62) == 0); // e_shstrndx
+
+    // The entry is an instruction address in the executable segment, so it is
+    // four-byte aligned and inside the segment's memory range.
+    const uint64_t entry = image.Entry();
+    CHECK(entry % 4 == 0);
+    const auto segments = image.Segments();
+    const auto text =
+        std::ranges::find_if(segments, [](const ElfImage::Segment &s) { return s.type == 1 && (s.flags & 0x1U) != 0; });
+    REQUIRE(text != segments.end());
+    CHECK(entry >= text->address);
+    CHECK(entry < text->address + text->memorySize);
+}
+
+TEST_CASE("ELF linker gives an AArch64 executable one loadable segment per permission") {
+    const ElfImage image = LinkAArch64Executable(MakeAArch64Object(),
+                                                 std::filesystem::temp_directory_path() / "rux-elf-aarch64-phdr-test");
+
+    const auto segments = image.Segments();
+    std::vector<ElfImage::Segment> loads;
+    std::ranges::copy_if(segments, std::back_inserter(loads), [](const ElfImage::Segment &s) { return s.type == 1; });
+
+    // Three sections with three sets of permissions are three segments: the
+    // code, the read-only data and the writable data, in that order.
+    REQUIRE(loads.size() == 3);
+    CHECK(loads[0].flags == 0x5); // PF_R | PF_X
+    CHECK(loads[1].flags == 0x4); // PF_R
+    CHECK(loads[2].flags == 0x6); // PF_R | PF_W
+
+    // The first segment holds the entry stub and the object's code, one page
+    // above the image base, and each of the others starts a page later.
+    CHECK(loads[0].offset == 0x10000);
+    CHECK(loads[0].address == 0x400000 + 0x10000);
+    for (size_t i = 0; i + 1 < loads.size(); ++i) {
+        CHECK(loads[i + 1].address > loads[i].address + loads[i].memorySize);
+        CHECK(loads[i + 1].offset > loads[i].offset);
+    }
+
+    for (const auto &load : loads) {
+        // A segment is mapped from the file whole, so what it occupies in
+        // memory is what it occupies in the file, and the file has to hold it.
+        CHECK(load.fileSize == load.memorySize);
+        CHECK(load.offset + load.fileSize <= image.bytes.size());
+
+        // mmap maps whole pages, so a segment's address and its file offset
+        // must agree modulo the page it declares — the largest an AArch64
+        // kernel may be configured for.
+        CHECK(load.alignment == 0x10000);
+        CHECK(load.address % load.alignment == load.offset % load.alignment);
+    }
+
+    // Both data sections are readable at the addresses their segments name,
+    // which is what makes the two segments above more than a pair of numbers.
+    CHECK(image.Giant(image.WritableSegmentAddress()) == 0x100F0E0D0C0B0A09);
+    CHECK(image.Giant(loads[1].address) == 0x0807060504030201);
+}
+
+TEST_CASE("ELF linker points an AArch64 dynamic executable at its interpreter") {
+    RcuFile object = MakeAArch64Object();
+    object.sections[RCU_TEXT_IDX].data.clear();
+    AppendWord(object.sections[RCU_TEXT_IDX].data, 0x94000000); // bl sqrt
+    AppendWord(object.sections[RCU_TEXT_IDX].data, 0xD65F03C0); // ret
+    object.sections[RCU_TEXT_IDX].relocs.push_back({0, 3, RcuRelType::AArch64Call26, 0});
+    object.symbols.push_back({"sqrt", "libm.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+    const ElfImage image = LinkAArch64Executable(std::move(object), std::filesystem::temp_directory_path() /
+                                                                        "rux-elf-aarch64-interp-test");
+
+    // An image with imports is laid out differently: two segments rather than
+    // three, since .rodata is mapped with the code, and four headers describing
+    // the image to the loader before them.
+    const auto phdr = image.SegmentOfType(6);    // PT_PHDR
+    const auto interp = image.SegmentOfType(3);  // PT_INTERP
+    const auto dynamic = image.SegmentOfType(2); // PT_DYNAMIC
+    REQUIRE(phdr.has_value());
+    REQUIRE(interp.has_value());
+    REQUIRE(dynamic.has_value());
+
+    // PT_PHDR describes the table it is itself an entry of.
+    CHECK(phdr->offset == image.Read64(32));
+    CHECK(phdr->fileSize == static_cast<uint64_t>(image.Read16(56)) * 56);
+    CHECK(phdr->fileSize == phdr->memorySize);
+
+    // PT_INTERP names the AArch64 loader, with the terminator the kernel reads
+    // the name up to.
+    REQUIRE(interp->fileSize == kAArch64Interpreter.size() + 1);
+    const auto begin = image.bytes.begin() + static_cast<std::ptrdiff_t>(interp->offset);
+    CHECK(std::string(begin, begin + static_cast<std::ptrdiff_t>(interp->fileSize) - 1) == kAArch64Interpreter);
+    CHECK(image.bytes[static_cast<size_t>(interp->offset + interp->fileSize) - 1] == 0);
+    CHECK(interp->alignment == 1);
+
+    // PT_DYNAMIC sits inside the writable segment — the loader writes the GOT
+    // slots it describes — and ends with the DT_NULL that terminates it.
+    const auto segments = image.Segments();
+    const auto writable =
+        std::ranges::find_if(segments, [](const ElfImage::Segment &s) { return s.type == 1 && (s.flags & 0x2U) != 0; });
+    REQUIRE(writable != segments.end());
+    CHECK(dynamic->address >= writable->address);
+    CHECK(dynamic->address + dynamic->memorySize <= writable->address + writable->memorySize);
+    CHECK(dynamic->alignment == 8);
+    CHECK(dynamic->fileSize % 16 == 0);
+    CHECK(image.Read64(static_cast<size_t>(dynamic->offset + dynamic->fileSize) - 16) == 0); // DT_NULL
+    CHECK(image.DynamicTag(5) != 0);                                                         // DT_STRTAB
+    CHECK(std::string(image.bytes.begin(), image.bytes.end()).find("libm.so.6") != std::string::npos);
+}
 
 TEST_CASE("ELF linker writes an AArch64 executable that exits through its entry stub") {
     RcuFile object;
@@ -489,12 +677,26 @@ TEST_CASE("ELF linker binds an AArch64 import through a PLT stub and its GOT slo
     CHECK(image.DynamicTag(2) == 2 * 24); // DT_PLTRELSZ: one entry per import
     CHECK(image.DynamicTag(4) != 0);      // DT_HASH
 
+    // The trio every stub reaches its GOT slot with, whatever address the two
+    // immediates carry: the page in X16, the slot's contents in X17 and the
+    // slot's own address back in X16, which is what the resolver expects to
+    // find there.
+    const auto checkGotTrio = [&image](const uint64_t at) {
+        CHECK((image.Word(at) & 0x9F00001FU) == 0x90000010U);     // adrp x16, <page>
+        CHECK((image.Word(at + 4) & 0xFFC003FFU) == 0xF9400211U); // ldr  x17, [x16, #<lo12>]
+        CHECK((image.Word(at + 8) & 0xFFC003FFU) == 0x91000210U); // add  x16, x16, #<lo12>
+    };
+
     // PLT[0] pushes the stub's GOT pointer and the return address where the
-    // resolver reads them, then enters the resolver through .got.plt[2].
+    // resolver reads them, then enters the resolver through .got.plt[2]. The
+    // three NOPs pad the header out to the sixteen bytes a stub occupies, so
+    // that a stub's index is its offset.
     CHECK(image.Word(pltVA) == 0xA9BF7BF0); // stp x16, x30, [sp, #-16]!
+    checkGotTrio(pltVA + 4);
     CHECK(image.GotSlotReachedBy(pltVA + 4) == got + 16);
     CHECK(image.Word(pltVA + 16) == 0xD61F0220); // br x17
     CHECK(image.Word(pltVA + 20) == 0xD503201F); // nop
+    CHECK(image.Word(pltVA + 24) == 0xD503201F);
     CHECK(image.Word(pltVA + 28) == 0xD503201F);
 
     // Each stub reaches its own GOT slot with the same ADRP / LDR / ADD trio and
@@ -503,6 +705,7 @@ TEST_CASE("ELF linker binds an AArch64 import through a PLT stub and its GOT slo
     for (size_t i = 0; i < 2; ++i) {
         const uint64_t stub = pltVA + 32 + i * 16;
         const uint64_t slot = got + (3 + i) * 8;
+        checkGotTrio(stub);
         CHECK(image.GotSlotReachedBy(stub) == slot);
         CHECK(image.Word(stub + 12) == 0xD61F0220); // br x17
         CHECK(image.Giant(slot) == pltVA);
@@ -559,6 +762,42 @@ TEST_CASE("ELF linker writes an AArch64 shared library whose pointers rebase the
     CHECK(image.DynamicTag(8) == 24); // DT_RELASZ
     CHECK(image.Giant(rela + 8) == 1027);
     CHECK(image.Giant(rela + 16) == image.Giant(image.Giant(rela)));
+}
+
+TEST_CASE("ELF linker leaves a pointer to an import in an AArch64 shared library to the loader") {
+    RcuFile library;
+    library.arch = RcuArch::AArch64;
+    std::vector<uint8_t> code;
+    AppendWord(code, 0xD65F03C0); // ret
+    library.sections.push_back(MakeSection(
+        ".text", RcuSecType::Text, RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read, 4, std::move(code)));
+    RcuSection data =
+        MakeSection(".data", RcuSecType::Data, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, 8, {});
+    data.data.resize(8);
+    data.relocs.push_back({0, 2, RcuRelType::Abs64, 0}); // a pointer to sqrt
+    library.sections.push_back(std::move(data));
+    library.symbols.push_back({"Answer", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    library.symbols.push_back({"Slot", "int", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
+    library.symbols.push_back({"sqrt", "libm.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+    const ElfImage image = LinkAArch64Image(
+        {std::move(library)}, std::filesystem::temp_directory_path() / "librux-linker-aarch64-globdat-test.so",
+        ArtifactKind::SharedLibrary);
+
+    // A pointer to an import cannot be resolved to this image's own PLT stub —
+    // the address the program is meant to see is the one the loader binds — so
+    // the slot is named by an R_AARCH64_GLOB_DAT against the import's own
+    // .dynsym entry, with nothing added to it.
+    const uint64_t rela = image.DynamicTag(7); // DT_RELA
+    REQUIRE(rela != 0);
+    REQUIRE(image.DynamicTag(8) == 24); // DT_RELASZ: this one relocation
+    // The slot is in the writable segment, past the .dynamic and GOT that open
+    // it, and the loader writes a whole address into it.
+    CHECK(image.Giant(rela) > image.WritableSegmentAddress());
+    CHECK(image.Giant(rela) % 8 == 0);
+    CHECK((image.Giant(rela + 8) & 0xFFFFFFFFU) == 1025); // R_AARCH64_GLOB_DAT
+    CHECK((image.Giant(rela + 8) >> 32) != 0);            // the .dynsym index of sqrt
+    CHECK(image.Giant(rela + 16) == 0);
 }
 
 TEST_CASE("native object writer stamps the target architecture into every format") {
