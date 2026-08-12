@@ -29,21 +29,23 @@ The script creates a Release build in `Build/` and writes the compiler to `Bin/r
 For a Debug build, add `--configuration Debug`. Run `sh Build.sh --help` to see every option.
 
 On Apple Silicon, Rux selects the `macos-aarch64` target by default, and that
-target has no image writer. The AArch64 back end reaches `linux-aarch64`
-through ELF and `windows-aarch64` through PE/COFF, but cannot yet write Mach-O.
-Building for `macos-aarch64` is refused with `code generation for
+target has no executable or shared-library image writer. The AArch64 back end
+reaches `linux-aarch64` through ELF and `windows-aarch64` through PE/COFF. Its
+native-object path can now write ARM64 Mach-O members and deterministic BSD
+static archives, but the public target remains gated until every manifest
+artifact kind is implemented. Building for `macos-aarch64` is therefore still refused with `code generation for
 'macos-aarch64' is not implemented yet`; `rux check`, `rux fmt`, `rux lint` and
 `rux doc` need no back end and work as they do everywhere. An Apple Silicon Mac
 can still build `rux` itself, and can cross-build Rux programs with `--target
-macos-x86_64`, `--target linux-aarch64`, or `--target windows-aarch64`. An
-AArch64 Mach-O writer is what makes the native target buildable, and is not
-written yet.
+macos-x86_64`, `--target linux-aarch64`, or `--target windows-aarch64`. The
+remaining AArch64 Mach-O image writers are what make the native target
+buildable.
 
 ## Native Package Artifacts
 
 An `Executable` package writes `Name`, a `SharedLibrary` writes `libName.dylib` with `LC_ID_DYLIB` set to `@rpath/libName.dylib`, and a `StaticLibrary` writes `libName.a` with a BSD archive symbol index. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
 
-The x86-64 backend writes Mach-O objects and images directly, from a host of either architecture. There is no AArch64 Mach-O writer, so those artifact kinds have no `macos-aarch64` form yet.
+The x86-64 backend writes Mach-O objects and images directly, from a host of either architecture. The AArch64 backend writes relocatable Mach-O objects and the BSD archive used for static libraries, including ARM64 branch, page, page-offset, pointer, and explicit-addend relocations. The driver does not expose that partial support through `rux build --target macos-aarch64` yet; executable and shared-library images remain prerequisites for enabling the target as a whole.
 
 ## Verifying the Build
 

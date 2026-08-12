@@ -121,6 +121,22 @@ bool IsFieldRelocation(const std::uint16_t type) noexcept {
            type == RcuRelType::Rel32;
 }
 
+bool IsAArch64MachORelocation(const std::uint16_t type) noexcept {
+    switch (type) {
+    case RcuRelType::None:
+    case RcuRelType::Abs64:
+    case RcuRelType::Abs32:
+    case RcuRelType::AArch64Call26:
+    case RcuRelType::AArch64Jump26:
+    case RcuRelType::AArch64AdrPrelPgHi21:
+    case RcuRelType::AArch64AddAbsLo12Nc:
+    case RcuRelType::AArch64LdstAbsLo12Nc:
+        return true;
+    default:
+        return false;
+    }
+}
+
 // The COFF relocation number a kind takes for `targetArch`, or nullopt when
 // that architecture has no representation for it. Classic Windows ARM64 has
 // no relocation for the MOVW halfwords or a 64-bit PC-relative data field.
@@ -289,6 +305,157 @@ void PatchInlineField(Buf &data, const RcuReloc &relocation, const std::int64_t 
     for (std::size_t i = 0; i < width; ++i) {
         data[relocation.sectionOffset + i] = static_cast<std::uint8_t>(static_cast<std::uint64_t>(value) >> (i * 8U));
     }
+}
+
+struct MachORelocation {
+    std::uint32_t address = 0;
+    std::uint32_t symbol = 0;
+    std::uint8_t length = 0;
+    std::uint8_t type = 0;
+    bool pcRelative = false;
+    bool external = false;
+};
+
+bool FitsSigned24(const std::int64_t value) noexcept {
+    constexpr std::int64_t limit = std::int64_t{1} << 23;
+    return value >= -limit && value < limit;
+}
+
+bool IsAArch64Branch26(const std::uint32_t word) noexcept {
+    return (word & 0x7C00'0000U) == 0x1400'0000U;
+}
+
+bool IsAArch64Adrp(const std::uint32_t word) noexcept {
+    return (word & 0x9F00'0000U) == 0x9000'0000U;
+}
+
+bool IsAArch64UnshiftedAddImmediate(const std::uint32_t word) noexcept {
+    return (word & 0x7F80'0000U) == 0x1100'0000U && (word & 0x0040'0000U) == 0;
+}
+
+bool IsAArch64UnsignedOffsetLoadStore(const std::uint32_t word) noexcept {
+    return (word & 0x3B00'0000U) == 0x3900'0000U;
+}
+
+void ClearAArch64RelocationField(Buf &data, const RcuReloc &relocation, const std::uint32_t word) {
+    std::uint32_t cleared = word;
+    switch (relocation.type) {
+    case RcuRelType::AArch64Call26:
+    case RcuRelType::AArch64Jump26:
+        cleared &= 0xFC00'0000U;
+        break;
+    case RcuRelType::AArch64AdrPrelPgHi21:
+        cleared &= ~((0x3U << 29U) | (0x7FFFFU << 5U));
+        break;
+    case RcuRelType::AArch64AddAbsLo12Nc:
+    case RcuRelType::AArch64LdstAbsLo12Nc:
+        cleared &= ~(0xFFFU << 10U);
+        break;
+    default:
+        break;
+    }
+    Patch32(data, relocation.sectionOffset, cleared);
+}
+
+bool BuildAArch64MachORelocations(const RcuFile &file, const std::size_t sectionIndex,
+                                  const std::vector<std::uint32_t> &symbolRemap, Buf &data,
+                                  std::vector<MachORelocation> &records, std::string &error) {
+    const auto &section = file.sections[sectionIndex];
+    for (const auto &relocation : section.relocs) {
+        if (relocation.type == RcuRelType::None) {
+            continue;
+        }
+        const auto &target = file.symbols[relocation.symbolIndex];
+        const bool sectionRelative = target.visibility == RcuSymVis::Local && target.sectionIdx < file.sections.size();
+        const std::uint32_t symbol =
+            sectionRelative ? static_cast<std::uint32_t>(target.sectionIdx + 1) : symbolRemap[relocation.symbolIndex];
+        const std::int64_t addend = static_cast<std::int64_t>(relocation.addend) +
+                                    (sectionRelative ? static_cast<std::int64_t>(target.value) : 0);
+        const auto fail = [&](const std::string_view reason) {
+            error = std::format("{} relocation against '{}' in section {} {}", RcuRelTypeName(relocation.type),
+                                target.name, section.name, reason);
+            return false;
+        };
+
+        if (relocation.type == RcuRelType::Abs64 || relocation.type == RcuRelType::Abs32) {
+            const std::size_t width = relocation.type == RcuRelType::Abs64 ? 8 : 4;
+            if (static_cast<std::size_t>(relocation.sectionOffset) + width > data.size()) {
+                return fail("extends beyond the section data");
+            }
+            PatchInlineField(data, relocation, addend);
+            records.push_back({.address = relocation.sectionOffset,
+                               .symbol = symbol,
+                               .length = static_cast<std::uint8_t>(relocation.type == RcuRelType::Abs64 ? 3 : 2),
+                               .type = 0,
+                               .pcRelative = false,
+                               .external = !sectionRelative});
+            continue;
+        }
+
+        if (relocation.sectionOffset % 4 != 0 || static_cast<std::size_t>(relocation.sectionOffset) + 4 > data.size()) {
+            return fail("does not name an aligned four-byte instruction");
+        }
+        const std::uint32_t word = InstructionAt(data, relocation.sectionOffset);
+        std::uint8_t type = 0;
+        bool pcRelative = false;
+        switch (relocation.type) {
+        case RcuRelType::AArch64Call26:
+        case RcuRelType::AArch64Jump26:
+            if (!IsAArch64Branch26(word)) {
+                return fail("requires a B or BL instruction");
+            }
+            if (addend % 4 != 0) {
+                return fail("has an addend that is not four-byte aligned");
+            }
+            type = 2; // ARM64_RELOC_BRANCH26
+            pcRelative = true;
+            break;
+        case RcuRelType::AArch64AdrPrelPgHi21:
+            if (!IsAArch64Adrp(word)) {
+                return fail("requires an ADRP instruction");
+            }
+            type = 3; // ARM64_RELOC_PAGE21
+            pcRelative = true;
+            break;
+        case RcuRelType::AArch64AddAbsLo12Nc:
+            if (!IsAArch64UnshiftedAddImmediate(word)) {
+                return fail("requires an unshifted ADD-immediate instruction");
+            }
+            type = 4; // ARM64_RELOC_PAGEOFF12
+            break;
+        case RcuRelType::AArch64LdstAbsLo12Nc: {
+            if (!IsAArch64UnsignedOffsetLoadStore(word)) {
+                return fail("requires an unsigned-offset load or store instruction");
+            }
+            const unsigned scale = AArch64LoadStoreScale(word);
+            if ((static_cast<std::uint64_t>(addend) & ((std::uint64_t{1} << scale) - 1U)) != 0) {
+                return fail("has an addend that is not aligned to the access width");
+            }
+            type = 4; // ARM64_RELOC_PAGEOFF12
+            break;
+        }
+        default:
+            return fail("is not supported by the Mach-O AArch64 object writer");
+        }
+
+        ClearAArch64RelocationField(data, relocation, word);
+        if (addend != 0) {
+            if (!FitsSigned24(addend)) {
+                return fail("has an addend that does not fit in the signed 24-bit ARM64_RELOC_ADDEND field");
+            }
+            records.push_back({.address = relocation.sectionOffset,
+                               .symbol = static_cast<std::uint32_t>(addend) & 0x00FF'FFFFU,
+                               .length = 2,
+                               .type = 10}); // ARM64_RELOC_ADDEND
+        }
+        records.push_back({.address = relocation.sectionOffset,
+                           .symbol = symbol,
+                           .length = 2,
+                           .type = type,
+                           .pcRelative = pcRelative,
+                           .external = !sectionRelative});
+    }
+    return true;
 }
 
 // COFF has no explicit addend field. Whole-field relocations carry it as a
@@ -623,26 +790,36 @@ bool WriteMachO(const RcuFile &file, const Target::Arch targetArch, NativeObject
     const std::uint32_t segmentCommandSize = static_cast<std::uint32_t>(72 + sectionCount * 80);
     const std::uint32_t commandsSize = segmentCommandSize + 24;
     const std::size_t dataStart = 32 + commandsSize;
+    const auto order = SymbolOrder(file);
+    std::vector<std::uint32_t> symbolRemap(file.symbols.size());
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        symbolRemap[order[i]] = static_cast<std::uint32_t>(i);
+    }
     std::vector<std::vector<std::uint8_t>> sectionData;
+    std::vector<std::vector<MachORelocation>> sectionRelocations(sectionCount);
     std::vector<std::uint32_t> sectionOffsets(sectionCount);
     std::vector<std::uint32_t> relocationOffsets(sectionCount);
     std::size_t cursor = dataStart;
     for (std::size_t i = 0; i < sectionCount; ++i) {
         sectionData.push_back(file.sections[i].data);
-        for (const auto &relocation : file.sections[i].relocs) {
-            PatchInlineField(sectionData.back(), relocation, relocation.addend);
+        if (targetArch == Target::Arch::AArch64) {
+            if (!BuildAArch64MachORelocations(file, i, symbolRemap, sectionData.back(), sectionRelocations[i], error)) {
+                return false;
+            }
+        }
+        else {
+            for (const auto &relocation : file.sections[i].relocs) {
+                PatchInlineField(sectionData.back(), relocation, relocation.addend);
+            }
         }
         sectionOffsets[i] = static_cast<std::uint32_t>(cursor);
         cursor += sectionData.back().size();
     }
     for (std::size_t i = 0; i < sectionCount; ++i) {
-        relocationOffsets[i] = file.sections[i].relocs.empty() ? 0 : static_cast<std::uint32_t>(cursor);
-        cursor += file.sections[i].relocs.size() * 8;
-    }
-    const auto order = SymbolOrder(file);
-    std::vector<std::uint32_t> symbolRemap(file.symbols.size());
-    for (std::size_t i = 0; i < order.size(); ++i) {
-        symbolRemap[order[i]] = static_cast<std::uint32_t>(i);
+        const std::size_t count =
+            targetArch == Target::Arch::AArch64 ? sectionRelocations[i].size() : file.sections[i].relocs.size();
+        relocationOffsets[i] = count == 0 ? 0 : static_cast<std::uint32_t>(cursor);
+        cursor += count * 8;
     }
     const auto symbolOffset = static_cast<std::uint32_t>(cursor);
     const auto stringOffset = symbolOffset + static_cast<std::uint32_t>(file.symbols.size() * 16);
@@ -683,7 +860,8 @@ bool WriteMachO(const RcuFile &file, const Target::Arch targetArch, NativeObject
         out.U32(
             static_cast<std::uint32_t>(std::countr_zero(std::bit_ceil(std::max<std::uint16_t>(1, section.alignment)))));
         out.U32(relocationOffsets[i]);
-        out.U32(static_cast<std::uint32_t>(section.relocs.size()));
+        out.U32(static_cast<std::uint32_t>(targetArch == Target::Arch::AArch64 ? sectionRelocations[i].size()
+                                                                               : section.relocs.size()));
         out.U32(section.type == RcuSecType::Text ? 0x80000400U : 0);
         out.U32(0);
         out.U32(0);
@@ -700,14 +878,25 @@ bool WriteMachO(const RcuFile &file, const Target::Arch targetArch, NativeObject
         out.Raw(data);
     }
     for (std::size_t i = 0; i < sectionCount; ++i) {
-        for (const auto &relocation : file.sections[i].relocs) {
-            out.U32(relocation.sectionOffset);
-            const bool pcRelative = relocation.type == RcuRelType::Rel32;
-            const std::uint32_t length = relocation.type == RcuRelType::Abs64 ? 3 : 2;
-            const auto &target = file.symbols[relocation.symbolIndex];
-            const std::uint32_t type = pcRelative && target.kind == RcuSymKind::Func ? 2U : pcRelative ? 1U : 0U;
-            out.U32(symbolRemap[relocation.symbolIndex] | (static_cast<std::uint32_t>(pcRelative) << 24U) |
-                    (length << 25U) | (1U << 27U) | (type << 28U));
+        if (targetArch == Target::Arch::AArch64) {
+            for (const auto &relocation : sectionRelocations[i]) {
+                out.U32(relocation.address);
+                out.U32(relocation.symbol | (static_cast<std::uint32_t>(relocation.pcRelative) << 24U) |
+                        (static_cast<std::uint32_t>(relocation.length) << 25U) |
+                        (static_cast<std::uint32_t>(relocation.external) << 27U) |
+                        (static_cast<std::uint32_t>(relocation.type) << 28U));
+            }
+        }
+        else {
+            for (const auto &relocation : file.sections[i].relocs) {
+                out.U32(relocation.sectionOffset);
+                const bool pcRelative = relocation.type == RcuRelType::Rel32;
+                const std::uint32_t length = relocation.type == RcuRelType::Abs64 ? 3 : 2;
+                const auto &target = file.symbols[relocation.symbolIndex];
+                const std::uint32_t type = pcRelative && target.kind == RcuSymKind::Func ? 2U : pcRelative ? 1U : 0U;
+                out.U32(symbolRemap[relocation.symbolIndex] | (static_cast<std::uint32_t>(pcRelative) << 24U) |
+                        (length << 25U) | (1U << 27U) | (type << 28U));
+            }
         }
     }
     for (const std::size_t oldIndex : order) {
@@ -763,7 +952,8 @@ bool WriteNativeObject(const RcuFile &file, const Target::OS targetOs, const Tar
             const bool writable = targetOs == Target::OS::Windows
                                     ? CoffRelocationType(relocation.type, targetArch).has_value()
                                 : targetOs == Target::OS::MacOS
-                                    ? IsFieldRelocation(relocation.type)
+                                    ? targetArch == Target::Arch::AArch64 ? IsAArch64MachORelocation(relocation.type)
+                                                                          : IsFieldRelocation(relocation.type)
                                     : ElfRelocationType(relocation.type, targetArch,
                                                         InstructionAt(section.data, relocation.sectionOffset))
                                           .has_value();

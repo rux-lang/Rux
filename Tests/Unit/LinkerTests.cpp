@@ -877,13 +877,13 @@ TEST_CASE("native object writer stamps the target architecture into every format
     CHECK_FALSE(WriteNativeObject(file, Target::OS::Linux, Target::Arch::X86_64, object, error));
     CHECK(error == "object was compiled for AArch64, but the target is x86-64");
 
-    // Windows ARM64 COFF carries branch instruction relocations. Mach-O remains
-    // unsupported until its AArch64 relocation mapping is implemented.
+    // Every AArch64 container carries the branch relocation using its native
+    // spelling, including ARM64_RELOC_BRANCH26 in Mach-O.
+    file.sections[0].data = {0x00, 0x00, 0x00, 0x94}; // bl
     file.sections[0].relocs.push_back({0, 0, RcuRelType::AArch64Call26, 0});
     REQUIRE(WriteNativeObject(file, Target::OS::Linux, Target::Arch::AArch64, object, error));
     REQUIRE(WriteNativeObject(file, Target::OS::Windows, Target::Arch::AArch64, object, error));
-    CHECK_FALSE(WriteNativeObject(file, Target::OS::MacOS, Target::Arch::AArch64, object, error));
-    CHECK(error == "relocation AARCH64_CALL26 in section .text is not supported by the Mach-O object writer");
+    REQUIRE(WriteNativeObject(file, Target::OS::MacOS, Target::Arch::AArch64, object, error));
 }
 
 TEST_CASE("native archive writers emit deterministic target-specific indexes") {

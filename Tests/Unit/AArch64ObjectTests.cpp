@@ -1,5 +1,5 @@
-// The relocatable half of the AArch64 back end: ELF `.o` and Windows COFF
-// `.obj` files that static-library archives carry and another linker resolves.
+// The relocatable half of the AArch64 back end: ELF and Mach-O `.o` files plus
+// Windows COFF `.obj` files that static-library archives carry and a linker resolves.
 //
 // Everything here is read back out of the bytes the writer produced, through
 // the section header table, the way a linker reads them -- not out of the
@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -153,6 +154,79 @@ private:
     std::vector<std::uint8_t> bytes;
 };
 
+struct MachORelocationRecord {
+    std::uint32_t address = 0;
+    std::uint32_t symbol = 0;
+    std::uint8_t length = 0;
+    std::uint8_t type = 0;
+    bool pcRelative = false;
+    bool external = false;
+};
+
+class MachOObject {
+public:
+    explicit MachOObject(std::vector<std::uint8_t> inputBytes)
+        : bytes(std::move(inputBytes)) {
+    }
+
+    [[nodiscard]] std::uint8_t Byte(const std::size_t offset) const {
+        return bytes.at(offset);
+    }
+
+    [[nodiscard]] std::uint16_t Half(const std::size_t offset) const {
+        return static_cast<std::uint16_t>(Byte(offset) | Byte(offset + 1) << 8U);
+    }
+
+    [[nodiscard]] std::uint32_t Word(const std::size_t offset) const {
+        return static_cast<std::uint32_t>(Half(offset)) | static_cast<std::uint32_t>(Half(offset + 2)) << 16U;
+    }
+
+    [[nodiscard]] std::uint64_t Giant(const std::size_t offset) const {
+        return static_cast<std::uint64_t>(Word(offset)) | static_cast<std::uint64_t>(Word(offset + 4)) << 32U;
+    }
+
+    [[nodiscard]] std::size_t SectionHeader(const std::size_t index) const {
+        return 32 + 72 + index * 80;
+    }
+
+    [[nodiscard]] std::size_t SectionData(const std::size_t index) const {
+        return Word(SectionHeader(index) + 48);
+    }
+
+    [[nodiscard]] std::size_t RelocationCount(const std::size_t index) const {
+        return Word(SectionHeader(index) + 60);
+    }
+
+    [[nodiscard]] MachORelocationRecord Relocation(const std::size_t section, const std::size_t index) const {
+        const auto at = static_cast<std::size_t>(Word(SectionHeader(section) + 56)) + index * 8;
+        const std::uint32_t info = Word(at + 4);
+        return {.address = Word(at),
+                .symbol = info & 0x00FF'FFFFU,
+                .length = static_cast<std::uint8_t>(info >> 25U & 3U),
+                .type = static_cast<std::uint8_t>(info >> 28U),
+                .pcRelative = (info >> 24U & 1U) != 0,
+                .external = (info >> 27U & 1U) != 0};
+    }
+
+    [[nodiscard]] std::string SymbolName(const std::size_t index) const {
+        const std::size_t symtab = 32 + Word(36);
+        const std::size_t symbol = static_cast<std::size_t>(Word(symtab + 8)) + index * 16;
+        const std::size_t strings = Word(symtab + 16);
+        return String(strings + Word(symbol));
+    }
+
+private:
+    [[nodiscard]] std::string String(const std::size_t offset) const {
+        std::string value;
+        for (auto at = offset; Byte(at) != 0; ++at) {
+            value.push_back(static_cast<char>(Byte(at)));
+        }
+        return value;
+    }
+
+    std::vector<std::uint8_t> bytes;
+};
+
 class CoffArchive {
 public:
     explicit CoffArchive(std::vector<std::uint8_t> inputBytes)
@@ -171,6 +245,63 @@ public:
         return static_cast<std::uint32_t>(bytes.at(offset)) << 24U |
                static_cast<std::uint32_t>(bytes.at(offset + 1)) << 16U |
                static_cast<std::uint32_t>(bytes.at(offset + 2)) << 8U | bytes.at(offset + 3);
+    }
+
+    [[nodiscard]] std::size_t Member(const std::size_t index) const {
+        std::size_t member = 8;
+        for (std::size_t i = 0; i < index; ++i) {
+            const std::size_t size = MemberSize(member);
+            member += 60 + size + (size & 1U);
+        }
+        return member;
+    }
+
+    [[nodiscard]] std::size_t MemberData(const std::size_t index) const {
+        return Member(index) + 60;
+    }
+
+    [[nodiscard]] std::string MemberName(const std::size_t index) const {
+        const auto member = Member(index);
+        return std::string(bytes.begin() + static_cast<std::ptrdiff_t>(member),
+                           bytes.begin() + static_cast<std::ptrdiff_t>(member + 16));
+    }
+
+    [[nodiscard]] std::string String(const std::size_t offset) const {
+        std::string value;
+        for (auto at = offset; bytes.at(at) != 0; ++at) {
+            value.push_back(static_cast<char>(bytes.at(at)));
+        }
+        return value;
+    }
+
+    [[nodiscard]] const std::vector<std::uint8_t> &Bytes() const {
+        return bytes;
+    }
+
+private:
+    [[nodiscard]] std::size_t MemberSize(const std::size_t member) const {
+        const char *first = reinterpret_cast<const char *>(bytes.data() + member + 48);
+        std::size_t value = 0;
+        const auto result = std::from_chars(first, first + 10, value);
+        REQUIRE(result.ec == std::errc{});
+        return value;
+    }
+
+    std::vector<std::uint8_t> bytes;
+};
+
+class BsdArchive {
+public:
+    explicit BsdArchive(std::vector<std::uint8_t> inputBytes)
+        : bytes(std::move(inputBytes)) {
+    }
+
+    [[nodiscard]] std::uint16_t Half(const std::size_t offset) const {
+        return static_cast<std::uint16_t>(bytes.at(offset) | bytes.at(offset + 1) << 8U);
+    }
+
+    [[nodiscard]] std::uint32_t Word(const std::size_t offset) const {
+        return static_cast<std::uint32_t>(Half(offset)) | static_cast<std::uint32_t>(Half(offset + 2)) << 16U;
     }
 
     [[nodiscard]] std::size_t Member(const std::size_t index) const {
@@ -264,6 +395,13 @@ NativeObject WriteAArch64Coff(const RcuFile &file) {
     NativeObject object;
     std::string error;
     REQUIRE_MESSAGE(WriteNativeObject(file, Target::OS::Windows, Target::Arch::AArch64, object, error), error);
+    return object;
+}
+
+NativeObject WriteAArch64MachO(const RcuFile &file) {
+    NativeObject object;
+    std::string error;
+    REQUIRE_MESSAGE(WriteNativeObject(file, Target::OS::MacOS, Target::Arch::AArch64, object, error), error);
     return object;
 }
 } // namespace
@@ -471,6 +609,205 @@ TEST_CASE("an AArch64 relative relocation carries no x86-64 displacement bias") 
     const auto armRela = arm.FindSection(".rela.data");
     REQUIRE(armRela.has_value());
     CHECK(arm.Relocation(arm.SectionHeader(*armRela), 0) == std::array<std::int64_t, 3>{261, 1, 16});
+}
+
+TEST_CASE("AArch64 Mach-O objects encode symbol and section relocations with explicit addends") {
+    RcuFile file;
+    file.arch = RcuArch::AArch64;
+    file.sourcePath = "Library.rux";
+
+    RcuSection text = TextSection({});
+    const std::array<std::uint32_t, 5> instructions = {
+        0x94000003, // bl, with an immediate the object writer clears
+        0x14000001, // b
+        0xB0000000, // adrp, with split immediate bits set
+        0x91048C00, // add x0, x0, #0x123
+        0xF9411C00, // ldr x0, [x0, #0x238]
+    };
+    for (const auto word : instructions) {
+        for (std::size_t byte = 0; byte < 4; ++byte) {
+            text.data.push_back(static_cast<std::uint8_t>(word >> (byte * 8U)));
+        }
+    }
+    text.relocs = {
+        {0, 0, RcuRelType::AArch64Call26, 4},
+        {4, 1, RcuRelType::AArch64Jump26, -8},
+        {8, 0, RcuRelType::AArch64AdrPrelPgHi21, 0x1234},
+        {12, 0, RcuRelType::AArch64AddAbsLo12Nc, 0x234},
+        {16, 0, RcuRelType::AArch64LdstAbsLo12Nc, 0x238},
+    };
+    file.sections.push_back(std::move(text));
+
+    RcuSection data;
+    data.name = ".data";
+    data.type = RcuSecType::Data;
+    data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+    data.alignment = 8;
+    data.data.resize(20);
+    data.relocs = {
+        {0, 0, RcuRelType::Abs64, 24},
+        {8, 1, RcuRelType::Abs64, 8},
+        {16, 0, RcuRelType::Abs32, -4},
+    };
+    file.sections.push_back(std::move(data));
+
+    file.symbols.push_back({"Target", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+    file.symbols.push_back({"Hidden", "", 4, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
+    file.symbols.push_back({"Answer", "", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+
+    NativeObject native = WriteAArch64MachO(file);
+    CHECK(native.name == "Library.o");
+    CHECK(native.publicSymbols == std::vector<std::string>{"_Answer"});
+    const MachOObject object(std::move(native.bytes));
+    CHECK(object.Word(0) == 0xFEEDFACF); // MH_MAGIC_64
+    CHECK(object.Word(4) == 0x0100000C); // CPU_TYPE_ARM64
+    CHECK(object.Word(8) == 0);          // CPU_SUBTYPE_ARM64_ALL
+    CHECK(object.Word(12) == 1);         // MH_OBJECT
+    CHECK(object.SymbolName(0) == "_Hidden");
+    CHECK(object.SymbolName(1) == "_Target");
+    CHECK(object.SymbolName(2) == "_Answer");
+
+    REQUIRE(object.RelocationCount(0) == 10);
+    const auto addend = [&](const std::size_t index, const std::uint32_t address, const std::uint32_t value) {
+        const auto record = object.Relocation(0, index);
+        CHECK(record.address == address);
+        CHECK(record.symbol == value);
+        CHECK(record.length == 2);
+        CHECK(record.type == 10); // ARM64_RELOC_ADDEND
+        CHECK_FALSE(record.pcRelative);
+        CHECK_FALSE(record.external);
+    };
+    addend(0, 0, 4);
+    addend(2, 4, 0x00FFFFFC); // signed -4: local offset four plus addend -8
+    addend(4, 8, 0x1234);
+    addend(6, 12, 0x234);
+    addend(8, 16, 0x238);
+
+    const auto externalBranch = object.Relocation(0, 1);
+    CHECK(externalBranch.address == 0);
+    CHECK(externalBranch.symbol == 1); // _Target after local-first symbol sorting
+    CHECK(externalBranch.length == 2);
+    CHECK(externalBranch.type == 2); // ARM64_RELOC_BRANCH26
+    CHECK(externalBranch.pcRelative);
+    CHECK(externalBranch.external);
+
+    const auto localBranch = object.Relocation(0, 3);
+    CHECK(localBranch.symbol == 1); // one-based __text section ordinal
+    CHECK(localBranch.type == 2);
+    CHECK(localBranch.pcRelative);
+    CHECK_FALSE(localBranch.external);
+
+    for (const auto [index, type, pcRelative] :
+         std::array{std::tuple{5U, 3U, true}, std::tuple{7U, 4U, false}, std::tuple{9U, 4U, false}}) {
+        const auto record = object.Relocation(0, index);
+        CHECK(record.symbol == 1);
+        CHECK(record.length == 2);
+        CHECK(record.type == type);
+        CHECK(record.pcRelative == pcRelative);
+        CHECK(record.external);
+    }
+
+    const auto textAt = object.SectionData(0);
+    CHECK(object.Word(textAt) == 0x94000000);
+    CHECK(object.Word(textAt + 4) == 0x14000000);
+    CHECK(object.Word(textAt + 8) == 0x90000000);
+    CHECK(object.Word(textAt + 12) == 0x91000000);
+    CHECK(object.Word(textAt + 16) == 0xF9400000);
+
+    REQUIRE(object.RelocationCount(1) == 3);
+    const auto externalPointer = object.Relocation(1, 0);
+    CHECK(externalPointer.symbol == 1);
+    CHECK(externalPointer.length == 3);
+    CHECK(externalPointer.type == 0); // ARM64_RELOC_UNSIGNED
+    CHECK_FALSE(externalPointer.pcRelative);
+    CHECK(externalPointer.external);
+    const auto localPointer = object.Relocation(1, 1);
+    CHECK(localPointer.symbol == 1); // one-based __text section ordinal
+    CHECK(localPointer.length == 3);
+    CHECK_FALSE(localPointer.external);
+    const auto pointer32 = object.Relocation(1, 2);
+    CHECK(pointer32.length == 2);
+    CHECK(pointer32.external);
+
+    const auto dataAt = object.SectionData(1);
+    CHECK(object.Giant(dataAt) == 24);
+    CHECK(object.Giant(dataAt + 8) == 12); // local offset four plus addend eight
+    CHECK(object.Word(dataAt + 16) == 0xFFFFFFFC);
+}
+
+TEST_CASE("AArch64 Mach-O objects reject invalid instruction relocations and addends") {
+    const auto write = [](const std::uint32_t instruction, const std::uint16_t type, const std::int32_t addend) {
+        RcuFile file = ObjectOf({{instruction, type}});
+        file.sections[0].relocs[0].addend = addend;
+        NativeObject object;
+        std::string error;
+        CHECK_FALSE(WriteNativeObject(file, Target::OS::MacOS, Target::Arch::AArch64, object, error));
+        return error;
+    };
+
+    CHECK(write(0xD503201F, RcuRelType::AArch64Call26, 0) ==
+          "AARCH64_CALL26 relocation against 'Target' in section .text requires a B or BL instruction");
+    CHECK(write(0x94000000, RcuRelType::AArch64Call26, 2) ==
+          "AARCH64_CALL26 relocation against 'Target' in section .text has an addend that is not four-byte aligned");
+    CHECK(write(0x94000000, RcuRelType::AArch64Call26, 0x01000000) ==
+          "AARCH64_CALL26 relocation against 'Target' in section .text has an addend that does not fit in the signed "
+          "24-bit ARM64_RELOC_ADDEND field");
+    CHECK(write(0x10000000, RcuRelType::AArch64AdrPrelPgHi21, 0) ==
+          "AARCH64_ADR_PREL_PG_HI21 relocation against 'Target' in section .text requires an ADRP instruction");
+    CHECK(write(0x91400000, RcuRelType::AArch64AddAbsLo12Nc, 0) ==
+          "AARCH64_ADD_ABS_LO12_NC relocation against 'Target' in section .text requires an unshifted ADD-immediate "
+          "instruction");
+    CHECK(write(0x91000000, RcuRelType::AArch64LdstAbsLo12Nc, 0) ==
+          "AARCH64_LDST_ABS_LO12_NC relocation against 'Target' in section .text requires an unsigned-offset load or "
+          "store instruction");
+    CHECK(write(0xF9400000, RcuRelType::AArch64LdstAbsLo12Nc, 3) ==
+          "AARCH64_LDST_ABS_LO12_NC relocation against 'Target' in section .text has an addend that is not aligned to "
+          "the access width");
+    CHECK(write(0x54000000, RcuRelType::AArch64CondBr19, 0) ==
+          "relocation AARCH64_CONDBR19 in section .text is not supported by the Mach-O object writer");
+}
+
+TEST_CASE("macOS ARM64 static archives carry deterministic BSD symbol indexes") {
+    const auto makeObject = [](const std::string &source, const std::string &symbol) {
+        RcuFile file;
+        file.arch = RcuArch::AArch64;
+        file.sourcePath = source;
+        file.sections.push_back(TextSection({0xC0, 0x03, 0x5F, 0xD6})); // ret
+        file.symbols.push_back({symbol, "", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        return WriteAArch64MachO(file);
+    };
+    const std::array objects = {makeObject("Zulu.rux", "Zulu"), makeObject("Alpha.rux", "Alpha")};
+
+    const auto directory = std::filesystem::temp_directory_path();
+    const auto firstPath = directory / "rux-arm64-macho-static-first.a";
+    const auto secondPath = directory / "rux-arm64-macho-static-second.a";
+    std::error_code filesystemError;
+    std::filesystem::remove(firstPath, filesystemError);
+    std::filesystem::remove(secondPath, filesystemError);
+
+    std::string error;
+    REQUIRE(WriteNativeArchive(objects, Target::OS::MacOS, Target::Arch::AArch64, firstPath, error));
+    REQUIRE(WriteNativeArchive(objects, Target::OS::MacOS, Target::Arch::AArch64, secondPath, error));
+    const BsdArchive archive(ReadBytes(firstPath));
+    CHECK(archive.Bytes() == ReadBytes(secondPath));
+    CHECK(archive.MemberName(0).starts_with("__.SYMDEF SORTED"));
+    CHECK(archive.MemberName(1).starts_with("Zulu.o/"));
+    CHECK(archive.MemberName(2).starts_with("Alpha.o/"));
+
+    const auto index = archive.MemberData(0);
+    CHECK(archive.Word(index) == 16); // two eight-byte ranlib entries
+    CHECK(archive.Word(index + 4) == 0);
+    CHECK(archive.Word(index + 8) == archive.Member(2)); // _Alpha sorts first
+    CHECK(archive.Word(index + 12) == 7);
+    CHECK(archive.Word(index + 16) == archive.Member(1));
+    CHECK(archive.Word(index + 20) == 13);
+    CHECK(archive.String(index + 24) == "_Alpha");
+    CHECK(archive.String(index + 31) == "_Zulu");
+    CHECK(archive.Word(archive.MemberData(1) + 4) == 0x0100000C);
+    CHECK(archive.Word(archive.MemberData(2) + 4) == 0x0100000C);
+
+    std::filesystem::remove(firstPath, filesystemError);
+    std::filesystem::remove(secondPath, filesystemError);
 }
 
 TEST_CASE("AArch64 COFF objects encode relocations addends and remapped symbols") {
