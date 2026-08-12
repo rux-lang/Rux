@@ -26,6 +26,7 @@ set(RUX_TEST_SOURCES
     LexerTests.cpp
     LinearScanTests.cpp
     LinkerTests.cpp
+    MachOTests.cpp
     ManifestTests.cpp
     OptimizerTests.cpp
     OsTests.cpp

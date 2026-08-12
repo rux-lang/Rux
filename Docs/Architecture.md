@@ -59,6 +59,8 @@ Which triples a back end reaches is decided by the object and image writer, not 
 
 The CMake target graph enforces these dependencies. Prefer adding a dependency to the narrowest owning component rather than reaching through `RuxCore`.
 
+The Mach-O image writer keeps file layout separate from target instruction policy. A private architecture profile owns the CPU type and subtype, VM page alignment, executable entry strategy, instruction-stub size and alignment, and the relocation patch kinds that architecture accepts. Segment, section, dyld, symbol, and link-edit layout consumes that profile and otherwise remains architecture-neutral. Unit tests inspect the resulting header and load commands with the repository's compact Mach-O reader, so structural coverage is portable and never depends on Apple tools such as `otool`.
+
 ## Host and Target Boundaries
 
 `Target` describes the output machine. `System` describes the host running the compiler. Code generation and linking must use target data rather than host preprocessor checks. For example, emitting a Linux executable while running on Windows is a target decision; locating `%LocalAppData%` is a host decision.
