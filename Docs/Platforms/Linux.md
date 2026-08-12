@@ -94,22 +94,28 @@ A Linux host reaches these targets, whichever architecture it runs on:
 | Host Linux architecture                              | Yes    | Yes                                               |
 | Other Linux architecture                             | Yes    | Only when reported as the native OS architecture |
 | `windows-x86_64`, `windows-aarch64`, `macos-x86_64`, `macos-aarch64` | Yes | No — foreign operating system              |
-| `freebsd-x86_64`, `openbsd-x86_64`, `netbsd-x86_64`  | Yes    | No — foreign operating system                    |
+| `freebsd-x86_64`, `freebsd-aarch64`                  | Yes    | No — foreign operating system                    |
+| `openbsd-x86_64`, `netbsd-x86_64`                    | Yes    | No — foreign operating system                    |
 | `dragonfly-x86_64`, `illumos-x86_64`                 | Yes    | No — foreign operating system                    |
-| `freebsd-aarch64`                                    | No     | —                                                 |
 
 The x86-64 back end reaches every supported operating system, because all three
 object writers are parameterized for it. The AArch64 back end reaches
-`linux-aarch64` through ELF, `windows-aarch64` through PE/COFF, and
-`macos-aarch64` through Mach-O. Non-Linux ELF images are not written yet, so
-the remaining AArch64 targets are refused with `code generation for '<triple>'
-is not implemented yet`. `rux check`, `rux fmt`, `rux lint` and `rux doc` need
-no back end and work for every named target.
+`linux-aarch64` and `freebsd-aarch64` through ELF, `windows-aarch64` through
+PE/COFF, and `macos-aarch64` through Mach-O. OpenBSD, NetBSD, DragonFly BSD,
+and illumos AArch64 remain refused with `code generation for '<triple>' is not
+implemented yet`; FreeBSD support does not implicitly enable another System V
+target. `rux check`, `rux fmt`, `rux lint` and `rux doc` need no back end and
+work for every named target.
 
 Nothing in a cross build reaches for a cross toolchain, because there is no
 toolchain to reach for: the same encoder, object writer and linker run whichever
 machine invokes them, and a `linux-aarch64` image records the loader and library
 names it needs without opening a host library to do it.
+
+A Linux host can likewise build FreeBSD AArch64 executables, shared libraries,
+and static libraries. Foreign Release output is written below
+`Bin/Release/freebsd-aarch64/`; transfer those artifacts to native FreeBSD for
+execution because `run` is host-only and target tests reject a foreign OS.
 
 ## Verifying the Build
 

@@ -46,6 +46,14 @@ With no `-DCMAKE_BUILD_TYPE`, the project defaults to a **Release** build (set i
 
 The repository provides matching platform entry points. PowerShell users can run `./Build.ps1`, `./Format.ps1`, and `./Test.ps1`; Linux, macOS, and FreeBSD users can run `sh Build.sh`, `sh Format.sh`, and `sh Test.sh`. The build scripts configure and build the compiler and C++ test target while generating the compilation database. The format scripts handle maintained C++ and Rux sources. The test scripts run the policy, formatting, build, CTest, lint, and Rux-test workflow. Use `./Test.ps1 -SkipBuild` or `sh Test.sh --skip-build` to reuse an existing build. Add `-ClangTidy` or `--clang-tidy` for the slower static-analysis pass; the Code Quality workflow always runs it. `rux run` is host-only and has no `--target` option. A `-Target` / `--target` test run is allowed only for the host OS and an architecture the compiler process or native OS can execute directly. This supports an x86-64 compiler process on AArch64 Windows and under Rosetta on Apple Silicon; a physical x86-64 host should use `rux build --target` and `rux check --target`, then test the output on its native machine.
 
+The same rule applies to FreeBSD AArch64. Every supported host can build or
+check `freebsd-aarch64`; foreign Release output lands below
+`Bin/Release/freebsd-aarch64/`. Only FreeBSD with an AArch64 compiler process or
+native OS can use `test --target freebsd-aarch64`. For cross-runtime work, use
+`Tests/Native/FreeBSDAArch64/BuildTransfer.sh` on x86-64 FreeBSD and
+`VerifyTransfer.sh` in a separate AArch64 FreeBSD checkout so the compiler and
+target-runtime boundaries stay explicit.
+
 ### Debug vs. Release Builds
 
 - **Release** (default) — optimized; this is what CI builds and tests, and what ships. Use it for normal development and before pushing.

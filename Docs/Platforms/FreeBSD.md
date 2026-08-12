@@ -36,6 +36,19 @@ selected.
 
 An `Executable` package writes `Name`, a `SharedLibrary` writes `libName.so` with its SONAME, and a `StaticLibrary` writes `libName.a` with a GNU archive symbol index. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
 
+The command boundary is the same for all three native artifact kinds:
+
+| Operation | `freebsd-aarch64` behavior |
+| --------- | -------------------------- |
+| `check --target` | Analyzes FreeBSD conditions and the AAPCS64 ABI on every supported host; writes no artifact |
+| `build --target` | Writes the manifest-selected executable, shared library, or static library |
+| `run` | Builds and launches only the host target; it has no `--target` option |
+| `test --target` | Builds and launches only on FreeBSD when the compiler process or native OS is AArch64 |
+
+The restrictions are execution policy, not output limitations: cross-builds
+can produce all three artifact kinds even when the host cannot launch any of
+them.
+
 Both back ends write FreeBSD ELF objects and images directly, from a host of
 either architecture. FreeBSD AArch64 executables use `/libexec/ld-elf.so.1`
 and `libc.so.7` when they import functions. Shared libraries omit executable
@@ -85,6 +98,13 @@ The verifier restores the declared executable modes, checks SHA-256 hashes and
 FreeBSD AArch64 ELF identity, then covers freestanding exit, fixed and variadic
 libc calls, assertion diagnostics, raw BSD syscalls, and shared-library
 load/call/unload. It does not invoke a compiler, ELF tool, or emulator.
+
+CI applies both acceptance boundaries before publishing
+`rux-freebsd-aarch64`: a native AArch64 compiler runs the complete ordinary Rux
+suite and focused fixtures, and an x86-64 compiler builds a target-only payload
+that a fresh AArch64 VM verifies and executes. Skipping either path blocks the
+aggregate FreeBSD acceptance check, which is a direct dependency of the release
+publish job.
 
 For a Debug build, run `sh Build.sh --configuration Debug`. Run `sh Build.sh --help` to see every option.
 

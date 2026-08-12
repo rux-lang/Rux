@@ -68,6 +68,34 @@ The script rejects other kernels and architectures. Its repository-owned ELF
 reader checks every generated image before execution, so generation and ELF
 layout failures are reported separately from loader and runtime failures.
 
+To test bytes produced by a different compiler architecture, create a sealed
+payload on x86-64 FreeBSD and verify it in a separate AArch64 FreeBSD checkout:
+
+```sh
+sh Tests/Native/FreeBSDAArch64/BuildTransfer.sh ./Bin/rux /tmp/FreeBSDAArch64Payload
+sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh /tmp/FreeBSDAArch64Payload
+```
+
+The first command builds executables, a shared library, and a static-library
+smoke artifact for `freebsd-aarch64`; the payload contains only runtime files
+plus their expected hashes, modes, ELF kinds, and outcomes. The second command
+restores modes, validates the manifest and ELF bytes, and launches the runtime
+set without installing a compiler, target sysroot, inspection tool, or emulator.
+
+The native fixture set covers distinct artifact and ABI boundaries:
+
+| Fixture | Acceptance boundary |
+| ------- | ------------------- |
+| `ExitCode` | Freestanding executable entry and syscall exit |
+| `LibC` | Dynamic loader, fixed calls, C variadics, stdout, and libc exit |
+| `Assert` / `Panic` | Exact stderr diagnostics and non-success termination |
+| `Packages/Bsd/Syscall` | FreeBSD syscall numbers, errors, clocks, mmap, and munmap |
+| `Shared` | Shared-library export plus loader load/call/unload behavior |
+| `Static` | AArch64 relocatable members and deterministic archive structure |
+
+Ordinary `rux test --release` still runs before these fixtures in FreeBSD CI;
+native fixtures supplement the workspace suite rather than replacing it.
+
 Linux and Windows can exercise the non-launching cross-build path with PowerShell:
 
 ```powershell

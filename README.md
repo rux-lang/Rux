@@ -8,7 +8,7 @@
 
 Rux is a fast, compiled, strongly typed, multi-paradigm programming language. The compiler is self-contained: its own x86-64 and AArch64 code generators, its own object format, and its own PE/ELF/Mach-O linkers produce a native executable with no assembler, no C compiler, and no external linker anywhere in the pipeline.
 
-Cross-compilation needs no external toolchain: `rux build --target <os>-<arch>` produces another system's artifact from any host, while `rux check --target` performs target analysis without executing it. `rux run` is host-only, and `rux test --target` executes only a same-OS architecture reported for the compiler process or native OS. The x86-64 back end reaches every supported operating system; the AArch64 back end reaches `linux-aarch64` through ELF, `windows-aarch64` through PE/COFF, and `macos-aarch64` through Mach-O. Non-Linux ELF images are not implemented yet.
+Cross-compilation needs no external toolchain: `rux build --target <os>-<arch>` produces another system's artifact from any host, while `rux check --target` performs target analysis without executing it. `rux run` is host-only, and `rux test --target` executes only a same-OS architecture reported for the compiler process or native OS. The x86-64 back end reaches every supported operating system; the AArch64 back end reaches Linux and FreeBSD through ELF, Windows through PE/COFF, and macOS through Mach-O. Other AArch64 System V targets, including OpenBSD, NetBSD, DragonFly BSD, and illumos, remain unsupported.
 
 [![FreeBSD](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml)
 [![Linux](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml)
@@ -18,7 +18,12 @@ Cross-compilation needs no external toolchain: `rux build --target <os>-<arch>` 
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](LICENSE.md)
 
-Each platform badge above covers a native build-and-test run on both supported architectures, x86-64 and AArch64, and prebuilt binaries are published for every one of them. Linux and Windows also cross-build signed `macos-aarch64` images and inspect their ARM64 Mach-O headers and signatures without launching them. The Windows badge runs the complete native AArch64 suite and a `windows-11-arm` cross job that executes the downloaded x86-64 compiler under Windows translation, then runs its Windows AArch64 output natively, including executable and DLL fixtures. The macOS badge runs the complete Apple Silicon suite and native runtime fixtures, then repeats target tests and fixtures with the x86-64 compiler under Rosetta while every generated ARM64 image executes directly. FreeBSD AArch64 builds the compiler natively but remains check/lint-only because a FreeBSD AArch64 ELF image writer is not implemented.
+Each platform badge above covers a native build-and-test run on both supported architectures, x86-64 and AArch64, and prebuilt binaries are published for every one of them. Linux and Windows also cross-build signed `macos-aarch64` images and inspect their ARM64 Mach-O headers and signatures without launching them. The Windows badge runs the complete native AArch64 suite and a `windows-11-arm` cross job that executes the downloaded x86-64 compiler under Windows translation, then runs its Windows AArch64 output natively, including executable and DLL fixtures. The macOS badge runs the complete Apple Silicon suite and native runtime fixtures, then repeats target tests and fixtures with the x86-64 compiler under Rosetta while every generated ARM64 image executes directly. FreeBSD runs the complete ordinary suite and native AArch64 runtime fixtures, then transfers target-only bytes built by an x86-64 FreeBSD compiler into a fresh AArch64 VM for direct execution.
+
+`freebsd-aarch64` supports executable, shared-library, and static-library
+packages from every compiler host without a FreeBSD SDK or sysroot. Foreign
+artifacts use the canonical target-separated output directory and must be
+transferred to native FreeBSD for execution.
 
 > [!IMPORTANT]
 > Rux is under active, pre-1.0 development. Language features, compiler behavior, and package formats may change between minor releases. Check the [changelog](CHANGELOG.md) when upgrading.

@@ -16,10 +16,10 @@ The workflow runs on `push: tags: [ 'v*' ]` and needs `contents: write` permissi
 ## Stages
 
 ```
-verify-version ──► freebsd ───┐
-                   linux   ───┤
-                   macos   ───┼──► release (publish)
-                   windows ───┘
+verify-version ──► freebsd ──► freebsd-cross-build ──► freebsd-cross-runtime ──► freebsd-acceptance ──┐
+                   linux   ───────────────────────────────────────────────────────────────────────────┤
+                   macos   ───────────────────────────────────────────────────────────────────────────┼──► release (publish)
+                   windows ───────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 1. `verify-version` (Fail Fast)
@@ -41,11 +41,25 @@ Each `needs: verify-version`, then builds Release **and runs the test suite** �
 
 The additional `rux-windows-x86_64-msi` workflow artifact carries the x86-64 MSI into the publish job. An AArch64 MSI is not produced because the current WiX package is authored for x64; AArch64 Windows is distributed as a ZIP.
 
-Each job runs language tests from the repository root. Test manifests use local path dependencies, and transitive first-party dependencies resolve from workspace members with registry fallback disabled, so release validation is deterministic and network-independent. The Windows AArch64 entry additionally runs the native executable exit-code and DLL load/call/unload fixtures before packaging. The macOS 26 AArch64 entry runs the Apple Silicon freestanding exit-code, fixed/variadic libSystem, assertion/panic, and dylib load/call/unload fixtures; each image's ARM64 header and in-process ad-hoc signature are checked before execution. These native acceptance steps must pass before the corresponding AArch64 asset can reach the publish job. The Linux job also checks every maintained Rux source with `rux fmt --check` before packaging.
+Each job runs language tests from the repository root. Test manifests use local path dependencies, and transitive first-party dependencies resolve from workspace members with registry fallback disabled, so release validation is deterministic and network-independent. The Windows AArch64 entry additionally runs the native executable exit-code and DLL load/call/unload fixtures before packaging. The macOS 26 AArch64 entry runs the Apple Silicon freestanding exit-code, fixed/variadic libSystem, assertion/panic, and dylib load/call/unload fixtures; each image's ARM64 header and in-process ad-hoc signature are checked before execution. The FreeBSD jobs run the complete `Test.sh` workflow, and the AArch64 entry adds its freestanding, libc, assertion/panic, BSD syscall, and shared-library fixtures. These native acceptance steps must pass before the corresponding AArch64 asset can reach the publish job. The Linux job also checks every maintained Rux source with `rux fmt --check` before packaging.
 
-### 3. `release` (publish)
+### 3. FreeBSD transferred-cross acceptance
 
-`needs: [ freebsd, linux, macos, windows ]`:
+After both native FreeBSD matrix entries pass, `freebsd-cross-build` downloads
+the x86-64 compiler and builds a sealed AArch64 payload in an x86-64 FreeBSD
+14.4 VM. `freebsd-cross-runtime` downloads only that payload into a fresh
+AArch64 FreeBSD VM, verifies its hashes, modes, and ELF identities, and launches
+the representative executables and shared-library fixture. The consumer VM
+installs no compiler or target toolchain.
+
+`freebsd-acceptance` runs even when an upstream job fails or is skipped and
+checks both dependency results explicitly. This gives the publish job a single
+release-blocking FreeBSD gate: the AArch64 archive cannot be packaged merely
+because one of the two runtime paths did not run.
+
+### 4. `release` (publish)
+
+`needs: [ freebsd-acceptance, linux, macos, windows ]`:
 
 1. Download all build artifacts.
 2. Package them:
@@ -61,14 +75,14 @@ Each job runs language tests from the repository root. Test manifests use local 
 1. Ensure `dev` is green and promoted to `main` (see [Branch Architecture](Branches.md)).
 2. Bump `VERSION` in `CMakeLists.txt`.
 3. Update [`CHANGELOG.md`](../CHANGELOG.md).
-4. Confirm the Linux, macOS, and Windows required checks are green on `main`.
+4. Confirm the FreeBSD, Linux, macOS, and Windows required checks are green on `main`, including FreeBSD native and transferred-cross AArch64 acceptance.
 5. Commit the version and changelog updates on `main`.
 6. Create an annotated tag matching the new `VERSION`, then push it:
    ```sh
    git tag -a vX.Y.Z -m "Rux vX.Y.Z"
    git push origin vX.Y.Z
    ```
-7. Wait for `verify-version` and both architecture entries of every platform job to succeed.
+7. Wait for `verify-version`, both architecture entries of every platform job, and the FreeBSD transferred-cross runtime job to succeed.
 8. A repository owner or maintainer with release permission reviews the draft:
    - Confirm the generated notes cover the intended changelog entries.
    - Download each asset and verify its filename and SHA-256 hash against `SHA256SUMS`.

@@ -56,6 +56,8 @@ jobs:
             pkg install -y llvm22 cmake-core ninja
           run: |
             set -e
+            sh Tests/Policy/PlatformIsolation/Check.sh
+            sh Tests/Policy/NoExternalToolchain/Check.sh
             cmake --version
             cmake -S . -B Build -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
@@ -63,6 +65,7 @@ jobs:
               -DRUX_WERROR=ON \
               -DRUX_BUILD_TESTS=ON
             cmake --build Build --config Release --parallel
+            sh Format.sh --check --rux-executable ./Bin/rux
             ctest --test-dir Build --output-on-failure -C Release
 
       - name: Upload binary artifact
@@ -118,9 +121,8 @@ jobs:
             chmod +x Bin/rux
             ./Bin/rux check
             ./Bin/rux lint
-            if [ "${{ matrix.arch }}" = x86_64 ]; then
-              ./Bin/rux test --release
-            else
+            ./Bin/rux test --release
+            if [ "${{ matrix.arch }}" = aarch64 ]; then
               sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux
             fi
 
@@ -188,3 +190,21 @@ jobs:
           run: |
             set -e
             sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh FreeBSDAArch64Payload
+
+  acceptance:
+    name: FreeBSD acceptance
+    if: ${{ always() }}
+    needs: [ test, cross-runtime ]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require native and transferred acceptance
+        env:
+          NATIVE_RESULT: ${{ needs.test.result }}
+          CROSS_RESULT: ${{ needs.cross-runtime.result }}
+        run: |
+          if [ "$NATIVE_RESULT" != success ] || [ "$CROSS_RESULT" != success ]; then
+            echo "::error::FreeBSD acceptance failed: native=$NATIVE_RESULT transferred=$CROSS_RESULT"
+            exit 1
+          fi
+          echo "FreeBSD native and transferred acceptance passed."
