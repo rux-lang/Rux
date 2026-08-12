@@ -29,6 +29,19 @@ when #target.os {
 
 Higher-level packages such as [`Rux/Io`](../Io) and [`Rux/Memory`](../Memory) already do this, and are the interface to prefer unless you need the syscall itself.
 
+## AArch64 ABI
+
+The AArch64 wrappers follow the FreeBSD 14 syscall convention: the call number
+is placed in `x8`, up to six wrapper arguments are shifted into `x0` through
+`x5`, and `svc #0` enters the kernel. A carry-set return is converted from a
+positive `errno` to the negative result used by the package API.
+
+Descriptor and clock identifiers are sign-extended before entering the generic
+`uint64` syscall interface. `Mmap` likewise preserves a signed descriptor while
+passing the FreeBSD 14 mapping constants and all six arguments directly. The
+same source keeps separate x86-64 wrappers and target-selected constants for the
+other supported BSD systems.
+
 ## Documentation
 
 <https://rux-lang.dev/docs/api/bsd>

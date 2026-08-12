@@ -17,6 +17,7 @@
 #include "CodeGen/AArch64/Assembler.h"
 #include "CodeGen/X86_64/Assembler.h"
 #include "Driver/BuildTarget.h"
+#include "Driver/CompilerDriver.h"
 #include "Lexer/Lexer.h"
 #include "Semantic/CompileTimeContext.h"
 #include "Semantic/ConditionalCompilation.h"
@@ -31,6 +32,7 @@
 #include <format>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -49,6 +51,7 @@ struct AssembledBody {
 
 struct AssembledSource {
     std::vector<AssembledBody> bodies;
+    std::map<std::string, std::string> constants;
     std::vector<Diagnostic> diagnostics;
 };
 
@@ -93,6 +96,12 @@ std::string ReadFileText(const std::filesystem::path &path) {
 
     std::vector<std::uint8_t> code;
     for (const auto &item : parsed.module.items) {
+        if (const auto *constant = dynamic_cast<const ConstDecl *>(item.get())) {
+            if (const auto *literal = dynamic_cast<const LiteralExpr *>(constant->value.get())) {
+                result.constants.emplace(constant->name, literal->token.text);
+            }
+            continue;
+        }
         const auto *func = dynamic_cast<const FuncDecl *>(item.get());
         if (func == nullptr || !func->isAsm) {
             continue;
@@ -144,6 +153,10 @@ std::string ReadFileText(const std::filesystem::path &path) {
 
 [[nodiscard]] std::filesystem::path PackageSource(const std::string_view package, const std::string_view file) {
     return std::filesystem::path(RUX_PACKAGES_DIR) / package / "Src" / file;
+}
+
+[[nodiscard]] std::filesystem::path PackageTestManifest(const std::string_view platform, const std::string_view test) {
+    return std::filesystem::path(RUX_TESTS_DIR) / "Packages" / platform / test / "Rux.toml";
 }
 
 // The words the three system-call wrappers are built from. `MOV` between two
@@ -231,10 +244,82 @@ TEST_CASE("macOS AArch64 system-call wrappers trap through x16 and normalize a c
     CheckWrappers(macos, MovX16FromX0, Svc0x80, /*carryMeansError=*/true);
 }
 
-TEST_CASE("BSD AArch64 system-call wrappers trap through x8 and normalize a carry error") {
+TEST_CASE("FreeBSD AArch64 BSD system-call wrappers assemble through x8 and normalize a carry error") {
     const AssembledSource bsd = AssembleSourceFor(PackageSource("Bsd", "Bsd.rux"), "freebsd-aarch64");
     CHECK(bsd.diagnostics.empty());
     CheckWrappers(bsd, MovX8FromX0, Svc0, /*carryMeansError=*/true);
+}
+
+TEST_CASE("FreeBSD AArch64 BSD constants match the 14.4 syscall and mmap surface") {
+    const AssembledSource bsd = AssembleSourceFor(PackageSource("Bsd", "Bsd.rux"), "freebsd-aarch64");
+    CHECK(bsd.diagnostics.empty());
+
+    const std::map<std::string, std::string> expected = {
+        {"SysExit", "1"},
+        {"SysRead", "3"},
+        {"SysWrite", "4"},
+        {"SysClose", "6"},
+        {"SysBrk", "17"},
+        {"SysGetPid", "20"},
+        {"SysMunmap", "73"},
+        {"SysClockGetTime", "232"},
+        {"SysNanosleep", "240"},
+        {"SysMmap", "477"},
+        {"ClockRealtime", "0"},
+        {"ClockMonotonic", "4"},
+        {"ProtectionNone", "0x00"},
+        {"ProtectionRead", "0x01"},
+        {"ProtectionWrite", "0x02"},
+        {"ProtectionExecute", "0x04"},
+        {"MapShared", "0x0001"},
+        {"MapPrivate", "0x0002"},
+        {"MapFixed", "0x0010"},
+        {"MapAnonymous", "0x1000"},
+    };
+    for (const auto &[name, value] : expected) {
+        INFO("FreeBSD constant ", name);
+        const auto found = bsd.constants.find(name);
+        REQUIRE(found != bsd.constants.end());
+        CHECK_EQ(found->second, value);
+    }
+}
+
+TEST_CASE("FreeBSD AArch64 BSD package checks both target conditions while the artifact gate remains closed") {
+    const std::filesystem::path manifestPath = PackageTestManifest("Bsd", "Syscall");
+    auto loaded = Manifest::Load(manifestPath);
+    REQUIRE_MESSAGE(loaded.Ok(), manifestPath.string());
+
+    std::vector<Diagnostic> diagnostics;
+    std::vector<std::string> errors;
+
+    Driver::CompileOptions options;
+    options.manifestPath = manifestPath;
+    options.manifest = std::move(*loaded.manifest);
+    options.targetName = "freebsd-aarch64";
+    options.profileName = "Release";
+    options.quiet = true;
+    options.isTest = true;
+    options.checkOnly = true;
+    options.emitDiagnostic = [&diagnostics](const Diagnostic &diagnostic) { diagnostics.push_back(diagnostic); };
+    options.emitError = [&errors](const std::string_view error) { errors.emplace_back(error); };
+
+    const Driver::CompileResult result = Driver::CompilerDriver(std::move(options)).Compile();
+    std::string reports;
+    for (const auto &diagnostic : diagnostics) {
+        reports += (reports.empty() ? "" : " | ") + diagnostic.message;
+    }
+    for (const auto &error : errors) {
+        reports += (reports.empty() ? "" : " | ") + error;
+    }
+    CHECK_MESSAGE(result.ok, "the FreeBSD/AArch64-conditioned BSD package did not check: ", reports);
+    CHECK(diagnostics.empty());
+    CHECK(errors.empty());
+    CHECK(result.primaryArtifactPath.empty());
+
+    // The exact inline bodies were assembled to AArch64 bytes above. Task 7
+    // owns opening artifact generation after the direct linker is ready.
+    const std::string gate = Driver::UnsupportedBackendReason("freebsd-aarch64");
+    CHECK(gate.find("not implemented yet") != std::string::npos);
 }
 
 TEST_CASE("Math's AArch64 bodies are the one instruction each operation names") {

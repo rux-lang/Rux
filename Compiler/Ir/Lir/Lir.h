@@ -154,8 +154,8 @@ struct LirInstr {
     std::vector<std::pair<LirReg, std::uint32_t>> phiPreds;  // Phi: (reg, block_index)
     CallingConvention callConv = CallingConvention::Default; // for Call instructions
     bool isCVariadic = false;                                // direct call to a C-style variadic extern
-    // Present only with isCVariadic. Apple AArch64 needs the declaration boundary
-    // because anonymous arguments use a different placement rule from fixed ones.
+    // Present only with isCVariadic. AArch64 platform variants need the declaration
+    // boundary to promote and/or place anonymous arguments correctly.
     std::optional<std::uint32_t> cVariadicFixedParamCount;
     // Optional source context used by instructions that report runtime failures.
     std::string sourceFile;

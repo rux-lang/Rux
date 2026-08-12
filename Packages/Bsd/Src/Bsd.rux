@@ -23,6 +23,8 @@ when #target.os {
         const ClockMonotonic: int32 = 4;
     },
     .FreeBSD => {
+        // FreeBSD 14.4's native syscall table. AArch64 and x86-64 share these
+        // numbers; only the register/trap sequence below is architecture-owned.
         const SysMmap: uint64 = 477;
         const SysMunmap: uint64 = 73;
         const SysClockGetTime: uint64 = 232;

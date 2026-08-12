@@ -14,9 +14,10 @@
 // argument file, while Apple fixed arguments use naturally packed stack slots,
 // do not skip an odd general register for 16-byte alignment, and extend narrow
 // integers in the caller. Apple C variadic calls preserve that fixed prefix,
-// then pass the promoted anonymous tail in eight-byte stack slots. It also
-// decides how a failed assertion prints its message; Unix syscall details and
-// Windows API imports are platform properties rather than architecture properties.
+// then pass the promoted anonymous tail in eight-byte stack slots. FreeBSD uses
+// generic AAPCS64 placement after applying the same C promotions. The target OS
+// also decides how a failed assertion prints its message; Unix syscall details
+// and Windows API imports are platform properties rather than architecture properties.
 
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Lir/Lir.h"

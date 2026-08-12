@@ -254,8 +254,17 @@ constexpr std::uint32_t kStackProbeTouch = 0xF90003FFU; // str xzr, [sp]
     if ((word & 0xFFC003E0U) == 0xF94003A0U) {
         return word & 0x1FU;
     }
+    if ((word & 0xFFC003E0U) == 0xB94003A0U || (word & 0xFFC003E0U) == 0xB98003A0U) {
+        return word & 0x1FU; // ldr wN / ldrsw xN, [x29, #imm]
+    }
     if ((word & 0xFFE0FFE0U) == 0xAA0003E0U) {
         return word & 0x1FU; // orr xN, xzr, xM
+    }
+    if ((word & 0xFFE0FFE0U) == 0x2A0003E0U) {
+        return word & 0x1FU; // orr wN, wzr, wM
+    }
+    if ((word & 0xFFFFFC00U) == 0x93407C00U) {
+        return word & 0x1FU; // sxtw xN, wM
     }
     return std::nullopt;
 }
@@ -2125,10 +2134,11 @@ TEST_CASE("AArch64 RCU emitter keeps every value in the frame where control bran
 // because AArch64 has one and a Rux function and a C function are called by it
 // alike.
 
-TEST_CASE("Apple AArch64 selects its fixed-argument layout from the target OS") {
+TEST_CASE("FreeBSD AArch64 selects generic AAPCS64 while Apple selects its fixed-argument variant") {
     constexpr AArch64CallLayoutPolicy apple = AArch64CallPolicyFor(Target::OS::MacOS);
     constexpr AArch64CallLayoutPolicy ios = AArch64CallPolicyFor(Target::OS::iOS);
     constexpr AArch64CallLayoutPolicy linux = AArch64CallPolicyFor(Target::OS::Linux);
+    constexpr AArch64CallLayoutPolicy freebsd = AArch64CallPolicyFor(Target::OS::FreeBSD);
     constexpr AArch64CallLayoutPolicy windows = AArch64CallPolicyFor(Target::OS::Windows);
 
     CHECK_EQ(apple.StackAlignment(1), 1);
@@ -2138,12 +2148,75 @@ TEST_CASE("Apple AArch64 selects its fixed-argument layout from the target OS") 
     CHECK_EQ(ios.FirstGeneralRegister(1, 16), 1);
     CHECK(ios.compactStackArguments);
 
-    for (const AArch64CallLayoutPolicy policy : {linux, windows}) {
+    for (const AArch64CallLayoutPolicy policy : {linux, freebsd, windows}) {
         CHECK_EQ(policy.StackAlignment(1), 8);
         CHECK_EQ(policy.StackBytes(1), 8);
         CHECK_EQ(policy.FirstGeneralRegister(1, 16), 2);
         CHECK_FALSE(policy.callerExtendsNarrowIntegers);
     }
+}
+
+TEST_CASE("FreeBSD AArch64 fixed calls match generic AAPCS64 through aggregate and stack exhaustion") {
+    const auto package = CompileToAArch64Lir(R"(
+        struct Pair { first: int64; second: int64; }
+        struct Big { first: int64; second: int64; third: int64; }
+
+        func Exercise(a: int64, b: int64, c: int64, d: int64, e: int64, f: int64, g: int64,
+                      pair: Pair, tail: uint16) -> Big {
+            return Big { first: pair.first, second: pair.second, third: tail as int64 };
+        }
+
+        func Main() -> int {
+            var pair = Pair { first: 8i64, second: 9i64 };
+            var result = Exercise(1i64, 2i64, 3i64, 4i64, 5i64, 6i64, 7i64, pair, 10u16);
+            return result.third as int;
+        }
+    )",
+                                             "freebsd-aarch64");
+
+    const auto emitFor = [&package](const Target::OS os) {
+        AArch64RcuEmitter emitter(package, "test", os);
+        auto objects = emitter.Generate();
+        CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+        REQUIRE_EQ(objects.size(), 1);
+        return objects.front();
+    };
+
+    const RcuFile linux = emitFor(Target::OS::Linux);
+    const RcuFile freebsd = emitFor(Target::OS::FreeBSD);
+    const RcuFile windows = emitFor(Target::OS::Windows);
+    const RcuFile apple = emitFor(Target::OS::MacOS);
+
+    // FreeBSD uses the same fixed-argument PCS as Linux: seven scalars fill
+    // X0-X6, the two-register aggregate exhausts the general file and moves to
+    // the stack, and the narrow tail follows in its own eight-byte slot. A
+    // 24-byte result is returned indirectly through X8 on both sides.
+    for (const std::string_view function : {"Exercise", "Main"}) {
+        const auto expected = FunctionWords(linux, function);
+        CHECK_EQ(FunctionWords(freebsd, function), expected);
+        CHECK_EQ(FunctionWords(windows, function), expected);
+    }
+
+    const auto caller = FunctionWords(freebsd, "Main");
+    const auto call = BranchAndLinkIndex(caller);
+    REQUIRE(call.has_value());
+    CHECK(std::ranges::any_of(caller, [](const std::uint32_t word) {
+        const auto bytes = StackPointerAdjustment(word, true);
+        return bytes.has_value() && *bytes == 32 && *bytes % 16 == 0;
+    }));
+    CHECK(std::ranges::any_of(caller, [](const std::uint32_t word) {
+        return StackArgumentStoredBy(word, 8, 9) == std::optional<std::uint32_t>(16);
+    }));
+    REQUIRE_GE(*call, 1);
+    CHECK(FramePointerAddImm(caller[*call - 1], 8).has_value());
+
+    // Apple keeps the same public 16-byte SP alignment but naturally sized
+    // stack slots, so the uint16 store provides a byte-level discriminator.
+    const auto appleCaller = FunctionWords(apple, "Main");
+    CHECK_NE(appleCaller, caller);
+    CHECK(std::ranges::any_of(appleCaller, [](const std::uint32_t word) {
+        return StackArgumentStoredBy(word, 2, 9) == std::optional<std::uint32_t>(16);
+    }));
 }
 
 TEST_CASE("Apple AArch64 packs fixed stack arguments at natural alignment") {
@@ -3100,6 +3173,92 @@ TEST_CASE("Apple AArch64 zero-fixed variadic calls restart their stack layout") 
              2);
 }
 
+TEST_CASE("FreeBSD AArch64 variadic calls promote their tail and retain generic register placement") {
+    const auto source = R"(
+        #Link("libc.so.7")
+        extern {
+            func Collect(tag: *char8, scale: float64, ...) -> int32;
+        }
+
+        func Main() -> int {
+            var tag = "values";
+            var fraction: float32 = 2.5f32;
+            var negative: int8 = -3i8;
+            var positive: uint16 = 4u16;
+            Collect(tag.data, 1.5, fraction, negative, positive);
+            Collect(tag.data, 5.5, fraction, negative, positive);
+            return 0;
+        }
+    )";
+
+    const auto package = CompileToAArch64Lir(source, "freebsd-aarch64");
+    std::size_t metadataCalls = 0;
+    for (const auto &function : package.modules.front().funcs) {
+        for (const auto &block : function.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.op == LirOpcode::Call && instruction.strArg == "Collect") {
+                    ++metadataCalls;
+                    CHECK(instruction.isCVariadic);
+                    CHECK_EQ(instruction.cVariadicFixedParamCount, std::optional<std::uint32_t>(2));
+                }
+            }
+        }
+    }
+    CHECK_EQ(metadataCalls, 2);
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::FreeBSD);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto calls = BranchAndLinkIndices(caller);
+    REQUIRE_EQ(calls.size(), 2);
+
+    // Each call independently restarts both AAPCS64 register files. The fixed
+    // pointer takes X0 and the fixed float takes V0. Float32 is promoted to
+    // float64 and remains in V1; both narrow integers are promoted to int32 and
+    // occupy X1/X2. No anonymous value is forced to Apple's stack tail or
+    // copied by bit pattern into Windows' general-purpose file.
+    std::size_t previous = 0;
+    for (const std::size_t call : calls) {
+        const auto callSetup = std::ranges::subrange(caller.begin() + static_cast<std::ptrdiff_t>(previous),
+                                                     caller.begin() + static_cast<std::ptrdiff_t>(call));
+        for (const unsigned reg : {0U, 1U, 2U}) {
+            CHECK(std::ranges::any_of(callSetup, [reg](const std::uint32_t word) {
+                return ArgumentFilled(word) == std::optional<unsigned>(reg);
+            }));
+        }
+        for (const unsigned reg : {0U, 1U}) {
+            CHECK(std::ranges::any_of(callSetup, [reg](const std::uint32_t word) {
+                return VectorArgumentFilled(word, 64) == std::optional<unsigned>(reg);
+            }));
+        }
+        previous = call + 1;
+    }
+    CHECK(HasFloatForm(caller, 0x1E22C000U, 1)); // fcvt dN, sM
+    CHECK_FALSE(std::ranges::any_of(caller, [](const std::uint32_t word) {
+        return FloatBitsArgumentFilled(word, 32).has_value() || FloatBitsArgumentFilled(word, 64).has_value();
+    }));
+    CHECK_FALSE(std::ranges::any_of(
+        caller, [](const std::uint32_t word) { return StackPointerAdjustment(word, true).has_value(); }));
+
+    const auto applePackage = CompileToAArch64Lir(source, "macos-aarch64");
+    AArch64RcuEmitter appleEmitter(applePackage, "test", Target::OS::MacOS);
+    const auto appleObjects = appleEmitter.Generate();
+    CHECK_MESSAGE(appleEmitter.Diagnostics().empty(), JoinMessages(appleEmitter.Diagnostics()));
+    const auto appleCaller = FunctionWords(appleObjects.front(), "Main");
+    CHECK(std::ranges::any_of(appleCaller,
+                              [](const std::uint32_t word) { return StackPointerAdjustment(word, true).has_value(); }));
+
+    const auto windowsPackage = CompileToAArch64Lir(source, "windows-aarch64");
+    AArch64RcuEmitter windowsEmitter(windowsPackage, "test", Target::OS::Windows);
+    const auto windowsObjects = windowsEmitter.Generate();
+    CHECK_MESSAGE(windowsEmitter.Diagnostics().empty(), JoinMessages(windowsEmitter.Diagnostics()));
+    const auto windowsCaller = FunctionWords(windowsObjects.front(), "Main");
+    CHECK(std::ranges::any_of(windowsCaller, [](const std::uint32_t word) {
+        return FloatBitsArgumentFilled(word, 32).has_value() || FloatBitsArgumentFilled(word, 64).has_value();
+    }));
+}
+
 TEST_CASE("AArch64 emitter rejects inconsistent C variadic call metadata") {
     const auto makePackage = [] {
         return CompileToAArch64Lir(R"(
@@ -3654,13 +3813,14 @@ constexpr std::string_view kAssertIntrinsics = R"(
 // The words a write to standard error takes once its buffer and length are in
 // place: the descriptor, the call number, and the trap that asks for it. Linux
 // numbers a write 64 and takes the number in X8.
-constexpr std::uint32_t kMovX0StdErr = 0xD2800040U; // mov x0, #2
-constexpr std::uint32_t kMovX8Write = 0xD2800808U;  // mov x8, #64
-constexpr std::uint32_t kSvc0 = 0xD4000001U;        // svc #0
-constexpr std::uint32_t kAdrpX1 = 0x90000001U;      // adrp x1, <symbol>
-constexpr std::uint32_t kAddX1Lo12 = 0x91000021U;   // add  x1, x1, #:lo12:<symbol>
-constexpr std::uint32_t kLdpX1X2 = 0xA9400941U;     // ldp  x1, x2, [x10]
-constexpr std::uint32_t kBrk1 = 0xD4200020U;        // brk  #1
+constexpr std::uint32_t kMovX0StdErr = 0xD2800040U;       // mov x0, #2
+constexpr std::uint32_t kMovX8Write = 0xD2800808U;        // mov x8, #64
+constexpr std::uint32_t kMovX8FreeBsdWrite = 0xD2800088U; // mov x8, #4
+constexpr std::uint32_t kSvc0 = 0xD4000001U;              // svc #0
+constexpr std::uint32_t kAdrpX1 = 0x90000001U;            // adrp x1, <symbol>
+constexpr std::uint32_t kAddX1Lo12 = 0x91000021U;         // add  x1, x1, #:lo12:<symbol>
+constexpr std::uint32_t kLdpX1X2 = 0xA9400941U;           // ldp  x1, x2, [x10]
+constexpr std::uint32_t kBrk1 = 0xD4200020U;              // brk  #1
 
 // Windows reaches standard error through KERNEL32. GetStdHandle receives -12
 // in X0, and every WriteFile receives its last two arguments in X3 and X4.
@@ -3849,6 +4009,56 @@ TEST_CASE("AArch64 RCU emitter asks each kernel for a write by its own numbering
     CHECK_EQ(std::ranges::count(words, kMovX8Write), 0);
     CHECK_EQ(std::ranges::count(words, kSvc0), 0);
     CHECK_EQ(std::ranges::count(words, kMovX0StdErr), 3); // the descriptor is the same
+}
+
+TEST_CASE("FreeBSD AArch64 assertions and panics write every fragment through syscall 4 before trapping") {
+    const auto check = [](const std::string_view statement, const std::string_view prefix) {
+        const auto package = CompileToAArch64Lir(std::format(R"(
+            {}
+            func Main() -> int {{
+                {}
+                return 0;
+            }}
+        )",
+                                                             kAssertIntrinsics, statement),
+                                                 "freebsd-aarch64");
+
+        AArch64RcuEmitter emitter(package, "test", Target::OS::FreeBSD);
+        const auto objects = emitter.Generate();
+        CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+        const auto &object = objects.front();
+        const auto words = FunctionWords(object, "Main");
+        const auto trap = TrapIndex(words);
+        REQUIRE_MESSAGE(trap.has_value(), "no diagnostic trap in FreeBSD body");
+
+        std::vector<std::size_t> writes;
+        for (std::size_t i = 0; i < words.size(); ++i) {
+            if (words[i] == kSvc0) {
+                writes.push_back(i);
+            }
+        }
+        REQUIRE_EQ(writes.size(), 3);
+        for (const std::size_t svc : writes) {
+            REQUIRE_GE(svc, 2);
+            CHECK_EQ(HexWord(words[svc - 2]), HexWord(kMovX0StdErr));
+            CHECK_EQ(HexWord(words[svc - 1]), HexWord(kMovX8FreeBsdWrite));
+        }
+
+        // Static prefix/location writes materialize X1 and X2 separately; the
+        // dynamic slice moves both with one LDP. All three complete before the
+        // diagnostic BRK, which is immediately after the final SVC.
+        CHECK_EQ(std::ranges::count(words, kAdrpX1), 2);
+        CHECK_EQ(std::ranges::count(words, kAddX1Lo12), 2);
+        CHECK_EQ(std::ranges::count(words, kLdpX1X2), 1);
+        CHECK_EQ(writes.back() + 1, *trap);
+        CHECK_EQ(std::ranges::count(words, kMovX8FreeBsdWrite), 3);
+        CHECK_EQ(std::ranges::count(words, kMovX8Write), 0);
+        CHECK_EQ(std::ranges::count(words, 0xD2800090U), 0); // Darwin's mov x16, #4
+        CHECK_EQ(RodataOccurrences(object, prefix), 1);
+    };
+
+    check("Assert(1 == 1, \"held\");", "Assertion failed: ");
+    check("Panic(\"stop\");", "Panic: ");
 }
 
 TEST_CASE("Windows AArch64 assertions write through KERNEL32 and branch over the failure path") {

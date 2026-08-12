@@ -188,7 +188,7 @@ private:
         return it == externSymbols.end() ? name : it->second;
     }
 
-    [[nodiscard]] static std::optional<TypeRef> AppleCVariadicPromotion(const TypeRef &type) {
+    [[nodiscard]] static std::optional<TypeRef> CVariadicPromotion(const TypeRef &type) {
         switch (type.kind) {
         case TypeRef::Kind::Float32:
             return TypeRef::MakeFloat64();
@@ -206,10 +206,10 @@ private:
         }
     }
 
-    // Preserve the declaration boundary on every target. Apple ARM64 also
-    // applies C's default argument promotions before its anonymous stack-only
-    // placement; keeping the promotion in LIR makes the value's ABI type
-    // explicit and lets code generation move it like any other converted value.
+    // Preserve the declaration boundary on every target. Apple and FreeBSD
+    // AArch64 apply C's default argument promotions before their platform call
+    // layouts; keeping the promotion in LIR makes the value's ABI type explicit
+    // and lets code generation move it like any other converted value.
     void SetCVariadicCallMetadata(LirInstr &call, const std::string &name, const HirCallExpr &expr) {
         const auto found = cVariadicFixedParamCounts.find(name);
         if (found == cVariadicFixedParamCounts.end()) {
@@ -218,13 +218,14 @@ private:
         call.isCVariadic = true;
         call.cVariadicFixedParamCount = found->second;
 
-        const bool appleAArch64 = targetContext.arch == Target::Arch::AArch64 &&
-                                  (targetContext.os == Target::OS::MacOS || targetContext.os == Target::OS::iOS);
-        if (!appleAArch64) {
+        const bool promotesAArch64 = targetContext.arch == Target::Arch::AArch64 &&
+                                     (targetContext.os == Target::OS::MacOS || targetContext.os == Target::OS::iOS ||
+                                      targetContext.os == Target::OS::FreeBSD);
+        if (!promotesAArch64) {
             return;
         }
         for (std::size_t i = found->second; i < call.srcs.size() && i < expr.args.size(); ++i) {
-            if (const auto promoted = AppleCVariadicPromotion(expr.args[i]->type)) {
+            if (const auto promoted = CVariadicPromotion(expr.args[i]->type)) {
                 call.srcs[i] = EmitCast(call.srcs[i], expr.args[i]->type, *promoted);
             }
         }
