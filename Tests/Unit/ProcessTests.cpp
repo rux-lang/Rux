@@ -77,7 +77,7 @@ TEST_CASE("FindExecutable searches PATH for a bare name") {
     const auto found = FindExecutable("rux");
     CHECK(found.has_value());
     if (found) {
-        CHECK(*found == rux);
+        CHECK(std::filesystem::equivalent(*found, rux));
     }
     CHECK(!FindExecutable("rux-emulator-that-is-not-installed").has_value());
 
