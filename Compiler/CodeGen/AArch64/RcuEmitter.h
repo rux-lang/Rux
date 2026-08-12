@@ -12,7 +12,8 @@
 // The target operating system does not replace AAPCS64, but it selects platform
 // variants within it: Windows C variadic calls use only the general-purpose
 // argument file. It also decides how a failed assertion prints its message;
-// syscall details are properties of the kernel rather than the architecture.
+// Unix syscall details and Windows API imports are platform properties rather
+// than architecture properties.
 
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Lir/Lir.h"

@@ -6,6 +6,7 @@
 // disagreement with a second implementation rather than with someone's reading
 // of the ARM manual.
 
+#include "CodeGen/AArch64/Encoder.h"
 #include "CodeGen/AArch64/RcuEmitter.h"
 #include "Driver/BuildTarget.h"
 #include "Lexer/Lexer.h"
@@ -3108,6 +3109,14 @@ constexpr std::uint32_t kAddX1Lo12 = 0x91000021U;   // add  x1, x1, #:lo12:<symb
 constexpr std::uint32_t kLdpX1X2 = 0xA9400941U;     // ldp  x1, x2, [x10]
 constexpr std::uint32_t kBrk1 = 0xD4200020U;        // brk  #1
 
+// Windows reaches standard error through KERNEL32. GetStdHandle receives -12
+// in X0, and every WriteFile receives its last two arguments in X3 and X4.
+constexpr std::uint32_t kSubSp16 = 0xD10043FFU;           // sub sp, sp, #16
+constexpr std::uint32_t kMovX0StdErrHandle = 0x92800160U; // mov x0, #-12
+constexpr std::uint32_t kMovX3Sp = 0x910003E3U;           // mov x3, sp
+constexpr std::uint32_t kMovX4Zero = 0xD2800004U;         // mov x4, #0
+constexpr std::uint32_t kBl0 = 0x94000000U;               // bl <import>
+
 // The immediate of `mov xN, #imm` in the one-instruction move-wide form, or
 // nothing when the word is some other instruction. A message's length is
 // materialized this way, and how long a message is depends on where in this
@@ -3287,6 +3296,121 @@ TEST_CASE("AArch64 RCU emitter asks each kernel for a write by its own numbering
     CHECK_EQ(std::ranges::count(words, kMovX8Write), 0);
     CHECK_EQ(std::ranges::count(words, kSvc0), 0);
     CHECK_EQ(std::ranges::count(words, kMovX0StdErr), 3); // the descriptor is the same
+}
+
+TEST_CASE("Windows AArch64 assertions write through KERNEL32 and branch over the failure path") {
+    const auto package = CompileToAArch64Lir(std::format(R"(
+        {}
+        func Main() -> int {{
+            Assert(1 == 1, "one");
+            return 0;
+        }}
+    )",
+                                                         kAssertIntrinsics),
+                                             "windows-aarch64");
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::Windows);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto &object = objects.front();
+    const auto words = FunctionWords(object, "Main");
+
+    const RcuSymbol *getStdHandle = FindSymbol(object, "GetStdHandle");
+    const RcuSymbol *writeFile = FindSymbol(object, "WriteFile");
+    REQUIRE(getStdHandle != nullptr);
+    REQUIRE(writeFile != nullptr);
+    for (const RcuSymbol *symbol : {getStdHandle, writeFile}) {
+        CHECK_EQ(symbol->sectionIdx, RCU_SEC_EXTERNAL);
+        CHECK_EQ(symbol->kind, RcuSymKind::ExternFunc);
+        CHECK_EQ(symbol->visibility, RcuSymVis::Global);
+        CHECK_EQ(symbol->typeName, "KERNEL32.DLL");
+    }
+
+    const auto getCalls = FunctionRelocs(object, "Main", "GetStdHandle");
+    const auto writeCalls = FunctionRelocs(object, "Main", "WriteFile");
+    REQUIRE_EQ(getCalls.size(), 3);
+    REQUIRE_EQ(writeCalls.size(), 3);
+    for (std::size_t i = 0; i < getCalls.size(); ++i) {
+        CHECK_EQ(getCalls[i].second, RcuRelType::AArch64Call26);
+        CHECK_EQ(writeCalls[i].second, RcuRelType::AArch64Call26);
+
+        const std::size_t get = getCalls[i].first / A64Enc::InstrSize;
+        const std::size_t write = writeCalls[i].first / A64Enc::InstrSize;
+        REQUIRE(get + 2 < words.size());
+        REQUIRE(write < words.size());
+        CHECK(get < write);
+        CHECK_EQ(HexWord(words[get]), HexWord(kBl0));
+        CHECK_EQ(HexWord(words[get + 1]), HexWord(kMovX3Sp));
+        CHECK_EQ(HexWord(words[get + 2]), HexWord(kMovX4Zero));
+        CHECK_EQ(HexWord(words[write]), HexWord(kBl0));
+    }
+
+    // All five WriteFile arguments are visible in the instruction stream: X0
+    // comes back from GetStdHandle, static writes materialize X1/X2 through a
+    // relocated address and length, the slice loads both together for the
+    // dynamic write, and X3/X4 were checked beside every imported call above.
+    CHECK_EQ(std::ranges::count(words, kMovX0StdErrHandle), 3);
+    CHECK_EQ(std::ranges::count(words, kLdpX1X2), 1);
+    CHECK_EQ(std::ranges::count(words, kSubSp16), 1);
+    CHECK_EQ(std::ranges::count(words, kSvc0), 0);
+
+    std::vector<const RcuSymbol *> staticTexts;
+    for (const auto &symbol : object.symbols) {
+        if (symbol.sectionIdx != RCU_RODATA_IDX) {
+            continue;
+        }
+        const auto bytes = RodataOf(object, symbol.name);
+        const std::string_view text(reinterpret_cast<const char *>(bytes.data()), bytes.size() - 1);
+        if (text == "Assertion failed: " || text.starts_with("\n  at Main (test.rux:")) {
+            staticTexts.push_back(&symbol);
+        }
+    }
+    REQUIRE_EQ(staticTexts.size(), 2);
+    for (const RcuSymbol *symbol : staticTexts) {
+        const auto address = FunctionRelocs(object, "Main", symbol->name);
+        REQUIRE_EQ(address.size(), 2);
+        CHECK_EQ(address[0].second, RcuRelType::AArch64AdrPrelPgHi21);
+        CHECK_EQ(address[1].second, RcuRelType::AArch64AddAbsLo12Nc);
+        CHECK_EQ(HexWord(words[address[0].first / A64Enc::InstrSize]), HexWord(kAdrpX1));
+        CHECK_EQ(HexWord(words[address[1].first / A64Enc::InstrSize]), HexWord(kAddX1Lo12));
+    }
+
+    const auto trap = TrapIndex(words);
+    REQUIRE_MESSAGE(trap.has_value(), "no brk in the body");
+    const auto held = std::ranges::find_if(words, [](const std::uint32_t word) {
+        return (word & 0xFF00001FU) == 0xB5000009U; // cbnz x9, <after the trap>
+    });
+    REQUIRE(held != words.end());
+    const std::size_t heldIndex = static_cast<std::size_t>(held - words.begin());
+    CHECK_EQ(BranchDisplacement(*held), static_cast<std::int32_t>(*trap + 1 - heldIndex));
+}
+
+TEST_CASE("Windows AArch64 panics use the same imported writer and always trap") {
+    const auto package = CompileToAArch64Lir(std::format(R"(
+        {}
+        func Main() -> int {{
+            Panic("stop");
+            return 0;
+        }}
+    )",
+                                                         kAssertIntrinsics),
+                                             "windows-aarch64");
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::Windows);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto &object = objects.front();
+    const auto words = FunctionWords(object, "Main");
+
+    CHECK_EQ(FunctionRelocs(object, "Main", "GetStdHandle").size(), 3);
+    CHECK_EQ(FunctionRelocs(object, "Main", "WriteFile").size(), 3);
+    CHECK_EQ(std::ranges::count(words, kBrk1), 1);
+    CHECK_EQ(RodataOccurrences(object, "Panic: "), 1);
+    CHECK_EQ(RodataOccurrences(object, "Assertion failed: "), 0);
+    for (const std::uint32_t word : words) {
+        CHECK_MESSAGE((word & 0xFF000010U) != 0x54000000U, HexWord(word)); // b.<cond>
+        CHECK_MESSAGE((word & 0x7E000000U) != 0x34000000U, HexWord(word)); // cbz / cbnz
+    }
 }
 
 TEST_CASE("AArch64 RCU emitter emits an asm func as a raw blob") {

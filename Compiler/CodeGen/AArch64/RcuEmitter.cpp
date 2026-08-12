@@ -106,11 +106,12 @@ struct CondBranch {
     return {CondBranch::Form::NotZero, A64Condition::Eq, reg};
 }
 
-// How a write is asked of the kernel on this system: the number the call is
+// How a write is asked of a Unix kernel on this system: the number the call is
 // known by, the register that number travels in, and the immediate SVC carries.
 // A failed assertion prints its message before it traps, and that print is the
 // one thing in this back end that is a property of the operating system rather
-// than of the architecture — AAPCS64 settles everything else.
+// than of the architecture — AAPCS64 settles everything else. Windows reaches
+// the same operation through KERNEL32 imports below rather than a kernel trap.
 //
 // The three answers are the three families of AArch64 kernel: Linux keeps its
 // own numbering and takes the number in X8, the BSDs share the historical UNIX
@@ -141,8 +142,13 @@ struct WriteSyscall {
     }
 }
 
-// The file descriptor a failed assertion writes to.
+// The file descriptor a failed assertion writes to on Unix.
 constexpr std::uint64_t kStandardError = 2;
+
+// GetStdHandle's signed pseudo-handle for standard error, carried in X0 as the
+// two's-complement value the Windows API receives.
+constexpr std::uint64_t kStandardErrorHandle = static_cast<std::uint64_t>(static_cast<std::int64_t>(-12));
+constexpr std::string_view kKernel32 = "KERNEL32.DLL";
 
 // The condition an integer or pointer comparison holds under. Equality reads
 // the same flags whatever the operands mean; the four orderings do not, so the
@@ -2610,11 +2616,12 @@ private:
     // Assertions
     //
     // A failed assertion says what failed and where, then stops the process
-    // where it failed. Saying it is a write to standard error, which this back
-    // end reaches the only way a program with no C runtime can: the system call
-    // itself. Stopping is BRK, which is what UD2 is on x86-64 — an instruction
-    // no operand makes valid, so a debugger attached to the process lands on
-    // the assertion rather than on whatever unwinding it to a handler reached.
+    // where it failed. Saying it is a write to standard error, reached directly
+    // through a Unix system call or through KERNEL32 on Windows so neither path
+    // needs a C runtime. Stopping is BRK, which is what UD2 is on x86-64 — an
+    // instruction no operand makes valid, so a debugger attached to the process
+    // lands on the assertion rather than on whatever unwinding it to a handler
+    // reached.
     //
     // Three writes rather than one, for the reason the x86-64 back end makes
     // three: the prefix and the location are constants this object interns, the
@@ -2636,6 +2643,34 @@ private:
         EmitWriteSyscall(call);
     }
 
+    // A direct Win32 call is an ordinary AAPCS64 branch with an imported symbol
+    // as its target. PE linking will turn this relocation into the import thunk
+    // selected for that symbol.
+    void EmitWindowsCall(const std::uint32_t symbol, const std::string_view name) {
+        const std::uint32_t site = enc.Size();
+        Must(enc.Bl(0), name);
+        AddTextReloc(site, symbol, RcuRelType::AArch64Call26);
+    }
+
+    // Fill the arguments shared by all three WriteFile calls. GetStdHandle
+    // returns the handle in X0; X3 names the DWORD reserved at SP and X4 is the
+    // null OVERLAPPED pointer. The caller fills X1 and X2 after this returns so
+    // GetStdHandle cannot clobber the buffer or byte count.
+    void PrepareWindowsWrite(const std::uint32_t getStdHandle) {
+        Must(enc.LoadImm64(A64::Xn(0), kStandardErrorHandle), "the standard error handle kind");
+        EmitWindowsCall(getStdHandle, "a call to GetStdHandle");
+        Must(enc.Mov(A64::Xn(3), A64::Sp), "the written-byte count pointer");
+        Must(enc.LoadImm64(A64::Xn(4), 0), "a null overlapped pointer");
+    }
+
+    void EmitWindowsWriteStatic(const std::uint32_t getStdHandle, const std::uint32_t writeFile,
+                                const std::string &text) {
+        PrepareWindowsWrite(getStdHandle);
+        LoadSymbolAddress(A64::Xn(1), InternStr(text));
+        Must(enc.LoadImm64(A64::Xn(2), text.size()), "the length of an assertion message");
+        EmitWindowsCall(writeFile, "a call to WriteFile");
+    }
+
     void GenAssert(const LirInstr &instr) {
         const bool isAssertion = instr.op == LirOpcode::Assert;
         if (instr.srcs.size() < (isAssertion ? 2U : 1U)) {
@@ -2643,8 +2678,9 @@ private:
                                LirOpcodeName(instr.op), currentFunc));
             return;
         }
-        const auto call = WriteSyscallFor(targetOs);
-        if (!call) {
+        const bool isWindows = targetOs == Target::OS::Windows;
+        const auto syscall = WriteSyscallFor(targetOs);
+        if (!isWindows && !syscall) {
             NotImplemented("an assertion on this operating system");
             return;
         }
@@ -2660,20 +2696,43 @@ private:
 
         const std::string function = instr.sourceFunction.empty() ? "<unknown>" : instr.sourceFunction;
         const std::string file = instr.sourceFile.empty() ? "<unknown>" : instr.sourceFile;
-        EmitWriteStatic(*call, isAssertion ? "Assertion failed: " : "Panic: ");
+        const std::string prefix = isAssertion ? "Assertion failed: " : "Panic: ";
+        const std::string suffix =
+            std::format("\n  at {} ({}:{}:{})\n", function, file, instr.sourceLine, instr.sourceColumn);
 
-        // The message is a `Slice<char8>` the caller built, so what the operand
-        // holds is its address and the two doublewords behind it are what the
-        // call takes. They are loaded through a register the call does not use,
-        // since X0 through X2 are filled in the order the kernel reads them.
-        const LirReg messageReg = instr.srcs[isAssertion ? 1 : 0];
-        LoadPointer(A64::Xn(kAddr), messageReg);
-        Must(enc.Ldp(A64::Xn(1), A64::Xn(2), A64::Xn(kAddr), 0), "an assertion message");
-        Must(enc.LoadImm64(A64::Xn(0), kStandardError), "the standard error descriptor");
-        EmitWriteSyscall(*call);
+        if (isWindows) {
+            const std::uint32_t getStdHandle =
+                GetOrAddExtern("GetStdHandle", RcuSymKind::ExternFunc, std::string(kKernel32));
+            const std::uint32_t writeFile = GetOrAddExtern("WriteFile", RcuSymKind::ExternFunc, std::string(kKernel32));
 
-        EmitWriteStatic(*call,
-                        std::format("\n  at {} ({}:{}:{})\n", function, file, instr.sourceLine, instr.sourceColumn));
+            // One aligned doubleword pair gives WriteFile a writable DWORD for
+            // lpNumberOfBytesWritten. The failure path ends at BRK, so it never
+            // has to close this area; a held assertion branches over it.
+            Must(enc.FrameAdjust(-16), "the assertion write area");
+            EmitWindowsWriteStatic(getStdHandle, writeFile, prefix);
+
+            const LirReg messageReg = instr.srcs[isAssertion ? 1 : 0];
+            PrepareWindowsWrite(getStdHandle);
+            LoadPointer(A64::Xn(kAddr), messageReg);
+            Must(enc.Ldp(A64::Xn(1), A64::Xn(2), A64::Xn(kAddr), 0), "an assertion message");
+            EmitWindowsCall(writeFile, "a call to WriteFile");
+
+            EmitWindowsWriteStatic(getStdHandle, writeFile, suffix);
+        }
+        else {
+            EmitWriteStatic(*syscall, prefix);
+
+            // The message is a `Slice<char8>` the caller built, so what the
+            // operand holds is its address and the two doublewords behind it
+            // are what the system call takes.
+            const LirReg messageReg = instr.srcs[isAssertion ? 1 : 0];
+            LoadPointer(A64::Xn(kAddr), messageReg);
+            Must(enc.Ldp(A64::Xn(1), A64::Xn(2), A64::Xn(kAddr), 0), "an assertion message");
+            Must(enc.LoadImm64(A64::Xn(0), kStandardError), "the standard error descriptor");
+            EmitWriteSyscall(*syscall);
+
+            EmitWriteStatic(*syscall, suffix);
+        }
 
         Must(enc.Brk(1), "an assertion trap");
         if (isAssertion) {
