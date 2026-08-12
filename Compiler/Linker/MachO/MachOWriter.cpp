@@ -1,6 +1,6 @@
-// Mach-O executable writer for macOS x86-64 and AArch64. Freestanding programs
-// retain a static LC_UNIXTHREAD entry point; programs that reference #Link
-// externs use dyld, eager symbol binding, and architecture-owned symbol stubs.
+// Mach-O image writer for macOS x86-64 and AArch64. Freestanding programs retain
+// a static LC_UNIXTHREAD entry point; dynamic executables and shared libraries
+// use dyld, eager symbol binding, and architecture-owned symbol stubs.
 
 #include "Linker/AArch64Relocation.h"
 #include "Linker/Linker.h"
@@ -366,10 +366,14 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     for (const auto &object : objects) {
         for (const auto &symbol : object.symbols) {
             if (symbol.kind != RcuSymKind::ExternFunc && symbol.kind != RcuSymKind::ExternData &&
-                !symbol.name.empty()) {
-                definedSymbols.insert(symbol.name);
+                symbol.visibility != RcuSymVis::Local && symbol.sectionIdx != RCU_SEC_EXTERNAL &&
+                !symbol.name.empty() && !definedSymbols.insert(symbol.name).second) {
+                Error("duplicate definition of symbol '" + symbol.name + "'");
             }
         }
+    }
+    if (!errors.empty()) {
+        return false;
     }
 
     // Extern declarations carry their #Link library in typeName. Calls in a
@@ -579,7 +583,9 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     Buf bindStream;
     if (dynamic) {
         WriteU8(bindStream, 0x51); // SET_TYPE_IMM | POINTER
-        WriteU8(bindStream, 0x72); // SET_SEGMENT_AND_OFFSET_ULEB | __DATA index
+        const uint8_t dataSegmentIndex = isShared ? 1 : 2;
+        WriteU8(bindStream,
+                static_cast<uint8_t>(0x70 | dataSegmentIndex)); // SET_SEGMENT_AND_OFFSET_ULEB | __DATA index
         WriteUleb128(bindStream, 0);
         for (const auto &name : importNames) {
             const uint8_t ordinal = libraryOrdinal.at(importLib.at(name));
@@ -1010,6 +1016,8 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
 
             for (const auto &relocation : section.relocs) {
                 if (relocation.symbolIndex >= object.symbols.size()) {
+                    Error("relocation in Mach-O section '" + section.name + "' refers to missing symbol index " +
+                          std::to_string(relocation.symbolIndex));
                     continue;
                 }
                 const auto &symbol = object.symbols[relocation.symbolIndex];
@@ -1036,6 +1044,9 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
                     targetVA = dataVA + layout.dataOffset + symbol.value;
                 }
                 else {
+                    if (!symbol.name.empty()) {
+                        Error("undefined symbol '" + symbol.name + "'");
+                    }
                     continue;
                 }
 

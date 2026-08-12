@@ -73,6 +73,11 @@ struct MachOBind {
     std::string symbol;
 };
 
+struct MachORebase {
+    std::uint8_t segmentIndex = 0;
+    std::uint64_t segmentOffset = 0;
+};
+
 struct MachORange {
     std::uint32_t offset = 0;
     std::uint32_t size = 0;
@@ -111,6 +116,7 @@ struct MachOImage {
     std::vector<MachOSymbol> symbols;
     std::vector<std::uint32_t> indirectSymbols;
     std::vector<MachOBind> binds;
+    std::vector<MachORebase> rebases;
     std::optional<MachODyldInfo> dyldInfo;
     std::optional<std::uint64_t> mainEntryOffset;
     std::optional<std::uint32_t> threadStateFlavor;
@@ -528,6 +534,63 @@ inline bool ReadUleb128(const std::span<const std::uint8_t> bytes, std::size_t &
         }
         if (!done) {
             error = "unterminated Mach-O bind stream";
+            return false;
+        }
+    }
+    if (image.dyldInfo && image.dyldInfo->rebaseSize != 0) {
+        if (!InBounds(bytes, image.dyldInfo->rebaseOffset, image.dyldInfo->rebaseSize)) {
+            error = "Mach-O rebase stream extends beyond the image";
+            return false;
+        }
+        std::size_t rebaseCursor = image.dyldInfo->rebaseOffset;
+        const std::size_t rebaseEnd = rebaseCursor + image.dyldInfo->rebaseSize;
+        std::uint8_t segmentIndex = 0;
+        std::uint64_t segmentOffset = 0;
+        bool pointerType = false;
+        bool done = false;
+        while (rebaseCursor < rebaseEnd && !done) {
+            const std::uint8_t byte = bytes[rebaseCursor++];
+            const std::uint8_t opcode = byte & 0xF0;
+            const std::uint8_t immediate = byte & 0x0F;
+            switch (opcode) {
+            case 0x00: // REBASE_OPCODE_DONE
+                done = true;
+                break;
+            case 0x10: // REBASE_OPCODE_SET_TYPE_IMM
+                if (immediate != 1) {
+                    error = "unsupported Mach-O rebase type in portable reader";
+                    return false;
+                }
+                pointerType = true;
+                break;
+            case 0x20: // REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB
+                segmentIndex = immediate;
+                if (!ReadUleb128(bytes, rebaseCursor, rebaseEnd, segmentOffset)) {
+                    error = "invalid Mach-O rebase segment offset";
+                    return false;
+                }
+                break;
+            case 0x50: // REBASE_OPCODE_DO_REBASE_IMM_TIMES
+                if (!pointerType || immediate == 0) {
+                    error = "invalid Mach-O rebase action";
+                    return false;
+                }
+                for (std::uint8_t count = 0; count < immediate; ++count) {
+                    image.rebases.push_back({segmentIndex, segmentOffset});
+                    if (segmentOffset > std::numeric_limits<std::uint64_t>::max() - 8) {
+                        error = "Mach-O rebase segment offset overflows";
+                        return false;
+                    }
+                    segmentOffset += 8;
+                }
+                break;
+            default:
+                error = "unsupported Mach-O rebase opcode in portable reader";
+                return false;
+            }
+        }
+        if (!done) {
+            error = "unterminated Mach-O rebase stream";
             return false;
         }
     }

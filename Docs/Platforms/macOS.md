@@ -31,9 +31,9 @@ For a Debug build, add `--configuration Debug`. Run `sh Build.sh --help` to see 
 On Apple Silicon, Rux selects the `macos-aarch64` target by default. The
 AArch64 back end reaches `linux-aarch64` through ELF and `windows-aarch64`
 through PE/COFF. Its Mach-O paths can write ARM64 object members, deterministic
-BSD static archives, and signed executable images with or without C function
-imports, but the public target remains gated until shared libraries are
-implemented. Building for `macos-aarch64` is therefore still refused with `code
+BSD static archives, signed executable images with or without C function
+imports, and signed shared libraries. The public target remains gated pending
+end-to-end driver coverage. Building for `macos-aarch64` is therefore still refused with `code
 generation for 'macos-aarch64' is not implemented yet`; `rux check`, `rux fmt`,
 `rux lint` and `rux doc` need no back end and work as they do everywhere. An
 Apple Silicon Mac can still build `rux` itself, and can cross-build Rux programs
@@ -44,7 +44,7 @@ windows-aarch64`.
 
 An `Executable` package writes `Name`, a `SharedLibrary` writes `libName.dylib` with `LC_ID_DYLIB` set to `@rpath/libName.dylib`, and a `StaticLibrary` writes `libName.a` with a BSD archive symbol index. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
 
-The x86-64 backend writes Mach-O objects and images directly, from a host of either architecture. The AArch64 backend writes relocatable Mach-O objects and the BSD archive used for static libraries, including ARM64 branch, page, page-offset, pointer, and explicit-addend relocations. It links freestanding executables with 16 KiB segments, the macOS 26 build-version command, an ARM64 thread entry and exit-syscall stub, and an in-process ad-hoc signature. Executables with C imports use dyld, eagerly bound non-lazy pointers, and Apple ARM64 X16 symbol stubs; imported data remains unavailable until GOT-aware lowering is implemented. AArch64 shared-library images are not implemented, so the driver does not expose this partial support through `rux build --target macos-aarch64` yet.
+The x86-64 backend writes Mach-O objects and images directly, from a host of either architecture. The AArch64 backend writes relocatable Mach-O objects and the BSD archive used for static libraries, including ARM64 branch, page, page-offset, pointer, and explicit-addend relocations. It links freestanding executables with 16 KiB segments, the macOS 26 build-version command, an ARM64 thread entry and exit-syscall stub, and an in-process ad-hoc signature. Executables with C imports use dyld, eagerly bound non-lazy pointers, and Apple ARM64 X16 symbol stubs. Shared libraries use the same stubs for external calls, export public code and data through dyld metadata, rebase image-local pointers, omit executable entry commands, and carry deterministic `@rpath/libName.dylib` identities. Imported data remains unavailable until GOT-aware lowering is implemented. The driver does not expose this completed linker support through `rux build --target macos-aarch64` until the public artifact paths gain end-to-end coverage.
 
 ## Verifying the Build
 
@@ -76,5 +76,5 @@ Use `sh Format.sh` to format maintained C++ and Rux sources, or `sh Format.sh --
 no `--target` option. `rux test --target` requires macOS plus an architecture
 reported for either the compiler process or the native OS. Consequently, an
 x86-64 compiler running under Rosetta on Apple Silicon may directly test
-`macos-aarch64` once that image writer is available; a physical Intel Mac may
+`macos-aarch64` once the public driver target is enabled; a physical Intel Mac may
 only build/check that target and transfer it to Apple Silicon for testing.

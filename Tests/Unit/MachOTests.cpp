@@ -27,11 +27,12 @@ RcuSection TextSection(std::vector<std::uint8_t> bytes) {
     return text;
 }
 
-std::vector<std::uint8_t> LinkBytes(RcuFile object, const ArtifactKind kind, const std::filesystem::path &output,
+std::vector<std::uint8_t> LinkBytes(std::vector<RcuFile> objects, const ArtifactKind kind,
+                                    const std::filesystem::path &output,
                                     const Target::Arch targetArch = Target::Arch::X86_64) {
     std::error_code fileError;
     std::filesystem::remove(output, fileError);
-    Linker linker({std::move(object)}, "MachOTest", {}, kind, Target::OS::MacOS, targetArch);
+    Linker linker(std::move(objects), "MachOTest", {}, kind, Target::OS::MacOS, targetArch);
     const bool linked = linker.Link(output);
     CAPTURE(linker.Errors().empty() ? std::string{} : linker.Errors().front().message);
     REQUIRE(linked);
@@ -42,6 +43,11 @@ std::vector<std::uint8_t> LinkBytes(RcuFile object, const ArtifactKind kind, con
     stream.close();
     std::filesystem::remove(output, fileError);
     return bytes;
+}
+
+std::vector<std::uint8_t> LinkBytes(RcuFile object, const ArtifactKind kind, const std::filesystem::path &output,
+                                    const Target::Arch targetArch = Target::Arch::X86_64) {
+    return LinkBytes(std::vector<RcuFile>{std::move(object)}, kind, output, targetArch);
 }
 
 MachOImage LinkAndRead(RcuFile object, const ArtifactKind kind, const std::filesystem::path &output,
@@ -508,6 +514,184 @@ TEST_CASE("Mach-O links imported AArch64 executables with eager Apple stubs") {
     CHECK(image.dyldInfo->weakBindSize == 0);
     REQUIRE(image.codeSignature);
     CHECK(image.codeSignature->offset + image.codeSignature->size == first.size());
+}
+
+TEST_CASE("Mach-O links signed AArch64 dylibs with exports imports and rebases") {
+    RcuFile publicObject;
+    publicObject.arch = RcuArch::AArch64;
+    auto publicText = TextSection({
+        0x00,
+        0x00,
+        0x00,
+        0x94, // Answer: bl Helper
+        0x00,
+        0x00,
+        0x00,
+        0x94, // bl puts
+        0xC0,
+        0x03,
+        0x5F,
+        0xD6, // ret
+    });
+    publicText.relocs.push_back({0, 1, RcuRelType::AArch64Call26, 0});
+    publicText.relocs.push_back({4, 2, RcuRelType::AArch64Call26, 0});
+    publicObject.sections.push_back(std::move(publicText));
+    RcuSection data;
+    data.name = ".data";
+    data.type = RcuSecType::Data;
+    data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+    data.alignment = 8;
+    data.data.resize(16);
+    data.data[8] = 42;
+    data.relocs.push_back({0, 0, RcuRelType::Abs64, 0});
+    publicObject.sections.push_back(std::move(data));
+    publicObject.symbols.push_back({"Answer", "int", 0, 12, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    publicObject.symbols.push_back({"Helper", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+    publicObject.symbols.push_back(
+        {"puts", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+    publicObject.symbols.push_back({"AnswerPointer", "", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
+    publicObject.symbols.push_back({"Value", "int", 8, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
+
+    RcuFile helperObject;
+    helperObject.arch = RcuArch::AArch64;
+    helperObject.sections.push_back(TextSection({0xC0, 0x03, 0x5F, 0xD6}));
+    helperObject.symbols.push_back({"Helper", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+
+    const std::vector<RcuFile> objects{publicObject, helperObject};
+    const auto temporary = std::filesystem::temp_directory_path();
+    const std::vector<std::uint8_t> first =
+        LinkBytes(objects, ArtifactKind::SharedLibrary, temporary / "rux-macho-dylib-first" / "libAnswers.dylib",
+                  Target::Arch::AArch64);
+    const std::vector<std::uint8_t> second =
+        LinkBytes(objects, ArtifactKind::SharedLibrary, temporary / "rux-macho-dylib-second" / "libAnswers.dylib",
+                  Target::Arch::AArch64);
+    CHECK(first == second);
+
+    MachOImage image;
+    std::string error;
+    REQUIRE_MESSAGE(ReadMachO64(first, image, error), error);
+    CHECK(image.Architecture() == MachOArchitecture::AArch64);
+    CHECK(image.fileType == 6);        // MH_DYLIB
+    CHECK(image.flags == 0x0000'0005); // MH_NOUNDEFS | MH_DYLDLINK
+    CHECK(image.Segment("__PAGEZERO") == nullptr);
+    CHECK_FALSE(image.HasCommand(0x05));        // LC_UNIXTHREAD
+    CHECK_FALSE(image.HasCommand(0x8000'0028)); // LC_MAIN
+    CHECK_FALSE(image.HasCommand(0x0E));        // LC_LOAD_DYLINKER
+    CHECK_FALSE(image.mainEntryOffset);
+    CHECK_FALSE(image.threadEntryAddress);
+    REQUIRE(image.buildVersion);
+    CHECK(image.buildVersion->minimumOs == 0x001A'0000);
+
+    std::vector<std::string> identities;
+    std::vector<std::string> dependencies;
+    for (const auto &command : image.commands) {
+        if (command.command == 0x0D) {
+            identities.push_back(command.value);
+        }
+        else if (command.command == 0x0C) {
+            dependencies.push_back(command.value);
+        }
+    }
+    CHECK((identities == std::vector<std::string>{"@rpath/libAnswers.dylib"}));
+    CHECK((dependencies == std::vector<std::string>{"/usr/lib/libSystem.B.dylib"}));
+
+    const MachOSegment *textSegment = image.Segment("__TEXT");
+    const MachOSegment *dataSegment = image.Segment("__DATA");
+    const MachOSection *imageText = image.Section("__TEXT", "__text");
+    const MachOSection *stubs = image.Section("__TEXT", "__stubs");
+    const MachOSection *pointers = image.Section("__DATA", "__nl_symbol_ptr");
+    const MachOSection *imageData = image.Section("__DATA", "__data");
+    REQUIRE(textSegment != nullptr);
+    REQUIRE(dataSegment != nullptr);
+    REQUIRE(imageText != nullptr);
+    REQUIRE(stubs != nullptr);
+    REQUIRE(pointers != nullptr);
+    REQUIRE(imageData != nullptr);
+    CHECK(imageText->size == 16); // no executable entry stub
+    CHECK(stubs->size == 12);
+    CHECK(stubs->reserved2 == 12);
+    CHECK(pointers->size == 8);
+    CHECK(pointers->reserved1 == 1);
+
+    const auto branchTarget = [&](const std::uint64_t address, const std::uint32_t instruction) {
+        std::int64_t immediate = instruction & 0x03FF'FFFFU;
+        if ((immediate & (std::int64_t{1} << 25)) != 0) {
+            immediate |= ~((std::int64_t{1} << 26) - 1);
+        }
+        return static_cast<std::uint64_t>(static_cast<std::int64_t>(address) + immediate * 4);
+    };
+    CHECK(branchTarget(imageText->address, Detail::U32(first, imageText->offset)) == imageText->address + 12);
+    CHECK(branchTarget(imageText->address + 4, Detail::U32(first, imageText->offset + 4)) == stubs->address);
+    CHECK(Detail::U64(first, imageData->offset) == imageText->address);
+
+    REQUIRE(image.binds.size() == 1);
+    CHECK(image.binds[0].symbol == "_puts");
+    CHECK(image.binds[0].libraryOrdinal == 1);
+    CHECK(image.binds[0].segmentIndex == 1); // __DATA in a dylib without __PAGEZERO
+    CHECK(image.binds[0].segmentOffset == 0);
+    REQUIRE(image.rebases.size() == 1);
+    CHECK(image.rebases[0].segmentIndex == 1);
+    CHECK(image.rebases[0].segmentOffset == imageData->address - dataSegment->vmAddress);
+
+    REQUIRE(image.symbols.size() == 5);
+    CHECK(image.symbols[0].name == "_Answer");
+    CHECK(image.symbols[1].name == "_AnswerPointer");
+    CHECK(image.symbols[2].name == "_Helper");
+    CHECK(image.symbols[3].name == "_Value");
+    CHECK(image.symbols[4].name == "_puts");
+    CHECK(std::ranges::all_of(image.symbols.begin(), image.symbols.begin() + 4,
+                              [](const MachOSymbol &symbol) { return (symbol.type & 0x0E) == 0x0E; }));
+    CHECK((image.symbols[4].type & 0x0E) == 0);
+    REQUIRE(image.dyldInfo);
+    CHECK(image.dyldInfo->rebaseSize > 0);
+    CHECK(image.dyldInfo->bindSize > 0);
+    CHECK(image.dyldInfo->exportSize > 0);
+
+    REQUIRE(image.codeSignature);
+    REQUIRE(image.codeDirectory);
+    CHECK(image.codeDirectory->executableSegmentFlags == 0);
+    CHECK(image.codeSignature->offset + image.codeSignature->size == first.size());
+    const std::size_t signatureSlots =
+        (image.codeSignature->offset + MachO::codeSignaturePageSize - 1) / MachO::codeSignaturePageSize;
+    REQUIRE(image.codeDirectory->codeHashes.size() == signatureSlots);
+    for (std::size_t slot = 0; slot < signatureSlots; ++slot) {
+        const std::size_t offset = slot * MachO::codeSignaturePageSize;
+        const std::size_t size =
+            std::min<std::size_t>(MachO::codeSignaturePageSize, image.codeSignature->offset - offset);
+        const Crypto::Sha256Digest expected = Crypto::Sha256(std::span(first).subspan(offset, size));
+        CHECK(image.codeDirectory->codeHashes[slot] == std::vector<std::uint8_t>(expected.begin(), expected.end()));
+    }
+}
+
+TEST_CASE("Mach-O AArch64 dylib diagnostics reject duplicate and unresolved definitions") {
+    const auto linkError = [](std::vector<RcuFile> objects, const std::string_view suffix) {
+        Linker linker(std::move(objects), "MachOTest", {}, ArtifactKind::SharedLibrary, Target::OS::MacOS,
+                      Target::Arch::AArch64);
+        CHECK_FALSE(
+            linker.Link(std::filesystem::temp_directory_path() / ("rux-macho-aarch64-dylib-" + std::string(suffix))));
+        REQUIRE_FALSE(linker.Errors().empty());
+        return linker.Errors().front().message;
+    };
+
+    SUBCASE("duplicate definition") {
+        RcuFile first;
+        first.arch = RcuArch::AArch64;
+        first.sections.push_back(TextSection({0xC0, 0x03, 0x5F, 0xD6}));
+        first.symbols.push_back({"Answer", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        RcuFile second = first;
+        CHECK(linkError({std::move(first), std::move(second)}, "duplicate") ==
+              "duplicate definition of symbol 'Answer'");
+    }
+
+    SUBCASE("unresolved definition") {
+        RcuFile library;
+        library.arch = RcuArch::AArch64;
+        auto text = TextSection({0x00, 0x00, 0x00, 0x94});
+        text.relocs.push_back({0, 0, RcuRelType::AArch64Call26, 0});
+        library.sections.push_back(std::move(text));
+        library.symbols.push_back({"Missing", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::Func, RcuSymVis::Global});
+        CHECK(linkError({std::move(library)}, "unresolved") == "undefined symbol 'Missing'");
+    }
 }
 
 TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid inputs") {

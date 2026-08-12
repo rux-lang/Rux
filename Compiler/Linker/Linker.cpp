@@ -44,9 +44,8 @@ bool Linker::CheckArchitecture() {
     if (targetArch == Target::Arch::X86_64 || artifactKind == ArtifactKind::StaticLibrary) {
         return true;
     }
-    // Beyond x86-64, both ELF and PE lay out AArch64 executable and shared
-    // library images. Mach-O currently supports freestanding AArch64
-    // executables; its dynamic executable and dylib paths remain gated.
+    // Beyond x86-64, ELF, PE, and Mach-O lay out AArch64 executable and shared
+    // library images.
     if (targetOs == Target::OS::Windows && targetArch == Target::Arch::AArch64) {
         return true;
     }
@@ -54,8 +53,7 @@ bool Linker::CheckArchitecture() {
     if (elf && targetArch == Target::Arch::AArch64) {
         return true;
     }
-    if (targetOs == Target::OS::MacOS && targetArch == Target::Arch::AArch64 &&
-        artifactKind == ArtifactKind::Executable) {
+    if (targetOs == Target::OS::MacOS && targetArch == Target::Arch::AArch64) {
         return true;
     }
     Error(std::format("linking {} for {} is not implemented yet",
