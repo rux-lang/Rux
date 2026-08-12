@@ -1,6 +1,8 @@
-// Mach-O image writer for macOS x86-64 and AArch64. Freestanding programs retain
-// a static LC_UNIXTHREAD entry point; dynamic executables and shared libraries
-// use dyld, eager symbol binding, and architecture-owned symbol stubs.
+// Mach-O image writer for macOS x86-64 and AArch64. Freestanding x86-64 programs
+// retain a static LC_UNIXTHREAD entry point; dynamic executables and shared
+// libraries use dyld, eager symbol binding, and architecture-owned symbol stubs.
+// AArch64 executables are always dynamic and position-independent because the
+// macOS kernel rejects both static and non-PIE arm64 images.
 
 #include "Linker/AArch64Relocation.h"
 #include "Linker/Linker.h"
@@ -47,6 +49,10 @@ struct MachOArchitectureProfile {
     uint32_t threadStateCount;
     uint32_t threadProgramCounterIndex;
     bool emitBuildVersion;
+    // XNU refuses a static executable for every architecture except x86-64, and
+    // refuses a dynamic one without MH_PIE where pie_required() holds. An arm64
+    // image therefore has to be dyld-linked, marked MH_PIE, and slidable.
+    bool requiresPositionIndependentExecutable;
 };
 
 constexpr MachOArchitectureProfile kX86_64Profile{
@@ -64,6 +70,7 @@ constexpr MachOArchitectureProfile kX86_64Profile{
     .threadStateCount = 42,
     .threadProgramCounterIndex = 16,
     .emitBuildVersion = false,
+    .requiresPositionIndependentExecutable = false,
 };
 
 constexpr MachOArchitectureProfile kAArch64Profile{
@@ -83,6 +90,7 @@ constexpr MachOArchitectureProfile kAArch64Profile{
     .threadStateCount = 68,
     .threadProgramCounterIndex = 32,
     .emitBuildVersion = true,
+    .requiresPositionIndependentExecutable = true,
 };
 
 const MachOArchitectureProfile *ArchitectureProfile(const Target::Arch architecture) {
@@ -441,7 +449,20 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         return false;
     }
 
-    const bool dynamic = isShared || !importLib.empty();
+    // An arm64 executable cannot be static, so it is dyld-linked even when it
+    // imports nothing. Its image is then slid at load time, which makes every
+    // absolute pointer the compiler built into constant or writable data a
+    // rebase target — and dyld may only rebase inside a writable segment.
+    const bool positionIndependent = !isShared && architecture->requiresPositionIndependentExecutable;
+    const bool dynamic = isShared || positionIndependent || !importLib.empty();
+    const bool slidImage = isShared || positionIndependent;
+    const bool writableConstSegment = slidImage && architecture->requiresPositionIndependentExecutable;
+
+    // Segment order is [__PAGEZERO], __TEXT, [__DATA_CONST], __DATA, __LINKEDIT.
+    // Rebase and bind opcodes address segments by that index.
+    const uint8_t textSegmentIndex = isShared ? 0 : 1;
+    const uint8_t constSegmentIndex = static_cast<uint8_t>(textSegmentIndex + (writableConstSegment ? 1 : 0));
+    const uint8_t dataSegmentIndex = static_cast<uint8_t>(constSegmentIndex + 1);
 
     std::vector<std::string> importNames;
     importNames.reserve(importLib.size());
@@ -458,6 +479,11 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         }
     }
     std::ranges::sort(neededLibs);
+    // dyld requires every image it loads to link libSystem, so an import-free
+    // program that is dynamic only because arm64 demands it still names it.
+    if (dynamic && neededLibs.empty()) {
+        neededLibs.emplace_back(kDefaultLib);
+    }
 
     std::unordered_map<std::string, uint8_t> libraryOrdinal;
     for (size_t i = 0; i < neededLibs.size(); ++i) {
@@ -618,9 +644,8 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     // The eager bind stream points each slot in __DATA,__nl_symbol_ptr at its
     // underscored Mach-O C symbol in the requested LC_LOAD_DYLIB ordinal.
     Buf bindStream;
-    if (dynamic) {
+    if (dynamic && !importNames.empty()) {
         WriteU8(bindStream, 0x51); // SET_TYPE_IMM | POINTER
-        const uint8_t dataSegmentIndex = isShared ? 1 : 2;
         WriteU8(bindStream,
                 static_cast<uint8_t>(0x70 | dataSegmentIndex)); // SET_SEGMENT_AND_OFFSET_ULEB | __DATA index
         WriteUleb128(bindStream, 0);
@@ -662,15 +687,22 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     constexpr uint32_t segmentCommandSize = 72;
     constexpr uint32_t sectionSize = 80;
     const uint32_t threadCommandSize = 16 + architecture->threadStateCount * 4;
-    const uint32_t textSectionCount = dynamic ? 3 : 2;
+    // __const is a __TEXT section unless it needs to be rebased, in which case
+    // it becomes the only section of a writable __DATA_CONST segment.
+    const uint32_t textSectionCount = (dynamic ? 2 : 1) + (writableConstSegment ? 0 : 1);
     const uint32_t dataSectionCount = dynamic ? 2 : 1;
     const uint32_t textCommandSize = segmentCommandSize + textSectionCount * sectionSize;
+    const uint32_t constCommandSize = segmentCommandSize + sectionSize;
     const uint32_t dataCommandSize = segmentCommandSize + dataSectionCount * sectionSize;
 
     uint32_t commandCount = isShared ? 3 : 4; // [PAGEZERO], TEXT, DATA, LINKEDIT
     uint32_t commandsSize = textCommandSize + dataCommandSize + segmentCommandSize;
     if (!isShared) {
         commandsSize += segmentCommandSize;
+    }
+    if (writableConstSegment) {
+        ++commandCount;
+        commandsSize += constCommandSize;
     }
     if (dynamic) {
         commandCount += (isShared ? 4 : 5) + static_cast<uint32_t>(neededLibs.size());
@@ -734,13 +766,16 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     const uint64_t stubsOffset = *stubsOffsetValue;
     const uint64_t stubsVA = imageBase + stubsOffset;
     const auto stubsEnd = checkedAdd(stubsOffset, stubs.size(), "instruction-stub size");
-    const auto rodataOffsetValue = stubsEnd ? alignLayout(*stubsEnd, 16, "constant-data offset") : std::nullopt;
+    const uint64_t rodataAlignment = writableConstSegment ? architecture->vmPageAlignment : 16;
+    const auto rodataOffsetValue =
+        stubsEnd ? alignLayout(*stubsEnd, rodataAlignment, "constant-data offset") : std::nullopt;
     if (!rodataOffsetValue) {
         return false;
     }
     const uint64_t rodataOffset = *rodataOffsetValue;
     const uint64_t rodataVA = imageBase + rodataOffset;
-    const auto textSegmentFileEndValue = checkedAdd(rodataOffset, mergedRodata.size(), "text segment size");
+    const auto textSegmentFileEndValue =
+        writableConstSegment ? stubsEnd : checkedAdd(rodataOffset, mergedRodata.size(), "text segment size");
     const auto textSegmentVMSizeValue =
         textSegmentFileEndValue ? alignLayout(*textSegmentFileEndValue, architecture->vmPageAlignment, "text segment")
                                 : std::nullopt;
@@ -750,7 +785,20 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     const uint64_t textSegmentFileEnd = *textSegmentFileEndValue;
     const uint64_t textSegmentVMSize = *textSegmentVMSizeValue;
 
-    const auto dataSegmentOffsetValue = alignLayout(textSegmentFileEnd, architecture->vmPageAlignment, "data segment");
+    // A rebased __const owns the pages between __TEXT and __DATA; otherwise the
+    // writable data follows __TEXT directly.
+    const uint64_t constSegmentFileSize = writableConstSegment ? mergedRodata.size() : 0;
+    const auto constSegmentVMSizeValue = writableConstSegment
+                                           ? alignLayout(std::max<uint64_t>(constSegmentFileSize, 1),
+                                                         architecture->vmPageAlignment, "constant segment")
+                                           : std::optional<uint64_t>{0};
+    if (!constSegmentVMSizeValue) {
+        return false;
+    }
+    const uint64_t constSegmentVMSize = *constSegmentVMSizeValue;
+    const auto dataSegmentOffsetValue =
+        writableConstSegment ? checkedAdd(rodataOffset, constSegmentVMSize, "data segment")
+                             : alignLayout(textSegmentFileEnd, architecture->vmPageAlignment, "data segment");
     if (!dataSegmentOffsetValue) {
         return false;
     }
@@ -784,8 +832,10 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     const uint64_t linkeditOffset = *linkeditOffsetValue;
     const uint64_t linkeditVA = imageBase + linkeditOffset;
 
+    // Every slid image has to tell dyld which absolute pointers to adjust.
+    const uint64_t constSegmentVA = writableConstSegment ? rodataVA : imageBase;
     Buf rebaseStream;
-    if (isShared) {
+    if (slidImage) {
         WriteU8(rebaseStream, 0x11); // SET_TYPE_IMM | REBASE_TYPE_POINTER
         for (size_t objectIndex = 0; objectIndex < objects.size(); ++objectIndex) {
             const auto &object = objects[objectIndex];
@@ -794,15 +844,15 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
                 uint8_t segmentIndex = 0;
                 uint64_t segmentOffset = 0;
                 if (section.type == RcuSecType::Text) {
-                    segmentIndex = 0;
+                    segmentIndex = textSegmentIndex;
                     segmentOffset = textVA + prefixSize + layout.textOffset - imageBase;
                 }
                 else if (section.type == RcuSecType::RoData) {
-                    segmentIndex = 0;
-                    segmentOffset = rodataVA + layout.rodataOffset - imageBase;
+                    segmentIndex = constSegmentIndex;
+                    segmentOffset = rodataVA + layout.rodataOffset - constSegmentVA;
                 }
                 else if (section.type == RcuSecType::Data) {
-                    segmentIndex = 1;
+                    segmentIndex = dataSegmentIndex;
                     segmentOffset = dataVA + layout.dataOffset - dataSegmentVA;
                 }
                 else {
@@ -810,6 +860,12 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
                 }
                 for (const auto &relocation : section.relocs) {
                     if (relocation.type != RcuRelType::Abs64) {
+                        continue;
+                    }
+                    if (writableConstSegment && section.type == RcuSecType::Text) {
+                        Error("Mach-O code cannot hold an absolute address in a position-independent image; "
+                              "'" +
+                              object.symbols[relocation.symbolIndex].name + "' must be reached PC-relatively");
                         continue;
                     }
                     WriteU8(rebaseStream, static_cast<uint8_t>(0x20 | segmentIndex));
@@ -1162,8 +1218,25 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         WriteU32(loadCommands, 0);
     }
 
+    // __DATA_CONST holds constant data that dyld rebases; a fixed-address image
+    // keeps it read-only inside __TEXT.
+    const char *const constSegmentName = writableConstSegment ? "__DATA_CONST" : "__TEXT";
+    if (writableConstSegment) {
+        WriteU32(loadCommands, 0x19);
+        WriteU32(loadCommands, constCommandSize);
+        WriteMachName(loadCommands, constSegmentName);
+        WriteU64(loadCommands, constSegmentVA);
+        WriteU64(loadCommands, constSegmentVMSize);
+        WriteU64(loadCommands, rodataOffset);
+        WriteU64(loadCommands, constSegmentFileSize);
+        WriteU32(loadCommands, 0x03);
+        WriteU32(loadCommands, 0x03);
+        WriteU32(loadCommands, 1);
+        WriteU32(loadCommands, 0);
+    }
+
     WriteMachName(loadCommands, "__const");
-    WriteMachName(loadCommands, "__TEXT");
+    WriteMachName(loadCommands, constSegmentName);
     WriteU64(loadCommands, rodataVA);
     WriteU64(loadCommands, mergedRodata.size());
     WriteU32(loadCommands, static_cast<uint32_t>(rodataOffset));
@@ -1334,7 +1407,8 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     WriteU32(header, isShared ? 6 : 2); // MH_DYLIB or MH_EXECUTE
     WriteU32(header, commandCount);
     WriteU32(header, commandsSize);
-    WriteU32(header, dynamic ? 0x0000'0005 : 0x0000'0001); // MH_DYLDLINK | MH_NOUNDEFS
+    // MH_NOUNDEFS | [MH_DYLDLINK] | [MH_PIE]
+    WriteU32(header, (dynamic ? 0x0000'0005U : 0x0000'0001U) | (positionIndependent ? 0x0020'0000U : 0U));
     WriteU32(header, 0);
 
     Buf image = std::move(header);

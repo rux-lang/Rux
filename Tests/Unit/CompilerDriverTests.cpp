@@ -655,10 +655,12 @@ TEST_CASE("compiler driver builds a signed macOS AArch64 executable with target 
     }
     REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
     const auto image = ReadMacOSAArch64Image(result.primaryArtifactPath);
-    CHECK(image.fileType == 2);    // MH_EXECUTE
-    CHECK(image.HasCommand(0x32)); // LC_BUILD_VERSION
-    CHECK(image.HasCommand(0x05)); // LC_UNIXTHREAD for the freestanding entry
-    CHECK_FALSE(image.mainEntryOffset);
+    CHECK(image.fileType == 2);          // MH_EXECUTE
+    CHECK(image.HasCommand(0x32));       // LC_BUILD_VERSION
+    CHECK(image.flags == 0x0020'0005);   // MH_NOUNDEFS | MH_DYLDLINK | MH_PIE
+    CHECK_FALSE(image.HasCommand(0x05)); // arm64 cannot use a static LC_UNIXTHREAD entry
+    CHECK(image.HasCommand(0x0E));       // LC_LOAD_DYLINKER
+    CHECK(image.mainEntryOffset.has_value());
 }
 
 TEST_CASE("compiler driver canonicalizes the macOS ARM64 alias and builds a signed shared library") {

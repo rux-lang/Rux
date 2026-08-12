@@ -51,7 +51,7 @@ target and output directory:
 
 An `Executable` package writes `Name`, a `SharedLibrary` writes `libName.dylib` with `LC_ID_DYLIB` set to `@rpath/libName.dylib`, and a `StaticLibrary` writes `libName.a` with a BSD archive symbol index. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
 
-The x86-64 backend writes Mach-O objects and images directly, from a host of either architecture. The AArch64 backend writes relocatable Mach-O objects and the BSD archive used for static libraries, including ARM64 branch, page, page-offset, pointer, and explicit-addend relocations. It links freestanding executables with 16 KiB segments, the macOS 26 build-version command, an ARM64 thread entry and exit-syscall stub, and an in-process ad-hoc signature. Executables with C imports use dyld, eagerly bound non-lazy pointers, and Apple ARM64 X16 symbol stubs. Shared libraries use the same stubs for external calls, export public code and data through dyld metadata, rebase image-local pointers, omit executable entry commands, and carry deterministic `@rpath/libName.dylib` identities. Imported data remains unavailable until GOT-aware lowering is implemented.
+The x86-64 backend writes Mach-O objects and images directly, from a host of either architecture. The AArch64 backend writes relocatable Mach-O objects and the BSD archive used for static libraries, including ARM64 branch, page, page-offset, pointer, and explicit-addend relocations. It links executables with 16 KiB segments, the macOS 26 build-version command, and an in-process ad-hoc signature. Every AArch64 executable is dynamic and position-independent — the macOS kernel refuses a static arm64 image outright and refuses a dyld-linked one that is not marked `MH_PIE` — so even a program with no imports carries `LC_LOAD_DYLINKER`, `LC_MAIN`, and a `libSystem` dependency. Because the loader slides such an image, constant data holding absolute pointers moves out of read-only `__TEXT` into a writable `__DATA_CONST` segment that dyld rebases. Executables with C imports additionally use eagerly bound non-lazy pointers and Apple ARM64 X16 symbol stubs. Shared libraries use the same stubs for external calls, export public code and data through dyld metadata, rebase image-local pointers, omit executable entry commands, and carry deterministic `@rpath/libName.dylib` identities. Imported data remains unavailable until GOT-aware lowering is implemented.
 
 For a foreign compiler host, a Release cross-build adds the canonical target
 below the configured output directory. With the default `Output = "Bin"`, the
@@ -102,8 +102,8 @@ Use `sh Format.sh` to format maintained C++ and Rux sources, or `sh Format.sh --
 ### Apple Silicon runtime acceptance
 
 Byte-level unit tests cover Mach-O layout on every compiler host. Apple Silicon
-adds native fixtures for behavior that image inspection cannot establish: a
-freestanding exit status, fixed and variadic libSystem calls, assertion and panic
+adds native fixtures for behavior that image inspection cannot establish: an
+import-free exit status, fixed and variadic libSystem calls, assertion and panic
 diagnostics, and loading, calling, then unloading an exported dylib. Run all of
 them from the repository root with a native AArch64 compiler:
 

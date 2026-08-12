@@ -181,8 +181,11 @@ TEST_CASE("Mach-O linker resolves local functions defined in another object") {
                                     {0x00, 0x00, 0x00, 0x94, 0xC0, 0x03, 0x5F, 0xD6}, // bl PrivateHelper; ret
                                     {0xC0, 0x03, 0x5F, 0xD6}, 0, RcuRelType::AArch64Call26, "aarch64");
     CHECK(aarch64.Architecture() == MachOArchitecture::AArch64);
-    CHECK_FALSE(aarch64.dyldInfo.has_value());
-    CHECK(aarch64.Section("__TEXT", "__stubs") == nullptr);
+    // An AArch64 executable is dyld-linked even without imports, so it carries
+    // dyld metadata and an (empty) stub section the x86-64 image does without.
+    CHECK(aarch64.dyldInfo.has_value());
+    CHECK(aarch64.Section("__TEXT", "__stubs") != nullptr);
+    CHECK(aarch64.Section("__TEXT", "__stubs")->size == 0);
 }
 
 TEST_CASE("Mach-O reader reports the freestanding x86-64 thread entry") {
@@ -329,7 +332,7 @@ TEST_CASE("Mach-O reader identifies AArch64 and validates the code-signature ran
     CHECK(error == "Mach-O code signature extends beyond the image");
 }
 
-TEST_CASE("Mach-O links deterministic signed freestanding AArch64 executables") {
+TEST_CASE("Mach-O links deterministic signed position-independent AArch64 executables") {
     RcuFile program;
     program.arch = RcuArch::AArch64;
     auto text = TextSection({
@@ -381,48 +384,70 @@ TEST_CASE("Mach-O links deterministic signed freestanding AArch64 executables") 
     CHECK(image.Architecture() == MachOArchitecture::AArch64);
     CHECK(image.cpuSubtype == 0);
     CHECK(image.fileType == 2);
-    CHECK(image.HasCommand(0x05)); // LC_UNIXTHREAD
-    CHECK(image.HasCommand(0x32)); // LC_BUILD_VERSION
-    CHECK_FALSE(image.mainEntryOffset);
-    REQUIRE(image.threadStateFlavor);
-    REQUIRE(image.threadStateCount);
-    CHECK(*image.threadStateFlavor == 6); // ARM_THREAD_STATE64
-    CHECK(*image.threadStateCount == 68);
+    // XNU rejects a static arm64 executable outright and a dynamic one without
+    // MH_PIE, so the image is dyld-linked, slidable, and entered through LC_MAIN.
+    CHECK(image.flags == 0x0020'0005);   // MH_NOUNDEFS | MH_DYLDLINK | MH_PIE
+    CHECK_FALSE(image.HasCommand(0x05)); // LC_UNIXTHREAD
+    CHECK(image.HasCommand(0x0E));       // LC_LOAD_DYLINKER
+    CHECK(image.HasCommand(0x32));       // LC_BUILD_VERSION
+    CHECK_FALSE(image.threadStateFlavor);
+    CHECK_FALSE(image.threadEntryAddress);
+    REQUIRE(image.mainEntryOffset);
+    // dyld requires libSystem even from a program that imports nothing.
+    const auto libraries = image.CommandValues(0x0C); // LC_LOAD_DYLIB
+    REQUIRE(libraries.size() == 1);
+    CHECK(libraries.front() == "/usr/lib/libSystem.B.dylib");
     REQUIRE(image.buildVersion);
     CHECK(image.buildVersion->platform == 1);
     CHECK(image.buildVersion->minimumOs == 0x001A'0000);
     CHECK(image.buildVersion->sdk == 0x001A'0000);
     CHECK(image.buildVersion->toolCount == 0);
-    REQUIRE(image.threadEntryAddress);
     const MachOSection *imageText = image.Section("__TEXT", "__text");
-    const MachOSection *imageRodata = image.Section("__TEXT", "__const");
+    // Constant data holds an absolute pointer, so it lives in a writable
+    // segment that dyld can rebase rather than in read-only __TEXT.
+    const MachOSection *imageRodata = image.Section("__DATA_CONST", "__const");
     const MachOSection *imageData = image.Section("__DATA", "__data");
     REQUIRE(imageText != nullptr);
     REQUIRE(imageRodata != nullptr);
     REQUIRE(imageData != nullptr);
-    CHECK(*image.threadEntryAddress == imageText->address);
+    CHECK(image.Section("__TEXT", "__const") == nullptr);
+    CHECK(image.Segment("__DATA_CONST")->initialProtection == 3); // readable and writable
+    CHECK(*image.mainEntryOffset == imageText->offset);
     CHECK(image.Segment("__TEXT")->vmSize % 0x4000 == 0);
+    CHECK(image.Segment("__DATA_CONST")->fileOffset % 0x4000 == 0);
     CHECK(image.Segment("__DATA")->fileOffset % 0x4000 == 0);
     CHECK(image.Segment("__LINKEDIT")->fileOffset % 0x4000 == 0);
 
-    CHECK(Detail::U32(first, imageText->offset) == 0x9400'0004);     // entry stub: bl Main
-    CHECK(Detail::U32(first, imageText->offset + 4) == 0xD280'0030); // mov x16, #1
-    CHECK(Detail::U32(first, imageText->offset + 8) == 0xD400'1001); // svc #0x80
-    CHECK(Detail::U32(first, imageText->offset + 24) == 0x9400'0006);
+    // The dyld entry stub is five instructions, and the merged object text
+    // follows it at the alignment the input section declared.
+    constexpr std::uint64_t objectText = 32;
+    CHECK(Detail::U32(first, imageText->offset) == 0xA9BF'7BFD);                  // stp x29, x30, [sp, #-16]!
+    CHECK(Detail::U32(first, imageText->offset + 4) == 0x9100'03FD);              // mov x29, sp
+    CHECK(Detail::U32(first, imageText->offset + 8) == 0x9400'0006);              // bl Main
+    CHECK(Detail::U32(first, imageText->offset + 12) == 0xA8C1'7BFD);             // ldp x29, x30, [sp], #16
+    CHECK(Detail::U32(first, imageText->offset + 16) == 0xD65F'03C0);             // ret to dyld
+    CHECK(Detail::U32(first, imageText->offset + objectText + 8) == 0x9400'0006); // bl Helper
 
-    const std::uint32_t adrp = Detail::U32(first, imageText->offset + 28);
+    const std::uint32_t adrp = Detail::U32(first, imageText->offset + objectText + 12);
     std::int64_t pages = static_cast<std::int64_t>(((adrp >> 29U) & 3U) | ((adrp >> 5U) & 0x7FFFFU) << 2U);
     if ((pages & (1 << 20)) != 0) {
         pages |= ~((std::int64_t{1} << 21) - 1);
     }
-    const std::uint64_t adrpSite = imageText->address + 28;
+    const std::uint64_t adrpSite = imageText->address + objectText + 12;
     const std::uint64_t dataAddress = imageData->address + 8;
     CHECK((adrpSite & ~0xFFFULL) + pages * 0x1000 == (dataAddress & ~0xFFFULL));
-    CHECK((Detail::U32(first, imageText->offset + 32) >> 10U & 0xFFFU) == (dataAddress & 0xFFFU));
-    CHECK((Detail::U32(first, imageText->offset + 36) >> 10U & 0xFFFU) == ((dataAddress & 0xFFFU) >> 3U));
+    CHECK((Detail::U32(first, imageText->offset + objectText + 16) >> 10U & 0xFFFU) == (dataAddress & 0xFFFU));
+    CHECK((Detail::U32(first, imageText->offset + objectText + 20) >> 10U & 0xFFFU) == ((dataAddress & 0xFFFU) >> 3U));
     CHECK(static_cast<std::int32_t>(Detail::U32(first, imageRodata->offset)) ==
-          static_cast<std::int64_t>(imageText->address + 16) - static_cast<std::int64_t>(imageRodata->address));
-    CHECK(Detail::U64(first, imageRodata->offset + 4) == imageText->address + 16);
+          static_cast<std::int64_t>(imageText->address + objectText) - static_cast<std::int64_t>(imageRodata->address));
+    CHECK(Detail::U64(first, imageRodata->offset + 4) == imageText->address + objectText);
+
+    // The absolute pointer is the one and only rebase, and it addresses
+    // __DATA_CONST — segment 2, after __PAGEZERO and __TEXT.
+    REQUIRE(image.rebases.size() == 1);
+    CHECK(image.rebases.front().segmentIndex == 2);
+    CHECK(image.rebases.front().segmentOffset == imageRodata->address - image.Segment("__DATA_CONST")->vmAddress + 4);
+    CHECK(image.binds.empty());
 
     REQUIRE(image.codeSignature);
     REQUIRE(image.codeDirectory);
@@ -492,7 +517,7 @@ TEST_CASE("Mach-O preserves AArch64 section alignment between input objects") {
     MachOImage image;
     std::string error;
     REQUIRE_MESSAGE(ReadMachO64(bytes, image, error), error);
-    const MachOSection *rodata = image.Section("__TEXT", "__const");
+    const MachOSection *rodata = image.Section("__DATA_CONST", "__const");
     REQUIRE(rodata != nullptr);
     CHECK(rodata->size == 16);
     CHECK(bytes[rodata->offset] == 0xA5);
@@ -613,11 +638,12 @@ TEST_CASE("Mach-O links imported AArch64 executables with eager Apple stubs") {
     REQUIRE(image.binds.size() == 2);
     CHECK(image.binds[0].symbol == "_puts");
     CHECK(image.binds[0].libraryOrdinal == 2);
-    CHECK(image.binds[0].segmentIndex == 2);
+    // __PAGEZERO, __TEXT and __DATA_CONST precede __DATA.
+    CHECK(image.binds[0].segmentIndex == 3);
     CHECK(image.binds[0].segmentOffset == 0);
     CHECK(image.binds[1].symbol == "_strlen");
     CHECK(image.binds[1].libraryOrdinal == 1);
-    CHECK(image.binds[1].segmentIndex == 2);
+    CHECK(image.binds[1].segmentIndex == 3);
     CHECK(image.binds[1].segmentOffset == 8);
     REQUIRE(image.dyldInfo);
     CHECK(image.dyldInfo->bindSize > 0);
@@ -738,10 +764,11 @@ TEST_CASE("Mach-O links signed AArch64 dylibs with exports imports and rebases")
     REQUIRE(image.binds.size() == 1);
     CHECK(image.binds[0].symbol == "_puts");
     CHECK(image.binds[0].libraryOrdinal == 1);
-    CHECK(image.binds[0].segmentIndex == 1); // __DATA in a dylib without __PAGEZERO
+    // A dylib has no __PAGEZERO, so __TEXT, __DATA_CONST and __DATA are 0, 1, 2.
+    CHECK(image.binds[0].segmentIndex == 2);
     CHECK(image.binds[0].segmentOffset == 0);
     REQUIRE(image.rebases.size() == 1);
-    CHECK(image.rebases[0].segmentIndex == 1);
+    CHECK(image.rebases[0].segmentIndex == 2);
     CHECK(image.rebases[0].segmentOffset == imageData->address - dataSegment->vmAddress);
 
     REQUIRE(image.symbols.size() == 5);

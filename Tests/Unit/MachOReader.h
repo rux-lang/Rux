@@ -159,6 +159,16 @@ struct MachOImage {
         return nullptr;
     }
 
+    [[nodiscard]] std::vector<std::string> CommandValues(const std::uint32_t command) const {
+        std::vector<std::string> values;
+        for (const auto &loadCommand : commands) {
+            if (loadCommand.command == command) {
+                values.push_back(loadCommand.value);
+            }
+        }
+        return values;
+    }
+
     [[nodiscard]] bool HasCommand(const std::uint32_t command) const {
         for (const auto &loadCommand : commands) {
             if (loadCommand.command == command) {
