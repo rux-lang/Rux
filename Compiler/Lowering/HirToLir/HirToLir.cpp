@@ -116,15 +116,20 @@ public:
         funcConvs.clear();
         funcNames.clear();
         externSymbols.clear();
+        cVariadicFuncs.clear();
         for (const auto &mod : hir.modules) {
             for (const auto &ef : mod.externFuncs) {
-                // Extern C functions default to the target's C ABI (SysV on
-                // Linux/BSD/macOS, Win64 on Windows) so arguments land in the
-                // registers the shared library expects. This follows the target
-                // being built for, not the host running the compiler.
-                funcConvs[ef.name] =
-                    ef.callConv == CallingConvention::Default ? PlatformCConvention(targetContext.os) : ef.callConv;
+                // Extern C functions default to the target's C ABI so arguments
+                // land in the registers the shared library expects. Resolve
+                // both an omitted convention and explicit `.C` here, against
+                // the target OS and architecture rather than the host.
+                funcConvs[ef.name] = ef.callConv == CallingConvention::Default
+                                       ? PlatformCConvention(targetContext.os, targetContext.arch)
+                                       : ResolveCConvention(ef.callConv, targetContext.os, targetContext.arch);
                 funcNames.insert(ef.name);
+                if (ef.isVariadic) {
+                    cVariadicFuncs.insert(ef.name);
+                }
                 // The optional second `#Link` argument renames the imported symbol. Record it
                 // package-wide, for the same reason funcConvs is: a call may
                 // target an extern declared in another module, and every
@@ -174,6 +179,7 @@ private:
     std::unordered_map<std::string, CallingConvention> funcConvs; // name → calling convention
     std::unordered_set<std::string> funcNames;                    // every function symbol (for address-of)
     std::unordered_map<std::string, std::string> externSymbols;   // Rux name → imported symbol name
+    std::unordered_set<std::string> cVariadicFuncs;               // C-style variadic extern names
 
     // The name a function reaches the linker under: the second `#Link` argument
     // override when one was given, otherwise the Rux name itself.
@@ -502,7 +508,7 @@ private:
             lf.isExtern = true;
             lf.isNoReturn = ef.isNoReturn;
             lf.isVariadic = ef.isVariadic;
-            lf.callConv = ef.callConv;
+            lf.callConv = funcConvs.at(ef.name);
             lf.returnType = ef.returnType;
             LirReg pr = 0;
             for (const auto &p : ef.params) {
@@ -2068,6 +2074,7 @@ private:
             if (it != funcConvs.end()) {
                 ci.callConv = it->second;
             }
+            ci.isCVariadic = cVariadicFuncs.contains(v->name);
             // The convention is keyed by the Rux name; the call itself has to
             // relocate against the imported symbol.
             ci.strArg = SymbolFor(v->name);
@@ -2081,6 +2088,7 @@ private:
             if (it != funcConvs.end()) {
                 ci.callConv = it->second;
             }
+            ci.isCVariadic = cVariadicFuncs.contains(callee);
             ci.strArg = SymbolFor(callee);
         }
         else {

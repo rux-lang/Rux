@@ -153,6 +153,7 @@ struct LirInstr {
     std::string strArg;       // literal (Const), name (Load/Call), field (FieldPtr), from-type (Cast)
     std::vector<std::pair<LirReg, std::uint32_t>> phiPreds;  // Phi: (reg, block_index)
     CallingConvention callConv = CallingConvention::Default; // for Call instructions
+    bool isCVariadic = false;                                // direct call to a C-style variadic extern
     // Optional source context used by instructions that report runtime failures.
     std::string sourceFile;
     std::string sourceFunction;

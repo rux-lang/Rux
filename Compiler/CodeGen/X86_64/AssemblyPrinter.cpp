@@ -86,7 +86,7 @@ constexpr bool kDefaultCallIsWin64 = RUX_OS_WINDOWS;
 // `.C` stands for the target's C ABI, so it has to be collapsed before the
 // Win64/SysV split; `Default` still falls back to the dump's own default.
 constexpr bool IsWin64Conv(const CallingConvention c) {
-    const CallingConvention resolved = ResolveCConvention(c);
+    const CallingConvention resolved = ResolveCConvention(c, Target::HostOS, Target::Arch::X86_64);
     return resolved == CallingConvention::Win64 || (resolved == CallingConvention::Default && kDefaultCallIsWin64);
 }
 

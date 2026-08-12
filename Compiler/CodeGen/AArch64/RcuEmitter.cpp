@@ -1883,12 +1883,12 @@ private:
 
     // AAPCS64 calls
     //
-    // One convention, whatever the LIR says. `CallingConvention` names the two
-    // x86-64 ABIs and resolves `Default` and `.C` into one of them by target OS,
-    // and on AArch64 that is a distinction with nothing behind it: the
-    // architecture has one procedure call standard, and a Rux function and a C
-    // function are called the same way by it. So nothing here reads
-    // `instr.callConv` — there is no second answer for it to select.
+    // One convention, whatever the LIR says. Target-aware lowering resolves C
+    // calls to AAPCS64 on this architecture, while ordinary Rux calls may still
+    // carry `Default`; both select the same procedure call standard. Nothing
+    // here reads `instr.callConv` because there is no second AArch64 answer for
+    // it to select. The independent C-variadic distinction is consumed when
+    // argument classification needs a platform-specific variant.
     //
     // Nothing has to be saved around a call either. Every value this generator
     // computes lives in a stack slot between instructions, and the registers it

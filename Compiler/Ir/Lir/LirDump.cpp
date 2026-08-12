@@ -21,6 +21,17 @@ static std::string BlockLabel(const LirFunc &fn, std::uint32_t idx) {
     return std::format("bb{}", idx);
 }
 
+static std::string CallMetadata(const LirInstr &instr) {
+    std::string metadata;
+    if (instr.callConv != CallingConvention::Default) {
+        metadata = std::format(" cc={}", ResolvedConventionName(instr.callConv));
+    }
+    if (instr.isCVariadic) {
+        metadata += " c_variadic";
+    }
+    return metadata;
+}
+
 static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
     out << "    ";
     switch (i.op) {
@@ -62,7 +73,7 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
         }
         if (i.dst == LirNoReg) {
             if (i.op == LirOpcode::Call) {
-                out << std::format("call {} @{}({})\n", i.type.ToString(), i.strArg, args);
+                out << std::format("call {} @{}({}){}\n", i.type.ToString(), i.strArg, args, CallMetadata(i));
             }
             else {
                 out << std::format("call_ind {} {}({})\n", i.type.ToString(), RegStr(i.srcs[0]), args);
@@ -70,7 +81,8 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
         }
         else {
             if (i.op == LirOpcode::Call) {
-                out << std::format("{} = call {} @{}({})\n", RegStr(i.dst), i.type.ToString(), i.strArg, args);
+                out << std::format("{} = call {} @{}({}){}\n", RegStr(i.dst), i.type.ToString(), i.strArg, args,
+                                   CallMetadata(i));
             }
             else {
                 out << std::format("{} = call_ind {} {}({})\n", RegStr(i.dst), i.type.ToString(), RegStr(i.srcs[0]),
@@ -173,11 +185,18 @@ static void DumpFunc(std::ostream &out, const LirFunc &fn) {
         }
         params += std::format("{}: {}", RegStr(fn.params[i].reg), fn.params[i].type.ToString());
     }
+    if (fn.isVariadic) {
+        params += params.empty() ? "..." : ", ...";
+    }
     std::string ret = fn.returnType.IsOpaque() ? "" : " -> " + fn.returnType.ToString();
+    std::string convention;
+    if (fn.callConv != CallingConvention::Default) {
+        convention = std::format(" cc={}", ResolvedConventionName(fn.callConv));
+    }
     if (fn.isNoReturn) {
         out << "\n#NoReturn()";
     }
-    out << std::format("\n{}{}func {}({}){}\n", pub, ext, fn.name, params, ret);
+    out << std::format("\n{}{}func {}({}){}{}\n", pub, ext, fn.name, params, ret, convention);
     for (const auto &block : fn.blocks) {
         out << std::format("  {}:\n", block.label);
         for (const auto &instr : block.instrs) {

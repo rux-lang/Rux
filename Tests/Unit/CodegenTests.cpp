@@ -4,6 +4,7 @@
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Driver/BuildTarget.h"
 #include "Ir/Hir/Hir.h"
+#include "Ir/Lir/LirPrinter.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
@@ -14,6 +15,7 @@
 #include <algorithm>
 #include <bit>
 #include <doctest.h>
+#include <fstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -423,25 +425,163 @@ TEST_CASE("extern C calls follow the target's ABI rather than the host's") {
 
     const auto linuxTarget = CompileToLirFor(source, "linux", Driver::TargetContextForTriple("linux-x86_64"));
     CHECK_EQ(conventionOfEmitCall(linuxTarget), CallingConvention::SysV);
+
+    const auto windowsAArch64 = CompileToLirFor(source, "windows", Driver::TargetContextForTriple("windows-aarch64"));
+    CHECK_EQ(conventionOfEmitCall(windowsAArch64), CallingConvention::AAPCS64);
 }
 
-TEST_CASE("platform conventions are decided by the target OS") {
-    CHECK_EQ(PlatformCConvention(Target::OS::Windows), CallingConvention::Win64);
-    CHECK_EQ(PlatformCConvention(Target::OS::Linux), CallingConvention::SysV);
-    CHECK_EQ(PlatformCConvention(Target::OS::MacOS), CallingConvention::SysV);
+TEST_CASE("platform conventions are decided by the target OS and architecture") {
+    CHECK_EQ(PlatformCConvention(Target::OS::Windows, Target::Arch::X86_64), CallingConvention::Win64);
+    CHECK_EQ(PlatformCConvention(Target::OS::Linux, Target::Arch::X86_64), CallingConvention::SysV);
+    CHECK_EQ(PlatformCConvention(Target::OS::MacOS, Target::Arch::X86_64), CallingConvention::SysV);
+    CHECK_EQ(PlatformCConvention(Target::OS::Windows, Target::Arch::AArch64), CallingConvention::AAPCS64);
+    CHECK_EQ(PlatformCConvention(Target::OS::Linux, Target::Arch::AArch64), CallingConvention::AAPCS64);
 
-    CHECK_EQ(PlatformDefaultConvention(Target::OS::Linux), CallingConvention::SysV);
-    CHECK_EQ(PlatformDefaultConvention(Target::OS::Windows), CallingConvention::Win64);
+    CHECK_EQ(PlatformDefaultConvention(Target::OS::Linux, Target::Arch::X86_64), CallingConvention::SysV);
+    CHECK_EQ(PlatformDefaultConvention(Target::OS::Windows, Target::Arch::X86_64), CallingConvention::Win64);
+    CHECK_EQ(PlatformDefaultConvention(Target::OS::Windows, Target::Arch::AArch64), CallingConvention::AAPCS64);
 
     // `.C` collapses against the target; concrete conventions pass through.
-    CHECK_EQ(ResolveCConvention(CallingConvention::C, Target::OS::Windows), CallingConvention::Win64);
-    CHECK_EQ(ResolveCConvention(CallingConvention::C, Target::OS::Linux), CallingConvention::SysV);
-    CHECK_EQ(ResolveCConvention(CallingConvention::SysV, Target::OS::Windows), CallingConvention::SysV);
-    CHECK_EQ(ResolveCConvention(CallingConvention::Default, Target::OS::Linux), CallingConvention::Default);
+    CHECK_EQ(ResolveCConvention(CallingConvention::C, Target::OS::Windows, Target::Arch::X86_64),
+             CallingConvention::Win64);
+    CHECK_EQ(ResolveCConvention(CallingConvention::C, Target::OS::Linux, Target::Arch::X86_64),
+             CallingConvention::SysV);
+    CHECK_EQ(ResolveCConvention(CallingConvention::C, Target::OS::Windows, Target::Arch::AArch64),
+             CallingConvention::AAPCS64);
+    CHECK_EQ(ResolveCConvention(CallingConvention::SysV, Target::OS::Windows, Target::Arch::AArch64),
+             CallingConvention::SysV);
+    CHECK_EQ(ResolveCConvention(CallingConvention::Default, Target::OS::Linux, Target::Arch::AArch64),
+             CallingConvention::Default);
 
     // The argument-less forms stay host-defaulted.
-    CHECK_EQ(PlatformCConvention(), PlatformCConvention(Target::HostOS));
-    CHECK_EQ(PlatformDefaultConvention(), PlatformDefaultConvention(Target::HostOS));
+    CHECK_EQ(PlatformCConvention(), PlatformCConvention(Target::HostOS, Target::HostArch));
+    CHECK_EQ(PlatformDefaultConvention(), PlatformDefaultConvention(Target::HostOS, Target::HostArch));
+}
+
+TEST_CASE("C variadic call metadata survives package-wide extern lookup and Link renaming") {
+    HirPackage hir;
+
+    HirModule interop;
+    interop.name = "Interop";
+    HirExternFunc external;
+    external.name = "Format";
+    external.dll = "runtime";
+    external.symbolName = "native_format";
+    external.callConv = CallingConvention::C;
+    external.isVariadic = true;
+    external.params.push_back({"format", TypeRef::MakePointer(TypeRef::MakeChar8()), false});
+    external.returnType = TypeRef::MakeInt32();
+    interop.externFuncs.push_back(std::move(external));
+    hir.modules.push_back(std::move(interop));
+
+    HirModule application;
+    application.name = "Application";
+    HirFunc main;
+    main.name = "Main";
+    main.returnType = TypeRef::MakeOpaque();
+    HirBlock body;
+    auto statement = std::make_unique<HirExprStmt>();
+    auto call = std::make_unique<HirCallExpr>();
+    auto callee = std::make_unique<HirPathExpr>();
+    callee->segments = {"Interop", "Format"};
+    call->callee = std::move(callee);
+    call->type = TypeRef::MakeInt32();
+    auto format = std::make_unique<HirLiteralExpr>();
+    format->value = "null";
+    format->type = TypeRef::MakePointer(TypeRef::MakeChar8());
+    call->args.push_back(std::move(format));
+    auto argument = std::make_unique<HirLiteralExpr>();
+    argument->value = "42";
+    argument->type = TypeRef::MakeInt32();
+    call->args.push_back(std::move(argument));
+    statement->expr = std::move(call);
+    body.stmts.push_back(std::move(statement));
+    main.body = std::move(body);
+    application.funcs.push_back(std::move(main));
+    hir.modules.push_back(std::move(application));
+
+    const auto package = HirToLirLowering(std::move(hir), Driver::TargetContextForTriple("windows-aarch64")).Generate();
+    REQUIRE_EQ(package.modules.size(), 2);
+    REQUIRE_EQ(package.modules[0].funcs.size(), 1);
+    CHECK_EQ(package.modules[0].funcs[0].name, "native_format");
+    CHECK_EQ(package.modules[0].funcs[0].callConv, CallingConvention::AAPCS64);
+    CHECK(package.modules[0].funcs[0].isVariadic);
+
+    const auto &instructions = package.modules[1].funcs[0].blocks[0].instrs;
+    const auto found = std::ranges::find_if(
+        instructions, [](const LirInstr &instruction) { return instruction.op == LirOpcode::Call; });
+    REQUIRE(found != instructions.end());
+    CHECK_EQ(found->strArg, "native_format");
+    CHECK_EQ(found->callConv, CallingConvention::AAPCS64);
+    CHECK(found->isCVariadic);
+}
+
+TEST_CASE("Rux variadics remain slice calls rather than C variadic calls") {
+    const auto package = CompileToLirFor(R"(
+        func Sum(values: int...) -> int {
+            return 0;
+        }
+
+        func Main() -> int {
+            return Sum(1, 2);
+        }
+    )",
+                                         "windows", Driver::TargetContextForTriple("windows-aarch64"));
+
+    for (const auto &function : package.modules.front().funcs) {
+        for (const auto &block : function.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.op == LirOpcode::Call && instruction.strArg == "Sum") {
+                    CHECK_FALSE(instruction.isCVariadic);
+                    CHECK_EQ(instruction.callConv, CallingConvention::Default);
+                    return;
+                }
+            }
+        }
+    }
+    FAIL("expected a direct call to Sum");
+}
+
+TEST_CASE("LIR dumps resolved convention and C variadic call metadata") {
+    LirPackage package;
+    LirModule module;
+    module.name = "Test";
+
+    LirFunc external;
+    external.name = "native_format";
+    external.isExtern = true;
+    external.isVariadic = true;
+    external.callConv = CallingConvention::AAPCS64;
+    external.returnType = TypeRef::MakeOpaque();
+    module.funcs.push_back(std::move(external));
+
+    LirFunc caller;
+    caller.name = "Main";
+    caller.returnType = TypeRef::MakeOpaque();
+    LirBlock entry;
+    entry.label = "entry";
+    LirInstr call;
+    call.op = LirOpcode::Call;
+    call.type = TypeRef::MakeOpaque();
+    call.strArg = "native_format";
+    call.callConv = CallingConvention::AAPCS64;
+    call.isCVariadic = true;
+    entry.instrs.push_back(std::move(call));
+    caller.blocks.push_back(std::move(entry));
+    module.funcs.push_back(std::move(caller));
+    package.modules.push_back(std::move(module));
+
+    const auto path = std::filesystem::temp_directory_path() / "rux-call-metadata-lir.txt";
+    REQUIRE(LirPrinter::Dump(package, path));
+    std::ifstream input(path);
+    REQUIRE(input.good());
+    const std::string dump((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    input.close();
+    std::error_code error;
+    std::filesystem::remove(path, error);
+
+    CHECK(dump.find("extern func native_format(...) cc=aapcs64") != std::string::npos);
+    CHECK(dump.find("call opaque @native_format() cc=aapcs64 c_variadic") != std::string::npos);
 }
 
 TEST_CASE("Abi attribute replaces ABI metadata blocks") {
