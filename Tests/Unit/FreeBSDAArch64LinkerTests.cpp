@@ -88,9 +88,28 @@ ElfImage LinkImage(std::vector<RcuFile> objects, const std::filesystem::path &pa
     return image;
 }
 
+ElfImage LinkSharedImage(std::vector<RcuFile> objects, const std::filesystem::path &path) {
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+    Linker linker(std::move(objects), "FreeBsdAArch64Test", {}, ArtifactKind::SharedLibrary, Target::OS::FreeBSD,
+                  Target::Arch::AArch64);
+    REQUIRE(linker.Link(path));
+    REQUIRE(linker.Errors().empty());
+    ElfImage image{ReadFile(path)};
+    std::filesystem::remove(path, ec);
+    return image;
+}
+
 std::uint64_t BranchTarget(const ElfImage &image, const std::uint64_t address) {
     const auto displacement = static_cast<std::int32_t>((image.Word(address) & 0x03FFFFFFU) << 6U) >> 6;
     return address + 4 * static_cast<std::int64_t>(displacement);
+}
+
+std::uint64_t AdrpAddTarget(const ElfImage &image, const std::uint64_t address) {
+    const std::uint32_t adrp = image.Word(address);
+    const auto immediate = static_cast<std::int32_t>(((adrp >> 5U & 0x7FFFFU) << 2U | (adrp >> 29U & 3U)) << 11U) >> 11;
+    const std::uint64_t page = (address & ~std::uint64_t{0xFFF}) + (static_cast<std::int64_t>(immediate) << 12U);
+    return page + (image.Word(address + 4) >> 10U & 0xFFFU);
 }
 
 std::vector<ElfImage::Segment> LoadSegments(const ElfImage &image) {
@@ -596,5 +615,273 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
         RcuFile missingMain = ImportingMain({{"puts", ""}});
         missingMain.symbols.front().name = "NotMain";
         checkFailure({std::move(missingMain)}, "undefined symbol 'Main' — no entry point found");
+    }
+} // TEST_SUITE
+
+TEST_SUITE("FreeBSD AArch64 ELF shared") {
+    TEST_CASE("FreeBSD AArch64 shared library exports code and data without executable state") {
+        RcuFile library;
+        library.arch = RcuArch::AArch64;
+        auto text = Section(".text", RcuSecType::Text, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Exec, 4);
+        AppendWord(text.data, 0xD2800540); // mov x0, #42
+        AppendWord(text.data, 0xD65F03C0); // ret
+        library.sections.push_back(std::move(text));
+        library.sections.push_back(Section(".data", RcuSecType::Data,
+                                           RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, 8,
+                                           {1, 2, 3, 4, 5, 6, 7, 8}));
+        library.sections.push_back(Section(".bss", RcuSecType::Bss,
+                                           RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, 16,
+                                           std::vector<std::uint8_t>(16)));
+        library.symbols = {{"Answer", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global},
+                           {"Counter", "int", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global},
+                           {"Hidden", "int", 4, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local},
+                           {"Zeroes", "int", 0, 16, RCU_BSS_IDX, RcuSymKind::Data, RcuSymVis::Global}};
+
+        const ElfImage image = LinkSharedImage({std::move(library)},
+                                               std::filesystem::temp_directory_path() / "libFreeBsdAArch64Answers.so");
+
+        CHECK(image.OsAbi() == 9);     // ELFOSABI_FREEBSD
+        CHECK(image.Type() == 3);      // ET_DYN
+        CHECK(image.Machine() == 183); // EM_AARCH64
+        CHECK(image.Entry() == 0);
+        CHECK(image.LoadAlignment() == kPage);
+        CHECK(image.Interpreter().empty());
+        CHECK_FALSE(image.SegmentOfType(3).has_value()); // no PT_INTERP
+        CHECK(image.Soname() == "libFreeBsdAArch64Answers.so");
+        CHECK(image.NeededLibraries().empty());
+        CHECK(image.PltRelocations().empty());
+        CHECK(image.DynamicRelocations().empty());
+
+        const auto loads = LoadSegments(image);
+        REQUIRE(loads.size() == 2);
+        CHECK(loads[0].address == 0); // zero link-time base; rtld supplies the load bias
+        CHECK(loads[0].flags == 0x5);
+        CHECK(loads[1].flags == 0x6);
+        CHECK(loads[0].address + loads[0].memorySize <= loads[1].address);
+        for (const auto &load : loads) {
+            CHECK(load.address % kPage == load.offset % kPage);
+        }
+
+        const auto symbols = image.DynamicSymbols();
+        REQUIRE(symbols.size() == 4); // STN_UNDEF plus three public definitions
+        const std::vector<std::string> expectedNames{"Answer", "Counter", "Zeroes"};
+        for (std::size_t index = 0; index < expectedNames.size(); ++index) {
+            const auto &symbol = symbols[index + 1];
+            CHECK(symbol.name == expectedNames[index]);
+            CHECK(symbol.sectionIndex == 0xFFF1); // SHN_ABS: section headers are intentionally omitted
+            CHECK(image.HashedDynamicSymbolIndex(symbol.name) == index + 1);
+        }
+        CHECK(symbols[1].info == 0x12); // STB_GLOBAL | STT_FUNC
+        CHECK(symbols[2].info == 0x11); // STB_GLOBAL | STT_OBJECT
+        CHECK(symbols[3].info == 0x11);
+        CHECK_FALSE(image.MappedBytes(symbols[1].value, symbols[1].size).empty());
+        CHECK_FALSE(image.MappedBytes(symbols[2].value, symbols[2].size).empty());
+        CHECK(symbols[3].value >= loads[1].address + loads[1].fileSize);
+        CHECK(symbols[3].value + symbols[3].size <= loads[1].address + loads[1].memorySize);
+        CHECK_FALSE(image.HashedDynamicSymbolIndex("Hidden").has_value());
+        CHECK_FALSE(image.HashedDynamicSymbolIndex("Main").has_value());
+        CHECK_FALSE(image.HashedDynamicSymbolIndex("__progname").has_value());
+        CHECK_FALSE(image.HashedDynamicSymbolIndex("environ").has_value());
+        CHECK_FALSE(image.HashedDynamicSymbolIndex("__elf_aux_vector").has_value());
+    }
+
+    TEST_CASE("FreeBSD AArch64 shared library binds cross-object definitions locally and rebases pointers") {
+        RcuFile caller;
+        caller.arch = RcuArch::AArch64;
+        auto callerText =
+            Section(".text", RcuSecType::Text, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Exec, 4);
+        AppendWord(callerText.data, 0x94000000); // bl Worker
+        AppendWord(callerText.data, 0x90000000); // adrp x0, State
+        AppendWord(callerText.data, 0x91000000); // add x0, x0, :lo12:State
+        AppendWord(callerText.data, 0xD65F03C0); // ret
+        callerText.relocs = {{0, 1, RcuRelType::AArch64Call26, 0},
+                             {4, 2, RcuRelType::AArch64AdrPrelPgHi21, 0},
+                             {8, 2, RcuRelType::AArch64AddAbsLo12Nc, 0}};
+        caller.sections.push_back(std::move(callerText));
+        auto pointers = Section(".data", RcuSecType::Data, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, 8,
+                                std::vector<std::uint8_t>(8));
+        pointers.relocs.push_back({0, 1, RcuRelType::Abs64, 0}); // pointer to Worker
+        caller.sections.push_back(std::move(pointers));
+        caller.symbols = {{"CallWorker", "int", 0, 16, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global},
+                          {"Worker", "int", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global},
+                          {"State", "int", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global}};
+
+        RcuFile definitions;
+        definitions.arch = RcuArch::AArch64;
+        auto worker = Section(".text", RcuSecType::Text, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Exec, 4);
+        AppendWord(worker.data, 0xD65F03C0); // ret
+        definitions.sections.push_back(std::move(worker));
+        definitions.sections.push_back(Section(".data", RcuSecType::Data,
+                                               RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, 8,
+                                               {42, 0, 0, 0, 0, 0, 0, 0}));
+        definitions.symbols = {{"Worker", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global},
+                               {"State", "int", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global}};
+
+        const ElfImage image =
+            LinkSharedImage({std::move(caller), std::move(definitions)},
+                            std::filesystem::temp_directory_path() / "libFreeBsdAArch64LocalBindings.so");
+        CHECK(image.NeededLibraries().empty());
+        CHECK(image.PltRelocations().empty());
+
+        const auto symbols = image.DynamicSymbols();
+        const auto callWorker = std::ranges::find(symbols, "CallWorker", &ElfImage::DynamicSymbol::name);
+        const auto workerSymbol = std::ranges::find(symbols, "Worker", &ElfImage::DynamicSymbol::name);
+        const auto state = std::ranges::find(symbols, "State", &ElfImage::DynamicSymbol::name);
+        REQUIRE(callWorker != symbols.end());
+        REQUIRE(workerSymbol != symbols.end());
+        REQUIRE(state != symbols.end());
+        CHECK(BranchTarget(image, callWorker->value) == workerSymbol->value);
+        CHECK(AdrpAddTarget(image, callWorker->value + 4) == state->value);
+
+        const auto relocations = image.DynamicRelocations();
+        REQUIRE(relocations.size() == 1);
+        CHECK(relocations[0].symbolIndex == 0);
+        CHECK(relocations[0].type == 1027); // R_AARCH64_RELATIVE
+        CHECK(static_cast<std::uint64_t>(relocations[0].addend) == workerSymbol->value);
+        CHECK(image.Giant(relocations[0].offset) == workerSymbol->value);
+        const auto writable = image.SegmentOfType(2); // PT_DYNAMIC starts the writable PT_LOAD
+        REQUIRE(writable.has_value());
+        CHECK(relocations[0].offset >= image.WritableSegmentAddress());
+        CHECK_FALSE(image.MappedBytes(relocations[0].offset, 8).empty());
+    }
+
+    TEST_CASE("FreeBSD AArch64 shared library emits sorted imports and loader-owned relocations") {
+        RcuFile library;
+        library.arch = RcuArch::AArch64;
+        auto text = Section(".text", RcuSecType::Text, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Exec, 4);
+        AppendWord(text.data, 0x94000000); // bl puts
+        AppendWord(text.data, 0x94000000); // bl Compress
+        AppendWord(text.data, 0xD65F03C0); // ret
+        text.relocs = {{0, 1, RcuRelType::AArch64Call26, 0}, {4, 2, RcuRelType::AArch64Call26, 0}};
+        library.sections.push_back(std::move(text));
+        auto slot = Section(".data", RcuSecType::Data, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, 8,
+                            std::vector<std::uint8_t>(8));
+        slot.relocs.push_back({0, 1, RcuRelType::Abs64, 0}); // function pointer to puts
+        library.sections.push_back(std::move(slot));
+        library.symbols = {{"Invoke", "int", 0, 12, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global},
+                           {"puts", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global},
+                           {"Compress", "libz.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global},
+                           {"PutsSlot", "pointer", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global}};
+
+        const ElfImage image = LinkSharedImage({std::move(library)},
+                                               std::filesystem::temp_directory_path() / "libFreeBsdAArch64Imports.so");
+        const std::vector<std::string> expectedLibraries{"libc.so.7", "libz.so.6"};
+        CHECK(image.NeededLibraries() == expectedLibraries);
+        const auto symbols = image.DynamicSymbols();
+        REQUIRE(symbols.size() == 5); // null, two imports, two exports
+        CHECK(symbols[1].name == "Compress");
+        CHECK(symbols[2].name == "puts");
+        CHECK(symbols[1].sectionIndex == 0);
+        CHECK(symbols[2].sectionIndex == 0);
+
+        const auto pltRelocations = image.PltRelocations();
+        REQUIRE(pltRelocations.size() == 2);
+        for (std::size_t index = 0; index < pltRelocations.size(); ++index) {
+            CHECK(pltRelocations[index].type == 1026); // R_AARCH64_JUMP_SLOT
+            CHECK(pltRelocations[index].symbolIndex == index + 1);
+            CHECK(pltRelocations[index].offset >= image.WritableSegmentAddress());
+            CHECK_FALSE(image.MappedBytes(pltRelocations[index].offset, 8).empty());
+        }
+
+        const auto dynamicRelocations = image.DynamicRelocations();
+        REQUIRE(dynamicRelocations.size() == 1);
+        CHECK(dynamicRelocations[0].type == 1025); // R_AARCH64_GLOB_DAT
+        CHECK(dynamicRelocations[0].symbolIndex == 2);
+        CHECK(dynamicRelocations[0].addend == 0);
+        CHECK(dynamicRelocations[0].offset >= image.WritableSegmentAddress());
+        CHECK_FALSE(image.MappedBytes(dynamicRelocations[0].offset, 8).empty());
+
+        const auto invoke = std::ranges::find(symbols, "Invoke", &ElfImage::DynamicSymbol::name);
+        REQUIRE(invoke != symbols.end());
+        const std::uint64_t putsStub = BranchTarget(image, invoke->value);
+        CHECK(putsStub != 0);
+        CHECK(BranchTarget(image, invoke->value + 4) != putsStub);
+    }
+
+    TEST_CASE("FreeBSD AArch64 shared library output is deterministic") {
+        const RcuFile library = ImportingMain({{"puts", ""}});
+        const auto directory = std::filesystem::temp_directory_path();
+        const ElfImage first = LinkSharedImage({library}, directory / "rux-shared-first" / "libDeterministic.so");
+        const ElfImage second = LinkSharedImage({library}, directory / "rux-shared-second" / "libDeterministic.so");
+        CHECK(first.bytes == second.bytes);
+    }
+
+    TEST_CASE("FreeBSD AArch64 shared library diagnoses invalid input before writing output") {
+        const auto output = std::filesystem::temp_directory_path() / "libFreeBsdAArch64Invalid.so";
+        const auto checkFailure = [&output](std::vector<RcuFile> objects, const std::string &message) {
+            std::error_code ec;
+            std::filesystem::remove(output, ec);
+            Linker linker(std::move(objects), "SharedError", {}, ArtifactKind::SharedLibrary, Target::OS::FreeBSD,
+                          Target::Arch::AArch64);
+            CHECK_FALSE(linker.Link(output));
+            REQUIRE(linker.Errors().size() == 1);
+            CHECK(linker.Errors().front().message == message);
+            CHECK_FALSE(std::filesystem::exists(output));
+        };
+
+        RcuFile first = MainObject();
+        first.symbols.front().name = "Duplicate";
+        RcuFile second = first;
+        checkFailure({std::move(first), std::move(second)}, "duplicate symbol 'Duplicate'");
+
+        RcuFile unresolved;
+        unresolved.arch = RcuArch::AArch64;
+        auto unresolvedText =
+            Section(".text", RcuSecType::Text, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Exec, 4);
+        AppendWord(unresolvedText.data, 0x94000000);
+        unresolvedText.relocs.push_back({0, 1, RcuRelType::AArch64Call26, 0});
+        unresolved.sections.push_back(std::move(unresolvedText));
+        unresolved.symbols = {{"Caller", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global},
+                              {"Missing", "int", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::Func, RcuSymVis::Global}};
+        checkFailure({std::move(unresolved)},
+                     "undefined symbol 'Missing' — no definition or external import was found");
+
+        RcuFile malformed = MainObject();
+        malformed.sections.front().relocs.push_back({4, 99, RcuRelType::AArch64Call26, 0});
+        checkFailure({std::move(malformed)}, "relocation at offset 4 in section '.text' has invalid symbol index 99");
+
+        RcuFile outOfBounds = MainObject();
+        outOfBounds.sections.front().relocs.push_back({8, 0, RcuRelType::AArch64Call26, 0});
+        checkFailure({std::move(outOfBounds)},
+                     "AARCH64_CALL26 relocation against 'Main' at offset 8 exceeds section '.text'");
+
+        RcuFile unsupported = MainObject();
+        unsupported.sections.front().relocs.push_back({0, 0, 999, 0});
+        checkFailure({std::move(unsupported)}, "relocation ? against 'Main' is not supported by the ELF writer");
+
+        RcuFile importedData = MainObject();
+        importedData.sections.front().relocs.push_back({0, 1, RcuRelType::AArch64AdrPrelPgHi21, 0});
+        importedData.symbols.push_back(
+            {"errno", "libc.so.7", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
+        checkFailure(
+            {std::move(importedData)},
+            "external data symbol 'errno' cannot be imported for target 'freebsd-aarch64' because GOT-aware data "
+            "lowering and symbol-size metadata are not implemented");
+    }
+
+    TEST_CASE("FreeBSD AArch64 shared library deduplicates dependencies independently of declarations") {
+        const RcuFile calls = ImportingMain({{"alpha", ""}, {"beta", ""}, {"alpha", ""}, {"gamma", ""}, {"beta", ""}});
+        const RcuFile alpha = ImportDeclarations({{"alpha", "libzeta.so.1"}});
+        const RcuFile beta = ImportDeclarations({{"beta", "libalpha.so.2"}});
+        const RcuFile gamma = ImportDeclarations({{"gamma", "libzeta.so.1"}});
+        const auto directory = std::filesystem::temp_directory_path();
+
+        const ElfImage forward = LinkSharedImage({calls, alpha, beta, gamma},
+                                                 directory / "rux-shared-dependencies-forward" / "libImports.so");
+        const ElfImage reverse = LinkSharedImage({calls, gamma, beta, alpha},
+                                                 directory / "rux-shared-dependencies-reverse" / "libImports.so");
+        CHECK(forward.bytes == reverse.bytes);
+        const std::vector<std::string> expectedLibraries{"libalpha.so.2", "libzeta.so.1"};
+        CHECK(forward.NeededLibraries() == expectedLibraries);
+
+        const auto symbols = forward.DynamicSymbols();
+        const auto relocations = forward.PltRelocations();
+        const std::vector<std::string> expectedImports{"alpha", "beta", "gamma"};
+        REQUIRE(relocations.size() == expectedImports.size());
+        for (std::size_t index = 0; index < expectedImports.size(); ++index) {
+            REQUIRE(relocations[index].symbolIndex < symbols.size());
+            CHECK(symbols[relocations[index].symbolIndex].name == expectedImports[index]);
+            CHECK(forward.HashedDynamicSymbolIndex(expectedImports[index]) == relocations[index].symbolIndex);
+        }
     }
 } // TEST_SUITE

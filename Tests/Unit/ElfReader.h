@@ -181,6 +181,11 @@ struct ElfImage {
         return libraries;
     }
 
+    [[nodiscard]] std::string Soname() const {
+        const std::uint64_t strings = DynamicTag(5);                                     // DT_STRTAB
+        return strings == 0 ? std::string{} : StringAtAddress(strings + DynamicTag(14)); // DT_SONAME
+    }
+
     [[nodiscard]] std::vector<DynamicSymbol> DynamicSymbols() const {
         const std::uint64_t table = DynamicTag(6);   // DT_SYMTAB
         const std::uint64_t strings = DynamicTag(5); // DT_STRTAB

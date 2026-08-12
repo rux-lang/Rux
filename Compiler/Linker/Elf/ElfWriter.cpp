@@ -144,7 +144,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     std::unordered_set<std::string> strongDefinitions;
     for (const auto &obj : objects) {
         for (const auto &sym : obj.symbols) {
-            if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData && !sym.name.empty()) {
+            if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData &&
+                sym.visibility != RcuSymVis::Local && !sym.name.empty()) {
                 definedSymbols.insert(sym.name);
                 if (sym.visibility == RcuSymVis::Global && !strongDefinitions.insert(sym.name).second) {
                     Error("duplicate symbol '" + sym.name + "'");
@@ -376,7 +377,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                 if (sym.name.empty() || sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
                     continue;
                 }
-                if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func && sym.name != "Main") {
+                if (sym.visibility == RcuSymVis::Local && sym.name != "Main") {
                     continue;
                 }
                 uint64_t va = 0;
@@ -478,6 +479,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                         targetVA = bssVA + lay.bssOff + sym.value;
                     }
                     else {
+                        Error("undefined symbol '" + sym.name + "' — no definition or external import was found");
                         continue;
                     }
 
