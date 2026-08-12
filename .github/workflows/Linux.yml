@@ -161,3 +161,6 @@ jobs:
         run: |
           ./Bin/rux check --target macos-aarch64
           ./Tests/Native/MacOSAArch64/VerifyCross.ps1 -Rux ./Bin/rux
+
+      - name: Build and inspect freebsd-aarch64 output
+        run: sh Tests/Native/FreeBSDAArch64/VerifyCross.sh ./Bin/rux

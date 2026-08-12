@@ -64,6 +64,28 @@ refuses before compilation and recommends cross-building, transferring the
 artifact, and testing it on a native FreeBSD AArch64 machine; Rux never selects
 an emulator.
 
+To reproduce the CI transfer boundary, start in a Rux checkout on an x86-64
+FreeBSD machine and build a sealed target-only payload:
+
+```sh
+sh Tests/Native/FreeBSDAArch64/BuildTransfer.sh ./Bin/rux /tmp/FreeBSDAArch64Payload
+tar -C /tmp -czf /tmp/FreeBSDAArch64Payload.tar.gz FreeBSDAArch64Payload
+scp /tmp/FreeBSDAArch64Payload.tar.gz arm64-host:/tmp/
+```
+
+The payload contains no compiler or sysroot. In a checkout on the AArch64
+FreeBSD machine, unpack and verify it directly:
+
+```sh
+tar -C /tmp -xzf /tmp/FreeBSDAArch64Payload.tar.gz
+sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh /tmp/FreeBSDAArch64Payload
+```
+
+The verifier restores the declared executable modes, checks SHA-256 hashes and
+FreeBSD AArch64 ELF identity, then covers freestanding exit, fixed and variadic
+libc calls, assertion diagnostics, raw BSD syscalls, and shared-library
+load/call/unload. It does not invoke a compiler, ELF tool, or emulator.
+
 For a Debug build, run `sh Build.sh --configuration Debug`. Run `sh Build.sh --help` to see every option.
 
 ## Verifying the Build

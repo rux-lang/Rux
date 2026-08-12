@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "FreeBSDAArch64Static"
+Version = "0.1.0"
+Type = "StaticLibrary"
+Description = "Cross-build fixture: FreeBSD AArch64 static library"
+
+[Build]
+Output = "../../../../Bin/Tests/Native"
