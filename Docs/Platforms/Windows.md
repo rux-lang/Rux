@@ -79,13 +79,20 @@ Once the repository is cloned, later sessions can replace the snippet in step 4 
 ```
 
 `Build.ps1` selects `windows-x86_64` or `windows-aarch64` from the native host
-architecture.
+architecture. `windows-aarch64` has no code generator: the AArch64 back end
+writes ELF, so it reaches `linux-aarch64` only, and building a Rux program for
+`windows-aarch64` is refused with `code generation for 'windows-aarch64' is not
+implemented yet`. `rux check`, `rux fmt`, `rux lint` and `rux doc` need no back
+end and work as they do everywhere. An AArch64 Windows machine can still build
+`rux` itself, and can cross-build Rux programs with `--target windows-x86_64` or
+`--target linux-aarch64`. The AArch64 PE writer listed under "Follow-on" in
+`BACKLOG.md` is what makes the native target buildable.
 
 ## Native Package Artifacts
 
 An `Executable` package writes `Name.exe`, a `SharedLibrary` writes `Name.dll` plus the `Name.lib` import library, and a `StaticLibrary` writes `Name.lib`. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
 
-The x86-64 backend writes PE/COFF objects and libraries directly. The AArch64 backend asks Clang for a relocatable object and uses the same deterministic archive layer for static output.
+The x86-64 backend writes PE/COFF objects and libraries directly, from a host of either architecture. There is no AArch64 PE writer, so those artifact kinds have no `windows-aarch64` form yet.
 
 For a Debug build, run `.\Build.ps1 -Configuration Debug`. Run `Get-Help .\Build.ps1 -Full` to see every option.
 

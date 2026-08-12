@@ -7,9 +7,9 @@
 # Compiler/ names one of those programs, and when a file outside
 # Compiler/System/ launches a process at all.
 #
-# The two allowlists below are the whole set of exceptions. A file belongs on
-# one only with a reason written beside it; the AArch64 Clang path is the
-# temporary entry, and Task 34 of BACKLOG.md removes it along with the file.
+# No file may name a toolchain program, and only the ones listed below may
+# launch a process at all. A file joins that list only with a reason written
+# beside it.
 #
 # Run from anywhere: paths are resolved relative to the repository root.
 
@@ -17,23 +17,13 @@ set -eu
 
 cd "$(dirname "$0")/../../.."
 
-# Files still permitted to name an external toolchain program.
-#
-#   CodeGen/AArch64/NativeEmitter.cpp  transpiles LIR to C and hands it to the
-#                                      platform Clang driver. The native
-#                                      AArch64 back end replaces it.
-toolchain_exceptions='^Compiler/CodeGen/AArch64/NativeEmitter\.cpp:'
-
 # Files still permitted to launch a process. Running a program is not the same
-# as building one: the first two run what the compiler just produced.
+# as building one: both entries run what the compiler just produced.
 #
-#   Cli/CmdRun.cpp                     runs the artifact, natively or under an
-#                                      emulator.
-#   Cli/CmdTest.cpp                    runs each test artifact the same way.
-#   CodeGen/AArch64/NativeEmitter.cpp  runs Clang, as above.
+#   Cli/CmdRun.cpp   runs the artifact, natively or under an emulator.
+#   Cli/CmdTest.cpp  runs each test artifact the same way.
 launch_exceptions='^Compiler/Cli/CmdRun\.cpp:'
 launch_exceptions="$launch_exceptions"'|^Compiler/Cli/CmdTest\.cpp:'
-launch_exceptions="$launch_exceptions"'|^Compiler/CodeGen/AArch64/NativeEmitter\.cpp:'
 
 # A string literal naming a toolchain program. `prefix` is the target triple a
 # cross tool carries — `aarch64-linux-gnu-gcc` is as much a compiler as `gcc` —
@@ -53,8 +43,7 @@ toolchain_pattern="$toolchain_pattern"'|"'"$prefix"'('"$short_tool"')'"$version"
 # goes through one of them, so guarding these two names guards every spawn.
 launch_pattern='\b(RunInherited|RunCaptured) *\('
 
-named=$(grep -rnE "$toolchain_pattern" Compiler --include='*.cpp' --include='*.h' |
-    grep -vE "$toolchain_exceptions" || true)
+named=$(grep -rnE "$toolchain_pattern" Compiler --include='*.cpp' --include='*.h' || true)
 
 if [ -n "$named" ]; then
     echo "error: an external assembler, compiler, linker or archiver is named in Compiler/ —" >&2

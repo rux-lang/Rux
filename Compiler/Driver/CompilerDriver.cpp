@@ -1,6 +1,5 @@
 #include "Driver/CompilerDriver.h"
 
-#include "CodeGen/AArch64/NativeEmitter.h"
 #include "CodeGen/AArch64/RcuEmitter.h"
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
@@ -509,15 +508,11 @@ bool CompilerDriver::Analyze() {
     return true;
 }
 
-bool CompilerDriver::UseNativeAArch64Backend() const {
-    return opts.nativeAArch64Backend || Driver::NativeAArch64BackendRequested();
-}
-
 bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
                                       std::vector<std::filesystem::path> &secondaryArtifactPaths) {
     // Analysis runs for every supported triple; only code generation is limited
-    // to the targets a back end can reach from this host.
-    if (const auto reason = UnsupportedBackendReason(opts.targetName, UseNativeAArch64Backend()); !reason.empty()) {
+    // to the targets a back end covers.
+    if (const auto reason = UnsupportedBackendReason(opts.targetName); !reason.empty()) {
         Emit(ErrorDiagnostic(reason));
         return false;
     }
@@ -552,11 +547,9 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
 
     const auto codegenStart = std::chrono::steady_clock::now();
     const bool isAArch64 = compileTimeContext.target.arch == Target::Arch::AArch64;
-    const bool useAArch64Backend = isAArch64 && !UseNativeAArch64Backend();
 
-    // Assembly dump (optional). AssemblyPrinter prints x86-64; the Clang
-    // emitter writes its own dump below while invoking the native compiler,
-    // and the native AArch64 back end has no printer of its own yet.
+    // Assembly dump (optional). AssemblyPrinter prints x86-64; the AArch64 back
+    // end has no printer of its own yet.
     if (opts.dumpAsm && !isAArch64) {
         if (opts.verbose) {
             std::print("Emitting assembly for {}\n", opts.manifest.package.name.Text());
@@ -564,33 +557,6 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
         auto asmDir = root / "Temp" / "Asm";
         std::filesystem::create_directories(asmDir);
         AssemblyPrinter::Emit(lirPackage, asmDir / "out.asm");
-    }
-
-    // AArch64 hosts use the native AAPCS64 backend. It produces the final
-    // executable directly, so the x86-specific RCU and object/linker stages
-    // below are intentionally bypassed.
-    if (useAArch64Backend) {
-        const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, opts.targetName, !opts.isTest);
-        const OS targetOs = compileTimeContext.target.os;
-        const ArtifactKind artifactKind = PackageArtifactKind(opts.manifest.package.type);
-        artifactPath = binDir / OutputFileName(opts.manifest.package.name.Text(), artifactKind, targetOs);
-        AArch64NativeEmitter emitter(lirPackage, std::string(opts.manifest.package.name.Text()),
-                                     compileTimeContext.target);
-        const bool release = compileTimeContext.buildMode == Target::BuildMode::Release;
-        const std::optional<std::filesystem::path> assemblyPath =
-            opts.dumpAsm ? std::make_optional(root / "Temp" / "Asm" / "out.s") : std::nullopt;
-        if (!emitter.EmitArtifact(artifactPath, root / "Temp" / "Native", release, artifactKind, assemblyPath)) {
-            for (const auto &diagnostic : emitter.Diagnostics()) {
-                Emit(diagnostic);
-            }
-            return false;
-        }
-        if (artifactKind == ArtifactKind::SharedLibrary && targetOs == OS::Windows) {
-            secondaryArtifactPaths.push_back(binDir /
-                                             StaticLibraryFileName(opts.manifest.package.name.Text(), targetOs));
-        }
-        stats.codegen = ElapsedMs(codegenStart);
-        return true;
     }
 
     // RCU object generation

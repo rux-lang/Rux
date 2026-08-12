@@ -2026,8 +2026,8 @@ private:
     // floating-point values in general-purpose registers. Both are one branch
     // here, taken on the target operating system and on the index of the first
     // anonymous argument — which `LirFunc::isVariadic` and the callee's
-    // parameter count supply — and both belong with Task 34, where the other
-    // AArch64 systems stop going through Clang.
+    // parameter count supply — and both belong with the Mach-O and PE writers
+    // that make those systems reachable at all (BACKLOG.md "Follow-on").
     [[nodiscard]] CallLayout ClassifyArguments(const std::vector<TypeRef> &types) const {
         CallLayout layout;
         layout.args.reserve(types.size());

@@ -118,4 +118,14 @@ jobs:
           ./.github/scripts/Enter-VsDevEnv.ps1 -Arch ${{ matrix.vs_arch }}
           ./Bin/rux.exe check
           ./Bin/rux.exe lint
+
+      # The AArch64 back end writes ELF, so windows-aarch64 has no back end and
+      # nothing here can be built or run. Checking and linting need none, so
+      # both still cover this machine; the AArch64 PE writer listed under
+      # "Follow-on" in BACKLOG.md is what reopens the rest.
+      - name: Run Rux tests
+        if: matrix.arch == 'x86_64'
+        shell: pwsh
+        run: |
+          ./.github/scripts/Enter-VsDevEnv.ps1 -Arch ${{ matrix.vs_arch }}
           ./Bin/rux.exe test --release

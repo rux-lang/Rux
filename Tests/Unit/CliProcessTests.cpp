@@ -1,7 +1,6 @@
 #include "Driver/Version.h"
 #include "System/Os.h"
 #include "System/Process.h"
-#include "Target/Target.h"
 
 #include <array>
 #include <doctest.h>
@@ -80,17 +79,15 @@ TEST_CASE("build, run and test share one target option") {
     }
 }
 
-TEST_CASE("a target without a back end for this host names the architecture") {
-    // The AArch64 back end still lowers through the host Clang driver, so an
-    // AArch64 target it cannot serve is refused before the build starts.
-    constexpr std::string_view unreachable =
-        Target::HostArch == Target::Arch::AArch64 && Target::HostOS != Target::OS::Windows ? "windows-aarch64"
-                                                                                           : "linux-aarch64";
+TEST_CASE("a target without a back end names itself") {
+    // The AArch64 back end writes ELF, so an AArch64 target on another
+    // operating system is refused before the build starts, on every host.
     const auto manifest = ArithmeticManifest();
-    const auto result = Run(std::array<std::string_view, 5>{"--manifest", manifest, "build", "--target", unreachable});
+    const auto result =
+        Run(std::array<std::string_view, 5>{"--manifest", manifest, "build", "--target", "macos-aarch64"});
 
     CHECK(result.exitCode == 1);
-    CHECK(result.output.contains("aarch64"));
+    CHECK(result.output.contains("macos-aarch64"));
     CHECK(result.output.contains("not implemented yet"));
 }
 

@@ -9,7 +9,7 @@
 // The counterpart of CodeGen/X86_64/Assembler.h, with the same signature and
 // the same result, under a name of its own: one `rux` links both assemblers,
 // and the architecture belongs in the name for the same reason it belongs in
-// AArch64NativeEmitter's.
+// AArch64RcuEmitter's.
 
 #include "CodeGen/AsmAssembly.h"
 #include "Target/AsmInstr.h"

@@ -53,23 +53,12 @@ namespace Rux::Driver {
 [[nodiscard]] Target::Arch TargetTripleArch(std::string_view target);
 [[nodiscard]] TargetContext TargetContextForTriple(std::string_view target);
 
-// Whether this process was asked to lower AArch64 with the native RCU back end
-// (CodeGen/AArch64/RcuEmitter.cpp) rather than with the Clang emitter, through
-// the RUX_AARCH64_RCU environment variable. That back end is being written a
-// group of opcodes at a time (BACKLOG.md Phases 3-5) and refuses what it cannot
-// lower, so it stays opt-in until it can build every program the Clang path
-// can; task 34 removes the Clang path and this question with it.
-[[nodiscard]] bool NativeAArch64BackendRequested();
-
-// Why no back end can generate machine code for `target` on this host, or an
-// empty string when one can. Selecting a target is otherwise free: `check`,
-// `doc`, `install` and `update` only read the target, so they accept every
-// supported triple. Callers must validate the triple first.
-//
-// `nativeAArch64Backend` is the in-process form of the opt-in above, for an
-// embedder that set CompileOptions::nativeAArch64Backend rather than the
-// environment variable; it defaults to whatever this process was asked for.
-[[nodiscard]] std::string UnsupportedBackendReason(std::string_view target, bool nativeAArch64Backend);
+// Why no back end can generate machine code for `target`, or an empty string
+// when one can. Both back ends encode and link in-process, so the answer
+// depends on the target alone and not on the host. Selecting a target is
+// otherwise free: `check`, `doc`, `install` and `update` only read the target,
+// so they accept every supported triple. Callers must validate the triple
+// first.
 [[nodiscard]] std::string UnsupportedBackendReason(std::string_view target);
 
 // True when this host can execute an artifact built for `target` directly,

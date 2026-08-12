@@ -4,11 +4,10 @@
 // same object the x86-64 back end produces and the same one the linker
 // consumes. The counterpart of CodeGen/X86_64/RcuEmitter.h.
 //
-// This is the back end that replaces CodeGen/AArch64/NativeEmitter.cpp, which
-// writes a C translation unit and shells out to Clang. It is being written one
-// group of opcodes at a time (BACKLOG.md Phases 3-5), so what it does not lower
-// yet it reports as a diagnostic naming the construct rather than emitting
-// something plausible: an object this produces is either right or absent.
+// This is the only AArch64 back end: nothing here calls an external assembler,
+// compiler or linker. What it does not lower it reports as a diagnostic naming
+// the construct rather than emitting something plausible, so an object this
+// produces is either right or absent.
 //
 // The target operating system is not what chooses a calling convention here —
 // AAPCS64 is the single one on every AArch64 target — but it is what a failed

@@ -27,7 +27,7 @@ Two repository-policy workflows run alongside the per-OS matrix:
 - a string literal naming an assembler, C compiler, linker or archiver, under any spelling a real one carries: a path (`/usr/bin/clang`), a cross prefix (`aarch64-linux-gnu-gcc`), a version suffix (`clang-22`) or a Windows extension (`link.exe`). Two-letter names like `as`, `cc` and `ld` are assembler mnemonics and register names throughout `CodeGen/`, so they count only when the literal also carries a directory or an extension;
 - a call to `System::RunInherited` or `System::RunCaptured` — the two entry points every process launch goes through — from outside `Compiler/System/`.
 
-Each has a short allowlist at the top of the script, and a file joins one only with a reason written beside it. Running a program is not the same as building one, so `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp` are permanent entries: they execute the artifact the compiler just produced, natively or under an emulator. `CodeGen/AArch64/NativeEmitter.cpp` is the temporary one — the Clang path AArch64 used before it had a back end — and it leaves both lists when the file is deleted.
+No file is allowed to name a toolchain program. The second check has a short allowlist at the top of the script, and a file joins it only with a reason written beside it: running a program is not the same as building one, so `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp` are its two permanent entries, executing the artifact the compiler just produced, natively or under an emulator.
 
 The guard runs as its own job in `CodeQuality.yml` and as the first step of `Test.sh` and `Test.ps1`, beside the platform-isolation check.
 
@@ -75,7 +75,9 @@ downloaded by the matching test job. Using `Linux.yml` as the reference shape:
    - Download the x86-64 binary built by the build job.
    - Run `rux check --target linux-aarch64` and `rux test --release --target linux-aarch64`. Every test builds for AArch64 on this x86-64 host and runs under `qemu-aarch64`, with `RUX_QEMU_SYSROOT=/usr/aarch64-linux-gnu` pointing the emulator at the guest's loader. `rux lint` takes no target and is not repeated here.
 
-Both the cross job and the native AArch64 test job set `RUX_AARCH64_RCU=1`, which selects the native AArch64 back end over the Clang path that preceded it. That is why the AArch64 test job installs no Clang: what it downloads produces machine code without one, and the job fails if that stops being true.
+Neither the cross job nor the native AArch64 test job installs a C toolchain: the compiler encodes and links AArch64 artifacts itself, and both jobs fail if that stops being true.
+
+The AArch64 back end writes ELF, so `linux-aarch64` is the only AArch64 target it covers. The macOS, Windows and FreeBSD AArch64 test jobs therefore run `rux check` and `rux lint`, which need no back end, and leave `rux test` to their x86-64 counterparts; an AArch64 build for one of those systems is refused with `code generation for '<triple>' is not implemented yet`. The AArch64 Mach-O and PE writers listed under "Follow-on" in `BACKLOG.md` are what reopen those jobs.
 
 ### Platform-Specific Quirks
 
@@ -118,7 +120,7 @@ The cross job needs the emulator and the guest C library, and then is one comman
 
 ```sh
 sudo apt-get install -y qemu-user libc6-arm64-cross
-export RUX_AARCH64_RCU=1 RUX_QEMU_SYSROOT=/usr/aarch64-linux-gnu
+export RUX_QEMU_SYSROOT=/usr/aarch64-linux-gnu
 ./Bin/rux check --target linux-aarch64
 ./Bin/rux test --release --target linux-aarch64
 ```

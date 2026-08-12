@@ -144,6 +144,13 @@ private:
     Manifest dependency;
 };
 
+// Whether a back end covers this host, which is what a case that builds for the
+// host needs. The AArch64 back end writes ELF, so an AArch64 macOS or Windows
+// host has none until the Mach-O and PE writers take an architecture
+// (BACKLOG.md "Follow-on"). Those cases are skipped there rather than deleted:
+// what they assert is about the driver, not about the machine running it.
+constexpr bool kHostHasBackend = Target::HostArch != Target::Arch::AArch64 || Target::HostOS == Target::OS::Linux;
+
 } // namespace
 
 TEST_CASE("test output directories omit the build profile") {
@@ -234,7 +241,7 @@ func Main() -> int {
     CHECK(result.stats.dependencyFiles == 0);
 }
 
-TEST_CASE("compiler driver loads path dependencies when building") {
+TEST_CASE("compiler driver loads path dependencies when building" * doctest::skip(!kHostHasBackend)) {
     DependencyFixture fixture;
     std::vector<Diagnostic> diagnostics;
 
@@ -244,14 +251,6 @@ TEST_CASE("compiler driver loads path dependencies when building") {
     CHECK(diagnostics.empty());
     CHECK(result.stats.dependencyFiles == 1);
     CHECK(std::filesystem::is_regular_file(result.primaryArtifactPath));
-
-    if constexpr (Target::HostOS == Target::OS::MacOS && Target::HostArch == Target::Arch::AArch64) {
-        std::ifstream executable(result.primaryArtifactPath, std::ios::binary);
-        std::array<unsigned char, 8> header{};
-        executable.read(reinterpret_cast<char *>(header.data()), static_cast<std::streamsize>(header.size()));
-        REQUIRE(executable.gcount() == static_cast<std::streamsize>(header.size()));
-        CHECK(header == std::array<unsigned char, 8>{0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0x00, 0x00, 0x01});
-    }
 }
 
 TEST_CASE("compiler driver builds one architecture for a foreign operating system") {
@@ -274,27 +273,26 @@ TEST_CASE("compiler driver builds one architecture for a foreign operating syste
     CHECK(std::filesystem::is_regular_file(result.primaryArtifactPath));
 }
 
-TEST_CASE("compiler driver refuses a target no back end can reach from this host") {
-    // The AArch64 back end still lowers through the host Clang driver, so it
-    // only serves a host of the same architecture and operating system.
-    constexpr std::string_view unreachable =
-        Target::HostArch == Target::Arch::AArch64 && Target::HostOS != Target::OS::Windows ? "windows-aarch64"
-                                                                                           : "linux-aarch64";
+TEST_CASE("compiler driver refuses a target no back end covers") {
+    // The AArch64 back end writes ELF, so an AArch64 target on any other
+    // operating system is refused before code generation starts — on a host of
+    // that same kind too, which is what makes this a property of the target.
     DependencyFixture fixture;
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = unreachable;
+    options.targetName = "windows-aarch64";
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
     CHECK_FALSE(result.ok);
     REQUIRE(diagnostics.size() == 1);
     CHECK(diagnostics.front().IsError());
-    CHECK(diagnostics.front().message.contains("aarch64"));
+    CHECK(diagnostics.front().message.contains("windows-aarch64"));
     CHECK(diagnostics.front().message.contains("not implemented yet"));
 }
 
-TEST_CASE("compiler driver links a SharedLibrary package as a native shared library") {
+TEST_CASE("compiler driver links a SharedLibrary package as a native shared library" *
+          doctest::skip(!kHostHasBackend)) {
     DependencyFixture fixture;
     fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
     std::vector<Diagnostic> diagnostics;
@@ -312,7 +310,7 @@ TEST_CASE("compiler driver links a SharedLibrary package as a native shared libr
     }
 }
 
-TEST_CASE("compiler driver builds a StaticLibrary package as a native archive") {
+TEST_CASE("compiler driver builds a StaticLibrary package as a native archive" * doctest::skip(!kHostHasBackend)) {
     DependencyFixture fixture;
     fixture.SetApplicationType(ManifestPackageType::StaticLibrary);
     std::vector<Diagnostic> diagnostics;
@@ -335,7 +333,6 @@ TEST_CASE("compiler driver builds a StaticLibrary package for linux-aarch64") {
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.targetName = "linux-aarch64";
-    options.nativeAArch64Backend = true;
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -398,7 +395,7 @@ TEST_CASE("compiler driver resolves transitive dependencies from local workspace
     CHECK(result.stats.dependencyFiles == 2);
 }
 
-TEST_CASE("compiler driver supplies manifest and command-line build context") {
+TEST_CASE("compiler driver supplies manifest and command-line build context" * doctest::skip(!kHostHasBackend)) {
     DependencyFixture fixture;
     fixture.SetManifestDefine("allocator", "system");
     fixture.SetApplicationSource(R"(
@@ -473,31 +470,31 @@ TEST_CASE("a target triple resolves to the machine it names rather than to the h
 }
 
 TEST_CASE("the unsupported-target diagnostic follows the back end that would produce the artifact") {
-    // x86-64 is encoded and linked in-process, so every supported operating
-    // system is reachable from every host.
-    CHECK(UnsupportedBackendReason("linux-x86_64", false).empty());
-    CHECK(UnsupportedBackendReason("windows-x86_64", false).empty());
-    CHECK(UnsupportedBackendReason(HostTargetTriple(), false).empty());
+    // Both back ends encode and link in-process, so the answer is a property of
+    // the target alone. x86-64 reaches every supported operating system.
+    CHECK(UnsupportedBackendReason("linux-x86_64").empty());
+    CHECK(UnsupportedBackendReason("windows-x86_64").empty());
+    CHECK(UnsupportedBackendReason("macos-x86_64").empty());
 
-    // So is linux-aarch64, once the build has opted into the native back end,
-    // under either spelling of the triple.
-    CHECK(UnsupportedBackendReason("linux-aarch64", true).empty());
-    CHECK(UnsupportedBackendReason("linux-arm64", true).empty());
+    // AArch64 reaches Linux, under either spelling of the triple, from a host
+    // of either architecture.
+    CHECK(UnsupportedBackendReason("linux-aarch64").empty());
+    CHECK(UnsupportedBackendReason("linux-arm64").empty());
 
-    // Without that opt-in it goes through the platform Clang driver, which
-    // produces artifacts for the machine the compiler runs on and no other. So
-    // does every AArch64 target the native back end does not reach.
-    if constexpr (Target::HostArch != Target::Arch::AArch64) {
-        const std::string refused = UnsupportedBackendReason("linux-aarch64", false);
-        CHECK(refused.contains("aarch64"));
+    // The other AArch64 systems are refused rather than lowered by an external
+    // toolchain, and they are refused on a host of their own kind too: the
+    // Mach-O and PE writers take no architecture yet.
+    for (const std::string_view triple : {"macos-aarch64", "windows-aarch64"}) {
+        const std::string refused = UnsupportedBackendReason(triple);
+        CHECK(refused.contains(triple));
         CHECK(refused.contains("not implemented yet"));
+        CHECK(refused.contains("Linux only"));
     }
-    if constexpr (Target::HostOS != Target::OS::Windows) {
-        CHECK_FALSE(UnsupportedBackendReason("windows-aarch64", true).empty());
-    }
-    if constexpr (Target::HostOS != Target::OS::MacOS) {
-        CHECK_FALSE(UnsupportedBackendReason("macos-aarch64", true).empty());
-    }
+
+    // An architecture with no back end at all names itself rather than a host.
+    const std::string riscv = UnsupportedBackendReason("linux-riscv64");
+    CHECK(riscv.contains("riscv64"));
+    CHECK(riscv.contains("not implemented yet"));
 }
 
 TEST_CASE("compiler driver builds an executable for linux-aarch64") {
@@ -505,7 +502,6 @@ TEST_CASE("compiler driver builds an executable for linux-aarch64") {
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.targetName = "linux-aarch64";
-    options.nativeAArch64Backend = true;
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 

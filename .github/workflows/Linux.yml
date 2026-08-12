@@ -91,11 +91,8 @@ jobs:
             artifact: rux-linux-aarch64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
-    # AArch64 artifacts are encoded and linked in-process by the native back
-    # end, so this job needs no Clang at all. The variable is inert on x86-64,
-    # which has never had another back end to choose between.
-    env:
-      RUX_AARCH64_RCU: "1"
+    # AArch64 artifacts are encoded and linked in-process by the AArch64 back
+    # end, so this job needs no Clang at all.
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -134,7 +131,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      RUX_AARCH64_RCU: "1"
       # Where a dynamically linked AArch64 program finds its loader and its
       # shared libraries; libc6-arm64-cross supplies it.
       RUX_QEMU_SYSROOT: /usr/aarch64-linux-gnu

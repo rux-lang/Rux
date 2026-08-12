@@ -28,17 +28,21 @@ The script creates a Release build in `Build/` and writes the compiler to `Bin/r
 
 For a Debug build, add `--configuration Debug`. Run `sh Build.sh --help` to see every option.
 
-On Apple Silicon, Rux selects the `macos-aarch64` target by default. The AArch64
-backend lowers Rux LIR through the system Clang driver, which applies the
-AAPCS64 ABI and writes a native AArch64 Mach-O executable. Keep the Xcode Command
-Line Tools installed so `/usr/bin/clang` is available when compiling Rux
-programs.
+On Apple Silicon, Rux selects the `macos-aarch64` target by default, and that
+target has no code generator: the AArch64 back end writes ELF, so it reaches
+`linux-aarch64` only. Building for `macos-aarch64` is refused with `code
+generation for 'macos-aarch64' is not implemented yet`; `rux check`, `rux fmt`,
+`rux lint` and `rux doc` need no back end and work as they do everywhere. An
+Apple Silicon Mac can still build `rux` itself, and can cross-build Rux programs
+with `--target macos-x86_64` or `--target linux-aarch64`. The AArch64 Mach-O
+writer listed under "Follow-on" in `BACKLOG.md` is what makes the native target
+buildable.
 
 ## Native Package Artifacts
 
 An `Executable` package writes `Name`, a `SharedLibrary` writes `libName.dylib` with `LC_ID_DYLIB` set to `@rpath/libName.dylib`, and a `StaticLibrary` writes `libName.a` with a BSD archive symbol index. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
 
-The x86-64 backend writes Mach-O objects and images directly. The AArch64 backend uses Clang for relocatable-object and dylib emission, then the common deterministic archive layer for static output.
+The x86-64 backend writes Mach-O objects and images directly, from a host of either architecture. There is no AArch64 Mach-O writer, so those artifact kinds have no `macos-aarch64` form yet.
 
 ## Verifying the Build
 

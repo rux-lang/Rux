@@ -42,14 +42,6 @@ struct CompileOptions {
     // frontend errors so all diagnostics are reported
     bool captureFrontend = false; // retain folded user ASTs in CompileResult
 
-    // Lower AArch64 with the native back end (CodeGen/AArch64/RcuEmitter.cpp)
-    // rather than with the Clang emitter. That back end is being written a
-    // group of opcodes at a time (BACKLOG.md Phases 3-5), so it stays opt-in —
-    // by this flag or by the RUX_AARCH64_RCU environment variable — until it
-    // can build every program the Clang path can, at which point task 34
-    // removes the Clang path and this choice with it.
-    bool nativeAArch64Backend = false;
-
     // Debug dumps written under <package root>/Temp (build --dump-*).
     bool dumpTokens = false;
     bool dumpAst = false;
@@ -90,10 +82,6 @@ private:
     // the "BSD" family). This is what `#target.os` reports.
     [[nodiscard]] std::string TargetSystemName() const;
     void InitializeCompileTimeContext();
-
-    // Whether this build asked for the native AArch64 back end rather than the
-    // Clang emitter, by CompileOptions or by RUX_AARCH64_RCU.
-    [[nodiscard]] bool UseNativeAArch64Backend() const;
 
     // Pipeline phases. Each returns false when the pipeline cannot continue.
     bool LexAndParseSources();
