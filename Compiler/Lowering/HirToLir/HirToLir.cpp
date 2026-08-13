@@ -2,6 +2,8 @@
 
 #include "Lowering/HirToLir/HirToLir.h"
 
+#include "Lowering/HirToLir/CheckedLirBuilder.h"
+
 #include <cassert>
 #include <format>
 #include <optional>
@@ -11,84 +13,6 @@
 #include <utility>
 
 namespace Rux {
-static LirOpcode BinaryOpcode(TokenKind op) {
-    using TK = TokenKind;
-    switch (op) {
-    case TK::Plus:
-        return LirOpcode::Add;
-    case TK::Minus:
-        return LirOpcode::Sub;
-    case TK::Star:
-        return LirOpcode::Mul;
-    case TK::Slash:
-        return LirOpcode::Div;
-    case TK::Percent:
-        return LirOpcode::Mod;
-    case TK::StarStar:
-        return LirOpcode::Pow;
-    case TK::Amp:
-        return LirOpcode::And;
-    case TK::Pipe:
-        return LirOpcode::Or;
-    case TK::Caret:
-        return LirOpcode::Xor;
-    case TK::LessLess:
-        return LirOpcode::Shl;
-    case TK::GreaterGreater:
-        return LirOpcode::Shr;
-    case TK::GreaterGreaterGreater:
-        return LirOpcode::Lshr;
-    case TK::AmpAmp:
-        return LirOpcode::And;
-    case TK::PipePipe:
-        return LirOpcode::Or;
-    case TK::Equal:
-        return LirOpcode::CmpEq;
-    case TK::BangEqual:
-        return LirOpcode::CmpNe;
-    case TK::Less:
-        return LirOpcode::CmpLt;
-    case TK::LessEqual:
-        return LirOpcode::CmpLe;
-    case TK::Greater:
-        return LirOpcode::CmpGt;
-    case TK::GreaterEqual:
-        return LirOpcode::CmpGe;
-    default:
-        return LirOpcode::Add;
-    }
-}
-
-static LirOpcode CompoundOpcode(TokenKind op) {
-    using TK = TokenKind;
-    switch (op) {
-    case TK::PlusAssign:
-        return LirOpcode::Add;
-    case TK::MinusAssign:
-        return LirOpcode::Sub;
-    case TK::StarAssign:
-        return LirOpcode::Mul;
-    case TK::SlashAssign:
-        return LirOpcode::Div;
-    case TK::PercentAssign:
-        return LirOpcode::Mod;
-    case TK::AmpAssign:
-        return LirOpcode::And;
-    case TK::PipeAssign:
-        return LirOpcode::Or;
-    case TK::CaretAssign:
-        return LirOpcode::Xor;
-    case TK::LessLessAssign:
-        return LirOpcode::Shl;
-    case TK::GreaterGreaterAssign:
-        return LirOpcode::Shr;
-    case TK::GreaterGreaterGreaterAssign:
-        return LirOpcode::Lshr;
-    default:
-        return LirOpcode::Add;
-    }
-}
-
 // Lowering
 class LirLowering {
 public:
@@ -153,9 +77,7 @@ public:
 
 private:
     std::unordered_map<std::string, const HirInterface *> interfacesByName;
-    LirReg nextReg = 0;
-    LirFunc *fn = nullptr;                          // function being built (valid only inside LowerFunc)
-    std::uint32_t cur = 0;                          // current basic-block index into fn_->blocks
+    CheckedLirBuilder *builder = nullptr;           // valid only while LowerFunc owns its builder
     std::unordered_map<std::string, LirReg> locals; // name → alloca register
     std::unordered_map<std::string, const HirConst *> globalConsts;
 
@@ -231,34 +153,46 @@ private:
 
     // Block / register allocation
     LirReg NewReg() {
-        return nextReg++;
+        return builder->AllocateRegister();
+    }
+
+    [[noreturn]] static void BuilderFailure() {
+        assert(false && "checked LIR builder rejected lowering output");
+        std::unreachable();
+    }
+
+    static void Require(const bool accepted) {
+        if (!accepted) {
+            BuilderFailure();
+        }
+    }
+
+    [[nodiscard]] static LirOpcode RequireOpcode(const std::optional<LirOpcode> opcode) {
+        if (!opcode) {
+            BuilderFailure();
+        }
+        return *opcode;
     }
 
     [[nodiscard]] std::uint32_t NewBlock(std::string label = "") const {
-        if (label.empty()) {
-            label = std::format("bb{}", fn->blocks.size());
-        }
-        fn->blocks.push_back({std::move(label), {}, std::nullopt});
-        return static_cast<std::uint32_t>(fn->blocks.size() - 1);
+        return builder->CreateBlock(std::move(label));
     }
 
     void SetBlock(const std::uint32_t idx) {
-        cur = idx;
+        Require(builder->SelectBlock(idx));
     }
 
     [[nodiscard]] bool IsTerminated() const {
-        return fn->blocks[cur].term.has_value();
+        return builder->IsTerminated();
     }
 
     // Instruction emission
     void Emit(LirInstr i) const {
-        fn->blocks[cur].instrs.push_back(std::move(i));
+        Require(builder->Insert(std::move(i)));
     }
 
     void Terminate(LirTerminator t) const {
-        if (!fn->blocks[cur].term.has_value()) {
-            fn->blocks[cur].term = std::move(t);
-        }
+        Require(builder->Terminate(std::move(t)));
     }
 
     void Jump(std::uint32_t target) const {
@@ -314,8 +248,13 @@ private:
     }
 
     LirReg EmitAlloca(TypeRef type, std::uint64_t count) {
-        LirReg r = EmitAlloca(std::move(type));
-        fn->blocks[cur].instrs.back().strArg = std::to_string(count);
+        const LirReg r = NewReg();
+        LirInstr i;
+        i.dst = r;
+        i.op = LirOpcode::Alloca;
+        i.type = std::move(type);
+        i.strArg = std::to_string(count);
+        Emit(std::move(i));
         return r;
     }
 
@@ -644,7 +583,6 @@ private:
 
     // Function lowering
     LirFunc LowerFunc(const HirFunc &hf, const std::string_view nameOverride = "") {
-        nextReg = 0;
         locals.clear();
         localConsts.clear();
         enumPayloadSlots.clear();
@@ -666,10 +604,11 @@ private:
             }
             return lf;
         }
-        fn = &lf;
-        cur = NewBlock("entry");
+        CheckedLirBuilder functionBuilder(lf);
+        builder = &functionBuilder;
+        SetBlock(NewBlock("entry"));
         for (const auto &[name, type, isVariadic] : hf.params) {
-            const LirReg pr = NewReg();
+            const LirReg pr = builder->DefineParameter();
             if (isVariadic) {
                 locals[name] = pr;
                 lf.params.push_back({pr, TypeRef::MakePointer(type), name});
@@ -702,6 +641,7 @@ private:
                 Return(std::nullopt, TypeRef::MakeOpaque());
             }
         }
+        builder = nullptr;
         return lf;
     }
 
@@ -789,7 +729,7 @@ private:
         if (auto *s = dynamic_cast<const HirReturnStmt *>(&stmt)) {
             if (s->value) {
                 LirReg val = LowerExpr(**s->value);
-                TypeRef retType = fn ? fn->returnType : (*s->value)->type;
+                TypeRef retType = builder->Function().returnType;
                 if (val != LirNoReg && !retType.IsUnknown() && (*s->value)->type != retType) {
                     LirReg casted = NewReg();
                     LirInstr cast;
@@ -1525,7 +1465,17 @@ private:
                 delta = EmitBinary(LirOpcode::Mul, delta, sz, e.type);
             }
         }
-        const LirOpcode op = (e.op == TokenKind::PlusPlus) ? LirOpcode::Add : LirOpcode::Sub;
+        LirOpcode op;
+        switch (e.op) {
+        case TokenKind::PlusPlus:
+            op = LirOpcode::Add;
+            break;
+        case TokenKind::MinusMinus:
+            op = LirOpcode::Sub;
+            break;
+        default:
+            BuilderFailure();
+        }
         const LirReg new_val = EmitBinary(op, old_val, delta, e.type);
         EmitStore(new_val, ptr, e.type);
         return old_val;
@@ -1567,7 +1517,7 @@ private:
             return new_val;
         }
         default:
-            return EmitUnary(LirOpcode::Not, LowerExpr(*e.operand), e.type);
+            BuilderFailure();
         }
     }
 
@@ -1595,12 +1545,12 @@ private:
             // block, not the one entered here, is what reaches the phi below, and
             // naming the wrong predecessor is what let the phi take the value from
             // an edge that was never followed.
-            std::uint32_t shortBlockIdx = cur;
+            const std::uint32_t shortBlockIdx = builder->CurrentBlock();
             Jump(mergeBlock);
             // Right-hand side path.
             SetBlock(rhsBlock);
             LirReg rhs = LowerExpr(*e.right);
-            std::uint32_t rhsBlockIdx = cur;
+            const std::uint32_t rhsBlockIdx = builder->CurrentBlock();
             Jump(mergeBlock);
             // Join with a phi.
             SetBlock(mergeBlock);
@@ -1648,18 +1598,18 @@ private:
                     // operand
                     const LirReg sz = EmitConst(std::to_string(*elemSize), e.right->type);
                     const LirReg scaled = EmitBinary(LirOpcode::Mul, rhs, sz, e.right->type);
-                    return EmitBinary(BinaryOpcode(e.op), lhs, scaled, e.type);
+                    return EmitBinary(RequireOpcode(CheckedLirBuilder::BinaryOpcode(e.op)), lhs, scaled, e.type);
                 }
                 else {
                     // int + ptr: scale the left (integer) operand
                     const LirReg sz = EmitConst(std::to_string(*elemSize), e.left->type);
                     const LirReg scaled = EmitBinary(LirOpcode::Mul, lhs, sz, e.left->type);
-                    return EmitBinary(BinaryOpcode(e.op), scaled, rhs, e.type);
+                    return EmitBinary(RequireOpcode(CheckedLirBuilder::BinaryOpcode(e.op)), scaled, rhs, e.type);
                 }
             }
         }
 
-        return EmitBinary(BinaryOpcode(e.op), lhs, rhs, e.type);
+        return EmitBinary(RequireOpcode(CheckedLirBuilder::BinaryOpcode(e.op)), lhs, rhs, e.type);
     }
 
     LirReg LowerAssign(const HirAssignExpr &e) {
@@ -1680,7 +1630,7 @@ private:
                     val = EmitBinary(LirOpcode::Mul, val, sz, e.type);
                 }
             }
-            val = EmitBinary(CompoundOpcode(e.op), current, val, e.type);
+            val = EmitBinary(RequireOpcode(CheckedLirBuilder::CompoundOpcode(e.op)), current, val, e.type);
         }
         else {
             val = EmitCastIfNeeded(val, e.value->type, e.type);
@@ -2224,8 +2174,7 @@ private:
             }
             return;
         }
-        LirReg data = EmitAlloca(elemType);
-        fn->blocks[cur].instrs.back().strArg = std::to_string(e.elements.size());
+        LirReg data = EmitAlloca(elemType, e.elements.size());
         for (std::size_t i = 0; i < e.elements.size(); ++i) {
             LirReg idx = EmitConst(std::to_string(i), TypeRef::MakeUInt64());
             LirReg ptr = EmitIndexPtr(data, idx, elemType);

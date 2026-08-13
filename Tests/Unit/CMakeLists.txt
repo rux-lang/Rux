@@ -15,6 +15,7 @@ set(RUX_TEST_SOURCES
     BuiltinPanicTests.cpp
     BuildPlanTests.cpp
     BuildReportTests.cpp
+    CheckedLirBuilderTests.cpp
     CodegenTests.cpp
     ChecksumTests.cpp
     CliProcessTests.cpp

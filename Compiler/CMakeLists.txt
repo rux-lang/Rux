@@ -137,6 +137,7 @@ rux_add_component(RuxLowering
     Lowering/AstToHir/AstToHirContext.cpp
     Lowering/AstToHir/AstToHirExpressions.cpp
     Lowering/AstToHir/AstToHirStatements.cpp
+    Lowering/HirToLir/CheckedLirBuilder.cpp
     Lowering/HirToLir/HirToLir.cpp)
 target_link_libraries(RuxLowering PUBLIC
     RuxSyntax RuxSemantic RuxHir RuxLir)
