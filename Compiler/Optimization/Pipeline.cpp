@@ -3,6 +3,7 @@
 #include "Optimization/HirConstantFolder.h"
 #include "Optimization/LirCfgPasses.h"
 #include "Optimization/LirConstantPropagation.h"
+#include "Optimization/LirDeadCodeElimination.h"
 
 #include <memory>
 
@@ -18,6 +19,7 @@ OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile
     if (profile == BuildProfile::Release) {
         pipeline.hir_.Add(std::make_unique<HirConstantFolder>());
         pipeline.lir_.Add(std::make_unique<LirConstantPropagation>());
+        pipeline.lir_.Add(std::make_unique<LirDeadCodeElimination>());
         pipeline.lir_.Add(std::make_unique<LirCfgCleanup>());
     }
     return pipeline;

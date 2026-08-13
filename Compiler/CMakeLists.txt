@@ -123,6 +123,7 @@ rux_add_component(RuxOptimization
     Optimization/HirConstantFolder.cpp
     Optimization/LirCfgPasses.cpp
     Optimization/LirConstantPropagation.cpp
+    Optimization/LirDeadCodeElimination.cpp
     Optimization/Pipeline.cpp)
 target_link_libraries(RuxOptimization PUBLIC RuxBuildInfo RuxDiagnostics RuxHir RuxLir)
 

@@ -2,6 +2,9 @@
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
+#include "Optimization/LirCfgPasses.h"
+#include "Optimization/LirConstantPropagation.h"
+#include "Optimization/LirDeadCodeElimination.h"
 #include "Optimization/Pipeline.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
@@ -114,8 +117,8 @@ TEST_CASE("optimization pipelines are selected explicitly by profile") {
     CHECK(debug.HirPassNames().empty());
     CHECK(debug.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier"});
     CHECK(release.HirPassNames() == std::vector<std::string_view>{"hir-constant-folder"});
-    CHECK(release.LirPassNames() ==
-          std::vector<std::string_view>{"lir-cfg-verifier", "lir-constant-copy-propagation", "lir-cfg-cleanup"});
+    CHECK(release.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier", "lir-constant-copy-propagation",
+                                                                  "lir-dead-code-elimination", "lir-cfg-cleanup"});
 }
 
 TEST_CASE("LIR CFG verifier reports malformed control flow without traversing invalid blocks") {
@@ -193,12 +196,11 @@ TEST_CASE("LIR CFG cleanup folds branches and remaps reachable blocks and phi pr
     LirPackage package;
     package.modules.push_back(std::move(module));
 
-    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
-    const auto report = pipeline.RunLir(package);
+    Optimization::LirCfgCleanup cleanup;
+    const Optimization::PassContext context{BuildProfile::Release};
+    const auto change = cleanup.Run(package, context);
 
-    CHECK_FALSE(report.HasErrors());
-    CHECK(report.change == Optimization::PassChange::Changed);
-    CHECK(report.reachedFixedPoint);
+    CHECK(change == Optimization::PassChange::Changed);
     REQUIRE(package.modules[0].funcs[0].blocks.size() == 3);
     const auto &blocks = package.modules[0].funcs[0].blocks;
     CHECK(blocks[0].label == "entry");
@@ -244,8 +246,10 @@ TEST_CASE("LIR CFG cleanup folds a known switch to its matching case") {
     LirPackage package;
     package.modules.push_back(std::move(module));
 
-    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
-    const auto report = pipeline.RunLir(package);
+    Optimization::LirPassPipeline pipeline(BuildProfile::Release);
+    pipeline.Add(std::make_unique<Optimization::LirConstantPropagation>());
+    pipeline.Add(std::make_unique<Optimization::LirCfgCleanup>());
+    const auto report = pipeline.Run(package);
 
     CHECK_FALSE(report.HasErrors());
     CHECK(report.reachedFixedPoint);
@@ -330,8 +334,10 @@ TEST_CASE("LIR propagation joins constants and exposes a constant branch to CFG 
     LirPackage package;
     package.modules.push_back(std::move(module));
 
-    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
-    const auto report = pipeline.RunLir(package);
+    Optimization::LirPassPipeline pipeline(BuildProfile::Release);
+    pipeline.Add(std::make_unique<Optimization::LirConstantPropagation>());
+    pipeline.Add(std::make_unique<Optimization::LirCfgCleanup>());
+    const auto report = pipeline.Run(package);
 
     CHECK_FALSE(report.HasErrors());
     CHECK(report.reachedFixedPoint);
@@ -471,6 +477,134 @@ TEST_CASE("LIR propagation stops at conflicting joins and unsupported evaluation
     const auto &instructions = package.modules[0].funcs[0].blocks[3].instrs;
     CHECK(instructions[0].op == LirOpcode::Phi);
     CHECK(instructions[2].op == LirOpcode::Div);
+}
+
+TEST_CASE("LIR dead code elimination removes pure results and dead local storage") {
+    LirFunc function;
+    function.name = "LocalCleanup";
+    function.params = {{0, TypeRef::MakeInt32(), "value"}, {1, TypeRef::MakePointer(TypeRef::MakeInt32()), "external"}};
+    function.blocks.resize(1);
+    auto &instructions = function.blocks[0].instrs;
+
+    const auto append = [&](const LirOpcode op, const LirReg dst, std::vector<LirReg> srcs = {}) -> LirInstr & {
+        LirInstr instruction;
+        instruction.op = op;
+        instruction.dst = dst;
+        instruction.type = TypeRef::MakeInt32();
+        instruction.srcs = std::move(srcs);
+        instructions.push_back(std::move(instruction));
+        return instructions.back();
+    };
+
+    append(LirOpcode::Alloca, 2);
+    append(LirOpcode::Add, 3, {0, 0});
+    append(LirOpcode::Store, LirNoReg, {3, 2});
+    append(LirOpcode::Mul, 4, {0, 0});
+    append(LirOpcode::Store, LirNoReg, {4, 2});
+    append(LirOpcode::Load, 5, {2});
+    append(LirOpcode::Add, 6, {5, 0});
+
+    append(LirOpcode::Alloca, 7);
+    auto &call = append(LirOpcode::Call, 8);
+    call.strArg = "Observe";
+    append(LirOpcode::Store, LirNoReg, {8, 7});
+
+    append(LirOpcode::Store, LirNoReg, {3, 1});
+    append(LirOpcode::Alloca, 9);
+    auto &field = append(LirOpcode::FieldPtr, 10, {9});
+    field.strArg = "field";
+    append(LirOpcode::Store, LirNoReg, {3, 10});
+
+    append(LirOpcode::Add, 11, {0, 0});
+    append(LirOpcode::Mul, 14, {11, 0});
+    append(LirOpcode::Div, 12, {0, 0});
+    auto &namedLoad = append(LirOpcode::Load, 13);
+    namedLoad.strArg = "ExternalValue";
+    function.blocks[0].term = ReturnValue(6, TypeRef::MakeInt32());
+
+    LirModule module;
+    module.funcs.push_back(std::move(function));
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+
+    Optimization::LirDeadCodeElimination pass;
+    const Optimization::PassContext context{BuildProfile::Release};
+    CHECK(pass.Run(package, context) == Optimization::PassChange::Changed);
+
+    const auto &remaining = package.modules[0].funcs[0].blocks[0].instrs;
+    CHECK_FALSE(std::ranges::any_of(remaining, [](const LirInstr &instruction) { return instruction.dst == 7; }));
+    CHECK_FALSE(std::ranges::any_of(remaining, [](const LirInstr &instruction) { return instruction.dst == 11; }));
+    CHECK_FALSE(std::ranges::any_of(remaining, [](const LirInstr &instruction) { return instruction.dst == 14; }));
+    CHECK(std::ranges::count_if(remaining,
+                                [](const LirInstr &instruction) { return instruction.op == LirOpcode::Store; }) == 3);
+    CHECK(std::ranges::any_of(remaining, [](const LirInstr &instruction) { return instruction.dst == 8; }));
+    CHECK(std::ranges::any_of(remaining, [](const LirInstr &instruction) { return instruction.dst == 12; }));
+    CHECK(std::ranges::any_of(remaining, [](const LirInstr &instruction) { return instruction.dst == 13; }));
+    CHECK(std::ranges::any_of(remaining, [](const LirInstr &instruction) { return instruction.dst == 10; }));
+}
+
+TEST_CASE("LIR dead code elimination preserves escaped addresses and observable instructions") {
+    LirFunc function;
+    function.name = "Effects";
+    function.params = {{0, TypeRef::MakePointer(TypeRef::MakeOpaque()), "callee"},
+                       {1, TypeRef::MakeBool(), "condition"}};
+    function.blocks.resize(1);
+
+    LirInstr slot;
+    slot.op = LirOpcode::Alloca;
+    slot.dst = 2;
+    slot.type = TypeRef::MakeInt32();
+    function.blocks[0].instrs.push_back(std::move(slot));
+
+    LirInstr value;
+    value.op = LirOpcode::Const;
+    value.dst = 3;
+    value.type = TypeRef::MakeInt32();
+    value.strArg = "1";
+    function.blocks[0].instrs.push_back(std::move(value));
+
+    LirInstr store;
+    store.op = LirOpcode::Store;
+    store.srcs = {3, 2};
+    store.type = TypeRef::MakeInt32();
+    function.blocks[0].instrs.push_back(std::move(store));
+
+    LirInstr directCall;
+    directCall.op = LirOpcode::Call;
+    directCall.dst = LirNoReg;
+    directCall.srcs = {2};
+    directCall.strArg = "Escape";
+    function.blocks[0].instrs.push_back(std::move(directCall));
+
+    LirInstr indirectCall;
+    indirectCall.op = LirOpcode::CallIndirect;
+    indirectCall.dst = 4;
+    indirectCall.type = TypeRef::MakeInt32();
+    indirectCall.srcs = {0};
+    function.blocks[0].instrs.push_back(std::move(indirectCall));
+
+    LirInstr assertion;
+    assertion.op = LirOpcode::Assert;
+    assertion.dst = LirNoReg;
+    assertion.srcs = {1, 2};
+    function.blocks[0].instrs.push_back(std::move(assertion));
+
+    LirInstr panic;
+    panic.op = LirOpcode::Panic;
+    panic.dst = LirNoReg;
+    panic.srcs = {2};
+    function.blocks[0].instrs.push_back(std::move(panic));
+    function.blocks[0].term = UnreachableTerminator();
+
+    LirModule module;
+    module.funcs.push_back(std::move(function));
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+
+    Optimization::LirDeadCodeElimination pass;
+    const Optimization::PassContext context{BuildProfile::Release};
+    CHECK(pass.Run(package, context) == Optimization::PassChange::None);
+    CHECK(package.modules[0].funcs[0].blocks[0].instrs.size() == 7);
 }
 
 TEST_CASE("pass pipeline reports changes and preserves explicit order") {
