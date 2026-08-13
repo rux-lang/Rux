@@ -145,6 +145,8 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_v
     const double tokenThroughput = seconds > 0.0 ? static_cast<double>(totalTokens) / seconds : 0.0;
     const double compileSpeed = seconds > 0.0 ? static_cast<double>(totalLines) / seconds : 0.0;
     const double throughput = seconds > 0.0 ? static_cast<double>(totalSourceSize) / 1024.0 / 1024.0 / seconds : 0.0;
+    const std::size_t prunedDeclarations =
+        stats.prunedFunctionDefinitions + stats.prunedConstants + stats.prunedVtables + stats.prunedExternDeclarations;
 
     const auto triple = ReportedTriple(targetTriple);
     const std::string canonical = triple ? std::string(triple->CanonicalName()) : std::string(targetTriple);
@@ -175,6 +177,12 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_v
            << "Total source size:           " << FormatSize(totalSourceSize) << '\n'
            << "  Local source size:         " << FormatSize(stats.localSourceSize) << '\n'
            << "  Dependency source size:    " << FormatSize(stats.dependencySourceSize) << "\n\n"
+           << "LIR declarations pruned:     " << FormatNumber(prunedDeclarations) << '\n'
+           << "  Function definitions:      " << FormatNumber(stats.prunedFunctionDefinitions) << '\n'
+           << "  Constants:                 " << FormatNumber(stats.prunedConstants) << '\n'
+           << "  Vtables:                   " << FormatNumber(stats.prunedVtables) << '\n'
+           << "  Extern declarations:       " << FormatNumber(stats.prunedExternDeclarations) << '\n'
+           << "  Estimated IR eliminated:   " << FormatNumber(stats.estimatedLirNodesEliminated) << " nodes\n\n"
            << style.cyan << style.bold << "Output:" << style.reset << '\n'
            << "  Executable:                " << style.cyan << exePath.filename().string() << style.reset << '\n'
            << "  Executable size:           " << FormatSize(stats.executableSize) << '\n'
@@ -237,6 +245,11 @@ std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells
         aggregate.dependencySourceSize += cell.stats.dependencySourceSize;
         aggregate.executableSize += cell.stats.executableSize;
         aggregate.peakMemoryBytes = std::max(aggregate.peakMemoryBytes, cell.stats.peakMemoryBytes);
+        aggregate.prunedFunctionDefinitions += cell.stats.prunedFunctionDefinitions;
+        aggregate.prunedConstants += cell.stats.prunedConstants;
+        aggregate.prunedVtables += cell.stats.prunedVtables;
+        aggregate.prunedExternDeclarations += cell.stats.prunedExternDeclarations;
+        aggregate.estimatedLirNodesEliminated += cell.stats.estimatedLirNodesEliminated;
     }
 
     std::ostringstream output;
@@ -275,7 +288,10 @@ std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells
                << FormatNumber(aggregate.localTokens + aggregate.dependencyTokens) << " tokens | "
                << FormatSize(aggregate.localSourceSize + aggregate.dependencySourceSize) << " source | "
                << FormatSize(aggregate.executableSize) << " artifacts | " << FormatSize(aggregate.peakMemoryBytes)
-               << " peak memory\n";
+               << " peak memory | "
+               << FormatNumber(aggregate.prunedFunctionDefinitions + aggregate.prunedConstants +
+                               aggregate.prunedVtables + aggregate.prunedExternDeclarations)
+               << " LIR declarations pruned\n";
     }
     return output.str();
 }

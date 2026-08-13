@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BuildInfo/ArtifactKind.h"
 #include "Optimization/Pass.h"
 
 #include <algorithm>
@@ -39,7 +40,7 @@ public:
         report.reachedFixedPoint = false;
         for (std::size_t iteration = 0; iteration < fixedPointLimit_; ++iteration) {
             PassChange iterationChange = PassChange::None;
-            const PassContext context{profile_, iteration, fixedPointLimit_, &report.diagnostics};
+            const PassContext context{profile_, iteration, fixedPointLimit_, &report.diagnostics, &report.lirPruning};
             for (const auto &pass : passes_) {
                 if (pass->Run(ir, context) == PassChange::Changed) {
                     iterationChange = PassChange::Changed;
@@ -72,6 +73,8 @@ using LirPassPipeline = PassPipeline<LirPackage>;
 class OptimizationPipeline {
 public:
     [[nodiscard]] static OptimizationPipeline ForProfile(BuildProfile profile, std::size_t fixedPointLimit = 8);
+    [[nodiscard]] static OptimizationPipeline ForProfile(BuildProfile profile, ArtifactKind artifactKind,
+                                                         std::size_t fixedPointLimit = 8);
 
     [[nodiscard]] std::vector<std::string_view> HirPassNames() const;
     [[nodiscard]] std::vector<std::string_view> LirPassNames() const;

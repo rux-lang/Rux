@@ -92,6 +92,11 @@ TEST_CASE("Build summary names the target only when it is not the host") {
 
 TEST_CASE("Detailed build report styles success and section headings") {
     BuildStats stats;
+    stats.prunedFunctionDefinitions = 2;
+    stats.prunedConstants = 1;
+    stats.prunedVtables = 1;
+    stats.prunedExternDeclarations = 3;
+    stats.estimatedLirNodesEliminated = 42;
     const auto plain = FormatBuildStats("Bin/App.exe", "Release", HostTargetTriple(), stats, false);
     const auto colored = FormatBuildStats("Bin/App.exe", "Release", HostTargetTriple(), stats, true);
 
@@ -99,6 +104,8 @@ TEST_CASE("Detailed build report styles success and section headings") {
     CHECK(colored.contains("\033[32m\033[1mBuild finished successfully.\033[0m"));
     CHECK(colored.contains("\033[36m\033[1mOutput:\033[0m"));
     CHECK(colored.contains("\033[36m\033[1mPerformance:\033[0m"));
+    CHECK(plain.contains("LIR declarations pruned:     7\n"));
+    CHECK(plain.contains("Estimated IR eliminated:   42 nodes\n"));
 }
 
 TEST_CASE("Detailed build report names the target it built for") {
@@ -156,6 +163,8 @@ TEST_CASE("Build matrix stats report includes per-cell and aggregate values with
     stats.dependencySourceSize = 2 * 1024;
     stats.executableSize = 16 * 1024;
     stats.peakMemoryBytes = 32 * 1024;
+    stats.prunedFunctionDefinitions = 2;
+    stats.prunedExternDeclarations = 1;
     const std::vector<BuildCellReport> cells{{.profile = Rux::BuildProfile::Release,
                                               .target = *target,
                                               .outputDirectory = "Bin/Release/windows-aarch64",
@@ -170,7 +179,7 @@ TEST_CASE("Build matrix stats report includes per-cell and aggregate values with
     CHECK(report.contains("LOC"));
     CHECK(report.contains("Tokens"));
     CHECK(report.contains("Aggregate statistics: 3 files | 150 LOC | 1,000 tokens | 8 KB source | 16 KB artifacts | "
-                          "32 KB peak memory"));
+                          "32 KB peak memory | 3 LIR declarations pruned"));
     CHECK(report.contains("\033[32m\033[1mBuilt"));
     CHECK_FALSE(report.contains("\033[31m"));
 }

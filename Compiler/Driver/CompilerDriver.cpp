@@ -519,7 +519,9 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
         std::filesystem::create_directories(hirDir);
         HirPrinter::Dump(hirPackage, hirDir / "hir.txt");
     }
-    auto optimizationPipeline = Optimization::OptimizationPipeline::ForProfile(compileTimeContext.profile);
+    const ArtifactKind artifactKind = PackageArtifactKind(opts.manifest.package.type);
+    auto optimizationPipeline =
+        Optimization::OptimizationPipeline::ForProfile(compileTimeContext.profile, artifactKind);
     const auto hirOptimization = optimizationPipeline.RunHir(hirPackage);
     if (!hirOptimization.reachedFixedPoint) {
         Emit(ErrorDiagnostic("HIR optimization did not reach a fixed point after " +
@@ -544,6 +546,11 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
                              std::to_string(lirOptimization.iterations) + " iterations"));
         return false;
     }
+    stats.prunedFunctionDefinitions = lirOptimization.lirPruning.functionDefinitions;
+    stats.prunedConstants = lirOptimization.lirPruning.constants;
+    stats.prunedVtables = lirOptimization.lirPruning.vtables;
+    stats.prunedExternDeclarations = lirOptimization.lirPruning.externDeclarations;
+    stats.estimatedLirNodesEliminated = lirOptimization.lirPruning.estimatedIrNodes;
     if (opts.dumpLir) {
         auto lirDir = root / "Temp" / "Lir";
         std::filesystem::create_directories(lirDir);
@@ -615,7 +622,6 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     }
     const auto binDir = opts.isTest ? ResolveTestOutputDir(root, opts.manifest, opts.target)
                                     : ResolveArtifactOutputDir(root, opts.manifest, opts.profile, opts.target);
-    const ArtifactKind artifactKind = PackageArtifactKind(opts.manifest.package.type);
     const OS targetOs = opts.target.Os();
     const Arch targetArch = opts.target.Architecture();
     artifactPath = binDir / OutputFileName(opts.manifest.package.name.Text(), artifactKind, targetOs);

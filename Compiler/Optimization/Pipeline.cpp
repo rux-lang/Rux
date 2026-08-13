@@ -4,6 +4,7 @@
 #include "Optimization/LirCfgPasses.h"
 #include "Optimization/LirConstantPropagation.h"
 #include "Optimization/LirDeadCodeElimination.h"
+#include "Optimization/LirDeclarationPruner.h"
 
 #include <memory>
 
@@ -21,6 +22,15 @@ OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile
         pipeline.lir_.Add(std::make_unique<LirConstantPropagation>());
         pipeline.lir_.Add(std::make_unique<LirDeadCodeElimination>());
         pipeline.lir_.Add(std::make_unique<LirCfgCleanup>());
+    }
+    return pipeline;
+}
+
+OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile, const ArtifactKind artifactKind,
+                                                      const std::size_t fixedPointLimit) {
+    OptimizationPipeline pipeline = ForProfile(profile, fixedPointLimit);
+    if (profile == BuildProfile::Release) {
+        pipeline.lir_.Add(std::make_unique<LirDeclarationPruner>(artifactKind));
     }
     return pipeline;
 }

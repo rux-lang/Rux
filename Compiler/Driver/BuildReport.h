@@ -36,6 +36,11 @@ struct BuildStats {
     std::uintmax_t dependencySourceSize = 0;
     std::uintmax_t executableSize = 0;
     std::uintmax_t peakMemoryBytes = 0;
+    std::size_t prunedFunctionDefinitions = 0;
+    std::size_t prunedConstants = 0;
+    std::size_t prunedVtables = 0;
+    std::size_t prunedExternDeclarations = 0;
+    std::size_t estimatedLirNodesEliminated = 0;
 };
 
 struct BuildCellReport {

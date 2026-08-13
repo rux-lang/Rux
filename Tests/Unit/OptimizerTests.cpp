@@ -1,3 +1,5 @@
+#include "CodeGen/AArch64/RcuEmitter.h"
+#include "CodeGen/X86_64/RcuEmitter.h"
 #include "Ir/Hir/Hir.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
@@ -109,17 +111,53 @@ LirTerminator UnreachableTerminator() {
     terminator.kind = LirTermKind::Unreachable;
     return terminator;
 }
+
+LirFunc ReturningFunction(std::string name) {
+    LirFunc function;
+    function.name = std::move(name);
+    function.blocks.resize(1);
+    function.blocks[0].label = "entry";
+    function.blocks[0].term = ReturnValue();
+    return function;
+}
+
+LirFunc ExternFunction(std::string name, const bool isPublic = false) {
+    LirFunc function;
+    function.name = std::move(name);
+    function.isPublic = isPublic;
+    function.isExtern = true;
+    return function;
+}
+
+LirConstDecl Constant(std::string name, const bool isPublic = false, std::vector<std::string> elements = {}) {
+    LirConstDecl constant;
+    constant.name = std::move(name);
+    constant.isPublic = isPublic;
+    constant.elements = std::move(elements);
+    return constant;
+}
+
+bool HasRcuSymbol(const std::vector<RcuFile> &files, const std::string_view name) {
+    return std::ranges::any_of(files, [name](const RcuFile &file) {
+        return std::ranges::any_of(file.symbols, [name](const RcuSymbol &symbol) { return symbol.name == name; });
+    });
+}
 } // namespace
 
 TEST_CASE("optimization pipelines are selected explicitly by profile") {
     auto debug = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Debug);
     auto release = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    auto artifactRelease =
+        Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release, ArtifactKind::Executable);
 
     CHECK(debug.HirPassNames().empty());
     CHECK(debug.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier"});
     CHECK(release.HirPassNames() == std::vector<std::string_view>{"hir-constant-folder"});
     CHECK(release.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier", "lir-constant-copy-propagation",
                                                                   "lir-dead-code-elimination", "lir-cfg-cleanup"});
+    CHECK(artifactRelease.LirPassNames() ==
+          std::vector<std::string_view>{"lir-cfg-verifier", "lir-constant-copy-propagation",
+                                        "lir-dead-code-elimination", "lir-cfg-cleanup", "lir-declaration-pruner"});
 }
 
 TEST_CASE("LIR CFG verifier reports malformed control flow without traversing invalid blocks") {
@@ -733,6 +771,155 @@ TEST_CASE("library LIR reachability roots public code and data for both artifact
     CHECK(shared.IsReachable(Id{Kind::ExternVariable, 0, 1}));
     CHECK_FALSE(shared.IsReachable(Id{Kind::ExternVariable, 0, 2}));
     CHECK(shared.ReachableDeclarations().size() == 9);
+}
+
+TEST_CASE("Release prunes unreachable declarations deterministically while Debug retains them") {
+    LirModule module;
+    module.name = "Program";
+    module.funcs.push_back(ReturningFunction("Main"));
+    module.funcs.push_back(ReturningFunction("Live"));
+    module.funcs.push_back(ReturningFunction("Dead"));
+    module.funcs.push_back(ExternFunction("UsedExtern"));
+    module.funcs.push_back(ExternFunction("UnusedExtern"));
+
+    const auto appendReference = [&](const LirOpcode opcode, std::string name) {
+        LirInstr instruction;
+        instruction.op = opcode;
+        instruction.strArg = std::move(name);
+        module.funcs[0].blocks[0].instrs.push_back(std::move(instruction));
+    };
+    appendReference(LirOpcode::Call, "Live");
+    appendReference(LirOpcode::Call, "UsedExtern");
+    appendReference(LirOpcode::Load, "LiveData");
+    appendReference(LirOpcode::Load, "LiveVariable");
+    appendReference(LirOpcode::Load, "LiveVtable");
+
+    module.consts = {Constant("LiveData"), Constant("DeadData", false, {"1", "2"})};
+    module.vtables = {{"LiveVtable", {"Live"}}, {"DeadVtable", {"Dead"}}};
+    module.externVars = {{"LiveVariable", false, TypeRef::MakeInt32()},
+                         {"UnusedVariable", false, TypeRef::MakeInt32()}};
+
+    LirPackage original;
+    original.modules.push_back(std::move(module));
+    auto debugPackage = original;
+    auto firstReleasePackage = original;
+    auto secondReleasePackage = original;
+
+    auto debugPipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Debug, ArtifactKind::Executable);
+    const auto debugReport = debugPipeline.RunLir(debugPackage);
+    REQUIRE(debugReport.reachedFixedPoint);
+    CHECK(debugReport.lirPruning.TotalDeclarations() == 0);
+    CHECK(debugPackage.modules[0].funcs.size() == 5);
+    CHECK(debugPackage.modules[0].consts.size() == 2);
+    CHECK(debugPackage.modules[0].vtables.size() == 2);
+    CHECK(debugPackage.modules[0].externVars.size() == 2);
+
+    auto firstPipeline =
+        Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release, ArtifactKind::Executable);
+    auto secondPipeline =
+        Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release, ArtifactKind::Executable);
+    const auto firstReport = firstPipeline.RunLir(firstReleasePackage);
+    const auto secondReport = secondPipeline.RunLir(secondReleasePackage);
+    REQUIRE(firstReport.reachedFixedPoint);
+    REQUIRE(secondReport.reachedFixedPoint);
+
+    const auto &stats = firstReport.lirPruning;
+    CHECK(stats.functionDefinitions == 1);
+    CHECK(stats.constants == 1);
+    CHECK(stats.vtables == 1);
+    CHECK(stats.externDeclarations == 2);
+    CHECK(stats.TotalDeclarations() == 5);
+    CHECK(stats.estimatedIrNodes == 10);
+    CHECK(secondReport.lirPruning.functionDefinitions == stats.functionDefinitions);
+    CHECK(secondReport.lirPruning.constants == stats.constants);
+    CHECK(secondReport.lirPruning.vtables == stats.vtables);
+    CHECK(secondReport.lirPruning.externDeclarations == stats.externDeclarations);
+    CHECK(secondReport.lirPruning.estimatedIrNodes == stats.estimatedIrNodes);
+
+    const auto declarationNames = [](const LirPackage &package) {
+        std::vector<std::string> names;
+        const auto &resultModule = package.modules[0];
+        for (const auto &function : resultModule.funcs) {
+            names.push_back(function.name);
+        }
+        for (const auto &constant : resultModule.consts) {
+            names.push_back(constant.name);
+        }
+        for (const auto &vtable : resultModule.vtables) {
+            names.push_back(vtable.label);
+        }
+        for (const auto &variable : resultModule.externVars) {
+            names.push_back(variable.name);
+        }
+        return names;
+    };
+    CHECK(declarationNames(firstReleasePackage) ==
+          std::vector<std::string>{"Main", "Live", "UsedExtern", "LiveData", "LiveVtable", "LiveVariable"});
+    CHECK(declarationNames(secondReleasePackage) == declarationNames(firstReleasePackage));
+}
+
+TEST_CASE("Release library pruning preserves public APIs and their private dependencies") {
+    LirModule module;
+    module.name = "Library";
+    module.funcs.push_back(ReturningFunction("PublicApi"));
+    module.funcs.back().isPublic = true;
+    module.funcs.push_back(ReturningFunction("PrivateHelper"));
+    module.funcs.push_back(ReturningFunction("DeadPrivate"));
+    module.funcs.push_back(ExternFunction("PublicExtern", true));
+    LirInstr call;
+    call.op = LirOpcode::Call;
+    call.strArg = "PrivateHelper";
+    module.funcs[0].blocks[0].instrs.push_back(std::move(call));
+    module.consts = {Constant("PublicData", true), Constant("DeadData")};
+    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32()},
+                         {"UnusedVariable", false, TypeRef::MakeInt32()}};
+
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release, ArtifactKind::SharedLibrary);
+    const auto report = pipeline.RunLir(package);
+
+    REQUIRE(report.reachedFixedPoint);
+    CHECK(report.lirPruning.functionDefinitions == 1);
+    CHECK(report.lirPruning.constants == 1);
+    CHECK(report.lirPruning.externDeclarations == 1);
+    REQUIRE(package.modules[0].funcs.size() == 3);
+    CHECK(package.modules[0].funcs[0].name == "PublicApi");
+    CHECK(package.modules[0].funcs[1].name == "PrivateHelper");
+    CHECK(package.modules[0].funcs[2].name == "PublicExtern");
+    REQUIRE(package.modules[0].consts.size() == 1);
+    CHECK(package.modules[0].consts[0].name == "PublicData");
+    REQUIRE(package.modules[0].externVars.size() == 1);
+    CHECK(package.modules[0].externVars[0].name == "PublicVariable");
+}
+
+TEST_CASE("both RCU backends omit pruned Release symbols and retain Debug symbols") {
+    LirModule module;
+    module.name = "Symbols";
+    module.funcs.push_back(ReturningFunction("Main"));
+    module.funcs.push_back(ReturningFunction("Unused"));
+    LirPackage original;
+    original.modules.push_back(std::move(module));
+    auto debugPackage = original;
+    auto releasePackage = original;
+
+    auto debugPipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Debug, ArtifactKind::Executable);
+    auto releasePipeline =
+        Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release, ArtifactKind::Executable);
+    REQUIRE(debugPipeline.RunLir(debugPackage).reachedFixedPoint);
+    REQUIRE(releasePipeline.RunLir(releasePackage).reachedFixedPoint);
+
+    const auto x86Debug = RcuEmitter(debugPackage, "test", Target::OS::Linux).Generate();
+    const auto x86Release = RcuEmitter(releasePackage, "test", Target::OS::Linux).Generate();
+    const auto aarch64Debug = AArch64RcuEmitter(debugPackage, "test", Target::OS::Linux).Generate();
+    const auto aarch64Release = AArch64RcuEmitter(releasePackage, "test", Target::OS::Linux).Generate();
+
+    CHECK(HasRcuSymbol(x86Debug, "Unused"));
+    CHECK_FALSE(HasRcuSymbol(x86Release, "Unused"));
+    CHECK(HasRcuSymbol(aarch64Debug, "Unused"));
+    CHECK_FALSE(HasRcuSymbol(aarch64Release, "Unused"));
+    CHECK(HasRcuSymbol(x86Release, "Main"));
+    CHECK(HasRcuSymbol(aarch64Release, "Main"));
 }
 
 TEST_CASE("pass pipeline reports changes and preserves explicit order") {
