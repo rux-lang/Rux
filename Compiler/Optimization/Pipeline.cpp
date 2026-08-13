@@ -1,6 +1,7 @@
 #include "Optimization/Pipeline.h"
 
 #include "Optimization/HirConstantFolder.h"
+#include "Optimization/LirCfgPasses.h"
 
 #include <memory>
 
@@ -12,8 +13,10 @@ OptimizationPipeline::OptimizationPipeline(const BuildProfile profile, const std
 
 OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile, const std::size_t fixedPointLimit) {
     OptimizationPipeline pipeline(profile, fixedPointLimit);
+    pipeline.lir_.Add(std::make_unique<LirCfgVerifier>());
     if (profile == BuildProfile::Release) {
         pipeline.hir_.Add(std::make_unique<HirConstantFolder>());
+        pipeline.lir_.Add(std::make_unique<LirCfgCleanup>());
     }
     return pipeline;
 }

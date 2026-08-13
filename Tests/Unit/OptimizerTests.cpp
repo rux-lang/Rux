@@ -75,6 +75,36 @@ private:
     std::vector<std::string_view> &runs_;
     std::size_t changesRemaining_;
 };
+
+LirTerminator JumpTo(const std::uint32_t target) {
+    LirTerminator terminator;
+    terminator.kind = LirTermKind::Jump;
+    terminator.trueTarget = target;
+    return terminator;
+}
+
+LirTerminator BranchTo(const LirReg condition, const std::uint32_t trueTarget, const std::uint32_t falseTarget) {
+    LirTerminator terminator;
+    terminator.kind = LirTermKind::Branch;
+    terminator.cond = condition;
+    terminator.trueTarget = trueTarget;
+    terminator.falseTarget = falseTarget;
+    return terminator;
+}
+
+LirTerminator ReturnValue(const std::optional<LirReg> value = std::nullopt, TypeRef type = {}) {
+    LirTerminator terminator;
+    terminator.kind = LirTermKind::Return;
+    terminator.retVal = value;
+    terminator.retType = std::move(type);
+    return terminator;
+}
+
+LirTerminator UnreachableTerminator() {
+    LirTerminator terminator;
+    terminator.kind = LirTermKind::Unreachable;
+    return terminator;
+}
 } // namespace
 
 TEST_CASE("optimization pipelines are selected explicitly by profile") {
@@ -82,9 +112,149 @@ TEST_CASE("optimization pipelines are selected explicitly by profile") {
     auto release = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
 
     CHECK(debug.HirPassNames().empty());
-    CHECK(debug.LirPassNames().empty());
+    CHECK(debug.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier"});
     CHECK(release.HirPassNames() == std::vector<std::string_view>{"hir-constant-folder"});
-    CHECK(release.LirPassNames().empty());
+    CHECK(release.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier", "lir-cfg-cleanup"});
+}
+
+TEST_CASE("LIR CFG verifier reports malformed control flow without traversing invalid blocks") {
+    LirFunc function;
+    function.name = "Broken";
+    function.blocks.resize(3);
+    function.blocks[0].label = "entry";
+    function.blocks[0].term = BranchTo(0, 2, 7);
+    function.blocks[1].label = "unterminated";
+    LirInstr unexpectedPhi;
+    unexpectedPhi.dst = 1;
+    unexpectedPhi.op = LirOpcode::Phi;
+    unexpectedPhi.type = TypeRef::MakeInt32();
+    unexpectedPhi.phiPreds = {{0, 0}};
+    function.blocks[1].instrs.push_back(std::move(unexpectedPhi));
+    function.blocks[2].label = "target";
+    LirInstr incompletePhi;
+    incompletePhi.dst = 2;
+    incompletePhi.op = LirOpcode::Phi;
+    incompletePhi.type = TypeRef::MakeInt32();
+    function.blocks[2].instrs.push_back(std::move(incompletePhi));
+    function.blocks[2].term = ReturnValue();
+
+    LirModule module;
+    module.funcs.push_back(std::move(function));
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Debug);
+    const auto report = pipeline.RunLir(package);
+
+    REQUIRE(report.HasErrors());
+    CHECK_FALSE(report.reachedFixedPoint);
+    CHECK(report.iterations == 1);
+    CHECK(report.diagnostics.size() == 4);
+    CHECK(report.diagnostics[0].message.find("branch terminator targets invalid block 7") != std::string::npos);
+    CHECK(report.diagnostics[1].message.find("block has no terminator") != std::string::npos);
+    CHECK(report.diagnostics[2].message.find("phi names block 0, which is not an actual predecessor") !=
+          std::string::npos);
+    CHECK(report.diagnostics[3].message.find("phi has no value for predecessor block 0") != std::string::npos);
+}
+
+TEST_CASE("LIR CFG cleanup folds branches and remaps reachable blocks and phi predecessors") {
+    LirFunc function;
+    function.name = "Choose";
+    function.blocks.resize(5);
+    function.blocks[0].label = "entry";
+    function.blocks[1].label = "untaken";
+    function.blocks[2].label = "taken";
+    function.blocks[3].label = "orphan";
+    function.blocks[4].label = "merge";
+
+    LirInstr condition;
+    condition.dst = 0;
+    condition.op = LirOpcode::Const;
+    condition.type = TypeRef::MakeBool();
+    condition.strArg = "true";
+    function.blocks[0].instrs.push_back(std::move(condition));
+    function.blocks[0].term = BranchTo(0, 2, 1);
+
+    function.blocks[1].term = JumpTo(4);
+    function.blocks[2].term = JumpTo(4);
+    function.blocks[3].term = UnreachableTerminator();
+
+    LirInstr phi;
+    phi.dst = 3;
+    phi.op = LirOpcode::Phi;
+    phi.type = TypeRef::MakeInt32();
+    phi.phiPreds = {{1, 1}, {2, 2}};
+    function.blocks[4].instrs.push_back(std::move(phi));
+    function.blocks[4].term = ReturnValue(LirReg{3}, TypeRef::MakeInt32());
+
+    LirModule module;
+    module.funcs.push_back(std::move(function));
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    const auto report = pipeline.RunLir(package);
+
+    CHECK_FALSE(report.HasErrors());
+    CHECK(report.change == Optimization::PassChange::Changed);
+    CHECK(report.reachedFixedPoint);
+    REQUIRE(package.modules[0].funcs[0].blocks.size() == 3);
+    const auto &blocks = package.modules[0].funcs[0].blocks;
+    CHECK(blocks[0].label == "entry");
+    CHECK(blocks[1].label == "taken");
+    CHECK(blocks[2].label == "merge");
+    REQUIRE(blocks[0].term);
+    CHECK(blocks[0].term->kind == LirTermKind::Jump);
+    CHECK(blocks[0].term->trueTarget == 1);
+    REQUIRE(blocks[1].term);
+    CHECK(blocks[1].term->trueTarget == 2);
+    REQUIRE(blocks[2].instrs.size() == 1);
+    CHECK(blocks[2].instrs[0].phiPreds == std::vector<std::pair<LirReg, std::uint32_t>>{{2, 1}});
+}
+
+TEST_CASE("LIR CFG cleanup folds a known switch to its matching case") {
+    LirFunc function;
+    function.name = "Select";
+    function.blocks.resize(4);
+    function.blocks[0].label = "entry";
+    function.blocks[1].label = "one";
+    function.blocks[2].label = "two";
+    function.blocks[3].label = "fallback";
+
+    LirInstr condition;
+    condition.dst = 0;
+    condition.op = LirOpcode::Const;
+    condition.type = TypeRef::MakeInt32();
+    condition.strArg = "2";
+    function.blocks[0].instrs.push_back(std::move(condition));
+    LirTerminator switchTerminator;
+    switchTerminator.kind = LirTermKind::Switch;
+    switchTerminator.cond = 0;
+    switchTerminator.retType = TypeRef::MakeInt32();
+    switchTerminator.defaultTarget = 3;
+    switchTerminator.cases = {{"1", 1}, {"2", 2}};
+    function.blocks[0].term = std::move(switchTerminator);
+    function.blocks[1].term = ReturnValue();
+    function.blocks[2].term = ReturnValue();
+    function.blocks[3].term = ReturnValue();
+
+    LirModule module;
+    module.funcs.push_back(std::move(function));
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    const auto report = pipeline.RunLir(package);
+
+    CHECK_FALSE(report.HasErrors());
+    CHECK(report.reachedFixedPoint);
+    REQUIRE(package.modules[0].funcs[0].blocks.size() == 2);
+    const auto &blocks = package.modules[0].funcs[0].blocks;
+    CHECK(blocks[0].label == "entry");
+    CHECK(blocks[1].label == "two");
+    REQUIRE(blocks[0].term);
+    CHECK(blocks[0].term->kind == LirTermKind::Jump);
+    CHECK(blocks[0].term->trueTarget == 1);
 }
 
 TEST_CASE("pass pipeline reports changes and preserves explicit order") {

@@ -39,11 +39,15 @@ public:
         report.reachedFixedPoint = false;
         for (std::size_t iteration = 0; iteration < fixedPointLimit_; ++iteration) {
             PassChange iterationChange = PassChange::None;
-            const PassContext context{profile_, iteration, fixedPointLimit_};
+            const PassContext context{profile_, iteration, fixedPointLimit_, &report.diagnostics};
             for (const auto &pass : passes_) {
                 if (pass->Run(ir, context) == PassChange::Changed) {
                     iterationChange = PassChange::Changed;
                     report.change = PassChange::Changed;
+                }
+                if (report.HasErrors()) {
+                    ++report.iterations;
+                    return report;
                 }
             }
 

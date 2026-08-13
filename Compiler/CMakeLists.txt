@@ -121,8 +121,9 @@ target_link_libraries(RuxLir PUBLIC RuxSemantic)
 rux_add_component(RuxOptimization
     Optimization/ConstantEvaluator.cpp
     Optimization/HirConstantFolder.cpp
+    Optimization/LirCfgPasses.cpp
     Optimization/Pipeline.cpp)
-target_link_libraries(RuxOptimization PUBLIC RuxBuildInfo RuxHir RuxLir)
+target_link_libraries(RuxOptimization PUBLIC RuxBuildInfo RuxDiagnostics RuxHir RuxLir)
 
 rux_add_component(RuxLowering
     Lowering/AstToHir/AstToHir.cpp

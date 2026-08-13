@@ -536,6 +536,9 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     HirToLirLowering lirLowering(std::move(hirPackage), compileTimeContext.target);
     auto lirPackage = lirLowering.Generate();
     const auto lirOptimization = optimizationPipeline.RunLir(lirPackage);
+    if (EmitAll(lirOptimization.diagnostics)) {
+        return false;
+    }
     if (!lirOptimization.reachedFixedPoint) {
         Emit(ErrorDiagnostic("LIR optimization did not reach a fixed point after " +
                              std::to_string(lirOptimization.iterations) + " iterations"));
