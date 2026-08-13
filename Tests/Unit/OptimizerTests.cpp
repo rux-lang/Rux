@@ -114,7 +114,8 @@ TEST_CASE("optimization pipelines are selected explicitly by profile") {
     CHECK(debug.HirPassNames().empty());
     CHECK(debug.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier"});
     CHECK(release.HirPassNames() == std::vector<std::string_view>{"hir-constant-folder"});
-    CHECK(release.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier", "lir-cfg-cleanup"});
+    CHECK(release.LirPassNames() ==
+          std::vector<std::string_view>{"lir-cfg-verifier", "lir-constant-copy-propagation", "lir-cfg-cleanup"});
 }
 
 TEST_CASE("LIR CFG verifier reports malformed control flow without traversing invalid blocks") {
@@ -255,6 +256,221 @@ TEST_CASE("LIR CFG cleanup folds a known switch to its matching case") {
     REQUIRE(blocks[0].term);
     CHECK(blocks[0].term->kind == LirTermKind::Jump);
     CHECK(blocks[0].term->trueTarget == 1);
+}
+
+TEST_CASE("LIR propagation joins constants and exposes a constant branch to CFG cleanup") {
+    LirFunc function;
+    function.name = "JoinConstants";
+    function.params.push_back({0, TypeRef::MakeBool(), "condition"});
+    function.blocks.resize(6);
+    function.blocks[0].label = "entry";
+    function.blocks[1].label = "left";
+    function.blocks[2].label = "right";
+    function.blocks[3].label = "merge";
+    function.blocks[4].label = "taken";
+    function.blocks[5].label = "untaken";
+    function.blocks[0].term = BranchTo(0, 1, 2);
+
+    LirInstr left;
+    left.dst = 1;
+    left.op = LirOpcode::Const;
+    left.type = TypeRef::MakeInt32();
+    left.strArg = "40";
+    function.blocks[1].instrs.push_back(std::move(left));
+    function.blocks[1].term = JumpTo(3);
+
+    LirInstr right;
+    right.dst = 2;
+    right.op = LirOpcode::Const;
+    right.type = TypeRef::MakeInt32();
+    right.strArg = "40";
+    function.blocks[2].instrs.push_back(std::move(right));
+    function.blocks[2].term = JumpTo(3);
+
+    LirInstr phi;
+    phi.dst = 3;
+    phi.op = LirOpcode::Phi;
+    phi.type = TypeRef::MakeInt32();
+    phi.phiPreds = {{1, 1}, {2, 2}};
+    function.blocks[3].instrs.push_back(std::move(phi));
+
+    LirInstr two;
+    two.dst = 4;
+    two.op = LirOpcode::Const;
+    two.type = TypeRef::MakeInt32();
+    two.strArg = "2";
+    function.blocks[3].instrs.push_back(std::move(two));
+
+    LirInstr sum;
+    sum.dst = 5;
+    sum.op = LirOpcode::Add;
+    sum.type = TypeRef::MakeInt32();
+    sum.srcs = {3, 4};
+    function.blocks[3].instrs.push_back(std::move(sum));
+
+    LirInstr expected;
+    expected.dst = 6;
+    expected.op = LirOpcode::Const;
+    expected.type = TypeRef::MakeInt32();
+    expected.strArg = "42";
+    function.blocks[3].instrs.push_back(std::move(expected));
+
+    LirInstr comparison;
+    comparison.dst = 7;
+    comparison.op = LirOpcode::CmpEq;
+    comparison.type = TypeRef::MakeBool();
+    comparison.srcs = {5, 6};
+    function.blocks[3].instrs.push_back(std::move(comparison));
+    function.blocks[3].term = BranchTo(7, 4, 5);
+    function.blocks[4].term = ReturnValue();
+    function.blocks[5].term = ReturnValue();
+
+    LirModule module;
+    module.funcs.push_back(std::move(function));
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    const auto report = pipeline.RunLir(package);
+
+    CHECK_FALSE(report.HasErrors());
+    CHECK(report.reachedFixedPoint);
+    const auto &blocks = package.modules[0].funcs[0].blocks;
+    REQUIRE(blocks.size() == 5);
+    REQUIRE(blocks[3].instrs.size() == 5);
+    CHECK(blocks[3].instrs[0].op == LirOpcode::Const);
+    CHECK(blocks[3].instrs[0].strArg == "40");
+    CHECK(blocks[3].instrs[2].op == LirOpcode::Const);
+    CHECK(blocks[3].instrs[2].strArg == "42");
+    CHECK(blocks[3].instrs[4].op == LirOpcode::Const);
+    CHECK(blocks[3].instrs[4].strArg == "true");
+    REQUIRE(blocks[3].term);
+    CHECK(blocks[3].term->kind == LirTermKind::Jump);
+    CHECK(blocks[4].label == "taken");
+}
+
+TEST_CASE("LIR propagation copies only into pure users") {
+    LirFunc function;
+    function.name = "CopyJoin";
+    function.params = {{0, TypeRef::MakeBool(), "condition"}, {1, TypeRef::MakeInt32(), "value"}};
+    function.blocks.resize(4);
+    function.blocks[0].term = BranchTo(0, 1, 2);
+    function.blocks[1].term = JumpTo(3);
+    function.blocks[2].term = JumpTo(3);
+
+    LirInstr phi;
+    phi.dst = 2;
+    phi.op = LirOpcode::Phi;
+    phi.type = TypeRef::MakeInt32();
+    phi.phiPreds = {{1, 1}, {1, 2}};
+    function.blocks[3].instrs.push_back(std::move(phi));
+
+    LirInstr one;
+    one.dst = 3;
+    one.op = LirOpcode::Const;
+    one.type = TypeRef::MakeInt32();
+    one.strArg = "1";
+    function.blocks[3].instrs.push_back(std::move(one));
+
+    LirInstr add;
+    add.dst = 4;
+    add.op = LirOpcode::Add;
+    add.type = TypeRef::MakeInt32();
+    add.srcs = {2, 3};
+    function.blocks[3].instrs.push_back(std::move(add));
+
+    LirInstr call;
+    call.dst = 5;
+    call.op = LirOpcode::Call;
+    call.type = TypeRef::MakeInt32();
+    call.strArg = "Observe";
+    call.srcs = {2};
+    function.blocks[3].instrs.push_back(std::move(call));
+
+    LirInstr load;
+    load.dst = 6;
+    load.op = LirOpcode::Load;
+    load.type = TypeRef::MakeInt32();
+    load.srcs = {2};
+    function.blocks[3].instrs.push_back(std::move(load));
+    function.blocks[3].term = ReturnValue(4, TypeRef::MakeInt32());
+
+    LirModule module;
+    module.funcs.push_back(std::move(function));
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    const auto report = pipeline.RunLir(package);
+
+    CHECK_FALSE(report.HasErrors());
+    CHECK(report.reachedFixedPoint);
+    const auto &instructions = package.modules[0].funcs[0].blocks[3].instrs;
+    CHECK(instructions[2].srcs == std::vector<LirReg>{1, 3});
+    CHECK(instructions[3].srcs == std::vector<LirReg>{2});
+    CHECK(instructions[4].srcs == std::vector<LirReg>{2});
+    CHECK(instructions[3].op == LirOpcode::Call);
+    CHECK(instructions[4].op == LirOpcode::Load);
+}
+
+TEST_CASE("LIR propagation stops at conflicting joins and unsupported evaluation") {
+    LirFunc function;
+    function.name = "ConflictingJoin";
+    function.params.push_back({0, TypeRef::MakeBool(), "condition"});
+    function.blocks.resize(4);
+    function.blocks[0].term = BranchTo(0, 1, 2);
+
+    LirInstr one;
+    one.dst = 1;
+    one.op = LirOpcode::Const;
+    one.type = TypeRef::MakeInt32();
+    one.strArg = "1";
+    function.blocks[1].instrs.push_back(std::move(one));
+    function.blocks[1].term = JumpTo(3);
+
+    LirInstr two;
+    two.dst = 2;
+    two.op = LirOpcode::Const;
+    two.type = TypeRef::MakeInt32();
+    two.strArg = "2";
+    function.blocks[2].instrs.push_back(std::move(two));
+    function.blocks[2].term = JumpTo(3);
+
+    LirInstr phi;
+    phi.dst = 3;
+    phi.op = LirOpcode::Phi;
+    phi.type = TypeRef::MakeInt32();
+    phi.phiPreds = {{1, 1}, {2, 2}};
+    function.blocks[3].instrs.push_back(std::move(phi));
+
+    LirInstr zero;
+    zero.dst = 4;
+    zero.op = LirOpcode::Const;
+    zero.type = TypeRef::MakeInt32();
+    zero.strArg = "0";
+    function.blocks[3].instrs.push_back(std::move(zero));
+
+    LirInstr division;
+    division.dst = 5;
+    division.op = LirOpcode::Div;
+    division.type = TypeRef::MakeInt32();
+    division.srcs = {1, 4};
+    function.blocks[3].instrs.push_back(std::move(division));
+    function.blocks[3].term = ReturnValue(3, TypeRef::MakeInt32());
+
+    LirModule module;
+    module.funcs.push_back(std::move(function));
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    const auto report = pipeline.RunLir(package);
+
+    CHECK_FALSE(report.HasErrors());
+    CHECK(report.reachedFixedPoint);
+    const auto &instructions = package.modules[0].funcs[0].blocks[3].instrs;
+    CHECK(instructions[0].op == LirOpcode::Phi);
+    CHECK(instructions[2].op == LirOpcode::Div);
 }
 
 TEST_CASE("pass pipeline reports changes and preserves explicit order") {
