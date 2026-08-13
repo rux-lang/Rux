@@ -2,14 +2,13 @@
 
 #include "Lexer/Lexer.h"
 #include "Semantic/ConditionalCompilation.h"
+#include "Semantic/Detail/SemanticAnalyzerContext.h"
 #include "Semantic/PrimitiveConstants.h"
-#include "Semantic/SemanticProgramIndex.h"
 #include "Semantic/Type.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
 
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <cctype>
 #include <charconv>
@@ -23,169 +22,31 @@
 namespace Rux {
 using Layout::AlignUp;
 
-namespace {
-// These names are part of the language's primitive type set, but the current
-// type system and backends do not implement their representations yet. Keep
-// them reserved so they cannot silently become user-defined types.
-constexpr std::array<std::string_view, 20> UnimplementedPrimitiveTypes{
-    "int128",   "int256",   "int512", "uint128", "uint256", "uint512", "float8", "float16", "float80", "float128",
-    "float256", "float512", "bool64", "bool128", "bool256", "bool512", "char64", "char128", "char256", "char512",
-};
-
-bool IsUnimplementedPrimitiveType(const std::string_view name) {
-    return std::ranges::find(UnimplementedPrimitiveTypes, name) != UnimplementedPrimitiveTypes.end();
-}
-} // namespace
-
 using SemanticDetail::Scope;
-using SemanticDetail::SemanticProgramIndex;
+using SemanticDetail::SemanticAnalyzerContext;
 using SemanticDetail::Symbol;
 
-// Internal: Analyzer
-class Analyzer {
+class SemanticAnalyzerImplementation final : public SemanticAnalyzerContext {
 public:
-    Analyzer(std::vector<const Module *> &inputModules, std::vector<DepPackage> &inputDeps,
-             const std::string &inputPackageName, std::vector<SemanticDiagnostic> &inputDiags,
-             std::vector<SemanticSymbol> &inputSymbols, const CompileTimeContext &inputContext,
-             std::unordered_map<const Expr *, TypeRef> &inputExpressionTypes,
-             std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
-             std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
-             std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
-             std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
-             std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities,
-             std::unordered_map<std::string, ResolvedTypeLayout> &inputTypeLayouts,
-             std::unordered_map<const SizeOfExpr *, std::uint64_t> &inputSizeOfValues)
-        : modules(inputModules)
-        , deps(inputDeps)
-        , packageName(inputPackageName)
-        , diags(inputDiags)
-        , context(inputContext)
-        , expressionTypes(inputExpressionTypes)
-        , typeNodeTypes(inputTypeNodeTypes)
-        , patternTypes(inputPatternTypes)
-        , callableBindings(inputCallableBindings)
-        , symbolIdentities(inputSymbolIdentities)
-        , vtableIdentities(inputVtableIdentities)
-        , typeLayouts(inputTypeLayouts)
-        , sizeOfValues(inputSizeOfValues)
-        , programIndex(diags, inputSymbols)
-        , globalScope(programIndex.GlobalScope())
-        , packageModuleScopes(programIndex.Packages())
-        , structDecls(programIndex.Structs())
-        , enumDecls(programIndex.Enums())
-        , unionDecls(programIndex.Unions())
-        , interfaceDecls(programIndex.Interfaces())
-        , methodsByType(programIndex.Methods())
-        , functionsByName(programIndex.Functions())
-        , functionModulePaths(programIndex.FunctionModulePaths())
-        , methodImpls(programIndex.MethodImplementations())
-        , implDecls(programIndex.Implementations())
-        , externFuncDecls(programIndex.ExternFunctions())
-        , typeImplementsInterfaces(programIndex.ImplementedInterfaces())
-        , functionDeclScopes(programIndex.FunctionScopes())
-        , functionDeclFiles(programIndex.FunctionSources())
-        , currentScope(&globalScope) {
-    }
-
-    void Run() {
-        RegisterBuiltins();
-        // Collect dependency package symbols into package-level scopes.
-        // Logical module declarations inside any source file populate
-        // nested module scopes.
-        for (auto &pkg : deps) {
-            Scope &rootScope = programIndex.CreatePackageRoot(pkg.name);
-            for (auto &entry : pkg.modules) {
-                currentFile = entry.module->name;
-                for (const auto &decl : entry.module->items) {
-                    programIndex.CollectDeclaration(
-                        *decl, rootScope, currentFile, [this](const TypeExpr &type) { return ResolveType(type); },
-                        &pkg.name);
-                }
-            }
-        }
-        for (auto &pkg : deps) {
-            for (auto &entry : pkg.modules) {
-                ApplyModuleImportsInScope(*entry.module, *packageModuleScopes.at(pkg.name).at(""));
-            }
-        }
-        // Resolve dep function signatures in their per-module scopes.
-        for (auto &pkg : deps) {
-            for (auto &entry : pkg.modules) {
-                ResolveModuleSignaturesInScope(*entry.module, *packageModuleScopes.at(pkg.name).at(""));
-            }
-        }
-        for (auto &pkg : deps) {
-            for (auto &entry : pkg.modules) {
-                CheckModuleInScope(*entry.module, *packageModuleScopes.at(pkg.name).at(""));
-            }
-        }
-        // User modules go into globalScope as before. When a package
-        // imports itself by name, expose the global/module scopes through
-        // the same package import table used for dependencies.
-        if (!packageName.empty()) {
-            programIndex.RegisterPackageRoot(packageName, globalScope);
-        }
-        for (auto *mod : modules) {
-            CollectModule(*mod);
-        }
-        for (auto *mod : modules) {
-            ApplyModuleImports(*mod);
-        }
-        for (auto *mod : modules) {
-            ResolveModuleSignatures(*mod);
-        }
-        for (auto *mod : modules) {
-            CheckModule(*mod);
-        }
-        ValidatePendingGenericInstantiations();
-        RecordResolvedTypeLayouts();
-        BuildFinalSymbolIdentities();
+    SemanticAnalyzerImplementation(std::vector<const Module *> &inputModules,
+                                   std::vector<DepPackage> &inputDependencies, const std::string &inputPackageName,
+                                   std::vector<SemanticDiagnostic> &inputDiagnostics,
+                                   std::vector<SemanticSymbol> &inputSymbols, const CompileTimeContext &inputContext,
+                                   std::unordered_map<const Expr *, TypeRef> &inputExpressionTypes,
+                                   std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
+                                   std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
+                                   std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
+                                   std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
+                                   std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities,
+                                   std::unordered_map<std::string, ResolvedTypeLayout> &inputTypeLayouts,
+                                   std::unordered_map<const SizeOfExpr *, std::uint64_t> &inputSizeOfValues)
+        : SemanticAnalyzerContext(inputModules, inputDependencies, inputPackageName, inputDiagnostics, inputSymbols,
+                                  inputContext, inputExpressionTypes, inputTypeNodeTypes, inputPatternTypes,
+                                  inputCallableBindings, inputSymbolIdentities, inputVtableIdentities, inputTypeLayouts,
+                                  inputSizeOfValues) {
     }
 
 private:
-    std::vector<const Module *> &modules;
-    std::vector<DepPackage> &deps;
-    const std::string &packageName;
-    std::vector<SemanticDiagnostic> &diags;
-    const CompileTimeContext &context;
-    std::unordered_map<const Expr *, TypeRef> &expressionTypes;
-    std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
-    std::unordered_map<const Pattern *, TypeRef> &patternTypes;
-    std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
-    std::unordered_map<const Decl *, ResolvedSymbolIdentity> &symbolIdentities;
-    std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;
-    std::unordered_map<std::string, ResolvedTypeLayout> &typeLayouts;
-    std::unordered_map<const SizeOfExpr *, std::uint64_t> &sizeOfValues;
-    SemanticProgramIndex programIndex;
-    Scope &globalScope;
-    // packageModuleScopes[pkgName][modulePath] = logical module scope.
-    // The empty modulePath is the package root.
-    const SemanticProgramIndex::PackageScopes &packageModuleScopes;
-    std::string currentFile;
-    TypeRef currentReturnType = TypeRef::MakeOpaque();
-    bool currentFunctionNoReturn = false;
-    int loopDepth = 0;
-    std::unordered_set<std::string> activeLabels;
-    bool inImpl = false;
-    TypeRef currentSelfType = TypeRef::MakeUnknown();
-    std::vector<std::string> currentTypeParams;
-    const std::unordered_map<std::string, const StructDecl *> &structDecls;
-    const std::unordered_map<std::string, const EnumDecl *> &enumDecls;
-    const std::unordered_map<std::string, const UnionDecl *> &unionDecls;
-    const std::unordered_map<std::string, const InterfaceDecl *> &interfaceDecls;
-    const std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>>
-        &methodsByType;
-    const std::unordered_map<std::string, std::vector<const FuncDecl *>> &functionsByName;
-    const std::unordered_map<const FuncDecl *, std::string> &functionModulePaths;
-    const std::unordered_map<const FuncDecl *, const ImplDecl *> &methodImpls;
-    const std::vector<const ImplDecl *> &implDecls;
-    const std::vector<const ExternFuncDecl *> &externFuncDecls;
-    const std::unordered_map<std::string, std::unordered_set<std::string>> &typeImplementsInterfaces;
-    const FuncDecl *currentFunctionDecl = nullptr;
-    const std::unordered_map<const FuncDecl *, Scope *> &functionDeclScopes;
-    const std::unordered_map<const FuncDecl *, std::string> &functionDeclFiles;
-    Scope *currentScope;
-
     struct DeferredUnaryCheck {
         TokenKind op;
         TypeRef operand;
@@ -295,51 +156,7 @@ private:
         return funcType;
     }
 
-    // Builtins
-    void RegisterBuiltins() {
-        auto add = [&](const char *name, TypeRef t) {
-            Symbol sym;
-            sym.kind = Symbol::Kind::Type;
-            sym.name = name;
-            sym.type = std::move(t);
-            globalScope.Define(sym, diags, "<builtin>");
-        };
-        add("opaque", TypeRef::MakeOpaque());
-        add("bool8", TypeRef::MakeBool8());
-        add("bool16", TypeRef::MakeBool16());
-        add("bool32", TypeRef::MakeBool32());
-        add("bool", TypeRef::MakeBool());
-        add("char8", TypeRef::MakeChar8());
-        add("char16", TypeRef::MakeChar16());
-        add("char32", TypeRef::MakeChar32());
-        add("char", TypeRef::MakeChar());
-        add("int8", TypeRef::MakeInt8());
-        add("int16", TypeRef::MakeInt16());
-        add("int32", TypeRef::MakeInt32());
-        add("int64", TypeRef::MakeInt64());
-        add("int", TypeRef::MakeInt());
-        add("byte", TypeRef::MakeByte());
-        add("uint8", TypeRef::MakeUInt8());
-        add("uint16", TypeRef::MakeUInt16());
-        add("uint32", TypeRef::MakeUInt32());
-        add("uint64", TypeRef::MakeUInt64());
-        add("uint", TypeRef::MakeUInt());
-        add("float32", TypeRef::MakeFloat32());
-        add("float64", TypeRef::MakeFloat64());
-        add("float", TypeRef::MakeFloat());
-        for (const std::string_view name : UnimplementedPrimitiveTypes) {
-            add(name.data(), TypeRef::MakeUnknown());
-        }
-    }
-
-    // First pass: collect global declaration names
-    void CollectModule(const Module &mod) {
-        currentFile = mod.name;
-        const std::string *selfPackageName = packageName.empty() ? nullptr : &packageName;
-        programIndex.CollectModule(mod, selfPackageName, [this](const TypeExpr &type) { return ResolveType(type); });
-    }
-
-    void ResolveModuleSignatures(const Module &mod) {
+    void ResolveModuleSignatures(const Module &mod) override {
         currentFile = mod.name;
         for (const auto &decl : mod.items) {
             ResolveDeclSignature(*decl);
@@ -375,7 +192,7 @@ private:
         }
     }
 
-    void ResolveModuleSignaturesInScope(const Module &mod, Scope &scope) {
+    void ResolveModuleSignaturesInScope(const Module &mod, Scope &scope) override {
         Scope *savedScope = currentScope;
         currentScope = &scope;
         currentFile = mod.name;
@@ -414,14 +231,14 @@ private:
         }
     }
 
-    void ApplyModuleImports(const Module &mod) {
+    void ApplyModuleImports(const Module &mod) override {
         currentFile = mod.name;
         for (const auto &decl : mod.items) {
             ApplyDeclImports(*decl);
         }
     }
 
-    void ApplyModuleImportsInScope(const Module &mod, Scope &scope) {
+    void ApplyModuleImportsInScope(const Module &mod, Scope &scope) override {
         Scope *savedScope = currentScope;
         currentScope = &scope;
         ApplyModuleImports(mod);
@@ -1548,7 +1365,7 @@ private:
         return matched;
     }
 
-    TypeRef ResolveType(const TypeExpr &expr) {
+    TypeRef ResolveType(const TypeExpr &expr) override {
         TypeRef type = ResolveTypeImpl(expr);
         if (!type.IsUnknown()) {
             typeNodeTypes.insert_or_assign(&expr, type);
@@ -2378,7 +2195,7 @@ private:
         return LayoutOfTypeRef(ResolveTypeWithSubstitution(expr, substitutions), substitutions);
     }
 
-    void RecordResolvedTypeLayouts() {
+    void RecordResolvedTypeLayouts() override {
         std::vector<TypeRef> resolvedTypes;
         resolvedTypes.reserve(typeNodeTypes.size() + expressionTypes.size() + patternTypes.size());
         for (const auto &[_, type] : typeNodeTypes) {
@@ -2462,14 +2279,14 @@ private:
     }
 
     // Second pass: check declarations
-    void CheckModule(const Module &mod) {
+    void CheckModule(const Module &mod) override {
         currentFile = mod.name;
         for (const auto &decl : mod.items) {
             CheckDecl(*decl);
         }
     }
 
-    void CheckModuleInScope(const Module &mod, Scope &scope) {
+    void CheckModuleInScope(const Module &mod, Scope &scope) override {
         Scope *savedScope = currentScope;
         currentScope = &scope;
         CheckModule(mod);
@@ -3878,7 +3695,7 @@ private:
         }
     }
 
-    void BuildFinalSymbolIdentities() {
+    void BuildFinalSymbolIdentities() override {
         std::unordered_map<std::string, std::unordered_set<std::string>> owners;
         for (const auto &[name, declarations] : functionsByName) {
             for (const auto *declaration : declarations) {
@@ -4878,7 +4695,7 @@ private:
         pendingGenericInstantiations.push_back({&decl, substitutions});
     }
 
-    void ValidatePendingGenericInstantiations() {
+    void ValidatePendingGenericInstantiations() override {
         std::size_t processed = 0;
         while (processed < pendingGenericInstantiations.size()) {
             PendingGenericInstantiation instantiation = std::move(pendingGenericInstantiations[processed++]);
@@ -5405,9 +5222,9 @@ SemanticModel SemanticAnalyzer::Analyze() {
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<const SizeOfExpr *, std::uint64_t> sizeOfValues;
-    Analyzer analyzer(constModules, deps, packageName, diags, symbols, compileTimeContext, expressionTypes,
-                      typeNodeTypes, patternTypes, callableBindings, symbolIdentities, vtableIdentities, typeLayouts,
-                      sizeOfValues);
+    SemanticAnalyzerImplementation analyzer(constModules, deps, packageName, diags, symbols, compileTimeContext,
+                                            expressionTypes, typeNodeTypes, patternTypes, callableBindings,
+                                            symbolIdentities, vtableIdentities, typeLayouts, sizeOfValues);
     analyzer.Run();
     std::vector<const Module *> orderedModules;
     for (const auto &dep : deps) {

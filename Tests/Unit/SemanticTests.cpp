@@ -62,6 +62,37 @@ const TypeRef &ResolvedType(const SemanticModel &model, const Node &node) {
 
 } // namespace
 
+TEST_CASE("semantic analyzer context preserves dependency and diagnostic ordering") {
+    Lexer dependencyLexer("func Dependency() { missingDependency; }", "dependency.rux");
+    auto dependencyTokens = dependencyLexer.Tokenize();
+    REQUIRE_FALSE(dependencyTokens.HasErrors());
+    Parser dependencyParser(std::move(dependencyTokens.tokens), "dependency.rux");
+    auto dependency = dependencyParser.Parse();
+    REQUIRE_FALSE(dependency.HasErrors());
+
+    Lexer userLexer("func Main() { missingUser; }", "user.rux");
+    auto userTokens = userLexer.Tokenize();
+    REQUIRE_FALSE(userTokens.HasErrors());
+    Parser userParser(std::move(userTokens.tokens), "user.rux");
+    auto user = userParser.Parse();
+    REQUIRE_FALSE(user.HasErrors());
+
+    DepPackage package;
+    package.name = "Dependency";
+    package.modules.push_back({"Dependency", &dependency.module});
+    SemanticAnalyzer analyzer({&user.module}, {std::move(package)}, "App", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+
+    REQUIRE_EQ(model.modules.size(), 2);
+    CHECK(model.modules[0] == &dependency.module);
+    CHECK(model.modules[1] == &user.module);
+    REQUIRE_EQ(model.diagnostics.size(), 2);
+    CHECK_EQ(model.diagnostics[0].sourceName, "dependency.rux");
+    CHECK_EQ(model.diagnostics[0].message, "undefined name 'missingDependency'");
+    CHECK_EQ(model.diagnostics[1].sourceName, "user.rux");
+    CHECK_EQ(model.diagnostics[1].message, "undefined name 'missingUser'");
+}
+
 TEST_CASE("semantic model retains resolved AST type facts") {
     Lexer lexer(R"(
         struct Box {

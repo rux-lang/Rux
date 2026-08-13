@@ -95,6 +95,7 @@ rux_add_component(RuxSemantic
     Semantic/PrimitiveConstants.cpp
     Semantic/Type.cpp
     Semantic/SemanticAnalyzer.cpp
+    Semantic/SemanticAnalyzerContext.cpp
     Semantic/SemanticModel.cpp
     Semantic/SemanticProgramIndex.cpp
     Semantic/SemanticPrinter.cpp)
