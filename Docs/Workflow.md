@@ -105,7 +105,7 @@ A source file flows through these stages, front to back. Each stage owns a small
 | Source loading    | `Source/SourceLoader.cpp`                    | Locate and read source files           |
 | Lexing            | `Lexer/Lexer.cpp`                            | Source text → token stream             |
 | Parsing           | `Syntax/Parser/`                             | Tokens → AST                           |
-| Semantic analysis | `Semantic/SemanticAnalyzer.cpp`              | AST → validated `SemanticModel`        |
+| Semantic analysis | `Semantic/` analyzer implementation files    | AST → validated `SemanticModel`        |
 | HIR lowering      | `Lowering/AstToHir/`                         | Semantic model → HIR                   |
 | HIR passes        | `Ir/Hir/Passes/`                             | HIR optimization                       |
 | LIR lowering      | `Lowering/HirToLir/`                         | HIR → control-flow-explicit LIR        |

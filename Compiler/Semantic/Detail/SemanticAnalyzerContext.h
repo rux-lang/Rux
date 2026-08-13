@@ -43,11 +43,13 @@ protected:
     void CheckBlock(const Block &block);
     void CheckPattern(const Pattern &pattern, const TypeRef &subjectType = TypeRef::MakeUnknown());
     [[nodiscard]] std::optional<TypeRef> CheckBasicExpression(const Expr &expression);
+    [[nodiscard]] TypeRef CheckCallExpression(const CallExpr &expression);
     void ValidateDeferredBasicExpressionChecks(const FuncDecl &declaration,
                                                const std::unordered_map<std::string, TypeRef> &substitutions);
     [[nodiscard]] bool PlaceIsImmutable(const Expr &place);
     [[nodiscard]] const EnumDecl::Variant *LookupEnumVariant(const std::string &enumName,
                                                              const std::string &variantName) const;
+    [[nodiscard]] static std::string SliceTypeName(const TypeRef &elementType);
 
     std::vector<const Module *> &modules;
     std::vector<DepPackage> &deps;
@@ -122,6 +124,33 @@ private:
     virtual TypeRef ResolveTypeWithSubstitution(const TypeExpr &expression,
                                                 const std::unordered_map<std::string, TypeRef> &substitutions) = 0;
     virtual TypeRef CheckExpr(const Expr &expression) = 0;
+    virtual TypeRef MakeFuncTypeWithSubstitution(const std::vector<Param> &parameters,
+                                                 const std::optional<TypeExprPtr> &returnType,
+                                                 const std::unordered_map<std::string, TypeRef> &substitutions,
+                                                 const std::vector<std::string> &typeParameters,
+                                                 bool cVariadic = false) = 0;
+    virtual void EmitDiagnosticIntrinsic(const std::string &intrinsicName, const CallExpr &call) = 0;
+    [[nodiscard]] virtual const FuncDecl *LookupFunctionOverload(const Symbol &symbol,
+                                                                 const std::vector<TypeRef> &argumentTypes,
+                                                                 const std::vector<TypeExprPtr> &typeArguments) = 0;
+    virtual void QueueGenericInstantiation(const FuncDecl &declaration,
+                                           const std::unordered_map<std::string, TypeRef> &substitutions) = 0;
+    [[nodiscard]] virtual const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
+                                                       const std::vector<TypeRef> &argumentTypes) = 0;
+    [[nodiscard]] virtual std::unordered_map<std::string, TypeRef>
+    MethodTypeSubstitutions(const TypeRef &receiverType) const = 0;
+    [[nodiscard]] virtual TypeRef InstantiateAssociatedReceiver(TypeRef receiverType,
+                                                                const std::vector<TypeExprPtr> &typeArguments) = 0;
+    [[nodiscard]] virtual TypeRef ResolveMethodReturnType(const TypeRef &receiverType, const FuncDecl &method) = 0;
+    [[nodiscard]] virtual std::vector<TypeRef> ResolveMethodParamTypes(const TypeRef &receiverType,
+                                                                       const FuncDecl &method) = 0;
+    [[nodiscard]] virtual const FuncDecl *LookupInterfaceMethod(const TypeRef &receiverType,
+                                                                const std::string &methodName) const = 0;
+    [[nodiscard]] virtual TypeRef ResolveInterfaceMethodReturnType(const FuncDecl &method) = 0;
+    [[nodiscard]] virtual std::vector<TypeRef> ResolveInterfaceMethodParamTypes(const FuncDecl &method) = 0;
+    [[nodiscard]] virtual TypeRef EnumVariantConstructorType(const EnumDecl &declaration,
+                                                             const EnumDecl::Variant &variant,
+                                                             const std::vector<TypeRef> &typeArguments) = 0;
     [[nodiscard]] virtual TypeRef LiteralType(const Token &token) const = 0;
     virtual void ValidateCastConstant(const CastExpr &expression, const TypeRef &operandType,
                                       const TypeRef &targetType) const = 0;
@@ -153,6 +182,13 @@ private:
     [[nodiscard]] TypeRef CheckUnary(TokenKind op, const TypeRef &operand, SourceLocation location);
     [[nodiscard]] TypeRef CheckBinary(TokenKind op, const TypeRef &left, const TypeRef &right,
                                       const Expr &leftExpression, const Expr &rightExpression, SourceLocation location);
+    [[nodiscard]] Symbol *LookupCalleeSymbol(const Expr &callee) const;
+    void EmitCallSiteDiagnostics(const Decl &declaration, SourceLocation location) const;
+    void RecordFunctionBinding(const CallExpr &call, const FuncDecl &declaration,
+                               ResolvedCallableBinding::DispatchKind dispatch,
+                               std::unordered_map<std::string, TypeRef> substitutions = {},
+                               std::optional<TypeRef> receiverType = std::nullopt);
+    void RecordExternBinding(const CallExpr &call, const ExternFuncDecl &declaration);
     [[nodiscard]] bool PlaceIsWritable(const Expr &place, const TypeRef &placeType);
     void CheckMutability(const Expr &target);
 };

@@ -12,6 +12,10 @@ constexpr std::array<std::string_view, 20> UnimplementedPrimitiveTypes{
 };
 } // namespace
 
+std::string SemanticAnalyzerContext::SliceTypeName(const TypeRef &elementType) {
+    return "Slice<" + elementType.ToString() + ">";
+}
+
 SemanticAnalyzerContext::SemanticAnalyzerContext(
     std::vector<const Module *> &inputModules, std::vector<DepPackage> &inputDependencies,
     const std::string &inputPackageName, std::vector<SemanticDiagnostic> &inputDiagnostics,
