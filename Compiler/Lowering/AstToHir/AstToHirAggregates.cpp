@@ -1,4 +1,5 @@
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
+#include "Semantic/PrimitiveConstants.h"
 #include "Semantic/SemanticVersion.h"
 #include "Target/Platform.h"
 
@@ -12,6 +13,11 @@
 
 namespace Rux::AstToHirDetail {
 namespace {
+bool IsNullLiteral(const Expr &expression) {
+    const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
+    return literal && literal->token.kind == TokenKind::NullKeyword;
+}
+
 HirExprPtr CompilerLiteral(const SourceLocation location, TypeRef type, std::string value) {
     auto literal = std::make_unique<HirLiteralExpr>();
     literal->location = location;
@@ -436,6 +442,124 @@ TypeRef AstToHirContext::StructInitFieldType(const StructInitExpr &expression, c
     return TypeRef::MakeUnknown();
 }
 
+std::optional<TypeRef> AstToHirContext::InterfaceImplementationType(const TypeRef &expressionType,
+                                                                    const TypeRef &targetType) const {
+    if (targetType.kind != TypeRef::Kind::Named) {
+        return std::nullopt;
+    }
+    const auto hasVtable = [&](const TypeRef &type) {
+        const auto implementation = typeInterfaceVtables.find(type.ToString());
+        return implementation != typeInterfaceVtables.end() && implementation->second.contains(targetType.name);
+    };
+    if (hasVtable(expressionType)) {
+        return expressionType;
+    }
+    if (expressionType.kind == TypeRef::Kind::Int && hasVtable(TypeRef::MakeInt64())) {
+        return TypeRef::MakeInt64();
+    }
+    if (expressionType.kind == TypeRef::Kind::Int64 && hasVtable(TypeRef::MakeInt())) {
+        return TypeRef::MakeInt();
+    }
+    if (expressionType.kind == TypeRef::Kind::UInt && hasVtable(TypeRef::MakeUInt64())) {
+        return TypeRef::MakeUInt64();
+    }
+    if (expressionType.kind == TypeRef::Kind::UInt64 && hasVtable(TypeRef::MakeUInt())) {
+        return TypeRef::MakeUInt();
+    }
+    return std::nullopt;
+}
+
+HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &targetType) {
+    if (IsNullLiteral(expression) && targetType.kind == TypeRef::Kind::Pointer) {
+        return CompilerLiteral(expression.location, targetType, "0");
+    }
+
+    if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression);
+        array && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
+        auto lowered = std::make_unique<HirArrayExpr>();
+        lowered->location = array->location;
+        lowered->elementType = targetType.inner[0];
+        for (const auto &element : array->elements) {
+            lowered->elements.push_back(LowerExprAs(*element, targetType.inner[0]));
+        }
+        lowered->type = targetType;
+        return lowered;
+    }
+
+    if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+        if (const auto sliceElement = SliceElementType(targetType)) {
+            auto lowered = std::make_unique<HirArrayExpr>();
+            lowered->location = array->location;
+            lowered->elementType = *sliceElement;
+            for (const auto &element : array->elements) {
+                lowered->elements.push_back(LowerExprAs(*element, *sliceElement));
+            }
+            lowered->type = TypeRef::MakeArray(*sliceElement, array->elements.size());
+
+            auto view = std::make_unique<HirArrayToSliceExpr>();
+            view->location = array->location;
+            view->type = targetType;
+            view->elementType = *sliceElement;
+            view->length = array->elements.size();
+            view->value = std::move(lowered);
+            return view;
+        }
+    }
+
+    if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression);
+        tuple && targetType.kind == TypeRef::Kind::Tuple && tuple->elements.size() == targetType.inner.size()) {
+        auto lowered = std::make_unique<HirTupleExpr>();
+        lowered->location = tuple->location;
+        for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
+            lowered->elements.push_back(LowerExprAs(*tuple->elements[i], targetType.inner[i]));
+        }
+        lowered->type = targetType;
+        return lowered;
+    }
+
+    HirExprPtr lowered = LowerExpr(expression);
+    if (UnsuffixedIntegerLiteralFits(expression, targetType)) {
+        lowered->type = targetType;
+    }
+    else if (targetType.kind == TypeRef::Kind::Named) {
+        if (HirSymbol *symbol = currentScope->Lookup(targetType.name);
+            symbol && symbol->kind == HirSymbol::Kind::Interface && lowered->type != targetType) {
+            std::optional<TypeRef> implementationType = InterfaceImplementationType(lowered->type, targetType);
+            if (!implementationType) {
+                implementationType = lowered->type;
+            }
+            const std::string typeName = implementationType->ToString();
+            if (UnsuffixedIntegerLiteralFits(expression, *implementationType)) {
+                lowered->type = *implementationType;
+            }
+            auto coercion = std::make_unique<HirCoerceToInterfaceExpr>();
+            coercion->location = expression.location;
+            coercion->type = targetType;
+            const auto interface = interfaceDecls.find(targetType.name);
+            if (interface != interfaceDecls.end() && !interface->second->methods.empty()) {
+                if (const auto type = typeInterfaceVtables.find(typeName); type != typeInterfaceVtables.end()) {
+                    if (const auto label = type->second.find(targetType.name); label != type->second.end()) {
+                        coercion->vtableLabel = label->second;
+                    }
+                }
+            }
+            coercion->value = std::move(lowered);
+            return coercion;
+        }
+    }
+    if (lowered->type.kind == TypeRef::Kind::Array && lowered->type.arrayLength && !lowered->type.inner.empty() &&
+        SliceElementType(targetType)) {
+        auto coercion = std::make_unique<HirArrayToSliceExpr>();
+        coercion->location = expression.location;
+        coercion->type = targetType;
+        coercion->elementType = lowered->type.inner[0];
+        coercion->length = *lowered->type.arrayLength;
+        coercion->value = std::move(lowered);
+        return coercion;
+    }
+    return lowered;
+}
+
 HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
     if (const auto *sizeOf = dynamic_cast<const SizeOfExpr *>(&expression)) {
         return CompilerLiteral(sizeOf->location, ResolvedExpressionType(*sizeOf),
@@ -476,6 +600,107 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
             loweredField.name = field.name;
             loweredField.value = LowerExprAs(*field.value, StructInitFieldType(*initializer, field.name));
             lowered->fields.push_back(std::move(loweredField));
+        }
+        return lowered;
+    }
+    if (const auto *path = dynamic_cast<const PathExpr *>(&expression)) {
+        if (path->segments.size() == 2) {
+            if (HirSymbol *first = currentScope->Lookup(path->segments[0]);
+                first && (first->kind == HirSymbol::Kind::Type || first->kind == HirSymbol::Kind::Interface)) {
+                if (first->kind == HirSymbol::Kind::Type) {
+                    if (const auto constant = LookupPrimitiveConstant(first->type, path->segments[1], context)) {
+                        return CompilerLiteral(path->location, constant->type, constant->value);
+                    }
+                    if (const auto discriminant = LookupEnumVariantDiscriminant(path->segments[0], path->segments[1])) {
+                        const auto *variant = LookupEnumVariant(path->segments[0], path->segments[1]);
+                        if (variant && (!variant->fields.empty() || !variant->namedFields.empty())) {
+                            auto lowered = std::make_unique<HirPathExpr>();
+                            lowered->location = path->location;
+                            lowered->segments = path->segments;
+                            lowered->type = EnumVariantConstructorType(*enumDecls.at(path->segments[0]), *variant);
+                            return lowered;
+                        }
+                        return CompilerLiteral(path->location, EnumType(*enumDecls.at(path->segments[0])),
+                                               *discriminant);
+                    }
+                }
+                const TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
+                if (const FuncDecl *method = LookupMethod(receiverType, path->segments[1])) {
+                    auto lowered = std::make_unique<HirVarExpr>();
+                    lowered->location = path->location;
+                    if (const auto *identity = model.TryGetSymbolIdentity(*method)) {
+                        lowered->name = identity->linkerName;
+                    }
+                    else {
+                        lowered->name = CalleeName(path->segments[0], path->segments[1], receiverType, *method);
+                    }
+                    lowered->type = AssociatedFunctionType(receiverType, *method);
+                    return lowered;
+                }
+            }
+        }
+
+        auto lowered = std::make_unique<HirPathExpr>();
+        lowered->location = path->location;
+        lowered->segments = path->segments;
+        lowered->type = ResolvedExpressionType(*path);
+        return lowered;
+    }
+    if (const auto *range = dynamic_cast<const RangeExpr *>(&expression)) {
+        auto lowered = std::make_unique<HirRangeExpr>();
+        lowered->location = range->location;
+        lowered->inclusive = range->inclusive;
+        if (range->lo) {
+            lowered->lo = LowerExpr(*range->lo);
+        }
+        if (range->hi) {
+            lowered->hi = LowerExpr(*range->hi);
+        }
+        if (range->lo && lowered->hi && lowered->hi->type.IsInteger() &&
+            UnsuffixedIntegerLiteralFits(*range->lo, lowered->hi->type)) {
+            lowered->lo = LowerExprAs(*range->lo, lowered->hi->type);
+        }
+        else if (range->hi && lowered->lo && lowered->lo->type.IsInteger() &&
+                 UnsuffixedIntegerLiteralFits(*range->hi, lowered->lo->type)) {
+            lowered->hi = LowerExprAs(*range->hi, lowered->lo->type);
+        }
+        lowered->type = ResolvedExpressionType(*range);
+        return lowered;
+    }
+    if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+        auto lowered = std::make_unique<HirArrayExpr>();
+        lowered->location = array->location;
+        lowered->type = ResolvedExpressionType(*array);
+        if (lowered->type.kind == TypeRef::Kind::Array && !lowered->type.inner.empty()) {
+            lowered->elementType = lowered->type.inner[0];
+        }
+        for (const auto &element : array->elements) {
+            lowered->elements.push_back(LowerExpr(*element));
+        }
+        return lowered;
+    }
+    if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
+        auto lowered = std::make_unique<HirTupleExpr>();
+        lowered->location = tuple->location;
+        lowered->type = ResolvedExpressionType(*tuple);
+        for (const auto &element : tuple->elements) {
+            lowered->elements.push_back(LowerExpr(*element));
+        }
+        return lowered;
+    }
+    if (const auto *match = dynamic_cast<const MatchExpr *>(&expression)) {
+        auto lowered = std::make_unique<HirMatchExpr>();
+        lowered->location = match->location;
+        lowered->type = ResolvedExpressionType(*match);
+        lowered->subject = LowerExpr(*match->subject);
+        for (const auto &arm : match->arms) {
+            HirMatchArm loweredArm;
+            loweredArm.location = arm.location;
+            PushScope();
+            loweredArm.pattern = LowerPattern(*arm.pattern, lowered->subject->type);
+            loweredArm.body = LowerExpr(*arm.body);
+            PopScope();
+            lowered->arms.push_back(std::move(loweredArm));
         }
         return lowered;
     }

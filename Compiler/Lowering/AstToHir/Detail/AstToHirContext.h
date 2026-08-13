@@ -97,6 +97,7 @@ protected:
     [[nodiscard]] HirExprPtr LowerBasicExpr(const Expr &expression);
     [[nodiscard]] HirExprPtr LowerAggregateExpr(const Expr &expression);
     [[nodiscard]] HirExprPtr LowerCallExpr(const CallExpr &expression);
+    [[nodiscard]] HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType);
     [[nodiscard]] TypeRef ResolvedExpressionType(const Expr &expression) const;
     [[nodiscard]] std::optional<std::string> CompilerParamRoot(const Expr &expression) const;
     [[nodiscard]] std::string LogicalCurrentFilePath() const;
@@ -134,6 +135,8 @@ private:
     [[nodiscard]] HirExprPtr LowerCompilerParamFieldExpression(const FieldExpr &expression);
     [[nodiscard]] HirExprPtr LowerIntrinsicExpr(const IntrinsicExpr &expression) const;
     [[nodiscard]] TypeRef StructInitFieldType(const StructInitExpr &expression, const std::string &fieldName);
+    [[nodiscard]] std::optional<TypeRef> InterfaceImplementationType(const TypeRef &expressionType,
+                                                                     const TypeRef &targetType) const;
 
     [[nodiscard]] virtual TypeRef ResolveType(const TypeExpr &expression) = 0;
     [[nodiscard]] virtual TypeRef
@@ -150,6 +153,10 @@ private:
     [[nodiscard]] virtual std::vector<std::string> ImplTypeParams(const ImplDecl &decl) const = 0;
     [[nodiscard]] virtual TypeRef MethodType(const TypeRef &receiverType, const FuncDecl &method) = 0;
     [[nodiscard]] virtual TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) = 0;
+    [[nodiscard]] virtual const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
+                                                       const std::vector<TypeRef> &argumentTypes = {}) = 0;
+    [[nodiscard]] virtual std::string CalleeName(const std::string &typeName, const std::string &methodName,
+                                                 const TypeRef &receiverType, const FuncDecl &declaration) = 0;
     [[nodiscard]] virtual bool MethodIsFromConcreteImpl(const FuncDecl &method) const = 0;
     [[nodiscard]] virtual const std::string &FunctionCalleeName(const FuncDecl &decl) const = 0;
     [[nodiscard]] virtual HirFunc LowerFunc(const FuncDecl &decl, bool isMethod = false,
@@ -165,7 +172,9 @@ private:
     [[nodiscard]] virtual HirExternVar LowerExternVar(const ExternVarDecl &decl) = 0;
     [[nodiscard]] virtual HirTypeAlias LowerTypeAlias(const TypeAliasDecl &decl) = 0;
     [[nodiscard]] virtual HirExprPtr LowerExpr(const Expr &expression) = 0;
-    [[nodiscard]] virtual HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType) = 0;
+    [[nodiscard]] virtual bool UnsuffixedIntegerLiteralFits(const Expr &expression,
+                                                            const TypeRef &targetType) const = 0;
+    [[nodiscard]] virtual std::optional<TypeRef> SliceElementType(const TypeRef &type) const = 0;
     [[nodiscard]] virtual std::string LowerLiteralValue(const LiteralExpr &expression) const = 0;
     [[nodiscard]] virtual HirExprPtr TryLowerOverloadedBinary(const BinaryExpr &expression, HirExprPtr &left,
                                                               HirExprPtr &right) = 0;
