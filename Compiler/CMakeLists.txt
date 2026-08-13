@@ -138,6 +138,7 @@ target_link_libraries(RuxOptimization PUBLIC RuxBuildInfo RuxDiagnostics RuxHir 
 
 rux_add_component(RuxLowering
     Lowering/AstToHir/AstToHir.cpp
+    Lowering/AstToHir/AstToHirCalls.cpp
     Lowering/AstToHir/AstToHirContext.cpp
     Lowering/AstToHir/AstToHirExpressions.cpp
     Lowering/AstToHir/AstToHirStatements.cpp

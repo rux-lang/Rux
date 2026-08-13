@@ -94,7 +94,10 @@ protected:
     [[nodiscard]] HirPatternPtr LowerPattern(const Pattern &pattern,
                                              const TypeRef &subjectType = TypeRef::MakeUnknown());
     [[nodiscard]] HirExprPtr LowerBasicExpr(const Expr &expression);
+    [[nodiscard]] HirExprPtr LowerCallExpr(const CallExpr &expression);
     [[nodiscard]] TypeRef ResolvedExpressionType(const Expr &expression) const;
+    [[nodiscard]] std::optional<std::string> CompilerParamRoot(const Expr &expression) const;
+    [[nodiscard]] std::string LogicalCurrentFilePath() const;
 
 private:
     void RegisterBuiltins();
@@ -102,14 +105,36 @@ private:
     [[nodiscard]] HirModule LowerModule(const Module &module);
     void LowerTopLevelDecl(const Decl &decl, HirModule &module);
     [[nodiscard]] bool IsDiagnosticIntrinsicCall(const Expr &expression) const;
+    [[nodiscard]] ResolvedCallableBinding ResolvedCall(const CallExpr &call) const;
+    [[nodiscard]] HirExprPtr LowerDefaultArgument(const Expr &expression, const TypeRef &targetType,
+                                                  const SourceLocation &callSiteLocation);
+    [[nodiscard]] std::vector<HirExprPtr> LowerBoundArguments(const CallExpr &call, const FuncDecl &declaration,
+                                                              const ResolvedCallableBinding &binding,
+                                                              const TypeRef &functionType, bool hasReceiver);
+    void EnsureBoundFunctionInstance(const FuncDecl &declaration, const ResolvedCallableBinding &binding);
+    void EnsureBoundMethodInstance(const FuncDecl &method, const ResolvedCallableBinding &binding);
+    [[nodiscard]] HirExprPtr LowerBoundDirectCall(const CallExpr &call, const ResolvedCallableBinding &binding);
+    [[nodiscard]] HirExprPtr LowerBoundMethodCall(const CallExpr &call, const ResolvedCallableBinding &binding);
+    [[nodiscard]] HirExprPtr LowerBoundInterfaceCall(const CallExpr &call, const ResolvedCallableBinding &binding);
+    [[nodiscard]] HirExprPtr LowerBoundIndirectCall(const CallExpr &call, const ResolvedCallableBinding &binding);
+    [[nodiscard]] HirExprPtr LowerBoundEnumCall(const CallExpr &call, const ResolvedCallableBinding &binding);
 
     [[nodiscard]] virtual TypeRef ResolveType(const TypeExpr &expression) = 0;
     [[nodiscard]] virtual TypeRef
     ResolveTypeWithSubstitution(const TypeExpr &expression,
                                 const std::unordered_map<std::string, TypeRef> &substitutions) = 0;
+    [[nodiscard]] virtual TypeRef
+    MakeFuncTypeWithSubstitution(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
+                                 const std::unordered_map<std::string, TypeRef> &substitutions,
+                                 const std::vector<std::string> &typeParams = {}) = 0;
     [[nodiscard]] virtual TypeRef EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArguments = {}) = 0;
+    [[nodiscard]] virtual TypeRef EnumVariantConstructorType(const EnumDecl &decl, const EnumDecl::Variant &variant,
+                                                             const std::vector<TypeRef> &typeArguments = {}) = 0;
     [[nodiscard]] virtual std::string BaseTypeName(const std::string &name) const = 0;
     [[nodiscard]] virtual std::vector<std::string> ImplTypeParams(const ImplDecl &decl) const = 0;
+    [[nodiscard]] virtual TypeRef MethodType(const TypeRef &receiverType, const FuncDecl &method) = 0;
+    [[nodiscard]] virtual TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) = 0;
+    [[nodiscard]] virtual bool MethodIsFromConcreteImpl(const FuncDecl &method) const = 0;
     [[nodiscard]] virtual const std::string &FunctionCalleeName(const FuncDecl &decl) const = 0;
     [[nodiscard]] virtual HirFunc LowerFunc(const FuncDecl &decl, bool isMethod = false,
                                             const std::unordered_map<std::string, TypeRef> &substitutions = {},
@@ -125,6 +150,8 @@ private:
     [[nodiscard]] virtual HirTypeAlias LowerTypeAlias(const TypeAliasDecl &decl) = 0;
     [[nodiscard]] virtual HirExprPtr LowerExpr(const Expr &expression) = 0;
     [[nodiscard]] virtual HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType) = 0;
+    [[nodiscard]] virtual HirExprPtr LowerCompilerParamCall(const std::string &root, const std::string &member,
+                                                            const CallExpr &call) const = 0;
     [[nodiscard]] virtual std::string LowerLiteralValue(const LiteralExpr &expression) const = 0;
     [[nodiscard]] virtual HirExprPtr LowerCompilerParamIdentifier(const IdentExpr &expression) = 0;
     [[nodiscard]] virtual HirExprPtr LowerCompilerParamFieldExpression(const FieldExpr &expression) = 0;

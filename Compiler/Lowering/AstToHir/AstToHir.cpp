@@ -162,7 +162,7 @@ private:
 
     TypeRef MakeFuncTypeWithSubstitution(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
                                          const std::unordered_map<std::string, TypeRef> &substitutions,
-                                         const std::vector<std::string> &typeParams = {}) {
+                                         const std::vector<std::string> &typeParams = {}) override {
         auto savedTypeParams = currentTypeParams;
         currentTypeParams = typeParams;
         auto savedSubstitutions = currentSubstitutions;
@@ -1050,7 +1050,7 @@ private:
         return substitutions;
     }
 
-    TypeRef MethodType(const TypeRef &receiverType, const FuncDecl &method) {
+    TypeRef MethodType(const TypeRef &receiverType, const FuncDecl &method) override {
         const auto substitutions = MethodTypeSubstitutions(receiverType);
         std::vector<TypeRef> params;
         params.push_back(receiverType);
@@ -1065,7 +1065,7 @@ private:
         return TypeRef::MakeFunc(std::move(params), std::move(ret));
     }
 
-    TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) {
+    TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) override {
         TypeRef savedSelfType = currentSelfType;
         currentSelfType =
             receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
@@ -1110,7 +1110,7 @@ private:
     // `extend List<T>`. Such a block is lowered as it stands, so its methods
     // need no monomorphization even though the receiver substitutes a struct's
     // type parameter.
-    [[nodiscard]] bool MethodIsFromConcreteImpl(const FuncDecl &method) const {
+    [[nodiscard]] bool MethodIsFromConcreteImpl(const FuncDecl &method) const override {
         const auto it = methodImpl.find(&method);
         return it != methodImpl.end() && ImplTypeParams(*it->second).empty();
     }
@@ -1187,7 +1187,7 @@ private:
     }
 
     TypeRef EnumVariantConstructorType(const EnumDecl &decl, const EnumDecl::Variant &variant,
-                                       const std::vector<TypeRef> &typeArgs = {}) {
+                                       const std::vector<TypeRef> &typeArgs = {}) override {
         std::unordered_map<std::string, TypeRef> substitutions;
         const std::size_t count = std::min(decl.typeParams.size(), typeArgs.size());
         for (std::size_t i = 0; i < count; ++i) {
@@ -1954,31 +1954,6 @@ private:
         return lowered;
     }
 
-    // Like LowerExprAs but, for intrinsic defaults, evaluates at
-    // callSiteLoc rather than at the declaration site (call-site builtins:
-    // #source.line, #source.column, #source.file, #compiler.version, etc.).
-    HirExprPtr LowerDefaultArg(const Expr &defaultExpr, const TypeRef &targetType, const SourceLocation &callSiteLoc) {
-        if (const auto *intr = dynamic_cast<const IntrinsicExpr *>(&defaultExpr); intr && intr->args.empty()) {
-            IntrinsicExpr tmp;
-            tmp.location = callSiteLoc;
-            tmp.kind = intr->kind;
-            return LowerExprAs(tmp, targetType);
-        }
-        return LowerExprAs(defaultExpr, targetType);
-    }
-
-    std::optional<std::string> CompilerParamRoot(const Expr &expr) const {
-        const auto *ident = dynamic_cast<const IdentExpr *>(&expr);
-        if (!ident) {
-            return std::nullopt;
-        }
-        const HirSymbol *symbol = currentScope->Lookup(ident->name);
-        if (!symbol || symbol->kind != HirSymbol::Kind::Const || symbol->intrinsicName.empty()) {
-            return std::nullopt;
-        }
-        return symbol->intrinsicName;
-    }
-
     template <typename T>
     HirExprPtr CompilerParamLiteral(const SourceLocation location, TypeRef type, T value) const {
         auto literal = std::make_unique<HirLiteralExpr>();
@@ -2129,7 +2104,8 @@ private:
         return object;
     }
 
-    HirExprPtr LowerCompilerParamCall(const std::string &root, const std::string &member, const CallExpr &call) const {
+    HirExprPtr LowerCompilerParamCall(const std::string &root, const std::string &member,
+                                      const CallExpr &call) const override {
         if (call.args.size() != 1 || !call.args[0]) {
             return nullptr;
         }
@@ -2200,17 +2176,6 @@ private:
         return std::ranges::contains(features, feature);
     }
 
-    std::string LogicalCurrentFilePath() const {
-        const std::filesystem::path path(currentFile);
-        if (!context.sourceRoot.empty()) {
-            const auto relative = path.lexically_relative(context.sourceRoot);
-            if (!relative.empty() && relative.begin()->generic_string() != "..") {
-                return relative.generic_string();
-            }
-        }
-        return path.generic_string();
-    }
-
     std::string FormatBuildTime(const char *format) const {
         const std::time_t value = static_cast<std::time_t>(context.buildInfo.Timestamp());
         std::tm utc{};
@@ -2241,240 +2206,6 @@ private:
             }
         }
         return TypeRef::MakeUnknown();
-    }
-
-    [[nodiscard]] ResolvedCallableBinding ResolvedCall(const CallExpr &call) const {
-        return RequireSemanticFact(model.TryGetCallableBinding(call)).Instantiate(currentSubstitutions);
-    }
-
-    [[nodiscard]] const FuncDecl &SelectedFunction(const ResolvedCallableBinding &binding) const {
-        const auto *function = dynamic_cast<const FuncDecl *>(binding.selectedDeclaration);
-        assert(function != nullptr && "call binding does not select a function declaration");
-        if (!function) {
-            std::abort();
-        }
-        return *function;
-    }
-
-    std::vector<HirExprPtr> LowerBoundArguments(const CallExpr &call, const FuncDecl &declaration,
-                                                const ResolvedCallableBinding &binding, const TypeRef &functionType,
-                                                const bool hasReceiver) {
-        std::vector<const Param *> parameters;
-        parameters.reserve(declaration.params.size());
-        for (const auto &parameter : declaration.params) {
-            if (!hasReceiver || parameter.name != "self") {
-                parameters.push_back(&parameter);
-            }
-        }
-
-        const std::size_t typeOffset = hasReceiver ? 1 : 0;
-        const std::size_t fixedCount = binding.variadicBoundary.value_or(parameters.size());
-        std::vector<HirExprPtr> arguments;
-        arguments.reserve(std::max(call.args.size(), fixedCount) + (binding.variadicBoundary ? 1 : 0));
-        for (std::size_t i = 0; i < std::min(call.args.size(), fixedCount); ++i) {
-            const std::size_t typeIndex = typeOffset + i;
-            arguments.push_back(typeIndex + 1 < functionType.inner.size()
-                                    ? LowerExprAs(*call.args[i], functionType.inner[typeIndex])
-                                    : LowerExpr(*call.args[i]));
-        }
-        for (std::size_t i = arguments.size(); i < fixedCount; ++i) {
-            assert(i < parameters.size() && parameters[i]->defaultValue &&
-                   "accepted call is missing a recorded default argument");
-            const std::size_t typeIndex = typeOffset + i;
-            const TypeRef parameterType =
-                typeIndex + 1 < functionType.inner.size() ? functionType.inner[typeIndex] : TypeRef::MakeUnknown();
-            arguments.push_back(LowerDefaultArg(**parameters[i]->defaultValue, parameterType, call.location));
-        }
-
-        if (!binding.variadicBoundary) {
-            return arguments;
-        }
-
-        assert(fixedCount < parameters.size() && parameters[fixedCount]->isVariadic &&
-               "Rux variadic binding has no variadic parameter");
-        const TypeRef elementType = ResolveTypeWithSubstitution(*parameters[fixedCount]->type, binding.substitutions);
-        const bool singleSpread = call.args.size() == fixedCount + 1 &&
-                                  dynamic_cast<const SpreadExpr *>(call.args[fixedCount].get()) != nullptr;
-        if (singleSpread) {
-            HirExprPtr slice = LowerExpr(*call.args[fixedCount]);
-            slice->type = TypeRef::MakeNamed(SliceTypeName(elementType));
-            arguments.push_back(std::move(slice));
-            return arguments;
-        }
-
-        auto slice = std::make_unique<HirArrayExpr>();
-        slice->location = call.location;
-        slice->elementType = elementType;
-        slice->type = TypeRef::MakeNamed(SliceTypeName(elementType));
-        for (std::size_t i = fixedCount; i < call.args.size(); ++i) {
-            slice->elements.push_back(LowerExprAs(*call.args[i], elementType));
-        }
-        arguments.push_back(std::move(slice));
-        return arguments;
-    }
-
-    void EnsureBoundFunctionInstance(const FuncDecl &declaration, const ResolvedCallableBinding &binding) {
-        if (declaration.typeParams.empty()) {
-            return;
-        }
-        assert(!binding.linkerName.empty() && "generic call binding is missing its linker name");
-        if (generatedMonomorphizedFuncNames.insert(binding.linkerName).second) {
-            monomorphizedFuncs.push_back(LowerFunc(declaration, false, binding.substitutions, binding.linkerName));
-        }
-    }
-
-    void EnsureBoundMethodInstance(const FuncDecl &method, const ResolvedCallableBinding &binding) {
-        if (binding.substitutions.empty() || MethodIsFromConcreteImpl(method)) {
-            return;
-        }
-        assert(binding.receiverType && !binding.linkerName.empty() &&
-               "generic method binding is missing its receiver or linker name");
-        if (generatedMonomorphizedFuncNames.insert(binding.linkerName).second) {
-            const TypeRef savedSelfType = currentSelfType;
-            currentSelfType = binding.receiverType->kind == TypeRef::Kind::Pointer
-                                ? *binding.receiverType
-                                : TypeRef::MakePointer(*binding.receiverType);
-            monomorphizedFuncs.push_back(LowerFunc(method, true, binding.substitutions, binding.linkerName));
-            currentSelfType = savedSelfType;
-        }
-    }
-
-    HirExprPtr LowerBoundDirectCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
-        if (const auto *external = dynamic_cast<const ExternFuncDecl *>(binding.selectedDeclaration)) {
-            TypeRef functionType = MakeFuncType(external->params, external->returnType);
-            functionType.isVariadic = external->isVariadic;
-            auto lowered = std::make_unique<HirCallExpr>();
-            lowered->location = call.location;
-            lowered->isNoReturn = external->isNoReturn;
-            lowered->type = functionType.inner.back();
-            auto callee = std::make_unique<HirVarExpr>();
-            callee->location = call.callee->location;
-            // HIR-to-LIR owns the source-name to imported-symbol mapping.
-            callee->name = external->name;
-            callee->type = functionType;
-            lowered->callee = std::move(callee);
-            for (std::size_t i = 0; i < call.args.size(); ++i) {
-                lowered->args.push_back(i < external->params.size() ? LowerExprAs(*call.args[i], functionType.inner[i])
-                                                                    : LowerExpr(*call.args[i]));
-            }
-            return lowered;
-        }
-
-        const FuncDecl &function = SelectedFunction(binding);
-        const TypeRef functionType = MakeFuncTypeWithSubstitution(function.params, function.returnType,
-                                                                  binding.substitutions, function.typeParams);
-        auto lowered = std::make_unique<HirCallExpr>();
-        lowered->location = call.location;
-        lowered->isNoReturn = function.isNoReturn;
-        lowered->type = functionType.inner.back();
-        auto callee = std::make_unique<HirVarExpr>();
-        callee->location = call.callee->location;
-        callee->name = binding.linkerName;
-        callee->type = functionType;
-        lowered->callee = std::move(callee);
-        lowered->args = LowerBoundArguments(call, function, binding, functionType, false);
-        EnsureBoundFunctionInstance(function, binding);
-        return lowered;
-    }
-
-    HirExprPtr LowerBoundMethodCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
-        const FuncDecl &method = SelectedFunction(binding);
-        assert(binding.receiverType && !binding.linkerName.empty() &&
-               "method call binding is missing its receiver or linker name");
-        EnsureBoundMethodInstance(method, binding);
-
-        auto lowered = std::make_unique<HirCallExpr>();
-        lowered->location = call.location;
-        lowered->isNoReturn = method.isNoReturn;
-        auto callee = std::make_unique<HirVarExpr>();
-        callee->location = call.callee->location;
-        callee->name = binding.linkerName;
-
-        if (const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get())) {
-            HirExprPtr receiver = LowerExpr(*field->object);
-            HirExprPtr self;
-            if (receiver->type.kind == TypeRef::Kind::Pointer) {
-                self = std::move(receiver);
-            }
-            else {
-                auto address = std::make_unique<HirUnaryExpr>();
-                address->location = receiver->location;
-                address->op = TokenKind::At;
-                address->type = TypeRef::MakePointer(receiver->type);
-                address->operand = std::move(receiver);
-                self = std::move(address);
-            }
-            callee->type = MethodType(self->type, method);
-            lowered->args.push_back(std::move(self));
-            std::vector<HirExprPtr> arguments = LowerBoundArguments(call, method, binding, callee->type, true);
-            for (auto &argument : arguments) {
-                lowered->args.push_back(std::move(argument));
-            }
-        }
-        else {
-            assert(dynamic_cast<const PathExpr *>(call.callee.get()) != nullptr &&
-                   "method binding has neither a receiver nor an associated path");
-            callee->type = AssociatedFunctionType(*binding.receiverType, method);
-            lowered->args = LowerBoundArguments(call, method, binding, callee->type, false);
-        }
-        lowered->type = callee->type.inner.back();
-        lowered->callee = std::move(callee);
-        return lowered;
-    }
-
-    HirExprPtr LowerBoundInterfaceCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
-        const FuncDecl &method = SelectedFunction(binding);
-        const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get());
-        assert(field && binding.receiverType && "interface binding is missing its receiver");
-        const std::string interfaceName = BaseTypeName(binding.receiverType->name);
-        const auto interface = interfaceDecls.find(interfaceName);
-        assert(interface != interfaceDecls.end() && "interface binding names an unknown interface");
-        const auto methodIt = std::ranges::find_if(interface->second->methods,
-                                                   [&](const auto &candidate) { return candidate.get() == &method; });
-        assert(methodIt != interface->second->methods.end() && "bound interface method has no vtable slot");
-
-        const TypeRef functionType =
-            MakeFuncTypeWithSubstitution(method.params, method.returnType, binding.substitutions, method.typeParams);
-        auto lowered = std::make_unique<HirInterfaceCallExpr>();
-        lowered->location = call.location;
-        lowered->methodIdx = static_cast<int>(std::distance(interface->second->methods.begin(), methodIt));
-        lowered->type = functionType.inner.back();
-        lowered->fatPtrExpr = LowerExpr(*field->object);
-        lowered->args = LowerBoundArguments(call, method, binding, functionType, false);
-        return lowered;
-    }
-
-    HirExprPtr LowerBoundIndirectCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
-        auto lowered = std::make_unique<HirCallExpr>();
-        lowered->location = call.location;
-        lowered->callee = LowerExpr(*call.callee);
-        lowered->type = lowered->callee->type.inner.back();
-        const std::size_t fixedCount = binding.variadicBoundary.value_or(call.args.size());
-        for (std::size_t i = 0; i < call.args.size(); ++i) {
-            lowered->args.push_back(i < fixedCount && i + 1 < lowered->callee->type.inner.size()
-                                        ? LowerExprAs(*call.args[i], lowered->callee->type.inner[i])
-                                        : LowerExpr(*call.args[i]));
-        }
-        return lowered;
-    }
-
-    HirExprPtr LowerBoundEnumCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
-        const auto *declaration = dynamic_cast<const EnumDecl *>(binding.selectedDeclaration);
-        assert(declaration && binding.selectedVariant && "enum constructor binding is incomplete");
-        std::vector<TypeRef> typeArguments;
-        typeArguments.reserve(declaration->typeParams.size());
-        for (const auto &parameter : declaration->typeParams) {
-            typeArguments.push_back(binding.substitutions.at(parameter));
-        }
-        const TypeRef constructor = EnumVariantConstructorType(*declaration, *binding.selectedVariant, typeArguments);
-        auto lowered = std::make_unique<HirEnumConstructExpr>();
-        lowered->location = call.location;
-        lowered->type = constructor.inner.back();
-        for (std::size_t i = 0; i < call.args.size(); ++i) {
-            lowered->payloads.push_back(LowerExprAs(*call.args[i], constructor.inner[i]));
-        }
-        lowered->discriminant = LookupEnumVariantDiscriminant(declaration->name, binding.selectedVariant->name).value();
-        return lowered;
     }
 
     std::string LowerLiteralValue(const LiteralExpr &expression) const override {
@@ -2762,70 +2493,7 @@ private:
             return he;
         }
         if (auto *e = dynamic_cast<const CallExpr *>(&expr)) {
-            if (const auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {
-                if (const auto root = CompilerParamRoot(*field->object)) {
-                    if (HirExprPtr value = LowerCompilerParamCall(*root, field->field, *e)) {
-                        return value;
-                    }
-                }
-            }
-            const auto *builtinIdent = dynamic_cast<const IdentExpr *>(e->callee.get());
-            HirSymbol *calleeSymbol = builtinIdent ? currentScope->Lookup(builtinIdent->name) : nullptr;
-            const bool isAssertion = calleeSymbol && (calleeSymbol->intrinsicName == "Assert" ||
-                                                      calleeSymbol->intrinsicName == "DebugAssert");
-            const bool isPanic = calleeSymbol && calleeSymbol->intrinsicName == "Panic";
-            if (isAssertion || isPanic) {
-                auto he = std::make_unique<HirCallExpr>();
-                he->location = e->location;
-                he->type = TypeRef::MakeOpaque();
-                he->sourceFile = LogicalCurrentFilePath();
-                he->sourceFunction = currentFunctionName;
-                he->sourceLine = e->location.line;
-                he->sourceColumn = e->location.column;
-
-                auto callee = std::make_unique<HirVarExpr>();
-                callee->location = builtinIdent->location;
-                callee->type = isPanic ? TypeRef::MakeFunc({TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))},
-                                                           TypeRef::MakeOpaque())
-                                       : TypeRef::MakeFunc({TypeRef::MakeBool(),
-                                                            TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))},
-                                                           TypeRef::MakeOpaque());
-                const bool disabled = calleeSymbol->intrinsicName == "DebugAssert" && !context.DebugAssertions();
-                callee->name = isPanic  ? "__builtin_panic"
-                             : disabled ? "__builtin_debug_assert_disabled"
-                                        : "__builtin_assert";
-                he->callee = std::move(callee);
-                he->isNoReturn = isPanic;
-
-                // Disabled debug assertions are still checked by semantic
-                // analysis, but their arguments are not evaluated at runtime.
-                if (isPanic && e->args.size() == 1) {
-                    he->args.push_back(
-                        LowerExprAs(*e->args[0], TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))));
-                }
-                else if (!disabled && e->args.size() == 2) {
-                    he->args.push_back(LowerExprAs(*e->args[0], TypeRef::MakeBool()));
-                    he->args.push_back(
-                        LowerExprAs(*e->args[1], TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))));
-                }
-                return he;
-            }
-
-            const ResolvedCallableBinding binding = ResolvedCall(*e);
-            using Dispatch = ResolvedCallableBinding::DispatchKind;
-            switch (binding.dispatch) {
-            case Dispatch::Direct:
-                return LowerBoundDirectCall(*e, binding);
-            case Dispatch::Method:
-                return LowerBoundMethodCall(*e, binding);
-            case Dispatch::Interface:
-                return LowerBoundInterfaceCall(*e, binding);
-            case Dispatch::Indirect:
-                return LowerBoundIndirectCall(*e, binding);
-            case Dispatch::EnumVariant:
-                return LowerBoundEnumCall(*e, binding);
-            }
-            std::abort();
+            return LowerCallExpr(*e);
         }
         if (auto *e = dynamic_cast<const StructInitExpr *>(&expr)) {
             if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(e->typeName); enumDecl && variant) {
