@@ -108,6 +108,8 @@ The build exposes focused targets such as `RuxBuildInfo`, `RuxSourceModel`, `Rux
 
 AST-to-HIR implementation files share private state through `AstToHirDetail::AstToHirContext`. It owns module and declaration ordering, lowering scopes, statement/pattern construction, and basic expression lowering from checked semantic type facts, while the public `AstToHirLowering` API remains the stage boundary.
 
+HIR-to-LIR implementation files share private state through `HirToLirDetail::HirToLirContext`. Core package/module and checked-builder setup, CFG/statement lowering, scalar/call lowering, and aggregate/pattern lowering have separate translation-unit owners; the public `HirToLirLowering` API remains the stage boundary. Function-local registers, blocks, loop and label targets, locals, and aggregate payload slots are reset at each function boundary and are never exposed outside the lowering component.
+
 `RuxCore` is convenient for the unit-test executable and embedders, but compiler components must link to their actual dependencies. It must not become a shortcut that introduces cycles between stages.
 
 ## CLI and Package Flows
