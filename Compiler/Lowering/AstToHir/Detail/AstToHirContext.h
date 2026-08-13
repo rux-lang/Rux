@@ -8,6 +8,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace Rux::AstToHirDetail {
@@ -94,6 +95,7 @@ protected:
     [[nodiscard]] HirPatternPtr LowerPattern(const Pattern &pattern,
                                              const TypeRef &subjectType = TypeRef::MakeUnknown());
     [[nodiscard]] HirExprPtr LowerBasicExpr(const Expr &expression);
+    [[nodiscard]] HirExprPtr LowerAggregateExpr(const Expr &expression);
     [[nodiscard]] HirExprPtr LowerCallExpr(const CallExpr &expression);
     [[nodiscard]] TypeRef ResolvedExpressionType(const Expr &expression) const;
     [[nodiscard]] std::optional<std::string> CompilerParamRoot(const Expr &expression) const;
@@ -118,6 +120,20 @@ private:
     [[nodiscard]] HirExprPtr LowerBoundInterfaceCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundIndirectCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundEnumCall(const CallExpr &call, const ResolvedCallableBinding &binding);
+    [[nodiscard]] std::uint64_t ResolvedSizeOf(const SizeOfExpr &expression);
+    [[nodiscard]] std::string GenericStructInitName(const StructInitExpr &expression);
+    [[nodiscard]] std::pair<const EnumDecl *, const EnumDecl::Variant *>
+    LookupEnumVariantInitializer(const std::string &typeName) const;
+    [[nodiscard]] HirExprPtr LowerCompilerParamField(const std::string &root, const std::string &field,
+                                                     SourceLocation location);
+    [[nodiscard]] HirExprPtr LowerCompilerParamObject(const std::string &root, const TypeRef &type,
+                                                      SourceLocation location);
+    [[nodiscard]] HirExprPtr LowerCompilerParamCall(const std::string &root, const std::string &member,
+                                                    const CallExpr &call) const;
+    [[nodiscard]] HirExprPtr LowerCompilerParamIdentifier(const IdentExpr &expression);
+    [[nodiscard]] HirExprPtr LowerCompilerParamFieldExpression(const FieldExpr &expression);
+    [[nodiscard]] HirExprPtr LowerIntrinsicExpr(const IntrinsicExpr &expression) const;
+    [[nodiscard]] TypeRef StructInitFieldType(const StructInitExpr &expression, const std::string &fieldName);
 
     [[nodiscard]] virtual TypeRef ResolveType(const TypeExpr &expression) = 0;
     [[nodiscard]] virtual TypeRef
@@ -150,11 +166,7 @@ private:
     [[nodiscard]] virtual HirTypeAlias LowerTypeAlias(const TypeAliasDecl &decl) = 0;
     [[nodiscard]] virtual HirExprPtr LowerExpr(const Expr &expression) = 0;
     [[nodiscard]] virtual HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType) = 0;
-    [[nodiscard]] virtual HirExprPtr LowerCompilerParamCall(const std::string &root, const std::string &member,
-                                                            const CallExpr &call) const = 0;
     [[nodiscard]] virtual std::string LowerLiteralValue(const LiteralExpr &expression) const = 0;
-    [[nodiscard]] virtual HirExprPtr LowerCompilerParamIdentifier(const IdentExpr &expression) = 0;
-    [[nodiscard]] virtual HirExprPtr LowerCompilerParamFieldExpression(const FieldExpr &expression) = 0;
     [[nodiscard]] virtual HirExprPtr TryLowerOverloadedBinary(const BinaryExpr &expression, HirExprPtr &left,
                                                               HirExprPtr &right) = 0;
     [[nodiscard]] virtual std::optional<TypeRef> IndexElementType(const TypeRef &type) const = 0;

@@ -3,23 +3,17 @@
 #include "Ir/Hir/HirInternal.h"
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 #include "Semantic/PrimitiveConstants.h"
-#include "Semantic/SemanticVersion.h"
-#include "Target/Platform.h"
 
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <cctype>
 #include <charconv>
 #include <cstdint>
 #include <cstdlib>
-#include <ctime>
-#include <filesystem>
 #include <format>
 #include <limits>
 #include <optional>
 #include <string>
-#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -27,14 +21,6 @@ namespace Rux {
 using AstToHirDetail::AstToHirContext;
 using AstToHirDetail::HirScope;
 using AstToHirDetail::HirSymbol;
-
-static bool UtcTime(std::time_t time, std::tm &out) {
-#if RUX_OS_WINDOWS
-    return gmtime_s(&out, &time) == 0;
-#else
-    return gmtime_r(&time, &out) != nullptr;
-#endif
-}
 
 // Operator → string
 std::string_view OpStr(TokenKind op) {
@@ -144,22 +130,6 @@ private:
         return RequireSemanticFact(model.TryGetLayout(type));
     }
 
-    [[nodiscard]] std::uint64_t ResolvedSizeOf(const SizeOfExpr &expression) {
-        if (const std::uint64_t *value = model.TryGetSizeOfValue(expression)) {
-            return *value;
-        }
-
-        const TypeRef type = ResolveTypeWithSubstitution(*expression.type, currentSubstitutions);
-        if (type.kind == TypeRef::Kind::TypeParam) {
-            // Generic templates are retained in HIR but never emitted. Keep
-            // their historical placeholder; each concrete instance below is
-            // required to have a validated semantic layout fact.
-            assert(currentSubstitutions.empty());
-            return 0;
-        }
-        return ResolvedLayout(type).size;
-    }
-
     TypeRef MakeFuncTypeWithSubstitution(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
                                          const std::unordered_map<std::string, TypeRef> &substitutions,
                                          const std::vector<std::string> &typeParams = {}) override {
@@ -195,42 +165,6 @@ private:
             name += ">";
         }
         return name;
-    }
-
-    std::string GenericStructInitName(const StructInitExpr &expr) {
-        std::string name = expr.typeName;
-        if (!expr.typeArgs.empty()) {
-            name += "<";
-            for (std::size_t i = 0; i < expr.typeArgs.size(); ++i) {
-                if (i) {
-                    name += ", ";
-                }
-                name += ResolveType(*expr.typeArgs[i]).ToString();
-            }
-            name += ">";
-        }
-        return name;
-    }
-
-    std::pair<const EnumDecl *, const EnumDecl::Variant *>
-    LookupEnumVariantInitializer(const std::string &typeName) const {
-        const std::size_t sep = typeName.find("::");
-        if (sep == std::string::npos || typeName.find("::", sep + 2) != std::string::npos) {
-            return {nullptr, nullptr};
-        }
-
-        const std::string enumName = typeName.substr(0, sep);
-        const std::string variantName = typeName.substr(sep + 2);
-        const auto enumIt = enumDecls.find(enumName);
-        if (enumIt == enumDecls.end()) {
-            return {nullptr, nullptr};
-        }
-        for (const auto &variant : enumIt->second->variants) {
-            if (variant.name == variantName) {
-                return {enumIt->second, &variant};
-            }
-        }
-        return {enumIt->second, nullptr};
     }
 
     static std::string SliceTypeName(const TypeRef &elemType) {
@@ -1954,260 +1888,6 @@ private:
         return lowered;
     }
 
-    template <typename T>
-    HirExprPtr CompilerParamLiteral(const SourceLocation location, TypeRef type, T value) const {
-        auto literal = std::make_unique<HirLiteralExpr>();
-        literal->location = location;
-        literal->type = std::move(type);
-        if constexpr (std::is_same_v<std::decay_t<T>, bool>) {
-            literal->value = value ? "true" : "false";
-        }
-        else {
-            literal->value = std::to_string(value);
-        }
-        return literal;
-    }
-
-    HirExprPtr CompilerParamString(const SourceLocation location, std::string value) const {
-        auto literal = std::make_unique<HirLiteralExpr>();
-        literal->location = location;
-        literal->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-        literal->value = std::move(value);
-        return literal;
-    }
-
-    HirExprPtr CompilerParamEnum(const SourceLocation location, const std::string &typeName,
-                                 const std::int64_t discriminant) {
-        TypeRef type = TypeRef::MakeNamed(typeName);
-        if (const auto it = enumDecls.find(typeName); it != enumDecls.end()) {
-            type = EnumType(*it->second);
-        }
-        return CompilerParamLiteral(location, std::move(type), discriminant);
-    }
-
-    static std::optional<std::string> CompilerParamArgument(const Expr &expr) {
-        if (const auto *variant = dynamic_cast<const EnumShorthandExpr *>(&expr)) {
-            return variant->variant;
-        }
-        if (const auto *path = dynamic_cast<const PathExpr *>(&expr); path && path->segments.size() == 2) {
-            return path->segments[1];
-        }
-        if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr);
-            literal && literal->token.kind == TokenKind::StringLiteral) {
-            return DecodeStringLiteral(literal->token.text);
-        }
-        return std::nullopt;
-    }
-
-    HirExprPtr LowerCompilerParamField(const std::string &root, const std::string &field,
-                                       const SourceLocation location) {
-        if (root == "Target") {
-            if (field == "os")
-                return CompilerParamEnum(location, "OperatingSystem", static_cast<std::int64_t>(context.target.os));
-            if (field == "arch")
-                return CompilerParamEnum(location, "Architecture", static_cast<std::int64_t>(context.target.arch));
-            if (field == "abi")
-                return CompilerParamEnum(location, "ApplicationBinaryInterface",
-                                         static_cast<std::int64_t>(context.target.abi));
-            if (field == "endian")
-                return CompilerParamEnum(location, "Endianness", static_cast<std::int64_t>(context.target.endianness));
-            if (field == "pointerBits")
-                return CompilerParamLiteral(location, TypeRef::MakeUInt(), context.target.pointer_size * 8);
-            if (field == "dataModel")
-                return CompilerParamEnum(location, "DataModel", static_cast<std::int64_t>(context.target.data_model));
-            if (field == "objectFormat")
-                return CompilerParamEnum(location, "ObjectFormat",
-                                         static_cast<std::int64_t>(context.target.object_format));
-            if (field == "triple")
-                return CompilerParamString(location, context.targetTriple);
-        }
-        if (root == "Build") {
-            if (field == "profile")
-                return CompilerParamString(location, std::string(context.ProfileName()));
-            if (field == "mode")
-                return CompilerParamEnum(location, "BuildMode", static_cast<std::int64_t>(context.BuildMode()));
-            if (field == "optimization")
-                return CompilerParamEnum(location, "OptimizationMode",
-                                         static_cast<std::int64_t>(context.Optimization()));
-            if (field == "debugAssertions")
-                return CompilerParamLiteral(location, TypeRef::MakeBool(), context.DebugAssertions());
-            if (field == "debugInfo")
-                return CompilerParamLiteral(location, TypeRef::MakeBool(), context.DebugInfo());
-            if (field == "isTest")
-                return CompilerParamLiteral(location, TypeRef::MakeBool(), context.isTest);
-            if (field == "outputKind")
-                return CompilerParamEnum(location, "OutputKind", static_cast<std::int64_t>(context.outputKind));
-            if (field == "timestamp")
-                return CompilerParamLiteral(location, TypeRef::MakeUInt64(), context.buildInfo.Timestamp());
-            if (field == "date")
-                return CompilerParamString(location, FormatBuildTime("%Y-%m-%d"));
-            if (field == "time")
-                return CompilerParamString(location, FormatBuildTime("%H:%M:%S"));
-        }
-        if (root == "Compiler" && field == "version") {
-            const std::string &text = context.buildInfo.CompilerVersion();
-            const ParsedSemanticVersion version = ParseSemanticVersion(text).value_or(ParsedSemanticVersion{});
-            auto object = std::make_unique<HirStructInitExpr>();
-            object->location = location;
-            object->type = TypeRef::MakeNamed("SemanticVersion");
-            object->typeName = "SemanticVersion";
-
-            auto addField = [&](std::string name, HirExprPtr value) {
-                HirStructInitField fieldValue;
-                fieldValue.name = std::move(name);
-                fieldValue.value = std::move(value);
-                object->fields.push_back(std::move(fieldValue));
-            };
-            addField("major", CompilerParamLiteral(location, TypeRef::MakeUInt(), version.major));
-            addField("minor", CompilerParamLiteral(location, TypeRef::MakeUInt(), version.minor));
-            addField("patch", CompilerParamLiteral(location, TypeRef::MakeUInt(), version.patch));
-            return object;
-        }
-        if (root == "Source") {
-            if (field == "line")
-                return CompilerParamLiteral(location, TypeRef::MakeUInt(), location.line);
-            if (field == "column")
-                return CompilerParamLiteral(location, TypeRef::MakeUInt(), location.column);
-            if (field == "file" || field == "fileName")
-                return CompilerParamString(location, std::filesystem::path(currentFile).filename().string());
-            if (field == "filePath")
-                return CompilerParamString(location, LogicalCurrentFilePath());
-            if (field == "function")
-                return CompilerParamString(location, currentFunctionName);
-            if (field == "module")
-                return CompilerParamString(location, currentModulePath);
-        }
-        return nullptr;
-    }
-
-    HirExprPtr LowerCompilerParamObject(const std::string &root, const TypeRef &type, const SourceLocation location) {
-        if (root != "Target" && root != "Build" && root != "Compiler" && root != "Source" && root != "Config")
-            return nullptr;
-
-        auto object = std::make_unique<HirStructInitExpr>();
-        object->location = location;
-        object->type = type;
-        object->typeName = type.name.empty() ? root : type.name;
-        const auto declaration = structDecls.find(object->typeName);
-        if (declaration == structDecls.end()) {
-            return nullptr;
-        }
-        for (const StructDecl::Field &field : declaration->second->fields) {
-            HirStructInitField value;
-            value.name = field.name;
-            value.value = LowerCompilerParamField(root, field.name, location);
-            if (!value.value) {
-                return nullptr;
-            }
-            object->fields.push_back(std::move(value));
-        }
-        return object;
-    }
-
-    HirExprPtr LowerCompilerParamCall(const std::string &root, const std::string &member,
-                                      const CallExpr &call) const override {
-        if (call.args.size() != 1 || !call.args[0]) {
-            return nullptr;
-        }
-        const auto argument = CompilerParamArgument(*call.args[0]);
-        if (!argument) {
-            return nullptr;
-        }
-        // These match the method names the Rux package declares, which are
-        // functions and so PascalCase; only the fields are lowerCamelCase.
-        if (root == "Target" && member == "HasFeature")
-            return CompilerParamLiteral(call.location, TypeRef::MakeBool(), TargetHasFeature(*argument));
-        if (root == "Compiler" && member == "HasFeature")
-            return CompilerParamLiteral(call.location, TypeRef::MakeBool(), CompilerHasFeature(*argument));
-        if (root == "Config" && member == "Get") {
-            const auto it = context.config.find(*argument);
-            return CompilerParamString(call.location, it == context.config.end() ? std::string{} : it->second);
-        }
-        if (root == "Config" && member == "Has")
-            return CompilerParamLiteral(call.location, TypeRef::MakeBool(), context.config.contains(*argument));
-        return nullptr;
-    }
-
-    std::string IntrinsicArgument(const IntrinsicExpr &expr) const {
-        if (expr.args.size() != 1 || !expr.args[0]) {
-            return {};
-        }
-        if (const auto *variant = dynamic_cast<const EnumShorthandExpr *>(expr.args[0].get())) {
-            return variant->variant;
-        }
-        if (const auto *literal = dynamic_cast<const LiteralExpr *>(expr.args[0].get());
-            literal && literal->token.kind == TokenKind::StringLiteral) {
-            return DecodeStringLiteral(literal->token.text);
-        }
-        return {};
-    }
-
-    bool TargetHasFeature(const std::string_view name) const {
-        const Target::CpuFeatures features = context.target.cpu_features;
-        if (name == "SSE2")
-            return features.Has(Target::CpuFeature::SSE2);
-        if (name == "SSE3")
-            return features.Has(Target::CpuFeature::SSE3);
-        if (name == "SSSE3")
-            return features.Has(Target::CpuFeature::SSSE3);
-        if (name == "SSE41")
-            return features.Has(Target::CpuFeature::SSE41);
-        if (name == "SSE42")
-            return features.Has(Target::CpuFeature::SSE42);
-        if (name == "AVX")
-            return features.Has(Target::CpuFeature::AVX);
-        if (name == "AVX2")
-            return features.Has(Target::CpuFeature::AVX2);
-        if (name == "AVX512")
-            return features.Has(Target::CpuFeature::AVX512);
-        if (name == "NEON")
-            return features.Has(Target::CpuFeature::NEON);
-        if (name == "SVE")
-            return features.Has(Target::CpuFeature::SVE);
-        return false;
-    }
-
-    static bool CompilerHasFeature(const std::string_view feature) {
-        static constexpr std::array features{
-            "conditional-compilation", "namespaced-intrinsics",      "target-intrinsics",
-            "build-intrinsics",        "compiler-feature-detection", "source-location-defaults",
-            "extern-symbol-names",     "no-return-attribute",        "when-attribute",
-            "link-attribute"};
-        return std::ranges::contains(features, feature);
-    }
-
-    std::string FormatBuildTime(const char *format) const {
-        const std::time_t value = static_cast<std::time_t>(context.buildInfo.Timestamp());
-        std::tm utc{};
-        if (!UtcTime(value, utc)) {
-            return {};
-        }
-        char buffer[32]{};
-        return std::strftime(buffer, sizeof(buffer), format, &utc) == 0 ? std::string{} : std::string(buffer);
-    }
-
-    TypeRef StructInitFieldType(const StructInitExpr &expr, const std::string &fieldName) {
-        const auto structIt = structDecls.find(expr.typeName);
-        if (structIt == structDecls.end()) {
-            if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(expr.typeName); enumDecl && variant) {
-                for (const auto &field : variant->namedFields) {
-                    if (field.name == fieldName) {
-                        return ResolveType(*field.type);
-                    }
-                }
-            }
-            return TypeRef::MakeUnknown();
-        }
-
-        const auto substitutions = StructTypeSubstitutions(*structIt->second, expr.typeArgs);
-        for (const auto &field : structIt->second->fields) {
-            if (field.name == fieldName) {
-                return ResolveTypeWithSubstitution(*field.type, substitutions);
-            }
-        }
-        return TypeRef::MakeUnknown();
-    }
-
     std::string LowerLiteralValue(const LiteralExpr &expression) const override {
         if (expression.token.kind == TokenKind::CharLiteral) {
             return DecodeCharLiteral(expression.token.text);
@@ -2219,21 +1899,6 @@ private:
             return StripNumericLiteralSuffix(expression.token.text);
         }
         return expression.token.text;
-    }
-
-    HirExprPtr LowerCompilerParamIdentifier(const IdentExpr &expression) override {
-        if (HirSymbol *symbol = currentScope->Lookup(expression.name);
-            symbol && symbol->kind == HirSymbol::Kind::Const && !symbol->intrinsicName.empty()) {
-            return LowerCompilerParamObject(symbol->intrinsicName, symbol->type, expression.location);
-        }
-        return nullptr;
-    }
-
-    HirExprPtr LowerCompilerParamFieldExpression(const FieldExpr &expression) override {
-        if (const auto root = CompilerParamRoot(*expression.object)) {
-            return LowerCompilerParamField(*root, expression.field, expression.location);
-        }
-        return nullptr;
     }
 
     HirExprPtr TryLowerOverloadedBinary(const BinaryExpr &expression, HirExprPtr &left, HirExprPtr &right) override {
@@ -2287,6 +1952,9 @@ private:
     HirExprPtr LowerExpr(const Expr &expr) override {
         if (HirExprPtr basic = LowerBasicExpr(expr)) {
             return basic;
+        }
+        if (HirExprPtr aggregate = LowerAggregateExpr(expr)) {
+            return aggregate;
         }
         if (auto *e = dynamic_cast<const PathExpr *>(&expr)) {
             if (e->segments.size() == 2) {
@@ -2346,121 +2014,6 @@ private:
             }
             return he;
         }
-        if (auto *e = dynamic_cast<const SizeOfExpr *>(&expr)) {
-            auto he = std::make_unique<HirLiteralExpr>();
-            he->location = e->location;
-            he->type = RequireSemanticFact(model.TryGetType(*e));
-            he->value = std::to_string(ResolvedSizeOf(*e));
-            return he;
-        }
-        if (auto *e = dynamic_cast<const IntrinsicExpr *>(&expr)) {
-            auto he = std::make_unique<HirLiteralExpr>();
-            he->location = e->location;
-            using K = IntrinsicExpr::Kind;
-            switch (e->kind) {
-            case K::Line:
-                he->type = TypeRef::MakeUInt();
-                he->value = std::to_string(e->location.line);
-                break;
-            case K::Column:
-                he->type = TypeRef::MakeUInt();
-                he->value = std::to_string(e->location.column);
-                break;
-            case K::File:
-            case K::FileName:
-                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = std::filesystem::path(currentFile).filename().string();
-                break;
-            case K::FilePath:
-                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = LogicalCurrentFilePath();
-                break;
-            case K::Function:
-                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = currentFunctionName;
-                break;
-            case K::Date: {
-                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = FormatBuildTime("%Y-%m-%d");
-                break;
-            }
-            case K::Time: {
-                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = FormatBuildTime("%H:%M:%S");
-                break;
-            }
-            case K::Module: {
-                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = currentModulePath;
-                break;
-            }
-            case K::CompilerVersion: {
-                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = context.buildInfo.CompilerVersion();
-                break;
-            }
-            case K::Os:
-            case K::Arch:
-            case K::Abi:
-            case K::Endian:
-            case K::DataModel:
-            case K::ObjectFormat:
-            case K::BuildMode:
-            case K::Optimization:
-            case K::OutputKind:
-                // Compile-time-only enums are folded away by conditional
-                // compilation and rejected by semantic analysis elsewhere.
-                he->type = TypeRef::MakeUnknown();
-                break;
-            case K::PointerBits:
-                he->type = TypeRef::MakeUInt();
-                he->value = std::to_string(context.target.pointer_size * 8);
-                break;
-            case K::TargetTriple:
-                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = context.targetTriple;
-                break;
-            case K::TargetFeature:
-                he->type = TypeRef::MakeBool();
-                he->value = TargetHasFeature(IntrinsicArgument(*e)) ? "true" : "false";
-                break;
-            case K::BuildProfile:
-                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = context.ProfileName();
-                break;
-            case K::DebugAssertions:
-                he->type = TypeRef::MakeBool();
-                he->value = context.DebugAssertions() ? "true" : "false";
-                break;
-            case K::DebugInfo:
-                he->type = TypeRef::MakeBool();
-                he->value = context.DebugInfo() ? "true" : "false";
-                break;
-            case K::IsTest:
-                he->type = TypeRef::MakeBool();
-                he->value = context.isTest ? "true" : "false";
-                break;
-            case K::BuildTimestamp:
-                he->type = TypeRef::MakeUInt64();
-                he->value = std::to_string(context.buildInfo.Timestamp());
-                break;
-            case K::CompilerHasFeature:
-                he->type = TypeRef::MakeBool();
-                he->value = CompilerHasFeature(IntrinsicArgument(*e)) ? "true" : "false";
-                break;
-            case K::Config: {
-                he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                const auto it = context.config.find(IntrinsicArgument(*e));
-                he->value = it == context.config.end() ? std::string{} : it->second;
-                break;
-            }
-            case K::HasConfig:
-                he->type = TypeRef::MakeBool();
-                he->value = context.config.contains(IntrinsicArgument(*e)) ? "true" : "false";
-                break;
-            }
-            return he;
-        }
         if (auto *e = dynamic_cast<const RangeExpr *>(&expr)) {
             auto he = std::make_unique<HirRangeExpr>();
             he->location = e->location;
@@ -2494,53 +2047,6 @@ private:
         }
         if (auto *e = dynamic_cast<const CallExpr *>(&expr)) {
             return LowerCallExpr(*e);
-        }
-        if (auto *e = dynamic_cast<const StructInitExpr *>(&expr)) {
-            if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(e->typeName); enumDecl && variant) {
-                if (!variant->namedFields.empty()) {
-                    auto he = std::make_unique<HirEnumConstructExpr>();
-                    he->location = e->location;
-                    he->type = EnumType(*enumDecl);
-                    const std::size_t sep = e->typeName.find("::");
-                    he->discriminant =
-                        LookupEnumVariantDiscriminant(e->typeName.substr(0, sep), e->typeName.substr(sep + 2))
-                            .value_or("0");
-                    for (const auto &field : variant->namedFields) {
-                        const StructInitExpr::Field *initField = nullptr;
-                        for (const auto &f : e->fields) {
-                            if (f.name == field.name) {
-                                initField = &f;
-                                break;
-                            }
-                        }
-                        if (initField) {
-                            he->payloads.push_back(LowerExprAs(*initField->value, ResolveType(*field.type)));
-                        }
-                    }
-                    return he;
-                }
-
-                auto he = std::make_unique<HirLiteralExpr>();
-                he->location = e->location;
-                he->type = EnumType(*enumDecl);
-                const std::size_t sep = e->typeName.find("::");
-                he->value = LookupEnumVariantDiscriminant(e->typeName.substr(0, sep), e->typeName.substr(sep + 2))
-                                .value_or("0");
-                return he;
-            }
-
-            auto he = std::make_unique<HirStructInitExpr>();
-            he->location = e->location;
-            he->typeName = GenericStructInitName(*e);
-            TypeRef type = ParseTypeRefFromString(he->typeName);
-            he->type = type.IsRange() ? type : TypeRef::MakeNamed(he->typeName);
-            for (const auto &f : e->fields) {
-                HirStructInitField hf;
-                hf.name = f.name;
-                hf.value = LowerExprAs(*f.value, StructInitFieldType(*e, f.name));
-                he->fields.push_back(std::move(hf));
-            }
-            return he;
         }
         if (auto *e = dynamic_cast<const ArrayExpr *>(&expr)) {
             auto he = std::make_unique<HirArrayExpr>();
