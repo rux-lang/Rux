@@ -26,9 +26,6 @@ const FuncDecl &SelectedFunction(const ResolvedCallableBinding &binding) {
     return *function;
 }
 
-std::string SliceTypeName(const TypeRef &elementType) {
-    return "Slice<" + elementType.ToString() + ">";
-}
 } // namespace
 
 std::optional<std::string> AstToHirContext::CompilerParamRoot(const Expr &expression) const {

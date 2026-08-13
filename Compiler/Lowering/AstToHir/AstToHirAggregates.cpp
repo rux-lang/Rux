@@ -13,11 +13,6 @@
 
 namespace Rux::AstToHirDetail {
 namespace {
-bool IsNullLiteral(const Expr &expression) {
-    const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
-    return literal && literal->token.kind == TokenKind::NullKeyword;
-}
-
 HirExprPtr CompilerLiteral(const SourceLocation location, TypeRef type, std::string value) {
     auto literal = std::make_unique<HirLiteralExpr>();
     literal->location = location;

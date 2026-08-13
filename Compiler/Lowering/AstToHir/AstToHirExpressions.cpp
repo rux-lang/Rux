@@ -57,10 +57,6 @@ TypeRef SubstituteType(TypeRef type, const std::unordered_map<std::string, TypeR
     return type;
 }
 
-bool IsNullLiteral(const Expr &expression) {
-    const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
-    return literal && literal->token.kind == TokenKind::NullKeyword;
-}
 } // namespace
 
 TypeRef AstToHirContext::ResolvedExpressionType(const Expr &expression) const {

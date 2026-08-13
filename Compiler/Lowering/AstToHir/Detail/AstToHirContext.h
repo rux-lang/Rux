@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -49,7 +50,7 @@ class AstToHirContext {
 public:
     AstToHirContext(const SemanticModel &inputModel, const std::vector<const Module *> &inputModules,
                     const CompileTimeContext &inputCompileTimeContext);
-    virtual ~AstToHirContext();
+    ~AstToHirContext();
 
     AstToHirContext(const AstToHirContext &) = delete;
     AstToHirContext &operator=(const AstToHirContext &) = delete;
@@ -138,53 +139,91 @@ private:
     [[nodiscard]] std::optional<TypeRef> InterfaceImplementationType(const TypeRef &expressionType,
                                                                      const TypeRef &targetType) const;
 
-    [[nodiscard]] virtual TypeRef ResolveType(const TypeExpr &expression) = 0;
-    [[nodiscard]] virtual TypeRef
-    ResolveTypeWithSubstitution(const TypeExpr &expression,
-                                const std::unordered_map<std::string, TypeRef> &substitutions) = 0;
-    [[nodiscard]] virtual TypeRef
-    MakeFuncTypeWithSubstitution(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
-                                 const std::unordered_map<std::string, TypeRef> &substitutions,
-                                 const std::vector<std::string> &typeParams = {}) = 0;
-    [[nodiscard]] virtual TypeRef EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArguments = {}) = 0;
-    [[nodiscard]] virtual TypeRef EnumVariantConstructorType(const EnumDecl &decl, const EnumDecl::Variant &variant,
-                                                             const std::vector<TypeRef> &typeArguments = {}) = 0;
-    [[nodiscard]] virtual std::string BaseTypeName(const std::string &name) const = 0;
-    [[nodiscard]] virtual std::vector<std::string> ImplTypeParams(const ImplDecl &decl) const = 0;
-    [[nodiscard]] virtual TypeRef MethodType(const TypeRef &receiverType, const FuncDecl &method) = 0;
-    [[nodiscard]] virtual TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) = 0;
-    [[nodiscard]] virtual const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
-                                                       const std::vector<TypeRef> &argumentTypes = {}) = 0;
-    [[nodiscard]] virtual std::string CalleeName(const std::string &typeName, const std::string &methodName,
-                                                 const TypeRef &receiverType, const FuncDecl &declaration) = 0;
-    [[nodiscard]] virtual bool MethodIsFromConcreteImpl(const FuncDecl &method) const = 0;
-    [[nodiscard]] virtual const std::string &FunctionCalleeName(const FuncDecl &decl) const = 0;
-    [[nodiscard]] virtual HirFunc LowerFunc(const FuncDecl &decl, bool isMethod = false,
-                                            const std::unordered_map<std::string, TypeRef> &substitutions = {},
-                                            const std::string &overrideName = "") = 0;
-    [[nodiscard]] virtual HirStruct LowerStruct(const StructDecl &decl) = 0;
-    [[nodiscard]] virtual HirEnum LowerEnum(const EnumDecl &decl) = 0;
-    [[nodiscard]] virtual HirUnion LowerUnion(const UnionDecl &decl) = 0;
-    [[nodiscard]] virtual HirInterface LowerInterface(const InterfaceDecl &decl) = 0;
-    [[nodiscard]] virtual HirImplBlock LowerImpl(const ImplDecl &decl) = 0;
-    [[nodiscard]] virtual HirConst LowerConst(const ConstDecl &decl) = 0;
-    [[nodiscard]] virtual HirExternFunc LowerExternFunc(const ExternFuncDecl &decl) = 0;
-    [[nodiscard]] virtual HirExternVar LowerExternVar(const ExternVarDecl &decl) = 0;
-    [[nodiscard]] virtual HirTypeAlias LowerTypeAlias(const TypeAliasDecl &decl) = 0;
-    [[nodiscard]] virtual HirExprPtr LowerExpr(const Expr &expression) = 0;
-    [[nodiscard]] virtual bool UnsuffixedIntegerLiteralFits(const Expr &expression,
-                                                            const TypeRef &targetType) const = 0;
-    [[nodiscard]] virtual std::optional<TypeRef> SliceElementType(const TypeRef &type) const = 0;
-    [[nodiscard]] virtual std::string LowerLiteralValue(const LiteralExpr &expression) const = 0;
-    [[nodiscard]] virtual HirExprPtr TryLowerOverloadedBinary(const BinaryExpr &expression, HirExprPtr &left,
-                                                              HirExprPtr &right) = 0;
-    [[nodiscard]] virtual std::optional<TypeRef> IndexElementType(const TypeRef &type) const = 0;
-    [[nodiscard]] virtual TypeRef LiteralType(const Token &token) const = 0;
-    [[nodiscard]] virtual std::string StripNumericLiteralSuffix(const std::string &text) const = 0;
-    [[nodiscard]] virtual const EnumDecl::Variant *LookupEnumVariant(const std::string &enumName,
-                                                                     const std::string &variantName) const = 0;
-    [[nodiscard]] virtual std::optional<std::string>
-    LookupEnumVariantDiscriminant(const std::string &enumName, const std::string &variantName) const = 0;
-    [[nodiscard]] virtual std::vector<TypeRef> ParseTypeArgsFromTypeName(const std::string &typeName) const = 0;
+    [[nodiscard]] TypeRef ResolveType(const TypeExpr &expression);
+    [[nodiscard]] TypeRef ResolveTypeWithSubstitution(const TypeExpr &expression,
+                                                      const std::unordered_map<std::string, TypeRef> &substitutions);
+    [[nodiscard]] TypeRef MakeFuncTypeWithSubstitution(const std::vector<Param> &params,
+                                                       const std::optional<TypeExprPtr> &returnType,
+                                                       const std::unordered_map<std::string, TypeRef> &substitutions,
+                                                       const std::vector<std::string> &typeParams = {});
+    [[nodiscard]] TypeRef EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArguments = {});
+    [[nodiscard]] TypeRef EnumVariantConstructorType(const EnumDecl &decl, const EnumDecl::Variant &variant,
+                                                     const std::vector<TypeRef> &typeArguments = {});
+    [[nodiscard]] std::string BaseTypeName(const std::string &name) const;
+    [[nodiscard]] std::vector<std::string> ImplTypeParams(const ImplDecl &decl) const;
+    [[nodiscard]] TypeRef MethodType(const TypeRef &receiverType, const FuncDecl &method);
+    [[nodiscard]] TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method);
+    [[nodiscard]] const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
+                                               const std::vector<TypeRef> &argumentTypes = {});
+    [[nodiscard]] std::string CalleeName(const std::string &typeName, const std::string &methodName,
+                                         const TypeRef &receiverType, const FuncDecl &declaration);
+    [[nodiscard]] bool MethodIsFromConcreteImpl(const FuncDecl &method) const;
+    [[nodiscard]] const std::string &FunctionCalleeName(const FuncDecl &decl) const;
+    [[nodiscard]] HirFunc LowerFunc(const FuncDecl &decl, bool isMethod = false,
+                                    const std::unordered_map<std::string, TypeRef> &substitutions = {},
+                                    const std::string &overrideName = "");
+    [[nodiscard]] HirStruct LowerStruct(const StructDecl &decl);
+    [[nodiscard]] HirEnum LowerEnum(const EnumDecl &decl);
+    [[nodiscard]] HirUnion LowerUnion(const UnionDecl &decl);
+    [[nodiscard]] HirInterface LowerInterface(const InterfaceDecl &decl);
+    [[nodiscard]] HirImplBlock LowerImpl(const ImplDecl &decl);
+    [[nodiscard]] HirConst LowerConst(const ConstDecl &decl);
+    [[nodiscard]] HirExternFunc LowerExternFunc(const ExternFuncDecl &decl);
+    [[nodiscard]] HirExternVar LowerExternVar(const ExternVarDecl &decl);
+    [[nodiscard]] HirTypeAlias LowerTypeAlias(const TypeAliasDecl &decl);
+    [[nodiscard]] HirExprPtr LowerExpr(const Expr &expression);
+    [[nodiscard]] bool UnsuffixedIntegerLiteralFits(const Expr &expression, const TypeRef &targetType) const;
+    [[nodiscard]] std::optional<TypeRef> SliceElementType(const TypeRef &type) const;
+    [[nodiscard]] std::string LowerLiteralValue(const LiteralExpr &expression) const;
+    [[nodiscard]] HirExprPtr TryLowerOverloadedBinary(const BinaryExpr &expression, HirExprPtr &left,
+                                                      HirExprPtr &right);
+    [[nodiscard]] std::optional<TypeRef> IndexElementType(const TypeRef &type) const;
+    [[nodiscard]] TypeRef LiteralType(const Token &token) const;
+    [[nodiscard]] std::string StripNumericLiteralSuffix(const std::string &text) const;
+    [[nodiscard]] const EnumDecl::Variant *LookupEnumVariant(const std::string &enumName,
+                                                             const std::string &variantName) const;
+    [[nodiscard]] std::optional<std::string> LookupEnumVariantDiscriminant(const std::string &enumName,
+                                                                           const std::string &variantName) const;
+    [[nodiscard]] std::vector<TypeRef> ParseTypeArgsFromTypeName(const std::string &typeName) const;
+
+    [[nodiscard]] const TypeRef &ResolvedType(const TypeExpr &type) const;
+    [[nodiscard]] const ResolvedTypeLayout &ResolvedLayout(const TypeRef &type) const;
+    [[nodiscard]] std::string GenericTypeName(const NamedTypeExpr &type);
+    [[nodiscard]] static std::string SliceTypeName(const TypeRef &elementType);
+    [[nodiscard]] static std::string BaseTypeNameImpl(const std::string &name);
+    [[nodiscard]] static TypeRef ParseTypeRefFromString(std::string text);
+    [[nodiscard]] static TypeRef StringLiteralElementType(const Token &token);
+    [[nodiscard]] static TypeRef StringLiteralType(const Token &token);
+    [[nodiscard]] static TypeRef CharLiteralType(const Token &token);
+    [[nodiscard]] static std::string NumericLiteralSuffix(std::string_view text);
+    [[nodiscard]] static std::string StripNumericLiteralSuffixImpl(const std::string &text);
+    [[nodiscard]] static std::optional<std::uint64_t> ParseUnsuffixedIntegerLiteral(const Token &token);
+    [[nodiscard]] static std::optional<std::uint64_t> ParseUnsignedIntegerText(const std::string &text);
+    [[nodiscard]] std::optional<std::uint64_t> LookupConstInteger(const std::string &name) const;
+    void RegisterConstInteger(const std::string &name, const HirExpr &value);
+    [[nodiscard]] static std::optional<std::int64_t> ParseEnumDiscriminant(const std::string &text);
+    [[nodiscard]] static std::optional<std::uint64_t> UnsignedIntegerMax(const TypeRef &type);
+    [[nodiscard]] static std::optional<std::pair<std::int64_t, std::int64_t>> SignedIntegerRange(const TypeRef &type);
+    [[nodiscard]] static bool IsNullLiteral(const Expr &expression);
+    [[nodiscard]] static std::string NamedBaseTypeName(const TypeRef &type);
+    [[nodiscard]] std::unordered_map<std::string, TypeRef>
+    StructTypeSubstitutions(const StructDecl &decl, const std::vector<TypeExprPtr> &typeArguments);
+    [[nodiscard]] static TypeRef SuffixedLiteralType(const Token &token);
+    [[nodiscard]] static std::optional<TypeRef> BuiltinTypeFromName(const std::string &name);
+    [[nodiscard]] TypeRef StructFieldType(const TypeRef &objectType, const std::string &fieldName);
+    [[nodiscard]] std::unordered_map<std::string, TypeRef> MethodTypeSubstitutions(const TypeRef &receiverType) const;
+    [[nodiscard]] bool MethodIsOverloaded(const std::string &typeName, const std::string &methodName) const;
+    [[nodiscard]] static std::string MangleTypeName(const TypeRef &type);
+    [[nodiscard]] std::string ConcreteMethodCalleeName(const std::string &typeName, const TypeRef &receiverType,
+                                                       const FuncDecl &method);
+    [[nodiscard]] TypeRef EnumBaseType(const EnumDecl &decl);
+
+    [[nodiscard]] static std::uint32_t DecodeUtf8CodePoint(const std::string &text, std::size_t index);
+    static void AppendUtf8(std::string &output, std::uint32_t codePoint);
+    [[nodiscard]] static std::size_t ParseUnicodeEscape(const std::string &text, std::size_t position,
+                                                        std::uint32_t &codePoint);
+    [[nodiscard]] static std::string DecodeCharLiteral(const std::string &text);
+    [[nodiscard]] static std::string DecodeStringLiteral(const std::string &text);
+    [[nodiscard]] std::vector<HirParam> LowerParams(const std::vector<Param> &params);
 };
 } // namespace Rux::AstToHirDetail
