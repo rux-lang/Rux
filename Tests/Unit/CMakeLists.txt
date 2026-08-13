@@ -19,6 +19,7 @@ set(RUX_TEST_SOURCES
     ChecksumTests.cpp
     CliProcessTests.cpp
     CompilerDriverTests.cpp
+    ConstantEvaluatorTests.cpp
     ConditionalCompilationTests.cpp
     CredentialsTests.cpp
     DocumentationTests.cpp

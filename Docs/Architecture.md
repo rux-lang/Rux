@@ -49,7 +49,7 @@ Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on
 | `Semantic`             | Symbols, types, conditional compilation, and validated semantic model        | BuildInfo, Syntax, and Diagnostics    |
 | `Ir/Hir`               | High-level IR and its transformations                                        | Semantic, Lexer, SourceModel, Target  |
 | `Ir/Lir`               | Control-flow-explicit low-level IR                                           | Semantic                              |
-| `Optimization`         | Bounded profile-selected HIR/LIR pass pipelines                              | BuildInfo, HIR, and LIR               |
+| `Optimization`         | Bounded profile-selected HIR/LIR pass pipelines and typed constant evaluation | BuildInfo, HIR, and LIR               |
 | `Lowering`             | AST/semantic model → HIR → LIR                                               | Frontend and IR components            |
 | `CodeGen`              | Layout rules, literal decoding, register allocation, and the assembly result | LIR                                   |
 | `CodeGen/X86_64`       | x86-64 instruction encoding, inline assembly, and RCU construction           | BuildInfo, LIR, Object, Diagnostics   |
@@ -70,6 +70,10 @@ no optimizing passes, while Release selects Speed and currently schedules `legac
 transformation-free. Every HIR and LIR pass receives a per-run `PassContext`, reports whether it changed the IR, and runs
 to a fixed point capped at eight iterations. Exhausting that limit stops compilation with an internal diagnostic. Pass
 instances and their analysis state belong to one pipeline, so independent compilations share no mutable optimizer state.
+The optimization component also owns typed constants that retain boolean or signed/unsigned integer kind and their
+declared 8-, 16-, 32-, or 64-bit width. Evaluation uses unsigned bit patterns and explicit truncation so results match
+runtime storage without host signed overflow. Unsupported literals, invalid shifts, division or remainder by zero, and
+signed minimum divided by minus one return no result and remain in IR for runtime handling.
 `SourceModel` and `Target` expose no source discovery or loading. Source loading reports failures as diagnostic values and
 never prints them itself. Prefer adding a dependency to the narrowest owning component rather than reaching through
 `RuxCore`.
