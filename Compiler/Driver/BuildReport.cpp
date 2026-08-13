@@ -1,7 +1,7 @@
 #include "Driver/BuildReport.h"
 
+#include "BuildInfo/CompilerMetadata.h"
 #include "Driver/BuildTarget.h"
-#include "Driver/Version.h"
 
 #include <cmath>
 #include <cstdio>
@@ -138,7 +138,7 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_v
     const std::string triple = ReportedTriple(targetTriple);
     const auto style = Style(colorEnabled);
     std::ostringstream output;
-    output << style.bold << "Rux Compiler " << RUX_VERSION << style.reset << '\n'
+    output << style.bold << "Rux Compiler " << CompilerBuild::compilerVersion << style.reset << '\n'
            << "Target: " << TargetDisplayName(triple) << " (" << triple << ")\n"
            << "Mode: " << style.bold << profileName << style.reset << "\n\n"
            << style.green << style.bold << "Build finished successfully." << style.reset << "\n\n"

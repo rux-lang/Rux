@@ -2,8 +2,8 @@ string(TIMESTAMP RUX_BUILD_DATE "%Y-%m-%d")
 string(TIMESTAMP RUX_BUILD_TIME "%H:%M:%S")
 
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/Driver/Version.h.in
-    ${CMAKE_CURRENT_BINARY_DIR}/generated/Driver/Version.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/BuildInfo/CompilerMetadata.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/BuildInfo/CompilerMetadata.h
     @ONLY
 )
 
@@ -39,6 +39,8 @@ function(rux_add_interface_component target)
 endfunction()
 
 rux_add_interface_component(RuxSourceModel)
+
+rux_add_interface_component(RuxBuildInfo)
 
 rux_add_interface_component(RuxTarget)
 target_link_libraries(RuxTarget INTERFACE RuxSourceModel)
@@ -93,7 +95,7 @@ rux_add_component(RuxSemantic
     Semantic/Type.cpp
     Semantic/SemanticAnalyzer.cpp
     Semantic/SemanticPrinter.cpp)
-target_link_libraries(RuxSemantic PUBLIC RuxSyntax RuxDiagnostics)
+target_link_libraries(RuxSemantic PUBLIC RuxBuildInfo RuxSyntax RuxDiagnostics)
 
 rux_add_component(RuxFormatter
     Formatter/Formatter.cpp)
@@ -128,7 +130,7 @@ target_link_libraries(RuxLowering PUBLIC
 rux_add_component(RuxObjectRcu
     Object/Rcu/RcuDump.cpp
     Object/Rcu/RcuWriter.cpp)
-target_link_libraries(RuxObjectRcu PUBLIC RuxTarget)
+target_link_libraries(RuxObjectRcu PUBLIC RuxBuildInfo RuxTarget)
 
 rux_add_component(RuxCodeGenCommon
     CodeGen/Layout.cpp)
@@ -138,7 +140,7 @@ rux_add_component(RuxCodeGenX86_64
     CodeGen/X86_64/Assembler.cpp
     CodeGen/X86_64/AssemblyPrinter.cpp
     CodeGen/X86_64/RcuEmitter.cpp)
-target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
+target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
 
 rux_add_component(RuxArchive
     Linker/ArchiveWriter.cpp)
@@ -148,7 +150,7 @@ rux_add_component(RuxCodeGenAArch64
     CodeGen/AArch64/Assembler.cpp
     CodeGen/AArch64/Encoder.cpp
     CodeGen/AArch64/RcuEmitter.cpp)
-target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
+target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
 
 rux_add_component(RuxLinker
     Linker/AArch64Relocation.cpp
@@ -167,7 +169,7 @@ rux_add_component(RuxDriver
     Driver/Credentials.cpp
     Driver/Registry.cpp)
 target_link_libraries(RuxDriver PUBLIC
-    RuxSource RuxSystem RuxPackage RuxLexer RuxSyntax RuxSemantic
+    RuxBuildInfo RuxSource RuxSystem RuxPackage RuxLexer RuxSyntax RuxSemantic
     RuxHir RuxHirPasses RuxLir RuxLowering RuxCodeGenX86_64 RuxCodeGenAArch64
     RuxObjectRcu RuxLinker)
 

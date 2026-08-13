@@ -1,3 +1,4 @@
+#include "CodeGen/AArch64/RcuEmitter.h"
 #include "CodeGen/FloatLiteral.h"
 #include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/X86_64/AssemblyPrinter.h"
@@ -60,6 +61,24 @@ TEST_CASE("floating literal parsing preserves subnormal values") {
     CHECK_EQ(std::bit_cast<std::uint64_t>(ParseFloatLiteral<double>("5.0e-324")), 1);
     CHECK_EQ(std::bit_cast<std::uint32_t>(ParseFloatLiteral<float>("1.4e-45f32")), 1);
     CHECK_EQ(ParseFloatLiteral<double>("1_000.5"), 1000.5);
+}
+
+TEST_CASE("RCU backends preserve injected build metadata") {
+    LirModule module;
+    module.name = "Metadata.rux";
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+    const BuildInfo buildInfo("12.34.56-rc.1+test", 1'234'567'890);
+
+    const auto x86Objects = RcuEmitter(package, "test", Target::OS::Linux, buildInfo).Generate();
+    const auto aarch64Objects = AArch64RcuEmitter(package, "test", Target::OS::Linux, buildInfo).Generate();
+
+    REQUIRE(x86Objects.size() == 1);
+    REQUIRE(aarch64Objects.size() == 1);
+    for (const RcuFile *object : {&x86Objects.front(), &aarch64Objects.front()}) {
+        CHECK(object->ruxVersion == 0x0C'22'38);
+        CHECK(object->buildTimestamp == 1'234'567'890);
+    }
 }
 
 TEST_CASE("RCU System V calls preserve register-allocated arguments") {

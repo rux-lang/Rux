@@ -36,12 +36,14 @@ class RcuCodeGen {
 public:
     explicit RcuCodeGen(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
                         const std::vector<std::string> &inputPackageInterfaceNames, std::string packageName,
-                        const Target::OS inputTargetOs, std::vector<Diagnostic> &inputDiagnostics)
+                        const Target::OS inputTargetOs, const BuildInfo &inputBuildInfo,
+                        std::vector<Diagnostic> &inputDiagnostics)
         : mod(module)
         , structDecls(inputStructDecls)
         , packageInterfaceNames(inputPackageInterfaceNames)
         , pkgName(std::move(packageName))
         , targetOs(inputTargetOs)
+        , buildInfo(inputBuildInfo)
         , diagnostics(inputDiagnostics)
         , enc(textData) {
     }
@@ -54,6 +56,7 @@ private:
     const std::vector<std::string> &packageInterfaceNames;
     std::string pkgName;
     Target::OS targetOs;
+    const BuildInfo &buildInfo;
     std::vector<Diagnostic> &diagnostics;
 
     // `Default` means the internal Rux ABI, `.C` the target's C ABI; both are
@@ -2856,8 +2859,8 @@ RcuFile RcuCodeGen::Generate() {
     RcuFile file;
     file.sourcePath = mod.name;
     file.packageName = pkgName;
-    file.buildTimestamp = RcuBuildTimestamp();
-    file.ruxVersion = RcuCompilerVersion();
+    file.buildTimestamp = RcuBuildTimestamp(buildInfo);
+    file.ruxVersion = RcuCompilerVersion(buildInfo);
 
     // Build sections (always 3: .text, .rodata, .data)
     {
@@ -2901,15 +2904,17 @@ RcuFile RcuCodeGen::Generate() {
 
 RcuFile GenerateRcuModule(const LirModule &mod, const std::vector<LirStructDecl> &structDecls,
                           const std::vector<std::string> &interfaceNames, const std::string &packageName,
-                          const Target::OS targetOs, std::vector<Diagnostic> &diagnostics) {
-    RcuCodeGen gen(mod, structDecls, interfaceNames, packageName, targetOs, diagnostics);
+                          const Target::OS targetOs, const BuildInfo &buildInfo, std::vector<Diagnostic> &diagnostics) {
+    RcuCodeGen gen(mod, structDecls, interfaceNames, packageName, targetOs, buildInfo, diagnostics);
     return gen.Generate();
 }
 
-RcuEmitter::RcuEmitter(const LirPackage &package, std::string inputPackageName, const Target::OS inputTargetOs)
+RcuEmitter::RcuEmitter(const LirPackage &package, std::string inputPackageName, const Target::OS inputTargetOs,
+                       BuildInfo inputBuildInfo)
     : lir(package)
     , packageName(std::move(inputPackageName))
-    , targetOs(inputTargetOs) {
+    , targetOs(inputTargetOs)
+    , buildInfo(std::move(inputBuildInfo)) {
 }
 
 std::vector<RcuFile> RcuEmitter::Generate() const {
@@ -2922,7 +2927,8 @@ std::vector<RcuFile> RcuEmitter::Generate() const {
         interfaceNames.insert(interfaceNames.end(), module.interfaceNames.begin(), module.interfaceNames.end());
     }
     for (const auto &module : lir.modules) {
-        result.push_back(GenerateRcuModule(module, structDecls, interfaceNames, packageName, targetOs, diagnostics));
+        result.push_back(
+            GenerateRcuModule(module, structDecls, interfaceNames, packageName, targetOs, buildInfo, diagnostics));
     }
     return result;
 }

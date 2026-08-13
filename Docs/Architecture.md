@@ -38,6 +38,7 @@ Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on
 | Component              | Owns                                                                         | May depend on                         |
 | ---------------------- | ---------------------------------------------------------------------------- | ------------------------------------- |
 | `SourceModel`          | Source locations and loaded-file identity values                             | Standard library only                 |
+| `BuildInfo`            | Immutable compiler identity and one composition-time build timestamp         | Standard library only                 |
 | `Diagnostics`          | Diagnostic values and rendering primitives                                   | SourceModel                           |
 | `Source`               | Source discovery and loading                                                 | SourceModel and Diagnostics           |
 | `System`               | Host OS, process, filesystem, networking, environment, and JSON              | Target, standard library, host APIs   |
@@ -45,22 +46,25 @@ Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on
 | `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                     | Crypto and Target                     |
 | `Lexer`                | Tokens and lexical analysis                                                  | SourceModel and Diagnostics           |
 | `Syntax`               | AST and parser                                                               | Lexer, Diagnostics, and Target        |
-| `Semantic`             | Symbols, types, conditional compilation, and validated semantic model        | Syntax and Diagnostics                |
+| `Semantic`             | Symbols, types, conditional compilation, and validated semantic model        | BuildInfo, Syntax, and Diagnostics    |
 | `Ir/Hir`               | High-level IR and its transformations                                        | Semantic, Lexer, SourceModel, Target  |
 | `Ir/Lir`               | Control-flow-explicit low-level IR                                           | Semantic                              |
 | `Lowering`             | AST/semantic model → HIR → LIR                                               | Frontend and IR components            |
 | `CodeGen`              | Layout rules, literal decoding, register allocation, and the assembly result | LIR                                   |
-| `CodeGen/X86_64`       | x86-64 instruction encoding, inline assembly, and RCU construction           | LIR, Object, Diagnostics              |
-| `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, and RCU construction          | LIR, Object, Diagnostics              |
-| `Object/Rcu`           | RCU object representation, relocation kinds, and serialization               | Target                                |
+| `CodeGen/X86_64`       | x86-64 instruction encoding, inline assembly, and RCU construction           | BuildInfo, LIR, Object, Diagnostics   |
+| `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, and RCU construction          | BuildInfo, LIR, Object, Diagnostics   |
+| `Object/Rcu`           | RCU object representation, relocation kinds, and serialization               | BuildInfo and Target                  |
 | `Archive`              | Deterministic native archive containers and symbol indexes                   | Object                                |
 | `Linker`               | PE, ELF, Mach-O, relocatable-object, and library output                      | Object, Archive, and System           |
 | `Driver`               | End-to-end compilation orchestration and build reports                       | All compiler stages                   |
 | `Formatter` / `Linter` | Source formatting and lint diagnostics                                       | Syntax; the linter also uses Semantic |
 
-The CMake target graph enforces these dependencies. `RuxSourceModel` and `RuxTarget` are interface-only boundaries;
-neither exposes source discovery or loading. Source loading reports failures as diagnostic values and never prints them itself.
-Prefer adding a dependency to the narrowest owning component rather than reaching through `RuxCore`.
+The CMake target graph enforces these dependencies. `RuxBuildInfo`, `RuxSourceModel`, and `RuxTarget` are interface-only
+boundaries. `BuildInfo` is populated once by driver composition and then passed unchanged through compile-time evaluation,
+lowering, and RCU emission; those stages do not include generated compiler-version data or read the clock themselves.
+`SourceModel` and `Target` expose no source discovery or loading. Source loading reports failures as diagnostic values and
+never prints them itself. Prefer adding a dependency to the narrowest owning component rather than reaching through
+`RuxCore`.
 
 The Mach-O image writer keeps file layout separate from target instruction policy. A private architecture profile owns the CPU type and subtype, VM and file alignment, executable entry strategy, instruction-stub size and alignment, thread-state shape, build-version policy, and the relocation patch kinds that architecture accepts. Segment, section, dyld, symbol, and link-edit layout consumes that profile and otherwise remains architecture-neutral. The AArch64 path uses 16 KiB segments and records the macOS 26 deployment and SDK baseline in `LC_BUILD_VERSION`. XNU rejects a static arm64 executable and rejects a dyld-linked one without `MH_PIE`, so every AArch64 executable is dynamic and position-independent: it enters through `LC_MAIN`, preserves dyld's frame across the call to Rux `Main`, names `libSystem` even with no imports, and routes imported calls through 12-byte X16 ADRP/LDR/BR stubs backed by eagerly bound non-lazy pointers. A slid image cannot carry absolute pointers in read-only memory, so constant data moves from `__TEXT,__const` into a writable `__DATA_CONST` segment whose absolute pointers are rebased; the segment carries `SG_READ_ONLY` — current dyld refuses it otherwise — so dyld re-protects it read-only once those fixups are applied, and an absolute relocation in code is reported rather than emitted. The x86-64 freestanding path keeps its fixed-address layout, `LC_UNIXTHREAD` entry, and in-image exit syscall stub. AArch64 dylibs omit all executable entry state, publish their non-local code and data through the export trie and symbol table, resolve cross-object definitions directly, and reuse the architecture-owned stubs for external calls. Dyld rebase opcodes cover absolute pointers to image-local definitions, while eager bind opcodes populate imported function slots in the dylib's `__DATA` segment. Defined pointers, relative fields, branches, ADRP/ADD pairs, and scaled low-12 loads are patched through the same AArch64 relocation helper used by the ELF and PE image writers. Imported data remains rejected until code generation provides GOT-aware lowering. Unit tests inspect the resulting header, load commands, instructions, relocations, rebase/bind metadata, exports, and signature hashes with the repository's compact Mach-O reader, so structural coverage is portable and never depends on Apple tools such as `otool`.
 
@@ -98,7 +102,7 @@ Canonical target names combine the lowercase OS identifier with the machine iden
 
 The principal ownership namespaces currently enforced at cross-platform and orchestration boundaries are `Rux::Target`, `Rux::System`, and `Rux::Driver`. New standalone tools use `Rux::Formatting` and `Rux::Linting`. Existing language model types remain in `Rux` while those large APIs are migrated incrementally; new code must not add declarations to `Misc` or recreate a generic `Utils` component.
 
-The build exposes focused targets such as `RuxSourceModel`, `RuxTarget`, `RuxCrypto`, `RuxSyntax`, `RuxSemantic`, `RuxHir`, `RuxLir`, `RuxLowering`, `RuxCodeGenCommon`, `RuxCodeGenX86_64`, `RuxCodeGenAArch64`, `RuxObjectRcu`, `RuxArchive`, `RuxLinker`, and `RuxDriver`. `RuxSourceModel` owns immutable source identity values shared by diagnostics and target assembly models without exposing loading APIs. `RuxCrypto` owns narrow byte-oriented cryptographic primitives shared across otherwise unrelated stages; package checksum formatting remains in `RuxPackage`, while Mach-O signing remains in `RuxLinker`. `RuxCore` is an interface-only compatibility aggregation target.
+The build exposes focused targets such as `RuxBuildInfo`, `RuxSourceModel`, `RuxTarget`, `RuxCrypto`, `RuxSyntax`, `RuxSemantic`, `RuxHir`, `RuxLir`, `RuxLowering`, `RuxCodeGenCommon`, `RuxCodeGenX86_64`, `RuxCodeGenAArch64`, `RuxObjectRcu`, `RuxArchive`, `RuxLinker`, and `RuxDriver`. `RuxBuildInfo` carries immutable per-compilation identity and time values without orchestration APIs. `RuxSourceModel` owns immutable source identity values shared by diagnostics and target assembly models without exposing loading APIs. `RuxCrypto` owns narrow byte-oriented cryptographic primitives shared across otherwise unrelated stages; package checksum formatting remains in `RuxPackage`, while Mach-O signing remains in `RuxLinker`. `RuxCore` is an interface-only compatibility aggregation target.
 
 `RuxCore` is convenient for the unit-test executable and embedders, but compiler components must link to their actual dependencies. It must not become a shortcut that introduces cycles between stages.
 

@@ -925,7 +925,7 @@ func Selected() -> int {
     CompileTimeContext context;
     context.config["sqlite"] = "true";
     context.config["allocator"] = "mimalloc";
-    context.compilerVersion = "1.2.3-rc.1+build.7";
+    context.buildInfo = BuildInfo("1.2.3-rc.1+build.7", 0);
 
     const auto model = Analyze(parsed.module, std::move(context));
     CHECK_FALSE(model.HasErrors());
@@ -1051,9 +1051,8 @@ module Demo {
     context.debugAssertions = false;
     context.debugInfo = true;
     context.isTest = true;
-    context.buildTimestamp = 0;
     context.config["allocator"] = "mimalloc";
-    context.compilerVersion = "1.2.3-rc.1+build.7";
+    context.buildInfo = BuildInfo("1.2.3-rc.1+build.7", 0);
 
     const SemanticModel model = AnalyzeNoDeps(parsed.module, std::move(context));
     std::string diagnosticMessages;

@@ -1,6 +1,6 @@
 #include "Driver/Registry.h"
 
-#include "Driver/Version.h"
+#include "BuildInfo/CompilerMetadata.h"
 #include "Package/Manifest.h"
 #include "System/Json.h"
 #include "System/Process.h"
@@ -343,7 +343,7 @@ std::string DescribeAvailableVersions(const RegistryIndexEntry &entry) {
 }
 
 SemanticVersion CompilerVersion() {
-    auto parsed = SemanticVersion::Parse(RUX_VERSION);
+    auto parsed = SemanticVersion::Parse(CompilerBuild::compilerVersion);
     return parsed ? std::move(*parsed) : SemanticVersion{};
 }
 } // namespace Rux::Driver

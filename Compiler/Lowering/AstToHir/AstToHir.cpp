@@ -1,6 +1,5 @@
 #include "Lowering/AstToHir/AstToHir.h"
 
-#include "Driver/Version.h"
 #include "Ir/Hir/HirInternal.h"
 #include "Semantic/PrimitiveConstants.h"
 #include "Semantic/SemanticVersion.h"
@@ -3209,15 +3208,14 @@ private:
             if (field == "outputKind")
                 return CompilerParamEnum(location, "OutputKind", static_cast<std::int64_t>(context.outputKind));
             if (field == "timestamp")
-                return CompilerParamLiteral(location, TypeRef::MakeUInt64(), context.buildTimestamp);
+                return CompilerParamLiteral(location, TypeRef::MakeUInt64(), context.buildInfo.Timestamp());
             if (field == "date")
                 return CompilerParamString(location, FormatBuildTime("%Y-%m-%d"));
             if (field == "time")
                 return CompilerParamString(location, FormatBuildTime("%H:%M:%S"));
         }
         if (root == "Compiler" && field == "version") {
-            const std::string &text =
-                context.compilerVersion.empty() ? std::string{RUX_VERSION} : context.compilerVersion;
+            const std::string &text = context.buildInfo.CompilerVersion();
             const ParsedSemanticVersion version = ParseSemanticVersion(text).value_or(ParsedSemanticVersion{});
             auto object = std::make_unique<HirStructInitExpr>();
             object->location = location;
@@ -3359,7 +3357,7 @@ private:
     }
 
     std::string FormatBuildTime(const char *format) const {
-        const std::time_t value = static_cast<std::time_t>(context.buildTimestamp);
+        const std::time_t value = static_cast<std::time_t>(context.buildInfo.Timestamp());
         std::tm utc{};
         if (!UtcTime(value, utc)) {
             return {};
@@ -3533,7 +3531,7 @@ private:
             }
             case K::CompilerVersion: {
                 he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = context.compilerVersion.empty() ? RUX_VERSION : context.compilerVersion;
+                he->value = context.buildInfo.CompilerVersion();
                 break;
             }
             case K::Os:
@@ -3579,7 +3577,7 @@ private:
                 break;
             case K::BuildTimestamp:
                 he->type = TypeRef::MakeUInt64();
-                he->value = std::to_string(context.buildTimestamp);
+                he->value = std::to_string(context.buildInfo.Timestamp());
                 break;
             case K::CompilerHasFeature:
                 he->type = TypeRef::MakeBool();

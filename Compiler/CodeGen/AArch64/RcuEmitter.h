@@ -19,6 +19,7 @@
 // also decides how a failed assertion prints its message; Unix syscall details
 // and Windows API imports are platform properties rather than architecture properties.
 
+#include "BuildInfo/BuildInfo.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Lir/Lir.h"
 #include "Object/Rcu/Rcu.h"
@@ -33,7 +34,7 @@ public:
     // An unspecified system retains the generic AAPCS64/Linux policy. Real
     // driver builds always pass the target OS explicitly.
     explicit AArch64RcuEmitter(const LirPackage &package, std::string inputPackageName = {},
-                               Target::OS inputTargetOs = Target::OS::Linux);
+                               Target::OS inputTargetOs = Target::OS::Linux, BuildInfo inputBuildInfo = {});
     [[nodiscard]] std::vector<RcuFile> Generate() const;
 
     // Diagnostics accumulated during generation, which for this back end also
@@ -47,6 +48,7 @@ private:
     const LirPackage &lir;
     std::string packageName;
     Target::OS targetOs;
+    BuildInfo buildInfo;
     mutable std::vector<Diagnostic> diagnostics;
 };
 } // namespace Rux

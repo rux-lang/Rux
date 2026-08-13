@@ -1,10 +1,10 @@
 #include "Driver/CompilerDriver.h"
 
+#include "BuildInfo/CompilerMetadata.h"
 #include "CodeGen/AArch64/RcuEmitter.h"
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Driver/BuildTarget.h"
-#include "Driver/Version.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Hir/HirPrinter.h"
 #include "Ir/Lir/Lir.h"
@@ -52,7 +52,6 @@ void CompilerDriver::InitializeCompileTimeContext() {
     compileTimeContext.debugInfo = !release;
     compileTimeContext.isTest = opts.isTest;
     compileTimeContext.sourceRoot = root.lexically_normal();
-    compileTimeContext.compilerVersion = RUX_VERSION;
     compileTimeContext.config = opts.manifest.build.ConfigValues();
     // Which import name means the intrinsics package is the root manifest's
     // choice; each dependency's own manifest answers it again below.
@@ -71,7 +70,7 @@ void CompilerDriver::InitializeCompileTimeContext() {
         compileTimeContext.outputKind = OutputKind::SourceLibrary;
     }
 
-    compileTimeContext.buildTimestamp =
+    std::int64_t buildTimestamp =
         static_cast<std::int64_t>(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
     if (const auto epoch = System::GetEnv("SOURCE_DATE_EPOCH")) {
         std::int64_t parsed = 0;
@@ -80,9 +79,10 @@ void CompilerDriver::InitializeCompileTimeContext() {
             invalidSourceDateEpoch = true;
         }
         else {
-            compileTimeContext.buildTimestamp = parsed;
+            buildTimestamp = parsed;
         }
     }
+    compileTimeContext.buildInfo = BuildInfo(std::string(CompilerBuild::compilerVersion), buildTimestamp);
 }
 
 void CompilerDriver::Emit(const Diagnostic &diag) const {
@@ -551,12 +551,13 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     std::vector<Diagnostic> codegenDiagnostics;
     if (isAArch64) {
         AArch64RcuEmitter aarch64Emitter(lirPackage, std::string(opts.manifest.package.name.Text()),
-                                         compileTimeContext.target.os);
+                                         compileTimeContext.target.os, compileTimeContext.buildInfo);
         rcuFiles = aarch64Emitter.Generate();
         codegenDiagnostics = aarch64Emitter.Diagnostics();
     }
     else {
-        RcuEmitter rcuEmitter(lirPackage, std::string(opts.manifest.package.name.Text()), compileTimeContext.target.os);
+        RcuEmitter rcuEmitter(lirPackage, std::string(opts.manifest.package.name.Text()), compileTimeContext.target.os,
+                              compileTimeContext.buildInfo);
         rcuFiles = rcuEmitter.Generate();
         codegenDiagnostics = rcuEmitter.Diagnostics();
     }

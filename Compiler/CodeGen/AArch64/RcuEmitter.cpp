@@ -349,13 +349,15 @@ class AArch64CodeGen {
 public:
     explicit AArch64CodeGen(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
                             const std::vector<std::string> &inputPackageInterfaceNames, std::string inputPackageName,
-                            const Target::OS inputTargetOs, std::vector<Diagnostic> &inputDiagnostics)
+                            const Target::OS inputTargetOs, const BuildInfo &inputBuildInfo,
+                            std::vector<Diagnostic> &inputDiagnostics)
         : mod(module)
         , structDecls(inputStructDecls)
         , packageInterfaceNames(inputPackageInterfaceNames)
         , pkgName(std::move(inputPackageName))
         , targetOs(inputTargetOs)
         , callPolicy(AArch64CallPolicyFor(inputTargetOs))
+        , buildInfo(inputBuildInfo)
         , diagnostics(inputDiagnostics)
         , enc(textData) {
     }
@@ -369,6 +371,7 @@ private:
     std::string pkgName;
     Target::OS targetOs;
     AArch64CallLayoutPolicy callPolicy;
+    const BuildInfo &buildInfo;
     std::vector<Diagnostic> &diagnostics;
 
     // Section data buffers
@@ -3793,8 +3796,8 @@ RcuFile AArch64CodeGen::Generate() {
     file.arch = RcuArch::AArch64;
     file.sourcePath = mod.name;
     file.packageName = pkgName;
-    file.buildTimestamp = RcuBuildTimestamp();
-    file.ruxVersion = RcuCompilerVersion();
+    file.buildTimestamp = RcuBuildTimestamp(buildInfo);
+    file.ruxVersion = RcuCompilerVersion(buildInfo);
 
     {
         RcuSection text;
@@ -3837,10 +3840,11 @@ RcuFile AArch64CodeGen::Generate() {
 } // namespace
 
 AArch64RcuEmitter::AArch64RcuEmitter(const LirPackage &package, std::string inputPackageName,
-                                     const Target::OS inputTargetOs)
+                                     const Target::OS inputTargetOs, BuildInfo inputBuildInfo)
     : lir(package)
     , packageName(std::move(inputPackageName))
-    , targetOs(inputTargetOs) {
+    , targetOs(inputTargetOs)
+    , buildInfo(std::move(inputBuildInfo)) {
 }
 
 std::vector<RcuFile> AArch64RcuEmitter::Generate() const {
@@ -3856,7 +3860,7 @@ std::vector<RcuFile> AArch64RcuEmitter::Generate() const {
         interfaceNames.insert(interfaceNames.end(), module.interfaceNames.begin(), module.interfaceNames.end());
     }
     for (const auto &module : lir.modules) {
-        AArch64CodeGen gen(module, structDecls, interfaceNames, packageName, targetOs, diagnostics);
+        AArch64CodeGen gen(module, structDecls, interfaceNames, packageName, targetOs, buildInfo, diagnostics);
         result.push_back(gen.Generate());
     }
     return result;

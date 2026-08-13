@@ -1,5 +1,5 @@
+#include "BuildInfo/CompilerMetadata.h"
 #include "Driver/BuildTarget.h"
-#include "Driver/Version.h"
 #include "ElfReader.h"
 #include "MachOReader.h"
 #include "System/Os.h"
@@ -56,7 +56,7 @@ TEST_CASE("help JSON publishes the stable 0.4 command contract") {
     const auto result = Run(std::array<std::string_view, 2>{"help", "--json"});
     CHECK(result.exitCode == 0);
     CHECK(result.output.contains("\"schemaVersion\":1"));
-    CHECK(result.output.contains("\"version\":\"" RUX_VERSION "\""));
+    CHECK(result.output.contains("\"version\":\"" + std::string(CompilerBuild::compilerVersion) + "\""));
     constexpr std::array commands = {"add",     "build",   "check", "clean", "doc",       "fmt",    "help",   "info",
                                      "init",    "install", "lint",  "list",  "login",     "logout", "new",    "pack",
                                      "publish", "remove",  "run",   "test",  "uninstall", "update", "version"};

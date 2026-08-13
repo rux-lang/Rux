@@ -1,6 +1,5 @@
 #include "Semantic/SemanticAnalyzer.h"
 
-#include "Driver/Version.h"
 #include "Lexer/Lexer.h"
 #include "Semantic/ConditionalCompilation.h"
 #include "Semantic/PrimitiveConstants.h"
@@ -5133,9 +5132,6 @@ SemanticAnalyzer::SemanticAnalyzer(std::vector<Module *> userModules, std::vecto
     , deps(std::move(inputDeps))
     , packageName(std::move(inputPackageName))
     , compileTimeContext(std::move(inputContext)) {
-    if (compileTimeContext.compilerVersion.empty()) {
-        compileTimeContext.compilerVersion = RUX_VERSION;
-    }
 }
 
 SemanticAnalyzer::SemanticAnalyzer(std::vector<Module *> userModules, std::vector<DepPackage> inputDeps,

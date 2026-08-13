@@ -1,10 +1,10 @@
 // Help-text registry, layout engine, and the help/version printers.
 
+#include "BuildInfo/CompilerMetadata.h"
 #include "Cli/Cli.h"
 #include "Cli/CliSpec.h"
 #include "Cli/TerminalStyle.h"
 #include "Diagnostics/Diagnostics.h"
-#include "Driver/Version.h"
 #include "System/Os.h"
 
 #include <algorithm>
@@ -851,12 +851,13 @@ void Cli::PrintHelpFor(const std::string_view command, const ColorMode color) {
 }
 
 void Cli::PrintVersion() {
-    std::println("Rux {} ({} {})", RUX_VERSION, RUX_BUILD_DATE, RUX_BUILD_TIME);
+    std::println("Rux {} ({} {})", CompilerBuild::compilerVersion, CompilerBuild::compilerBuildDate,
+                 CompilerBuild::compilerBuildTime);
 }
 
 void Cli::PrintHelpJson(const std::string_view command) {
     std::print("{{\"schemaVersion\":1,\"program\":{{\"name\":\"rux\",\"version\":");
-    PrintJsonString(RUX_VERSION);
+    PrintJsonString(CompilerBuild::compilerVersion);
     std::print("}},\"globalOptions\":[");
     const auto globals = CliContract::GlobalOptions();
     for (std::size_t i = 0; i < globals.size(); ++i) {

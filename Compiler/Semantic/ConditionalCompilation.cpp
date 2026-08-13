@@ -1,6 +1,5 @@
 #include "Semantic/ConditionalCompilation.h"
 
-#include "Driver/Version.h"
 #include "Semantic/PrimitiveConstants.h"
 #include "Semantic/SemanticVersion.h"
 #include "Target/Target.h"
@@ -671,11 +670,11 @@ private:
                 return Value{EnumValue{"OutputKind", std::move(variant)}};
             }
             if (field == "timestamp")
-                return Value{context.buildTimestamp};
+                return Value{context.buildInfo.Timestamp()};
             if (field == "date")
-                return Value{FormatTimestamp(context.buildTimestamp, "%Y-%m-%d")};
+                return Value{FormatTimestamp(context.buildInfo.Timestamp(), "%Y-%m-%d")};
             if (field == "time")
-                return Value{FormatTimestamp(context.buildTimestamp, "%H:%M:%S")};
+                return Value{FormatTimestamp(context.buildInfo.Timestamp(), "%H:%M:%S")};
         }
         if (root == "Source") {
             if (field == "line")
@@ -711,7 +710,7 @@ private:
                 if (ident && !RequireRuxImport(ident->name, ident->location)) {
                     return std::nullopt;
                 }
-                return ParseSemanticVersion(context.compilerVersion);
+                return ParseSemanticVersion(context.buildInfo.CompilerVersion());
             }
         }
 
@@ -880,7 +879,7 @@ private:
                         return std::nullopt;
                     }
                     const ParsedSemanticVersion parsed =
-                        ParseSemanticVersion(context.compilerVersion).value_or(ParsedSemanticVersion{});
+                        ParseSemanticVersion(context.buildInfo.CompilerVersion()).value_or(ParsedSemanticVersion{});
                     if (e->field == "major")
                         return Value{parsed.major};
                     if (e->field == "minor")
@@ -951,13 +950,13 @@ private:
             case K::Function:
                 return Value{currentFunction};
             case K::Date:
-                return Value{FormatTimestamp(context.buildTimestamp, "%Y-%m-%d")};
+                return Value{FormatTimestamp(context.buildInfo.Timestamp(), "%Y-%m-%d")};
             case K::Time:
-                return Value{FormatTimestamp(context.buildTimestamp, "%H:%M:%S")};
+                return Value{FormatTimestamp(context.buildInfo.Timestamp(), "%H:%M:%S")};
             case K::Module:
                 return Value{currentModulePath};
             case K::CompilerVersion:
-                return Value{context.compilerVersion};
+                return Value{context.buildInfo.CompilerVersion()};
             case K::Os:
                 if (const auto variant = OsVariantFor(ToString(context.target.os))) {
                     return Value{EnumValue{"OperatingSystem", *variant}};
@@ -1019,7 +1018,7 @@ private:
                 return Value{EnumValue{"OutputKind", std::move(variant)}};
             }
             case K::BuildTimestamp:
-                return Value{context.buildTimestamp};
+                return Value{context.buildInfo.Timestamp()};
             case K::CompilerHasFeature: {
                 const auto feature = IntrinsicArgument(*e);
                 return feature ? std::optional<Value>{Value{std::ranges::contains(CompilerFeatures, *feature)}}
@@ -1966,7 +1965,6 @@ void ResolveConditionalCompilation(const std::vector<Module *> &modules, const s
             }
         }
     }
-    context.compilerVersion = RUX_VERSION;
     Resolver resolver(context, diags);
     resolver.Run(modules);
 }
