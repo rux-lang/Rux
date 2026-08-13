@@ -5,6 +5,7 @@
 #include "Semantic/Type.h"
 #include "Syntax/Ast/Ast.h"
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -30,6 +31,28 @@ struct SemanticSymbol {
     bool isMut = false;
 };
 
+// The callable selected for an accepted CallExpr. Declaration pointers refer
+// into the analyzed AST and therefore have the same lifetime requirements as
+// the model's node-keyed type facts.
+struct ResolvedCallableBinding {
+    enum class DispatchKind {
+        Direct,
+        Method,
+        Interface,
+        Indirect,
+        EnumVariant,
+    };
+
+    DispatchKind dispatch = DispatchKind::Indirect;
+    const Decl *selectedDeclaration = nullptr;
+    const EnumDecl::Variant *selectedVariant = nullptr;
+    std::unordered_map<std::string, TypeRef> substitutions;
+    std::optional<TypeRef> receiverType;
+    std::optional<std::size_t> variadicBoundary;
+    CallingConvention callingConvention = CallingConvention::Default;
+    std::string importedSymbolOverride;
+};
+
 // Persistent output of semantic analysis. Besides diagnostics and exported
 // symbols it owns the ordered, validated module view and resolved type facts
 // consumed by lowering. The model does not own the AST: every Module supplied
@@ -45,7 +68,8 @@ struct SemanticModel {
                   std::vector<const Module *> inputModules, CompileTimeContext inputCompileTimeContext,
                   std::unordered_map<const Expr *, TypeRef> inputExpressionTypes,
                   std::unordered_map<const TypeExpr *, TypeRef> inputTypeNodeTypes,
-                  std::unordered_map<const Pattern *, TypeRef> inputPatternTypes);
+                  std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
+                  std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings);
 
     [[nodiscard]] bool HasErrors() const noexcept;
 
@@ -55,9 +79,14 @@ struct SemanticModel {
     [[nodiscard]] const TypeRef *TryGetType(const TypeExpr &typeNode) const noexcept;
     [[nodiscard]] const TypeRef *TryGetType(const Pattern &pattern) const noexcept;
 
+    // Returns null for rejected calls and nodes outside the analyzed modules.
+    // Returned pointers remain valid for the lifetime of this model.
+    [[nodiscard]] const ResolvedCallableBinding *TryGetCallableBinding(const CallExpr &call) const noexcept;
+
 private:
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
+    std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
 };
 } // namespace Rux

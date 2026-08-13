@@ -35,43 +35,34 @@ Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on
 
 ## Component Ownership
 
-| Component              | Owns                                                                          | May depend on                         |
-| ---------------------- | ----------------------------------------------------------------------------- | ------------------------------------- |
-| `SourceModel`          | Source locations and loaded-file identity values                              | Standard library only                 |
-| `BuildInfo`            | Immutable compiler identity, timestamp, typed profile, and output artifact kind | Standard library only                 |
-| `Diagnostics`          | Diagnostic values and rendering primitives                                    | SourceModel                           |
-| `Source`               | Source discovery and loading                                                  | SourceModel and Diagnostics           |
-| `System`               | Host OS, process, filesystem, networking, environment, and JSON               | Target, standard library, host APIs   |
-| `Target`               | Validated target triples, ABI, layout, and instruction models                 | SourceModel                           |
-| `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                      | Crypto and Target                     |
-| `Lexer`                | Tokens and lexical analysis                                                   | SourceModel and Diagnostics           |
-| `Syntax`               | AST and parser                                                                | Lexer, Diagnostics, and Target        |
-| `Semantic`             | Symbols, types, conditional compilation, and validated semantic model         | BuildInfo, Syntax, and Diagnostics    |
-| `Ir/Hir`               | High-level IR and its transformations                                         | Semantic, Lexer, SourceModel, Target  |
-| `Ir/Lir`               | Control-flow-explicit low-level IR                                            | Semantic                              |
+| Component              | Owns                                                                             | May depend on                         |
+| ---------------------- | -------------------------------------------------------------------------------- | ------------------------------------- |
+| `SourceModel`          | Source locations and loaded-file identity values                                 | Standard library only                 |
+| `BuildInfo`            | Immutable compiler identity, timestamp, typed profile, and output artifact kind  | Standard library only                 |
+| `Diagnostics`          | Diagnostic values and rendering primitives                                       | SourceModel                           |
+| `Source`               | Source discovery and loading                                                     | SourceModel and Diagnostics           |
+| `System`               | Host OS, process, filesystem, networking, environment, and JSON                  | Target, standard library, host APIs   |
+| `Target`               | Validated target triples, ABI, layout, and instruction models                    | SourceModel                           |
+| `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                         | Crypto and Target                     |
+| `Lexer`                | Tokens and lexical analysis                                                      | SourceModel and Diagnostics           |
+| `Syntax`               | AST and parser                                                                   | Lexer, Diagnostics, and Target        |
+| `Semantic`             | Symbols, types, conditional compilation, and validated semantic model            | BuildInfo, Syntax, and Diagnostics    |
+| `Ir/Hir`               | High-level IR and its transformations                                            | Semantic, Lexer, SourceModel, Target  |
+| `Ir/Lir`               | Control-flow-explicit low-level IR                                               | Semantic                              |
 | `Optimization`         | Profile-selected HIR/LIR passes, CFG validation, constants, and LIR reachability | BuildInfo, Diagnostics, HIR, and LIR  |
-| `Lowering`             | AST/semantic model → HIR → LIR                                                | Frontend and IR components            |
-| `CodeGen`              | Layout rules, literal decoding, register allocation, and the assembly result  | LIR                                   |
-| `CodeGen/X86_64`       | x86-64 instruction encoding, inline assembly, and RCU construction            | BuildInfo, LIR, Object, Diagnostics   |
-| `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, and RCU construction           | BuildInfo, LIR, Object, Diagnostics   |
-| `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                | BuildInfo and Target                  |
-| `Archive`              | Deterministic native archive containers and symbol indexes                    | Object                                |
-| `Linker`               | PE, ELF, Mach-O, relocatable-object, and library output                       | Object, Archive, and System           |
-| `Driver`               | End-to-end compilation orchestration and build reports                        | All compiler stages                   |
-| `Formatter` / `Linter` | Source formatting and lint diagnostics                                        | Syntax; the linter also uses Semantic |
+| `Lowering`             | AST/semantic model → HIR → LIR                                                   | Frontend and IR components            |
+| `CodeGen`              | Layout rules, literal decoding, register allocation, and the assembly result     | LIR                                   |
+| `CodeGen/X86_64`       | x86-64 instruction encoding, inline assembly, and RCU construction               | BuildInfo, LIR, Object, Diagnostics   |
+| `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, and RCU construction              | BuildInfo, LIR, Object, Diagnostics   |
+| `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                   | BuildInfo and Target                  |
+| `Archive`              | Deterministic native archive containers and symbol indexes                       | Object                                |
+| `Linker`               | PE, ELF, Mach-O, relocatable-object, and library output                          | Object, Archive, and System           |
+| `Driver`               | End-to-end compilation orchestration and build reports                           | All compiler stages                   |
+| `Formatter` / `Linter` | Source formatting and lint diagnostics                                           | Syntax; the linter also uses Semantic |
 
-The driver's artifact-aware Release composition adds `lir-declaration-pruner` after the profile-only local LIR
-pipeline. It consumes whole-package
-reachability before backend selection, retains declarations in module order, and removes unreachable private
-definitions and unused externs. Debug never schedules the pass, and public library roots remain intact. The pass
-reports function, constant, vtable, and extern counts plus a deterministic eliminated-IR estimate based on declaration,
-parameter, block, instruction, terminator, assembly-instruction, constant-element, and vtable-entry nodes.
+The driver's artifact-aware Release composition adds `lir-declaration-pruner` after the profile-only local LIR pipeline. It consumes whole-package reachability before backend selection, retains declarations in module order, and removes unreachable private definitions and unused externs. Debug never schedules the pass, and public library roots remain intact. The pass reports function, constant, vtable, and extern counts plus a deterministic eliminated-IR estimate based on declaration, parameter, block, instruction, terminator, assembly-instruction, constant-element, and vtable-entry nodes.
 
-`SemanticModel` retains the resolved `TypeRef` accepted for each typed expression, type-expression node, and pattern.
-Queries are read-only and return no fact for unresolved or unvisited nodes, so lowering can consume semantic decisions
-without rerunning name or type resolution. Facts are keyed by AST node identity: parsed user and dependency modules must
-outlive the model and remain unchanged through lowering. Conditional compilation finishes rewriting those modules before
-facts are recorded.
+`SemanticModel` retains the resolved `TypeRef` accepted for each typed expression, type-expression node, and pattern. It also records the callable selected for each accepted call, including generic and receiver substitutions, method or interface dispatch, the variadic boundary, calling convention, and any extern import-name override. Queries are read-only and return no fact for unresolved, rejected, or unvisited nodes, so lowering can consume semantic decisions without rerunning name, type, overload, or dispatch resolution. Facts are keyed by AST node identity: parsed user and dependency modules must outlive the model and remain unchanged through lowering. Conditional compilation finishes rewriting those modules before facts are recorded.
 
 The CMake target graph enforces these dependencies. `RuxBuildInfo` and `RuxSourceModel` are interface-only boundaries; `RuxTarget` also owns the compiled parsing and catalog implementation for `TargetTriple`. `BuildInfo` owns the shared `BuildProfile` and `ArtifactKind` vocabulary used across compiler stages. Compile-time identity is populated once by driver composition and then passed unchanged through compile-time evaluation, lowering, and RCU emission; those stages do not include generated compiler-version data or read the clock themselves. `BuildProfile` is the single source for profile names, build mode, optimization level, debug assertions, and debug information. The driver selects one explicit optimization pipeline per compilation: Debug selects O0/None and schedules only the non-transforming `lir-cfg-verifier`, while Release selects Speed and additionally schedules `hir-constant-folder`, `lir-constant-copy-propagation`, `lir-dead-code-elimination`, and `lir-cfg-cleanup`. The HIR folder uses per-function lexical environments, invalidates facts at control-flow and mutation boundaries, and only discards expressions classified as side-effect-free and non-trapping. HIR-to-LIR lowering is transformation-free. The LIR verifier rejects missing terminators, invalid successor indices, and phi inputs that do not exactly name the actual predecessor blocks. Per-function LIR propagation joins typed constants and identical register copies at phi nodes, evaluates only supported pure scalar instructions, and treats calls, loads, stores, and memory aliases conservatively. Dead-code elimination traces register uses from terminators and effectful instructions, removes unused pure definitions, and uses backward CFG data flow to remove overwritten or unread stores to direct, unescaped scalar allocas. Calls, runtime failures, possible arithmetic traps, unknown memory, escaped addresses, and aggregate-derived storage remain observable. CFG cleanup then folds newly constant branches and switches, removes blocks unreachable from the entry, retains surviving blocks in source order, and remaps terminator and phi block references. Whole-package LIR reachability separately indexes functions and data across module boundaries, roots executables at `Main`, roots library artifacts at public code and data, and follows direct calls, materialized symbol addresses, named data loads, vtable methods, constant data references, and structured assembly symbols. External declarations are retained when referenced but are traversal leaves. The result is a deterministic set of declaration IDs for a later pruning pass; reachability analysis itself does not mutate LIR. Every HIR and LIR pass receives a per-run `PassContext`, reports whether it changed the IR, and runs to a fixed point capped at eight iterations. Pass diagnostics stop the pipeline before a malformed graph can reach cleanup or code generation; exhausting the iteration limit also stops compilation with an internal diagnostic. Pass instances and their analysis state belong to one pipeline, so independent compilations share no mutable optimizer state. The optimization component also owns typed constants that retain boolean or signed/unsigned integer kind and their declared 8-, 16-, 32-, or 64-bit width. Evaluation uses unsigned bit patterns and explicit truncation so results match runtime storage without host signed overflow. Unsupported literals, invalid shifts, division or remainder by zero, and signed minimum divided by minus one return no result and remain in IR for runtime handling. `SourceModel` and `Target` expose no source discovery or loading. Source loading reports failures as diagnostic values and never prints them itself. Prefer adding a dependency to the narrowest owning component rather than reaching through `RuxCore`.
 

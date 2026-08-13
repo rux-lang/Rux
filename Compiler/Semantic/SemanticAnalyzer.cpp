@@ -127,7 +127,8 @@ public:
              std::vector<SemanticSymbol> &inputSymbols, const CompileTimeContext &inputContext,
              std::unordered_map<const Expr *, TypeRef> &inputExpressionTypes,
              std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
-             std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes)
+             std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
+             std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings)
         : modules(inputModules)
         , deps(inputDeps)
         , packageName(inputPackageName)
@@ -137,6 +138,7 @@ public:
         , expressionTypes(inputExpressionTypes)
         , typeNodeTypes(inputTypeNodeTypes)
         , patternTypes(inputPatternTypes)
+        , callableBindings(inputCallableBindings)
         , currentScope(&globalScope) {
     }
 
@@ -204,6 +206,7 @@ private:
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> &patternTypes;
+    std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
     Scope globalScope{nullptr};
     Scope *currentScope;
     // packageModuleScopes[pkgName][modulePath] = logical module scope.
@@ -3855,9 +3858,57 @@ private:
         }
     }
 
+    void RecordFunctionBinding(const CallExpr &call, const FuncDecl &declaration,
+                               const ResolvedCallableBinding::DispatchKind dispatch,
+                               std::unordered_map<std::string, TypeRef> substitutions = {},
+                               std::optional<TypeRef> receiverType = std::nullopt) {
+        ResolvedCallableBinding binding;
+        binding.dispatch = dispatch;
+        binding.selectedDeclaration = &declaration;
+        binding.substitutions = std::move(substitutions);
+        binding.receiverType = std::move(receiverType);
+        binding.callingConvention = declaration.callConv;
+        if (!declaration.params.empty() && declaration.params.back().isVariadic) {
+            std::size_t boundary = 0;
+            for (const auto &parameter : declaration.params) {
+                if (parameter.isVariadic) {
+                    break;
+                }
+                if (dispatch != ResolvedCallableBinding::DispatchKind::Method || parameter.name != "self") {
+                    ++boundary;
+                }
+            }
+            binding.variadicBoundary = boundary;
+        }
+        callableBindings.insert_or_assign(&call, std::move(binding));
+    }
+
+    void RecordExternBinding(const CallExpr &call, const ExternFuncDecl &declaration) {
+        ResolvedCallableBinding binding;
+        binding.dispatch = ResolvedCallableBinding::DispatchKind::Direct;
+        binding.selectedDeclaration = &declaration;
+        binding.callingConvention = declaration.callConv;
+        binding.importedSymbolOverride = declaration.symbolName;
+        if (declaration.isVariadic) {
+            binding.variadicBoundary = declaration.params.size();
+        }
+        callableBindings.insert_or_assign(&call, std::move(binding));
+    }
+
     // Expressions
     TypeRef CheckExpr(const Expr &expr) {
+        const std::size_t diagnosticStart = diags.size();
         TypeRef type = CheckExprImpl(expr);
+        if (const auto *call = dynamic_cast<const CallExpr *>(&expr)) {
+            const bool hasNewError =
+                std::ranges::any_of(diags.begin() + static_cast<std::ptrdiff_t>(diagnosticStart), diags.end(),
+                                    [](const SemanticDiagnostic &diagnostic) {
+                                        return diagnostic.severity == SemanticDiagnostic::Severity::Error;
+                                    });
+            if (type.IsUnknown() || hasNewError) {
+                callableBindings.erase(call);
+            }
+        }
         if (!type.IsUnknown()) {
             expressionTypes.insert_or_assign(&expr, type);
         }
@@ -4210,6 +4261,7 @@ private:
                             }
                         }
                     }
+                    RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct, substitutions);
                     return funcType.inner.empty() ? TypeRef::MakeUnknown() : funcType.inner.back();
                 }
             }
@@ -4247,6 +4299,8 @@ private:
                         }
                     }
 
+                    RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method,
+                                          MethodTypeSubstitutions(receiverType), receiverType);
                     return ResolveMethodReturnType(receiverType, *method);
                 }
 
@@ -4286,6 +4340,8 @@ private:
                         }
                     }
 
+                    RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Interface, {},
+                                          receiverType);
                     return ResolveInterfaceMethodReturnType(*method);
                 }
             }
@@ -4332,6 +4388,15 @@ private:
                                         }
                                     }
                                 }
+                                ResolvedCallableBinding binding;
+                                binding.dispatch = ResolvedCallableBinding::DispatchKind::EnumVariant;
+                                binding.selectedDeclaration = &decl;
+                                binding.selectedVariant = variant;
+                                const std::size_t substitutionCount = std::min(decl.typeParams.size(), typeArgs.size());
+                                for (std::size_t i = 0; i < substitutionCount; ++i) {
+                                    binding.substitutions.emplace(decl.typeParams[i], typeArgs[i]);
+                                }
+                                callableBindings.insert_or_assign(e, std::move(binding));
                                 return constructor.inner.empty() ? TypeRef::MakeUnknown() : constructor.inner.back();
                             }
                         }
@@ -4371,13 +4436,16 @@ private:
                                     }
                                 }
                             }
+                            RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method,
+                                                  MethodTypeSubstitutions(receiverType), receiverType);
                             return ResolveMethodReturnType(receiverType, *method);
                         }
                     }
                 }
             }
 
-            if (Symbol *calleeSymbol = LookupCalleeSymbol(*e->callee); calleeSymbol && calleeSymbol->externDecl) {
+            Symbol *calleeSymbol = LookupCalleeSymbol(*e->callee);
+            if (calleeSymbol && calleeSymbol->externDecl) {
                 EmitCallSiteDiagnostics(*calleeSymbol->externDecl, e->location);
             }
 
@@ -4410,6 +4478,28 @@ private:
                                                                         argType.ToString(), paramType.ToString()));
                         }
                     }
+                }
+                if (calleeSymbol && calleeSymbol->externDecl) {
+                    RecordExternBinding(*e, *calleeSymbol->externDecl);
+                }
+                else if (calleeSymbol && !calleeSymbol->funcOverloads.empty()) {
+                    if (const FuncDecl *decl = LookupFunctionOverload(*calleeSymbol, argTypes, e->typeArgs)) {
+                        std::unordered_map<std::string, TypeRef> substitutions;
+                        const std::size_t count = std::min(decl->typeParams.size(), e->typeArgs.size());
+                        for (std::size_t i = 0; i < count; ++i) {
+                            substitutions.emplace(decl->typeParams[i], ResolveType(*e->typeArgs[i]));
+                        }
+                        RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct,
+                                              std::move(substitutions));
+                    }
+                }
+                else {
+                    ResolvedCallableBinding binding;
+                    binding.dispatch = ResolvedCallableBinding::DispatchKind::Indirect;
+                    if (calleeType.isVariadic) {
+                        binding.variadicBoundary = paramCount;
+                    }
+                    callableBindings.insert_or_assign(e, std::move(binding));
                 }
                 return calleeType.inner.back();
             }
@@ -5191,8 +5281,9 @@ SemanticModel SemanticAnalyzer::Analyze() {
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
+    std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
     Analyzer analyzer(constModules, deps, packageName, diags, symbols, compileTimeContext, expressionTypes,
-                      typeNodeTypes, patternTypes);
+                      typeNodeTypes, patternTypes, callableBindings);
     analyzer.Run();
     std::vector<const Module *> orderedModules;
     for (const auto &dep : deps) {
@@ -5203,6 +5294,6 @@ SemanticModel SemanticAnalyzer::Analyze() {
     orderedModules.insert(orderedModules.end(), modules.begin(), modules.end());
     return SemanticModel{
         std::move(diags),           std::move(symbols),       std::move(orderedModules), std::move(compileTimeContext),
-        std::move(expressionTypes), std::move(typeNodeTypes), std::move(patternTypes)};
+        std::move(expressionTypes), std::move(typeNodeTypes), std::move(patternTypes),   std::move(callableBindings)};
 }
 } // namespace Rux

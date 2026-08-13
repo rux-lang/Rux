@@ -1,14 +1,10 @@
 <p align="center">
   <a href="https://rux-lang.dev">
-    <img src="https://rux-lang.dev/logo.svg" alt="Rux logo" width="120">
+    <img src="https://rux-lang.dev/logo.svg" alt="Rux logo" width="80">
   </a>
 </p>
 
 # Rux Programming Language
-
-Rux is a fast, compiled, strongly typed, multi-paradigm programming language. The compiler is self-contained: its own x86-64 and AArch64 code generators, its own object format, and its own PE/ELF/Mach-O linkers produce a native executable with no assembler, no C compiler, and no external linker anywhere in the pipeline.
-
-Cross-compilation needs no external toolchain: `rux build --target <os>-<arch>` produces another system's artifact from any host, while `rux check --target` performs target analysis without executing it. `rux run` is host-only, and `rux test --target` executes only a same-OS architecture reported for the compiler process or native OS. Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on x86-64 and AArch64, and both back ends reach all eight of those triples: ELF for FreeBSD and Linux, PE/COFF for Windows, and Mach-O for macOS.
 
 [![FreeBSD](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml)
 [![Linux](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml)
@@ -17,6 +13,10 @@ Cross-compilation needs no external toolchain: `rux build --target <os>-<arch>` 
 [![Code Quality](https://github.com/rux-lang/Rux/actions/workflows/CodeQuality.yml/badge.svg)](https://github.com/rux-lang/Rux/actions/workflows/CodeQuality.yml)
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](LICENSE.md)
+
+Rux is a fast, compiled, strongly typed, multi-paradigm programming language. The compiler is self-contained: its own x86-64 and AArch64 code generators, its own object format, and its own PE/ELF/Mach-O linkers produce a native executable with no assembler, no C compiler, and no external linker anywhere in the pipeline.
+
+Cross-compilation needs no external toolchain: `rux build --target <os>-<arch>` produces another system's artifact from any host, while `rux check --target` performs target analysis without executing it. `rux run` is host-only, and `rux test --target` executes only a same-OS architecture reported for the compiler process or native OS. Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on x86-64 and AArch64, and both back ends reach all eight of those triples: ELF for FreeBSD and Linux, PE/COFF for Windows, and Mach-O for macOS.
 
 The platform badges cover native x86-64 and AArch64 builds and tests. The [CI/CD guide](Docs/CI-CD.md) documents the native, cross-compiler, transferred-artifact, and runtime acceptance paths in detail.
 

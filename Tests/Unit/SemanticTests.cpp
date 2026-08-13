@@ -194,6 +194,143 @@ TEST_CASE("semantic model retains facts for dependency modules") {
     CHECK_EQ(ResolvedType(model, **returned->value).ToString(), "int32");
 }
 
+TEST_CASE("semantic model retains resolved callable bindings") {
+    Lexer lexer(R"(
+        func Choose(value: int32) -> int32 { return value; }
+        func Choose(value: bool) -> bool { return value; }
+        func Identity<T>(value: T) -> T { return value; }
+        func Gather(head: int32, tail: int32...) -> int32 { return head; }
+
+        interface Reader {
+            func Read() -> int32;
+        }
+
+        struct Number { value: int32; }
+
+        extend Number : Reader {
+            func Read(self) -> int32 { return self.value; }
+        }
+
+        #Abi(.C)
+        #Link("native.dll", "native_actual")
+        extern func Native(value: int32, ...) -> int32;
+
+        func Main() {
+            let number = Number { value: 7i32 };
+            let reader: Reader = number;
+            let chosen = Choose(1i32);
+            let generic = Identity<int64>(2i64);
+            let gathered = Gather(1i32, 2i32, 3i32);
+            let method = number.Read();
+            let dispatched = reader.Read();
+            let external = Native(1i32, true);
+        }
+    )",
+                "bindings.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "bindings.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "bindings", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    const auto *firstOverload = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
+    const auto *genericDecl = dynamic_cast<const FuncDecl *>(parsed.module.items[2].get());
+    const auto *variadicDecl = dynamic_cast<const FuncDecl *>(parsed.module.items[3].get());
+    const auto *interfaceDecl = dynamic_cast<const InterfaceDecl *>(parsed.module.items[4].get());
+    const auto *implDecl = dynamic_cast<const ImplDecl *>(parsed.module.items[6].get());
+    const auto *externDecl = dynamic_cast<const ExternFuncDecl *>(parsed.module.items[7].get());
+    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[8].get());
+    REQUIRE(firstOverload != nullptr);
+    REQUIRE(genericDecl != nullptr);
+    REQUIRE(variadicDecl != nullptr);
+    REQUIRE(interfaceDecl != nullptr);
+    REQUIRE_EQ(interfaceDecl->methods.size(), 1);
+    REQUIRE(implDecl != nullptr);
+    REQUIRE_EQ(implDecl->methods.size(), 1);
+    REQUIRE(externDecl != nullptr);
+    REQUIRE(main != nullptr);
+    REQUIRE(main->body != nullptr);
+    REQUIRE_EQ(main->body->stmts.size(), 8);
+
+    const auto callAt = [&](const std::size_t statementIndex) -> const CallExpr & {
+        const auto *binding = dynamic_cast<const LetStmt *>(main->body->stmts[statementIndex].get());
+        REQUIRE(binding != nullptr);
+        const auto *call = dynamic_cast<const CallExpr *>(binding->init.get());
+        REQUIRE(call != nullptr);
+        return *call;
+    };
+    const auto bindingFor = [&](const CallExpr &call) -> const ResolvedCallableBinding & {
+        const ResolvedCallableBinding *binding = model.TryGetCallableBinding(call);
+        REQUIRE(binding != nullptr);
+        return *binding;
+    };
+
+    const auto &overload = bindingFor(callAt(2));
+    CHECK_EQ(overload.dispatch, ResolvedCallableBinding::DispatchKind::Direct);
+    CHECK(overload.selectedDeclaration == firstOverload);
+    CHECK(overload.substitutions.empty());
+
+    const auto &generic = bindingFor(callAt(3));
+    CHECK(generic.selectedDeclaration == genericDecl);
+    REQUIRE_EQ(generic.substitutions.size(), 1);
+    CHECK_EQ(generic.substitutions.at("T").ToString(), "int64");
+
+    const auto &variadic = bindingFor(callAt(4));
+    CHECK(variadic.selectedDeclaration == variadicDecl);
+    REQUIRE(variadic.variadicBoundary.has_value());
+    CHECK_EQ(*variadic.variadicBoundary, 1);
+
+    const auto &method = bindingFor(callAt(5));
+    CHECK_EQ(method.dispatch, ResolvedCallableBinding::DispatchKind::Method);
+    CHECK(method.selectedDeclaration == implDecl->methods[0].get());
+    REQUIRE(method.receiverType.has_value());
+    CHECK_EQ(method.receiverType->ToString(), "Number");
+
+    const auto &interfaceCall = bindingFor(callAt(6));
+    CHECK_EQ(interfaceCall.dispatch, ResolvedCallableBinding::DispatchKind::Interface);
+    CHECK(interfaceCall.selectedDeclaration == interfaceDecl->methods[0].get());
+    REQUIRE(interfaceCall.receiverType.has_value());
+    CHECK_EQ(interfaceCall.receiverType->ToString(), "Reader");
+
+    const auto &external = bindingFor(callAt(7));
+    CHECK_EQ(external.dispatch, ResolvedCallableBinding::DispatchKind::Direct);
+    CHECK(external.selectedDeclaration == externDecl);
+    CHECK_EQ(external.callingConvention, CallingConvention::C);
+    CHECK_EQ(external.importedSymbolOverride, "native_actual");
+    REQUIRE(external.variadicBoundary.has_value());
+    CHECK_EQ(*external.variadicBoundary, 1);
+}
+
+TEST_CASE("semantic model omits bindings for rejected calls") {
+    Lexer lexer(R"(
+        func Select(value: int32) -> int32 { return value; }
+        func Select(value: bool) -> bool { return value; }
+        func Main() { let rejected = Select("wrong"); }
+    )",
+                "rejected_call.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "rejected_call.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "rejected_call", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE(model.HasErrors());
+    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[2].get());
+    REQUIRE(main != nullptr);
+    REQUIRE(main->body != nullptr);
+    const auto *binding = dynamic_cast<const LetStmt *>(main->body->stmts[0].get());
+    REQUIRE(binding != nullptr);
+    const auto *call = dynamic_cast<const CallExpr *>(binding->init.get());
+    REQUIRE(call != nullptr);
+    CHECK(model.TryGetCallableBinding(*call) == nullptr);
+}
+
 TEST_CASE("let and var independently control binding and pointee mutability") {
     const auto diagnostics = AnalyzeSource(R"(
         func Main() {

@@ -8,14 +8,16 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::vector<const Module *> inputModules, CompileTimeContext inputCompileTimeContext,
                              std::unordered_map<const Expr *, TypeRef> inputExpressionTypes,
                              std::unordered_map<const TypeExpr *, TypeRef> inputTypeNodeTypes,
-                             std::unordered_map<const Pattern *, TypeRef> inputPatternTypes)
+                             std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
+                             std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings)
     : diagnostics(std::move(inputDiagnostics))
     , symbols(std::move(inputSymbols))
     , modules(std::move(inputModules))
     , compileTimeContext(std::move(inputCompileTimeContext))
     , expressionTypes(std::move(inputExpressionTypes))
     , typeNodeTypes(std::move(inputTypeNodeTypes))
-    , patternTypes(std::move(inputPatternTypes)) {
+    , patternTypes(std::move(inputPatternTypes))
+    , callableBindings(std::move(inputCallableBindings)) {
 }
 
 bool SemanticModel::HasErrors() const noexcept {
@@ -36,5 +38,10 @@ const TypeRef *SemanticModel::TryGetType(const TypeExpr &typeNode) const noexcep
 const TypeRef *SemanticModel::TryGetType(const Pattern &pattern) const noexcept {
     const auto type = patternTypes.find(&pattern);
     return type == patternTypes.end() ? nullptr : &type->second;
+}
+
+const ResolvedCallableBinding *SemanticModel::TryGetCallableBinding(const CallExpr &call) const noexcept {
+    const auto binding = callableBindings.find(&call);
+    return binding == callableBindings.end() ? nullptr : &binding->second;
 }
 } // namespace Rux
