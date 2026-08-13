@@ -193,7 +193,6 @@ module Api {
         options.manifestPath = appRoot / "Rux.toml";
         options.manifest = application;
         options.target = Target::TargetTriple::Host();
-        options.profileName = "Debug";
         options.quiet = true;
         options.checkOnly = checkOnly;
         options.emitDiagnostic = [&](const Diagnostic &diagnostic) { diagnostics.push_back(diagnostic); };
@@ -547,7 +546,7 @@ func Main() -> int {
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.target = *Target::TargetTriple::Parse("windows-x86_64");
-    options.profileName = "Release";
+    options.profile = BuildProfile::Release;
 
     const auto build = CompilerDriver(std::move(options)).Compile();
 
@@ -565,7 +564,7 @@ TEST_CASE("compiler driver builds a Windows AArch64 executable") {
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.target = *Target::TargetTriple::Parse("windows-aarch64");
-    options.profileName = "Release";
+    options.profile = BuildProfile::Release;
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -590,7 +589,7 @@ TEST_CASE("compiler driver builds a Windows AArch64 shared library and import li
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.target = *Target::TargetTriple::Parse("windows-arm64");
-    options.profileName = "Release";
+    options.profile = BuildProfile::Release;
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -620,7 +619,7 @@ TEST_CASE("compiler driver builds a Windows AArch64 static library") {
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.target = *Target::TargetTriple::Parse("windows-aarch64");
-    options.profileName = "Release";
+    options.profile = BuildProfile::Release;
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -641,7 +640,7 @@ TEST_CASE("compiler driver builds a signed macOS AArch64 executable with target 
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.target = *Target::TargetTriple::Parse("macos-aarch64");
-    options.profileName = "Release";
+    options.profile = BuildProfile::Release;
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -671,7 +670,7 @@ TEST_CASE("compiler driver canonicalizes the macOS ARM64 alias and builds a sign
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.target = *Target::TargetTriple::Parse("macos-arm64");
-    options.profileName = "Release";
+    options.profile = BuildProfile::Release;
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -703,7 +702,7 @@ TEST_CASE("compiler driver builds macOS AArch64 static libraries with relocatabl
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.target = *Target::TargetTriple::Parse("macos-aarch64");
-    options.profileName = "Release";
+    options.profile = BuildProfile::Release;
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -760,7 +759,7 @@ TEST_CASE("compiler driver builds a FreeBSD AArch64 executable with target-condi
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.target = *Target::TargetTriple::Parse("freebsd-aarch64");
-    options.profileName = "Release";
+    options.profile = BuildProfile::Release;
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -796,7 +795,7 @@ TEST_CASE("compiler driver canonicalizes FreeBSD ARM64 as AArch64 and builds a s
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.target = *Target::TargetTriple::Parse("freebsd-arm64");
-    options.profileName = "Release";
+    options.profile = BuildProfile::Release;
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -837,7 +836,7 @@ TEST_CASE("compiler driver builds a FreeBSD AArch64 static library from relocata
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.target = *Target::TargetTriple::Parse("freebsd-aarch64");
-    options.profileName = "Release";
+    options.profile = BuildProfile::Release;
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 

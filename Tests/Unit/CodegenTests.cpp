@@ -42,7 +42,7 @@ static LirPackage CompileToLirFor(const std::string &source, const std::string &
     AstToHirLowering hirLowering(semaModel);
     auto hirPackage = hirLowering.Generate();
 
-    HirToLirLowering lirLowering(std::move(hirPackage), target);
+    HirToLirLowering lirLowering(std::move(hirPackage), target, BuildProfile::Release);
     return lirLowering.Generate();
 }
 
@@ -526,7 +526,8 @@ TEST_CASE("C variadic call metadata survives package-wide extern lookup and Link
 
     const auto package =
         HirToLirLowering(std::move(hir),
-                         Driver::TargetContextForTriple(*Target::TargetTriple::Parse("windows-aarch64")))
+                         Driver::TargetContextForTriple(*Target::TargetTriple::Parse("windows-aarch64")),
+                         BuildProfile::Release)
             .Generate();
     REQUIRE_EQ(package.modules.size(), 2);
     REQUIRE_EQ(package.modules[0].funcs.size(), 1);

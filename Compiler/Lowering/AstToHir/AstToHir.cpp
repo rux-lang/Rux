@@ -3194,15 +3194,16 @@ private:
         }
         if (root == "Build") {
             if (field == "profile")
-                return CompilerParamString(location, context.profileName);
+                return CompilerParamString(location, std::string(context.ProfileName()));
             if (field == "mode")
-                return CompilerParamEnum(location, "BuildMode", static_cast<std::int64_t>(context.buildMode));
+                return CompilerParamEnum(location, "BuildMode", static_cast<std::int64_t>(context.BuildMode()));
             if (field == "optimization")
-                return CompilerParamEnum(location, "OptimizationMode", static_cast<std::int64_t>(context.optimization));
+                return CompilerParamEnum(location, "OptimizationMode",
+                                         static_cast<std::int64_t>(context.Optimization()));
             if (field == "debugAssertions")
-                return CompilerParamLiteral(location, TypeRef::MakeBool(), context.debugAssertions);
+                return CompilerParamLiteral(location, TypeRef::MakeBool(), context.DebugAssertions());
             if (field == "debugInfo")
-                return CompilerParamLiteral(location, TypeRef::MakeBool(), context.debugInfo);
+                return CompilerParamLiteral(location, TypeRef::MakeBool(), context.DebugInfo());
             if (field == "isTest")
                 return CompilerParamLiteral(location, TypeRef::MakeBool(), context.isTest);
             if (field == "outputKind")
@@ -3561,15 +3562,15 @@ private:
                 break;
             case K::BuildProfile:
                 he->type = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
-                he->value = context.profileName;
+                he->value = context.ProfileName();
                 break;
             case K::DebugAssertions:
                 he->type = TypeRef::MakeBool();
-                he->value = context.debugAssertions ? "true" : "false";
+                he->value = context.DebugAssertions() ? "true" : "false";
                 break;
             case K::DebugInfo:
                 he->type = TypeRef::MakeBool();
-                he->value = context.debugInfo ? "true" : "false";
+                he->value = context.DebugInfo() ? "true" : "false";
                 break;
             case K::IsTest:
                 he->type = TypeRef::MakeBool();
@@ -3748,7 +3749,7 @@ private:
                                        : TypeRef::MakeFunc({TypeRef::MakeBool(),
                                                             TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()))},
                                                            TypeRef::MakeOpaque());
-                const bool disabled = calleeSymbol->intrinsicName == "DebugAssert" && !context.debugAssertions;
+                const bool disabled = calleeSymbol->intrinsicName == "DebugAssert" && !context.DebugAssertions();
                 callee->name = isPanic  ? "__builtin_panic"
                              : disabled ? "__builtin_debug_assert_disabled"
                                         : "__builtin_assert";

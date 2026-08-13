@@ -36,7 +36,7 @@ LirPackage CompileToLir(const std::string &source) {
     REQUIRE_FALSE(model.HasErrors());
 
     AstToHirLowering hirLowering(model);
-    HirToLirLowering lirLowering(hirLowering.Generate(), context.target);
+    HirToLirLowering lirLowering(hirLowering.Generate(), context.target, context.profile);
     return lirLowering.Generate();
 }
 

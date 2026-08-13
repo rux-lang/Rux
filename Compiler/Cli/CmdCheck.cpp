@@ -123,7 +123,6 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         copts.manifestPath = packageManifestPath;
         copts.manifest = std::move(packageManifest);
         copts.target = *targetTriple;
-        copts.profileName = "Debug";
         copts.defines = defines;
         copts.localPackageRoots = localPackageRoots;
         copts.localDependenciesOnly = localDependenciesOnly;

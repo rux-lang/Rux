@@ -857,11 +857,11 @@ func Selected() -> int {
         #target.objectFormat == ObjectFormat::COFF &&
         #target.triple == "windows-x86_64" &&
         #target.HasFeature(.AVX2) &&
-        #build.profile == "Production" &&
+        #build.profile == "Release" &&
         #build.mode == BuildMode::Release &&
         #build.optimization == OptimizationMode::Speed &&
         !#build.debugAssertions &&
-        #build.debugInfo &&
+        !#build.debugInfo &&
         #build.isTest &&
         #build.outputKind == OutputKind::SharedLibrary {
         return 1;
@@ -869,6 +869,7 @@ func Selected() -> int {
         return 0;
     }
 }
+
 )");
 
     CompileTimeContext context;
@@ -881,17 +882,29 @@ func Selected() -> int {
     context.target.object_format = Target::ObjectFormat::COFF;
     context.target.cpu_features = Target::CpuFeature::AVX2;
     context.targetTriple = "windows-x86_64";
-    context.profileName = "Production";
-    context.buildMode = Target::BuildMode::Release;
-    context.optimization = OptimizationMode::Speed;
-    context.debugAssertions = false;
-    context.debugInfo = true;
+    context.profile = BuildProfile::Release;
     context.isTest = true;
     context.outputKind = OutputKind::SharedLibrary;
 
     const auto model = Analyze(parsed.module, std::move(context));
     CHECK_FALSE(model.HasErrors());
     CHECK(ReturnedLiteral(*FindFunc(parsed.module, "Selected")) == "1");
+}
+
+TEST_CASE("build profiles derive coherent compile-time metadata") {
+    CompileTimeContext context;
+    CHECK(context.ProfileName() == "Debug");
+    CHECK(context.BuildMode() == Target::BuildMode::Debug);
+    CHECK(context.Optimization() == OptimizationMode::None);
+    CHECK(context.DebugAssertions());
+    CHECK(context.DebugInfo());
+
+    context.profile = BuildProfile::Release;
+    CHECK(context.ProfileName() == "Release");
+    CHECK(context.BuildMode() == Target::BuildMode::Release);
+    CHECK(context.Optimization() == OptimizationMode::Speed);
+    CHECK_FALSE(context.DebugAssertions());
+    CHECK_FALSE(context.DebugInfo());
 }
 
 TEST_CASE("configuration and compiler feature intrinsics are queryable") {
@@ -1047,9 +1060,7 @@ module Demo {
     context.target.pointer_size = 8;
     context.target.cpu_features = Target::CpuFeature::AVX2;
     context.targetTriple = "windows-x86_64";
-    context.profileName = "Testing";
-    context.debugAssertions = false;
-    context.debugInfo = true;
+    context.profile = BuildProfile::Release;
     context.isTest = true;
     context.config["allocator"] = "mimalloc";
     context.buildInfo = BuildInfo("1.2.3-rc.1+build.7", 0);
@@ -1103,9 +1114,9 @@ module Demo {
     CHECK(values["pointerBits"] == "64");
     CHECK(values["targetTriple"] == "windows-x86_64");
     CHECK(values["feature"] == "true");
-    CHECK(values["profile"] == "Testing");
+    CHECK(values["profile"] == "Release");
     CHECK(values["debugAssertions"] == "false");
-    CHECK(values["debugInfo"] == "true");
+    CHECK(values["debugInfo"] == "false");
     CHECK(values["isTest"] == "true");
     CHECK(values["configValue"] == "mimalloc");
     CHECK(values["hasConfig"] == "true");

@@ -2403,13 +2403,16 @@ private:
 };
 
 // Lir public API
-HirToLirLowering::HirToLirLowering(HirPackage package, TargetContext target)
+HirToLirLowering::HirToLirLowering(HirPackage package, TargetContext target, const BuildProfile profile)
     : hir_(std::move(package))
-    , target_(target) {
+    , target_(target)
+    , profile_(profile) {
 }
 
 LirPackage HirToLirLowering::Generate() {
-    HirPassManager::Run(hir_);
+    if (profile_ == BuildProfile::Release) {
+        HirPassManager::Run(hir_);
+    }
 
     LirLowering lowering(target_);
     return lowering.Run(hir_);

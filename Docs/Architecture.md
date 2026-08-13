@@ -38,7 +38,7 @@ Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on
 | Component              | Owns                                                                         | May depend on                         |
 | ---------------------- | ---------------------------------------------------------------------------- | ------------------------------------- |
 | `SourceModel`          | Source locations and loaded-file identity values                             | Standard library only                 |
-| `BuildInfo`            | Immutable compiler identity and one composition-time build timestamp         | Standard library only                 |
+| `BuildInfo`            | Immutable compiler identity, timestamp, and typed Debug/Release profile       | Standard library only                 |
 | `Diagnostics`          | Diagnostic values and rendering primitives                                   | SourceModel                           |
 | `Source`               | Source discovery and loading                                                 | SourceModel and Diagnostics           |
 | `System`               | Host OS, process, filesystem, networking, environment, and JSON              | Target, standard library, host APIs   |
@@ -63,6 +63,9 @@ The CMake target graph enforces these dependencies. `RuxBuildInfo` and `RuxSourc
 `RuxTarget` also owns the compiled parsing and catalog implementation for `TargetTriple`. `BuildInfo` is populated once by
 driver composition and then passed unchanged through compile-time evaluation,
 lowering, and RCU emission; those stages do not include generated compiler-version data or read the clock themselves.
+`BuildProfile` is the single source for profile names, build mode, optimization level, debug assertions, and debug
+information. Debug selects O0/None and HIR-to-LIR lowering performs no HIR transformation. Release selects Speed and is
+the only profile allowed to invoke the legacy HIR pass manager while the replacement optimization pipeline is built.
 `SourceModel` and `Target` expose no source discovery or loading. Source loading reports failures as diagnostic values and
 never prints them itself. Prefer adding a dependency to the narrowest owning component rather than reaching through
 `RuxCore`.

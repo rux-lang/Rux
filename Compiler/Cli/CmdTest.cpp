@@ -174,7 +174,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             std::print("Testing workspace\n");
         }
     }
-    const std::string_view profileName = isRelease ? "Release" : "Debug";
+    const BuildProfile profile = isRelease ? BuildProfile::Release : BuildProfile::Debug;
 
     // Collect test package directories: any directory under a test root that
     // contains a Rux.toml with Type = "Executable". A directory without a manifest
@@ -289,7 +289,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         copts.manifestPath = pkgDir / "Rux.toml";
         copts.manifest = std::move(*pkgManifest);
         copts.target = *targetTriple;
-        copts.profileName = std::string(profileName);
+        copts.profile = profile;
         copts.defines = defines;
         copts.localPackageRoots = localPackageRoots;
         copts.localDependenciesOnly = true;

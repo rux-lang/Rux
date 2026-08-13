@@ -44,12 +44,7 @@ CompilerDriver::CompilerDriver(CompileOptions options)
 void CompilerDriver::InitializeCompileTimeContext() {
     compileTimeContext.target = TargetContextForTriple(opts.target);
     compileTimeContext.targetTriple = opts.target.CanonicalName();
-    compileTimeContext.profileName = opts.profileName.empty() ? "Debug" : opts.profileName;
-    const bool release = compileTimeContext.profileName == "Release" || compileTimeContext.profileName == "release";
-    compileTimeContext.buildMode = release ? Target::BuildMode::Release : Target::BuildMode::Debug;
-    compileTimeContext.optimization = release ? OptimizationMode::Speed : OptimizationMode::None;
-    compileTimeContext.debugAssertions = !release;
-    compileTimeContext.debugInfo = !release;
+    compileTimeContext.profile = opts.profile;
     compileTimeContext.isTest = opts.isTest;
     compileTimeContext.sourceRoot = root.lexically_normal();
     compileTimeContext.config = opts.manifest.build.ConfigValues();
@@ -521,7 +516,7 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     if (opts.verbose) {
         std::print("Emitting LIR for {}\n", opts.manifest.package.name.Text());
     }
-    HirToLirLowering lirLowering(std::move(hirPackage), compileTimeContext.target);
+    HirToLirLowering lirLowering(std::move(hirPackage), compileTimeContext.target, compileTimeContext.profile);
     auto lirPackage = lirLowering.Generate();
     if (opts.dumpLir) {
         auto lirDir = root / "Temp" / "Lir";
@@ -593,7 +588,7 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
         std::print("Linking {}\n", opts.manifest.package.name.Text());
     }
     const auto binDir =
-        ResolveBuildOutputDir(root, opts.manifest, opts.profileName, opts.target.CanonicalName(), !opts.isTest);
+        ResolveBuildOutputDir(root, opts.manifest, ToString(opts.profile), opts.target.CanonicalName(), !opts.isTest);
     const ArtifactKind artifactKind = PackageArtifactKind(opts.manifest.package.type);
     const OS targetOs = opts.target.Os();
     const Arch targetArch = opts.target.Architecture();

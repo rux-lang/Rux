@@ -57,7 +57,7 @@ LirPackage CompileToAArch64Lir(const std::string &source, const std::string_view
     AstToHirLowering hirLowering(semaModel);
     auto hirPackage = hirLowering.Generate();
 
-    HirToLirLowering lirLowering(std::move(hirPackage), target);
+    HirToLirLowering lirLowering(std::move(hirPackage), target, BuildProfile::Release);
     return lirLowering.Generate();
 }
 

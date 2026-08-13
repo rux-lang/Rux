@@ -230,7 +230,6 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         compileOptions.manifestPath = packageManifestPath;
         compileOptions.manifest = std::move(packageManifest);
         compileOptions.target = *targetTriple;
-        compileOptions.profileName = "Debug";
         compileOptions.defines = defines;
         compileOptions.localPackageRoots = localPackages;
         compileOptions.localDependenciesOnly = rootManifest->IsWorkspace();

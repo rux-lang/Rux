@@ -2,14 +2,16 @@
 #include "Ir/Hir/Passes/PassManager.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
+#include "Lowering/HirToLir/HirToLir.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
+#include <algorithm>
 #include <doctest.h>
 
 using namespace Rux;
 
-static HirPackage CompileAndOptimize(const std::string &source) {
+static HirPackage CompileToHir(const std::string &source) {
     Lexer lexer(source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
@@ -24,10 +26,44 @@ static HirPackage CompileAndOptimize(const std::string &source) {
     REQUIRE_FALSE(semaModel.HasErrors());
 
     AstToHirLowering hirLowering(semaModel);
-    auto package = hirLowering.Generate();
+    return hirLowering.Generate();
+}
 
+static HirPackage CompileAndOptimize(const std::string &source) {
+    auto package = CompileToHir(source);
     HirPassManager::Run(package);
     return package;
+}
+
+static LirPackage CompileToLir(const std::string &source, const BuildProfile profile) {
+    return HirToLirLowering(CompileToHir(source), TargetContext::CreateNative(), profile).Generate();
+}
+
+TEST_CASE("HIR-to-LIR optimization is gated by the build profile") {
+    const std::string source = R"(
+        func Main() -> int {
+            if true {
+                return 1;
+            } else {
+                return 2;
+            }
+        }
+    )";
+
+    const auto debug = CompileToLir(source, BuildProfile::Debug);
+    const auto release = CompileToLir(source, BuildProfile::Release);
+    REQUIRE(debug.modules.size() == 1);
+    REQUIRE(release.modules.size() == 1);
+    REQUIRE(debug.modules[0].funcs.size() == 1);
+    REQUIRE(release.modules[0].funcs.size() == 1);
+
+    const auto &debugBlocks = debug.modules[0].funcs[0].blocks;
+    const auto &releaseBlocks = release.modules[0].funcs[0].blocks;
+    CHECK(debugBlocks.size() > releaseBlocks.size());
+    CHECK(std::ranges::any_of(
+        debugBlocks, [](const LirBlock &block) { return block.term && block.term->kind == LirTermKind::Branch; }));
+    CHECK_FALSE(std::ranges::any_of(
+        releaseBlocks, [](const LirBlock &block) { return block.term && block.term->kind == LirTermKind::Branch; }));
 }
 
 TEST_CASE("optimizer eliminates dead code after return") {

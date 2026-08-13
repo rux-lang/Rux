@@ -5,6 +5,7 @@
 // The CLI parses arguments, loads the manifest, validates the target, and
 // decides what to print; the Driver owns everything in between.
 
+#include "BuildInfo/BuildProfile.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildReport.h"
 #include "Package/Manifest.h"
@@ -26,7 +27,7 @@ struct CompileOptions {
     std::filesystem::path manifestPath; // resolved path to Rux.toml
     Manifest manifest;                  // parsed manifest for manifestPath
     Target::TargetTriple target = Target::TargetTriple::Host();
-    std::string profileName;                    // "Release", "Debug", or a custom profile
+    BuildProfile profile = BuildProfile::Debug;
     std::map<std::string, std::string> defines; // --define overrides
 
     // Workspace members that override registry dependencies by package name.

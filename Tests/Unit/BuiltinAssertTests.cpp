@@ -34,13 +34,13 @@ LirPackage CompileToLir(const std::string &source, const bool debugAssertions) {
     REQUIRE_FALSE(parsed.HasErrors());
 
     CompileTimeContext context;
-    context.debugAssertions = debugAssertions;
+    context.profile = debugAssertions ? BuildProfile::Debug : BuildProfile::Release;
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", context);
     auto model = analyzer.Analyze();
     REQUIRE_FALSE(model.HasErrors());
 
     AstToHirLowering hirLowering(model);
-    HirToLirLowering lirLowering(hirLowering.Generate(), context.target);
+    HirToLirLowering lirLowering(hirLowering.Generate(), context.target, context.profile);
     return lirLowering.Generate();
 }
 

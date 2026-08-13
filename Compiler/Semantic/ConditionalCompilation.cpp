@@ -646,20 +646,21 @@ private:
         }
         if (root == "Build") {
             if (field == "profile")
-                return Value{context.profileName};
+                return Value{std::string(context.ProfileName())};
             if (field == "mode")
                 return Value{
-                    EnumValue{"BuildMode", context.buildMode == Target::BuildMode::Release ? "Release" : "Debug"}};
+                    EnumValue{"BuildMode", context.BuildMode() == Target::BuildMode::Release ? "Release" : "Debug"}};
             if (field == "optimization") {
-                std::string variant = context.optimization == OptimizationMode::Size  ? "Size"
-                                    : context.optimization == OptimizationMode::Speed ? "Speed"
-                                                                                      : "None";
+                const auto optimization = context.Optimization();
+                std::string variant = optimization == OptimizationMode::Size  ? "Size"
+                                    : optimization == OptimizationMode::Speed ? "Speed"
+                                                                              : "None";
                 return Value{EnumValue{"OptimizationMode", std::move(variant)}};
             }
             if (field == "debugAssertions")
-                return Value{context.debugAssertions};
+                return Value{context.DebugAssertions()};
             if (field == "debugInfo")
-                return Value{context.debugInfo};
+                return Value{context.DebugInfo()};
             if (field == "isTest")
                 return Value{context.isTest};
             if (field == "outputKind") {
@@ -989,22 +990,22 @@ private:
                 return Value{TargetHasFeature(*name)};
             }
             case K::BuildProfile:
-                return Value{context.profileName};
+                return Value{std::string(context.ProfileName())};
             case K::BuildMode:
                 return Value{
-                    EnumValue{"BuildMode", context.buildMode == Target::BuildMode::Release ? "Release" : "Debug"}};
+                    EnumValue{"BuildMode", context.BuildMode() == Target::BuildMode::Release ? "Release" : "Debug"}};
             case K::Optimization: {
                 std::string variant = "None";
-                if (context.optimization == OptimizationMode::Size)
+                if (context.Optimization() == OptimizationMode::Size)
                     variant = "Size";
-                else if (context.optimization == OptimizationMode::Speed)
+                else if (context.Optimization() == OptimizationMode::Speed)
                     variant = "Speed";
                 return Value{EnumValue{"Optimization", std::move(variant)}};
             }
             case K::DebugAssertions:
-                return Value{context.debugAssertions};
+                return Value{context.DebugAssertions()};
             case K::DebugInfo:
-                return Value{context.debugInfo};
+                return Value{context.DebugInfo()};
             case K::IsTest:
                 return Value{context.isTest};
             case K::OutputKind: {

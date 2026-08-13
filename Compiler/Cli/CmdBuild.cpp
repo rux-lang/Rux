@@ -109,6 +109,10 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         PrintUnknownOption(arg, "build");
         return 1;
     }
+    if (isDebug && isRelease) {
+        std::println(stderr, "error: options '--debug' and '--release' cannot be used together");
+        return 2;
+    }
     const auto targetTriple =
         target.empty() ? std::optional{Target::TargetTriple::Host()} : Target::TargetTriple::Parse(target);
     if (!targetTriple) {
@@ -125,8 +129,8 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     if (!manifest) {
         return 1;
     }
-    const std::string_view profileName = isRelease ? "Release" : "Debug";
-    (void)isDebug;
+    const BuildProfile profile = isRelease ? BuildProfile::Release : BuildProfile::Debug;
+    const std::string_view profileName = ToString(profile);
     if (!opts.quiet && !showStats) {
         const AnsiStyle style{ColorEnabled(opts.color, OutputStream::Stderr)};
         std::print(stderr, "{}{}Compiling{} {}{}{} v{} [{}{}{}]\n", style.Cyan(), style.Bold(), style.Reset(),
@@ -137,7 +141,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     copts.manifestPath = *manifestPath;
     copts.manifest = std::move(*manifest);
     copts.target = *targetTriple;
-    copts.profileName = std::string(profileName);
+    copts.profile = profile;
     copts.defines = std::move(defines);
     copts.quiet = opts.quiet;
     copts.verbose = opts.verbose;

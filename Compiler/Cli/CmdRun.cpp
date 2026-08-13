@@ -74,7 +74,8 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         return 1;
     }
     // Build first (quiet unless verbose)
-    const std::string_view profileName = isRelease ? "Release" : "Debug";
+    const BuildProfile profile = isRelease ? BuildProfile::Release : BuildProfile::Debug;
+    const std::string_view profileName = ToString(profile);
     const std::string targetName = HostTargetTriple();
     const bool buildQuiet = !opts.verbose || opts.quiet;
     if (!buildQuiet) {
@@ -87,7 +88,7 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     copts.manifestPath = *manifestPath;
     copts.manifest = *manifest;
     copts.target = Target::TargetTriple::Host();
-    copts.profileName = std::string(profileName);
+    copts.profile = profile;
     copts.defines = std::move(defines);
     copts.quiet = buildQuiet;
     copts.verbose = opts.verbose;

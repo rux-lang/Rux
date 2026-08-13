@@ -75,6 +75,9 @@ TEST_CASE("CLI usage failures return 2 and suggest close matches") {
     CHECK(Run(std::array<std::string_view, 2>{"build", "--target"}).exitCode == 2);
     CHECK(Run(std::array<std::string_view, 2>{"build", "--color=sometimes"}).exitCode == 2);
     CHECK(Run(std::array<std::string_view, 3>{"build", "--quiet", "--verbose"}).exitCode == 2);
+    const auto profileConflict = Run(std::array<std::string_view, 3>{"build", "--debug", "--release"});
+    CHECK(profileConflict.exitCode == 2);
+    CHECK(profileConflict.output.contains("options '--debug' and '--release' cannot be used together"));
     CHECK(Run(std::array<std::string_view, 2>{"fmt", "extra"}).exitCode == 2);
 }
 
