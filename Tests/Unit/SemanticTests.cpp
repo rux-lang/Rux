@@ -331,6 +331,118 @@ TEST_CASE("semantic model omits bindings for rejected calls") {
     CHECK(model.TryGetCallableBinding(*call) == nullptr);
 }
 
+TEST_CASE("semantic model records final linker symbol identities") {
+    Lexer lexer(R"(
+        module Alpha {
+            func Hidden(value: int32) -> int32 { return value; }
+            func Pick(value: int32) -> int32 { return value; }
+            func Pick(value: bool) -> bool { return value; }
+        }
+        module Beta {
+            func Hidden(value: int32) -> int32 { return value; }
+        }
+
+        func Identity<T>(value: T) -> T { return value; }
+
+        struct Number { value: int32; }
+        extend Number {
+            func Convert(self, value: int32) -> int32 { return value; }
+            func Convert(self, value: bool) -> bool { return value; }
+        }
+
+        struct Box<T> { value: T; }
+        extend Box<T> {
+            func Get(self) -> T { return self.value; }
+        }
+
+        interface Reader {
+            func Read() -> int32;
+        }
+        struct File { value: int32; }
+        extend File : Reader {
+            func Read(self) -> int32 { return self.value; }
+        }
+
+        #Abi(.C)
+        #Link("native.dll", "native_actual")
+        extern func Native(value: int32) -> int32;
+
+        func Main() {
+            let number = Number { value: 1i32 };
+            let box = Box<int64> { value: 2i64 };
+            let generic = Identity<int64>(2i64);
+            let converted = number.Convert(3i32);
+            let item = box.Get();
+            let external = Native(4i32);
+        }
+    )",
+                "symbols.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "symbols.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "symbols", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    const auto *alpha = dynamic_cast<const ModuleDecl *>(parsed.module.items[0].get());
+    const auto *beta = dynamic_cast<const ModuleDecl *>(parsed.module.items[1].get());
+    const auto *numberImpl = dynamic_cast<const ImplDecl *>(parsed.module.items[4].get());
+    const auto *boxImpl = dynamic_cast<const ImplDecl *>(parsed.module.items[6].get());
+    const auto *fileImpl = dynamic_cast<const ImplDecl *>(parsed.module.items[9].get());
+    const auto *external = dynamic_cast<const ExternFuncDecl *>(parsed.module.items[10].get());
+    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[11].get());
+    REQUIRE(alpha != nullptr);
+    REQUIRE(beta != nullptr);
+    REQUIRE(numberImpl != nullptr);
+    REQUIRE(boxImpl != nullptr);
+    REQUIRE(fileImpl != nullptr);
+    REQUIRE(external != nullptr);
+    REQUIRE(main != nullptr);
+    REQUIRE(main->body != nullptr);
+
+    const auto symbolName = [&](const Decl &declaration) -> const std::string & {
+        const ResolvedSymbolIdentity *identity = model.TryGetSymbolIdentity(declaration);
+        REQUIRE(identity != nullptr);
+        return identity->linkerName;
+    };
+    CHECK_EQ(symbolName(*alpha->items[0]), "Alpha::Hidden");
+    CHECK_EQ(symbolName(*alpha->items[1]), "Pick__int32");
+    CHECK_EQ(symbolName(*alpha->items[2]), "Pick__bool8");
+    CHECK_EQ(symbolName(*beta->items[0]), "Beta::Hidden");
+    CHECK_EQ(symbolName(*numberImpl->methods[0]), "Number::Convert__int32");
+    CHECK_EQ(symbolName(*numberImpl->methods[1]), "Number::Convert__bool8");
+    CHECK_EQ(symbolName(*fileImpl->methods[0]), "File::Read");
+    CHECK_EQ(symbolName(*external), "native_actual");
+    CHECK(model.TryGetSymbolIdentity(*boxImpl->methods[0]) == nullptr);
+
+    const ResolvedVtableIdentity *vtable = model.TryGetVtableIdentity(*fileImpl);
+    REQUIRE(vtable != nullptr);
+    CHECK_EQ(vtable->linkerName, "__vtable__File__Reader");
+    REQUIRE_EQ(vtable->entries.size(), 1);
+    CHECK_EQ(vtable->entries[0], "File::Read");
+    CHECK(model.TryGetVtableIdentity(*numberImpl) == nullptr);
+
+    const auto callAt = [&](const std::size_t statementIndex) -> const ResolvedCallableBinding & {
+        const auto *binding = dynamic_cast<const LetStmt *>(main->body->stmts[statementIndex].get());
+        REQUIRE(binding != nullptr);
+        const auto *call = dynamic_cast<const CallExpr *>(binding->init.get());
+        REQUIRE(call != nullptr);
+        const ResolvedCallableBinding *resolved = model.TryGetCallableBinding(*call);
+        REQUIRE(resolved != nullptr);
+        return *resolved;
+    };
+    CHECK_EQ(callAt(2).linkerName, "Identity_int64");
+    CHECK_EQ(callAt(3).linkerName, "Number::Convert__int32");
+    CHECK_EQ(callAt(4).linkerName, "Box::Get_int64");
+    CHECK_EQ(callAt(5).linkerName, "native_actual");
+
+    FuncDecl nodeOutsideAnalyzedModules;
+    CHECK(model.TryGetSymbolIdentity(nodeOutsideAnalyzedModules) == nullptr);
+}
+
 TEST_CASE("let and var independently control binding and pointee mutability") {
     const auto diagnostics = AnalyzeSource(R"(
         func Main() {

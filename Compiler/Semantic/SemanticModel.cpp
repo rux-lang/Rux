@@ -9,7 +9,9 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::unordered_map<const Expr *, TypeRef> inputExpressionTypes,
                              std::unordered_map<const TypeExpr *, TypeRef> inputTypeNodeTypes,
                              std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
-                             std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings)
+                             std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
+                             std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
+                             std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities)
     : diagnostics(std::move(inputDiagnostics))
     , symbols(std::move(inputSymbols))
     , modules(std::move(inputModules))
@@ -17,7 +19,9 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
     , expressionTypes(std::move(inputExpressionTypes))
     , typeNodeTypes(std::move(inputTypeNodeTypes))
     , patternTypes(std::move(inputPatternTypes))
-    , callableBindings(std::move(inputCallableBindings)) {
+    , callableBindings(std::move(inputCallableBindings))
+    , symbolIdentities(std::move(inputSymbolIdentities))
+    , vtableIdentities(std::move(inputVtableIdentities)) {
 }
 
 bool SemanticModel::HasErrors() const noexcept {
@@ -43,5 +47,15 @@ const TypeRef *SemanticModel::TryGetType(const Pattern &pattern) const noexcept 
 const ResolvedCallableBinding *SemanticModel::TryGetCallableBinding(const CallExpr &call) const noexcept {
     const auto binding = callableBindings.find(&call);
     return binding == callableBindings.end() ? nullptr : &binding->second;
+}
+
+const ResolvedSymbolIdentity *SemanticModel::TryGetSymbolIdentity(const Decl &declaration) const noexcept {
+    const auto identity = symbolIdentities.find(&declaration);
+    return identity == symbolIdentities.end() ? nullptr : &identity->second;
+}
+
+const ResolvedVtableIdentity *SemanticModel::TryGetVtableIdentity(const ImplDecl &declaration) const noexcept {
+    const auto identity = vtableIdentities.find(&declaration);
+    return identity == vtableIdentities.end() ? nullptr : &identity->second;
 }
 } // namespace Rux

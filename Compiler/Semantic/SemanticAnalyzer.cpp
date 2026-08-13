@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cctype>
 #include <charconv>
 #include <format>
 #include <limits>
@@ -128,7 +129,9 @@ public:
              std::unordered_map<const Expr *, TypeRef> &inputExpressionTypes,
              std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
              std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
-             std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings)
+             std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
+             std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
+             std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities)
         : modules(inputModules)
         , deps(inputDeps)
         , packageName(inputPackageName)
@@ -139,6 +142,8 @@ public:
         , typeNodeTypes(inputTypeNodeTypes)
         , patternTypes(inputPatternTypes)
         , callableBindings(inputCallableBindings)
+        , symbolIdentities(inputSymbolIdentities)
+        , vtableIdentities(inputVtableIdentities)
         , currentScope(&globalScope) {
     }
 
@@ -194,6 +199,7 @@ public:
             CheckModule(*mod);
         }
         ValidatePendingGenericInstantiations();
+        BuildFinalSymbolIdentities();
     }
 
 private:
@@ -207,6 +213,8 @@ private:
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> &patternTypes;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
+    std::unordered_map<const Decl *, ResolvedSymbolIdentity> &symbolIdentities;
+    std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;
     Scope globalScope{nullptr};
     Scope *currentScope;
     // packageModuleScopes[pkgName][modulePath] = logical module scope.
@@ -226,6 +234,11 @@ private:
     std::unordered_map<std::string, const EnumDecl *> enumDecls;
     std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methodsByType;
+    std::unordered_map<std::string, std::vector<const FuncDecl *>> functionsByName;
+    std::unordered_map<const FuncDecl *, std::string> functionModulePaths;
+    std::unordered_map<const FuncDecl *, const ImplDecl *> methodImpls;
+    std::vector<const ImplDecl *> implDecls;
+    std::vector<const ExternFuncDecl *> externFuncDecls;
     std::unordered_map<std::string, std::unordered_set<std::string>> typeImplementsInterfaces;
     const FuncDecl *currentFunctionDecl = nullptr;
     std::unordered_map<const FuncDecl *, Scope *> functionDeclScopes;
@@ -524,6 +537,8 @@ private:
         if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             functionDeclScopes[fn] = &scope;
             functionDeclFiles[fn] = currentFile;
+            functionsByName[fn->name].push_back(fn);
+            functionModulePaths[fn] = modulePath;
             Symbol sym;
             sym.kind = Symbol::Kind::Func;
             sym.name = fn->name;
@@ -585,6 +600,7 @@ private:
             }
         }
         else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+            externFuncDecls.push_back(externFn);
             Symbol sym;
             sym.kind = Symbol::Kind::Func;
             sym.name = externFn->name;
@@ -642,10 +658,12 @@ private:
             }
         }
         else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
+            implDecls.push_back(implDecl);
             const std::string typeName =
                 implDecl->typeName.starts_with("Slice<") ? implDecl->typeName : BaseTypeName(implDecl->typeName);
             for (const auto &method : implDecl->methods) {
                 methodsByType[typeName][method->name].push_back(method.get());
+                methodImpls[method.get()] = implDecl;
             }
             if (implDecl->interfaceName) {
                 typeImplementsInterfaces[typeName].insert(*implDecl->interfaceName);
@@ -3858,6 +3876,203 @@ private:
         }
     }
 
+    static std::string MangleTypeName(const TypeRef &type) {
+        std::string out;
+        for (const char c : type.ToString()) {
+            if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
+                out += c;
+            }
+            else {
+                out += '_';
+            }
+        }
+        return out.empty() ? "_" : out;
+    }
+
+    TypeRef SubstituteIdentityType(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) const {
+        if (type.kind == TypeRef::Kind::TypeParam) {
+            if (const auto substitution = substitutions.find(type.name); substitution != substitutions.end()) {
+                return substitution->second;
+            }
+        }
+        for (auto &inner : type.inner) {
+            inner = SubstituteIdentityType(std::move(inner), substitutions);
+        }
+        return type;
+    }
+
+    TypeRef IdentityParameterType(const Param &parameter,
+                                  const std::unordered_map<std::string, TypeRef> &substitutions = {}) const {
+        TypeRef type = TypeRef::MakeUnknown();
+        if (const auto resolved = typeNodeTypes.find(parameter.type.get()); resolved != typeNodeTypes.end()) {
+            type = SubstituteIdentityType(resolved->second, substitutions);
+        }
+        if (parameter.isVariadic) {
+            type = TypeRef::MakeNamed(SliceTypeName(type));
+        }
+        return type;
+    }
+
+    std::string MangleFunctionWithParams(const FuncDecl &declaration) const {
+        std::string name = declaration.name + "__";
+        for (std::size_t i = 0; i < declaration.params.size(); ++i) {
+            if (i != 0) {
+                name += "_";
+            }
+            name += MangleTypeName(IdentityParameterType(declaration.params[i]));
+        }
+        return name;
+    }
+
+    bool FunctionIsOverloadedInModule(const FuncDecl &declaration) const {
+        const auto functions = functionsByName.find(declaration.name);
+        if (functions == functionsByName.end()) {
+            return false;
+        }
+        const std::string &modulePath = functionModulePaths.at(&declaration);
+        std::size_t count = 0;
+        for (const auto *candidate : functions->second) {
+            if (functionModulePaths.at(candidate) == modulePath && ++count > 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool MethodIsOverloadedForIdentity(const std::string &typeName, const std::string &methodName) const {
+        const auto type = methodsByType.find(typeName);
+        if (type == methodsByType.end()) {
+            return false;
+        }
+        const auto method = type->second.find(methodName);
+        return method != type->second.end() && method->second.size() > 1;
+    }
+
+    std::string MethodLinkerName(const FuncDecl &method, const TypeRef &receiverType,
+                                 const std::unordered_map<std::string, TypeRef> &substitutions) const {
+        const std::string typeName = NamedBaseTypeName(receiverType);
+        std::string name = typeName + "::" + method.name;
+        if (MethodIsOverloadedForIdentity(typeName, method.name)) {
+            name += "__";
+            bool first = true;
+            for (const auto &parameter : method.params) {
+                if (parameter.name == "self" || parameter.isVariadic) {
+                    continue;
+                }
+                if (!first) {
+                    name += "_";
+                }
+                name += MangleTypeName(IdentityParameterType(parameter, substitutions));
+                first = false;
+            }
+        }
+
+        const auto implementation = methodImpls.find(&method);
+        if (implementation == methodImpls.end() || ImplTypeParams(*implementation->second).empty()) {
+            return name;
+        }
+        const auto structure = structDecls.find(typeName);
+        if (structure != structDecls.end()) {
+            for (const auto &parameter : structure->second->typeParams) {
+                if (const auto substitution = substitutions.find(parameter); substitution != substitutions.end()) {
+                    name += "_" + MangleTypeName(substitution->second);
+                }
+            }
+        }
+        return name;
+    }
+
+    void BuildFinalSymbolIdentities() {
+        std::unordered_map<std::string, std::unordered_set<std::string>> owners;
+        for (const auto &[name, declarations] : functionsByName) {
+            for (const auto *declaration : declarations) {
+                if (declaration->typeParams.empty()) {
+                    const std::string local =
+                        FunctionIsOverloadedInModule(*declaration) ? MangleFunctionWithParams(*declaration) : name;
+                    owners[local].insert(functionModulePaths.at(declaration));
+                }
+            }
+        }
+        for (const auto &[name, declarations] : functionsByName) {
+            for (const auto *declaration : declarations) {
+                if (!declaration->typeParams.empty()) {
+                    const bool overloaded = declarations.size() > 1;
+                    symbolIdentities.insert_or_assign(
+                        declaration,
+                        ResolvedSymbolIdentity{overloaded ? MangleFunctionWithParams(*declaration) : name});
+                    continue;
+                }
+                std::string local =
+                    FunctionIsOverloadedInModule(*declaration) ? MangleFunctionWithParams(*declaration) : name;
+                const std::string &modulePath = functionModulePaths.at(declaration);
+                if (owners[local].size() > 1 && !modulePath.empty()) {
+                    local = modulePath + "::" + local;
+                }
+                symbolIdentities.insert_or_assign(declaration, ResolvedSymbolIdentity{std::move(local)});
+            }
+        }
+
+        for (const auto *declaration : externFuncDecls) {
+            symbolIdentities.insert_or_assign(
+                declaration,
+                ResolvedSymbolIdentity{declaration->symbolName.empty() ? declaration->name : declaration->symbolName});
+        }
+
+        for (const auto *implementation : implDecls) {
+            const std::string typeName = implementation->typeName.starts_with("Slice<")
+                                           ? implementation->typeName
+                                           : BaseTypeName(implementation->typeName);
+            if (ImplTypeParams(*implementation).empty()) {
+                const TypeRef receiverType = TypeRef::MakeNamed(typeName);
+                for (const auto &method : implementation->methods) {
+                    symbolIdentities.insert_or_assign(
+                        method.get(), ResolvedSymbolIdentity{MethodLinkerName(*method, receiverType, {})});
+                }
+            }
+            if (!implementation->interfaceName || !ImplTypeParams(*implementation).empty()) {
+                continue;
+            }
+            const auto interface = interfaceDecls.find(*implementation->interfaceName);
+            if (interface == interfaceDecls.end() || interface->second->methods.empty()) {
+                continue;
+            }
+            ResolvedVtableIdentity identity;
+            identity.linkerName = "__vtable__" + typeName + "__" + *implementation->interfaceName;
+            for (const auto &method : interface->second->methods) {
+                identity.entries.push_back(typeName + "::" + method->name);
+            }
+            vtableIdentities.insert_or_assign(implementation, std::move(identity));
+        }
+
+        for (auto &[call, binding] : callableBindings) {
+            (void)call;
+            if (!binding.selectedDeclaration || binding.dispatch == ResolvedCallableBinding::DispatchKind::Interface ||
+                binding.dispatch == ResolvedCallableBinding::DispatchKind::Indirect ||
+                binding.dispatch == ResolvedCallableBinding::DispatchKind::EnumVariant) {
+                continue;
+            }
+            const auto *function = dynamic_cast<const FuncDecl *>(binding.selectedDeclaration);
+            if (function && binding.dispatch == ResolvedCallableBinding::DispatchKind::Method && binding.receiverType) {
+                binding.linkerName = MethodLinkerName(*function, *binding.receiverType, binding.substitutions);
+                continue;
+            }
+            if (function && !function->typeParams.empty()) {
+                binding.linkerName = function->name;
+                for (const auto &parameter : function->typeParams) {
+                    if (const auto substitution = binding.substitutions.find(parameter);
+                        substitution != binding.substitutions.end()) {
+                        binding.linkerName += "_" + MangleTypeName(substitution->second);
+                    }
+                }
+                continue;
+            }
+            if (const auto identity = symbolIdentities.find(binding.selectedDeclaration);
+                identity != symbolIdentities.end()) {
+                binding.linkerName = identity->second.linkerName;
+            }
+        }
+    }
+
     void RecordFunctionBinding(const CallExpr &call, const FuncDecl &declaration,
                                const ResolvedCallableBinding::DispatchKind dispatch,
                                std::unordered_map<std::string, TypeRef> substitutions = {},
@@ -5282,8 +5497,10 @@ SemanticModel SemanticAnalyzer::Analyze() {
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
+    std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
+    std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     Analyzer analyzer(constModules, deps, packageName, diags, symbols, compileTimeContext, expressionTypes,
-                      typeNodeTypes, patternTypes, callableBindings);
+                      typeNodeTypes, patternTypes, callableBindings, symbolIdentities, vtableIdentities);
     analyzer.Run();
     std::vector<const Module *> orderedModules;
     for (const auto &dep : deps) {
@@ -5292,8 +5509,15 @@ SemanticModel SemanticAnalyzer::Analyze() {
         }
     }
     orderedModules.insert(orderedModules.end(), modules.begin(), modules.end());
-    return SemanticModel{
-        std::move(diags),           std::move(symbols),       std::move(orderedModules), std::move(compileTimeContext),
-        std::move(expressionTypes), std::move(typeNodeTypes), std::move(patternTypes),   std::move(callableBindings)};
+    return SemanticModel{std::move(diags),
+                         std::move(symbols),
+                         std::move(orderedModules),
+                         std::move(compileTimeContext),
+                         std::move(expressionTypes),
+                         std::move(typeNodeTypes),
+                         std::move(patternTypes),
+                         std::move(callableBindings),
+                         std::move(symbolIdentities),
+                         std::move(vtableIdentities)};
 }
 } // namespace Rux

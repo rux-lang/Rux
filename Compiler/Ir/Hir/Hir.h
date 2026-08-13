@@ -447,6 +447,9 @@ struct HirImplBlock {
     std::string typeName;
     std::optional<std::string> interfaceName;
     std::vector<HirFunc> methods;
+    std::vector<std::string> methodLinkerNames;
+    std::string vtableLabel;
+    std::vector<std::string> vtableEntries;
     SourceLocation location;
 };
 

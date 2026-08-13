@@ -178,9 +178,10 @@ std::string_view OpStr(TokenKind op) {
 // Internal: Lowering
 class Lowering {
 public:
-    Lowering(std::vector<const Module *> &inputModules, const CompileTimeContext &inputContext)
-        : modules(inputModules)
-        , context(inputContext)
+    explicit Lowering(const SemanticModel &inputModel)
+        : model(inputModel)
+        , modules(inputModel.modules)
+        , context(inputModel.compileTimeContext)
         , currentScope(&globalScope) {
     }
 
@@ -189,7 +190,6 @@ public:
         for (auto *mod : modules) {
             CollectModule(*mod);
         }
-        BuildFunctionSymbolNames();
         HirPackage pkg;
         for (auto *mod : modules) {
             pkg.modules.push_back(LowerModule(*mod));
@@ -198,7 +198,8 @@ public:
     }
 
 private:
-    std::vector<const Module *> &modules;
+    const SemanticModel &model;
+    const std::vector<const Module *> &modules;
     const CompileTimeContext &context;
     HirScope globalScope{nullptr};
     HirScope *currentScope;
@@ -232,7 +233,6 @@ private:
     // and keeps same-named functions from different modules apart in the object
     // file. Empty means the function was declared outside any `module`.
     std::unordered_map<const FuncDecl *, std::string> funcModulePath;
-    std::unordered_map<const FuncDecl *, std::string> funcSymbolName;
     // Module paths named by each source file's `import` declarations.
     std::unordered_map<std::string, std::vector<std::string>> fileImports;
     // Declared module path of the enclosing `module`, during collection and
@@ -449,8 +449,9 @@ private:
                 methodImpl[method.get()] = implDecl;
             }
             if (implDecl->interfaceName) {
-                typeInterfaceVtables[typeName][*implDecl->interfaceName] =
-                    "__vtable__" + typeName + "__" + *implDecl->interfaceName;
+                if (const auto *identity = model.TryGetVtableIdentity(*implDecl)) {
+                    typeInterfaceVtables[typeName][*implDecl->interfaceName] = identity->linkerName;
+                }
             }
         }
     }
@@ -1454,33 +1455,10 @@ private:
         return methodIt != typeIt->second.end() && methodIt->second.size() > 1;
     }
 
-    bool FunctionIsOverloaded(const std::string &name) const {
-        const auto it = functionsByName.find(name);
-        return it != functionsByName.end() && it->second.size() > 1;
-    }
-
     const std::string &ModulePathOf(const FuncDecl &decl) const {
         static const std::string empty;
         const auto it = funcModulePath.find(&decl);
         return it == funcModulePath.end() ? empty : it->second;
-    }
-
-    // Overloading is a property of a single module: two modules that happen to
-    // declare the same function name are not overloads of each other, and
-    // mangling them as if they were is what makes their symbols collide.
-    bool FunctionIsOverloadedInModule(const std::string &name, const FuncDecl &decl) const {
-        const auto it = functionsByName.find(name);
-        if (it == functionsByName.end()) {
-            return false;
-        }
-        const std::string &modulePath = ModulePathOf(decl);
-        std::size_t count = 0;
-        for (const auto *candidate : it->second) {
-            if (ModulePathOf(*candidate) == modulePath && ++count > 1) {
-                return true;
-            }
-        }
-        return false;
     }
 
     static std::string MangleTypeName(const TypeRef &type) {
@@ -1507,18 +1485,25 @@ private:
     }
 
     std::string ConcreteMethodCalleeName(const std::string &typeName, const TypeRef &receiverType,
-                                         const FuncDecl &method) {
+                                         const FuncDecl &method, const std::string_view recordedName = {}) {
         const auto substitutions = MethodTypeSubstitutions(receiverType);
         if (substitutions.empty() || MethodIsFromConcreteImpl(method)) {
-            return CalleeName(typeName, method.name, receiverType, method);
+            return recordedName.empty() ? CalleeName(typeName, method.name, receiverType, method)
+                                        : std::string(recordedName);
         }
 
-        std::string name = CalleeName(typeName, method.name, receiverType, method);
-        const auto structIt = structDecls.find(typeName);
-        if (structIt != structDecls.end()) {
-            for (const auto &param : structIt->second->typeParams) {
-                if (const auto it = substitutions.find(param); it != substitutions.end()) {
-                    name += "_" + MangleTypeName(it->second);
+        std::string name;
+        if (!recordedName.empty()) {
+            name = recordedName;
+        }
+        else {
+            name = CalleeName(typeName, method.name, receiverType, method);
+            const auto structIt = structDecls.find(typeName);
+            if (structIt != structDecls.end()) {
+                for (const auto &param : structIt->second->typeParams) {
+                    if (const auto it = substitutions.find(param); it != substitutions.end()) {
+                        name += "_" + MangleTypeName(it->second);
+                    }
                 }
             }
         }
@@ -1533,63 +1518,15 @@ private:
         return name;
     }
 
-    std::string MangleWithParams(const std::string &name, const FuncDecl &decl) {
-        std::string out = name + "__";
-        bool first = true;
-        for (const auto &param : decl.params) {
-            TypeRef paramType = param.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
-                                                 : ResolveType(*param.type);
-            if (!first) {
-                out += "_";
-            }
-            out += MangleTypeName(paramType);
-            first = false;
-        }
-        return out;
+    std::string FunctionCalleeName(const FuncDecl &decl) {
+        const auto *identity = model.TryGetSymbolIdentity(decl);
+        assert(identity && "function declaration is missing its semantic symbol identity");
+        return identity ? identity->linkerName : std::string{};
     }
 
-    // Name within the declaring module: bare unless the module overloads it, in
-    // which case the parameter types disambiguate.
-    std::string ModuleLocalSymbolName(const std::string &name, const FuncDecl &decl) {
-        return FunctionIsOverloadedInModule(name, decl) ? MangleWithParams(name, decl) : name;
-    }
-
-    // Assigns every collected free function the name it is emitted under, once
-    // all modules have been collected. A module-local name is enough until two
-    // modules claim the same one; those get their module path prefixed, so a
-    // call can never bind to a same-named function from an unrelated module.
-    // Generic templates are excluded: the monomorphizer names each instance
-    // after its type arguments.
-    void BuildFunctionSymbolNames() {
-        std::unordered_map<std::string, std::unordered_set<std::string>> owners;
-        for (const auto &[name, decls] : functionsByName) {
-            for (const auto *decl : decls) {
-                if (decl->typeParams.empty()) {
-                    owners[ModuleLocalSymbolName(name, *decl)].insert(ModulePathOf(*decl));
-                }
-            }
-        }
-        for (const auto &[name, decls] : functionsByName) {
-            for (const auto *decl : decls) {
-                if (!decl->typeParams.empty()) {
-                    continue;
-                }
-                std::string local = ModuleLocalSymbolName(name, *decl);
-                const std::string &modulePath = ModulePathOf(*decl);
-                const bool contested = owners[local].size() > 1 && !modulePath.empty();
-                funcSymbolName[decl] = contested ? modulePath + "::" + local : std::move(local);
-            }
-        }
-    }
-
-    std::string FunctionCalleeName(const std::string &name, const FuncDecl &decl) {
-        if (const auto it = funcSymbolName.find(&decl); it != funcSymbolName.end()) {
-            return it->second;
-        }
-        // A generic template, which BuildFunctionSymbolNames leaves alone: its
-        // instances are named after their type arguments, and the uninstantiated
-        // template keeps the original overload mangling.
-        return FunctionIsOverloaded(name) ? MangleWithParams(name, decl) : name;
+    [[nodiscard]] std::string_view RecordedCallLinkerName(const CallExpr &call) const {
+        const auto *binding = model.TryGetCallableBinding(call);
+        return binding ? std::string_view(binding->linkerName) : std::string_view{};
     }
 
     // Whether a call in the file being lowered may bind to this function: it is
@@ -2481,7 +2418,7 @@ private:
                 return;
             }
             HirFunc hf = LowerFunc(*fn);
-            hf.name = FunctionCalleeName(fn->name, *fn);
+            hf.name = FunctionCalleeName(*fn);
             hmod.funcs.push_back(std::move(hf));
         }
         else if (auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
@@ -2731,11 +2668,20 @@ private:
                 continue;
             }
             HirFunc hf = LowerFunc(*m, /*isMethod=*/true);
-            if (MethodIsOverloaded(d.typeName, m->name)) {
-                TypeRef selfType = TypeRef::MakePointer(TypeRef::MakeNamed(d.typeName));
-                hf.name = CalleeName(d.typeName, m->name, selfType, *m).substr(d.typeName.size() + 2);
+            const auto *identity = model.TryGetSymbolIdentity(*m);
+            assert(identity && "method declaration is missing its semantic symbol identity");
+            if (!identity) {
+                continue;
             }
+            const std::string prefix = hib.typeName + "::";
+            assert(identity->linkerName.starts_with(prefix));
+            hf.name = identity->linkerName.substr(prefix.size());
+            hib.methodLinkerNames.push_back(identity->linkerName);
             hib.methods.push_back(std::move(hf));
+        }
+        if (const auto *identity = model.TryGetVtableIdentity(d)) {
+            hib.vtableLabel = identity->linkerName;
+            hib.vtableEntries = identity->entries;
         }
 
         currentSelfType = savedSelfType;
@@ -2763,7 +2709,9 @@ private:
         HirExternFunc hef;
         hef.name = d.name;
         hef.dll = d.dll;
-        hef.symbolName = d.symbolName;
+        if (const auto *identity = model.TryGetSymbolIdentity(d); identity && identity->linkerName != d.name) {
+            hef.symbolName = identity->linkerName;
+        }
         hef.isPublic = d.isPublic;
         hef.isNoReturn = d.isNoReturn;
         hef.callConv = d.callConv;
@@ -3081,7 +3029,12 @@ private:
                 // no vtable is generated.
                 const auto ifaceIt = interfaceDecls.find(targetType.name);
                 if (ifaceIt != interfaceDecls.end() && !ifaceIt->second->methods.empty()) {
-                    coerce->vtableLabel = "__vtable__" + typeName + "__" + targetType.name;
+                    if (const auto type = typeInterfaceVtables.find(typeName); type != typeInterfaceVtables.end()) {
+                        if (const auto interface = type->second.find(targetType.name);
+                            interface != type->second.end()) {
+                            coerce->vtableLabel = interface->second;
+                        }
+                    }
                 }
                 coerce->value = std::move(lowered);
                 return coerce;
@@ -3463,7 +3416,12 @@ private:
                     if (const FuncDecl *method = LookupMethod(receiverType, e->segments[1])) {
                         auto he = std::make_unique<HirVarExpr>();
                         he->location = e->location;
-                        he->name = CalleeName(e->segments[0], e->segments[1], receiverType, *method);
+                        if (const auto *identity = model.TryGetSymbolIdentity(*method)) {
+                            he->name = identity->linkerName;
+                        }
+                        else {
+                            he->name = CalleeName(e->segments[0], e->segments[1], receiverType, *method);
+                        }
                         he->type = AssociatedFunctionType(receiverType, *method);
                         return he;
                     }
@@ -3820,7 +3778,8 @@ private:
                         TypeRef funcType = AssociatedFunctionType(receiverType, *method);
                         auto callee = std::make_unique<HirVarExpr>();
                         callee->location = path->location;
-                        callee->name = ConcreteMethodCalleeName(path->segments[0], receiverType, *method);
+                        callee->name = ConcreteMethodCalleeName(path->segments[0], receiverType, *method,
+                                                                RecordedCallLinkerName(*e));
                         callee->type = funcType;
                         auto he = std::make_unique<HirCallExpr>();
                         he->location = e->location;
@@ -3899,10 +3858,9 @@ private:
                             auto callee = std::make_unique<HirVarExpr>();
                             callee->location = path->location;
                             if (!decl->typeParams.empty()) {
-                                std::string specializedName = funcName;
-                                for (std::size_t i = 0; i < e->typeArgs.size(); ++i) {
-                                    specializedName += "_" + MangleTypeName(ResolveType(*e->typeArgs[i]));
-                                }
+                                const std::string specializedName(RecordedCallLinkerName(*e));
+                                assert(!specializedName.empty() &&
+                                       "generic call is missing its semantic symbol identity");
                                 if (generatedMonomorphizedFuncNames.insert(specializedName).second) {
                                     monomorphizedFuncs.push_back(
                                         LowerFunc(*decl, false, substitutions, specializedName));
@@ -3910,7 +3868,7 @@ private:
                                 callee->name = specializedName;
                             }
                             else {
-                                callee->name = FunctionCalleeName(funcName, *decl);
+                                callee->name = FunctionCalleeName(*decl);
                             }
                             callee->type = funcType;
 
@@ -3996,10 +3954,9 @@ private:
                             auto callee = std::make_unique<HirVarExpr>();
                             callee->location = ident->location;
                             if (!decl->typeParams.empty()) {
-                                std::string specializedName = ident->name;
-                                for (std::size_t i = 0; i < e->typeArgs.size(); ++i) {
-                                    specializedName += "_" + MangleTypeName(ResolveType(*e->typeArgs[i]));
-                                }
+                                const std::string specializedName(RecordedCallLinkerName(*e));
+                                assert(!specializedName.empty() &&
+                                       "generic call is missing its semantic symbol identity");
                                 if (generatedMonomorphizedFuncNames.insert(specializedName).second) {
                                     monomorphizedFuncs.push_back(
                                         LowerFunc(*decl, false, substitutions, specializedName));
@@ -4007,7 +3964,7 @@ private:
                                 callee->name = specializedName;
                             }
                             else {
-                                callee->name = FunctionCalleeName(ident->name, *decl);
+                                callee->name = FunctionCalleeName(*decl);
                             }
                             callee->type = funcType;
 
@@ -4060,7 +4017,8 @@ private:
                     }
                     auto callee = std::make_unique<HirVarExpr>();
                     callee->location = field->location;
-                    callee->name = ConcreteMethodCalleeName(receiverBase, selfArg->type, *method);
+                    callee->name =
+                        ConcreteMethodCalleeName(receiverBase, selfArg->type, *method, RecordedCallLinkerName(*e));
                     callee->type = MethodType(selfArg->type, *method);
                     he->callee = std::move(callee);
                     he->args.push_back(std::move(selfArg));
@@ -4604,12 +4562,11 @@ private:
 
 // Hir public API
 AstToHirLowering::AstToHirLowering(const SemanticModel &model)
-    : modules_(model.modules)
-    , compileTimeContext_(model.compileTimeContext) {
+    : semanticModel_(model) {
 }
 
 HirPackage AstToHirLowering::Generate() {
-    Lowering lowering(modules_, compileTimeContext_);
+    Lowering lowering(semanticModel_);
     return lowering.Run();
 }
 } // namespace Rux

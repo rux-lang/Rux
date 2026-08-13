@@ -2,6 +2,7 @@
 
 #include "Lowering/HirToLir/HirToLir.h"
 
+#include <cassert>
 #include <format>
 #include <optional>
 #include <string>
@@ -560,20 +561,15 @@ private:
             lm.funcs.push_back(LowerFunc(f));
         }
         for (const auto &impl : mod.impls) {
-            for (const auto &m : impl.methods) {
-                std::string mangledName = impl.typeName + "::" + m.name;
-                lm.funcs.push_back(LowerFunc(m, mangledName));
+            assert(impl.methods.size() == impl.methodLinkerNames.size());
+            for (std::size_t i = 0; i < impl.methods.size(); ++i) {
+                lm.funcs.push_back(LowerFunc(impl.methods[i], impl.methodLinkerNames[i]));
             }
-            if (impl.interfaceName) {
-                auto ifaceIt = interfacesByName.find(*impl.interfaceName);
-                if (ifaceIt != interfacesByName.end()) {
-                    LirVtable vt;
-                    vt.label = "__vtable__" + impl.typeName + "__" + *impl.interfaceName;
-                    for (const auto &m : ifaceIt->second->methods) {
-                        vt.methods.push_back(impl.typeName + "::" + m.name);
-                    }
-                    lm.vtables.push_back(std::move(vt));
-                }
+            if (!impl.vtableLabel.empty()) {
+                LirVtable vt;
+                vt.label = impl.vtableLabel;
+                vt.methods = impl.vtableEntries;
+                lm.vtables.push_back(std::move(vt));
             }
         }
         return lm;
