@@ -384,7 +384,7 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .description = {} /* Fallback */,
                .usage = Data::build_usage,
                .postUsage = {},
-               .footer = "Artifacts are stored under [Build].Output, defaulting to Bin/Debug/ or Bin/Release/."sv,
+               .footer = "Artifacts are stored under <Output>/<Profile>/<Target>, defaulting below Bin/."sv,
                .examples = Data::build_exs,
                .options = Data::build_opts},
 

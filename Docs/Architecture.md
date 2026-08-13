@@ -122,6 +122,8 @@ rux      -> RuxDriver
 
 Package commands use `Package/Manifest` for the strict versioned [`Rux.toml` contract](Manifest.md), `System/Process` and `System/Json` for registry transport and response parsing, and `Driver/Registry` for the registry's read contract: the resolver index, an exact version's checksum, and the artifact bytes. `Package/Checksum` verifies a download against the digest the registry published, and `Package/Artifact` both builds and unpacks the `.ruxpkg` archive under one contract. Manifest failures carry source-located diagnostics rather than escaping as exceptions.
 
+`Driver/BuildTarget` owns output layout as distinct APIs rather than boolean path switches. The raw output root resolves `[Build].Output`; ordinary machine artifacts always append their typed `BuildProfile` and canonical `TargetTriple`. Tests, generated documentation, source archives, and `clean` opt into the raw-root contract explicitly.
+
 The Mach-O image writer builds ad-hoc signatures entirely inside `RuxLinker`. It reserves `LC_CODE_SIGNATURE` during layout, hashes the final signed prefix in 4 KiB pages with `RuxCrypto` SHA-256, emits a version 0x20400 CodeDirectory and embedded-signature superblob in big-endian form, and includes the result in `__LINKEDIT`. The same target bytes are therefore produced on every compiler host without invoking an Apple signing tool.
 
 Build and check resolve path dependencies directly and registry dependencies from the shared package cache, which is keyed by identity and exact version so several versions of a package coexist:

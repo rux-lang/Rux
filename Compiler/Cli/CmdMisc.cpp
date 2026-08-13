@@ -202,10 +202,7 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
     const auto root = manifestPath->parent_path();
     std::filesystem::path output = requestedOutput;
     if (output.empty()) {
-        output = rootManifest->build.output.empty() ? root / "Bin" / "Docs"
-                                                    : std::filesystem::path(rootManifest->build.output) / "Docs";
-        if (output.is_relative())
-            output = root / output;
+        output = ResolveRawOutputRoot(root, *rootManifest) / "Docs";
     }
 
     std::map<std::string, std::filesystem::path> localPackages;

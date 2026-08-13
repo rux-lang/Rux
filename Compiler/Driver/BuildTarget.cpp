@@ -147,24 +147,27 @@ std::optional<Manifest> LoadManifest(const std::filesystem::path &path) {
     return std::move(result.manifest);
 }
 
-std::filesystem::path ResolveBuildOutputDir(const std::filesystem::path &root, const Manifest &manifest,
-                                            std::string_view profileName, const std::string_view targetTriple,
-                                            const bool includeProfile) {
+std::filesystem::path ResolveRawOutputRoot(const std::filesystem::path &root, const Manifest &manifest) {
     std::filesystem::path output =
         manifest.build.output.empty() ? std::filesystem::path("Bin") : std::filesystem::path(manifest.build.output);
     if (output.is_relative()) {
         output = root / output;
     }
-    if (includeProfile) {
-        output /= profileName;
-    }
-    // Only a foreign target takes a subdirectory. Keeping the host on its
-    // historical path means no manifest, script or test has to learn a new
-    // location for the build everyone already runs.
-    if (const auto triple = CanonicalTargetTriple(targetTriple); !triple.empty() && triple != HostTargetTriple()) {
-        output /= triple;
-    }
     return output.lexically_normal();
+}
+
+std::filesystem::path ResolveArtifactOutputDir(const std::filesystem::path &root, const Manifest &manifest,
+                                               const BuildProfile profile, const Target::TargetTriple target) {
+    return ResolveRawOutputRoot(root, manifest) / ToString(profile) / target.CanonicalName();
+}
+
+std::filesystem::path ResolveTestOutputDir(const std::filesystem::path &root, const Manifest &manifest,
+                                           const Target::TargetTriple target) {
+    auto output = ResolveRawOutputRoot(root, manifest);
+    if (target != Target::TargetTriple::Host()) {
+        output /= target.CanonicalName();
+    }
+    return output;
 }
 
 ArtifactKind PackageArtifactKind(const ManifestPackageType type) {

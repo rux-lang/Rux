@@ -6,6 +6,7 @@
 #include "System/Process.h"
 
 #include <array>
+#include <chrono>
 #include <doctest.h>
 #include <filesystem>
 #include <fstream>
@@ -81,6 +82,83 @@ TEST_CASE("CLI usage failures return 2 and suggest close matches") {
     CHECK(Run(std::array<std::string_view, 2>{"fmt", "extra"}).exitCode == 2);
 }
 
+TEST_CASE("clean removes only the configured output root and Temp tree") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-clean-test-" + std::to_string(nonce));
+    const auto manifestPath = root / "Rux.toml";
+    std::filesystem::create_directories(root / "Artifacts" / "Release" / Driver::HostTargetTriple());
+    std::filesystem::create_directories(root / "Temp" / "Obj");
+    std::filesystem::create_directories(root / "Keep");
+    std::ofstream manifestFile(manifestPath, std::ios::binary);
+    manifestFile << R"([Manifest]
+Version = 1
+
+[Package]
+Name = "CleanTest"
+Version = "0.1.0"
+Type = "Executable"
+
+[Build]
+Output = "Artifacts"
+)";
+    manifestFile.close();
+    std::ofstream sentinel(root / "Keep" / "sentinel", std::ios::binary);
+    sentinel << "keep";
+    sentinel.close();
+    REQUIRE(manifestFile);
+    REQUIRE(sentinel);
+
+    const auto manifest = manifestPath.string();
+    const auto result = Run(std::array<std::string_view, 4>{"--manifest", manifest, "clean", "--quiet"});
+
+    CHECK(result.exitCode == 0);
+    CHECK_FALSE(std::filesystem::exists(root / "Artifacts"));
+    CHECK_FALSE(std::filesystem::exists(root / "Temp"));
+    CHECK(std::filesystem::is_regular_file(root / "Keep" / "sentinel"));
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("documentation and source archives use the configured raw output root") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-raw-output-test-" + std::to_string(nonce));
+    const auto manifestPath = root / "Rux.toml";
+    std::filesystem::create_directories(root / "Src");
+    std::ofstream manifestFile(manifestPath, std::ios::binary);
+    manifestFile << R"([Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Acme"
+Name = "Widget"
+Version = "1.2.3"
+Type = "SourceLibrary"
+
+[Build]
+Output = "Artifacts"
+)";
+    manifestFile.close();
+    std::ofstream source(root / "Src" / "Widget.rux", std::ios::binary);
+    source << "module Widget {\n    pub func Answer() -> int { return 42; }\n}\n";
+    source.close();
+    REQUIRE(manifestFile);
+    REQUIRE(source);
+
+    const auto manifest = manifestPath.string();
+    const auto pack = Run(std::array<std::string_view, 4>{"--manifest", manifest, "--quiet", "pack"});
+    const auto doc = Run(std::array<std::string_view, 4>{"--manifest", manifest, "--quiet", "doc"});
+
+    CHECK(pack.exitCode == 0);
+    CHECK(doc.exitCode == 0);
+    CHECK(std::filesystem::is_regular_file(root / "Artifacts" / "Widget-1.2.3.ruxpkg"));
+    CHECK(std::filesystem::is_regular_file(root / "Artifacts" / "Docs" / "index.html"));
+    CHECK_FALSE(std::filesystem::exists(root / "Artifacts" / "Debug"));
+    CHECK_FALSE(std::filesystem::exists(root / "Artifacts" / "Release"));
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
 TEST_CASE("command help accepts equals options and reports one command") {
     const auto result = Run(std::array<std::string_view, 3>{"help", "build", "--json"});
     CHECK(result.exitCode == 0);
@@ -134,11 +212,8 @@ TEST_CASE("CLI checks and builds the canonical macOS AArch64 target through its 
     REQUIRE(result.exitCode == 0);
     CHECK_FALSE(result.output.contains("cannot run"));
 
-    auto output = std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release";
-    if (Driver::HostTargetTriple() != "macos-aarch64") {
-        output /= "macos-aarch64";
-    }
-    output /= "Arithmetic";
+    const auto output =
+        std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release" / "macos-aarch64" / "Arithmetic";
     REQUIRE(std::filesystem::is_regular_file(output));
 
     std::ifstream input(output, std::ios::binary);
@@ -171,11 +246,8 @@ TEST_CASE("CLI checks and builds the canonical FreeBSD AArch64 target through it
     CHECK_FALSE(result.output.contains("not implemented"));
     CHECK_FALSE(result.output.contains("cannot run"));
 
-    auto output = std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release";
-    if (Driver::HostTargetTriple() != "freebsd-aarch64") {
-        output /= "freebsd-aarch64";
-    }
-    output /= "Arithmetic";
+    const auto output = std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release" /
+                        "freebsd-aarch64" / "Arithmetic";
     REQUIRE(std::filesystem::is_regular_file(output));
 
     Testing::ElfImage image{ReadBinaryFile(output)};
@@ -207,11 +279,8 @@ TEST_CASE("CLI cross-builds a Windows AArch64 executable without trying to run i
     REQUIRE(result.exitCode == 0);
     CHECK_FALSE(result.output.contains("cannot run"));
 
-    auto output = std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release";
-    if (Driver::HostTargetTriple() != "windows-aarch64") {
-        output /= "windows-aarch64";
-    }
-    output /= "Arithmetic.exe";
+    const auto output = std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release" /
+                        "windows-aarch64" / "Arithmetic.exe";
     REQUIRE(std::filesystem::is_regular_file(output));
 
     std::ifstream input(output, std::ios::binary);

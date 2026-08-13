@@ -64,8 +64,8 @@ TEST_CASE("scaffolding writes a Version 1 Executable package") {
 
     CHECK(std::filesystem::is_regular_file(packageRoot / "Src" / "Main.rux"));
     CHECK(ScaffoldFixture::Read(packageRoot / "Src" / "Main.rux").contains("func Main()"));
-    CHECK(std::filesystem::is_directory(packageRoot / "Bin" / "Debug"));
-    CHECK(std::filesystem::is_directory(packageRoot / "Bin" / "Release"));
+    CHECK(std::filesystem::is_directory(packageRoot / "Bin"));
+    CHECK_FALSE(std::filesystem::exists(packageRoot / "Bin" / "Debug"));
     CHECK(std::filesystem::is_directory(packageRoot / "Temp"));
     CHECK(std::filesystem::is_regular_file(packageRoot / ".gitignore"));
 }
@@ -83,7 +83,7 @@ TEST_CASE("scaffolding writes a SharedLibrary package without an entry point") {
     CHECK_FALSE(std::filesystem::exists(packageRoot / "Src" / "Main.rux"));
     REQUIRE(std::filesystem::is_regular_file(packageRoot / "Src" / "Lib.rux"));
     CHECK(ScaffoldFixture::Read(packageRoot / "Src" / "Lib.rux") == "module Io {\n}\n");
-    CHECK(std::filesystem::is_directory(packageRoot / "Bin" / "Debug"));
+    CHECK(std::filesystem::is_directory(packageRoot / "Bin"));
 }
 
 TEST_CASE("scaffolding writes a StaticLibrary package without an entry point") {
@@ -97,7 +97,7 @@ TEST_CASE("scaffolding writes a StaticLibrary package without an entry point") {
     CHECK(result.manifest->package.type == ManifestPackageType::StaticLibrary);
     CHECK(std::filesystem::is_regular_file(packageRoot / "Src" / "Lib.rux"));
     CHECK_FALSE(std::filesystem::exists(packageRoot / "Src" / "Main.rux"));
-    CHECK(std::filesystem::is_directory(packageRoot / "Bin" / "Debug"));
+    CHECK(std::filesystem::is_directory(packageRoot / "Bin"));
 }
 
 TEST_CASE("scaffolding writes a SourceLibrary package with no output directories") {

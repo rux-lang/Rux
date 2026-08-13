@@ -175,7 +175,7 @@ int Cli::RunPack(std::span<const std::string_view> args, const GlobalOptions &op
     std::filesystem::path output = outputArg.empty()
                                      // A `.ruxpkg` carries sources, not machine code, so it belongs at the
                                      // output root rather than under any one profile or target.
-                                     ? ResolveBuildOutputDir(root, manifest, {}, {}, false) / ArtifactFileName(manifest)
+                                     ? ResolveRawOutputRoot(root, manifest) / ArtifactFileName(manifest)
                                      : std::filesystem::path(outputArg);
     if (output.is_relative()) {
         output = std::filesystem::current_path() / output;

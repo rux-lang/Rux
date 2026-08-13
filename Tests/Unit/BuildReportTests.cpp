@@ -64,15 +64,15 @@ TEST_CASE("Build summary applies semantic ANSI styling only when enabled") {
     stats.localLines = 2'983;
     stats.localTokens = 11'800;
     stats.executableSize = 91 * 1024;
-    const std::filesystem::path executable = "Bin/Debug/App.exe";
+    const std::filesystem::path executable = std::filesystem::path("Bin/Debug") / HostTargetTriple() / "App.exe";
 
     const auto plain = FormatBuildSummary(executable, "Debug", HostTargetTriple(), stats, false);
     CHECK_FALSE(plain.contains("\033["));
-    CHECK(plain.contains("Built Debug [Bin/Debug/App.exe] in 275 ms"));
+    CHECK(plain.contains("Built Debug [" + executable.string() + "] in 275 ms"));
 
     const auto colored = FormatBuildSummary(executable, "Debug", HostTargetTriple(), stats, true);
     CHECK(colored.contains("\033[32m\033[1mBuilt\033[0m"));
-    CHECK(colored.contains("\033[36mBin/Debug/App.exe\033[0m"));
+    CHECK(colored.contains("\033[36m" + executable.string() + "\033[0m"));
     CHECK(colored.contains("\033[2m93 files"));
 }
 

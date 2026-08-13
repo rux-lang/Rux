@@ -192,10 +192,7 @@ int Cli::RunClean(std::span<const std::string_view> args, const GlobalOptions &o
         return 1;
     }
     const auto root = manifestPath->parent_path();
-    const auto outputDir = manifest->build.output.empty() ? root / "Bin"
-                                                          : (std::filesystem::path(manifest->build.output).is_relative()
-                                                                 ? root / manifest->build.output
-                                                                 : std::filesystem::path(manifest->build.output));
+    const auto outputDir = ResolveRawOutputRoot(root, *manifest);
     auto removeDir = [&](const std::filesystem::path &dir) -> bool {
         std::error_code ec;
         if (!std::filesystem::exists(dir)) {

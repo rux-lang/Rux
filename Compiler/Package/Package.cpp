@@ -99,7 +99,7 @@ bool ScaffoldPackage(const ScaffoldOptions &options) {
     // directories; it is compiled into whichever package depends on it.
     std::vector dirs = {root / "Src", root / "Temp"};
     if (options.type != ManifestPackageType::SourceLibrary) {
-        dirs.insert(dirs.begin(), {root / "Bin/Debug", root / "Bin/Release"});
+        dirs.insert(dirs.begin(), root / "Bin");
     }
     if (!std::ranges::all_of(dirs, [&](const auto &p) { return run_task(MakeDir(p)); })) {
         return false;

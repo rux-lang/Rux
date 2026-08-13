@@ -6,7 +6,7 @@
 # that directory is on your PATH.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/rux-lang/Rux/main/Packaging/Linux/install.sh | sh
+#   curl -fsSL https://rux-lang.dev/install.sh | sh
 #
 # Or download and run with options:
 #   ./install.sh [--version X.Y.Z] [--dir DIR] [--no-modify-path]

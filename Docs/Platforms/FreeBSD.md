@@ -52,7 +52,7 @@ Use the canonical target or its `arm64` compatibility alias:
 ./Bin/rux build --release --target freebsd-arm64
 ```
 
-A foreign build uses a target-separated directory. With the default output, the example above writes `Bin/Release/freebsd-aarch64/Name`; a native `freebsd-aarch64` build keeps the historical `Bin/Release/Name` path. Build reports always identify the canonical `freebsd-aarch64` target.
+Every build uses a target-separated directory. With the default output, the example above writes `Bin/Release/freebsd-aarch64/Name` on both native and foreign compiler hosts. Build reports always identify the canonical `freebsd-aarch64` target.
 
 `rux run` remains host-only and has no `--target` option. `rux test --target freebsd-aarch64` runs only on FreeBSD when AArch64 is either the compiler process architecture or the native OS architecture. On every other host it refuses before compilation and recommends cross-building, transferring the artifact, and testing it on a native FreeBSD AArch64 machine; Rux never selects an emulator.
 

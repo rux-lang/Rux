@@ -399,33 +399,46 @@ std::size_t InspectFreeBSDAArch64Archive(const std::filesystem::path &path) {
 
 } // namespace
 
-TEST_CASE("test output directories omit the build profile") {
+TEST_CASE("output layout distinguishes raw, artifact, and test directories") {
     Manifest manifest;
     manifest.build.output = "Artifacts";
     const std::filesystem::path root = "Workspace";
+    const auto host = Target::TargetTriple::Host();
 
-    CHECK(ResolveBuildOutputDir(root, manifest, "Release", HostTargetTriple()) == root / "Artifacts" / "Release");
-    CHECK(ResolveBuildOutputDir(root, manifest, "Release", HostTargetTriple(), false) == root / "Artifacts");
+    CHECK(ResolveRawOutputRoot(root, manifest) == root / "Artifacts");
+    CHECK(ResolveArtifactOutputDir(root, manifest, BuildProfile::Release, host) ==
+          root / "Artifacts" / "Release" / host.CanonicalName());
+    CHECK(ResolveTestOutputDir(root, manifest, host) == root / "Artifacts");
 }
 
-TEST_CASE("output directories separate a foreign target from the host") {
+TEST_CASE("output layout defaults to a normalized Bin root") {
+    const Manifest manifest;
+    const std::filesystem::path root = "Workspace/Package/.";
+    const auto target = *Target::TargetTriple::Parse("linux-x86_64");
+
+    CHECK(ResolveRawOutputRoot(root, manifest) == std::filesystem::path("Workspace/Package/Bin"));
+    CHECK(ResolveArtifactOutputDir(root, manifest, BuildProfile::Debug, target) ==
+          std::filesystem::path("Workspace/Package/Bin/Debug/linux-x86_64"));
+}
+
+TEST_CASE("output directories canonicalize a foreign target") {
     Manifest manifest;
     manifest.build.output = "Artifacts";
     const std::filesystem::path root = "Workspace";
     // The host is one triple, so naming a second one leaves a target that is
     // foreign wherever this runs — on an AArch64 machine as much as on x86-64.
     const bool hostIsWindowsArm = HostTargetTriple() == "windows-aarch64";
-    const std::string foreign = hostIsWindowsArm ? "linux-aarch64" : "windows-aarch64";
-    const std::string alias = hostIsWindowsArm ? "linux-arm64" : "windows-arm64";
+    const auto foreign = *Target::TargetTriple::Parse(hostIsWindowsArm ? "linux-aarch64" : "windows-aarch64");
+    const auto alias = *Target::TargetTriple::Parse(hostIsWindowsArm ? "linux-arm64" : "windows-arm64");
 
-    CHECK(ResolveBuildOutputDir(root, manifest, "Release", foreign) == root / "Artifacts" / "Release" / foreign);
-    CHECK(ResolveBuildOutputDir(root, manifest, "Release", foreign, false) == root / "Artifacts" / foreign);
+    CHECK(ResolveArtifactOutputDir(root, manifest, BuildProfile::Release, foreign) ==
+          root / "Artifacts" / "Release" / foreign.CanonicalName());
+    CHECK(ResolveTestOutputDir(root, manifest, foreign) == root / "Artifacts" / foreign.CanonicalName());
     // An alias resolves to the one canonical directory, so `--target
     // windows-arm64` and `--target windows-aarch64` are the same build.
-    CHECK(ResolveBuildOutputDir(root, manifest, "Release", alias) ==
-          ResolveBuildOutputDir(root, manifest, "Release", foreign));
-    // Target-independent output, such as a published `.ruxpkg`, adds nothing.
-    CHECK(ResolveBuildOutputDir(root, manifest, {}, {}, false) == root / "Artifacts");
+    CHECK(ResolveArtifactOutputDir(root, manifest, BuildProfile::Release, alias) ==
+          ResolveArtifactOutputDir(root, manifest, BuildProfile::Release, foreign));
+    CHECK(ResolveTestOutputDir(root, manifest, alias) == ResolveTestOutputDir(root, manifest, foreign));
 }
 
 TEST_CASE("artifact names follow the target operating system, not the host") {
@@ -500,6 +513,8 @@ TEST_CASE("compiler driver loads path dependencies when building") {
     CHECK(result.ok);
     CHECK(diagnostics.empty());
     CHECK(result.stats.dependencyFiles == 1);
+    CHECK(result.primaryArtifactPath.parent_path().filename() == HostTargetTriple());
+    CHECK(result.primaryArtifactPath.parent_path().parent_path().filename() == "Debug");
     CHECK(std::filesystem::is_regular_file(result.primaryArtifactPath));
 }
 
@@ -518,9 +533,9 @@ TEST_CASE("compiler driver builds one architecture for a foreign operating syste
     CHECK(diagnostics.empty());
     CHECK(result.primaryArtifactPath.filename().string() ==
           ExecutableFileName("App", Target::TargetTriple::Parse(foreign)->Os()));
-    // A foreign target gets its own directory, so it cannot overwrite the host
-    // build sitting one level up.
+    // Every ordinary artifact gets its own target directory.
     CHECK(result.primaryArtifactPath.parent_path().filename() == foreign);
+    CHECK(result.primaryArtifactPath.parent_path().parent_path().filename() == "Debug");
     CHECK(std::filesystem::is_regular_file(result.primaryArtifactPath));
 }
 
@@ -572,13 +587,8 @@ TEST_CASE("compiler driver builds a Windows AArch64 executable") {
     CHECK(diagnostics.empty());
     CHECK(result.secondaryArtifactPaths.empty());
     CHECK(result.primaryArtifactPath.filename() == "App.exe");
-    if (HostTargetTriple() != "windows-aarch64") {
-        CHECK(result.primaryArtifactPath.parent_path().filename() == "windows-aarch64");
-        CHECK(result.primaryArtifactPath.parent_path().parent_path().filename() == "Release");
-    }
-    else {
-        CHECK(result.primaryArtifactPath.parent_path().filename() == "Release");
-    }
+    CHECK(result.primaryArtifactPath.parent_path().filename() == "windows-aarch64");
+    CHECK(result.primaryArtifactPath.parent_path().parent_path().filename() == "Release");
     REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
     CheckWindowsAArch64Pe(result.primaryArtifactPath);
 }
@@ -596,9 +606,7 @@ TEST_CASE("compiler driver builds a Windows AArch64 shared library and import li
     REQUIRE(result.ok);
     CHECK(diagnostics.empty());
     CHECK(result.primaryArtifactPath.filename() == "App.dll");
-    if (HostTargetTriple() != "windows-aarch64") {
-        CHECK(result.primaryArtifactPath.parent_path().filename() == "windows-aarch64");
-    }
+    CHECK(result.primaryArtifactPath.parent_path().filename() == "windows-aarch64");
     REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
     CheckWindowsAArch64Pe(result.primaryArtifactPath);
 
@@ -627,9 +635,7 @@ TEST_CASE("compiler driver builds a Windows AArch64 static library") {
     CHECK(diagnostics.empty());
     CHECK(result.secondaryArtifactPaths.empty());
     CHECK(result.primaryArtifactPath.filename() == "App.lib");
-    if (HostTargetTriple() != "windows-aarch64") {
-        CHECK(result.primaryArtifactPath.parent_path().filename() == "windows-aarch64");
-    }
+    CHECK(result.primaryArtifactPath.parent_path().filename() == "windows-aarch64");
     REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
     CHECK(InspectWindowsAArch64Archive(result.primaryArtifactPath).objects > 0);
 }
@@ -649,10 +655,8 @@ TEST_CASE("compiler driver builds a signed macOS AArch64 executable with target 
     CHECK(diagnostics.empty());
     CHECK(result.stats.dependencyFiles == 1);
     CHECK(result.primaryArtifactPath.filename() == "App");
-    if (HostTargetTriple() != "macos-aarch64") {
-        CHECK(result.primaryArtifactPath.parent_path().filename() == "macos-aarch64");
-        CHECK(result.primaryArtifactPath.parent_path().parent_path().filename() == "Release");
-    }
+    CHECK(result.primaryArtifactPath.parent_path().filename() == "macos-aarch64");
+    CHECK(result.primaryArtifactPath.parent_path().parent_path().filename() == "Release");
     REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
     const auto image = ReadMacOSAArch64Image(result.primaryArtifactPath);
     CHECK(image.fileType == 2);          // MH_EXECUTE
@@ -680,9 +684,7 @@ TEST_CASE("compiler driver canonicalizes the macOS ARM64 alias and builds a sign
     CHECK(result.stats.dependencyFiles == 1);
     CHECK(result.secondaryArtifactPaths.empty());
     CHECK(result.primaryArtifactPath.filename() == "libApp.dylib");
-    if (HostTargetTriple() != "macos-aarch64") {
-        CHECK(result.primaryArtifactPath.parent_path().filename() == "macos-aarch64");
-    }
+    CHECK(result.primaryArtifactPath.parent_path().filename() == "macos-aarch64");
     REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
     const auto image = ReadMacOSAArch64Image(result.primaryArtifactPath);
     CHECK(image.fileType == 6);    // MH_DYLIB
@@ -712,9 +714,7 @@ TEST_CASE("compiler driver builds macOS AArch64 static libraries with relocatabl
     CHECK(result.stats.dependencyFiles == 1);
     CHECK(result.secondaryArtifactPaths.empty());
     CHECK(result.primaryArtifactPath.filename() == "libApp.a");
-    if (HostTargetTriple() != "macos-aarch64") {
-        CHECK(result.primaryArtifactPath.parent_path().filename() == "macos-aarch64");
-    }
+    CHECK(result.primaryArtifactPath.parent_path().filename() == "macos-aarch64");
     REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
     const auto contents = InspectMacOSAArch64Archive(result.primaryArtifactPath);
     CHECK(contents.objects > 0);
@@ -769,10 +769,8 @@ TEST_CASE("compiler driver builds a FreeBSD AArch64 executable with target-condi
     CHECK(result.stats.dependencyFiles == 1);
     CHECK(result.secondaryArtifactPaths.empty());
     CHECK(result.primaryArtifactPath.filename() == "App");
-    if (HostTargetTriple() != "freebsd-aarch64") {
-        CHECK(result.primaryArtifactPath.parent_path().filename() == "freebsd-aarch64");
-        CHECK(result.primaryArtifactPath.parent_path().parent_path().filename() == "Release");
-    }
+    CHECK(result.primaryArtifactPath.parent_path().filename() == "freebsd-aarch64");
+    CHECK(result.primaryArtifactPath.parent_path().parent_path().filename() == "Release");
     REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
 
     const auto image = ReadFreeBSDAArch64Image(result.primaryArtifactPath);
@@ -805,9 +803,7 @@ TEST_CASE("compiler driver canonicalizes FreeBSD ARM64 as AArch64 and builds a s
     CHECK(result.stats.dependencyFiles == 1);
     CHECK(result.secondaryArtifactPaths.empty());
     CHECK(result.primaryArtifactPath.filename() == "libApp.so");
-    if (HostTargetTriple() != "freebsd-aarch64") {
-        CHECK(result.primaryArtifactPath.parent_path().filename() == "freebsd-aarch64");
-    }
+    CHECK(result.primaryArtifactPath.parent_path().filename() == "freebsd-aarch64");
     REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
 
     const auto image = ReadFreeBSDAArch64Image(result.primaryArtifactPath);
@@ -846,9 +842,7 @@ TEST_CASE("compiler driver builds a FreeBSD AArch64 static library from relocata
     CHECK(result.stats.dependencyFiles == 1);
     CHECK(result.secondaryArtifactPaths.empty());
     CHECK(result.primaryArtifactPath.filename() == "libApp.a");
-    if (HostTargetTriple() != "freebsd-aarch64") {
-        CHECK(result.primaryArtifactPath.parent_path().filename() == "freebsd-aarch64");
-    }
+    CHECK(result.primaryArtifactPath.parent_path().filename() == "freebsd-aarch64");
     REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
     CHECK(InspectFreeBSDAArch64Archive(result.primaryArtifactPath) > 0);
 }
@@ -1099,9 +1093,7 @@ TEST_CASE("compiler driver builds an executable for linux-aarch64") {
     // host build. On an AArch64 Linux machine this is the host's own build, and
     // the host keeps its historical path.
     CHECK(result.primaryArtifactPath.filename().string() == ExecutableFileName("App", Target::OS::Linux));
-    if (HostTargetTriple() != "linux-aarch64") {
-        CHECK(result.primaryArtifactPath.parent_path().filename() == "linux-aarch64");
-    }
+    CHECK(result.primaryArtifactPath.parent_path().filename() == "linux-aarch64");
     REQUIRE(std::filesystem::is_regular_file(result.primaryArtifactPath));
 
     std::ifstream executable(result.primaryArtifactPath, std::ios::binary);

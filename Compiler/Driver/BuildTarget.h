@@ -3,6 +3,7 @@
 // Helpers for resolving the active build target (OS/arch triple), pruning the
 // AST to that target, and locating workspace/registry directories.
 
+#include "BuildInfo/BuildProfile.h"
 #include "Linker/ArtifactKind.h"
 #include "Package/Manifest.h"
 #include "Syntax/Ast/Ast.h"
@@ -86,16 +87,22 @@ namespace Rux::Driver {
 // Print manifest diagnostics in the standard `path:line:column: error:` form.
 void ReportManifestDiagnostics(const ManifestResult &result);
 
-// Resolve the build output directory (defaults to "Bin"), optionally appending
-// the selected profile. Test runs use a profile-independent output directory.
-//
-// A target other than the host adds its triple as a final component, so builds
-// for two targets do not overwrite each other. The host keeps the shorter path
-// it has always had, and an empty `targetTriple` — used by target-independent
-// output such as a published `.ruxpkg` — adds nothing.
-[[nodiscard]] std::filesystem::path ResolveBuildOutputDir(const std::filesystem::path &root, const Manifest &manifest,
-                                                          std::string_view profileName, std::string_view targetTriple,
-                                                          bool includeProfile = true);
+// Resolve the configured raw output root, defaulting to <package root>/Bin.
+// Target-independent products such as documentation and source archives are
+// placed relative to this path rather than in a machine-artifact directory.
+[[nodiscard]] std::filesystem::path ResolveRawOutputRoot(const std::filesystem::path &root, const Manifest &manifest);
+
+// Directory for an ordinary machine artifact. Every build receives both its
+// typed profile and canonical target components, including a host build.
+[[nodiscard]] std::filesystem::path ResolveArtifactOutputDir(const std::filesystem::path &root,
+                                                             const Manifest &manifest, BuildProfile profile,
+                                                             Target::TargetTriple target);
+
+// Test manifests intentionally name a central raw output root and omit the
+// profile. A selected foreign target gets a canonical suffix so it cannot
+// overwrite host test artifacts.
+[[nodiscard]] std::filesystem::path ResolveTestOutputDir(const std::filesystem::path &root, const Manifest &manifest,
+                                                         Target::TargetTriple target);
 
 // ---- Output artifacts -------------------------------------------------------
 

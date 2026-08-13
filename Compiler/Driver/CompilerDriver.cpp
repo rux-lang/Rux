@@ -587,8 +587,8 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     if (opts.verbose) {
         std::print("Linking {}\n", opts.manifest.package.name.Text());
     }
-    const auto binDir =
-        ResolveBuildOutputDir(root, opts.manifest, ToString(opts.profile), opts.target.CanonicalName(), !opts.isTest);
+    const auto binDir = opts.isTest ? ResolveTestOutputDir(root, opts.manifest, opts.target)
+                                    : ResolveArtifactOutputDir(root, opts.manifest, opts.profile, opts.target);
     const ArtifactKind artifactKind = PackageArtifactKind(opts.manifest.package.type);
     const OS targetOs = opts.target.Os();
     const Arch targetArch = opts.target.Architecture();

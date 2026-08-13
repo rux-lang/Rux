@@ -57,7 +57,7 @@ For a Debug build, run `sh Build.sh --configuration Debug`. On other Linux distr
 
 ## Cross-Compiling and Testing
 
-`--target <os>-<arch>` builds for a machine other than the host, and writes the result to its own subdirectory so builds for two targets do not overwrite each other — `Bin/Release/linux-aarch64/Name` rather than `Bin/Release/Name`:
+`--target <os>-<arch>` builds for a machine other than the host. Every ordinary artifact has its own profile and canonical-target directory, so builds cannot overwrite each other — for example, `Bin/Release/linux-aarch64/Name`:
 
 ```sh
 ./Bin/rux build --target linux-aarch64
@@ -85,7 +85,7 @@ Both back ends reach every supported triple, because all three object writers ar
 
 Nothing in a cross build reaches for a cross toolchain, because there is no toolchain to reach for: the same encoder, object writer and linker run whichever machine invokes them, and a `linux-aarch64` image records the loader and library names it needs without opening a host library to do it.
 
-A Linux host can likewise build FreeBSD AArch64 executables, shared libraries, and static libraries. Foreign Release output is written below `Bin/Release/freebsd-aarch64/`; transfer those artifacts to native FreeBSD for execution because `run` is host-only and target tests reject a foreign OS.
+A Linux host can likewise build FreeBSD AArch64 executables, shared libraries, and static libraries. Release output is written below `Bin/Release/freebsd-aarch64/`; transfer those artifacts to native FreeBSD for execution because `run` is host-only and target tests reject a foreign OS.
 
 ## Verifying the Build
 
