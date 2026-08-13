@@ -16,7 +16,7 @@ usage() {
         'Options:' \
         '  --configuration Debug|Release  CMake configuration (default: Release)' \
         '  --build-directory PATH         CMake build directory (default: Build)' \
-        '  --compiler PATH                C++ compiler (default: $CXX or detected Clang)' \
+        '  --compiler PATH                Clang C++ compiler (default: $CXX or detected Clang)' \
         '  -h, --help                     Show this help'
 }
 

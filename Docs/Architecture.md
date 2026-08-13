@@ -42,7 +42,7 @@ Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on
 | `Diagnostics`          | Diagnostic values and rendering primitives                                   | SourceModel                           |
 | `Source`               | Source discovery and loading                                                 | SourceModel and Diagnostics           |
 | `System`               | Host OS, process, filesystem, networking, environment, and JSON              | Target, standard library, host APIs   |
-| `Target`               | Header-only target triples, ABI, layout, and instruction models              | SourceModel                           |
+| `Target`               | Validated target triples, ABI, layout, and instruction models                | SourceModel                           |
 | `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                     | Crypto and Target                     |
 | `Lexer`                | Tokens and lexical analysis                                                  | SourceModel and Diagnostics           |
 | `Syntax`               | AST and parser                                                               | Lexer, Diagnostics, and Target        |
@@ -59,8 +59,9 @@ Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on
 | `Driver`               | End-to-end compilation orchestration and build reports                       | All compiler stages                   |
 | `Formatter` / `Linter` | Source formatting and lint diagnostics                                       | Syntax; the linter also uses Semantic |
 
-The CMake target graph enforces these dependencies. `RuxBuildInfo`, `RuxSourceModel`, and `RuxTarget` are interface-only
-boundaries. `BuildInfo` is populated once by driver composition and then passed unchanged through compile-time evaluation,
+The CMake target graph enforces these dependencies. `RuxBuildInfo` and `RuxSourceModel` are interface-only boundaries;
+`RuxTarget` also owns the compiled parsing and catalog implementation for `TargetTriple`. `BuildInfo` is populated once by
+driver composition and then passed unchanged through compile-time evaluation,
 lowering, and RCU emission; those stages do not include generated compiler-version data or read the clock themselves.
 `SourceModel` and `Target` expose no source discovery or loading. Source loading reports failures as diagnostic values and
 never prints them itself. Prefer adding a dependency to the narrowest owning component rather than reaching through

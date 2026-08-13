@@ -86,7 +86,7 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     CompileOptions copts;
     copts.manifestPath = *manifestPath;
     copts.manifest = *manifest;
-    copts.targetName = targetName;
+    copts.target = Target::TargetTriple::Host();
     copts.profileName = std::string(profileName);
     copts.defines = std::move(defines);
     copts.quiet = buildQuiet;

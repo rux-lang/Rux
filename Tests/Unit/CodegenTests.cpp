@@ -52,8 +52,8 @@ static LirPackage CompileToLir(const std::string &source) {
 
 static std::string CompileToAsm(const std::string &source) {
     const std::string_view target = RUX_OS_WINDOWS ? "windows-x86_64" : "linux-x86_64";
-    AssemblyPrinter printer(
-        CompileToLirFor(source, RUX_OS_WINDOWS ? "windows" : "linux", Driver::TargetContextForTriple(target)));
+    AssemblyPrinter printer(CompileToLirFor(source, RUX_OS_WINDOWS ? "windows" : "linux",
+                                            Driver::TargetContextForTriple(*Target::TargetTriple::Parse(target))));
     return printer.Generate();
 }
 
@@ -441,13 +441,16 @@ TEST_CASE("extern C calls follow the target's ABI rather than the host's") {
     // the target being built for. Both cases have to hold on every host, which
     // is the whole point: before the convention became target-driven, each of
     // these recorded whatever the compiler was running on.
-    const auto windows = CompileToLirFor(source, "windows", Driver::TargetContextForTriple("windows-x86_64"));
+    const auto windows = CompileToLirFor(
+        source, "windows", Driver::TargetContextForTriple(*Target::TargetTriple::Parse("windows-x86_64")));
     CHECK_EQ(conventionOfEmitCall(windows), CallingConvention::Win64);
 
-    const auto linuxTarget = CompileToLirFor(source, "linux", Driver::TargetContextForTriple("linux-x86_64"));
+    const auto linuxTarget =
+        CompileToLirFor(source, "linux", Driver::TargetContextForTriple(*Target::TargetTriple::Parse("linux-x86_64")));
     CHECK_EQ(conventionOfEmitCall(linuxTarget), CallingConvention::SysV);
 
-    const auto windowsAArch64 = CompileToLirFor(source, "windows", Driver::TargetContextForTriple("windows-aarch64"));
+    const auto windowsAArch64 = CompileToLirFor(
+        source, "windows", Driver::TargetContextForTriple(*Target::TargetTriple::Parse("windows-aarch64")));
     CHECK_EQ(conventionOfEmitCall(windowsAArch64), CallingConvention::AAPCS64);
 }
 
@@ -521,7 +524,10 @@ TEST_CASE("C variadic call metadata survives package-wide extern lookup and Link
     application.funcs.push_back(std::move(main));
     hir.modules.push_back(std::move(application));
 
-    const auto package = HirToLirLowering(std::move(hir), Driver::TargetContextForTriple("windows-aarch64")).Generate();
+    const auto package =
+        HirToLirLowering(std::move(hir),
+                         Driver::TargetContextForTriple(*Target::TargetTriple::Parse("windows-aarch64")))
+            .Generate();
     REQUIRE_EQ(package.modules.size(), 2);
     REQUIRE_EQ(package.modules[0].funcs.size(), 1);
     CHECK_EQ(package.modules[0].funcs[0].name, "native_format");
@@ -539,7 +545,8 @@ TEST_CASE("C variadic call metadata survives package-wide extern lookup and Link
 }
 
 TEST_CASE("Rux variadics remain slice calls rather than C variadic calls") {
-    const auto package = CompileToLirFor(R"(
+    const auto package =
+        CompileToLirFor(R"(
         func Sum(values: int...) -> int {
             return 0;
         }
@@ -548,7 +555,7 @@ TEST_CASE("Rux variadics remain slice calls rather than C variadic calls") {
             return Sum(1, 2);
         }
     )",
-                                         "windows", Driver::TargetContextForTriple("windows-aarch64"));
+                        "windows", Driver::TargetContextForTriple(*Target::TargetTriple::Parse("windows-aarch64")));
 
     for (const auto &function : package.modules.front().funcs) {
         for (const auto &block : function.blocks) {

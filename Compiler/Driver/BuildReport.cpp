@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 
 namespace Rux::Driver {
@@ -27,8 +28,11 @@ ReportStyle Style(const bool enabled) {
 
 // The triple a report names. An embedder that leaves it unset built for the
 // host, which is what the report said before it carried a target at all.
-std::string ReportedTriple(const std::string_view targetTriple) {
-    return targetTriple.empty() ? HostTargetTriple() : CanonicalTargetTriple(targetTriple);
+std::optional<Target::TargetTriple> ReportedTriple(const std::string_view targetTriple) {
+    if (targetTriple.empty()) {
+        return Target::TargetTriple::Host();
+    }
+    return Target::TargetTriple::Parse(targetTriple);
 }
 } // namespace
 
@@ -135,11 +139,13 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_v
     const double compileSpeed = seconds > 0.0 ? static_cast<double>(totalLines) / seconds : 0.0;
     const double throughput = seconds > 0.0 ? static_cast<double>(totalSourceSize) / 1024.0 / 1024.0 / seconds : 0.0;
 
-    const std::string triple = ReportedTriple(targetTriple);
+    const auto triple = ReportedTriple(targetTriple);
+    const std::string canonical = triple ? std::string(triple->CanonicalName()) : std::string(targetTriple);
+    const std::string display = triple ? triple->DisplayName() : canonical;
     const auto style = Style(colorEnabled);
     std::ostringstream output;
     output << style.bold << "Rux Compiler " << CompilerBuild::compilerVersion << style.reset << '\n'
-           << "Target: " << TargetDisplayName(triple) << " (" << triple << ")\n"
+           << "Target: " << display << " (" << canonical << ")\n"
            << "Mode: " << style.bold << profileName << style.reset << "\n\n"
            << style.green << style.bold << "Build finished successfully." << style.reset << "\n\n"
            << "Total build time:            " << style.bold << totalMs << " ms" << style.reset << '\n'
@@ -176,8 +182,10 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_v
 
 std::string FormatBuildSummary(const std::filesystem::path &exePath, std::string_view profileName,
                                const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
-    const std::string triple = ReportedTriple(targetTriple);
-    const std::string crossTarget = triple == HostTargetTriple() ? std::string{} : " for " + triple;
+    const auto triple = ReportedTriple(targetTriple);
+    const std::string canonical = triple ? std::string(triple->CanonicalName()) : std::string(targetTriple);
+    const std::string crossTarget =
+        triple && *triple == Target::TargetTriple::Host() ? std::string{} : " for " + canonical;
     const auto totalMs = stats.total.count();
     const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
     const std::size_t totalLines = stats.localLines + stats.dependencyLines;

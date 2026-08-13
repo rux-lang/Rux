@@ -548,7 +548,7 @@ TEST_CASE("PE linker emits and resolves a Windows AArch64 executable") {
     CHECK(imageBase == 0x1'4000'0000ULL);
     CHECK(Read32(image, optional + 32) == 0x1000); // section alignment
     CHECK(Read32(image, optional + 36) == 0x200);  // file alignment
-    // The ARM64 loader accepts exactly the 6.2 version baseline MSVC stamps:
+    // The ARM64 loader accepts exactly the Windows toolchain's 6.2 version baseline:
     // 10.0 kills the process during initialization with
     // STATUS_INVALID_IMAGE_FORMAT, and lower values are rejected outright.
     CHECK(Read16(image, optional + 40) == 6); // MajorOperatingSystemVersion

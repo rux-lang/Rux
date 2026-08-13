@@ -52,7 +52,7 @@ Prebuilt x86-64 and AArch64 releases are published for every supported operating
 
 ## Building from Source
 
-Rux is written in C++26 and currently builds with Clang. GCC and MSVC support is planned but not yet available. Choose your operating system for prerequisites, build commands, and verification steps:
+Rux is written in C++26 and builds exclusively with upstream Clang 22.1 or newer. Choose your operating system for prerequisites, build commands, and verification steps:
 
 - [FreeBSD](Docs/Platforms/FreeBSD.md#building-from-source)
 - [Linux](Docs/Platforms/Linux.md#building-from-source)

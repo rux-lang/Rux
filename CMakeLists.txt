@@ -3,6 +3,13 @@ project(Rux VERSION 0.4.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 
+if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "Rux requires upstream Clang 22.1 or newer")
+endif ()
+if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 22.1)
+    message(FATAL_ERROR "Rux requires Clang 22.1 or newer (found ${CMAKE_CXX_COMPILER_VERSION})")
+endif ()
+
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

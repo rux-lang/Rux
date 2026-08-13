@@ -36,7 +36,7 @@ LirPackage CompileToAArch64Lir(const std::string &source, const std::string_view
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
-    const TargetContext target = Driver::TargetContextForTriple(targetTriple);
+    const TargetContext target = Driver::TargetContextForTriple(*Target::TargetTriple::Parse(targetTriple));
     Parser parser(std::move(lexed.tokens), "test.rux", target.arch);
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());

@@ -51,7 +51,7 @@ using namespace Target;
 std::optional<std::string> GetEnv(const char *name) {
 #if RUX_OS_WINDOWS
     // Win32 instead of std::getenv: the CRT copy of the environment is not
-    // refreshed by SetEnvironmentVariable, and getenv trips MSVC's C4996.
+    // refreshed by SetEnvironmentVariable, and the Microsoft CRT deprecates getenv.
     const DWORD len = GetEnvironmentVariableA(name, nullptr, 0);
     if (len == 0) {
         return std::nullopt;

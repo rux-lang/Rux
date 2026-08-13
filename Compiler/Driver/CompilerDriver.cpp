@@ -42,8 +42,8 @@ CompilerDriver::CompilerDriver(CompileOptions options)
 }
 
 void CompilerDriver::InitializeCompileTimeContext() {
-    compileTimeContext.target = TargetContextForTriple(opts.targetName);
-    compileTimeContext.targetTriple = opts.targetName;
+    compileTimeContext.target = TargetContextForTriple(opts.target);
+    compileTimeContext.targetTriple = opts.target.CanonicalName();
     compileTimeContext.profileName = opts.profileName.empty() ? "Debug" : opts.profileName;
     const bool release = compileTimeContext.profileName == "Release" || compileTimeContext.profileName == "release";
     compileTimeContext.buildMode = release ? Target::BuildMode::Release : Target::BuildMode::Debug;
@@ -113,7 +113,7 @@ bool CompilerDriver::EmitAll(std::span<const Diagnostic> diags) const {
 }
 
 std::string CompilerDriver::TargetSystemName() const {
-    return std::string(Target::ToString(TargetTripleOs(opts.targetName)));
+    return std::string(Target::ToString(opts.target.Os()));
 }
 
 CompileResult CompilerDriver::Compile() {
@@ -301,9 +301,10 @@ bool CompilerDriver::LoadDependencies() {
                                  (ownerRoot / "Rux.toml").string() + "'"));
             return false;
         }
-        if (!dep->MatchesTarget(TargetTripleOs(opts.targetName))) {
-            Emit(ErrorDiagnostic("dependency '" + pkgName + "' is not available for target '" + opts.targetName +
-                                 "' according to TargetOS in '" + (ownerRoot / "Rux.toml").string() + "'"));
+        if (!dep->MatchesTarget(opts.target.Os())) {
+            Emit(ErrorDiagnostic("dependency '" + pkgName + "' is not available for target '" +
+                                 std::string(opts.target.CanonicalName()) + "' according to TargetOS in '" +
+                                 (ownerRoot / "Rux.toml").string() + "'"));
             return false;
         }
         std::filesystem::path depRoot;
@@ -591,10 +592,11 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     if (opts.verbose) {
         std::print("Linking {}\n", opts.manifest.package.name.Text());
     }
-    const auto binDir = ResolveBuildOutputDir(root, opts.manifest, opts.profileName, opts.targetName, !opts.isTest);
+    const auto binDir =
+        ResolveBuildOutputDir(root, opts.manifest, opts.profileName, opts.target.CanonicalName(), !opts.isTest);
     const ArtifactKind artifactKind = PackageArtifactKind(opts.manifest.package.type);
-    const OS targetOs = TargetTripleOs(opts.targetName);
-    const Arch targetArch = TargetTripleArch(opts.targetName);
+    const OS targetOs = opts.target.Os();
+    const Arch targetArch = opts.target.Architecture();
     artifactPath = binDir / OutputFileName(opts.manifest.package.name.Text(), artifactKind, targetOs);
     Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name.Text()), {root}, artifactKind, targetOs,
                   targetArch);

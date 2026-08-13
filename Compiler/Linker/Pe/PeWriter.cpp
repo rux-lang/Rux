@@ -216,7 +216,7 @@ static const PeArchitectureConfig *PeArchitectureFor(const Target::Arch arch) {
     static constexpr PeArchitectureConfig aarch64{
         .machine = 0xAA64, // IMAGE_FILE_MACHINE_ARM64
         .codePadding = 0,
-        .minimumOsVersionMajor = 6, // 6.2, the ARM64 baseline MSVC stamps
+        .minimumOsVersionMajor = 6, // 6.2, the Windows ARM64 toolchain baseline
         .minimumOsVersionMinor = 2,
         .buildEntryStub = BuildAArch64EntryStub,
         .appendImportThunk = AppendAArch64ImportThunk,

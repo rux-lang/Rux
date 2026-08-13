@@ -9,6 +9,7 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <optional>
 #include <print>
 #include <span>
 #include <string>
@@ -108,18 +109,20 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         PrintUnknownOption(arg, "build");
         return 1;
     }
+    const auto targetTriple =
+        target.empty() ? std::optional{Target::TargetTriple::Host()} : Target::TargetTriple::Parse(target);
+    if (!targetTriple) {
+        std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", target,
+                   SupportedTargetTriples());
+        return 1;
+    }
+    const std::string targetName(targetTriple->CanonicalName());
     auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
     }
     auto manifest = LoadManifest(*manifestPath);
     if (!manifest) {
-        return 1;
-    }
-    std::string targetName = target.empty() ? HostTargetTriple() : CanonicalTargetTriple(target);
-    if (!IsSupportedTargetTriple(targetName)) {
-        std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", targetName,
-                   SupportedTargetTriples());
         return 1;
     }
     const std::string_view profileName = isRelease ? "Release" : "Debug";
@@ -133,7 +136,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     CompileOptions copts;
     copts.manifestPath = *manifestPath;
     copts.manifest = std::move(*manifest);
-    copts.targetName = targetName;
+    copts.target = *targetTriple;
     copts.profileName = std::string(profileName);
     copts.defines = std::move(defines);
     copts.quiet = opts.quiet;

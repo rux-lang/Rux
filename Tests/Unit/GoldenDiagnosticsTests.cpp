@@ -87,7 +87,7 @@ std::string FrontendDiagnostics(std::string source, const std::string &sourceNam
 
     CompileTimeContext context;
     context.targetTriple = CaseTarget(source);
-    context.target = Driver::TargetContextForTriple(context.targetTriple);
+    context.target = Driver::TargetContextForTriple(*Target::TargetTriple::Parse(context.targetTriple));
 
     Lexer lexer(std::move(source), sourceName);
     auto lexResult = lexer.Tokenize();

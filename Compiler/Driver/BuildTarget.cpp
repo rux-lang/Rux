@@ -5,125 +5,44 @@
 #include "Target/Target.h"
 
 #include <algorithm>
-#include <array>
-#include <cctype>
-#include <format>
 #include <print>
-#include <ranges>
 
 namespace Rux::Driver {
 using namespace Target;
 using namespace System;
 
 std::string TargetName() {
-    return TargetDisplayName(HostTargetTriple());
+    return Target::TargetTriple::Host().DisplayName();
 }
 
-std::string TargetDisplayName(const std::string_view target) {
-    const Arch arch = TargetTripleArch(target);
-    if (arch == Arch::Unknown) {
-        return std::string{ToString(TargetTripleOs(target))};
-    }
-    return std::format("{} {}", ToString(TargetTripleOs(target)), ToDisplayString(arch));
+std::string TargetDisplayName(const Target::TargetTriple target) {
+    return target.DisplayName();
 }
 
 std::string HostTargetTriple() {
-    auto triple = std::format("{}-{}", ToString(HostOS), ToString(HostArch));
-    std::transform(std::begin(triple), std::end(triple), std::begin(triple),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return triple;
+    return std::string(Target::TargetTriple::Host().CanonicalName());
 }
 
 bool IsSupportedTargetTriple(const std::string_view target) {
-    constexpr std::array supported_targets{
-        "freebsd-x86_64", "freebsd-aarch64", "linux-x86_64",   "linux-aarch64",
-        "macos-x86_64",   "macos-aarch64",   "windows-x86_64", "windows-aarch64",
-    };
-
-    return std::ranges::contains(supported_targets, CanonicalTargetTriple(target));
+    return Target::TargetTriple::Parse(target).has_value();
 }
 
-std::string_view SupportedTargetTriples() {
-    return "freebsd-x86_64, freebsd-aarch64, linux-x86_64, linux-aarch64, "
-           "macos-x86_64, macos-aarch64, windows-x86_64, windows-aarch64";
+const std::string &SupportedTargetTriples() {
+    return Target::SupportedTargetTripleNames();
 }
 
 std::string CanonicalTargetTriple(const std::string_view target) {
-    const auto dashPos = target.find('-');
-    if (dashPos == std::string_view::npos) {
-        return std::string(target);
-    }
-
-    const auto os = target.substr(0, dashPos);
-    auto arch = target.substr(dashPos + 1);
-    if (arch == "x64" || arch == "amd64" || arch == "x86-64" || arch == "x86_64") {
-        arch = "x86_64";
-    }
-    else if (arch == "arm64" || arch == "aarch64") {
-        arch = "aarch64";
-    }
-    return std::format("{}-{}", os, arch);
+    const auto parsed = Target::TargetTriple::Parse(target);
+    return parsed ? std::string(parsed->CanonicalName()) : std::string(target);
 }
 
-std::string_view TargetOsName(const std::string_view target) {
-    const auto dash_pos = target.find('-');
-    if (dash_pos == std::string_view::npos) {
-        return "";
-    }
-
-    const auto os_prefix = target.substr(0, dash_pos);
-
-    if (os_prefix == "freebsd") {
-        return "FreeBSD";
-    }
-    if (os_prefix == "linux") {
-        return "Linux";
-    }
-    if (os_prefix == "macos") {
-        return "macOS";
-    }
-    if (os_prefix == "windows") {
-        return "Windows";
-    }
-
-    return "";
+std::string_view TargetOsName(const Target::TargetTriple target) {
+    return Target::ToString(target.Os());
 }
 
-Target::OS TargetTripleOs(const std::string_view target) {
-    const auto dash_pos = target.find('-');
-    const auto os_prefix = dash_pos == std::string_view::npos ? target : target.substr(0, dash_pos);
-
-    if (os_prefix == "freebsd") {
-        return Target::OS::FreeBSD;
-    }
-    if (os_prefix == "linux") {
-        return Target::OS::Linux;
-    }
-    if (os_prefix == "macos") {
-        return Target::OS::MacOS;
-    }
-    if (os_prefix == "windows") {
-        return Target::OS::Windows;
-    }
-
-    return Target::HostOS;
-}
-
-Target::Arch TargetTripleArch(const std::string_view target) {
-    const auto dashPos = target.find('-');
-    const auto arch = dashPos == std::string_view::npos ? target : target.substr(dashPos + 1);
-    if (arch == "arm64" || arch == "aarch64") {
-        return Target::Arch::AArch64;
-    }
-    if (arch == "x64" || arch == "amd64" || arch == "x86-64" || arch == "x86_64") {
-        return Target::Arch::X86_64;
-    }
-    return Target::HostArch;
-}
-
-TargetContext TargetContextForTriple(const std::string_view target) {
-    const Target::OS os = TargetTripleOs(target);
-    const Target::Arch arch = TargetTripleArch(target);
+TargetContext TargetContextForTriple(const Target::TargetTriple target) {
+    const Target::OS os = target.Os();
+    const Target::Arch arch = target.Architecture();
     const Target::DataModel dataModel = os == Target::OS::Windows ? Target::DataModel::LLP64 : Target::DataModel::LP64;
     const Target::ABIInfo abi = Target::GetABIInfo(os, arch, dataModel);
     const bool native = os == Target::HostOS && arch == Target::HostArch;
@@ -138,10 +57,8 @@ TargetContext TargetContextForTriple(const std::string_view target) {
                          .cpu_features = native ? Target::HostCpuFeatures : Target::CpuFeature::None};
 }
 
-bool HostCanExecuteTarget(const std::string_view target) {
-    const auto triple = CanonicalTargetTriple(target);
-    return CanExecuteTargetDirectly(HostOS, GetHostArchitectureInfo(), TargetTripleOs(triple),
-                                    TargetTripleArch(triple));
+bool HostCanExecuteTarget(const Target::TargetTriple target) {
+    return CanExecuteTargetDirectly(HostOS, GetHostArchitectureInfo(), target.Os(), target.Architecture());
 }
 
 bool CanExecuteTargetDirectly(const OS hostOs, const HostArchitectureInfo hostArchitectures, const OS targetOs,
@@ -154,7 +71,7 @@ bool IsPlatformPackageName(const std::string_view name) {
     return name == "FreeBSD" || name == "Linux" || name == "macOS" || name == "MacOS" || name == "Windows";
 }
 
-bool PlatformPackageMatchesTarget(const std::string_view name, const std::string_view target) {
+bool PlatformPackageMatchesTarget(const std::string_view name, const Target::TargetTriple target) {
     const auto targetOs = TargetOsName(target);
     // The package is spelled `MacOS`; the canonical target OS name is `macOS`.
     if (name == "MacOS") {

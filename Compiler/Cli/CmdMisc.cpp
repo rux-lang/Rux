@@ -183,6 +183,14 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         PrintUnknownOption(arg, "doc");
         return 2;
     }
+    const auto targetTriple =
+        target.empty() ? std::optional{Target::TargetTriple::Host()} : Target::TargetTriple::Parse(target);
+    if (!targetTriple) {
+        std::println(stderr, "error: unsupported target '{}'; supported targets are {}", target,
+                     SupportedTargetTriples());
+        return 1;
+    }
+    const std::string targetName(targetTriple->CanonicalName());
     const auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return 1;
@@ -191,13 +199,6 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
     if (!rootManifest) {
         return 1;
     }
-    std::string targetName = target.empty() ? HostTargetTriple() : CanonicalTargetTriple(target);
-    if (!IsSupportedTargetTriple(targetName)) {
-        std::println(stderr, "error: unsupported target '{}'; supported targets are {}", targetName,
-                     SupportedTargetTriples());
-        return 1;
-    }
-
     const auto root = manifestPath->parent_path();
     std::filesystem::path output = requestedOutput;
     if (output.empty()) {
@@ -228,7 +229,7 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         CompileOptions compileOptions;
         compileOptions.manifestPath = packageManifestPath;
         compileOptions.manifest = std::move(packageManifest);
-        compileOptions.targetName = targetName;
+        compileOptions.target = *targetTriple;
         compileOptions.profileName = "Debug";
         compileOptions.defines = defines;
         compileOptions.localPackageRoots = localPackages;

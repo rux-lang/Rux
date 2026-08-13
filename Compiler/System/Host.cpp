@@ -22,7 +22,7 @@
 #endif
 
 #if RUX_ARCH_X86_64
-    #if RUX_COMPILER_MSVC
+    #if RUX_OS_WINDOWS
         #include <intrin.h>
     #else
         #include <cpuid.h>
@@ -62,7 +62,7 @@ namespace {
 [[nodiscard]] inline bool HasOSXSAVE() noexcept {
     int r[4]{};
 
-    #if RUX_COMPILER_MSVC
+    #if RUX_OS_WINDOWS
     __cpuid(r, 1);
     #else
     __cpuid(1, r[0], r[1], r[2], r[3]);
@@ -72,7 +72,7 @@ namespace {
 }
 
 [[nodiscard]] inline uint64_t XGetBV0() noexcept {
-    #if RUX_COMPILER_MSVC
+    #if RUX_OS_WINDOWS
     return _xgetbv(0);
     #else
     uint32_t a, d;
@@ -90,7 +90,7 @@ namespace {
 
     int r[4]{};
 
-    #if RUX_COMPILER_MSVC
+    #if RUX_OS_WINDOWS
     __cpuid(r, 1);
     #else
     __cpuid(1, r[0], r[1], r[2], r[3]);
@@ -122,7 +122,7 @@ namespace {
         }
     }
 
-    #if RUX_COMPILER_MSVC
+    #if RUX_OS_WINDOWS
     __cpuidex(r, 7, 0);
     #else
     __cpuid_count(7, 0, r[0], r[1], r[2], r[3]);

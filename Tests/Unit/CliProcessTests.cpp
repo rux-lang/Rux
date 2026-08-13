@@ -109,6 +109,16 @@ TEST_CASE("run is host-only while build and test accept a target") {
     }
 }
 
+TEST_CASE("invalid target input is rejected before manifest discovery") {
+    const auto missing = (std::filesystem::path(RUX_ROOT_DIR) / "Tests" / "missing-Rux.toml").string();
+    const auto result =
+        Run(std::array<std::string_view, 5>{"--manifest", missing, "build", "--target", "plan9-x86_64"});
+
+    CHECK(result.exitCode == 1);
+    CHECK(result.output.contains("unsupported target 'plan9-x86_64'"));
+    CHECK_FALSE(result.output.contains("manifest"));
+}
+
 TEST_CASE("CLI checks and builds the canonical macOS AArch64 target through its ARM64 alias") {
     const auto manifest = ArithmeticManifest();
     const auto check =

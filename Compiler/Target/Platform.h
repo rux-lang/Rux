@@ -5,7 +5,7 @@
 // Every macro below resolves to 1 or 0 (never just defined/undefined) so it can
 // be used uniformly with `#if` and with C++ `if constexpr`/`&&`. Include this
 // header whenever you need to branch on the operating system, architecture,
-// compiler, or available CPU features at compile time.
+// Clang frontend, or available CPU features at compile time.
 //
 //   #if RUX_OS_WINDOWS         // preprocessor
 //   if constexpr (RUX_IS_UNIX) // C++
@@ -59,31 +59,17 @@
     #define RUX_ARCH_AARCH64 0
 #endif
 
-// ---- Compiler ---------------------------------------------------------------
+// ---- C++ compiler -----------------------------------------------------------
 
-#ifdef _MSC_VER
-    #define RUX_COMPILER_MSVC 1
-    #define RUX_COMPILER_CLANG 0
-    #define RUX_COMPILER_GCC 0
-    #define RUX_CPLUSPLUS _MSVC_LANG
-#elifdef __clang__
-    #define RUX_COMPILER_MSVC 0
-    #define RUX_COMPILER_CLANG 1
-    #define RUX_COMPILER_GCC 0
-    #define RUX_CPLUSPLUS __cplusplus
-#elifdef __GNUC__
-    #define RUX_COMPILER_MSVC 0
-    #define RUX_COMPILER_CLANG 0
-    #define RUX_COMPILER_GCC 1
-    #define RUX_CPLUSPLUS __cplusplus
-#else
-    #error "Unsupported compiler"
+#ifndef __clang__
+    #error "Rux requires Clang 22.1 or newer"
 #endif
-
-#define RUX_CXX_14 (RUX_CPLUSPLUS >= 201402L)
-#define RUX_CXX_17 (RUX_CPLUSPLUS >= 201703L)
-#define RUX_CXX_20 (RUX_CPLUSPLUS >= 202002L)
-#define RUX_CXX_23 (RUX_CPLUSPLUS >= 202302L)
+#ifdef __apple_build_version__
+    #error "Rux requires upstream Clang; Apple Clang is unsupported"
+#endif
+#if __clang_major__ < 22 || (__clang_major__ == 22 && __clang_minor__ < 1)
+    #error "Rux requires Clang 22.1 or newer"
+#endif
 
 // ---- Build mode -------------------------------------------------------------
 

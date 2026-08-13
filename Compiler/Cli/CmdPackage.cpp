@@ -489,13 +489,14 @@ bool ReadRegistryOption(const std::span<const std::string_view> args, std::size_
 }
 
 std::optional<Target::OS> ResolvePackageTarget(const std::string_view requested) {
-    const std::string target = requested.empty() ? HostTargetTriple() : CanonicalTargetTriple(requested);
-    if (!IsSupportedTargetTriple(target)) {
-        std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", target,
+    const auto target =
+        requested.empty() ? std::optional{Target::TargetTriple::Host()} : Target::TargetTriple::Parse(requested);
+    if (!target) {
+        std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", requested,
                    SupportedTargetTriples());
         return std::nullopt;
     }
-    return TargetTripleOs(target);
+    return target->Os();
 }
 } // namespace
 

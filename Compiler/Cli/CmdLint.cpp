@@ -121,7 +121,7 @@ int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &op
                 continue;
             }
             if (IsPlatformPackageName(memberManifest->package.name.Text()) &&
-                !PlatformPackageMatchesTarget(memberManifest->package.name.Text(), targetName)) {
+                !PlatformPackageMatchesTarget(memberManifest->package.name.Text(), Target::TargetTriple::Host())) {
                 continue;
             }
             jobs.push_back({memberManifestPath, label, std::move(*memberManifest)});

@@ -56,15 +56,17 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         PrintUnknownOption(arg, "test");
         return 1;
     }
-    std::string targetName = target.empty() ? HostTargetTriple() : CanonicalTargetTriple(target);
-    if (!IsSupportedTargetTriple(targetName)) {
-        std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", targetName,
+    const auto targetTriple =
+        target.empty() ? std::optional{Target::TargetTriple::Host()} : Target::TargetTriple::Parse(target);
+    if (!targetTriple) {
+        std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", target,
                    SupportedTargetTriples());
         return 1;
     }
+    const std::string targetName(targetTriple->CanonicalName());
     // A test passes only by executing on this OS and either the compiler
     // process architecture or the native architecture underneath translation.
-    if (!HostCanExecuteTarget(targetName)) {
+    if (!HostCanExecuteTarget(*targetTriple)) {
         std::print(stderr,
                    "error: the '{}' test suite cannot execute on this host ('{}'); use 'rux build --target {}' or "
                    "'rux check --target {}' here, then test on a native '{}' machine\n",
@@ -286,7 +288,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         CompileOptions copts;
         copts.manifestPath = pkgDir / "Rux.toml";
         copts.manifest = std::move(*pkgManifest);
-        copts.targetName = targetName;
+        copts.target = *targetTriple;
         copts.profileName = std::string(profileName);
         copts.defines = defines;
         copts.localPackageRoots = localPackageRoots;

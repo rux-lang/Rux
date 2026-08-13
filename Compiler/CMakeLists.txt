@@ -11,8 +11,8 @@ option(RUX_WERROR "Treat compiler warnings as errors" OFF)
 
 # Warning flags shared by every Rux target. Interface-only, so consumers pick
 # the flags up via target_link_libraries. The frontend variant (not the
-# compiler id) selects the flag style, so clang-cl gets MSVC-style flags and
-# clang++/g++ get GNU-style flags on every platform.
+# compiler id) selects the flag style. CMake calls these frontend variants
+# MSVC for clang-cl and GNU for the ordinary clang++ driver.
 add_library(RuxWarnings INTERFACE)
 target_compile_options(RuxWarnings INTERFACE
     $<$<STREQUAL:$<CXX_COMPILER_FRONTEND_VARIANT>,MSVC>:/W4 /permissive- /utf-8>
@@ -42,8 +42,9 @@ rux_add_interface_component(RuxSourceModel)
 
 rux_add_interface_component(RuxBuildInfo)
 
-rux_add_interface_component(RuxTarget)
-target_link_libraries(RuxTarget INTERFACE RuxSourceModel)
+rux_add_component(RuxTarget
+    Target/TargetTriple.cpp)
+target_link_libraries(RuxTarget PUBLIC RuxSourceModel)
 
 rux_add_component(RuxDiagnostics
     Diagnostics/Diagnostics.cpp)
@@ -207,8 +208,8 @@ set_target_properties(rux PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_SOURCE_DIR}/Bin
     RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_SOURCE_DIR}/Bin)
 
-if (MSVC OR (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
-    set_property(TARGET rux RuxDiagnostics RuxSource RuxSystem RuxCrypto RuxPackage
+if (WIN32)
+    set_property(TARGET rux RuxTarget RuxDiagnostics RuxSource RuxSystem RuxCrypto RuxPackage
         RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxDocumentation RuxLinter RuxHir RuxHirPasses RuxLir
         RuxLowering RuxObjectRcu RuxCodeGenCommon RuxCodeGenX86_64 RuxCodeGenAArch64 RuxArchive
         RuxLinker RuxDriver PROPERTY

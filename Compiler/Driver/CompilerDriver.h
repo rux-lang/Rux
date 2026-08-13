@@ -10,6 +10,7 @@
 #include "Package/Manifest.h"
 #include "Semantic/SemanticModel.h"
 #include "Syntax/Parser/Parser.h"
+#include "Target/TargetTriple.h"
 
 #include <filesystem>
 #include <functional>
@@ -22,9 +23,9 @@
 
 namespace Rux::Driver {
 struct CompileOptions {
-    std::filesystem::path manifestPath;         // resolved path to Rux.toml
-    Manifest manifest;                          // parsed manifest for manifestPath
-    std::string targetName;                     // validated "os-arch" triple
+    std::filesystem::path manifestPath; // resolved path to Rux.toml
+    Manifest manifest;                  // parsed manifest for manifestPath
+    Target::TargetTriple target = Target::TargetTriple::Host();
     std::string profileName;                    // "Release", "Debug", or a custom profile
     std::map<std::string, std::string> defines; // --define overrides
 

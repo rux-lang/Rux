@@ -83,6 +83,19 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
             PrintDiagnosticsJson(jsonDiags, exitCode == 0);
         return exitCode;
     };
+    const auto targetTriple =
+        target.empty() ? std::optional{Target::TargetTriple::Host()} : Target::TargetTriple::Parse(target);
+    if (!targetTriple) {
+        if (jsonOutput) {
+            EmitFatal("unsupported target '" + std::string(target) + "'");
+        }
+        else {
+            std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", target,
+                       SupportedTargetTriples());
+        }
+        return Finish(1);
+    }
+    const std::string targetName(targetTriple->CanonicalName());
     auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         if (jsonOutput) {
@@ -99,17 +112,6 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         return Finish(1);
     }
     auto manifest = std::move(rootResult.manifest);
-    std::string targetName = target.empty() ? HostTargetTriple() : CanonicalTargetTriple(target);
-    if (!IsSupportedTargetTriple(targetName)) {
-        if (jsonOutput) {
-            EmitFatal("unsupported target '" + targetName + "'");
-        }
-        else {
-            std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", targetName,
-                       SupportedTargetTriples());
-        }
-        return Finish(1);
-    }
     std::map<std::string, std::filesystem::path> localPackageRoots;
     bool localDependenciesOnly = false;
     auto CheckPackage = [&](const std::filesystem::path &packageManifestPath, Manifest packageManifest) {
@@ -120,7 +122,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         CompileOptions copts;
         copts.manifestPath = packageManifestPath;
         copts.manifest = std::move(packageManifest);
-        copts.targetName = targetName;
+        copts.target = *targetTriple;
         copts.profileName = "Debug";
         copts.defines = defines;
         copts.localPackageRoots = localPackageRoots;
@@ -189,7 +191,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
                 continue;
             }
             if (IsPlatformPackageName(memberManifest->package.name.Text()) &&
-                !PlatformPackageMatchesTarget(memberManifest->package.name.Text(), targetName)) {
+                !PlatformPackageMatchesTarget(memberManifest->package.name.Text(), *targetTriple)) {
                 continue;
             }
             jobs.push_back({memberManifestPath, label, std::move(*memberManifest)});

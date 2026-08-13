@@ -79,7 +79,7 @@ std::string ReadFileText(const std::filesystem::path &path) {
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
-    const TargetContext target = Driver::TargetContextForTriple(triple);
+    const TargetContext target = Driver::TargetContextForTriple(*Target::TargetTriple::Parse(triple));
     Parser parser(std::move(lexed.tokens), fileName, target.arch);
     auto parsed = parser.Parse();
     for (const auto &diag : parsed.diagnostics) {
@@ -295,7 +295,7 @@ TEST_CASE("FreeBSD AArch64 BSD package checks both target conditions through the
     Driver::CompileOptions options;
     options.manifestPath = manifestPath;
     options.manifest = std::move(*loaded.manifest);
-    options.targetName = "freebsd-aarch64";
+    options.target = *Target::TargetTriple::Parse("freebsd-aarch64");
     options.profileName = "Release";
     options.quiet = true;
     options.isTest = true;

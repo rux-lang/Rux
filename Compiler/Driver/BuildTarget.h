@@ -8,6 +8,7 @@
 #include "Syntax/Ast/Ast.h"
 #include "System/Host.h"
 #include "Target/Target.h"
+#include "Target/TargetTriple.h"
 
 #include <filesystem>
 #include <optional>
@@ -22,9 +23,8 @@ namespace Rux::Driver {
 // Human-readable name of the host target, e.g. "Windows x86-64".
 [[nodiscard]] std::string TargetName();
 
-// Human-readable name of an "os-arch" triple, e.g. "Windows x86-64". Unknown
-// components fall back to the host the way TargetTripleOs does.
-[[nodiscard]] std::string TargetDisplayName(std::string_view target);
+// Human-readable name of a validated target, e.g. "Windows x86-64".
+[[nodiscard]] std::string TargetDisplayName(Target::TargetTriple target);
 
 // Lower-case "os-arch" triple of the host, e.g. "windows-x86_64".
 [[nodiscard]] std::string HostTargetTriple();
@@ -38,23 +38,15 @@ namespace Rux::Driver {
 [[nodiscard]] bool IsSupportedTargetTriple(std::string_view target);
 
 // Comma-separated list used by CLI diagnostics.
-[[nodiscard]] std::string_view SupportedTargetTriples();
+[[nodiscard]] const std::string &SupportedTargetTriples();
 
-// Canonical OS name ("FreeBSD", "Linux", "macOS", "Windows") for the OS
-// component of an "os-arch" triple, or "" if it cannot be determined.
-[[nodiscard]] std::string_view TargetOsName(std::string_view target);
+// Canonical OS name ("FreeBSD", "Linux", "macOS", "Windows") for a target.
+[[nodiscard]] std::string_view TargetOsName(Target::TargetTriple target);
 
-// Target::OS for the OS component of an "os-arch" triple; drives the linker's
-// object-format choice. Falls back to the host OS for an unrecognized triple.
-[[nodiscard]] Target::OS TargetTripleOs(std::string_view target);
-
-// Architecture and fully-derived target description for an "os-arch" triple.
-// Unknown components fall back to the native target, matching TargetTripleOs.
-[[nodiscard]] Target::Arch TargetTripleArch(std::string_view target);
-[[nodiscard]] TargetContext TargetContextForTriple(std::string_view target);
+[[nodiscard]] TargetContext TargetContextForTriple(Target::TargetTriple target);
 
 // True when this host can execute an artifact built for `target` directly.
-[[nodiscard]] bool HostCanExecuteTarget(std::string_view target);
+[[nodiscard]] bool HostCanExecuteTarget(Target::TargetTriple target);
 
 // Pure form of HostCanExecuteTarget. A target is directly executable when its
 // OS matches and its architecture is either the compiler process architecture
@@ -67,7 +59,7 @@ namespace Rux::Driver {
 
 // Names that denote a platform package rather than a normal dependency.
 [[nodiscard]] bool IsPlatformPackageName(std::string_view name);
-[[nodiscard]] bool PlatformPackageMatchesTarget(std::string_view name, std::string_view target);
+[[nodiscard]] bool PlatformPackageMatchesTarget(std::string_view name, Target::TargetTriple target);
 
 // The package name a dependency resolves to, which is its import name unless
 // the entry overrides it with `Package`.

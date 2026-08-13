@@ -82,7 +82,7 @@ target_include_directories(rux-tests SYSTEM PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/
 
 # By default doctest forward-declares std::ostream instead of including it, and
 # only switches to the real headers when it detects libc++. On Windows the
-# MSVC standard library declares operator<< for std::string_view in
+# The Microsoft standard library declares operator<< for std::string_view in
 # <string_view> but leaves std::ostream undefined, so any assertion doctest has
 # to stringify a string_view for fails to compile. Asking doctest for the real
 # <ostream> fixes that everywhere instead of one test file at a time.
@@ -100,7 +100,7 @@ target_compile_definitions(rux-tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
 # with a #warning directive. The SYSTEM include directory above does not help,
 # because Clang emits #warning even from system headers.
 set_source_files_properties(${RUX_TEST_SOURCES} PROPERTIES
-    COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-c2y-extensions;-Wno-#warnings>")
+    COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:Clang>:-Wno-c2y-extensions;-Wno-#warnings>")
 
 # The golden diagnostics runner reads its cases from the source tree.
 target_compile_definitions(rux-tests PRIVATE
@@ -112,7 +112,7 @@ target_compile_definitions(rux-tests PRIVATE
 
 # Match the static-CRT choice made for rux/RuxCore in Compiler/CMakeLists.txt;
 # mixing runtimes across the RuxCore boundary breaks the link.
-if (MSVC OR (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+if (WIN32)
     set_property(TARGET rux-tests PROPERTY
         MSVC_RUNTIME_LIBRARY
         "$<IF:$<CONFIG:Release>,MultiThreaded,MultiThreaded$<$<CONFIG:Debug>:Debug>DLL>")

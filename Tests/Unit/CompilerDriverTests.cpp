@@ -192,7 +192,7 @@ module Api {
         CompileOptions options;
         options.manifestPath = appRoot / "Rux.toml";
         options.manifest = application;
-        options.targetName = HostTargetTriple();
+        options.target = Target::TargetTriple::Host();
         options.profileName = "Debug";
         options.quiet = true;
         options.checkOnly = checkOnly;
@@ -431,17 +431,17 @@ TEST_CASE("output directories separate a foreign target from the host") {
 
 TEST_CASE("artifact names follow the target operating system, not the host") {
     CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::Executable),
-                         TargetTripleOs("windows-aarch64")) == "App.exe");
+                         Target::TargetTriple::Parse("windows-aarch64")->Os()) == "App.exe");
     CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::Executable),
-                         TargetTripleOs("linux-aarch64")) == "App");
+                         Target::TargetTriple::Parse("linux-aarch64")->Os()) == "App");
     CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::SharedLibrary),
-                         TargetTripleOs("macos-aarch64")) == "libApp.dylib");
+                         Target::TargetTriple::Parse("macos-aarch64")->Os()) == "libApp.dylib");
     CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::SharedLibrary),
-                         TargetTripleOs("windows-arm64")) == "App.dll");
+                         Target::TargetTriple::Parse("windows-arm64")->Os()) == "App.dll");
     CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::StaticLibrary),
-                         TargetTripleOs("freebsd-x86_64")) == "libApp.a");
+                         Target::TargetTriple::Parse("freebsd-x86_64")->Os()) == "libApp.a");
     CHECK(OutputFileName("App", PackageArtifactKind(ManifestPackageType::StaticLibrary),
-                         TargetTripleOs("windows-aarch64")) == "App.lib");
+                         Target::TargetTriple::Parse("windows-aarch64")->Os()) == "App.lib");
 }
 
 TEST_CASE("compiler driver loads path dependencies when checking") {
@@ -511,13 +511,14 @@ TEST_CASE("compiler driver builds one architecture for a foreign operating syste
     DependencyFixture fixture;
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = foreign;
+    options.target = *Target::TargetTriple::Parse(foreign);
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
     CHECK(result.ok);
     CHECK(diagnostics.empty());
-    CHECK(result.primaryArtifactPath.filename().string() == ExecutableFileName("App", TargetTripleOs(foreign)));
+    CHECK(result.primaryArtifactPath.filename().string() ==
+          ExecutableFileName("App", Target::TargetTriple::Parse(foreign)->Os()));
     // A foreign target gets its own directory, so it cannot overwrite the host
     // build sitting one level up.
     CHECK(result.primaryArtifactPath.parent_path().filename() == foreign);
@@ -545,7 +546,7 @@ func Main() -> int {
 )");
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = "windows-x86_64";
+    options.target = *Target::TargetTriple::Parse("windows-x86_64");
     options.profileName = "Release";
 
     const auto build = CompilerDriver(std::move(options)).Compile();
@@ -563,7 +564,7 @@ TEST_CASE("compiler driver builds a Windows AArch64 executable") {
     DependencyFixture fixture;
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = "windows-aarch64";
+    options.target = *Target::TargetTriple::Parse("windows-aarch64");
     options.profileName = "Release";
 
     const auto result = CompilerDriver(std::move(options)).Compile();
@@ -588,7 +589,7 @@ TEST_CASE("compiler driver builds a Windows AArch64 shared library and import li
     fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = "windows-arm64";
+    options.target = *Target::TargetTriple::Parse("windows-arm64");
     options.profileName = "Release";
 
     const auto result = CompilerDriver(std::move(options)).Compile();
@@ -618,7 +619,7 @@ TEST_CASE("compiler driver builds a Windows AArch64 static library") {
     fixture.SetApplicationType(ManifestPackageType::StaticLibrary);
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = "windows-aarch64";
+    options.target = *Target::TargetTriple::Parse("windows-aarch64");
     options.profileName = "Release";
 
     const auto result = CompilerDriver(std::move(options)).Compile();
@@ -639,7 +640,7 @@ TEST_CASE("compiler driver builds a signed macOS AArch64 executable with target 
     fixture.ConfigureMacOSTargetDependencies();
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = "macos-aarch64";
+    options.target = *Target::TargetTriple::Parse("macos-aarch64");
     options.profileName = "Release";
 
     const auto result = CompilerDriver(std::move(options)).Compile();
@@ -669,7 +670,7 @@ TEST_CASE("compiler driver canonicalizes the macOS ARM64 alias and builds a sign
     fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = "macos-arm64";
+    options.target = *Target::TargetTriple::Parse("macos-arm64");
     options.profileName = "Release";
 
     const auto result = CompilerDriver(std::move(options)).Compile();
@@ -701,7 +702,7 @@ TEST_CASE("compiler driver builds macOS AArch64 static libraries with relocatabl
     fixture.SetApplicationType(ManifestPackageType::StaticLibrary);
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = "macos-aarch64";
+    options.target = *Target::TargetTriple::Parse("macos-aarch64");
     options.profileName = "Release";
 
     const auto result = CompilerDriver(std::move(options)).Compile();
@@ -727,7 +728,7 @@ TEST_CASE("compiler driver checks a macOS AArch64 source library with only targe
     fixture.SetApplicationType(ManifestPackageType::SourceLibrary);
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(true, diagnostics);
-    options.targetName = "macos-aarch64";
+    options.target = *Target::TargetTriple::Parse("macos-aarch64");
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -743,7 +744,7 @@ TEST_CASE("compiler driver target dependency errors name macOS AArch64 rather th
     fixture.SetDependencyTargets({Target::OS::Windows});
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(true, diagnostics);
-    options.targetName = "macos-aarch64";
+    options.target = *Target::TargetTriple::Parse("macos-aarch64");
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -758,7 +759,7 @@ TEST_CASE("compiler driver builds a FreeBSD AArch64 executable with target-condi
     fixture.ConfigureFreeBSDTargetDependencies();
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = "freebsd-aarch64";
+    options.target = *Target::TargetTriple::Parse("freebsd-aarch64");
     options.profileName = "Release";
 
     const auto result = CompilerDriver(std::move(options)).Compile();
@@ -794,7 +795,7 @@ TEST_CASE("compiler driver canonicalizes FreeBSD ARM64 as AArch64 and builds a s
     fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = "freebsd-arm64";
+    options.target = *Target::TargetTriple::Parse("freebsd-arm64");
     options.profileName = "Release";
 
     const auto result = CompilerDriver(std::move(options)).Compile();
@@ -835,7 +836,7 @@ TEST_CASE("compiler driver builds a FreeBSD AArch64 static library from relocata
     fixture.SetApplicationType(ManifestPackageType::StaticLibrary);
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = "freebsd-aarch64";
+    options.target = *Target::TargetTriple::Parse("freebsd-aarch64");
     options.profileName = "Release";
 
     const auto result = CompilerDriver(std::move(options)).Compile();
@@ -860,7 +861,7 @@ TEST_CASE("compiler driver checks FreeBSD AArch64 source libraries and reports m
         fixture.SetApplicationType(ManifestPackageType::SourceLibrary);
         std::vector<Diagnostic> diagnostics;
         auto options = fixture.Options(true, diagnostics);
-        options.targetName = "freebsd-aarch64";
+        options.target = *Target::TargetTriple::Parse("freebsd-aarch64");
 
         const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -876,7 +877,7 @@ TEST_CASE("compiler driver checks FreeBSD AArch64 source libraries and reports m
         fixture.SetDependencyTargets({Target::OS::Windows});
         std::vector<Diagnostic> diagnostics;
         auto options = fixture.Options(true, diagnostics);
-        options.targetName = "freebsd-aarch64";
+        options.target = *Target::TargetTriple::Parse("freebsd-aarch64");
 
         const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -927,7 +928,7 @@ TEST_CASE("compiler driver builds a StaticLibrary package for linux-aarch64") {
     fixture.SetApplicationType(ManifestPackageType::StaticLibrary);
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = "linux-aarch64";
+    options.target = *Target::TargetTriple::Parse("linux-aarch64");
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
@@ -1050,7 +1051,7 @@ when #config.Has("allocator") &&
 // they hold on every compiler host.
 
 TEST_CASE("a target triple resolves to the machine it names rather than to the host") {
-    const TargetContext aarch64 = TargetContextForTriple("linux-aarch64");
+    const TargetContext aarch64 = TargetContextForTriple(*Target::TargetTriple::Parse("linux-aarch64"));
     CHECK(aarch64.arch == Target::Arch::AArch64);
     CHECK(aarch64.os == Target::OS::Linux);
     CHECK(aarch64.object_format == Target::ObjectFormat::ELF);
@@ -1059,9 +1060,11 @@ TEST_CASE("a target triple resolves to the machine it names rather than to the h
 
     // An alias resolves to the same description, and each operating system the
     // triple names selects its own object format.
-    CHECK(TargetContextForTriple("linux-arm64").arch == Target::Arch::AArch64);
-    CHECK(TargetContextForTriple("windows-aarch64").object_format == Target::ObjectFormat::COFF);
-    CHECK(TargetContextForTriple("macos-aarch64").object_format == Target::ObjectFormat::MachO);
+    CHECK(TargetContextForTriple(*Target::TargetTriple::Parse("linux-arm64")).arch == Target::Arch::AArch64);
+    CHECK(TargetContextForTriple(*Target::TargetTriple::Parse("windows-aarch64")).object_format ==
+          Target::ObjectFormat::COFF);
+    CHECK(TargetContextForTriple(*Target::TargetTriple::Parse("macos-aarch64")).object_format ==
+          Target::ObjectFormat::MachO);
 }
 
 TEST_CASE("every supported triple is one a back end can produce") {
@@ -1086,7 +1089,7 @@ TEST_CASE("compiler driver builds an executable for linux-aarch64") {
     DependencyFixture fixture;
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
-    options.targetName = "linux-aarch64";
+    options.target = *Target::TargetTriple::Parse("linux-aarch64");
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 

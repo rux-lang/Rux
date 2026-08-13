@@ -58,13 +58,6 @@ enum class CallingConv : std::uint8_t {
     AAPCS64,
 };
 
-enum class Compiler : std::uint8_t {
-    Unknown,
-    MSVC,
-    Clang,
-    GCC,
-};
-
 enum class BuildMode : std::uint8_t {
     Debug = 0,
     Release = 1,
@@ -261,19 +254,6 @@ inline constexpr Arch HostArch = []() noexcept {
 inline constexpr DataModel HostDataModel = RUX_OS_WINDOWS ? DataModel::LLP64 : DataModel::LP64;
 
 inline constexpr std::size_t HostPointerSize = GetPointerSize(HostArch);
-
-inline constexpr Compiler HostCompiler = []() noexcept {
-    if constexpr (RUX_COMPILER_MSVC) {
-        return Compiler::MSVC;
-    }
-    if constexpr (RUX_COMPILER_CLANG) {
-        return Compiler::Clang;
-    }
-    if constexpr (RUX_COMPILER_GCC) {
-        return Compiler::GCC;
-    }
-    return Compiler::Unknown;
-}();
 
 inline constexpr BuildMode HostBuildMode = RUX_BUILD_RELEASE ? BuildMode::Release : BuildMode::Debug;
 
