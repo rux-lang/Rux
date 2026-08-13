@@ -1847,6 +1847,14 @@ private:
 
     // Expression lowering
     HirExprPtr LowerExprAs(const Expr &expr, const TypeRef &targetType) override {
+        if (IsNullLiteral(expr) && targetType.kind == TypeRef::Kind::Pointer) {
+            auto loweredNull = std::make_unique<HirLiteralExpr>();
+            loweredNull->location = expr.location;
+            loweredNull->type = targetType;
+            loweredNull->value = "0";
+            return loweredNull;
+        }
+
         if (const auto *array = dynamic_cast<const ArrayExpr *>(&expr);
             array && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
             auto loweredArray = std::make_unique<HirArrayExpr>();
@@ -2469,45 +2477,85 @@ private:
         return lowered;
     }
 
-    HirExprPtr LowerExpr(const Expr &expr) override {
-        if (auto *e = dynamic_cast<const LiteralExpr *>(&expr)) {
-            auto he = std::make_unique<HirLiteralExpr>();
-            he->location = e->location;
-            he->type = LiteralType(e->token);
-            if (e->token.kind == TokenKind::CharLiteral) {
-                he->value = DecodeCharLiteral(e->token.text);
-            }
-            else if (e->token.kind == TokenKind::StringLiteral) {
-                he->value = DecodeStringLiteral(e->token.text);
-            }
-            else if (e->token.kind == TokenKind::IntLiteral || e->token.kind == TokenKind::FloatLiteral) {
-                he->value = StripNumericLiteralSuffix(e->token.text);
-            }
-            else {
-                he->value = e->token.text;
-            }
-            return he;
+    std::string LowerLiteralValue(const LiteralExpr &expression) const override {
+        if (expression.token.kind == TokenKind::CharLiteral) {
+            return DecodeCharLiteral(expression.token.text);
         }
-        if (auto *e = dynamic_cast<const IdentExpr *>(&expr)) {
-            if (HirSymbol *sym = currentScope->Lookup(e->name);
-                sym && sym->kind == HirSymbol::Kind::Const && !sym->intrinsicName.empty()) {
-                if (HirExprPtr value = LowerCompilerParamObject(sym->intrinsicName, sym->type, e->location)) {
-                    return value;
+        if (expression.token.kind == TokenKind::StringLiteral) {
+            return DecodeStringLiteral(expression.token.text);
+        }
+        if (expression.token.kind == TokenKind::IntLiteral || expression.token.kind == TokenKind::FloatLiteral) {
+            return StripNumericLiteralSuffix(expression.token.text);
+        }
+        return expression.token.text;
+    }
+
+    HirExprPtr LowerCompilerParamIdentifier(const IdentExpr &expression) override {
+        if (HirSymbol *symbol = currentScope->Lookup(expression.name);
+            symbol && symbol->kind == HirSymbol::Kind::Const && !symbol->intrinsicName.empty()) {
+            return LowerCompilerParamObject(symbol->intrinsicName, symbol->type, expression.location);
+        }
+        return nullptr;
+    }
+
+    HirExprPtr LowerCompilerParamFieldExpression(const FieldExpr &expression) override {
+        if (const auto root = CompilerParamRoot(*expression.object)) {
+            return LowerCompilerParamField(*root, expression.field, expression.location);
+        }
+        return nullptr;
+    }
+
+    HirExprPtr TryLowerOverloadedBinary(const BinaryExpr &expression, HirExprPtr &left, HirExprPtr &right) override {
+        const std::string opName = std::string(OpStr(expression.op));
+        const FuncDecl *method = LookupMethod(left->type, opName, {right->type});
+        if (!method) {
+            return nullptr;
+        }
+
+        const std::string receiverBase = NamedBaseTypeName(left->type);
+        HirExprPtr selfArg;
+        if (left->type.kind == TypeRef::Kind::Pointer) {
+            selfArg = std::move(left);
+        }
+        else {
+            auto address = std::make_unique<HirUnaryExpr>();
+            address->location = left->location;
+            address->op = TokenKind::At;
+            address->type = TypeRef::MakePointer(left->type);
+            address->operand = std::move(left);
+            selfArg = std::move(address);
+        }
+
+        auto callee = std::make_unique<HirVarExpr>();
+        callee->location = expression.location;
+        callee->name = ConcreteMethodCalleeName(receiverBase, selfArg->type, *method);
+        callee->type = MethodType(selfArg->type, *method);
+
+        auto call = std::make_unique<HirCallExpr>();
+        call->location = expression.location;
+        call->isNoReturn = method->isNoReturn;
+        call->type = callee->type.inner.empty() ? TypeRef::MakeUnknown() : callee->type.inner.back();
+        call->callee = std::move(callee);
+        call->args.push_back(std::move(selfArg));
+        if (call->callee->type.inner.size() > 2) {
+            const TypeRef &expectedType = call->callee->type.inner[1];
+            if (UnsuffixedIntegerLiteralFits(*expression.right, expectedType)) {
+                right->type = expectedType;
+            }
+            else if (IsNullLiteral(*expression.right) && expectedType.kind == TypeRef::Kind::Pointer) {
+                right->type = expectedType;
+                if (auto *literal = dynamic_cast<HirLiteralExpr *>(right.get())) {
+                    literal->value = "0";
                 }
             }
-            auto he = std::make_unique<HirVarExpr>();
-            he->location = e->location;
-            he->name = e->name;
-            if (HirSymbol *sym = currentScope->Lookup(e->name)) {
-                he->type = sym->type;
-            }
-            return he;
         }
-        if (dynamic_cast<const SelfExpr *>(&expr)) {
-            auto he = std::make_unique<HirSelfExpr>();
-            he->location = expr.location;
-            he->type = currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
-            return he;
+        call->args.push_back(std::move(right));
+        return call;
+    }
+
+    HirExprPtr LowerExpr(const Expr &expr) override {
+        if (HirExprPtr basic = LowerBasicExpr(expr)) {
+            return basic;
         }
         if (auto *e = dynamic_cast<const PathExpr *>(&expr)) {
             if (e->segments.size() == 2) {
@@ -2682,98 +2730,6 @@ private:
             }
             return he;
         }
-        if (auto *e = dynamic_cast<const UnaryExpr *>(&expr)) {
-            auto he = std::make_unique<HirUnaryExpr>();
-            he->location = e->location;
-            he->op = e->op;
-            he->operand = LowerExpr(*e->operand);
-            TypeRef operandType = he->operand->type;
-            if (e->op == TokenKind::At) {
-                operandType.isMut = PlaceIsWritable(*e->operand, operandType);
-            }
-            he->type = InferUnaryType(e->op, operandType);
-            return he;
-        }
-        if (auto *e = dynamic_cast<const PostfixExpr *>(&expr)) {
-            auto he = std::make_unique<HirPostfixExpr>();
-            he->location = e->location;
-            he->op = e->op;
-            he->operand = LowerExpr(*e->operand);
-            he->type = he->operand->type;
-            return he;
-        }
-        if (auto *e = dynamic_cast<const BinaryExpr *>(&expr)) {
-            HirExprPtr left = LowerExpr(*e->left);
-            HirExprPtr right = LowerExpr(*e->right);
-            const std::string opName = std::string(OpStr(e->op));
-            if (const FuncDecl *method = LookupMethod(left->type, opName, {right->type})) {
-                const std::string receiverBase = NamedBaseTypeName(left->type);
-                HirExprPtr selfArg;
-                if (left->type.kind == TypeRef::Kind::Pointer) {
-                    selfArg = std::move(left);
-                }
-                else {
-                    auto addr = std::make_unique<HirUnaryExpr>();
-                    addr->location = left->location;
-                    addr->op = TokenKind::At;
-                    addr->type = TypeRef::MakePointer(left->type);
-                    addr->operand = std::move(left);
-                    selfArg = std::move(addr);
-                }
-
-                auto callee = std::make_unique<HirVarExpr>();
-                callee->location = e->location;
-                callee->name = ConcreteMethodCalleeName(receiverBase, selfArg->type, *method);
-                callee->type = MethodType(selfArg->type, *method);
-
-                auto call = std::make_unique<HirCallExpr>();
-                call->location = e->location;
-                call->isNoReturn = method->isNoReturn;
-                call->type = callee->type.inner.empty() ? TypeRef::MakeUnknown() : callee->type.inner.back();
-                call->callee = std::move(callee);
-                call->args.push_back(std::move(selfArg));
-                if (call->callee->type.inner.size() > 2) {
-                    const TypeRef &expectedType = call->callee->type.inner[1];
-                    if (UnsuffixedIntegerLiteralFits(*e->right, expectedType)) {
-                        right->type = expectedType;
-                    }
-                    else if (IsNullLiteral(*e->right) && expectedType.kind == TypeRef::Kind::Pointer) {
-                        right->type = expectedType;
-                        if (auto *lit = dynamic_cast<HirLiteralExpr *>(right.get())) {
-                            lit->value = "0";
-                        }
-                    }
-                }
-                call->args.push_back(std::move(right));
-                return call;
-            }
-
-            auto he = std::make_unique<HirBinaryExpr>();
-            he->location = e->location;
-            he->op = e->op;
-            he->left = std::move(left);
-            he->right = std::move(right);
-            he->type = InferBinaryType(e->op, he->left->type, he->right->type);
-            return he;
-        }
-        if (auto *e = dynamic_cast<const AssignExpr *>(&expr)) {
-            auto he = std::make_unique<HirAssignExpr>();
-            he->location = e->location;
-            he->op = e->op;
-            he->target = LowerExpr(*e->target);
-            he->value = LowerExprAs(*e->value, he->target->type);
-            he->type = he->target->type;
-            return he;
-        }
-        if (auto *e = dynamic_cast<const TernaryExpr *>(&expr)) {
-            auto he = std::make_unique<HirTernaryExpr>();
-            he->location = e->location;
-            he->condition = LowerExpr(*e->condition);
-            he->thenExpr = LowerExpr(*e->thenExpr);
-            he->elseExpr = LowerExpr(*e->elseExpr);
-            he->type = he->thenExpr->type.IsUnknown() ? he->elseExpr->type : he->thenExpr->type;
-            return he;
-        }
         if (auto *e = dynamic_cast<const RangeExpr *>(&expr)) {
             auto he = std::make_unique<HirRangeExpr>();
             he->location = e->location;
@@ -2871,81 +2827,6 @@ private:
             }
             std::abort();
         }
-        if (auto *e = dynamic_cast<const IndexExpr *>(&expr)) {
-            auto he = std::make_unique<HirIndexExpr>();
-            he->location = e->location;
-            he->object = LowerExpr(*e->object);
-            he->index = LowerExpr(*e->index);
-            if (he->index->type.IsRange()) {
-                std::optional<TypeRef> elemType;
-                if (he->object->type.kind == TypeRef::Kind::Array && !he->object->type.inner.empty()) {
-                    elemType = he->object->type.inner[0];
-                }
-                else {
-                    elemType = SliceElementType(he->object->type);
-                }
-                if (elemType) {
-                    he->type = TypeRef::MakeNamed(SliceTypeName(*elemType));
-                }
-            }
-            else if (auto elemType = IndexElementType(he->object->type)) {
-                he->type = *elemType;
-            }
-            return he;
-        }
-        if (auto *e = dynamic_cast<const FieldExpr *>(&expr)) {
-            if (const auto root = CompilerParamRoot(*e->object)) {
-                if (HirExprPtr value = LowerCompilerParamField(*root, e->field, e->location)) {
-                    return value;
-                }
-            }
-            auto he = std::make_unique<HirFieldExpr>();
-            he->location = e->location;
-            he->object = LowerExpr(*e->object);
-            he->field = e->field;
-            if (he->object->type.kind == TypeRef::Kind::Array && he->object->type.arrayLength && e->field == "length") {
-                he->type = TypeRef::MakeUInt();
-                return he;
-            }
-            if (auto elemType = SliceElementType(he->object->type)) {
-                if (e->field == "data") {
-                    he->type = TypeRef::MakePointer(*elemType);
-                }
-                else if (e->field == "length") {
-                    he->type = TypeRef::MakeUInt64();
-                }
-            }
-            else if (he->object->type.IsRange()) {
-                TypeRef rangeElemType =
-                    he->object->type.inner.empty() ? TypeRef::MakeInt64() : he->object->type.inner[0];
-                if (e->field == "start" && he->object->type.RangeHasStart()) {
-                    he->type = rangeElemType;
-                }
-                else if (e->field == "end" && he->object->type.RangeHasEnd()) {
-                    he->type = rangeElemType;
-                }
-            }
-            else if (he->object->type.kind == TypeRef::Kind::Tuple) {
-                try {
-                    const std::size_t idx = std::stoul(e->field);
-                    if (idx < he->object->type.inner.size()) {
-                        he->type = he->object->type.inner[idx];
-                    }
-                }
-                catch (...) {
-                }
-            }
-            else if (const std::string ifaceName = NamedBaseTypeName(he->object->type);
-                     !ifaceName.empty() && interfaceDecls.contains(ifaceName)) {
-                if (e->field == "data" || e->field == "vtable") {
-                    he->type = TypeRef::MakePointer(TypeRef::MakeOpaque());
-                }
-            }
-            else {
-                he->type = StructFieldType(he->object->type, e->field);
-            }
-            return he;
-        }
         if (auto *e = dynamic_cast<const StructInitExpr *>(&expr)) {
             if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(e->typeName); enumDecl && variant) {
                 if (!variant->namedFields.empty()) {
@@ -3018,23 +2899,6 @@ private:
             he->type = TypeRef::MakeTuple(std::move(elemTypes));
             return he;
         }
-        if (auto *e = dynamic_cast<const CastExpr *>(&expr)) {
-            auto he = std::make_unique<HirCastExpr>();
-            he->location = e->location;
-            he->operand = LowerExpr(*e->operand);
-            he->targetType = ResolveType(*e->type);
-            he->type = he->targetType;
-            return he;
-        }
-        if (auto *e = dynamic_cast<const IsExpr *>(&expr)) {
-            // The answer is statically known for all non-interface types.
-            // Interface types are rejected by Sema, so this path never
-            // reaches Lir.
-            auto he = std::make_unique<HirLiteralExpr>();
-            he->value = LowerExpr(*e->operand)->type == ResolveType(*e->type) ? "true" : "false";
-            he->type = TypeRef::MakeBool();
-            return he;
-        }
         if (auto *e = dynamic_cast<const MatchExpr *>(&expr)) {
             auto he = std::make_unique<HirMatchExpr>();
             he->location = e->location;
@@ -3068,77 +2932,6 @@ private:
         he->location = expr.location;
         he->value = "<expr>";
         return he;
-    }
-
-    static TypeRef InferUnaryType(TokenKind op, const TypeRef &t) {
-        switch (op) {
-        case TokenKind::Bang:
-            return TypeRef::MakeBool();
-        case TokenKind::At:
-            return TypeRef::MakePointer(t);
-        case TokenKind::Star:
-            return t.inner.empty() ? TypeRef::MakeUnknown() : t.inner[0];
-        default:
-            return t;
-        }
-    }
-
-    bool PlaceIsWritable(const Expr &place, const TypeRef &placeType) {
-        if (const auto *ident = dynamic_cast<const IdentExpr *>(&place)) {
-            const HirSymbol *sym = currentScope->Lookup(ident->name);
-            return sym && sym->kind == HirSymbol::Kind::Var && sym->isMut;
-        }
-        if (const auto *field = dynamic_cast<const FieldExpr *>(&place)) {
-            if (dynamic_cast<const SelfExpr *>(field->object.get())) {
-                return true;
-            }
-            const TypeRef objectType = LowerExpr(*field->object)->type;
-            if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
-                return objectType.inner[0].isMut;
-            }
-            return PlaceIsWritable(*field->object, objectType);
-        }
-        if (const auto *index = dynamic_cast<const IndexExpr *>(&place)) {
-            const TypeRef objectType = LowerExpr(*index->object)->type;
-            if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
-                return objectType.inner[0].isMut;
-            }
-            return PlaceIsWritable(*index->object, objectType);
-        }
-        if (const auto *u = dynamic_cast<const UnaryExpr *>(&place); u && u->op == TokenKind::Star) {
-            return placeType.isMut;
-        }
-        return false;
-    }
-
-    static TypeRef InferBinaryType(TokenKind op, const TypeRef &l, const TypeRef &r) {
-        using TK = TokenKind;
-        switch (op) {
-        case TK::Plus:
-            if (l.kind == TypeRef::Kind::Pointer && r.IsInteger()) {
-                return l;
-            }
-            if (l.IsInteger() && r.kind == TypeRef::Kind::Pointer) {
-                return r;
-            }
-            return l.IsUnknown() ? r : l;
-        case TK::Minus:
-            if (l.kind == TypeRef::Kind::Pointer && r.IsInteger()) {
-                return l;
-            }
-            return l.IsUnknown() ? r : l;
-        case TK::AmpAmp:
-        case TK::PipePipe:
-        case TK::Equal:
-        case TK::BangEqual:
-        case TK::Less:
-        case TK::LessEqual:
-        case TK::Greater:
-        case TK::GreaterEqual:
-            return TypeRef::MakeBool();
-        default:
-            return l.IsUnknown() ? r : l;
-        }
     }
 };
 

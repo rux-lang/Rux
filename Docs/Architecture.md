@@ -106,7 +106,7 @@ The principal ownership namespaces currently enforced at cross-platform and orch
 
 The build exposes focused targets such as `RuxBuildInfo`, `RuxSourceModel`, `RuxTarget`, `RuxCrypto`, `RuxSyntax`, `RuxSemantic`, `RuxHir`, `RuxLir`, `RuxOptimization`, `RuxLowering`, `RuxCodeGenCommon`, `RuxCodeGenX86_64`, `RuxCodeGenAArch64`, `RuxObjectRcu`, `RuxArchive`, `RuxLinker`, and `RuxDriver`. `RuxBuildInfo` carries immutable per-compilation identity and time values without orchestration APIs. `RuxSourceModel` owns immutable source identity values shared by diagnostics and target assembly models without exposing loading APIs. `RuxCrypto` owns narrow byte-oriented cryptographic primitives shared across otherwise unrelated stages; package checksum formatting remains in `RuxPackage`, while Mach-O signing remains in `RuxLinker`. `RuxCore` is an interface-only compatibility aggregation target.
 
-AST-to-HIR implementation files share private state through `AstToHirDetail::AstToHirContext`. It owns module and declaration ordering, lowering scopes, and statement/pattern construction while the public `AstToHirLowering` API remains the stage boundary.
+AST-to-HIR implementation files share private state through `AstToHirDetail::AstToHirContext`. It owns module and declaration ordering, lowering scopes, statement/pattern construction, and basic expression lowering from checked semantic type facts, while the public `AstToHirLowering` API remains the stage boundary.
 
 `RuxCore` is convenient for the unit-test executable and embedders, but compiler components must link to their actual dependencies. It must not become a shortcut that introduces cycles between stages.
 

@@ -4852,6 +4852,11 @@ private:
 
     TypeRef CheckBinary(TokenKind op, const TypeRef &l, const TypeRef &r, const Expr &leftExpr, const Expr &rightExpr,
                         SourceLocation loc) {
+        const bool comparesNullPointer = (IsNullLiteral(leftExpr) && r.kind == TypeRef::Kind::Pointer) ||
+                                         (IsNullLiteral(rightExpr) && l.kind == TypeRef::Kind::Pointer);
+        if (comparesNullPointer && (op == TokenKind::Equal || op == TokenKind::BangEqual)) {
+            return TypeRef::MakeBool();
+        }
         if (l.IsUnknown() || r.IsUnknown()) {
             return TypeRef::MakeUnknown();
         }

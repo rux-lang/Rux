@@ -348,6 +348,121 @@ TEST_CASE("AST-to-HIR consumes required semantic type and sizeof facts") {
     CHECK_EQ(literal->value, "37");
 }
 
+TEST_CASE("AST-to-HIR basic expressions consume semantic type facts") {
+    Lexer lexer(R"(
+        func Main() {
+            let sum = 1 + 2;
+            let converted = sum as int64;
+        }
+    )",
+                "basic_lowering_facts.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "basic_lowering_facts.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
+    REQUIRE(main != nullptr);
+    REQUIRE(main->body != nullptr);
+    REQUIRE_EQ(main->body->stmts.size(), 2);
+    const auto *sum = dynamic_cast<const LetStmt *>(main->body->stmts[0].get());
+    const auto *converted = dynamic_cast<const LetStmt *>(main->body->stmts[1].get());
+    REQUIRE(sum != nullptr);
+    REQUIRE(converted != nullptr);
+    const auto *binary = dynamic_cast<const BinaryExpr *>(sum->init.get());
+    const auto *cast = dynamic_cast<const CastExpr *>(converted->init.get());
+    REQUIRE(binary != nullptr);
+    REQUIRE(cast != nullptr);
+
+    std::unordered_map<const Expr *, TypeRef> expressionTypes{
+        {binary->left.get(), TypeRef::MakeInt8()},
+        {binary->right.get(), TypeRef::MakeInt16()},
+        {binary, TypeRef::MakeUInt32()},
+        {cast->operand.get(), TypeRef::MakeUInt64()},
+        {cast, TypeRef::MakeUInt16()},
+    };
+    std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities{{main, {"Main"}}};
+    SemanticModel model{{},
+                        {},
+                        {&parsed.module},
+                        CompileTimeContext{},
+                        std::move(expressionTypes),
+                        {},
+                        {},
+                        {},
+                        std::move(symbolIdentities),
+                        {},
+                        {},
+                        {}};
+    const HirPackage package = AstToHirLowering(model).Generate();
+
+    REQUIRE_EQ(package.modules.size(), 1);
+    REQUIRE_EQ(package.modules[0].funcs.size(), 1);
+    REQUIRE(package.modules[0].funcs[0].body.has_value());
+    const HirBlock &body = *package.modules[0].funcs[0].body;
+    REQUIRE_EQ(body.stmts.size(), 2);
+    const auto *loweredSum = dynamic_cast<const HirLetStmt *>(body.stmts[0].get());
+    const auto *loweredConverted = dynamic_cast<const HirLetStmt *>(body.stmts[1].get());
+    REQUIRE(loweredSum != nullptr);
+    REQUIRE(loweredConverted != nullptr);
+    const auto *loweredBinary = dynamic_cast<const HirBinaryExpr *>(loweredSum->init.get());
+    const auto *loweredCast = dynamic_cast<const HirCastExpr *>(loweredConverted->init.get());
+    REQUIRE(loweredBinary != nullptr);
+    REQUIRE(loweredCast != nullptr);
+    CHECK_EQ(loweredBinary->left->type, TypeRef::MakeInt8());
+    CHECK_EQ(loweredBinary->right->type, TypeRef::MakeInt16());
+    CHECK_EQ(loweredBinary->type, TypeRef::MakeUInt32());
+    CHECK_EQ(loweredCast->operand->type, TypeRef::MakeUInt64());
+    CHECK_EQ(loweredCast->targetType, TypeRef::MakeUInt16());
+}
+
+TEST_CASE("null pointer expressions retain contextual semantic types") {
+    Lexer lexer(R"(
+        func IsNull(value: *int) -> bool { return value == null; }
+        func CastNull() -> *int { return null as *int; }
+    )",
+                "null_expression.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "null_expression.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "null_expression", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
+    REQUIRE(function != nullptr);
+    REQUIRE(function->body != nullptr);
+    const auto *returned = dynamic_cast<const ReturnStmt *>(function->body->stmts[0].get());
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    const auto *comparison = dynamic_cast<const BinaryExpr *>((*returned->value).get());
+    REQUIRE(comparison != nullptr);
+    CHECK_EQ(ResolvedType(model, *comparison), TypeRef::MakeBool());
+
+    const HirPackage package = AstToHirLowering(model).Generate();
+    REQUIRE_EQ(package.modules.size(), 1);
+    REQUIRE_EQ(package.modules[0].funcs.size(), 2);
+    REQUIRE(package.modules[0].funcs[0].body.has_value());
+    const auto *loweredReturn = dynamic_cast<const HirReturnStmt *>(package.modules[0].funcs[0].body->stmts[0].get());
+    REQUIRE(loweredReturn != nullptr);
+    REQUIRE(loweredReturn->value.has_value());
+    const auto *loweredComparison = dynamic_cast<const HirBinaryExpr *>((*loweredReturn->value).get());
+    REQUIRE(loweredComparison != nullptr);
+    CHECK_EQ(loweredComparison->type, TypeRef::MakeBool());
+    CHECK_EQ(loweredComparison->right->type, TypeRef::MakePointer(TypeRef::MakeInt()));
+
+    REQUIRE(package.modules[0].funcs[1].body.has_value());
+    const auto *castReturn = dynamic_cast<const HirReturnStmt *>(package.modules[0].funcs[1].body->stmts[0].get());
+    REQUIRE(castReturn != nullptr);
+    REQUIRE(castReturn->value.has_value());
+    const auto *loweredCast = dynamic_cast<const HirCastExpr *>((*castReturn->value).get());
+    REQUIRE(loweredCast != nullptr);
+    CHECK_EQ(loweredCast->operand->type, TypeRef::MakePointer(TypeRef::MakeInt()));
+}
+
 TEST_CASE("semantic model omits recursive and invalid compile-time layouts") {
     Lexer lexer(R"(
         struct Recursive { next: Recursive; }

@@ -93,6 +93,8 @@ protected:
     [[nodiscard]] HirPatternPtr LowerLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable);
     [[nodiscard]] HirPatternPtr LowerPattern(const Pattern &pattern,
                                              const TypeRef &subjectType = TypeRef::MakeUnknown());
+    [[nodiscard]] HirExprPtr LowerBasicExpr(const Expr &expression);
+    [[nodiscard]] TypeRef ResolvedExpressionType(const Expr &expression) const;
 
 private:
     void RegisterBuiltins();
@@ -123,6 +125,11 @@ private:
     [[nodiscard]] virtual HirTypeAlias LowerTypeAlias(const TypeAliasDecl &decl) = 0;
     [[nodiscard]] virtual HirExprPtr LowerExpr(const Expr &expression) = 0;
     [[nodiscard]] virtual HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType) = 0;
+    [[nodiscard]] virtual std::string LowerLiteralValue(const LiteralExpr &expression) const = 0;
+    [[nodiscard]] virtual HirExprPtr LowerCompilerParamIdentifier(const IdentExpr &expression) = 0;
+    [[nodiscard]] virtual HirExprPtr LowerCompilerParamFieldExpression(const FieldExpr &expression) = 0;
+    [[nodiscard]] virtual HirExprPtr TryLowerOverloadedBinary(const BinaryExpr &expression, HirExprPtr &left,
+                                                              HirExprPtr &right) = 0;
     [[nodiscard]] virtual std::optional<TypeRef> IndexElementType(const TypeRef &type) const = 0;
     [[nodiscard]] virtual TypeRef LiteralType(const Token &token) const = 0;
     [[nodiscard]] virtual std::string StripNumericLiteralSuffix(const std::string &text) const = 0;
