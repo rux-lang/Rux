@@ -1,6 +1,7 @@
 #include "Lowering/AstToHir/AstToHir.h"
 
 #include "Ir/Hir/HirInternal.h"
+#include "Lowering/AstToHir/Detail/AstToHirContext.h"
 #include "Semantic/PrimitiveConstants.h"
 #include "Semantic/SemanticVersion.h"
 #include "Target/Platform.h"
@@ -23,6 +24,10 @@
 #include <unordered_set>
 
 namespace Rux {
+using AstToHirDetail::AstToHirContext;
+using AstToHirDetail::HirScope;
+using AstToHirDetail::HirSymbol;
+
 static bool UtcTime(std::time_t time, std::tm &out) {
 #if RUX_OS_WINDOWS
     return gmtime_s(&out, &time) == 0;
@@ -30,65 +35,6 @@ static bool UtcTime(std::time_t time, std::tm &out) {
     return gmtime_r(&time, &out) != nullptr;
 #endif
 }
-
-// Internal: Symbol & Scope
-struct HirSymbol {
-    enum class Kind {
-        Var,
-        Func,
-        Type,
-        Const,
-        Interface,
-    };
-
-    Kind kind = Kind::Var;
-    std::string name;
-    TypeRef type;
-    bool isMut = false;
-    bool isNoReturn = false;
-    std::string intrinsicName;
-    std::vector<const FuncDecl *> funcOverloads;
-};
-
-class HirScope {
-public:
-    explicit HirScope(HirScope *parentScope = nullptr)
-        : parent(parentScope) {
-    }
-
-    void Define(HirSymbol sym) {
-        if (auto it = table.find(sym.name); it != table.end()) {
-            if (it->second.kind == HirSymbol::Kind::Func && sym.kind == HirSymbol::Kind::Func) {
-                it->second.funcOverloads.insert(it->second.funcOverloads.end(), sym.funcOverloads.begin(),
-                                                sym.funcOverloads.end());
-                if (it->second.type.IsUnknown() && !sym.type.IsUnknown()) {
-                    it->second.type = std::move(sym.type);
-                }
-            }
-            return;
-        }
-        table.emplace(sym.name, std::move(sym));
-    }
-
-    HirSymbol *Lookup(const std::string &name) {
-        auto it = table.find(name);
-        if (it != table.end()) {
-            return &it->second;
-        }
-        if (parent) {
-            return parent->Lookup(name);
-        }
-        return nullptr;
-    }
-
-    [[nodiscard]] HirScope *Parent() const {
-        return parent;
-    }
-
-private:
-    HirScope *parent;
-    std::unordered_map<std::string, HirSymbol> table;
-};
 
 // Operator → string
 std::string_view OpStr(TokenKind op) {
@@ -174,62 +120,13 @@ std::string_view OpStr(TokenKind op) {
 }
 
 // Internal: Lowering
-class Lowering {
+class Lowering final : public AstToHirContext {
 public:
     explicit Lowering(const SemanticModel &inputModel)
-        : model(inputModel)
-        , modules(inputModel.modules)
-        , context(inputModel.compileTimeContext)
-        , currentScope(&globalScope) {
-    }
-
-    HirPackage Run() {
-        RegisterBuiltins();
-        for (auto *mod : modules) {
-            CollectModule(*mod);
-        }
-        HirPackage pkg;
-        for (auto *mod : modules) {
-            pkg.modules.push_back(LowerModule(*mod));
-        }
-        return pkg;
+        : AstToHirContext(inputModel, inputModel.modules, inputModel.compileTimeContext) {
     }
 
 private:
-    const SemanticModel &model;
-    const std::vector<const Module *> &modules;
-    const CompileTimeContext &context;
-    HirScope globalScope{nullptr};
-    HirScope *currentScope;
-    std::vector<std::unique_ptr<HirScope>> ownedScopes;
-    std::string currentFile;
-    std::string currentFunctionName;
-    std::string currentModulePath;
-    TypeRef currentReturnType = TypeRef::MakeOpaque();
-    bool inImpl = false;
-    TypeRef currentSelfType = TypeRef::MakeUnknown();
-    std::vector<std::string> currentTypeParams;
-    std::unordered_map<std::string, TypeRef> currentSubstitutions;
-    std::vector<HirFunc> monomorphizedFuncs;
-    std::unordered_set<std::string> generatedMonomorphizedFuncNames;
-    std::unordered_map<std::string, const StructDecl *> structDecls;
-    std::unordered_map<std::string, const EnumDecl *> enumDecls;
-    std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methodsByType;
-    std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
-    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> typeInterfaceVtables;
-    // The `extend` block each method was declared in. A method of a block that
-    // names no type parameter of its own is emitted once, with the block, and
-    // must not also be monomorphized: both copies would carry the same mangled
-    // name, and the receiver a monomorphization assumes is not the one the
-    // block lowers.
-    std::unordered_map<const FuncDecl *, const ImplDecl *> methodImpl;
-    std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
-
-    // Declared module path of the enclosing `module`. Distinct from
-    // currentModulePath, which is derived from the file name for the
-    // `#source.module` intrinsic.
-    std::string declModulePath;
-
     template <typename Fact>
     [[nodiscard]] static const Fact &RequireSemanticFact(const Fact *fact) {
         assert(fact != nullptr && "accepted AST node is missing a required semantic fact");
@@ -263,84 +160,6 @@ private:
         return ResolvedLayout(type).size;
     }
 
-    // Scope management
-    void PushScope() {
-        ownedScopes.push_back(std::make_unique<HirScope>(currentScope));
-        currentScope = ownedScopes.back().get();
-        constIntegerScopes.emplace_back();
-    }
-
-    void PopScope() {
-        assert(currentScope->Parent() != nullptr && "cannot pop global scope");
-        currentScope = currentScope->Parent();
-        if (constIntegerScopes.size() > 1) {
-            constIntegerScopes.pop_back();
-        }
-    }
-
-    void Define(HirSymbol sym) const {
-        currentScope->Define(std::move(sym));
-    }
-
-    // Builtins
-    void RegisterBuiltins() {
-        auto add = [&](const char *name, TypeRef t) {
-            HirSymbol sym;
-            sym.kind = HirSymbol::Kind::Type;
-            sym.name = name;
-            sym.type = std::move(t);
-            globalScope.Define(std::move(sym));
-        };
-        add("opaque", TypeRef::MakeOpaque());
-        add("bool8", TypeRef::MakeBool8());
-        add("bool16", TypeRef::MakeBool16());
-        add("bool32", TypeRef::MakeBool32());
-        add("bool", TypeRef::MakeBool());
-        add("char8", TypeRef::MakeChar8());
-        add("char16", TypeRef::MakeChar16());
-        add("char32", TypeRef::MakeChar32());
-        add("char", TypeRef::MakeChar());
-        add("int8", TypeRef::MakeInt8());
-        add("int16", TypeRef::MakeInt16());
-        add("int32", TypeRef::MakeInt32());
-        add("int64", TypeRef::MakeInt64());
-        add("int", TypeRef::MakeInt());
-        add("byte", TypeRef::MakeByte());
-        add("uint8", TypeRef::MakeUInt8());
-        add("uint16", TypeRef::MakeUInt16());
-        add("uint32", TypeRef::MakeUInt32());
-        add("uint64", TypeRef::MakeUInt64());
-        add("uint", TypeRef::MakeUInt());
-        add("float32", TypeRef::MakeFloat32());
-        add("float64", TypeRef::MakeFloat64());
-        add("float", TypeRef::MakeFloat());
-    }
-
-    // First pass: collect global names
-    void CollectModule(const Module &mod) {
-        currentFile = mod.name;
-        for (const auto &decl : mod.items) {
-            CollectDecl(*decl);
-        }
-    }
-
-    TypeRef MakeFuncType(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
-                         const std::vector<std::string> &typeParams = {}) {
-        auto savedTypeParams = currentTypeParams;
-        currentTypeParams = typeParams;
-
-        std::vector<TypeRef> paramTypes;
-        for (const auto &param : params) {
-            if (!param.isVariadic) {
-                paramTypes.push_back(ResolveType(*param.type));
-            }
-        }
-        TypeRef ret = returnType ? ResolveType(*returnType->get()) : TypeRef::MakeOpaque();
-
-        currentTypeParams = savedTypeParams;
-        return TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
-    }
-
     TypeRef MakeFuncTypeWithSubstitution(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
                                          const std::unordered_map<std::string, TypeRef> &substitutions,
                                          const std::vector<std::string> &typeParams = {}) {
@@ -360,94 +179,6 @@ private:
         currentTypeParams = savedTypeParams;
         currentSubstitutions = savedSubstitutions;
         return TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
-    }
-
-    void CollectDecl(const Decl &decl) {
-        auto simple = [&](HirSymbol::Kind k, const std::string &name, TypeRef t = {}) {
-            HirSymbol sym;
-            sym.kind = k;
-            sym.name = name;
-            sym.type = std::move(t);
-            globalScope.Define(std::move(sym));
-        };
-        if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
-            HirSymbol sym;
-            sym.kind = HirSymbol::Kind::Func;
-            sym.name = fn->name;
-            sym.type = MakeFuncType(fn->params, fn->returnType, fn->typeParams);
-            sym.isNoReturn = fn->isNoReturn;
-            sym.intrinsicName = fn->intrinsicName;
-            sym.funcOverloads.push_back(fn);
-            globalScope.Define(std::move(sym));
-        }
-        else if (auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
-            structDecls[structDecl->name] = structDecl;
-            simple(HirSymbol::Kind::Type, structDecl->name, TypeRef::MakeNamed(structDecl->name));
-        }
-        else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
-            enumDecls[enumDecl->name] = enumDecl;
-            simple(HirSymbol::Kind::Type, enumDecl->name, EnumType(*enumDecl));
-        }
-        else if (auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
-            simple(HirSymbol::Kind::Type, unionDecl->name, TypeRef::MakeNamed(unionDecl->name));
-        }
-        else if (auto *ifaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
-            simple(HirSymbol::Kind::Interface, ifaceDecl->name, TypeRef::MakeNamed(ifaceDecl->name));
-            interfaceDecls[ifaceDecl->name] = ifaceDecl;
-        }
-        else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
-            TypeRef constType;
-            if (constDecl->type) {
-                constType = ResolveType(*constDecl->type->get());
-            }
-            HirSymbol sym;
-            sym.kind = HirSymbol::Kind::Const;
-            sym.name = constDecl->name;
-            sym.type = std::move(constType);
-            sym.intrinsicName = constDecl->intrinsicName;
-            globalScope.Define(std::move(sym));
-        }
-        else if (auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
-            simple(HirSymbol::Kind::Type, aliasDecl->name, ResolveType(*aliasDecl->type));
-        }
-        else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            HirSymbol sym;
-            sym.kind = HirSymbol::Kind::Func;
-            sym.name = externFn->name;
-            sym.type = MakeFuncType(externFn->params, externFn->returnType);
-            sym.isNoReturn = externFn->isNoReturn;
-            globalScope.Define(std::move(sym));
-        }
-        else if (auto *externVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
-            HirSymbol sym;
-            sym.kind = HirSymbol::Kind::Var;
-            sym.name = externVar->name;
-            sym.isMut = true;
-            globalScope.Define(std::move(sym));
-        }
-        else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
-            for (auto &item : externBlock->items) {
-                CollectDecl(*item);
-            }
-        }
-        else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
-            for (auto &item : modDecl->items) {
-                CollectDecl(*item);
-            }
-        }
-        else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
-            const std::string typeName =
-                implDecl->typeName.starts_with("Slice<") ? implDecl->typeName : BaseTypeName(implDecl->typeName);
-            for (const auto &method : implDecl->methods) {
-                methodsByType[typeName][method->name].push_back(method.get());
-                methodImpl[method.get()] = implDecl;
-            }
-            if (implDecl->interfaceName) {
-                if (const auto *identity = model.TryGetVtableIdentity(*implDecl)) {
-                    typeInterfaceVtables[typeName][*implDecl->interfaceName] = identity->linkerName;
-                }
-            }
-        }
     }
 
     // Type resolution
@@ -506,12 +237,16 @@ private:
         return "Slice<" + elemType.ToString() + ">";
     }
 
-    static std::string BaseTypeName(const std::string &name) {
+    static std::string BaseTypeNameImpl(const std::string &name) {
         const std::size_t pos = name.find('<');
         return pos == std::string::npos ? name : name.substr(0, pos);
     }
 
-    std::vector<std::string> ImplTypeParams(const ImplDecl &decl) const {
+    std::string BaseTypeName(const std::string &name) const override {
+        return BaseTypeNameImpl(name);
+    }
+
+    std::vector<std::string> ImplTypeParams(const ImplDecl &decl) const override {
         std::vector<std::string> params;
         const auto *target = dynamic_cast<const NamedTypeExpr *>(decl.extendedType.get());
         if (!target) {
@@ -674,7 +409,7 @@ private:
         return TypeRef::MakeNamed(str);
     }
 
-    static std::vector<TypeRef> ParseTypeArgsFromTypeName(const std::string &typeName) {
+    std::vector<TypeRef> ParseTypeArgsFromTypeName(const std::string &typeName) const override {
         std::vector<TypeRef> args;
         const std::size_t pos = typeName.find('<');
         if (pos == std::string::npos || typeName.back() != '>') {
@@ -739,12 +474,16 @@ private:
         return {};
     }
 
-    static std::string StripNumericLiteralSuffix(const std::string &text) {
+    static std::string StripNumericLiteralSuffixImpl(const std::string &text) {
         const std::string suffix = NumericLiteralSuffix(text);
         if (suffix.empty()) {
             return text;
         }
         return text.substr(0, text.size() - suffix.size());
+    }
+
+    std::string StripNumericLiteralSuffix(const std::string &text) const override {
+        return StripNumericLiteralSuffixImpl(text);
     }
 
     static std::optional<std::uint64_t> ParseUnsuffixedIntegerLiteral(const Token &tok) {
@@ -798,7 +537,7 @@ private:
     }
 
     static std::optional<std::uint64_t> ParseUnsignedIntegerText(const std::string &rawText) {
-        std::string text = StripNumericLiteralSuffix(rawText);
+        std::string text = StripNumericLiteralSuffixImpl(rawText);
         text.erase(std::remove(text.begin(), text.end(), '_'), text.end());
         if (text.empty() || text[0] == '-') {
             return std::nullopt;
@@ -861,7 +600,7 @@ private:
     }
 
     static std::optional<std::int64_t> ParseEnumDiscriminant(const std::string &text) {
-        std::string cleaned = StripNumericLiteralSuffix(text);
+        std::string cleaned = StripNumericLiteralSuffixImpl(text);
         const bool negative = !cleaned.empty() && cleaned[0] == '-';
         if (negative) {
             cleaned.erase(cleaned.begin());
@@ -1012,7 +751,7 @@ private:
             if (named->name.starts_with("Slice<")) {
                 return named->name;
             }
-            return BaseTypeName(named->name);
+            return BaseTypeNameImpl(named->name);
         }
         switch (named->kind) {
         case TypeRef::Kind::Bool8:
@@ -1170,7 +909,7 @@ private:
         return TypeRef::MakeNamed(elemName);
     }
 
-    static std::optional<TypeRef> IndexElementType(const TypeRef &type) {
+    std::optional<TypeRef> IndexElementType(const TypeRef &type) const override {
         if (type.kind == TypeRef::Kind::Array && !type.inner.empty()) {
             return type.inner[0];
         }
@@ -1183,13 +922,13 @@ private:
         return std::nullopt;
     }
 
-    TypeRef ResolveType(const TypeExpr &expr) {
+    TypeRef ResolveType(const TypeExpr &expr) override {
         return currentSubstitutions.empty() ? ResolvedType(expr)
                                             : ResolveTypeWithSubstitution(expr, currentSubstitutions);
     }
 
     TypeRef ResolveTypeWithSubstitution(const TypeExpr &expr,
-                                        const std::unordered_map<std::string, TypeRef> &substitutions) {
+                                        const std::unordered_map<std::string, TypeRef> &substitutions) override {
         if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
             if (t->typeArgs.empty()) {
                 if (auto it = substitutions.find(t->name); it != substitutions.end()) {
@@ -1406,11 +1145,12 @@ private:
         return name;
     }
 
-    const std::string &FunctionCalleeName(const FuncDecl &decl) const {
+    const std::string &FunctionCalleeName(const FuncDecl &decl) const override {
         return RequireSemanticFact(model.TryGetSymbolIdentity(decl)).linkerName;
     }
 
-    const EnumDecl::Variant *LookupEnumVariant(const std::string &enumName, const std::string &variantName) const {
+    const EnumDecl::Variant *LookupEnumVariant(const std::string &enumName,
+                                               const std::string &variantName) const override {
         const auto enumIt = enumDecls.find(enumName);
         if (enumIt == enumDecls.end()) {
             return nullptr;
@@ -1424,7 +1164,7 @@ private:
     }
 
     std::optional<std::string> LookupEnumVariantDiscriminant(const std::string &enumName,
-                                                             const std::string &variantName) const {
+                                                             const std::string &variantName) const override {
         const auto enumIt = enumDecls.find(enumName);
         if (enumIt == enumDecls.end()) {
             return std::nullopt;
@@ -1578,7 +1318,7 @@ private:
         return decl.baseType ? ResolveType(*decl.baseType) : TypeRef::MakeInt();
     }
 
-    TypeRef EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArgs = {}) {
+    TypeRef EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArgs = {}) override {
         std::string name = decl.name;
         if (!typeArgs.empty()) {
             name += '<';
@@ -1812,7 +1552,7 @@ private:
         return out;
     }
 
-    static TypeRef LiteralType(const Token &tok) {
+    TypeRef LiteralType(const Token &tok) const override {
         switch (tok.kind) {
         case TokenKind::IntLiteral:
         case TokenKind::FloatLiteral:
@@ -1841,156 +1581,11 @@ private:
         return out;
     }
 
-    // Derives the Rux module path (e.g. "Primitives::Bool") from a source file path.
-    // Finds the "Src" directory component and uses the relative path below
-    // it.
-    static std::string FilePathToModulePath(const std::string &filePath) {
-        const std::string generic = std::filesystem::path(filePath).generic_string();
-        std::vector<std::string> parts;
-        std::string cur;
-        for (const char c : generic) {
-            if (c == '/') {
-                if (!cur.empty()) {
-                    parts.push_back(cur);
-                    cur.clear();
-                }
-            }
-            else {
-                cur += c;
-            }
-        }
-        if (!cur.empty()) {
-            parts.push_back(cur);
-        }
-
-        std::size_t srcIdx = std::string::npos;
-        for (std::size_t i = 0; i < parts.size(); ++i) {
-            if (parts[i] == "Src" || parts[i] == "src") {
-                srcIdx = i;
-            }
-        }
-
-        std::vector<std::string> mod;
-        if (srcIdx != std::string::npos && srcIdx + 1 < parts.size()) {
-            for (std::size_t i = srcIdx + 1; i < parts.size(); ++i) {
-                std::string s = parts[i];
-                if (i + 1 == parts.size()) {
-                    const auto dot = s.rfind('.');
-                    if (dot != std::string::npos) {
-                        s = s.substr(0, dot);
-                    }
-                }
-                mod.push_back(s);
-            }
-        }
-        else {
-            std::string stem = parts.empty() ? filePath : parts.back();
-            const auto dot = stem.rfind('.');
-            if (dot != std::string::npos) {
-                stem = stem.substr(0, dot);
-            }
-            mod.push_back(stem);
-        }
-
-        std::string result;
-        for (std::size_t i = 0; i < mod.size(); ++i) {
-            if (i) {
-                result += "::";
-            }
-            result += mod[i];
-        }
-        return result;
-    }
-
-    // Module lowering
-    HirModule LowerModule(const Module &mod) {
-        currentFile = mod.name;
-        currentModulePath = FilePathToModulePath(mod.name);
-        declModulePath.clear();
-        HirModule hmod;
-        hmod.name = mod.name;
-        for (const auto &decl : mod.items) {
-            LowerTopLevelDecl(*decl, hmod);
-        }
-        std::size_t processed = 0;
-        while (processed < monomorphizedFuncs.size()) {
-            hmod.funcs.push_back(std::move(monomorphizedFuncs[processed]));
-            ++processed;
-        }
-        monomorphizedFuncs.clear();
-        generatedMonomorphizedFuncNames.clear();
-        return hmod;
-    }
-
-    void LowerTopLevelDecl(const Decl &decl, HirModule &hmod) {
-        if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
-            if (!fn->intrinsicName.empty() && !fn->body && !fn->isAsm) {
-                return;
-            }
-            HirFunc hf = LowerFunc(*fn);
-            hf.name = FunctionCalleeName(*fn);
-            hmod.funcs.push_back(std::move(hf));
-        }
-        else if (auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
-            hmod.structs.push_back(LowerStruct(*structDecl));
-        }
-        else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
-            hmod.enums.push_back(LowerEnum(*enumDecl));
-        }
-        else if (auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
-            hmod.unions.push_back(LowerUnion(*unionDecl));
-        }
-        else if (auto *ifaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
-            hmod.interfaces.push_back(LowerInterface(*ifaceDecl));
-        }
-        else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
-            // Generic struct methods are emitted on demand for each concrete
-            // receiver type, just like generic free functions.
-            if (ImplTypeParams(*implDecl).empty()) {
-                hmod.impls.push_back(LowerImpl(*implDecl));
-            }
-        }
-        else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
-            // An intrinsic value has no value to lower; uses of it become the
-            // compiler's own object instead.
-            if (constDecl->intrinsicName.empty()) {
-                hmod.consts.push_back(LowerConst(*constDecl));
-            }
-        }
-        else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            hmod.externFuncs.push_back(LowerExternFunc(*externFn));
-        }
-        else if (auto *externVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
-            hmod.externVars.push_back(LowerExternVar(*externVar));
-        }
-        else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
-            for (auto &item : externBlock->items) {
-                LowerTopLevelDecl(*item, hmod);
-            }
-        }
-        else if (auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
-            hmod.typeAliases.push_back(LowerTypeAlias(*aliasDecl));
-        }
-        else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
-            const auto savedModulePath = currentModulePath;
-            const auto savedDeclModulePath = declModulePath;
-            currentModulePath = currentModulePath.empty() ? modDecl->name : currentModulePath + "::" + modDecl->name;
-            declModulePath = declModulePath.empty() ? modDecl->name : declModulePath + "::" + modDecl->name;
-            for (auto &item : modDecl->items) {
-                LowerTopLevelDecl(*item, hmod);
-            }
-            currentModulePath = savedModulePath;
-            declModulePath = savedDeclModulePath;
-        }
-        // Import declarations are resolved by sema and have no HIR
-        // representation.
-    }
-
     // Declaration lowering
 
     HirFunc LowerFunc(const FuncDecl &d, bool isMethod = false,
                       const std::unordered_map<std::string, TypeRef> &substitutions = {},
-                      const std::string &overrideName = "") {
+                      const std::string &overrideName = "") override {
         auto savedTypeParams = currentTypeParams;
         currentTypeParams = substitutions.empty() ? d.typeParams : std::vector<std::string>{};
         auto savedSubstitutions = currentSubstitutions;
@@ -2060,7 +1655,7 @@ private:
         return hf;
     }
 
-    HirStruct LowerStruct(const StructDecl &d) {
+    HirStruct LowerStruct(const StructDecl &d) override {
         auto savedTypeParams = currentTypeParams;
         currentTypeParams = d.typeParams;
         PushScope();
@@ -2088,7 +1683,7 @@ private:
         return hs;
     }
 
-    HirEnum LowerEnum(const EnumDecl &d) {
+    HirEnum LowerEnum(const EnumDecl &d) override {
         const auto savedTypeParams = currentTypeParams;
         currentTypeParams.insert(currentTypeParams.end(), d.typeParams.begin(), d.typeParams.end());
         HirEnum he;
@@ -2121,7 +1716,7 @@ private:
         return he;
     }
 
-    HirUnion LowerUnion(const UnionDecl &d) {
+    HirUnion LowerUnion(const UnionDecl &d) override {
         HirUnion hu;
         hu.name = d.name;
         hu.isPublic = d.isPublic;
@@ -2135,7 +1730,7 @@ private:
         return hu;
     }
 
-    HirInterface LowerInterface(const InterfaceDecl &d) {
+    HirInterface LowerInterface(const InterfaceDecl &d) override {
         HirInterface hi;
         hi.name = d.name;
         hi.isPublic = d.isPublic;
@@ -2151,7 +1746,7 @@ private:
         return hi;
     }
 
-    HirImplBlock LowerImpl(const ImplDecl &d) {
+    HirImplBlock LowerImpl(const ImplDecl &d) override {
         bool savedInImpl = inImpl;
         TypeRef savedSelfType = currentSelfType;
         inImpl = true;
@@ -2199,7 +1794,7 @@ private:
         return hib;
     }
 
-    HirConst LowerConst(const ConstDecl &d) {
+    HirConst LowerConst(const ConstDecl &d) override {
         HirConst hc;
         hc.name = d.name;
         hc.isPublic = d.isPublic;
@@ -2215,7 +1810,7 @@ private:
         return hc;
     }
 
-    HirExternFunc LowerExternFunc(const ExternFuncDecl &d) {
+    HirExternFunc LowerExternFunc(const ExternFuncDecl &d) override {
         HirExternFunc hef;
         hef.name = d.name;
         hef.dll = d.dll;
@@ -2232,7 +1827,7 @@ private:
         return hef;
     }
 
-    HirExternVar LowerExternVar(const ExternVarDecl &d) {
+    HirExternVar LowerExternVar(const ExternVarDecl &d) override {
         HirExternVar hev;
         hev.name = d.name;
         hev.isPublic = d.isPublic;
@@ -2241,7 +1836,7 @@ private:
         return hev;
     }
 
-    HirTypeAlias LowerTypeAlias(const TypeAliasDecl &d) {
+    HirTypeAlias LowerTypeAlias(const TypeAliasDecl &d) override {
         HirTypeAlias hta;
         hta.name = d.name;
         hta.isPublic = d.isPublic;
@@ -2250,220 +1845,8 @@ private:
         return hta;
     }
 
-    // Block & statement lowering
-
-    // `#Error`/`#Warn` are compile-time directives: semantic analysis already
-    // emitted their diagnostic, so at lowering they contribute no runtime code.
-    bool IsDiagnosticIntrinsicCall(const Expr &expr) const {
-        const auto *call = dynamic_cast<const CallExpr *>(&expr);
-        if (!call) {
-            return false;
-        }
-        const auto *ident = dynamic_cast<const IdentExpr *>(call->callee.get());
-        if (!ident) {
-            return false;
-        }
-        const HirSymbol *sym = currentScope->Lookup(ident->name);
-        return sym && (sym->intrinsicName == "#Error" || sym->intrinsicName == "#Warn");
-    }
-
-    HirBlock LowerBlock(const Block &block) {
-        HirBlock hb;
-        hb.location = block.location;
-        PushScope();
-        for (const auto &stmt : block.stmts) {
-            if (const auto *exprStmt = dynamic_cast<const ExprStmt *>(stmt.get());
-                exprStmt && IsDiagnosticIntrinsicCall(*exprStmt->expr)) {
-                continue;
-            }
-            hb.stmts.push_back(LowerStmt(*stmt));
-        }
-        PopScope();
-        return hb;
-    }
-
-    HirStmtPtr LowerStmt(const Stmt &stmt) {
-        if (auto *s = dynamic_cast<const ExprStmt *>(&stmt)) {
-            auto hs = std::make_unique<HirExprStmt>();
-            hs->location = s->location;
-            hs->expr = LowerExpr(*s->expr);
-            return hs;
-        }
-
-        if (auto *s = dynamic_cast<const LetStmt *>(&stmt)) {
-            auto hs = std::make_unique<HirLetStmt>();
-            hs->location = s->location;
-            hs->isMut = s->isMut;
-            hs->name = s->name;
-            const std::optional<TypeRef> explicitType =
-                s->type ? std::optional<TypeRef>(ResolveType(**s->type)) : std::nullopt;
-            if (s->init) {
-                hs->init = explicitType ? LowerExprAs(*s->init, *explicitType) : LowerExpr(*s->init);
-            }
-            hs->type = explicitType ? *explicitType : (hs->init ? hs->init->type : TypeRef::MakeUnknown());
-            if (s->pattern) {
-                hs->pattern = LowerLetPattern(*s->pattern, hs->type, s->isMut);
-                return hs;
-            }
-
-            HirSymbol sym;
-            sym.kind = HirSymbol::Kind::Var;
-            sym.name = s->name;
-            sym.type = hs->type;
-            sym.isMut = s->isMut;
-            Define(sym);
-            return hs;
-        }
-
-        if (auto *s = dynamic_cast<const IfStmt *>(&stmt)) {
-            auto hs = std::make_unique<HirIfStmt>();
-            hs->location = s->location;
-            hs->condition = LowerExpr(*s->condition);
-            hs->thenBlock = LowerBlock(*s->thenBlock);
-            for (const auto &elif : s->elseIfs) {
-                HirIfStmt::ElseIf hElif;
-                hElif.location = elif.location;
-                hElif.condition = LowerExpr(*elif.condition);
-                hElif.block = LowerBlock(*elif.block);
-                hs->elseIfs.push_back(std::move(hElif));
-            }
-            if (s->elseBlock) {
-                hs->elseBlock = LowerBlock(*s->elseBlock);
-            }
-            return hs;
-        }
-
-        if (auto *s = dynamic_cast<const WhileStmt *>(&stmt)) {
-            auto hs = std::make_unique<HirWhileStmt>();
-            hs->location = s->location;
-            hs->label = s->label;
-            hs->condition = LowerExpr(*s->condition);
-            hs->body = LowerBlock(*s->body);
-            return hs;
-        }
-
-        if (auto *s = dynamic_cast<const DoWhileStmt *>(&stmt)) {
-            auto hs = std::make_unique<HirDoWhileStmt>();
-            hs->location = s->location;
-            hs->label = s->label;
-            hs->body = LowerBlock(*s->body);
-            hs->condition = LowerExpr(*s->condition);
-            return hs;
-        }
-
-        if (auto *s = dynamic_cast<const LoopStmt *>(&stmt)) {
-            auto hs = std::make_unique<HirLoopStmt>();
-            hs->location = s->location;
-            hs->label = s->label;
-            hs->body = LowerBlock(*s->body);
-            return hs;
-        }
-
-        if (auto *s = dynamic_cast<const ForStmt *>(&stmt)) {
-            auto hs = std::make_unique<HirForStmt>();
-            hs->location = s->location;
-            hs->label = s->label;
-            hs->variable = s->variable;
-            hs->iterable = LowerExpr(*s->iterable);
-            TypeRef elemType = TypeRef::MakeUnknown();
-            if (hs->iterable->type.IsIterableRange() && !hs->iterable->type.inner.empty()) {
-                elemType = hs->iterable->type.inner[0];
-            }
-            else if (auto sliceElem = IndexElementType(hs->iterable->type)) {
-                elemType = *sliceElem;
-            }
-            hs->varType = elemType;
-            // If a mutable variable of the same name and type is already in
-            // scope, the loop reuses it as the induction variable instead of
-            // shadowing it (see HirForStmt::reusesOuterVar). Otherwise the loop
-            // introduces a fresh binding scoped to the body.
-            HirSymbol *outer = currentScope->Lookup(s->variable);
-            hs->reusesOuterVar =
-                outer != nullptr && outer->kind == HirSymbol::Kind::Var && outer->isMut && outer->type == elemType;
-            PushScope();
-            if (!hs->reusesOuterVar) {
-                HirSymbol var;
-                var.kind = HirSymbol::Kind::Var;
-                var.name = s->variable;
-                var.type = elemType;
-                Define(var);
-            }
-            hs->body = LowerBlock(*s->body);
-            PopScope();
-            return hs;
-        }
-
-        if (auto *s = dynamic_cast<const MatchStmt *>(&stmt)) {
-            auto hs = std::make_unique<HirMatchStmt>();
-            hs->location = s->location;
-            hs->subject = LowerExpr(*s->subject);
-            for (const auto &arm : s->arms) {
-                HirMatchArm ha;
-                ha.location = arm.location;
-                PushScope();
-                ha.pattern = LowerPattern(*arm.pattern, hs->subject->type);
-                ha.body = LowerExpr(*arm.body);
-                PopScope();
-                hs->arms.push_back(std::move(ha));
-            }
-            return hs;
-        }
-
-        if (auto *s = dynamic_cast<const ReturnStmt *>(&stmt)) {
-            auto hs = std::make_unique<HirReturnStmt>();
-            hs->location = s->location;
-            if (s->value) {
-                hs->value = LowerExprAs(**s->value, currentReturnType);
-            }
-            return hs;
-        }
-
-        if (auto *s = dynamic_cast<const BreakStmt *>(&stmt)) {
-            auto hs = std::make_unique<HirBreakStmt>();
-            hs->location = stmt.location;
-            hs->label = s->label;
-            return hs;
-        }
-
-        if (auto *s = dynamic_cast<const ContinueStmt *>(&stmt)) {
-            auto hs = std::make_unique<HirContinueStmt>();
-            hs->location = stmt.location;
-            hs->label = s->label;
-            return hs;
-        }
-
-        if (auto *s = dynamic_cast<const DeclStmt *>(&stmt)) {
-            auto hs = std::make_unique<HirLocalDecl>();
-            hs->location = s->location;
-            CollectDecl(*s->decl);
-            if (auto *fd = dynamic_cast<const FuncDecl *>(s->decl.get())) {
-                hs->description = std::format("func {}", fd->name);
-            }
-            else if (auto *cd = dynamic_cast<const ConstDecl *>(s->decl.get())) {
-                hs->description = std::format("const {}", cd->name);
-                HirConst constant = LowerConst(*cd);
-                hs->hasConstant = true;
-                hs->constantName = std::move(constant.name);
-                hs->constantType = std::move(constant.type);
-                hs->constantValue = std::move(constant.value);
-            }
-            else if (auto *ta = dynamic_cast<const TypeAliasDecl *>(s->decl.get())) {
-                hs->description = std::format("type {}", ta->name);
-            }
-            else {
-                hs->description = "<local decl>";
-            }
-            return hs;
-        }
-        // Unreachable in valid AST
-        auto hs = std::make_unique<HirLocalDecl>();
-        hs->location = stmt.location;
-        hs->description = "<unknown stmt>";
-        return hs;
-    }
-
     // Expression lowering
-    HirExprPtr LowerExprAs(const Expr &expr, const TypeRef &targetType) {
+    HirExprPtr LowerExprAs(const Expr &expr, const TypeRef &targetType) override {
         if (const auto *array = dynamic_cast<const ArrayExpr *>(&expr);
             array && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
             auto loweredArray = std::make_unique<HirArrayExpr>();
@@ -3086,7 +2469,7 @@ private:
         return lowered;
     }
 
-    HirExprPtr LowerExpr(const Expr &expr) {
+    HirExprPtr LowerExpr(const Expr &expr) override {
         if (auto *e = dynamic_cast<const LiteralExpr *>(&expr)) {
             auto he = std::make_unique<HirLiteralExpr>();
             he->location = e->location;
@@ -3756,200 +3139,6 @@ private:
         default:
             return l.IsUnknown() ? r : l;
         }
-    }
-
-    HirPatternPtr LowerLetPattern(const Pattern &pat, const TypeRef &type, bool isMut) {
-        if (dynamic_cast<const WildcardPattern *>(&pat)) {
-            auto hp = std::make_unique<HirWildcardPattern>();
-            hp->location = pat.location;
-            return hp;
-        }
-        if (auto *p = dynamic_cast<const IdentPattern *>(&pat)) {
-            auto hp = std::make_unique<HirBindingPattern>();
-            hp->location = p->location;
-            hp->name = p->name;
-            hp->type = type;
-
-            HirSymbol sym;
-            sym.kind = HirSymbol::Kind::Var;
-            sym.name = p->name;
-            sym.type = type;
-            sym.isMut = isMut;
-            Define(sym);
-            return hp;
-        }
-        if (auto *p = dynamic_cast<const TuplePattern *>(&pat)) {
-            auto hp = std::make_unique<HirTuplePattern>();
-            hp->location = p->location;
-            for (std::size_t i = 0; i < p->elements.size(); ++i) {
-                TypeRef elemType = TypeRef::MakeUnknown();
-                if (type.kind == TypeRef::Kind::Tuple && i < type.inner.size()) {
-                    elemType = type.inner[i];
-                }
-                hp->elements.push_back(LowerLetPattern(*p->elements[i], elemType, isMut));
-            }
-            return hp;
-        }
-        return LowerPattern(pat);
-    }
-
-    // Pattern lowering
-    HirPatternPtr LowerPattern(const Pattern &pat, const TypeRef &subjectType = TypeRef::MakeUnknown()) {
-        if (dynamic_cast<const WildcardPattern *>(&pat)) {
-            auto hp = std::make_unique<HirWildcardPattern>();
-            hp->location = pat.location;
-            return hp;
-        }
-        if (auto *p = dynamic_cast<const LiteralPattern *>(&pat)) {
-            auto hp = std::make_unique<HirLiteralPattern>();
-            hp->location = p->location;
-            hp->type = LiteralType(p->value);
-            if (p->value.kind == TokenKind::IntLiteral || p->value.kind == TokenKind::FloatLiteral) {
-                hp->value = StripNumericLiteralSuffix(p->value.text);
-            }
-            else {
-                hp->value = p->value.text;
-            }
-            return hp;
-        }
-        if (auto *p = dynamic_cast<const IdentPattern *>(&pat)) {
-            auto hp = std::make_unique<HirBindingPattern>();
-            hp->location = p->location;
-            hp->name = p->name;
-            hp->type = subjectType;
-            HirSymbol sym;
-            sym.kind = HirSymbol::Kind::Var;
-            sym.name = p->name;
-            sym.type = subjectType;
-            Define(sym);
-            return hp;
-        }
-        if (auto *p = dynamic_cast<const RangePattern *>(&pat)) {
-            auto hp = std::make_unique<HirRangePattern>();
-            hp->location = p->location;
-            hp->inclusive = p->inclusive;
-            hp->lo = LowerPattern(*p->lo);
-            hp->hi = LowerPattern(*p->hi);
-            return hp;
-        }
-        if (auto *p = dynamic_cast<const EnumPattern *>(&pat)) {
-            auto hp = std::make_unique<HirEnumPattern>();
-            hp->location = p->location;
-            hp->path = p->path;
-            const EnumDecl::Variant *variant = nullptr;
-            std::unordered_map<std::string, TypeRef> substitutions;
-            std::string enumName;
-            std::string variantName;
-            if (p->path.size() == 1 && subjectType.kind == TypeRef::Kind::Named) {
-                enumName = BaseTypeName(subjectType.name);
-                variantName = p->path[0];
-                hp->path = {enumName, variantName};
-                hp->resolvedType = subjectType;
-            }
-            else if (p->path.size() >= 2) {
-                enumName = p->path[0];
-                variantName = p->path[1];
-                if (HirSymbol *sym = currentScope->Lookup(enumName)) {
-                    hp->resolvedType = sym->type;
-                }
-            }
-
-            if (!enumName.empty() && !variantName.empty()) {
-                hp->discriminant = LookupEnumVariantDiscriminant(enumName, variantName);
-                variant = LookupEnumVariant(enumName, variantName);
-                if (variant) {
-                    hp->hasPayload = !variant->fields.empty() || !variant->namedFields.empty();
-                }
-                if (const auto enumIt = enumDecls.find(enumName); enumIt != enumDecls.end()) {
-                    const auto typeArgs = ParseTypeArgsFromTypeName(subjectType.name);
-                    const auto &params = enumIt->second->typeParams;
-                    const std::size_t count = std::min(params.size(), typeArgs.size());
-                    for (std::size_t i = 0; i < count; ++i) {
-                        substitutions.emplace(params[i], typeArgs[i]);
-                    }
-                    for (const auto &unitVariant : enumIt->second->variants) {
-                        if (unitVariant.fields.empty() && unitVariant.namedFields.empty()) {
-                            if (auto disc = LookupEnumVariantDiscriminant(enumName, unitVariant.name)) {
-                                hp->unitDiscriminants.push_back(*disc);
-                            }
-                        }
-                    }
-                }
-            }
-            std::unordered_map<std::string, const Pattern *> namedArgs;
-            for (const auto &arg : p->namedArgs) {
-                namedArgs.emplace(arg.name, arg.pattern.get());
-            }
-            if (variant) {
-                for (const auto &field : variant->namedFields) {
-                    if (const auto it = namedArgs.find(field.name); it != namedArgs.end()) {
-                        hp->argIndices.push_back(&field - variant->namedFields.data());
-                        hp->args.push_back(LowerLetPattern(
-                            *it->second, ResolveTypeWithSubstitution(*field.type, substitutions), false));
-                    }
-                }
-            }
-            else {
-                for (const auto &arg : p->namedArgs) {
-                    hp->args.push_back(LowerPattern(*arg.pattern));
-                }
-            }
-            for (std::size_t i = 0; i < p->args.size(); ++i) {
-                if (variant && i < variant->fields.size()) {
-                    hp->argIndices.push_back(i);
-                    hp->args.push_back(LowerLetPattern(
-                        *p->args[i], ResolveTypeWithSubstitution(*variant->fields[i], substitutions), false));
-                }
-                else if (variant && i - variant->fields.size() < variant->namedFields.size()) {
-                    hp->argIndices.push_back(i);
-                    hp->args.push_back(
-                        LowerLetPattern(*p->args[i],
-                                        ResolveTypeWithSubstitution(
-                                            *variant->namedFields[i - variant->fields.size()].type, substitutions),
-                                        false));
-                }
-                else {
-                    hp->args.push_back(LowerPattern(*p->args[i]));
-                }
-            }
-            return hp;
-        }
-        if (auto *p = dynamic_cast<const StructPattern *>(&pat)) {
-            auto hp = std::make_unique<HirStructPattern>();
-            hp->location = p->location;
-            hp->typeName = p->typeName;
-            if (HirSymbol *sym = currentScope->Lookup(p->typeName)) {
-                hp->resolvedType = sym->type;
-            }
-            for (const auto &f : p->fields) {
-                HirStructPatternField hf;
-                hf.name = f.name;
-                hf.pattern = LowerPattern(*f.pattern);
-                hp->fields.push_back(std::move(hf));
-            }
-            return hp;
-        }
-        if (auto *p = dynamic_cast<const TuplePattern *>(&pat)) {
-            auto hp = std::make_unique<HirTuplePattern>();
-            hp->location = p->location;
-            for (std::size_t i = 0; i < p->elements.size(); ++i) {
-                const TypeRef elementType = subjectType.kind == TypeRef::Kind::Tuple && i < subjectType.inner.size()
-                                              ? subjectType.inner[i]
-                                              : TypeRef::MakeUnknown();
-                hp->elements.push_back(LowerPattern(*p->elements[i], elementType));
-            }
-            return hp;
-        }
-        if (auto *p = dynamic_cast<const GuardedPattern *>(&pat)) {
-            auto hp = std::make_unique<HirGuardedPattern>();
-            hp->location = p->location;
-            hp->inner = LowerPattern(*p->inner, subjectType);
-            hp->guard = LowerExpr(*p->guard);
-            return hp;
-        }
-        auto hp = std::make_unique<HirWildcardPattern>();
-        hp->location = pat.location;
-        return hp;
     }
 };
 
