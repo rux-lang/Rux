@@ -88,10 +88,10 @@ TEST_CASE("workspace platform package names match their target triples") {
 
     CHECK(IsPlatformPackageName("Linux"));
     CHECK(IsPlatformPackageName("MacOS"));
-    CHECK(IsPlatformPackageName("Bsd"));
+    CHECK(IsPlatformPackageName("FreeBSD"));
     CHECK(PlatformPackageMatchesTarget("Linux", "linux-x86_64"));
     CHECK(PlatformPackageMatchesTarget("MacOS", "macos-aarch64"));
-    CHECK(PlatformPackageMatchesTarget("Bsd", "freebsd-x86_64"));
+    CHECK(PlatformPackageMatchesTarget("FreeBSD", "freebsd-x86_64"));
     CHECK_FALSE(PlatformPackageMatchesTarget("Illumos", "linux-x86_64"));
 }
 

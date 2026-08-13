@@ -16,14 +16,12 @@
     #include <mach/mach_host.h>
     #include <sys/sysctl.h>
     #include <unistd.h>
-#elif RUX_IS_BSD
+#elif RUX_OS_FREEBSD
     #include <sys/sysctl.h>
-    #include <unistd.h>
-#elif RUX_IS_SUNOS
     #include <unistd.h>
 #endif
 
-#if RUX_ARCH_X86 || RUX_ARCH_X86_64
+#if RUX_ARCH_X86_64
     #if RUX_COMPILER_MSVC
         #include <intrin.h>
     #else
@@ -40,12 +38,8 @@ namespace {
     switch (architecture) {
     case PROCESSOR_ARCHITECTURE_AMD64:
         return Arch::X86_64;
-    case PROCESSOR_ARCHITECTURE_INTEL:
-        return Arch::X86_32;
     case PROCESSOR_ARCHITECTURE_ARM64:
         return Arch::AArch64;
-    case PROCESSOR_ARCHITECTURE_ARM:
-        return Arch::ARM32;
     default:
         return Arch::Unknown;
     }
@@ -55,19 +49,15 @@ namespace {
     switch (machine) {
     case IMAGE_FILE_MACHINE_AMD64:
         return Arch::X86_64;
-    case IMAGE_FILE_MACHINE_I386:
-        return Arch::X86_32;
     case IMAGE_FILE_MACHINE_ARM64:
         return Arch::AArch64;
-    case IMAGE_FILE_MACHINE_ARMNT:
-        return Arch::ARM32;
     default:
         return Arch::Unknown;
     }
 }
 #endif
 
-#if RUX_ARCH_X86 || RUX_ARCH_X86_64
+#if RUX_ARCH_X86_64
 
 [[nodiscard]] inline bool HasOSXSAVE() noexcept {
     int r[4]{};
@@ -96,7 +86,7 @@ namespace {
 [[nodiscard]] CpuFeatures DetectCpuFeaturesImpl() noexcept {
     CpuFeatures f = CpuFeature::None;
 
-#if RUX_ARCH_X86 || RUX_ARCH_X86_64
+#if RUX_ARCH_X86_64
 
     int r[4]{};
 
@@ -148,7 +138,7 @@ namespace {
         f |= CpuFeature::AVX512;
     }
 
-#elif RUX_ARCH_AARCH64 || RUX_ARCH_ARM32
+#elif RUX_ARCH_AARCH64
 
     #if RUX_OS_LINUX
     unsigned long hw = getauxval(AT_HWCAP);
@@ -160,17 +150,6 @@ namespace {
     }
     #elif RUX_OS_MACOS
     f |= CpuFeature::NEON;
-    #else
-    f = HostCpuFeatures;
-    #endif
-
-#elif RUX_ARCH_RISCV64 || RUX_ARCH_RISCV32
-
-    #if RUX_OS_LINUX
-    unsigned long hw = getauxval(AT_HWCAP);
-    if (hw & (1 << ('V' - 'A'))) {
-        f |= CpuFeature::RVV;
-    }
     #else
     f = HostCpuFeatures;
     #endif
@@ -224,29 +203,13 @@ namespace {
 
     info.physical_cores = info.logical_cores;
 
-#elif RUX_IS_SUNOS
-
-    info.physical_cores = info.logical_cores;
-
-#elif RUX_OS_MACOS || (RUX_IS_BSD && !RUX_OS_OPENBSD)
+#elif RUX_OS_MACOS || RUX_OS_FREEBSD
 
     size_t s = sizeof(info.physical_cores);
     sysctlbyname("hw.physicalcpu", &info.physical_cores, &s, nullptr, 0);
 
     s = sizeof(info.cache_line_size);
     sysctlbyname("hw.cachelinesize", &info.cache_line_size, &s, nullptr, 0);
-
-#elif RUX_OS_OPENBSD
-
-    int mib_cores[2] = {CTL_HW, HW_NCPU};
-    size_t s = sizeof(info.physical_cores);
-    sysctl(mib_cores, 2, &info.physical_cores, &s, nullptr, 0);
-
-    #ifdef HW_CACHELINE
-    int mib_cache[2] = {CTL_HW, HW_CACHELINE};
-    s = sizeof(info.cache_line_size);
-    sysctl(mib_cache, 2, &info.cache_line_size, &s, nullptr, 0);
-    #endif
 
 #endif
 
@@ -330,18 +293,6 @@ MemoryInfo GetRuntimeMemoryInfo() noexcept {
         info.available_bytes = uint64_t(s.freeram) * s.mem_unit;
     }
 
-#elif RUX_IS_SUNOS
-
-    {
-        long pages = sysconf(_SC_PHYS_PAGES);
-        long avpages = sysconf(_SC_AVPHYS_PAGES);
-        long psize = sysconf(_SC_PAGESIZE);
-        if (pages > 0 && psize > 0) {
-            info.total_bytes = uint64_t(pages) * uint64_t(psize);
-            info.available_bytes = uint64_t(avpages > 0 ? avpages : pages) * uint64_t(psize);
-        }
-    }
-
 #elif RUX_OS_MACOS
 
     int mib[2] = {CTL_HW, HW_MEMSIZE};
@@ -360,11 +311,9 @@ MemoryInfo GetRuntimeMemoryInfo() noexcept {
         info.available_bytes = info.total_bytes;
     }
 
-#elif RUX_IS_BSD
+#elif RUX_OS_FREEBSD
 
-    #if defined(HW_MEMSIZE)
-    int mib[2] = {CTL_HW, HW_MEMSIZE};
-    #elif defined(HW_REALMEM)
+    #if defined(HW_REALMEM)
     int mib[2] = {CTL_HW, HW_REALMEM};
     #else
     int mib[2] = {CTL_HW, HW_PHYSMEM};

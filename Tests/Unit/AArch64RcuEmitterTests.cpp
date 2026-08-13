@@ -2136,7 +2136,6 @@ TEST_CASE("AArch64 RCU emitter keeps every value in the frame where control bran
 
 TEST_CASE("FreeBSD AArch64 selects generic AAPCS64 while Apple selects its fixed-argument variant") {
     constexpr AArch64CallLayoutPolicy apple = AArch64CallPolicyFor(Target::OS::MacOS);
-    constexpr AArch64CallLayoutPolicy ios = AArch64CallPolicyFor(Target::OS::iOS);
     constexpr AArch64CallLayoutPolicy linux = AArch64CallPolicyFor(Target::OS::Linux);
     constexpr AArch64CallLayoutPolicy freebsd = AArch64CallPolicyFor(Target::OS::FreeBSD);
     constexpr AArch64CallLayoutPolicy windows = AArch64CallPolicyFor(Target::OS::Windows);
@@ -2145,8 +2144,6 @@ TEST_CASE("FreeBSD AArch64 selects generic AAPCS64 while Apple selects its fixed
     CHECK_EQ(apple.StackBytes(1), 1);
     CHECK_EQ(apple.FirstGeneralRegister(1, 16), 1);
     CHECK(apple.callerExtendsNarrowIntegers);
-    CHECK_EQ(ios.FirstGeneralRegister(1, 16), 1);
-    CHECK(ios.compactStackArguments);
 
     for (const AArch64CallLayoutPolicy policy : {linux, freebsd, windows}) {
         CHECK_EQ(policy.StackAlignment(1), 8);

@@ -189,8 +189,6 @@ TEST_CASE("ELF target profiles own OS and architecture policy") {
     CHECK_FALSE(linuxAarch64->definesElfAuxVector);
     CHECK(linuxAarch64->pltInstructionShape == Target::ElfPltInstructionShape::AArch64);
 
-    // This profile is available to direct linker development only. The public
-    // compiler-driver gate stays closed until the later backlog task.
     const auto freebsdAarch64 = Target::Elf64ProfileFor(Target::OS::FreeBSD, Target::Arch::AArch64);
     REQUIRE(freebsdAarch64.has_value());
     CHECK(freebsdAarch64->targetName == "freebsd-aarch64");
@@ -205,7 +203,10 @@ TEST_CASE("ELF target profiles own OS and architecture policy") {
     CHECK(freebsdAarch64->definesBsdProcessGlobals);
     CHECK(freebsdAarch64->definesElfAuxVector);
 
-    CHECK_FALSE(Target::Elf64ProfileFor(Target::OS::OpenBSD, Target::Arch::AArch64).has_value());
+    // Only the two ELF operating systems have a profile; Windows and macOS
+    // reach their own writers instead.
+    CHECK_FALSE(Target::Elf64ProfileFor(Target::OS::Unknown, Target::Arch::AArch64).has_value());
+    CHECK_FALSE(Target::Elf64ProfileFor(Target::OS::Windows, Target::Arch::X86_64).has_value());
 }
 
 TEST_CASE("ELF linker rejects a target without an explicit profile") {
@@ -215,11 +216,11 @@ TEST_CASE("ELF linker rejects a target without an explicit profile") {
     std::error_code ec;
     std::filesystem::remove(output, ec);
 
-    Linker linker({std::move(object)}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::OpenBSD,
+    Linker linker({std::move(object)}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Unknown,
                   Target::Arch::AArch64);
     CHECK_FALSE(linker.Link(output));
     REQUIRE(linker.Errors().size() == 1);
-    CHECK(linker.Errors().front().message == "ELF writer does not implement the complete target 'openbsd-aarch64'");
+    CHECK(linker.Errors().front().message == "ELF writer does not implement the complete target 'unknown-aarch64'");
     CHECK_FALSE(std::filesystem::exists(output));
 }
 

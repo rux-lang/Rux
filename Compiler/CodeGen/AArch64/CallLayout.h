@@ -32,7 +32,7 @@ struct AArch64CallLayoutPolicy {
 };
 
 [[nodiscard]] constexpr AArch64CallLayoutPolicy AArch64CallPolicyFor(const Target::OS os) noexcept {
-    if (os == Target::OS::MacOS || os == Target::OS::iOS) {
+    if (os == Target::OS::MacOS) {
         return AArch64CallLayoutPolicy{
             .compactStackArguments = true,
             .alignWideGeneralArgumentsToEvenRegister = false,

@@ -43,31 +43,21 @@ std::optional<ManifestPackageType> ParseManifestPackageType(const std::string_vi
 
 std::string_view ManifestTargetOSName(const Target::OS os) noexcept {
     switch (os) {
-    case Target::OS::Windows:
-        return "Windows";
+    case Target::OS::FreeBSD:
+        return "FreeBSD";
     case Target::OS::Linux:
         return "Linux";
     case Target::OS::MacOS:
         return "MacOS";
-    case Target::OS::FreeBSD:
-        return "FreeBSD";
-    case Target::OS::OpenBSD:
-        return "OpenBSD";
-    case Target::OS::NetBSD:
-        return "NetBSD";
-    case Target::OS::DragonFlyBSD:
-        return "DragonFlyBSD";
-    case Target::OS::Illumos:
-        return "Illumos";
+    case Target::OS::Windows:
+        return "Windows";
     default:
         return "";
     }
 }
 
 std::optional<Target::OS> ParseManifestTargetOS(const std::string_view value) noexcept {
-    constexpr Target::OS supported[] = {Target::OS::Windows,      Target::OS::Linux,   Target::OS::MacOS,
-                                        Target::OS::FreeBSD,      Target::OS::OpenBSD, Target::OS::NetBSD,
-                                        Target::OS::DragonFlyBSD, Target::OS::Illumos};
+    constexpr Target::OS supported[] = {Target::OS::FreeBSD, Target::OS::Linux, Target::OS::MacOS, Target::OS::Windows};
     for (const Target::OS os : supported) {
         if (ManifestTargetOSName(os) == value) {
             return os;

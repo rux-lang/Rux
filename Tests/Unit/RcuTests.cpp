@@ -58,7 +58,7 @@ TEST_CASE("RCU architecture constants name the two supported machines") {
     CHECK(RcuFile{}.arch == RcuArch::X86_64);
     CHECK(RcuArchFor(Target::Arch::X86_64) == RcuArch::X86_64);
     CHECK(RcuArchFor(Target::Arch::AArch64) == RcuArch::AArch64);
-    CHECK(RcuArchFor(Target::Arch::RISCV64) == RcuArch::Unknown);
+    CHECK(RcuArchFor(Target::Arch::Unknown) == RcuArch::Unknown);
     CHECK(RcuArchName(RcuArch::X86_64) == "x86-64");
     CHECK(RcuArchName(RcuArch::AArch64) == "AArch64");
     CHECK(RcuArchName(RcuArch::Unknown) == "unknown");

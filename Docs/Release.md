@@ -17,9 +17,9 @@ The workflow runs on `push: tags: [ 'v*' ]` and needs `contents: write` permissi
 
 ```
 verify-version ──► freebsd ──► freebsd-cross-build ──► freebsd-cross-runtime ──► freebsd-acceptance ──┐
-                   linux   ───────────────────────────────────────────────────────────────────────────┤
-                   macos   ───────────────────────────────────────────────────────────────────────────┼──► release (publish)
-                   windows ───────────────────────────────────────────────────────────────────────────┘
+                   linux   ─────────────────────────────────────────────────────────────────────────────┤
+                   macos   ─────────────────────────────────────────────────────────────────────────────┼──► release (publish)
+                   windows ─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 1. `verify-version` (Fail Fast)
@@ -32,12 +32,12 @@ Parses `VERSION` from `CMakeLists.txt` and compares it to the pushed tag (minus 
 
 Each `needs: verify-version`, then builds Release **and runs the test suite** — a broken build or failing test blocks the release. Each job has x86-64 and AArch64 matrix entries and uploads one architecture-labelled binary artifact. The Windows x86-64 entry additionally packages the freshly built binary into a per-user MSI installer (`Packaging/Windows/Msi/Build.ps1`):
 
-| Job       | Runners                                      | Binary artifacts                                  |
-| --------- | -------------------------------------------- | ------------------------------------------------- |
-| `freebsd` | FreeBSD 14.4 x86-64/AArch64 VMs             | `rux-freebsd-x86_64`, `rux-freebsd-aarch64`       |
-| `linux`   | Ubuntu 24.04 x86-64/AArch64                  | `rux-linux-x86_64`, `rux-linux-aarch64`           |
-| `macos`   | macOS 26 Intel/Apple Silicon                 | `rux-macos-x86_64`, `rux-macos-aarch64`           |
-| `windows` | Windows 2025 x86-64/Windows 11 ARM          | `rux-windows-x86_64`, `rux-windows-aarch64`       |
+| Job       | Runners                            | Binary artifacts                            |
+| --------- | ---------------------------------- | ------------------------------------------- |
+| `freebsd` | FreeBSD 14.4 x86-64/AArch64 VMs    | `rux-freebsd-x86_64`, `rux-freebsd-aarch64` |
+| `linux`   | Ubuntu 24.04 x86-64/AArch64        | `rux-linux-x86_64`, `rux-linux-aarch64`     |
+| `macos`   | macOS 26 Intel/Apple Silicon       | `rux-macos-x86_64`, `rux-macos-aarch64`     |
+| `windows` | Windows 2025 x86-64/Windows 11 ARM | `rux-windows-x86_64`, `rux-windows-aarch64` |
 
 The additional `rux-windows-x86_64-msi` workflow artifact carries the x86-64 MSI into the publish job. An AArch64 MSI is not produced because the current WiX package is authored for x64; AArch64 Windows is distributed as a ZIP.
 
@@ -45,17 +45,9 @@ Each job runs language tests from the repository root. Test manifests use local 
 
 ### 3. FreeBSD transferred-cross acceptance
 
-After both native FreeBSD matrix entries pass, `freebsd-cross-build` downloads
-the x86-64 compiler and builds a sealed AArch64 payload in an x86-64 FreeBSD
-14.4 VM. `freebsd-cross-runtime` downloads only that payload into a fresh
-AArch64 FreeBSD VM, verifies its hashes, modes, and ELF identities, and launches
-the representative executables and shared-library fixture. The consumer VM
-installs no compiler or target toolchain.
+After both native FreeBSD matrix entries pass, `freebsd-cross-build` downloads the x86-64 compiler and builds a sealed AArch64 payload in an x86-64 FreeBSD 14.4 VM. `freebsd-cross-runtime` downloads only that payload into a fresh AArch64 FreeBSD VM, verifies its hashes, modes, and ELF identities, and launches the representative executables and shared-library fixture. The consumer VM installs no compiler or target toolchain.
 
-`freebsd-acceptance` runs even when an upstream job fails or is skipped and
-checks both dependency results explicitly. This gives the publish job a single
-release-blocking FreeBSD gate: the AArch64 archive cannot be packaged merely
-because one of the two runtime paths did not run.
+`freebsd-acceptance` runs even when an upstream job fails or is skipped and checks both dependency results explicitly. This gives the publish job a single release-blocking FreeBSD gate: the AArch64 archive cannot be packaged merely because one of the two runtime paths did not run.
 
 ### 4. `release` (publish)
 

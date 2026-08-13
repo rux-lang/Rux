@@ -207,27 +207,71 @@ when #target.arch {
 
         // System calls
         //
-        // The kernel takes the call number in x8 and the arguments in x0
-        // onwards, and leaves the result in x0 — a negative errno where the
-        // call failed.
+        // The arguments go in x0 onwards everywhere, but nothing else about the
+        // entry point is shared. Linux numbers its own calls, takes the number
+        // in x8 through `svc #0`, and returns a negative errno. FreeBSD keeps
+        // that register and trap but uses the BSD numbers, and macOS uses the
+        // BSD numbers with the number in x16 through `svc #0x80`; both report
+        // failure by setting the carry flag over a positive errno, so `cneg`
+        // puts it back in the negative form the checks below read. Windows has
+        // no such entry point at all, so it builds neither body.
+        //
+        // The two calls are getpid, which cannot fail and whose answer is
+        // always positive, and a write to a descriptor that is not open, which
+        // is -EBADF on all three. Reading that error back is what proves the
+        // result register rather than the argument registers.
+        when #target.os {
+            .Linux => {
+                asm func RawGetPid() -> int64 {
+                    mov x8, #172
+                    svc #0
+                    ret
+                }
 
-        // getpid, which cannot fail and whose answer is always positive.
-        asm func RawGetPid() -> int64 {
-            mov x8, #172
-            svc #0
-            ret
-        }
+                asm func WriteToClosedFd(buffer: *uint8) -> int64 {
+                    mov x1, x0
+                    mov x0, #-1
+                    mov x2, #1
+                    mov x8, #64
+                    svc #0
+                    ret
+                }
+            },
+            .FreeBSD => {
+                asm func RawGetPid() -> int64 {
+                    mov x8, #20
+                    svc #0
+                    ret
+                }
 
-        // write to a descriptor that is not open, which is -EBADF. Reading the
-        // error back is what proves the result register rather than the
-        // argument registers.
-        asm func WriteToClosedFd(buffer: *uint8) -> int64 {
-            mov x1, x0
-            mov x0, #-1
-            mov x2, #1
-            mov x8, #64
-            svc #0
-            ret
+                asm func WriteToClosedFd(buffer: *uint8) -> int64 {
+                    mov x1, x0
+                    mov x0, #-1
+                    mov x2, #1
+                    mov x8, #4
+                    svc #0
+                    cneg x0, x0, cs
+                    ret
+                }
+            },
+            .MacOS => {
+                asm func RawGetPid() -> int64 {
+                    mov x16, #20
+                    svc #0x80
+                    ret
+                }
+
+                asm func WriteToClosedFd(buffer: *uint8) -> int64 {
+                    mov x1, x0
+                    mov x0, #-1
+                    mov x2, #1
+                    mov x16, #4
+                    svc #0x80
+                    cneg x0, x0, cs
+                    ret
+                }
+            },
+            else => {}
         }
 
         func Main() -> int {
@@ -308,12 +352,17 @@ when #target.arch {
                 return 21;
             }
 
-            // System calls
-            if RawGetPid() <= 0i64 {
-                return 22;
-            }
-            if WriteToClosedFd(@bytes[0]) != -9i64 {
-                return 23;
+            // System calls, on the targets that have one
+            when #target.os {
+                .FreeBSD, .Linux, .MacOS => {
+                    if RawGetPid() <= 0i64 {
+                        return 22;
+                    }
+                    if WriteToClosedFd(@bytes[0]) != -9i64 {
+                        return 23;
+                    }
+                },
+                else => {}
             }
 
             return 0;

@@ -2,12 +2,9 @@ import Core::{ #target, #Error };
 
 // The C math library's shared object differs by platform.
 when #target.os {
-    .DragonFlyBSD => const MathLib = "libm.so.4";
     .FreeBSD => const MathLib = "libm.so.5";
     .Linux => const MathLib = "libm.so.6";
     .MacOS => const MathLib = "libSystem.B.dylib";
-    .NetBSD => const MathLib = "libm.so.0";
-    .OpenBSD => const MathLib = "libm.so.10.1";
     .Windows => const MathLib = "ucrtbase.dll";
     else => #Error("Unsupported operating system")
 }

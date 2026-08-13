@@ -18,10 +18,7 @@ rux version
 
 Run the installer again to upgrade. The [Linux installer guide](../../Packaging/Linux/README.md) covers version pinning, custom destinations, PATH changes, and removal.
 
-The installer currently selects the x86-64 compatibility asset. On AArch64,
-download `rux-linux-aarch64.tar.gz` from the
-[latest GitHub release](https://github.com/rux-lang/Rux/releases/latest),
-extract it, and place `rux` in a directory on `PATH`.
+The installer currently selects the x86-64 compatibility asset. On AArch64, download `rux-linux-aarch64.tar.gz` from the [latest GitHub release](https://github.com/rux-lang/Rux/releases/latest), extract it, and place `rux` in a directory on `PATH`.
 
 ## Building from Source
 
@@ -48,11 +45,7 @@ sh Build.sh
 
 The LLVM installer names the compiler `clang++-22`; `Build.sh` detects it automatically. The script creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
 
-On AArch64, Rux selects the `linux-aarch64` target automatically and compiles it
-the same way it compiles `linux-x86_64`: instructions are encoded in-process,
-written into an RCU object, and linked by Rux's own ELF writer. No assembler, C
-compiler, or external linker is involved on either architecture, so nothing
-beyond the tools listed above needs to be installed to build Rux programs.
+On AArch64, Rux selects the `linux-aarch64` target automatically and compiles it the same way it compiles `linux-x86_64`: instructions are encoded in-process, written into an RCU object, and linked by Rux's own ELF writer. No assembler, C compiler, or external linker is involved on either architecture, so nothing beyond the tools listed above needs to be installed to build Rux programs.
 
 ## Native Package Artifacts
 
@@ -64,58 +57,35 @@ For a Debug build, run `sh Build.sh --configuration Debug`. On other Linux distr
 
 ## Cross-Compiling and Testing
 
-`--target <os>-<arch>` builds for a machine other than the host, and writes the
-result to its own subdirectory so builds for two targets do not overwrite each
-other — `Bin/Release/linux-aarch64/Name` rather than `Bin/Release/Name`:
+`--target <os>-<arch>` builds for a machine other than the host, and writes the result to its own subdirectory so builds for two targets do not overwrite each other — `Bin/Release/linux-aarch64/Name` rather than `Bin/Release/Name`:
 
 ```sh
 ./Bin/rux build --target linux-aarch64
 ```
 
-`rux run` is host-only and has no `--target` option. Use `build` or `check` to
-select a cross target, then transfer the artifact to a native target machine:
+`rux run` is host-only and has no `--target` option. Use `build` or `check` to select a cross target, then transfer the artifact to a native target machine:
 
 ```sh
 ./Bin/rux check --target linux-aarch64
 ./Bin/rux build --release --target linux-aarch64
 ```
 
-`rux test --target` is narrower than cross-compilation. It runs only when the
-target OS matches the host OS and the target architecture equals either the
-compiler process architecture or the native OS architecture. On a physical
-x86-64 Linux host, `rux test --target linux-aarch64` therefore fails before
-compiling the suite and recommends build/check plus native testing. Installing
-an instruction-set emulator does not change that decision.
+`rux test --target` is narrower than cross-compilation. It runs only when the target OS matches the host OS and the target architecture equals either the compiler process architecture or the native OS architecture. On a physical x86-64 Linux host, `rux test --target linux-aarch64` therefore fails before compiling the suite and recommends build/check plus native testing. Installing an instruction-set emulator does not change that decision.
 
 A Linux host reaches these targets, whichever architecture it runs on:
 
-| Target                                                | Builds | Target tests on this host                         |
-| ----------------------------------------------------- | ------ | ------------------------------------------------- |
-| Host Linux architecture                              | Yes    | Yes                                               |
-| Other Linux architecture                             | Yes    | Only when reported as the native OS architecture |
-| `windows-x86_64`, `windows-aarch64`, `macos-x86_64`, `macos-aarch64` | Yes | No — foreign operating system              |
-| `freebsd-x86_64`, `freebsd-aarch64`                  | Yes    | No — foreign operating system                    |
-| `openbsd-x86_64`, `netbsd-x86_64`                    | Yes    | No — foreign operating system                    |
-| `dragonfly-x86_64`, `illumos-x86_64`                 | Yes    | No — foreign operating system                    |
+| Target                                                               | Builds | Target tests on this host                        |
+| -------------------------------------------------------------------- | ------ | ------------------------------------------------ |
+| Host Linux architecture                                              | Yes    | Yes                                              |
+| Other Linux architecture                                             | Yes    | Only when reported as the native OS architecture |
+| `windows-x86_64`, `windows-aarch64`, `macos-x86_64`, `macos-aarch64` | Yes    | No — foreign operating system                    |
+| `freebsd-x86_64`, `freebsd-aarch64`                                  | Yes    | No — foreign operating system                    |
 
-The x86-64 back end reaches every supported operating system, because all three
-object writers are parameterized for it. The AArch64 back end reaches
-`linux-aarch64` and `freebsd-aarch64` through ELF, `windows-aarch64` through
-PE/COFF, and `macos-aarch64` through Mach-O. OpenBSD, NetBSD, DragonFly BSD,
-and illumos AArch64 remain refused with `code generation for '<triple>' is not
-implemented yet`; FreeBSD support does not implicitly enable another System V
-target. `rux check`, `rux fmt`, `rux lint` and `rux doc` need no back end and
-work for every named target.
+Both back ends reach every supported triple, because all three object writers are parameterized for both architectures: `freebsd-*` and `linux-*` through ELF, `windows-*` through PE/COFF, and `macos-*` through Mach-O. `rux check`, `rux fmt`, `rux lint` and `rux doc` need no back end and work for every named target.
 
-Nothing in a cross build reaches for a cross toolchain, because there is no
-toolchain to reach for: the same encoder, object writer and linker run whichever
-machine invokes them, and a `linux-aarch64` image records the loader and library
-names it needs without opening a host library to do it.
+Nothing in a cross build reaches for a cross toolchain, because there is no toolchain to reach for: the same encoder, object writer and linker run whichever machine invokes them, and a `linux-aarch64` image records the loader and library names it needs without opening a host library to do it.
 
-A Linux host can likewise build FreeBSD AArch64 executables, shared libraries,
-and static libraries. Foreign Release output is written below
-`Bin/Release/freebsd-aarch64/`; transfer those artifacts to native FreeBSD for
-execution because `run` is host-only and target tests reject a foreign OS.
+A Linux host can likewise build FreeBSD AArch64 executables, shared libraries, and static libraries. Foreign Release output is written below `Bin/Release/freebsd-aarch64/`; transfer those artifacts to native FreeBSD for execution because `run` is host-only and target tests reject a foreign OS.
 
 ## Verifying the Build
 

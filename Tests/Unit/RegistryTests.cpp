@@ -72,7 +72,7 @@ TEST_CASE("DecodePackageIndex reads identity, versions and dependency edges") {
     CHECK(entry->versions[1].dependencies[0].package.Text() == "Json");
     CHECK(entry->versions[1].dependencies[0].range.Text() == "^1");
     CHECK(entry->versions[1].dependencies[0].targetOS.empty());
-    CHECK(entry->versions[1].dependencies[0].MatchesTarget(Target::OS::Illumos));
+    CHECK(entry->versions[1].dependencies[0].MatchesTarget(Target::OS::FreeBSD));
     CHECK(entry->versions[1].dependencies[1].package.Text() == "Memory");
     CHECK(entry->versions[1].dependencies[1].range.Text() == ">=0.1.0, <0.3.0");
     CHECK(entry->versions[1].dependencies[1].targetOS ==

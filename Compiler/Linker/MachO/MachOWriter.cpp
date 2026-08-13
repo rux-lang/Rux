@@ -4,6 +4,7 @@
 // AArch64 executables are always dynamic and position-independent because the
 // macOS kernel rejects both static and non-PIE arm64 images.
 
+#include "Crypto/Sha256.h"
 #include "Linker/AArch64Relocation.h"
 #include "Linker/Linker.h"
 #include "Linker/LinkerInternal.h"
@@ -28,6 +29,8 @@ constexpr uint64_t kExecutableBase = 0x1'0000'0000ULL;
 constexpr const char *kSystemLibName = "libSystem.B.dylib";
 constexpr const char *kDefaultLib = "/usr/lib/libSystem.B.dylib";
 constexpr const char *kDyldPath = "/usr/lib/dyld";
+constexpr std::size_t kMachUuidSize = 16;
+constexpr std::size_t kMachHeaderSize = 32;
 
 enum class MachOEntryStrategy : uint8_t {
     Main,
@@ -725,6 +728,10 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         ++commandCount;
         commandsSize += threadCommandSize;
     }
+    // dyld refuses an image it links without an LC_UUID to identify it by, so
+    // every image carries one.
+    ++commandCount;
+    commandsSize += 24; // LC_UUID
     if (architecture->emitBuildVersion) {
         ++commandCount;
         commandsSize += 24; // LC_BUILD_VERSION
@@ -1381,6 +1388,13 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         }
     }
 
+    // The identifier itself is a digest of the finished image, so it is filled
+    // in once the rest of the file exists. Remember where its bytes land.
+    WriteU32(loadCommands, 0x1B); // LC_UUID
+    WriteU32(loadCommands, 24);
+    const std::size_t uuidCommandPayload = loadCommands.size();
+    loadCommands.insert(loadCommands.end(), kMachUuidSize, 0);
+
     if (architecture->emitBuildVersion) {
         WriteU32(loadCommands, 0x32); // LC_BUILD_VERSION
         WriteU32(loadCommands, 24);
@@ -1424,6 +1438,21 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     appendAt(dataOffset, mergedData);
     appendAt(linkeditOffset, linkeditBuffer);
     image.resize(static_cast<std::size_t>(codeSignatureOffset), 0);
+
+    // Identify the image by a digest of itself, taken while the UUID field is
+    // still zero. Two links of the same input therefore agree, and the value
+    // has to be in place before the signature covers it.
+    const std::size_t uuidOffset = kMachHeaderSize + uuidCommandPayload;
+    if (uuidOffset + kMachUuidSize > image.size()) {
+        Error("internal: Mach-O UUID load command falls outside the image");
+        return false;
+    }
+    const Crypto::Sha256Digest imageDigest = Crypto::Sha256(image);
+    std::copy_n(imageDigest.begin(), kMachUuidSize, image.begin() + static_cast<std::ptrdiff_t>(uuidOffset));
+    // Shape the digest into a version-4 variant-1 UUID, the way a linker-
+    // generated identifier is expected to read.
+    image[uuidOffset + 6] = static_cast<uint8_t>((image[uuidOffset + 6] & 0x0F) | 0x40);
+    image[uuidOffset + 8] = static_cast<uint8_t>((image[uuidOffset + 8] & 0x3F) | 0x80);
 
     Buf codeSignature;
     if (!MachO::BuildAdHocCodeSignature(image, packageName, 0, textSegmentFileEnd, isShared ? 0 : 1, codeSignature,

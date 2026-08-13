@@ -4,7 +4,7 @@ import Core::{ #target };
 import Text::String;
 
 when #target.os {
-    .DragonFlyBSD, .FreeBSD, .NetBSD, .OpenBSD => import Bsd::{ StdOut, Write },
+    .FreeBSD => import FreeBSD::{ StdOut, Write },
     .Linux => import Linux::{ StdOut, Write },
     .MacOS => import MacOS::{ StdOut, Write },
     .Windows => import Windows::{

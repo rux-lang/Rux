@@ -76,10 +76,6 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     // Build first (quiet unless verbose)
     const std::string_view profileName = isRelease ? "Release" : "Debug";
     const std::string targetName = HostTargetTriple();
-    if (const auto reason = UnsupportedBackendReason(targetName); !reason.empty()) {
-        std::print(stderr, "error: {}\n", reason);
-        return 1;
-    }
     const bool buildQuiet = !opts.verbose || opts.quiet;
     if (!buildQuiet) {
         const AnsiStyle style{ColorEnabled(opts.color, OutputStream::Stderr)};

@@ -97,18 +97,18 @@ There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan
 
 A source file flows through these stages, front to back. Each stage owns a small set of files, so this is the map for "where do I make this change?":
 
-| Stage             | File(s)                                             | Role                                     |
-| ----------------- | --------------------------------------------------- | ---------------------------------------- |
-| Source loading    | `Source/SourceLoader.cpp`                           | Locate and read source files             |
-| Lexing            | `Lexer/Lexer.cpp`                                   | Source text → token stream               |
-| Parsing           | `Syntax/Parser/`                                    | Tokens → AST                             |
-| Semantic analysis | `Semantic/SemanticAnalyzer.cpp`                     | AST → validated `SemanticModel`          |
-| HIR lowering      | `Lowering/AstToHir/`                                | Semantic model → HIR                     |
-| HIR passes        | `Ir/Hir/Passes/`                                    | HIR optimization                         |
-| LIR lowering      | `Lowering/HirToLir/`                                | HIR → control-flow-explicit LIR          |
-| Code generation   | `CodeGen/{X86_64,AArch64}/`                         | LIR → target-native representation       |
-| Object emission   | `Object/Rcu/`                                       | RCU serialization and diagnostics        |
-| Linking           | `Linker/{Pe,Elf,MachO}/` and archive writers       | Objects/LIR lowering → target artifact   |
+| Stage             | File(s)                                      | Role                                   |
+| ----------------- | -------------------------------------------- | -------------------------------------- |
+| Source loading    | `Source/SourceLoader.cpp`                    | Locate and read source files           |
+| Lexing            | `Lexer/Lexer.cpp`                            | Source text → token stream             |
+| Parsing           | `Syntax/Parser/`                             | Tokens → AST                           |
+| Semantic analysis | `Semantic/SemanticAnalyzer.cpp`              | AST → validated `SemanticModel`        |
+| HIR lowering      | `Lowering/AstToHir/`                         | Semantic model → HIR                   |
+| HIR passes        | `Ir/Hir/Passes/`                             | HIR optimization                       |
+| LIR lowering      | `Lowering/HirToLir/`                         | HIR → control-flow-explicit LIR        |
+| Code generation   | `CodeGen/{X86_64,AArch64}/`                  | LIR → target-native representation     |
+| Object emission   | `Object/Rcu/`                                | RCU serialization and diagnostics      |
+| Linking           | `Linker/{Pe,Elf,MachO}/` and archive writers | Objects/LIR lowering → target artifact |
 
 Supporting layers around the pipeline:
 
@@ -172,17 +172,7 @@ Package tests live at `Tests/Packages/<Package>/<Test>/`. Their manifests use lo
 
 Native fixtures use `Fixture.toml` so `rux test` does not discover them as ordinary packages. Their platform script builds a specific target, launches the result only on compatible native hardware, and verifies OS-visible behavior such as an exact exit code, assertion or panic output, C ABI calls, stack probing, or loading and calling an exported shared-library function. The Windows AArch64 cross job runs the exit-code and DLL fixtures with an x86-64 compiler on an AArch64 OS; the native and release jobs repeat them with the native compiler. On Apple Silicon, `Tests/Native/MacOSAArch64/Verify.sh` runs the macOS ARM64 fixture set with a native compiler, while `VerifyRosetta.sh` runs an x86-64 compiler under Rosetta and launches the produced ARM64 images directly. The scripts reject Intel Macs and inspect the Mach-O architecture and in-process ad-hoc signature before execution. Linux and Windows use `VerifyCross.ps1` for non-executing smoke coverage: it builds signed `macos-aarch64` executable and dylib fixtures twice, verifies deterministic bytes, parses their ARM64 Mach-O structures, and recomputes every CodeDirectory SHA-256 page hash.
 
-FreeBSD also tests a transferred cross-compiler workflow. An x86-64 FreeBSD
-VM runs `Tests/Native/FreeBSDAArch64/BuildTransfer.sh` with the x86-64 Rux
-compiler. The script builds the representative AArch64 fixtures into canonical
-`freebsd-aarch64` output directories and creates a payload containing only the
-target executables, shared library, and a manifest of names, SHA-256 hashes,
-modes, ELF kinds, and expected outcomes. A separate AArch64 FreeBSD VM installs
-no compiler, restores modes from that manifest, verifies every hash and ELF
-identity, and launches the transferred bytes through `VerifyTransfer.sh`.
-Linux x86-64 separately runs `VerifyCross.sh` to build and inspect a FreeBSD
-AArch64 executable and static archive without a FreeBSD sysroot. QEMU belongs
-to the CI VM provider; Rux never discovers or launches an emulator.
+FreeBSD also tests a transferred cross-compiler workflow. An x86-64 FreeBSD VM runs `Tests/Native/FreeBSDAArch64/BuildTransfer.sh` with the x86-64 Rux compiler. The script builds the representative AArch64 fixtures into canonical `freebsd-aarch64` output directories and creates a payload containing only the target executables, shared library, and a manifest of names, SHA-256 hashes, modes, ELF kinds, and expected outcomes. A separate AArch64 FreeBSD VM installs no compiler, restores modes from that manifest, verifies every hash and ELF identity, and launches the transferred bytes through `VerifyTransfer.sh`. Linux x86-64 separately runs `VerifyCross.sh` to build and inspect a FreeBSD AArch64 executable and static archive without a FreeBSD sysroot. QEMU belongs to the CI VM provider; Rux never discovers or launches an emulator.
 
 ### Unit Tests (`Tests/Unit/`)
 
@@ -218,8 +208,7 @@ PowerShell equivalent:
 
 Use `sh Format.sh --check` or `./Format.ps1 -Check` to verify formatting without changing files. Vendored C++ under `Tests/Unit/ThirdParty/` and intentionally malformed Rux diagnostic fixtures under `Tests/Unit/Golden/` are excluded.
 
-The formatters handle layout; the conventions they can't enforce, observed
-throughout the codebase:
+The formatters handle layout; the conventions they can't enforce, observed throughout the codebase:
 
 - **Naming**
   - Files, types (`struct`/`class`/`enum`), and free/member functions are `PascalCase` — `Parser`, `ParseResult`, `EmitError()`.

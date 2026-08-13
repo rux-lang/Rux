@@ -36,17 +36,16 @@ std::string HostTargetTriple() {
 
 bool IsSupportedTargetTriple(const std::string_view target) {
     constexpr std::array supported_targets{
-        "linux-x86_64",   "linux-aarch64",   "windows-x86_64", "windows-aarch64", "macos-x86_64",     "macos-aarch64",
-        "freebsd-x86_64", "freebsd-aarch64", "openbsd-x86_64", "netbsd-x86_64",   "dragonfly-x86_64", "illumos-x86_64",
+        "freebsd-x86_64", "freebsd-aarch64", "linux-x86_64",   "linux-aarch64",
+        "macos-x86_64",   "macos-aarch64",   "windows-x86_64", "windows-aarch64",
     };
 
     return std::ranges::contains(supported_targets, CanonicalTargetTriple(target));
 }
 
 std::string_view SupportedTargetTriples() {
-    return "linux-x86_64, linux-aarch64, windows-x86_64, windows-aarch64, "
-           "macos-x86_64, macos-aarch64, freebsd-x86_64, freebsd-aarch64, "
-           "openbsd-x86_64, netbsd-x86_64, dragonfly-x86_64, illumos-x86_64";
+    return "freebsd-x86_64, freebsd-aarch64, linux-x86_64, linux-aarch64, "
+           "macos-x86_64, macos-aarch64, windows-x86_64, windows-aarch64";
 }
 
 std::string CanonicalTargetTriple(const std::string_view target) {
@@ -74,20 +73,17 @@ std::string_view TargetOsName(const std::string_view target) {
 
     const auto os_prefix = target.substr(0, dash_pos);
 
+    if (os_prefix == "freebsd") {
+        return "FreeBSD";
+    }
     if (os_prefix == "linux") {
         return "Linux";
-    }
-    if (os_prefix == "windows") {
-        return "Windows";
     }
     if (os_prefix == "macos") {
         return "macOS";
     }
-    if (os_prefix == "freebsd" || os_prefix == "openbsd" || os_prefix == "netbsd" || os_prefix == "dragonfly") {
-        return "BSD";
-    }
-    if (os_prefix == "illumos") {
-        return "Illumos";
+    if (os_prefix == "windows") {
+        return "Windows";
     }
 
     return "";
@@ -97,29 +93,17 @@ Target::OS TargetTripleOs(const std::string_view target) {
     const auto dash_pos = target.find('-');
     const auto os_prefix = dash_pos == std::string_view::npos ? target : target.substr(0, dash_pos);
 
+    if (os_prefix == "freebsd") {
+        return Target::OS::FreeBSD;
+    }
     if (os_prefix == "linux") {
         return Target::OS::Linux;
-    }
-    if (os_prefix == "windows") {
-        return Target::OS::Windows;
     }
     if (os_prefix == "macos") {
         return Target::OS::MacOS;
     }
-    if (os_prefix == "freebsd") {
-        return Target::OS::FreeBSD;
-    }
-    if (os_prefix == "openbsd") {
-        return Target::OS::OpenBSD;
-    }
-    if (os_prefix == "netbsd") {
-        return Target::OS::NetBSD;
-    }
-    if (os_prefix == "dragonfly") {
-        return Target::OS::DragonFlyBSD;
-    }
-    if (os_prefix == "illumos") {
-        return Target::OS::Illumos;
+    if (os_prefix == "windows") {
+        return Target::OS::Windows;
     }
 
     return Target::HostOS;
@@ -128,23 +112,11 @@ Target::OS TargetTripleOs(const std::string_view target) {
 Target::Arch TargetTripleArch(const std::string_view target) {
     const auto dashPos = target.find('-');
     const auto arch = dashPos == std::string_view::npos ? target : target.substr(dashPos + 1);
-    if (arch == "x86") {
-        return Target::Arch::X86_32;
-    }
-    if (arch == "x64" || arch == "amd64" || arch == "x86-64" || arch == "x86_64") {
-        return Target::Arch::X86_64;
-    }
-    if (arch == "arm" || arch == "arm32") {
-        return Target::Arch::ARM32;
-    }
     if (arch == "arm64" || arch == "aarch64") {
         return Target::Arch::AArch64;
     }
-    if (arch == "riscv32") {
-        return Target::Arch::RISCV32;
-    }
-    if (arch == "riscv64") {
-        return Target::Arch::RISCV64;
+    if (arch == "x64" || arch == "amd64" || arch == "x86-64" || arch == "x86_64") {
+        return Target::Arch::X86_64;
     }
     return Target::HostArch;
 }
@@ -152,10 +124,7 @@ Target::Arch TargetTripleArch(const std::string_view target) {
 TargetContext TargetContextForTriple(const std::string_view target) {
     const Target::OS os = TargetTripleOs(target);
     const Target::Arch arch = TargetTripleArch(target);
-    const bool is64 = Target::Is64Bit(arch);
-    const Target::DataModel dataModel = os == Target::OS::Windows
-                                          ? (is64 ? Target::DataModel::LLP64 : Target::DataModel::ILP32)
-                                          : (is64 ? Target::DataModel::LP64 : Target::DataModel::ILP32);
+    const Target::DataModel dataModel = os == Target::OS::Windows ? Target::DataModel::LLP64 : Target::DataModel::LP64;
     const Target::ABIInfo abi = Target::GetABIInfo(os, arch, dataModel);
     const bool native = os == Target::HostOS && arch == Target::HostArch;
     return TargetContext{.os = os,
@@ -167,33 +136,6 @@ TargetContext TargetContextForTriple(const std::string_view target) {
                          .object_format = Target::GetObjectFormat(os),
                          .pointer_size = Target::GetPointerSize(arch),
                          .cpu_features = native ? Target::HostCpuFeatures : Target::CpuFeature::None};
-}
-
-std::string UnsupportedBackendReason(const std::string_view target) {
-    const auto triple = CanonicalTargetTriple(target);
-    const Arch arch = TargetTripleArch(triple);
-    // Both back ends encode machine code and write the artifact in-process, so
-    // no target needs a host of its own architecture. x86-64 reaches every
-    // supported operating system, because all three object writers are
-    // parameterized for it.
-    if (arch == Arch::X86_64) {
-        return {};
-    }
-    // The AArch64 ELF, PE, and Mach-O writers are architecture-aware. Other
-    // operating systems remain explicit rather than falling through to a host
-    // toolchain or failing with an artifact-dependent diagnostic.
-    if (arch == Arch::AArch64) {
-        const OS os = TargetTripleOs(triple);
-        if (os == OS::Linux || os == OS::FreeBSD || os == OS::Windows || os == OS::MacOS) {
-            return {};
-        }
-        return std::format(
-            "code generation for '{}' is not implemented yet; the {} back end supports Linux and FreeBSD ELF, "
-            "Windows PE, and macOS Mach-O",
-            triple, ToDisplayString(arch));
-    }
-    return std::format("code generation for architecture '{}' is not implemented yet; there is no back end for '{}'",
-                       ToString(arch), triple);
 }
 
 bool HostCanExecuteTarget(const std::string_view target) {
@@ -209,17 +151,14 @@ bool CanExecuteTargetDirectly(const OS hostOs, const HostArchitectureInfo hostAr
 }
 
 bool IsPlatformPackageName(const std::string_view name) {
-    return name == "Windows" || name == "Linux" || name == "macOS" || name == "MacOS" || name == "BSD" ||
-           name == "Bsd" || name == "Illumos";
+    return name == "FreeBSD" || name == "Linux" || name == "macOS" || name == "MacOS" || name == "Windows";
 }
 
 bool PlatformPackageMatchesTarget(const std::string_view name, const std::string_view target) {
     const auto targetOs = TargetOsName(target);
+    // The package is spelled `MacOS`; the canonical target OS name is `macOS`.
     if (name == "MacOS") {
         return targetOs == "macOS";
-    }
-    if (name == "Bsd") {
-        return targetOs == "BSD";
     }
     return name == targetOs;
 }

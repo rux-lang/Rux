@@ -7,7 +7,7 @@ repo_root=$(CDPATH= cd -- "$script_dir/../../.." && pwd)
 rux=${1:-"$repo_root/Bin/rux"}
 payload_dir=${2:-"$repo_root/FreeBSDAArch64Payload"}
 output_dir="$repo_root/Bin/Tests/Native/Release/freebsd-aarch64"
-syscall_output="$repo_root/Bin/Tests/Packages/Bsd/Release/freebsd-aarch64/Syscall"
+syscall_output="$repo_root/Bin/Tests/Packages/FreeBSD/Release/freebsd-aarch64/Syscall"
 
 fail() {
     echo "FreeBSD AArch64 transfer build failure: $*" >&2
@@ -45,7 +45,7 @@ build_fixture Shared/Library FreeBSDAArch64Fixture
 build_fixture Shared/Loader FreeBSDAArch64Loader
 
 syscall_log="$work_dir/FreeBSDAArch64Syscall.build.log"
-if ! "$rux" --manifest "$repo_root/Tests/Packages/Bsd/Syscall/Rux.toml" build --release \
+if ! "$rux" --manifest "$repo_root/Tests/Packages/FreeBSD/Syscall/Rux.toml" build --release \
     --target freebsd-aarch64 --quiet >"$syscall_log" 2>&1; then
     cat "$syscall_log" >&2
     fail "cross-compilation failed while building the BSD syscall fixture"

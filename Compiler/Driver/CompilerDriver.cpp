@@ -510,13 +510,6 @@ bool CompilerDriver::Analyze() {
 
 bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
                                       std::vector<std::filesystem::path> &secondaryArtifactPaths) {
-    // Analysis runs for every supported triple; only code generation is limited
-    // to the targets a back end covers.
-    if (const auto reason = UnsupportedBackendReason(opts.targetName); !reason.empty()) {
-        Emit(ErrorDiagnostic(reason));
-        return false;
-    }
-
     // HIR
     const auto hirStart = std::chrono::steady_clock::now();
     if (opts.verbose) {

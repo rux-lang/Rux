@@ -40,7 +40,7 @@ namespace Rux::Driver {
 // Comma-separated list used by CLI diagnostics.
 [[nodiscard]] std::string_view SupportedTargetTriples();
 
-// Canonical OS name ("Linux", "Windows", "macOS", "BSD", "Illumos") for the OS
+// Canonical OS name ("FreeBSD", "Linux", "macOS", "Windows") for the OS
 // component of an "os-arch" triple, or "" if it cannot be determined.
 [[nodiscard]] std::string_view TargetOsName(std::string_view target);
 
@@ -52,14 +52,6 @@ namespace Rux::Driver {
 // Unknown components fall back to the native target, matching TargetTripleOs.
 [[nodiscard]] Target::Arch TargetTripleArch(std::string_view target);
 [[nodiscard]] TargetContext TargetContextForTriple(std::string_view target);
-
-// Why no back end can generate machine code for `target`, or an empty string
-// when one can. Both back ends encode and link in-process, so the answer
-// depends on the target alone and not on the host. Selecting a target is
-// otherwise free: `check`, `doc`, `install` and `update` only read the target,
-// so they accept every supported triple. Callers must validate the triple
-// first.
-[[nodiscard]] std::string UnsupportedBackendReason(std::string_view target);
 
 // True when this host can execute an artifact built for `target` directly.
 [[nodiscard]] bool HostCanExecuteTarget(std::string_view target);

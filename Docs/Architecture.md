@@ -31,31 +31,31 @@ The two back ends are symmetric: each encodes instruction bytes itself, each bui
 
 The driver loads the root manifest and dependencies before entering this pipeline. Diagnostics can stop the process after any frontend stage; object emission and linking only run when analysis and lowering succeed.
 
-Which triples a back end reaches is decided by the object and image writer, not by the host: x86-64 reaches every supported operating system, while AArch64 reaches `linux-aarch64` and `freebsd-aarch64` through ELF, `windows-aarch64` through PE/COFF, and `macos-aarch64` through Mach-O. The FreeBSD and Linux paths produce executables, shared libraries, relocatable objects, and deterministic static archives entirely in-process. The Windows writer produces executables, DLLs with import libraries, and static libraries, while the Mach-O path produces AArch64 objects and BSD archives plus signed executables — fixed-address on x86-64, position-independent on AArch64 — imported executables, and shared libraries. The public driver exposes all three native artifact kinds for each of those targets. Other AArch64 System V targets are refused with a diagnostic naming the complete target rather than falling back to Linux or a host toolchain.
+Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on x86-64 and AArch64. Which triples a back end reaches is decided by the object and image writer, not by the host, and both back ends reach all eight: `freebsd-*` and `linux-*` through ELF, `windows-*` through PE/COFF, and `macos-*` through Mach-O. The FreeBSD and Linux paths produce executables, shared libraries, relocatable objects, and deterministic static archives entirely in-process. The Windows writer produces executables, DLLs with import libraries, and static libraries, while the Mach-O path produces AArch64 objects and BSD archives plus signed executables — fixed-address on x86-64, position-independent on AArch64 — imported executables, and shared libraries. The public driver exposes all three native artifact kinds for each of those targets.
 
 ## Component Ownership
 
-| Component              | Owns                                                                               | May depend on                             |
-| ---------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------- |
-| `Diagnostics`          | Diagnostic values and rendering primitives                                         | Standard library only                     |
-| `Source`               | Source loading and source locations                                                | Diagnostics                               |
-| `System`               | Host OS, process, filesystem, networking, environment, and JSON                    | Standard library and host APIs            |
-| `Target`               | Header-only target triples, ABI, layout, and instruction models                    | Standard library only                     |
-| `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                           | Standard library                          |
-| `Lexer`                | Tokens and lexical analysis                                                        | Diagnostics                               |
-| `Syntax`               | AST and parser                                                                     | Lexer, Diagnostics, and Target            |
-| `Semantic`             | Symbols, types, conditional compilation, and validated semantic model              | Syntax and Diagnostics                    |
-| `Ir/Hir`               | High-level IR and its transformations                                              | Semantic and Lexer                        |
-| `Ir/Lir`               | Control-flow-explicit low-level IR                                                 | Semantic                                  |
-| `Lowering`             | AST/semantic model → HIR → LIR                                                     | Frontend and IR components                |
-| `CodeGen`              | Layout rules, literal decoding, register allocation, and the assembly result       | LIR                                       |
-| `CodeGen/X86_64`       | x86-64 instruction encoding, inline assembly, and RCU construction                 | LIR, Object, Diagnostics                  |
-| `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, and RCU construction                | LIR, Object, Diagnostics                  |
-| `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                     | Target                                    |
-| `Archive`              | Deterministic native archive containers and symbol indexes                         | Object                                    |
-| `Linker`               | PE, ELF, Mach-O, relocatable-object, and library output                            | Object, Archive, and System               |
-| `Driver`               | End-to-end compilation orchestration and build reports                             | All compiler stages                       |
-| `Formatter` / `Linter` | Source formatting and lint diagnostics                                             | Syntax; the linter also uses Semantic     |
+| Component              | Owns                                                                         | May depend on                         |
+| ---------------------- | ---------------------------------------------------------------------------- | ------------------------------------- |
+| `Diagnostics`          | Diagnostic values and rendering primitives                                   | Standard library only                 |
+| `Source`               | Source loading and source locations                                          | Diagnostics                           |
+| `System`               | Host OS, process, filesystem, networking, environment, and JSON              | Standard library and host APIs        |
+| `Target`               | Header-only target triples, ABI, layout, and instruction models              | Standard library only                 |
+| `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                     | Standard library                      |
+| `Lexer`                | Tokens and lexical analysis                                                  | Diagnostics                           |
+| `Syntax`               | AST and parser                                                               | Lexer, Diagnostics, and Target        |
+| `Semantic`             | Symbols, types, conditional compilation, and validated semantic model        | Syntax and Diagnostics                |
+| `Ir/Hir`               | High-level IR and its transformations                                        | Semantic and Lexer                    |
+| `Ir/Lir`               | Control-flow-explicit low-level IR                                           | Semantic                              |
+| `Lowering`             | AST/semantic model → HIR → LIR                                               | Frontend and IR components            |
+| `CodeGen`              | Layout rules, literal decoding, register allocation, and the assembly result | LIR                                   |
+| `CodeGen/X86_64`       | x86-64 instruction encoding, inline assembly, and RCU construction           | LIR, Object, Diagnostics              |
+| `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, and RCU construction          | LIR, Object, Diagnostics              |
+| `Object/Rcu`           | RCU object representation, relocation kinds, and serialization               | Target                                |
+| `Archive`              | Deterministic native archive containers and symbol indexes                   | Object                                |
+| `Linker`               | PE, ELF, Mach-O, relocatable-object, and library output                      | Object, Archive, and System           |
+| `Driver`               | End-to-end compilation orchestration and build reports                       | All compiler stages                   |
+| `Formatter` / `Linter` | Source formatting and lint diagnostics                                       | Syntax; the linter also uses Semantic |
 
 The CMake target graph enforces these dependencies. Prefer adding a dependency to the narrowest owning component rather than reaching through `RuxCore`.
 
@@ -63,17 +63,7 @@ The Mach-O image writer keeps file layout separate from target instruction polic
 
 The ELF64 image writer similarly consumes a target-owned profile selected by the requested OS and architecture. The profile owns ELF OSABI and machine identity, interpreter and default libc names, image and maximum load alignment, freestanding exit syscall, dynamic relocation numbers, BSD process-global policy, and the architecture's PLT instruction shape. The writer owns generic ELF header, segment, dynamic-table, symbol, relocation, and byte layout; it rejects any OS/architecture pair without an explicit profile instead of inheriting Linux defaults. FreeBSD AArch64 supports freestanding and imported executables, shared libraries, relocatable objects, and static archives through both the direct linker and public compiler driver. Its shared objects use zero-based `ET_DYN` values, export public code and data through the dynamic symbol table, bind image-local definitions directly, and leave load-bias and imported-function address fixups to FreeBSD `rtld`. Portable unit coverage drives all three manifest artifact kinds and reads ELF headers, mapped segments, interpreter, dynamic metadata, symbols, RELA records, and archive-member identities through repository-owned readers rather than invoking host tools.
 
-Foreign `freebsd-aarch64` builds use the canonical target-separated output
-directory, while `run` remains host-only and target tests require a FreeBSD
-host whose compiler process or native OS is AArch64. CI covers both ownership
-boundaries: a native compiler executes the full suite and runtime fixtures,
-and a separate x86-64 compiler produces a sealed payload that a fresh AArch64
-FreeBSD VM validates and launches. Release publication depends on both paths.
-The explicit target profile does not extend to OpenBSD, NetBSD, DragonFly BSD,
-or illumos AArch64; their driver gates remain closed until each target owns its
-loader, libc, syscall, relocation, and process-entry contracts.
-
-The relocatable Mach-O object path maps AArch64 pointers, branches, ADRP page references, and ADD/load/store page offsets to Apple's ARM64 relocation records. Instruction relocations carry non-zero addends in a preceding signed 24-bit `ARM64_RELOC_ADDEND` record; local definitions use a section ordinal and section-relative offset, while external definitions use the reordered symbol-table index. The writer decodes each instruction before emitting a relocation so an invalid opcode, shifted ADD, or misaligned scaled access is diagnosed rather than archived. `RuxArchive` then places those objects in the same deterministic BSD archive and sorted symbol index used by macOS x86-64.
+Foreign `freebsd-aarch64` builds use the canonical target-separated output directory, while `run` remains host-only and target tests require a FreeBSD host whose compiler process or native OS is AArch64. CI covers both ownership boundaries: a native compiler executes the full suite and runtime fixtures, and a separate x86-64 compiler produces a sealed payload that a fresh AArch64 FreeBSD VM validates and launches. Release publication depends on both paths. The relocatable Mach-O object path maps AArch64 pointers, branches, ADRP page references, and ADD/load/store page offsets to Apple's ARM64 relocation records. Instruction relocations carry non-zero addends in a preceding signed 24-bit `ARM64_RELOC_ADDEND` record; local definitions use a section ordinal and section-relative offset, while external definitions use the reordered symbol-table index. The writer decodes each instruction before emitting a relocation so an invalid opcode, shifted ADD, or misaligned scaled access is diagnosed rather than archived. `RuxArchive` then places those objects in the same deterministic BSD archive and sorted symbol index used by macOS x86-64.
 
 The AArch64 RCU emitter similarly selects procedure-call layout from the target OS rather than the compiler host. Generic AAPCS64 and Windows retain doubleword stack argument slots and the standard even-register rule for 16-byte-aligned arguments. Apple fixed arguments use naturally aligned, exact-width stack slots, may start a 16-byte-aligned value in an odd-numbered X register, and extend sub-32-bit integers in the caller. For C variadic calls, LIR records the fixed-parameter count: Apple classifies that prefix normally, promotes narrow integer and `float32` arguments in the anonymous tail, and places the entire tail in eight-byte stack slots. Windows keeps its general-register duplication behavior, while generic AAPCS64 keeps its register-save-area convention. Every variant finishes with a 16-byte-aligned stack pointer, reserves X18, and maintains the X29/X30 frame chain.
 

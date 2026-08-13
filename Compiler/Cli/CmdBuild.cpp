@@ -122,10 +122,6 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
                    SupportedTargetTriples());
         return 1;
     }
-    if (const auto reason = UnsupportedBackendReason(targetName); !reason.empty()) {
-        std::print(stderr, "error: {}\n", reason);
-        return 1;
-    }
     const std::string_view profileName = isRelease ? "Release" : "Debug";
     (void)isDebug;
     if (!opts.quiet && !showStats) {

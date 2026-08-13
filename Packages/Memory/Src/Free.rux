@@ -1,7 +1,7 @@
 import Core::{ #target };
 
 when #target.os {
-    .DragonFlyBSD, .FreeBSD, .NetBSD, .OpenBSD => import Bsd::Munmap,
+    .FreeBSD => import FreeBSD::Munmap,
     .Linux => import Linux::Munmap,
     .MacOS => import MacOS::Munmap,
     .Windows => import Windows::{ GetProcessHeap, HeapFree }
@@ -11,7 +11,7 @@ when #target.os {
 // https://rux-lang.dev/api/memory/free
 func Free(ptr: *opaque) {
     when #target.os {
-        .DragonFlyBSD, .FreeBSD, .Linux, .MacOS, .NetBSD, .OpenBSD => {
+        .FreeBSD, .Linux, .MacOS => {
             if ptr == null {
                 return;
             }

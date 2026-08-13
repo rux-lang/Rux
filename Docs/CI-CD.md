@@ -6,12 +6,12 @@ Continuous integration runs on every push and pull request to `main` and `dev`, 
 
 Each supported platform has its own workflow under [`.github/workflows/`](../.github/workflows/):
 
-| Workflow      | Platform                        | Runner            | Toolchain install         |
-| ------------- | ------------------------------- | ----------------- | ------------------------- |
-| `FreeBSD.yml` | FreeBSD 14.4 x86-64 and AArch64 | QEMU VM on Ubuntu | `pkg llvm22`              |
-| `Linux.yml`   | Ubuntu 24.04 x86-64 and AArch64, plus Linux/macOS AArch64 cross builds | GitHub-hosted | `apt.llvm.org` → Clang 22 |
-| `macOS.yml`   | macOS 26 Intel and Apple Silicon, plus an x86-64 compiler → AArch64 target cross job | GitHub-hosted | Homebrew `llvm@22` |
-| `Windows.yml` | Windows 2025 and Windows 11 ARM, plus Windows/macOS AArch64 cross coverage | GitHub-hosted | Runner's bundled Clang |
+| Workflow      | Platform                                                                             | Runner            | Toolchain install         |
+| ------------- | ------------------------------------------------------------------------------------ | ----------------- | ------------------------- |
+| `FreeBSD.yml` | FreeBSD 14.4 x86-64 and AArch64                                                      | QEMU VM on Ubuntu | `pkg llvm22`              |
+| `Linux.yml`   | Ubuntu 24.04 x86-64 and AArch64, plus Linux/macOS AArch64 cross builds               | GitHub-hosted     | `apt.llvm.org` → Clang 22 |
+| `macOS.yml`   | macOS 26 Intel and Apple Silicon, plus an x86-64 compiler → AArch64 target cross job | GitHub-hosted     | Homebrew `llvm@22`        |
+| `Windows.yml` | Windows 2025 and Windows 11 ARM, plus Windows/macOS AArch64 cross coverage           | GitHub-hosted     | Runner's bundled Clang    |
 
 Their status is shown by the badges at the top of the [README](../README.md).
 
@@ -31,8 +31,7 @@ No file is allowed to name a toolchain program. The second check has a short all
 
 The guard runs as its own job in `CodeQuality.yml` and as the first step of `Test.sh` and `Test.ps1`, beside the platform-isolation check.
 
-Every platform build configures with `-DRUX_BUILD_TESTS=ON` and runs the C++ unit tests (doctest via `ctest`) before uploading the binary artifact; see [Development Workflow](Workflow.md) for the test layout.
-The Linux test job additionally checks every maintained Rux source with `rux fmt --check`, complementing the C++ formatting job without compiling the compiler a second time in `CodeQuality.yml`.
+Every platform build configures with `-DRUX_BUILD_TESTS=ON` and runs the C++ unit tests (doctest via `ctest`) before uploading the binary artifact; see [Development Workflow](Workflow.md) for the test layout. The Linux test job additionally checks every maintained Rux source with `rux fmt --check`, complementing the C++ formatting job without compiling the compiler a second time in `CodeQuality.yml`.
 
 ## Triggers
 
@@ -48,10 +47,7 @@ Superseded runs on the same ref are cancelled automatically (`concurrency: cance
 
 ## What Each Run Does
 
-Each per-OS validation workflow has an x86-64/AArch64 matrix with two stages —
-**Build**, then **Test** (`needs: build`). Splitting them means each native
-binary is compiled once, uploaded as an architecture-labelled artifact, then
-downloaded by the matching test job. Using `Linux.yml` as the reference shape:
+Each per-OS validation workflow has an x86-64/AArch64 matrix with two stages — **Build**, then **Test** (`needs: build`). Splitting them means each native binary is compiled once, uploaded as an architecture-labelled artifact, then downloaded by the matching test job. Using `Linux.yml` as the reference shape:
 
 1. **Build job**
    - Check out the repo.
@@ -93,15 +89,7 @@ stages.
    - A separate x86-64 VM downloads the x86-64 compiler and creates a target-only `freebsd-aarch64` payload. A fresh AArch64 VM installs no compiler, verifies the payload manifest, hashes, modes, and ELF identity, then launches it directly.
    - The final `FreeBSD acceptance` job uses `if: always()` and checks both dependency results explicitly. A failed or skipped native matrix or transferred runtime therefore produces one stable failing check for branch protection.
 
-No cross job installs a target compiler, assembler, linker, archiver, or signer:
-Rux encodes, links, archives, and signs the target formats itself. Linux and
-Windows treat Mach-O as build-only foreign output. The Apple Silicon macOS job
-can execute `macos-aarch64` output directly, including when the compiler process
-runs under Rosetta. Native Windows, macOS, and FreeBSD AArch64 jobs run their
-complete language/package suites and platform fixtures. FreeBSD additionally
-requires transferred x86-64-compiler acceptance. The release workflow repeats
-these native acceptance sets and makes FreeBSD transferred acceptance a direct
-dependency of publication.
+No cross job installs a target compiler, assembler, linker, archiver, or signer: Rux encodes, links, archives, and signs the target formats itself. Linux and Windows treat Mach-O as build-only foreign output. The Apple Silicon macOS job can execute `macos-aarch64` output directly, including when the compiler process runs under Rosetta. Native Windows, macOS, and FreeBSD AArch64 jobs run their complete language/package suites and platform fixtures. FreeBSD additionally requires transferred x86-64-compiler acceptance. The release workflow repeats these native acceptance sets and makes FreeBSD transferred acceptance a direct dependency of publication.
 
 ### Platform-Specific Quirks
 
@@ -122,9 +110,7 @@ The following must pass before a PR can merge (configured in branch protection �
 - **`macOS.yml`** (macOS 26 Intel and Apple Silicon, full native ARM64 fixtures, and the Rosetta compiler cross job)
 - **`Windows.yml`** (Windows x86-64 and AArch64, and the x86-64 compiler → AArch64 target cross job)
 
-Branch protection requires the aggregate `FreeBSD acceptance` job. It depends
-on both the ordinary FreeBSD test matrix and transferred AArch64 runtime job,
-and fails explicitly if either path fails or is skipped.
+Branch protection requires the aggregate `FreeBSD acceptance` job. It depends on both the ordinary FreeBSD test matrix and transferred AArch64 runtime job, and fails explicitly if either path fails or is skipped.
 
 ## Reproducing CI Locally
 
@@ -154,12 +140,7 @@ To reproduce the Linux cross job, build and check the target without launching i
 
 On an AArch64 Linux machine, `sh Test.sh --target linux-aarch64` adds the policy checks, format pass, C++ unit tests, and directly executed Rux target tests. A physical x86-64 machine refuses that target test run before compiling the suite.
 
-On native FreeBSD AArch64, reproduce the ordinary and focused runtime paths
-with `sh Test.sh` followed by
-`sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux`. The transferred producer
-and consumer commands are documented in the
-[FreeBSD platform guide](Platforms/FreeBSD.md#cross-compiling); the consumer
-must run on a separate native AArch64 FreeBSD machine.
+On native FreeBSD AArch64, reproduce the ordinary and focused runtime paths with `sh Test.sh` followed by `sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux`. The transferred producer and consumer commands are documented in the [FreeBSD platform guide](Platforms/FreeBSD.md#cross-compiling); the consumer must run on a separate native AArch64 FreeBSD machine.
 
 The Windows required check is the same flow, prefixed by the developer-environment step CI uses. From PowerShell at the repository root:
 

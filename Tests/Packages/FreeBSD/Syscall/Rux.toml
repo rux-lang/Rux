@@ -5,11 +5,11 @@ Version = 1
 Name = "Syscall"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Package test for Bsd: Syscall"
+Description = "Package test for FreeBSD: Syscall"
 
 [Dependencies]
-Bsd = { Path = "../../../../Packages/Bsd" }
 Core = { Path = "../../../../Packages/Core" }
+FreeBSD = { Path = "../../../../Packages/FreeBSD" }
 
 [Build]
-Output = "../../../../Bin/Tests/Packages/Bsd"
+Output = "../../../../Bin/Tests/Packages/FreeBSD"

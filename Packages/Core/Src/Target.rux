@@ -1,46 +1,26 @@
 // Operating systems that can be selected by compile-time target values
 enum OperatingSystem: uint8 {
     Unknown = 0,
-    AIX = 1,
-    Android = 2,
-    DragonFlyBSD = 3,
-    FreeBSD = 4,
-    Fuchsia = 5,
-    Haiku = 6,
-    Illumos = 7,
-    IOS = 8,
-    Linux = 9,
-    MacOS = 10,
-    NetBSD = 11,
-    OpenBSD = 12,
-    QNX = 13,
-    Redox = 14,
-    Solaris = 15,
-    Windows = 16
+    FreeBSD = 1,
+    Linux = 2,
+    MacOS = 3,
+    Windows = 4
 }
 
 // Processor architectures that can be selected by compile-time target values
 #Allow("naming.type")
 enum Architecture: uint8 {
     Unknown = 0,
-    ARM32 = 1,
-    AArch64 = 2,
-    RISCV32 = 3,
-    RISCV64 = 4,
-    X86Bit32 = 5,
-    X86_64 = 6
+    AArch64 = 1,
+    X86_64 = 2
 }
 
 // Application binary interfaces used by compilation targets
 enum ApplicationBinaryInterface: uint8 {
     Unknown = 0,
-    AAPCS = 1,
-    AAPCS64 = 2,
-    RiscvIlp32 = 3,
-    RiscvLp64 = 4,
-    SystemV = 5,
-    WindowsX64 = 6,
-    WindowsX86 = 7
+    AAPCS64 = 1,
+    SystemV = 2,
+    WindowsX64 = 3
 }
 
 // CPU features recognized by compile-time target feature checks
@@ -49,13 +29,12 @@ enum TargetFeature: uint8 {
     AVX2 = 1,
     AVX512 = 2,
     NEON = 3,
-    RVV = 4,
-    SSE2 = 5,
-    SSE3 = 6,
-    SSE41 = 7,
-    SSE42 = 8,
-    SSSE3 = 9,
-    SVE = 10
+    SSE2 = 4,
+    SSE3 = 5,
+    SSE41 = 6,
+    SSE42 = 7,
+    SSSE3 = 8,
+    SVE = 9
 }
 
 // Byte order used by a compilation target
@@ -67,9 +46,8 @@ enum Endianness: uint8 {
 // Sizes assigned to the fundamental integer and pointer types
 enum DataModel: uint8 {
     Unknown = 0,
-    ILP32 = 1,
-    LLP64 = 2,
-    LP64 = 3
+    LLP64 = 1,
+    LP64 = 2
 }
 
 // Object-file format emitted for a compilation target
@@ -77,8 +55,7 @@ enum ObjectFormat: uint8 {
     Unknown = 0,
     COFF = 1,
     ELF = 2,
-    MachO = 3,
-    Wasm = 4
+    MachO = 3
 }
 
 // Properties of the active compilation target

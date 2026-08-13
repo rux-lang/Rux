@@ -15,57 +15,39 @@
 
 namespace Rux::Target {
 inline constexpr std::size_t CacheLineSize = 64;
-inline constexpr std::size_t Pointer32 = 4;
 inline constexpr std::size_t Pointer64 = 8;
 
 // ---- Enumerations -----------------------------------------------------------
+//
+// Rux supports four operating systems and two architectures. Every enumerator
+// below names something a supported target can actually produce; a name no
+// build can reach does not belong here.
 
 enum class OS : std::uint8_t {
     Unknown = 0,
-    AIX = 1,
-    Android = 2,
-    DragonFlyBSD = 3,
-    FreeBSD = 4,
-    Fuchsia = 5,
-    Haiku = 6,
-    Illumos = 7,
-    iOS = 8,
-    Linux = 9,
-    MacOS = 10,
-    NetBSD = 11,
-    OpenBSD = 12,
-    QNX = 13,
-    Redox = 14,
-    Solaris = 15,
-    Windows = 16,
+    FreeBSD = 1,
+    Linux = 2,
+    MacOS = 3,
+    Windows = 4,
 };
 
 enum class Arch : std::uint8_t {
     Unknown = 0,
-    ARM32 = 1,
-    AArch64 = 2,
-    RISCV32 = 3,
-    RISCV64 = 4,
-    X86_32 = 5,
-    X86_64 = 6,
+    AArch64 = 1,
+    X86_64 = 2,
 };
 
 enum class DataModel : std::uint8_t {
     Unknown = 0,
-    ILP32 = 1,
-    LLP64 = 2,
-    LP64 = 3,
+    LLP64 = 1,
+    LP64 = 2,
 };
 
 enum class ABI : std::uint8_t {
     Unknown = 0,
-    AAPCS = 1,
-    AAPCS64 = 2,
-    RISCV_ILP32 = 3,
-    RISCV_LP64 = 4,
-    SystemV = 5,
-    WindowsX64 = 6,
-    WindowsX86 = 7,
+    AAPCS64 = 1,
+    SystemV = 2,
+    WindowsX64 = 3,
 };
 
 enum class CallingConv : std::uint8_t {
@@ -73,10 +55,7 @@ enum class CallingConv : std::uint8_t {
     C,
     SysV,
     Win64,
-    StdCall,
-    AAPCS,
     AAPCS64,
-    RISCV,
 };
 
 enum class Compiler : std::uint8_t {
@@ -101,7 +80,6 @@ enum class ObjectFormat : std::uint8_t {
     COFF = 1,
     ELF = 2,
     MachO = 3,
-    Wasm = 4,
 };
 
 // ---- CPU feature bitset -----------------------------------------------------
@@ -150,9 +128,6 @@ inline constexpr CpuFeatures AVX512{1ull << 7};
 // ARM
 inline constexpr CpuFeatures NEON{1ull << 16};
 inline constexpr CpuFeatures SVE{1ull << 17};
-
-// RISC-V
-inline constexpr CpuFeatures RVV{1ull << 24};
 } // namespace CpuFeature
 
 struct RuntimeCpuInfo {
@@ -171,36 +146,12 @@ struct MemoryInfo {
 
 [[nodiscard]] constexpr std::string_view ToString(OS os) noexcept {
     switch (os) {
-    case OS::AIX:
-        return "AIX";
-    case OS::Android:
-        return "Android";
-    case OS::DragonFlyBSD:
-        return "Dragonfly";
     case OS::FreeBSD:
         return "FreeBSD";
-    case OS::Fuchsia:
-        return "Fuchsia";
-    case OS::Haiku:
-        return "Haiku";
-    case OS::Illumos:
-        return "Illumos";
-    case OS::iOS:
-        return "iOS";
     case OS::Linux:
         return "Linux";
     case OS::MacOS:
         return "macOS";
-    case OS::NetBSD:
-        return "NetBSD";
-    case OS::OpenBSD:
-        return "OpenBSD";
-    case OS::QNX:
-        return "QNX";
-    case OS::Redox:
-        return "Redox";
-    case OS::Solaris:
-        return "Solaris";
     case OS::Windows:
         return "Windows";
     default:
@@ -210,18 +161,10 @@ struct MemoryInfo {
 
 [[nodiscard]] constexpr std::string_view ToString(Arch arch) noexcept {
     switch (arch) {
-    case Arch::X86_32:
-        return "x86";
-    case Arch::X86_64:
-        return "x86_64";
-    case Arch::ARM32:
-        return "arm32";
     case Arch::AArch64:
         return "aarch64";
-    case Arch::RISCV32:
-        return "riscv32";
-    case Arch::RISCV64:
-        return "riscv64";
+    case Arch::X86_64:
+        return "x86_64";
     default:
         return "unknown";
     }
@@ -229,28 +172,18 @@ struct MemoryInfo {
 
 [[nodiscard]] constexpr std::string_view ToDisplayString(Arch arch) noexcept {
     switch (arch) {
-    case Arch::X86_64:
-        return "x86-64";
     case Arch::AArch64:
         return "AArch64";
+    case Arch::X86_64:
+        return "x86-64";
     default:
         return ToString(arch);
     }
 }
 
-[[nodiscard]] constexpr bool Is64Bit(Arch arch) noexcept {
-    switch (arch) {
-    case Arch::X86_64:
-    case Arch::AArch64:
-    case Arch::RISCV64:
-        return true;
-    default:
-        return false;
-    }
-}
-
-[[nodiscard]] constexpr std::size_t GetPointerSize(Arch arch) noexcept {
-    return Is64Bit(arch) ? Pointer64 : Pointer32;
+// Every supported architecture is 64-bit, so pointer size does not vary.
+[[nodiscard]] constexpr std::size_t GetPointerSize(Arch) noexcept {
+    return Pointer64;
 }
 
 [[nodiscard]] constexpr ObjectFormat GetObjectFormat(OS os) noexcept {
@@ -259,13 +192,8 @@ struct MemoryInfo {
         return ObjectFormat::COFF;
     case OS::MacOS:
         return ObjectFormat::MachO;
-    case OS::DragonFlyBSD:
     case OS::FreeBSD:
-    case OS::Illumos:
     case OS::Linux:
-    case OS::NetBSD:
-    case OS::OpenBSD:
-    case OS::Solaris:
         return ObjectFormat::ELF;
     default:
         return ObjectFormat::Unknown;
@@ -282,41 +210,18 @@ struct ABIInfo {
 };
 
 [[nodiscard]] constexpr ABIInfo GetABIInfo(OS os, Arch arch, DataModel model) noexcept {
-    // x86_64
     if (arch == Arch::X86_64) {
         if (os == OS::Windows && model == DataModel::LLP64) {
             return {ABI::WindowsX64, CallingConv::Win64, true, 16};
         }
         if (model == DataModel::LP64) {
-            // Linux, macOS, BSDs
+            // FreeBSD, Linux, macOS
             return {ABI::SystemV, CallingConv::SysV, false, 16};
         }
     }
 
-    // x86_32
-    if (arch == Arch::X86_32) {
-        if (os == OS::Windows) {
-            return {ABI::WindowsX86, CallingConv::StdCall, false, 4};
-        }
-        if (os == OS::Linux) {
-            return {ABI::SystemV, CallingConv::C, false, 4};
-        }
-    }
-
-    // ARM
     if (arch == Arch::AArch64) {
-        return {ABI::AAPCS64, CallingConv::AAPCS64, false, 16}; // Applies to Win/Lin/Mac
-    }
-    if (arch == Arch::ARM32) {
-        return {ABI::AAPCS, CallingConv::AAPCS, false, 8};
-    }
-
-    // RISC-V
-    if (arch == Arch::RISCV64) {
-        return {ABI::RISCV_LP64, CallingConv::RISCV, false, 16};
-    }
-    if (arch == Arch::RISCV32) {
-        return {ABI::RISCV_ILP32, CallingConv::RISCV, false, 16};
+        return {ABI::AAPCS64, CallingConv::AAPCS64, false, 16}; // Applies to every supported OS
     }
 
     return {ABI::Unknown, CallingConv::Default, false, 0};
@@ -340,21 +245,6 @@ inline constexpr OS HostOS = []() noexcept {
     if constexpr (RUX_OS_FREEBSD) {
         return OS::FreeBSD;
     }
-    if constexpr (RUX_OS_OPENBSD) {
-        return OS::OpenBSD;
-    }
-    if constexpr (RUX_OS_NETBSD) {
-        return OS::NetBSD;
-    }
-    if constexpr (RUX_OS_DRAGONFLY) {
-        return OS::DragonFlyBSD;
-    }
-    if constexpr (RUX_OS_SOLARIS) {
-        return OS::Solaris;
-    }
-    if constexpr (RUX_OS_ILLUMOS) {
-        return OS::Illumos;
-    }
     return OS::Unknown;
 }();
 
@@ -362,32 +252,13 @@ inline constexpr Arch HostArch = []() noexcept {
     if constexpr (RUX_ARCH_X86_64) {
         return Arch::X86_64;
     }
-    if constexpr (RUX_ARCH_X86) {
-        return Arch::X86_32;
-    }
     if constexpr (RUX_ARCH_AARCH64) {
         return Arch::AArch64;
-    }
-    if constexpr (RUX_ARCH_ARM32) {
-        return Arch::ARM32;
-    }
-    if constexpr (RUX_ARCH_RISCV64) {
-        return Arch::RISCV64;
-    }
-    if constexpr (RUX_ARCH_RISCV32) {
-        return Arch::RISCV32;
     }
     return Arch::Unknown;
 }();
 
-inline constexpr DataModel HostDataModel = []() noexcept {
-    if constexpr (RUX_OS_WINDOWS) {
-        return (RUX_ARCH_X86_64 || RUX_ARCH_AARCH64) ? DataModel::LLP64 : DataModel::ILP32;
-    }
-    else {
-        return (RUX_ARCH_X86_64 || RUX_ARCH_AARCH64 || RUX_ARCH_RISCV64) ? DataModel::LP64 : DataModel::ILP32;
-    }
-}();
+inline constexpr DataModel HostDataModel = RUX_OS_WINDOWS ? DataModel::LLP64 : DataModel::LP64;
 
 inline constexpr std::size_t HostPointerSize = GetPointerSize(HostArch);
 
@@ -433,9 +304,6 @@ inline constexpr CpuFeatures HostCpuFeatures = []() noexcept {
     }
     if constexpr (RUX_FEATURE_SVE) {
         f |= CpuFeature::SVE;
-    }
-    if constexpr (RUX_FEATURE_RVV) {
-        f |= CpuFeature::RVV;
     }
     return f;
 }();

@@ -7,8 +7,8 @@
 // header whenever you need to branch on the operating system, architecture,
 // compiler, or available CPU features at compile time.
 //
-//   #if RUX_OS_WINDOWS        // preprocessor
-//   if constexpr (RUX_IS_BSD) // C++
+//   #if RUX_OS_WINDOWS         // preprocessor
+//   if constexpr (RUX_IS_UNIX) // C++
 //
 // For the typed view of the same information (enums, host constants, ABI
 // tables) include "Target/Target.h"; for runtime hardware queries include
@@ -40,42 +40,10 @@
     #define RUX_OS_FREEBSD 0
 #endif
 
-#ifdef __OpenBSD__
-    #define RUX_OS_OPENBSD 1
-#else
-    #define RUX_OS_OPENBSD 0
-#endif
-
-#ifdef __NetBSD__
-    #define RUX_OS_NETBSD 1
-#else
-    #define RUX_OS_NETBSD 0
-#endif
-
-#ifdef __DragonFly__
-    #define RUX_OS_DRAGONFLY 1
-#else
-    #define RUX_OS_DRAGONFLY 0
-#endif
-
-#ifdef __illumos__
-    #define RUX_OS_ILLUMOS 1
-#else
-    #define RUX_OS_ILLUMOS 0
-#endif
-
-#if defined(__sun) && defined(__SVR4) && !defined(__illumos__)
-    #define RUX_OS_SOLARIS 1
-#else
-    #define RUX_OS_SOLARIS 0
-#endif
-
 // ---- Operating system families ----------------------------------------------
 
-#define RUX_IS_BSD (RUX_OS_FREEBSD || RUX_OS_OPENBSD || RUX_OS_NETBSD || RUX_OS_DRAGONFLY)
-#define RUX_IS_SUNOS (RUX_OS_SOLARIS || RUX_OS_ILLUMOS)
-#define RUX_IS_UNIX (RUX_OS_LINUX || RUX_OS_MACOS || RUX_IS_BSD || RUX_IS_SUNOS)
-#define RUX_IS_ELF_OS (RUX_OS_LINUX || RUX_IS_BSD || RUX_IS_SUNOS)
+#define RUX_IS_UNIX (RUX_OS_LINUX || RUX_OS_MACOS || RUX_OS_FREEBSD)
+#define RUX_IS_ELF_OS (RUX_OS_LINUX || RUX_OS_FREEBSD)
 
 // ---- Architecture -----------------------------------------------------------
 
@@ -85,38 +53,10 @@
     #define RUX_ARCH_X86_64 0
 #endif
 
-#if defined(__i386__) || defined(_M_IX86)
-    #define RUX_ARCH_X86 1
-#else
-    #define RUX_ARCH_X86 0
-#endif
-
 #if defined(__aarch64__) || defined(_M_ARM64)
     #define RUX_ARCH_AARCH64 1
 #else
     #define RUX_ARCH_AARCH64 0
-#endif
-
-#if defined(__arm__) || defined(_M_ARM)
-    #define RUX_ARCH_ARM32 1
-#else
-    #define RUX_ARCH_ARM32 0
-#endif
-
-#ifdef __riscv
-    #if __riscv_xlen == 64
-        #define RUX_ARCH_RISCV64 1
-    #else
-        #define RUX_ARCH_RISCV64 0
-    #endif
-    #if __riscv_xlen == 32
-        #define RUX_ARCH_RISCV32 1
-    #else
-        #define RUX_ARCH_RISCV32 0
-    #endif
-#else
-    #define RUX_ARCH_RISCV64 0
-    #define RUX_ARCH_RISCV32 0
 #endif
 
 // ---- Compiler ---------------------------------------------------------------
@@ -189,12 +129,6 @@
     #define RUX_FEATURE_NEON 1
 #else
     #define RUX_FEATURE_NEON 0
-#endif
-
-#ifdef __riscv_vector
-    #define RUX_FEATURE_RVV 1
-#else
-    #define RUX_FEATURE_RVV 0
 #endif
 
 #ifdef __ARM_FEATURE_SVE

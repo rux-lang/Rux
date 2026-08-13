@@ -12,46 +12,15 @@ const SysClose: uint64 = 6;
 const SysBrk: uint64 = 17;
 const SysGetPid: uint64 = 20;
 
-// Syscall numbers and clock ids differ between the BSDs.
-when #target.os {
-    .DragonFlyBSD => {
-        const SysMmap: uint64 = 197;
-        const SysMunmap: uint64 = 73;
-        const SysClockGetTime: uint64 = 232;
-        const SysNanosleep: uint64 = 240;
-        const ClockRealtime: int32 = 0;
-        const ClockMonotonic: int32 = 4;
-    },
-    .FreeBSD => {
-        // FreeBSD 14.4's native syscall table. AArch64 and x86-64 share these
-        // numbers; only the register/trap sequence below is architecture-owned.
-        const SysMmap: uint64 = 477;
-        const SysMunmap: uint64 = 73;
-        const SysClockGetTime: uint64 = 232;
-        const SysNanosleep: uint64 = 240;
-        const ClockRealtime: int32 = 0;
-        const ClockMonotonic: int32 = 4;
-    },
-    .NetBSD => {
-        const SysMmap: uint64 = 197;
-        const SysMunmap: uint64 = 73;
-        const SysClockGetTime: uint64 = 427;
-        const SysNanosleep: uint64 = 430;
-        const ClockRealtime: int32 = 0;
-        const ClockMonotonic: int32 = 3;
-    },
-    .OpenBSD => {
-        const SysMmap: uint64 = 49;
-        const SysMunmap: uint64 = 73;
-        const SysClockGetTime: uint64 = 87;
-        const SysNanosleep: uint64 = 91;
-        const ClockRealtime: int32 = 0;
-        const ClockMonotonic: int32 = 3;
-    },
-    else => #Error("Unsupported operating system")
-}
+// FreeBSD 14.4's native syscall table. AArch64 and x86-64 share these numbers;
+// only the register/trap sequence below is architecture-owned.
+const SysMmap: uint64 = 477;
+const SysMunmap: uint64 = 73;
+const SysClockGetTime: uint64 = 232;
+const SysNanosleep: uint64 = 240;
+const ClockRealtime: int32 = 0;
+const ClockMonotonic: int32 = 4;
 
-// These mmap/protection values match FreeBSD, OpenBSD, NetBSD, and DragonFlyBSD.
 const ProtectionNone: int32 = 0x00;
 const ProtectionRead: int32 = 0x01;
 const ProtectionWrite: int32 = 0x02;
@@ -67,8 +36,8 @@ struct Timespec {
     nanoseconds: int64;
 }
 
-// BSD kernels report an error from every system call the same way on both
-// architectures: they set the carry flag and leave a positive errno in the
+// The FreeBSD kernel reports an error from every system call the same way on
+// both architectures: it sets the carry flag and leaves a positive errno in the
 // result register. These wrappers return Linux-style -errno values for parity.
 // Where the call number and the arguments go differs, so each architecture
 // writes the whole wrapper.
@@ -85,7 +54,7 @@ struct Timespec {
 // in which each register has been read before it is written.
 when #target.arch {
     .X86_64 => {
-        // Executes a raw BSD system call without arguments.
+        // Executes a raw FreeBSD system call without arguments.
         #Abi(.SysV)
         asm func Syscall0(number: uint64) -> int64 {
             mov rax, rdi
@@ -96,7 +65,7 @@ when #target.arch {
             ret
         }
 
-        // Executes a raw BSD system call with one argument.
+        // Executes a raw FreeBSD system call with one argument.
         #Abi(.SysV)
         asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
             mov rax, rdi
@@ -108,7 +77,7 @@ when #target.arch {
             ret
         }
 
-        // Executes a raw BSD system call with two arguments.
+        // Executes a raw FreeBSD system call with two arguments.
         #Abi(.SysV)
         asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
             mov rax, rdi
@@ -121,7 +90,7 @@ when #target.arch {
             ret
         }
 
-        // Executes a raw BSD system call with three arguments.
+        // Executes a raw FreeBSD system call with three arguments.
         #Abi(.SysV)
         asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
             mov rax, rdi
@@ -135,7 +104,7 @@ when #target.arch {
             ret
         }
 
-        // Executes a raw BSD system call with four arguments.
+        // Executes a raw FreeBSD system call with four arguments.
         #Abi(.SysV)
         asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
             mov rax, rdi
@@ -150,7 +119,7 @@ when #target.arch {
             ret
         }
 
-        // Executes a raw BSD system call with five arguments.
+        // Executes a raw FreeBSD system call with five arguments.
         #Abi(.SysV)
         asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
             mov rax, rdi
@@ -166,7 +135,7 @@ when #target.arch {
             ret
         }
 
-        // Executes a raw BSD system call with six arguments.
+        // Executes a raw FreeBSD system call with six arguments.
         #Abi(.SysV)
         asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
             mov rax, rdi
@@ -184,7 +153,7 @@ when #target.arch {
         }
     },
     .AArch64 => {
-        // Executes a raw BSD system call without arguments.
+        // Executes a raw FreeBSD system call without arguments.
         asm func Syscall0(number: uint64) -> int64 {
             mov x8, x0
             svc #0
@@ -192,7 +161,7 @@ when #target.arch {
             ret
         }
 
-        // Executes a raw BSD system call with one argument.
+        // Executes a raw FreeBSD system call with one argument.
         asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
             mov x8, x0
             mov x0, x1
@@ -201,7 +170,7 @@ when #target.arch {
             ret
         }
 
-        // Executes a raw BSD system call with two arguments.
+        // Executes a raw FreeBSD system call with two arguments.
         asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
             mov x8, x0
             mov x0, x1
@@ -211,7 +180,7 @@ when #target.arch {
             ret
         }
 
-        // Executes a raw BSD system call with three arguments.
+        // Executes a raw FreeBSD system call with three arguments.
         asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
             mov x8, x0
             mov x0, x1
@@ -222,7 +191,7 @@ when #target.arch {
             ret
         }
 
-        // Executes a raw BSD system call with four arguments.
+        // Executes a raw FreeBSD system call with four arguments.
         asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
             mov x8, x0
             mov x0, x1
@@ -234,7 +203,7 @@ when #target.arch {
             ret
         }
 
-        // Executes a raw BSD system call with five arguments.
+        // Executes a raw FreeBSD system call with five arguments.
         asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
             mov x8, x0
             mov x0, x1
@@ -247,7 +216,7 @@ when #target.arch {
             ret
         }
 
-        // Executes a raw BSD system call with six arguments.
+        // Executes a raw FreeBSD system call with six arguments.
         asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
             mov x8, x0
             mov x0, x1
@@ -261,7 +230,7 @@ when #target.arch {
             ret
         }
     },
-    else => #Error("Unsupported BSD architecture")
+    else => #Error("Unsupported FreeBSD architecture")
 }
 
 func SignExtendFd(fd: int32) -> uint64 {
@@ -321,7 +290,7 @@ func Nanosleep(request: *Timespec, remaining: *Timespec) -> int64 {
     return Syscall2(SysNanosleep, request as uint64, remaining as uint64);
 }
 
-// Reads a BSD clock into time and returns zero or a negative errno value.
+// Reads a FreeBSD clock into time and returns zero or a negative errno value.
 func ClockGetTime(clockId: int32, time: *Timespec) -> int64 {
     return Syscall2(SysClockGetTime, (clockId as int64) as uint64, time as uint64);
 }

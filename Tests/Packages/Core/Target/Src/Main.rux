@@ -16,22 +16,13 @@ func Main() -> int {
     // Endianness is one of the two the enum defines.
     Assert(#target.endian == Endianness::Little || #target.endian == Endianness::Big, "endian");
 
-    // The pointer width is 32 or 64, and it agrees with the architecture: the
-    // 64-bit instruction sets carry 64-bit pointers, the 32-bit sets 32-bit ones.
-    Assert(#target.pointerBits == 32 || #target.pointerBits == 64, "pointerBits");
+    // Both supported instruction sets are 64-bit, so the pointer width is 64
+    // and agrees with the architecture.
+    Assert(#target.pointerBits == 64, "pointerBits");
 
     let is64 = #target.arch == Architecture::AArch64
-        || #target.arch == Architecture::RISCV64
         || #target.arch == Architecture::X86_64;
-    let is32 = #target.arch == Architecture::ARM32
-        || #target.arch == Architecture::RISCV32
-        || #target.arch == Architecture::X86Bit32;
-    if is64 {
-        Assert(#target.pointerBits == 64, "64-bit arch has 64-bit pointers");
-    }
-    if is32 {
-        Assert(#target.pointerBits == 32, "32-bit arch has 32-bit pointers");
-    }
+    Assert(is64, "the target architecture is one of the two supported 64-bit sets");
 
     // TODO: the Target.HasFeature intrinsic is not yet implemented in the
     // compiler -- calling it crashes at load with STATUS_ENTRYPOINT_NOT_FOUND

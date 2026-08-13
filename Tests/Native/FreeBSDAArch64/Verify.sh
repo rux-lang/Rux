@@ -6,7 +6,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/../../.." && pwd)
 rux=${1:-"$repo_root/Bin/rux"}
 output_dir="$repo_root/Bin/Tests/Native/Release"
-syscall_output="$repo_root/Bin/Tests/Packages/Bsd/Release/Syscall"
+syscall_output="$repo_root/Bin/Tests/Packages/FreeBSD/Release/Syscall"
 
 fail() {
     echo "FreeBSD AArch64 fixture failure: $*" >&2
@@ -40,7 +40,7 @@ build_fixture() {
 
 build_syscall_fixture() {
     log="$work_dir/FreeBSDAArch64Syscall.build.log"
-    if ! "$rux" --manifest "$repo_root/Tests/Packages/Bsd/Syscall/Rux.toml" build --release \
+    if ! "$rux" --manifest "$repo_root/Tests/Packages/FreeBSD/Syscall/Rux.toml" build --release \
         --target freebsd-aarch64 --quiet >"$log" 2>&1; then
         cat "$log" >&2
         fail "generation failed while building the BSD syscall package test"

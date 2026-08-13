@@ -2,7 +2,7 @@ import Core::{ #target };
 import Text::{ String, StringBuilder };
 
 when #target.os {
-    .DragonFlyBSD, .FreeBSD, .NetBSD, .OpenBSD => import Bsd::{ Read, StdIn },
+    .FreeBSD => import FreeBSD::{ Read, StdIn },
     .Linux => import Linux::{ Read, StdIn },
     .MacOS => import MacOS::{ Read, StdIn },
     .Windows => import Windows::{ GetStdHandle, ReadFile, StdInputHandle }

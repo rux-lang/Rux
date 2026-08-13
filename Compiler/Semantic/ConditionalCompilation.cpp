@@ -24,27 +24,16 @@
 
 namespace Rux {
 namespace {
-// The operating systems `#target.os` can name. Each is a real system, not a
-// family, so FreeBSD and OpenBSD remain distinct. `buildable` marks the ones a build can currently produce;
-// the rest are accepted so that code can name them, and comparing `#target.os` against
-// one warns rather than quietly never running.
-struct OsVariant {
-    std::string_view name;
-    bool buildable;
-};
-
-constexpr OsVariant OsVariants[] = {
-    {"AIX", false},     {"Android", false}, {"DragonFlyBSD", true}, {"FreeBSD", true},
-    {"Fuchsia", false}, {"Haiku", false},   {"Illumos", true},      {"IOS", false},
-    {"Linux", true},    {"MacOS", true},    {"NetBSD", true},       {"OpenBSD", true},
-    {"QNX", false},     {"Redox", false},   {"Solaris", true},      {"Windows", true},
-};
+// The operating systems `#target.os` can name. Each is one a build can
+// produce, so naming one is never a branch that quietly never runs.
+constexpr std::array OsVariants{"FreeBSD", "Linux", "MacOS", "Windows"};
 
 // Spellings of an OS that are not the variant name: what the host reports, or
 // what a target triple is called.
 constexpr std::pair<std::string_view, std::string_view> OsAliases[] = {
-    {"macos", "MacOS"},     {"osx", "MacOS"}, {"darwin", "MacOS"}, {"dragonfly", "DragonFlyBSD"},
-    {"illumos", "Illumos"}, {"ios", "IOS"},
+    {"macos", "MacOS"},
+    {"osx", "MacOS"},
+    {"darwin", "MacOS"},
 };
 
 // An enum value. `variant` is the name after the dot; `type` is the enum it
@@ -71,9 +60,9 @@ bool EqualsIgnoringCase(const std::string_view a, const std::string_view b) {
 // The `OS` variant an OS name denotes, however it is spelled ("macOS", "Darwin"
 // and "MacOS" are all `.MacOS`).
 std::optional<std::string> OsVariantFor(const std::string_view name) {
-    for (const auto &variant : OsVariants) {
-        if (EqualsIgnoringCase(name, variant.name)) {
-            return std::string(variant.name);
+    for (const std::string_view variant : OsVariants) {
+        if (EqualsIgnoringCase(name, variant)) {
+            return std::string(variant);
         }
     }
     for (const auto &[alias, variant] : OsAliases) {
@@ -84,20 +73,15 @@ std::optional<std::string> OsVariantFor(const std::string_view name) {
     return std::nullopt;
 }
 
-bool IsBuildableOs(const std::string_view variant) {
-    const auto it = std::ranges::find(OsVariants, variant, &OsVariant::name);
-    return it != std::end(OsVariants) && it->buildable;
-}
-
-constexpr std::array ArchVariants{"ARM32", "AArch64", "RISCV32", "RISCV64", "X86Bit32", "X86_64"};
-constexpr std::array AbiVariants{"AAPCS", "AAPCS64", "RiscvIlp32", "RiscvLp64", "SystemV", "WindowsX64", "WindowsX86"};
+constexpr std::array ArchVariants{"AArch64", "X86_64"};
+constexpr std::array AbiVariants{"AAPCS64", "SystemV", "WindowsX64"};
 constexpr std::array EndianVariants{"Big", "Little"};
-constexpr std::array DataModelVariants{"ILP32", "LLP64", "LP64"};
-constexpr std::array ObjectFormatVariants{"COFF", "ELF", "MachO", "Wasm"};
+constexpr std::array DataModelVariants{"LLP64", "LP64"};
+constexpr std::array ObjectFormatVariants{"COFF", "ELF", "MachO"};
 constexpr std::array BuildModeVariants{"Debug", "Release"};
 constexpr std::array OptimizationVariants{"None", "Size", "Speed"};
 constexpr std::array OutputKindVariants{"Executable", "SharedLibrary", "StaticLibrary", "SourceLibrary"};
-constexpr std::array TargetFeatureVariants{"AVX",  "AVX2",  "AVX512", "NEON",  "RVV", "SSE2",
+constexpr std::array TargetFeatureVariants{"AVX",  "AVX2",  "AVX512", "NEON",  "SSE2",
                                            "SSE3", "SSE41", "SSE42",  "SSSE3", "SVE"};
 constexpr std::array CompilerFeatures{
     "conditional-compilation",    "namespaced-intrinsics",    "target-intrinsics",   "build-intrinsics",
@@ -115,18 +99,10 @@ void RegisterVariants(std::unordered_map<std::string, std::vector<std::string>> 
 
 std::string ArchVariant(const Target::Arch arch) {
     switch (arch) {
-    case Target::Arch::X86_32:
-        return "X86Bit32";
-    case Target::Arch::X86_64:
-        return "X86_64";
-    case Target::Arch::ARM32:
-        return "ARM32";
     case Target::Arch::AArch64:
         return "AArch64";
-    case Target::Arch::RISCV32:
-        return "RISCV32";
-    case Target::Arch::RISCV64:
-        return "RISCV64";
+    case Target::Arch::X86_64:
+        return "X86_64";
     default:
         return "Unknown";
     }
@@ -134,20 +110,12 @@ std::string ArchVariant(const Target::Arch arch) {
 
 std::string AbiVariant(const Target::ABI abi) {
     switch (abi) {
-    case Target::ABI::SystemV:
-        return "SystemV";
-    case Target::ABI::WindowsX86:
-        return "WindowsX86";
-    case Target::ABI::WindowsX64:
-        return "WindowsX64";
-    case Target::ABI::AAPCS:
-        return "AAPCS";
     case Target::ABI::AAPCS64:
         return "AAPCS64";
-    case Target::ABI::RISCV_ILP32:
-        return "RiscvIlp32";
-    case Target::ABI::RISCV_LP64:
-        return "RiscvLp64";
+    case Target::ABI::SystemV:
+        return "SystemV";
+    case Target::ABI::WindowsX64:
+        return "WindowsX64";
     default:
         return "Unknown";
     }
@@ -155,12 +123,10 @@ std::string AbiVariant(const Target::ABI abi) {
 
 std::string DataModelVariant(const Target::DataModel model) {
     switch (model) {
-    case Target::DataModel::ILP32:
-        return "ILP32";
-    case Target::DataModel::LP64:
-        return "LP64";
     case Target::DataModel::LLP64:
         return "LLP64";
+    case Target::DataModel::LP64:
+        return "LP64";
     default:
         return "Unknown";
     }
@@ -168,14 +134,12 @@ std::string DataModelVariant(const Target::DataModel model) {
 
 std::string ObjectFormatVariant(const Target::ObjectFormat format) {
     switch (format) {
-    case Target::ObjectFormat::ELF:
-        return "ELF";
     case Target::ObjectFormat::COFF:
         return "COFF";
+    case Target::ObjectFormat::ELF:
+        return "ELF";
     case Target::ObjectFormat::MachO:
         return "MachO";
-    case Target::ObjectFormat::Wasm:
-        return "Wasm";
     default:
         return "Unknown";
     }
@@ -410,8 +374,8 @@ public:
         // `OperatingSystem` is built in; the program's own enums are collected
         // from its declarations, so a `when` can compare against those too.
         auto &operatingSystem = enumVariants["OperatingSystem"];
-        for (const auto &variant : OsVariants) {
-            operatingSystem.emplace_back(variant.name);
+        for (const char *variant : OsVariants) {
+            operatingSystem.emplace_back(variant);
         }
         RegisterVariants(enumVariants, "Arch", ArchVariants);
         RegisterVariants(enumVariants, "Architecture", ArchVariants);
@@ -637,8 +601,6 @@ private:
             return features.Has(Target::CpuFeature::NEON);
         if (name == "SVE")
             return features.Has(Target::CpuFeature::SVE);
-        if (name == "RVV")
-            return features.Has(Target::CpuFeature::RVV);
         return false;
     }
 
@@ -1151,9 +1113,8 @@ private:
 
     // Whether two enum values name the same variant. A shorthand such as
     // `.Windows` takes its enum from the value on the other side (`#target.os`,
-    // which is `OperatingSystem`); the variant is validated and an OS no build
-    // produces warns. Returns nullopt when the comparison is ill-formed (an
-    // error is reported).
+    // which is `OperatingSystem`), and the variant is validated against it.
+    // Returns nullopt when the comparison is ill-formed (an error is reported).
     std::optional<bool> EnumEquals(const EnumValue &left, const EnumValue &right, const SourceLocation location) {
         if (!left.type.empty() && !right.type.empty() && left.type != right.type) {
             EmitError(location, std::format("cannot compare '{}' with '{}'", left.type, right.type));
@@ -1174,10 +1135,6 @@ private:
                                                 type, JoinVariants(variants->second)));
                 reportedError = true;
                 return std::nullopt;
-            }
-            if (type == "OperatingSystem" && !IsBuildableOs(side->variant)) {
-                EmitWarning(location, std::format("no build target produces '.{}', so this branch is never taken",
-                                                  side->variant));
             }
         }
         return left.variant == right.variant;

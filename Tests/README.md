@@ -89,7 +89,7 @@ The native fixture set covers distinct artifact and ABI boundaries:
 | `ExitCode` | Freestanding executable entry and syscall exit |
 | `LibC` | Dynamic loader, fixed calls, C variadics, stdout, and libc exit |
 | `Assert` / `Panic` | Exact stderr diagnostics and non-success termination |
-| `Packages/Bsd/Syscall` | FreeBSD syscall numbers, errors, clocks, mmap, and munmap |
+| `Packages/FreeBSD/Syscall` | FreeBSD syscall numbers, errors, clocks, mmap, and munmap |
 | `Shared` | Shared-library export plus loader load/call/unload behavior |
 | `Static` | AArch64 relocatable members and deterministic archive structure |
 

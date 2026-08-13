@@ -401,9 +401,8 @@ func Do() -> int {
 )");
     const auto model = Analyze(parsed.module, "Windows");
     REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message ==
-          "'.Wndows' is not a variant of 'OperatingSystem'; the variants are: .AIX, .Android, .DragonFlyBSD, .FreeBSD, "
-          ".Fuchsia, .Haiku, .Illumos, .IOS, .Linux, .MacOS, .NetBSD, .OpenBSD, .QNX, .Redox, .Solaris, .Windows");
+    CHECK(model.diagnostics[0].message == "'.Wndows' is not a variant of 'OperatingSystem'; the variants are: "
+                                          ".FreeBSD, .Linux, .MacOS, .Windows");
 }
 
 TEST_CASE("#Error in a taken branch emits its message as a compile-time error") {
@@ -718,16 +717,16 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*func) == "2");
 }
 
-TEST_CASE("#target.os tells the BSDs apart") {
+TEST_CASE("#target.os tells the supported systems apart") {
     const std::string source = R"(
 import Core::{ #target, OperatingSystem };
 
 func Do() -> int {
     when #target.os == OperatingSystem::FreeBSD {
         return 1;
-    } else when #target.os == OperatingSystem::OpenBSD {
+    } else when #target.os == OperatingSystem::Linux {
         return 2;
-    } else when #target.os == OperatingSystem::DragonFlyBSD {
+    } else when #target.os == OperatingSystem::MacOS {
         return 3;
     } else {
         return 4;
@@ -739,39 +738,18 @@ func Do() -> int {
     CHECK_FALSE(Analyze(freeBsd.module, "FreeBSD").HasErrors());
     CHECK(ReturnedLiteral(*FindFunc(freeBsd.module, "Do")) == "1");
 
-    auto openBsd = ParseSource(source);
-    CHECK_FALSE(Analyze(openBsd.module, "OpenBSD").HasErrors());
-    CHECK(ReturnedLiteral(*FindFunc(openBsd.module, "Do")) == "2");
+    auto linux = ParseSource(source);
+    CHECK_FALSE(Analyze(linux.module, "Linux").HasErrors());
+    CHECK(ReturnedLiteral(*FindFunc(linux.module, "Do")) == "2");
 
-    // The host spelling of DragonFly BSD is "Dragonfly"; the variant is not.
-    auto dragonFly = ParseSource(source);
-    CHECK_FALSE(Analyze(dragonFly.module, "Dragonfly").HasErrors());
-    CHECK(ReturnedLiteral(*FindFunc(dragonFly.module, "Do")) == "3");
+    // The host spelling of macOS is "macOS"; the variant is "MacOS".
+    auto macos = ParseSource(source);
+    CHECK_FALSE(Analyze(macos.module, "macOS").HasErrors());
+    CHECK(ReturnedLiteral(*FindFunc(macos.module, "Do")) == "3");
 
-    auto netBsd = ParseSource(source);
-    CHECK_FALSE(Analyze(netBsd.module, "NetBSD").HasErrors());
-    CHECK(ReturnedLiteral(*FindFunc(netBsd.module, "Do")) == "4");
-}
-
-TEST_CASE("an OS no build target produces warns instead of quietly never running") {
-    auto parsed = ParseSource(R"(
-import Core::{ #target, OperatingSystem };
-
-func Do() -> int {
-    when #target.os == OperatingSystem::Haiku {
-        return 1;
-    }
-    return 0;
-}
-)");
-    const auto model = Analyze(parsed.module);
-    CHECK_FALSE(model.HasErrors());
-    REQUIRE(model.diagnostics.size() == 1);
-    CHECK(model.diagnostics[0].message == "no build target produces '.Haiku', so this branch is never taken");
-
-    const auto *func = FindFunc(parsed.module, "Do");
-    REQUIRE(func != nullptr);
-    CHECK(ReturnedLiteral(*func) == "0");
+    auto windows = ParseSource(source);
+    CHECK_FALSE(Analyze(windows.module, "Windows").HasErrors());
+    CHECK(ReturnedLiteral(*FindFunc(windows.module, "Do")) == "4");
 }
 
 TEST_CASE("a misspelled OS variant is an error, not a silently false branch") {
@@ -787,10 +765,8 @@ func Do() -> int {
 )");
     const auto model = Analyze(parsed.module);
     REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message ==
-          "'.Wndows' is not a variant of 'OperatingSystem'; the variants are: .AIX, .Android, .DragonFlyBSD, .FreeBSD, "
-          ".Fuchsia, "
-          ".Haiku, .Illumos, .IOS, .Linux, .MacOS, .NetBSD, .OpenBSD, .QNX, .Redox, .Solaris, .Windows");
+    CHECK(model.diagnostics[0].message == "'.Wndows' is not a variant of 'OperatingSystem'; the variants are: "
+                                          ".FreeBSD, .Linux, .MacOS, .Windows");
 }
 
 TEST_CASE("compiler-initialized constants are ordinary expressions outside a when condition") {

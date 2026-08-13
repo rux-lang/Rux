@@ -5142,24 +5142,14 @@ SemanticAnalyzer::SemanticAnalyzer(std::vector<Module *> userModules, std::vecto
                                    std::string inputPackageName, std::string inputTargetSystem)
     : SemanticAnalyzer(std::move(userModules), std::move(inputDeps), std::move(inputPackageName),
                        CompileTimeContext{}) {
-    if (inputTargetSystem == "Windows")
-        compileTimeContext.target.os = Target::OS::Windows;
+    if (inputTargetSystem == "FreeBSD")
+        compileTimeContext.target.os = Target::OS::FreeBSD;
     else if (inputTargetSystem == "Linux")
         compileTimeContext.target.os = Target::OS::Linux;
     else if (inputTargetSystem == "macOS" || inputTargetSystem == "MacOS")
         compileTimeContext.target.os = Target::OS::MacOS;
-    else if (inputTargetSystem == "FreeBSD")
-        compileTimeContext.target.os = Target::OS::FreeBSD;
-    else if (inputTargetSystem == "OpenBSD")
-        compileTimeContext.target.os = Target::OS::OpenBSD;
-    else if (inputTargetSystem == "NetBSD")
-        compileTimeContext.target.os = Target::OS::NetBSD;
-    else if (inputTargetSystem == "Dragonfly" || inputTargetSystem == "DragonFlyBSD")
-        compileTimeContext.target.os = Target::OS::DragonFlyBSD;
-    else if (inputTargetSystem == "Solaris")
-        compileTimeContext.target.os = Target::OS::Solaris;
-    else if (inputTargetSystem == "Illumos")
-        compileTimeContext.target.os = Target::OS::Illumos;
+    else if (inputTargetSystem == "Windows")
+        compileTimeContext.target.os = Target::OS::Windows;
     compileTimeContext.target.object_format = Target::GetObjectFormat(compileTimeContext.target.os);
 }
 

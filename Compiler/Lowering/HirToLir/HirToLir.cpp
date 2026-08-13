@@ -219,8 +219,7 @@ private:
         call.cVariadicFixedParamCount = found->second;
 
         const bool promotesAArch64 = targetContext.arch == Target::Arch::AArch64 &&
-                                     (targetContext.os == Target::OS::MacOS || targetContext.os == Target::OS::iOS ||
-                                      targetContext.os == Target::OS::FreeBSD);
+                                     (targetContext.os == Target::OS::MacOS || targetContext.os == Target::OS::FreeBSD);
         if (!promotesAArch64) {
             return;
         }

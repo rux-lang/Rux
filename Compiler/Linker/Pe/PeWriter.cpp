@@ -78,6 +78,11 @@ using ApplyPeRelocation = bool (*)(Buf &, size_t, uint64_t, uint64_t, int64_t, u
 struct PeArchitectureConfig {
     uint16_t machine = 0;
     uint8_t codePadding = 0;
+    // Oldest Windows release whose loader accepts an image for this machine.
+    // ARM64 was introduced in Windows 10, and its loader rejects an image that
+    // claims an earlier subsystem with "%1 is not a valid Win32 application".
+    uint16_t minimumOsVersionMajor = 0;
+    uint16_t minimumOsVersionMinor = 0;
     BuildPeEntryStub buildEntryStub = nullptr;
     AppendPeImportThunk appendImportThunk = nullptr;
     ApplyPeRelocation applyRelocation = nullptr;
@@ -198,6 +203,8 @@ static const PeArchitectureConfig *PeArchitectureFor(const Target::Arch arch) {
     static constexpr PeArchitectureConfig x86_64{
         .machine = 0x8664, // IMAGE_FILE_MACHINE_AMD64
         .codePadding = 0xCC,
+        .minimumOsVersionMajor = 6, // Windows Vista
+        .minimumOsVersionMinor = 0,
         .buildEntryStub = BuildX86_64EntryStub,
         .appendImportThunk = AppendX86_64ImportThunk,
         .applyRelocation = ApplyX86_64PeRelocation,
@@ -205,6 +212,8 @@ static const PeArchitectureConfig *PeArchitectureFor(const Target::Arch arch) {
     static constexpr PeArchitectureConfig aarch64{
         .machine = 0xAA64, // IMAGE_FILE_MACHINE_ARM64
         .codePadding = 0,
+        .minimumOsVersionMajor = 10, // Windows 10, the first ARM64 release
+        .minimumOsVersionMinor = 0,
         .buildEntryStub = BuildAArch64EntryStub,
         .appendImportThunk = AppendAArch64ImportThunk,
         .applyRelocation = ApplyAArch64PeRelocation,
@@ -1068,13 +1077,13 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     wU64(imageBase);
     wU32(kSecAlign);
     wU32(kFileAlign);
-    wU16(6);
-    wU16(0); // MajorOSVersion / MinorOSVersion
+    wU16(architecture->minimumOsVersionMajor);
+    wU16(architecture->minimumOsVersionMinor); // MajorOSVersion / MinorOSVersion
     wU16(0);
     wU16(0); // MajorImageVersion / MinorImageVersion
-    wU16(6);
-    wU16(0); // MajorSubsystemVersion 6.0 (Vista+)
-    wU32(0); // Win32VersionValue
+    wU16(architecture->minimumOsVersionMajor);
+    wU16(architecture->minimumOsVersionMinor); // MajorSubsystemVersion / MinorSubsystemVersion
+    wU32(0);                                   // Win32VersionValue
     wU32(sizeOfImage);
     wU32(sizeOfHeaders);
     wU32(0); // CheckSum

@@ -216,7 +216,7 @@ void CheckWrappers(const AssembledSource &source, const std::uint32_t numberMove
 // portable packages have none and are folded for Linux, which their sources
 // never ask about.
 [[nodiscard]] std::string_view OsForPackage(const std::string_view package) {
-    if (package == "Bsd") {
+    if (package == "FreeBSD") {
         return "freebsd";
     }
     if (package == "MacOS") {
@@ -245,13 +245,13 @@ TEST_CASE("macOS AArch64 system-call wrappers trap through x16 and normalize a c
 }
 
 TEST_CASE("FreeBSD AArch64 BSD system-call wrappers assemble through x8 and normalize a carry error") {
-    const AssembledSource bsd = AssembleSourceFor(PackageSource("Bsd", "Bsd.rux"), "freebsd-aarch64");
+    const AssembledSource bsd = AssembleSourceFor(PackageSource("FreeBSD", "FreeBSD.rux"), "freebsd-aarch64");
     CHECK(bsd.diagnostics.empty());
     CheckWrappers(bsd, MovX8FromX0, Svc0, /*carryMeansError=*/true);
 }
 
 TEST_CASE("FreeBSD AArch64 BSD constants match the 14.4 syscall and mmap surface") {
-    const AssembledSource bsd = AssembleSourceFor(PackageSource("Bsd", "Bsd.rux"), "freebsd-aarch64");
+    const AssembledSource bsd = AssembleSourceFor(PackageSource("FreeBSD", "FreeBSD.rux"), "freebsd-aarch64");
     CHECK(bsd.diagnostics.empty());
 
     const std::map<std::string, std::string> expected = {
@@ -285,7 +285,7 @@ TEST_CASE("FreeBSD AArch64 BSD constants match the 14.4 syscall and mmap surface
 }
 
 TEST_CASE("FreeBSD AArch64 BSD package checks both target conditions through the public artifact path") {
-    const std::filesystem::path manifestPath = PackageTestManifest("Bsd", "Syscall");
+    const std::filesystem::path manifestPath = PackageTestManifest("FreeBSD", "Syscall");
     auto loaded = Manifest::Load(manifestPath);
     REQUIRE_MESSAGE(loaded.Ok(), manifestPath.string());
 
@@ -317,9 +317,9 @@ TEST_CASE("FreeBSD AArch64 BSD package checks both target conditions through the
     CHECK(result.primaryArtifactPath.empty());
 
     // The exact inline bodies were assembled to AArch64 bytes above, and the
-    // public driver now exposes the same target to artifact-producing commands.
-    CHECK(Driver::UnsupportedBackendReason("freebsd-aarch64").empty());
-    CHECK(Driver::UnsupportedBackendReason("freebsd-arm64").empty());
+    // public driver exposes the same target to artifact-producing commands.
+    CHECK(Driver::IsSupportedTargetTriple("freebsd-aarch64"));
+    CHECK(Driver::IsSupportedTargetTriple("freebsd-arm64"));
 }
 
 TEST_CASE("Math's AArch64 bodies are the one instruction each operation names") {

@@ -42,8 +42,7 @@ struct Elf64Profile {
     std::size_t pltEntrySize;
 };
 
-// FreeBSD AArch64 is available here for direct-linker development while its
-// public compiler-driver gate remains closed.
+// Linux and FreeBSD are the two ELF targets Rux supports, on both architectures.
 [[nodiscard]] constexpr std::optional<Elf64Profile> Elf64ProfileFor(const OS os, const Arch arch) noexcept {
     if (arch != Arch::X86_64 && arch != Arch::AArch64) {
         return std::nullopt;
@@ -72,9 +71,6 @@ struct Elf64Profile {
     case OS::Linux:
         profile.targetName = aarch64 ? "linux-aarch64" : "linux-x86_64";
         return profile;
-    case OS::Android:
-        profile.targetName = aarch64 ? "android-aarch64" : "android-x86_64";
-        return profile;
     case OS::FreeBSD:
         profile.targetName = aarch64 ? "freebsd-aarch64" : "freebsd-x86_64";
         profile.osAbi = 9;
@@ -84,39 +80,8 @@ struct Elf64Profile {
         profile.definesBsdProcessGlobals = true;
         profile.definesElfAuxVector = true;
         return profile;
-    case OS::DragonFlyBSD:
-        profile.targetName = "dragonfly-x86_64";
-        profile.interpreter = "/libexec/ld-elf.so.2";
-        profile.defaultLibc = "libc.so.8";
-        break;
-    case OS::OpenBSD:
-        profile.targetName = "openbsd-x86_64";
-        profile.osAbi = 12;
-        profile.interpreter = "/usr/libexec/ld.so";
-        profile.defaultLibc = "libc.so.103.0";
-        break;
-    case OS::NetBSD:
-        profile.targetName = "netbsd-x86_64";
-        profile.osAbi = 2;
-        profile.interpreter = "/libexec/ld.elf_so";
-        profile.defaultLibc = "libc.so.12";
-        break;
-    case OS::Solaris:
-    case OS::Illumos:
-        profile.targetName = os == OS::Solaris ? "solaris-x86_64" : "illumos-x86_64";
-        profile.osAbi = 6;
-        profile.interpreter = "/lib/amd64/ld.so.1";
-        profile.defaultLibc = "libc.so.1";
-        break;
     default:
         return std::nullopt;
     }
-
-    if (aarch64) {
-        return std::nullopt;
-    }
-    profile.freestandingExitSyscall = 1;
-    profile.definesBsdProcessGlobals = os == OS::DragonFlyBSD || os == OS::OpenBSD || os == OS::NetBSD;
-    return profile;
 }
 } // namespace Rux::Target

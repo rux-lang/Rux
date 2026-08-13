@@ -1,7 +1,7 @@
 import Core::{ #target, #Error };
 
 when #target.os {
-    .DragonFlyBSD, .FreeBSD, .NetBSD, .OpenBSD => import Bsd::{
+    .FreeBSD => import FreeBSD::{
         IsError, Mmap, MapAnonymous, MapPrivate, ProtectionRead, ProtectionWrite
     },
     .Linux => import Linux::{
@@ -19,7 +19,7 @@ when #target.os {
 // https://rux-lang.dev/api/memory/alloc
 func Alloc(size: uint) -> *var opaque {
     when #target.os {
-        .DragonFlyBSD, .FreeBSD, .Linux, .MacOS, .NetBSD, .OpenBSD => {
+        .FreeBSD, .Linux, .MacOS => {
             // Two machine words keep the returned address aligned to 16 bytes.
             const HeaderSize: uint = 16;
             let total = size + HeaderSize;

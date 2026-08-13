@@ -1064,37 +1064,22 @@ TEST_CASE("a target triple resolves to the machine it names rather than to the h
     CHECK(TargetContextForTriple("macos-aarch64").object_format == Target::ObjectFormat::MachO);
 }
 
-TEST_CASE("the unsupported-target diagnostic follows the back end that would produce the artifact") {
-    // Both back ends encode and link in-process, so the answer is a property of
-    // the target alone. x86-64 reaches every supported operating system.
-    CHECK(UnsupportedBackendReason("linux-x86_64").empty());
-    CHECK(UnsupportedBackendReason("windows-x86_64").empty());
-    CHECK(UnsupportedBackendReason("macos-x86_64").empty());
-
-    // AArch64 reaches Linux and FreeBSD ELF, Windows PE, and Mach-O under
-    // either spelling of the triple, from a host of either architecture.
-    CHECK(UnsupportedBackendReason("linux-aarch64").empty());
-    CHECK(UnsupportedBackendReason("linux-arm64").empty());
-    CHECK(UnsupportedBackendReason("windows-aarch64").empty());
-    CHECK(UnsupportedBackendReason("windows-arm64").empty());
-    CHECK(UnsupportedBackendReason("macos-aarch64").empty());
-    CHECK(UnsupportedBackendReason("macos-arm64").empty());
-    CHECK(UnsupportedBackendReason("freebsd-aarch64").empty());
-    CHECK(UnsupportedBackendReason("freebsd-arm64").empty());
-
-    // FreeBSD support does not widen ELF output to the other System V targets.
-    for (const std::string_view target :
-         {"openbsd-aarch64", "netbsd-aarch64", "dragonfly-aarch64", "illumos-aarch64"}) {
-        const std::string reason = UnsupportedBackendReason(target);
-        CHECK(reason.contains(std::string(target)));
-        CHECK(reason.contains("not implemented yet"));
-        CHECK(reason.contains("Linux and FreeBSD ELF, Windows PE, and macOS Mach-O"));
+TEST_CASE("every supported triple is one a back end can produce") {
+    // Both back ends encode and link in-process, so a triple the driver accepts
+    // is one it can always build: four operating systems on two architectures,
+    // under either spelling of the architecture.
+    for (const std::string_view os : {"freebsd", "linux", "macos", "windows"}) {
+        for (const std::string_view arch : {"x86_64", "x64", "amd64", "aarch64", "arm64"}) {
+            CHECK(IsSupportedTargetTriple(std::string(os) + "-" + std::string(arch)));
+        }
     }
 
-    // An architecture with no back end at all names itself rather than a host.
-    const std::string riscv = UnsupportedBackendReason("linux-riscv64");
-    CHECK(riscv.contains("riscv64"));
-    CHECK(riscv.contains("not implemented yet"));
+    // Narrowing to those four did not leave the other System V targets, or an
+    // architecture with no back end, quietly accepted.
+    for (const std::string_view target : {"openbsd-x86_64", "netbsd-x86_64", "dragonfly-x86_64", "illumos-x86_64",
+                                          "openbsd-aarch64", "linux-riscv64", "linux-arm32", "windows-x86"}) {
+        CHECK_FALSE(IsSupportedTargetTriple(target));
+    }
 }
 
 TEST_CASE("compiler driver builds an executable for linux-aarch64") {

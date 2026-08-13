@@ -1,7 +1,7 @@
 import Core::{ OperatingSystem, #target };
 
 when #target.os == OperatingSystem::FreeBSD {
-    import Bsd::{
+    import FreeBSD::{
         ClockGetTime,
         ClockMonotonic,
         Errno,

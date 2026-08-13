@@ -3335,8 +3335,6 @@ private:
             return features.Has(Target::CpuFeature::NEON);
         if (name == "SVE")
             return features.Has(Target::CpuFeature::SVE);
-        if (name == "RVV")
-            return features.Has(Target::CpuFeature::RVV);
         return false;
     }
 

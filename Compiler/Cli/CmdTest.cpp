@@ -71,10 +71,6 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                    targetName, HostTargetTriple(), targetName, targetName, targetName);
         return 1;
     }
-    if (const auto reason = UnsupportedBackendReason(targetName); !reason.empty()) {
-        std::print(stderr, "error: {}\n", reason);
-        return 1;
-    }
     std::optional<std::filesystem::path> manifestPath;
     if (!opts.manifest.empty()) {
         manifestPath = opts.manifest;

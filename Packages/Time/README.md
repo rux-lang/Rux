@@ -12,7 +12,7 @@ rux add Rux/Time
 
 ## Planned surface
 
-A `Duration` type, a monotonic clock for measuring elapsed time, and a wall clock for calendar time — built over the platform primitives the binding packages already expose: `ClockGetTime` and `Timespec` on [Linux](../Linux) and the [BSDs](../Bsd), `GetTimeOfDay` and `Timeval` on [macOS](../MacOS), and `SystemTime` / `FileTime` on [Windows](../Windows).
+A `Duration` type, a monotonic clock for measuring elapsed time, and a wall clock for calendar time — built over the platform primitives the binding packages already expose: `ClockGetTime` and `Timespec` on [FreeBSD](../FreeBSD) and the [Linux](../Linux), `GetTimeOfDay` and `Timeval` on [macOS](../MacOS), and `SystemTime` / `FileTime` on [Windows](../Windows).
 
 ## License
 

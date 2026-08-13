@@ -41,25 +41,9 @@ bool Linker::CheckArchitecture() {
             return false;
         }
     }
-    if (targetArch == Target::Arch::X86_64 || artifactKind == ArtifactKind::StaticLibrary) {
-        return true;
-    }
-    // Beyond x86-64, ELF, PE, and Mach-O lay out AArch64 executable and shared
-    // library images.
-    if (targetOs == Target::OS::Windows && targetArch == Target::Arch::AArch64) {
-        return true;
-    }
-    const bool elf = targetOs != Target::OS::Windows && targetOs != Target::OS::MacOS;
-    if (elf && targetArch == Target::Arch::AArch64) {
-        return true;
-    }
-    if (targetOs == Target::OS::MacOS && targetArch == Target::Arch::AArch64) {
-        return true;
-    }
-    Error(std::format("linking {} for {} is not implemented yet",
-                      artifactKind == ArtifactKind::SharedLibrary ? "a shared library" : "an executable",
-                      Target::ToDisplayString(targetArch)));
-    return false;
+    // ELF, PE, and Mach-O all lay out both supported architectures, so every
+    // target that reaches here has a writer.
+    return true;
 }
 
 bool Linker::Link(const std::filesystem::path &outputPath) {
@@ -100,7 +84,7 @@ bool Linker::Link(const std::filesystem::path &outputPath) {
     case Target::OS::MacOS:
         return LinkMachO64(outputPath);
     default:
-        // Linux, the BSDs, Solaris, and illumos all emit ELF64.
+        // FreeBSD and Linux both emit ELF64.
         return LinkElf64(outputPath);
     }
 }

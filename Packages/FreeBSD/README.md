@@ -1,11 +1,11 @@
-# Bsd
+# FreeBSD
 
-BSD platform bindings: the raw syscall interface shared by FreeBSD, OpenBSD, NetBSD, and DragonFly BSD.
+FreeBSD platform bindings: the raw syscall interface, with no libc in between.
 
 ## Installation
 
 ```sh
-rux add Rux/Bsd
+rux add Rux/FreeBSD
 ```
 
 ## What it provides
@@ -17,13 +17,13 @@ rux add Rux/Bsd
 
 ## Platform
 
-The four BSDs only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:
+FreeBSD only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:
 
 ```rux
 import Core::#target;
 
 when #target.os {
-    .DragonFlyBSD, .FreeBSD, .NetBSD, .OpenBSD => import Bsd::{ StdOut, Write }
+    .FreeBSD => import FreeBSD::{ StdOut, Write }
 }
 ```
 
@@ -39,12 +39,12 @@ positive `errno` to the negative result used by the package API.
 Descriptor and clock identifiers are sign-extended before entering the generic
 `uint64` syscall interface. `Mmap` likewise preserves a signed descriptor while
 passing the FreeBSD 14 mapping constants and all six arguments directly. The
-same source keeps separate x86-64 wrappers and target-selected constants for the
-other supported BSD systems.
+same source keeps a separate set of x86-64 wrappers, which reach the kernel
+through `syscall` and normalize the carry flag the same way.
 
 ## Documentation
 
-<https://rux-lang.dev/docs/api/bsd>
+<https://rux-lang.dev/docs/api/freebsd>
 
 ## License
 

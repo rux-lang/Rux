@@ -55,12 +55,9 @@ struct timespec {
 
 // The C time functions live in the standard C library, which differs by platform.
 when #target.os {
-    .DragonFlyBSD => const TimeLib = "libc.so.8";
     .FreeBSD => const TimeLib = "libc.so.7";
     .Linux => const TimeLib = "libc.so.6";
     .MacOS => const TimeLib = "libSystem.B.dylib";
-    .NetBSD => const TimeLib = "libc.so.12";
-    .OpenBSD => const TimeLib = "libc.so.103.0";
     .Windows => const TimeLib = "msvcrt.dll";
     else => #Error("Unsupported operating system")
 }

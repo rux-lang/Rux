@@ -70,47 +70,6 @@ static uint32_t ElfHash(const std::string &name) {
     return h;
 }
 
-// Builds the OS-identification ELF note some BSDs require in order to
-// execute the binary, for the system the image is linked for. Empty on OSes
-// that need none.
-static Buf BuildOsNote(const Target::OS os) {
-    Buf n;
-    switch (os) {
-    case Target::OS::NetBSD:
-        WriteU32(n, 7); // name size ("NetBSD\0")
-        WriteU32(n, 4); // desc size
-        WriteU32(n, 1); // type (OS version)
-        for (const char c : std::string("NetBSD\0\0", 8)) {
-            // padded to 8
-            WriteU8(n, static_cast<uint8_t>(c));
-        }
-        WriteU32(n, 1000000000u);
-        break;
-    case Target::OS::OpenBSD:
-        WriteU32(n, 8); // name size ("OpenBSD\0")
-        WriteU32(n, 4); // desc size
-        WriteU32(n, 1); // type (NT_OPENBSD_IDENT)
-        for (const char c : std::string("OpenBSD\0", 8)) {
-            WriteU8(n, static_cast<uint8_t>(c));
-        }
-        WriteU32(n, 0); // any version
-        break;
-    case Target::OS::DragonFlyBSD:
-        WriteU32(n, 10); // name size ("DragonFly\0")
-        WriteU32(n, 4);  // desc size
-        WriteU32(n, 1);  // type
-        for (const char c : std::string("DragonFly\0\0\0", 12)) {
-            // padded to 12
-            WriteU8(n, static_cast<uint8_t>(c));
-        }
-        WriteU32(n, 0);
-        break;
-    default:
-        break;
-    }
-    return n;
-}
-
 bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     const auto selectedProfile = Target::Elf64ProfileFor(targetOs, targetArch);
     if (!selectedProfile) {
@@ -557,9 +516,6 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     }
     std::ranges::sort(importNames);
 
-    const Buf osNote = BuildOsNote(targetOs);
-    const bool hasNote = !osNote.empty();
-
     // Common file emitter shared by both paths.
     const auto emitFile = [&](uint16_t phnum, const Buf &phdrs,
                               const std::vector<std::pair<uint64_t, const Buf *>> &segments, uint64_t entryVA,
@@ -649,17 +605,14 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     if (!dynamic) {
         // --- Static executable: no imports, no interpreter. ---
-        const bool hasRodata = hasNote || !mergedRodata.empty();
+        const bool hasRodata = !mergedRodata.empty();
         const bool hasWritable = !mergedData.empty() || mergedBssSize != 0;
-        const auto phnum = static_cast<uint16_t>(1 + (hasRodata ? 1 : 0) + (hasWritable ? 1 : 0) + (hasNote ? 1 : 0));
+        const auto phnum = static_cast<uint16_t>(1 + (hasRodata ? 1 : 0) + (hasWritable ? 1 : 0));
         constexpr uint64_t phoff = 64;
         const uint64_t textOff = alignUp(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
         const uint64_t textVA = imageBase + textOff;
 
-        // The OS note (when present) leads .rodata so PT_NOTE can point at it.
-        Buf rodataBuf = osNote;
-        rodataBuf.insert(rodataBuf.end(), mergedRodata.begin(), mergedRodata.end());
-        const uint64_t noteRodataDelta = osNote.size();
+        Buf rodataBuf = mergedRodata;
 
         const uint64_t rdataOff = alignUp(textOff + textBuf.size(), kPage);
         const uint64_t rdataVA = imageBase + rdataOff;
@@ -669,7 +622,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         const uint64_t bssVA = alignUp(dataVA + mergedData.size(), std::max<uint16_t>(bssAlignment, 1));
         const uint64_t writableMemorySize = bssVA + mergedBssSize - dataVA;
 
-        auto symMap = buildDefinedSymMap(textVA, rdataVA + noteRodataDelta, dataVA, bssVA);
+        auto symMap = buildDefinedSymMap(textVA, rdataVA, dataVA, bssVA);
         auto it = symMap.find("Main");
         if (it == symMap.end()) {
             Error("undefined symbol 'Main' — no entry point found");
@@ -679,7 +632,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             return false;
         }
 
-        applyRelocs(symMap, textBuf, rodataBuf, mergedData, textVA, rdataVA + noteRodataDelta, dataVA, bssVA, nullptr);
+        applyRelocs(symMap, textBuf, rodataBuf, mergedData, textVA, rdataVA, dataVA, bssVA, nullptr);
         if (!errors.empty()) {
             return false;
         }
@@ -688,9 +641,6 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         writePhdr(phdrs, 1, kPfR | kPfX, textOff, textVA, textBuf.size(), textBuf.size(), kPage);
         if (hasRodata) {
             writePhdr(phdrs, 1, kPfR, rdataOff, rdataVA, rodataBuf.size(), rodataBuf.size(), kPage);
-        }
-        if (hasNote) {
-            writePhdr(phdrs, 4, kPfR, rdataOff, rdataVA, osNote.size(), osNote.size(), 4);
         }
         if (hasWritable) {
             writePhdr(phdrs, 1, kPfR | kPfW, dataOff, dataVA, mergedData.size(), writableMemorySize, kPage);
@@ -891,16 +841,11 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     // 5. Assign file offsets; every section's VA is imageBase + its file offset.
     constexpr uint64_t phoff = 64;
-    const auto phnum = static_cast<uint16_t>((isShared ? 4 : 5) + (hasNote ? 1 : 0));
+    const auto phnum = static_cast<uint16_t>(isShared ? 4 : 5);
     uint64_t off = 64 + static_cast<uint64_t>(phnum) * 56;
 
     const uint64_t interpOff = off;
     off += interp.size();
-    uint64_t noteOff = 0;
-    if (hasNote) {
-        noteOff = alignUp(off, 4);
-        off = noteOff + osNote.size();
-    }
     const uint64_t hashOff = alignUp(off, 8);
     off = hashOff + hash.size();
     const uint64_t dynsymOff = alignUp(off, 8);
@@ -1138,13 +1083,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
               std::max(rwFileEnd, rwMemoryEnd) - dynamicOff,
               kPage);                                                         // PT_LOAD (rw-)
     writePhdr(phdrs, 2, kPfR | kPfW, dynamicOff, dynamicVA, dynSz, dynSz, 8); // PT_DYNAMIC
-    if (hasNote) {
-        writePhdr(phdrs, 4, kPfR, noteOff, imageBase + noteOff, osNote.size(), osNote.size(), 4); // PT_NOTE
-    }
 
     return emitFile(phnum, phdrs,
                     {{interpOff, &interp},
-                     {noteOff, &osNote},
                      {hashOff, &hash},
                      {dynsymOff, &dynsym},
                      {dynstrOff, &dynstr},

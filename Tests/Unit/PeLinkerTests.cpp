@@ -189,6 +189,9 @@ TEST_CASE("PE linker preserves the x86-64 executable layout and patched targets"
     CHECK(sectionAlignment == 0x1000);
     CHECK(fileAlignment == 0x200);
     CHECK(sizeOfHeaders % fileAlignment == 0);
+    // x86-64 keeps the Vista baseline; only ARM64 needs Windows 10.
+    CHECK(Read16(image, optional + 40) == 6); // MajorOperatingSystemVersion
+    CHECK(Read16(image, optional + 48) == 6); // MajorSubsystemVersion
 
     const uint32_t importRva = Read32(image, optional + 112 + 8);
     const uint32_t importSize = Read32(image, optional + 112 + 12);
@@ -507,8 +510,14 @@ TEST_CASE("PE linker emits and resolves a Windows AArch64 executable") {
     const uint32_t entryRva = Read32(image, optional + 16);
     const uint64_t imageBase = Read64(image, optional + 24);
     CHECK(imageBase == 0x1'4000'0000ULL);
-    CHECK(Read32(image, optional + 32) == 0x1000);     // section alignment
-    CHECK(Read32(image, optional + 36) == 0x200);      // file alignment
+    CHECK(Read32(image, optional + 32) == 0x1000); // section alignment
+    CHECK(Read32(image, optional + 36) == 0x200);  // file alignment
+    // ARM64 arrived in Windows 10, and its loader rejects an image claiming an
+    // older Windows with "%1 is not a valid Win32 application".
+    CHECK(Read16(image, optional + 40) == 10);         // MajorOperatingSystemVersion
+    CHECK(Read16(image, optional + 42) == 0);          // MinorOperatingSystemVersion
+    CHECK(Read16(image, optional + 48) == 10);         // MajorSubsystemVersion
+    CHECK(Read16(image, optional + 50) == 0);          // MinorSubsystemVersion
     CHECK(Read16(image, optional + 68) == 3);          // console subsystem
     CHECK((Read16(image, optional + 70) & 0x40) == 0); // no DYNAMIC_BASE / ASLR
     CHECK(Read64(image, optional + 72) == 0x100000);   // stack reserve

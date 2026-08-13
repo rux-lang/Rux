@@ -434,12 +434,12 @@ TEST_CASE("Dependency entries follow the documented rules") {
     SUBCASE("target operating systems are exact non-empty allow-lists") {
         const Manifest manifest = Accepted(
             WithPackage("\n[Dependencies]\nPlatform = { Path = \"../Platform\", TargetOS = [\"Windows\", \"Linux\", "
-                        "\"MacOS\", \"FreeBSD\", \"OpenBSD\", \"NetBSD\", \"DragonFlyBSD\", \"Illumos\"] }\n"));
+                        "\"MacOS\"] }\n"));
         const auto &dependency = manifest.dependencies.front();
-        CHECK(dependency.targetOS.size() == 8);
+        CHECK(dependency.targetOS.size() == 3);
         CHECK(dependency.MatchesTarget(Target::OS::Windows));
-        CHECK(dependency.MatchesTarget(Target::OS::DragonFlyBSD));
-        CHECK_FALSE(dependency.MatchesTarget(Target::OS::AIX));
+        CHECK(dependency.MatchesTarget(Target::OS::MacOS));
+        CHECK_FALSE(dependency.MatchesTarget(Target::OS::FreeBSD));
 
         CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = [] }\n"))
                   .message.find("cannot be empty") != std::string::npos);

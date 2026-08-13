@@ -21,9 +21,7 @@ Choose one of these per-user installation methods; none requires administrator a
 
 - Download `rux-windows.msi` from the [latest GitHub release](https://github.com/rux-lang/Rux/releases/latest) and run it.
 
-These automated installers currently install x86-64 Rux. On AArch64 Windows,
-download `rux-windows-aarch64.zip` from the latest release and extract
-`rux.exe` into a directory on `PATH`.
+These automated installers currently install x86-64 Rux. On AArch64 Windows, download `rux-windows-aarch64.zip` from the latest release and extract `rux.exe` into a directory on `PATH`.
 
 Open a new terminal after installation, then verify the compiler:
 

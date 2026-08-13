@@ -128,15 +128,10 @@ struct WriteSyscall {
 [[nodiscard]] std::optional<WriteSyscall> WriteSyscallFor(const Target::OS os) {
     switch (os) {
     case Target::OS::Linux:
-    case Target::OS::Android:
         return WriteSyscall{64, 8, 0};
     case Target::OS::MacOS:
-    case Target::OS::iOS:
         return WriteSyscall{4, 16, 0x80};
-    case Target::OS::DragonFlyBSD:
     case Target::OS::FreeBSD:
-    case Target::OS::NetBSD:
-    case Target::OS::OpenBSD:
         return WriteSyscall{4, 8, 0};
     default:
         return std::nullopt;
@@ -2105,7 +2100,7 @@ private:
         unsigned nextGeneral = 0;
         unsigned nextVector = 0;
         std::int32_t nextStack = 0;
-        const bool appleVariadic = fixedParamCount && (targetOs == Target::OS::MacOS || targetOs == Target::OS::iOS);
+        const bool appleVariadic = fixedParamCount && targetOs == Target::OS::MacOS;
 
         // Generic AAPCS64 gives every stack argument a whole number of
         // doublewords. Apple instead uses the argument's natural alignment and
