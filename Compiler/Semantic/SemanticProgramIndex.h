@@ -1,0 +1,149 @@
+#pragma once
+
+#include "Semantic/SemanticModel.h"
+
+#include <functional>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+namespace Rux::SemanticDetail {
+class Scope;
+
+struct Symbol {
+    enum class Kind {
+        Var,
+        Func,
+        Type,
+        Const,
+        Module,
+        Interface,
+    };
+
+    Kind kind = Kind::Var;
+    std::string name;
+    SourceLocation location;
+    TypeRef type;
+    bool isMut = false;
+    std::string intrinsicName;
+    std::vector<const FuncDecl *> funcOverloads;
+    const ExternFuncDecl *externDecl = nullptr;
+    std::vector<std::string> interfaceMethods;
+    Scope *moduleScope = nullptr;
+};
+
+class Scope {
+public:
+    explicit Scope(Scope *parentScope = nullptr);
+
+    bool Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, const std::string &sourceName);
+    [[nodiscard]] Symbol *Lookup(const std::string &name);
+    [[nodiscard]] Symbol *LookupLocal(const std::string &name);
+    [[nodiscard]] Scope *Parent() const;
+    [[nodiscard]] const std::unordered_map<std::string, Symbol> &Table() const;
+
+private:
+    Scope *parent;
+    std::unordered_map<std::string, Symbol> table;
+};
+
+// Owns the package/module declaration topology built before semantic checking.
+// The analyzer supplies type resolution because aliases and typed constants
+// still use its in-progress type context.
+class SemanticProgramIndex {
+public:
+    using PackageScopes = std::unordered_map<std::string, std::unordered_map<std::string, Scope *>>;
+    using ResolveType = std::function<TypeRef(const TypeExpr &)>;
+
+    SemanticProgramIndex(std::vector<SemanticDiagnostic> &diagnostics, std::vector<SemanticSymbol> &publicSymbols);
+
+    [[nodiscard]] Scope &GlobalScope();
+    [[nodiscard]] Scope &CreateScope(Scope &parent);
+    [[nodiscard]] Scope &CreatePackageRoot(const std::string &packageName);
+    void RegisterPackageRoot(const std::string &packageName, Scope &scope);
+    [[nodiscard]] Scope &ModuleScopeFor(const std::string &name, Scope &parent) const;
+
+    void CollectModule(const Module &module, const std::string *packageName, const ResolveType &resolveType);
+    void CollectDeclaration(const Decl &declaration, Scope &scope, const std::string &sourceName,
+                            const ResolveType &resolveType, const std::string *packageName = nullptr,
+                            const std::string &modulePath = {});
+
+    [[nodiscard]] const auto &Packages() const {
+        return packageScopes;
+    }
+
+    [[nodiscard]] const auto &Structs() const {
+        return structs;
+    }
+
+    [[nodiscard]] const auto &Enums() const {
+        return enums;
+    }
+
+    [[nodiscard]] const auto &Unions() const {
+        return unions;
+    }
+
+    [[nodiscard]] const auto &Interfaces() const {
+        return interfaces;
+    }
+
+    [[nodiscard]] const auto &Methods() const {
+        return methods;
+    }
+
+    [[nodiscard]] const auto &Functions() const {
+        return functions;
+    }
+
+    [[nodiscard]] const auto &FunctionModulePaths() const {
+        return functionModulePaths;
+    }
+
+    [[nodiscard]] const auto &MethodImplementations() const {
+        return methodImplementations;
+    }
+
+    [[nodiscard]] const auto &Implementations() const {
+        return implementations;
+    }
+
+    [[nodiscard]] const auto &ExternFunctions() const {
+        return externFunctions;
+    }
+
+    [[nodiscard]] const auto &ImplementedInterfaces() const {
+        return implementedInterfaces;
+    }
+
+    [[nodiscard]] const auto &FunctionScopes() const {
+        return functionScopes;
+    }
+
+    [[nodiscard]] const auto &FunctionSources() const {
+        return functionSources;
+    }
+
+private:
+    std::vector<SemanticDiagnostic> &diagnostics;
+    std::vector<SemanticSymbol> &publicSymbols;
+    Scope globalScope;
+    PackageScopes packageScopes;
+    std::vector<std::unique_ptr<Scope>> scopes;
+    std::unordered_map<std::string, const StructDecl *> structs;
+    std::unordered_map<std::string, const EnumDecl *> enums;
+    std::unordered_map<std::string, const UnionDecl *> unions;
+    std::unordered_map<std::string, const InterfaceDecl *> interfaces;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methods;
+    std::unordered_map<std::string, std::vector<const FuncDecl *>> functions;
+    std::unordered_map<const FuncDecl *, std::string> functionModulePaths;
+    std::unordered_map<const FuncDecl *, const ImplDecl *> methodImplementations;
+    std::vector<const ImplDecl *> implementations;
+    std::vector<const ExternFuncDecl *> externFunctions;
+    std::unordered_map<std::string, std::unordered_set<std::string>> implementedInterfaces;
+    std::unordered_map<const FuncDecl *, Scope *> functionScopes;
+    std::unordered_map<const FuncDecl *, std::string> functionSources;
+};
+} // namespace Rux::SemanticDetail

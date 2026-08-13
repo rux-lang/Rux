@@ -3,6 +3,7 @@
 #include "Lexer/Lexer.h"
 #include "Semantic/ConditionalCompilation.h"
 #include "Semantic/PrimitiveConstants.h"
+#include "Semantic/SemanticProgramIndex.h"
 #include "Semantic/Type.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
@@ -14,7 +15,6 @@
 #include <charconv>
 #include <format>
 #include <limits>
-#include <memory>
 #include <optional>
 #include <string_view>
 #include <unordered_map>
@@ -37,88 +37,9 @@ bool IsUnimplementedPrimitiveType(const std::string_view name) {
 }
 } // namespace
 
-// Internal: Symbol & Scope
-class Scope; // forward declaration — Scope is defined below
-
-struct Symbol {
-    enum class Kind {
-        Var,
-        Func,
-        Type,
-        Const,
-        Module,
-        Interface,
-    };
-
-    Kind kind = Kind::Var;
-    std::string name;
-    SourceLocation location;
-    TypeRef type;
-    bool isMut = false;
-    std::string intrinsicName;
-    std::vector<const FuncDecl *> funcOverloads;
-    const ExternFuncDecl *externDecl = nullptr; // retained for #Warn/#Error at call sites
-    std::vector<std::string> interfaceMethods;  // for Interface kind
-    Scope *moduleScope = nullptr;               // for Module kind: the imported module's scope
-};
-
-class Scope {
-public:
-    explicit Scope(Scope *parentScope = nullptr)
-        : parent(parentScope) {
-    }
-
-    // Returns false and emits a diagnostic if the name is already defined.
-    bool Define(Symbol sym, std::vector<SemanticDiagnostic> &diags, const std::string &sourceName) {
-        if (auto it = table.find(sym.name); it != table.end()) {
-            if (it->second.kind == Symbol::Kind::Func && sym.kind == Symbol::Kind::Func) {
-                it->second.funcOverloads.insert(it->second.funcOverloads.end(), sym.funcOverloads.begin(),
-                                                sym.funcOverloads.end());
-                if (it->second.type.IsUnknown() && !sym.type.IsUnknown()) {
-                    it->second.type = std::move(sym.type);
-                }
-                if (!it->second.externDecl && sym.externDecl) {
-                    it->second.externDecl = sym.externDecl;
-                }
-                return true;
-            }
-            diags.push_back({SemanticDiagnostic::Severity::Error, sourceName, sym.location,
-                             std::format("'{}' is already defined (first defined at {}:{})", sym.name,
-                                         it->second.location.line, it->second.location.column)});
-            return false;
-        }
-        table.emplace(sym.name, std::move(sym));
-        return true;
-    }
-
-    Symbol *Lookup(const std::string &name) {
-        auto it = table.find(name);
-        if (it != table.end()) {
-            return &it->second;
-        }
-        if (parent) {
-            return parent->Lookup(name);
-        }
-        return nullptr;
-    }
-
-    Symbol *LookupLocal(const std::string &name) {
-        auto it = table.find(name);
-        return it == table.end() ? nullptr : &it->second;
-    }
-
-    [[nodiscard]] Scope *Parent() const {
-        return parent;
-    }
-
-    [[nodiscard]] const std::unordered_map<std::string, Symbol> &Table() const {
-        return table;
-    }
-
-private:
-    Scope *parent;
-    std::unordered_map<std::string, Symbol> table;
-};
+using SemanticDetail::Scope;
+using SemanticDetail::SemanticProgramIndex;
+using SemanticDetail::Symbol;
 
 // Internal: Analyzer
 class Analyzer {
@@ -138,7 +59,6 @@ public:
         , deps(inputDeps)
         , packageName(inputPackageName)
         , diags(inputDiags)
-        , symbols(inputSymbols)
         , context(inputContext)
         , expressionTypes(inputExpressionTypes)
         , typeNodeTypes(inputTypeNodeTypes)
@@ -148,6 +68,22 @@ public:
         , vtableIdentities(inputVtableIdentities)
         , typeLayouts(inputTypeLayouts)
         , sizeOfValues(inputSizeOfValues)
+        , programIndex(diags, inputSymbols)
+        , globalScope(programIndex.GlobalScope())
+        , packageModuleScopes(programIndex.Packages())
+        , structDecls(programIndex.Structs())
+        , enumDecls(programIndex.Enums())
+        , unionDecls(programIndex.Unions())
+        , interfaceDecls(programIndex.Interfaces())
+        , methodsByType(programIndex.Methods())
+        , functionsByName(programIndex.Functions())
+        , functionModulePaths(programIndex.FunctionModulePaths())
+        , methodImpls(programIndex.MethodImplementations())
+        , implDecls(programIndex.Implementations())
+        , externFuncDecls(programIndex.ExternFunctions())
+        , typeImplementsInterfaces(programIndex.ImplementedInterfaces())
+        , functionDeclScopes(programIndex.FunctionScopes())
+        , functionDeclFiles(programIndex.FunctionSources())
         , currentScope(&globalScope) {
     }
 
@@ -157,38 +93,37 @@ public:
         // Logical module declarations inside any source file populate
         // nested module scopes.
         for (auto &pkg : deps) {
-            auto rootScope = std::make_unique<Scope>(&globalScope);
-            Scope *rootScopePtr = rootScope.get();
+            Scope &rootScope = programIndex.CreatePackageRoot(pkg.name);
             for (auto &entry : pkg.modules) {
                 currentFile = entry.module->name;
                 for (const auto &decl : entry.module->items) {
-                    CollectDecl(*decl, *rootScope, &pkg.name, "");
+                    programIndex.CollectDeclaration(
+                        *decl, rootScope, currentFile, [this](const TypeExpr &type) { return ResolveType(type); },
+                        &pkg.name);
                 }
             }
-            packageModuleScopes[pkg.name][""] = rootScopePtr;
-            packageRootScopes.push_back(std::move(rootScope));
         }
         for (auto &pkg : deps) {
             for (auto &entry : pkg.modules) {
-                ApplyModuleImportsInScope(*entry.module, *packageModuleScopes[pkg.name][""]);
+                ApplyModuleImportsInScope(*entry.module, *packageModuleScopes.at(pkg.name).at(""));
             }
         }
         // Resolve dep function signatures in their per-module scopes.
         for (auto &pkg : deps) {
             for (auto &entry : pkg.modules) {
-                ResolveModuleSignaturesInScope(*entry.module, *packageModuleScopes[pkg.name][""]);
+                ResolveModuleSignaturesInScope(*entry.module, *packageModuleScopes.at(pkg.name).at(""));
             }
         }
         for (auto &pkg : deps) {
             for (auto &entry : pkg.modules) {
-                CheckModuleInScope(*entry.module, *packageModuleScopes[pkg.name][""]);
+                CheckModuleInScope(*entry.module, *packageModuleScopes.at(pkg.name).at(""));
             }
         }
         // User modules go into globalScope as before. When a package
         // imports itself by name, expose the global/module scopes through
         // the same package import table used for dependencies.
         if (!packageName.empty()) {
-            packageModuleScopes[packageName][""] = &globalScope;
+            programIndex.RegisterPackageRoot(packageName, globalScope);
         }
         for (auto *mod : modules) {
             CollectModule(*mod);
@@ -212,7 +147,6 @@ private:
     std::vector<DepPackage> &deps;
     const std::string &packageName;
     std::vector<SemanticDiagnostic> &diags;
-    std::vector<SemanticSymbol> &symbols;
     const CompileTimeContext &context;
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
@@ -222,13 +156,11 @@ private:
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;
     std::unordered_map<std::string, ResolvedTypeLayout> &typeLayouts;
     std::unordered_map<const SizeOfExpr *, std::uint64_t> &sizeOfValues;
-    Scope globalScope{nullptr};
-    Scope *currentScope;
+    SemanticProgramIndex programIndex;
+    Scope &globalScope;
     // packageModuleScopes[pkgName][modulePath] = logical module scope.
     // The empty modulePath is the package root.
-    std::unordered_map<std::string, std::unordered_map<std::string, Scope *>> packageModuleScopes;
-    std::vector<std::unique_ptr<Scope>> packageRootScopes;
-    std::vector<std::unique_ptr<Scope>> ownedScopes;
+    const SemanticProgramIndex::PackageScopes &packageModuleScopes;
     std::string currentFile;
     TypeRef currentReturnType = TypeRef::MakeOpaque();
     bool currentFunctionNoReturn = false;
@@ -237,20 +169,22 @@ private:
     bool inImpl = false;
     TypeRef currentSelfType = TypeRef::MakeUnknown();
     std::vector<std::string> currentTypeParams;
-    std::unordered_map<std::string, const StructDecl *> structDecls;
-    std::unordered_map<std::string, const EnumDecl *> enumDecls;
-    std::unordered_map<std::string, const UnionDecl *> unionDecls;
-    std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
-    std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methodsByType;
-    std::unordered_map<std::string, std::vector<const FuncDecl *>> functionsByName;
-    std::unordered_map<const FuncDecl *, std::string> functionModulePaths;
-    std::unordered_map<const FuncDecl *, const ImplDecl *> methodImpls;
-    std::vector<const ImplDecl *> implDecls;
-    std::vector<const ExternFuncDecl *> externFuncDecls;
-    std::unordered_map<std::string, std::unordered_set<std::string>> typeImplementsInterfaces;
+    const std::unordered_map<std::string, const StructDecl *> &structDecls;
+    const std::unordered_map<std::string, const EnumDecl *> &enumDecls;
+    const std::unordered_map<std::string, const UnionDecl *> &unionDecls;
+    const std::unordered_map<std::string, const InterfaceDecl *> &interfaceDecls;
+    const std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>>
+        &methodsByType;
+    const std::unordered_map<std::string, std::vector<const FuncDecl *>> &functionsByName;
+    const std::unordered_map<const FuncDecl *, std::string> &functionModulePaths;
+    const std::unordered_map<const FuncDecl *, const ImplDecl *> &methodImpls;
+    const std::vector<const ImplDecl *> &implDecls;
+    const std::vector<const ExternFuncDecl *> &externFuncDecls;
+    const std::unordered_map<std::string, std::unordered_set<std::string>> &typeImplementsInterfaces;
     const FuncDecl *currentFunctionDecl = nullptr;
-    std::unordered_map<const FuncDecl *, Scope *> functionDeclScopes;
-    std::unordered_map<const FuncDecl *, std::string> functionDeclFiles;
+    const std::unordered_map<const FuncDecl *, Scope *> &functionDeclScopes;
+    const std::unordered_map<const FuncDecl *, std::string> &functionDeclFiles;
+    Scope *currentScope;
 
     struct DeferredUnaryCheck {
         TokenKind op;
@@ -302,8 +236,7 @@ private:
 
     // Scope management
     void PushScope() {
-        ownedScopes.push_back(std::make_unique<Scope>(currentScope));
-        currentScope = ownedScopes.back().get();
+        currentScope = &programIndex.CreateScope(*currentScope);
     }
 
     void PopScope() {
@@ -403,9 +336,7 @@ private:
     void CollectModule(const Module &mod) {
         currentFile = mod.name;
         const std::string *selfPackageName = packageName.empty() ? nullptr : &packageName;
-        for (const auto &decl : mod.items) {
-            CollectDecl(*decl, globalScope, selfPackageName, "");
-        }
+        programIndex.CollectModule(mod, selfPackageName, [this](const TypeExpr &type) { return ResolveType(type); });
     }
 
     void ResolveModuleSignatures(const Module &mod) {
@@ -511,175 +442,8 @@ private:
         }
     }
 
-    static std::string JoinModulePath(const std::string &prefix, const std::string &name) {
-        if (prefix.empty()) {
-            return name;
-        }
-        return prefix + "::" + name;
-    }
-
     Scope &ModuleScopeFor(const std::string &name, Scope &parent) {
-        if (Symbol *sym = parent.Lookup(name); sym && sym->kind == Symbol::Kind::Module && sym->moduleScope) {
-            return *sym->moduleScope;
-        }
-        return parent;
-    }
-
-    void CollectDecl(const Decl &decl, Scope &scope, const std::string *depPackageName = nullptr,
-                     const std::string &modulePath = "") {
-        // Records the symbol in `scope` and, for top-level (global) scope,
-        // also appends a SemanticSymbol to `symbols_` for the dump.
-        bool isGlobal = (&scope == &globalScope);
-
-        auto simple = [&](Symbol::Kind kind, const std::string &name, SemanticSymbol::Kind pubKind,
-                          std::string resolvedType = {}, bool isMut = false) {
-            Symbol sym;
-            sym.kind = kind;
-            sym.name = name;
-            sym.location = decl.location;
-            sym.isMut = isMut;
-            if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back({pubKind, name, currentFile, decl.location, std::move(resolvedType), isMut});
-            }
-        };
-
-        if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
-            functionDeclScopes[fn] = &scope;
-            functionDeclFiles[fn] = currentFile;
-            functionsByName[fn->name].push_back(fn);
-            functionModulePaths[fn] = modulePath;
-            Symbol sym;
-            sym.kind = Symbol::Kind::Func;
-            sym.name = fn->name;
-            sym.location = fn->location;
-            sym.intrinsicName = fn->intrinsicName;
-            sym.funcOverloads.push_back(fn);
-            if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back({SemanticSymbol::Kind::Func, fn->name, currentFile, fn->location, {}, false});
-            }
-        }
-        else if (auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
-            structDecls[structDecl->name] = structDecl;
-            simple(Symbol::Kind::Type, structDecl->name, SemanticSymbol::Kind::Type, "struct");
-        }
-        else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
-            enumDecls[enumDecl->name] = enumDecl;
-            simple(Symbol::Kind::Type, enumDecl->name, SemanticSymbol::Kind::Type, "enum");
-        }
-        else if (auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
-            unionDecls[unionDecl->name] = unionDecl;
-            simple(Symbol::Kind::Type, unionDecl->name, SemanticSymbol::Kind::Type, "union");
-        }
-        else if (auto *ifaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
-            interfaceDecls[ifaceDecl->name] = ifaceDecl;
-            Symbol sym;
-            sym.kind = Symbol::Kind::Interface;
-            sym.name = ifaceDecl->name;
-            sym.location = ifaceDecl->location;
-            for (auto &m : ifaceDecl->methods) {
-                sym.interfaceMethods.push_back(m->name);
-            }
-            if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back(
-                    {SemanticSymbol::Kind::Interface, ifaceDecl->name, currentFile, ifaceDecl->location, "interface"});
-            }
-        }
-        else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
-            Symbol sym;
-            sym.kind = Symbol::Kind::Const;
-            sym.name = constDecl->name;
-            sym.location = constDecl->location;
-            sym.intrinsicName = constDecl->intrinsicName;
-            if (constDecl->type) {
-                sym.type = ResolveType(*constDecl->type->get());
-            }
-            if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back({SemanticSymbol::Kind::Const, constDecl->name, currentFile, constDecl->location,
-                                   sym.type.IsUnknown() ? "" : sym.type.ToString(), false});
-            }
-        }
-        else if (auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
-            Symbol sym;
-            sym.kind = Symbol::Kind::Type;
-            sym.name = aliasDecl->name;
-            sym.location = aliasDecl->location;
-            sym.type = ResolveType(*aliasDecl->type);
-            if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back({SemanticSymbol::Kind::Type, aliasDecl->name, currentFile, aliasDecl->location,
-                                   sym.type.IsUnknown() ? "" : sym.type.ToString(), false});
-            }
-        }
-        else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            externFuncDecls.push_back(externFn);
-            Symbol sym;
-            sym.kind = Symbol::Kind::Func;
-            sym.name = externFn->name;
-            sym.location = externFn->location;
-            sym.externDecl = externFn;
-            if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back(
-                    {SemanticSymbol::Kind::Func, externFn->name, currentFile, externFn->location, "extern", false});
-            }
-        }
-        else if (auto *externVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
-            Symbol sym;
-            sym.kind = Symbol::Kind::Var;
-            sym.name = externVar->name;
-            sym.location = externVar->location;
-            sym.isMut = true;
-            if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                symbols.push_back(
-                    {SemanticSymbol::Kind::Var, externVar->name, currentFile, externVar->location, "extern", true});
-            }
-        }
-        else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
-            for (auto &item : externBlock->items) {
-                CollectDecl(*item, scope, depPackageName, modulePath);
-            }
-        }
-        else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
-            Scope *moduleScopePtr = nullptr;
-            if (Symbol *existing = scope.Lookup(modDecl->name);
-                existing && existing->kind == Symbol::Kind::Module && existing->moduleScope) {
-                moduleScopePtr = existing->moduleScope;
-            }
-            else {
-                auto moduleScope = std::make_unique<Scope>(&scope);
-                moduleScopePtr = moduleScope.get();
-                ownedScopes.push_back(std::move(moduleScope));
-
-                Symbol sym;
-                sym.kind = Symbol::Kind::Module;
-                sym.name = modDecl->name;
-                sym.location = decl.location;
-                sym.moduleScope = moduleScopePtr;
-                if (scope.Define(sym, diags, currentFile) && isGlobal) {
-                    symbols.push_back(
-                        {SemanticSymbol::Kind::Module, modDecl->name, currentFile, decl.location, {}, false});
-                }
-            }
-
-            const std::string childPath = JoinModulePath(modulePath, modDecl->name);
-            if (depPackageName) {
-                packageModuleScopes[*depPackageName][childPath] = moduleScopePtr;
-            }
-            for (auto &item : modDecl->items) {
-                CollectDecl(*item, *moduleScopePtr, depPackageName, childPath);
-            }
-        }
-        else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
-            implDecls.push_back(implDecl);
-            const std::string typeName =
-                implDecl->typeName.starts_with("Slice<") ? implDecl->typeName : BaseTypeName(implDecl->typeName);
-            for (const auto &method : implDecl->methods) {
-                methodsByType[typeName][method->name].push_back(method.get());
-                methodImpls[method.get()] = implDecl;
-            }
-            if (implDecl->interfaceName) {
-                typeImplementsInterfaces[typeName].insert(*implDecl->interfaceName);
-            }
-        }
-        // Import declarations don't add names in the first pass.
+        return programIndex.ModuleScopeFor(name, parent);
     }
 
     // Type resolution
@@ -3768,7 +3532,8 @@ private:
             }
         }
         else if (auto *declStmt = dynamic_cast<const DeclStmt *>(&stmt)) {
-            CollectDecl(*declStmt->decl, *currentScope);
+            programIndex.CollectDeclaration(*declStmt->decl, *currentScope, currentFile,
+                                            [this](const TypeExpr &type) { return ResolveType(type); });
             CheckDecl(*declStmt->decl);
         }
     }

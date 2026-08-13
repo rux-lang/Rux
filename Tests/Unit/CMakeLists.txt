@@ -44,6 +44,7 @@ set(RUX_TEST_SOURCES
     PrimitiveConstantsTests.cpp
     RcuTests.cpp
     RegistryTests.cpp
+    SemanticProgramIndexTests.cpp
     SemanticTests.cpp
     SourceLoaderTests.cpp
     SourceModelTests.cpp
