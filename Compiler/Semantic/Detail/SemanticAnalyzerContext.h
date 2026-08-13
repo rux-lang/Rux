@@ -42,6 +42,10 @@ protected:
 
     void CheckBlock(const Block &block);
     void CheckPattern(const Pattern &pattern, const TypeRef &subjectType = TypeRef::MakeUnknown());
+    [[nodiscard]] std::optional<TypeRef> CheckBasicExpression(const Expr &expression);
+    void ValidateDeferredBasicExpressionChecks(const FuncDecl &declaration,
+                                               const std::unordered_map<std::string, TypeRef> &substitutions);
+    [[nodiscard]] bool PlaceIsImmutable(const Expr &place);
     [[nodiscard]] const EnumDecl::Variant *LookupEnumVariant(const std::string &enumName,
                                                              const std::string &variantName) const;
 
@@ -90,6 +94,24 @@ protected:
     [[nodiscard]] static bool IsUnimplementedPrimitiveType(std::string_view name);
 
 private:
+    struct DeferredUnaryCheck {
+        TokenKind op;
+        TypeRef operand;
+        SourceLocation location;
+    };
+
+    struct DeferredBinaryCheck {
+        TokenKind op;
+        TypeRef left;
+        TypeRef right;
+        const Expr *leftExpression;
+        const Expr *rightExpression;
+        SourceLocation location;
+    };
+
+    std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
+
     void RegisterBuiltins();
     void IndexDeclarations();
     void CollectModule(const Module &module);
@@ -100,6 +122,15 @@ private:
     virtual TypeRef ResolveTypeWithSubstitution(const TypeExpr &expression,
                                                 const std::unordered_map<std::string, TypeRef> &substitutions) = 0;
     virtual TypeRef CheckExpr(const Expr &expression) = 0;
+    [[nodiscard]] virtual TypeRef LiteralType(const Token &token) const = 0;
+    virtual void ValidateCastConstant(const CastExpr &expression, const TypeRef &operandType,
+                                      const TypeRef &targetType) const = 0;
+    [[nodiscard]] virtual const FuncDecl *LookupOperatorMethod(const TypeRef &receiverType,
+                                                               const std::string &operatorName,
+                                                               const std::vector<TypeRef> &argumentTypes) = 0;
+    [[nodiscard]] virtual std::vector<TypeRef> ResolveOperatorParameterTypes(const TypeRef &receiverType,
+                                                                             const FuncDecl &method) = 0;
+    [[nodiscard]] virtual TypeRef ResolveOperatorReturnType(const TypeRef &receiverType, const FuncDecl &method) = 0;
     virtual void CheckDecl(const Decl &declaration) = 0;
     virtual void ValidateArrayType(const TypeExpr &type, bool allowFlexibleTail) = 0;
     [[nodiscard]] virtual bool CanAssignExprTo(const Expr &expression, const TypeRef &expressionType,
@@ -118,5 +149,11 @@ private:
     virtual void ValidatePendingGenericInstantiations() = 0;
     virtual void RecordResolvedTypeLayouts() = 0;
     virtual void BuildFinalSymbolIdentities() = 0;
+
+    [[nodiscard]] TypeRef CheckUnary(TokenKind op, const TypeRef &operand, SourceLocation location);
+    [[nodiscard]] TypeRef CheckBinary(TokenKind op, const TypeRef &left, const TypeRef &right,
+                                      const Expr &leftExpression, const Expr &rightExpression, SourceLocation location);
+    [[nodiscard]] bool PlaceIsWritable(const Expr &place, const TypeRef &placeType);
+    void CheckMutability(const Expr &target);
 };
 } // namespace Rux::SemanticDetail

@@ -47,21 +47,6 @@ public:
     }
 
 private:
-    struct DeferredUnaryCheck {
-        TokenKind op;
-        TypeRef operand;
-        SourceLocation location;
-    };
-
-    struct DeferredBinaryCheck {
-        TokenKind op;
-        TypeRef left;
-        TypeRef right;
-        const Expr *leftExpr;
-        const Expr *rightExpr;
-        SourceLocation location;
-    };
-
     struct DeferredGenericCall {
         const FuncDecl *callee;
         std::unordered_map<std::string, TypeRef> substitutions;
@@ -72,8 +57,6 @@ private:
         std::unordered_map<std::string, TypeRef> substitutions;
     };
 
-    std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
-    std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredGenericCall>> deferredGenericCalls;
     std::vector<PendingGenericInstantiation> pendingGenericInstantiations;
     std::unordered_map<const FuncDecl *, std::unordered_set<std::string>> validatedGenericInstantiations;
@@ -1728,6 +1711,19 @@ private:
         }
         currentSelfType = savedSelfType;
         return params;
+    }
+
+    const FuncDecl *LookupOperatorMethod(const TypeRef &receiverType, const std::string &operatorName,
+                                         const std::vector<TypeRef> &argumentTypes) override {
+        return LookupMethod(receiverType, operatorName, argumentTypes);
+    }
+
+    std::vector<TypeRef> ResolveOperatorParameterTypes(const TypeRef &receiverType, const FuncDecl &method) override {
+        return ResolveMethodParamTypes(receiverType, method);
+    }
+
+    TypeRef ResolveOperatorReturnType(const TypeRef &receiverType, const FuncDecl &method) override {
+        return ResolveMethodReturnType(receiverType, method);
     }
 
     TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) {
@@ -3412,8 +3408,8 @@ private:
     }
 
     TypeRef CheckExprImpl(const Expr &expr) {
-        if (auto *e = dynamic_cast<const LiteralExpr *>(&expr)) {
-            return LiteralType(e->token);
+        if (const std::optional<TypeRef> basicType = CheckBasicExpression(expr)) {
+            return *basicType;
         }
 
         if (auto *e = dynamic_cast<const IdentExpr *>(&expr)) {
@@ -3562,58 +3558,6 @@ private:
             EmitError(e->location,
                       std::format("'.{}' must be written in full, as in 'Enum::{}'", e->variant, e->variant));
             return TypeRef::MakeUnknown();
-        }
-
-        if (auto *e = dynamic_cast<const UnaryExpr *>(&expr)) {
-            if (e->op == TokenKind::PlusPlus || e->op == TokenKind::MinusMinus) {
-                CheckMutability(*e->operand);
-            }
-            TypeRef t = CheckExpr(*e->operand);
-            // Address-of inherits the addressed place's mutability: `@let`
-            // yields `*T`, while `@var` yields `*var T`.
-            if (e->op == TokenKind::At) {
-                t.isMut = PlaceIsWritable(*e->operand, t);
-                return TypeRef::MakePointer(std::move(t));
-            }
-            return CheckUnary(e->op, t, e->location);
-        }
-
-        if (auto *e = dynamic_cast<const PostfixExpr *>(&expr)) {
-            CheckMutability(*e->operand);
-            TypeRef t = CheckExpr(*e->operand);
-            if (!t.IsUnknown() && !t.IsNumeric()) {
-                EmitError(e->location, std::format("'{}' applied to non-numeric type '{}'",
-                                                   e->op == TokenKind::PlusPlus ? "++" : "--", t.ToString()));
-            }
-            return t;
-        }
-
-        if (auto *e = dynamic_cast<const BinaryExpr *>(&expr)) {
-            TypeRef l = CheckExpr(*e->left);
-            TypeRef r = CheckExpr(*e->right);
-            return CheckBinary(e->op, l, r, *e->left, *e->right, e->location);
-        }
-
-        if (auto *e = dynamic_cast<const AssignExpr *>(&expr)) {
-            CheckMutability(*e->target);
-            TypeRef tgt = CheckExpr(*e->target);
-            TypeRef val = CheckExpr(*e->value);
-            if (e->op == TokenKind::GreaterGreaterGreaterAssign) {
-                if (!tgt.IsSigned()) {
-                    EmitError(e->location,
-                              std::format("'>>>=' requires a signed integer target, got '{}'", tgt.ToString()));
-                }
-                if (!val.IsInteger()) {
-                    EmitError(e->location,
-                              std::format("'>>>=' right operand must be an integer, got '{}'", val.ToString()));
-                }
-            }
-            if (!tgt.IsUnknown() && !val.IsUnknown() && !CanAssignExprTo(*e->value, val, tgt)) {
-                EmitError(e->location, AssignmentErrorMessage(
-                                           *e->value, tgt,
-                                           std::format("cannot assign '{}' to '{}'", val.ToString(), tgt.ToString())));
-            }
-            return TypeRef::MakeOpaque();
         }
 
         if (auto *e = dynamic_cast<const TernaryExpr *>(&expr)) {
@@ -4132,29 +4076,6 @@ private:
             return TypeRef::MakeTuple(std::move(elemTypes));
         }
 
-        if (auto *e = dynamic_cast<const CastExpr *>(&expr)) {
-            TypeRef operandType = CheckExpr(*e->operand);
-            TypeRef targetType = ResolveType(*e->type);
-            if (const auto maxCodePoint = CharTypeMaxCodePoint(targetType);
-                maxCodePoint && (operandType.IsInteger() || IsCharType(operandType))) {
-                if (const auto value = EvalConstInt(*e->operand); value && *value < 0) {
-                    EmitError(e->location,
-                              std::format("constant value is out of range for type '{}'", targetType.ToString()));
-                }
-                else if (const auto charValue = EvalConstCharCastValue(*e->operand)) {
-                    if (*charValue > *maxCodePoint) {
-                        EmitError(e->location,
-                                  std::format("constant value is out of range for type '{}'", targetType.ToString()));
-                    }
-                    else if (IsSurrogateCodePoint(*charValue)) {
-                        EmitError(e->location, std::format("surrogate code point U+{:04X} cannot be converted to '{}'",
-                                                           *charValue, targetType.ToString()));
-                    }
-                }
-            }
-            return targetType;
-        }
-
         if (auto *e = dynamic_cast<const IsExpr *>(&expr)) {
             TypeRef operandType = CheckExpr(*e->operand);
             ResolveType(*e->type);
@@ -4205,7 +4126,7 @@ private:
         return TypeRef::MakeUnknown();
     }
 
-    static TypeRef LiteralType(const Token &tok) {
+    TypeRef LiteralType(const Token &tok) const override {
         switch (tok.kind) {
         case TokenKind::IntLiteral:
         case TokenKind::FloatLiteral:
@@ -4218,6 +4139,28 @@ private:
             return TypeRef::MakeBool();
         default:
             return TypeRef::MakeUnknown();
+        }
+    }
+
+    void ValidateCastConstant(const CastExpr &expression, const TypeRef &operandType,
+                              const TypeRef &targetType) const override {
+        if (const auto maxCodePoint = CharTypeMaxCodePoint(targetType);
+            maxCodePoint && (operandType.IsInteger() || IsCharType(operandType))) {
+            if (const auto value = EvalConstInt(*expression.operand); value && *value < 0) {
+                EmitError(expression.location,
+                          std::format("constant value is out of range for type '{}'", targetType.ToString()));
+            }
+            else if (const auto charValue = EvalConstCharCastValue(*expression.operand)) {
+                if (*charValue > *maxCodePoint) {
+                    EmitError(expression.location,
+                              std::format("constant value is out of range for type '{}'", targetType.ToString()));
+                }
+                else if (IsSurrogateCodePoint(*charValue)) {
+                    EmitError(expression.location,
+                              std::format("surrogate code point U+{:04X} cannot be converted to '{}'", *charValue,
+                                          targetType.ToString()));
+                }
+            }
         }
     }
 
@@ -4287,19 +4230,7 @@ private:
             }
             currentFunctionDecl = nullptr;
 
-            if (const auto it = deferredUnaryChecks.find(instantiation.decl); it != deferredUnaryChecks.end()) {
-                for (const DeferredUnaryCheck &check : it->second) {
-                    CheckUnary(check.op, SubstituteTypeParams(check.operand, instantiation.substitutions),
-                               check.location);
-                }
-            }
-            if (const auto it = deferredBinaryChecks.find(instantiation.decl); it != deferredBinaryChecks.end()) {
-                for (const DeferredBinaryCheck &check : it->second) {
-                    CheckBinary(check.op, SubstituteTypeParams(check.left, instantiation.substitutions),
-                                SubstituteTypeParams(check.right, instantiation.substitutions), *check.leftExpr,
-                                *check.rightExpr, check.location);
-                }
-            }
+            ValidateDeferredBasicExpressionChecks(*instantiation.decl, instantiation.substitutions);
             if (const auto it = deferredGenericCalls.find(instantiation.decl); it != deferredGenericCalls.end()) {
                 for (const DeferredGenericCall &call : it->second) {
                     std::unordered_map<std::string, TypeRef> substitutions;
@@ -4313,434 +4244,6 @@ private:
             currentFunctionDecl = savedFunctionDecl;
             currentFile = savedFile;
             currentScope = savedScope;
-        }
-    }
-
-    TypeRef CheckUnary(TokenKind op, const TypeRef &t, SourceLocation loc) {
-        if (t.IsUnknown()) {
-            return TypeRef::MakeUnknown();
-        }
-        if (t.kind == TypeRef::Kind::TypeParam &&
-            (op == TokenKind::Bang || op == TokenKind::Minus || op == TokenKind::Tilde || op == TokenKind::PlusPlus ||
-             op == TokenKind::MinusMinus)) {
-            if (currentFunctionDecl) {
-                deferredUnaryChecks[currentFunctionDecl].push_back({op, t, loc});
-            }
-            return op == TokenKind::Bang ? TypeRef::MakeBool() : t;
-        }
-        switch (op) {
-        case TokenKind::Bang:
-            if (!t.IsBool()) {
-                EmitError(loc, std::format("'!' applied to non-bool type '{}'", t.ToString()));
-            }
-            return TypeRef::MakeBool();
-        case TokenKind::Minus:
-            if (!t.IsNumeric()) {
-                EmitError(loc, std::format("unary '-' applied to non-numeric type '{}'", t.ToString()));
-            }
-            return t;
-        case TokenKind::Tilde:
-            if (!t.IsInteger() && !t.IsBool()) {
-                EmitError(loc, std::format("'~' applied to non-integer type '{}'", t.ToString()));
-            }
-            return t;
-        case TokenKind::Star:
-            if (t.kind != TypeRef::Kind::Pointer) {
-                EmitError(loc, std::format("'*' (dereference) applied to "
-                                           "non-pointer type '{}'",
-                                           t.ToString()));
-            }
-            return t.inner.empty() ? TypeRef::MakeUnknown() : t.inner[0];
-        case TokenKind::At:
-            return TypeRef::MakePointer(t);
-        case TokenKind::PlusPlus:
-        case TokenKind::MinusMinus:
-            if (!t.IsNumeric()) {
-                EmitError(loc, std::format("'{}' applied to non-numeric type '{}'",
-                                           op == TokenKind::PlusPlus ? "++" : "--", t.ToString()));
-            }
-            return t;
-        default:
-            return TypeRef::MakeUnknown();
-        }
-    }
-
-    static std::string_view BinaryOperatorName(TokenKind op) noexcept {
-        using TK = TokenKind;
-        switch (op) {
-        case TK::Plus:
-            return "+";
-        case TK::Minus:
-            return "-";
-        case TK::Star:
-            return "*";
-        case TK::Slash:
-            return "/";
-        case TK::Percent:
-            return "%";
-        case TK::StarStar:
-            return "**";
-        case TK::Amp:
-            return "&";
-        case TK::At:
-            return "@";
-        case TK::Pipe:
-            return "|";
-        case TK::Caret:
-            return "^";
-        case TK::LessLess:
-            return "<<";
-        case TK::GreaterGreater:
-            return ">>";
-        case TK::GreaterGreaterGreater:
-            return ">>>";
-        case TK::AmpAmp:
-            return "&&";
-        case TK::PipePipe:
-            return "||";
-        case TK::Equal:
-            return "==";
-        case TK::BangEqual:
-            return "!=";
-        case TK::Less:
-            return "<";
-        case TK::LessEqual:
-            return "<=";
-        case TK::Greater:
-            return ">";
-        case TK::GreaterEqual:
-            return ">=";
-        default:
-            return {};
-        }
-    }
-
-    TypeRef CheckBinary(TokenKind op, const TypeRef &l, const TypeRef &r, const Expr &leftExpr, const Expr &rightExpr,
-                        SourceLocation loc) {
-        const bool comparesNullPointer = (IsNullLiteral(leftExpr) && r.kind == TypeRef::Kind::Pointer) ||
-                                         (IsNullLiteral(rightExpr) && l.kind == TypeRef::Kind::Pointer);
-        if (comparesNullPointer && (op == TokenKind::Equal || op == TokenKind::BangEqual)) {
-            return TypeRef::MakeBool();
-        }
-        if (l.IsUnknown() || r.IsUnknown()) {
-            return TypeRef::MakeUnknown();
-        }
-        if (ContainsTypeParam(l) || ContainsTypeParam(r)) {
-            if (currentFunctionDecl) {
-                deferredBinaryChecks[currentFunctionDecl].push_back({op, l, r, &leftExpr, &rightExpr, loc});
-            }
-            switch (op) {
-            case TokenKind::AmpAmp:
-            case TokenKind::PipePipe:
-            case TokenKind::Equal:
-            case TokenKind::BangEqual:
-            case TokenKind::Less:
-            case TokenKind::LessEqual:
-            case TokenKind::Greater:
-            case TokenKind::GreaterEqual:
-                return TypeRef::MakeBool();
-            default:
-                return l;
-            }
-        }
-
-        const std::string_view opName = BinaryOperatorName(op);
-        if (!opName.empty()) {
-            if (const FuncDecl *method = LookupMethod(l, std::string(opName), {r})) {
-                std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(l, *method);
-                TypeRef ret = ResolveMethodReturnType(l, *method);
-                if (paramTypes.size() != 1) {
-                    EmitError(loc, std::format("operator '{}' expects 1 argument, got {}", opName, paramTypes.size()));
-                }
-                else if (!paramTypes[0].IsUnknown() && !CanAssignExprTo(rightExpr, r, paramTypes[0])) {
-                    EmitError(rightExpr.location, std::format("cannot pass '{}' to parameter of type '{}'",
-                                                              r.ToString(), paramTypes[0].ToString()));
-                }
-                return ret;
-            }
-        }
-
-        auto isNumericOrChar = [](const TypeRef &t) {
-            return t.IsNumeric() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
-                   t.kind == TypeRef::Kind::Char32;
-        };
-        auto isIntegerOrChar = [](const TypeRef &t) {
-            return t.IsInteger() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
-                   t.kind == TypeRef::Kind::Char32;
-        };
-        auto isChar = [](TypeRef::Kind k) {
-            return k == TypeRef::Kind::Char8 || k == TypeRef::Kind::Char16 || k == TypeRef::Kind::Char32;
-        };
-        auto getCompatibleType = [&](const Expr &left, const TypeRef &lt, const Expr &right,
-                                     const TypeRef &rt) -> std::optional<TypeRef> {
-            if ((lt.IsInteger() && isChar(rt.kind)) || (rt.IsInteger() && isChar(lt.kind))) {
-                return lt.IsInteger() ? lt : rt;
-            }
-            if (isChar(lt.kind) && isChar(rt.kind)) {
-                return lt;
-            }
-            if (lt.IsInteger() && rt.IsInteger()) {
-                return lt;
-            }
-            if (CanAssignExprTo(right, rt, lt)) {
-                return lt;
-            }
-            if (CanAssignExprTo(left, lt, rt)) {
-                return rt;
-            }
-            return std::nullopt;
-        };
-
-        using TK = TokenKind;
-        switch (op) {
-        case TK::Plus: {
-            if (l.kind == TypeRef::Kind::Pointer && isIntegerOrChar(r)) {
-                return l;
-            }
-            if (isIntegerOrChar(l) && r.kind == TypeRef::Kind::Pointer) {
-                return r;
-            }
-            if (!isNumericOrChar(l)) {
-                EmitError(loc, std::format("'+' applied to non-numeric type '{}'", l.ToString()));
-            }
-            else if (!isNumericOrChar(r)) {
-                EmitError(loc, std::format("'+' right operand must be numeric, got '{}'", r.ToString()));
-            }
-            else {
-                auto res = getCompatibleType(leftExpr, l, rightExpr, r);
-                if (!res.has_value()) {
-                    EmitError(loc,
-                              std::format("mismatched types in addition: '{}' and '{}'", l.ToString(), r.ToString()));
-                }
-                else {
-                    return *res;
-                }
-            }
-            return l;
-        }
-
-        case TK::Minus: {
-            if (l.kind == TypeRef::Kind::Pointer && isIntegerOrChar(r)) {
-                return l;
-            }
-            if (!isNumericOrChar(l)) {
-                EmitError(loc, std::format("'-' applied to non-numeric type '{}'", l.ToString()));
-            }
-            else if (!isNumericOrChar(r)) {
-                EmitError(loc, std::format("'-' right operand must be numeric, got '{}'", r.ToString()));
-            }
-            else {
-                auto res = getCompatibleType(leftExpr, l, rightExpr, r);
-                if (!res.has_value()) {
-                    EmitError(loc, std::format("mismatched types in "
-                                               "subtraction: '{}' and '{}'",
-                                               l.ToString(), r.ToString()));
-                }
-                else {
-                    return *res;
-                }
-            }
-            return l;
-        }
-
-        case TK::Star:
-        case TK::Slash:
-        case TK::Percent:
-        case TK::StarStar: {
-            std::string opStr = op == TK::Star ? "*" : op == TK::Slash ? "/" : op == TK::Percent ? "%" : "**";
-            if (!isNumericOrChar(l)) {
-                EmitError(loc, std::format("'{}' applied to non-numeric type '{}'", opStr, l.ToString()));
-            }
-            else if (!isNumericOrChar(r)) {
-                EmitError(loc, std::format("'{}' right operand must be numeric, got '{}'", opStr, r.ToString()));
-            }
-            else {
-                auto res = getCompatibleType(leftExpr, l, rightExpr, r);
-                if (!res.has_value()) {
-                    EmitError(loc, std::format("mismatched types in binary "
-                                               "operation: '{}' and '{}'",
-                                               l.ToString(), r.ToString()));
-                }
-                else {
-                    return *res;
-                }
-            }
-            return l;
-        }
-
-        case TK::Amp:
-        case TK::Pipe:
-        case TK::Caret:
-        case TK::LessLess:
-        case TK::GreaterGreater: {
-            auto isBitwiseOperand = [](const TypeRef &t) {
-                return t.IsInteger() || t.IsBool() || t.kind == TypeRef::Kind::Char8 ||
-                       t.kind == TypeRef::Kind::Char16 || t.kind == TypeRef::Kind::Char32;
-            };
-            if (!isBitwiseOperand(l)) {
-                EmitError(loc, std::format("bitwise operator applied to non-integer type '{}'", l.ToString()));
-            }
-            else if (!isBitwiseOperand(r)) {
-                EmitError(loc, std::format("bitwise operator right operand must "
-                                           "be integer, got '{}'",
-                                           r.ToString()));
-            }
-            else {
-                auto res = getCompatibleType(leftExpr, l, rightExpr, r);
-                if (!res.has_value()) {
-                    EmitError(loc, std::format("mismatched types in bitwise "
-                                               "operation: '{}' and '{}'",
-                                               l.ToString(), r.ToString()));
-                }
-                else {
-                    return *res;
-                }
-            }
-            return l;
-        }
-
-        case TK::GreaterGreaterGreater:
-            if (!l.IsSigned()) {
-                EmitError(loc, std::format("'>>>' requires a signed integer left operand, got '{}'", l.ToString()));
-            }
-            if (!r.IsInteger()) {
-                EmitError(loc, std::format("'>>>' right operand must be an integer, got '{}'", r.ToString()));
-            }
-            return l;
-
-        case TK::AmpAmp:
-        case TK::PipePipe:
-            if (!l.IsBool()) {
-                EmitError(loc, std::format("'{}' applied to non-bool type '{}'", op == TK::AmpAmp ? "&&" : "||",
-                                           l.ToString()));
-            }
-            if (!r.IsBool()) {
-                EmitError(loc, std::format("'{}' applied to non-bool type '{}'", op == TK::AmpAmp ? "&&" : "||",
-                                           r.ToString()));
-            }
-            return TypeRef::MakeBool();
-
-        case TK::Equal:
-        case TK::BangEqual:
-        case TK::Less:
-        case TK::LessEqual:
-        case TK::Greater:
-        case TK::GreaterEqual: {
-            bool compat = false;
-            if ((op == TK::Equal || op == TK::BangEqual) &&
-                ((l.IsBool() && r.IsInteger()) || (l.IsInteger() && r.IsBool()))) {
-                compat = true;
-            }
-            else if (getCompatibleType(leftExpr, l, rightExpr, r).has_value()) {
-                compat = true;
-            }
-            if (!compat) {
-                EmitError(loc,
-                          std::format("cannot compare mismatched types '{}' and '{}'", l.ToString(), r.ToString()));
-            }
-            return TypeRef::MakeBool();
-        }
-
-        default:
-            return TypeRef::MakeUnknown();
-        }
-    }
-
-    // True when the expression denotes a provably immutable place (its storage
-    // cannot be written through). Conservative: anything we cannot prove
-    // immutable is treated as mutable, so no new errors on unrelated code.
-    bool PlaceIsImmutable(const Expr &place) {
-        if (auto *e = dynamic_cast<const IdentExpr *>(&place)) {
-            Symbol *sym = currentScope->Lookup(e->name);
-            if (!sym) {
-                return false;
-            }
-            if (sym->kind == Symbol::Kind::Const) {
-                return true;
-            }
-            return sym->kind == Symbol::Kind::Var && !sym->isMut;
-        }
-        if (const auto *field = dynamic_cast<const FieldExpr *>(&place)) {
-            if (dynamic_cast<const SelfExpr *>(field->object.get())) {
-                return false;
-            }
-            const TypeRef objectType = CheckExpr(*field->object);
-            if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
-                return !objectType.inner[0].isMut;
-            }
-            return PlaceIsImmutable(*field->object);
-        }
-        if (const auto *index = dynamic_cast<const IndexExpr *>(&place)) {
-            const TypeRef objectType = CheckExpr(*index->object);
-            if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
-                return !objectType.inner[0].isMut;
-            }
-            return PlaceIsImmutable(*index->object);
-        }
-        if (const auto *u = dynamic_cast<const UnaryExpr *>(&place); u && u->op == TokenKind::Star) {
-            const TypeRef ptr = CheckExpr(*u->operand);
-            return ptr.kind == TypeRef::Kind::Pointer && !ptr.inner.empty() && !ptr.inner[0].isMut;
-        }
-        return false;
-    }
-
-    // Whether `place` may back a writable '*var T'. `placeType` is
-    // the already-computed type of `place`; for a deref '*p' it is p's pointee,
-    // whose `isMut` says whether the pointed-to storage is writable.
-    bool PlaceIsWritable(const Expr &place, const TypeRef &placeType) {
-        if (const auto *u = dynamic_cast<const UnaryExpr *>(&place); u && u->op == TokenKind::Star) {
-            return placeType.isMut;
-        }
-        return !PlaceIsImmutable(place);
-    }
-
-    // Check that an assignment target is mutable.
-    void CheckMutability(const Expr &target) {
-        if (auto *e = dynamic_cast<const IdentExpr *>(&target)) {
-            Symbol *sym = currentScope->Lookup(e->name);
-            if (!sym) {
-                return;
-            }
-            if (sym->kind == Symbol::Kind::Const) {
-                EmitError(target.location, std::format("cannot assign to constant '{}'", e->name));
-                return;
-            }
-            if (sym->kind == Symbol::Kind::Var && !sym->isMut) {
-                EmitError(target.location, std::format("cannot assign to immutable variable '{}'", e->name));
-            }
-        }
-        else if (auto *u = dynamic_cast<const UnaryExpr *>(&target); u && u->op == TokenKind::Star) {
-            // Writing through a read-only pointer '*T' (anything but '*var T')
-            // is forbidden.
-            TypeRef ptr = CheckExpr(*u->operand);
-            if (ptr.kind == TypeRef::Kind::Pointer && !ptr.inner.empty() && !ptr.inner[0].isMut) {
-                EmitError(target.location, "cannot assign through a pointer to immutable data");
-            }
-        }
-        else if (const auto *field = dynamic_cast<const FieldExpr *>(&target)) {
-            if (dynamic_cast<const SelfExpr *>(field->object.get())) {
-                return;
-            }
-            const TypeRef objectType = CheckExpr(*field->object);
-            if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
-                if (!objectType.inner[0].isMut) {
-                    EmitError(target.location, "cannot assign through a pointer to immutable data");
-                }
-            }
-            else {
-                CheckMutability(*field->object);
-            }
-        }
-        else if (const auto *index = dynamic_cast<const IndexExpr *>(&target)) {
-            const TypeRef objectType = CheckExpr(*index->object);
-            if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
-                if (!objectType.inner[0].isMut) {
-                    EmitError(target.location, "cannot assign through a pointer to immutable data");
-                }
-            }
-            else {
-                CheckMutability(*index->object);
-            }
         }
     }
 };
