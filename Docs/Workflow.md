@@ -54,6 +54,8 @@ native OS can use `test --target freebsd-aarch64`. For cross-runtime work, use
 `VerifyTransfer.sh` in a separate AArch64 FreeBSD checkout so the compiler and
 target-runtime boundaries stay explicit.
 
+For package profile and target selection, ordinary artifact paths, and the complete `rux build --all` contract, see [Package Builds and the Target Matrix](Builds.md).
+
 ### Debug vs. Release Builds
 
 - **Release** (default) — optimized; this is what CI builds and tests, and what ships. Use it for normal development and before pushing.

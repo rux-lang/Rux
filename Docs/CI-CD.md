@@ -2,6 +2,8 @@
 
 Continuous integration runs on every push and pull request to `main` and `dev`, building and testing Rux across every supported operating system. Continuous delivery (publishing binaries) is covered separately in the [Release Pipeline](Release.md).
 
+The workflow matrices described here build the Rux compiler on native runners. They are distinct from the package compiler's [`rux build --all` matrix](Builds.md#building-the-complete-matrix), which one Rux compiler process uses to produce 16 target/profile artifact cells.
+
 ## Per-OS Build and Test Workflows
 
 Each supported platform has its own workflow under [`.github/workflows/`](../.github/workflows/):

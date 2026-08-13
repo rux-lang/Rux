@@ -90,6 +90,8 @@ Pass the canonical target to build or check an AArch64 package from either compi
 
 Run workspace commands from the repository root; use `--manifest <path>` before the subcommand for an individual package. Every build is placed below its canonical target directory, such as `Bin/Release/windows-aarch64/Name.exe`, including when that target is the host.
 
+`rux build --all` also produces both Windows targets in Debug and Release; see the [matrix path and flag rules](../Builds.md#building-the-complete-matrix).
+
 `rux run` always builds and launches the compiler's host triple and does not accept `--target`. On AArch64 Windows, both a native AArch64 compiler and an x86-64 compiler process running under Windows translation can launch generated AArch64 tests directly. Rux queries the native OS architecture separately from the compiler process architecture, which is why that x86-64 `rux.exe` can run `rux test --target windows-aarch64`. On physical x86-64 Windows, `build` and `check` still work, but target tests fail before compiling the suite and direct the user to test on an AArch64 machine.
 
 GitHub's `windows-11-arm` runner is the default native and cross-target test environment. An Azure Windows 11 ARM64 VM is reserved for interactive crash dumps, prolonged debugging, or demonstrated GitHub-runner instability; it is not required for acceptance.

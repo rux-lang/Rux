@@ -56,6 +56,8 @@ scp Bin/Release/macos-aarch64/Name apple-silicon-mac:/tmp/Name
 ssh apple-silicon-mac 'chmod +x /tmp/Name && /tmp/Name'
 ```
 
+`rux build --all` produces both macOS targets as part of its 16 Debug/Release cells; see the [matrix path and flag rules](../Builds.md#building-the-complete-matrix).
+
 ## Verifying the Build
 
 Run the compiler:

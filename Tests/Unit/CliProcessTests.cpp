@@ -125,8 +125,12 @@ TEST_CASE("build help publishes the all-target matrix option") {
 
     CHECK(textHelp.exitCode == 0);
     CHECK(textHelp.output.contains("--all"));
+    CHECK(textHelp.output.contains("all 16 target/profile cells"));
+    CHECK(textHelp.output.contains("--release --target linux-x86_64"));
     CHECK(jsonHelp.exitCode == 0);
     CHECK(jsonHelp.output.contains("\"flags\":\"--all\""));
+    CHECK(jsonHelp.output.contains("all 16 target/profile cells"));
+    CHECK(jsonHelp.output.contains("--release --target linux-x86_64"));
 }
 
 TEST_CASE("build --all reports every cell, continues after failures, and honors quiet") {

@@ -63,6 +63,8 @@ For a Debug build, run `sh Build.sh --configuration Debug`. On other Linux distr
 ./Bin/rux build --target linux-aarch64
 ```
 
+`rux build --all` produces both Linux targets as part of its 16 Debug/Release cells; see the [matrix path and flag rules](../Builds.md#building-the-complete-matrix).
+
 `rux run` is host-only and has no `--target` option. Use `build` or `check` to select a cross target, then transfer the artifact to a native target machine:
 
 ```sh

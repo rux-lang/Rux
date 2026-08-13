@@ -18,7 +18,7 @@ Cross-compilation needs no external toolchain: `rux build --target <os>-<arch>` 
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](LICENSE.md)
 
-Each platform badge above covers a native build-and-test run on both supported architectures, x86-64 and AArch64, and prebuilt binaries are published for every one of them. Linux and Windows also cross-build signed `macos-aarch64` images and inspect their ARM64 Mach-O headers and signatures without launching them. The Windows badge runs the complete native AArch64 suite and a `windows-11-arm` cross job that executes the downloaded x86-64 compiler under Windows translation, then runs its Windows AArch64 output natively, including executable and DLL fixtures. The macOS badge runs the complete Apple Silicon suite and native runtime fixtures, then repeats target tests and fixtures with the x86-64 compiler under Rosetta while every generated ARM64 image executes directly. FreeBSD runs the complete ordinary suite and native AArch64 runtime fixtures, then transfers target-only bytes built by an x86-64 FreeBSD compiler into a fresh AArch64 VM for direct execution. `freebsd-aarch64` supports executable, shared-library, and static-library packages from every compiler host without a FreeBSD SDK or sysroot. Foreign artifacts use the same canonical target-separated output layout as native builds and must be transferred to native FreeBSD for execution.
+The platform badges cover native x86-64 and AArch64 builds and tests. The [CI/CD guide](Docs/CI-CD.md) documents the native, cross-compiler, transferred-artifact, and runtime acceptance paths in detail.
 
 > [!IMPORTANT]
 > Rux is under active, pre-1.0 development. Language features, compiler behavior, and package formats may change between minor releases. Check the [changelog](CHANGELOG.md) when upgrading.
@@ -33,6 +33,8 @@ Language and tool documentation lives on the website:
 - [API reference](https://rux-lang.dev/api)
 
 Working on the compiler itself is covered by the guides in [`Docs/`](Docs/), indexed in [CONTRIBUTING.md](CONTRIBUTING.md#process-documentation). Installer implementation notes live beside their source, in [Packaging/Linux](Packaging/Linux/README.md) and [Packaging/Windows](Packaging/Windows/README.md).
+
+The [package build guide](Docs/Builds.md) covers target names, artifact paths, cross-compilation, and the 16-cell `rux build --all` matrix.
 
 Commands in this repository use POSIX shell syntax unless a PowerShell example is provided; on Windows, replace `./Bin/rux` with `.\Bin\rux.exe`.
 
